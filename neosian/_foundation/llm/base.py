@@ -92,6 +92,7 @@ class BaseLLMClient(ABC):
         messages: list[Message],
         model: ModelId,
         tools: list[ToolDefinition] | None = None,
+        temperature: float | None = None,
     ) -> CompletionResponse:
         """Send a completion request to the LLM.
 
@@ -99,6 +100,7 @@ class BaseLLMClient(ABC):
             messages: Conversation history.
             model: Model identifier.
             tools: Optional list of tools the model can call.
+            temperature: Sampling temperature (0.0-2.0). None uses provider default.
 
         Returns:
             CompletionResponse with the model's response.
@@ -111,6 +113,7 @@ class BaseLLMClient(ABC):
         messages: list[Message],
         model: ModelId,
         tools: list[ToolDefinition] | None = None,
+        temperature: float | None = None,
     ) -> AsyncIterator[StreamChunk]:
         """Stream a completion request from the LLM.
 
@@ -118,6 +121,7 @@ class BaseLLMClient(ABC):
             messages: Conversation history.
             model: Model identifier.
             tools: Optional list of tools the model can call.
+            temperature: Sampling temperature (0.0-2.0). None uses provider default.
 
         Yields:
             StreamChunk objects as they arrive.

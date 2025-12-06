@@ -28,10 +28,35 @@ class TestAgentInit:
             client=client,
             model=ModelId("test-model"),
             system_prompt=SystemPrompt("You are helpful."),
+            enable_todo=False,
         )
         assert agent._model == "test-model"
         assert agent._system_prompt == "You are helpful."
         assert len(agent._tools) == 0
+
+    def test_agent_init_with_todo_enabled_by_default(self) -> None:
+        """Agent should include todo tool by default."""
+        client = AsyncMock(spec=BaseLLMClient)
+        agent = Agent(
+            client=client,
+            model=ModelId("test-model"),
+            system_prompt=SystemPrompt("You are helpful."),
+        )
+        assert "update_todo" in agent._tools
+        assert len(agent._tools) == 1
+        assert agent._todo_state is not None
+
+    def test_agent_init_todo_disabled(self) -> None:
+        """Agent should not include todo tool when disabled."""
+        client = AsyncMock(spec=BaseLLMClient)
+        agent = Agent(
+            client=client,
+            model=ModelId("test-model"),
+            system_prompt=SystemPrompt("You are helpful."),
+            enable_todo=False,
+        )
+        assert "update_todo" not in agent._tools
+        assert agent._todo_state is None
 
     def test_agent_init_with_tools(self) -> None:
         """Agent should register tools from decorated functions."""
@@ -46,9 +71,29 @@ class TestAgentInit:
             model=ModelId("test-model"),
             system_prompt=SystemPrompt("You are helpful."),
             tools=[greet],
+            enable_todo=False,
         )
         assert "greet" in agent._tools
         assert len(agent._tool_definitions) == 1
+
+    def test_agent_init_with_tools_and_todo(self) -> None:
+        """Agent should register both user tools and todo tool."""
+
+        @Tool(name="greet", description="Greet someone")
+        async def greet(name: str) -> ToolResult[str]:
+            return ToolResult.ok(f"Hello, {name}!")
+
+        client = AsyncMock(spec=BaseLLMClient)
+        agent = Agent(
+            client=client,
+            model=ModelId("test-model"),
+            system_prompt=SystemPrompt("You are helpful."),
+            tools=[greet],
+            enable_todo=True,
+        )
+        assert "greet" in agent._tools
+        assert "update_todo" in agent._tools
+        assert len(agent._tool_definitions) == 2
 
     def test_agent_rejects_non_tool_functions(self) -> None:
         """Agent should reject functions without @Tool decorator."""

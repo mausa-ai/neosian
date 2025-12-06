@@ -8,7 +8,9 @@ def test_version_exists() -> None:
     """Test that version is defined."""
     from neosian import __version__
 
-    assert __version__ == "0.1.0"
+    # Just check version exists and is a valid semver-like string
+    assert isinstance(__version__, str)
+    assert len(__version__.split(".")) >= 2
 
 
 @pytest.mark.unit

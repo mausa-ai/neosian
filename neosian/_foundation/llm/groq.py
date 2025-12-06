@@ -3,7 +3,7 @@
 import json
 from collections.abc import AsyncIterator
 
-from groq import AsyncGroq
+from groq import AsyncGroq, BadRequestError
 from groq.types.chat import (
     ChatCompletionAssistantMessageParam,
     ChatCompletionMessageParam,
@@ -20,13 +20,16 @@ from neosian._foundation.llm.base import (
     ToolDefinition,
     Usage,
 )
+from neosian._foundation.shared.constants import LLMDefaults
+from neosian._foundation.shared.exceptions import ToolCallGenerationError
 from neosian._foundation.shared.types import ModelId, ToolCallId, ToolName
 
 
 class GroqClient(BaseLLMClient):
     """Groq LLM client.
 
-    Uses the Groq SDK for fast inference.
+    Uses the Groq SDK for fast inference. Includes automatic retry with
+    lower temperature when tool call generation fails.
     """
 
     def __init__(self, api_key: str) -> None:
@@ -42,27 +45,86 @@ class GroqClient(BaseLLMClient):
         messages: list[Message],
         model: ModelId,
         tools: list[ToolDefinition] | None = None,
+        temperature: float | None = None,
     ) -> CompletionResponse:
         """Send a completion request to Groq.
+
+        Automatically retries with lower temperature if tool call generation
+        fails. After max retries, raises ToolCallGenerationError.
 
         Args:
             messages: Conversation history.
             model: Model identifier.
             tools: Optional list of tools the model can call.
+            temperature: Sampling temperature (0.0-2.0). None uses default.
 
         Returns:
             CompletionResponse with the model's response.
+
+        Raises:
+            ToolCallGenerationError: If tool call generation fails after retries.
         """
         groq_messages = self._convert_messages(messages)
         groq_tools = self._convert_tools(tools) if tools else None
 
-        response = await self._client.chat.completions.create(
-            model=model,
-            messages=groq_messages,
-            tools=groq_tools,
+        # Use provided temperature or default
+        current_temp = (
+            temperature if temperature is not None else LLMDefaults.TEMPERATURE
         )
 
-        choice = response.choices[0]
+        for attempt in range(LLMDefaults.MAX_TOOL_CALL_RETRIES + 1):
+            try:
+                response = await self._client.chat.completions.create(
+                    model=model,
+                    messages=groq_messages,
+                    tools=groq_tools,
+                    temperature=current_temp,
+                )
+                return self._parse_response(response)
+
+            except BadRequestError as e:
+                # Check if it's a tool_use_failed error
+                if self._is_tool_call_error(e) and tools is not None:
+                    # If we have retries left, try with lower temperature
+                    if attempt < LLMDefaults.MAX_TOOL_CALL_RETRIES:
+                        current_temp = LLMDefaults.RETRY_TEMPERATURE
+                        continue
+                    # Max retries exceeded
+                    raise ToolCallGenerationError(
+                        retries=LLMDefaults.MAX_TOOL_CALL_RETRIES
+                    ) from e
+                # Not a tool call error, re-raise
+                raise
+
+        # Should not reach here, but satisfy type checker
+        raise ToolCallGenerationError(retries=LLMDefaults.MAX_TOOL_CALL_RETRIES)
+
+    def _is_tool_call_error(self, error: BadRequestError) -> bool:
+        """Check if the error is a tool call generation failure.
+
+        Args:
+            error: The BadRequestError to check.
+
+        Returns:
+            True if it's a tool_use_failed error.
+        """
+        if error.body and isinstance(error.body, dict):
+            err = error.body.get("error", {})
+            if isinstance(err, dict):
+                return err.get("code") == "tool_use_failed"
+        return False
+
+    def _parse_response(self, response: object) -> CompletionResponse:
+        """Parse Groq response into CompletionResponse.
+
+        Args:
+            response: Raw response from Groq API.
+
+        Returns:
+            Parsed CompletionResponse.
+        """
+        # Type ignore needed because groq SDK types are complex
+        choice = response.choices[0]  # type: ignore[attr-defined]
         response_message = choice.message
 
         # Convert tool calls if present
@@ -84,10 +146,10 @@ class GroqClient(BaseLLMClient):
                 tool_calls=tool_calls,
             ),
             usage=Usage(
-                input_tokens=response.usage.prompt_tokens if response.usage else 0,
-                output_tokens=response.usage.completion_tokens if response.usage else 0,
+                input_tokens=response.usage.prompt_tokens if response.usage else 0,  # type: ignore[attr-defined]
+                output_tokens=response.usage.completion_tokens if response.usage else 0,  # type: ignore[attr-defined]
             ),
-            model=ModelId(response.model),
+            model=ModelId(response.model),  # type: ignore[attr-defined]
         )
 
     async def stream(
@@ -95,6 +157,7 @@ class GroqClient(BaseLLMClient):
         messages: list[Message],
         model: ModelId,
         tools: list[ToolDefinition] | None = None,
+        temperature: float | None = None,
     ) -> AsyncIterator[StreamChunk]:
         """Stream a completion request from Groq.
 
@@ -102,17 +165,20 @@ class GroqClient(BaseLLMClient):
             messages: Conversation history.
             model: Model identifier.
             tools: Optional list of tools the model can call.
+            temperature: Sampling temperature (0.0-2.0). None uses default.
 
         Yields:
             StreamChunk objects as they arrive.
         """
         groq_messages = self._convert_messages(messages)
         groq_tools = self._convert_tools(tools) if tools else None
+        temp = temperature if temperature is not None else LLMDefaults.TEMPERATURE
 
         stream = await self._client.chat.completions.create(
             model=model,
             messages=groq_messages,
             tools=groq_tools,
+            temperature=temp,
             stream=True,
         )
 

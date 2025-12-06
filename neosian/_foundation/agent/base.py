@@ -23,6 +23,7 @@ from neosian._foundation.tools.base import (
     get_tool_definition,
     get_tool_metadata,
 )
+from neosian._foundation.tools.builtin.todo import TodoState, get_todo_tool
 
 
 @dataclass
@@ -59,6 +60,8 @@ class Agent:
         system_prompt: SystemPrompt,
         tools: list[ToolFunction] | None = None,
         max_tool_iterations: int = 10,
+        enable_todo: bool = True,
+        todo_state: TodoState | None = None,
     ) -> None:
         """Initialize the agent.
 
@@ -68,6 +71,8 @@ class Agent:
             system_prompt: System prompt for the agent.
             tools: List of tool functions decorated with @Tool.
             max_tool_iterations: Maximum tool call iterations to prevent infinite loops.
+            enable_todo: Whether to include the global todo tool. Default True.
+            todo_state: External todo state. If None and enable_todo=True, creates new state.
         """
         self._client = client
         self._model = model
@@ -78,24 +83,43 @@ class Agent:
         self._tools: dict[ToolName, ToolFunction] = {}
         self._tool_definitions: list[ToolDefinition] = []
 
+        # Add global todo tool if enabled
+        self._todo_state: TodoState | None = None
+        if enable_todo:
+            self._todo_state = todo_state if todo_state is not None else TodoState([])
+            todo_tool = get_todo_tool(self._todo_state)
+            self._register_tool(todo_tool)
+
+        # Register user-provided tools
         if tools:
             for tool_func in tools:
-                metadata = get_tool_metadata(tool_func)
-                if metadata is None:
-                    raise ValueError(
-                        ErrorMessages.FUNCTION_NOT_DECORATED.format(
-                            func_name=tool_func.__name__
-                        )
-                    )
-                definition = get_tool_definition(tool_func)
-                if definition is None:
-                    raise ValueError(
-                        ErrorMessages.FUNCTION_NOT_DECORATED.format(
-                            func_name=tool_func.__name__
-                        )
-                    )
-                self._tools[metadata.name] = tool_func
-                self._tool_definitions.append(definition)
+                self._register_tool(tool_func)
+
+    def _register_tool(self, tool_func: ToolFunction) -> None:
+        """Register a single tool function.
+
+        Args:
+            tool_func: Tool function decorated with @Tool.
+
+        Raises:
+            ValueError: If function is not decorated with @Tool.
+        """
+        metadata = get_tool_metadata(tool_func)
+        if metadata is None:
+            raise ValueError(
+                ErrorMessages.FUNCTION_NOT_DECORATED.format(
+                    func_name=tool_func.__name__
+                )
+            )
+        definition = get_tool_definition(tool_func)
+        if definition is None:
+            raise ValueError(
+                ErrorMessages.FUNCTION_NOT_DECORATED.format(
+                    func_name=tool_func.__name__
+                )
+            )
+        self._tools[metadata.name] = tool_func
+        self._tool_definitions.append(definition)
 
     async def run(self, messages: list[Message]) -> AgentResponse:
         """Execute the agent with the given conversation history.

@@ -12,6 +12,17 @@ class ErrorMessages:
     TOOL_INVALID_ARGUMENTS: str = "Invalid arguments for tool '{tool_name}': {error}"
     TOOL_EXECUTION_FAILED: str = "Tool '{tool_name}' failed: {error}"
     FUNCTION_NOT_DECORATED: str = "Function {func_name} is not decorated with @Tool"
+    TOOL_CALL_GENERATION_FAILED: str = (
+        "Failed to generate valid tool call after {retries} retries"
+    )
+
+
+class LLMDefaults:
+    """Default values for LLM configuration."""
+
+    TEMPERATURE: float = 0.7
+    RETRY_TEMPERATURE: float = 0.3
+    MAX_TOOL_CALL_RETRIES: int = 2
 
 
 class Provider:
@@ -21,7 +32,7 @@ class Provider:
         """Groq provider constants."""
 
         ID: str = "groq"
-        DEFAULT_MODEL: str = "llama-3.3-70b-versatile"
+        DEFAULT_MODEL: str = "openai/gpt-oss-20b"
 
     class OpenAI:
         """OpenAI provider constants."""
