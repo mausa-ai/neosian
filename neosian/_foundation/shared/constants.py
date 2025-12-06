@@ -5,6 +5,15 @@ Add constants as needed, not speculatively.
 """
 
 
+class ErrorMessages:
+    """Centralized error messages."""
+
+    TOOL_NOT_FOUND: str = "Tool '{tool_name}' not found"
+    TOOL_INVALID_ARGUMENTS: str = "Invalid arguments for tool '{tool_name}': {error}"
+    TOOL_EXECUTION_FAILED: str = "Tool '{tool_name}' failed: {error}"
+    FUNCTION_NOT_DECORATED: str = "Function {func_name} is not decorated with @Tool"
+
+
 class Provider:
     """LLM Provider configuration."""
 
