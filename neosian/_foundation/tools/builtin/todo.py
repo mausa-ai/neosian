@@ -6,6 +6,7 @@ The todo state is managed externally - the tool only processes updates.
 
 from dataclasses import dataclass
 
+from neosian._foundation.shared.constants import BuiltinTools
 from neosian._foundation.shared.types import TodoStatus
 from neosian._foundation.tools.base import Tool, ToolFunction, ToolResult
 
@@ -48,12 +49,8 @@ def get_todo_tool(state: TodoState) -> ToolFunction:
     """
 
     @Tool(
-        name="update_todo",
-        description=(
-            "Track and update task progress. Use this to plan complex tasks, "
-            "track what you're working on, and mark tasks complete. "
-            "Each item has content (what to do) and status (pending/in_progress/completed)."
-        ),
+        name=BuiltinTools.Todo.NAME,
+        description=BuiltinTools.Todo.DESCRIPTION,
     )
     async def update_todo(
         todos: list[dict[str, str]],
