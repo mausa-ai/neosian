@@ -14,11 +14,12 @@ from rich.prompt import Prompt
 from rich.text import Text
 from simple_term_menu import TerminalMenu  # type: ignore[import-untyped]
 
-from neosian._cli.loader import load_agent_definition
+from neosian._cli.loader import AgentDefinition, load_agent_definition
 from neosian._cli.session import Session
 from neosian._foundation.agent.base import Agent
-from neosian._foundation.llm.base import Message, Role
+from neosian._foundation.llm.base import BaseLLMClient, Message, Role
 from neosian._foundation.llm.groq import GroqClient
+from neosian._foundation.llm.openai import OpenAIClient
 from neosian._foundation.shared.constants import (
     Assets,
     ErrorMessages,
@@ -62,6 +63,37 @@ def _load_header() -> str:
         return ""
 
 
+def _create_client(definition: AgentDefinition) -> tuple[BaseLLMClient, ModelId]:
+    """Create LLM client and model based on agent definition.
+
+    Args:
+        definition: Agent definition with optional provider/model.
+
+    Returns:
+        Tuple of (client, model_id).
+
+    Raises:
+        MissingAPIKeyError: If required API key is not set.
+    """
+    provider = definition.provider or Provider.Groq.ID
+
+    if provider == Provider.OpenAI.ID:
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            raise MissingAPIKeyError(ErrorMessages.OPENAI_API_KEY_MISSING)
+        client: BaseLLMClient = OpenAIClient(api_key=api_key)
+        model_id = ModelId(definition.model or Provider.OpenAI.DEFAULT_MODEL)
+    else:
+        # Default to Groq
+        api_key = os.environ.get("GROQ_API_KEY")
+        if not api_key:
+            raise MissingAPIKeyError(ErrorMessages.GROQ_API_KEY_MISSING)
+        client = GroqClient(api_key=api_key)
+        model_id = ModelId(definition.model or Provider.Groq.DEFAULT_MODEL)
+
+    return client, model_id
+
+
 def run_playground(agent_path: str, model: str | None = None) -> None:
     """Run the playground with the given agent file.
 
@@ -78,14 +110,12 @@ def run_playground(agent_path: str, model: str | None = None) -> None:
         console.print(f"[red]Error: {e}[/red]")
         raise SystemExit(1) from e
 
-    # Get API key
-    api_key = os.environ.get("GROQ_API_KEY")
-    if not api_key:
-        raise MissingAPIKeyError(ErrorMessages.GROQ_API_KEY_MISSING)
+    # Create client based on agent definition
+    client, model_id = _create_client(definition)
 
-    # Create client and agent
-    client = GroqClient(api_key=api_key)
-    model_id = ModelId(model or Provider.Groq.DEFAULT_MODEL)
+    # CLI model override takes precedence
+    if model:
+        model_id = ModelId(model)
 
     agent = Agent(
         client=client,

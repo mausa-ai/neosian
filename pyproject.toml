@@ -7,6 +7,7 @@ requires-python = ">=3.12"
 dependencies = [
     "groq>=0.37.1",
     "httpx>=0.28.1",
+    "openai>=2.9.0",
     "pydantic>=2.12.5",
     "pyyaml>=6.0.3",
     "rich>=14.2.0",

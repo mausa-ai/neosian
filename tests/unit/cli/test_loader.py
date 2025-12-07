@@ -21,7 +21,7 @@ class TestLoadAgentDefinition:
 
     def test_loads_valid_agent_file(self) -> None:
         """Test loading a valid agent file."""
-        agent_code = '''
+        agent_code = """
 from neosian._foundation.tools.base import Tool, ToolResult
 
 system_prompt = "You are a helpful assistant."
@@ -31,10 +31,8 @@ async def greet(name: str) -> ToolResult[str]:
     return ToolResult.ok(f"Hello, {name}!")
 
 tools = [greet]
-'''
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".py", delete=False
-        ) as f:
+"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
             f.write(agent_code)
             f.flush()
 
@@ -52,12 +50,10 @@ tools = [greet]
 
     def test_raises_on_missing_system_prompt(self) -> None:
         """Test error when system_prompt is not defined."""
-        agent_code = '''
+        agent_code = """
 tools = []
-'''
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".py", delete=False
-        ) as f:
+"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
             f.write(agent_code)
             f.flush()
 
@@ -66,12 +62,10 @@ tools = []
 
     def test_raises_on_missing_tools(self) -> None:
         """Test error when tools is not defined."""
-        agent_code = '''
+        agent_code = """
 system_prompt = "You are helpful."
-'''
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".py", delete=False
-        ) as f:
+"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
             f.write(agent_code)
             f.flush()
 
@@ -80,13 +74,11 @@ system_prompt = "You are helpful."
 
     def test_raises_on_invalid_system_prompt_type(self) -> None:
         """Test error when system_prompt is not a string."""
-        agent_code = '''
+        agent_code = """
 system_prompt = 123
 tools = []
-'''
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".py", delete=False
-        ) as f:
+"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
             f.write(agent_code)
             f.flush()
 
@@ -95,13 +87,11 @@ tools = []
 
     def test_raises_on_invalid_tools_type(self) -> None:
         """Test error when tools is not a list."""
-        agent_code = '''
+        agent_code = """
 system_prompt = "Hello"
 tools = "not a list"
-'''
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".py", delete=False
-        ) as f:
+"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
             f.write(agent_code)
             f.flush()
 
@@ -110,12 +100,10 @@ tools = "not a list"
 
     def test_raises_on_syntax_error(self) -> None:
         """Test error when file has syntax errors."""
-        agent_code = '''
+        agent_code = """
 system_prompt = "Hello
-'''  # Missing closing quote
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".py", delete=False
-        ) as f:
+"""  # Missing closing quote
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
             f.write(agent_code)
             f.flush()
 
@@ -124,13 +112,11 @@ system_prompt = "Hello
 
     def test_empty_tools_list_is_valid(self) -> None:
         """Test that an empty tools list is valid."""
-        agent_code = '''
+        agent_code = """
 system_prompt = "You are helpful."
 tools = []
-'''
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".py", delete=False
-        ) as f:
+"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
             f.write(agent_code)
             f.flush()
 

@@ -39,6 +39,7 @@ class ErrorMessages:
 
     # Playground errors
     GROQ_API_KEY_MISSING: str = "GROQ_API_KEY environment variable not set"
+    OPENAI_API_KEY_MISSING: str = "OPENAI_API_KEY environment variable not set"
 
 
 class LLMDefaults:
@@ -62,7 +63,7 @@ class Provider:
         """OpenAI provider constants."""
 
         ID: str = "openai"
-        DEFAULT_MODEL: str = "gpt-4o-mini"
+        DEFAULT_MODEL: str = "gpt-5-nano-2025-08-07"
 
     class Anthropic:
         """Anthropic provider constants."""
@@ -96,6 +97,8 @@ class AgentLoader:
 
     SYSTEM_PROMPT_VAR: str = "system_prompt"
     TOOLS_VAR: str = "tools"
+    PROVIDER_VAR: str = "provider"
+    MODEL_VAR: str = "model"
     MODULE_NAME: str = "user_agent"
 
 

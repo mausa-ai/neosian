@@ -9,6 +9,14 @@ from pathlib import Path
 
 from neosian._foundation.tools.base import Tool, ToolResult
 
+# Provider configuration (optional)
+# Options: "groq" (default), "openai"
+provider = "openai"
+
+# Model configuration (optional)
+# If not set, uses provider default (gpt-5-nano-2025-08-07 for OpenAI, openai/gpt-oss-20b for Groq)
+# model = "gpt-4o"
+
 system_prompt = """You are a helpful assistant with access to basic utilities.
 
 You can:

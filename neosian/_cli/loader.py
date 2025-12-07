@@ -27,6 +27,8 @@ class AgentDefinition:
     system_prompt: SystemPrompt
     tools: list[ToolFunction]
     name: str
+    provider: str | None = None
+    model: str | None = None
 
 
 def load_agent_definition(path: str | Path) -> AgentDefinition:
@@ -73,6 +75,20 @@ def load_agent_definition(path: str | Path) -> AgentDefinition:
     if not isinstance(tools, list):
         raise AgentInvalidDefinitionError(path_str, "tools must be a list")
 
+    # Extract optional provider
+    provider: str | None = None
+    if hasattr(module, AgentLoader.PROVIDER_VAR):
+        provider = getattr(module, AgentLoader.PROVIDER_VAR)
+        if provider is not None and not isinstance(provider, str):
+            raise AgentInvalidDefinitionError(path_str, "provider must be a string")
+
+    # Extract optional model
+    model: str | None = None
+    if hasattr(module, AgentLoader.MODEL_VAR):
+        model = getattr(module, AgentLoader.MODEL_VAR)
+        if model is not None and not isinstance(model, str):
+            raise AgentInvalidDefinitionError(path_str, "model must be a string")
+
     # Derive agent name from filename
     name = path.stem
 
@@ -80,6 +96,8 @@ def load_agent_definition(path: str | Path) -> AgentDefinition:
         system_prompt=SystemPrompt(system_prompt),
         tools=tools,
         name=name,
+        provider=provider,
+        model=model,
     )
 
 
