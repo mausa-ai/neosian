@@ -3,7 +3,10 @@
 Stateless agent that orchestrates LLM calls and tool execution.
 """
 
+import asyncio
+import contextlib
 import json
+import logging
 import os
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
@@ -12,6 +15,7 @@ from typing import Any, Literal, overload
 from groq import AsyncGroq
 
 from neosian._foundation.agent.streaming import (
+    blocked_event,
     content_event,
     done_event,
     tool_call_event,
@@ -37,6 +41,7 @@ from neosian._foundation.shared.exceptions import (
 from neosian._foundation.shared.types import (
     AgentConfig,
     ClassifierResult,
+    GuardrailErrorPolicy,
     GuardrailMode,
     GuardrailResult,
     ModelId,
@@ -50,6 +55,8 @@ from neosian._foundation.tools.base import (
     get_tool_metadata,
 )
 from neosian._foundation.tools.builtin.todo import TodoState, get_todo_tool
+
+logger = logging.getLogger(__name__)
 
 
 def _get_api_key(env_var: str) -> str:
@@ -261,7 +268,11 @@ class Agent:
         return await self._run_blocking(messages)
 
     async def _run_blocking(self, messages: list[Message]) -> AgentResponse:
-        """Execute agent without streaming (blocking mode).
+        """Execute agent without streaming.
+
+        Input guardrails run in parallel with agent execution for optimal latency.
+        Safe users experience no guardrail overhead. If guard flags and block_on_input
+        is True, agent response is discarded.
 
         Args:
             messages: Conversation history (without system message).
@@ -269,31 +280,105 @@ class Agent:
         Returns:
             AgentResponse with the final message and execution details.
         """
-        # Check input guardrails on user messages
-        input_classifier_result: ClassifierResult | None = None
-        input_policy_result: PolicyResult | None = None
+        # No input guardrails configured - run agent directly
+        if (
+            self._guardrails is None
+            or self._guardrails.input_mode == GuardrailMode.NONE
+        ):
+            return await self._execute_agent_core(messages, None, None)
 
-        if self._guardrails is not None:
-            # Extract user content for guardrail check
-            user_content = self._extract_user_content(messages)
-            if user_content:
-                is_safe, input_classifier_result, input_policy_result = (
-                    await self._check_guardrails(user_content, "input")
+        # Extract user content for guardrail check
+        user_content = self._extract_user_content(messages)
+        if not user_content:
+            return await self._execute_agent_core(messages, None, None)
+
+        # Run guard and agent in parallel
+        guard_task = asyncio.create_task(
+            self._check_guardrails(user_content, "input")
+        )
+        agent_task = asyncio.create_task(
+            self._execute_agent_core(messages, None, None)
+        )
+
+        # Wait for first to complete
+        done, pending = await asyncio.wait(
+            [guard_task, agent_task],
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+
+        # Case 1: Guard finished first
+        if guard_task in done and agent_task in pending:
+            is_safe, input_classifier, input_policy = self._get_guard_result_safe(
+                guard_task
+            )
+
+            if not is_safe and self._guardrails.block_on_input:
+                # Cancel agent to save resources
+                agent_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await agent_task
+                return AgentResponse(
+                    message=Message(role=Role.ASSISTANT, content=""),
+                    blocked=True,
+                    guardrail_result=GuardrailResult(
+                        safe=False,
+                        blocked_at="input",
+                        input_classifier=input_classifier,
+                        input_policy=input_policy,
+                    ),
                 )
 
-                # Block if input flagged and block_on_input is True
-                if not is_safe and self._guardrails.block_on_input:
-                    return AgentResponse(
-                        message=Message(role=Role.ASSISTANT, content=""),
-                        blocked=True,
-                        guardrail_result=GuardrailResult(
-                            safe=False,
-                            blocked_at="input",
-                            input_classifier=input_classifier_result,
-                            input_policy=input_policy_result,
-                        ),
-                    )
+            # Safe or block_on_input=False - wait for agent and attach guard results
+            agent_response = await agent_task
+            return self._attach_input_guard_results(
+                agent_response, input_classifier, input_policy
+            )
 
+        # Case 2: Agent finished first
+        agent_response = agent_task.result()
+
+        # Still need guard verdict (with error handling)
+        is_safe, input_classifier, input_policy = await self._await_guard_result_safe(
+            guard_task
+        )
+
+        if not is_safe and self._guardrails.block_on_input:
+            # Agent ran but we must block - discard response
+            return AgentResponse(
+                message=Message(role=Role.ASSISTANT, content=""),
+                blocked=True,
+                guardrail_result=GuardrailResult(
+                    safe=False,
+                    blocked_at="input",
+                    input_classifier=input_classifier,
+                    input_policy=input_policy,
+                ),
+            )
+
+        # Safe or block_on_input=False - return with guard results
+        return self._attach_input_guard_results(
+            agent_response, input_classifier, input_policy
+        )
+
+    async def _execute_agent_core(
+        self,
+        messages: list[Message],
+        input_classifier: ClassifierResult | None,
+        input_policy: PolicyResult | None,
+    ) -> AgentResponse:
+        """Execute the agent LLM and tool loop.
+
+        This is the core agent execution without input guardrail checks.
+        Used by both blocking and streaming modes.
+
+        Args:
+            messages: Conversation history (without system message).
+            input_classifier: Pre-computed input classifier result (or None).
+            input_policy: Pre-computed input policy result (or None).
+
+        Returns:
+            AgentResponse with the final message and execution details.
+        """
         # Prepend system message
         full_messages = [
             Message(role=Role.SYSTEM, content=self._system_prompt),
@@ -325,8 +410,8 @@ class Agent:
                     tool_calls_made=all_tool_calls,
                     tool_results=all_tool_results,
                     usage=total_usage,
-                    input_classifier=input_classifier_result,
-                    input_policy=input_policy_result,
+                    input_classifier=input_classifier,
+                    input_policy=input_policy,
                 )
 
             # Add assistant message with tool calls to history
@@ -367,21 +452,117 @@ class Agent:
             tool_calls_made=all_tool_calls,
             tool_results=all_tool_results,
             usage=total_usage,
-            input_classifier=input_classifier_result,
-            input_policy=input_policy_result,
+            input_classifier=input_classifier,
+            input_policy=input_policy,
+        )
+
+    def _attach_input_guard_results(
+        self,
+        response: AgentResponse,
+        input_classifier: ClassifierResult | None,
+        input_policy: PolicyResult | None,
+    ) -> AgentResponse:
+        """Attach input guardrail results to an existing AgentResponse.
+
+        Used when agent finishes before guard in parallel execution.
+
+        Args:
+            response: The agent response to augment.
+            input_classifier: Input classifier result.
+            input_policy: Input policy result.
+
+        Returns:
+            AgentResponse with updated guardrail_result.
+        """
+        if input_classifier is None and input_policy is None:
+            return response
+
+        # Determine input safety
+        is_input_safe = True
+        if input_classifier is not None and not input_classifier.safe:
+            is_input_safe = False
+        if input_policy is not None and not input_policy.safe:
+            is_input_safe = False
+
+        # Merge with existing guardrail result (from output check)
+        existing = response.guardrail_result
+        if existing is not None:
+            overall_safe = is_input_safe and existing.safe
+            blocked_at = "input" if not is_input_safe else existing.blocked_at
+            guardrail_result = GuardrailResult(
+                safe=overall_safe,
+                blocked_at=blocked_at,
+                input_classifier=input_classifier,
+                input_policy=input_policy,
+                output_classifier=existing.output_classifier,
+                output_policy=existing.output_policy,
+            )
+        else:
+            guardrail_result = GuardrailResult(
+                safe=is_input_safe,
+                blocked_at="input" if not is_input_safe else None,
+                input_classifier=input_classifier,
+                input_policy=input_policy,
+            )
+
+        return AgentResponse(
+            message=response.message,
+            tool_calls_made=response.tool_calls_made,
+            tool_results=response.tool_results,
+            usage=response.usage,
+            blocked=response.blocked,
+            guardrail_result=guardrail_result,
         )
 
     async def _run_streaming(self, messages: list[Message]) -> AsyncIterator[str]:
         """Execute agent with streaming (SSE mode).
 
-        Tool calls are never streamed - they execute fully, then we stream
-        only the final text response.
+        Input guardrails run in parallel with streaming. If guard flags and
+        block_on_input is True, emits BLOCKED event to interrupt the stream.
+        Safe users experience no guardrail overhead.
 
         Args:
             messages: Conversation history (without system message).
 
         Yields:
-            SSE-formatted strings for tool calls, tool results, content, and done.
+            SSE-formatted strings for tool calls, tool results, content, blocked, and done.
+        """
+        # Determine if we need to run input guardrails
+        has_input_guard = (
+            self._guardrails is not None
+            and self._guardrails.input_mode != GuardrailMode.NONE
+        )
+        user_content = self._extract_user_content(messages) if has_input_guard else ""
+
+        # Start guard task in background if needed
+        guard_task: asyncio.Task[
+            tuple[bool, ClassifierResult | None, PolicyResult | None]
+        ] | None = None
+        if has_input_guard and user_content:
+            guard_task = asyncio.create_task(
+                self._check_guardrails(user_content, "input")
+            )
+
+        # Stream the agent response, checking guard status periodically
+        async for sse in self._stream_agent_with_guard(messages, guard_task):
+            yield sse
+
+    async def _stream_agent_with_guard(
+        self,
+        messages: list[Message],
+        guard_task: asyncio.Task[
+            tuple[bool, ClassifierResult | None, PolicyResult | None]
+        ]
+        | None,
+    ) -> AsyncIterator[str]:
+        """Stream agent response while monitoring guard task.
+
+        Args:
+            messages: Conversation history (without system message).
+            guard_task: Background guard task to monitor (or None if no guard).
+
+        Yields:
+            SSE-formatted strings.
         """
         # Prepend system message
         full_messages = [
@@ -390,6 +571,14 @@ class Agent:
         ]
 
         for _ in range(self._max_tool_iterations):
+            # Check guard before each LLM call
+            if guard_task is not None and guard_task.done():
+                blocked_event_sse = self._check_guard_and_block(guard_task)
+                if blocked_event_sse:
+                    yield blocked_event_sse
+                    return
+                guard_task = None  # Don't check again
+
             # Get completion from LLM (not streaming for tool call detection)
             response = await self._client.complete(
                 messages=full_messages,
@@ -399,8 +588,9 @@ class Agent:
 
             # If no tool calls, stream the final response
             if not response.message.tool_calls:
-                # Stream final response content
-                async for sse in self._stream_final_response(full_messages):
+                async for sse in self._stream_final_with_guard(
+                    full_messages, guard_task
+                ):
                     yield sse
                 return
 
@@ -409,6 +599,14 @@ class Agent:
 
             # Execute each tool call and yield SSE events
             for tool_call in response.message.tool_calls:
+                # Check guard before each tool call
+                if guard_task is not None and guard_task.done():
+                    blocked_event_sse = self._check_guard_and_block(guard_task)
+                    if blocked_event_sse:
+                        yield blocked_event_sse
+                        return
+                    guard_task = None
+
                 # Yield tool call event
                 yield tool_call_event(tool_call).to_sse()
 
@@ -429,31 +627,161 @@ class Agent:
                 )
 
         # Max iterations reached - stream final response
-        async for sse in self._stream_final_response(full_messages):
+        async for sse in self._stream_final_with_guard(full_messages, guard_task):
             yield sse
 
-    async def _stream_final_response(
-        self, full_messages: list[Message]
+    def _get_guard_result_safe(
+        self,
+        guard_task: asyncio.Task[
+            tuple[bool, ClassifierResult | None, PolicyResult | None]
+        ],
+    ) -> tuple[bool, ClassifierResult | None, PolicyResult | None]:
+        """Get guard task result with error policy handling.
+
+        Handles exceptions from guard task based on configured error_policy:
+        - FAIL_OPEN: On error, treat as safe (log warning)
+        - FAIL_CLOSED: On error, treat as blocked (log error)
+
+        Args:
+            guard_task: Completed guard task.
+
+        Returns:
+            Tuple of (is_safe, classifier_result, policy_result).
+        """
+        try:
+            return guard_task.result()
+        except Exception as e:
+            return self._handle_guard_error(e)
+
+    async def _await_guard_result_safe(
+        self,
+        guard_task: asyncio.Task[
+            tuple[bool, ClassifierResult | None, PolicyResult | None]
+        ],
+    ) -> tuple[bool, ClassifierResult | None, PolicyResult | None]:
+        """Await guard task result with error policy handling.
+
+        Async version of _get_guard_result_safe for awaiting pending tasks.
+
+        Args:
+            guard_task: Guard task to await.
+
+        Returns:
+            Tuple of (is_safe, classifier_result, policy_result).
+        """
+        try:
+            return await guard_task
+        except Exception as e:
+            return self._handle_guard_error(e)
+
+    def _handle_guard_error(
+        self, error: Exception
+    ) -> tuple[bool, ClassifierResult | None, PolicyResult | None]:
+        """Handle guardrail error based on error_policy.
+
+        Args:
+            error: The exception that occurred.
+
+        Returns:
+            Tuple of (is_safe, None, None) based on error policy.
+        """
+        error_policy = (
+            self._guardrails.error_policy
+            if self._guardrails
+            else GuardrailErrorPolicy.FAIL_OPEN
+        )
+
+        if error_policy == GuardrailErrorPolicy.FAIL_OPEN:
+            logger.warning(
+                "Guardrail check failed (fail-open): %s. Treating as safe.",
+                str(error),
+            )
+            return (True, None, None)
+        else:
+            logger.error(
+                "Guardrail check failed (fail-closed): %s. Treating as blocked.",
+                str(error),
+            )
+            return (False, None, None)
+
+    def _check_guard_and_block(
+        self,
+        guard_task: asyncio.Task[
+            tuple[bool, ClassifierResult | None, PolicyResult | None]
+        ],
+    ) -> str | None:
+        """Check completed guard task and return blocked event if needed.
+
+        Handles guard task errors based on error_policy configuration.
+
+        Args:
+            guard_task: Completed guard task.
+
+        Returns:
+            Blocked SSE string if guard flagged and block_on_input=True, else None.
+        """
+        is_safe, classifier, policy = self._get_guard_result_safe(guard_task)
+
+        if not is_safe and self._guardrails and self._guardrails.block_on_input:
+            categories = classifier.categories if classifier else None
+            rationale = policy.rationale if policy else None
+            return blocked_event(categories=categories, rationale=rationale).to_sse()
+
+        return None
+
+    async def _stream_final_with_guard(
+        self,
+        full_messages: list[Message],
+        guard_task: asyncio.Task[
+            tuple[bool, ClassifierResult | None, PolicyResult | None]
+        ]
+        | None,
     ) -> AsyncIterator[str]:
-        """Stream the final text response from the LLM.
+        """Stream final response while monitoring guard task.
 
         Args:
             full_messages: Full conversation history including system message.
+            guard_task: Background guard task to monitor (or None).
 
         Yields:
-            SSE-formatted strings for content chunks and done event.
+            SSE-formatted strings for content chunks, blocked, and done event.
         """
         stream = self._client.stream(
             messages=full_messages,
             model=self._model,
-            tools=None,  # No tools on final call to force text response
+            tools=None,
         )
 
         async for chunk in stream:
+            # Check guard during streaming
+            if guard_task is not None and guard_task.done():
+                blocked_event_sse = self._check_guard_and_block(guard_task)
+                if blocked_event_sse:
+                    yield blocked_event_sse
+                    return
+                guard_task = None
+
             if chunk.content:
                 yield content_event(chunk.content).to_sse()
 
             if chunk.finish_reason:
+                # Final guard check before done (with error handling)
+                if guard_task is not None:
+                    is_safe, classifier, policy = await self._await_guard_result_safe(
+                        guard_task
+                    )
+                    if (
+                        not is_safe
+                        and self._guardrails
+                        and self._guardrails.block_on_input
+                    ):
+                        categories = classifier.categories if classifier else None
+                        rationale = policy.rationale if policy else None
+                        yield blocked_event(
+                            categories=categories, rationale=rationale
+                        ).to_sse()
+                        return
+
                 yield done_event().to_sse()
 
     async def _execute_tool(self, tool_call: ToolCall) -> ToolResult[Any]:

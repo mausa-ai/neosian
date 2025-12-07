@@ -103,6 +103,17 @@ class GuardrailMode(str, Enum):
         )
 
 
+class GuardrailErrorPolicy(str, Enum):
+    """Policy for handling guardrail errors (API failures, timeouts, etc.).
+
+    - FAIL_OPEN: On error, treat as safe and continue (default). Best for UX.
+    - FAIL_CLOSED: On error, treat as blocked. Best for high-security apps.
+    """
+
+    FAIL_OPEN = "fail_open"
+    FAIL_CLOSED = "fail_closed"
+
+
 @dataclass
 class GuardrailsConfig:
     """Configuration for input and output guardrails.
@@ -117,6 +128,10 @@ class GuardrailsConfig:
     - POLICY_ONLY: Run custom policy only (requires policy string)
     - CLASSIFIER_AND_POLICY: Run both, always
     - CLASSIFIER_THEN_POLICY: Run policy only if classifier flags (optimization)
+
+    Error Policy:
+    - FAIL_OPEN: On guardrail API error, treat as safe (default). Best for UX.
+    - FAIL_CLOSED: On guardrail API error, treat as blocked. Best for security.
 
     Note: Output guardrails only work with stream=False.
 
@@ -140,6 +155,12 @@ class GuardrailsConfig:
             input_policy=PolicyBuilder.default(),
             block_on_input=True,
         )
+
+        # High-security: block on any guardrail error
+        guardrails = GuardrailsConfig(
+            input_mode=GuardrailMode.CLASSIFIER_ONLY,
+            error_policy=GuardrailErrorPolicy.FAIL_CLOSED,
+        )
     """
 
     # Input guardrails
@@ -150,6 +171,9 @@ class GuardrailsConfig:
     # Output guardrails (only work with stream=False)
     output_mode: GuardrailMode = GuardrailMode.NONE
     output_policy: str | None = None
+
+    # Error handling policy
+    error_policy: GuardrailErrorPolicy = GuardrailErrorPolicy.FAIL_OPEN
 
     def __post_init__(self) -> None:
         """Validate configuration."""

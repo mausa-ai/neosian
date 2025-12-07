@@ -242,6 +242,9 @@ class ArenaModelResult:
     tool_calls_raw: list[dict[str, object]]  # For JSON serialization
     elapsed_time: float
     error: str | None = None
+    blocked: bool = False
+    blocked_categories: list[str] | None = None
+    blocked_rationale: str | None = None
 
 
 def _build_arena_cell_content(result: ArenaModelResult) -> RenderableType:
@@ -263,8 +266,38 @@ def _build_arena_cell_content(result: ArenaModelResult) -> RenderableType:
             Panel(tool_text, title=PlaygroundUI.TOOL_CALL_LABEL, border_style="yellow")
         )
 
-    # Add response or error
-    if result.error:
+    # Handle blocked, error, or normal response
+    if result.blocked:
+        # Build blocked message
+        blocked_text = Text()
+        blocked_text.append(PlaygroundUI.GUARDRAIL_INPUT_BLOCKED, style="bold red")
+
+        if result.blocked_categories:
+            blocked_text.append("\n")
+            blocked_text.append(
+                PlaygroundUI.GUARDRAIL_CATEGORIES.format(
+                    categories=", ".join(result.blocked_categories)
+                ),
+                style="yellow",
+            )
+
+        if result.blocked_rationale:
+            blocked_text.append("\n")
+            blocked_text.append(
+                PlaygroundUI.GUARDRAIL_RATIONALE.format(
+                    rationale=result.blocked_rationale
+                ),
+                style="dim",
+            )
+
+        parts.append(
+            Panel(
+                blocked_text,
+                title=PlaygroundUI.GUARDRAIL_BLOCKED_LABEL,
+                border_style="red",
+            )
+        )
+    elif result.error:
         parts.append(Text(f"Error: {result.error}", style="red"))
     elif result.content:
         parts.append(Markdown(result.content))
@@ -335,6 +368,15 @@ async def _run_arena_model(
 
         tool_calls_text.append(tool_text)
 
+    # Check if blocked by guardrails
+    blocked = response.blocked
+    blocked_categories: list[str] | None = None
+    blocked_rationale: str | None = None
+
+    if blocked and response.guardrail_result:
+        blocked_categories = response.guardrail_result.flagged_categories or None
+        blocked_rationale = response.guardrail_result.policy_rationale
+
     return ArenaModelResult(
         provider=provider,
         model=model,
@@ -342,6 +384,9 @@ async def _run_arena_model(
         tool_calls_text=tool_calls_text,
         tool_calls_raw=tool_calls_raw,
         elapsed_time=elapsed_time,
+        blocked=blocked,
+        blocked_categories=blocked_categories,
+        blocked_rationale=blocked_rationale,
     )
 
 
@@ -676,6 +721,22 @@ async def _chat_loop(
 
         # Calculate elapsed time
         elapsed_time = time.perf_counter() - start_time
+
+        # Display guardrail result if present (shows parallel execution)
+        if response.guardrail_result:
+            gr_result = response.guardrail_result
+            guard_text = Text()
+
+            if gr_result.safe:
+                guard_text.append("safe", style="green")
+            else:
+                guard_text.append("flagged", style="red")
+                if gr_result.flagged_categories:
+                    guard_text.append(f" ({', '.join(gr_result.flagged_categories)})", style="yellow")
+
+            console.print(
+                Panel(guard_text, title="Guard", border_style="dim")
+            )
 
         # Display guardrail blocked if applicable
         if response.blocked and response.guardrail_result:

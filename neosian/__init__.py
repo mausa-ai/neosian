@@ -5,6 +5,7 @@ from neosian._foundation.guardrails.policy import CommonPolicies, PolicyBuilder
 from neosian._foundation.shared.types import (
     AgentConfig,
     ClassifierResult,
+    GuardrailErrorPolicy,
     GuardrailMode,
     GuardrailResult,
     GuardrailsConfig,
@@ -12,7 +13,7 @@ from neosian._foundation.shared.types import (
 )
 from neosian._foundation.tools.base import Tool, ToolResult
 
-__version__ = "0.8.0"
+__version__ = "0.8.1"
 
 __all__ = [
     # Agent
@@ -25,6 +26,7 @@ __all__ = [
     # Guardrails
     "GuardrailsConfig",
     "GuardrailMode",
+    "GuardrailErrorPolicy",
     "GuardrailResult",
     "ClassifierResult",
     "PolicyResult",

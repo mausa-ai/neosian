@@ -180,6 +180,7 @@ class PlaygroundUI:
     GUARDRAIL_RATIONALE: str = "Reason: {rationale}"
 
 
+
 class Assets:
     """Asset file paths."""
 

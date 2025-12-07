@@ -15,6 +15,7 @@ from neosian._foundation.llm.base import (
 from neosian._foundation.shared.exceptions import GuardrailStreamingError
 from neosian._foundation.shared.types import (
     AgentConfig,
+    GuardrailErrorPolicy,
     GuardrailMode,
     GuardrailsConfig,
     ModelId,
@@ -199,7 +200,13 @@ class TestAgentInputGuardrails:
 
     @pytest.mark.asyncio
     async def test_input_blocked_returns_blocked_response(self) -> None:
-        """Flagged input with block_on_input=True should return blocked response."""
+        """Flagged input with block_on_input=True should return blocked response.
+
+        Note: With parallel execution, agent task starts simultaneously with guard.
+        The guard result determines whether the response is blocked, not whether
+        the agent was called. In production, guard typically finishes first due
+        to smaller model and single call.
+        """
         mock_client = AsyncMock(spec=BaseLLMClient)
         mock_guardrail_client = AsyncMock()
 
@@ -232,14 +239,15 @@ class TestAgentInputGuardrails:
             messages = [Message(role=Role.USER, content="Bad content")]
             response = await agent.run(messages, stream=False)
 
+            # Response should be blocked with guardrail info
             assert response.blocked is True
             assert response.guardrail_result is not None
             assert response.guardrail_result.blocked_at == "input"
             assert response.guardrail_result.safe is False
             assert response.message.content == ""
 
-            # LLM should NOT have been called
-            mock_client.complete.assert_not_called()
+            # Guardrail was called
+            mock_guardrail_client.chat.completions.create.assert_called()
 
     @pytest.mark.asyncio
     async def test_input_flagged_not_blocked_continues(self) -> None:
@@ -477,3 +485,105 @@ class TestAgentResponseDefaults:
             message=Message(role=Role.ASSISTANT, content="Hello"),
         )
         assert response.guardrail_result is None
+
+
+@pytest.mark.unit
+class TestGuardrailErrorPolicy:
+    """Test guardrail error policy behavior."""
+
+    @pytest.mark.asyncio
+    async def test_fail_open_on_guardrail_error(self) -> None:
+        """FAIL_OPEN policy should treat guardrail errors as safe."""
+        mock_client = AsyncMock(spec=BaseLLMClient)
+        mock_client.complete.return_value = CompletionResponse(
+            message=Message(role=Role.ASSISTANT, content="Response"),
+            usage=Usage(input_tokens=10, output_tokens=5),
+            model=ModelId("test-model"),
+        )
+
+        mock_guardrail_client = AsyncMock()
+        # Simulate API error
+        mock_guardrail_client.chat.completions.create.side_effect = Exception(
+            "API timeout"
+        )
+
+        with (
+            patch(
+                "neosian._foundation.agent.base._create_client",
+                return_value=(mock_client, ModelId("test-model")),
+            ),
+            patch(
+                "neosian._foundation.agent.base._create_guardrail_client",
+                return_value=mock_guardrail_client,
+            ),
+        ):
+            config = AgentConfig(
+                system_prompt=SystemPrompt("You are helpful."),
+                tools=[],
+                enable_todo=False,
+                guardrails=GuardrailsConfig(
+                    input_mode=GuardrailMode.CLASSIFIER_ONLY,
+                    block_on_input=True,
+                    error_policy=GuardrailErrorPolicy.FAIL_OPEN,  # Default
+                ),
+            )
+            agent = Agent(config=config)
+
+            messages = [Message(role=Role.USER, content="Hello")]
+            response = await agent.run(messages, stream=False)
+
+            # Should NOT be blocked - fail-open treats error as safe
+            assert response.blocked is False
+            assert response.message.content == "Response"
+
+    @pytest.mark.asyncio
+    async def test_fail_closed_on_guardrail_error(self) -> None:
+        """FAIL_CLOSED policy should treat guardrail errors as blocked."""
+        mock_client = AsyncMock(spec=BaseLLMClient)
+        mock_client.complete.return_value = CompletionResponse(
+            message=Message(role=Role.ASSISTANT, content="Response"),
+            usage=Usage(input_tokens=10, output_tokens=5),
+            model=ModelId("test-model"),
+        )
+
+        mock_guardrail_client = AsyncMock()
+        # Simulate API error
+        mock_guardrail_client.chat.completions.create.side_effect = Exception(
+            "API timeout"
+        )
+
+        with (
+            patch(
+                "neosian._foundation.agent.base._create_client",
+                return_value=(mock_client, ModelId("test-model")),
+            ),
+            patch(
+                "neosian._foundation.agent.base._create_guardrail_client",
+                return_value=mock_guardrail_client,
+            ),
+        ):
+            config = AgentConfig(
+                system_prompt=SystemPrompt("You are helpful."),
+                tools=[],
+                enable_todo=False,
+                guardrails=GuardrailsConfig(
+                    input_mode=GuardrailMode.CLASSIFIER_ONLY,
+                    block_on_input=True,
+                    error_policy=GuardrailErrorPolicy.FAIL_CLOSED,
+                ),
+            )
+            agent = Agent(config=config)
+
+            messages = [Message(role=Role.USER, content="Hello")]
+            response = await agent.run(messages, stream=False)
+
+            # Should be blocked - fail-closed treats error as blocked
+            assert response.blocked is True
+            assert response.message.content == ""
+
+    def test_guardrails_config_default_error_policy(self) -> None:
+        """GuardrailsConfig should default to FAIL_OPEN."""
+        config = GuardrailsConfig(
+            input_mode=GuardrailMode.CLASSIFIER_ONLY,
+        )
+        assert config.error_policy == GuardrailErrorPolicy.FAIL_OPEN

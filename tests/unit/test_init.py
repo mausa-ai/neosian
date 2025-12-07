@@ -30,6 +30,7 @@ def test_public_api_exports() -> None:
         AgentResponse,
         ClassifierResult,
         CommonPolicies,
+        GuardrailErrorPolicy,
         GuardrailMode,
         GuardrailResult,
         GuardrailsConfig,
@@ -48,6 +49,7 @@ def test_public_api_exports() -> None:
     assert ToolResult is not None
     assert GuardrailsConfig is not None
     assert GuardrailMode is not None
+    assert GuardrailErrorPolicy is not None
     assert GuardrailResult is not None
     assert ClassifierResult is not None
     assert PolicyResult is not None
@@ -69,6 +71,7 @@ def test_all_list_matches_exports() -> None:
         "ToolResult",
         "GuardrailsConfig",
         "GuardrailMode",
+        "GuardrailErrorPolicy",
         "GuardrailResult",
         "ClassifierResult",
         "PolicyResult",
