@@ -8,9 +8,7 @@ import pytest
 
 from neosian._foundation.agent.base import Agent
 from neosian._foundation.llm.base import Message, Role
-from neosian._foundation.llm.groq import GroqClient
-from neosian._foundation.shared.constants import Provider
-from neosian._foundation.shared.types import ModelId, SystemPrompt
+from neosian._foundation.shared.types import AgentConfig, SystemPrompt
 from neosian._foundation.tools.base import Tool, ToolResult
 
 
@@ -19,16 +17,18 @@ class TestAgentWithGroq:
     """Test Agent with real Groq API."""
 
     @pytest.mark.asyncio
-    async def test_simple_conversation(self, groq_client: GroqClient) -> None:
+    async def test_simple_conversation(self) -> None:
         """Test agent handles simple conversation without tools."""
-        agent = Agent(
-            client=groq_client,
-            model=ModelId(Provider.Groq.DEFAULT_MODEL),
+        config = AgentConfig(
             system_prompt=SystemPrompt("You are a helpful assistant. Be concise."),
+            tools=[],
+            provider="groq",
+            enable_todo=False,
         )
+        agent = Agent(config=config)
 
         messages = [Message(role=Role.USER, content="What is 2 + 2? Just the number.")]
-        response = await agent.run(messages)
+        response = await agent.run(messages, stream=False)
 
         assert response.message.role == Role.ASSISTANT
         assert response.message.content is not None
@@ -36,7 +36,7 @@ class TestAgentWithGroq:
         assert len(response.tool_calls_made) == 0
 
     @pytest.mark.asyncio
-    async def test_agent_with_tool_execution(self, groq_client: GroqClient) -> None:
+    async def test_agent_with_tool_execution(self) -> None:
         """Test agent executes tools and returns result."""
 
         @Tool(name="get_weather", description="Get current weather for a city")
@@ -44,17 +44,18 @@ class TestAgentWithGroq:
             # Fake weather data
             return ToolResult.ok(f"The weather in {city} is sunny, 22°C")
 
-        agent = Agent(
-            client=groq_client,
-            model=ModelId(Provider.Groq.DEFAULT_MODEL),
+        config = AgentConfig(
             system_prompt=SystemPrompt(
                 "You are a weather assistant. Use the get_weather tool to answer questions."
             ),
             tools=[get_weather],
+            provider="groq",
+            enable_todo=False,
         )
+        agent = Agent(config=config)
 
         messages = [Message(role=Role.USER, content="What's the weather in Tokyo?")]
-        response = await agent.run(messages)
+        response = await agent.run(messages, stream=False)
 
         assert response.message.role == Role.ASSISTANT
         assert response.message.content is not None
@@ -72,7 +73,7 @@ class TestAgentWithGroq:
         )
 
     @pytest.mark.asyncio
-    async def test_agent_with_multiple_tools(self, groq_client: GroqClient) -> None:
+    async def test_agent_with_multiple_tools(self) -> None:
         """Test agent can use multiple tools."""
 
         @Tool(name="add", description="Add two numbers")
@@ -83,17 +84,18 @@ class TestAgentWithGroq:
         async def multiply(a: int, b: int) -> ToolResult[int]:
             return ToolResult.ok(a * b)
 
-        agent = Agent(
-            client=groq_client,
-            model=ModelId(Provider.Groq.DEFAULT_MODEL),
+        config = AgentConfig(
             system_prompt=SystemPrompt(
                 "You are a calculator. Use the tools for all math operations."
             ),
             tools=[add, multiply],
+            provider="groq",
+            enable_todo=False,
         )
+        agent = Agent(config=config)
 
         messages = [Message(role=Role.USER, content="What is 5 + 3?")]
-        response = await agent.run(messages)
+        response = await agent.run(messages, stream=False)
 
         assert response.message.role == Role.ASSISTANT
         assert response.message.content is not None
@@ -106,22 +108,23 @@ class TestAgentWithGroq:
         assert len(add_results) >= 1
 
     @pytest.mark.asyncio
-    async def test_agent_handles_tool_error(self, groq_client: GroqClient) -> None:
+    async def test_agent_handles_tool_error(self) -> None:
         """Test agent gracefully handles tool errors."""
 
         @Tool(name="failing_tool", description="A tool that always fails")
         async def failing_tool(input: str) -> ToolResult[str]:  # noqa: ARG001
             return ToolResult.fail("This tool is broken")
 
-        agent = Agent(
-            client=groq_client,
-            model=ModelId(Provider.Groq.DEFAULT_MODEL),
+        config = AgentConfig(
             system_prompt=SystemPrompt("You have access to a tool. Try to use it."),
             tools=[failing_tool],
+            provider="groq",
+            enable_todo=False,
         )
+        agent = Agent(config=config)
 
         messages = [Message(role=Role.USER, content="Please use the failing_tool.")]
-        response = await agent.run(messages)
+        response = await agent.run(messages, stream=False)
 
         # Agent should still respond, handling the error gracefully
         assert response.message.role == Role.ASSISTANT
@@ -130,3 +133,57 @@ class TestAgentWithGroq:
         # Tool should have been called and failed
         if len(response.tool_results) > 0:
             assert any(not r.success for r in response.tool_results)
+
+    @pytest.mark.asyncio
+    async def test_streaming_simple_conversation(self) -> None:
+        """Test agent streams response without tools."""
+        config = AgentConfig(
+            system_prompt=SystemPrompt("You are a helpful assistant. Be concise."),
+            tools=[],
+            provider="groq",
+            enable_todo=False,
+        )
+        agent = Agent(config=config)
+
+        messages = [Message(role=Role.USER, content="Say hello in one word.")]
+        result = await agent.run(messages, stream=True)
+
+        # Collect all SSE events
+        events = []
+        async for sse in result:
+            events.append(sse)
+
+        # Should have at least one content event and a done event
+        assert len(events) >= 2
+        assert any("content" in e for e in events)
+        assert any("done" in e for e in events)
+
+    @pytest.mark.asyncio
+    async def test_streaming_with_tool_execution(self) -> None:
+        """Test agent streams with tool calls."""
+
+        @Tool(name="get_number", description="Get a specific number")
+        async def get_number() -> ToolResult[int]:
+            return ToolResult.ok(42)
+
+        config = AgentConfig(
+            system_prompt=SystemPrompt(
+                "You are a number assistant. Use the get_number tool when asked for a number."
+            ),
+            tools=[get_number],
+            provider="groq",
+            enable_todo=False,
+        )
+        agent = Agent(config=config)
+
+        messages = [Message(role=Role.USER, content="Get me the number.")]
+        result = await agent.run(messages, stream=True)
+
+        events = []
+        async for sse in result:
+            events.append(sse)
+
+        # Should have tool_call, tool_result, content, and done events
+        assert len(events) >= 2
+        # At minimum we should have some content and done
+        assert any("done" in e for e in events)

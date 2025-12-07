@@ -4,11 +4,12 @@ Provides the @Tool decorator and ToolResult for building agent tools.
 """
 
 import inspect
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, get_type_hints
 
 from neosian._foundation.llm.base import ToolDefinition
+from neosian._foundation.shared.types import ToolFunction as ToolFunction
 from neosian._foundation.shared.types import ToolName
 
 
@@ -32,10 +33,6 @@ class ToolResult[T]:
     def fail(cls, error: str) -> "ToolResult[T]":
         """Create a failed result."""
         return cls(success=False, error=error)
-
-
-# Type alias for tool functions
-ToolFunction = Callable[..., Awaitable[ToolResult[Any]]]
 
 
 @dataclass

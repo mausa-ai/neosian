@@ -26,40 +26,58 @@ neosian is a stateless agentic AI library for the neosae ecosystem. It handles L
 
 ## The neosian Difference
 
-### 1. Stateless Agent Core
+### 1. One-File Agent Definition
 
-neosian doesn't own memory. It receives context, produces responses.
+Define an agent in a single Python file. Export `configuration`.
 
 ```python
-from neosian import Agent
+# my_agent.py
+from neosian import AgentConfig, Tool, ToolResult
 
-agent = Agent(
-    name="media-creator",
+@Tool(name="generate_image", description="Generate an image from text")
+async def generate_image(prompt: str) -> ToolResult[dict]:
+    result = await image_api.generate(prompt)
+    return ToolResult.ok({"url": result.url})
+
+configuration = AgentConfig(
     system_prompt="You create images, videos, and audio.",
-    tools=[generate_image, generate_video, generate_speech],
+    tools=[generate_image],
 )
-
-# App provides history, app saves results
-async for chunk in agent.chat(
-    message="Create a sunset image",
-    history=conversation_history,  # App provides
-):
-    yield chunk
 ```
 
-**Why stateless?**
-- App already has users, subscriptions, DynamoDB
-- No data duplication
-- No sync bugs
-- neosian works with any storage backend
+Then use it:
+
+```python
+# In your app
+from my_agent import configuration
+from neosian import Agent
+
+agent = Agent(config=configuration)
+
+# Non-streaming
+response = await agent.run(messages, stream=False)
+
+# Streaming
+async for chunk in agent.run(messages, stream=True):
+    if chunk.type == "text":
+        print(chunk.content, end="")
+    elif chunk.type == "tool_call":
+        print(f"Calling {chunk.tool_name}...")
+```
+
+**Why this pattern?**
+- One file = one agent = one app
+- Standard Python imports, no magic loaders
+- Type-safe `AgentConfig` contract
+- App owns memory, neosian owns execution
 
 ### 2. Two-Mode Tool System
 
 **Mode 1: Fixed Tools** (for focused apps)
 ```python
-agent = Agent(
-    name="media-creator",
-    tools=[generate_image, generate_video, generate_speech],
+configuration = AgentConfig(
+    system_prompt="You create media.",
+    tools=[generate_image, generate_video],
 )
 ```
 - Tools loaded directly into context
@@ -68,8 +86,8 @@ agent = Agent(
 
 **Mode 2: Tool Registry** (for powerful apps)
 ```python
-agent = Agent(
-    name="assistant",
+configuration = AgentConfig(
+    system_prompt="You are a capable assistant.",
     registry=ToolRegistry.default(),
 )
 ```
@@ -162,7 +180,7 @@ async def generate_image(
     style: str = "realistic",
 ) -> ToolResult[dict]:
     result = await image_api.generate(prompt, style)
-    return ToolResult.success({"url": result.url})
+    return ToolResult.ok({"url": result.url})
 ```
 
 ## Tool Registry
@@ -191,23 +209,29 @@ neosian is a library. The app controls everything else.
 
 ```python
 # App's chat endpoint
+from my_agent import configuration
+from neosian import Agent
+
+agent = Agent(config=configuration)
+
 @router.post("/chat")
 @require_auth
 @rate_limit(requests=20, window=60)
 async def chat(request: ChatRequest, user: User):
     # 1. Load history (app's job)
-    history = await conversation_repo.get(request.conversation_id)
+    messages = await conversation_repo.get(request.conversation_id)
+    messages.append(Message(role="user", content=request.message))
 
-    # 2. Call agent (neosian's job)
-    new_messages = []
-    async for chunk in agent.chat(request.message, history):
-        if isinstance(chunk, TextChunk):
-            yield sse_format(chunk)
-        elif isinstance(chunk, TurnComplete):
-            new_messages = chunk.messages
-
-    # 3. Save results (app's job)
-    await conversation_repo.save(request.conversation_id, new_messages)
+    # 2. Call agent (neosian's job) - streaming
+    async for chunk in agent.run(messages, stream=True):
+        if chunk.type == "text":
+            yield sse_format(chunk.content)
+        elif chunk.type == "done":
+            # 3. Save results (app's job)
+            await conversation_repo.save(
+                request.conversation_id,
+                chunk.response.message,
+            )
 ```
 
 ## Separation of Concerns
@@ -244,22 +268,23 @@ ANTHROPIC_API_KEY=sk-ant-...
 
 ## Roadmap
 
-### Phase 1: Core
-- [ ] LLM provider layer (Groq + OpenAI)
-- [ ] Agent with tool execution loop
-- [ ] SSE streaming
-- [ ] Basic guardrails
+### Phase 1: Core ✓
+- [x] LLM provider layer (Groq + OpenAI)
+- [x] Agent with tool execution loop
+- [x] SSE streaming infrastructure
+- [x] Tool decorator with auto schema generation
+- [x] Built-in todo tool
+- [x] CLI playground for testing
+- [x] Comprehensive unit & integration tests
 
-### Phase 2: Tool Registry
+### Phase 2: Completion
+- [ ] Anthropic client
+- [ ] Provider router with fallback
+- [ ] Guardrails (input/output validation)
+- [ ] Agent-level streaming integration
 - [ ] Tool registry with semantic search
 - [ ] Search sub-agent
 - [ ] Runtime tool registration
-- [ ] All LLM providers
-
-### Phase 3: Polish
-- [ ] Advanced guardrails
-- [ ] Comprehensive tests
-- [ ] Documentation
 
 ## The Vision
 

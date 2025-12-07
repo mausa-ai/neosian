@@ -31,10 +31,10 @@ class ErrorMessages:
 
     # Agent loading errors
     AGENT_FILE_NOT_FOUND: str = "Agent file not found: {path}"
-    AGENT_MISSING_SYSTEM_PROMPT: str = "Agent file missing 'system_prompt': {path}"
-    AGENT_MISSING_TOOLS: str = "Agent file missing 'tools': {path}"
-    AGENT_INVALID_SYSTEM_PROMPT: str = "system_prompt must be a string: {path}"
-    AGENT_INVALID_TOOLS: str = "tools must be a list: {path}"
+    AGENT_MISSING_CONFIGURATION: str = "Agent file missing 'configuration': {path}"
+    AGENT_INVALID_CONFIGURATION: str = (
+        "configuration must be an AgentConfig instance: {path}"
+    )
     AGENT_LOAD_ERROR: str = "Failed to load agent file: {path} - {error}"
 
     # Playground errors
@@ -100,10 +100,7 @@ class PromptLoader:
 class AgentLoader:
     """Constants for loading agent definitions from Python files."""
 
-    SYSTEM_PROMPT_VAR: str = "system_prompt"
-    TOOLS_VAR: str = "tools"
-    PROVIDER_VAR: str = "provider"
-    MODEL_VAR: str = "model"
+    CONFIGURATION_VAR: str = "configuration"
     MODULE_NAME: str = "user_agent"
 
 

@@ -5,28 +5,21 @@ Provides a Rich-based chat interface for testing agent definitions.
 
 import asyncio
 import importlib.resources
-import os
+import time
 from pathlib import Path
 
 from rich.console import Console
+from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.prompt import Prompt
 from rich.text import Text
 from simple_term_menu import TerminalMenu  # type: ignore[import-untyped]
 
-from neosian._cli.loader import AgentDefinition, load_agent_definition
+from neosian._cli.loader import load_agent_config
 from neosian._cli.session import Session
 from neosian._foundation.agent.base import Agent
-from neosian._foundation.llm.base import BaseLLMClient, Message, Role
-from neosian._foundation.llm.groq import GroqClient
-from neosian._foundation.llm.openai import OpenAIClient
-from neosian._foundation.shared.constants import (
-    Assets,
-    ErrorMessages,
-    PlaygroundUI,
-    Provider,
-)
-from neosian._foundation.shared.exceptions import MissingAPIKeyError
+from neosian._foundation.llm.base import Message, Role
+from neosian._foundation.shared.constants import Assets, PlaygroundUI
 from neosian._foundation.shared.types import ModelId
 
 
@@ -63,37 +56,6 @@ def _load_header() -> str:
         return ""
 
 
-def _create_client(definition: AgentDefinition) -> tuple[BaseLLMClient, ModelId]:
-    """Create LLM client and model based on agent definition.
-
-    Args:
-        definition: Agent definition with optional provider/model.
-
-    Returns:
-        Tuple of (client, model_id).
-
-    Raises:
-        MissingAPIKeyError: If required API key is not set.
-    """
-    provider = definition.provider or Provider.Groq.ID
-
-    if provider == Provider.OpenAI.ID:
-        api_key = os.environ.get("OPENAI_API_KEY")
-        if not api_key:
-            raise MissingAPIKeyError(ErrorMessages.OPENAI_API_KEY_MISSING)
-        client: BaseLLMClient = OpenAIClient(api_key=api_key)
-        model_id = ModelId(definition.model or Provider.OpenAI.DEFAULT_MODEL)
-    else:
-        # Default to Groq
-        api_key = os.environ.get("GROQ_API_KEY")
-        if not api_key:
-            raise MissingAPIKeyError(ErrorMessages.GROQ_API_KEY_MISSING)
-        client = GroqClient(api_key=api_key)
-        model_id = ModelId(definition.model or Provider.Groq.DEFAULT_MODEL)
-
-    return client, model_id
-
-
 def run_playground(agent_path: str, model: str | None = None) -> None:
     """Run the playground with the given agent file.
 
@@ -103,36 +65,46 @@ def run_playground(agent_path: str, model: str | None = None) -> None:
     """
     console = Console()
 
-    # Load agent definition
+    # Load agent configuration
     try:
-        definition = load_agent_definition(agent_path)
+        config, agent_name = load_agent_config(agent_path)
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
         raise SystemExit(1) from e
 
-    # Create client based on agent definition
-    client, model_id = _create_client(definition)
-
     # CLI model override takes precedence
     if model:
-        model_id = ModelId(model)
+        # Create a new config with the overridden model
+        from neosian._foundation.shared.types import AgentConfig
 
-    agent = Agent(
-        client=client,
-        model=model_id,
-        system_prompt=definition.system_prompt,
-        tools=definition.tools,
-    )
+        config = AgentConfig(
+            system_prompt=config.system_prompt,
+            tools=config.tools,
+            provider=config.provider,
+            model=ModelId(model),
+            enable_todo=config.enable_todo,
+        )
+
+    # Create agent from config
+    try:
+        agent = Agent(config=config)
+    except Exception as e:
+        console.print(f"[red]Error creating agent: {e}[/red]")
+        raise SystemExit(1) from e
+
+    # Determine provider and model for display
+    display_provider = str(config.provider)
+    display_model = str(agent._model)
 
     # Create session
-    session = Session(agent_name=definition.name)
+    session = Session(agent_name=agent_name)
 
     # Print header
-    _print_header(console, definition.name, model_id)
+    _print_header(console, agent_name)
 
     # Run chat loop
     try:
-        asyncio.run(_chat_loop(console, agent, session))
+        asyncio.run(_chat_loop(console, agent, session, display_provider, display_model))
     except KeyboardInterrupt:
         console.print()  # New line after ^C
 
@@ -140,7 +112,7 @@ def run_playground(agent_path: str, model: str | None = None) -> None:
     _handle_exit(console, session)
 
 
-def _print_header(console: Console, agent_name: str, model: ModelId) -> None:
+def _print_header(console: Console, agent_name: str) -> None:
     """Print the playground header with ASCII art."""
     # Print ASCII art header
     ascii_header = _load_header()
@@ -149,14 +121,17 @@ def _print_header(console: Console, agent_name: str, model: ModelId) -> None:
         console.print()
 
     # Print agent info
-    info = Text()
-    info.append(PlaygroundUI.AGENT_LOADED.format(name=agent_name), style="bold")
-    info.append(f" | Model: {model}", style="dim")
-    console.print(info)
+    console.print(PlaygroundUI.AGENT_LOADED.format(name=agent_name), style="bold")
     console.print(f"[dim]{PlaygroundUI.SESSION_START}[/dim]\n")
 
 
-async def _chat_loop(console: Console, agent: Agent, session: Session) -> None:
+async def _chat_loop(
+    console: Console,
+    agent: Agent,
+    session: Session,
+    provider: str,
+    model: str,
+) -> None:
     """Run the main chat loop."""
     while True:
         # Get user input
@@ -177,6 +152,9 @@ async def _chat_loop(console: Console, agent: Agent, session: Session) -> None:
         # Add user message to session
         session.add_user_message(user_input)
 
+        # Start timing
+        start_time = time.perf_counter()
+
         # Show thinking indicator
         with console.status(f"[dim]{PlaygroundUI.THINKING}[/dim]"):
             # Build message history for agent
@@ -190,10 +168,13 @@ async def _chat_loop(console: Console, agent: Agent, session: Session) -> None:
 
             # Get response
             try:
-                response = await agent.run(messages)
+                response = await agent.run(messages, stream=False)
             except Exception as e:
                 console.print(f"[red]Error: {e}[/red]")
                 continue
+
+        # Calculate elapsed time
+        elapsed_time = time.perf_counter() - start_time
 
         # Display tool calls if any
         for i, tool_call in enumerate(response.tool_calls_made):
@@ -219,13 +200,20 @@ async def _chat_loop(console: Console, agent: Agent, session: Session) -> None:
         # Display assistant response
         if response.message.content:
             session.add_assistant_message(response.message.content)
+            title = Text()
+            title.append(provider, style="cyan")
+            title.append("/", style="dim")
+            title.append(model, style="blue")
             console.print(
                 Panel(
-                    response.message.content,
-                    title=PlaygroundUI.ASSISTANT_LABEL,
+                    Markdown(response.message.content),
+                    title=title,
                     border_style="blue",
                 )
             )
+
+        # Display response time
+        console.print(_format_elapsed_time(elapsed_time), style="dim")
         console.print()
 
 
@@ -237,6 +225,22 @@ def _format_args(args: dict[str, object]) -> str:
             value = value[:30] + "..."
         parts.append(f"{key}={value!r}")
     return ", ".join(parts)
+
+
+def _format_elapsed_time(seconds: float) -> str:
+    """Format elapsed time for display.
+
+    Args:
+        seconds: Elapsed time in seconds.
+
+    Returns:
+        Formatted string like "1.23s" or "1m 23s".
+    """
+    if seconds < 60:
+        return f"Response time: {seconds:.2f}s"
+    minutes = int(seconds // 60)
+    remaining_seconds = seconds % 60
+    return f"Response time: {minutes}m {remaining_seconds:.2f}s"
 
 
 def _handle_exit(console: Console, session: Session) -> None:

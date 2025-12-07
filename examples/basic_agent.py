@@ -7,25 +7,7 @@ Usage:
 from datetime import datetime
 from pathlib import Path
 
-from neosian._foundation.tools.base import Tool, ToolResult
-
-# Provider configuration (optional)
-# Options: "groq" (default), "openai"
-provider = "openai"
-
-# Model configuration (optional)
-# If not set, uses provider default (gpt-5-nano-2025-08-07 for OpenAI, openai/gpt-oss-20b for Groq)
-# model = "gpt-4o"
-
-system_prompt = """You are a helpful assistant with access to basic utilities.
-
-You can:
-- Get the current date and time
-- Read files from the filesystem
-- Write content to files
-
-Always confirm with the user before writing to files.
-Be concise and helpful in your responses."""
+from neosian import AgentConfig, Tool, ToolResult
 
 
 @Tool(name="get_current_datetime", description="Get the current date and time")
@@ -96,10 +78,22 @@ async def list_directory(path: str = ".") -> ToolResult[list[str]]:
         return ToolResult.fail(f"Error listing directory: {e}")
 
 
-# Tools list required by playground loader
-tools = [
-    get_current_datetime,
-    read_file,
-    write_file,
-    list_directory,
-]
+# Agent configuration - export as 'configuration'
+configuration = AgentConfig(
+    system_prompt="""You are a helpful assistant with access to basic utilities.
+
+You can:
+- Get the current date and time
+- Read files from the filesystem
+- Write content to files
+
+Always confirm with the user before writing to files.
+Be concise and helpful in your responses.""",
+    tools=[
+        get_current_datetime,
+        read_file,
+        write_file,
+        list_directory,
+    ],
+    provider="groq",  # Options: "groq" (default), "openai"
+)

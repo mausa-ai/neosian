@@ -79,19 +79,19 @@ class AgentFileNotFoundError(AgentLoadError):
         self.path = path
 
 
-class AgentMissingSystemPromptError(AgentLoadError):
-    """Raised when an agent file is missing system_prompt."""
+class AgentMissingConfigurationError(AgentLoadError):
+    """Raised when an agent file is missing configuration."""
 
     def __init__(self, path: str) -> None:
-        super().__init__(ErrorMessages.AGENT_MISSING_SYSTEM_PROMPT.format(path=path))
+        super().__init__(ErrorMessages.AGENT_MISSING_CONFIGURATION.format(path=path))
         self.path = path
 
 
-class AgentMissingToolsError(AgentLoadError):
-    """Raised when an agent file is missing tools."""
+class AgentInvalidConfigurationError(AgentLoadError):
+    """Raised when configuration is not an AgentConfig instance."""
 
     def __init__(self, path: str) -> None:
-        super().__init__(ErrorMessages.AGENT_MISSING_TOOLS.format(path=path))
+        super().__init__(ErrorMessages.AGENT_INVALID_CONFIGURATION.format(path=path))
         self.path = path
 
 

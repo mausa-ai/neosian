@@ -1,54 +1,39 @@
 """Agent loader for loading agent definitions from Python files.
 
-Loads system_prompt and tools from a user-defined Python file.
+Loads AgentConfig from a user-defined Python file.
 """
 
 import importlib.util
 import sys
-from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
 
 from neosian._foundation.shared.constants import AgentLoader
 from neosian._foundation.shared.exceptions import (
     AgentFileNotFoundError,
+    AgentInvalidConfigurationError,
     AgentInvalidDefinitionError,
-    AgentMissingSystemPromptError,
-    AgentMissingToolsError,
+    AgentMissingConfigurationError,
 )
-from neosian._foundation.shared.types import SystemPrompt
-from neosian._foundation.tools.base import ToolFunction
+from neosian._foundation.shared.types import AgentConfig
 
 
-@dataclass
-class AgentDefinition:
-    """Agent definition loaded from a Python file."""
+def load_agent_config(path: str | Path) -> tuple[AgentConfig, str]:
+    """Load an AgentConfig from a Python file.
 
-    system_prompt: SystemPrompt
-    tools: list[ToolFunction]
-    name: str
-    provider: str | None = None
-    model: str | None = None
-
-
-def load_agent_definition(path: str | Path) -> AgentDefinition:
-    """Load an agent definition from a Python file.
-
-    The file must define:
-        - system_prompt: str - The system prompt for the agent
-        - tools: list - List of tool functions decorated with @Tool
+    The file must export a `configuration` variable of type AgentConfig.
 
     Args:
         path: Path to the Python file.
 
     Returns:
-        AgentDefinition with the loaded configuration.
+        Tuple of (AgentConfig, agent_name derived from filename).
 
     Raises:
         AgentFileNotFoundError: If the file does not exist.
-        AgentMissingSystemPromptError: If system_prompt is not defined.
-        AgentMissingToolsError: If tools is not defined.
-        AgentInvalidDefinitionError: If definitions are invalid types.
+        AgentMissingConfigurationError: If configuration is not defined.
+        AgentInvalidConfigurationError: If configuration is not AgentConfig.
+        AgentInvalidDefinitionError: If the module fails to load.
     """
     path = Path(path).resolve()
     path_str = str(path)
@@ -59,46 +44,18 @@ def load_agent_definition(path: str | Path) -> AgentDefinition:
     # Load the module
     module = _load_module_from_path(path)
 
-    # Extract system_prompt
-    if not hasattr(module, AgentLoader.SYSTEM_PROMPT_VAR):
-        raise AgentMissingSystemPromptError(path_str)
+    # Extract configuration
+    if not hasattr(module, AgentLoader.CONFIGURATION_VAR):
+        raise AgentMissingConfigurationError(path_str)
 
-    system_prompt = getattr(module, AgentLoader.SYSTEM_PROMPT_VAR)
-    if not isinstance(system_prompt, str):
-        raise AgentInvalidDefinitionError(path_str, "system_prompt must be a string")
-
-    # Extract tools
-    if not hasattr(module, AgentLoader.TOOLS_VAR):
-        raise AgentMissingToolsError(path_str)
-
-    tools = getattr(module, AgentLoader.TOOLS_VAR)
-    if not isinstance(tools, list):
-        raise AgentInvalidDefinitionError(path_str, "tools must be a list")
-
-    # Extract optional provider
-    provider: str | None = None
-    if hasattr(module, AgentLoader.PROVIDER_VAR):
-        provider = getattr(module, AgentLoader.PROVIDER_VAR)
-        if provider is not None and not isinstance(provider, str):
-            raise AgentInvalidDefinitionError(path_str, "provider must be a string")
-
-    # Extract optional model
-    model: str | None = None
-    if hasattr(module, AgentLoader.MODEL_VAR):
-        model = getattr(module, AgentLoader.MODEL_VAR)
-        if model is not None and not isinstance(model, str):
-            raise AgentInvalidDefinitionError(path_str, "model must be a string")
+    configuration = getattr(module, AgentLoader.CONFIGURATION_VAR)
+    if not isinstance(configuration, AgentConfig):
+        raise AgentInvalidConfigurationError(path_str)
 
     # Derive agent name from filename
     name = path.stem
 
-    return AgentDefinition(
-        system_prompt=SystemPrompt(system_prompt),
-        tools=tools,
-        name=name,
-        provider=provider,
-        model=model,
-    )
+    return configuration, name
 
 
 def _load_module_from_path(path: Path) -> ModuleType:
@@ -132,7 +89,7 @@ def _load_module_from_path(path: Path) -> ModuleType:
     except SyntaxError as e:
         raise AgentInvalidDefinitionError(path_str, f"Syntax error: {e}") from e
     except Exception as e:
-        if isinstance(e, AgentInvalidDefinitionError):
+        if isinstance(e, (AgentInvalidDefinitionError, AgentMissingConfigurationError)):
             raise
         raise AgentInvalidDefinitionError(path_str, str(e)) from e
     finally:
