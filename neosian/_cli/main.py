@@ -52,6 +52,12 @@ def playground(
             "--menu", help="Show interactive menu to select provider and model"
         ),
     ] = False,
+    arena: Annotated[
+        bool,
+        typer.Option(
+            "--arena", help="Run in arena mode with multiple models side-by-side"
+        ),
+    ] = False,
 ) -> None:
     """Start an interactive playground session with an agent.
 
@@ -62,8 +68,9 @@ def playground(
     Example:
         neosian playground my_agent.py
         neosian playground my_agent.py --menu
+        neosian playground my_agent.py --arena
     """
-    run_playground(agent_file, menu=menu)
+    run_playground(agent_file, menu=menu, arena=arena)
 
 
 @app.command()

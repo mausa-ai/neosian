@@ -1,16 +1,15 @@
 """Unit tests for CLI config module."""
 
-import pytest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from neosian._cli.config import (
-    get_api_key,
-    set_api_key,
-    get_all_credentials,
     config_exists,
-    get_config_path,
     delete_config,
+    get_all_credentials,
+    get_api_key,
+    get_config_path,
+    set_api_key,
 )
 from neosian._foundation.shared.constants import Config
 

@@ -7,22 +7,24 @@ import asyncio
 import importlib.resources
 import os
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
-from rich.console import Console
+from rich.console import Console, RenderableType
 from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.prompt import Prompt
+from rich.table import Table
 from rich.text import Text
 from simple_term_menu import TerminalMenu  # type: ignore[import-untyped]
 
 from neosian._cli.config import get_api_key
 from neosian._cli.loader import load_agent_config
-from neosian._cli.session import Session
+from neosian._cli.session import ArenaModelResponse, ArenaSession, Session
 from neosian._foundation.agent.base import Agent
 from neosian._foundation.llm.base import Message, Role
-from neosian._foundation.shared.constants import Assets, Config, PlaygroundUI
-from neosian._foundation.shared.types import ModelId, ProviderId
+from neosian._foundation.shared.constants import ArenaUI, Assets, Config, PlaygroundUI
+from neosian._foundation.shared.types import AgentConfig, ModelId, ProviderId
 
 
 def _load_credentials_from_config() -> None:
@@ -155,12 +157,332 @@ def _select_provider_and_model(console: Console) -> tuple[str, str] | None:
     return (selected_provider, selected_model)
 
 
-def run_playground(agent_path: str, menu: bool = False) -> None:
+def _select_provider_and_model_labeled(
+    console: Console, label: str
+) -> tuple[str, str] | None:
+    """Show interactive menu to select provider and model with a label.
+
+    Args:
+        console: Rich console for output.
+        label: Label to show (e.g., "Model 1").
+
+    Returns:
+        Tuple of (provider_id, model_id) or None if cancelled.
+    """
+    from neosian._foundation.shared.constants import Provider
+
+    providers = [
+        (Provider.Groq.ID, "Groq (fastest inference)"),
+        (Provider.OpenAI.ID, "OpenAI"),
+    ]
+
+    console.print(f"\n[bold]{ArenaUI.SELECT_PROVIDER.format(label=label)}[/bold]")
+    provider_menu = TerminalMenu([p[1] for p in providers], cursor_index=0)
+    provider_choice = provider_menu.show()
+
+    if provider_choice is None:
+        return None
+
+    selected_provider = providers[provider_choice][0]
+
+    models = _get_models_for_provider(selected_provider)
+    if not models:
+        return None
+
+    console.print(
+        f"\n[bold]{ArenaUI.SELECT_MODEL.format(label=label, provider=selected_provider)}[/bold]"
+    )
+    model_menu = TerminalMenu([m[1] for m in models], cursor_index=0)
+    model_choice = model_menu.show()
+
+    if model_choice is None:
+        return None
+
+    return (selected_provider, models[model_choice][0])
+
+
+def _select_arena_models(console: Console) -> list[tuple[str, str]] | None:
+    """Select models for arena mode.
+
+    Returns:
+        List of (provider_id, model_id) tuples or None if cancelled.
+    """
+    # Select count
+    console.print(f"\n[bold]{ArenaUI.SELECT_COUNT}[/bold]")
+    count_menu = TerminalMenu(list(ArenaUI.COUNT_OPTIONS), cursor_index=0)
+    count_choice = count_menu.show()
+
+    if count_choice is None:
+        return None
+
+    model_count = int(ArenaUI.COUNT_OPTIONS[count_choice])
+
+    # Select each model
+    selections: list[tuple[str, str]] = []
+    for i in range(model_count):
+        label = ArenaUI.MODEL_LABEL.format(n=i + 1)
+        selection = _select_provider_and_model_labeled(console, label)
+        if selection is None:
+            return None
+        selections.append(selection)
+
+    return selections
+
+
+@dataclass
+class ArenaModelResult:
+    """Result from a single model in arena mode."""
+
+    provider: str
+    model: str
+    content: str
+    tool_calls_text: list[Text]
+    tool_calls_raw: list[dict[str, object]]  # For JSON serialization
+    elapsed_time: float
+    error: str | None = None
+
+
+def _build_arena_cell_content(result: ArenaModelResult) -> RenderableType:
+    """Build the content for a single arena table cell (response only, no timing).
+
+    Args:
+        result: The model result to display.
+
+    Returns:
+        Renderable content for the table cell.
+    """
+    from rich.console import Group
+
+    parts: list[RenderableType] = []
+
+    # Add tool calls if any
+    for tool_text in result.tool_calls_text:
+        parts.append(
+            Panel(tool_text, title=PlaygroundUI.TOOL_CALL_LABEL, border_style="yellow")
+        )
+
+    # Add response or error
+    if result.error:
+        parts.append(Text(f"Error: {result.error}", style="red"))
+    elif result.content:
+        parts.append(Markdown(result.content))
+
+    return Group(*parts)
+
+
+async def _run_arena_model(
+    agent: Agent,
+    messages: list[Message],
+    provider: str,
+    model: str,
+) -> ArenaModelResult:
+    """Run a single model and collect results.
+
+    Args:
+        agent: The agent to run.
+        messages: Message history.
+        provider: Provider ID for display.
+        model: Model ID for display.
+
+    Returns:
+        ArenaModelResult with response data.
+    """
+    start_time = time.perf_counter()
+
+    try:
+        response = await agent.run(messages, stream=False)
+    except Exception as e:
+        return ArenaModelResult(
+            provider=provider,
+            model=model,
+            content="",
+            tool_calls_text=[],
+            tool_calls_raw=[],
+            elapsed_time=time.perf_counter() - start_time,
+            error=str(e),
+        )
+
+    elapsed_time = time.perf_counter() - start_time
+
+    # Format tool calls for display and raw serialization
+    tool_calls_text: list[Text] = []
+    tool_calls_raw: list[dict[str, object]] = []
+
+    for i, tool_call in enumerate(response.tool_calls_made):
+        # Raw data for JSON
+        tool_calls_raw.append(
+            {
+                "name": tool_call.name,
+                "arguments": tool_call.arguments,
+            }
+        )
+
+        # Formatted text for display
+        tool_text = Text()
+        tool_text.append(f"{tool_call.name}", style="yellow")
+        tool_text.append(f"({_format_args(tool_call.arguments)})", style="dim")
+
+        if i < len(response.tool_results):
+            result = response.tool_results[i]
+            if result.success:
+                tool_text.append(" → ", style="dim")
+                tool_text.append(str(result.data)[:100], style="green")
+            else:
+                tool_text.append(" → ", style="dim")
+                tool_text.append(str(result.error), style="red")
+
+        tool_calls_text.append(tool_text)
+
+    return ArenaModelResult(
+        provider=provider,
+        model=model,
+        content=response.message.content or "",
+        tool_calls_text=tool_calls_text,
+        tool_calls_raw=tool_calls_raw,
+        elapsed_time=elapsed_time,
+    )
+
+
+def _build_arena_vs_header(providers: list[str], models: list[str]) -> Text:
+    """Build the VS header for arena mode.
+
+    Args:
+        providers: List of provider IDs.
+        models: List of model IDs.
+
+    Returns:
+        Styled Text with "provider/model vs provider/model vs ..."
+    """
+    header = Text()
+    for i, (provider, model) in enumerate(zip(providers, models, strict=True)):
+        if i > 0:
+            header.append(" vs ", style="bold white")
+        color = ArenaUI.COLORS[i % len(ArenaUI.COLORS)]
+        header.append(f"{provider}/{model}", style=f"bold {color}")
+    return header
+
+
+def _display_arena_results(console: Console, results: list[ArenaModelResult]) -> None:
+    """Display arena results in a side-by-side table.
+
+    Args:
+        console: Rich console for output.
+        results: List of model results to display.
+    """
+    # Print VS header
+    providers = [r.provider for r in results]
+    models = [r.model for r in results]
+    vs_header = _build_arena_vs_header(providers, models)
+    console.print(vs_header)
+    console.print()
+
+    # Build table with colored columns
+    table = Table(show_header=True, header_style="bold", expand=True)
+
+    # Add columns with colored headers matching the VS header
+    for i, result in enumerate(results):
+        color = ArenaUI.COLORS[i % len(ArenaUI.COLORS)]
+        header = Text()
+        header.append(result.provider, style=color)
+        header.append("/", style="dim")
+        header.append(result.model, style=color)
+        table.add_column(header, ratio=1)
+
+    # Add row with content
+    cells = [_build_arena_cell_content(result) for result in results]
+    table.add_row(*cells)
+
+    # Add timing row with matching colors
+    timing_cells = [
+        Text(
+            f"{result.elapsed_time:.2f}s", style=ArenaUI.COLORS[i % len(ArenaUI.COLORS)]
+        )
+        for i, result in enumerate(results)
+    ]
+    table.add_row(*timing_cells)
+
+    console.print(table)
+
+
+async def _arena_chat_loop(
+    console: Console,
+    agents: list[Agent],
+    providers: list[str],
+    models: list[str],
+    session: ArenaSession,
+) -> None:
+    """Run the arena chat loop with multiple models.
+
+    Args:
+        console: Rich console for output.
+        agents: List of agents to run.
+        providers: List of provider IDs for display.
+        models: List of model IDs for display.
+        session: Arena session to collect data.
+    """
+    messages: list[Message] = []
+
+    while True:
+        # Get user input
+        try:
+            user_input = Prompt.ask(
+                f"[bold green]{PlaygroundUI.USER_PROMPT}[/bold green]"
+            )
+        except EOFError:
+            break
+
+        if user_input.lower() in PlaygroundUI.EXIT_COMMANDS:
+            break
+
+        if not user_input.strip():
+            continue
+
+        # Add user message
+        messages.append(Message(role=Role.USER, content=user_input))
+
+        # Create turn for session
+        turn = session.add_turn(user_input)
+
+        # Run each model sequentially
+        results: list[ArenaModelResult] = []
+        for i, agent in enumerate(agents):
+            color = ArenaUI.COLORS[i % len(ArenaUI.COLORS)]
+            status_text = Text()
+            status_text.append("Running ", style="dim")
+            status_text.append(providers[i], style=color)
+            status_text.append("/", style="dim")
+            status_text.append(models[i], style=color)
+            status_text.append("...", style="dim")
+            with console.status(status_text):
+                result = await _run_arena_model(
+                    agent, messages, providers[i], models[i]
+                )
+                results.append(result)
+
+                # Add to session turn
+                turn.responses.append(
+                    ArenaModelResponse(
+                        provider=result.provider,
+                        model=result.model,
+                        content=result.content,
+                        tool_calls=result.tool_calls_raw,
+                        elapsed_time=result.elapsed_time,
+                        error=result.error,
+                    )
+                )
+
+        # Display results
+        _display_arena_results(console, results)
+        console.print()
+
+
+def run_playground(agent_path: str, menu: bool = False, arena: bool = False) -> None:
     """Run the playground with the given agent file.
 
     Args:
         agent_path: Path to the agent Python file.
         menu: Show interactive menu to select provider and model.
+        arena: Run in arena mode with multiple models side-by-side.
     """
     console = Console()
 
@@ -169,12 +491,18 @@ def run_playground(agent_path: str, menu: bool = False) -> None:
 
     # Load agent configuration
     try:
-        config, agent_name = load_agent_config(agent_path)
+        base_config, agent_name = load_agent_config(agent_path)
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
         raise SystemExit(1) from e
 
+    # Arena mode
+    if arena:
+        _run_arena_mode(console, base_config, agent_name)
+        return
+
     # Interactive menu override
+    config = base_config
     if menu:
         selection = _select_provider_and_model(console)
         if selection is None:
@@ -183,14 +511,12 @@ def run_playground(agent_path: str, menu: bool = False) -> None:
 
         selected_provider, selected_model = selection
 
-        from neosian._foundation.shared.types import AgentConfig
-
         config = AgentConfig(
-            system_prompt=config.system_prompt,
-            tools=config.tools,
+            system_prompt=base_config.system_prompt,
+            tools=base_config.tools,
             provider=ProviderId(selected_provider),
             model=ModelId(selected_model),
-            enable_todo=config.enable_todo,
+            enable_todo=base_config.enable_todo,
         )
 
     # Create agent from config
@@ -220,6 +546,69 @@ def run_playground(agent_path: str, menu: bool = False) -> None:
 
     # Handle exit
     _handle_exit(console, session)
+
+
+def _run_arena_mode(
+    console: Console,
+    base_config: AgentConfig,
+    agent_name: str,
+) -> None:
+    """Run arena mode with multiple models.
+
+    Args:
+        console: Rich console for output.
+        base_config: Base agent configuration.
+        agent_name: Name of the agent.
+    """
+    # Select models
+    selections = _select_arena_models(console)
+    if selections is None:
+        console.print("[dim]Cancelled.[/dim]")
+        return
+
+    # Create agents
+    agents: list[Agent] = []
+    providers: list[str] = []
+    models: list[str] = []
+
+    for provider_id, model_id in selections:
+        config = AgentConfig(
+            system_prompt=base_config.system_prompt,
+            tools=base_config.tools,
+            provider=ProviderId(provider_id),
+            model=ModelId(model_id),
+            enable_todo=base_config.enable_todo,
+        )
+        try:
+            agent = Agent(config=config)
+            agents.append(agent)
+            providers.append(provider_id)
+            models.append(str(agent._model))
+        except Exception as e:
+            console.print(
+                f"[red]Error creating agent for {provider_id}/{model_id}: {e}[/red]"
+            )
+            raise SystemExit(1) from e
+
+    # Create arena session
+    session = ArenaSession(
+        agent_name=agent_name,
+        models=[
+            {"provider": p, "model": m} for p, m in zip(providers, models, strict=True)
+        ],
+    )
+
+    # Print header
+    _print_header(console, agent_name)
+
+    # Run arena chat loop
+    try:
+        asyncio.run(_arena_chat_loop(console, agents, providers, models, session))
+    except KeyboardInterrupt:
+        console.print()
+
+    # Handle exit
+    _handle_arena_exit(console, session)
 
 
 def _print_header(console: Console, agent_name: str) -> None:
@@ -358,6 +747,39 @@ def _handle_exit(console: Console, session: Session) -> None:
     console.print()
 
     if not session.messages:
+        console.print(f"[dim]{PlaygroundUI.GOODBYE}[/dim]")
+        return
+
+    # Show save menu with arrow selection
+    console.print(f"[bold]{PlaygroundUI.SAVE_MENU_TITLE}[/bold]")
+
+    options = [PlaygroundUI.SAVE_OPTION_YES, PlaygroundUI.SAVE_OPTION_NO]
+    menu = TerminalMenu(
+        options,
+        cursor_index=1,  # Default to "No"
+    )
+    choice = menu.show()
+
+    # choice is 0 for Yes, 1 for No, None if cancelled
+    if choice == 0:
+        # Save to current directory
+        filename = session.generate_filename()
+        path = session.save(Path.cwd() / filename)
+        console.print(
+            PlaygroundUI.SESSION_SAVED.format(path=path),
+            style="green",
+        )
+    else:
+        console.print(f"[dim]{PlaygroundUI.SESSION_DISCARDED}[/dim]")
+
+    console.print(f"[dim]{PlaygroundUI.GOODBYE}[/dim]")
+
+
+def _handle_arena_exit(console: Console, session: ArenaSession) -> None:
+    """Handle arena exit: prompt to save session with arrow menu."""
+    console.print()
+
+    if not session.turns:
         console.print(f"[dim]{PlaygroundUI.GOODBYE}[/dim]")
         return
 

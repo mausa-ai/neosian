@@ -166,3 +166,15 @@ class Config:
     FILE_NAME: str = "config.toml"
     GROQ_API_KEY: str = "groq_api_key"
     OPENAI_API_KEY: str = "openai_api_key"
+
+
+class ArenaUI:
+    """Constants for arena mode interface."""
+
+    SELECT_COUNT: str = "How many models to compare?"
+    COUNT_OPTIONS: tuple[str, ...] = ("2", "3")
+    MODEL_LABEL: str = "Model {n}"
+    SELECT_PROVIDER: str = "{label} - Select Provider:"
+    SELECT_MODEL: str = "{label} - Select Model ({provider}):"
+    THINKING: str = "Running {label}..."
+    COLORS: tuple[str, ...] = ("cyan", "magenta", "green")
