@@ -9,6 +9,16 @@ from datetime import datetime
 from pathlib import Path
 
 from neosian._foundation.llm.base import Message, Role
+from neosian._foundation.shared.types import GuardrailResult
+
+
+@dataclass
+class BlockedMessage:
+    """A message that was blocked by guardrails."""
+
+    content: str
+    timestamp: str
+    guardrail_result: GuardrailResult
 
 
 @dataclass
@@ -16,9 +26,11 @@ class Session:
     """In-memory conversation session.
 
     Stores messages during a playground session and can save to JSON.
+    Blocked messages are stored separately for logging but excluded from LLM history.
     """
 
     messages: list[Message] = field(default_factory=list)
+    blocked_messages: list[BlockedMessage] = field(default_factory=list)
     agent_name: str = ""
     started_at: str = field(default_factory=lambda: datetime.now().isoformat())
 
@@ -33,6 +45,21 @@ class Session:
     def add_assistant_message(self, content: str) -> None:
         """Add an assistant message to the session."""
         self.messages.append(Message(role=Role.ASSISTANT, content=content))
+
+    def add_blocked_message(
+        self, content: str, guardrail_result: GuardrailResult
+    ) -> None:
+        """Add a blocked message to the session.
+
+        Blocked messages are stored separately and not included in LLM history.
+        """
+        self.blocked_messages.append(
+            BlockedMessage(
+                content=content,
+                timestamp=datetime.now().isoformat(),
+                guardrail_result=guardrail_result,
+            )
+        )
 
     def get_messages(self) -> list[Message]:
         """Get all messages (excluding system)."""
@@ -51,6 +78,14 @@ class Session:
                     "tool_call_id": m.tool_call_id,
                 }
                 for m in self.messages
+            ],
+            "blocked_messages": [
+                {
+                    "content": bm.content,
+                    "timestamp": bm.timestamp,
+                    "guardrail_result": asdict(bm.guardrail_result),
+                }
+                for bm in self.blocked_messages
             ],
         }
 

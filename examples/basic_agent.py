@@ -7,7 +7,15 @@ Usage:
 from datetime import datetime
 from pathlib import Path
 
-from neosian import AgentConfig, Tool, ToolResult
+from neosian import (
+    AgentConfig,
+    CommonPolicies,
+    GuardrailMode,
+    GuardrailsConfig,
+    PolicyBuilder,
+    Tool,
+    ToolResult,
+)
 
 
 @Tool(name="get_current_datetime", description="Get the current date and time")
@@ -78,6 +86,15 @@ async def list_directory(path: str = ".") -> ToolResult[list[str]]:
         return ToolResult.fail(f"Error listing directory: {e}")
 
 
+# Build a custom policy for additional protection
+custom_policy = (
+    PolicyBuilder()
+    .add(CommonPolicies.PROMPT_INJECTION)
+    .add(CommonPolicies.HARMFUL_INSTRUCTIONS)
+    .add(CommonPolicies.PERSONAL_DATA_EXTRACTION)
+    .build()
+)
+
 # Agent configuration - export as 'configuration'
 configuration = AgentConfig(
     system_prompt="""You are a helpful assistant with access to basic utilities.
@@ -96,4 +113,11 @@ Be concise and helpful in your responses.""",
         list_directory,
     ],
     provider="groq",  # Options: "groq" (default), "openai"
+    guardrails=GuardrailsConfig(
+        # Input guardrails: classifier only (fast, no policy check)
+        input_mode=GuardrailMode.CLASSIFIER_ONLY,
+        block_on_input=True,
+        # Output guardrails: disabled (allows streaming)
+        output_mode=GuardrailMode.NONE,
+    ),
 )

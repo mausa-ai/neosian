@@ -124,3 +124,36 @@ class UnsupportedParameterError(LLMError):
     def __init__(self, message: str) -> None:
         super().__init__(message)
         self.message = message
+
+
+class GuardrailError(NeosianError):
+    """Base exception for guardrail-related errors."""
+
+    pass
+
+
+class GuardrailClassifierParseError(GuardrailError):
+    """Raised when classifier response cannot be parsed."""
+
+    def __init__(self, response: str) -> None:
+        super().__init__(
+            ErrorMessages.GUARDRAIL_CLASSIFIER_PARSE_ERROR.format(response=response)
+        )
+        self.response = response
+
+
+class GuardrailPolicyParseError(GuardrailError):
+    """Raised when policy response cannot be parsed."""
+
+    def __init__(self, response: str) -> None:
+        super().__init__(
+            ErrorMessages.GUARDRAIL_POLICY_PARSE_ERROR.format(response=response)
+        )
+        self.response = response
+
+
+class GuardrailStreamingError(GuardrailError):
+    """Raised when streaming is requested with output guardrails configured."""
+
+    def __init__(self) -> None:
+        super().__init__(ErrorMessages.GUARDRAIL_OUTPUT_REQUIRES_BLOCKING)

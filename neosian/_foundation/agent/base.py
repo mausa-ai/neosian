@@ -9,12 +9,16 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any, Literal, overload
 
+from groq import AsyncGroq
+
 from neosian._foundation.agent.streaming import (
     content_event,
     done_event,
     tool_call_event,
     tool_result_event,
 )
+from neosian._foundation.guardrails.checker import check_with_policy
+from neosian._foundation.guardrails.classifier import check_with_classifier
 from neosian._foundation.llm.base import (
     BaseLLMClient,
     Message,
@@ -25,11 +29,18 @@ from neosian._foundation.llm.base import (
 )
 from neosian._foundation.llm.groq import GroqClient
 from neosian._foundation.llm.openai import OpenAIClient
-from neosian._foundation.shared.constants import ErrorMessages, Provider
-from neosian._foundation.shared.exceptions import MissingAPIKeyError
+from neosian._foundation.shared.constants import EnvVars, ErrorMessages, Provider
+from neosian._foundation.shared.exceptions import (
+    GuardrailStreamingError,
+    MissingAPIKeyError,
+)
 from neosian._foundation.shared.types import (
     AgentConfig,
+    ClassifierResult,
+    GuardrailMode,
+    GuardrailResult,
     ModelId,
+    PolicyResult,
     ToolFunction,
     ToolName,
 )
@@ -39,6 +50,30 @@ from neosian._foundation.tools.base import (
     get_tool_metadata,
 )
 from neosian._foundation.tools.builtin.todo import TodoState, get_todo_tool
+
+
+def _get_api_key(env_var: str) -> str:
+    """Get API key from environment variable.
+
+    Args:
+        env_var: Environment variable name (EnvVars.GROQ_API_KEY or EnvVars.OPENAI_API_KEY).
+
+    Returns:
+        API key value.
+
+    Raises:
+        MissingAPIKeyError: If environment variable is not set.
+    """
+    api_key = os.environ.get(env_var)
+    if not api_key:
+        match env_var:
+            case EnvVars.GROQ_API_KEY:
+                raise MissingAPIKeyError(ErrorMessages.GROQ_API_KEY_MISSING)
+            case EnvVars.OPENAI_API_KEY:
+                raise MissingAPIKeyError(ErrorMessages.OPENAI_API_KEY_MISSING)
+            case _:
+                raise MissingAPIKeyError(f"{env_var} environment variable not set")
+    return api_key
 
 
 def _create_client(provider_id: str | None) -> tuple[BaseLLMClient, ModelId]:
@@ -57,28 +92,50 @@ def _create_client(provider_id: str | None) -> tuple[BaseLLMClient, ModelId]:
     provider = provider_id or Provider.Groq.ID
 
     if provider == Provider.OpenAI.ID:
-        api_key = os.environ.get("OPENAI_API_KEY")
-        if not api_key:
-            raise MissingAPIKeyError(ErrorMessages.OPENAI_API_KEY_MISSING)
+        api_key = _get_api_key(EnvVars.OPENAI_API_KEY)
         return OpenAIClient(api_key=api_key), ModelId(Provider.OpenAI.DEFAULT_MODEL)
 
     if provider == Provider.Groq.ID:
-        api_key = os.environ.get("GROQ_API_KEY")
-        if not api_key:
-            raise MissingAPIKeyError(ErrorMessages.GROQ_API_KEY_MISSING)
+        api_key = _get_api_key(EnvVars.GROQ_API_KEY)
         return GroqClient(api_key=api_key), ModelId(Provider.Groq.DEFAULT_MODEL)
 
     raise ValueError(f"Unsupported provider: {provider}")
 
 
+def _create_guardrail_client() -> AsyncGroq:
+    """Create Groq client for guardrail models.
+
+    Guardrails use Groq provider for both Llama Guard and GPT-OSS-Safeguard.
+
+    Returns:
+        AsyncGroq client for guardrail calls.
+
+    Raises:
+        MissingAPIKeyError: If GROQ_API_KEY is not set.
+    """
+    api_key = _get_api_key(EnvVars.GROQ_API_KEY)
+    return AsyncGroq(api_key=api_key)
+
+
 @dataclass
 class AgentResponse:
-    """Response from agent execution."""
+    """Response from agent execution.
+
+    Attributes:
+        message: The assistant's response message.
+        tool_calls_made: List of tool calls made during execution.
+        tool_results: Results from tool executions.
+        usage: Token usage statistics.
+        blocked: True if content was blocked by guardrails.
+        guardrail_result: Detailed guardrail check results (if guardrails enabled).
+    """
 
     message: Message
     tool_calls_made: list[ToolCall] = field(default_factory=list)
     tool_results: list[ToolResult[Any]] = field(default_factory=list)
     usage: Usage = field(default_factory=lambda: Usage(input_tokens=0, output_tokens=0))
+    blocked: bool = False
+    guardrail_result: GuardrailResult | None = None
 
 
 class Agent:
@@ -118,6 +175,12 @@ class Agent:
         self._model = config.model if config.model else default_model
         self._system_prompt = config.system_prompt
         self._max_tool_iterations = max_tool_iterations
+
+        # Store guardrails config and create client if needed
+        self._guardrails = config.guardrails
+        self._guardrail_client: AsyncGroq | None = None
+        if self._guardrails is not None:
+            self._guardrail_client = _create_guardrail_client()
 
         # Build tool registry from decorated functions
         self._tools: dict[ToolName, ToolFunction] = {}
@@ -181,7 +244,18 @@ class Agent:
 
         Returns:
             AgentResponse when stream=False, AsyncIterator[str] when stream=True.
+
+        Raises:
+            GuardrailStreamingError: If stream=True with output guardrails configured.
         """
+        # Output guardrails require blocking mode
+        if (
+            stream
+            and self._guardrails is not None
+            and self._guardrails.has_output_guardrails
+        ):
+            raise GuardrailStreamingError()
+
         if stream:
             return self._run_streaming(messages)
         return await self._run_blocking(messages)
@@ -195,6 +269,31 @@ class Agent:
         Returns:
             AgentResponse with the final message and execution details.
         """
+        # Check input guardrails on user messages
+        input_classifier_result: ClassifierResult | None = None
+        input_policy_result: PolicyResult | None = None
+
+        if self._guardrails is not None:
+            # Extract user content for guardrail check
+            user_content = self._extract_user_content(messages)
+            if user_content:
+                is_safe, input_classifier_result, input_policy_result = (
+                    await self._check_guardrails(user_content, "input")
+                )
+
+                # Block if input flagged and block_on_input is True
+                if not is_safe and self._guardrails.block_on_input:
+                    return AgentResponse(
+                        message=Message(role=Role.ASSISTANT, content=""),
+                        blocked=True,
+                        guardrail_result=GuardrailResult(
+                            safe=False,
+                            blocked_at="input",
+                            input_classifier=input_classifier_result,
+                            input_policy=input_policy_result,
+                        ),
+                    )
+
         # Prepend system message
         full_messages = [
             Message(role=Role.SYSTEM, content=self._system_prompt),
@@ -219,13 +318,15 @@ class Agent:
                 output_tokens=total_usage.output_tokens + response.usage.output_tokens,
             )
 
-            # If no tool calls, we're done
+            # If no tool calls, we're done - check output guardrails
             if not response.message.tool_calls:
-                return AgentResponse(
+                return await self._finalize_response(
                     message=response.message,
                     tool_calls_made=all_tool_calls,
                     tool_results=all_tool_results,
                     usage=total_usage,
+                    input_classifier=input_classifier_result,
+                    input_policy=input_policy_result,
                 )
 
             # Add assistant message with tool calls to history
@@ -261,11 +362,13 @@ class Agent:
             + final_response.usage.output_tokens,
         )
 
-        return AgentResponse(
+        return await self._finalize_response(
             message=final_response.message,
             tool_calls_made=all_tool_calls,
             tool_results=all_tool_results,
             usage=total_usage,
+            input_classifier=input_classifier_result,
+            input_policy=input_policy_result,
         )
 
     async def _run_streaming(self, messages: list[Message]) -> AsyncIterator[str]:
@@ -397,3 +500,186 @@ class Agent:
         if result.success:
             return json.dumps({"success": True, "data": result.data})
         return json.dumps({"success": False, "error": result.error})
+
+    async def _check_guardrails(
+        self,
+        content: str,
+        checkpoint: Literal["input", "output"],
+    ) -> tuple[bool, ClassifierResult | None, PolicyResult | None]:
+        """Check content against configured guardrails at the given checkpoint.
+
+        Execution order depends on mode:
+        - CLASSIFIER_ONLY: Run classifier only
+        - POLICY_ONLY: Run policy only
+        - CLASSIFIER_AND_POLICY: Run classifier, then always run policy
+        - CLASSIFIER_THEN_POLICY: Run classifier, only run policy if classifier flags
+
+        Args:
+            content: Content to check.
+            checkpoint: "input" or "output" checkpoint.
+
+        Returns:
+            Tuple of (is_safe, classifier_result, policy_result).
+        """
+        if self._guardrails is None or self._guardrail_client is None:
+            return (True, None, None)
+
+        # Select config fields based on checkpoint
+        mode = (
+            self._guardrails.input_mode
+            if checkpoint == "input"
+            else self._guardrails.output_mode
+        )
+        policy = (
+            self._guardrails.input_policy
+            if checkpoint == "input"
+            else self._guardrails.output_policy
+        )
+
+        # No guardrails configured for this checkpoint
+        if mode == GuardrailMode.NONE:
+            return (True, None, None)
+
+        classifier_result: ClassifierResult | None = None
+        policy_result: PolicyResult | None = None
+
+        # Run classifier if mode uses it
+        if mode.uses_classifier():
+            classifier_result = await check_with_classifier(
+                content=content,
+                client=self._guardrail_client,
+            )
+
+            # For CLASSIFIER_ONLY, return immediately based on classifier result
+            if mode == GuardrailMode.CLASSIFIER_ONLY:
+                return (classifier_result.safe, classifier_result, None)
+
+            # For CLASSIFIER_THEN_POLICY, only run policy if classifier flags
+            if mode == GuardrailMode.CLASSIFIER_THEN_POLICY and classifier_result.safe:
+                # Classifier passed, skip policy (optimization)
+                return (True, classifier_result, None)
+            # Classifier flagged, continue to run policy for detailed analysis
+
+        # Run policy if mode uses it
+        if mode.uses_policy() and policy is not None:
+            policy_result = await check_with_policy(
+                content=content,
+                policy=policy,
+                client=self._guardrail_client,
+            )
+
+            # Determine overall safety
+            is_safe = policy_result.safe
+            if classifier_result is not None and not classifier_result.safe:
+                is_safe = False
+
+            return (is_safe, classifier_result, policy_result)
+
+        # Fallback (shouldn't reach here with valid config)
+        return (True, classifier_result, policy_result)
+
+    def _extract_user_content(self, messages: list[Message]) -> str:
+        """Extract user content from messages for guardrail checking.
+
+        Returns the content of the last user message in the conversation.
+        This assumes the app appends the new user input as the last message
+        before calling agent.run().
+
+        Expected app pattern:
+            messages = db.load_history(user_id)  # Previous messages
+            messages.append(Message(role=Role.USER, content=new_input))
+            response = await agent.run(messages, stream=False)
+
+        Args:
+            messages: Conversation history.
+
+        Returns:
+            Content of the last user message, or empty string if none found.
+        """
+        for message in reversed(messages):
+            if message.role == Role.USER and message.content:
+                return message.content
+        return ""
+
+    async def _finalize_response(
+        self,
+        message: Message,
+        tool_calls_made: list[ToolCall],
+        tool_results: list[ToolResult[Any]],
+        usage: Usage,
+        input_classifier: ClassifierResult | None,
+        input_policy: PolicyResult | None,
+    ) -> AgentResponse:
+        """Finalize response with output guardrails check.
+
+        Checks output guardrails if configured, builds the GuardrailResult,
+        and returns the final AgentResponse.
+
+        Args:
+            message: The assistant's response message.
+            tool_calls_made: List of tool calls made during execution.
+            tool_results: Results from tool executions.
+            usage: Token usage statistics.
+            input_classifier: Input classifier result (if run).
+            input_policy: Input policy result (if run).
+
+        Returns:
+            AgentResponse with guardrail results populated.
+        """
+        output_classifier: ClassifierResult | None = None
+        output_policy: PolicyResult | None = None
+        is_output_safe = True
+
+        # Check output guardrails if configured
+        if (
+            self._guardrails is not None
+            and self._guardrails.has_output_guardrails
+            and message.content
+        ):
+            is_output_safe, output_classifier, output_policy = (
+                await self._check_guardrails(message.content, "output")
+            )
+
+        # Build guardrail result if any guardrails were run
+        guardrail_result: GuardrailResult | None = None
+        has_any_result = (
+            input_classifier is not None
+            or input_policy is not None
+            or output_classifier is not None
+            or output_policy is not None
+        )
+
+        if has_any_result:
+            # Determine input safety (for metadata, not blocking - that's handled earlier)
+            is_input_safe = True
+            if input_classifier is not None and not input_classifier.safe:
+                is_input_safe = False
+            if input_policy is not None and not input_policy.safe:
+                is_input_safe = False
+
+            overall_safe = is_input_safe and is_output_safe
+
+            # Determine where flagged (if any)
+            blocked_at: Literal["input", "output"] | None = None
+            if not is_input_safe:
+                blocked_at = "input"
+            elif not is_output_safe:
+                blocked_at = "output"
+
+            guardrail_result = GuardrailResult(
+                safe=overall_safe,
+                blocked_at=blocked_at,
+                input_classifier=input_classifier,
+                input_policy=input_policy,
+                output_classifier=output_classifier,
+                output_policy=output_policy,
+            )
+
+        return AgentResponse(
+            message=message,
+            tool_calls_made=tool_calls_made,
+            tool_results=tool_results,
+            usage=usage,
+            blocked=not is_output_safe,
+            guardrail_result=guardrail_result,
+        )

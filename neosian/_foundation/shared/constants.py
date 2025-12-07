@@ -46,6 +46,20 @@ class ErrorMessages:
         "Temperature parameter is not supported for OpenAI GPT-5 models"
     )
 
+    # Guardrail errors
+    GUARDRAIL_INPUT_BLOCKED: str = "Input blocked by {guardrail_type}: {reason}"
+    GUARDRAIL_OUTPUT_BLOCKED: str = "Output blocked by {guardrail_type}: {reason}"
+    GUARDRAIL_CLASSIFIER_PARSE_ERROR: str = (
+        "Failed to parse classifier response: {response}"
+    )
+    GUARDRAIL_POLICY_PARSE_ERROR: str = "Failed to parse policy response: {response}"
+    GUARDRAIL_POLICY_REQUIRED: str = "{mode} requires {policy_field} to be set"
+    GUARDRAIL_OUTPUT_REQUIRES_BLOCKING: str = (
+        "Output guardrails require stream=False. "
+        "Streaming cannot be used with output guardrails because content "
+        "is sent to the user before it can be checked."
+    )
+
 
 class LLMDefaults:
     """Default values for LLM configuration."""
@@ -71,7 +85,11 @@ class Provider:
             LLAMA_3_1_8B: str = "llama-3.1-8b-instant"
             GPT_OSS_120B: str = "openai/gpt-oss-120b"
             GPT_OSS_20B: str = "openai/gpt-oss-20b"
-            LLAMA_GUARD_4_12B: str = "meta-llama/llama-guard-4-12b"
+
+            class Guardrails:
+                """Production guardrail models."""
+
+                LLAMA_GUARD_4_12B: str = "meta-llama/llama-guard-4-12b"
 
         class Preview:
             """Preview models (may change)."""
@@ -81,6 +99,11 @@ class Provider:
             QWEN3_32B: str = "qwen/qwen3-32b"
             KIMI_K2: str = "moonshotai/kimi-k2-instruct"
             KIMI_K2_0905: str = "moonshotai/kimi-k2-instruct-0905"
+
+            class Guardrails:
+                """Preview guardrail models."""
+
+                GPT_OSS_SAFEGUARD_20B: str = "openai/gpt-oss-safeguard-20b"
 
     class OpenAI:
         """OpenAI provider constants."""
@@ -149,6 +172,13 @@ class PlaygroundUI:
     GOODBYE: str = "Goodbye!"
     THINKING: str = "Thinking..."
 
+    # Guardrail display
+    GUARDRAIL_BLOCKED_LABEL: str = "Guardrail Blocked"
+    GUARDRAIL_INPUT_BLOCKED: str = "Input blocked by safety guardrails"
+    GUARDRAIL_OUTPUT_BLOCKED: str = "Output blocked by safety guardrails"
+    GUARDRAIL_CATEGORIES: str = "Categories: {categories}"
+    GUARDRAIL_RATIONALE: str = "Reason: {rationale}"
+
 
 class Assets:
     """Asset file paths."""
@@ -168,6 +198,13 @@ class Config:
     OPENAI_API_KEY: str = "openai_api_key"
 
 
+class EnvVars:
+    """Environment variable names."""
+
+    GROQ_API_KEY: str = "GROQ_API_KEY"
+    OPENAI_API_KEY: str = "OPENAI_API_KEY"
+
+
 class ArenaUI:
     """Constants for arena mode interface."""
 
@@ -178,3 +215,127 @@ class ArenaUI:
     SELECT_MODEL: str = "{label} - Select Model ({provider}):"
     THINKING: str = "Running {label}..."
     COLORS: tuple[str, ...] = ("cyan", "magenta", "green")
+
+
+class Guardrails:
+    """Constants for guardrail system."""
+
+    # Default models (reference existing Provider constants)
+    CLASSIFIER_MODEL: str = Provider.Groq.Production.Guardrails.LLAMA_GUARD_4_12B
+    POLICY_MODEL: str = Provider.Groq.Preview.Guardrails.GPT_OSS_SAFEGUARD_20B
+
+    # Temperature for guardrail calls (deterministic)
+    TEMPERATURE: float = 0.0
+
+    class ClassifierResponse:
+        """Llama Guard response format constants."""
+
+        SAFE: str = "safe"
+        UNSAFE: str = "unsafe"
+
+    class TestPolicy:
+        """Test policy constants."""
+
+        MARKER: str = "__TEST_POLICY_50_PERCENT__"
+        CATEGORY: str = "TEST"
+        RATIONALE: str = "Random test flag (50% chance)"
+
+    class Categories:
+        """Llama Guard 4 safety categories (S1-S14)."""
+
+        class S1:
+            CODE: str = "S1"
+            NAME: str = "Violent Crimes"
+
+        class S2:
+            CODE: str = "S2"
+            NAME: str = "Non-Violent Crimes"
+
+        class S3:
+            CODE: str = "S3"
+            NAME: str = "Sex-Related Crimes"
+
+        class S4:
+            CODE: str = "S4"
+            NAME: str = "Child Sexual Exploitation"
+
+        class S5:
+            CODE: str = "S5"
+            NAME: str = "Defamation"
+
+        class S6:
+            CODE: str = "S6"
+            NAME: str = "Specialized Advice"
+
+        class S7:
+            CODE: str = "S7"
+            NAME: str = "Privacy"
+
+        class S8:
+            CODE: str = "S8"
+            NAME: str = "Intellectual Property"
+
+        class S9:
+            CODE: str = "S9"
+            NAME: str = "Indiscriminate Weapons"
+
+        class S10:
+            CODE: str = "S10"
+            NAME: str = "Hate"
+
+        class S11:
+            CODE: str = "S11"
+            NAME: str = "Suicide & Self-Harm"
+
+        class S12:
+            CODE: str = "S12"
+            NAME: str = "Sexual Content"
+
+        class S13:
+            CODE: str = "S13"
+            NAME: str = "Elections"
+
+        class S14:
+            CODE: str = "S14"
+            NAME: str = "Code Interpreter Abuse"
+
+        ALL_CODES: tuple[str, ...] = (
+            "S1",
+            "S2",
+            "S3",
+            "S4",
+            "S5",
+            "S6",
+            "S7",
+            "S8",
+            "S9",
+            "S10",
+            "S11",
+            "S12",
+            "S13",
+            "S14",
+        )
+
+    class PolicyPrompt:
+        """Policy prompt templates for GPT-OSS-Safeguard."""
+
+        TEMPLATE: str = (
+            "# Content Policy\n\n"
+            "## INSTRUCTIONS\n"
+            "Classify the content against the policies below. Return JSON with:\n"
+            "- violation: 1 if violates any policy, 0 if safe\n"
+            '- category: The policy code (e.g., "P1") or null if safe\n'
+            "- rationale: Brief explanation of your decision\n\n"
+            "## POLICIES\n{policies}\n\n"
+            "## OUTPUT FORMAT\n"
+            "Return ONLY valid JSON: "
+            '{{"violation": 0|1, "category": "CODE"|null, "rationale": "..."}}\n\n'
+            "Content to evaluate:\n{content}"
+        )
+
+        CATEGORY_TEMPLATE: str = (
+            "### {code}: {name}\n"
+            "{description}\n"
+            "VIOLATES: {violates}\n"
+            "SAFE: {safe}\n"
+        )

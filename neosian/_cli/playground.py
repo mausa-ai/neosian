@@ -86,10 +86,12 @@ def _get_models_for_provider(provider_id: str) -> list[tuple[str, str]]:
     match provider_id:
         case Provider.Groq.ID:
             return [
+                # Production models
                 (Provider.Groq.Production.GPT_OSS_20B, "openai/gpt-oss-20b (default)"),
                 (Provider.Groq.Production.GPT_OSS_120B, "openai/gpt-oss-120b"),
                 (Provider.Groq.Production.LLAMA_3_3_70B, "llama-3.3-70b-versatile"),
                 (Provider.Groq.Production.LLAMA_3_1_8B, "llama-3.1-8b-instant"),
+                # Preview models
                 (
                     Provider.Groq.Preview.LLAMA_4_MAVERICK_17B,
                     "llama-4-maverick-17b (preview)",
@@ -517,6 +519,7 @@ def run_playground(agent_path: str, menu: bool = False, arena: bool = False) -> 
             provider=ProviderId(selected_provider),
             model=ModelId(selected_model),
             enable_todo=base_config.enable_todo,
+            guardrails=base_config.guardrails,
         )
 
     # Create agent from config
@@ -578,6 +581,7 @@ def _run_arena_mode(
             provider=ProviderId(provider_id),
             model=ModelId(model_id),
             enable_todo=base_config.enable_todo,
+            guardrails=base_config.guardrails,
         )
         try:
             agent = Agent(config=config)
@@ -648,15 +652,12 @@ async def _chat_loop(
         if not user_input.strip():
             continue
 
-        # Add user message to session
-        session.add_user_message(user_input)
-
         # Start timing
         start_time = time.perf_counter()
 
         # Show thinking indicator
         with console.status(f"[dim]{PlaygroundUI.THINKING}[/dim]"):
-            # Build message history for agent
+            # Build message history for agent (add current input)
             messages = [
                 Message(
                     role=Role.USER if m.role == Role.USER else Role.ASSISTANT,
@@ -664,6 +665,7 @@ async def _chat_loop(
                 )
                 for m in session.get_messages()
             ]
+            messages.append(Message(role=Role.USER, content=user_input))
 
             # Get response
             try:
@@ -674,6 +676,58 @@ async def _chat_loop(
 
         # Calculate elapsed time
         elapsed_time = time.perf_counter() - start_time
+
+        # Display guardrail blocked if applicable
+        if response.blocked and response.guardrail_result:
+            gr_result = response.guardrail_result
+            blocked_text = Text()
+
+            # Determine message based on where blocked
+            if gr_result.blocked_at == "input":
+                blocked_text.append(
+                    PlaygroundUI.GUARDRAIL_INPUT_BLOCKED, style="bold red"
+                )
+            else:
+                blocked_text.append(
+                    PlaygroundUI.GUARDRAIL_OUTPUT_BLOCKED, style="bold red"
+                )
+
+            # Add categories if present
+            if gr_result.flagged_categories:
+                blocked_text.append("\n")
+                blocked_text.append(
+                    PlaygroundUI.GUARDRAIL_CATEGORIES.format(
+                        categories=", ".join(gr_result.flagged_categories)
+                    ),
+                    style="yellow",
+                )
+
+            # Add rationale if present
+            if gr_result.policy_rationale:
+                blocked_text.append("\n")
+                blocked_text.append(
+                    PlaygroundUI.GUARDRAIL_RATIONALE.format(
+                        rationale=gr_result.policy_rationale
+                    ),
+                    style="dim",
+                )
+
+            console.print(
+                Panel(
+                    blocked_text,
+                    title=PlaygroundUI.GUARDRAIL_BLOCKED_LABEL,
+                    border_style="red",
+                )
+            )
+            console.print(_format_elapsed_time(elapsed_time), style="dim")
+            console.print()
+
+            # Store blocked message separately (not in LLM history)
+            session.add_blocked_message(user_input, gr_result)
+            continue
+
+        # Add user message to session (only if not blocked)
+        session.add_user_message(user_input)
 
         # Display tool calls if any
         for i, tool_call in enumerate(response.tool_calls_made):
@@ -746,7 +800,7 @@ def _handle_exit(console: Console, session: Session) -> None:
     """Handle exit: prompt to save session with arrow menu."""
     console.print()
 
-    if not session.messages:
+    if not session.messages and not session.blocked_messages:
         console.print(f"[dim]{PlaygroundUI.GOODBYE}[/dim]")
         return
 
