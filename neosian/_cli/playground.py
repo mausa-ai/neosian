@@ -5,6 +5,7 @@ Provides a Rich-based chat interface for testing agent definitions.
 
 import asyncio
 import importlib.resources
+import os
 import time
 from pathlib import Path
 
@@ -15,12 +16,28 @@ from rich.prompt import Prompt
 from rich.text import Text
 from simple_term_menu import TerminalMenu  # type: ignore[import-untyped]
 
+from neosian._cli.config import get_api_key
 from neosian._cli.loader import load_agent_config
 from neosian._cli.session import Session
 from neosian._foundation.agent.base import Agent
 from neosian._foundation.llm.base import Message, Role
-from neosian._foundation.shared.constants import Assets, PlaygroundUI
-from neosian._foundation.shared.types import ModelId
+from neosian._foundation.shared.constants import Assets, Config, PlaygroundUI
+from neosian._foundation.shared.types import ModelId, ProviderId
+
+
+def _load_credentials_from_config() -> None:
+    """Load API keys from config file into environment if not already set."""
+    # Groq
+    if not os.environ.get("GROQ_API_KEY"):
+        groq_key = get_api_key(Config.GROQ_API_KEY)
+        if groq_key:
+            os.environ["GROQ_API_KEY"] = groq_key
+
+    # OpenAI
+    if not os.environ.get("OPENAI_API_KEY"):
+        openai_key = get_api_key(Config.OPENAI_API_KEY)
+        if openai_key:
+            os.environ["OPENAI_API_KEY"] = openai_key
 
 
 def _load_header() -> str:
@@ -56,14 +73,99 @@ def _load_header() -> str:
         return ""
 
 
-def run_playground(agent_path: str, model: str | None = None) -> None:
+def _get_models_for_provider(provider_id: str) -> list[tuple[str, str]]:
+    """Get available models for a provider.
+
+    Returns:
+        List of (model_id, display_name) tuples.
+    """
+    from neosian._foundation.shared.constants import Provider
+
+    match provider_id:
+        case Provider.Groq.ID:
+            return [
+                (Provider.Groq.Production.GPT_OSS_20B, "openai/gpt-oss-20b (default)"),
+                (Provider.Groq.Production.GPT_OSS_120B, "openai/gpt-oss-120b"),
+                (Provider.Groq.Production.LLAMA_3_3_70B, "llama-3.3-70b-versatile"),
+                (Provider.Groq.Production.LLAMA_3_1_8B, "llama-3.1-8b-instant"),
+                (
+                    Provider.Groq.Preview.LLAMA_4_MAVERICK_17B,
+                    "llama-4-maverick-17b (preview)",
+                ),
+                (
+                    Provider.Groq.Preview.LLAMA_4_SCOUT_17B,
+                    "llama-4-scout-17b (preview)",
+                ),
+                (Provider.Groq.Preview.QWEN3_32B, "qwen3-32b (preview)"),
+                (Provider.Groq.Preview.KIMI_K2, "kimi-k2 (preview)"),
+            ]
+        case Provider.OpenAI.ID:
+            return [
+                (Provider.OpenAI.Models.GPT_5_NANO, "gpt-5-nano (default, fastest)"),
+                (Provider.OpenAI.Models.GPT_5_MINI, "gpt-5-mini (balanced)"),
+                (Provider.OpenAI.Models.GPT_5_1, "gpt-5.1 (best for coding)"),
+                (Provider.OpenAI.Models.GPT_5_PRO, "gpt-5-pro (most precise)"),
+            ]
+        case _:
+            return []
+
+
+def _select_provider_and_model(console: Console) -> tuple[str, str] | None:
+    """Show interactive menu to select provider and model.
+
+    Returns:
+        Tuple of (provider_id, model_id) or None if cancelled.
+    """
+    from neosian._foundation.shared.constants import Provider
+
+    # Provider selection
+    providers = [
+        (Provider.Groq.ID, "Groq (fastest inference)"),
+        (Provider.OpenAI.ID, "OpenAI"),
+    ]
+
+    console.print("\n[bold]Select Provider:[/bold]")
+    provider_menu = TerminalMenu(
+        [p[1] for p in providers],
+        cursor_index=0,
+    )
+    provider_choice = provider_menu.show()
+
+    if provider_choice is None:
+        return None
+
+    selected_provider = providers[provider_choice][0]
+
+    # Model selection based on provider
+    models = _get_models_for_provider(selected_provider)
+    if not models:
+        return None
+
+    console.print(f"\n[bold]Select Model ({selected_provider}):[/bold]")
+    model_menu = TerminalMenu(
+        [m[1] for m in models],
+        cursor_index=0,
+    )
+    model_choice = model_menu.show()
+
+    if model_choice is None:
+        return None
+
+    selected_model = models[model_choice][0]
+    return (selected_provider, selected_model)
+
+
+def run_playground(agent_path: str, menu: bool = False) -> None:
     """Run the playground with the given agent file.
 
     Args:
         agent_path: Path to the agent Python file.
-        model: Optional model override.
+        menu: Show interactive menu to select provider and model.
     """
     console = Console()
+
+    # Load credentials from config file if not in environment
+    _load_credentials_from_config()
 
     # Load agent configuration
     try:
@@ -72,16 +174,22 @@ def run_playground(agent_path: str, model: str | None = None) -> None:
         console.print(f"[red]Error: {e}[/red]")
         raise SystemExit(1) from e
 
-    # CLI model override takes precedence
-    if model:
-        # Create a new config with the overridden model
+    # Interactive menu override
+    if menu:
+        selection = _select_provider_and_model(console)
+        if selection is None:
+            console.print("[dim]Cancelled.[/dim]")
+            return
+
+        selected_provider, selected_model = selection
+
         from neosian._foundation.shared.types import AgentConfig
 
         config = AgentConfig(
             system_prompt=config.system_prompt,
             tools=config.tools,
-            provider=config.provider,
-            model=ModelId(model),
+            provider=ProviderId(selected_provider),
+            model=ModelId(selected_model),
             enable_todo=config.enable_todo,
         )
 
@@ -104,7 +212,9 @@ def run_playground(agent_path: str, model: str | None = None) -> None:
 
     # Run chat loop
     try:
-        asyncio.run(_chat_loop(console, agent, session, display_provider, display_model))
+        asyncio.run(
+            _chat_loop(console, agent, session, display_provider, display_model)
+        )
     except KeyboardInterrupt:
         console.print()  # New line after ^C
 

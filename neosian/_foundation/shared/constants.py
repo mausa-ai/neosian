@@ -64,11 +64,37 @@ class Provider:
         ID: str = "groq"
         DEFAULT_MODEL: str = "openai/gpt-oss-20b"
 
+        class Production:
+            """Production-ready models."""
+
+            LLAMA_3_3_70B: str = "llama-3.3-70b-versatile"
+            LLAMA_3_1_8B: str = "llama-3.1-8b-instant"
+            GPT_OSS_120B: str = "openai/gpt-oss-120b"
+            GPT_OSS_20B: str = "openai/gpt-oss-20b"
+            LLAMA_GUARD_4_12B: str = "meta-llama/llama-guard-4-12b"
+
+        class Preview:
+            """Preview models (may change)."""
+
+            LLAMA_4_MAVERICK_17B: str = "meta-llama/llama-4-maverick-17b-128e-instruct"
+            LLAMA_4_SCOUT_17B: str = "meta-llama/llama-4-scout-17b-16e-instruct"
+            QWEN3_32B: str = "qwen/qwen3-32b"
+            KIMI_K2: str = "moonshotai/kimi-k2-instruct"
+            KIMI_K2_0905: str = "moonshotai/kimi-k2-instruct-0905"
+
     class OpenAI:
         """OpenAI provider constants."""
 
         ID: str = "openai"
         DEFAULT_MODEL: str = "gpt-5-nano-2025-08-07"
+
+        class Models:
+            """OpenAI models."""
+
+            GPT_5_1: str = "gpt-5.1-2025-11-13"  # Best for coding and agentic tasks
+            GPT_5_MINI: str = "gpt-5-mini-2025-08-07"  # Faster, cost-efficient
+            GPT_5_NANO: str = "gpt-5-nano-2025-08-07"  # Fastest, most cost-efficient
+            GPT_5_PRO: str = "gpt-5-pro-2025-10-06"  # Smarter and more precise
 
     class Anthropic:
         """Anthropic provider constants."""
@@ -131,3 +157,12 @@ class Assets:
     LOGO_FILE: str = "logo_ascii_small.txt"
     ASCII_FILE: str = "ascii.txt"
     HEADER_SPACING: str = "  "
+
+
+class Config:
+    """Configuration file constants."""
+
+    DIR_NAME: str = ".neosian"
+    FILE_NAME: str = "config.toml"
+    GROQ_API_KEY: str = "groq_api_key"
+    OPENAI_API_KEY: str = "openai_api_key"

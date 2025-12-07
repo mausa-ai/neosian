@@ -8,11 +8,19 @@ from typing import Annotated
 
 import typer
 from rich.console import Console
+from rich.prompt import Prompt
 from rich.table import Table
+from simple_term_menu import TerminalMenu  # type: ignore[import-untyped]
 
 from neosian import __version__
+from neosian._cli.config import (
+    delete_config,
+    get_all_credentials,
+    get_config_path,
+    set_api_key,
+)
 from neosian._cli.playground import run_playground
-from neosian._foundation.shared.constants import App, Assets
+from neosian._foundation.shared.constants import App, Assets, Config
 
 app = typer.Typer(
     name="neosian",
@@ -38,12 +46,12 @@ def playground(
         str,
         typer.Argument(help="Path to the agent Python file"),
     ],
-    model: Annotated[
-        str | None,
+    menu: Annotated[
+        bool,
         typer.Option(
-            "--model", "-m", help="Model to use (default: openai/gpt-oss-20b)"
+            "--menu", help="Show interactive menu to select provider and model"
         ),
-    ] = None,
+    ] = False,
 ) -> None:
     """Start an interactive playground session with an agent.
 
@@ -53,9 +61,9 @@ def playground(
 
     Example:
         neosian playground my_agent.py
-        neosian playground my_agent.py --model llama-3.1-8b-instant
+        neosian playground my_agent.py --menu
     """
-    run_playground(agent_file, model)
+    run_playground(agent_file, menu=menu)
 
 
 @app.command()
@@ -87,6 +95,129 @@ def version() -> None:
 
     console.print()
     console.print(table)
+
+
+def _mask_key(key: str) -> str:
+    """Mask an API key for display.
+
+    Shows first 4 and last 3 characters.
+
+    Args:
+        key: The API key to mask.
+
+    Returns:
+        Masked key like "gsk_****...****xyz".
+    """
+    if len(key) <= 7:
+        return "****"
+    return f"{key[:4]}****...****{key[-3:]}"
+
+
+def _show_credentials_table(console: Console) -> None:
+    """Display credentials status table."""
+    credentials = get_all_credentials()
+
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("Provider")
+    table.add_column("Status")
+    table.add_column("Key")
+
+    # Groq
+    groq_key = credentials.get(Config.GROQ_API_KEY)
+    if groq_key:
+        table.add_row("Groq", "[green]●[/green]", _mask_key(groq_key))
+    else:
+        table.add_row("Groq", "[red]●[/red]", "[dim]Not configured[/dim]")
+
+    # OpenAI
+    openai_key = credentials.get(Config.OPENAI_API_KEY)
+    if openai_key:
+        table.add_row("OpenAI", "[green]●[/green]", _mask_key(openai_key))
+    else:
+        table.add_row("OpenAI", "[red]●[/red]", "[dim]Not configured[/dim]")
+
+    console.print()
+    console.print(table)
+    console.print(f"\n[dim]Config file: {get_config_path()}[/dim]")
+
+
+def _configure_credentials(console: Console) -> None:
+    """Prompt for and save credentials."""
+    credentials = get_all_credentials()
+
+    console.print("\n[dim]Press Enter to keep existing values.[/dim]\n")
+
+    # Groq
+    existing_groq = credentials.get(Config.GROQ_API_KEY, "")
+    groq_prompt = "Groq API key"
+    if existing_groq:
+        groq_prompt += f" [dim]({_mask_key(existing_groq)})[/dim]"
+
+    groq_key = Prompt.ask(groq_prompt, password=True, default="")
+    if groq_key:
+        set_api_key(Config.GROQ_API_KEY, groq_key)
+        console.print("[green]Groq API key saved.[/green]")
+    elif existing_groq:
+        console.print("[dim]Groq API key unchanged.[/dim]")
+
+    # OpenAI
+    existing_openai = credentials.get(Config.OPENAI_API_KEY, "")
+    openai_prompt = "OpenAI API key"
+    if existing_openai:
+        openai_prompt += f" [dim]({_mask_key(existing_openai)})[/dim]"
+
+    openai_key = Prompt.ask(openai_prompt, password=True, default="")
+    if openai_key:
+        set_api_key(Config.OPENAI_API_KEY, openai_key)
+        console.print("[green]OpenAI API key saved.[/green]")
+    elif existing_openai:
+        console.print("[dim]OpenAI API key unchanged.[/dim]")
+
+
+def _delete_configuration(console: Console) -> None:
+    """Delete configuration with confirmation."""
+    confirm = Prompt.ask(
+        "\n[yellow]Delete all stored credentials?[/yellow] [dim](y/n)[/dim]",
+        default="n",
+    )
+    if confirm.lower() == "y":
+        if delete_config():
+            console.print("[green]Configuration deleted.[/green]")
+        else:
+            console.print("[dim]No configuration to delete.[/dim]")
+    else:
+        console.print("[dim]Cancelled.[/dim]")
+
+
+@app.command()
+def configure() -> None:
+    """Configure API credentials for LLM providers.
+
+    Shows current configuration status and provides options to
+    configure or delete stored credentials.
+
+    Credentials are stored in ~/.neosian/config.toml.
+    Environment variables take precedence over stored credentials.
+
+    Example:
+        neosian configure
+    """
+    console = Console()
+
+    # Show current status
+    _show_credentials_table(console)
+
+    # Show menu
+    console.print()
+    options = ["Configure credentials", "Delete configuration", "Exit"]
+    menu = TerminalMenu(options, cursor_index=0)
+    choice = menu.show()
+
+    if choice == 0:
+        _configure_credentials(console)
+    elif choice == 1:
+        _delete_configuration(console)
+    # choice == 2 or None (cancelled) -> just exit
 
 
 def main() -> None:
