@@ -41,6 +41,11 @@ class ErrorMessages:
     GROQ_API_KEY_MISSING: str = "GROQ_API_KEY environment variable not set"
     OPENAI_API_KEY_MISSING: str = "OPENAI_API_KEY environment variable not set"
 
+    # OpenAI specific errors
+    OPENAI_TEMPERATURE_NOT_SUPPORTED: str = (
+        "Temperature parameter is not supported for OpenAI GPT-5 models"
+    )
+
 
 class LLMDefaults:
     """Default values for LLM configuration."""

@@ -20,8 +20,11 @@ from neosian._foundation.llm.base import (
     ToolDefinition,
     Usage,
 )
-from neosian._foundation.shared.constants import LLMDefaults
-from neosian._foundation.shared.exceptions import ToolCallGenerationError
+from neosian._foundation.shared.constants import ErrorMessages, LLMDefaults
+from neosian._foundation.shared.exceptions import (
+    ToolCallGenerationError,
+    UnsupportedParameterError,
+)
 from neosian._foundation.shared.types import ModelId, ToolCallId, ToolName
 
 
@@ -45,7 +48,7 @@ class OpenAIClient(BaseLLMClient):
         messages: list[Message],
         model: ModelId,
         tools: list[ToolDefinition] | None = None,
-        temperature: float | None = None,  # noqa: ARG002 - kept for interface compatibility
+        temperature: float | None = None,
     ) -> CompletionResponse:
         """Send a completion request to OpenAI.
 
@@ -56,14 +59,20 @@ class OpenAIClient(BaseLLMClient):
             messages: Conversation history.
             model: Model identifier.
             tools: Optional list of tools the model can call.
-            temperature: Sampling temperature (0.0-2.0). None uses default.
+            temperature: Not supported for GPT-5 models. Raises error if provided.
 
         Returns:
             CompletionResponse with the model's response.
 
         Raises:
+            UnsupportedParameterError: If temperature is provided.
             ToolCallGenerationError: If tool call generation fails after retries.
         """
+        if temperature is not None:
+            raise UnsupportedParameterError(
+                ErrorMessages.OPENAI_TEMPERATURE_NOT_SUPPORTED
+            )
+
         openai_messages = self._convert_messages(messages)
         openai_tools = self._convert_tools(tools) if tools else None
 
@@ -158,7 +167,7 @@ class OpenAIClient(BaseLLMClient):
         messages: list[Message],
         model: ModelId,
         tools: list[ToolDefinition] | None = None,
-        temperature: float | None = None,  # noqa: ARG002 - kept for interface compatibility
+        temperature: float | None = None,
     ) -> AsyncIterator[StreamChunk]:
         """Stream a completion request from OpenAI.
 
@@ -166,11 +175,19 @@ class OpenAIClient(BaseLLMClient):
             messages: Conversation history.
             model: Model identifier.
             tools: Optional list of tools the model can call.
-            temperature: Sampling temperature (0.0-2.0). None uses default.
+            temperature: Not supported for GPT-5 models. Raises error if provided.
 
         Yields:
             StreamChunk objects as they arrive.
+
+        Raises:
+            UnsupportedParameterError: If temperature is provided.
         """
+        if temperature is not None:
+            raise UnsupportedParameterError(
+                ErrorMessages.OPENAI_TEMPERATURE_NOT_SUPPORTED
+            )
+
         openai_messages = self._convert_messages(messages)
         openai_tools = self._convert_tools(tools) if tools else None
 

@@ -8,7 +8,10 @@ from openai import BadRequestError
 from neosian._foundation.llm.base import Message, Role, ToolDefinition
 from neosian._foundation.llm.openai import OpenAIClient
 from neosian._foundation.shared.constants import LLMDefaults
-from neosian._foundation.shared.exceptions import ToolCallGenerationError
+from neosian._foundation.shared.exceptions import (
+    ToolCallGenerationError,
+    UnsupportedParameterError,
+)
 from neosian._foundation.shared.types import ModelId, ToolName
 
 
@@ -329,3 +332,48 @@ class TestOpenAIClientRetry:
 
         # Only one attempt - no retries for non-tool errors
         assert mock_create.call_count == 1
+
+
+@pytest.mark.unit
+class TestOpenAIClientTemperature:
+    """Test temperature parameter handling."""
+
+    @pytest.mark.asyncio
+    async def test_temperature_raises_error(self) -> None:
+        """Should raise UnsupportedParameterError when temperature is provided."""
+        client = OpenAIClient(api_key="test-key")
+
+        with pytest.raises(UnsupportedParameterError) as exc_info:
+            await client.complete(
+                messages=[Message(role=Role.USER, content="Hi")],
+                model=ModelId("gpt-5-nano"),
+                temperature=0.5,
+            )
+
+        assert "temperature" in str(exc_info.value).lower()
+
+    @pytest.mark.asyncio
+    async def test_no_temperature_works(self) -> None:
+        """Should work when temperature is not provided."""
+        client = OpenAIClient(api_key="test-key")
+
+        mock_create = AsyncMock()
+        client._client.chat.completions.create = mock_create
+
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "Hello"
+        mock_response.choices[0].message.tool_calls = None
+        mock_response.usage.prompt_tokens = 10
+        mock_response.usage.completion_tokens = 5
+        mock_response.model = "gpt-5-nano"
+
+        mock_create.return_value = mock_response
+
+        result = await client.complete(
+            messages=[Message(role=Role.USER, content="Hi")],
+            model=ModelId("gpt-5-nano"),
+        )
+
+        assert result.message.content == "Hello"
+        mock_create.assert_called_once()

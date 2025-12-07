@@ -116,3 +116,11 @@ class MissingAPIKeyError(ConfigurationError):
     def __init__(self, message: str) -> None:
         super().__init__(message)
         self.message = message
+
+
+class UnsupportedParameterError(LLMError):
+    """Raised when an unsupported parameter is passed to an LLM client."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+        self.message = message
