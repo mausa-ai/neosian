@@ -191,37 +191,37 @@ class TestPolicyResult:
 class TestGuardrailResult:
     """Test GuardrailResult dataclass."""
 
-    def test_safe_result_no_blocking(self) -> None:
-        """Safe result should have blocked_at as None."""
-        result = GuardrailResult(safe=True, blocked_at=None)
+    def test_safe_result_no_flagging(self) -> None:
+        """Safe result should have flagged_at as None."""
+        result = GuardrailResult(safe=True, flagged_at=None)
         assert result.safe is True
-        assert result.blocked_at is None
+        assert result.flagged_at is None
 
-    def test_input_blocked(self) -> None:
-        """Input blocked should have blocked_at='input'."""
+    def test_input_flagged(self) -> None:
+        """Input flagged should have flagged_at='input'."""
         result = GuardrailResult(
             safe=False,
-            blocked_at="input",
+            flagged_at="input",
             input_classifier=ClassifierResult(safe=False, categories=["S2"]),
         )
         assert result.safe is False
-        assert result.blocked_at == "input"
+        assert result.flagged_at == "input"
 
-    def test_output_blocked(self) -> None:
-        """Output blocked should have blocked_at='output'."""
+    def test_output_flagged(self) -> None:
+        """Output flagged should have flagged_at='output'."""
         result = GuardrailResult(
             safe=False,
-            blocked_at="output",
+            flagged_at="output",
             output_policy=PolicyResult(safe=False, category="P3"),
         )
         assert result.safe is False
-        assert result.blocked_at == "output"
+        assert result.flagged_at == "output"
 
     def test_flagged_categories_input(self) -> None:
         """flagged_categories should return input classifier categories."""
         result = GuardrailResult(
             safe=False,
-            blocked_at="input",
+            flagged_at="input",
             input_classifier=ClassifierResult(safe=False, categories=["S1", "S3"]),
         )
         assert result.flagged_categories == ["S1", "S3"]
@@ -230,7 +230,7 @@ class TestGuardrailResult:
         """flagged_categories should return output classifier categories."""
         result = GuardrailResult(
             safe=False,
-            blocked_at="output",
+            flagged_at="output",
             output_classifier=ClassifierResult(safe=False, categories=["S5"]),
         )
         assert result.flagged_categories == ["S5"]
@@ -239,7 +239,7 @@ class TestGuardrailResult:
         """flagged_categories should combine input and output categories."""
         result = GuardrailResult(
             safe=False,
-            blocked_at="input",
+            flagged_at="input",
             input_classifier=ClassifierResult(safe=False, categories=["S1"]),
             output_classifier=ClassifierResult(safe=False, categories=["S2"]),
         )
@@ -254,7 +254,7 @@ class TestGuardrailResult:
         """policy_rationale should return input policy rationale first."""
         result = GuardrailResult(
             safe=False,
-            blocked_at="input",
+            flagged_at="input",
             input_policy=PolicyResult(
                 safe=False, category="P1", rationale="Input rationale"
             ),
@@ -268,7 +268,7 @@ class TestGuardrailResult:
         """policy_rationale should fallback to output when no input."""
         result = GuardrailResult(
             safe=False,
-            blocked_at="output",
+            flagged_at="output",
             output_policy=PolicyResult(
                 safe=False, category="P2", rationale="Output rationale"
             ),

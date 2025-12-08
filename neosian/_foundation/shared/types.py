@@ -235,7 +235,7 @@ class GuardrailResult:
 
     Attributes:
         safe: Overall safety status.
-        blocked_at: Where the content was blocked ("input" or "output").
+        flagged_at: Where content was flagged ("input" or "output"), if any.
         input_classifier: Llama Guard result for input.
         input_policy: Policy result for input.
         output_classifier: Llama Guard result for output.
@@ -243,7 +243,7 @@ class GuardrailResult:
     """
 
     safe: bool
-    blocked_at: Literal["input", "output"] | None = None
+    flagged_at: Literal["input", "output"] | None = None
     input_classifier: ClassifierResult | None = None
     input_policy: PolicyResult | None = None
     output_classifier: ClassifierResult | None = None

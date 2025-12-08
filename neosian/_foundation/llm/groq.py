@@ -131,11 +131,13 @@ class GroqClient(BaseLLMClient):
         tool_calls: list[ToolCall] = []
         if response_message.tool_calls:
             for tc in response_message.tool_calls:
+                # Normalize empty/missing arguments to {}
+                args_str = tc.function.arguments or "{}"
                 tool_calls.append(
                     ToolCall(
                         id=ToolCallId(tc.id),
                         name=ToolName(tc.function.name),
-                        arguments=json.loads(tc.function.arguments),
+                        arguments=json.loads(args_str),
                     )
                 )
 
@@ -221,11 +223,13 @@ class GroqClient(BaseLLMClient):
             finish_reason = choice.finish_reason
             if finish_reason == "tool_calls" and tool_call_builders:
                 for builder in tool_call_builders.values():
+                    # Normalize empty arguments to {}
+                    args_str = builder["arguments"] or "{}"
                     tool_calls.append(
                         ToolCall(
                             id=ToolCallId(builder["id"]),
                             name=ToolName(builder["name"]),
-                            arguments=json.loads(builder["arguments"]),
+                            arguments=json.loads(args_str),
                         )
                     )
 

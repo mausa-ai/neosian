@@ -242,7 +242,7 @@ class TestAgentInputGuardrails:
             # Response should be blocked with guardrail info
             assert response.blocked is True
             assert response.guardrail_result is not None
-            assert response.guardrail_result.blocked_at == "input"
+            assert response.guardrail_result.flagged_at == "input"
             assert response.guardrail_result.safe is False
             assert response.message.content == ""
 
@@ -389,7 +389,7 @@ class TestAgentOutputGuardrails:
             assert response.blocked is True
             assert response.message.content == "Bad output"  # Preserved for logging
             assert response.guardrail_result is not None
-            assert response.guardrail_result.blocked_at == "output"
+            assert response.guardrail_result.flagged_at == "output"
             assert response.guardrail_result.output_classifier is not None
             assert response.guardrail_result.output_classifier.categories == ["S2"]
 

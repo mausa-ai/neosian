@@ -285,20 +285,18 @@ class Agent:
             self._guardrails is None
             or self._guardrails.input_mode == GuardrailMode.NONE
         ):
-            return await self._execute_agent_core(messages, None, None)
+            return await self._execute_agent_core(messages)
 
         # Extract user content for guardrail check
         user_content = self._extract_user_content(messages)
         if not user_content:
-            return await self._execute_agent_core(messages, None, None)
+            return await self._execute_agent_core(messages)
 
         # Run guard and agent in parallel
         guard_task = asyncio.create_task(
             self._check_guardrails(user_content, "input")
         )
-        agent_task = asyncio.create_task(
-            self._execute_agent_core(messages, None, None)
-        )
+        agent_task = asyncio.create_task(self._execute_agent_core(messages))
 
         # Wait for first to complete
         done, pending = await asyncio.wait(
@@ -322,7 +320,7 @@ class Agent:
                     blocked=True,
                     guardrail_result=GuardrailResult(
                         safe=False,
-                        blocked_at="input",
+                        flagged_at="input",
                         input_classifier=input_classifier,
                         input_policy=input_policy,
                     ),
@@ -349,7 +347,7 @@ class Agent:
                 blocked=True,
                 guardrail_result=GuardrailResult(
                     safe=False,
-                    blocked_at="input",
+                    flagged_at="input",
                     input_classifier=input_classifier,
                     input_policy=input_policy,
                 ),
@@ -363,18 +361,15 @@ class Agent:
     async def _execute_agent_core(
         self,
         messages: list[Message],
-        input_classifier: ClassifierResult | None,
-        input_policy: PolicyResult | None,
     ) -> AgentResponse:
         """Execute the agent LLM and tool loop.
 
         This is the core agent execution without input guardrail checks.
-        Used by both blocking and streaming modes.
+        Used by both blocking and streaming modes. Input guard results
+        are attached separately via _attach_input_guard_results.
 
         Args:
             messages: Conversation history (without system message).
-            input_classifier: Pre-computed input classifier result (or None).
-            input_policy: Pre-computed input policy result (or None).
 
         Returns:
             AgentResponse with the final message and execution details.
@@ -410,8 +405,6 @@ class Agent:
                     tool_calls_made=all_tool_calls,
                     tool_results=all_tool_results,
                     usage=total_usage,
-                    input_classifier=input_classifier,
-                    input_policy=input_policy,
                 )
 
             # Add assistant message with tool calls to history
@@ -452,8 +445,6 @@ class Agent:
             tool_calls_made=all_tool_calls,
             tool_results=all_tool_results,
             usage=total_usage,
-            input_classifier=input_classifier,
-            input_policy=input_policy,
         )
 
     def _attach_input_guard_results(
@@ -488,10 +479,10 @@ class Agent:
         existing = response.guardrail_result
         if existing is not None:
             overall_safe = is_input_safe and existing.safe
-            blocked_at = "input" if not is_input_safe else existing.blocked_at
+            flagged_at = "input" if not is_input_safe else existing.flagged_at
             guardrail_result = GuardrailResult(
                 safe=overall_safe,
-                blocked_at=blocked_at,
+                flagged_at=flagged_at,
                 input_classifier=input_classifier,
                 input_policy=input_policy,
                 output_classifier=existing.output_classifier,
@@ -500,7 +491,7 @@ class Agent:
         else:
             guardrail_result = GuardrailResult(
                 safe=is_input_safe,
-                blocked_at="input" if not is_input_safe else None,
+                flagged_at="input" if not is_input_safe else None,
                 input_classifier=input_classifier,
                 input_policy=input_policy,
             )
@@ -935,24 +926,20 @@ class Agent:
         tool_calls_made: list[ToolCall],
         tool_results: list[ToolResult[Any]],
         usage: Usage,
-        input_classifier: ClassifierResult | None,
-        input_policy: PolicyResult | None,
     ) -> AgentResponse:
         """Finalize response with output guardrails check.
 
-        Checks output guardrails if configured, builds the GuardrailResult,
-        and returns the final AgentResponse.
+        Checks output guardrails if configured and returns the final AgentResponse.
+        Input guardrail results are attached separately via _attach_input_guard_results.
 
         Args:
             message: The assistant's response message.
             tool_calls_made: List of tool calls made during execution.
             tool_results: Results from tool executions.
             usage: Token usage statistics.
-            input_classifier: Input classifier result (if run).
-            input_policy: Input policy result (if run).
 
         Returns:
-            AgentResponse with guardrail results populated.
+            AgentResponse with output guardrail results populated (if any).
         """
         output_classifier: ClassifierResult | None = None
         output_policy: PolicyResult | None = None
@@ -968,37 +955,12 @@ class Agent:
                 await self._check_guardrails(message.content, "output")
             )
 
-        # Build guardrail result if any guardrails were run
+        # Build guardrail result if output guardrails were run
         guardrail_result: GuardrailResult | None = None
-        has_any_result = (
-            input_classifier is not None
-            or input_policy is not None
-            or output_classifier is not None
-            or output_policy is not None
-        )
-
-        if has_any_result:
-            # Determine input safety (for metadata, not blocking - that's handled earlier)
-            is_input_safe = True
-            if input_classifier is not None and not input_classifier.safe:
-                is_input_safe = False
-            if input_policy is not None and not input_policy.safe:
-                is_input_safe = False
-
-            overall_safe = is_input_safe and is_output_safe
-
-            # Determine where flagged (if any)
-            blocked_at: Literal["input", "output"] | None = None
-            if not is_input_safe:
-                blocked_at = "input"
-            elif not is_output_safe:
-                blocked_at = "output"
-
+        if output_classifier is not None or output_policy is not None:
             guardrail_result = GuardrailResult(
-                safe=overall_safe,
-                blocked_at=blocked_at,
-                input_classifier=input_classifier,
-                input_policy=input_policy,
+                safe=is_output_safe,
+                flagged_at="output" if not is_output_safe else None,
                 output_classifier=output_classifier,
                 output_policy=output_policy,
             )

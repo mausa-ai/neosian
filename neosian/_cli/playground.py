@@ -744,7 +744,7 @@ async def _chat_loop(
             blocked_text = Text()
 
             # Determine message based on where blocked
-            if gr_result.blocked_at == "input":
+            if gr_result.flagged_at == "input":
                 blocked_text.append(
                     PlaygroundUI.GUARDRAIL_INPUT_BLOCKED, style="bold red"
                 )
