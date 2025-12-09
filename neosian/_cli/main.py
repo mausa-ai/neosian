@@ -143,6 +143,13 @@ def _show_credentials_table(console: Console) -> None:
     else:
         table.add_row("OpenAI", "[red]●[/red]", "[dim]Not configured[/dim]")
 
+    # Anthropic
+    anthropic_key = credentials.get(Config.ANTHROPIC_API_KEY)
+    if anthropic_key:
+        table.add_row("Anthropic", "[green]●[/green]", _mask_key(anthropic_key))
+    else:
+        table.add_row("Anthropic", "[red]●[/red]", "[dim]Not configured[/dim]")
+
     console.print()
     console.print(table)
     console.print(f"\n[dim]Config file: {get_config_path()}[/dim]")
@@ -179,6 +186,19 @@ def _configure_credentials(console: Console) -> None:
         console.print("[green]OpenAI API key saved.[/green]")
     elif existing_openai:
         console.print("[dim]OpenAI API key unchanged.[/dim]")
+
+    # Anthropic
+    existing_anthropic = credentials.get(Config.ANTHROPIC_API_KEY, "")
+    anthropic_prompt = "Anthropic API key"
+    if existing_anthropic:
+        anthropic_prompt += f" [dim]({_mask_key(existing_anthropic)})[/dim]"
+
+    anthropic_key = Prompt.ask(anthropic_prompt, password=True, default="")
+    if anthropic_key:
+        set_api_key(Config.ANTHROPIC_API_KEY, anthropic_key)
+        console.print("[green]Anthropic API key saved.[/green]")
+    elif existing_anthropic:
+        console.print("[dim]Anthropic API key unchanged.[/dim]")
 
 
 def _delete_configuration(console: Console) -> None:

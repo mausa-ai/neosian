@@ -141,27 +141,34 @@ neosian/
 │   │   ├── base.py            # BaseLLMClient protocol
 │   │   ├── groq.py            # Groq (primary)
 │   │   ├── openai.py          # OpenAI (fallback)
-│   │   ├── anthropic.py       # Claude
-│   │   └── router.py          # Provider routing & fallback
+│   │   └── anthropic.py       # Anthropic (Claude)
 │   │
 │   ├── agent/                  # Agent Core
-│   │   ├── base.py            # Agent class
-│   │   ├── executor.py        # Tool execution loop
+│   │   ├── base.py            # Agent class + AgentResponse
 │   │   └── streaming.py       # SSE chunk generation
 │   │
 │   ├── tools/                  # Tool System
 │   │   ├── base.py            # @Tool decorator, ToolResult
-│   │   ├── registry.py        # Tool registry
-│   │   └── searcher.py        # Registry search sub-agent
+│   │   └── builtin/
+│   │       └── todo.py        # Global todo list tool
 │   │
-│   ├── guardrails/            # Safety
-│   │   ├── input.py           # Input validation
-│   │   └── output.py          # Output sanitization
+│   ├── guardrails/            # Safety (Implemented ✓)
+│   │   ├── classifier.py      # Llama Guard 4 integration
+│   │   ├── policy.py          # PolicyBuilder + CommonPolicies
+│   │   └── checker.py         # GPT-OSS-Safeguard policy checker
 │   │
 │   └── shared/
 │       ├── types.py           # Type definitions
 │       ├── constants.py       # Model configs, limits
-│       └── exceptions.py      # Error hierarchy
+│       ├── exceptions.py      # Error hierarchy
+│       └── prompt.py          # YAML prompt loader
+│
+├── _cli/                       # CLI Interface
+│   ├── main.py                # Typer entry point
+│   ├── playground.py          # Interactive session + Arena mode
+│   ├── config.py              # Credential management
+│   ├── loader.py              # Agent file loader
+│   └── session.py             # Session saving
 │
 └── py.typed
 ```
@@ -277,11 +284,19 @@ ANTHROPIC_API_KEY=sk-ant-...
 - [x] CLI playground for testing
 - [x] Comprehensive unit & integration tests
 
+### Phase 1.5: Safety ✓
+- [x] Guardrails system (input/output validation)
+  - [x] Classifier (Llama Guard 4)
+  - [x] Policy checker (GPT-OSS-Safeguard)
+  - [x] PolicyBuilder with 6 common policies
+  - [x] 5 configurable modes
+  - [x] Error policies (FAIL_OPEN/FAIL_CLOSED)
+
+### Phase 1.8: Providers ✓
+- [x] Anthropic client (Claude Sonnet/Haiku/Opus 4.5)
+
 ### Phase 2: Completion
-- [ ] Anthropic client
 - [ ] Provider router with fallback
-- [ ] Guardrails (input/output validation)
-- [ ] Agent-level streaming integration
 - [ ] Tool registry with semantic search
 - [ ] Search sub-agent
 - [ ] Runtime tool registration

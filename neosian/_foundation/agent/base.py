@@ -23,6 +23,7 @@ from neosian._foundation.agent.streaming import (
 )
 from neosian._foundation.guardrails.checker import check_with_policy
 from neosian._foundation.guardrails.classifier import check_with_classifier
+from neosian._foundation.llm.anthropic import AnthropicClient
 from neosian._foundation.llm.base import (
     BaseLLMClient,
     Message,
@@ -63,7 +64,7 @@ def _get_api_key(env_var: str) -> str:
     """Get API key from environment variable.
 
     Args:
-        env_var: Environment variable name (EnvVars.GROQ_API_KEY or EnvVars.OPENAI_API_KEY).
+        env_var: Environment variable name.
 
     Returns:
         API key value.
@@ -78,6 +79,8 @@ def _get_api_key(env_var: str) -> str:
                 raise MissingAPIKeyError(ErrorMessages.GROQ_API_KEY_MISSING)
             case EnvVars.OPENAI_API_KEY:
                 raise MissingAPIKeyError(ErrorMessages.OPENAI_API_KEY_MISSING)
+            case EnvVars.ANTHROPIC_API_KEY:
+                raise MissingAPIKeyError(ErrorMessages.ANTHROPIC_API_KEY_MISSING)
             case _:
                 raise MissingAPIKeyError(f"{env_var} environment variable not set")
     return api_key
@@ -87,7 +90,8 @@ def _create_client(provider_id: str | None) -> tuple[BaseLLMClient, ModelId]:
     """Create LLM client based on provider.
 
     Args:
-        provider_id: Provider identifier ("groq", "openai"). Defaults to "groq".
+        provider_id: Provider identifier ("groq", "openai", "anthropic").
+            Defaults to "groq".
 
     Returns:
         Tuple of (client, default_model_id).
@@ -105,6 +109,12 @@ def _create_client(provider_id: str | None) -> tuple[BaseLLMClient, ModelId]:
     if provider == Provider.Groq.ID:
         api_key = _get_api_key(EnvVars.GROQ_API_KEY)
         return GroqClient(api_key=api_key), ModelId(Provider.Groq.DEFAULT_MODEL)
+
+    if provider == Provider.Anthropic.ID:
+        api_key = _get_api_key(EnvVars.ANTHROPIC_API_KEY)
+        return AnthropicClient(api_key=api_key), ModelId(
+            Provider.Anthropic.DEFAULT_MODEL
+        )
 
     raise ValueError(f"Unsupported provider: {provider}")
 
@@ -293,9 +303,7 @@ class Agent:
             return await self._execute_agent_core(messages)
 
         # Run guard and agent in parallel
-        guard_task = asyncio.create_task(
-            self._check_guardrails(user_content, "input")
-        )
+        guard_task = asyncio.create_task(self._check_guardrails(user_content, "input"))
         agent_task = asyncio.create_task(self._execute_agent_core(messages))
 
         # Wait for first to complete
@@ -526,9 +534,10 @@ class Agent:
         user_content = self._extract_user_content(messages) if has_input_guard else ""
 
         # Start guard task in background if needed
-        guard_task: asyncio.Task[
-            tuple[bool, ClassifierResult | None, PolicyResult | None]
-        ] | None = None
+        guard_task: (
+            asyncio.Task[tuple[bool, ClassifierResult | None, PolicyResult | None]]
+            | None
+        ) = None
         if has_input_guard and user_content:
             guard_task = asyncio.create_task(
                 self._check_guardrails(user_content, "input")
@@ -541,10 +550,10 @@ class Agent:
     async def _stream_agent_with_guard(
         self,
         messages: list[Message],
-        guard_task: asyncio.Task[
-            tuple[bool, ClassifierResult | None, PolicyResult | None]
-        ]
-        | None,
+        guard_task: (
+            asyncio.Task[tuple[bool, ClassifierResult | None, PolicyResult | None]]
+            | None
+        ),
     ) -> AsyncIterator[str]:
         """Stream agent response while monitoring guard task.
 
@@ -723,10 +732,10 @@ class Agent:
     async def _stream_final_with_guard(
         self,
         full_messages: list[Message],
-        guard_task: asyncio.Task[
-            tuple[bool, ClassifierResult | None, PolicyResult | None]
-        ]
-        | None,
+        guard_task: (
+            asyncio.Task[tuple[bool, ClassifierResult | None, PolicyResult | None]]
+            | None
+        ),
     ) -> AsyncIterator[str]:
         """Stream final response while monitoring guard task.
 

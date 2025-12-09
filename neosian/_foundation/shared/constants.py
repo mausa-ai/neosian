@@ -40,6 +40,7 @@ class ErrorMessages:
     # Playground errors
     GROQ_API_KEY_MISSING: str = "GROQ_API_KEY environment variable not set"
     OPENAI_API_KEY_MISSING: str = "OPENAI_API_KEY environment variable not set"
+    ANTHROPIC_API_KEY_MISSING: str = "ANTHROPIC_API_KEY environment variable not set"
 
     # OpenAI specific errors
     OPENAI_TEMPERATURE_NOT_SUPPORTED: str = (
@@ -123,7 +124,14 @@ class Provider:
         """Anthropic provider constants."""
 
         ID: str = "anthropic"
-        DEFAULT_MODEL: str = "claude-3-haiku-20240307"
+        DEFAULT_MODEL: str = "claude-sonnet-4-5-20250929"
+
+        class Models:
+            """Anthropic Claude models."""
+
+            CLAUDE_SONNET_4_5: str = "claude-sonnet-4-5-20250929"
+            CLAUDE_HAIKU_4_5: str = "claude-haiku-4-5-20251001"
+            CLAUDE_OPUS_4_5: str = "claude-opus-4-5-20251101"
 
 
 class BuiltinTools:
@@ -180,7 +188,6 @@ class PlaygroundUI:
     GUARDRAIL_RATIONALE: str = "Reason: {rationale}"
 
 
-
 class Assets:
     """Asset file paths."""
 
@@ -197,6 +204,7 @@ class Config:
     FILE_NAME: str = "config.toml"
     GROQ_API_KEY: str = "groq_api_key"
     OPENAI_API_KEY: str = "openai_api_key"
+    ANTHROPIC_API_KEY: str = "anthropic_api_key"
 
 
 class EnvVars:
@@ -204,6 +212,7 @@ class EnvVars:
 
     GROQ_API_KEY: str = "GROQ_API_KEY"
     OPENAI_API_KEY: str = "OPENAI_API_KEY"
+    ANTHROPIC_API_KEY: str = "ANTHROPIC_API_KEY"
 
 
 class ArenaUI:

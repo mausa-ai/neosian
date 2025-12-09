@@ -41,6 +41,12 @@ def _load_credentials_from_config() -> None:
         if openai_key:
             os.environ["OPENAI_API_KEY"] = openai_key
 
+    # Anthropic
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        anthropic_key = get_api_key(Config.ANTHROPIC_API_KEY)
+        if anthropic_key:
+            os.environ["ANTHROPIC_API_KEY"] = anthropic_key
+
 
 def _load_header() -> str:
     """Construct the ASCII art header from logo and ascii files."""
@@ -110,6 +116,21 @@ def _get_models_for_provider(provider_id: str) -> list[tuple[str, str]]:
                 (Provider.OpenAI.Models.GPT_5_1, "gpt-5.1 (best for coding)"),
                 (Provider.OpenAI.Models.GPT_5_PRO, "gpt-5-pro (most precise)"),
             ]
+        case Provider.Anthropic.ID:
+            return [
+                (
+                    Provider.Anthropic.Models.CLAUDE_SONNET_4_5,
+                    "claude-sonnet-4-5 (default, balanced)",
+                ),
+                (
+                    Provider.Anthropic.Models.CLAUDE_HAIKU_4_5,
+                    "claude-haiku-4-5 (fastest)",
+                ),
+                (
+                    Provider.Anthropic.Models.CLAUDE_OPUS_4_5,
+                    "claude-opus-4-5 (most capable)",
+                ),
+            ]
         case _:
             return []
 
@@ -126,6 +147,7 @@ def _select_provider_and_model(console: Console) -> tuple[str, str] | None:
     providers = [
         (Provider.Groq.ID, "Groq (fastest inference)"),
         (Provider.OpenAI.ID, "OpenAI"),
+        (Provider.Anthropic.ID, "Anthropic (Claude)"),
     ]
 
     console.print("\n[bold]Select Provider:[/bold]")
@@ -176,6 +198,7 @@ def _select_provider_and_model_labeled(
     providers = [
         (Provider.Groq.ID, "Groq (fastest inference)"),
         (Provider.OpenAI.ID, "OpenAI"),
+        (Provider.Anthropic.ID, "Anthropic (Claude)"),
     ]
 
     console.print(f"\n[bold]{ArenaUI.SELECT_PROVIDER.format(label=label)}[/bold]")
@@ -732,11 +755,11 @@ async def _chat_loop(
             else:
                 guard_text.append("flagged", style="red")
                 if gr_result.flagged_categories:
-                    guard_text.append(f" ({', '.join(gr_result.flagged_categories)})", style="yellow")
+                    guard_text.append(
+                        f" ({', '.join(gr_result.flagged_categories)})", style="yellow"
+                    )
 
-            console.print(
-                Panel(guard_text, title="Guard", border_style="dim")
-            )
+            console.print(Panel(guard_text, title="Guard", border_style="dim"))
 
         # Display guardrail blocked if applicable
         if response.blocked and response.guardrail_result:
