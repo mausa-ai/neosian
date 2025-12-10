@@ -1,6 +1,6 @@
 """Tests for Agent guardrails integration."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -23,19 +23,28 @@ from neosian._foundation.shared.types import (
 )
 
 
-def _mock_create_client(
-    provider_id: str | None,  # noqa: ARG001
-) -> tuple[BaseLLMClient, ModelId]:
-    """Mock client factory that returns a mock client."""
-    client = AsyncMock(spec=BaseLLMClient)
-    return client, ModelId("test-model")
+def _create_mock_router(mock_client: BaseLLMClient | None = None) -> MagicMock:
+    """Create a mock ProviderRouter that returns the given client.
+
+    Args:
+        mock_client: The mock client to return. If None, creates a new AsyncMock.
+
+    Returns:
+        MagicMock configured as a ProviderRouter.
+    """
+    if mock_client is None:
+        mock_client = AsyncMock(spec=BaseLLMClient)
+
+    mock_router = MagicMock()
+    mock_router.get_fallback_chain.return_value = [("groq", "test-model")]
+    mock_router.create_client.return_value = mock_client
+    return mock_router
 
 
 @pytest.mark.unit
 class TestAgentGuardrailsInit:
     """Test Agent initialization with guardrails."""
 
-    @patch("neosian._foundation.agent.base._create_client", _mock_create_client)
     @patch("neosian._foundation.agent.base._create_guardrail_client")
     def test_agent_creates_guardrail_client_when_configured(
         self, mock_guardrail_client: AsyncMock
@@ -43,38 +52,44 @@ class TestAgentGuardrailsInit:
         """Agent should create guardrail client when guardrails configured."""
         mock_guardrail_client.return_value = AsyncMock()
 
-        config = AgentConfig(
-            system_prompt=SystemPrompt("You are helpful."),
-            tools=[],
-            enable_todo=False,
-            guardrails=GuardrailsConfig(
-                input_mode=GuardrailMode.CLASSIFIER_ONLY,
-            ),
-        )
-        agent = Agent(config=config)
+        with patch(
+            "neosian._foundation.agent.base.ProviderRouter",
+            return_value=_create_mock_router(),
+        ):
+            config = AgentConfig(
+                system_prompt=SystemPrompt("You are helpful."),
+                tools=[],
+                enable_todo=False,
+                guardrails=GuardrailsConfig(
+                    input_mode=GuardrailMode.CLASSIFIER_ONLY,
+                ),
+            )
+            agent = Agent(config=config)
 
-        mock_guardrail_client.assert_called_once()
-        assert agent._guardrail_client is not None
+            mock_guardrail_client.assert_called_once()
+            assert agent._guardrail_client is not None
 
-    @patch("neosian._foundation.agent.base._create_client", _mock_create_client)
     def test_agent_no_guardrail_client_when_not_configured(self) -> None:
         """Agent should not create guardrail client when no guardrails."""
-        config = AgentConfig(
-            system_prompt=SystemPrompt("You are helpful."),
-            tools=[],
-            enable_todo=False,
-        )
-        agent = Agent(config=config)
+        with patch(
+            "neosian._foundation.agent.base.ProviderRouter",
+            return_value=_create_mock_router(),
+        ):
+            config = AgentConfig(
+                system_prompt=SystemPrompt("You are helpful."),
+                tools=[],
+                enable_todo=False,
+            )
+            agent = Agent(config=config)
 
-        assert agent._guardrail_client is None
-        assert agent._guardrails is None
+            assert agent._guardrail_client is None
+            assert agent._guardrails is None
 
 
 @pytest.mark.unit
 class TestAgentStreamingWithOutputGuardrails:
     """Test streaming restriction with output guardrails."""
 
-    @patch("neosian._foundation.agent.base._create_client", _mock_create_client)
     @patch("neosian._foundation.agent.base._create_guardrail_client")
     def test_streaming_with_output_guardrails_raises_error(
         self, mock_guardrail_client: AsyncMock
@@ -82,25 +97,28 @@ class TestAgentStreamingWithOutputGuardrails:
         """stream=True with output guardrails should raise GuardrailStreamingError."""
         mock_guardrail_client.return_value = AsyncMock()
 
-        config = AgentConfig(
-            system_prompt=SystemPrompt("You are helpful."),
-            tools=[],
-            enable_todo=False,
-            guardrails=GuardrailsConfig(
-                output_mode=GuardrailMode.CLASSIFIER_ONLY,
-            ),
-        )
-        agent = Agent(config=config)
-
-        with pytest.raises(GuardrailStreamingError):
-            # Note: run() with stream=True is synchronous until iteration
-            import asyncio
-
-            asyncio.get_event_loop().run_until_complete(
-                agent.run([Message(role=Role.USER, content="Hi")], stream=True)
+        with patch(
+            "neosian._foundation.agent.base.ProviderRouter",
+            return_value=_create_mock_router(),
+        ):
+            config = AgentConfig(
+                system_prompt=SystemPrompt("You are helpful."),
+                tools=[],
+                enable_todo=False,
+                guardrails=GuardrailsConfig(
+                    output_mode=GuardrailMode.CLASSIFIER_ONLY,
+                ),
             )
+            agent = Agent(config=config)
 
-    @patch("neosian._foundation.agent.base._create_client", _mock_create_client)
+            with pytest.raises(GuardrailStreamingError):
+                # Note: run() with stream=True is synchronous until iteration
+                import asyncio
+
+                asyncio.get_event_loop().run_until_complete(
+                    agent.run([Message(role=Role.USER, content="Hi")], stream=True)
+                )
+
     @patch("neosian._foundation.agent.base._create_guardrail_client")
     def test_streaming_with_input_guardrails_allowed(
         self, mock_guardrail_client: AsyncMock
@@ -108,90 +126,106 @@ class TestAgentStreamingWithOutputGuardrails:
         """stream=True with only input guardrails should be allowed."""
         mock_guardrail_client.return_value = AsyncMock()
 
-        config = AgentConfig(
-            system_prompt=SystemPrompt("You are helpful."),
-            tools=[],
-            enable_todo=False,
-            guardrails=GuardrailsConfig(
-                input_mode=GuardrailMode.CLASSIFIER_ONLY,
-                output_mode=GuardrailMode.NONE,  # No output guardrails
-            ),
-        )
-        agent = Agent(config=config)
+        with patch(
+            "neosian._foundation.agent.base.ProviderRouter",
+            return_value=_create_mock_router(),
+        ):
+            config = AgentConfig(
+                system_prompt=SystemPrompt("You are helpful."),
+                tools=[],
+                enable_todo=False,
+                guardrails=GuardrailsConfig(
+                    input_mode=GuardrailMode.CLASSIFIER_ONLY,
+                    output_mode=GuardrailMode.NONE,  # No output guardrails
+                ),
+            )
+            agent = Agent(config=config)
 
-        # Should not raise - streaming is allowed with input-only guardrails
-        # We just verify no exception is raised synchronously
-        assert agent._guardrails is not None
-        assert not agent._guardrails.has_output_guardrails
+            # Should not raise - streaming is allowed with input-only guardrails
+            # We just verify no exception is raised synchronously
+            assert agent._guardrails is not None
+            assert not agent._guardrails.has_output_guardrails
 
 
 @pytest.mark.unit
 class TestExtractUserContent:
     """Test _extract_user_content method."""
 
-    @patch("neosian._foundation.agent.base._create_client", _mock_create_client)
     def test_extracts_last_user_message(self) -> None:
         """Should extract content from last user message."""
-        config = AgentConfig(
-            system_prompt=SystemPrompt("You are helpful."),
-            tools=[],
-            enable_todo=False,
-        )
-        agent = Agent(config=config)
+        with patch(
+            "neosian._foundation.agent.base.ProviderRouter",
+            return_value=_create_mock_router(),
+        ):
+            config = AgentConfig(
+                system_prompt=SystemPrompt("You are helpful."),
+                tools=[],
+                enable_todo=False,
+            )
+            agent = Agent(config=config)
 
-        messages = [
-            Message(role=Role.USER, content="First message"),
-            Message(role=Role.ASSISTANT, content="Response"),
-            Message(role=Role.USER, content="Second message"),
-        ]
-        content = agent._extract_user_content(messages)
-        assert content == "Second message"
+            messages = [
+                Message(role=Role.USER, content="First message"),
+                Message(role=Role.ASSISTANT, content="Response"),
+                Message(role=Role.USER, content="Second message"),
+            ]
+            content = agent._extract_user_content(messages)
+            assert content == "Second message"
 
-    @patch("neosian._foundation.agent.base._create_client", _mock_create_client)
     def test_returns_empty_when_no_user_messages(self) -> None:
         """Should return empty string when no user messages."""
-        config = AgentConfig(
-            system_prompt=SystemPrompt("You are helpful."),
-            tools=[],
-            enable_todo=False,
-        )
-        agent = Agent(config=config)
+        with patch(
+            "neosian._foundation.agent.base.ProviderRouter",
+            return_value=_create_mock_router(),
+        ):
+            config = AgentConfig(
+                system_prompt=SystemPrompt("You are helpful."),
+                tools=[],
+                enable_todo=False,
+            )
+            agent = Agent(config=config)
 
-        messages = [
-            Message(role=Role.ASSISTANT, content="Hello"),
-        ]
-        content = agent._extract_user_content(messages)
-        assert content == ""
+            messages = [
+                Message(role=Role.ASSISTANT, content="Hello"),
+            ]
+            content = agent._extract_user_content(messages)
+            assert content == ""
 
-    @patch("neosian._foundation.agent.base._create_client", _mock_create_client)
     def test_returns_empty_for_empty_messages(self) -> None:
         """Should return empty string for empty message list."""
-        config = AgentConfig(
-            system_prompt=SystemPrompt("You are helpful."),
-            tools=[],
-            enable_todo=False,
-        )
-        agent = Agent(config=config)
+        with patch(
+            "neosian._foundation.agent.base.ProviderRouter",
+            return_value=_create_mock_router(),
+        ):
+            config = AgentConfig(
+                system_prompt=SystemPrompt("You are helpful."),
+                tools=[],
+                enable_todo=False,
+            )
+            agent = Agent(config=config)
 
-        content = agent._extract_user_content([])
-        assert content == ""
+            content = agent._extract_user_content([])
+            assert content == ""
 
-    @patch("neosian._foundation.agent.base._create_client", _mock_create_client)
     def test_skips_empty_user_content(self) -> None:
         """Should skip user messages with empty content."""
-        config = AgentConfig(
-            system_prompt=SystemPrompt("You are helpful."),
-            tools=[],
-            enable_todo=False,
-        )
-        agent = Agent(config=config)
+        with patch(
+            "neosian._foundation.agent.base.ProviderRouter",
+            return_value=_create_mock_router(),
+        ):
+            config = AgentConfig(
+                system_prompt=SystemPrompt("You are helpful."),
+                tools=[],
+                enable_todo=False,
+            )
+            agent = Agent(config=config)
 
-        messages = [
-            Message(role=Role.USER, content="First"),
-            Message(role=Role.USER, content=""),  # Empty
-        ]
-        content = agent._extract_user_content(messages)
-        assert content == "First"
+            messages = [
+                Message(role=Role.USER, content="First"),
+                Message(role=Role.USER, content=""),  # Empty
+            ]
+            content = agent._extract_user_content(messages)
+            assert content == "First"
 
 
 @pytest.mark.unit
@@ -217,8 +251,8 @@ class TestAgentInputGuardrails:
 
         with (
             patch(
-                "neosian._foundation.agent.base._create_client",
-                return_value=(mock_client, ModelId("test-model")),
+                "neosian._foundation.agent.base.ProviderRouter",
+                return_value=_create_mock_router(mock_client),
             ),
             patch(
                 "neosian._foundation.agent.base._create_guardrail_client",
@@ -267,8 +301,8 @@ class TestAgentInputGuardrails:
 
         with (
             patch(
-                "neosian._foundation.agent.base._create_client",
-                return_value=(mock_client, ModelId("test-model")),
+                "neosian._foundation.agent.base.ProviderRouter",
+                return_value=_create_mock_router(mock_client),
             ),
             patch(
                 "neosian._foundation.agent.base._create_guardrail_client",
@@ -316,8 +350,8 @@ class TestAgentInputGuardrails:
 
         with (
             patch(
-                "neosian._foundation.agent.base._create_client",
-                return_value=(mock_client, ModelId("test-model")),
+                "neosian._foundation.agent.base.ProviderRouter",
+                return_value=_create_mock_router(mock_client),
             ),
             patch(
                 "neosian._foundation.agent.base._create_guardrail_client",
@@ -365,8 +399,8 @@ class TestAgentOutputGuardrails:
 
         with (
             patch(
-                "neosian._foundation.agent.base._create_client",
-                return_value=(mock_client, ModelId("test-model")),
+                "neosian._foundation.agent.base.ProviderRouter",
+                return_value=_create_mock_router(mock_client),
             ),
             patch(
                 "neosian._foundation.agent.base._create_guardrail_client",
@@ -411,8 +445,8 @@ class TestAgentOutputGuardrails:
 
         with (
             patch(
-                "neosian._foundation.agent.base._create_client",
-                return_value=(mock_client, ModelId("test-model")),
+                "neosian._foundation.agent.base.ProviderRouter",
+                return_value=_create_mock_router(mock_client),
             ),
             patch(
                 "neosian._foundation.agent.base._create_guardrail_client",
@@ -451,8 +485,8 @@ class TestAgentNoGuardrails:
         )
 
         with patch(
-            "neosian._foundation.agent.base._create_client",
-            return_value=(mock_client, ModelId("test-model")),
+            "neosian._foundation.agent.base.ProviderRouter",
+            return_value=_create_mock_router(mock_client),
         ):
             config = AgentConfig(
                 system_prompt=SystemPrompt("You are helpful."),
@@ -509,8 +543,8 @@ class TestGuardrailErrorPolicy:
 
         with (
             patch(
-                "neosian._foundation.agent.base._create_client",
-                return_value=(mock_client, ModelId("test-model")),
+                "neosian._foundation.agent.base.ProviderRouter",
+                return_value=_create_mock_router(mock_client),
             ),
             patch(
                 "neosian._foundation.agent.base._create_guardrail_client",
@@ -554,8 +588,8 @@ class TestGuardrailErrorPolicy:
 
         with (
             patch(
-                "neosian._foundation.agent.base._create_client",
-                return_value=(mock_client, ModelId("test-model")),
+                "neosian._foundation.agent.base.ProviderRouter",
+                return_value=_create_mock_router(mock_client),
             ),
             patch(
                 "neosian._foundation.agent.base._create_guardrail_client",

@@ -47,6 +47,18 @@ class ErrorMessages:
         "Temperature parameter is not supported for OpenAI GPT-5 models"
     )
 
+    # Provider/Fallback errors
+    PROVIDER_FAILED: str = "Provider {provider} failed: {error}"
+    ALL_PROVIDERS_FAILED: str = (
+        "All providers in fallback chain failed. "
+        "Tried: {providers}. Last error: {last_error}"
+    )
+    FALLBACK_TRIGGERED: str = (
+        "Falling back from {from_provider}:{from_model} to {to_provider}:{to_model}: {reason}"
+    )
+    UNSUPPORTED_PROVIDER: str = "Unsupported provider: {provider}"
+    INVALID_PROVIDER_MODEL_FORMAT: str = "Invalid provider:model format: {value}"
+
     # Guardrail errors
     GUARDRAIL_INPUT_BLOCKED: str = "Input blocked by {guardrail_type}: {reason}"
     GUARDRAIL_OUTPUT_BLOCKED: str = "Output blocked by {guardrail_type}: {reason}"
@@ -132,6 +144,48 @@ class Provider:
             CLAUDE_SONNET_4_5: str = "claude-sonnet-4-5-20250929"
             CLAUDE_HAIKU_4_5: str = "claude-haiku-4-5-20251001"
             CLAUDE_OPUS_4_5: str = "claude-opus-4-5-20251101"
+
+
+class Fallback:
+    """Global fallback order by capability tier.
+
+    Models are organized into tiers by capability. Fallback logic:
+    1. Cycle through remaining models in the same tier
+    2. Drop to the next tier, repeat
+    3. Never go UP a tier
+
+    Format: "provider:model" strings for easy parsing.
+    """
+
+    # Tier 1: Most capable models
+    TIER_1: tuple[str, ...] = (
+        f"{Provider.Anthropic.ID}:{Provider.Anthropic.Models.CLAUDE_OPUS_4_5}",
+        f"{Provider.OpenAI.ID}:{Provider.OpenAI.Models.GPT_5_PRO}",
+        f"{Provider.OpenAI.ID}:{Provider.OpenAI.Models.GPT_5_1}",
+    )
+
+    # Tier 2: Balanced workhorses
+    TIER_2: tuple[str, ...] = (
+        f"{Provider.Anthropic.ID}:{Provider.Anthropic.Models.CLAUDE_SONNET_4_5}",
+        f"{Provider.Groq.ID}:{Provider.Groq.Production.LLAMA_3_3_70B}",
+        f"{Provider.Groq.ID}:{Provider.Groq.Production.GPT_OSS_120B}",
+    )
+
+    # Tier 3: Fast/efficient models
+    TIER_3: tuple[str, ...] = (
+        f"{Provider.Anthropic.ID}:{Provider.Anthropic.Models.CLAUDE_HAIKU_4_5}",
+        f"{Provider.OpenAI.ID}:{Provider.OpenAI.Models.GPT_5_MINI}",
+        f"{Provider.Groq.ID}:{Provider.Groq.Production.GPT_OSS_20B}",
+    )
+
+    # Tier 4: Fastest/cheapest models (last resort)
+    TIER_4: tuple[str, ...] = (
+        f"{Provider.OpenAI.ID}:{Provider.OpenAI.Models.GPT_5_NANO}",
+        f"{Provider.Groq.ID}:{Provider.Groq.Production.LLAMA_3_1_8B}",
+    )
+
+    # All tiers in order for iteration
+    ALL_TIERS: tuple[tuple[str, ...], ...] = (TIER_1, TIER_2, TIER_3, TIER_4)
 
 
 class BuiltinTools:

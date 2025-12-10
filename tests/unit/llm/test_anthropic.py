@@ -1,6 +1,6 @@
 """Unit tests for the Anthropic LLM client."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -62,9 +62,7 @@ class TestAnthropicClient:
         assert messages[0]["content"] == "Hello!"
 
     @pytest.mark.unit
-    def test_convert_messages_handles_tool_calls(
-        self, client: AnthropicClient
-    ) -> None:
+    def test_convert_messages_handles_tool_calls(self, client: AnthropicClient) -> None:
         """Test message conversion handles assistant messages with tool calls."""
         from neosian._foundation.llm.base import ToolCall
         from neosian._foundation.shared.types import ToolCallId, ToolName
@@ -221,7 +219,7 @@ class TestAnthropicClient:
         mock_stream = MagicMock()
         mock_stream.__aenter__ = AsyncMock(return_value=mock_stream)
         mock_stream.__aexit__ = AsyncMock(return_value=None)
-        mock_stream.__aiter__ = lambda self: mock_stream_events()
+        mock_stream.__aiter__ = lambda _: mock_stream_events()
 
         client._client.messages.stream = MagicMock(return_value=mock_stream)
 
@@ -243,7 +241,6 @@ class TestAnthropicClient:
         from anthropic import BadRequestError
 
         # Create mock error with tool-related message
-        mock_request = MagicMock()
         mock_body = {"message": "Invalid tool call"}
 
         error = BadRequestError(

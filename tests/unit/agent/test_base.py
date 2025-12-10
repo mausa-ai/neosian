@@ -1,7 +1,7 @@
 """Tests for Agent core."""
 
 from collections.abc import AsyncIterator
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -25,59 +25,76 @@ from neosian._foundation.shared.types import (
 from neosian._foundation.tools.base import Tool, ToolResult
 
 
-def _mock_create_client(
-    provider_id: str | None,  # noqa: ARG001
-) -> tuple[BaseLLMClient, ModelId]:
-    """Mock client factory that returns a mock client."""
-    client = AsyncMock(spec=BaseLLMClient)
-    return client, ModelId("test-model")
+def _create_mock_router(mock_client: BaseLLMClient | None = None) -> MagicMock:
+    """Create a mock ProviderRouter that returns the given client.
+
+    Args:
+        mock_client: The mock client to return. If None, creates a new AsyncMock.
+
+    Returns:
+        MagicMock configured as a ProviderRouter.
+    """
+    if mock_client is None:
+        mock_client = AsyncMock(spec=BaseLLMClient)
+
+    mock_router = MagicMock()
+    mock_router.get_fallback_chain.return_value = [("groq", "test-model")]
+    mock_router.create_client.return_value = mock_client
+    return mock_router
 
 
 @pytest.mark.unit
 class TestAgentInit:
     """Test Agent initialization."""
 
-    @patch("neosian._foundation.agent.base._create_client", _mock_create_client)
     def test_agent_init_without_tools(self) -> None:
         """Agent should initialize without tools."""
-        config = AgentConfig(
-            system_prompt=SystemPrompt("You are helpful."),
-            tools=[],
-            enable_todo=False,
-        )
-        agent = Agent(config=config)
+        with patch(
+            "neosian._foundation.agent.base.ProviderRouter",
+            return_value=_create_mock_router(),
+        ):
+            config = AgentConfig(
+                system_prompt=SystemPrompt("You are helpful."),
+                tools=[],
+                enable_todo=False,
+            )
+            agent = Agent(config=config)
 
-        assert agent._model == "test-model"
-        assert agent._system_prompt == "You are helpful."
-        assert len(agent._tools) == 0
+            assert agent._system_prompt == "You are helpful."
+            assert len(agent._tools) == 0
 
-    @patch("neosian._foundation.agent.base._create_client", _mock_create_client)
     def test_agent_init_with_todo_enabled_by_default(self) -> None:
         """Agent should include todo tool by default."""
-        config = AgentConfig(
-            system_prompt=SystemPrompt("You are helpful."),
-            tools=[],
-        )
-        agent = Agent(config=config)
+        with patch(
+            "neosian._foundation.agent.base.ProviderRouter",
+            return_value=_create_mock_router(),
+        ):
+            config = AgentConfig(
+                system_prompt=SystemPrompt("You are helpful."),
+                tools=[],
+            )
+            agent = Agent(config=config)
 
-        assert "update_todo" in agent._tools
-        assert len(agent._tools) == 1
-        assert agent._todo_state is not None
+            assert "update_todo" in agent._tools
+            assert len(agent._tools) == 1
+            assert agent._todo_state is not None
 
-    @patch("neosian._foundation.agent.base._create_client", _mock_create_client)
     def test_agent_init_todo_disabled(self) -> None:
         """Agent should not include todo tool when disabled."""
-        config = AgentConfig(
-            system_prompt=SystemPrompt("You are helpful."),
-            tools=[],
-            enable_todo=False,
-        )
-        agent = Agent(config=config)
+        with patch(
+            "neosian._foundation.agent.base.ProviderRouter",
+            return_value=_create_mock_router(),
+        ):
+            config = AgentConfig(
+                system_prompt=SystemPrompt("You are helpful."),
+                tools=[],
+                enable_todo=False,
+            )
+            agent = Agent(config=config)
 
-        assert "update_todo" not in agent._tools
-        assert agent._todo_state is None
+            assert "update_todo" not in agent._tools
+            assert agent._todo_state is None
 
-    @patch("neosian._foundation.agent.base._create_client", _mock_create_client)
     def test_agent_init_with_tools(self) -> None:
         """Agent should register tools from decorated functions."""
 
@@ -85,17 +102,20 @@ class TestAgentInit:
         async def greet(name: str) -> ToolResult[str]:
             return ToolResult.ok(f"Hello, {name}!")
 
-        config = AgentConfig(
-            system_prompt=SystemPrompt("You are helpful."),
-            tools=[greet],
-            enable_todo=False,
-        )
-        agent = Agent(config=config)
+        with patch(
+            "neosian._foundation.agent.base.ProviderRouter",
+            return_value=_create_mock_router(),
+        ):
+            config = AgentConfig(
+                system_prompt=SystemPrompt("You are helpful."),
+                tools=[greet],
+                enable_todo=False,
+            )
+            agent = Agent(config=config)
 
-        assert "greet" in agent._tools
-        assert len(agent._tool_definitions) == 1
+            assert "greet" in agent._tools
+            assert len(agent._tool_definitions) == 1
 
-    @patch("neosian._foundation.agent.base._create_client", _mock_create_client)
     def test_agent_init_with_tools_and_todo(self) -> None:
         """Agent should register both user tools and todo tool."""
 
@@ -103,32 +123,39 @@ class TestAgentInit:
         async def greet(name: str) -> ToolResult[str]:
             return ToolResult.ok(f"Hello, {name}!")
 
-        config = AgentConfig(
-            system_prompt=SystemPrompt("You are helpful."),
-            tools=[greet],
-            enable_todo=True,
-        )
-        agent = Agent(config=config)
+        with patch(
+            "neosian._foundation.agent.base.ProviderRouter",
+            return_value=_create_mock_router(),
+        ):
+            config = AgentConfig(
+                system_prompt=SystemPrompt("You are helpful."),
+                tools=[greet],
+                enable_todo=True,
+            )
+            agent = Agent(config=config)
 
-        assert "greet" in agent._tools
-        assert "update_todo" in agent._tools
-        assert len(agent._tool_definitions) == 2
+            assert "greet" in agent._tools
+            assert "update_todo" in agent._tools
+            assert len(agent._tool_definitions) == 2
 
-    @patch("neosian._foundation.agent.base._create_client", _mock_create_client)
     def test_agent_rejects_non_tool_functions(self) -> None:
         """Agent should reject functions without @Tool decorator."""
 
         async def not_a_tool(x: int) -> int:
             return x * 2
 
-        config = AgentConfig(
-            system_prompt=SystemPrompt("You are helpful."),
-            tools=[not_a_tool],  # type: ignore[list-item]
-            enable_todo=False,
-        )
+        with patch(
+            "neosian._foundation.agent.base.ProviderRouter",
+            return_value=_create_mock_router(),
+        ):
+            config = AgentConfig(
+                system_prompt=SystemPrompt("You are helpful."),
+                tools=[not_a_tool],  # type: ignore[list-item]
+                enable_todo=False,
+            )
 
-        with pytest.raises(ValueError, match="not decorated with @Tool"):
-            Agent(config=config)
+            with pytest.raises(ValueError, match="not decorated with @Tool"):
+                Agent(config=config)
 
 
 @pytest.mark.unit
@@ -146,8 +173,8 @@ class TestAgentRun:
         )
 
         with patch(
-            "neosian._foundation.agent.base._create_client",
-            return_value=(mock_client, ModelId("test-model")),
+            "neosian._foundation.agent.base.ProviderRouter",
+            return_value=_create_mock_router(mock_client),
         ):
             config = AgentConfig(
                 system_prompt=SystemPrompt("You are helpful."),
@@ -194,8 +221,8 @@ class TestAgentRun:
         ]
 
         with patch(
-            "neosian._foundation.agent.base._create_client",
-            return_value=(mock_client, ModelId("test-model")),
+            "neosian._foundation.agent.base.ProviderRouter",
+            return_value=_create_mock_router(mock_client),
         ):
             config = AgentConfig(
                 system_prompt=SystemPrompt("You are a calculator."),
@@ -240,8 +267,8 @@ class TestAgentRun:
         ]
 
         with patch(
-            "neosian._foundation.agent.base._create_client",
-            return_value=(mock_client, ModelId("test-model")),
+            "neosian._foundation.agent.base.ProviderRouter",
+            return_value=_create_mock_router(mock_client),
         ):
             config = AgentConfig(
                 system_prompt=SystemPrompt("You are helpful."),
@@ -285,8 +312,8 @@ class TestAgentRun:
         ]
 
         with patch(
-            "neosian._foundation.agent.base._create_client",
-            return_value=(mock_client, ModelId("test-model")),
+            "neosian._foundation.agent.base.ProviderRouter",
+            return_value=_create_mock_router(mock_client),
         ):
             config = AgentConfig(
                 system_prompt=SystemPrompt("You are helpful."),
@@ -345,8 +372,8 @@ class TestAgentRunStreaming:
         mock_client.stream = mock_stream
 
         with patch(
-            "neosian._foundation.agent.base._create_client",
-            return_value=(mock_client, ModelId("test-model")),
+            "neosian._foundation.agent.base.ProviderRouter",
+            return_value=_create_mock_router(mock_client),
         ):
             config = AgentConfig(
                 system_prompt=SystemPrompt("You are helpful."),
@@ -410,8 +437,8 @@ class TestAgentRunStreaming:
         mock_client.stream = mock_stream
 
         with patch(
-            "neosian._foundation.agent.base._create_client",
-            return_value=(mock_client, ModelId("test-model")),
+            "neosian._foundation.agent.base.ProviderRouter",
+            return_value=_create_mock_router(mock_client),
         ):
             config = AgentConfig(
                 system_prompt=SystemPrompt("You are a calculator."),
@@ -464,8 +491,8 @@ class TestAgentRunStreaming:
         mock_client.stream = mock_stream
 
         with patch(
-            "neosian._foundation.agent.base._create_client",
-            return_value=(mock_client, ModelId("test-model")),
+            "neosian._foundation.agent.base.ProviderRouter",
+            return_value=_create_mock_router(mock_client),
         ):
             config = AgentConfig(
                 system_prompt=SystemPrompt("You are helpful."),

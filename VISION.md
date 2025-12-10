@@ -141,7 +141,8 @@ neosian/
 │   │   ├── base.py            # BaseLLMClient protocol
 │   │   ├── groq.py            # Groq (primary)
 │   │   ├── openai.py          # OpenAI (fallback)
-│   │   └── anthropic.py       # Anthropic (Claude)
+│   │   ├── anthropic.py       # Anthropic (Claude)
+│   │   └── router.py          # ProviderRouter with tier-aware fallback ✓
 │   │
 │   ├── agent/                  # Agent Core
 │   │   ├── base.py            # Agent class + AgentResponse
@@ -159,7 +160,7 @@ neosian/
 │   │
 │   └── shared/
 │       ├── types.py           # Type definitions
-│       ├── constants.py       # Model configs, limits
+│       ├── constants.py       # Model configs, limits, Fallback tiers
 │       ├── exceptions.py      # Error hierarchy
 │       └── prompt.py          # YAML prompt loader
 │
@@ -295,8 +296,15 @@ ANTHROPIC_API_KEY=sk-ant-...
 ### Phase 1.8: Providers ✓
 - [x] Anthropic client (Claude Sonnet/Haiku/Opus 4.5)
 
+### Phase 1.9: Provider Resilience ✓
+- [x] Provider router with tier-aware fallback
+  - [x] 4-tier capability hierarchy (Opus/Pro → Sonnet/70B → Haiku/Mini → Nano/8B)
+  - [x] Cyclic fallback within tiers (never go UP a tier)
+  - [x] API key-based provider filtering
+  - [x] AllProvidersFailedError when all options exhausted
+  - [x] Integration tests with real API calls (9 tests)
+
 ### Phase 2: Completion
-- [ ] Provider router with fallback
 - [ ] Tool registry with semantic search
 - [ ] Search sub-agent
 - [ ] Runtime tool registration

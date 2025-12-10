@@ -157,3 +157,42 @@ class GuardrailStreamingError(GuardrailError):
 
     def __init__(self) -> None:
         super().__init__(ErrorMessages.GUARDRAIL_OUTPUT_REQUIRES_BLOCKING)
+
+
+class ProviderError(LLMError):
+    """Raised when a provider fails (rate limit, auth, network, etc.).
+
+    This error triggers fallback to the next provider in the chain.
+    """
+
+    def __init__(self, provider: str, error: str) -> None:
+        """Initialize with provider and error details.
+
+        Args:
+            provider: Provider identifier (e.g., "groq", "openai").
+            error: Error description.
+        """
+        super().__init__(
+            ErrorMessages.PROVIDER_FAILED.format(provider=provider, error=error)
+        )
+        self.provider = provider
+        self.error = error
+
+
+class AllProvidersFailedError(LLMError):
+    """Raised when all providers in the fallback chain have failed."""
+
+    def __init__(self, providers: list[str], last_error: str) -> None:
+        """Initialize with attempted providers and last error.
+
+        Args:
+            providers: List of providers attempted (e.g., ["groq:model", "openai:model"]).
+            last_error: The error from the last provider tried.
+        """
+        super().__init__(
+            ErrorMessages.ALL_PROVIDERS_FAILED.format(
+                providers=", ".join(providers), last_error=last_error
+            )
+        )
+        self.providers = providers
+        self.last_error = last_error

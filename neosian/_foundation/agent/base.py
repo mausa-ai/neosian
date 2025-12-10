@@ -23,7 +23,6 @@ from neosian._foundation.agent.streaming import (
 )
 from neosian._foundation.guardrails.checker import check_with_policy
 from neosian._foundation.guardrails.classifier import check_with_classifier
-from neosian._foundation.llm.anthropic import AnthropicClient
 from neosian._foundation.llm.base import (
     BaseLLMClient,
     Message,
@@ -32,10 +31,10 @@ from neosian._foundation.llm.base import (
     ToolDefinition,
     Usage,
 )
-from neosian._foundation.llm.groq import GroqClient
-from neosian._foundation.llm.openai import OpenAIClient
+from neosian._foundation.llm.router import ProviderRouter, format_provider_model
 from neosian._foundation.shared.constants import EnvVars, ErrorMessages, Provider
 from neosian._foundation.shared.exceptions import (
+    AllProvidersFailedError,
     GuardrailStreamingError,
     MissingAPIKeyError,
 )
@@ -84,39 +83,6 @@ def _get_api_key(env_var: str) -> str:
             case _:
                 raise MissingAPIKeyError(f"{env_var} environment variable not set")
     return api_key
-
-
-def _create_client(provider_id: str | None) -> tuple[BaseLLMClient, ModelId]:
-    """Create LLM client based on provider.
-
-    Args:
-        provider_id: Provider identifier ("groq", "openai", "anthropic").
-            Defaults to "groq".
-
-    Returns:
-        Tuple of (client, default_model_id).
-
-    Raises:
-        MissingAPIKeyError: If required API key is not set.
-        ValueError: If provider is not supported.
-    """
-    provider = provider_id or Provider.Groq.ID
-
-    if provider == Provider.OpenAI.ID:
-        api_key = _get_api_key(EnvVars.OPENAI_API_KEY)
-        return OpenAIClient(api_key=api_key), ModelId(Provider.OpenAI.DEFAULT_MODEL)
-
-    if provider == Provider.Groq.ID:
-        api_key = _get_api_key(EnvVars.GROQ_API_KEY)
-        return GroqClient(api_key=api_key), ModelId(Provider.Groq.DEFAULT_MODEL)
-
-    if provider == Provider.Anthropic.ID:
-        api_key = _get_api_key(EnvVars.ANTHROPIC_API_KEY)
-        return AnthropicClient(api_key=api_key), ModelId(
-            Provider.Anthropic.DEFAULT_MODEL
-        )
-
-    raise ValueError(f"Unsupported provider: {provider}")
 
 
 def _create_guardrail_client() -> AsyncGroq:
@@ -186,12 +152,33 @@ class Agent:
             max_tool_iterations: Maximum tool call iterations to prevent infinite loops.
             todo_state: External todo state. If None and enable_todo=True, creates new.
         """
-        # Create client based on provider
-        client, default_model = _create_client(config.provider)
-        self._client = client
-        self._model = config.model if config.model else default_model
+        # Initialize router for fallback support
+        self._router = ProviderRouter()
+
+        # Determine provider and model
+        provider = config.provider or Provider.Groq.ID
+        if config.model:
+            model = config.model
+        else:
+            # Use provider's default model
+            match provider:
+                case Provider.Groq.ID:
+                    model = ModelId(Provider.Groq.DEFAULT_MODEL)
+                case Provider.OpenAI.ID:
+                    model = ModelId(Provider.OpenAI.DEFAULT_MODEL)
+                case Provider.Anthropic.ID:
+                    model = ModelId(Provider.Anthropic.DEFAULT_MODEL)
+                case _:
+                    model = ModelId(Provider.Groq.DEFAULT_MODEL)
+
+        # Store config for fallback chain
+        self._provider = provider
+        self._model = model
         self._system_prompt = config.system_prompt
         self._max_tool_iterations = max_tool_iterations
+
+        # Build fallback chain
+        self._fallback_chain = self._router.get_fallback_chain(provider, model)
 
         # Store guardrails config and create client if needed
         self._guardrails = config.guardrails
@@ -370,17 +357,22 @@ class Agent:
         self,
         messages: list[Message],
     ) -> AgentResponse:
-        """Execute the agent LLM and tool loop.
+        """Execute the agent LLM and tool loop with provider fallback.
 
         This is the core agent execution without input guardrail checks.
         Used by both blocking and streaming modes. Input guard results
         are attached separately via _attach_input_guard_results.
+
+        Tries each provider in the fallback chain until one succeeds or all fail.
 
         Args:
             messages: Conversation history (without system message).
 
         Returns:
             AgentResponse with the final message and execution details.
+
+        Raises:
+            AllProvidersFailedError: If all providers in the fallback chain fail.
         """
         # Prepend system message
         full_messages = [
@@ -388,15 +380,68 @@ class Agent:
             *messages,
         ]
 
+        attempted_providers: list[str] = []
+        last_error: str = ""
+
+        # Try each provider in the fallback chain
+        for provider_id, model_id in self._fallback_chain:
+            attempted_providers.append(format_provider_model(provider_id, model_id))
+
+            try:
+                client = self._router.create_client(provider_id)
+                return await self._execute_with_client(
+                    client=client,
+                    model=model_id,
+                    full_messages=full_messages,
+                )
+            except Exception as e:
+                last_error = str(e)
+                # Log fallback (if not the last provider)
+                if len(attempted_providers) < len(self._fallback_chain):
+                    next_idx = len(attempted_providers)
+                    next_provider, next_model = self._fallback_chain[next_idx]
+                    logger.warning(
+                        ErrorMessages.FALLBACK_TRIGGERED.format(
+                            from_provider=provider_id,
+                            from_model=model_id,
+                            to_provider=next_provider,
+                            to_model=next_model,
+                            reason=str(e),
+                        )
+                    )
+                continue
+
+        # All providers failed
+        raise AllProvidersFailedError(
+            providers=attempted_providers,
+            last_error=last_error,
+        )
+
+    async def _execute_with_client(
+        self,
+        client: BaseLLMClient,
+        model: ModelId,
+        full_messages: list[Message],
+    ) -> AgentResponse:
+        """Execute the agent with a specific client and model.
+
+        Args:
+            client: LLM client to use.
+            model: Model identifier.
+            full_messages: Full conversation with system message prepended.
+
+        Returns:
+            AgentResponse with the final message and execution details.
+        """
         all_tool_calls: list[ToolCall] = []
         all_tool_results: list[ToolResult[Any]] = []
         total_usage = Usage(input_tokens=0, output_tokens=0)
 
         for _ in range(self._max_tool_iterations):
             # Get completion from LLM
-            response = await self._client.complete(
+            response = await client.complete(
                 messages=full_messages,
-                model=self._model,
+                model=model,
                 tools=self._tool_definitions if self._tool_definitions else None,
             )
 
@@ -436,9 +481,9 @@ class Agent:
                 )
 
         # Max iterations reached - return last response
-        final_response = await self._client.complete(
+        final_response = await client.complete(
             messages=full_messages,
-            model=self._model,
+            model=model,
             tools=None,  # No tools on final call to force text response
         )
 
@@ -555,7 +600,7 @@ class Agent:
             | None
         ),
     ) -> AsyncIterator[str]:
-        """Stream agent response while monitoring guard task.
+        """Stream agent response while monitoring guard task with provider fallback.
 
         Args:
             messages: Conversation history (without system message).
@@ -563,6 +608,9 @@ class Agent:
 
         Yields:
             SSE-formatted strings.
+
+        Raises:
+            AllProvidersFailedError: If all providers in the fallback chain fail.
         """
         # Prepend system message
         full_messages = [
@@ -570,6 +618,67 @@ class Agent:
             *messages,
         ]
 
+        attempted_providers: list[str] = []
+        last_error: str = ""
+
+        # Try each provider in the fallback chain
+        for provider_id, model_id in self._fallback_chain:
+            attempted_providers.append(format_provider_model(provider_id, model_id))
+
+            try:
+                client = self._router.create_client(provider_id)
+                async for sse in self._stream_with_client(
+                    client=client,
+                    model=model_id,
+                    full_messages=full_messages,
+                    guard_task=guard_task,
+                ):
+                    yield sse
+                return  # Success - exit the loop
+            except Exception as e:
+                last_error = str(e)
+                # Log fallback (if not the last provider)
+                if len(attempted_providers) < len(self._fallback_chain):
+                    next_idx = len(attempted_providers)
+                    next_provider, next_model = self._fallback_chain[next_idx]
+                    logger.warning(
+                        ErrorMessages.FALLBACK_TRIGGERED.format(
+                            from_provider=provider_id,
+                            from_model=model_id,
+                            to_provider=next_provider,
+                            to_model=next_model,
+                            reason=str(e),
+                        )
+                    )
+                continue
+
+        # All providers failed
+        raise AllProvidersFailedError(
+            providers=attempted_providers,
+            last_error=last_error,
+        )
+
+    async def _stream_with_client(
+        self,
+        client: BaseLLMClient,
+        model: ModelId,
+        full_messages: list[Message],
+        guard_task: (
+            asyncio.Task[tuple[bool, ClassifierResult | None, PolicyResult | None]]
+            | None
+        ),
+    ) -> AsyncIterator[str]:
+        """Stream agent response with a specific client while monitoring guard task.
+
+        Args:
+            client: LLM client to use.
+            model: Model identifier.
+            full_messages: Full conversation with system message prepended.
+            guard_task: Background guard task to monitor (or None if no guard).
+
+        Yields:
+            SSE-formatted strings.
+        """
         for _ in range(self._max_tool_iterations):
             # Check guard before each LLM call
             if guard_task is not None and guard_task.done():
@@ -580,16 +689,19 @@ class Agent:
                 guard_task = None  # Don't check again
 
             # Get completion from LLM (not streaming for tool call detection)
-            response = await self._client.complete(
+            response = await client.complete(
                 messages=full_messages,
-                model=self._model,
+                model=model,
                 tools=self._tool_definitions if self._tool_definitions else None,
             )
 
             # If no tool calls, stream the final response
             if not response.message.tool_calls:
-                async for sse in self._stream_final_with_guard(
-                    full_messages, guard_task
+                async for sse in self._stream_final_with_client_and_guard(
+                    client=client,
+                    model=model,
+                    full_messages=full_messages,
+                    guard_task=guard_task,
                 ):
                     yield sse
                 return
@@ -627,7 +739,12 @@ class Agent:
                 )
 
         # Max iterations reached - stream final response
-        async for sse in self._stream_final_with_guard(full_messages, guard_task):
+        async for sse in self._stream_final_with_client_and_guard(
+            client=client,
+            model=model,
+            full_messages=full_messages,
+            guard_task=guard_task,
+        ):
             yield sse
 
     def _get_guard_result_safe(
@@ -729,26 +846,30 @@ class Agent:
 
         return None
 
-    async def _stream_final_with_guard(
+    async def _stream_final_with_client_and_guard(
         self,
+        client: BaseLLMClient,
+        model: ModelId,
         full_messages: list[Message],
         guard_task: (
             asyncio.Task[tuple[bool, ClassifierResult | None, PolicyResult | None]]
             | None
         ),
     ) -> AsyncIterator[str]:
-        """Stream final response while monitoring guard task.
+        """Stream final response with a specific client while monitoring guard task.
 
         Args:
+            client: LLM client to use.
+            model: Model identifier.
             full_messages: Full conversation history including system message.
             guard_task: Background guard task to monitor (or None).
 
         Yields:
             SSE-formatted strings for content chunks, blocked, and done event.
         """
-        stream = self._client.stream(
+        stream = client.stream(
             messages=full_messages,
-            model=self._model,
+            model=model,
             tools=None,
         )
 
