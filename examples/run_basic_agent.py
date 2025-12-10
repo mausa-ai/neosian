@@ -16,8 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from basic_agent import configuration  # noqa: E402
 
-from neosian import Agent  # noqa: E402
-from neosian._foundation.llm.base import Message, Role  # noqa: E402
+from neosian import Agent, Message, Role  # noqa: E402
 
 
 async def main() -> None:
