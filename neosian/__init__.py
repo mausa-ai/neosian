@@ -12,9 +12,10 @@ from neosian._foundation.shared.types import (
     GuardrailsConfig,
     PolicyResult,
 )
+from neosian._foundation.shared.prompt import load_prompt
 from neosian._foundation.tools.base import Tool, ToolResult
 
-__version__ = "0.10.0"
+__version__ = "0.10.1"
 
 __all__ = [
     # Agent
@@ -36,6 +37,8 @@ __all__ = [
     "PolicyResult",
     "PolicyBuilder",
     "CommonPolicies",
+    # Utilities
+    "load_prompt",
     # Meta
     "__version__",
 ]
