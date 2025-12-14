@@ -15,7 +15,7 @@ from neosian._foundation.shared.types import (
 from neosian._foundation.shared.prompt import load_prompt
 from neosian._foundation.tools.base import Tool, ToolResult
 
-__version__ = "0.10.2"
+__version__ = "0.10.3"
 
 __all__ = [
     # Agent

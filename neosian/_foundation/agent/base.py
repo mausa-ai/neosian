@@ -5,7 +5,6 @@ Stateless agent that orchestrates LLM calls and tool execution.
 
 import asyncio
 import contextlib
-import json
 import logging
 import os
 from collections.abc import AsyncIterator
@@ -946,15 +945,7 @@ class Agent:
         Returns:
             JSON string representation of the result.
         """
-        if result.success:
-            output: dict[str, Any] = {"success": True, "data": result.data}
-        else:
-            output = {"success": False, "error": result.error}
-
-        if result.system_reminder:
-            output["system_reminder"] = result.system_reminder
-
-        return json.dumps(output)
+        return result.to_json()
 
     async def _check_guardrails(
         self,

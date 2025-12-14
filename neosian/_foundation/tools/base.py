@@ -4,6 +4,7 @@ Provides the @Tool decorator and ToolResult for building agent tools.
 """
 
 import inspect
+import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, get_type_hints
@@ -51,6 +52,22 @@ class ToolResult[T]:
             system_reminder: Optional guidance for the agent (e.g., retry hints).
         """
         return cls(success=False, error=error, system_reminder=system_reminder)
+
+    def to_json(self) -> str:
+        """Serialize to JSON string for LLM consumption.
+
+        Returns:
+            JSON string with success/data/error and optional system_reminder.
+        """
+        if self.success:
+            output: dict[str, Any] = {"success": True, "data": self.data}
+        else:
+            output = {"success": False, "error": self.error}
+
+        if self.system_reminder:
+            output["system_reminder"] = self.system_reminder
+
+        return json.dumps(output)
 
 
 @dataclass
