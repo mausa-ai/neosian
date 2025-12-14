@@ -18,21 +18,39 @@ class ToolResult[T]:
     """Result from a tool execution.
 
     Tools return either success with data or error with message.
+    Optionally includes a system_reminder for agent guidance.
+
+    Attributes:
+        success: Whether the tool execution succeeded.
+        data: The result data on success.
+        error: Error message on failure.
+        system_reminder: Optional guidance for the agent (hints, caveats, follow-ups).
     """
 
     success: bool
     data: T | None = None
     error: str | None = None
+    system_reminder: str | None = None
 
     @classmethod
-    def ok(cls, data: T) -> "ToolResult[T]":
-        """Create a successful result."""
-        return cls(success=True, data=data)
+    def ok(cls, data: T, system_reminder: str | None = None) -> "ToolResult[T]":
+        """Create a successful result.
+
+        Args:
+            data: The result data.
+            system_reminder: Optional guidance for the agent.
+        """
+        return cls(success=True, data=data, system_reminder=system_reminder)
 
     @classmethod
-    def fail(cls, error: str) -> "ToolResult[T]":
-        """Create a failed result."""
-        return cls(success=False, error=error)
+    def fail(cls, error: str, system_reminder: str | None = None) -> "ToolResult[T]":
+        """Create a failed result.
+
+        Args:
+            error: Error message describing the failure.
+            system_reminder: Optional guidance for the agent (e.g., retry hints).
+        """
+        return cls(success=False, error=error, system_reminder=system_reminder)
 
 
 @dataclass

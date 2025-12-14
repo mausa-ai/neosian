@@ -947,8 +947,14 @@ class Agent:
             JSON string representation of the result.
         """
         if result.success:
-            return json.dumps({"success": True, "data": result.data})
-        return json.dumps({"success": False, "error": result.error})
+            output: dict[str, Any] = {"success": True, "data": result.data}
+        else:
+            output = {"success": False, "error": result.error}
+
+        if result.system_reminder:
+            output["system_reminder"] = result.system_reminder
+
+        return json.dumps(output)
 
     async def _check_guardrails(
         self,
