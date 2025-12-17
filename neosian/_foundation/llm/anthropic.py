@@ -275,3 +275,7 @@ class AnthropicClient(BaseLLMClient):
             }
             for tool in tools
         ]
+
+    async def close(self) -> None:
+        """Close the underlying HTTP client and release resources."""
+        await self._client.close()

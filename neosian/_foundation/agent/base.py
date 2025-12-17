@@ -3,15 +3,21 @@
 Stateless agent that orchestrates LLM calls and tool execution.
 """
 
+from __future__ import annotations
+
 import asyncio
 import contextlib
 import logging
 import os
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from typing import Any, Literal, overload
+from typing import TYPE_CHECKING, Any, Literal, overload
 
 from groq import AsyncGroq
+
+if TYPE_CHECKING:
+    from neosian._foundation.agent.session import AgentSession
 
 from neosian._foundation.agent.streaming import (
     blocked_event,
@@ -1099,4 +1105,327 @@ class Agent:
             usage=usage,
             blocked=not is_output_safe,
             guardrail_result=guardrail_result,
+        )
+
+    # =========================================================================
+    # Session support - methods for AgentSession to call
+    # =========================================================================
+
+    @asynccontextmanager
+    async def session(self) -> AsyncIterator[AgentSession]:
+        """Create a session with persistent LLM clients.
+
+        Sessions cache LLM clients across multiple run() calls, eliminating
+        the connection establishment overhead that occurs when creating new
+        clients for each request.
+
+        Thread-safety: Sessions are safe for concurrent use. The underlying
+        SDK clients use httpx which supports concurrent requests.
+
+        Usage patterns:
+            - Web servers: Create one session at startup via lifespan
+            - Batch processing: Wrap the entire batch in a single session
+            - CLI chat loops: Wrap the conversation loop in a session
+            - One-off calls: Use agent.run() directly (no session needed)
+
+        Example:
+            async with agent.session() as session:
+                response1 = await session.run(messages1, stream=False)
+                response2 = await session.run(messages2, stream=False)
+            # Clients automatically closed here
+
+        Yields:
+            AgentSession instance for executing runs with cached clients.
+        """
+        from neosian._foundation.agent.session import AgentSession
+
+        session_instance = AgentSession(self)
+        try:
+            yield session_instance
+        finally:
+            await session_instance.close()
+
+    async def _run_blocking_with_session(
+        self,
+        messages: list[Message],
+        session: AgentSession,
+    ) -> AgentResponse:
+        """Execute agent without streaming, using session's cached clients.
+
+        This is the session-aware version of _run_blocking. It delegates
+        to _execute_agent_core_with_session for the actual execution.
+
+        Args:
+            messages: Conversation history (without system message).
+            session: The session providing cached clients.
+
+        Returns:
+            AgentResponse with the final message and execution details.
+        """
+        # No input guardrails configured - run agent directly
+        if (
+            self._guardrails is None
+            or self._guardrails.input_mode == GuardrailMode.NONE
+        ):
+            return await self._execute_agent_core_with_session(messages, session)
+
+        # Extract user content for guardrail check
+        user_content = self._extract_user_content(messages)
+        if not user_content:
+            return await self._execute_agent_core_with_session(messages, session)
+
+        # Run guard and agent in parallel
+        guard_task = asyncio.create_task(self._check_guardrails(user_content, "input"))
+        agent_task = asyncio.create_task(
+            self._execute_agent_core_with_session(messages, session)
+        )
+
+        # Wait for first to complete
+        done, pending = await asyncio.wait(
+            [guard_task, agent_task],
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+
+        # Case 1: Guard finished first
+        if guard_task in done and agent_task in pending:
+            is_safe, input_classifier, input_policy = self._get_guard_result_safe(
+                guard_task
+            )
+
+            if not is_safe and self._guardrails.block_on_input:
+                # Cancel agent to save resources
+                agent_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await agent_task
+                return AgentResponse(
+                    message=Message(role=Role.ASSISTANT, content=""),
+                    blocked=True,
+                    guardrail_result=GuardrailResult(
+                        safe=False,
+                        flagged_at="input",
+                        input_classifier=input_classifier,
+                        input_policy=input_policy,
+                    ),
+                )
+
+            # Safe or block_on_input=False - wait for agent and attach guard results
+            agent_response = await agent_task
+            return self._attach_input_guard_results(
+                agent_response, input_classifier, input_policy
+            )
+
+        # Case 2: Agent finished first
+        agent_response = agent_task.result()
+
+        # Still need guard verdict (with error handling)
+        is_safe, input_classifier, input_policy = await self._await_guard_result_safe(
+            guard_task
+        )
+
+        if not is_safe and self._guardrails.block_on_input:
+            # Agent ran but we must block - discard response
+            return AgentResponse(
+                message=Message(role=Role.ASSISTANT, content=""),
+                blocked=True,
+                guardrail_result=GuardrailResult(
+                    safe=False,
+                    flagged_at="input",
+                    input_classifier=input_classifier,
+                    input_policy=input_policy,
+                ),
+            )
+
+        # Safe or block_on_input=False - return with guard results
+        return self._attach_input_guard_results(
+            agent_response, input_classifier, input_policy
+        )
+
+    async def _execute_agent_core_with_session(
+        self,
+        messages: list[Message],
+        session: AgentSession,
+    ) -> AgentResponse:
+        """Execute the agent LLM and tool loop using session's cached clients.
+
+        This is the session-aware version of _execute_agent_core. Instead of
+        creating fresh clients, it uses the session's client cache.
+
+        Args:
+            messages: Conversation history (without system message).
+            session: The session providing cached clients.
+
+        Returns:
+            AgentResponse with the final message and execution details.
+
+        Raises:
+            AllProvidersFailedError: If all providers in the fallback chain fail.
+        """
+        # Prepend system message
+        full_messages = [
+            Message(role=Role.SYSTEM, content=self._system_prompt),
+            *messages,
+        ]
+
+        attempted_providers: list[str] = []
+        last_error: str = ""
+
+        # Try each provider in the fallback chain
+        for provider_id, model_id in self._fallback_chain:
+            attempted_providers.append(format_provider_model(provider_id, model_id))
+
+            try:
+                # Use session's cached client instead of creating new one
+                client = session._get_or_create_client(provider_id)
+                return await self._execute_with_client(
+                    client=client,
+                    model=model_id,
+                    full_messages=full_messages,
+                )
+            except Exception as e:
+                last_error = str(e)
+                # Log fallback (if not the last provider)
+                if len(attempted_providers) < len(self._fallback_chain):
+                    next_idx = len(attempted_providers)
+                    next_provider, next_model = self._fallback_chain[next_idx]
+                    logger.warning(
+                        ErrorMessages.FALLBACK_TRIGGERED.format(
+                            from_provider=provider_id,
+                            from_model=model_id,
+                            to_provider=next_provider,
+                            to_model=next_model,
+                            reason=str(e),
+                        )
+                    )
+                continue
+
+        # All providers failed
+        raise AllProvidersFailedError(
+            providers=attempted_providers,
+            last_error=last_error,
+        )
+
+    def _run_streaming_with_session(
+        self,
+        messages: list[Message],
+        session: AgentSession,
+    ) -> AsyncIterator[str]:
+        """Execute agent with streaming using session's cached clients.
+
+        This is the session-aware version of _run_streaming.
+
+        Args:
+            messages: Conversation history (without system message).
+            session: The session providing cached clients.
+
+        Returns:
+            AsyncIterator yielding SSE-formatted strings.
+        """
+        return self._run_streaming_with_session_impl(messages, session)
+
+    async def _run_streaming_with_session_impl(
+        self,
+        messages: list[Message],
+        session: AgentSession,
+    ) -> AsyncIterator[str]:
+        """Implementation of streaming with session support.
+
+        Args:
+            messages: Conversation history (without system message).
+            session: The session providing cached clients.
+
+        Yields:
+            SSE-formatted strings for tool calls, tool results, content, blocked, done.
+        """
+        # Determine if we need to run input guardrails
+        has_input_guard = (
+            self._guardrails is not None
+            and self._guardrails.input_mode != GuardrailMode.NONE
+        )
+        user_content = self._extract_user_content(messages) if has_input_guard else ""
+
+        # Start guard task in background if needed
+        guard_task: (
+            asyncio.Task[tuple[bool, ClassifierResult | None, PolicyResult | None]]
+            | None
+        ) = None
+        if has_input_guard and user_content:
+            guard_task = asyncio.create_task(
+                self._check_guardrails(user_content, "input")
+            )
+
+        # Stream the agent response, checking guard status periodically
+        async for sse in self._stream_agent_with_guard_and_session(
+            messages, guard_task, session
+        ):
+            yield sse
+
+    async def _stream_agent_with_guard_and_session(
+        self,
+        messages: list[Message],
+        guard_task: (
+            asyncio.Task[tuple[bool, ClassifierResult | None, PolicyResult | None]]
+            | None
+        ),
+        session: AgentSession,
+    ) -> AsyncIterator[str]:
+        """Stream agent response using session's cached clients.
+
+        This is the session-aware version of _stream_agent_with_guard.
+
+        Args:
+            messages: Conversation history (without system message).
+            guard_task: Background guard task to monitor (or None if no guard).
+            session: The session providing cached clients.
+
+        Yields:
+            SSE-formatted strings.
+
+        Raises:
+            AllProvidersFailedError: If all providers in the fallback chain fail.
+        """
+        # Prepend system message
+        full_messages = [
+            Message(role=Role.SYSTEM, content=self._system_prompt),
+            *messages,
+        ]
+
+        attempted_providers: list[str] = []
+        last_error: str = ""
+
+        # Try each provider in the fallback chain
+        for provider_id, model_id in self._fallback_chain:
+            attempted_providers.append(format_provider_model(provider_id, model_id))
+
+            try:
+                # Use session's cached client instead of creating new one
+                client = session._get_or_create_client(provider_id)
+                async for sse in self._stream_with_client(
+                    client=client,
+                    model=model_id,
+                    full_messages=full_messages,
+                    guard_task=guard_task,
+                ):
+                    yield sse
+                return  # Success - exit the loop
+            except Exception as e:
+                last_error = str(e)
+                # Log fallback (if not the last provider)
+                if len(attempted_providers) < len(self._fallback_chain):
+                    next_idx = len(attempted_providers)
+                    next_provider, next_model = self._fallback_chain[next_idx]
+                    logger.warning(
+                        ErrorMessages.FALLBACK_TRIGGERED.format(
+                            from_provider=provider_id,
+                            from_model=model_id,
+                            to_provider=next_provider,
+                            to_model=next_model,
+                            reason=str(e),
+                        )
+                    )
+                continue
+
+        # All providers failed
+        raise AllProvidersFailedError(
+            providers=attempted_providers,
+            last_error=last_error,
         )

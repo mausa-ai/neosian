@@ -127,3 +127,12 @@ class BaseLLMClient(ABC):
             StreamChunk objects as they arrive.
         """
         ...
+
+    @abstractmethod
+    async def close(self) -> None:
+        """Close the underlying HTTP client and release resources.
+
+        Should be called when the client is no longer needed to ensure
+        proper cleanup of connection pools and other resources.
+        """
+        ...

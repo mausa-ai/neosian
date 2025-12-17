@@ -3,11 +3,11 @@
 This script demonstrates how to use an existing agent configuration.
 
 Usage:
-    # Set API key from file and run
-    GROQ_API_KEY=$(cat ~/Documents/api_keys/groq_api_key.txt) python examples/run_basic_agent.py
+    python examples/run_basic_agent.py
 """
 
 import asyncio
+import os
 import sys
 from pathlib import Path
 
@@ -19,8 +19,33 @@ from basic_agent import configuration  # noqa: E402
 from neosian import Agent, Message, Role  # noqa: E402
 
 
+def _load_credentials_from_config() -> None:
+    """Load API keys from ~/.neosian/config.toml if not already in environment."""
+    try:
+        import tomllib
+    except ImportError:
+        try:
+            import tomli as tomllib  # type: ignore[import-not-found,no-redef]
+        except ImportError:
+            return
+
+    config_path = Path.home() / ".neosian" / "config.toml"
+    if not config_path.exists():
+        return
+
+    with open(config_path, "rb") as f:
+        config = tomllib.load(f)
+
+    credentials = config.get("credentials", {})
+
+    if not os.environ.get("GROQ_API_KEY"):
+        if groq_key := credentials.get("groq_api_key"):
+            os.environ["GROQ_API_KEY"] = groq_key
+
+
 async def main() -> None:
     """Run the basic_agent with a simple query."""
+    _load_credentials_from_config()
     # Create the agent from the imported configuration
     agent = Agent(config=configuration)
 

@@ -1,8 +1,10 @@
 """neosian - Stateless agentic AI library."""
 
 from neosian._foundation.agent.base import Agent, AgentResponse
+from neosian._foundation.agent.session import AgentSession
 from neosian._foundation.guardrails.policy import CommonPolicies, PolicyBuilder
 from neosian._foundation.llm.base import Message, Role, ToolCall
+from neosian._foundation.shared.prompt import load_prompt
 from neosian._foundation.shared.types import (
     AgentConfig,
     ClassifierResult,
@@ -12,16 +14,16 @@ from neosian._foundation.shared.types import (
     GuardrailsConfig,
     PolicyResult,
 )
-from neosian._foundation.shared.prompt import load_prompt
 from neosian._foundation.tools.base import Tool, ToolResult
 
-__version__ = "0.10.4"
+__version__ = "0.11.0"
 
 __all__ = [
     # Agent
     "Agent",
     "AgentConfig",
     "AgentResponse",
+    "AgentSession",
     # Messages
     "Message",
     "Role",

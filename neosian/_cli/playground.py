@@ -22,6 +22,7 @@ from neosian._cli.config import get_api_key
 from neosian._cli.loader import load_agent_config
 from neosian._cli.session import ArenaModelResponse, ArenaSession, Session
 from neosian._foundation.agent.base import Agent
+from neosian._foundation.agent.session import AgentSession
 from neosian._foundation.llm.base import Message, Role
 from neosian._foundation.shared.constants import ArenaUI, Assets, Config, PlaygroundUI
 from neosian._foundation.shared.types import AgentConfig, ModelId, ProviderId
@@ -334,7 +335,7 @@ async def _run_arena_model(
     provider: str,
     model: str,
 ) -> ArenaModelResult:
-    """Run a single model and collect results.
+    """Run a single model and collect results (stateless, for backward compatibility).
 
     Args:
         agent: The agent to run.
@@ -359,6 +360,66 @@ async def _run_arena_model(
             elapsed_time=time.perf_counter() - start_time,
             error=str(e),
         )
+
+    return _build_arena_result(response, provider, model, start_time)
+
+
+async def _run_arena_model_with_session(
+    agent_session: AgentSession,
+    messages: list[Message],
+    provider: str,
+    model: str,
+) -> ArenaModelResult:
+    """Run a single model using cached session and collect results.
+
+    Args:
+        agent_session: The agent session with cached HTTP client.
+        messages: Message history.
+        provider: Provider ID for display.
+        model: Model ID for display.
+
+    Returns:
+        ArenaModelResult with response data.
+    """
+    start_time = time.perf_counter()
+
+    try:
+        response = await agent_session.run(messages, stream=False)
+    except Exception as e:
+        return ArenaModelResult(
+            provider=provider,
+            model=model,
+            content="",
+            tool_calls_text=[],
+            tool_calls_raw=[],
+            elapsed_time=time.perf_counter() - start_time,
+            error=str(e),
+        )
+
+    return _build_arena_result(response, provider, model, start_time)
+
+
+def _build_arena_result(
+    response: object,  # AgentResponse, but avoid circular import
+    provider: str,
+    model: str,
+    start_time: float,
+) -> ArenaModelResult:
+    """Build ArenaModelResult from response.
+
+    Args:
+        response: The agent response.
+        provider: Provider ID for display.
+        model: Model ID for display.
+        start_time: Start time for elapsed calculation.
+
+    Returns:
+        ArenaModelResult with response data.
+    """
+    from neosian._foundation.agent.base import AgentResponse
+
+    # Type assertion for mypy
+    assert isinstance(response, AgentResponse)
 
     elapsed_time = time.perf_counter() - start_time
 
@@ -483,6 +544,8 @@ async def _arena_chat_loop(
 ) -> None:
     """Run the arena chat loop with multiple models.
 
+    Uses AgentSession to cache HTTP clients for each agent across turns.
+
     Args:
         console: Rich console for output.
         agents: List of agents to run.
@@ -492,58 +555,68 @@ async def _arena_chat_loop(
     """
     messages: list[Message] = []
 
-    while True:
-        # Get user input
-        try:
-            user_input = Prompt.ask(
-                f"[bold green]{PlaygroundUI.USER_PROMPT}[/bold green]"
-            )
-        except EOFError:
-            break
+    # Create sessions for all agents (cache HTTP clients across turns)
+    agent_sessions: list[AgentSession] = []
+    for agent in agents:
+        agent_sessions.append(AgentSession(agent))
 
-        if user_input.lower() in PlaygroundUI.EXIT_COMMANDS:
-            break
-
-        if not user_input.strip():
-            continue
-
-        # Add user message
-        messages.append(Message(role=Role.USER, content=user_input))
-
-        # Create turn for session
-        turn = session.add_turn(user_input)
-
-        # Run each model sequentially
-        results: list[ArenaModelResult] = []
-        for i, agent in enumerate(agents):
-            color = ArenaUI.COLORS[i % len(ArenaUI.COLORS)]
-            status_text = Text()
-            status_text.append("Running ", style="dim")
-            status_text.append(providers[i], style=color)
-            status_text.append("/", style="dim")
-            status_text.append(models[i], style=color)
-            status_text.append("...", style="dim")
-            with console.status(status_text):
-                result = await _run_arena_model(
-                    agent, messages, providers[i], models[i]
+    try:
+        while True:
+            # Get user input
+            try:
+                user_input = Prompt.ask(
+                    f"[bold green]{PlaygroundUI.USER_PROMPT}[/bold green]"
                 )
-                results.append(result)
+            except EOFError:
+                break
 
-                # Add to session turn
-                turn.responses.append(
-                    ArenaModelResponse(
-                        provider=result.provider,
-                        model=result.model,
-                        content=result.content,
-                        tool_calls=result.tool_calls_raw,
-                        elapsed_time=result.elapsed_time,
-                        error=result.error,
+            if user_input.lower() in PlaygroundUI.EXIT_COMMANDS:
+                break
+
+            if not user_input.strip():
+                continue
+
+            # Add user message
+            messages.append(Message(role=Role.USER, content=user_input))
+
+            # Create turn for session
+            turn = session.add_turn(user_input)
+
+            # Run each model sequentially using cached sessions
+            results: list[ArenaModelResult] = []
+            for i, agent_session in enumerate(agent_sessions):
+                color = ArenaUI.COLORS[i % len(ArenaUI.COLORS)]
+                status_text = Text()
+                status_text.append("Running ", style="dim")
+                status_text.append(providers[i], style=color)
+                status_text.append("/", style="dim")
+                status_text.append(models[i], style=color)
+                status_text.append("...", style="dim")
+                with console.status(status_text):
+                    result = await _run_arena_model_with_session(
+                        agent_session, messages, providers[i], models[i]
                     )
-                )
+                    results.append(result)
 
-        # Display results
-        _display_arena_results(console, results)
-        console.print()
+                    # Add to session turn
+                    turn.responses.append(
+                        ArenaModelResponse(
+                            provider=result.provider,
+                            model=result.model,
+                            content=result.content,
+                            tool_calls=result.tool_calls_raw,
+                            elapsed_time=result.elapsed_time,
+                            error=result.error,
+                        )
+                    )
+
+            # Display results
+            _display_arena_results(console, results)
+            console.print()
+    finally:
+        # Close all agent sessions
+        for agent_session in agent_sessions:
+            await agent_session.close()
 
 
 def run_playground(agent_path: str, menu: bool = False, arena: bool = False) -> None:
@@ -703,155 +776,163 @@ async def _chat_loop(
     provider: str,
     model: str,
 ) -> None:
-    """Run the main chat loop."""
-    while True:
-        # Get user input
-        try:
-            user_input = Prompt.ask(
-                f"[bold green]{PlaygroundUI.USER_PROMPT}[/bold green]"
-            )
-        except EOFError:
-            break
+    """Run the main chat loop.
 
-        # Check for exit commands
-        if user_input.lower() in PlaygroundUI.EXIT_COMMANDS:
-            break
-
-        if not user_input.strip():
-            continue
-
-        # Start timing
-        start_time = time.perf_counter()
-
-        # Show thinking indicator
-        with console.status(f"[dim]{PlaygroundUI.THINKING}[/dim]"):
-            # Build message history for agent (add current input)
-            messages = [
-                Message(
-                    role=Role.USER if m.role == Role.USER else Role.ASSISTANT,
-                    content=m.content or "",
-                )
-                for m in session.get_messages()
-            ]
-            messages.append(Message(role=Role.USER, content=user_input))
-
-            # Get response
+    Uses AgentSession to cache HTTP clients across messages for reduced latency.
+    """
+    # Use session to cache HTTP clients across the entire chat loop
+    async with agent.session() as agent_session:
+        while True:
+            # Get user input
             try:
-                response = await agent.run(messages, stream=False)
-            except Exception as e:
-                console.print(f"[red]Error: {e}[/red]")
+                user_input = Prompt.ask(
+                    f"[bold green]{PlaygroundUI.USER_PROMPT}[/bold green]"
+                )
+            except EOFError:
+                break
+
+            # Check for exit commands
+            if user_input.lower() in PlaygroundUI.EXIT_COMMANDS:
+                break
+
+            if not user_input.strip():
                 continue
 
-        # Calculate elapsed time
-        elapsed_time = time.perf_counter() - start_time
+            # Start timing
+            start_time = time.perf_counter()
 
-        # Display guardrail result if present (shows parallel execution)
-        if response.guardrail_result:
-            gr_result = response.guardrail_result
-            guard_text = Text()
+            # Show thinking indicator
+            with console.status(f"[dim]{PlaygroundUI.THINKING}[/dim]"):
+                # Build message history for agent (add current input)
+                messages = [
+                    Message(
+                        role=Role.USER if m.role == Role.USER else Role.ASSISTANT,
+                        content=m.content or "",
+                    )
+                    for m in session.get_messages()
+                ]
+                messages.append(Message(role=Role.USER, content=user_input))
 
-            if gr_result.safe:
-                guard_text.append("safe", style="green")
-            else:
-                guard_text.append("flagged", style="red")
-                if gr_result.flagged_categories:
-                    guard_text.append(
-                        f" ({', '.join(gr_result.flagged_categories)})", style="yellow"
+                # Get response using cached client
+                try:
+                    response = await agent_session.run(messages, stream=False)
+                except Exception as e:
+                    console.print(f"[red]Error: {e}[/red]")
+                    continue
+
+            # Calculate elapsed time
+            elapsed_time = time.perf_counter() - start_time
+
+            # Display guardrail result if present (shows parallel execution)
+            if response.guardrail_result:
+                gr_result = response.guardrail_result
+                guard_text = Text()
+
+                if gr_result.safe:
+                    guard_text.append("safe", style="green")
+                else:
+                    guard_text.append("flagged", style="red")
+                    if gr_result.flagged_categories:
+                        guard_text.append(
+                            f" ({', '.join(gr_result.flagged_categories)})",
+                            style="yellow",
+                        )
+
+                console.print(Panel(guard_text, title="Guard", border_style="dim"))
+
+            # Display guardrail blocked if applicable
+            if response.blocked and response.guardrail_result:
+                gr_result = response.guardrail_result
+                blocked_text = Text()
+
+                # Determine message based on where blocked
+                if gr_result.flagged_at == "input":
+                    blocked_text.append(
+                        PlaygroundUI.GUARDRAIL_INPUT_BLOCKED, style="bold red"
+                    )
+                else:
+                    blocked_text.append(
+                        PlaygroundUI.GUARDRAIL_OUTPUT_BLOCKED, style="bold red"
                     )
 
-            console.print(Panel(guard_text, title="Guard", border_style="dim"))
+                # Add categories if present
+                if gr_result.flagged_categories:
+                    blocked_text.append("\n")
+                    blocked_text.append(
+                        PlaygroundUI.GUARDRAIL_CATEGORIES.format(
+                            categories=", ".join(gr_result.flagged_categories)
+                        ),
+                        style="yellow",
+                    )
 
-        # Display guardrail blocked if applicable
-        if response.blocked and response.guardrail_result:
-            gr_result = response.guardrail_result
-            blocked_text = Text()
+                # Add rationale if present
+                if gr_result.policy_rationale:
+                    blocked_text.append("\n")
+                    blocked_text.append(
+                        PlaygroundUI.GUARDRAIL_RATIONALE.format(
+                            rationale=gr_result.policy_rationale
+                        ),
+                        style="dim",
+                    )
 
-            # Determine message based on where blocked
-            if gr_result.flagged_at == "input":
-                blocked_text.append(
-                    PlaygroundUI.GUARDRAIL_INPUT_BLOCKED, style="bold red"
+                console.print(
+                    Panel(
+                        blocked_text,
+                        title=PlaygroundUI.GUARDRAIL_BLOCKED_LABEL,
+                        border_style="red",
+                    )
                 )
-            else:
-                blocked_text.append(
-                    PlaygroundUI.GUARDRAIL_OUTPUT_BLOCKED, style="bold red"
+                console.print(_format_elapsed_time(elapsed_time), style="dim")
+                console.print()
+
+                # Store blocked message separately (not in LLM history)
+                session.add_blocked_message(user_input, gr_result)
+                continue
+
+            # Add user message to session (only if not blocked)
+            session.add_user_message(user_input)
+
+            # Display tool calls if any
+            for i, tool_call in enumerate(response.tool_calls_made):
+                tool_text = Text()
+                tool_text.append(f"{tool_call.name}", style="yellow")
+                tool_text.append(f"({_format_args(tool_call.arguments)})", style="dim")
+
+                if i < len(response.tool_results):
+                    result = response.tool_results[i]
+                    if result.success:
+                        tool_text.append(" → ", style="dim")
+                        tool_text.append(str(result.data)[:100], style="green")
+                    else:
+                        tool_text.append(" → ", style="dim")
+                        tool_text.append(str(result.error), style="red")
+
+                console.print(
+                    Panel(
+                        tool_text,
+                        title=PlaygroundUI.TOOL_CALL_LABEL,
+                        border_style="yellow",
+                    )
                 )
 
-            # Add categories if present
-            if gr_result.flagged_categories:
-                blocked_text.append("\n")
-                blocked_text.append(
-                    PlaygroundUI.GUARDRAIL_CATEGORIES.format(
-                        categories=", ".join(gr_result.flagged_categories)
-                    ),
-                    style="yellow",
+            # Display assistant response
+            if response.message.content:
+                session.add_assistant_message(response.message.content)
+                title = Text()
+                title.append(provider, style="cyan")
+                title.append("/", style="dim")
+                title.append(model, style="blue")
+                console.print(
+                    Panel(
+                        Markdown(response.message.content),
+                        title=title,
+                        border_style="blue",
+                    )
                 )
 
-            # Add rationale if present
-            if gr_result.policy_rationale:
-                blocked_text.append("\n")
-                blocked_text.append(
-                    PlaygroundUI.GUARDRAIL_RATIONALE.format(
-                        rationale=gr_result.policy_rationale
-                    ),
-                    style="dim",
-                )
-
-            console.print(
-                Panel(
-                    blocked_text,
-                    title=PlaygroundUI.GUARDRAIL_BLOCKED_LABEL,
-                    border_style="red",
-                )
-            )
+            # Display response time
             console.print(_format_elapsed_time(elapsed_time), style="dim")
             console.print()
-
-            # Store blocked message separately (not in LLM history)
-            session.add_blocked_message(user_input, gr_result)
-            continue
-
-        # Add user message to session (only if not blocked)
-        session.add_user_message(user_input)
-
-        # Display tool calls if any
-        for i, tool_call in enumerate(response.tool_calls_made):
-            tool_text = Text()
-            tool_text.append(f"{tool_call.name}", style="yellow")
-            tool_text.append(f"({_format_args(tool_call.arguments)})", style="dim")
-
-            if i < len(response.tool_results):
-                result = response.tool_results[i]
-                if result.success:
-                    tool_text.append(" → ", style="dim")
-                    tool_text.append(str(result.data)[:100], style="green")
-                else:
-                    tool_text.append(" → ", style="dim")
-                    tool_text.append(str(result.error), style="red")
-
-            console.print(
-                Panel(
-                    tool_text, title=PlaygroundUI.TOOL_CALL_LABEL, border_style="yellow"
-                )
-            )
-
-        # Display assistant response
-        if response.message.content:
-            session.add_assistant_message(response.message.content)
-            title = Text()
-            title.append(provider, style="cyan")
-            title.append("/", style="dim")
-            title.append(model, style="blue")
-            console.print(
-                Panel(
-                    Markdown(response.message.content),
-                    title=title,
-                    border_style="blue",
-                )
-            )
-
-        # Display response time
-        console.print(_format_elapsed_time(elapsed_time), style="dim")
-        console.print()
 
 
 def _format_args(args: dict[str, object]) -> str:

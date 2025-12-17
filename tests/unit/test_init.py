@@ -28,25 +28,34 @@ def test_public_api_exports() -> None:
         Agent,
         AgentConfig,
         AgentResponse,
+        AgentSession,
         ClassifierResult,
         CommonPolicies,
         GuardrailErrorPolicy,
         GuardrailMode,
         GuardrailResult,
         GuardrailsConfig,
+        Message,
         PolicyBuilder,
         PolicyResult,
+        Role,
         Tool,
+        ToolCall,
         ToolResult,
         __version__,
+        load_prompt,
     )
 
     # Verify all imports are accessible
     assert Agent is not None
     assert AgentConfig is not None
     assert AgentResponse is not None
+    assert AgentSession is not None
     assert Tool is not None
+    assert ToolCall is not None
     assert ToolResult is not None
+    assert Message is not None
+    assert Role is not None
     assert GuardrailsConfig is not None
     assert GuardrailMode is not None
     assert GuardrailErrorPolicy is not None
@@ -55,6 +64,7 @@ def test_public_api_exports() -> None:
     assert PolicyResult is not None
     assert PolicyBuilder is not None
     assert CommonPolicies is not None
+    assert load_prompt is not None
     assert __version__ is not None
 
 
@@ -64,11 +74,19 @@ def test_all_list_matches_exports() -> None:
     import neosian
 
     expected = {
+        # Agent
         "Agent",
         "AgentConfig",
         "AgentResponse",
+        "AgentSession",
+        # Messages
+        "Message",
+        "Role",
+        # Tools
         "Tool",
+        "ToolCall",
         "ToolResult",
+        # Guardrails
         "GuardrailsConfig",
         "GuardrailMode",
         "GuardrailErrorPolicy",
@@ -77,6 +95,9 @@ def test_all_list_matches_exports() -> None:
         "PolicyResult",
         "PolicyBuilder",
         "CommonPolicies",
+        # Utilities
+        "load_prompt",
+        # Meta
         "__version__",
     }
 
