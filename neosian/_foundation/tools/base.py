@@ -5,9 +5,10 @@ Provides the @Tool decorator and ToolResult for building agent tools.
 
 import inspect
 import json
+import types
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, get_type_hints
+from typing import Any, Union, get_origin, get_type_hints
 
 from neosian._foundation.llm.base import ToolDefinition
 from neosian._foundation.shared.types import ToolFunction as ToolFunction
@@ -96,8 +97,8 @@ def _python_type_to_json_schema(python_type: type[Any]) -> dict[str, Any]:
     if python_type in type_mapping:
         return type_mapping[python_type]
 
-    # Handle generic types (list, dict, etc.)
-    origin = getattr(python_type, "__origin__", None)
+    # Handle generic types (list, dict, Union, etc.)
+    origin = get_origin(python_type)
 
     if origin is list:
         args = getattr(python_type, "__args__", (Any,))
@@ -114,6 +115,21 @@ def _python_type_to_json_schema(python_type: type[Any]) -> dict[str, Any]:
             "type": "object",
             "additionalProperties": _python_type_to_json_schema(value_type),
         }
+
+    # Handle Union types (including Optional[X] which is Union[X, None])
+    if origin is Union or origin is types.UnionType:
+        args = getattr(python_type, "__args__", ())
+        # Filter out NoneType to get the actual type(s)
+        non_none_types = [t for t in args if t is not type(None)]
+        if len(non_none_types) == 1:
+            # Optional[X] case - return schema for X
+            return _python_type_to_json_schema(non_none_types[0])
+        elif len(non_none_types) > 1:
+            # Union of multiple types - use anyOf
+            return {"anyOf": [_python_type_to_json_schema(t) for t in non_none_types]}
+        else:
+            # Union[None] edge case
+            return {"type": "null"}
 
     # Default to string for unknown types
     return {"type": "string"}

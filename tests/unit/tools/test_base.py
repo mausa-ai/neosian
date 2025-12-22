@@ -1,10 +1,13 @@
 """Tests for tool system base primitives."""
 
+from typing import Optional, Union
+
 import pytest
 
 from neosian._foundation.tools.base import (
     Tool,
     ToolResult,
+    _python_type_to_json_schema,
     get_tool_definition,
     get_tool_metadata,
 )
@@ -153,6 +156,110 @@ class TestToolDecorator:
             definition.parameters["properties"]["arg"]["additionalProperties"]["type"]
             == "integer"
         )
+
+    def test_type_conversion_optional_int(self) -> None:
+        """Optional[int] should convert to JSON integer."""
+
+        @Tool(name="test", description="Test")
+        async def test_func(arg: Optional[int] = None) -> ToolResult[str]:  # noqa: ARG001
+            return ToolResult.ok("ok")
+
+        definition = get_tool_definition(test_func)
+        assert definition is not None
+        assert definition.parameters["properties"]["arg"]["type"] == "integer"
+
+    def test_type_conversion_optional_str(self) -> None:
+        """Optional[str] should convert to JSON string."""
+
+        @Tool(name="test", description="Test")
+        async def test_func(arg: Optional[str] = None) -> ToolResult[str]:  # noqa: ARG001
+            return ToolResult.ok("ok")
+
+        definition = get_tool_definition(test_func)
+        assert definition is not None
+        assert definition.parameters["properties"]["arg"]["type"] == "string"
+
+    def test_type_conversion_union_pipe_syntax(self) -> None:
+        """int | None should convert to JSON integer (Python 3.10+ syntax)."""
+
+        @Tool(name="test", description="Test")
+        async def test_func(arg: int | None = None) -> ToolResult[str]:  # noqa: ARG001
+            return ToolResult.ok("ok")
+
+        definition = get_tool_definition(test_func)
+        assert definition is not None
+        assert definition.parameters["properties"]["arg"]["type"] == "integer"
+
+    def test_type_conversion_union_multiple_types(self) -> None:
+        """Union[int, str] should convert to anyOf schema."""
+
+        @Tool(name="test", description="Test")
+        async def test_func(arg: Union[int, str]) -> ToolResult[str]:  # noqa: ARG001
+            return ToolResult.ok("ok")
+
+        definition = get_tool_definition(test_func)
+        assert definition is not None
+        prop = definition.parameters["properties"]["arg"]
+        assert "anyOf" in prop
+        assert {"type": "integer"} in prop["anyOf"]
+        assert {"type": "string"} in prop["anyOf"]
+
+    def test_type_conversion_optional_list(self) -> None:
+        """Optional[list[str]] should convert to JSON array."""
+
+        @Tool(name="test", description="Test")
+        async def test_func(arg: Optional[list[str]] = None) -> ToolResult[str]:  # noqa: ARG001
+            return ToolResult.ok("ok")
+
+        definition = get_tool_definition(test_func)
+        assert definition is not None
+        prop = definition.parameters["properties"]["arg"]
+        assert prop["type"] == "array"
+        assert prop["items"]["type"] == "string"
+
+
+@pytest.mark.unit
+class TestPythonTypeToJsonSchema:
+    """Test _python_type_to_json_schema function directly."""
+
+    def test_optional_int(self) -> None:
+        """Optional[int] should return integer schema."""
+        assert _python_type_to_json_schema(Optional[int]) == {"type": "integer"}
+
+    def test_optional_float(self) -> None:
+        """Optional[float] should return number schema."""
+        assert _python_type_to_json_schema(Optional[float]) == {"type": "number"}
+
+    def test_optional_bool(self) -> None:
+        """Optional[bool] should return boolean schema."""
+        assert _python_type_to_json_schema(Optional[bool]) == {"type": "boolean"}
+
+    def test_pipe_syntax_int_none(self) -> None:
+        """int | None should return integer schema."""
+        assert _python_type_to_json_schema(int | None) == {"type": "integer"}
+
+    def test_pipe_syntax_str_none(self) -> None:
+        """str | None should return string schema."""
+        assert _python_type_to_json_schema(str | None) == {"type": "string"}
+
+    def test_union_int_str(self) -> None:
+        """Union[int, str] should return anyOf schema."""
+        result = _python_type_to_json_schema(Union[int, str])
+        assert "anyOf" in result
+        assert {"type": "integer"} in result["anyOf"]
+        assert {"type": "string"} in result["anyOf"]
+
+    def test_pipe_syntax_int_str(self) -> None:
+        """int | str should return anyOf schema."""
+        result = _python_type_to_json_schema(int | str)
+        assert "anyOf" in result
+        assert {"type": "integer"} in result["anyOf"]
+        assert {"type": "string"} in result["anyOf"]
+
+    def test_nested_optional_list(self) -> None:
+        """Optional[list[int]] should return array schema."""
+        result = _python_type_to_json_schema(Optional[list[int]])
+        assert result == {"type": "array", "items": {"type": "integer"}}
 
 
 @pytest.mark.unit
