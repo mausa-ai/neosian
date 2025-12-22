@@ -445,7 +445,7 @@ def _build_arena_result(
             result = response.tool_results[i]
             if result.success:
                 tool_text.append(" → ", style="dim")
-                tool_text.append(str(result.data)[:100], style="green")
+                tool_text.append(str(result.data), style="green")
             else:
                 tool_text.append(" → ", style="dim")
                 tool_text.append(str(result.error), style="red")
@@ -902,7 +902,7 @@ async def _chat_loop(
                     result = response.tool_results[i]
                     if result.success:
                         tool_text.append(" → ", style="dim")
-                        tool_text.append(str(result.data)[:100], style="green")
+                        tool_text.append(str(result.data), style="green")
                     else:
                         tool_text.append(" → ", style="dim")
                         tool_text.append(str(result.error), style="red")
