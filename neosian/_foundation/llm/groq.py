@@ -182,12 +182,23 @@ class GroqClient(BaseLLMClient):
             tools=groq_tools,
             temperature=temp,
             stream=True,
+            extra_body={"stream_options": {"include_usage": True}},
         )
 
         # Track tool calls being built across chunks
         tool_call_builders: dict[int, dict[str, str]] = {}
 
         async for chunk in stream:
+            # Handle usage-only chunk (comes after finish_reason)
+            if not chunk.choices and chunk.usage:
+                yield StreamChunk(
+                    usage=Usage(
+                        input_tokens=chunk.usage.prompt_tokens,
+                        output_tokens=chunk.usage.completion_tokens,
+                    ),
+                )
+                continue
+
             if not chunk.choices:
                 continue
 

@@ -878,6 +878,12 @@ class Agent:
             tools=None,
         )
 
+        # Track usage and pending done for different provider patterns
+        # OpenAI/Groq: usage comes in separate chunk after finish_reason
+        # Anthropic: usage comes with finish_reason chunk
+        pending_done = False
+        final_usage: Usage | None = None
+
         async for chunk in stream:
             # Check guard during streaming
             if guard_task is not None and guard_task.done():
@@ -908,7 +914,23 @@ class Agent:
                         ).to_sse()
                         return
 
-                yield done_event().to_sse()
+                if chunk.usage:
+                    # Anthropic: usage comes with finish_reason
+                    yield done_event(chunk.usage).to_sse()
+                else:
+                    # OpenAI/Groq: usage may come in next chunk
+                    pending_done = True
+
+            # Handle usage-only chunk (OpenAI/Groq pattern)
+            if chunk.usage and not chunk.finish_reason and not chunk.content:
+                final_usage = chunk.usage
+                if pending_done:
+                    yield done_event(final_usage).to_sse()
+                    pending_done = False
+
+        # If we have a pending done without usage, emit it now
+        if pending_done:
+            yield done_event(final_usage).to_sse()
 
     async def _execute_tool(self, tool_call: ToolCall) -> ToolResult[Any]:
         """Execute a single tool call.

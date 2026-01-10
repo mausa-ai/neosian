@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
-from neosian._foundation.llm.base import StreamChunk, ToolCall
+from neosian._foundation.llm.base import StreamChunk, ToolCall, Usage
 from neosian._foundation.tools.base import ToolResult
 
 
@@ -75,9 +75,23 @@ def error_event(error: str) -> SSEEvent:
     return SSEEvent(event=SSEEventType.ERROR, data={"error": error})
 
 
-def done_event() -> SSEEvent:
-    """Create a done SSE event."""
-    return SSEEvent(event=SSEEventType.DONE, data={})
+def done_event(usage: Usage | None = None) -> SSEEvent:
+    """Create a done SSE event.
+
+    Args:
+        usage: Optional token usage statistics.
+
+    Returns:
+        SSEEvent with done data, including usage if provided.
+    """
+    data: dict[str, Any] = {}
+    if usage:
+        data["usage"] = {
+            "input_tokens": usage.input_tokens,
+            "output_tokens": usage.output_tokens,
+            "total_tokens": usage.total_tokens,
+        }
+    return SSEEvent(event=SSEEventType.DONE, data=data)
 
 
 def blocked_event(
@@ -113,7 +127,16 @@ async def stream_to_sse(
 
     Yields:
         SSE-formatted strings.
+
+    Note:
+        Usage data handling varies by provider:
+        - OpenAI/Groq: Usage comes in a separate chunk after finish_reason
+        - Anthropic: Usage comes with the finish_reason chunk
+        We handle both by deferring the done event until we have usage or stream ends.
     """
+    pending_done = False
+    final_usage: Usage | None = None
+
     async for chunk in stream:
         # Yield content if present
         if chunk.content:
@@ -123,6 +146,22 @@ async def stream_to_sse(
         for tool_call in chunk.tool_calls:
             yield tool_call_event(tool_call).to_sse()
 
-        # Yield done event on finish
+        # Handle finish_reason
         if chunk.finish_reason:
-            yield done_event().to_sse()
+            if chunk.usage:
+                # Anthropic: usage comes with finish_reason
+                yield done_event(chunk.usage).to_sse()
+            else:
+                # OpenAI/Groq: usage may come in next chunk
+                pending_done = True
+
+        # Handle usage-only chunk (OpenAI/Groq pattern)
+        if chunk.usage and not chunk.finish_reason and not chunk.content:
+            final_usage = chunk.usage
+            if pending_done:
+                yield done_event(final_usage).to_sse()
+                pending_done = False
+
+    # If we have a pending done without usage, emit it now
+    if pending_done:
+        yield done_event(final_usage).to_sse()

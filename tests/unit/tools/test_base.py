@@ -161,7 +161,9 @@ class TestToolDecorator:
         """Optional[int] should convert to JSON integer."""
 
         @Tool(name="test", description="Test")
-        async def test_func(arg: Optional[int] = None) -> ToolResult[str]:  # noqa: ARG001
+        async def test_func(
+            arg: int | None = None,
+        ) -> ToolResult[str]:  # noqa: ARG001
             return ToolResult.ok("ok")
 
         definition = get_tool_definition(test_func)
@@ -172,7 +174,9 @@ class TestToolDecorator:
         """Optional[str] should convert to JSON string."""
 
         @Tool(name="test", description="Test")
-        async def test_func(arg: Optional[str] = None) -> ToolResult[str]:  # noqa: ARG001
+        async def test_func(
+            arg: str | None = None,
+        ) -> ToolResult[str]:  # noqa: ARG001
             return ToolResult.ok("ok")
 
         definition = get_tool_definition(test_func)
@@ -194,7 +198,7 @@ class TestToolDecorator:
         """Union[int, str] should convert to anyOf schema."""
 
         @Tool(name="test", description="Test")
-        async def test_func(arg: Union[int, str]) -> ToolResult[str]:  # noqa: ARG001
+        async def test_func(arg: int | str) -> ToolResult[str]:  # noqa: ARG001
             return ToolResult.ok("ok")
 
         definition = get_tool_definition(test_func)
@@ -208,7 +212,9 @@ class TestToolDecorator:
         """Optional[list[str]] should convert to JSON array."""
 
         @Tool(name="test", description="Test")
-        async def test_func(arg: Optional[list[str]] = None) -> ToolResult[str]:  # noqa: ARG001
+        async def test_func(
+            arg: list[str] | None = None,
+        ) -> ToolResult[str]:  # noqa: ARG001
             return ToolResult.ok("ok")
 
         definition = get_tool_definition(test_func)

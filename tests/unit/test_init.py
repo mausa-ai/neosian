@@ -42,6 +42,7 @@ def test_public_api_exports() -> None:
         Tool,
         ToolCall,
         ToolResult,
+        Usage,
         __version__,
         load_prompt,
     )
@@ -54,6 +55,7 @@ def test_public_api_exports() -> None:
     assert Tool is not None
     assert ToolCall is not None
     assert ToolResult is not None
+    assert Usage is not None
     assert Message is not None
     assert Role is not None
     assert GuardrailsConfig is not None
@@ -86,6 +88,8 @@ def test_all_list_matches_exports() -> None:
         "Tool",
         "ToolCall",
         "ToolResult",
+        # LLM
+        "Usage",
         # Guardrails
         "GuardrailsConfig",
         "GuardrailMode",

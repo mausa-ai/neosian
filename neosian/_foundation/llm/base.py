@@ -56,6 +56,7 @@ class StreamChunk:
     content: str | None = None
     tool_calls: list[ToolCall] = field(default_factory=list)
     finish_reason: str | None = None
+    usage: "Usage | None" = None
 
 
 @dataclass

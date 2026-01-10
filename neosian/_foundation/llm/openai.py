@@ -7,6 +7,7 @@ from openai import NOT_GIVEN, AsyncOpenAI, BadRequestError
 from openai.types.chat import (
     ChatCompletionAssistantMessageParam,
     ChatCompletionMessageParam,
+    ChatCompletionStreamOptionsParam,
     ChatCompletionToolParam,
 )
 
@@ -193,17 +194,29 @@ class OpenAIClient(BaseLLMClient):
         openai_messages = self._convert_messages(messages)
         openai_tools = self._convert_tools(tools) if tools else None
 
+        stream_opts: ChatCompletionStreamOptionsParam = {"include_usage": True}
         stream = await self._client.chat.completions.create(
             model=model,
             messages=openai_messages,
             tools=openai_tools if openai_tools else NOT_GIVEN,  # type: ignore[arg-type]
             stream=True,
+            stream_options=stream_opts,
         )
 
         # Track tool calls being built across chunks
         tool_call_builders: dict[int, dict[str, str]] = {}
 
         async for chunk in stream:  # type: ignore[union-attr]
+            # Handle usage-only chunk (comes after finish_reason)
+            if not chunk.choices and chunk.usage:
+                yield StreamChunk(
+                    usage=Usage(
+                        input_tokens=chunk.usage.prompt_tokens,
+                        output_tokens=chunk.usage.completion_tokens,
+                    ),
+                )
+                continue
+
             if not chunk.choices:
                 continue
 

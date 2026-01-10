@@ -186,6 +186,7 @@ class AnthropicClient(BaseLLMClient):
         # Note: tools not passed - agent uses complete() for tool detection
 
         async with self._client.messages.stream(**kwargs) as stream:
+            usage_data: Usage | None = None
             async for event in stream:
                 if event.type == "content_block_delta":
                     if hasattr(event.delta, "text"):
@@ -193,10 +194,18 @@ class AnthropicClient(BaseLLMClient):
                             content=event.delta.text,
                             finish_reason=None,
                         )
+                elif event.type == "message_delta":
+                    # Capture usage from message_delta event
+                    if hasattr(event, "usage") and event.usage:
+                        usage_data = Usage(
+                            input_tokens=event.usage.input_tokens or 0,
+                            output_tokens=event.usage.output_tokens,
+                        )
                 elif event.type == "message_stop":
                     yield StreamChunk(
                         content=None,
                         finish_reason="stop",
+                        usage=usage_data,
                     )
 
     def _convert_messages(

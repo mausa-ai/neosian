@@ -96,9 +96,7 @@ class TestFallbackFirstProviderFails:
     """Test fallback when first provider fails with invalid API key."""
 
     @pytest.mark.asyncio
-    async def test_groq_fails_openai_succeeds(
-        self, valid_openai_key: str
-    ) -> None:
+    async def test_groq_fails_openai_succeeds(self, valid_openai_key: str) -> None:
         """Test fallback from Groq (invalid key) to OpenAI (valid key).
 
         Scenario: Primary provider Groq fails with 401, should fall back to OpenAI.
@@ -111,7 +109,9 @@ class TestFallbackFirstProviderFails:
 
         with patch.dict(os.environ, env, clear=True):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are a helpful assistant. Reply concisely."),
+                system_prompt=SystemPrompt(
+                    "You are a helpful assistant. Reply concisely."
+                ),
                 tools=[],
                 provider=Provider.Groq.ID,
                 model=ModelId(Provider.Groq.Production.LLAMA_3_3_70B),
@@ -119,7 +119,9 @@ class TestFallbackFirstProviderFails:
             )
             agent = Agent(config=config)
 
-            messages = [Message(role=Role.USER, content="Say 'hello' and nothing else.")]
+            messages = [
+                Message(role=Role.USER, content="Say 'hello' and nothing else.")
+            ]
             response = await agent.run(messages, stream=False)
 
             # Should have succeeded with OpenAI fallback
@@ -128,9 +130,7 @@ class TestFallbackFirstProviderFails:
             assert response.message.role == Role.ASSISTANT
 
     @pytest.mark.asyncio
-    async def test_openai_fails_groq_succeeds(
-        self, valid_groq_key: str
-    ) -> None:
+    async def test_openai_fails_groq_succeeds(self, valid_groq_key: str) -> None:
         """Test fallback from OpenAI (invalid key) to Groq (valid key).
 
         Scenario: Primary provider OpenAI fails with 401, should fall back to Groq.
@@ -143,7 +143,9 @@ class TestFallbackFirstProviderFails:
 
         with patch.dict(os.environ, env, clear=True):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are a helpful assistant. Reply concisely."),
+                system_prompt=SystemPrompt(
+                    "You are a helpful assistant. Reply concisely."
+                ),
                 tools=[],
                 provider=Provider.OpenAI.ID,
                 model=ModelId(Provider.OpenAI.Models.GPT_5_MINI),
@@ -151,7 +153,9 @@ class TestFallbackFirstProviderFails:
             )
             agent = Agent(config=config)
 
-            messages = [Message(role=Role.USER, content="Say 'hello' and nothing else.")]
+            messages = [
+                Message(role=Role.USER, content="Say 'hello' and nothing else.")
+            ]
             response = await agent.run(messages, stream=False)
 
             # Should have succeeded with Groq fallback
@@ -180,7 +184,9 @@ class TestFallbackMultipleProvidersFail:
 
         with patch.dict(os.environ, env, clear=True):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are a helpful assistant. Reply concisely."),
+                system_prompt=SystemPrompt(
+                    "You are a helpful assistant. Reply concisely."
+                ),
                 tools=[],
                 provider=Provider.Groq.ID,
                 model=ModelId(Provider.Groq.Production.LLAMA_3_3_70B),
@@ -188,7 +194,9 @@ class TestFallbackMultipleProvidersFail:
             )
             agent = Agent(config=config)
 
-            messages = [Message(role=Role.USER, content="Say 'hello' and nothing else.")]
+            messages = [
+                Message(role=Role.USER, content="Say 'hello' and nothing else.")
+            ]
             response = await agent.run(messages, stream=False)
 
             # Should have succeeded with Anthropic fallback
@@ -252,7 +260,9 @@ class TestFallbackSingleProvider:
 
         with patch.dict(os.environ, env, clear=True):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are a helpful assistant. Reply concisely."),
+                system_prompt=SystemPrompt(
+                    "You are a helpful assistant. Reply concisely."
+                ),
                 tools=[],
                 provider=Provider.Groq.ID,
                 model=ModelId(Provider.Groq.Production.LLAMA_3_3_70B),
@@ -260,7 +270,9 @@ class TestFallbackSingleProvider:
             )
             agent = Agent(config=config)
 
-            messages = [Message(role=Role.USER, content="Say 'hello' and nothing else.")]
+            messages = [
+                Message(role=Role.USER, content="Say 'hello' and nothing else.")
+            ]
             response = await agent.run(messages, stream=False)
 
             assert response.message.content is not None
@@ -300,9 +312,9 @@ class TestFallbackSingleProvider:
             for provider_model in error.providers:
                 # Extract provider from "provider:model" format
                 provider = provider_model.split(":")[0]
-                assert provider == Provider.Groq.ID, (
-                    f"Expected only Groq provider, got: {provider_model}"
-                )
+                assert (
+                    provider == Provider.Groq.ID
+                ), f"Expected only Groq provider, got: {provider_model}"
 
 
 @pytest.mark.integration
@@ -323,7 +335,9 @@ class TestFallbackStreaming:
 
         with patch.dict(os.environ, env, clear=True):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are a helpful assistant. Reply concisely."),
+                system_prompt=SystemPrompt(
+                    "You are a helpful assistant. Reply concisely."
+                ),
                 tools=[],
                 provider=Provider.Groq.ID,
                 model=ModelId(Provider.Groq.Production.LLAMA_3_3_70B),
@@ -331,7 +345,9 @@ class TestFallbackStreaming:
             )
             agent = Agent(config=config)
 
-            messages = [Message(role=Role.USER, content="Say 'hello' and nothing else.")]
+            messages = [
+                Message(role=Role.USER, content="Say 'hello' and nothing else.")
+            ]
             result = await agent.run(messages, stream=True)
 
             # Collect all SSE events
@@ -380,9 +396,7 @@ class TestFallbackTierOrder:
     """Test that fallback respects tier ordering."""
 
     @pytest.mark.asyncio
-    async def test_tier2_doesnt_fallback_to_tier1(
-        self, valid_openai_key: str
-    ) -> None:
+    async def test_tier2_doesnt_fallback_to_tier1(self, valid_openai_key: str) -> None:
         """Test that starting from Tier 2 doesn't fall back to Tier 1.
 
         Scenario: Start with Tier 2 model (Groq llama-3.3-70b), fails,
@@ -402,7 +416,9 @@ class TestFallbackTierOrder:
 
         with patch.dict(os.environ, env, clear=True):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are a helpful assistant. Reply concisely."),
+                system_prompt=SystemPrompt(
+                    "You are a helpful assistant. Reply concisely."
+                ),
                 tools=[],
                 provider=Provider.Groq.ID,
                 model=ModelId(Provider.Groq.Production.LLAMA_3_3_70B),  # Tier 2
@@ -416,6 +432,7 @@ class TestFallbackTierOrder:
 
             # Tier 1 models should not be in chain for Tier 2 start
             from neosian._foundation.shared.constants import Fallback
+
             for tier1_model in Fallback.TIER_1:
                 assert tier1_model not in chain_strings, (
                     f"Tier 1 model {tier1_model} should not be in fallback chain "
