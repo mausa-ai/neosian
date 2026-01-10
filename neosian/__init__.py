@@ -2,6 +2,7 @@
 
 from neosian._foundation.agent.base import Agent, AgentResponse
 from neosian._foundation.agent.session import AgentSession
+from neosian._foundation.agent.streaming import SSEEventType
 from neosian._foundation.guardrails.policy import CommonPolicies, PolicyBuilder
 from neosian._foundation.llm.base import Message, Role, ToolCall, Usage
 from neosian._foundation.shared.prompt import load_prompt
@@ -16,7 +17,7 @@ from neosian._foundation.shared.types import (
 )
 from neosian._foundation.tools.base import Tool, ToolResult
 
-__version__ = "0.12.0"
+__version__ = "0.12.1"
 
 __all__ = [
     # Agent
@@ -33,6 +34,8 @@ __all__ = [
     "ToolResult",
     # LLM
     "Usage",
+    # Streaming
+    "SSEEventType",
     # Guardrails
     "GuardrailsConfig",
     "GuardrailMode",

@@ -39,6 +39,7 @@ def test_public_api_exports() -> None:
         PolicyBuilder,
         PolicyResult,
         Role,
+        SSEEventType,
         Tool,
         ToolCall,
         ToolResult,
@@ -56,6 +57,7 @@ def test_public_api_exports() -> None:
     assert ToolCall is not None
     assert ToolResult is not None
     assert Usage is not None
+    assert SSEEventType is not None
     assert Message is not None
     assert Role is not None
     assert GuardrailsConfig is not None
@@ -90,6 +92,8 @@ def test_all_list_matches_exports() -> None:
         "ToolResult",
         # LLM
         "Usage",
+        # Streaming
+        "SSEEventType",
         # Guardrails
         "GuardrailsConfig",
         "GuardrailMode",
