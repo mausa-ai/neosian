@@ -42,6 +42,7 @@ def test_public_api_exports() -> None:
         SSEEventType,
         Tool,
         ToolCall,
+        ToolCallId,
         ToolResult,
         Usage,
         __version__,
@@ -55,6 +56,7 @@ def test_public_api_exports() -> None:
     assert AgentSession is not None
     assert Tool is not None
     assert ToolCall is not None
+    assert ToolCallId is not None
     assert ToolResult is not None
     assert Usage is not None
     assert SSEEventType is not None
@@ -89,6 +91,7 @@ def test_all_list_matches_exports() -> None:
         # Tools
         "Tool",
         "ToolCall",
+        "ToolCallId",
         "ToolResult",
         # LLM
         "Usage",

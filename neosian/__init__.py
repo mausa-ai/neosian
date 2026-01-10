@@ -14,10 +14,11 @@ from neosian._foundation.shared.types import (
     GuardrailResult,
     GuardrailsConfig,
     PolicyResult,
+    ToolCallId,
 )
 from neosian._foundation.tools.base import Tool, ToolResult
 
-__version__ = "0.12.1"
+__version__ = "0.12.2"
 
 __all__ = [
     # Agent
@@ -31,6 +32,7 @@ __all__ = [
     # Tools
     "Tool",
     "ToolCall",
+    "ToolCallId",
     "ToolResult",
     # LLM
     "Usage",
