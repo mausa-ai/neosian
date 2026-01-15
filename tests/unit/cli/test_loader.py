@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from neosian._cli.loader import load_agent_config
+from neosian._cli.loader import _find_project_root, load_agent_config
 from neosian._foundation.shared.exceptions import (
     AgentFileNotFoundError,
     AgentInvalidConfigurationError,
@@ -164,3 +164,110 @@ class TestAgentConfig:
         assert config.provider == "groq"
         assert config.model == "llama-3.3-70b-versatile"
         assert config.enable_todo is False
+
+
+@pytest.mark.unit
+class TestFindProjectRoot:
+    """Tests for _find_project_root function."""
+
+    def test_finds_pyproject_toml(self, tmp_path: Path) -> None:
+        """Test finding project root via pyproject.toml."""
+        # Create structure: root/subdir/agent.py with pyproject.toml at root
+        root = tmp_path / "project"
+        root.mkdir()
+        (root / "pyproject.toml").write_text("[project]\nname = 'test'\n")
+        subdir = root / "agents"
+        subdir.mkdir()
+        agent_file = subdir / "my_agent.py"
+        agent_file.write_text("# agent")
+
+        result = _find_project_root(agent_file)
+
+        assert result == root
+
+    def test_finds_setup_py(self, tmp_path: Path) -> None:
+        """Test finding project root via setup.py."""
+        root = tmp_path / "project"
+        root.mkdir()
+        (root / "setup.py").write_text("from setuptools import setup\nsetup()")
+        subdir = root / "src"
+        subdir.mkdir()
+        agent_file = subdir / "agent.py"
+        agent_file.write_text("# agent")
+
+        result = _find_project_root(agent_file)
+
+        assert result == root
+
+    def test_finds_git_directory(self, tmp_path: Path) -> None:
+        """Test finding project root via .git directory."""
+        root = tmp_path / "project"
+        root.mkdir()
+        (root / ".git").mkdir()
+        subdir = root / "deep" / "nested"
+        subdir.mkdir(parents=True)
+        agent_file = subdir / "agent.py"
+        agent_file.write_text("# agent")
+
+        result = _find_project_root(agent_file)
+
+        assert result == root
+
+    def test_prefers_pyproject_over_setup_py_in_same_dir(self, tmp_path: Path) -> None:
+        """Test that pyproject.toml takes priority over setup.py in same directory."""
+        root = tmp_path / "project"
+        root.mkdir()
+        # Both markers in the same directory
+        (root / "pyproject.toml").write_text("[project]\nname = 'test'\n")
+        (root / "setup.py").write_text("from setuptools import setup\nsetup()")
+        subdir = root / "subdir"
+        subdir.mkdir()
+        agent_file = subdir / "agent.py"
+        agent_file.write_text("# agent")
+
+        result = _find_project_root(agent_file)
+
+        # Should find root (pyproject.toml checked before setup.py)
+        assert result == root
+
+    def test_finds_nearest_project_root(self, tmp_path: Path) -> None:
+        """Test that nearest project marker is found (monorepo support)."""
+        outer = tmp_path / "monorepo"
+        outer.mkdir()
+        (outer / "pyproject.toml").write_text("[project]\nname = 'monorepo'\n")
+        inner = outer / "packages" / "mypackage"
+        inner.mkdir(parents=True)
+        (inner / "pyproject.toml").write_text("[project]\nname = 'mypackage'\n")
+        agent_file = inner / "agent.py"
+        agent_file.write_text("# agent")
+
+        result = _find_project_root(agent_file)
+
+        # Should find the nearest (inner) project root
+        assert result == inner
+
+    def test_falls_back_to_parent_directory(self, tmp_path: Path) -> None:
+        """Test fallback to agent's parent when no markers found."""
+        # No project markers anywhere
+        agent_dir = tmp_path / "standalone"
+        agent_dir.mkdir()
+        agent_file = agent_dir / "agent.py"
+        agent_file.write_text("# standalone agent")
+
+        result = _find_project_root(agent_file)
+
+        assert result == agent_dir
+
+    def test_handles_deeply_nested_structure(self, tmp_path: Path) -> None:
+        """Test finding root in deeply nested directory structure."""
+        root = tmp_path / "project"
+        root.mkdir()
+        (root / "pyproject.toml").write_text("[project]\nname = 'test'\n")
+        deep_dir = root / "src" / "app" / "domains" / "agents"
+        deep_dir.mkdir(parents=True)
+        agent_file = deep_dir / "chat_agent.py"
+        agent_file.write_text("# agent")
+
+        result = _find_project_root(agent_file)
+
+        assert result == root
