@@ -7,10 +7,10 @@ Supports two modes:
 2. Variant mode: agent is a Python file, prompts are YAML configs
 """
 
+import asyncio
 import logging
 import time
 from collections.abc import Callable
-from pathlib import Path
 
 from neosian._cli.loader import load_agent_config
 from neosian._cli.playground import _load_credentials_from_config
@@ -19,6 +19,7 @@ from neosian._foundation.evaluation.mocker import mock_agent_tools
 from neosian._foundation.evaluation.prompt_config import load_prompt_config
 from neosian._foundation.evaluation.scorer import score_turn
 from neosian._foundation.llm.base import Message, Role, ToolDefinition
+from neosian._foundation.shared.constants import Evaluation
 from neosian._foundation.shared.types import (
     EvalCase,
     EvalConfig,
@@ -62,9 +63,15 @@ async def run_evaluation(
 
     results: list[EvalResult] = []
 
+    first_case = True
     for prompt_idx, prompt_file in enumerate(config.prompts):
         for model_idx, model in enumerate(config.models):
             for case_idx, case in enumerate(config.cases):
+                # Throttle to avoid rate limits (skip delay for first case)
+                if not first_case:
+                    await asyncio.sleep(Evaluation.THROTTLE_DELAY_MS / 1000)
+                first_case = False
+
                 # Signal running
                 if on_progress:
                     on_progress(prompt_idx, model_idx, case_idx, "running", 0.0)

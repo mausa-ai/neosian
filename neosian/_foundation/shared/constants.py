@@ -418,6 +418,9 @@ class Guardrails:
 class Evaluation:
     """Constants for agent evaluation framework."""
 
+    # Rate limit throttling (avoid 429s on fast providers like Groq)
+    THROTTLE_DELAY_MS: int = 500  # 500ms = max ~120 RPM
+
     # Config file keys
     NAME_KEY: str = "name"
     PROMPTS_KEY: str = "prompts"
