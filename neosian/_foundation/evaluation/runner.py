@@ -10,7 +10,8 @@ Supports two modes:
 import asyncio
 import logging
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 
 from neosian._cli.loader import load_agent_config
 from neosian._cli.playground import _load_credentials_from_config
@@ -40,6 +41,40 @@ logger = logging.getLogger(__name__)
 # status: "running" | "passed" | "failed"
 # latency_ms: response time (0.0 for "running" status)
 ProgressCallback = Callable[[int, int, int, str, float], None]
+
+
+class _FallbackDetector(logging.Handler):
+    """Log handler that detects fallback events during agent execution."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.fallback_occurred = False
+        self.fallback_reason: str | None = None
+
+    def emit(self, record: logging.LogRecord) -> None:
+        """Check if this log record indicates a fallback."""
+        if "Falling back from" in record.getMessage():
+            self.fallback_occurred = True
+            self.fallback_reason = record.getMessage()
+
+
+@contextmanager
+def _detect_fallback() -> Iterator[_FallbackDetector]:
+    """Context manager to detect fallback during agent execution.
+
+    Usage:
+        with _detect_fallback() as detector:
+            response = await agent.run(messages, stream=False)
+        if detector.fallback_occurred:
+            # Handle fallback case
+    """
+    detector = _FallbackDetector()
+    agent_logger = logging.getLogger("neosian._foundation.agent.base")
+    agent_logger.addHandler(detector)
+    try:
+        yield detector
+    finally:
+        agent_logger.removeHandler(detector)
 
 
 async def run_evaluation(
@@ -229,11 +264,23 @@ async def _run_one_shot(
     captures: list[ToolCallCapture] = []
     mock_agent_tools(agent, captures)
 
-    # Run agent with timing
+    # Run agent with timing and fallback detection
     messages = [Message(role=Role.USER, content=case.input or "")]
     start_time = time.perf_counter()
-    response = await agent.run(messages, stream=False)
+    with _detect_fallback() as detector:
+        response = await agent.run(messages, stream=False)
     latency_ms = (time.perf_counter() - start_time) * 1000
+
+    # If fallback occurred, mark as failed
+    if detector.fallback_occurred:
+        return EvalResult(
+            case_name=case.name,
+            prompt_file=prompt_file,
+            model=model,
+            passed=False,
+            error=detector.fallback_reason,
+            latency_ms=latency_ms,
+        )
 
     # Score
     turn_result = score_turn(
@@ -287,10 +334,22 @@ async def _run_conversational(
         # Add user message
         messages.append(Message(role=Role.USER, content=turn.user))
 
-        # Run agent with timing
+        # Run agent with timing and fallback detection
         start_time = time.perf_counter()
-        response = await agent.run(messages, stream=False)
+        with _detect_fallback() as detector:
+            response = await agent.run(messages, stream=False)
         total_latency_ms += (time.perf_counter() - start_time) * 1000
+
+        # If fallback occurred, fail the entire case
+        if detector.fallback_occurred:
+            return EvalResult(
+                case_name=case.name,
+                prompt_file=prompt_file,
+                model=model,
+                passed=False,
+                error=detector.fallback_reason,
+                latency_ms=total_latency_ms,
+            )
 
         # Score this turn
         turn_result = score_turn(
