@@ -1,0 +1,52 @@
+# Evaluation config for basic_agent.py
+# Tests tool selection and parameter passing across models
+
+name: Basic Agent Evaluation
+
+prompts:
+  - examples/basic_agent.py
+
+models:
+  - groq:llama-3.3-70b-versatile
+  - groq:llama-3.1-8b-instant
+
+cases:
+  # Test 1: Should call get_current_datetime
+  - name: datetime_query
+    input: "What time is it right now?"
+    expect:
+      tool: get_current_datetime
+
+  # Test 2: Should call read_file with correct path
+  - name: read_file_query
+    input: "Read the contents of /tmp/test.txt"
+    expect:
+      tool: read_file
+      params:
+        path: /tmp/test.txt
+
+  # Test 3: Should call list_directory
+  - name: list_dir_query
+    input: "Show me what files are in the examples folder"
+    expect:
+      tool: list_directory
+      params:
+        path: "_exists"
+
+  # Test 4: Greeting should NOT call any tool
+  - name: greeting_no_tool
+    input: "Hello! How are you?"
+    expect:
+      no_tool: true
+
+  # Test 5: Conversational - multi-turn context understanding
+  - name: conversational_file_ops
+    conversation:
+      - user: "List the files in the current directory"
+        expect:
+          tool: list_directory
+      - user: "Now read the README.md file"
+        expect:
+          tool: read_file
+          params:
+            path: "_exists"

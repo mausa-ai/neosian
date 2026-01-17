@@ -8,9 +8,19 @@ import json
 import types
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Union, get_origin, get_type_hints
+from enum import Enum
+from typing import Annotated, Any, Literal, Union, get_args, get_origin, get_type_hints
 
 from neosian._foundation.llm.base import ToolDefinition
+from neosian._foundation.shared.constraints import (
+    Constraint,
+    Desc,
+    Max,
+    MaxLen,
+    Min,
+    MinLen,
+    Pattern,
+)
 from neosian._foundation.shared.types import ToolFunction as ToolFunction
 from neosian._foundation.shared.types import ToolName
 
@@ -80,8 +90,33 @@ class ToolMetadata:
     definition: ToolDefinition
 
 
-def _python_type_to_json_schema(python_type: type[Any]) -> dict[str, Any]:
-    """Convert a Python type hint to JSON Schema type."""
+def _apply_constraints(schema: dict[str, Any], constraints: list[Constraint]) -> None:
+    """Apply constraint metadata to a JSON Schema dict (mutates in place)."""
+    schema_type = schema.get("type")
+
+    for constraint in constraints:
+        if isinstance(constraint, Desc):
+            schema["description"] = constraint.value
+        elif isinstance(constraint, Min):
+            schema["minimum"] = constraint.value
+        elif isinstance(constraint, Max):
+            schema["maximum"] = constraint.value
+        elif isinstance(constraint, MinLen):
+            if schema_type == "string":
+                schema["minLength"] = constraint.value
+            elif schema_type == "array":
+                schema["minItems"] = constraint.value
+        elif isinstance(constraint, MaxLen):
+            if schema_type == "string":
+                schema["maxLength"] = constraint.value
+            elif schema_type == "array":
+                schema["maxItems"] = constraint.value
+        elif isinstance(constraint, Pattern):
+            schema["pattern"] = constraint.value
+
+
+def _convert_basic_type(python_type: type[Any]) -> dict[str, Any]:
+    """Convert a basic Python type to JSON Schema (no Annotated handling)."""
     # Handle None type
     if python_type is type(None):
         return {"type": "null"}
@@ -95,21 +130,42 @@ def _python_type_to_json_schema(python_type: type[Any]) -> dict[str, Any]:
     }
 
     if python_type in type_mapping:
-        return type_mapping[python_type]
+        return dict(type_mapping[python_type])
 
-    # Handle generic types (list, dict, Union, etc.)
+    # Handle generic types (list, dict, Union, Literal, Enum)
     origin = get_origin(python_type)
 
+    # Handle Literal types -> enum
+    if origin is Literal:
+        literal_values = get_args(python_type)
+        if not literal_values:
+            return {"type": "string"}
+
+        # Infer type from first value
+        first_val = literal_values[0]
+        if isinstance(first_val, bool):
+            json_type = "boolean"
+        elif isinstance(first_val, int):
+            json_type = "integer"
+        elif isinstance(first_val, str):
+            json_type = "string"
+        else:
+            json_type = "string"
+
+        return {"type": json_type, "enum": list(literal_values)}
+
+    # Handle list types
     if origin is list:
-        args = getattr(python_type, "__args__", (Any,))
+        args = get_args(python_type)
         item_type = args[0] if args else Any
         return {
             "type": "array",
             "items": _python_type_to_json_schema(item_type),
         }
 
+    # Handle dict types
     if origin is dict:
-        args = getattr(python_type, "__args__", None)
+        args = get_args(python_type)
         value_type = args[1] if args and len(args) > 1 else Any
         return {
             "type": "object",
@@ -118,7 +174,7 @@ def _python_type_to_json_schema(python_type: type[Any]) -> dict[str, Any]:
 
     # Handle Union types (including Optional[X] which is Union[X, None])
     if origin is Union or origin is types.UnionType:
-        args = getattr(python_type, "__args__", ())
+        args = get_args(python_type)
         # Filter out NoneType to get the actual type(s)
         non_none_types = [t for t in args if t is not type(None)]
         if len(non_none_types) == 1:
@@ -131,38 +187,104 @@ def _python_type_to_json_schema(python_type: type[Any]) -> dict[str, Any]:
             # Union[None] edge case
             return {"type": "null"}
 
+    # Handle Enum classes
+    if isinstance(python_type, type) and issubclass(python_type, Enum):
+        values = [e.value for e in python_type]
+        if not values:
+            return {"type": "string"}
+
+        first_val = values[0]
+        if isinstance(first_val, bool):
+            json_type = "boolean"
+        elif isinstance(first_val, int):
+            json_type = "integer"
+        elif isinstance(first_val, str):
+            json_type = "string"
+        else:
+            json_type = "string"
+
+        return {"type": json_type, "enum": values}
+
     # Default to string for unknown types
     return {"type": "string"}
 
 
+def _python_type_to_json_schema(
+    python_type: type[Any],
+    default: Any = inspect.Parameter.empty,
+) -> dict[str, Any]:
+    """Convert a Python type hint to JSON Schema type.
+
+    Handles:
+    - Basic types: str, int, float, bool
+    - Collections: list[T], dict[K, V]
+    - Unions: Optional[X], Union[X, Y], X | Y
+    - Literal types: Literal["a", "b"] -> enum
+    - Enum classes: MyEnum -> enum
+    - Annotated types: Annotated[int, Desc("..."), Min(1), Max(100)]
+    - Default values: included in schema if provided
+    """
+    constraints: list[Constraint] = []
+    actual_type = python_type
+
+    # Unwrap Annotated to get actual type + metadata
+    origin = get_origin(python_type)
+    if origin is Annotated:
+        args = get_args(python_type)
+        actual_type = args[0]
+        # Extract constraint instances from Annotated metadata
+        constraints = [a for a in args[1:] if isinstance(a, Constraint)]
+
+    # Convert the actual type to schema
+    schema = _convert_basic_type(actual_type)
+
+    # Apply constraints from Annotated metadata
+    if constraints:
+        _apply_constraints(schema, constraints)
+
+    # Include default value if provided
+    if default is not inspect.Parameter.empty:
+        schema["default"] = default
+
+    return schema
+
+
 def _extract_parameters_schema(func: Callable[..., Any]) -> dict[str, Any]:
-    """Extract JSON Schema parameters from function signature."""
+    """Extract JSON Schema parameters from function signature.
+
+    Generates a JSON Schema object with:
+    - type: "object"
+    - additionalProperties: false (prevents LLM hallucinating extra params)
+    - properties: parameter schemas with types, descriptions, constraints, defaults
+    - required: list of parameters without default values
+    """
     sig = inspect.signature(func)
-    hints = get_type_hints(func)
+    # include_extras=True preserves Annotated metadata
+    hints = get_type_hints(func, include_extras=True)
 
     properties: dict[str, Any] = {}
     required: list[str] = []
 
     for param_name, param in sig.parameters.items():
-        if param_name in ("self", "cls"):
+        if param_name in ("self", "cls", "return"):
             continue
 
-        # Get type hint
+        # Get type hint (default to str if not annotated)
         param_type = hints.get(param_name, str)
 
-        # Skip return type annotation
-        if param_name == "return":
-            continue
+        # Get default value
+        default = param.default
 
-        # Build property schema
-        properties[param_name] = _python_type_to_json_schema(param_type)
+        # Build property schema with default value
+        properties[param_name] = _python_type_to_json_schema(param_type, default)
 
-        # Check if required (no default value)
-        if param.default is inspect.Parameter.empty:
+        # Required only if no default value
+        if default is inspect.Parameter.empty:
             required.append(param_name)
 
     return {
         "type": "object",
+        "additionalProperties": False,
         "properties": properties,
         "required": required,
     }

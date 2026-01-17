@@ -1,0 +1,21 @@
+# Minimal prompt variant - bare minimum descriptions
+# Tests if LLMs can figure out tool usage from parameter names alone
+
+system_prompt: |
+  You are a media generation assistant.
+
+tools:
+  generate_image:
+    description: Generate an image.
+
+  generate_tts:
+    description: Text to speech.
+
+  generate_video:
+    description: Generate a video.
+
+  generate_music:
+    description: Generate music.
+
+  present_options:
+    description: Show options to user.

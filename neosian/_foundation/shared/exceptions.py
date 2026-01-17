@@ -196,3 +196,69 @@ class AllProvidersFailedError(LLMError):
         )
         self.providers = providers
         self.last_error = last_error
+
+
+# Evaluation Errors
+class EvalError(NeosianError):
+    """Base exception for evaluation-related errors."""
+
+    pass
+
+
+class EvalConfigNotFoundError(EvalError):
+    """Raised when an eval config file is not found."""
+
+    def __init__(self, path: str) -> None:
+        super().__init__(ErrorMessages.EVAL_CONFIG_NOT_FOUND.format(path=path))
+        self.path = path
+
+
+class EvalConfigInvalidYAMLError(EvalError):
+    """Raised when an eval config file contains invalid YAML."""
+
+    def __init__(self, path: str) -> None:
+        super().__init__(ErrorMessages.EVAL_CONFIG_INVALID_YAML.format(path=path))
+        self.path = path
+
+
+class EvalConfigMissingKeyError(EvalError):
+    """Raised when a required key is missing from eval config."""
+
+    def __init__(self, key: str, path: str) -> None:
+        super().__init__(
+            ErrorMessages.EVAL_CONFIG_MISSING_KEY.format(key=key, path=path)
+        )
+        self.key = key
+        self.path = path
+
+
+class EvalPromptNotFoundError(EvalError):
+    """Raised when a prompt file referenced in eval config is not found."""
+
+    def __init__(self, path: str) -> None:
+        super().__init__(ErrorMessages.EVAL_PROMPT_NOT_FOUND.format(path=path))
+        self.path = path
+
+
+class EvalCaseInvalidError(EvalError):
+    """Raised when an eval case definition is invalid."""
+
+    def __init__(self, name: str, error: str) -> None:
+        super().__init__(ErrorMessages.EVAL_CASE_INVALID.format(name=name, error=error))
+        self.name = name
+        self.error = error
+
+
+class EvalRunError(EvalError):
+    """Raised when an evaluation run fails."""
+
+    def __init__(self, prompt: str, model: str, case: str, error: str) -> None:
+        super().__init__(
+            ErrorMessages.EVAL_RUN_ERROR.format(
+                prompt=prompt, model=model, case=case, error=error
+            )
+        )
+        self.prompt = prompt
+        self.model = model
+        self.case = case
+        self.error = error

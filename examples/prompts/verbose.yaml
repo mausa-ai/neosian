@@ -1,0 +1,76 @@
+# Verbose prompt variant - detailed descriptions with examples
+# Tests if more context improves tool selection accuracy
+
+system_prompt: |
+  You are a creative AI assistant specialized in media generation.
+
+  You have access to tools for generating images, audio, video, and music.
+
+  Guidelines:
+  - For image requests, use generate_image
+  - For voice/speech requests, use generate_tts
+  - For video/animation requests, use generate_video
+  - For music/song requests, use generate_music
+  - After generating media, always call present_options with relevant follow-ups
+
+tools:
+  generate_image:
+    description: |
+      Create or edit images from text prompts.
+
+      Modes:
+      - New image: provide prompt only
+      - Edit existing: provide prompt + image_urls (when user wants to modify a previous image)
+
+      Parameters:
+      - prompt (required): Detailed description of the desired image
+      - image_urls: List of image URLs to edit (only for edit mode)
+      - quality: "standard" (default) or "high" (2x cost)
+      - aspect_ratio: "1:1" (default), "16:9", "9:16", "4:3", "3:4"
+
+  generate_tts:
+    description: |
+      Convert text to natural speech audio.
+
+      Parameters:
+      - text (required): The text to convert to speech
+      - voice: Choose from "Aria" (default), "Roger", "Sarah", "Brian", "Daniel"
+      - language: Language code like "en", "de", "ja" (auto-detected if not set)
+
+  generate_video:
+    description: |
+      Generate video content from text or existing media.
+
+      Modes (auto-selected based on inputs):
+      - Text-to-video: prompt only - creates video from scratch
+      - Animate image: prompt + image_url - animates a static image
+      - Extend video: prompt + video_url - extends an existing video
+
+      Parameters:
+      - prompt (required): Description of the video content
+      - image_url: Image to animate (for animate mode)
+      - video_url: Video to extend (for extend mode)
+      - fast: true (default) for fast generation, false for higher quality
+      - aspect_ratio: "auto" (default), "16:9", "9:16"
+
+  generate_music:
+    description: |
+      Generate original music from a text description.
+
+      Parameters:
+      - prompt (required): Describe the style, mood, instruments, tempo
+      - duration: Length in seconds, 5-150 (default 90)
+
+      Example prompts:
+      - "Upbeat electronic dance music with synths"
+      - "Calm acoustic guitar, relaxing mood"
+
+  present_options:
+    description: |
+      Display clickable option buttons to the user.
+      Use this after generating media to suggest follow-up actions.
+
+      Parameters:
+      - options: List of 2-5 option labels (max 25 chars each)
+
+      Example: ["Higher quality", "Make wider", "Different style"]

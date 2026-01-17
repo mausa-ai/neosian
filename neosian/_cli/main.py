@@ -3,6 +3,7 @@
 Provides the main CLI application with commands.
 """
 
+import asyncio
 import importlib.resources
 from typing import Annotated
 
@@ -245,6 +246,68 @@ def configure() -> None:
     elif choice == 1:
         _delete_configuration(console)
     # choice == 2 or None (cancelled) -> just exit
+
+
+@app.command(name="eval")
+def evaluate(
+    config_file: Annotated[
+        str,
+        typer.Argument(help="Path to the evaluation config YAML file"),
+    ],
+) -> None:
+    """Run agent evaluation against prompt × model matrix.
+
+    Tests tool selection and parameter passing across different
+    prompt files and models. Results are displayed in terminal
+    and saved to JSON.
+
+    Example:
+        neosian eval eval_config.yaml
+    """
+    from neosian._foundation.evaluation import (
+        EvalProgress,
+        create_progress_callback,
+        load_eval_config,
+        print_results,
+        run_evaluation,
+        save_results,
+    )
+
+    console = Console()
+
+    # Load config
+    try:
+        config = load_eval_config(config_file)
+    except Exception as e:
+        console.print(f"[red]Error loading config: {e}[/red]")
+        raise typer.Exit(1) from None
+
+    console.print()
+
+    # Create progress display
+    progress = EvalProgress(config)
+
+    # Run evaluation with live progress
+    try:
+        progress.start()
+        results = asyncio.run(
+            run_evaluation(config, on_progress=create_progress_callback(progress))
+        )
+        progress.stop()
+    except Exception as e:
+        progress.stop()
+        console.print(f"[red]Evaluation failed: {e}[/red]")
+        raise typer.Exit(1) from None
+
+    console.print()
+
+    # Print results
+    print_results(config, results, console)
+
+    # Save results
+    output_path = save_results(config, results)
+    console.print()
+    console.print(f"[dim]{output_path}[/dim]")
 
 
 def main() -> None:

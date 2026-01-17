@@ -31,19 +31,32 @@ def test_public_api_exports() -> None:
         AgentSession,
         ClassifierResult,
         CommonPolicies,
+        Desc,
+        EvalCase,
+        EvalConfig,
+        EvalResult,
+        EvalTurn,
+        Expectation,
         GuardrailErrorPolicy,
         GuardrailMode,
         GuardrailResult,
         GuardrailsConfig,
+        Max,
+        MaxLen,
         Message,
+        Min,
+        MinLen,
+        Pattern,
         PolicyBuilder,
         PolicyResult,
         Role,
         SSEEventType,
         Tool,
         ToolCall,
+        ToolCallCapture,
         ToolCallId,
         ToolResult,
+        TurnResult,
         Usage,
         __version__,
         load_prompt,
@@ -70,8 +83,22 @@ def test_public_api_exports() -> None:
     assert PolicyResult is not None
     assert PolicyBuilder is not None
     assert CommonPolicies is not None
+    assert EvalConfig is not None
+    assert EvalCase is not None
+    assert EvalTurn is not None
+    assert EvalResult is not None
+    assert TurnResult is not None
+    assert Expectation is not None
+    assert ToolCallCapture is not None
     assert load_prompt is not None
     assert __version__ is not None
+    # Tool constraints
+    assert Desc is not None
+    assert Min is not None
+    assert Max is not None
+    assert MinLen is not None
+    assert MaxLen is not None
+    assert Pattern is not None
 
 
 @pytest.mark.unit
@@ -93,6 +120,13 @@ def test_all_list_matches_exports() -> None:
         "ToolCall",
         "ToolCallId",
         "ToolResult",
+        # Tool Constraints
+        "Desc",
+        "Min",
+        "Max",
+        "MinLen",
+        "MaxLen",
+        "Pattern",
         # LLM
         "Usage",
         # Streaming
@@ -106,6 +140,14 @@ def test_all_list_matches_exports() -> None:
         "PolicyResult",
         "PolicyBuilder",
         "CommonPolicies",
+        # Evaluation
+        "EvalConfig",
+        "EvalCase",
+        "EvalTurn",
+        "EvalResult",
+        "TurnResult",
+        "Expectation",
+        "ToolCallCapture",
         # Utilities
         "load_prompt",
         # Meta

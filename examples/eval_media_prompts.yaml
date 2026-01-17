@@ -1,0 +1,92 @@
+# Evaluation: Compare prompt variants for media agent
+#
+# Tests how different prompt styles affect tool selection accuracy:
+# - minimal: Bare minimum descriptions
+# - verbose: Detailed descriptions with examples
+# - with_hints: Includes on_success follow-up hints
+#
+# Run: neosian eval examples/eval_media_prompts.yaml
+
+name: Media Agent Prompt Comparison
+
+# Single Python agent with tool implementations
+agent: examples/media_agent.py
+
+# YAML prompt configs to compare
+prompts:
+  - examples/prompts/minimal.yaml
+  - examples/prompts/verbose.yaml
+  - examples/prompts/with_hints.yaml
+
+# Models to test (OpenAI + Anthropic)
+models:
+  - groq:openai/gpt-oss-20b
+
+# Test cases
+cases:
+  # Basic tool selection tests
+  - name: image_generation
+    input: "Create a beautiful sunset over mountains"
+    expect:
+      tool: generate_image
+      params:
+        prompt: "_exists"
+
+  - name: image_edit
+    input: "Make that image wider, like a panorama"
+    expect:
+      tool: generate_image
+      params:
+        prompt: "_exists"
+        aspect_ratio: "_exists"
+
+  - name: tts_basic
+    input: "Read this aloud: Hello, welcome to our service!"
+    expect:
+      tool: generate_tts
+      params:
+        text: "_exists"
+
+  - name: tts_with_voice
+    input: "Say 'Good morning everyone' in Brian's voice"
+    expect:
+      tool: generate_tts
+      params:
+        text: "_exists"
+        voice: "Brian"
+
+  - name: video_from_text
+    input: "Create a video of a cat playing with yarn"
+    expect:
+      tool: generate_video
+      params:
+        prompt: "_exists"
+
+  - name: music_generation
+    input: "Make some relaxing piano music"
+    expect:
+      tool: generate_music
+      params:
+        prompt: "_exists"
+
+  # Edge cases - should NOT call tools
+  - name: greeting_no_tool
+    input: "Hello! How are you today?"
+    expect:
+      no_tool: true
+
+  - name: question_no_tool
+    input: "What kinds of images can you create?"
+    expect:
+      no_tool: true
+
+  # Ambiguous requests - tests understanding
+  - name: animate_request
+    input: "Can you bring this picture to life?"
+    expect:
+      tool: generate_video
+
+  - name: audio_ambiguous
+    input: "I need some background audio for my video"
+    expect:
+      tool: generate_music

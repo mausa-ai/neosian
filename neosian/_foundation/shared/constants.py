@@ -73,6 +73,16 @@ class ErrorMessages:
         "is sent to the user before it can be checked."
     )
 
+    # Evaluation errors
+    EVAL_CONFIG_NOT_FOUND: str = "Eval config file not found: {path}"
+    EVAL_CONFIG_INVALID_YAML: str = "Invalid YAML in eval config: {path}"
+    EVAL_CONFIG_MISSING_KEY: str = "Missing required key '{key}' in eval config: {path}"
+    EVAL_PROMPT_NOT_FOUND: str = "Prompt file not found: {path}"
+    EVAL_CASE_INVALID: str = "Invalid eval case '{name}': {error}"
+    EVAL_RUN_ERROR: str = (
+        "Evaluation run failed for {prompt} × {model} × {case}: {error}"
+    )
+
 
 class LLMDefaults:
     """Default values for LLM configuration."""
@@ -403,3 +413,67 @@ class Guardrails:
             "VIOLATES: {violates}\n"
             "SAFE: {safe}\n"
         )
+
+
+class Evaluation:
+    """Constants for agent evaluation framework."""
+
+    # Config file keys
+    NAME_KEY: str = "name"
+    PROMPTS_KEY: str = "prompts"
+    MODELS_KEY: str = "models"
+    CASES_KEY: str = "cases"
+    CONVERSATION_KEY: str = "conversation"
+    INPUT_KEY: str = "input"
+    EXPECT_KEY: str = "expect"
+    TOOL_KEY: str = "tool"
+    PARAMS_KEY: str = "params"
+    NO_TOOL_KEY: str = "no_tool"
+    RESPONSE_KEY: str = "response"
+    SEQUENCE_KEY: str = "sequence"
+    USER_KEY: str = "user"
+
+    # Agent key (single Python file with tool implementations)
+    AGENT_KEY: str = "agent"
+
+    # Prompt config YAML keys
+    SYSTEM_PROMPT_KEY: str = "system_prompt"
+    TOOLS_KEY: str = "tools"
+    DESCRIPTION_KEY: str = "description"
+    ON_SUCCESS_KEY: str = "on_success"
+    COMPACT_SUMMARIZE_KEY: str = "compact_summarize"
+
+    # Output directory
+    OUTPUT_DIR: str = ".neosian/evals"
+
+    # Default mock response
+    MOCK_SUCCESS_MESSAGE: str = "Tool executed successfully"
+
+    # Param matcher marker
+    EXISTS_MARKER: str = "_exists"
+
+    class Scorer:
+        """Scorer result messages."""
+
+        PARAM_EXISTS_FAIL: str = "expected param to exist, got None"
+        PARAM_MISMATCH: str = "expected '{expected}', got '{actual}'"
+        EXPECTED_NO_TOOL: str = "Expected no tool, got '{tool}'"
+        WRONG_TOOL: str = "Expected '{expected}', got '{actual}'"
+        NO_TOOL_CALLED: str = "Expected '{expected}', no tool called"
+        SEQUENCE_MISMATCH: str = "Expected sequence {expected}, got {actual}"
+        STEP_PARAM_FAIL: str = "Step {step}: {param}: {reason}"
+
+    class UI:
+        """Evaluation CLI UI constants."""
+
+        TITLE: str = "neosian eval"
+        RUNNING: str = "Running"
+        RESULTS: str = "RESULTS"
+        SUMMARY: str = "SUMMARY"
+        FAILURES: str = "FAILURES"
+        PASS: str = "PASS"
+        FAIL: str = "FAIL"
+        BEST_ON: str = "Best on {model}"
+        BEST_OVERALL: str = "Best overall"
+        DETAILED_RESULTS: str = "Detailed results"
+        NO_FAILURES: str = "All cases passed!"
