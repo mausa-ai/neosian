@@ -117,16 +117,54 @@ def blocked_event(
     return SSEEvent(event=SSEEventType.BLOCKED, data=data)
 
 
+class SSEEventEmitter:
+    """Emits SSE events with automatic sequence metadata.
+
+    Each streaming session should create a new emitter instance.
+    The emitter tracks sequence numbers (starting at 0) to ensure
+    correct event ordering within a single streaming session.
+
+    Usage:
+        emitter = SSEEventEmitter()
+        yield emitter.emit(content_event("Hello"))
+        yield emitter.emit(content_event(" world"))
+        yield emitter.emit(done_event())
+        # Events will have sequence 0, 1, 2
+    """
+
+    def __init__(self) -> None:
+        """Initialize emitter with sequence starting at 0."""
+        self._sequence = 0
+
+    def emit(self, event: SSEEvent) -> str:
+        """Emit an SSE event with sequence metadata.
+
+        Adds sequence number to the event data for ordering,
+        then formats as SSE string.
+
+        Args:
+            event: The SSE event to emit.
+
+        Returns:
+            SSE-formatted string with sequence included in data payload.
+        """
+        event.data["sequence"] = self._sequence
+        self._sequence += 1
+        return event.to_sse()
+
+
 async def stream_to_sse(
     stream: AsyncIterator[StreamChunk],
+    emitter: SSEEventEmitter | None = None,
 ) -> AsyncIterator[str]:
     """Convert a stream of chunks to SSE strings.
 
     Args:
         stream: AsyncIterator of StreamChunk from LLM.
+        emitter: Optional emitter for metadata. If None, creates a new one.
 
     Yields:
-        SSE-formatted strings.
+        SSE-formatted strings with sequence metadata.
 
     Note:
         Usage data handling varies by provider:
@@ -134,23 +172,26 @@ async def stream_to_sse(
         - Anthropic: Usage comes with the finish_reason chunk
         We handle both by deferring the done event until we have usage or stream ends.
     """
+    if emitter is None:
+        emitter = SSEEventEmitter()
+
     pending_done = False
     final_usage: Usage | None = None
 
     async for chunk in stream:
         # Yield content if present
         if chunk.content:
-            yield content_event(chunk.content).to_sse()
+            yield emitter.emit(content_event(chunk.content))
 
         # Yield tool calls if present
         for tool_call in chunk.tool_calls:
-            yield tool_call_event(tool_call).to_sse()
+            yield emitter.emit(tool_call_event(tool_call))
 
         # Handle finish_reason
         if chunk.finish_reason:
             if chunk.usage:
                 # Anthropic: usage comes with finish_reason
-                yield done_event(chunk.usage).to_sse()
+                yield emitter.emit(done_event(chunk.usage))
             else:
                 # OpenAI/Groq: usage may come in next chunk
                 pending_done = True
@@ -159,9 +200,9 @@ async def stream_to_sse(
         if chunk.usage and not chunk.finish_reason and not chunk.content:
             final_usage = chunk.usage
             if pending_done:
-                yield done_event(final_usage).to_sse()
+                yield emitter.emit(done_event(final_usage))
                 pending_done = False
 
     # If we have a pending done without usage, emit it now
     if pending_done:
-        yield done_event(final_usage).to_sse()
+        yield emitter.emit(done_event(final_usage))

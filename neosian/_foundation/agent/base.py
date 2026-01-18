@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from neosian._foundation.agent.session import AgentSession
 
 from neosian._foundation.agent.streaming import (
+    SSEEventEmitter,
     blocked_event,
     content_event,
     done_event,
@@ -594,7 +595,7 @@ class Agent:
             guard_task: Background guard task to monitor (or None if no guard).
 
         Yields:
-            SSE-formatted strings.
+            SSE-formatted strings with sequence and created_at metadata.
 
         Raises:
             AllProvidersFailedError: If all providers in the fallback chain fail.
@@ -604,6 +605,10 @@ class Agent:
             Message(role=Role.SYSTEM, content=self._system_prompt),
             *messages,
         ]
+
+        # Create emitter once for the entire streaming session
+        # Sequence numbers are continuous across all events in this response
+        emitter = SSEEventEmitter()
 
         attempted_providers: list[str] = []
         last_error: str = ""
@@ -619,6 +624,7 @@ class Agent:
                     model=model,
                     full_messages=full_messages,
                     guard_task=guard_task,
+                    emitter=emitter,
                 ):
                     yield sse
                 return  # Success - exit the loop
@@ -653,6 +659,7 @@ class Agent:
             asyncio.Task[tuple[bool, ClassifierResult | None, PolicyResult | None]]
             | None
         ),
+        emitter: SSEEventEmitter | None = None,
     ) -> AsyncIterator[str]:
         """Stream agent response with a specific client while monitoring guard task.
 
@@ -661,14 +668,18 @@ class Agent:
             model: Model identifier.
             full_messages: Full conversation with system message prepended.
             guard_task: Background guard task to monitor (or None if no guard).
+            emitter: SSE event emitter for metadata. If None, creates a new one.
 
         Yields:
-            SSE-formatted strings.
+            SSE-formatted strings with sequence and created_at metadata.
         """
+        if emitter is None:
+            emitter = SSEEventEmitter()
+
         for _ in range(self._max_tool_iterations):
             # Check guard before each LLM call
             if guard_task is not None and guard_task.done():
-                blocked_event_sse = self._check_guard_and_block(guard_task)
+                blocked_event_sse = self._check_guard_and_block(guard_task, emitter)
                 if blocked_event_sse:
                     yield blocked_event_sse
                     return
@@ -688,6 +699,7 @@ class Agent:
                     model=model,
                     full_messages=full_messages,
                     guard_task=guard_task,
+                    emitter=emitter,
                 ):
                     yield sse
                 return
@@ -699,20 +711,20 @@ class Agent:
             for tool_call in response.message.tool_calls:
                 # Check guard before each tool call
                 if guard_task is not None and guard_task.done():
-                    blocked_event_sse = self._check_guard_and_block(guard_task)
+                    blocked_event_sse = self._check_guard_and_block(guard_task, emitter)
                     if blocked_event_sse:
                         yield blocked_event_sse
                         return
                     guard_task = None
 
                 # Yield tool call event
-                yield tool_call_event(tool_call).to_sse()
+                yield emitter.emit(tool_call_event(tool_call))
 
                 # Execute tool
                 result = await self._execute_tool(tool_call)
 
                 # Yield tool result event
-                yield tool_result_event(tool_call.id, result).to_sse()
+                yield emitter.emit(tool_result_event(tool_call.id, result))
 
                 # Add tool result to messages
                 tool_result_content = self._format_tool_result(result)
@@ -730,6 +742,7 @@ class Agent:
             model=model,
             full_messages=full_messages,
             guard_task=guard_task,
+            emitter=emitter,
         ):
             yield sse
 
@@ -812,6 +825,7 @@ class Agent:
         guard_task: asyncio.Task[
             tuple[bool, ClassifierResult | None, PolicyResult | None]
         ],
+        emitter: SSEEventEmitter | None = None,
     ) -> str | None:
         """Check completed guard task and return blocked event if needed.
 
@@ -819,6 +833,7 @@ class Agent:
 
         Args:
             guard_task: Completed guard task.
+            emitter: Optional SSE event emitter for metadata.
 
         Returns:
             Blocked SSE string if guard flagged and block_on_input=True, else None.
@@ -828,7 +843,10 @@ class Agent:
         if not is_safe and self._guardrails and self._guardrails.block_on_input:
             categories = classifier.categories if classifier else None
             rationale = policy.rationale if policy else None
-            return blocked_event(categories=categories, rationale=rationale).to_sse()
+            event = blocked_event(categories=categories, rationale=rationale)
+            if emitter is not None:
+                return emitter.emit(event)
+            return event.to_sse()
 
         return None
 
@@ -841,6 +859,7 @@ class Agent:
             asyncio.Task[tuple[bool, ClassifierResult | None, PolicyResult | None]]
             | None
         ),
+        emitter: SSEEventEmitter,
     ) -> AsyncIterator[str]:
         """Stream final response with a specific client while monitoring guard task.
 
@@ -849,6 +868,7 @@ class Agent:
             model: Model identifier.
             full_messages: Full conversation history including system message.
             guard_task: Background guard task to monitor (or None).
+            emitter: SSE event emitter for metadata (required, passed from caller).
 
         Yields:
             SSE-formatted strings for content chunks, blocked, and done event.
@@ -868,14 +888,14 @@ class Agent:
         async for chunk in stream:
             # Check guard during streaming
             if guard_task is not None and guard_task.done():
-                blocked_event_sse = self._check_guard_and_block(guard_task)
+                blocked_event_sse = self._check_guard_and_block(guard_task, emitter)
                 if blocked_event_sse:
                     yield blocked_event_sse
                     return
                 guard_task = None
 
             if chunk.content:
-                yield content_event(chunk.content).to_sse()
+                yield emitter.emit(content_event(chunk.content))
 
             if chunk.finish_reason:
                 # Final guard check before done (with error handling)
@@ -890,14 +910,14 @@ class Agent:
                     ):
                         categories = classifier.categories if classifier else None
                         rationale = policy.rationale if policy else None
-                        yield blocked_event(
-                            categories=categories, rationale=rationale
-                        ).to_sse()
+                        yield emitter.emit(
+                            blocked_event(categories=categories, rationale=rationale)
+                        )
                         return
 
                 if chunk.usage:
                     # Anthropic: usage comes with finish_reason
-                    yield done_event(chunk.usage).to_sse()
+                    yield emitter.emit(done_event(chunk.usage))
                 else:
                     # OpenAI/Groq: usage may come in next chunk
                     pending_done = True
@@ -906,12 +926,12 @@ class Agent:
             if chunk.usage and not chunk.finish_reason and not chunk.content:
                 final_usage = chunk.usage
                 if pending_done:
-                    yield done_event(final_usage).to_sse()
+                    yield emitter.emit(done_event(final_usage))
                     pending_done = False
 
         # If we have a pending done without usage, emit it now
         if pending_done:
-            yield done_event(final_usage).to_sse()
+            yield emitter.emit(done_event(final_usage))
 
     async def _execute_tool(self, tool_call: ToolCall) -> ToolResult[Any]:
         """Execute a single tool call.
@@ -1380,7 +1400,7 @@ class Agent:
             session: The session providing cached clients.
 
         Yields:
-            SSE-formatted strings.
+            SSE-formatted strings with sequence and created_at metadata.
 
         Raises:
             AllProvidersFailedError: If all providers in the fallback chain fail.
@@ -1390,6 +1410,10 @@ class Agent:
             Message(role=Role.SYSTEM, content=self._system_prompt),
             *messages,
         ]
+
+        # Create emitter once for the entire streaming session
+        # Sequence numbers are continuous across all events in this response
+        emitter = SSEEventEmitter()
 
         attempted_providers: list[str] = []
         last_error: str = ""
@@ -1406,6 +1430,7 @@ class Agent:
                     model=model,
                     full_messages=full_messages,
                     guard_task=guard_task,
+                    emitter=emitter,
                 ):
                     yield sse
                 return  # Success - exit the loop

@@ -138,6 +138,7 @@ def test_all_list_matches_exports() -> None:
         "Usage",
         # Streaming
         "SSEEventType",
+        "error_event",
         # Guardrails
         "GuardrailsConfig",
         "GuardrailMode",
@@ -158,6 +159,7 @@ def test_all_list_matches_exports() -> None:
         # Utilities
         "load_prompt",
         # Exceptions
+        "AllProvidersFailedError",
         "InvalidModelError",
         # Meta
         "__version__",
