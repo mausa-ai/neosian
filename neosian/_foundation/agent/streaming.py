@@ -121,20 +121,28 @@ class SSEEventEmitter:
     """Emits SSE events with automatic sequence metadata.
 
     Each streaming session should create a new emitter instance.
-    The emitter tracks sequence numbers (starting at 0) to ensure
+    The emitter tracks sequence numbers (starting at 1) to ensure
     correct event ordering within a single streaming session.
+
+    Note: Sequence starts at 1 because the frontend assigns sequence 0
+    to the user message. SSE events follow the user message.
 
     Usage:
         emitter = SSEEventEmitter()
         yield emitter.emit(content_event("Hello"))
         yield emitter.emit(content_event(" world"))
         yield emitter.emit(done_event())
-        # Events will have sequence 0, 1, 2
+        # Events will have sequence 1, 2, 3
     """
 
     def __init__(self) -> None:
-        """Initialize emitter with sequence starting at 0."""
-        self._sequence = 0
+        """Initialize emitter with sequence starting at 1.
+
+        Note: Sequence starts at 1 because the frontend assigns sequence 0
+        to the user message. SSE events (assistant responses, tool calls,
+        tool results) follow the user message.
+        """
+        self._sequence = 1
 
     def emit(self, event: SSEEvent) -> str:
         """Emit an SSE event with sequence metadata.

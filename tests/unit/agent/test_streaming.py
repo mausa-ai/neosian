@@ -112,7 +112,7 @@ class TestSSEEventEmitter:
     """Test SSEEventEmitter class."""
 
     def test_emit_adds_sequence(self) -> None:
-        """emit should add sequence starting at 0."""
+        """emit should add sequence starting at 1."""
         emitter = SSEEventEmitter()
 
         event1 = content_event("Hello")
@@ -123,9 +123,10 @@ class TestSSEEventEmitter:
         emitter.emit(event2)
         emitter.emit(event3)
 
-        assert event1.data["sequence"] == 0
-        assert event2.data["sequence"] == 1
-        assert event3.data["sequence"] == 2
+        # Sequence starts at 1 (0 is reserved for user message on frontend)
+        assert event1.data["sequence"] == 1
+        assert event2.data["sequence"] == 2
+        assert event3.data["sequence"] == 3
 
     def test_emit_returns_sse_string(self) -> None:
         """emit should return properly formatted SSE string."""
@@ -137,8 +138,8 @@ class TestSSEEventEmitter:
         assert result.startswith("event: content\n")
         assert "data: " in result
         assert result.endswith("\n\n")
-        # Verify sequence is in the SSE output
-        assert '"sequence": 0' in result
+        # Verify sequence is in the SSE output (starts at 1)
+        assert '"sequence": 1' in result
 
     def test_separate_emitters_have_independent_sequence(self) -> None:
         """Each emitter instance should have its own sequence counter."""
@@ -151,9 +152,9 @@ class TestSSEEventEmitter:
         emitter1.emit(event1)
         emitter2.emit(event2)
 
-        # Both should start at 0
-        assert event1.data["sequence"] == 0
-        assert event2.data["sequence"] == 0
+        # Both should start at 1
+        assert event1.data["sequence"] == 1
+        assert event2.data["sequence"] == 1
 
 
 @pytest.mark.unit
@@ -228,23 +229,23 @@ class TestStreamToSSE:
         async for sse in stream_to_sse(mock_stream()):
             events.append(sse)
 
-        # Parse each event and verify sequence
+        # Parse each event and verify sequence (starts at 1)
         for i, sse in enumerate(events):
             data_line = sse.strip().split("\n")[1]
             data_json = data_line.replace("data: ", "")
             parsed = json.loads(data_json)
 
             assert "sequence" in parsed
-            assert parsed["sequence"] == i
+            assert parsed["sequence"] == i + 1  # Sequence starts at 1
 
     @pytest.mark.asyncio
     async def test_accepts_external_emitter(self) -> None:
         """stream_to_sse should use external emitter if provided."""
         emitter = SSEEventEmitter()
 
-        # Pre-emit some events to advance the sequence
-        emitter.emit(content_event("pre-1"))
-        emitter.emit(content_event("pre-2"))
+        # Pre-emit some events to advance the sequence (starts at 1, so after 2 emits: 3)
+        emitter.emit(content_event("pre-1"))  # sequence 1
+        emitter.emit(content_event("pre-2"))  # sequence 2
 
         async def mock_stream() -> "AsyncIterator[StreamChunk]":
             yield StreamChunk(content="Hello")
@@ -254,8 +255,8 @@ class TestStreamToSSE:
         async for sse in stream_to_sse(mock_stream(), emitter=emitter):
             events.append(sse)
 
-        # Parse first event - should continue from sequence 2 (after pre-1, pre-2)
+        # Parse first event - should continue from sequence 3 (after pre-1, pre-2)
         data_line = events[0].strip().split("\n")[1]
         data_json = data_line.replace("data: ", "")
         parsed = json.loads(data_json)
-        assert parsed["sequence"] == 2  # Continues from pre-emitted events
+        assert parsed["sequence"] == 3  # Continues from pre-emitted events
