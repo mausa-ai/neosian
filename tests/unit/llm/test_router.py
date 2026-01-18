@@ -195,10 +195,10 @@ class TestModelEnum:
             assert model.max_output_tokens > 0
 
     def test_anthropic_models_have_higher_token_limit(self) -> None:
-        """Test that Anthropic models have 65536 max tokens."""
+        """Test that Anthropic models have 8192 max tokens."""
         anthropic_models = [m for m in Model if m.provider == Provider.ANTHROPIC]
         for model in anthropic_models:
-            assert model.max_output_tokens == 65536
+            assert model.max_output_tokens == 8192
 
     def test_model_value_is_string(self) -> None:
         """Test that Model enum values are strings (for API compatibility)."""

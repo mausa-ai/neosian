@@ -126,7 +126,7 @@ for m in _OPENAI_MODELS:
 
 for m in _ANTHROPIC_MODELS:
     _MODEL_PROVIDERS[m.value] = Provider.ANTHROPIC
-    _MODEL_MAX_TOKENS[m.value] = 65536  # 64k for Claude 4.5 models
+    _MODEL_MAX_TOKENS[m.value] = 8192  # 64k for Claude 4.5 models
 
 
 # Default models per provider

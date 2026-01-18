@@ -77,10 +77,10 @@ class TestModelEnum:
         assert Model.LLAMA_3_3_70B.max_output_tokens == 8192
         assert Model.GPT_5_NANO.max_output_tokens == 8192
 
-        # Claude models have 65536
-        assert Model.CLAUDE_SONNET_4_5.max_output_tokens == 65536
-        assert Model.CLAUDE_OPUS_4_5.max_output_tokens == 65536
-        assert Model.CLAUDE_HAIKU_4_5.max_output_tokens == 65536
+        # Claude models have 8192
+        assert Model.CLAUDE_SONNET_4_5.max_output_tokens == 8192
+        assert Model.CLAUDE_OPUS_4_5.max_output_tokens == 8192
+        assert Model.CLAUDE_HAIKU_4_5.max_output_tokens == 8192
 
 
 @pytest.mark.unit
