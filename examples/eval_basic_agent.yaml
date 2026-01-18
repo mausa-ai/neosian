@@ -45,6 +45,12 @@ cases:
       - user: "List the files in the current directory"
         expect:
           tool: list_directory
+        # Mock response provides file list for the model to reference in next turn
+        mock_response:
+          files:
+            - "README.md"
+            - "setup.py"
+            - "requirements.txt"
       - user: "Now read the README.md file"
         expect:
           tool: read_file

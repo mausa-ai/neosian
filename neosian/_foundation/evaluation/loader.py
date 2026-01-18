@@ -149,10 +149,12 @@ def _parse_conversation(
             raise EvalCaseInvalidError(case_name, f"turn {i + 1} missing 'user' field")
 
         expect = _parse_expectation(turn_data.get(Evaluation.EXPECT_KEY, {}))
+        mock_response = turn_data.get(Evaluation.MOCK_RESPONSE_KEY)
         turns.append(
             EvalTurn(
                 user=turn_data[Evaluation.USER_KEY],
                 expect=expect,
+                mock_response=mock_response,
             )
         )
     return turns

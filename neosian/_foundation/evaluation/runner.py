@@ -8,6 +8,7 @@ Supports two modes:
 """
 
 import asyncio
+import json
 import logging
 import time
 from collections.abc import Callable, Iterator
@@ -399,12 +400,18 @@ async def _run_conversational(
                 )
             )
 
-            # Add tool results
+            # Add tool results - use mock_response if provided, else default
+            # Real tool responses have structure: {"success": true, "data": ...}
+            mock_content = (
+                json.dumps({"success": True, "data": turn.mock_response})
+                if turn.mock_response
+                else '{"success": true}'
+            )
             for tool_call in response.tool_calls_made:
                 messages.append(
                     Message(
                         role=Role.TOOL,
-                        content='{"success": true}',
+                        content=mock_content,
                         tool_call_id=ToolCallId(tool_call.id),
                     )
                 )

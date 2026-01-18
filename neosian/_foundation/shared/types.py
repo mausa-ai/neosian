@@ -410,10 +410,14 @@ class EvalTurn:
     Attributes:
         user: User message for this turn.
         expect: Expected behavior after this turn.
+        mock_response: Optional mock tool response for this turn.
+            Used to build realistic context for subsequent turns.
+            If None, defaults to {"success": true}.
     """
 
     user: str
     expect: Expectation
+    mock_response: dict[str, Any] | None = None
 
 
 @dataclass

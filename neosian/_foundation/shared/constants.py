@@ -380,6 +380,7 @@ class Evaluation:
     RESPONSE_KEY: str = "response"
     SEQUENCE_KEY: str = "sequence"
     USER_KEY: str = "user"
+    MOCK_RESPONSE_KEY: str = "mock_response"
 
     # Agent key (single Python file with tool implementations)
     AGENT_KEY: str = "agent"

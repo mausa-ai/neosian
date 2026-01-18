@@ -90,3 +90,36 @@ cases:
     input: "I need some background audio for my video"
     expect:
       tool: generate_music
+
+  # Conversational: Image -> Video flow (requires mock_response)
+  - name: conv_image_to_video
+    conversation:
+      - user: "Generate an image of a sunset over the ocean"
+        expect:
+          tool: generate_image
+          params:
+            prompt: "_exists"
+        # Mock response provides the URL for the next turn
+        mock_response:
+          image_url: "https://mock.cdn/sunset-ocean-abc123.png"
+      - user: "Now turn that into a video"
+        expect:
+          tool: generate_video
+          params:
+            image_url: "https://mock.cdn/sunset-ocean-abc123.png"
+
+  # Conversational: TTS voice change flow
+  - name: conv_tts_voice_change
+    conversation:
+      - user: "Say 'Hello world' out loud"
+        expect:
+          tool: generate_tts
+          params:
+            text: "_exists"
+        mock_response:
+          audio_url: "https://mock.cdn/hello-world.mp3"
+      - user: "That was good, but can you say it in a deeper voice?"
+        expect:
+          tool: generate_tts
+          params:
+            text: "_exists"
