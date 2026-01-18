@@ -384,6 +384,9 @@ class Evaluation:
     # Agent key (single Python file with tool implementations)
     AGENT_KEY: str = "agent"
 
+    # Behavior configuration keys
+    STOP_ON_FAILURE_KEY: str = "stop_on_failure"
+
     # Prompt config YAML keys
     SYSTEM_PROMPT_KEY: str = "system_prompt"
     TOOLS_KEY: str = "tools"

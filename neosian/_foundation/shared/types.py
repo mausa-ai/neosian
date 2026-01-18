@@ -463,6 +463,8 @@ class EvalConfig:
         models: List of model identifiers to test.
         cases: List of evaluation cases.
         agent: Optional path to Python agent file (for variant mode).
+        stop_on_failure: If True, stop conversational cases on first turn failure.
+            If False, run all turns to get the full picture. Defaults to True.
     """
 
     name: str
@@ -470,6 +472,7 @@ class EvalConfig:
     models: list[str]
     cases: list[EvalCase]
     agent: str | None = None
+    stop_on_failure: bool = True
 
     @property
     def is_variant_mode(self) -> bool:

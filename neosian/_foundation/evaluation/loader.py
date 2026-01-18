@@ -69,12 +69,16 @@ def load_eval_config(path: str | Path) -> EvalConfig:
     # Optional agent key for variant mode
     agent = data.get(Evaluation.AGENT_KEY)
 
+    # Optional behavior configuration (defaults to True)
+    stop_on_failure = data.get(Evaluation.STOP_ON_FAILURE_KEY, True)
+
     return EvalConfig(
         name=data[Evaluation.NAME_KEY],
         prompts=data[Evaluation.PROMPTS_KEY],
         models=data[Evaluation.MODELS_KEY],
         cases=cases,
         agent=agent,
+        stop_on_failure=stop_on_failure,
     )
 
 

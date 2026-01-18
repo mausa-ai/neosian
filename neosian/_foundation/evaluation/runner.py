@@ -19,7 +19,7 @@ from neosian._foundation.agent.base import Agent
 from neosian._foundation.evaluation.mocker import mock_agent_tools
 from neosian._foundation.evaluation.prompt_config import load_prompt_config
 from neosian._foundation.evaluation.scorer import score_turn
-from neosian._foundation.llm.base import Message, Role, ToolDefinition
+from neosian._foundation.llm.base import Message, Role, ToolCall, ToolDefinition
 from neosian._foundation.shared.constants import Evaluation
 from neosian._foundation.shared.types import (
     EvalCase,
@@ -30,6 +30,7 @@ from neosian._foundation.shared.types import (
     PromptConfig,
     SystemPrompt,
     ToolCallCapture,
+    ToolCallId,
     ToolName,
     TurnResult,
 )
@@ -110,7 +111,9 @@ async def run_evaluation(
                 if on_progress:
                     on_progress(prompt_idx, model_idx, case_idx, "running", 0.0)
 
-                result = await _run_single_case(prompt_file, model, case, config.agent)
+                result = await _run_single_case(
+                    prompt_file, model, case, config.agent, config.stop_on_failure
+                )
                 results.append(result)
 
                 # Signal result with latency
@@ -126,6 +129,7 @@ async def _run_single_case(
     model: str,
     case: EvalCase,
     agent_file: str | None = None,
+    stop_on_failure: bool = True,
 ) -> EvalResult:
     """Run evaluation for a single prompt × model × case combination.
 
@@ -134,6 +138,7 @@ async def _run_single_case(
         model: Model identifier (provider:model format).
         case: The evaluation case.
         agent_file: Path to Python agent file (variant mode only).
+        stop_on_failure: If True, stop conversational cases on first turn failure.
 
     Returns:
         EvalResult with pass/fail and details.
@@ -157,7 +162,9 @@ async def _run_single_case(
 
         # Run case
         if case.is_conversational:
-            return await _run_conversational(prompt_file, model, case, agent)
+            return await _run_conversational(
+                prompt_file, model, case, agent, stop_on_failure
+            )
         return await _run_one_shot(prompt_file, model, case, agent)
 
     except Exception as e:
@@ -301,6 +308,7 @@ async def _run_conversational(
     model: str,
     case: EvalCase,
     agent: Agent,
+    stop_on_failure: bool = True,
 ) -> EvalResult:
     """Run a conversational evaluation case.
 
@@ -311,6 +319,7 @@ async def _run_conversational(
         model: Model identifier.
         case: The conversational case.
         agent: Configured agent.
+        stop_on_failure: If True, stop on first turn failure. If False, run all turns.
 
     Returns:
         EvalResult with per-turn results.
@@ -318,8 +327,8 @@ async def _run_conversational(
     messages: list[Message] = []
     all_turns: list[TurnResult] = []
     all_tool_names: list[str] = []
-    all_passed = True
     total_latency_ms = 0.0
+    any_failed = False
 
     for turn_idx, turn in enumerate(case.conversation or []):
         # Setup fresh capture for this turn
@@ -342,6 +351,7 @@ async def _run_conversational(
                 prompt_file=prompt_file,
                 model=model,
                 passed=False,
+                turns=all_turns,
                 error=detector.fallback_reason,
                 latency_ms=total_latency_ms,
             )
@@ -357,26 +367,66 @@ async def _run_conversational(
         all_tool_names.extend(c.name for c in captures)
 
         if not turn_result.passed:
-            all_passed = False
+            any_failed = True
+            if stop_on_failure:
+                # Early termination: stop on first failure to save API calls
+                return EvalResult(
+                    case_name=case.name,
+                    prompt_file=prompt_file,
+                    model=model,
+                    passed=False,
+                    turns=all_turns,
+                    tool_sequence=all_tool_names,
+                    latency_ms=total_latency_ms,
+                )
 
-        # Add response to context for next turn
-        messages.append(response.message)
-
-        # Add tool results to context
-        for tool_call in response.tool_calls_made:
+        # Build proper message sequence for context
+        # LLM APIs require: ASSISTANT (with tool_calls) -> TOOL (with tool_call_id)
+        if response.tool_calls_made:
+            # Add assistant message WITH tool_calls
             messages.append(
                 Message(
-                    role=Role.TOOL,
-                    content='{"success": true}',
-                    tool_call_id=tool_call.id,
+                    role=Role.ASSISTANT,
+                    content=None,
+                    tool_calls=[
+                        ToolCall(
+                            id=ToolCallId(tc.id),
+                            name=ToolName(tc.name),
+                            arguments=tc.arguments,
+                        )
+                        for tc in response.tool_calls_made
+                    ],
                 )
             )
 
+            # Add tool results
+            for tool_call in response.tool_calls_made:
+                messages.append(
+                    Message(
+                        role=Role.TOOL,
+                        content='{"success": true}',
+                        tool_call_id=ToolCallId(tool_call.id),
+                    )
+                )
+
+            # Add final assistant response if it has content
+            if response.message.content:
+                messages.append(
+                    Message(
+                        role=Role.ASSISTANT,
+                        content=response.message.content,
+                    )
+                )
+        else:
+            # No tool calls - just add the response message
+            messages.append(response.message)
+
+    # Return result - passed only if no turns failed
     return EvalResult(
         case_name=case.name,
         prompt_file=prompt_file,
         model=model,
-        passed=all_passed,
+        passed=not any_failed,
         turns=all_turns,
         tool_sequence=all_tool_names,
         latency_ms=total_latency_ms,
