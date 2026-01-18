@@ -158,7 +158,6 @@ async def _run_single_case(
             # Legacy mode: prompt_file is a Python agent file
             agent_config, _ = load_agent_config(prompt_file)
             agent_config.model = parsed_model
-            agent_config.enable_todo = False
             agent = Agent(config=agent_config)
 
         # Run case
@@ -206,7 +205,6 @@ def _create_agent_with_prompt_config(
     # Load agent config from Python file
     agent_config, _ = load_agent_config(agent_file)
     agent_config.model = model
-    agent_config.enable_todo = False
 
     # Load prompt config from YAML
     prompt_config = load_prompt_config(prompt_file)
