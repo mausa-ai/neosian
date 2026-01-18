@@ -9,7 +9,18 @@ import types
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
-from typing import Annotated, Any, Literal, Union, get_args, get_origin, get_type_hints
+from typing import (
+    Annotated,
+    Any,
+    Literal,
+    NotRequired,
+    Required,
+    Union,
+    get_args,
+    get_origin,
+    get_type_hints,
+    is_typeddict,
+)
 
 from neosian._foundation.llm.base import ToolDefinition
 from neosian._foundation.shared.constraints import (
@@ -115,6 +126,47 @@ def _apply_constraints(schema: dict[str, Any], constraints: list[Constraint]) ->
             schema["pattern"] = constraint.value
 
 
+def _typeddict_to_json_schema(td_class: type[Any]) -> dict[str, Any]:
+    """Convert a TypedDict class to JSON Schema.
+
+    Handles Required[] and NotRequired[] annotations for determining
+    which fields are required in the schema.
+    """
+    # Get type hints with extras to preserve Required/NotRequired
+    hints = get_type_hints(td_class, include_extras=True)
+
+    # Get required keys from TypedDict metadata
+    # __required_keys__ and __optional_keys__ are set by TypedDict
+    required_keys: frozenset[str] = getattr(td_class, "__required_keys__", frozenset())
+
+    properties: dict[str, Any] = {}
+    required: list[str] = []
+
+    for field_name, field_type in hints.items():
+        # Check if field is wrapped in Required[] or NotRequired[]
+        origin = get_origin(field_type)
+        actual_type = field_type
+
+        if origin is Required:
+            actual_type = get_args(field_type)[0]
+            required.append(field_name)
+        elif origin is NotRequired:
+            actual_type = get_args(field_type)[0]
+            # Not required, don't add to required list
+        elif field_name in required_keys:
+            required.append(field_name)
+
+        # Convert the field type to schema
+        properties[field_name] = _python_type_to_json_schema(actual_type)
+
+    return {
+        "type": "object",
+        "properties": properties,
+        "required": required,
+        "additionalProperties": False,
+    }
+
+
 def _convert_basic_type(python_type: type[Any]) -> dict[str, Any]:
     """Convert a basic Python type to JSON Schema (no Annotated handling)."""
     # Handle None type
@@ -204,6 +256,10 @@ def _convert_basic_type(python_type: type[Any]) -> dict[str, Any]:
             json_type = "string"
 
         return {"type": json_type, "enum": values}
+
+    # Handle TypedDict classes
+    if is_typeddict(python_type):
+        return _typeddict_to_json_schema(python_type)
 
     # Default to string for unknown types
     return {"type": "string"}

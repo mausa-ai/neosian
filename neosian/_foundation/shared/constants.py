@@ -151,9 +151,9 @@ class BuiltinTools:
 
         NAME: str = "update_todo"
         DESCRIPTION: str = (
-            "Track and update task progress. Use this to plan complex tasks, "
-            "track what you're working on, and mark tasks complete. "
-            "Each item has content (what to do) and status (pending/in_progress/completed)."
+            "Update the task list with current progress. Pass the complete list of tasks - "
+            "this replaces all existing tasks. Use status: 'pending' for not started, "
+            "'in_progress' for current work (keep to one at a time), 'completed' when done."
         )
 
 

@@ -5,15 +5,27 @@ The todo state is managed externally - the tool only processes updates.
 """
 
 from dataclasses import dataclass
+from typing import Literal, TypedDict
 
 from neosian._foundation.shared.constants import BuiltinTools
 from neosian._foundation.shared.types import TodoStatus
 from neosian._foundation.tools.base import Tool, ToolFunction, ToolResult
 
 
+class TodoItemInput(TypedDict):
+    """Input schema for a todo item.
+
+    This TypedDict generates explicit JSON Schema with required properties,
+    ensuring LLMs know exactly what keys to use.
+    """
+
+    content: str
+    status: Literal["pending", "in_progress", "completed"]
+
+
 @dataclass
 class TodoItem:
-    """A single todo item."""
+    """A single todo item (internal representation)."""
 
     content: str
     status: TodoStatus
@@ -53,13 +65,12 @@ def get_todo_tool(state: TodoState) -> ToolFunction:
         description=BuiltinTools.Todo.DESCRIPTION,
     )
     async def update_todo(
-        todos: list[dict[str, str]],
+        todos: list[TodoItemInput],
     ) -> ToolResult[list[dict[str, str]]]:
         """Update the todo list with new items.
 
         Args:
-            todos: List of todo items, each with 'content' and 'status' keys.
-                   Status must be 'pending', 'in_progress', or 'completed'.
+            todos: List of todo items with 'content' and 'status' keys.
 
         Returns:
             The updated todo list.

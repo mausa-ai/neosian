@@ -3,7 +3,7 @@
 # ruff: noqa: ARG001
 
 from enum import Enum
-from typing import Annotated, Literal, Optional, Union
+from typing import Annotated, Literal, NotRequired, Optional, TypedDict, Union
 
 import pytest
 
@@ -681,3 +681,96 @@ class TestComplexToolSchema:
         assert tags["maxItems"] == 10
         assert tags["default"] == []
         assert tags["description"] == "Optional tags"
+
+
+@pytest.mark.unit
+class TestTypedDictConversion:
+    """Test TypedDict to JSON Schema conversion."""
+
+    def test_basic_typeddict(self) -> None:
+        """TypedDict should convert to object with properties."""
+
+        class Person(TypedDict):
+            name: str
+            age: int
+
+        result = _python_type_to_json_schema(Person)
+        assert result["type"] == "object"
+        assert result["properties"]["name"]["type"] == "string"
+        assert result["properties"]["age"]["type"] == "integer"
+        assert set(result["required"]) == {"name", "age"}
+        assert result["additionalProperties"] is False
+
+    def test_typeddict_with_optional_fields(self) -> None:
+        """TypedDict with NotRequired fields should have correct required list."""
+
+        class Config(TypedDict):
+            name: str
+            description: NotRequired[str]
+
+        result = _python_type_to_json_schema(Config)
+        assert result["type"] == "object"
+        assert result["properties"]["name"]["type"] == "string"
+        assert result["properties"]["description"]["type"] == "string"
+        assert result["required"] == ["name"]
+
+    def test_typeddict_with_literal(self) -> None:
+        """TypedDict with Literal field should have enum."""
+
+        class Task(TypedDict):
+            content: str
+            status: Literal["pending", "done"]
+
+        result = _python_type_to_json_schema(Task)
+        assert result["type"] == "object"
+        assert result["properties"]["content"]["type"] == "string"
+        assert result["properties"]["status"]["type"] == "string"
+        assert result["properties"]["status"]["enum"] == ["pending", "done"]
+        assert set(result["required"]) == {"content", "status"}
+
+    def test_typeddict_in_list(self) -> None:
+        """list[TypedDict] should convert to array of objects."""
+
+        class Item(TypedDict):
+            id: int
+            name: str
+
+        result = _python_type_to_json_schema(list[Item])
+        assert result["type"] == "array"
+        assert result["items"]["type"] == "object"
+        assert result["items"]["properties"]["id"]["type"] == "integer"
+        assert result["items"]["properties"]["name"]["type"] == "string"
+        assert set(result["items"]["required"]) == {"id", "name"}
+
+    def test_typeddict_in_tool(self) -> None:
+        """TypedDict should work in @Tool decorated function."""
+
+        class TodoItem(TypedDict):
+            content: str
+            status: Literal["pending", "in_progress", "completed"]
+
+        @Tool(name="update_todos", description="Update todo list")
+        async def update_todos(
+            todos: list[TodoItem],  # noqa: ARG001
+        ) -> ToolResult[list[dict[str, str]]]:
+            return ToolResult.ok([])
+
+        definition = get_tool_definition(update_todos)
+        assert definition is not None
+
+        # Check todos parameter
+        todos_prop = definition.parameters["properties"]["todos"]
+        assert todos_prop["type"] == "array"
+
+        # Check item schema
+        item_schema = todos_prop["items"]
+        assert item_schema["type"] == "object"
+        assert item_schema["properties"]["content"]["type"] == "string"
+        assert item_schema["properties"]["status"]["type"] == "string"
+        assert item_schema["properties"]["status"]["enum"] == [
+            "pending",
+            "in_progress",
+            "completed",
+        ]
+        assert set(item_schema["required"]) == {"content", "status"}
+        assert item_schema["additionalProperties"] is False
