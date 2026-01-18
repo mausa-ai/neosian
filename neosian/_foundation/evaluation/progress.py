@@ -18,7 +18,6 @@ Status indicators:
     ✗ = failed (red)
 """
 
-import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path

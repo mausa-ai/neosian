@@ -17,8 +17,8 @@ from neosian._foundation.llm.base import (
 )
 from neosian._foundation.shared.types import (
     AgentConfig,
-    ModelId,
-    ProviderId,
+    Model,
+    Provider,
     SystemPrompt,
 )
 
@@ -29,7 +29,7 @@ def _create_mock_client() -> AsyncMock:
     mock_client.complete.return_value = CompletionResponse(
         message=Message(role=Role.ASSISTANT, content="Hello!"),
         usage=Usage(input_tokens=10, output_tokens=5),
-        model=ModelId("test-model"),
+        model="test-model",
     )
     mock_client.close = AsyncMock()
     return mock_client
@@ -41,9 +41,7 @@ def _create_mock_router(mock_client: BaseLLMClient | None = None) -> MagicMock:
         mock_client = _create_mock_client()
 
     mock_router = MagicMock()
-    mock_router.get_fallback_chain.return_value = [
-        (ProviderId("groq"), ModelId("test-model"))
-    ]
+    mock_router.get_fallback_chain.return_value = [Model.GPT_OSS_20B]
     mock_router.create_client.return_value = mock_client
     return mock_router
 
@@ -106,11 +104,11 @@ class TestAgentSessionClientCaching:
             agent = Agent(config=config)
             session = AgentSession(agent)
 
-            client = session._get_or_create_client(ProviderId("groq"))
+            client = session._get_or_create_client(Provider.GROQ)
 
             assert client is mock_client
-            assert ProviderId("groq") in session._clients
-            mock_router.create_client.assert_called_once_with(ProviderId("groq"))
+            assert Provider.GROQ in session._clients
+            mock_router.create_client.assert_called_once_with(Provider.GROQ)
 
     def test_get_or_create_reuses_on_second_call(self) -> None:
         """Session should reuse cached client on subsequent calls."""
@@ -130,9 +128,9 @@ class TestAgentSessionClientCaching:
             session = AgentSession(agent)
 
             # First call creates
-            client1 = session._get_or_create_client(ProviderId("groq"))
+            client1 = session._get_or_create_client(Provider.GROQ)
             # Second call reuses
-            client2 = session._get_or_create_client(ProviderId("groq"))
+            client2 = session._get_or_create_client(Provider.GROQ)
 
             assert client1 is client2
             # Router should only be called once
@@ -145,8 +143,8 @@ class TestAgentSessionClientCaching:
 
         mock_router = MagicMock()
         mock_router.get_fallback_chain.return_value = [
-            (ProviderId("groq"), ModelId("test-model")),
-            (ProviderId("openai"), ModelId("gpt-4")),
+            Model.GPT_OSS_20B,
+            Model.GPT_5_NANO,
         ]
         mock_router.create_client.side_effect = [mock_client_groq, mock_client_openai]
 
@@ -162,8 +160,8 @@ class TestAgentSessionClientCaching:
             agent = Agent(config=config)
             session = AgentSession(agent)
 
-            groq_client = session._get_or_create_client(ProviderId("groq"))
-            openai_client = session._get_or_create_client(ProviderId("openai"))
+            groq_client = session._get_or_create_client(Provider.GROQ)
+            openai_client = session._get_or_create_client(Provider.OPENAI)
 
             assert groq_client is mock_client_groq
             assert openai_client is mock_client_openai
@@ -193,7 +191,7 @@ class TestAgentSessionClose:
             session = AgentSession(agent)
 
             # Create a cached client
-            session._get_or_create_client(ProviderId("groq"))
+            session._get_or_create_client(Provider.GROQ)
 
             # Close session
             await session.close()
@@ -219,7 +217,7 @@ class TestAgentSessionClose:
             agent = Agent(config=config)
             session = AgentSession(agent)
 
-            session._get_or_create_client(ProviderId("groq"))
+            session._get_or_create_client(Provider.GROQ)
             assert len(session._clients) == 1
 
             await session.close()
@@ -271,7 +269,7 @@ class TestAgentSessionContextManager:
 
             async with agent.session() as session:
                 # Create a cached client
-                session._get_or_create_client(ProviderId("groq"))
+                session._get_or_create_client(Provider.GROQ)
 
             # After exit, client should be closed
             mock_client.close.assert_called_once()
@@ -295,7 +293,7 @@ class TestAgentSessionContextManager:
 
             with pytest.raises(RuntimeError):
                 async with agent.session() as session:
-                    session._get_or_create_client(ProviderId("groq"))
+                    session._get_or_create_client(Provider.GROQ)
                     raise RuntimeError("Test error")
 
             # Client should still be closed
@@ -422,13 +420,13 @@ class TestAgentSessionMultipleClients:
         mock_client_openai.complete.return_value = CompletionResponse(
             message=Message(role=Role.ASSISTANT, content="Hello from OpenAI!"),
             usage=Usage(input_tokens=10, output_tokens=5),
-            model=ModelId("gpt-4"),
+            model="gpt-5-nano",
         )
 
         mock_router = MagicMock()
         mock_router.get_fallback_chain.return_value = [
-            (ProviderId("groq"), ModelId("llama-3.3")),
-            (ProviderId("openai"), ModelId("gpt-4")),
+            Model.LLAMA_3_3_70B,
+            Model.GPT_5_NANO,
         ]
         mock_router.create_client.side_effect = [mock_client_groq, mock_client_openai]
 
@@ -452,5 +450,5 @@ class TestAgentSessionMultipleClients:
 
                 # Both clients should be cached
                 assert len(session._clients) == 2
-                assert ProviderId("groq") in session._clients
-                assert ProviderId("openai") in session._clients
+                assert Provider.GROQ in session._clients
+                assert Provider.OPENAI in session._clients

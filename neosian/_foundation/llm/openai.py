@@ -26,7 +26,7 @@ from neosian._foundation.shared.exceptions import (
     ToolCallGenerationError,
     UnsupportedParameterError,
 )
-from neosian._foundation.shared.types import ModelId, ToolCallId, ToolName
+from neosian._foundation.shared.types import Model, ToolCallId, ToolName
 
 
 class OpenAIClient(BaseLLMClient):
@@ -47,7 +47,7 @@ class OpenAIClient(BaseLLMClient):
     async def complete(
         self,
         messages: list[Message],
-        model: ModelId,
+        model: Model,
         tools: list[ToolDefinition] | None = None,
         temperature: float | None = None,
     ) -> CompletionResponse:
@@ -162,13 +162,13 @@ class OpenAIClient(BaseLLMClient):
                 input_tokens=response.usage.prompt_tokens if response.usage else 0,  # type: ignore[attr-defined]
                 output_tokens=response.usage.completion_tokens if response.usage else 0,  # type: ignore[attr-defined]
             ),
-            model=ModelId(response.model),  # type: ignore[attr-defined]
+            model=response.model,  # type: ignore[attr-defined]
         )
 
     async def stream(
         self,
         messages: list[Message],
-        model: ModelId,
+        model: Model,
         tools: list[ToolDefinition] | None = None,
         temperature: float | None = None,
     ) -> AsyncIterator[StreamChunk]:

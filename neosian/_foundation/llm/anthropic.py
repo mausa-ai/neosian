@@ -17,7 +17,7 @@ from neosian._foundation.llm.base import (
 )
 from neosian._foundation.shared.constants import LLMDefaults
 from neosian._foundation.shared.exceptions import ToolCallGenerationError
-from neosian._foundation.shared.types import ModelId, ToolCallId, ToolName
+from neosian._foundation.shared.types import Model, ToolCallId, ToolName
 
 
 class AnthropicClient(BaseLLMClient):
@@ -38,7 +38,7 @@ class AnthropicClient(BaseLLMClient):
     async def complete(
         self,
         messages: list[Message],
-        model: ModelId,
+        model: Model,
         tools: list[ToolDefinition] | None = None,
         temperature: float | None = None,
     ) -> CompletionResponse:
@@ -71,7 +71,7 @@ class AnthropicClient(BaseLLMClient):
                 kwargs: dict[str, Any] = {
                     "model": model,
                     "messages": anthropic_messages,
-                    "max_tokens": 8192,
+                    "max_tokens": model.max_output_tokens,
                     "temperature": current_temp,
                 }
 
@@ -146,13 +146,13 @@ class AnthropicClient(BaseLLMClient):
                 input_tokens=response.usage.input_tokens,  # type: ignore[attr-defined]
                 output_tokens=response.usage.output_tokens,  # type: ignore[attr-defined]
             ),
-            model=ModelId(response.model),  # type: ignore[attr-defined]
+            model=response.model,  # type: ignore[attr-defined]
         )
 
     async def stream(
         self,
         messages: list[Message],
-        model: ModelId,
+        model: Model,
         tools: list[ToolDefinition] | None = None,  # noqa: ARG002
         temperature: float | None = None,
     ) -> AsyncIterator[StreamChunk]:
@@ -176,7 +176,7 @@ class AnthropicClient(BaseLLMClient):
         kwargs: dict[str, Any] = {
             "model": model,
             "messages": anthropic_messages,
-            "max_tokens": 8192,
+            "max_tokens": model.max_output_tokens,
             "temperature": temp,
         }
 

@@ -38,9 +38,10 @@ def _load_credentials_from_config() -> None:
 
     credentials = config.get("credentials", {})
 
-    if not os.environ.get("GROQ_API_KEY"):
-        if groq_key := credentials.get("groq_api_key"):
-            os.environ["GROQ_API_KEY"] = groq_key
+    if not os.environ.get("GROQ_API_KEY") and (
+        groq_key := credentials.get("groq_api_key")
+    ):
+        os.environ["GROQ_API_KEY"] = groq_key
 
 
 async def main() -> None:

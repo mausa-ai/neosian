@@ -12,7 +12,7 @@ from neosian._foundation.shared.exceptions import (
     ToolCallGenerationError,
     UnsupportedParameterError,
 )
-from neosian._foundation.shared.types import ModelId, ToolName
+from neosian._foundation.shared.types import Model, ToolName
 
 
 @pytest.mark.unit
@@ -228,7 +228,7 @@ class TestOpenAIClientRetry:
 
         result = await client.complete(
             messages=[Message(role=Role.USER, content="Hi")],
-            model=ModelId("gpt-4o-mini"),
+            model=Model.GPT_5_MINI,
             tools=tools,
         )
 
@@ -263,7 +263,7 @@ class TestOpenAIClientRetry:
         with pytest.raises(ToolCallGenerationError) as exc_info:
             await client.complete(
                 messages=[Message(role=Role.USER, content="Hi")],
-                model=ModelId("gpt-4o-mini"),
+                model=Model.GPT_5_MINI,
                 tools=tools,
             )
 
@@ -291,7 +291,7 @@ class TestOpenAIClientRetry:
         with pytest.raises(BadRequestError):
             await client.complete(
                 messages=[Message(role=Role.USER, content="Hi")],
-                model=ModelId("gpt-4o-mini"),
+                model=Model.GPT_5_MINI,
                 tools=None,
             )
 
@@ -326,7 +326,7 @@ class TestOpenAIClientRetry:
         with pytest.raises(BadRequestError):
             await client.complete(
                 messages=[Message(role=Role.USER, content="Hi")],
-                model=ModelId("gpt-4o-mini"),
+                model=Model.GPT_5_MINI,
                 tools=tools,
             )
 
@@ -346,7 +346,7 @@ class TestOpenAIClientTemperature:
         with pytest.raises(UnsupportedParameterError) as exc_info:
             await client.complete(
                 messages=[Message(role=Role.USER, content="Hi")],
-                model=ModelId("gpt-5-nano"),
+                model=Model.GPT_5_NANO,
                 temperature=0.5,
             )
 
@@ -372,7 +372,7 @@ class TestOpenAIClientTemperature:
 
         result = await client.complete(
             messages=[Message(role=Role.USER, content="Hi")],
-            model=ModelId("gpt-5-nano"),
+            model=Model.GPT_5_NANO,
         )
 
         assert result.message.content == "Hello"

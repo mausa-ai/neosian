@@ -11,7 +11,7 @@ from neosian._foundation.llm.base import (
     ToolDefinition,
     Usage,
 )
-from neosian._foundation.shared.types import ModelId, ToolCallId, ToolName
+from neosian._foundation.shared.types import ToolCallId, ToolName
 
 
 @pytest.mark.unit
@@ -117,7 +117,7 @@ class TestCompletionResponse:
         response = CompletionResponse(
             message=Message(role=Role.ASSISTANT, content="Hi!"),
             usage=Usage(input_tokens=10, output_tokens=5),
-            model=ModelId("llama-3.3-70b-versatile"),
+            model="llama-3.3-70b-versatile",
         )
         assert response.message.content == "Hi!"
         assert response.usage.total_tokens == 15

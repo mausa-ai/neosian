@@ -18,7 +18,7 @@ from neosian._foundation.shared.types import (
     GuardrailErrorPolicy,
     GuardrailMode,
     GuardrailsConfig,
-    ModelId,
+    Model,
     SystemPrompt,
 )
 
@@ -36,7 +36,7 @@ def _create_mock_router(mock_client: BaseLLMClient | None = None) -> MagicMock:
         mock_client = AsyncMock(spec=BaseLLMClient)
 
     mock_router = MagicMock()
-    mock_router.get_fallback_chain.return_value = [("groq", "test-model")]
+    mock_router.get_fallback_chain.return_value = [Model.GPT_OSS_20B]
     mock_router.create_client.return_value = mock_client
     return mock_router
 
@@ -290,7 +290,7 @@ class TestAgentInputGuardrails:
         mock_client.complete.return_value = CompletionResponse(
             message=Message(role=Role.ASSISTANT, content="Response"),
             usage=Usage(input_tokens=10, output_tokens=5),
-            model=ModelId("test-model"),
+            model="test-model",
         )
 
         mock_guardrail_client = AsyncMock()
@@ -339,7 +339,7 @@ class TestAgentInputGuardrails:
         mock_client.complete.return_value = CompletionResponse(
             message=Message(role=Role.ASSISTANT, content="Hello!"),
             usage=Usage(input_tokens=10, output_tokens=5),
-            model=ModelId("test-model"),
+            model="test-model",
         )
 
         mock_guardrail_client = AsyncMock()
@@ -388,7 +388,7 @@ class TestAgentOutputGuardrails:
         mock_client.complete.return_value = CompletionResponse(
             message=Message(role=Role.ASSISTANT, content="Bad output"),
             usage=Usage(input_tokens=10, output_tokens=5),
-            model=ModelId("test-model"),
+            model="test-model",
         )
 
         mock_guardrail_client = AsyncMock()
@@ -434,7 +434,7 @@ class TestAgentOutputGuardrails:
         mock_client.complete.return_value = CompletionResponse(
             message=Message(role=Role.ASSISTANT, content="Good output"),
             usage=Usage(input_tokens=10, output_tokens=5),
-            model=ModelId("test-model"),
+            model="test-model",
         )
 
         mock_guardrail_client = AsyncMock()
@@ -481,7 +481,7 @@ class TestAgentNoGuardrails:
         mock_client.complete.return_value = CompletionResponse(
             message=Message(role=Role.ASSISTANT, content="Hello!"),
             usage=Usage(input_tokens=10, output_tokens=5),
-            model=ModelId("test-model"),
+            model="test-model",
         )
 
         with patch(
@@ -532,7 +532,7 @@ class TestGuardrailErrorPolicy:
         mock_client.complete.return_value = CompletionResponse(
             message=Message(role=Role.ASSISTANT, content="Response"),
             usage=Usage(input_tokens=10, output_tokens=5),
-            model=ModelId("test-model"),
+            model="test-model",
         )
 
         mock_guardrail_client = AsyncMock()
@@ -577,7 +577,7 @@ class TestGuardrailErrorPolicy:
         mock_client.complete.return_value = CompletionResponse(
             message=Message(role=Role.ASSISTANT, content="Response"),
             usage=Usage(input_tokens=10, output_tokens=5),
-            model=ModelId("test-model"),
+            model="test-model",
         )
 
         mock_guardrail_client = AsyncMock()

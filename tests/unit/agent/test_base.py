@@ -17,7 +17,7 @@ from neosian._foundation.llm.base import (
 )
 from neosian._foundation.shared.types import (
     AgentConfig,
-    ModelId,
+    Model,
     SystemPrompt,
     ToolCallId,
     ToolName,
@@ -38,7 +38,7 @@ def _create_mock_router(mock_client: BaseLLMClient | None = None) -> MagicMock:
         mock_client = AsyncMock(spec=BaseLLMClient)
 
     mock_router = MagicMock()
-    mock_router.get_fallback_chain.return_value = [("groq", "test-model")]
+    mock_router.get_fallback_chain.return_value = [Model.GPT_OSS_20B]
     mock_router.create_client.return_value = mock_client
     return mock_router
 
@@ -169,7 +169,7 @@ class TestAgentRun:
         mock_client.complete.return_value = CompletionResponse(
             message=Message(role=Role.ASSISTANT, content="Hello!"),
             usage=Usage(input_tokens=10, output_tokens=5),
-            model=ModelId("test-model"),
+            model="test-model",
         )
 
         with patch(
@@ -210,13 +210,13 @@ class TestAgentRun:
             CompletionResponse(
                 message=Message(role=Role.ASSISTANT, tool_calls=[tool_call]),
                 usage=Usage(input_tokens=20, output_tokens=10),
-                model=ModelId("test-model"),
+                model="test-model",
             ),
             # Second call: LLM returns final response
             CompletionResponse(
                 message=Message(role=Role.ASSISTANT, content="The sum is 5."),
                 usage=Usage(input_tokens=30, output_tokens=15),
-                model=ModelId("test-model"),
+                model="test-model",
             ),
         ]
 
@@ -257,12 +257,12 @@ class TestAgentRun:
             CompletionResponse(
                 message=Message(role=Role.ASSISTANT, tool_calls=[tool_call]),
                 usage=Usage(input_tokens=10, output_tokens=5),
-                model=ModelId("test-model"),
+                model="test-model",
             ),
             CompletionResponse(
                 message=Message(role=Role.ASSISTANT, content="Tool not found."),
                 usage=Usage(input_tokens=15, output_tokens=8),
-                model=ModelId("test-model"),
+                model="test-model",
             ),
         ]
 
@@ -302,12 +302,12 @@ class TestAgentRun:
             CompletionResponse(
                 message=Message(role=Role.ASSISTANT, tool_calls=[tool_call]),
                 usage=Usage(input_tokens=10, output_tokens=5),
-                model=ModelId("test-model"),
+                model="test-model",
             ),
             CompletionResponse(
                 message=Message(role=Role.ASSISTANT, content="Tool failed."),
                 usage=Usage(input_tokens=15, output_tokens=8),
-                model=ModelId("test-model"),
+                model="test-model",
             ),
         ]
 
@@ -358,7 +358,7 @@ class TestAgentRunStreaming:
         mock_client.complete.return_value = CompletionResponse(
             message=Message(role=Role.ASSISTANT, content="Hello!"),
             usage=Usage(input_tokens=10, output_tokens=5),
-            model=ModelId("test-model"),
+            model="test-model",
         )
 
         # stream() yields content chunks
@@ -418,12 +418,12 @@ class TestAgentRunStreaming:
             CompletionResponse(
                 message=Message(role=Role.ASSISTANT, tool_calls=[tool_call]),
                 usage=Usage(input_tokens=20, output_tokens=10),
-                model=ModelId("test-model"),
+                model="test-model",
             ),
             CompletionResponse(
                 message=Message(role=Role.ASSISTANT, content="The sum is 5."),
                 usage=Usage(input_tokens=30, output_tokens=15),
-                model=ModelId("test-model"),
+                model="test-model",
             ),
         ]
 
@@ -479,7 +479,7 @@ class TestAgentRunStreaming:
         mock_client.complete.return_value = CompletionResponse(
             message=Message(role=Role.ASSISTANT, content="Hi"),
             usage=Usage(input_tokens=10, output_tokens=5),
-            model=ModelId("test-model"),
+            model="test-model",
         )
 
         async def mock_stream(

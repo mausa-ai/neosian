@@ -10,7 +10,7 @@ from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any, Literal, overload
 
 from neosian._foundation.llm.base import BaseLLMClient, Message
-from neosian._foundation.shared.types import ProviderId
+from neosian._foundation.shared.types import Provider
 
 if TYPE_CHECKING:
     from neosian._foundation.agent.base import Agent, AgentResponse
@@ -48,20 +48,20 @@ class AgentSession:
             agent: The parent Agent instance.
         """
         self._agent = agent
-        self._clients: dict[ProviderId, BaseLLMClient] = {}
+        self._clients: dict[Provider, BaseLLMClient] = {}
 
-    def _get_or_create_client(self, provider_id: ProviderId) -> BaseLLMClient:
+    def _get_or_create_client(self, provider: Provider) -> BaseLLMClient:
         """Get a cached client or create and cache a new one.
 
         Args:
-            provider_id: The provider identifier.
+            provider: The provider enum.
 
         Returns:
             The cached or newly created LLM client.
         """
-        if provider_id not in self._clients:
-            self._clients[provider_id] = self._agent._router.create_client(provider_id)
-        return self._clients[provider_id]
+        if provider not in self._clients:
+            self._clients[provider] = self._agent._router.create_client(provider)
+        return self._clients[provider]
 
     @overload
     async def run(

@@ -25,7 +25,7 @@ from neosian._foundation.agent.base import Agent
 from neosian._foundation.agent.session import AgentSession
 from neosian._foundation.llm.base import Message, Role
 from neosian._foundation.shared.constants import ArenaUI, Assets, Config, PlaygroundUI
-from neosian._foundation.shared.types import AgentConfig, ModelId, ProviderId
+from neosian._foundation.shared.types import AgentConfig, Model, Provider
 
 
 def _load_credentials_from_config() -> None:
@@ -82,73 +82,52 @@ def _load_header() -> str:
         return ""
 
 
-def _get_models_for_provider(provider_id: str) -> list[tuple[str, str]]:
+def _get_models_for_provider(provider: Provider) -> list[tuple[Model, str]]:
     """Get available models for a provider.
 
     Returns:
-        List of (model_id, display_name) tuples.
+        List of (Model, display_name) tuples.
     """
-    from neosian._foundation.shared.constants import Provider
-
-    match provider_id:
-        case Provider.Groq.ID:
+    match provider:
+        case Provider.GROQ:
             return [
                 # Production models
-                (Provider.Groq.Production.GPT_OSS_20B, "openai/gpt-oss-20b (default)"),
-                (Provider.Groq.Production.GPT_OSS_120B, "openai/gpt-oss-120b"),
-                (Provider.Groq.Production.LLAMA_3_3_70B, "llama-3.3-70b-versatile"),
-                (Provider.Groq.Production.LLAMA_3_1_8B, "llama-3.1-8b-instant"),
+                (Model.GPT_OSS_20B, "openai/gpt-oss-20b (default)"),
+                (Model.GPT_OSS_120B, "openai/gpt-oss-120b"),
+                (Model.LLAMA_3_3_70B, "llama-3.3-70b-versatile"),
+                (Model.LLAMA_3_1_8B, "llama-3.1-8b-instant"),
                 # Preview models
-                (
-                    Provider.Groq.Preview.LLAMA_4_MAVERICK_17B,
-                    "llama-4-maverick-17b (preview)",
-                ),
-                (
-                    Provider.Groq.Preview.LLAMA_4_SCOUT_17B,
-                    "llama-4-scout-17b (preview)",
-                ),
-                (Provider.Groq.Preview.QWEN3_32B, "qwen3-32b (preview)"),
-                (Provider.Groq.Preview.KIMI_K2, "kimi-k2 (preview)"),
+                (Model.LLAMA_4_MAVERICK_17B, "llama-4-maverick-17b (preview)"),
+                (Model.LLAMA_4_SCOUT_17B, "llama-4-scout-17b (preview)"),
+                (Model.QWEN3_32B, "qwen3-32b (preview)"),
+                (Model.KIMI_K2, "kimi-k2 (preview)"),
             ]
-        case Provider.OpenAI.ID:
+        case Provider.OPENAI:
             return [
-                (Provider.OpenAI.Models.GPT_5_NANO, "gpt-5-nano (default, fastest)"),
-                (Provider.OpenAI.Models.GPT_5_MINI, "gpt-5-mini (balanced)"),
-                (Provider.OpenAI.Models.GPT_5_1, "gpt-5.1 (best for coding)"),
-                (Provider.OpenAI.Models.GPT_5_PRO, "gpt-5-pro (most precise)"),
+                (Model.GPT_5_NANO, "gpt-5-nano (default, fastest)"),
+                (Model.GPT_5_MINI, "gpt-5-mini (balanced)"),
+                (Model.GPT_5_1, "gpt-5.1 (best for coding)"),
+                (Model.GPT_5_PRO, "gpt-5-pro (most precise)"),
             ]
-        case Provider.Anthropic.ID:
+        case Provider.ANTHROPIC:
             return [
-                (
-                    Provider.Anthropic.Models.CLAUDE_SONNET_4_5,
-                    "claude-sonnet-4-5 (default, balanced)",
-                ),
-                (
-                    Provider.Anthropic.Models.CLAUDE_HAIKU_4_5,
-                    "claude-haiku-4-5 (fastest)",
-                ),
-                (
-                    Provider.Anthropic.Models.CLAUDE_OPUS_4_5,
-                    "claude-opus-4-5 (most capable)",
-                ),
+                (Model.CLAUDE_SONNET_4_5, "claude-sonnet-4-5 (default, balanced)"),
+                (Model.CLAUDE_HAIKU_4_5, "claude-haiku-4-5 (fastest)"),
+                (Model.CLAUDE_OPUS_4_5, "claude-opus-4-5 (most capable)"),
             ]
-        case _:
-            return []
 
 
-def _select_provider_and_model(console: Console) -> tuple[str, str] | None:
+def _select_provider_and_model(console: Console) -> Model | None:
     """Show interactive menu to select provider and model.
 
     Returns:
-        Tuple of (provider_id, model_id) or None if cancelled.
+        Selected Model or None if cancelled.
     """
-    from neosian._foundation.shared.constants import Provider
-
     # Provider selection
     providers = [
-        (Provider.Groq.ID, "Groq (fastest inference)"),
-        (Provider.OpenAI.ID, "OpenAI"),
-        (Provider.Anthropic.ID, "Anthropic (Claude)"),
+        (Provider.GROQ, "Groq (fastest inference)"),
+        (Provider.OPENAI, "OpenAI"),
+        (Provider.ANTHROPIC, "Anthropic (Claude)"),
     ]
 
     console.print("\n[bold]Select Provider:[/bold]")
@@ -168,7 +147,7 @@ def _select_provider_and_model(console: Console) -> tuple[str, str] | None:
     if not models:
         return None
 
-    console.print(f"\n[bold]Select Model ({selected_provider}):[/bold]")
+    console.print(f"\n[bold]Select Model ({selected_provider.value}):[/bold]")
     model_menu = TerminalMenu(
         [m[1] for m in models],
         cursor_index=0,
@@ -178,13 +157,11 @@ def _select_provider_and_model(console: Console) -> tuple[str, str] | None:
     if model_choice is None:
         return None
 
-    selected_model = models[model_choice][0]
-    return (selected_provider, selected_model)
+    selected_model: Model = models[model_choice][0]
+    return selected_model
 
 
-def _select_provider_and_model_labeled(
-    console: Console, label: str
-) -> tuple[str, str] | None:
+def _select_provider_and_model_labeled(console: Console, label: str) -> Model | None:
     """Show interactive menu to select provider and model with a label.
 
     Args:
@@ -192,14 +169,12 @@ def _select_provider_and_model_labeled(
         label: Label to show (e.g., "Model 1").
 
     Returns:
-        Tuple of (provider_id, model_id) or None if cancelled.
+        Selected Model or None if cancelled.
     """
-    from neosian._foundation.shared.constants import Provider
-
     providers = [
-        (Provider.Groq.ID, "Groq (fastest inference)"),
-        (Provider.OpenAI.ID, "OpenAI"),
-        (Provider.Anthropic.ID, "Anthropic (Claude)"),
+        (Provider.GROQ, "Groq (fastest inference)"),
+        (Provider.OPENAI, "OpenAI"),
+        (Provider.ANTHROPIC, "Anthropic (Claude)"),
     ]
 
     console.print(f"\n[bold]{ArenaUI.SELECT_PROVIDER.format(label=label)}[/bold]")
@@ -216,7 +191,7 @@ def _select_provider_and_model_labeled(
         return None
 
     console.print(
-        f"\n[bold]{ArenaUI.SELECT_MODEL.format(label=label, provider=selected_provider)}[/bold]"
+        f"\n[bold]{ArenaUI.SELECT_MODEL.format(label=label, provider=selected_provider.value)}[/bold]"
     )
     model_menu = TerminalMenu([m[1] for m in models], cursor_index=0)
     model_choice = model_menu.show()
@@ -224,14 +199,15 @@ def _select_provider_and_model_labeled(
     if model_choice is None:
         return None
 
-    return (selected_provider, models[model_choice][0])
+    labeled_model: Model = models[model_choice][0]
+    return labeled_model
 
 
-def _select_arena_models(console: Console) -> list[tuple[str, str]] | None:
+def _select_arena_models(console: Console) -> list[Model] | None:
     """Select models for arena mode.
 
     Returns:
-        List of (provider_id, model_id) tuples or None if cancelled.
+        List of Model enums or None if cancelled.
     """
     # Select count
     console.print(f"\n[bold]{ArenaUI.SELECT_COUNT}[/bold]")
@@ -244,7 +220,7 @@ def _select_arena_models(console: Console) -> list[tuple[str, str]] | None:
     model_count = int(ArenaUI.COUNT_OPTIONS[count_choice])
 
     # Select each model
-    selections: list[tuple[str, str]] = []
+    selections: list[Model] = []
     for i in range(model_count):
         label = ArenaUI.MODEL_LABEL.format(n=i + 1)
         selection = _select_provider_and_model_labeled(console, label)
@@ -647,18 +623,15 @@ def run_playground(agent_path: str, menu: bool = False, arena: bool = False) -> 
     # Interactive menu override
     config = base_config
     if menu:
-        selection = _select_provider_and_model(console)
-        if selection is None:
+        selected_model = _select_provider_and_model(console)
+        if selected_model is None:
             console.print("[dim]Cancelled.[/dim]")
             return
-
-        selected_provider, selected_model = selection
 
         config = AgentConfig(
             system_prompt=base_config.system_prompt,
             tools=base_config.tools,
-            provider=ProviderId(selected_provider),
-            model=ModelId(selected_model),
+            model=selected_model,
             enable_todo=base_config.enable_todo,
             guardrails=base_config.guardrails,
         )
@@ -671,8 +644,8 @@ def run_playground(agent_path: str, menu: bool = False, arena: bool = False) -> 
         raise SystemExit(1) from e
 
     # Determine provider and model for display
-    display_provider = str(config.provider)
-    display_model = str(agent._model)
+    display_provider = config.model.provider.value
+    display_model = config.model.value
 
     # Create session
     session = Session(agent_name=agent_name)
@@ -705,8 +678,8 @@ def _run_arena_mode(
         agent_name: Name of the agent.
     """
     # Select models
-    selections = _select_arena_models(console)
-    if selections is None:
+    selected_models = _select_arena_models(console)
+    if selected_models is None:
         console.print("[dim]Cancelled.[/dim]")
         return
 
@@ -715,23 +688,22 @@ def _run_arena_mode(
     providers: list[str] = []
     models: list[str] = []
 
-    for provider_id, model_id in selections:
+    for model in selected_models:
         config = AgentConfig(
             system_prompt=base_config.system_prompt,
             tools=base_config.tools,
-            provider=ProviderId(provider_id),
-            model=ModelId(model_id),
+            model=model,
             enable_todo=base_config.enable_todo,
             guardrails=base_config.guardrails,
         )
         try:
             agent = Agent(config=config)
             agents.append(agent)
-            providers.append(provider_id)
-            models.append(str(agent._model))
+            providers.append(model.provider.value)
+            models.append(model.value)
         except Exception as e:
             console.print(
-                f"[red]Error creating agent for {provider_id}/{model_id}: {e}[/red]"
+                f"[red]Error creating agent for {model.provider.value}/{model.value}: {e}[/red]"
             )
             raise SystemExit(1) from e
 

@@ -8,8 +8,7 @@ import pytest
 
 from neosian._foundation.llm.base import Message, Role, ToolDefinition
 from neosian._foundation.llm.groq import GroqClient
-from neosian._foundation.shared.constants import Provider
-from neosian._foundation.shared.types import ModelId, ToolName
+from neosian._foundation.shared.types import Model, ToolName
 
 
 @pytest.mark.integration
@@ -25,7 +24,7 @@ class TestGroqCompletion:
 
         response = await groq_client.complete(
             messages=messages,
-            model=ModelId(Provider.Groq.DEFAULT_MODEL),
+            model=Model.GPT_OSS_20B,
         )
 
         assert response.message.role == Role.ASSISTANT
@@ -44,7 +43,7 @@ class TestGroqCompletion:
 
         response = await groq_client.complete(
             messages=messages,
-            model=ModelId(Provider.Groq.DEFAULT_MODEL),
+            model=Model.GPT_OSS_20B,
         )
 
         assert response.message.content is not None
@@ -80,7 +79,7 @@ class TestGroqCompletion:
 
         response = await groq_client.complete(
             messages=messages,
-            model=ModelId(Provider.Groq.DEFAULT_MODEL),
+            model=Model.GPT_OSS_20B,
             tools=tools,
         )
 
@@ -108,7 +107,7 @@ class TestGroqStreaming:
         chunks = []
         async for chunk in groq_client.stream(
             messages=messages,
-            model=ModelId(Provider.Groq.DEFAULT_MODEL),
+            model=Model.GPT_OSS_20B,
         ):
             chunks.append(chunk)
 

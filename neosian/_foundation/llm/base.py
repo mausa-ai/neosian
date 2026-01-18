@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-from neosian._foundation.shared.types import ModelId, ToolCallId, ToolName
+from neosian._foundation.shared.types import Model, ToolCallId, ToolName
 
 
 class Role(str, Enum):
@@ -78,7 +78,7 @@ class CompletionResponse:
 
     message: Message
     usage: Usage
-    model: ModelId
+    model: str  # Model string returned by API (may differ from input)
 
 
 class BaseLLMClient(ABC):
@@ -91,7 +91,7 @@ class BaseLLMClient(ABC):
     async def complete(
         self,
         messages: list[Message],
-        model: ModelId,
+        model: Model,
         tools: list[ToolDefinition] | None = None,
         temperature: float | None = None,
     ) -> CompletionResponse:
@@ -112,7 +112,7 @@ class BaseLLMClient(ABC):
     def stream(
         self,
         messages: list[Message],
-        model: ModelId,
+        model: Model,
         tools: list[ToolDefinition] | None = None,
         temperature: float | None = None,
     ) -> AsyncIterator[StreamChunk]:

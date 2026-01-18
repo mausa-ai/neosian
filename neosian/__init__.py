@@ -13,6 +13,7 @@ from neosian._foundation.shared.constraints import (
     MinLen,
     Pattern,
 )
+from neosian._foundation.shared.exceptions import InvalidModelError
 from neosian._foundation.shared.prompt import load_prompt
 from neosian._foundation.shared.types import (
     AgentConfig,
@@ -26,14 +27,16 @@ from neosian._foundation.shared.types import (
     GuardrailMode,
     GuardrailResult,
     GuardrailsConfig,
+    Model,
     PolicyResult,
+    Provider,
     ToolCallCapture,
     ToolCallId,
     TurnResult,
 )
 from neosian._foundation.tools.base import Tool, ToolResult
 
-__version__ = "0.17.0"
+__version__ = "0.18.0"
 
 __all__ = [
     # Agent
@@ -57,6 +60,8 @@ __all__ = [
     "MaxLen",
     "Pattern",
     # LLM
+    "Model",
+    "Provider",
     "Usage",
     # Streaming
     "SSEEventType",
@@ -79,6 +84,8 @@ __all__ = [
     "ToolCallCapture",
     # Utilities
     "load_prompt",
+    # Exceptions
+    "InvalidModelError",
     # Meta
     "__version__",
 ]

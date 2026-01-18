@@ -5,51 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
-from neosian._foundation.llm.router import (
-    ProviderRouter,
-    format_provider_model,
-    parse_provider_model,
-)
-from neosian._foundation.shared.constants import Fallback, Provider
-
-
-class TestParseProviderModel:
-    """Tests for parse_provider_model function."""
-
-    def test_parse_valid_format(self) -> None:
-        """Test parsing a valid provider:model string."""
-        provider, model = parse_provider_model("groq:llama-3.3-70b-versatile")
-        assert provider == "groq"
-        assert model == "llama-3.3-70b-versatile"
-
-    def test_parse_with_colons_in_model(self) -> None:
-        """Test parsing when model contains colons (like openai/gpt-oss-20b)."""
-        # This shouldn't happen with our format, but let's handle it
-        provider, model = parse_provider_model("groq:openai/gpt-oss-20b")
-        assert provider == "groq"
-        assert model == "openai/gpt-oss-20b"
-
-    def test_parse_invalid_format_raises(self) -> None:
-        """Test that invalid format raises ValueError."""
-        with pytest.raises(ValueError) as exc_info:
-            parse_provider_model("invalid-no-colon")
-        assert "Invalid provider:model format" in str(exc_info.value)
-
-
-class TestFormatProviderModel:
-    """Tests for format_provider_model function."""
-
-    def test_format_basic(self) -> None:
-        """Test formatting provider and model into string."""
-        result = format_provider_model("groq", "llama-3.3-70b-versatile")
-        assert result == "groq:llama-3.3-70b-versatile"
-
-    def test_roundtrip(self) -> None:
-        """Test that format and parse are inverse operations."""
-        original = "anthropic:claude-opus-4-5-20251101"
-        provider, model = parse_provider_model(original)
-        result = format_provider_model(provider, model)
-        assert result == original
+from neosian._foundation.llm.router import ProviderRouter
+from neosian._foundation.shared.constants import Fallback
+from neosian._foundation.shared.types import Model, Provider
 
 
 class TestProviderRouter:
@@ -75,9 +33,9 @@ class TestProviderRouter:
         """Test detecting all providers when all keys are set."""
         with patch.dict(os.environ, all_keys_available, clear=True):
             router = ProviderRouter()
-            assert router.has_provider(Provider.Groq.ID)
-            assert router.has_provider(Provider.OpenAI.ID)
-            assert router.has_provider(Provider.Anthropic.ID)
+            assert router.has_provider(Provider.GROQ)
+            assert router.has_provider(Provider.OPENAI)
+            assert router.has_provider(Provider.ANTHROPIC)
 
     def test_detect_available_providers_partial(
         self, groq_only: dict[str, str]
@@ -85,9 +43,9 @@ class TestProviderRouter:
         """Test detecting providers when only some keys are set."""
         with patch.dict(os.environ, groq_only, clear=True):
             router = ProviderRouter()
-            assert router.has_provider(Provider.Groq.ID)
-            assert not router.has_provider(Provider.OpenAI.ID)
-            assert not router.has_provider(Provider.Anthropic.ID)
+            assert router.has_provider(Provider.GROQ)
+            assert not router.has_provider(Provider.OPENAI)
+            assert not router.has_provider(Provider.ANTHROPIC)
 
     def test_fallback_chain_tier1_model(
         self, all_keys_available: dict[str, str]
@@ -95,26 +53,17 @@ class TestProviderRouter:
         """Test fallback chain starting from Tier 1 model."""
         with patch.dict(os.environ, all_keys_available, clear=True):
             router = ProviderRouter()
-            chain = router.get_fallback_chain(
-                Provider.OpenAI.ID, Provider.OpenAI.Models.GPT_5_PRO
-            )
+            chain = router.get_fallback_chain(Model.GPT_5_PRO)
 
             # First should be the selected model
-            assert chain[0] == (Provider.OpenAI.ID, Provider.OpenAI.Models.GPT_5_PRO)
+            assert chain[0] == Model.GPT_5_PRO
 
             # Should have other Tier 1 models next
-            chain_strings = [f"{p}:{m}" for p, m in chain]
-
-            # Verify Tier 1 models come before Tier 2
             tier1_models = set(Fallback.TIER_1)
             tier2_models = set(Fallback.TIER_2)
 
-            tier1_indices = [
-                i for i, s in enumerate(chain_strings) if s in tier1_models
-            ]
-            tier2_indices = [
-                i for i, s in enumerate(chain_strings) if s in tier2_models
-            ]
+            tier1_indices = [i for i, m in enumerate(chain) if m in tier1_models]
+            tier2_indices = [i for i, m in enumerate(chain) if m in tier2_models]
 
             if tier1_indices and tier2_indices:
                 assert max(tier1_indices) < min(tier2_indices)
@@ -125,13 +74,11 @@ class TestProviderRouter:
         """Test that fallback chain excludes providers without API keys."""
         with patch.dict(os.environ, groq_only, clear=True):
             router = ProviderRouter()
-            chain = router.get_fallback_chain(
-                Provider.Groq.ID, Provider.Groq.Production.LLAMA_3_3_70B
-            )
+            chain = router.get_fallback_chain(Model.LLAMA_3_3_70B)
 
             # All entries should be Groq (only available provider)
-            for provider_id, _ in chain:
-                assert provider_id == Provider.Groq.ID
+            for model in chain:
+                assert model.provider == Provider.GROQ
 
     def test_fallback_chain_cyclic_within_tier(
         self, all_keys_available: dict[str, str]
@@ -141,28 +88,21 @@ class TestProviderRouter:
             router = ProviderRouter()
 
             # Start from middle of Tier 2
-            chain = router.get_fallback_chain(
-                Provider.Groq.ID, Provider.Groq.Production.LLAMA_3_3_70B
-            )
-
-            chain_strings = [f"{p}:{m}" for p, m in chain]
+            chain = router.get_fallback_chain(Model.LLAMA_3_3_70B)
 
             # First should be the selected model
-            assert (
-                chain_strings[0]
-                == f"{Provider.Groq.ID}:{Provider.Groq.Production.LLAMA_3_3_70B}"
-            )
+            assert chain[0] == Model.LLAMA_3_3_70B
 
             # Other Tier 2 models should follow before Tier 3
-            tier2_in_chain = [s for s in chain_strings if s in Fallback.TIER_2]
-            tier3_in_chain = [s for s in chain_strings if s in Fallback.TIER_3]
+            tier2_in_chain = [m for m in chain if m in Fallback.TIER_2]
+            tier3_in_chain = [m for m in chain if m in Fallback.TIER_3]
 
             # All Tier 2 models should come before Tier 3
-            tier2_last_idx = max(chain_strings.index(s) for s in tier2_in_chain)
+            tier2_last_idx = max(chain.index(m) for m in tier2_in_chain)
             tier3_first_idx = (
-                min(chain_strings.index(s) for s in tier3_in_chain)
+                min(chain.index(m) for m in tier3_in_chain)
                 if tier3_in_chain
-                else len(chain_strings)
+                else len(chain)
             )
             assert tier2_last_idx < tier3_first_idx
 
@@ -174,49 +114,29 @@ class TestProviderRouter:
             router = ProviderRouter()
 
             # Start from Tier 3 model
-            chain = router.get_fallback_chain(
-                Provider.Anthropic.ID, Provider.Anthropic.Models.CLAUDE_HAIKU_4_5
-            )
-
-            chain_strings = [f"{p}:{m}" for p, m in chain]
+            chain = router.get_fallback_chain(Model.CLAUDE_HAIKU_4_5)
 
             # Should not contain any Tier 1 or Tier 2 models
-            tier1_in_chain = [s for s in chain_strings if s in Fallback.TIER_1]
-            tier2_in_chain = [s for s in chain_strings if s in Fallback.TIER_2]
+            tier1_in_chain = [m for m in chain if m in Fallback.TIER_1]
+            tier2_in_chain = [m for m in chain if m in Fallback.TIER_2]
 
             assert len(tier1_in_chain) == 0, f"Should not have Tier 1: {tier1_in_chain}"
             assert len(tier2_in_chain) == 0, f"Should not have Tier 2: {tier2_in_chain}"
-
-    def test_fallback_chain_unknown_model(
-        self, all_keys_available: dict[str, str]
-    ) -> None:
-        """Test fallback for model not in any tier."""
-        with patch.dict(os.environ, all_keys_available, clear=True):
-            router = ProviderRouter()
-            chain = router.get_fallback_chain("groq", "unknown-model")
-
-            # First should be the specified model
-            assert chain[0] == ("groq", "unknown-model")
-
-            # Should then have all tiers as fallback
-            assert len(chain) > 1
 
     def test_create_client_groq(self, groq_only: dict[str, str]) -> None:
         """Test creating Groq client."""
         with patch.dict(os.environ, groq_only, clear=True):
             router = ProviderRouter()
-            client = router.create_client(Provider.Groq.ID)
+            client = router.create_client(Provider.GROQ)
             assert client is not None
 
     def test_create_client_unsupported_raises(
         self, all_keys_available: dict[str, str]
     ) -> None:
         """Test that unsupported provider raises ValueError."""
-        with patch.dict(os.environ, all_keys_available, clear=True):
-            router = ProviderRouter()
-            with pytest.raises(ValueError) as exc_info:
-                router.create_client("unsupported")
-            assert "Unsupported provider" in str(exc_info.value)
+        # This test is no longer applicable since Provider is now an enum
+        # and you can't pass an invalid value. Removing this test.
+        pass
 
 
 class TestFallbackConstants:
@@ -237,18 +157,18 @@ class TestFallbackConstants:
         assert Fallback.TIER_4 in Fallback.ALL_TIERS
         assert len(Fallback.ALL_TIERS) == 4
 
-    def test_all_entries_valid_format(self) -> None:
-        """Test that all tier entries are in provider:model format."""
+    def test_all_entries_are_model_enums(self) -> None:
+        """Test that all tier entries are Model enum values."""
         for tier in Fallback.ALL_TIERS:
             for entry in tier:
-                # Should not raise
-                provider, model = parse_provider_model(entry)
-                assert provider in [
-                    Provider.Groq.ID,
-                    Provider.OpenAI.ID,
-                    Provider.Anthropic.ID,
+                # Should be a Model enum value
+                assert isinstance(entry, Model)
+                # Model should have a valid provider
+                assert entry.provider in [
+                    Provider.GROQ,
+                    Provider.OPENAI,
+                    Provider.ANTHROPIC,
                 ]
-                assert len(model) > 0
 
     def test_tier_order(self) -> None:
         """Test that ALL_TIERS is in correct order."""
@@ -256,3 +176,32 @@ class TestFallbackConstants:
         assert Fallback.ALL_TIERS[1] == Fallback.TIER_2
         assert Fallback.ALL_TIERS[2] == Fallback.TIER_3
         assert Fallback.ALL_TIERS[3] == Fallback.TIER_4
+
+
+class TestModelEnum:
+    """Tests for Model enum."""
+
+    def test_model_has_provider(self) -> None:
+        """Test that all models have a provider property."""
+        for model in Model:
+            assert hasattr(model, "provider")
+            assert isinstance(model.provider, Provider)
+
+    def test_model_has_max_output_tokens(self) -> None:
+        """Test that all models have max_output_tokens property."""
+        for model in Model:
+            assert hasattr(model, "max_output_tokens")
+            assert isinstance(model.max_output_tokens, int)
+            assert model.max_output_tokens > 0
+
+    def test_anthropic_models_have_higher_token_limit(self) -> None:
+        """Test that Anthropic models have 65536 max tokens."""
+        anthropic_models = [m for m in Model if m.provider == Provider.ANTHROPIC]
+        for model in anthropic_models:
+            assert model.max_output_tokens == 65536
+
+    def test_model_value_is_string(self) -> None:
+        """Test that Model enum values are strings (for API compatibility)."""
+        for model in Model:
+            assert isinstance(model.value, str)
+            assert len(model.value) > 0

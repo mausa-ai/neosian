@@ -17,7 +17,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from neosian import Agent, AgentConfig, Message, Role
+from neosian import Agent, AgentConfig, Message, Model, Role
 
 
 def _load_credentials_from_config() -> None:
@@ -39,17 +39,20 @@ def _load_credentials_from_config() -> None:
 
     credentials = config.get("credentials", {})
 
-    if not os.environ.get("GROQ_API_KEY"):
-        if groq_key := credentials.get("groq_api_key"):
-            os.environ["GROQ_API_KEY"] = groq_key
+    if not os.environ.get("GROQ_API_KEY") and (
+        groq_key := credentials.get("groq_api_key")
+    ):
+        os.environ["GROQ_API_KEY"] = groq_key
 
-    if not os.environ.get("OPENAI_API_KEY"):
-        if openai_key := credentials.get("openai_api_key"):
-            os.environ["OPENAI_API_KEY"] = openai_key
+    if not os.environ.get("OPENAI_API_KEY") and (
+        openai_key := credentials.get("openai_api_key")
+    ):
+        os.environ["OPENAI_API_KEY"] = openai_key
 
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        if anthropic_key := credentials.get("anthropic_api_key"):
-            os.environ["ANTHROPIC_API_KEY"] = anthropic_key
+    if not os.environ.get("ANTHROPIC_API_KEY") and (
+        anthropic_key := credentials.get("anthropic_api_key")
+    ):
+        os.environ["ANTHROPIC_API_KEY"] = anthropic_key
 
 
 @dataclass
@@ -186,7 +189,7 @@ async def main() -> None:
     config = AgentConfig(
         system_prompt="You are a helpful assistant. Be extremely concise.",
         tools=[],
-        provider="groq",
+        model=Model.GPT_OSS_20B,
         enable_todo=False,
     )
     agent = Agent(config=config)

@@ -26,9 +26,8 @@ from neosian._foundation.shared.types import (
     EvalConfig,
     EvalResult,
     Expectation,
-    ModelId,
+    Model,
     PromptConfig,
-    ProviderId,
     SystemPrompt,
     ToolCallCapture,
     ToolName,
@@ -140,20 +139,19 @@ async def _run_single_case(
         EvalResult with pass/fail and details.
     """
     try:
-        # Parse provider:model
-        provider_id, model_id = _parse_model(model)
+        # Parse model string to Model enum
+        parsed_model = _parse_model(model)
 
         # Create agent based on mode
         if agent_file is not None:
             # Variant mode: agent from Python, prompts from YAML
             agent = _create_agent_with_prompt_config(
-                agent_file, prompt_file, provider_id, model_id
+                agent_file, prompt_file, parsed_model
             )
         else:
             # Legacy mode: prompt_file is a Python agent file
             agent_config, _ = load_agent_config(prompt_file)
-            agent_config.provider = provider_id
-            agent_config.model = model_id
+            agent_config.model = parsed_model
             agent_config.enable_todo = False
             agent = Agent(config=agent_config)
 
@@ -182,8 +180,7 @@ async def _run_single_case(
 def _create_agent_with_prompt_config(
     agent_file: str,
     prompt_file: str,
-    provider_id: ProviderId,
-    model_id: ModelId,
+    model: Model,
 ) -> Agent:
     """Create agent and apply prompt config overrides.
 
@@ -193,16 +190,14 @@ def _create_agent_with_prompt_config(
     Args:
         agent_file: Path to Python agent file with tool implementations.
         prompt_file: Path to YAML prompt config file.
-        provider_id: Provider to use.
-        model_id: Model to use.
+        model: Model to use.
 
     Returns:
         Agent with overridden prompts and descriptions.
     """
     # Load agent config from Python file
     agent_config, _ = load_agent_config(agent_file)
-    agent_config.provider = provider_id
-    agent_config.model = model_id
+    agent_config.model = model
     agent_config.enable_todo = False
 
     # Load prompt config from YAML
@@ -388,20 +383,32 @@ async def _run_conversational(
     )
 
 
-def _parse_model(model: str) -> tuple[ProviderId, ModelId]:
-    """Parse provider:model string.
+def _parse_model(model_str: str) -> Model:
+    """Parse model string into Model enum.
 
     Args:
-        model: Model string like "groq:llama-3.3-70b-versatile".
+        model_str: Model string, either:
+            - provider:model format (e.g., "groq:llama-3.3-70b-versatile")
+            - model name only (e.g., "llama-3.3-70b-versatile")
 
     Returns:
-        Tuple of (provider_id, model_id).
+        Model enum value.
+
+    Raises:
+        ValueError: If model string doesn't match any Model enum value.
     """
-    if ":" in model:
-        provider, model_name = model.split(":", 1)
-        return ProviderId(provider), ModelId(model_name)
-    # Default to groq if no provider specified
-    return ProviderId("groq"), ModelId(model)
+    # Extract model name from provider:model format
+    if ":" in model_str:
+        _, model_name = model_str.split(":", 1)
+    else:
+        model_name = model_str
+
+    # Look up in Model enum by value
+    for m in Model:
+        if m.value == model_name:
+            return m
+
+    raise ValueError(f"Unknown model: {model_name}")
 
 
 def _empty_expectation() -> Expectation:

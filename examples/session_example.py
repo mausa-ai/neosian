@@ -11,7 +11,7 @@ import asyncio
 import os
 from pathlib import Path
 
-from neosian import Agent, AgentConfig, Message, Role
+from neosian import Agent, AgentConfig, Message, Model, Role
 
 
 def _load_credentials_from_config() -> None:
@@ -33,9 +33,10 @@ def _load_credentials_from_config() -> None:
 
     credentials = config.get("credentials", {})
 
-    if not os.environ.get("GROQ_API_KEY"):
-        if groq_key := credentials.get("groq_api_key"):
-            os.environ["GROQ_API_KEY"] = groq_key
+    if not os.environ.get("GROQ_API_KEY") and (
+        groq_key := credentials.get("groq_api_key")
+    ):
+        os.environ["GROQ_API_KEY"] = groq_key
 
 
 async def example_stateless() -> None:
@@ -50,7 +51,7 @@ async def example_stateless() -> None:
     config = AgentConfig(
         system_prompt="You are a helpful assistant. Be concise.",
         tools=[],
-        provider="groq",
+        model=Model.GPT_OSS_20B,
         enable_todo=False,
     )
     agent = Agent(config=config)
@@ -77,7 +78,7 @@ async def example_session() -> None:
     config = AgentConfig(
         system_prompt="You are a helpful assistant. Be concise.",
         tools=[],
-        provider="groq",
+        model=Model.GPT_OSS_20B,
         enable_todo=False,
     )
     agent = Agent(config=config)
@@ -109,7 +110,7 @@ async def example_chat_loop() -> None:
     config = AgentConfig(
         system_prompt="You are a helpful assistant. Keep track of the conversation.",
         tools=[],
-        provider="groq",
+        model=Model.GPT_OSS_20B,
         enable_todo=False,
     )
     agent = Agent(config=config)
@@ -122,14 +123,14 @@ async def example_chat_loop() -> None:
         messages.append(Message(role=Role.USER, content="My name is Alice."))
         response = await session.run(messages, stream=False)
         messages.append(response.message)
-        print(f"User: My name is Alice.")
+        print("User: My name is Alice.")
         print(f"Assistant: {response.message.content}\n")
 
         # Turn 2 - model remembers context from messages
         messages.append(Message(role=Role.USER, content="What's my name?"))
         response = await session.run(messages, stream=False)
         messages.append(response.message)
-        print(f"User: What's my name?")
+        print("User: What's my name?")
         print(f"Assistant: {response.message.content}\n")
 
     print(f"Total turns: {len(messages) // 2}")

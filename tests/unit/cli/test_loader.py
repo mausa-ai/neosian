@@ -12,7 +12,7 @@ from neosian._foundation.shared.exceptions import (
     AgentInvalidDefinitionError,
     AgentMissingConfigurationError,
 )
-from neosian._foundation.shared.types import AgentConfig
+from neosian._foundation.shared.types import AgentConfig, Model
 from neosian._foundation.tools.base import Tool, ToolResult
 
 
@@ -105,16 +105,15 @@ configuration = AgentConfig(
 
             assert config.tools == []
 
-    def test_loads_optional_provider_and_model(self) -> None:
-        """Test loading configuration with provider and model."""
+    def test_loads_configuration_with_model(self) -> None:
+        """Test loading configuration with model."""
         agent_code = """
-from neosian import AgentConfig
+from neosian import AgentConfig, Model
 
 configuration = AgentConfig(
     system_prompt="You are helpful.",
     tools=[],
-    provider="openai",
-    model="gpt-4o",
+    model=Model.GPT_5_NANO,
 )
 """
         with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
@@ -123,8 +122,7 @@ configuration = AgentConfig(
 
             config, _ = load_agent_config(f.name)
 
-            assert config.provider == "openai"
-            assert config.model == "gpt-4o"
+            assert config.model == Model.GPT_5_NANO
 
 
 @pytest.mark.unit
@@ -145,8 +143,7 @@ class TestAgentConfig:
 
         assert config.system_prompt == "Test prompt"
         assert len(config.tools) == 1
-        assert config.provider is None
-        assert config.model is None
+        assert config.model == Model.GPT_OSS_20B  # Default model
         assert config.enable_todo is True
 
     def test_agent_config_with_all_fields(self) -> None:
@@ -154,15 +151,13 @@ class TestAgentConfig:
         config = AgentConfig(
             system_prompt="Test prompt",
             tools=[],
-            provider="groq",
-            model="llama-3.3-70b-versatile",
+            model=Model.LLAMA_3_3_70B,
             enable_todo=False,
         )
 
         assert config.system_prompt == "Test prompt"
         assert config.tools == []
-        assert config.provider == "groq"
-        assert config.model == "llama-3.3-70b-versatile"
+        assert config.model == Model.LLAMA_3_3_70B
         assert config.enable_todo is False
 
 

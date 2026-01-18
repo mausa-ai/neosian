@@ -46,9 +46,11 @@ def test_public_api_exports() -> None:
         Message,
         Min,
         MinLen,
+        Model,
         Pattern,
         PolicyBuilder,
         PolicyResult,
+        Provider,
         Role,
         SSEEventType,
         Tool,
@@ -75,6 +77,8 @@ def test_public_api_exports() -> None:
     assert SSEEventType is not None
     assert Message is not None
     assert Role is not None
+    assert Model is not None
+    assert Provider is not None
     assert GuardrailsConfig is not None
     assert GuardrailMode is not None
     assert GuardrailErrorPolicy is not None
@@ -115,6 +119,9 @@ def test_all_list_matches_exports() -> None:
         # Messages
         "Message",
         "Role",
+        # Models and Providers
+        "Model",
+        "Provider",
         # Tools
         "Tool",
         "ToolCall",
@@ -150,6 +157,8 @@ def test_all_list_matches_exports() -> None:
         "ToolCallCapture",
         # Utilities
         "load_prompt",
+        # Exceptions
+        "InvalidModelError",
         # Meta
         "__version__",
     }

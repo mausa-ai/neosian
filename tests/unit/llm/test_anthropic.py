@@ -6,7 +6,7 @@ import pytest
 
 from neosian._foundation.llm.anthropic import AnthropicClient
 from neosian._foundation.llm.base import Message, Role, ToolDefinition
-from neosian._foundation.shared.types import ModelId
+from neosian._foundation.shared.types import Model
 
 
 @pytest.fixture
@@ -146,7 +146,7 @@ class TestAnthropicClient:
 
         response = await client.complete(
             messages=sample_messages,
-            model=ModelId("claude-sonnet-4-5-latest"),
+            model=Model.CLAUDE_SONNET_4_5,
         )
 
         assert response.message.role == Role.ASSISTANT
@@ -175,7 +175,7 @@ class TestAnthropicClient:
 
         response = await client.complete(
             messages=sample_messages,
-            model=ModelId("claude-sonnet-4-5-latest"),
+            model=Model.CLAUDE_SONNET_4_5,
             tools=[
                 ToolDefinition(
                     name="get_weather",
@@ -226,7 +226,7 @@ class TestAnthropicClient:
         chunks = []
         async for chunk in client.stream(
             messages=sample_messages,
-            model=ModelId("claude-sonnet-4-5-latest"),
+            model=Model.CLAUDE_SONNET_4_5,
         ):
             chunks.append(chunk)
 

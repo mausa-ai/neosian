@@ -14,44 +14,10 @@ from neosian._foundation.shared.constants import (
     EnvVars,
     ErrorMessages,
     Fallback,
-    Provider,
 )
-from neosian._foundation.shared.types import ModelId, ProviderId
+from neosian._foundation.shared.types import Model, Provider
 
 logger = logging.getLogger(__name__)
-
-
-def parse_provider_model(provider_model: str) -> tuple[str, str]:
-    """Parse a 'provider:model' string into components.
-
-    Args:
-        provider_model: String in format "provider:model".
-
-    Returns:
-        Tuple of (provider_id, model_id).
-
-    Raises:
-        ValueError: If string is not in expected format.
-    """
-    parts = provider_model.split(":", 1)
-    if len(parts) != 2:
-        raise ValueError(
-            ErrorMessages.INVALID_PROVIDER_MODEL_FORMAT.format(value=provider_model)
-        )
-    return parts[0], parts[1]
-
-
-def format_provider_model(provider: str, model: str) -> str:
-    """Format provider and model into 'provider:model' string.
-
-    Args:
-        provider: Provider identifier.
-        model: Model identifier.
-
-    Returns:
-        Formatted string "provider:model".
-    """
-    return f"{provider}:{model}"
 
 
 class ProviderRouter:
@@ -65,10 +31,10 @@ class ProviderRouter:
 
     Usage:
         router = ProviderRouter()
-        chain = router.get_fallback_chain("groq", "llama-3.3-70b-versatile")
-        for provider, model in chain:
+        chain = router.get_fallback_chain(Model.LLAMA_3_3_70B)
+        for model in chain:
             try:
-                client = router.create_client(provider)
+                client = router.create_client(model.provider)
                 # Use client...
                 break
             except ProviderError:
@@ -79,38 +45,36 @@ class ProviderRouter:
         """Initialize the router and detect available API keys."""
         self._available_providers = self._detect_available_providers()
 
-    def _detect_available_providers(self) -> set[str]:
+    def _detect_available_providers(self) -> set[Provider]:
         """Detect which providers have API keys configured.
 
         Returns:
-            Set of provider IDs with available API keys.
+            Set of Provider enums with available API keys.
         """
-        available: set[str] = set()
+        available: set[Provider] = set()
 
         if os.environ.get(EnvVars.GROQ_API_KEY):
-            available.add(Provider.Groq.ID)
+            available.add(Provider.GROQ)
         if os.environ.get(EnvVars.OPENAI_API_KEY):
-            available.add(Provider.OpenAI.ID)
+            available.add(Provider.OPENAI)
         if os.environ.get(EnvVars.ANTHROPIC_API_KEY):
-            available.add(Provider.Anthropic.ID)
+            available.add(Provider.ANTHROPIC)
 
         return available
 
-    def has_provider(self, provider: str) -> bool:
+    def has_provider(self, provider: Provider) -> bool:
         """Check if a provider has an API key configured.
 
         Args:
-            provider: Provider identifier.
+            provider: Provider enum.
 
         Returns:
             True if provider has API key, False otherwise.
         """
         return provider in self._available_providers
 
-    def get_fallback_chain(
-        self, provider: str, model: str
-    ) -> list[tuple[ProviderId, ModelId]]:
-        """Build fallback chain starting from the given provider:model.
+    def get_fallback_chain(self, model: Model) -> list[Model]:
+        """Build fallback chain starting from the given model.
 
         The chain follows tier-aware cyclic fallback:
         1. Find the tier containing the model
@@ -119,38 +83,36 @@ class ProviderRouter:
         4. Filter out providers without API keys
 
         Args:
-            provider: Starting provider identifier.
-            model: Starting model identifier.
+            model: Starting model.
 
         Returns:
-            Ordered list of (provider_id, model_id) tuples to try.
+            Ordered list of Models to try.
         """
-        target = format_provider_model(provider, model)
-        chain: list[tuple[ProviderId, ModelId]] = []
+        chain: list[Model] = []
 
         # Find which tier contains the target model
-        start_tier_idx = self._find_tier_index(target)
+        start_tier_idx = self._find_tier_index(model)
 
         # If model not in any tier, use it as primary with all tiers as fallback
         if start_tier_idx == -1:
             # Add the specified model as primary (if provider is available)
-            if self.has_provider(provider):
-                chain.append((ProviderId(provider), ModelId(model)))
+            if self.has_provider(model.provider):
+                chain.append(model)
 
             # Add all tiers as fallback
             for tier in Fallback.ALL_TIERS:
                 self._add_tier_to_chain(chain, tier, set())
         else:
             # Start from the model's tier and cycle from its position
-            self._build_chain_from_tier(chain, start_tier_idx, target)
+            self._build_chain_from_tier(chain, start_tier_idx, model)
 
         return chain
 
-    def _find_tier_index(self, target: str) -> int:
+    def _find_tier_index(self, target: Model) -> int:
         """Find which tier contains the target model.
 
         Args:
-            target: Provider:model string to find.
+            target: Model to find.
 
         Returns:
             Tier index (0-3) or -1 if not found.
@@ -162,18 +124,18 @@ class ProviderRouter:
 
     def _build_chain_from_tier(
         self,
-        chain: list[tuple[ProviderId, ModelId]],
+        chain: list[Model],
         start_tier_idx: int,
-        target: str,
+        target: Model,
     ) -> None:
         """Build fallback chain starting from a specific tier and model.
 
         Args:
             chain: List to append results to.
             start_tier_idx: Index of the starting tier.
-            target: The starting provider:model string.
+            target: The starting model.
         """
-        seen: set[str] = set()
+        seen: set[Model] = set()
 
         # Process starting tier with cyclic ordering from target position
         start_tier = Fallback.ALL_TIERS[start_tier_idx]
@@ -186,18 +148,18 @@ class ProviderRouter:
 
     def _add_tier_cyclic(
         self,
-        chain: list[tuple[ProviderId, ModelId]],
-        tier: tuple[str, ...],
-        target: str,
-        seen: set[str],
+        chain: list[Model],
+        tier: tuple[Model, ...],
+        target: Model,
+        seen: set[Model],
     ) -> None:
         """Add tier models starting from target position, cycling through.
 
         Args:
             chain: List to append results to.
-            tier: Tuple of provider:model strings in the tier.
+            tier: Tuple of Models in the tier.
             target: The starting model (should be in this tier).
-            seen: Set of already-seen provider:model strings.
+            seen: Set of already-seen models.
         """
         # Find position of target in tier
         try:
@@ -210,42 +172,42 @@ class ProviderRouter:
         # Create ordered list: start from target, cycle through rest
         ordered = list(tier[start_idx:]) + list(tier[:start_idx])
 
-        for provider_model in ordered:
-            if provider_model in seen:
+        for model in ordered:
+            if model in seen:
                 continue
-            seen.add(provider_model)
+            seen.add(model)
 
-            provider, model = parse_provider_model(provider_model)
-            if self.has_provider(provider):
-                chain.append((ProviderId(provider), ModelId(model)))
+            if self.has_provider(model.provider):
+                chain.append(model)
 
     def _add_tier_to_chain(
         self,
-        chain: list[tuple[ProviderId, ModelId]],
-        tier: tuple[str, ...],
-        seen: set[str],
+        chain: list[Model],
+        tier: tuple[Model, ...],
+        seen: set[Model],
     ) -> None:
         """Add all models from a tier to the chain.
 
         Args:
             chain: List to append results to.
-            tier: Tuple of provider:model strings.
-            seen: Set of already-seen provider:model strings.
+            tier: Tuple of Models.
+            seen: Set of already-seen models.
         """
-        for provider_model in tier:
-            if provider_model in seen:
+        for model in tier:
+            if model in seen:
                 continue
-            seen.add(provider_model)
+            seen.add(model)
 
-            provider, model = parse_provider_model(provider_model)
-            if self.has_provider(provider):
-                chain.append((ProviderId(provider), ModelId(model)))
+            if self.has_provider(model.provider):
+                chain.append(model)
 
-    def create_client(self, provider: str, api_key: str | None = None) -> BaseLLMClient:
+    def create_client(
+        self, provider: Provider, api_key: str | None = None
+    ) -> BaseLLMClient:
         """Create an LLM client for the given provider.
 
         Args:
-            provider: Provider identifier ("groq", "openai", "anthropic").
+            provider: Provider enum.
             api_key: Optional API key. If None, reads from environment.
 
         Returns:
@@ -255,15 +217,15 @@ class ProviderRouter:
             ValueError: If provider is not supported.
             MissingAPIKeyError: If no API key available.
         """
-        if provider == Provider.Groq.ID:
+        if provider == Provider.GROQ:
             key = api_key or os.environ.get(EnvVars.GROQ_API_KEY, "")
             return GroqClient(api_key=key)
 
-        if provider == Provider.OpenAI.ID:
+        if provider == Provider.OPENAI:
             key = api_key or os.environ.get(EnvVars.OPENAI_API_KEY, "")
             return OpenAIClient(api_key=key)
 
-        if provider == Provider.Anthropic.ID:
+        if provider == Provider.ANTHROPIC:
             key = api_key or os.environ.get(EnvVars.ANTHROPIC_API_KEY, "")
             return AnthropicClient(api_key=key)
 

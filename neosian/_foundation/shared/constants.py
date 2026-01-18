@@ -4,6 +4,8 @@ All magic numbers and hardcoded strings are centralized here.
 Add constants as needed, not speculatively.
 """
 
+from neosian._foundation.shared.types import Model
+
 
 class App:
     """Application metadata."""
@@ -36,6 +38,12 @@ class ErrorMessages:
         "configuration must be an AgentConfig instance: {path}"
     )
     AGENT_LOAD_ERROR: str = "Failed to load agent file: {path} - {error}"
+
+    # Configuration validation errors
+    INVALID_MODEL: str = (
+        "Invalid model: expected Model enum, got {model_type} with value '{model_value}'. "
+        "Supported models: {supported_models}"
+    )
 
     # Playground errors
     GROQ_API_KEY_MISSING: str = "GROQ_API_KEY environment variable not set"
@@ -92,70 +100,6 @@ class LLMDefaults:
     MAX_TOOL_CALL_RETRIES: int = 2
 
 
-class Provider:
-    """LLM Provider configuration."""
-
-    class Groq:
-        """Groq provider constants."""
-
-        ID: str = "groq"
-        DEFAULT_MODEL: str = "openai/gpt-oss-20b"
-
-        class Production:
-            """Production-ready models."""
-
-            LLAMA_3_3_70B: str = "llama-3.3-70b-versatile"
-            LLAMA_3_1_8B: str = "llama-3.1-8b-instant"
-            GPT_OSS_120B: str = "openai/gpt-oss-120b"
-            GPT_OSS_20B: str = "openai/gpt-oss-20b"
-
-            class Guardrails:
-                """Production guardrail models."""
-
-                LLAMA_GUARD_4_12B: str = "meta-llama/llama-guard-4-12b"
-
-        class Preview:
-            """Preview models (may change)."""
-
-            LLAMA_4_MAVERICK_17B: str = "meta-llama/llama-4-maverick-17b-128e-instruct"
-            LLAMA_4_SCOUT_17B: str = "meta-llama/llama-4-scout-17b-16e-instruct"
-            QWEN3_32B: str = "qwen/qwen3-32b"
-            KIMI_K2: str = "moonshotai/kimi-k2-instruct"
-            KIMI_K2_0905: str = "moonshotai/kimi-k2-instruct-0905"
-
-            class Guardrails:
-                """Preview guardrail models."""
-
-                GPT_OSS_SAFEGUARD_20B: str = "openai/gpt-oss-safeguard-20b"
-
-    class OpenAI:
-        """OpenAI provider constants."""
-
-        ID: str = "openai"
-        DEFAULT_MODEL: str = "gpt-5-nano-2025-08-07"
-
-        class Models:
-            """OpenAI models."""
-
-            GPT_5_1: str = "gpt-5.1-2025-11-13"  # Best for coding and agentic tasks
-            GPT_5_MINI: str = "gpt-5-mini-2025-08-07"  # Faster, cost-efficient
-            GPT_5_NANO: str = "gpt-5-nano-2025-08-07"  # Fastest, most cost-efficient
-            GPT_5_PRO: str = "gpt-5-pro-2025-10-06"  # Smarter and more precise
-
-    class Anthropic:
-        """Anthropic provider constants."""
-
-        ID: str = "anthropic"
-        DEFAULT_MODEL: str = "claude-sonnet-4-5-20250929"
-
-        class Models:
-            """Anthropic Claude models."""
-
-            CLAUDE_SONNET_4_5: str = "claude-sonnet-4-5-20250929"
-            CLAUDE_HAIKU_4_5: str = "claude-haiku-4-5-20251001"
-            CLAUDE_OPUS_4_5: str = "claude-opus-4-5-20251101"
-
-
 class Fallback:
     """Global fallback order by capability tier.
 
@@ -165,37 +109,38 @@ class Fallback:
     3. Never go UP a tier
 
     Format: "provider:model" strings for easy parsing.
+    Uses Model enum values which are strings.
     """
 
     # Tier 1: Most capable models
-    TIER_1: tuple[str, ...] = (
-        f"{Provider.Anthropic.ID}:{Provider.Anthropic.Models.CLAUDE_OPUS_4_5}",
-        f"{Provider.OpenAI.ID}:{Provider.OpenAI.Models.GPT_5_PRO}",
-        f"{Provider.OpenAI.ID}:{Provider.OpenAI.Models.GPT_5_1}",
+    TIER_1: tuple[Model, ...] = (
+        Model.CLAUDE_OPUS_4_5,
+        Model.GPT_5_PRO,
+        Model.GPT_5_1,
     )
 
     # Tier 2: Balanced workhorses
-    TIER_2: tuple[str, ...] = (
-        f"{Provider.Anthropic.ID}:{Provider.Anthropic.Models.CLAUDE_SONNET_4_5}",
-        f"{Provider.Groq.ID}:{Provider.Groq.Production.LLAMA_3_3_70B}",
-        f"{Provider.Groq.ID}:{Provider.Groq.Production.GPT_OSS_120B}",
+    TIER_2: tuple[Model, ...] = (
+        Model.CLAUDE_SONNET_4_5,
+        Model.LLAMA_3_3_70B,
+        Model.GPT_OSS_120B,
     )
 
     # Tier 3: Fast/efficient models
-    TIER_3: tuple[str, ...] = (
-        f"{Provider.Anthropic.ID}:{Provider.Anthropic.Models.CLAUDE_HAIKU_4_5}",
-        f"{Provider.OpenAI.ID}:{Provider.OpenAI.Models.GPT_5_MINI}",
-        f"{Provider.Groq.ID}:{Provider.Groq.Production.GPT_OSS_20B}",
+    TIER_3: tuple[Model, ...] = (
+        Model.CLAUDE_HAIKU_4_5,
+        Model.GPT_5_MINI,
+        Model.GPT_OSS_20B,
     )
 
     # Tier 4: Fastest/cheapest models (last resort)
-    TIER_4: tuple[str, ...] = (
-        f"{Provider.OpenAI.ID}:{Provider.OpenAI.Models.GPT_5_NANO}",
-        f"{Provider.Groq.ID}:{Provider.Groq.Production.LLAMA_3_1_8B}",
+    TIER_4: tuple[Model, ...] = (
+        Model.GPT_5_NANO,
+        Model.LLAMA_3_1_8B,
     )
 
     # All tiers in order for iteration
-    ALL_TIERS: tuple[tuple[str, ...], ...] = (TIER_1, TIER_2, TIER_3, TIER_4)
+    ALL_TIERS: tuple[tuple[Model, ...], ...] = (TIER_1, TIER_2, TIER_3, TIER_4)
 
 
 class BuiltinTools:
@@ -294,9 +239,9 @@ class ArenaUI:
 class Guardrails:
     """Constants for guardrail system."""
 
-    # Default models (reference existing Provider constants)
-    CLASSIFIER_MODEL: str = Provider.Groq.Production.Guardrails.LLAMA_GUARD_4_12B
-    POLICY_MODEL: str = Provider.Groq.Preview.Guardrails.GPT_OSS_SAFEGUARD_20B
+    # Default models
+    CLASSIFIER_MODEL: Model = Model.LLAMA_GUARD_4_12B
+    POLICY_MODEL: Model = Model.GPT_OSS_SAFEGUARD_20B
 
     # Temperature for guardrail calls (deterministic)
     TEMPERATURE: float = 0.0

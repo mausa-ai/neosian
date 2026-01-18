@@ -12,6 +12,7 @@ from neosian import (
     CommonPolicies,
     GuardrailMode,
     GuardrailsConfig,
+    Model,
     PolicyBuilder,
     Tool,
     ToolResult,
@@ -112,7 +113,7 @@ Be concise and helpful in your responses.""",
         write_file,
         list_directory,
     ],
-    provider="groq",  # Options: "groq" (default), "openai"
+    model=Model.GPT_OSS_20B,  # Default Groq model
     guardrails=GuardrailsConfig(
         # Input guardrails: classifier only (fast, no policy check)
         input_mode=GuardrailMode.CLASSIFIER_ONLY,

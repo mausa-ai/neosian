@@ -13,7 +13,7 @@ Usage:
 
 from typing import Annotated, Literal
 
-from neosian import AgentConfig, Desc, Max, Min, Tool, ToolResult
+from neosian import AgentConfig, Desc, Max, Min, Model, Tool, ToolResult
 
 
 @Tool(
@@ -90,6 +90,7 @@ async def generate_video(
         "video_url": f"https://example.com/video_{hash(prompt) % 10000}.mp4",
         "prompt": prompt,
         "quality": "fast" if fast else "high",
+        "aspect_ratio": aspect_ratio,
     })
 
 
@@ -133,5 +134,6 @@ After generating media, present relevant follow-up options to the user.""",
         generate_music,
         present_options,
     ],
-    provider="groq",
+    model=Model.GPT_OSS_20B,
 )
+

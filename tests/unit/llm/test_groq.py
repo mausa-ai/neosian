@@ -9,7 +9,7 @@ from neosian._foundation.llm.base import Message, Role, ToolDefinition
 from neosian._foundation.llm.groq import GroqClient
 from neosian._foundation.shared.constants import LLMDefaults
 from neosian._foundation.shared.exceptions import ToolCallGenerationError
-from neosian._foundation.shared.types import ModelId, ToolName
+from neosian._foundation.shared.types import Model, ToolName
 
 
 @pytest.mark.unit
@@ -201,7 +201,7 @@ class TestGroqClientRetry:
 
         result = await client.complete(
             messages=[Message(role=Role.USER, content="Hi")],
-            model=ModelId("test-model"),
+            model=Model.GPT_OSS_20B,
             tools=tools,
         )
 
@@ -244,7 +244,7 @@ class TestGroqClientRetry:
         with pytest.raises(ToolCallGenerationError) as exc_info:
             await client.complete(
                 messages=[Message(role=Role.USER, content="Hi")],
-                model=ModelId("test-model"),
+                model=Model.GPT_OSS_20B,
                 tools=tools,
             )
 
@@ -272,7 +272,7 @@ class TestGroqClientRetry:
         with pytest.raises(BadRequestError):
             await client.complete(
                 messages=[Message(role=Role.USER, content="Hi")],
-                model=ModelId("test-model"),
+                model=Model.GPT_OSS_20B,
                 tools=None,
             )
 
@@ -298,7 +298,7 @@ class TestGroqClientRetry:
 
         await client.complete(
             messages=[Message(role=Role.USER, content="Hi")],
-            model=ModelId("test-model"),
+            model=Model.GPT_OSS_20B,
             temperature=0.5,
         )
 
@@ -334,7 +334,7 @@ class TestGroqClientRetry:
         with pytest.raises(BadRequestError):
             await client.complete(
                 messages=[Message(role=Role.USER, content="Hi")],
-                model=ModelId("test-model"),
+                model=Model.GPT_OSS_20B,
                 tools=tools,
             )
 

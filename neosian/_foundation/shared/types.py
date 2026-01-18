@@ -8,27 +8,133 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Literal, NewType
 
-from neosian._foundation.shared.constants import ErrorMessages
-
 if TYPE_CHECKING:
     from neosian._foundation.tools.base import ToolResult
 
 # Core identifiers
 AgentName = NewType("AgentName", str)
 ToolName = NewType("ToolName", str)
-ModelId = NewType("ModelId", str)
+ToolCallId = NewType("ToolCallId", str)
 
 # Content types
 SystemPrompt = NewType("SystemPrompt", str)
 UserMessage = NewType("UserMessage", str)
 AssistantMessage = NewType("AssistantMessage", str)
-ToolCallId = NewType("ToolCallId", str)
-
-# Provider identifiers
-ProviderId = NewType("ProviderId", str)
 
 # Tool function type (defined here to avoid circular imports)
 ToolFunction = Callable[..., Awaitable["ToolResult[Any]"]]
+
+
+# =============================================================================
+# Provider and Model Enums
+# =============================================================================
+
+
+class Provider(str, Enum):
+    """LLM Provider identifiers."""
+
+    GROQ = "groq"
+    OPENAI = "openai"
+    ANTHROPIC = "anthropic"
+
+
+# Model to provider mapping (populated after Model enum is defined)
+_MODEL_PROVIDERS: dict[str, Provider] = {}
+
+# Model to max output tokens mapping
+_MODEL_MAX_TOKENS: dict[str, int] = {}
+
+# Default max output tokens (used when not specified)
+_DEFAULT_MAX_TOKENS = 8192
+
+
+class Model(str, Enum):
+    """Supported LLM models."""
+
+    # Groq - Production
+    LLAMA_3_3_70B = "llama-3.3-70b-versatile"
+    LLAMA_3_1_8B = "llama-3.1-8b-instant"
+    GPT_OSS_120B = "openai/gpt-oss-120b"
+    GPT_OSS_20B = "openai/gpt-oss-20b"
+
+    # Groq - Preview
+    LLAMA_4_MAVERICK_17B = "meta-llama/llama-4-maverick-17b-128e-instruct"
+    LLAMA_4_SCOUT_17B = "meta-llama/llama-4-scout-17b-16e-instruct"
+    QWEN3_32B = "qwen/qwen3-32b"
+    KIMI_K2 = "moonshotai/kimi-k2-instruct"
+    KIMI_K2_0905 = "moonshotai/kimi-k2-instruct-0905"
+
+    # Groq - Guardrails
+    LLAMA_GUARD_4_12B = "meta-llama/llama-guard-4-12b"
+    GPT_OSS_SAFEGUARD_20B = "openai/gpt-oss-safeguard-20b"
+
+    # OpenAI
+    GPT_5_1 = "gpt-5.1-2025-11-13"
+    GPT_5_MINI = "gpt-5-mini-2025-08-07"
+    GPT_5_NANO = "gpt-5-nano-2025-08-07"
+    GPT_5_PRO = "gpt-5-pro-2025-10-06"
+
+    # Anthropic
+    CLAUDE_OPUS_4_5 = "claude-opus-4-5-20251101"
+    CLAUDE_SONNET_4_5 = "claude-sonnet-4-5-20250929"
+    CLAUDE_HAIKU_4_5 = "claude-haiku-4-5-20251001"
+
+    @property
+    def provider(self) -> Provider:
+        """Get the provider for this model."""
+        return _MODEL_PROVIDERS[self.value]
+
+    @property
+    def max_output_tokens(self) -> int:
+        """Get max output tokens for this model."""
+        return _MODEL_MAX_TOKENS.get(self.value, _DEFAULT_MAX_TOKENS)
+
+
+# Populate provider mappings
+_GROQ_MODELS = {
+    Model.LLAMA_3_3_70B,
+    Model.LLAMA_3_1_8B,
+    Model.GPT_OSS_120B,
+    Model.GPT_OSS_20B,
+    Model.LLAMA_4_MAVERICK_17B,
+    Model.LLAMA_4_SCOUT_17B,
+    Model.QWEN3_32B,
+    Model.KIMI_K2,
+    Model.KIMI_K2_0905,
+    Model.LLAMA_GUARD_4_12B,
+    Model.GPT_OSS_SAFEGUARD_20B,
+}
+
+_OPENAI_MODELS = {
+    Model.GPT_5_1,
+    Model.GPT_5_MINI,
+    Model.GPT_5_NANO,
+    Model.GPT_5_PRO,
+}
+
+_ANTHROPIC_MODELS = {
+    Model.CLAUDE_OPUS_4_5,
+    Model.CLAUDE_SONNET_4_5,
+    Model.CLAUDE_HAIKU_4_5,
+}
+
+for m in _GROQ_MODELS:
+    _MODEL_PROVIDERS[m.value] = Provider.GROQ
+
+for m in _OPENAI_MODELS:
+    _MODEL_PROVIDERS[m.value] = Provider.OPENAI
+
+for m in _ANTHROPIC_MODELS:
+    _MODEL_PROVIDERS[m.value] = Provider.ANTHROPIC
+    _MODEL_MAX_TOKENS[m.value] = 65536  # 64k for Claude 4.5 models
+
+
+# Default models per provider
+DEFAULT_MODELS: dict[Provider, Model] = {
+    Provider.GROQ: Model.GPT_OSS_20B,
+    Provider.OPENAI: Model.GPT_5_NANO,
+    Provider.ANTHROPIC: Model.CLAUDE_SONNET_4_5,
+}
 
 
 # Todo status enum
@@ -48,7 +154,7 @@ class AgentConfig:
     Export a `configuration` variable of this type.
 
     Example:
-        from neosian import AgentConfig, Tool, ToolResult
+        from neosian import AgentConfig, Tool, ToolResult, Model
 
         @Tool(name="greet", description="Say hello")
         async def greet(name: str) -> ToolResult[str]:
@@ -57,15 +163,31 @@ class AgentConfig:
         configuration = AgentConfig(
             system_prompt="You are helpful.",
             tools=[greet],
+            model=Model.LLAMA_3_3_70B,
         )
     """
 
     system_prompt: SystemPrompt
     tools: list[ToolFunction] = field(default_factory=list)
-    provider: ProviderId | None = None
-    model: ModelId | None = None
+    model: Model = Model.GPT_OSS_20B
     enable_todo: bool = True
     guardrails: "GuardrailsConfig | None" = None
+
+    def __post_init__(self) -> None:
+        """Validate configuration after initialization."""
+        # Runtime validation - model could be anything if user bypasses type hints
+        model: object = self.model  # Type erasure to enable isinstance check
+        if not isinstance(model, Model):
+            # Lazy import to avoid circular dependency at module load time
+            # (types -> exceptions -> constants -> types)
+            from neosian._foundation.shared.exceptions import InvalidModelError
+
+            supported = ", ".join(f"Model.{m.name}" for m in Model)
+            message = (
+                f"Invalid model: expected Model enum, got {type(model).__name__} "
+                f"with value '{model}'. Supported models: {supported}"
+            )
+            raise InvalidModelError(message, model)
 
 
 # Guardrail types
@@ -180,19 +302,13 @@ class GuardrailsConfig:
         # Check input policy requirement
         if self.input_mode.uses_policy() and self.input_policy is None:
             raise ValueError(
-                ErrorMessages.GUARDRAIL_POLICY_REQUIRED.format(
-                    mode=f"input_mode={self.input_mode.value}",
-                    policy_field="input_policy",
-                )
+                f"input_mode={self.input_mode.value} requires input_policy to be set"
             )
 
         # Check output policy requirement
         if self.output_mode.uses_policy() and self.output_policy is None:
             raise ValueError(
-                ErrorMessages.GUARDRAIL_POLICY_REQUIRED.format(
-                    mode=f"output_mode={self.output_mode.value}",
-                    policy_field="output_policy",
-                )
+                f"output_mode={self.output_mode.value} requires output_policy to be set"
             )
 
     @property

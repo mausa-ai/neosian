@@ -110,6 +110,20 @@ class ConfigurationError(NeosianError):
     pass
 
 
+class InvalidModelError(ConfigurationError):
+    """Raised when an invalid model is provided to AgentConfig."""
+
+    def __init__(self, message: str, model_value: object) -> None:
+        """Initialize with error message and the invalid model value.
+
+        Args:
+            message: Pre-formatted error message.
+            model_value: The invalid value that was provided instead of a Model enum.
+        """
+        super().__init__(message)
+        self.model_value = model_value
+
+
 class MissingAPIKeyError(ConfigurationError):
     """Raised when a required API key is missing."""
 

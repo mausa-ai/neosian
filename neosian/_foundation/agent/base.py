@@ -36,8 +36,8 @@ from neosian._foundation.llm.base import (
     ToolDefinition,
     Usage,
 )
-from neosian._foundation.llm.router import ProviderRouter, format_provider_model
-from neosian._foundation.shared.constants import EnvVars, ErrorMessages, Provider
+from neosian._foundation.llm.router import ProviderRouter
+from neosian._foundation.shared.constants import EnvVars, ErrorMessages
 from neosian._foundation.shared.exceptions import (
     AllProvidersFailedError,
     GuardrailStreamingError,
@@ -49,7 +49,7 @@ from neosian._foundation.shared.types import (
     GuardrailErrorPolicy,
     GuardrailMode,
     GuardrailResult,
-    ModelId,
+    Model,
     PolicyResult,
     ToolFunction,
     ToolName,
@@ -153,37 +153,20 @@ class Agent:
         """Initialize the agent.
 
         Args:
-            config: Agent configuration with system_prompt, tools, provider, model.
+            config: Agent configuration with system_prompt, tools, model.
             max_tool_iterations: Maximum tool call iterations to prevent infinite loops.
             todo_state: External todo state. If None and enable_todo=True, creates new.
         """
         # Initialize router for fallback support
         self._router = ProviderRouter()
 
-        # Determine provider and model
-        provider = config.provider or Provider.Groq.ID
-        if config.model:
-            model = config.model
-        else:
-            # Use provider's default model
-            match provider:
-                case Provider.Groq.ID:
-                    model = ModelId(Provider.Groq.DEFAULT_MODEL)
-                case Provider.OpenAI.ID:
-                    model = ModelId(Provider.OpenAI.DEFAULT_MODEL)
-                case Provider.Anthropic.ID:
-                    model = ModelId(Provider.Anthropic.DEFAULT_MODEL)
-                case _:
-                    model = ModelId(Provider.Groq.DEFAULT_MODEL)
-
-        # Store config for fallback chain
-        self._provider = provider
-        self._model = model
+        # Model from config (has default value)
+        self._model = config.model
         self._system_prompt = config.system_prompt
         self._max_tool_iterations = max_tool_iterations
 
         # Build fallback chain
-        self._fallback_chain = self._router.get_fallback_chain(provider, model)
+        self._fallback_chain = self._router.get_fallback_chain(config.model)
 
         # Store guardrails config and create client if needed
         self._guardrails = config.guardrails
@@ -388,29 +371,28 @@ class Agent:
         attempted_providers: list[str] = []
         last_error: str = ""
 
-        # Try each provider in the fallback chain
-        for provider_id, model_id in self._fallback_chain:
-            attempted_providers.append(format_provider_model(provider_id, model_id))
+        # Try each model in the fallback chain
+        for model in self._fallback_chain:
+            attempted_providers.append(f"{model.provider.value}:{model.value}")
 
             try:
-                client = self._router.create_client(provider_id)
+                client = self._router.create_client(model.provider)
                 return await self._execute_with_client(
                     client=client,
-                    model=model_id,
+                    model=model,
                     full_messages=full_messages,
                 )
             except Exception as e:
                 last_error = str(e)
-                # Log fallback (if not the last provider)
+                # Log fallback (if not the last model)
                 if len(attempted_providers) < len(self._fallback_chain):
-                    next_idx = len(attempted_providers)
-                    next_provider, next_model = self._fallback_chain[next_idx]
+                    next_model = self._fallback_chain[len(attempted_providers)]
                     logger.warning(
                         ErrorMessages.FALLBACK_TRIGGERED.format(
-                            from_provider=provider_id,
-                            from_model=model_id,
-                            to_provider=next_provider,
-                            to_model=next_model,
+                            from_provider=model.provider.value,
+                            from_model=model.value,
+                            to_provider=next_model.provider.value,
+                            to_model=next_model.value,
                             reason=str(e),
                         )
                     )
@@ -425,7 +407,7 @@ class Agent:
     async def _execute_with_client(
         self,
         client: BaseLLMClient,
-        model: ModelId,
+        model: Model,
         full_messages: list[Message],
     ) -> AgentResponse:
         """Execute the agent with a specific client and model.
@@ -626,15 +608,15 @@ class Agent:
         attempted_providers: list[str] = []
         last_error: str = ""
 
-        # Try each provider in the fallback chain
-        for provider_id, model_id in self._fallback_chain:
-            attempted_providers.append(format_provider_model(provider_id, model_id))
+        # Try each model in the fallback chain
+        for model in self._fallback_chain:
+            attempted_providers.append(f"{model.provider.value}:{model.value}")
 
             try:
-                client = self._router.create_client(provider_id)
+                client = self._router.create_client(model.provider)
                 async for sse in self._stream_with_client(
                     client=client,
-                    model=model_id,
+                    model=model,
                     full_messages=full_messages,
                     guard_task=guard_task,
                 ):
@@ -642,16 +624,15 @@ class Agent:
                 return  # Success - exit the loop
             except Exception as e:
                 last_error = str(e)
-                # Log fallback (if not the last provider)
+                # Log fallback (if not the last model)
                 if len(attempted_providers) < len(self._fallback_chain):
-                    next_idx = len(attempted_providers)
-                    next_provider, next_model = self._fallback_chain[next_idx]
+                    next_model = self._fallback_chain[len(attempted_providers)]
                     logger.warning(
                         ErrorMessages.FALLBACK_TRIGGERED.format(
-                            from_provider=provider_id,
-                            from_model=model_id,
-                            to_provider=next_provider,
-                            to_model=next_model,
+                            from_provider=model.provider.value,
+                            from_model=model.value,
+                            to_provider=next_model.provider.value,
+                            to_model=next_model.value,
                             reason=str(e),
                         )
                     )
@@ -666,7 +647,7 @@ class Agent:
     async def _stream_with_client(
         self,
         client: BaseLLMClient,
-        model: ModelId,
+        model: Model,
         full_messages: list[Message],
         guard_task: (
             asyncio.Task[tuple[bool, ClassifierResult | None, PolicyResult | None]]
@@ -854,7 +835,7 @@ class Agent:
     async def _stream_final_with_client_and_guard(
         self,
         client: BaseLLMClient,
-        model: ModelId,
+        model: Model,
         full_messages: list[Message],
         guard_task: (
             asyncio.Task[tuple[bool, ClassifierResult | None, PolicyResult | None]]
@@ -1291,30 +1272,29 @@ class Agent:
         attempted_providers: list[str] = []
         last_error: str = ""
 
-        # Try each provider in the fallback chain
-        for provider_id, model_id in self._fallback_chain:
-            attempted_providers.append(format_provider_model(provider_id, model_id))
+        # Try each model in the fallback chain
+        for model in self._fallback_chain:
+            attempted_providers.append(f"{model.provider.value}:{model.value}")
 
             try:
                 # Use session's cached client instead of creating new one
-                client = session._get_or_create_client(provider_id)
+                client = session._get_or_create_client(model.provider)
                 return await self._execute_with_client(
                     client=client,
-                    model=model_id,
+                    model=model,
                     full_messages=full_messages,
                 )
             except Exception as e:
                 last_error = str(e)
-                # Log fallback (if not the last provider)
+                # Log fallback (if not the last model)
                 if len(attempted_providers) < len(self._fallback_chain):
-                    next_idx = len(attempted_providers)
-                    next_provider, next_model = self._fallback_chain[next_idx]
+                    next_model = self._fallback_chain[len(attempted_providers)]
                     logger.warning(
                         ErrorMessages.FALLBACK_TRIGGERED.format(
-                            from_provider=provider_id,
-                            from_model=model_id,
-                            to_provider=next_provider,
-                            to_model=next_model,
+                            from_provider=model.provider.value,
+                            from_model=model.value,
+                            to_provider=next_model.provider.value,
+                            to_model=next_model.value,
                             reason=str(e),
                         )
                     )
@@ -1414,16 +1394,16 @@ class Agent:
         attempted_providers: list[str] = []
         last_error: str = ""
 
-        # Try each provider in the fallback chain
-        for provider_id, model_id in self._fallback_chain:
-            attempted_providers.append(format_provider_model(provider_id, model_id))
+        # Try each model in the fallback chain
+        for model in self._fallback_chain:
+            attempted_providers.append(f"{model.provider.value}:{model.value}")
 
             try:
                 # Use session's cached client instead of creating new one
-                client = session._get_or_create_client(provider_id)
+                client = session._get_or_create_client(model.provider)
                 async for sse in self._stream_with_client(
                     client=client,
-                    model=model_id,
+                    model=model,
                     full_messages=full_messages,
                     guard_task=guard_task,
                 ):
@@ -1431,16 +1411,15 @@ class Agent:
                 return  # Success - exit the loop
             except Exception as e:
                 last_error = str(e)
-                # Log fallback (if not the last provider)
+                # Log fallback (if not the last model)
                 if len(attempted_providers) < len(self._fallback_chain):
-                    next_idx = len(attempted_providers)
-                    next_provider, next_model = self._fallback_chain[next_idx]
+                    next_model = self._fallback_chain[len(attempted_providers)]
                     logger.warning(
                         ErrorMessages.FALLBACK_TRIGGERED.format(
-                            from_provider=provider_id,
-                            from_model=model_id,
-                            to_provider=next_provider,
-                            to_model=next_model,
+                            from_provider=model.provider.value,
+                            from_model=model.value,
+                            to_provider=next_model.provider.value,
+                            to_model=next_model.value,
                             reason=str(e),
                         )
                     )
