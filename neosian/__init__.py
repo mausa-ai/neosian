@@ -2,7 +2,7 @@
 
 from neosian._foundation.agent.base import Agent, AgentResponse
 from neosian._foundation.agent.session import AgentSession
-from neosian._foundation.agent.streaming import SSEEventType
+from neosian._foundation.agent.streaming import SSEEventType, error_event
 from neosian._foundation.guardrails.policy import CommonPolicies, PolicyBuilder
 from neosian._foundation.llm.base import Message, Role, ToolCall, Usage
 from neosian._foundation.shared.constraints import (
@@ -13,7 +13,10 @@ from neosian._foundation.shared.constraints import (
     MinLen,
     Pattern,
 )
-from neosian._foundation.shared.exceptions import InvalidModelError
+from neosian._foundation.shared.exceptions import (
+    AllProvidersFailedError,
+    InvalidModelError,
+)
 from neosian._foundation.shared.prompt import load_prompt
 from neosian._foundation.shared.types import (
     AgentConfig,
@@ -36,7 +39,7 @@ from neosian._foundation.shared.types import (
 )
 from neosian._foundation.tools.base import Tool, ToolResult
 
-__version__ = "0.21.0"
+__version__ = "0.21.1"
 
 __all__ = [
     # Agent
@@ -65,6 +68,7 @@ __all__ = [
     "Usage",
     # Streaming
     "SSEEventType",
+    "error_event",
     # Guardrails
     "GuardrailsConfig",
     "GuardrailMode",
@@ -85,6 +89,7 @@ __all__ = [
     # Utilities
     "load_prompt",
     # Exceptions
+    "AllProvidersFailedError",
     "InvalidModelError",
     # Meta
     "__version__",
