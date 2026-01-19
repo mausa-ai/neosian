@@ -158,8 +158,12 @@ def test_all_list_matches_exports() -> None:
         "ToolCallCapture",
         # Utilities
         "load_prompt",
+        # Fallback
+        "FallbackConfig",
+        "FallbackState",
         # Exceptions
-        "AllProvidersFailedError",
+        "ModelFailedError",
+        "FallbackExhaustedError",
         "InvalidModelError",
         # Meta
         "__version__",

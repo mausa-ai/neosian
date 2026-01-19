@@ -185,17 +185,13 @@ class TestEvalProgress:
         # First prompt, second model, second case is failed
         assert progress.prompts[0].models[1].cases[1].status == "failed"
 
-    def test_short_model_name_with_provider(
-        self, simple_config: EvalConfig
-    ) -> None:
+    def test_short_model_name_with_provider(self, simple_config: EvalConfig) -> None:
         """Should extract short model name from provider:model format."""
         progress = EvalProgress(simple_config)
         assert progress._short_model_name("openai:gpt-5") == "gpt-5"
         assert progress._short_model_name("anthropic:claude-haiku") == "claude-haiku"
 
-    def test_short_model_name_without_provider(
-        self, simple_config: EvalConfig
-    ) -> None:
+    def test_short_model_name_without_provider(self, simple_config: EvalConfig) -> None:
         """Should return model name as-is if no provider prefix."""
         progress = EvalProgress(simple_config)
         assert progress._short_model_name("gpt-5") == "gpt-5"
@@ -280,9 +276,7 @@ class TestCreateProgressCallback:
         assert progress.prompts[0].models[0].cases[0].status == "passed"
         assert progress.prompts[0].models[0].cases[0].latency_ms == 150.5
 
-    def test_callback_signature_matches_runner(
-        self, simple_config: EvalConfig
-    ) -> None:
+    def test_callback_signature_matches_runner(self, simple_config: EvalConfig) -> None:
         """Callback should accept (prompt_idx, model_idx, case_idx, status, latency_ms)."""
         progress = EvalProgress(simple_config)
         callback = create_progress_callback(progress)

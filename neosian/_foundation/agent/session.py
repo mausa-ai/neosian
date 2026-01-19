@@ -10,7 +10,7 @@ from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any, Literal, overload
 
 from neosian._foundation.llm.base import BaseLLMClient, Message
-from neosian._foundation.shared.types import Provider
+from neosian._foundation.shared.types import FallbackState, Provider
 
 if TYPE_CHECKING:
     from neosian._foundation.agent.base import Agent, AgentResponse
@@ -22,6 +22,10 @@ class AgentSession:
     A session maintains a cache of LLM clients that are reused across multiple
     `run()` calls. This eliminates the connection establishment overhead that
     occurs when creating new clients for each request.
+
+    Sessions also maintain fallback state for "sticky" fallback behavior:
+    when a model fails and falls back, subsequent calls continue using the
+    fallback model until retry_main_after successful calls.
 
     Thread-safety: Sessions are safe for concurrent use. The underlying
     SDK clients (AsyncGroq, AsyncOpenAI, AsyncAnthropic) use httpx which
@@ -49,6 +53,7 @@ class AgentSession:
         """
         self._agent = agent
         self._clients: dict[Provider, BaseLLMClient] = {}
+        self._fallback_state = FallbackState()
 
     def _get_or_create_client(self, provider: Provider) -> BaseLLMClient:
         """Get a cached client or create and cache a new one.

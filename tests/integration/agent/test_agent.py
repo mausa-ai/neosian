@@ -8,7 +8,7 @@ import pytest
 
 from neosian._foundation.agent.base import Agent
 from neosian._foundation.llm.base import Message, Role
-from neosian._foundation.shared.types import AgentConfig, SystemPrompt
+from neosian._foundation.shared.types import AgentConfig, Model, SystemPrompt
 from neosian._foundation.tools.base import Tool, ToolResult
 
 
@@ -22,7 +22,7 @@ class TestAgentWithGroq:
         config = AgentConfig(
             system_prompt=SystemPrompt("You are a helpful assistant. Be concise."),
             tools=[],
-            provider="groq",
+            model=Model.GPT_OSS_20B,
             enable_todo=False,
         )
         agent = Agent(config=config)
@@ -49,7 +49,7 @@ class TestAgentWithGroq:
                 "You are a weather assistant. Use the get_weather tool to answer questions."
             ),
             tools=[get_weather],
-            provider="groq",
+            model=Model.GPT_OSS_20B,
             enable_todo=False,
         )
         agent = Agent(config=config)
@@ -89,7 +89,7 @@ class TestAgentWithGroq:
                 "You are a calculator. Use the tools for all math operations."
             ),
             tools=[add, multiply],
-            provider="groq",
+            model=Model.GPT_OSS_20B,
             enable_todo=False,
         )
         agent = Agent(config=config)
@@ -118,7 +118,7 @@ class TestAgentWithGroq:
         config = AgentConfig(
             system_prompt=SystemPrompt("You have access to a tool. Try to use it."),
             tools=[failing_tool],
-            provider="groq",
+            model=Model.GPT_OSS_20B,
             enable_todo=False,
         )
         agent = Agent(config=config)
@@ -140,7 +140,7 @@ class TestAgentWithGroq:
         config = AgentConfig(
             system_prompt=SystemPrompt("You are a helpful assistant. Be concise."),
             tools=[],
-            provider="groq",
+            model=Model.GPT_OSS_20B,
             enable_todo=False,
         )
         agent = Agent(config=config)
@@ -171,7 +171,7 @@ class TestAgentWithGroq:
                 "You are a number assistant. Use the get_number tool when asked for a number."
             ),
             tools=[get_number],
-            provider="groq",
+            model=Model.GPT_OSS_20B,
             enable_todo=False,
         )
         agent = Agent(config=config)

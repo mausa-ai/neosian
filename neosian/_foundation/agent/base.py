@@ -40,13 +40,15 @@ from neosian._foundation.llm.base import (
 from neosian._foundation.llm.router import ProviderRouter
 from neosian._foundation.shared.constants import EnvVars, ErrorMessages
 from neosian._foundation.shared.exceptions import (
-    AllProvidersFailedError,
+    FallbackExhaustedError,
     GuardrailStreamingError,
     MissingAPIKeyError,
+    ModelFailedError,
 )
 from neosian._foundation.shared.types import (
     AgentConfig,
     ClassifierResult,
+    FallbackState,
     GuardrailErrorPolicy,
     GuardrailMode,
     GuardrailResult,
@@ -133,6 +135,12 @@ class Agent:
     The agent receives conversation history from the app, executes the
     tool loop, and returns the final response. It does not store state.
 
+    Fallback behavior:
+    - If no fallback is configured and the model fails, raises ModelFailedError.
+    - If fallback is configured and both models fail, raises FallbackExhaustedError.
+    - With sessions, fallback is "sticky" - subsequent calls continue using the
+      fallback model until retry_main_after successful calls.
+
     Usage:
         from neosian import Agent, AgentConfig, Tool, ToolResult
 
@@ -158,16 +166,14 @@ class Agent:
             max_tool_iterations: Maximum tool call iterations to prevent infinite loops.
             todo_state: External todo state. If None and enable_todo=True, creates new.
         """
-        # Initialize router for fallback support
+        # Initialize router for provider management
         self._router = ProviderRouter()
 
-        # Model from config (has default value)
+        # Model and fallback configuration
         self._model = config.model
+        self._fallback = config.fallback
         self._system_prompt = config.system_prompt
         self._max_tool_iterations = max_tool_iterations
-
-        # Build fallback chain
-        self._fallback_chain = self._router.get_fallback_chain(config.model)
 
         # Store guardrails config and create client if needed
         self._guardrails = config.guardrails
@@ -240,6 +246,8 @@ class Agent:
 
         Raises:
             GuardrailStreamingError: If stream=True with output guardrails configured.
+            ModelFailedError: If model fails and no fallback is configured.
+            FallbackExhaustedError: If both main and fallback models fail.
         """
         # Output guardrails require blocking mode
         if (
@@ -345,23 +353,23 @@ class Agent:
     async def _execute_agent_core(
         self,
         messages: list[Message],
+        fallback_state: FallbackState | None = None,
     ) -> AgentResponse:
-        """Execute the agent LLM and tool loop with provider fallback.
+        """Execute the agent LLM and tool loop with optional fallback.
 
         This is the core agent execution without input guardrail checks.
-        Used by both blocking and streaming modes. Input guard results
-        are attached separately via _attach_input_guard_results.
-
-        Tries each provider in the fallback chain until one succeeds or all fail.
+        Used by both blocking and streaming modes.
 
         Args:
             messages: Conversation history (without system message).
+            fallback_state: Optional fallback state for session-based sticky fallback.
 
         Returns:
             AgentResponse with the final message and execution details.
 
         Raises:
-            AllProvidersFailedError: If all providers in the fallback chain fail.
+            ModelFailedError: If model fails and no fallback is configured.
+            FallbackExhaustedError: If both main and fallback models fail.
         """
         # Prepend system message
         full_messages = [
@@ -369,40 +377,158 @@ class Agent:
             *messages,
         ]
 
-        attempted_providers: list[str] = []
-        last_error: str = ""
+        # Determine which model to try first - check if we should retry main
+        if (
+            fallback_state is not None
+            and fallback_state.using_fallback
+            and self._should_retry_main(fallback_state)
+        ):
+            logger.info(
+                ErrorMessages.FALLBACK_RETRY_MAIN.format(
+                    main_model=self._model.value,
+                    successful_calls=fallback_state.successful_fallback_calls,
+                )
+            )
+            fallback_state.using_fallback = False
+            fallback_state.successful_fallback_calls = 0
 
-        # Try each model in the fallback chain
-        for model in self._fallback_chain:
-            attempted_providers.append(f"{model.provider.value}:{model.value}")
+        # If using fallback (sticky), try fallback first
+        if fallback_state is not None and fallback_state.using_fallback:
+            return await self._execute_with_fallback_model(
+                full_messages, fallback_state
+            )
 
+        # Try main model
+        try:
+            client = self._router.create_client(self._model.provider)
+            response = await self._execute_with_client(
+                client=client,
+                model=self._model,
+                full_messages=full_messages,
+            )
+            # Success on main - reset fallback state if present
+            if fallback_state is not None:
+                fallback_state.using_fallback = False
+                fallback_state.successful_fallback_calls = 0
+            return response
+        except Exception as e:
+            main_error = str(e)
+            # No fallback configured - raise immediately
+            if self._fallback is None:
+                raise ModelFailedError(
+                    model=self._model.value,
+                    error=main_error,
+                    has_fallback=False,
+                ) from e
+
+            # Try fallback
+            logger.warning(
+                ErrorMessages.FALLBACK_TRIGGERED.format(
+                    from_model=self._model.value,
+                    to_model=self._fallback.model.value,
+                    reason=main_error,
+                )
+            )
             try:
-                client = self._router.create_client(model.provider)
-                return await self._execute_with_client(
-                    client=client,
-                    model=model,
+                fallback_client = self._router.create_client(
+                    self._fallback.model.provider
+                )
+                response = await self._execute_with_client(
+                    client=fallback_client,
+                    model=self._fallback.model,
                     full_messages=full_messages,
                 )
-            except Exception as e:
-                last_error = str(e)
-                # Log fallback (if not the last model)
-                if len(attempted_providers) < len(self._fallback_chain):
-                    next_model = self._fallback_chain[len(attempted_providers)]
-                    logger.warning(
-                        ErrorMessages.FALLBACK_TRIGGERED.format(
-                            from_provider=model.provider.value,
-                            from_model=model.value,
-                            to_provider=next_model.provider.value,
-                            to_model=next_model.value,
-                            reason=str(e),
-                        )
-                    )
-                continue
+                # Success on fallback - update state
+                if fallback_state is not None:
+                    fallback_state.using_fallback = True
+                    fallback_state.successful_fallback_calls = 1
+                return response
+            except Exception as fallback_e:
+                raise FallbackExhaustedError(
+                    main_model=self._model.value,
+                    main_error=main_error,
+                    fallback_model=self._fallback.model.value,
+                    fallback_error=str(fallback_e),
+                ) from fallback_e
 
-        # All providers failed
-        raise AllProvidersFailedError(
-            providers=attempted_providers,
-            last_error=last_error,
+    async def _execute_with_fallback_model(
+        self,
+        full_messages: list[Message],
+        fallback_state: FallbackState,
+    ) -> AgentResponse:
+        """Execute with fallback model (sticky mode).
+
+        Args:
+            full_messages: Full conversation with system message prepended.
+            fallback_state: Fallback state tracking.
+
+        Returns:
+            AgentResponse with the final message and execution details.
+
+        Raises:
+            FallbackExhaustedError: If fallback model fails.
+        """
+        if self._fallback is None:
+            raise ModelFailedError(
+                model=self._model.value,
+                error="No fallback configured but fallback_state.using_fallback=True",
+                has_fallback=False,
+            )
+
+        try:
+            client = self._router.create_client(self._fallback.model.provider)
+            response = await self._execute_with_client(
+                client=client,
+                model=self._fallback.model,
+                full_messages=full_messages,
+            )
+            # Success - increment counter
+            fallback_state.successful_fallback_calls += 1
+            return response
+        except Exception as e:
+            # Fallback failed - try main as last resort
+            logger.warning(
+                ErrorMessages.FALLBACK_TRIGGERED.format(
+                    from_model=self._fallback.model.value,
+                    to_model=self._model.value,
+                    reason=str(e),
+                )
+            )
+            fallback_error = str(e)
+            try:
+                main_client = self._router.create_client(self._model.provider)
+                response = await self._execute_with_client(
+                    client=main_client,
+                    model=self._model,
+                    full_messages=full_messages,
+                )
+                # Main recovered - reset state
+                fallback_state.using_fallback = False
+                fallback_state.successful_fallback_calls = 0
+                return response
+            except Exception as main_e:
+                raise FallbackExhaustedError(
+                    main_model=self._model.value,
+                    main_error=str(main_e),
+                    fallback_model=self._fallback.model.value,
+                    fallback_error=fallback_error,
+                ) from main_e
+
+    def _should_retry_main(self, fallback_state: FallbackState) -> bool:
+        """Check if we should retry the main model.
+
+        Args:
+            fallback_state: Current fallback state.
+
+        Returns:
+            True if we should retry main model, False otherwise.
+        """
+        if self._fallback is None:
+            return False
+        if self._fallback.retry_main_after == 0:
+            return False  # Never retry
+        return (
+            fallback_state.successful_fallback_calls >= self._fallback.retry_main_after
         )
 
     async def _execute_with_client(
@@ -587,18 +713,21 @@ class Agent:
             asyncio.Task[tuple[bool, ClassifierResult | None, PolicyResult | None]]
             | None
         ),
+        fallback_state: FallbackState | None = None,
     ) -> AsyncIterator[str]:
-        """Stream agent response while monitoring guard task with provider fallback.
+        """Stream agent response while monitoring guard task.
 
         Args:
             messages: Conversation history (without system message).
             guard_task: Background guard task to monitor (or None if no guard).
+            fallback_state: Optional fallback state for session-based sticky fallback.
 
         Yields:
             SSE-formatted strings with sequence and created_at metadata.
 
         Raises:
-            AllProvidersFailedError: If all providers in the fallback chain fail.
+            ModelFailedError: If model fails and no fallback is configured.
+            FallbackExhaustedError: If both main and fallback models fail.
         """
         # Prepend system message
         full_messages = [
@@ -607,48 +736,165 @@ class Agent:
         ]
 
         # Create emitter once for the entire streaming session
-        # Sequence numbers are continuous across all events in this response
         emitter = SSEEventEmitter()
 
-        attempted_providers: list[str] = []
-        last_error: str = ""
+        # Determine which model to try first - check if we should retry main
+        if (
+            fallback_state is not None
+            and fallback_state.using_fallback
+            and self._should_retry_main(fallback_state)
+        ):
+            logger.info(
+                ErrorMessages.FALLBACK_RETRY_MAIN.format(
+                    main_model=self._model.value,
+                    successful_calls=fallback_state.successful_fallback_calls,
+                )
+            )
+            fallback_state.using_fallback = False
+            fallback_state.successful_fallback_calls = 0
 
-        # Try each model in the fallback chain
-        for model in self._fallback_chain:
-            attempted_providers.append(f"{model.provider.value}:{model.value}")
+        # If using fallback (sticky), try fallback first
+        if fallback_state is not None and fallback_state.using_fallback:
+            async for sse in self._stream_with_fallback_model(
+                full_messages, guard_task, emitter, fallback_state
+            ):
+                yield sse
+            return
 
+        # Try main model
+        try:
+            client = self._router.create_client(self._model.provider)
+            async for sse in self._stream_with_client(
+                client=client,
+                model=self._model,
+                full_messages=full_messages,
+                guard_task=guard_task,
+                emitter=emitter,
+            ):
+                yield sse
+            # Success on main - reset fallback state if present
+            if fallback_state is not None:
+                fallback_state.using_fallback = False
+                fallback_state.successful_fallback_calls = 0
+            return
+        except Exception as e:
+            main_error = str(e)
+            # No fallback configured - raise immediately
+            if self._fallback is None:
+                raise ModelFailedError(
+                    model=self._model.value,
+                    error=main_error,
+                    has_fallback=False,
+                ) from e
+
+            # Try fallback
+            logger.warning(
+                ErrorMessages.FALLBACK_TRIGGERED.format(
+                    from_model=self._model.value,
+                    to_model=self._fallback.model.value,
+                    reason=main_error,
+                )
+            )
             try:
-                client = self._router.create_client(model.provider)
+                fallback_client = self._router.create_client(
+                    self._fallback.model.provider
+                )
                 async for sse in self._stream_with_client(
-                    client=client,
-                    model=model,
+                    client=fallback_client,
+                    model=self._fallback.model,
                     full_messages=full_messages,
                     guard_task=guard_task,
                     emitter=emitter,
                 ):
                     yield sse
-                return  # Success - exit the loop
-            except Exception as e:
-                last_error = str(e)
-                # Log fallback (if not the last model)
-                if len(attempted_providers) < len(self._fallback_chain):
-                    next_model = self._fallback_chain[len(attempted_providers)]
-                    logger.warning(
-                        ErrorMessages.FALLBACK_TRIGGERED.format(
-                            from_provider=model.provider.value,
-                            from_model=model.value,
-                            to_provider=next_model.provider.value,
-                            to_model=next_model.value,
-                            reason=str(e),
-                        )
-                    )
-                continue
+                # Success on fallback - update state
+                if fallback_state is not None:
+                    fallback_state.using_fallback = True
+                    fallback_state.successful_fallback_calls = 1
+                return
+            except Exception as fallback_e:
+                raise FallbackExhaustedError(
+                    main_model=self._model.value,
+                    main_error=main_error,
+                    fallback_model=self._fallback.model.value,
+                    fallback_error=str(fallback_e),
+                ) from fallback_e
 
-        # All providers failed
-        raise AllProvidersFailedError(
-            providers=attempted_providers,
-            last_error=last_error,
-        )
+    async def _stream_with_fallback_model(
+        self,
+        full_messages: list[Message],
+        guard_task: (
+            asyncio.Task[tuple[bool, ClassifierResult | None, PolicyResult | None]]
+            | None
+        ),
+        emitter: SSEEventEmitter,
+        fallback_state: FallbackState,
+    ) -> AsyncIterator[str]:
+        """Stream with fallback model (sticky mode).
+
+        Args:
+            full_messages: Full conversation with system message prepended.
+            guard_task: Background guard task to monitor (or None).
+            emitter: SSE event emitter for metadata.
+            fallback_state: Fallback state tracking.
+
+        Yields:
+            SSE-formatted strings.
+
+        Raises:
+            FallbackExhaustedError: If both models fail.
+        """
+        if self._fallback is None:
+            raise ModelFailedError(
+                model=self._model.value,
+                error="No fallback configured but fallback_state.using_fallback=True",
+                has_fallback=False,
+            )
+
+        try:
+            client = self._router.create_client(self._fallback.model.provider)
+            async for sse in self._stream_with_client(
+                client=client,
+                model=self._fallback.model,
+                full_messages=full_messages,
+                guard_task=guard_task,
+                emitter=emitter,
+            ):
+                yield sse
+            # Success - increment counter
+            fallback_state.successful_fallback_calls += 1
+            return
+        except Exception as e:
+            # Fallback failed - try main as last resort
+            logger.warning(
+                ErrorMessages.FALLBACK_TRIGGERED.format(
+                    from_model=self._fallback.model.value,
+                    to_model=self._model.value,
+                    reason=str(e),
+                )
+            )
+            fallback_error = str(e)
+            try:
+                main_client = self._router.create_client(self._model.provider)
+                async for sse in self._stream_with_client(
+                    client=main_client,
+                    model=self._model,
+                    full_messages=full_messages,
+                    guard_task=guard_task,
+                    emitter=emitter,
+                ):
+                    yield sse
+                # Main recovered - reset state
+                fallback_state.using_fallback = False
+                fallback_state.successful_fallback_calls = 0
+                return
+            except Exception as main_e:
+                raise FallbackExhaustedError(
+                    main_model=self._model.value,
+                    main_error=str(main_e),
+                    fallback_model=self._fallback.model.value,
+                    fallback_error=fallback_error,
+                ) from main_e
 
     async def _stream_with_client(
         self,
@@ -1281,7 +1527,8 @@ class Agent:
             AgentResponse with the final message and execution details.
 
         Raises:
-            AllProvidersFailedError: If all providers in the fallback chain fail.
+            ModelFailedError: If model fails and no fallback is configured.
+            FallbackExhaustedError: If both main and fallback models fail.
         """
         # Prepend system message
         full_messages = [
@@ -1289,42 +1536,141 @@ class Agent:
             *messages,
         ]
 
-        attempted_providers: list[str] = []
-        last_error: str = ""
+        # Get fallback state from session
+        fallback_state = session._fallback_state
 
-        # Try each model in the fallback chain
-        for model in self._fallback_chain:
-            attempted_providers.append(f"{model.provider.value}:{model.value}")
+        # Determine which model to try first - check if we should retry main
+        if fallback_state.using_fallback and self._should_retry_main(fallback_state):
+            logger.info(
+                ErrorMessages.FALLBACK_RETRY_MAIN.format(
+                    main_model=self._model.value,
+                    successful_calls=fallback_state.successful_fallback_calls,
+                )
+            )
+            fallback_state.using_fallback = False
+            fallback_state.successful_fallback_calls = 0
 
+        # If using fallback (sticky), try fallback first
+        if fallback_state.using_fallback:
+            return await self._execute_with_fallback_model_session(
+                full_messages, session, fallback_state
+            )
+
+        # Try main model
+        try:
+            client = session._get_or_create_client(self._model.provider)
+            response = await self._execute_with_client(
+                client=client,
+                model=self._model,
+                full_messages=full_messages,
+            )
+            # Success on main - reset fallback state
+            fallback_state.using_fallback = False
+            fallback_state.successful_fallback_calls = 0
+            return response
+        except Exception as e:
+            main_error = str(e)
+            # No fallback configured - raise immediately
+            if self._fallback is None:
+                raise ModelFailedError(
+                    model=self._model.value,
+                    error=main_error,
+                    has_fallback=False,
+                ) from e
+
+            # Try fallback
+            logger.warning(
+                ErrorMessages.FALLBACK_TRIGGERED.format(
+                    from_model=self._model.value,
+                    to_model=self._fallback.model.value,
+                    reason=main_error,
+                )
+            )
             try:
-                # Use session's cached client instead of creating new one
-                client = session._get_or_create_client(model.provider)
-                return await self._execute_with_client(
-                    client=client,
-                    model=model,
+                fallback_client = session._get_or_create_client(
+                    self._fallback.model.provider
+                )
+                response = await self._execute_with_client(
+                    client=fallback_client,
+                    model=self._fallback.model,
                     full_messages=full_messages,
                 )
-            except Exception as e:
-                last_error = str(e)
-                # Log fallback (if not the last model)
-                if len(attempted_providers) < len(self._fallback_chain):
-                    next_model = self._fallback_chain[len(attempted_providers)]
-                    logger.warning(
-                        ErrorMessages.FALLBACK_TRIGGERED.format(
-                            from_provider=model.provider.value,
-                            from_model=model.value,
-                            to_provider=next_model.provider.value,
-                            to_model=next_model.value,
-                            reason=str(e),
-                        )
-                    )
-                continue
+                # Success on fallback - update state
+                fallback_state.using_fallback = True
+                fallback_state.successful_fallback_calls = 1
+                return response
+            except Exception as fallback_e:
+                raise FallbackExhaustedError(
+                    main_model=self._model.value,
+                    main_error=main_error,
+                    fallback_model=self._fallback.model.value,
+                    fallback_error=str(fallback_e),
+                ) from fallback_e
 
-        # All providers failed
-        raise AllProvidersFailedError(
-            providers=attempted_providers,
-            last_error=last_error,
-        )
+    async def _execute_with_fallback_model_session(
+        self,
+        full_messages: list[Message],
+        session: AgentSession,
+        fallback_state: FallbackState,
+    ) -> AgentResponse:
+        """Execute with fallback model using session (sticky mode).
+
+        Args:
+            full_messages: Full conversation with system message prepended.
+            session: The session providing cached clients.
+            fallback_state: Fallback state tracking.
+
+        Returns:
+            AgentResponse with the final message and execution details.
+
+        Raises:
+            FallbackExhaustedError: If both models fail.
+        """
+        if self._fallback is None:
+            raise ModelFailedError(
+                model=self._model.value,
+                error="No fallback configured but fallback_state.using_fallback=True",
+                has_fallback=False,
+            )
+
+        try:
+            client = session._get_or_create_client(self._fallback.model.provider)
+            response = await self._execute_with_client(
+                client=client,
+                model=self._fallback.model,
+                full_messages=full_messages,
+            )
+            # Success - increment counter
+            fallback_state.successful_fallback_calls += 1
+            return response
+        except Exception as e:
+            # Fallback failed - try main as last resort
+            logger.warning(
+                ErrorMessages.FALLBACK_TRIGGERED.format(
+                    from_model=self._fallback.model.value,
+                    to_model=self._model.value,
+                    reason=str(e),
+                )
+            )
+            fallback_error = str(e)
+            try:
+                main_client = session._get_or_create_client(self._model.provider)
+                response = await self._execute_with_client(
+                    client=main_client,
+                    model=self._model,
+                    full_messages=full_messages,
+                )
+                # Main recovered - reset state
+                fallback_state.using_fallback = False
+                fallback_state.successful_fallback_calls = 0
+                return response
+            except Exception as main_e:
+                raise FallbackExhaustedError(
+                    main_model=self._model.value,
+                    main_error=str(main_e),
+                    fallback_model=self._fallback.model.value,
+                    fallback_error=fallback_error,
+                ) from main_e
 
     def _run_streaming_with_session(
         self,
@@ -1403,7 +1749,8 @@ class Agent:
             SSE-formatted strings with sequence and created_at metadata.
 
         Raises:
-            AllProvidersFailedError: If all providers in the fallback chain fail.
+            ModelFailedError: If model fails and no fallback is configured.
+            FallbackExhaustedError: If both main and fallback models fail.
         """
         # Prepend system message
         full_messages = [
@@ -1412,46 +1759,161 @@ class Agent:
         ]
 
         # Create emitter once for the entire streaming session
-        # Sequence numbers are continuous across all events in this response
         emitter = SSEEventEmitter()
 
-        attempted_providers: list[str] = []
-        last_error: str = ""
+        # Get fallback state from session
+        fallback_state = session._fallback_state
 
-        # Try each model in the fallback chain
-        for model in self._fallback_chain:
-            attempted_providers.append(f"{model.provider.value}:{model.value}")
+        # Determine which model to try first - check if we should retry main
+        if fallback_state.using_fallback and self._should_retry_main(fallback_state):
+            logger.info(
+                ErrorMessages.FALLBACK_RETRY_MAIN.format(
+                    main_model=self._model.value,
+                    successful_calls=fallback_state.successful_fallback_calls,
+                )
+            )
+            fallback_state.using_fallback = False
+            fallback_state.successful_fallback_calls = 0
 
+        # If using fallback (sticky), try fallback first
+        if fallback_state.using_fallback:
+            async for sse in self._stream_with_fallback_model_session(
+                full_messages, guard_task, emitter, session, fallback_state
+            ):
+                yield sse
+            return
+
+        # Try main model
+        try:
+            client = session._get_or_create_client(self._model.provider)
+            async for sse in self._stream_with_client(
+                client=client,
+                model=self._model,
+                full_messages=full_messages,
+                guard_task=guard_task,
+                emitter=emitter,
+            ):
+                yield sse
+            # Success on main - reset fallback state
+            fallback_state.using_fallback = False
+            fallback_state.successful_fallback_calls = 0
+            return
+        except Exception as e:
+            main_error = str(e)
+            # No fallback configured - raise immediately
+            if self._fallback is None:
+                raise ModelFailedError(
+                    model=self._model.value,
+                    error=main_error,
+                    has_fallback=False,
+                ) from e
+
+            # Try fallback
+            logger.warning(
+                ErrorMessages.FALLBACK_TRIGGERED.format(
+                    from_model=self._model.value,
+                    to_model=self._fallback.model.value,
+                    reason=main_error,
+                )
+            )
             try:
-                # Use session's cached client instead of creating new one
-                client = session._get_or_create_client(model.provider)
+                fallback_client = session._get_or_create_client(
+                    self._fallback.model.provider
+                )
                 async for sse in self._stream_with_client(
-                    client=client,
-                    model=model,
+                    client=fallback_client,
+                    model=self._fallback.model,
                     full_messages=full_messages,
                     guard_task=guard_task,
                     emitter=emitter,
                 ):
                     yield sse
-                return  # Success - exit the loop
-            except Exception as e:
-                last_error = str(e)
-                # Log fallback (if not the last model)
-                if len(attempted_providers) < len(self._fallback_chain):
-                    next_model = self._fallback_chain[len(attempted_providers)]
-                    logger.warning(
-                        ErrorMessages.FALLBACK_TRIGGERED.format(
-                            from_provider=model.provider.value,
-                            from_model=model.value,
-                            to_provider=next_model.provider.value,
-                            to_model=next_model.value,
-                            reason=str(e),
-                        )
-                    )
-                continue
+                # Success on fallback - update state
+                fallback_state.using_fallback = True
+                fallback_state.successful_fallback_calls = 1
+                return
+            except Exception as fallback_e:
+                raise FallbackExhaustedError(
+                    main_model=self._model.value,
+                    main_error=main_error,
+                    fallback_model=self._fallback.model.value,
+                    fallback_error=str(fallback_e),
+                ) from fallback_e
 
-        # All providers failed
-        raise AllProvidersFailedError(
-            providers=attempted_providers,
-            last_error=last_error,
-        )
+    async def _stream_with_fallback_model_session(
+        self,
+        full_messages: list[Message],
+        guard_task: (
+            asyncio.Task[tuple[bool, ClassifierResult | None, PolicyResult | None]]
+            | None
+        ),
+        emitter: SSEEventEmitter,
+        session: AgentSession,
+        fallback_state: FallbackState,
+    ) -> AsyncIterator[str]:
+        """Stream with fallback model using session (sticky mode).
+
+        Args:
+            full_messages: Full conversation with system message prepended.
+            guard_task: Background guard task to monitor (or None).
+            emitter: SSE event emitter for metadata.
+            session: The session providing cached clients.
+            fallback_state: Fallback state tracking.
+
+        Yields:
+            SSE-formatted strings.
+
+        Raises:
+            FallbackExhaustedError: If both models fail.
+        """
+        if self._fallback is None:
+            raise ModelFailedError(
+                model=self._model.value,
+                error="No fallback configured but fallback_state.using_fallback=True",
+                has_fallback=False,
+            )
+
+        try:
+            client = session._get_or_create_client(self._fallback.model.provider)
+            async for sse in self._stream_with_client(
+                client=client,
+                model=self._fallback.model,
+                full_messages=full_messages,
+                guard_task=guard_task,
+                emitter=emitter,
+            ):
+                yield sse
+            # Success - increment counter
+            fallback_state.successful_fallback_calls += 1
+            return
+        except Exception as e:
+            # Fallback failed - try main as last resort
+            logger.warning(
+                ErrorMessages.FALLBACK_TRIGGERED.format(
+                    from_model=self._fallback.model.value,
+                    to_model=self._model.value,
+                    reason=str(e),
+                )
+            )
+            fallback_error = str(e)
+            try:
+                main_client = session._get_or_create_client(self._model.provider)
+                async for sse in self._stream_with_client(
+                    client=main_client,
+                    model=self._model,
+                    full_messages=full_messages,
+                    guard_task=guard_task,
+                    emitter=emitter,
+                ):
+                    yield sse
+                # Main recovered - reset state
+                fallback_state.using_fallback = False
+                fallback_state.successful_fallback_calls = 0
+                return
+            except Exception as main_e:
+                raise FallbackExhaustedError(
+                    main_model=self._model.value,
+                    main_error=str(main_e),
+                    fallback_model=self._fallback.model.value,
+                    fallback_error=fallback_error,
+                ) from main_e

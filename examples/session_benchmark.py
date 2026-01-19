@@ -85,7 +85,9 @@ async def benchmark_stateless(agent: Agent, num_requests: int) -> BenchmarkResul
 
     start_total = time.perf_counter()
     for i in range(num_requests):
-        messages = [Message(role=Role.USER, content=f"Say 'hello {i}' and nothing else.")]
+        messages = [
+            Message(role=Role.USER, content=f"Say 'hello {i}' and nothing else.")
+        ]
 
         start = time.perf_counter()
         await agent.run(messages, stream=False)

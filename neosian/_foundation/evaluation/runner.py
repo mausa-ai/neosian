@@ -120,7 +120,9 @@ async def run_evaluation(
                 # Signal result with latency
                 if on_progress:
                     status = "passed" if result.passed else "failed"
-                    on_progress(prompt_idx, model_idx, case_idx, status, result.latency_ms)
+                    on_progress(
+                        prompt_idx, model_idx, case_idx, status, result.latency_ms
+                    )
 
     return results
 

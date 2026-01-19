@@ -20,9 +20,16 @@ import pytest
 
 from neosian._foundation.agent.base import Agent
 from neosian._foundation.llm.base import Message, Role
-from neosian._foundation.shared.constants import Fallback
-from neosian._foundation.shared.exceptions import AllProvidersFailedError
-from neosian._foundation.shared.types import AgentConfig, Model, Provider, SystemPrompt
+from neosian._foundation.shared.exceptions import (
+    FallbackExhaustedError,
+    ModelFailedError,
+)
+from neosian._foundation.shared.types import (
+    AgentConfig,
+    FallbackConfig,
+    Model,
+    SystemPrompt,
+)
 
 # Path to API keys directory
 API_KEYS_DIR = Path.home() / "Documents" / "api_keys"
@@ -113,7 +120,8 @@ class TestFallbackFirstProviderFails:
                     "You are a helpful assistant. Reply concisely."
                 ),
                 tools=[],
-                model=Model.LLAMA_3_3_70B,
+                model=Model.LLAMA_3_3_70B,  # Groq model
+                fallback=FallbackConfig(model=Model.GPT_5_NANO),  # OpenAI fallback
                 enable_todo=False,
             )
             agent = Agent(config=config)
@@ -146,7 +154,8 @@ class TestFallbackFirstProviderFails:
                     "You are a helpful assistant. Reply concisely."
                 ),
                 tools=[],
-                model=Model.GPT_5_MINI,
+                model=Model.GPT_5_MINI,  # OpenAI model
+                fallback=FallbackConfig(model=Model.LLAMA_3_3_70B),  # Groq fallback
                 enable_todo=False,
             )
             agent = Agent(config=config)
@@ -163,59 +172,19 @@ class TestFallbackFirstProviderFails:
 
 
 @pytest.mark.integration
-class TestFallbackMultipleProvidersFail:
-    """Test fallback when multiple providers fail before one succeeds."""
+class TestNoFallbackConfigured:
+    """Test behavior when no fallback is configured."""
 
     @pytest.mark.asyncio
-    async def test_groq_and_openai_fail_anthropic_succeeds(
-        self, valid_anthropic_key: str
-    ) -> None:
-        """Test fallback through Groq and OpenAI to Anthropic.
+    async def test_model_failed_error_when_no_fallback(self) -> None:
+        """Test that ModelFailedError is raised when model fails with no fallback.
 
-        Scenario: First two providers fail, third (Anthropic) succeeds.
+        Scenario: Model fails and no fallback is configured.
         """
         env = {
             "GROQ_API_KEY": INVALID_GROQ_KEY,  # Will fail
-            "OPENAI_API_KEY": INVALID_OPENAI_KEY,  # Will fail
-            "ANTHROPIC_API_KEY": valid_anthropic_key,  # Will succeed
-        }
-
-        with patch.dict(os.environ, env, clear=True):
-            config = AgentConfig(
-                system_prompt=SystemPrompt(
-                    "You are a helpful assistant. Reply concisely."
-                ),
-                tools=[],
-                model=Model.LLAMA_3_3_70B,
-                enable_todo=False,
-            )
-            agent = Agent(config=config)
-
-            messages = [
-                Message(role=Role.USER, content="Say 'hello' and nothing else.")
-            ]
-            response = await agent.run(messages, stream=False)
-
-            # Should have succeeded with Anthropic fallback
-            assert response.message.content is not None
-            assert len(response.message.content) > 0
-            assert response.message.role == Role.ASSISTANT
-
-
-@pytest.mark.integration
-class TestFallbackAllProvidersFail:
-    """Test that AllProvidersFailedError is raised when all providers fail."""
-
-    @pytest.mark.asyncio
-    async def test_all_providers_invalid_keys(self) -> None:
-        """Test that AllProvidersFailedError is raised when all have invalid keys.
-
-        Scenario: All three providers have invalid API keys.
-        """
-        env = {
-            "GROQ_API_KEY": INVALID_GROQ_KEY,
-            "OPENAI_API_KEY": INVALID_OPENAI_KEY,
-            "ANTHROPIC_API_KEY": INVALID_ANTHROPIC_KEY,
+            "OPENAI_API_KEY": "",
+            "ANTHROPIC_API_KEY": "",
         }
 
         with patch.dict(os.environ, env, clear=True):
@@ -223,24 +192,62 @@ class TestFallbackAllProvidersFail:
                 system_prompt=SystemPrompt("You are a helpful assistant."),
                 tools=[],
                 model=Model.LLAMA_3_3_70B,
+                # No fallback configured
                 enable_todo=False,
             )
             agent = Agent(config=config)
 
             messages = [Message(role=Role.USER, content="Say hello")]
 
-            with pytest.raises(AllProvidersFailedError) as exc_info:
+            with pytest.raises(ModelFailedError) as exc_info:
                 await agent.run(messages, stream=False)
 
-            # Verify the error contains provider information
+            # Verify the error indicates no fallback
             error = exc_info.value
-            assert len(error.providers) > 0
-            assert len(error.last_error) > 0
+            assert error.has_fallback is False
+            assert "llama-3.3-70b-versatile" in error.model
 
 
 @pytest.mark.integration
-class TestFallbackSingleProvider:
-    """Test behavior when only one provider is available."""
+class TestFallbackExhausted:
+    """Test that FallbackExhaustedError is raised when both models fail."""
+
+    @pytest.mark.asyncio
+    async def test_both_models_fail(self) -> None:
+        """Test that FallbackExhaustedError is raised when both main and fallback fail.
+
+        Scenario: Both main and fallback models have invalid API keys.
+        """
+        env = {
+            "GROQ_API_KEY": INVALID_GROQ_KEY,
+            "OPENAI_API_KEY": INVALID_OPENAI_KEY,
+            "ANTHROPIC_API_KEY": "",
+        }
+
+        with patch.dict(os.environ, env, clear=True):
+            config = AgentConfig(
+                system_prompt=SystemPrompt("You are a helpful assistant."),
+                tools=[],
+                model=Model.LLAMA_3_3_70B,  # Will fail
+                fallback=FallbackConfig(model=Model.GPT_5_NANO),  # Will also fail
+                enable_todo=False,
+            )
+            agent = Agent(config=config)
+
+            messages = [Message(role=Role.USER, content="Say hello")]
+
+            with pytest.raises(FallbackExhaustedError) as exc_info:
+                await agent.run(messages, stream=False)
+
+            # Verify the error contains both model information
+            error = exc_info.value
+            assert "llama-3.3-70b-versatile" in error.main_model
+            assert "gpt-5-nano" in error.fallback_model
+
+
+@pytest.mark.integration
+class TestSingleProviderWorks:
+    """Test behavior when only one provider is available and works."""
 
     @pytest.mark.asyncio
     async def test_single_provider_succeeds(self, valid_groq_key: str) -> None:
@@ -273,48 +280,6 @@ class TestFallbackSingleProvider:
             assert response.message.content is not None
             assert len(response.message.content) > 0
 
-    @pytest.mark.asyncio
-    async def test_single_provider_fails(self) -> None:
-        """Test that AllProvidersFailedError is raised when single provider fails.
-
-        Scenario: Only Groq has API key (invalid), should try all Groq models
-        across tiers before failing (no OpenAI/Anthropic models in chain).
-        """
-        env = {
-            "GROQ_API_KEY": INVALID_GROQ_KEY,
-            "OPENAI_API_KEY": "",
-            "ANTHROPIC_API_KEY": "",
-        }
-
-        with patch.dict(os.environ, env, clear=True):
-            config = AgentConfig(
-                system_prompt=SystemPrompt("You are a helpful assistant."),
-                tools=[],
-                model=Model.LLAMA_3_3_70B,
-                enable_todo=False,
-            )
-            agent = Agent(config=config)
-
-            messages = [Message(role=Role.USER, content="Say hello")]
-
-            with pytest.raises(AllProvidersFailedError) as exc_info:
-                await agent.run(messages, stream=False)
-
-            # All attempted providers should be Groq only (OpenAI/Anthropic filtered)
-            error = exc_info.value
-            assert len(error.providers) > 0
-            for provider_model in error.providers:
-                # Extract provider from model value
-                model_value = provider_model
-                # Check that the model is a Groq model
-                for m in Model:
-                    if m.value == model_value and m.provider == Provider.GROQ:
-                        break
-                else:
-                    # If we get here, it's not a Groq model - that's an error
-                    # But we should allow for fallback format changes
-                    pass
-
 
 @pytest.mark.integration
 class TestFallbackStreaming:
@@ -339,6 +304,7 @@ class TestFallbackStreaming:
                 ),
                 tools=[],
                 model=Model.LLAMA_3_3_70B,
+                fallback=FallbackConfig(model=Model.GPT_5_NANO),
                 enable_todo=False,
             )
             agent = Agent(config=config)
@@ -359,15 +325,15 @@ class TestFallbackStreaming:
             assert "done" in events[-1]
 
     @pytest.mark.asyncio
-    async def test_streaming_all_fail(self) -> None:
-        """Test that AllProvidersFailedError is raised in streaming mode.
+    async def test_streaming_fallback_exhausted(self) -> None:
+        """Test that FallbackExhaustedError is raised in streaming mode.
 
-        Scenario: All providers fail, should raise before streaming.
+        Scenario: Both providers fail, should raise when consuming stream.
         """
         env = {
             "GROQ_API_KEY": INVALID_GROQ_KEY,
             "OPENAI_API_KEY": INVALID_OPENAI_KEY,
-            "ANTHROPIC_API_KEY": INVALID_ANTHROPIC_KEY,
+            "ANTHROPIC_API_KEY": "",
         }
 
         with patch.dict(os.environ, env, clear=True):
@@ -375,6 +341,7 @@ class TestFallbackStreaming:
                 system_prompt=SystemPrompt("You are a helpful assistant."),
                 tools=[],
                 model=Model.LLAMA_3_3_70B,
+                fallback=FallbackConfig(model=Model.GPT_5_NANO),
                 enable_todo=False,
             )
             agent = Agent(config=config)
@@ -383,31 +350,58 @@ class TestFallbackStreaming:
             result = await agent.run(messages, stream=True)
 
             # The error should be raised when we try to consume the stream
-            with pytest.raises(AllProvidersFailedError):
+            with pytest.raises(FallbackExhaustedError):
                 async for _ in result:
                     pass
 
+    @pytest.mark.asyncio
+    async def test_streaming_no_fallback_raises_model_failed(self) -> None:
+        """Test that ModelFailedError is raised in streaming with no fallback.
+
+        Scenario: Model fails and no fallback configured, error during stream.
+        """
+        env = {
+            "GROQ_API_KEY": INVALID_GROQ_KEY,
+            "OPENAI_API_KEY": "",
+            "ANTHROPIC_API_KEY": "",
+        }
+
+        with patch.dict(os.environ, env, clear=True):
+            config = AgentConfig(
+                system_prompt=SystemPrompt("You are a helpful assistant."),
+                tools=[],
+                model=Model.LLAMA_3_3_70B,
+                # No fallback
+                enable_todo=False,
+            )
+            agent = Agent(config=config)
+
+            messages = [Message(role=Role.USER, content="Say hello")]
+            result = await agent.run(messages, stream=True)
+
+            # The error should be raised when we try to consume the stream
+            with pytest.raises(ModelFailedError) as exc_info:
+                async for _ in result:
+                    pass
+
+            assert exc_info.value.has_fallback is False
+
 
 @pytest.mark.integration
-class TestFallbackTierOrder:
-    """Test that fallback respects tier ordering."""
+class TestStickyFallbackWithSession:
+    """Test sticky fallback behavior with AgentSession."""
 
     @pytest.mark.asyncio
-    async def test_tier2_doesnt_fallback_to_tier1(self, valid_openai_key: str) -> None:
-        """Test that starting from Tier 2 doesn't fall back to Tier 1.
+    async def test_sticky_fallback_stays_on_fallback(
+        self, valid_openai_key: str
+    ) -> None:
+        """Test that session stays on fallback after main fails.
 
-        Scenario: Start with Tier 2 model (Groq llama-3.3-70b), fails,
-        should NOT fall back to Tier 1 (OpenAI gpt-5-pro), but to another Tier 2
-        or lower tier.
-
-        Note: This tests the tier constraint - fallback should never go UP a tier.
+        Scenario: Main fails, fallback succeeds, subsequent calls use fallback.
         """
-        # For this test, we make Groq fail (it's Tier 2)
-        # OpenAI GPT-5-PRO is Tier 1, so it should NOT be used
-        # OpenAI GPT-5-MINI is Tier 3, which could be used as fallback
         env = {
-            "GROQ_API_KEY": INVALID_GROQ_KEY,  # Tier 2 - will fail
-            "OPENAI_API_KEY": valid_openai_key,  # Has Tier 1 and Tier 3 models
+            "GROQ_API_KEY": INVALID_GROQ_KEY,  # Will always fail
+            "OPENAI_API_KEY": valid_openai_key,  # Will succeed
             "ANTHROPIC_API_KEY": "",
         }
 
@@ -417,18 +411,30 @@ class TestFallbackTierOrder:
                     "You are a helpful assistant. Reply concisely."
                 ),
                 tools=[],
-                model=Model.LLAMA_3_3_70B,  # Tier 2
+                model=Model.LLAMA_3_3_70B,
+                fallback=FallbackConfig(
+                    model=Model.GPT_5_NANO,
+                    retry_main_after=0,  # Never retry main
+                ),
                 enable_todo=False,
             )
             agent = Agent(config=config)
 
-            # The fallback chain should NOT include Tier 1 models
-            # Check the fallback chain
-            chain = agent._fallback_chain
+            messages = [
+                Message(role=Role.USER, content="Say 'hello' and nothing else.")
+            ]
 
-            # Tier 1 models should not be in chain for Tier 2 start
-            for tier1_model in Fallback.TIER_1:
-                assert tier1_model not in chain, (
-                    f"Tier 1 model {tier1_model} should not be in fallback chain "
-                    f"when starting from Tier 2"
-                )
+            async with agent.session() as session:
+                # First call - main fails, fallback succeeds
+                response1 = await session.run(messages, stream=False)
+                assert response1.message.content is not None
+
+                # Check fallback state
+                assert session._fallback_state.using_fallback is True
+
+                # Second call - should stay on fallback
+                response2 = await session.run(messages, stream=False)
+                assert response2.message.content is not None
+
+                # Still on fallback
+                assert session._fallback_state.using_fallback is True

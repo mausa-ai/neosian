@@ -67,7 +67,9 @@ async def main() -> None:
         for tc in response.tool_calls_made:
             print(f"  - {tc.name}({tc.arguments})")
 
-    print(f"\nTokens: {response.usage.input_tokens} in, {response.usage.output_tokens} out")
+    print(
+        f"\nTokens: {response.usage.input_tokens} in, {response.usage.output_tokens} out"
+    )
 
 
 if __name__ == "__main__":

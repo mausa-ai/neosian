@@ -14,8 +14,9 @@ from neosian._foundation.shared.constraints import (
     Pattern,
 )
 from neosian._foundation.shared.exceptions import (
-    AllProvidersFailedError,
+    FallbackExhaustedError,
     InvalidModelError,
+    ModelFailedError,
 )
 from neosian._foundation.shared.prompt import load_prompt
 from neosian._foundation.shared.types import (
@@ -26,6 +27,8 @@ from neosian._foundation.shared.types import (
     EvalResult,
     EvalTurn,
     Expectation,
+    FallbackConfig,
+    FallbackState,
     GuardrailErrorPolicy,
     GuardrailMode,
     GuardrailResult,
@@ -39,7 +42,7 @@ from neosian._foundation.shared.types import (
 )
 from neosian._foundation.tools.base import Tool, ToolResult
 
-__version__ = "0.22.1"
+__version__ = "0.23.0"
 
 __all__ = [
     # Agent
@@ -88,8 +91,12 @@ __all__ = [
     "ToolCallCapture",
     # Utilities
     "load_prompt",
+    # Fallback
+    "FallbackConfig",
+    "FallbackState",
     # Exceptions
-    "AllProvidersFailedError",
+    "ModelFailedError",
+    "FallbackExhaustedError",
     "InvalidModelError",
     # Meta
     "__version__",

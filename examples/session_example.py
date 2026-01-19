@@ -151,7 +151,8 @@ async def main() -> None:
     print("\n" + "=" * 50)
     print("  Summary")
     print("=" * 50)
-    print("""
+    print(
+        """
 Use agent.run() for:
   - One-off calls
   - Serverless functions (Lambda, Cloud Functions)
@@ -162,7 +163,8 @@ Use agent.session() for:
   - Batch processing multiple items
   - Chat loops / interactive sessions
   - Any scenario with multiple sequential requests
-""")
+"""
+    )
 
 
 if __name__ == "__main__":

@@ -137,6 +137,58 @@ DEFAULT_MODELS: dict[Provider, Model] = {
 }
 
 
+# =============================================================================
+# Fallback Configuration
+# =============================================================================
+
+
+@dataclass
+class FallbackConfig:
+    """Configuration for model fallback behavior.
+
+    When the primary model fails, the agent will fall back to this model.
+    The fallback is "sticky" - once fallen back, subsequent calls continue
+    using the fallback model until retry_main_after successful calls.
+
+    Attributes:
+        model: The fallback model to use when primary fails.
+        retry_main_after: Number of successful fallback calls before retrying
+            the main model. 0 means never retry main (stay on fallback).
+
+    Example:
+        from neosian import AgentConfig, FallbackConfig, Model
+
+        config = AgentConfig(
+            system_prompt="You are helpful.",
+            model=Model.CLAUDE_OPUS_4_5,
+            fallback=FallbackConfig(
+                model=Model.GPT_5_PRO,
+                retry_main_after=5,  # Try main again after 5 successful calls
+            ),
+        )
+    """
+
+    model: Model
+    retry_main_after: int = 0
+
+
+@dataclass
+class FallbackState:
+    """Runtime state for fallback tracking.
+
+    Tracks whether we're currently using the fallback model and how many
+    successful calls have been made since falling back. This state is
+    managed internally by AgentSession for sticky fallback behavior.
+
+    Attributes:
+        using_fallback: True if currently using the fallback model.
+        successful_fallback_calls: Count of successful calls since falling back.
+    """
+
+    using_fallback: bool = False
+    successful_fallback_calls: int = 0
+
+
 # Todo status enum
 class TodoStatus(str, Enum):
     """Status of a todo item."""
@@ -154,7 +206,7 @@ class AgentConfig:
     Export a `configuration` variable of this type.
 
     Example:
-        from neosian import AgentConfig, Tool, ToolResult, Model
+        from neosian import AgentConfig, Tool, ToolResult, Model, FallbackConfig
 
         @Tool(name="greet", description="Say hello")
         async def greet(name: str) -> ToolResult[str]:
@@ -164,12 +216,17 @@ class AgentConfig:
             system_prompt="You are helpful.",
             tools=[greet],
             model=Model.LLAMA_3_3_70B,
+            fallback=FallbackConfig(
+                model=Model.GPT_OSS_20B,
+                retry_main_after=5,
+            ),
         )
     """
 
     system_prompt: SystemPrompt
     tools: list[ToolFunction] = field(default_factory=list)
     model: Model = Model.GPT_OSS_20B
+    fallback: FallbackConfig | None = None
     enable_todo: bool = True
     guardrails: "GuardrailsConfig | None" = None
 

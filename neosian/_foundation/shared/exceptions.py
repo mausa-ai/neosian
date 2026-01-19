@@ -193,23 +193,64 @@ class ProviderError(LLMError):
         self.error = error
 
 
-class AllProvidersFailedError(LLMError):
-    """Raised when all providers in the fallback chain have failed."""
+class ModelFailedError(LLMError):
+    """Raised when the configured model fails.
 
-    def __init__(self, providers: list[str], last_error: str) -> None:
-        """Initialize with attempted providers and last error.
+    When has_fallback is False, this indicates no fallback was configured
+    and the caller should handle the failure appropriately.
+    """
+
+    def __init__(self, model: str, error: str, *, has_fallback: bool) -> None:
+        """Initialize with model and error details.
 
         Args:
-            providers: List of providers attempted (e.g., ["groq:model", "openai:model"]).
-            last_error: The error from the last provider tried.
+            model: Model identifier that failed.
+            error: Error description.
+            has_fallback: True if a fallback is configured (failure is recoverable),
+                False if no fallback exists (this is the final error).
+        """
+        if has_fallback:
+            message = ErrorMessages.MODEL_FAILED.format(model=model, error=error)
+        else:
+            message = ErrorMessages.MODEL_FAILED_NO_FALLBACK.format(
+                model=model, error=error
+            )
+        super().__init__(message)
+        self.model = model
+        self.error = error
+        self.has_fallback = has_fallback
+
+
+class FallbackExhaustedError(LLMError):
+    """Raised when both main and fallback models have failed."""
+
+    def __init__(
+        self,
+        main_model: str,
+        main_error: str,
+        fallback_model: str,
+        fallback_error: str,
+    ) -> None:
+        """Initialize with details from both failed models.
+
+        Args:
+            main_model: The primary model that failed.
+            main_error: Error from the primary model.
+            fallback_model: The fallback model that also failed.
+            fallback_error: Error from the fallback model.
         """
         super().__init__(
-            ErrorMessages.ALL_PROVIDERS_FAILED.format(
-                providers=", ".join(providers), last_error=last_error
+            ErrorMessages.FALLBACK_EXHAUSTED.format(
+                main_model=main_model,
+                main_error=main_error,
+                fallback_model=fallback_model,
+                fallback_error=fallback_error,
             )
         )
-        self.providers = providers
-        self.last_error = last_error
+        self.main_model = main_model
+        self.main_error = main_error
+        self.fallback_model = fallback_model
+        self.fallback_error = fallback_error
 
 
 # Evaluation Errors

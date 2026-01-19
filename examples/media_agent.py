@@ -35,13 +35,15 @@ async def generate_image(
 ) -> ToolResult[dict[str, str]]:
     """Generate or edit an image."""
     mode = "edit" if image_urls else "generate"
-    return ToolResult.ok({
-        "mode": mode,
-        "image_url": f"https://example.com/image_{hash(prompt) % 10000}.png",
-        "prompt": prompt,
-        "quality": quality,
-        "aspect_ratio": aspect_ratio,
-    })
+    return ToolResult.ok(
+        {
+            "mode": mode,
+            "image_url": f"https://example.com/image_{hash(prompt) % 10000}.png",
+            "prompt": prompt,
+            "quality": quality,
+            "aspect_ratio": aspect_ratio,
+        }
+    )
 
 
 @Tool(
@@ -57,11 +59,13 @@ async def generate_tts(
     language: Annotated[str | None, Desc("Language code (e.g., 'en', 'de')")] = None,
 ) -> ToolResult[dict[str, str]]:
     """Generate text-to-speech audio."""
-    return ToolResult.ok({
-        "audio_url": f"https://example.com/audio_{hash(text) % 10000}.mp3",
-        "voice": voice,
-        "language": language or "auto",
-    })
+    return ToolResult.ok(
+        {
+            "audio_url": f"https://example.com/audio_{hash(text) % 10000}.mp3",
+            "voice": voice,
+            "language": language or "auto",
+        }
+    )
 
 
 @Tool(
@@ -85,13 +89,15 @@ async def generate_video(
     else:
         mode = "text-to-video"
 
-    return ToolResult.ok({
-        "mode": mode,
-        "video_url": f"https://example.com/video_{hash(prompt) % 10000}.mp4",
-        "prompt": prompt,
-        "quality": "fast" if fast else "high",
-        "aspect_ratio": aspect_ratio,
-    })
+    return ToolResult.ok(
+        {
+            "mode": mode,
+            "video_url": f"https://example.com/video_{hash(prompt) % 10000}.mp4",
+            "prompt": prompt,
+            "quality": "fast" if fast else "high",
+            "aspect_ratio": aspect_ratio,
+        }
+    )
 
 
 @Tool(
@@ -103,11 +109,13 @@ async def generate_music(
     duration: Annotated[int, Desc("Duration in seconds"), Min(5), Max(150)] = 90,
 ) -> ToolResult[dict[str, object]]:
     """Generate music from prompt."""
-    return ToolResult.ok({
-        "music_url": f"https://example.com/music_{hash(prompt) % 10000}.mp3",
-        "prompt": prompt,
-        "duration": duration,
-    })
+    return ToolResult.ok(
+        {
+            "music_url": f"https://example.com/music_{hash(prompt) % 10000}.mp3",
+            "prompt": prompt,
+            "duration": duration,
+        }
+    )
 
 
 @Tool(
@@ -136,4 +144,3 @@ After generating media, present relevant follow-up options to the user.""",
     ],
     model=Model.GPT_OSS_20B,
 )
-

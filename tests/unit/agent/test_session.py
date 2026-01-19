@@ -17,6 +17,7 @@ from neosian._foundation.llm.base import (
 )
 from neosian._foundation.shared.types import (
     AgentConfig,
+    FallbackConfig,
     Model,
     Provider,
     SystemPrompt,
@@ -41,8 +42,8 @@ def _create_mock_router(mock_client: BaseLLMClient | None = None) -> MagicMock:
         mock_client = _create_mock_client()
 
     mock_router = MagicMock()
-    mock_router.get_fallback_chain.return_value = [Model.GPT_OSS_20B]
     mock_router.create_client.return_value = mock_client
+    mock_router.has_provider.return_value = True
     return mock_router
 
 
@@ -142,10 +143,7 @@ class TestAgentSessionClientCaching:
         mock_client_openai = _create_mock_client()
 
         mock_router = MagicMock()
-        mock_router.get_fallback_chain.return_value = [
-            Model.GPT_OSS_20B,
-            Model.GPT_5_NANO,
-        ]
+        mock_router.has_provider.return_value = True
         mock_router.create_client.side_effect = [mock_client_groq, mock_client_openai]
 
         with patch(
@@ -424,11 +422,14 @@ class TestAgentSessionMultipleClients:
         )
 
         mock_router = MagicMock()
-        mock_router.get_fallback_chain.return_value = [
-            Model.LLAMA_3_3_70B,
-            Model.GPT_5_NANO,
-        ]
-        mock_router.create_client.side_effect = [mock_client_groq, mock_client_openai]
+        mock_router.has_provider.return_value = True
+
+        def create_client_side_effect(provider: Provider) -> AsyncMock:
+            if provider == Provider.GROQ:
+                return mock_client_groq
+            return mock_client_openai
+
+        mock_router.create_client.side_effect = create_client_side_effect
 
         with patch(
             "neosian._foundation.agent.base.ProviderRouter",
@@ -436,6 +437,8 @@ class TestAgentSessionMultipleClients:
         ):
             config = AgentConfig(
                 system_prompt=SystemPrompt("You are helpful."),
+                model=Model.GPT_OSS_20B,  # Groq model
+                fallback=FallbackConfig(model=Model.GPT_5_NANO),  # OpenAI fallback
                 tools=[],
                 enable_todo=False,
             )

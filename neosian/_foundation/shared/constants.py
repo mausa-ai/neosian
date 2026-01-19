@@ -57,12 +57,17 @@ class ErrorMessages:
 
     # Provider/Fallback errors
     PROVIDER_FAILED: str = "Provider {provider} failed: {error}"
-    ALL_PROVIDERS_FAILED: str = (
-        "All providers in fallback chain failed. "
-        "Tried: {providers}. Last error: {last_error}"
+    MODEL_FAILED: str = "Model {model} failed: {error}"
+    MODEL_FAILED_NO_FALLBACK: str = (
+        "Model {model} failed and no fallback is configured. Error: {error}"
     )
-    FALLBACK_TRIGGERED: str = (
-        "Falling back from {from_provider}:{from_model} to {to_provider}:{to_model}: {reason}"
+    FALLBACK_EXHAUSTED: str = (
+        "Both main model ({main_model}) and fallback model ({fallback_model}) failed. "
+        "Main error: {main_error}. Fallback error: {fallback_error}"
+    )
+    FALLBACK_TRIGGERED: str = "Falling back from {from_model} to {to_model}: {reason}"
+    FALLBACK_RETRY_MAIN: str = (
+        "Retrying main model {main_model} after {successful_calls} successful fallback calls"
     )
     UNSUPPORTED_PROVIDER: str = "Unsupported provider: {provider}"
     INVALID_PROVIDER_MODEL_FORMAT: str = "Invalid provider:model format: {value}"
@@ -98,49 +103,6 @@ class LLMDefaults:
     TEMPERATURE: float = 0.7
     RETRY_TEMPERATURE: float = 0.3
     MAX_TOOL_CALL_RETRIES: int = 2
-
-
-class Fallback:
-    """Global fallback order by capability tier.
-
-    Models are organized into tiers by capability. Fallback logic:
-    1. Cycle through remaining models in the same tier
-    2. Drop to the next tier, repeat
-    3. Never go UP a tier
-
-    Format: "provider:model" strings for easy parsing.
-    Uses Model enum values which are strings.
-    """
-
-    # Tier 1: Most capable models
-    TIER_1: tuple[Model, ...] = (
-        Model.CLAUDE_OPUS_4_5,
-        Model.GPT_5_PRO,
-        Model.GPT_5_1,
-    )
-
-    # Tier 2: Balanced workhorses
-    TIER_2: tuple[Model, ...] = (
-        Model.CLAUDE_SONNET_4_5,
-        Model.LLAMA_3_3_70B,
-        Model.GPT_OSS_120B,
-    )
-
-    # Tier 3: Fast/efficient models
-    TIER_3: tuple[Model, ...] = (
-        Model.CLAUDE_HAIKU_4_5,
-        Model.GPT_5_MINI,
-        Model.GPT_OSS_20B,
-    )
-
-    # Tier 4: Fastest/cheapest models (last resort)
-    TIER_4: tuple[Model, ...] = (
-        Model.GPT_5_NANO,
-        Model.LLAMA_3_1_8B,
-    )
-
-    # All tiers in order for iteration
-    ALL_TIERS: tuple[tuple[Model, ...], ...] = (TIER_1, TIER_2, TIER_3, TIER_4)
 
 
 class BuiltinTools:

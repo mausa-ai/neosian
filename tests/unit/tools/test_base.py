@@ -245,18 +245,24 @@ class TestPythonTypeToJsonSchema:
 
     def test_optional_int(self) -> None:
         """Optional[int] should return integer schema."""
-        # noqa: UP045 - intentionally testing Optional[] backward compatibility
-        assert _python_type_to_json_schema(Optional[int]) == {"type": "integer"}  # noqa: UP045
+        # Intentionally testing Optional[] backward compatibility
+        assert _python_type_to_json_schema(Optional[int]) == {  # noqa: UP045
+            "type": "integer"
+        }
 
     def test_optional_float(self) -> None:
         """Optional[float] should return number schema."""
-        # noqa: UP045 - intentionally testing Optional[] backward compatibility
-        assert _python_type_to_json_schema(Optional[float]) == {"type": "number"}  # noqa: UP045
+        # Intentionally testing Optional[] backward compatibility
+        assert _python_type_to_json_schema(Optional[float]) == {  # noqa: UP045
+            "type": "number"
+        }
 
     def test_optional_bool(self) -> None:
         """Optional[bool] should return boolean schema."""
-        # noqa: UP045 - intentionally testing Optional[] backward compatibility
-        assert _python_type_to_json_schema(Optional[bool]) == {"type": "boolean"}  # noqa: UP045
+        # Intentionally testing Optional[] backward compatibility
+        assert _python_type_to_json_schema(Optional[bool]) == {  # noqa: UP045
+            "type": "boolean"
+        }
 
     def test_pipe_syntax_int_none(self) -> None:
         """int | None should return integer schema."""
@@ -481,7 +487,9 @@ class TestAnnotatedConstraints:
         @Tool(name="search", description="Search items")
         async def search(
             query: Annotated[str, Desc("Search query")],  # noqa: ARG001
-            limit: Annotated[int, Desc("Max results"), Min(1), Max(100)] = 10,  # noqa: ARG001
+            limit: Annotated[
+                int, Desc("Max results"), Min(1), Max(100)
+            ] = 10,  # noqa: ARG001
         ) -> ToolResult[list[str]]:
             return ToolResult.ok([])
 

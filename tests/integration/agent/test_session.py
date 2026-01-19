@@ -8,7 +8,7 @@ import pytest
 
 from neosian._foundation.agent.base import Agent
 from neosian._foundation.llm.base import Message, Role
-from neosian._foundation.shared.types import AgentConfig, SystemPrompt
+from neosian._foundation.shared.types import AgentConfig, Model, SystemPrompt
 from neosian._foundation.tools.base import Tool, ToolResult
 
 
@@ -22,7 +22,7 @@ class TestAgentSessionWithGroq:
         config = AgentConfig(
             system_prompt=SystemPrompt("You are a helpful assistant. Be concise."),
             tools=[],
-            provider="groq",
+            model=Model.GPT_OSS_20B,
             enable_todo=False,
         )
         agent = Agent(config=config)
@@ -43,7 +43,7 @@ class TestAgentSessionWithGroq:
         config = AgentConfig(
             system_prompt=SystemPrompt("You are a helpful assistant. Be concise."),
             tools=[],
-            provider="groq",
+            model=Model.GPT_OSS_20B,
             enable_todo=False,
         )
         agent = Agent(config=config)
@@ -80,7 +80,7 @@ class TestAgentSessionWithGroq:
                 "You are a number assistant. Use the get_number tool when asked."
             ),
             tools=[get_number],
-            provider="groq",
+            model=Model.GPT_OSS_20B,
             enable_todo=False,
         )
         agent = Agent(config=config)
@@ -102,7 +102,7 @@ class TestAgentSessionWithGroq:
         config = AgentConfig(
             system_prompt=SystemPrompt("You are a helpful assistant. Be concise."),
             tools=[],
-            provider="groq",
+            model=Model.GPT_OSS_20B,
             enable_todo=False,
         )
         agent = Agent(config=config)
@@ -126,7 +126,7 @@ class TestAgentSessionWithGroq:
         config = AgentConfig(
             system_prompt=SystemPrompt("You are a helpful assistant."),
             tools=[],
-            provider="groq",
+            model=Model.GPT_OSS_20B,
             enable_todo=False,
         )
         agent = Agent(config=config)
@@ -149,7 +149,7 @@ class TestAgentSessionWithGroq:
                 "You are a helpful assistant. Keep responses very short."
             ),
             tools=[],
-            provider="groq",
+            model=Model.GPT_OSS_20B,
             enable_todo=False,
         )
         agent = Agent(config=config)

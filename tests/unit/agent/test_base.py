@@ -17,7 +17,6 @@ from neosian._foundation.llm.base import (
 )
 from neosian._foundation.shared.types import (
     AgentConfig,
-    Model,
     SystemPrompt,
     ToolCallId,
     ToolName,
@@ -38,7 +37,7 @@ def _create_mock_router(mock_client: BaseLLMClient | None = None) -> MagicMock:
         mock_client = AsyncMock(spec=BaseLLMClient)
 
     mock_router = MagicMock()
-    mock_router.get_fallback_chain.return_value = [Model.GPT_OSS_20B]
+    mock_router.has_provider.return_value = True
     mock_router.create_client.return_value = mock_client
     return mock_router
 
