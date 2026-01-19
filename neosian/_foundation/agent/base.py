@@ -62,7 +62,7 @@ from neosian._foundation.tools.base import (
     get_tool_definition,
     get_tool_metadata,
 )
-from neosian._foundation.tools.builtin.todo import TodoState, get_todo_tool
+from neosian._foundation.tools.builtin.todo import update_todo
 
 logger = logging.getLogger(__name__)
 
@@ -157,14 +157,12 @@ class Agent:
         self,
         config: AgentConfig,
         max_tool_iterations: int = 10,
-        todo_state: TodoState | None = None,
     ) -> None:
         """Initialize the agent.
 
         Args:
             config: Agent configuration with system_prompt, tools, model.
             max_tool_iterations: Maximum tool call iterations to prevent infinite loops.
-            todo_state: External todo state. If None and enable_todo=True, creates new.
         """
         # Initialize router for provider management
         self._router = ProviderRouter()
@@ -186,11 +184,8 @@ class Agent:
         self._tool_definitions: list[ToolDefinition] = []
 
         # Add global todo tool if enabled
-        self._todo_state: TodoState | None = None
         if config.enable_todo:
-            self._todo_state = todo_state if todo_state is not None else TodoState([])
-            todo_tool = get_todo_tool(self._todo_state)
-            self._register_tool(todo_tool)
+            self._register_tool(update_todo)
 
         # Register user-provided tools
         for tool_func in config.tools:

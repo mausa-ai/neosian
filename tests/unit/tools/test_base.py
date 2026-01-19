@@ -753,13 +753,13 @@ class TestTypedDictConversion:
     def test_typeddict_in_tool(self) -> None:
         """TypedDict should work in @Tool decorated function."""
 
-        class TodoItem(TypedDict):
+        class TodoItemInput(TypedDict):
             content: str
             status: Literal["pending", "in_progress", "completed"]
 
         @Tool(name="update_todos", description="Update todo list")
         async def update_todos(
-            todos: list[TodoItem],  # noqa: ARG001
+            todos: list[TodoItemInput],  # noqa: ARG001
         ) -> ToolResult[list[dict[str, str]]]:
             return ToolResult.ok([])
 

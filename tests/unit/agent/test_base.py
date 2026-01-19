@@ -76,7 +76,6 @@ class TestAgentInit:
 
             assert "update_todo" in agent._tools
             assert len(agent._tools) == 1
-            assert agent._todo_state is not None
 
     def test_agent_init_todo_disabled(self) -> None:
         """Agent should not include todo tool when disabled."""
@@ -92,7 +91,7 @@ class TestAgentInit:
             agent = Agent(config=config)
 
             assert "update_todo" not in agent._tools
-            assert agent._todo_state is None
+            assert len(agent._tools) == 0
 
     def test_agent_init_with_tools(self) -> None:
         """Agent should register tools from decorated functions."""
