@@ -61,6 +61,7 @@ def test_public_api_exports() -> None:
         TurnResult,
         Usage,
         __version__,
+        heartbeat_event,
         load_prompt,
     )
 
@@ -75,6 +76,7 @@ def test_public_api_exports() -> None:
     assert ToolResult is not None
     assert Usage is not None
     assert SSEEventType is not None
+    assert heartbeat_event is not None
     assert Message is not None
     assert Role is not None
     assert Model is not None
@@ -139,6 +141,7 @@ def test_all_list_matches_exports() -> None:
         # Streaming
         "SSEEventType",
         "error_event",
+        "heartbeat_event",
         # Guardrails
         "GuardrailsConfig",
         "GuardrailMode",

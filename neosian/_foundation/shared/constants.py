@@ -322,6 +322,14 @@ class Guardrails:
         )
 
 
+class Streaming:
+    """Constants for SSE streaming."""
+
+    # Heartbeat interval during long-running tool execution (seconds)
+    # Keeps SSE connections alive and prevents frontend timeout/reconnect
+    HEARTBEAT_INTERVAL_SECONDS: float = 15.0
+
+
 class Evaluation:
     """Constants for agent evaluation framework."""
 

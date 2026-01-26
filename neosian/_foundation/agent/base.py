@@ -9,6 +9,7 @@ import asyncio
 import contextlib
 import logging
 import os
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
@@ -24,6 +25,7 @@ from neosian._foundation.agent.streaming import (
     blocked_event,
     content_event,
     done_event,
+    heartbeat_event,
     tool_call_event,
     tool_result_event,
 )
@@ -38,7 +40,7 @@ from neosian._foundation.llm.base import (
     Usage,
 )
 from neosian._foundation.llm.router import ProviderRouter
-from neosian._foundation.shared.constants import EnvVars, ErrorMessages
+from neosian._foundation.shared.constants import EnvVars, ErrorMessages, Streaming
 from neosian._foundation.shared.exceptions import (
     FallbackExhaustedError,
     GuardrailStreamingError,
@@ -961,14 +963,22 @@ class Agent:
                 # Yield tool call event
                 yield emitter.emit(tool_call_event(tool_call))
 
-                # Execute tool
-                result = await self._execute_tool(tool_call)
+                # Execute tool with heartbeats for long-running tools
+                tool_result: ToolResult[Any] | None = None
+                async for result, heartbeat_sse in self._execute_tool_with_heartbeats(
+                    tool_call, emitter
+                ):
+                    if heartbeat_sse is not None:
+                        yield heartbeat_sse
+                    if result is not None:
+                        tool_result = result
 
                 # Yield tool result event
-                yield emitter.emit(tool_result_event(tool_call.id, result))
+                assert tool_result is not None  # Always set after loop completes
+                yield emitter.emit(tool_result_event(tool_call.id, tool_result))
 
                 # Add tool result to messages
-                tool_result_content = self._format_tool_result(result)
+                tool_result_content = self._format_tool_result(tool_result)
                 full_messages.append(
                     Message(
                         role=Role.TOOL,
@@ -1205,6 +1215,45 @@ class Agent:
                     tool_name=tool_call.name, error=e
                 )
             )
+
+    async def _execute_tool_with_heartbeats(
+        self,
+        tool_call: ToolCall,
+        emitter: SSEEventEmitter,
+    ) -> AsyncIterator[tuple[ToolResult[Any] | None, str | None]]:
+        """Execute a tool while emitting heartbeat events.
+
+        Runs the tool in a background task and emits heartbeat SSE events
+        at regular intervals to keep the connection alive during long-running
+        tool executions.
+
+        Args:
+            tool_call: The tool call to execute.
+            emitter: SSE event emitter for heartbeat events.
+
+        Yields:
+            Tuples of (result, heartbeat_sse):
+            - (None, heartbeat_sse) for heartbeat events during execution
+            - (result, None) when tool execution completes
+        """
+        start_time = time.monotonic()
+        tool_task = asyncio.create_task(self._execute_tool(tool_call))
+        interval = Streaming.HEARTBEAT_INTERVAL_SECONDS
+
+        while not tool_task.done():
+            try:
+                # Wait for tool to complete or timeout
+                await asyncio.wait_for(
+                    asyncio.shield(tool_task),
+                    timeout=interval,
+                )
+            except TimeoutError:
+                # Tool still running - emit heartbeat
+                elapsed = time.monotonic() - start_time
+                yield (None, emitter.emit(heartbeat_event(tool_call.id, elapsed)))
+
+        # Tool completed - yield result
+        yield (tool_task.result(), None)
 
     def _format_tool_result(self, result: ToolResult[Any]) -> str:
         """Format a tool result as a string for the LLM.

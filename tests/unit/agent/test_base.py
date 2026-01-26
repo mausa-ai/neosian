@@ -504,3 +504,209 @@ class TestAgentRunStreaming:
 
             # Result should be an async iterator
             assert hasattr(result, "__anext__")
+
+
+@pytest.mark.unit
+class TestAgentHeartbeats:
+    """Test Agent heartbeat functionality during tool execution."""
+
+    @pytest.mark.asyncio
+    async def test_fast_tool_no_heartbeats(self) -> None:
+        """Fast tool execution should not emit heartbeats."""
+
+        @Tool(name="fast", description="A fast tool")
+        async def fast_tool() -> ToolResult[str]:
+            return ToolResult.ok("done")
+
+        mock_client = AsyncMock(spec=BaseLLMClient)
+
+        tool_call = ToolCall(
+            id=ToolCallId("call_1"),
+            name=ToolName("fast"),
+            arguments={},
+        )
+
+        # First complete() returns tool call, second returns no tools
+        mock_client.complete.side_effect = [
+            CompletionResponse(
+                message=Message(role=Role.ASSISTANT, tool_calls=[tool_call]),
+                usage=Usage(input_tokens=10, output_tokens=5),
+                model="test-model",
+            ),
+            CompletionResponse(
+                message=Message(role=Role.ASSISTANT, content="Done!"),
+                usage=Usage(input_tokens=15, output_tokens=8),
+                model="test-model",
+            ),
+        ]
+
+        async def mock_stream(
+            *args: object, **kwargs: object  # noqa: ARG001
+        ) -> AsyncIterator[StreamChunk]:
+            yield StreamChunk(content="Done!")
+            yield StreamChunk(finish_reason="stop")
+
+        mock_client.stream = mock_stream
+
+        with patch(
+            "neosian._foundation.agent.base.ProviderRouter",
+            return_value=_create_mock_router(mock_client),
+        ):
+            config = AgentConfig(
+                system_prompt=SystemPrompt("You are helpful."),
+                tools=[fast_tool],
+                enable_todo=False,
+            )
+            agent = Agent(config=config)
+
+            messages = [Message(role=Role.USER, content="Run fast tool")]
+            result = await agent.run(messages, stream=True)
+
+            events = []
+            async for sse in result:
+                events.append(sse)
+
+            # Should have: tool_call, tool_result, content, done (no heartbeats)
+            heartbeat_events = [e for e in events if "heartbeat" in e]
+            assert len(heartbeat_events) == 0
+
+    @pytest.mark.asyncio
+    async def test_slow_tool_emits_heartbeats(self) -> None:
+        """Slow tool execution should emit heartbeat events."""
+        import asyncio
+
+        @Tool(name="slow", description="A slow tool")
+        async def slow_tool() -> ToolResult[str]:
+            # Sleep longer than heartbeat interval (mocked to 0.05s)
+            await asyncio.sleep(0.15)
+            return ToolResult.ok("finally done")
+
+        mock_client = AsyncMock(spec=BaseLLMClient)
+
+        tool_call = ToolCall(
+            id=ToolCallId("call_slow"),
+            name=ToolName("slow"),
+            arguments={},
+        )
+
+        mock_client.complete.side_effect = [
+            CompletionResponse(
+                message=Message(role=Role.ASSISTANT, tool_calls=[tool_call]),
+                usage=Usage(input_tokens=10, output_tokens=5),
+                model="test-model",
+            ),
+            CompletionResponse(
+                message=Message(role=Role.ASSISTANT, content="Finished!"),
+                usage=Usage(input_tokens=15, output_tokens=8),
+                model="test-model",
+            ),
+        ]
+
+        async def mock_stream(
+            *args: object, **kwargs: object  # noqa: ARG001
+        ) -> AsyncIterator[StreamChunk]:
+            yield StreamChunk(content="Finished!")
+            yield StreamChunk(finish_reason="stop")
+
+        mock_client.stream = mock_stream
+
+        with (
+            patch(
+                "neosian._foundation.agent.base.ProviderRouter",
+                return_value=_create_mock_router(mock_client),
+            ),
+            patch(
+                "neosian._foundation.agent.base.Streaming.HEARTBEAT_INTERVAL_SECONDS",
+                0.05,
+            ),
+        ):
+            config = AgentConfig(
+                system_prompt=SystemPrompt("You are helpful."),
+                tools=[slow_tool],
+                enable_todo=False,
+            )
+            agent = Agent(config=config)
+
+            messages = [Message(role=Role.USER, content="Run slow tool")]
+            result = await agent.run(messages, stream=True)
+
+            events = []
+            async for sse in result:
+                events.append(sse)
+
+            # Should have heartbeat events
+            heartbeat_events = [e for e in events if "heartbeat" in e]
+            assert len(heartbeat_events) >= 1
+
+            # Verify heartbeat contains tool_call_id and elapsed_seconds
+            assert "call_slow" in heartbeat_events[0]
+            assert "elapsed_seconds" in heartbeat_events[0]
+
+    @pytest.mark.asyncio
+    async def test_heartbeat_contains_correct_tool_call_id(self) -> None:
+        """Heartbeat events should contain the correct tool_call_id."""
+        import asyncio
+
+        @Tool(name="delayed", description="A delayed tool")
+        async def delayed_tool() -> ToolResult[str]:
+            await asyncio.sleep(0.08)
+            return ToolResult.ok("done")
+
+        mock_client = AsyncMock(spec=BaseLLMClient)
+
+        tool_call = ToolCall(
+            id=ToolCallId("unique_id_123"),
+            name=ToolName("delayed"),
+            arguments={},
+        )
+
+        mock_client.complete.side_effect = [
+            CompletionResponse(
+                message=Message(role=Role.ASSISTANT, tool_calls=[tool_call]),
+                usage=Usage(input_tokens=10, output_tokens=5),
+                model="test-model",
+            ),
+            CompletionResponse(
+                message=Message(role=Role.ASSISTANT, content="Done!"),
+                usage=Usage(input_tokens=15, output_tokens=8),
+                model="test-model",
+            ),
+        ]
+
+        async def mock_stream(
+            *args: object, **kwargs: object  # noqa: ARG001
+        ) -> AsyncIterator[StreamChunk]:
+            yield StreamChunk(content="Done!")
+            yield StreamChunk(finish_reason="stop")
+
+        mock_client.stream = mock_stream
+
+        with (
+            patch(
+                "neosian._foundation.agent.base.ProviderRouter",
+                return_value=_create_mock_router(mock_client),
+            ),
+            patch(
+                "neosian._foundation.agent.base.Streaming.HEARTBEAT_INTERVAL_SECONDS",
+                0.03,
+            ),
+        ):
+            config = AgentConfig(
+                system_prompt=SystemPrompt("You are helpful."),
+                tools=[delayed_tool],
+                enable_todo=False,
+            )
+            agent = Agent(config=config)
+
+            messages = [Message(role=Role.USER, content="Run delayed tool")]
+            result = await agent.run(messages, stream=True)
+
+            events = []
+            async for sse in result:
+                events.append(sse)
+
+            heartbeat_events = [e for e in events if "heartbeat" in e]
+            assert len(heartbeat_events) >= 1
+
+            # Verify the tool_call_id is in the heartbeat
+            assert "unique_id_123" in heartbeat_events[0]

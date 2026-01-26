@@ -22,6 +22,7 @@ class SSEEventType(str, Enum):
     ERROR = "error"
     DONE = "done"
     BLOCKED = "blocked"
+    HEARTBEAT = "heartbeat"
 
 
 @dataclass
@@ -115,6 +116,28 @@ def blocked_event(
     if rationale:
         data["rationale"] = rationale
     return SSEEvent(event=SSEEventType.BLOCKED, data=data)
+
+
+def heartbeat_event(tool_call_id: str, elapsed_seconds: float) -> SSEEvent:
+    """Create a heartbeat SSE event during long-running tool execution.
+
+    Heartbeats keep SSE connections alive and prevent frontend clients
+    from timing out and reconnecting during long tool executions.
+
+    Args:
+        tool_call_id: ID of the tool call currently executing.
+        elapsed_seconds: Time elapsed since tool execution started.
+
+    Returns:
+        SSEEvent with heartbeat data.
+    """
+    return SSEEvent(
+        event=SSEEventType.HEARTBEAT,
+        data={
+            "tool_call_id": tool_call_id,
+            "elapsed_seconds": elapsed_seconds,
+        },
+    )
 
 
 class SSEEventEmitter:

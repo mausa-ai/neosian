@@ -12,6 +12,7 @@ from neosian._foundation.agent.streaming import (
     content_event,
     done_event,
     error_event,
+    heartbeat_event,
     stream_to_sse,
     tool_call_event,
     tool_result_event,
@@ -105,6 +106,22 @@ class TestEventFactories:
 
         assert event.event == SSEEventType.DONE
         assert event.data == {}
+
+    def test_heartbeat_event(self) -> None:
+        """heartbeat_event should create heartbeat SSE event."""
+        event = heartbeat_event(tool_call_id="call_123", elapsed_seconds=15.5)
+
+        assert event.event == SSEEventType.HEARTBEAT
+        assert event.data["tool_call_id"] == "call_123"
+        assert event.data["elapsed_seconds"] == 15.5
+
+    def test_heartbeat_event_with_zero_elapsed(self) -> None:
+        """heartbeat_event should handle zero elapsed time."""
+        event = heartbeat_event(tool_call_id="call_abc", elapsed_seconds=0.0)
+
+        assert event.event == SSEEventType.HEARTBEAT
+        assert event.data["tool_call_id"] == "call_abc"
+        assert event.data["elapsed_seconds"] == 0.0
 
 
 @pytest.mark.unit
