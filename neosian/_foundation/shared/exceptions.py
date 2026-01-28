@@ -173,6 +173,26 @@ class GuardrailStreamingError(GuardrailError):
         super().__init__(ErrorMessages.GUARDRAIL_OUTPUT_REQUIRES_BLOCKING)
 
 
+class StructuredOutputError(NeosianError):
+    """Base exception for structured output errors."""
+
+    pass
+
+
+class StructuredOutputStreamingError(StructuredOutputError):
+    """Raised when streaming is requested with structured outputs."""
+
+    def __init__(self) -> None:
+        super().__init__(ErrorMessages.STRUCTURED_OUTPUT_REQUIRES_BLOCKING)
+
+
+class StructuredOutputToolsError(StructuredOutputError):
+    """Raised when structured outputs are used with tool-enabled agents."""
+
+    def __init__(self) -> None:
+        super().__init__(ErrorMessages.STRUCTURED_OUTPUT_INCOMPATIBLE_WITH_TOOLS)
+
+
 class ProviderError(LLMError):
     """Raised when a provider fails (rate limit, auth, network, etc.).
 

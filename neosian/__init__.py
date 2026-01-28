@@ -21,6 +21,9 @@ from neosian._foundation.shared.exceptions import (
     FallbackExhaustedError,
     InvalidModelError,
     ModelFailedError,
+    StructuredOutputError,
+    StructuredOutputStreamingError,
+    StructuredOutputToolsError,
 )
 from neosian._foundation.shared.prompt import load_prompt
 from neosian._foundation.shared.types import (
@@ -40,13 +43,14 @@ from neosian._foundation.shared.types import (
     Model,
     PolicyResult,
     Provider,
+    ResponseFormat,
     ToolCallCapture,
     ToolCallId,
     TurnResult,
 )
 from neosian._foundation.tools.base import Tool, ToolResult
 
-__version__ = "0.25.0"
+__version__ = "0.26.0"
 
 __all__ = [
     # Agent
@@ -72,6 +76,7 @@ __all__ = [
     # LLM
     "Model",
     "Provider",
+    "ResponseFormat",
     "Usage",
     # Streaming
     "SSEEventType",
@@ -103,6 +108,9 @@ __all__ = [
     "ModelFailedError",
     "FallbackExhaustedError",
     "InvalidModelError",
+    "StructuredOutputError",
+    "StructuredOutputStreamingError",
+    "StructuredOutputToolsError",
     # Meta
     "__version__",
 ]

@@ -15,9 +15,9 @@ from neosian._foundation.llm.base import (
     ToolDefinition,
     Usage,
 )
-from neosian._foundation.shared.constants import LLMDefaults
+from neosian._foundation.shared.constants import LLMDefaults, StructuredOutputs
 from neosian._foundation.shared.exceptions import ToolCallGenerationError
-from neosian._foundation.shared.types import Model, ToolCallId, ToolName
+from neosian._foundation.shared.types import Model, ResponseFormat, ToolCallId, ToolName
 
 
 class AnthropicClient(BaseLLMClient):
@@ -41,6 +41,7 @@ class AnthropicClient(BaseLLMClient):
         model: Model,
         tools: list[ToolDefinition] | None = None,
         temperature: float | None = None,
+        response_format: ResponseFormat | None = None,
     ) -> CompletionResponse:
         """Send a completion request to Anthropic.
 
@@ -52,6 +53,7 @@ class AnthropicClient(BaseLLMClient):
             model: Model identifier.
             tools: Optional list of tools the model can call.
             temperature: Sampling temperature (0.0-1.0). None uses default.
+            response_format: Optional structured output configuration.
 
         Returns:
             CompletionResponse with the model's response.
@@ -81,7 +83,16 @@ class AnthropicClient(BaseLLMClient):
                 if anthropic_tools:
                     kwargs["tools"] = anthropic_tools
 
-                response = await self._client.messages.create(**kwargs)
+                # Use beta API for structured outputs
+                if response_format:
+                    kwargs["betas"] = [StructuredOutputs.ANTHROPIC_BETA]
+                    kwargs["output_format"] = self._convert_response_format(
+                        response_format
+                    )
+                    response = await self._client.beta.messages.create(**kwargs)
+                else:
+                    response = await self._client.messages.create(**kwargs)
+
                 return self._parse_response(response)
 
             except BadRequestError as e:
@@ -284,6 +295,26 @@ class AnthropicClient(BaseLLMClient):
             }
             for tool in tools
         ]
+
+    def _convert_response_format(
+        self, response_format: ResponseFormat
+    ) -> dict[str, object]:
+        """Convert ResponseFormat to Anthropic output_format.
+
+        Args:
+            response_format: Internal ResponseFormat configuration.
+
+        Returns:
+            Anthropic-compatible output_format dict.
+        """
+        schema = response_format.schema.model_json_schema()
+        # Anthropic requires additionalProperties: false for strict schemas
+        if response_format.strict and "additionalProperties" not in schema:
+            schema["additionalProperties"] = False
+        return {
+            "type": "json_schema",
+            "schema": schema,
+        }
 
     async def close(self) -> None:
         """Close the underlying HTTP client and release resources."""

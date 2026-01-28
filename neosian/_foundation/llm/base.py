@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-from neosian._foundation.shared.types import Model, ToolCallId, ToolName
+from neosian._foundation.shared.types import Model, ResponseFormat, ToolCallId, ToolName
 
 
 class Role(str, Enum):
@@ -94,6 +94,7 @@ class BaseLLMClient(ABC):
         model: Model,
         tools: list[ToolDefinition] | None = None,
         temperature: float | None = None,
+        response_format: ResponseFormat | None = None,
     ) -> CompletionResponse:
         """Send a completion request to the LLM.
 
@@ -102,6 +103,9 @@ class BaseLLMClient(ABC):
             model: Model identifier.
             tools: Optional list of tools the model can call.
             temperature: Sampling temperature (0.0-2.0). None uses provider default.
+            response_format: Optional structured output configuration. When provided,
+                the model will be constrained to generate valid JSON matching the
+                schema defined in the ResponseFormat.
 
         Returns:
             CompletionResponse with the model's response.

@@ -137,6 +137,7 @@ def test_all_list_matches_exports() -> None:
         "MaxLen",
         "Pattern",
         # LLM
+        "ResponseFormat",
         "Usage",
         # Streaming
         "SSEEventType",
@@ -168,6 +169,9 @@ def test_all_list_matches_exports() -> None:
         "ModelFailedError",
         "FallbackExhaustedError",
         "InvalidModelError",
+        "StructuredOutputError",
+        "StructuredOutputStreamingError",
+        "StructuredOutputToolsError",
         # Meta
         "__version__",
     }

@@ -8,6 +8,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Literal, NewType
 
+from pydantic import BaseModel
+
 if TYPE_CHECKING:
     from neosian._foundation.tools.base import ToolResult
 
@@ -187,6 +189,40 @@ class FallbackState:
 
     using_fallback: bool = False
     successful_fallback_calls: int = 0
+
+
+@dataclass
+class ResponseFormat:
+    """Structured output configuration.
+
+    Specifies a Pydantic model that the LLM response must conform to.
+    The LLM will be constrained to generate valid JSON matching the schema.
+
+    Note: Incompatible with stream=True. Structured outputs require complete
+    responses for schema validation.
+
+    Attributes:
+        schema: Pydantic model class defining the output structure.
+        strict: If True, model must exactly match schema. Defaults to True.
+
+    Example:
+        from pydantic import BaseModel
+        from neosian import Agent, AgentConfig, ResponseFormat
+
+        class WeatherResponse(BaseModel):
+            temperature: float
+            conditions: str
+
+        response = await agent.run(
+            messages,
+            stream=False,
+            response_format=ResponseFormat(schema=WeatherResponse),
+        )
+        # response.parsed is a WeatherResponse instance
+    """
+
+    schema: type[BaseModel]
+    strict: bool = True
 
 
 # Todo status enum

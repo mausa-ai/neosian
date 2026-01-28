@@ -86,6 +86,16 @@ class ErrorMessages:
         "is sent to the user before it can be checked."
     )
 
+    # Structured output errors
+    STRUCTURED_OUTPUT_REQUIRES_BLOCKING: str = (
+        "Structured outputs require stream=False. "
+        "Schema validation needs the complete response."
+    )
+    STRUCTURED_OUTPUT_INCOMPATIBLE_WITH_TOOLS: str = (
+        "Structured outputs cannot be used with tool-enabled agents. "
+        "The agent's tool loop requires unstructured responses for tool call detection."
+    )
+
     # Evaluation errors
     EVAL_CONFIG_NOT_FOUND: str = "Eval config file not found: {path}"
     EVAL_CONFIG_INVALID_YAML: str = "Invalid YAML in eval config: {path}"
@@ -328,6 +338,14 @@ class Streaming:
     # Heartbeat interval during long-running tool execution (seconds)
     # Keeps SSE connections alive and prevents frontend timeout/reconnect
     HEARTBEAT_INTERVAL_SECONDS: float = 15.0
+
+
+class StructuredOutputs:
+    """Constants for structured output configuration."""
+
+    # Anthropic beta header for structured outputs (public beta)
+    # See: https://platform.claude.com/docs/en/build-with-claude/structured-outputs
+    ANTHROPIC_BETA: str = "structured-outputs-2025-11-13"
 
 
 class Evaluation:

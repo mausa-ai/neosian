@@ -22,7 +22,7 @@ from neosian._foundation.llm.base import (
 )
 from neosian._foundation.shared.constants import LLMDefaults
 from neosian._foundation.shared.exceptions import ToolCallGenerationError
-from neosian._foundation.shared.types import Model, ToolCallId, ToolName
+from neosian._foundation.shared.types import Model, ResponseFormat, ToolCallId, ToolName
 
 
 class GroqClient(BaseLLMClient):
@@ -46,6 +46,7 @@ class GroqClient(BaseLLMClient):
         model: Model,
         tools: list[ToolDefinition] | None = None,
         temperature: float | None = None,
+        response_format: ResponseFormat | None = None,
     ) -> CompletionResponse:
         """Send a completion request to Groq.
 
@@ -57,6 +58,7 @@ class GroqClient(BaseLLMClient):
             model: Model identifier.
             tools: Optional list of tools the model can call.
             temperature: Sampling temperature (0.0-2.0). None uses default.
+            response_format: Optional structured output configuration.
 
         Returns:
             CompletionResponse with the model's response.
@@ -66,6 +68,9 @@ class GroqClient(BaseLLMClient):
         """
         groq_messages = self._convert_messages(messages)
         groq_tools = self._convert_tools(tools) if tools else None
+        groq_response_format = (
+            self._convert_response_format(response_format) if response_format else None
+        )
 
         # Use provided temperature or default
         current_temp = (
@@ -79,6 +84,7 @@ class GroqClient(BaseLLMClient):
                     messages=groq_messages,
                     tools=groq_tools,
                     temperature=current_temp,
+                    response_format=groq_response_format,  # type: ignore[arg-type]
                 )
                 return self._parse_response(response)
 
@@ -307,6 +313,29 @@ class GroqClient(BaseLLMClient):
             }
             for tool in tools
         ]
+
+    def _convert_response_format(
+        self, response_format: ResponseFormat
+    ) -> dict[str, object]:
+        """Convert ResponseFormat to Groq json_schema format.
+
+        Args:
+            response_format: Internal ResponseFormat configuration.
+
+        Returns:
+            Groq-compatible response_format dict.
+        """
+        schema = response_format.schema.model_json_schema()
+        # Groq requires additionalProperties: false for strict mode
+        schema["additionalProperties"] = False
+        return {
+            "type": "json_schema",
+            "json_schema": {
+                "name": response_format.schema.__name__,
+                "strict": response_format.strict,
+                "schema": schema,
+            },
+        }
 
     async def close(self) -> None:
         """Close the underlying HTTP client and release resources."""

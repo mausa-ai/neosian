@@ -2,6 +2,7 @@
 
 import json
 from collections.abc import AsyncIterator
+from typing import cast
 
 from openai import NOT_GIVEN, AsyncOpenAI, BadRequestError
 from openai.types.chat import (
@@ -9,6 +10,9 @@ from openai.types.chat import (
     ChatCompletionMessageParam,
     ChatCompletionStreamOptionsParam,
     ChatCompletionToolParam,
+)
+from openai.types.chat.completion_create_params import (
+    ResponseFormat as OpenAIResponseFormat,
 )
 
 from neosian._foundation.llm.base import (
@@ -26,7 +30,7 @@ from neosian._foundation.shared.exceptions import (
     ToolCallGenerationError,
     UnsupportedParameterError,
 )
-from neosian._foundation.shared.types import Model, ToolCallId, ToolName
+from neosian._foundation.shared.types import Model, ResponseFormat, ToolCallId, ToolName
 
 
 class OpenAIClient(BaseLLMClient):
@@ -50,6 +54,7 @@ class OpenAIClient(BaseLLMClient):
         model: Model,
         tools: list[ToolDefinition] | None = None,
         temperature: float | None = None,
+        response_format: ResponseFormat | None = None,
     ) -> CompletionResponse:
         """Send a completion request to OpenAI.
 
@@ -61,6 +66,7 @@ class OpenAIClient(BaseLLMClient):
             model: Model identifier.
             tools: Optional list of tools the model can call.
             temperature: Not supported for GPT-5 models. Raises error if provided.
+            response_format: Optional structured output configuration.
 
         Returns:
             CompletionResponse with the model's response.
@@ -76,13 +82,17 @@ class OpenAIClient(BaseLLMClient):
 
         openai_messages = self._convert_messages(messages)
         openai_tools = self._convert_tools(tools) if tools else None
+        openai_response_format: OpenAIResponseFormat | None = (
+            self._convert_response_format(response_format) if response_format else None
+        )
 
         for attempt in range(LLMDefaults.MAX_TOOL_CALL_RETRIES + 1):
             try:
                 response = await self._client.chat.completions.create(
-                    model=model,
+                    model=model.value,
                     messages=openai_messages,
                     tools=openai_tools if openai_tools else NOT_GIVEN,  # type: ignore[arg-type]
+                    response_format=openai_response_format if openai_response_format else NOT_GIVEN,  # type: ignore[arg-type]
                 )
                 return self._parse_response(response)
 
@@ -325,6 +335,33 @@ class OpenAIClient(BaseLLMClient):
             }
             for tool in tools
         ]
+
+    def _convert_response_format(
+        self, response_format: ResponseFormat
+    ) -> OpenAIResponseFormat:
+        """Convert internal ResponseFormat to OpenAI response_format.
+
+        Args:
+            response_format: Internal ResponseFormat configuration.
+
+        Returns:
+            OpenAI-compatible response_format TypedDict.
+        """
+        schema = response_format.schema.model_json_schema()
+        # OpenAI requires additionalProperties: false for strict mode
+        schema["additionalProperties"] = False
+        # Cast to OpenAI ResponseFormat TypedDict - SDK accepts this structure
+        return cast(
+            OpenAIResponseFormat,
+            {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": response_format.schema.__name__,
+                    "strict": response_format.strict,
+                    "schema": schema,
+                },
+            },
+        )
 
     async def close(self) -> None:
         """Close the underlying HTTP client and release resources."""

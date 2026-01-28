@@ -10,7 +10,7 @@ from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any, Literal, overload
 
 from neosian._foundation.llm.base import BaseLLMClient, Message
-from neosian._foundation.shared.types import FallbackState, Provider
+from neosian._foundation.shared.types import FallbackState, Provider, ResponseFormat
 
 if TYPE_CHECKING:
     from neosian._foundation.agent.base import Agent, AgentResponse
@@ -70,16 +70,28 @@ class AgentSession:
 
     @overload
     async def run(
-        self, messages: list[Message], *, stream: Literal[False]
+        self,
+        messages: list[Message],
+        *,
+        stream: Literal[False],
+        response_format: ResponseFormat | None = None,
     ) -> AgentResponse: ...
 
     @overload
     async def run(
-        self, messages: list[Message], *, stream: Literal[True]
+        self,
+        messages: list[Message],
+        *,
+        stream: Literal[True],
+        response_format: None = None,
     ) -> AsyncIterator[str]: ...
 
     async def run(
-        self, messages: list[Message], *, stream: bool
+        self,
+        messages: list[Message],
+        *,
+        stream: bool,
+        response_format: ResponseFormat | None = None,
     ) -> AgentResponse | AsyncIterator[str]:
         """Execute the agent with cached clients.
 
@@ -89,6 +101,7 @@ class AgentSession:
         Args:
             messages: Conversation history (without system message).
             stream: If True, yields SSE strings. If False, returns AgentResponse.
+            response_format: Optional structured output configuration.
 
         Returns:
             AgentResponse when stream=False, AsyncIterator[str] when stream=True.
@@ -96,7 +109,9 @@ class AgentSession:
         # Delegate to agent's internal methods but provide our client getter
         if stream:
             return self._agent._run_streaming_with_session(messages, self)
-        return await self._agent._run_blocking_with_session(messages, self)
+        return await self._agent._run_blocking_with_session(
+            messages, self, response_format=response_format
+        )
 
     async def close(self) -> None:
         """Close all cached clients and release resources.

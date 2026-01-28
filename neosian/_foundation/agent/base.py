@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal, overload
 
 from groq import AsyncGroq
+from pydantic import BaseModel
 
 if TYPE_CHECKING:
     from neosian._foundation.agent.session import AgentSession
@@ -46,6 +47,8 @@ from neosian._foundation.shared.exceptions import (
     GuardrailStreamingError,
     MissingAPIKeyError,
     ModelFailedError,
+    StructuredOutputStreamingError,
+    StructuredOutputToolsError,
 )
 from neosian._foundation.shared.types import (
     AgentConfig,
@@ -56,6 +59,7 @@ from neosian._foundation.shared.types import (
     GuardrailResult,
     Model,
     PolicyResult,
+    ResponseFormat,
     ToolFunction,
     ToolName,
 )
@@ -121,6 +125,8 @@ class AgentResponse:
         usage: Token usage statistics.
         blocked: True if content was blocked by guardrails.
         guardrail_result: Detailed guardrail check results (if guardrails enabled).
+        parsed: Parsed Pydantic model instance when response_format was provided.
+            None when response_format was not used.
     """
 
     message: Message
@@ -129,6 +135,7 @@ class AgentResponse:
     usage: Usage = field(default_factory=lambda: Usage(input_tokens=0, output_tokens=0))
     blocked: bool = False
     guardrail_result: GuardrailResult | None = None
+    parsed: BaseModel | None = None
 
 
 class Agent:
@@ -221,31 +228,56 @@ class Agent:
 
     @overload
     async def run(
-        self, messages: list[Message], *, stream: Literal[False]
+        self,
+        messages: list[Message],
+        *,
+        stream: Literal[False],
+        response_format: ResponseFormat | None = None,
     ) -> AgentResponse: ...
 
     @overload
     async def run(
-        self, messages: list[Message], *, stream: Literal[True]
+        self,
+        messages: list[Message],
+        *,
+        stream: Literal[True],
+        response_format: None = None,
     ) -> AsyncIterator[str]: ...
 
     async def run(
-        self, messages: list[Message], *, stream: bool
+        self,
+        messages: list[Message],
+        *,
+        stream: bool,
+        response_format: ResponseFormat | None = None,
     ) -> AgentResponse | AsyncIterator[str]:
         """Execute the agent with the given conversation history.
 
         Args:
             messages: Conversation history (without system message).
             stream: If True, yields SSE strings. If False, returns AgentResponse.
+            response_format: Optional structured output configuration. When provided,
+                the agent returns a structured response matching the Pydantic schema.
+                Incompatible with stream=True and tool-enabled agents.
 
         Returns:
             AgentResponse when stream=False, AsyncIterator[str] when stream=True.
 
         Raises:
             GuardrailStreamingError: If stream=True with output guardrails configured.
+            StructuredOutputStreamingError: If stream=True with response_format.
+            StructuredOutputToolsError: If response_format with tool-enabled agent.
             ModelFailedError: If model fails and no fallback is configured.
             FallbackExhaustedError: If both main and fallback models fail.
         """
+        # Structured outputs require blocking mode
+        if response_format is not None and stream:
+            raise StructuredOutputStreamingError()
+
+        # Structured outputs are incompatible with tool-enabled agents
+        if response_format is not None and self._tool_definitions:
+            raise StructuredOutputToolsError()
+
         # Output guardrails require blocking mode
         if (
             stream
@@ -256,9 +288,13 @@ class Agent:
 
         if stream:
             return self._run_streaming(messages)
-        return await self._run_blocking(messages)
+        return await self._run_blocking(messages, response_format=response_format)
 
-    async def _run_blocking(self, messages: list[Message]) -> AgentResponse:
+    async def _run_blocking(
+        self,
+        messages: list[Message],
+        response_format: ResponseFormat | None = None,
+    ) -> AgentResponse:
         """Execute agent without streaming.
 
         Input guardrails run in parallel with agent execution for optimal latency.
@@ -267,6 +303,7 @@ class Agent:
 
         Args:
             messages: Conversation history (without system message).
+            response_format: Optional structured output configuration.
 
         Returns:
             AgentResponse with the final message and execution details.
@@ -276,16 +313,18 @@ class Agent:
             self._guardrails is None
             or self._guardrails.input_mode == GuardrailMode.NONE
         ):
-            return await self._execute_agent_core(messages)
+            return await self._execute_agent_core(messages, response_format=response_format)
 
         # Extract user content for guardrail check
         user_content = self._extract_user_content(messages)
         if not user_content:
-            return await self._execute_agent_core(messages)
+            return await self._execute_agent_core(messages, response_format=response_format)
 
         # Run guard and agent in parallel
         guard_task = asyncio.create_task(self._check_guardrails(user_content, "input"))
-        agent_task = asyncio.create_task(self._execute_agent_core(messages))
+        agent_task = asyncio.create_task(
+            self._execute_agent_core(messages, response_format=response_format)
+        )
 
         # Wait for first to complete
         done, pending = await asyncio.wait(
@@ -351,6 +390,7 @@ class Agent:
         self,
         messages: list[Message],
         fallback_state: FallbackState | None = None,
+        response_format: ResponseFormat | None = None,
     ) -> AgentResponse:
         """Execute the agent LLM and tool loop with optional fallback.
 
@@ -360,6 +400,7 @@ class Agent:
         Args:
             messages: Conversation history (without system message).
             fallback_state: Optional fallback state for session-based sticky fallback.
+            response_format: Optional structured output configuration.
 
         Returns:
             AgentResponse with the final message and execution details.
@@ -392,7 +433,7 @@ class Agent:
         # If using fallback (sticky), try fallback first
         if fallback_state is not None and fallback_state.using_fallback:
             return await self._execute_with_fallback_model(
-                full_messages, fallback_state
+                full_messages, fallback_state, response_format
             )
 
         # Try main model
@@ -402,6 +443,7 @@ class Agent:
                 client=client,
                 model=self._model,
                 full_messages=full_messages,
+                response_format=response_format,
             )
             # Success on main - reset fallback state if present
             if fallback_state is not None:
@@ -434,6 +476,7 @@ class Agent:
                     client=fallback_client,
                     model=self._fallback.model,
                     full_messages=full_messages,
+                    response_format=response_format,
                 )
                 # Success on fallback - update state
                 if fallback_state is not None:
@@ -452,12 +495,14 @@ class Agent:
         self,
         full_messages: list[Message],
         fallback_state: FallbackState,
+        response_format: ResponseFormat | None = None,
     ) -> AgentResponse:
         """Execute with fallback model (sticky mode).
 
         Args:
             full_messages: Full conversation with system message prepended.
             fallback_state: Fallback state tracking.
+            response_format: Optional structured output configuration.
 
         Returns:
             AgentResponse with the final message and execution details.
@@ -478,6 +523,7 @@ class Agent:
                 client=client,
                 model=self._fallback.model,
                 full_messages=full_messages,
+                response_format=response_format,
             )
             # Success - increment counter
             fallback_state.successful_fallback_calls += 1
@@ -498,6 +544,7 @@ class Agent:
                     client=main_client,
                     model=self._model,
                     full_messages=full_messages,
+                    response_format=response_format,
                 )
                 # Main recovered - reset state
                 fallback_state.using_fallback = False
@@ -533,6 +580,7 @@ class Agent:
         client: BaseLLMClient,
         model: Model,
         full_messages: list[Message],
+        response_format: ResponseFormat | None = None,
     ) -> AgentResponse:
         """Execute the agent with a specific client and model.
 
@@ -540,6 +588,7 @@ class Agent:
             client: LLM client to use.
             model: Model identifier.
             full_messages: Full conversation with system message prepended.
+            response_format: Optional structured output configuration.
 
         Returns:
             AgentResponse with the final message and execution details.
@@ -554,6 +603,7 @@ class Agent:
                 messages=full_messages,
                 model=model,
                 tools=self._tool_definitions if self._tool_definitions else None,
+                response_format=response_format,
             )
 
             # Accumulate usage
@@ -569,6 +619,7 @@ class Agent:
                     tool_calls_made=all_tool_calls,
                     tool_results=all_tool_results,
                     usage=total_usage,
+                    response_format=response_format,
                 )
 
             # Add assistant message with tool calls to history
@@ -596,6 +647,7 @@ class Agent:
             messages=full_messages,
             model=model,
             tools=None,  # No tools on final call to force text response
+            response_format=response_format,
         )
 
         total_usage = Usage(
@@ -609,6 +661,7 @@ class Agent:
             tool_calls_made=all_tool_calls,
             tool_results=all_tool_results,
             usage=total_usage,
+            response_format=response_format,
         )
 
     def _attach_input_guard_results(
@@ -1372,8 +1425,9 @@ class Agent:
         tool_calls_made: list[ToolCall],
         tool_results: list[ToolResult[Any]],
         usage: Usage,
+        response_format: ResponseFormat | None = None,
     ) -> AgentResponse:
-        """Finalize response with output guardrails check.
+        """Finalize response with output guardrails check and structured output parsing.
 
         Checks output guardrails if configured and returns the final AgentResponse.
         Input guardrail results are attached separately via _attach_input_guard_results.
@@ -1383,9 +1437,10 @@ class Agent:
             tool_calls_made: List of tool calls made during execution.
             tool_results: Results from tool executions.
             usage: Token usage statistics.
+            response_format: Optional structured output configuration for parsing.
 
         Returns:
-            AgentResponse with output guardrail results populated (if any).
+            AgentResponse with output guardrail results and parsed content (if any).
         """
         output_classifier: ClassifierResult | None = None
         output_policy: PolicyResult | None = None
@@ -1411,6 +1466,11 @@ class Agent:
                 output_policy=output_policy,
             )
 
+        # Parse structured output if response_format was provided
+        parsed: BaseModel | None = None
+        if response_format is not None and message.content:
+            parsed = response_format.schema.model_validate_json(message.content)
+
         return AgentResponse(
             message=message,
             tool_calls_made=tool_calls_made,
@@ -1418,6 +1478,7 @@ class Agent:
             usage=usage,
             blocked=not is_output_safe,
             guardrail_result=guardrail_result,
+            parsed=parsed,
         )
 
     # =========================================================================
@@ -1462,6 +1523,7 @@ class Agent:
         self,
         messages: list[Message],
         session: AgentSession,
+        response_format: ResponseFormat | None = None,
     ) -> AgentResponse:
         """Execute agent without streaming, using session's cached clients.
 
@@ -1471,6 +1533,7 @@ class Agent:
         Args:
             messages: Conversation history (without system message).
             session: The session providing cached clients.
+            response_format: Optional structured output configuration.
 
         Returns:
             AgentResponse with the final message and execution details.
@@ -1480,17 +1543,23 @@ class Agent:
             self._guardrails is None
             or self._guardrails.input_mode == GuardrailMode.NONE
         ):
-            return await self._execute_agent_core_with_session(messages, session)
+            return await self._execute_agent_core_with_session(
+                messages, session, response_format=response_format
+            )
 
         # Extract user content for guardrail check
         user_content = self._extract_user_content(messages)
         if not user_content:
-            return await self._execute_agent_core_with_session(messages, session)
+            return await self._execute_agent_core_with_session(
+                messages, session, response_format=response_format
+            )
 
         # Run guard and agent in parallel
         guard_task = asyncio.create_task(self._check_guardrails(user_content, "input"))
         agent_task = asyncio.create_task(
-            self._execute_agent_core_with_session(messages, session)
+            self._execute_agent_core_with_session(
+                messages, session, response_format=response_format
+            )
         )
 
         # Wait for first to complete
@@ -1557,6 +1626,7 @@ class Agent:
         self,
         messages: list[Message],
         session: AgentSession,
+        response_format: ResponseFormat | None = None,
     ) -> AgentResponse:
         """Execute the agent LLM and tool loop using session's cached clients.
 
@@ -1566,6 +1636,7 @@ class Agent:
         Args:
             messages: Conversation history (without system message).
             session: The session providing cached clients.
+            response_format: Optional structured output configuration.
 
         Returns:
             AgentResponse with the final message and execution details.
@@ -1597,7 +1668,7 @@ class Agent:
         # If using fallback (sticky), try fallback first
         if fallback_state.using_fallback:
             return await self._execute_with_fallback_model_session(
-                full_messages, session, fallback_state
+                full_messages, session, fallback_state, response_format
             )
 
         # Try main model
@@ -1607,6 +1678,7 @@ class Agent:
                 client=client,
                 model=self._model,
                 full_messages=full_messages,
+                response_format=response_format,
             )
             # Success on main - reset fallback state
             fallback_state.using_fallback = False
@@ -1638,6 +1710,7 @@ class Agent:
                     client=fallback_client,
                     model=self._fallback.model,
                     full_messages=full_messages,
+                    response_format=response_format,
                 )
                 # Success on fallback - update state
                 fallback_state.using_fallback = True
@@ -1656,6 +1729,7 @@ class Agent:
         full_messages: list[Message],
         session: AgentSession,
         fallback_state: FallbackState,
+        response_format: ResponseFormat | None = None,
     ) -> AgentResponse:
         """Execute with fallback model using session (sticky mode).
 
@@ -1663,6 +1737,7 @@ class Agent:
             full_messages: Full conversation with system message prepended.
             session: The session providing cached clients.
             fallback_state: Fallback state tracking.
+            response_format: Optional structured output configuration.
 
         Returns:
             AgentResponse with the final message and execution details.
@@ -1683,6 +1758,7 @@ class Agent:
                 client=client,
                 model=self._fallback.model,
                 full_messages=full_messages,
+                response_format=response_format,
             )
             # Success - increment counter
             fallback_state.successful_fallback_calls += 1
@@ -1703,6 +1779,7 @@ class Agent:
                     client=main_client,
                     model=self._model,
                     full_messages=full_messages,
+                    response_format=response_format,
                 )
                 # Main recovered - reset state
                 fallback_state.using_fallback = False
