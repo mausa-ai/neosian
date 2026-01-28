@@ -9,6 +9,7 @@ from neosian._foundation.shared.exceptions import (
     GuardrailPolicyParseError,
     GuardrailStreamingError,
     LLMError,
+    MessageSerializationError,
     NeosianError,
     ToolCallGenerationError,
 )
@@ -65,6 +66,76 @@ class TestToolCallGenerationError:
         """Should use the centralized error message format."""
         error = ToolCallGenerationError(retries=LLMDefaults.MAX_TOOL_CALL_RETRIES)
         assert str(LLMDefaults.MAX_TOOL_CALL_RETRIES) in str(error)
+
+
+@pytest.mark.unit
+class TestMessageSerializationError:
+    """Test message serialization error."""
+
+    def test_inherits_from_llm_error(self) -> None:
+        """MessageSerializationError should inherit from LLMError."""
+        assert issubclass(MessageSerializationError, LLMError)
+
+    def test_stores_context(self) -> None:
+        """Should store the serialization context."""
+        error = MessageSerializationError(
+            context="tool_call.arguments",
+            value_type="Decimal",
+            error="Object of type Decimal is not JSON serializable",
+        )
+        assert error.context == "tool_call.arguments"
+
+    def test_stores_field(self) -> None:
+        """Should store the field path."""
+        error = MessageSerializationError(
+            context="tool_call.arguments",
+            value_type="Decimal",
+            error="test",
+            field="order.amount",
+        )
+        assert error.field == "order.amount"
+
+    def test_stores_value_type(self) -> None:
+        """Should store the value type."""
+        error = MessageSerializationError(
+            context="test",
+            value_type="datetime",
+            error="test",
+        )
+        assert error.value_type == "datetime"
+
+    def test_stores_original_error(self) -> None:
+        """Should store the original error message."""
+        error = MessageSerializationError(
+            context="test",
+            value_type="Decimal",
+            error="Object of type Decimal is not JSON serializable",
+        )
+        assert error.error == "Object of type Decimal is not JSON serializable"
+
+    def test_message_with_field_includes_field_path(self) -> None:
+        """Error message should include field path when provided."""
+        error = MessageSerializationError(
+            context="tool_call.arguments",
+            value_type="Decimal",
+            error="test",
+            field="amount",
+        )
+        message = str(error)
+        assert "tool_call.arguments" in message
+        assert "amount" in message
+        assert "Decimal" in message
+
+    def test_message_without_field_is_generic(self) -> None:
+        """Error message should be generic when field not provided."""
+        error = MessageSerializationError(
+            context="sse_event.data",
+            value_type="UUID",
+            error="test",
+        )
+        message = str(error)
+        assert "sse_event.data" in message
+        assert "UUID" in message
 
 
 @pytest.mark.unit

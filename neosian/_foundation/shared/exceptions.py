@@ -34,6 +34,51 @@ class ToolCallGenerationError(LLMError):
         self.retries = retries
 
 
+class MessageSerializationError(LLMError):
+    """Raised when message data cannot be serialized to JSON.
+
+    This typically occurs when tool call arguments or tool results contain
+    non-JSON-serializable types like Decimal, datetime, UUID, etc.
+
+    Common causes:
+    - Loading conversation history from DynamoDB (uses Decimal for numbers)
+    - Tool results containing database models with non-serializable fields
+    - Custom objects in tool call arguments
+
+    Fix by converting data to JSON-compatible types before passing to neosian.
+    """
+
+    def __init__(
+        self,
+        context: str,
+        value_type: str,
+        error: str,
+        *,
+        field: str | None = None,
+    ) -> None:
+        """Initialize with serialization context.
+
+        Args:
+            context: Where serialization failed (e.g., "tool_call.arguments").
+            value_type: The type that couldn't be serialized (e.g., "Decimal").
+            error: Original error message from json.dumps.
+            field: Specific field path that contains the problematic value.
+        """
+        if field:
+            message = ErrorMessages.MESSAGE_SERIALIZATION_FIELD.format(
+                context=context, field=field, value_type=value_type
+            )
+        else:
+            message = ErrorMessages.MESSAGE_SERIALIZATION_GENERIC.format(
+                context=context, value_type=value_type
+            )
+        super().__init__(message)
+        self.context = context
+        self.field = field
+        self.value_type = value_type
+        self.error = error
+
+
 class PromptLoadError(NeosianError):
     """Base exception for prompt loading errors."""
 

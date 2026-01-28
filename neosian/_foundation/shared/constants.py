@@ -96,6 +96,17 @@ class ErrorMessages:
         "The agent's tool loop requires unstructured responses for tool call detection."
     )
 
+    # Serialization errors
+    MESSAGE_SERIALIZATION_FIELD: str = (
+        "Cannot serialize {context}: field '{field}' contains {value_type} "
+        "(not JSON-serializable). Convert to a JSON-compatible type "
+        "(str, int, float, bool, list, dict, None) before passing to neosian."
+    )
+    MESSAGE_SERIALIZATION_GENERIC: str = (
+        "Cannot serialize {context}: contains {value_type} (not JSON-serializable). "
+        "Convert to a JSON-compatible type before passing to neosian."
+    )
+
     # Evaluation errors
     EVAL_CONFIG_NOT_FOUND: str = "Eval config file not found: {path}"
     EVAL_CONFIG_INVALID_YAML: str = "Invalid YAML in eval config: {path}"

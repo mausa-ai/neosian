@@ -169,6 +169,7 @@ def test_all_list_matches_exports() -> None:
         "ModelFailedError",
         "FallbackExhaustedError",
         "InvalidModelError",
+        "MessageSerializationError",
         "StructuredOutputError",
         "StructuredOutputStreamingError",
         "StructuredOutputToolsError",

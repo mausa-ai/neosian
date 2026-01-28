@@ -4,7 +4,6 @@ Provides the @Tool decorator and ToolResult for building agent tools.
 """
 
 import inspect
-import json
 import types
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -32,6 +31,7 @@ from neosian._foundation.shared.constraints import (
     MinLen,
     Pattern,
 )
+from neosian._foundation.shared.serialization import safe_json_dumps
 from neosian._foundation.shared.types import ToolFunction as ToolFunction
 from neosian._foundation.shared.types import ToolName
 
@@ -89,7 +89,7 @@ class ToolResult[T]:
         if self.system_reminder:
             output["system_reminder"] = self.system_reminder
 
-        return json.dumps(output)
+        return safe_json_dumps(output, "tool_result.data")
 
 
 @dataclass

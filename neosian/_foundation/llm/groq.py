@@ -22,6 +22,7 @@ from neosian._foundation.llm.base import (
 )
 from neosian._foundation.shared.constants import LLMDefaults
 from neosian._foundation.shared.exceptions import ToolCallGenerationError
+from neosian._foundation.shared.serialization import safe_json_dumps
 from neosian._foundation.shared.types import Model, ResponseFormat, ToolCallId, ToolName
 
 
@@ -278,7 +279,9 @@ class GroqClient(BaseLLMClient):
                                 "type": "function",
                                 "function": {
                                     "name": tc.name,
-                                    "arguments": json.dumps(tc.arguments),
+                                    "arguments": safe_json_dumps(
+                                        tc.arguments, "tool_call.arguments"
+                                    ),
                                 },
                             }
                             for tc in msg.tool_calls

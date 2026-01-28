@@ -3,13 +3,13 @@
 Converts agent stream chunks to Server-Sent Events format.
 """
 
-import json
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
 from neosian._foundation.llm.base import StreamChunk, ToolCall, Usage
+from neosian._foundation.shared.serialization import safe_json_dumps
 from neosian._foundation.tools.base import ToolResult
 
 
@@ -38,7 +38,7 @@ class SSEEvent:
         Returns:
             SSE-formatted string with event and data lines.
         """
-        return f"event: {self.event.value}\ndata: {json.dumps(self.data)}\n\n"
+        return f"event: {self.event.value}\ndata: {safe_json_dumps(self.data, 'sse_event.data')}\n\n"
 
 
 def content_event(content: str) -> SSEEvent:

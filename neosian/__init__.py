@@ -20,6 +20,7 @@ from neosian._foundation.shared.constraints import (
 from neosian._foundation.shared.exceptions import (
     FallbackExhaustedError,
     InvalidModelError,
+    MessageSerializationError,
     ModelFailedError,
     StructuredOutputError,
     StructuredOutputStreamingError,
@@ -50,7 +51,7 @@ from neosian._foundation.shared.types import (
 )
 from neosian._foundation.tools.base import Tool, ToolResult
 
-__version__ = "0.26.0"
+__version__ = "0.27.0"
 
 __all__ = [
     # Agent
@@ -108,6 +109,7 @@ __all__ = [
     "ModelFailedError",
     "FallbackExhaustedError",
     "InvalidModelError",
+    "MessageSerializationError",
     "StructuredOutputError",
     "StructuredOutputStreamingError",
     "StructuredOutputToolsError",
