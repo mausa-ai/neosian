@@ -27,6 +27,7 @@ from neosian._foundation.agent.streaming import (
     content_event,
     done_event,
     heartbeat_event,
+    reasoning_event,
     tool_call_event,
     tool_result_event,
 )
@@ -1221,6 +1222,10 @@ class Agent:
                     yield blocked_event_sse
                     return
                 guard_task = None
+
+            # Emit reasoning before content (for reasoning models)
+            if chunk.reasoning:
+                yield emitter.emit(reasoning_event(chunk.reasoning))
 
             if chunk.content:
                 yield emitter.emit(content_event(chunk.content))
