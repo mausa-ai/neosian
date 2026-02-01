@@ -61,6 +61,13 @@ class ErrorMessages:
         "Model '{model}' does not support reasoning_effort."
     )
 
+    # AgentConfig reasoning_effort validation
+    REASONING_EFFORT_MODEL_MISMATCH: str = (
+        "reasoning_effort is only supported for GPT-OSS models. "
+        "Model '{model}' does not support reasoning_effort. "
+        "Supported models: {supported_models}"
+    )
+
     # Provider/Fallback errors
     PROVIDER_FAILED: str = "Provider {provider} failed: {error}"
     MODEL_FAILED: str = "Model {model} failed: {error}"

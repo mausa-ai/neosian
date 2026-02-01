@@ -59,6 +59,7 @@ from neosian._foundation.shared.types import (
     GuardrailResult,
     Model,
     PolicyResult,
+    ReasoningEffort,
     ResponseFormat,
     ToolFunction,
     ToolName,
@@ -181,6 +182,7 @@ class Agent:
         self._fallback = config.fallback
         self._system_prompt = config.system_prompt
         self._max_tool_iterations = max_tool_iterations
+        self._reasoning_effort = config.reasoning_effort
 
         # Store guardrails config and create client if needed
         self._guardrails = config.guardrails
@@ -601,6 +603,11 @@ class Agent:
         all_tool_results: list[ToolResult[Any]] = []
         total_usage = Usage(input_tokens=0, output_tokens=0)
 
+        # Silently drop reasoning_effort if model doesn't support it (graceful fallback)
+        effective_reasoning = (
+            self._reasoning_effort if model.supports_reasoning else None
+        )
+
         for _ in range(self._max_tool_iterations):
             # Get completion from LLM
             response = await client.complete(
@@ -608,6 +615,7 @@ class Agent:
                 model=model,
                 tools=self._tool_definitions if self._tool_definitions else None,
                 response_format=response_format,
+                reasoning_effort=effective_reasoning,
             )
 
             # Accumulate usage
@@ -652,6 +660,7 @@ class Agent:
             model=model,
             tools=None,  # No tools on final call to force text response
             response_format=response_format,
+            reasoning_effort=effective_reasoning,
         )
 
         total_usage = Usage(
@@ -976,6 +985,11 @@ class Agent:
         if emitter is None:
             emitter = SSEEventEmitter()
 
+        # Silently drop reasoning_effort if model doesn't support it (graceful fallback)
+        effective_reasoning = (
+            self._reasoning_effort if model.supports_reasoning else None
+        )
+
         for _ in range(self._max_tool_iterations):
             # Check guard before each LLM call
             if guard_task is not None and guard_task.done():
@@ -990,6 +1004,7 @@ class Agent:
                 messages=full_messages,
                 model=model,
                 tools=self._tool_definitions if self._tool_definitions else None,
+                reasoning_effort=effective_reasoning,
             )
 
             # If no tool calls, stream the final response
@@ -1000,6 +1015,7 @@ class Agent:
                     full_messages=full_messages,
                     guard_task=guard_task,
                     emitter=emitter,
+                    reasoning_effort=effective_reasoning,
                 ):
                     yield sse
                 return
@@ -1051,6 +1067,7 @@ class Agent:
             full_messages=full_messages,
             guard_task=guard_task,
             emitter=emitter,
+            reasoning_effort=effective_reasoning,
         ):
             yield sse
 
@@ -1168,6 +1185,7 @@ class Agent:
             | None
         ),
         emitter: SSEEventEmitter,
+        reasoning_effort: ReasoningEffort | None = None,
     ) -> AsyncIterator[str]:
         """Stream final response with a specific client while monitoring guard task.
 
@@ -1177,6 +1195,7 @@ class Agent:
             full_messages: Full conversation history including system message.
             guard_task: Background guard task to monitor (or None).
             emitter: SSE event emitter for metadata (required, passed from caller).
+            reasoning_effort: Optional reasoning effort (pre-filtered for model support).
 
         Yields:
             SSE-formatted strings for content chunks, blocked, and done event.
@@ -1185,6 +1204,7 @@ class Agent:
             messages=full_messages,
             model=model,
             tools=None,
+            reasoning_effort=reasoning_effort,
         )
 
         # Track usage and pending done for different provider patterns

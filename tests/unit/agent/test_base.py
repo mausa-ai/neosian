@@ -17,6 +17,10 @@ from neosian._foundation.llm.base import (
 )
 from neosian._foundation.shared.types import (
     AgentConfig,
+    FallbackConfig,
+    Model,
+    Provider,
+    ReasoningEffort,
     SystemPrompt,
     ToolCallId,
     ToolName,
@@ -710,3 +714,183 @@ class TestAgentHeartbeats:
 
             # Verify the tool_call_id is in the heartbeat
             assert "unique_id_123" in heartbeat_events[0]
+
+
+@pytest.mark.unit
+class TestAgentReasoningEffort:
+    """Test Agent reasoning_effort handling."""
+
+    @pytest.mark.asyncio
+    async def test_agent_stores_reasoning_effort(self) -> None:
+        """Agent should store reasoning_effort from config."""
+        with patch(
+            "neosian._foundation.agent.base.ProviderRouter",
+            return_value=_create_mock_router(),
+        ):
+            config = AgentConfig(
+                system_prompt=SystemPrompt("You are helpful."),
+                model=Model.GPT_OSS_20B,
+                reasoning_effort=ReasoningEffort.HIGH,
+                enable_todo=False,
+            )
+            agent = Agent(config=config)
+
+            assert agent._reasoning_effort == ReasoningEffort.HIGH
+
+    @pytest.mark.asyncio
+    async def test_agent_passes_reasoning_effort_to_complete(self) -> None:
+        """Agent should pass reasoning_effort to LLM complete() calls."""
+        mock_client = AsyncMock(spec=BaseLLMClient)
+        mock_client.complete.return_value = CompletionResponse(
+            message=Message(role=Role.ASSISTANT, content="Hello!"),
+            usage=Usage(input_tokens=10, output_tokens=5),
+            model="openai/gpt-oss-20b",
+        )
+
+        mock_router = _create_mock_router(mock_client)
+
+        with patch(
+            "neosian._foundation.agent.base.ProviderRouter",
+            return_value=mock_router,
+        ):
+            config = AgentConfig(
+                system_prompt=SystemPrompt("You are helpful."),
+                model=Model.GPT_OSS_20B,
+                reasoning_effort=ReasoningEffort.HIGH,
+                enable_todo=False,
+            )
+            agent = Agent(config=config)
+
+            messages = [Message(role=Role.USER, content="Think about this.")]
+            await agent.run(messages, stream=False)
+
+            # Verify reasoning_effort was passed to complete()
+            mock_client.complete.assert_called_once()
+            call_kwargs = mock_client.complete.call_args.kwargs
+            assert call_kwargs["reasoning_effort"] == ReasoningEffort.HIGH
+
+    @pytest.mark.asyncio
+    async def test_agent_none_reasoning_effort_passed_as_none(self) -> None:
+        """Agent should pass None for reasoning_effort when not configured."""
+        mock_client = AsyncMock(spec=BaseLLMClient)
+        mock_client.complete.return_value = CompletionResponse(
+            message=Message(role=Role.ASSISTANT, content="Hello!"),
+            usage=Usage(input_tokens=10, output_tokens=5),
+            model="openai/gpt-oss-20b",
+        )
+
+        mock_router = _create_mock_router(mock_client)
+
+        with patch(
+            "neosian._foundation.agent.base.ProviderRouter",
+            return_value=mock_router,
+        ):
+            config = AgentConfig(
+                system_prompt=SystemPrompt("You are helpful."),
+                model=Model.GPT_OSS_20B,
+                reasoning_effort=None,  # Explicitly None
+                enable_todo=False,
+            )
+            agent = Agent(config=config)
+
+            messages = [Message(role=Role.USER, content="Hi")]
+            await agent.run(messages, stream=False)
+
+            call_kwargs = mock_client.complete.call_args.kwargs
+            assert call_kwargs["reasoning_effort"] is None
+
+    @pytest.mark.asyncio
+    async def test_fallback_silently_drops_reasoning_for_non_supporting_model(
+        self,
+    ) -> None:
+        """Agent should silently drop reasoning_effort when fallback model doesn't support it."""
+        # Main model client that fails
+        mock_main_client = AsyncMock(spec=BaseLLMClient)
+        mock_main_client.complete.side_effect = Exception("Main model failed")
+
+        # Fallback model client that succeeds
+        mock_fallback_client = AsyncMock(spec=BaseLLMClient)
+        mock_fallback_client.complete.return_value = CompletionResponse(
+            message=Message(role=Role.ASSISTANT, content="Fallback response"),
+            usage=Usage(input_tokens=10, output_tokens=5),
+            model="llama-3.3-70b-versatile",
+        )
+
+        # Router that returns different clients based on provider
+        mock_router = MagicMock()
+        mock_router.has_provider.return_value = True
+
+        def create_client(provider: Provider) -> AsyncMock:
+            if provider == Provider.GROQ:
+                # Both are Groq, but we need to distinguish by model
+                # The first call is for main model, subsequent for fallback
+                if mock_router.create_client.call_count <= 1:
+                    return mock_main_client
+                return mock_fallback_client
+            return mock_fallback_client
+
+        mock_router.create_client.side_effect = create_client
+
+        with patch(
+            "neosian._foundation.agent.base.ProviderRouter",
+            return_value=mock_router,
+        ):
+            config = AgentConfig(
+                system_prompt=SystemPrompt("You are helpful."),
+                model=Model.GPT_OSS_20B,  # Supports reasoning
+                reasoning_effort=ReasoningEffort.HIGH,
+                fallback=FallbackConfig(model=Model.LLAMA_3_3_70B),  # No reasoning
+                enable_todo=False,
+            )
+            agent = Agent(config=config)
+
+            messages = [Message(role=Role.USER, content="Hi")]
+            response = await agent.run(messages, stream=False)
+
+            # Response should be from fallback
+            assert response.message.content == "Fallback response"
+
+            # Main client should have been called with reasoning_effort
+            main_call_kwargs = mock_main_client.complete.call_args.kwargs
+            assert main_call_kwargs["reasoning_effort"] == ReasoningEffort.HIGH
+
+            # Fallback client should have been called with None (silently dropped)
+            fallback_call_kwargs = mock_fallback_client.complete.call_args.kwargs
+            assert fallback_call_kwargs["reasoning_effort"] is None
+
+    @pytest.mark.asyncio
+    async def test_main_model_keeps_reasoning_when_supported(self) -> None:
+        """Agent should keep reasoning_effort when main model supports it."""
+        mock_client = AsyncMock(spec=BaseLLMClient)
+        mock_client.complete.return_value = CompletionResponse(
+            message=Message(
+                role=Role.ASSISTANT,
+                content="Reasoned response",
+                reasoning="I thought about this...",
+            ),
+            usage=Usage(input_tokens=10, output_tokens=5),
+            model="openai/gpt-oss-20b",
+        )
+
+        mock_router = _create_mock_router(mock_client)
+
+        with patch(
+            "neosian._foundation.agent.base.ProviderRouter",
+            return_value=mock_router,
+        ):
+            config = AgentConfig(
+                system_prompt=SystemPrompt("You are helpful."),
+                model=Model.GPT_OSS_20B,
+                reasoning_effort=ReasoningEffort.MEDIUM,
+                enable_todo=False,
+            )
+            agent = Agent(config=config)
+
+            messages = [Message(role=Role.USER, content="Think about this")]
+            response = await agent.run(messages, stream=False)
+
+            assert response.message.content == "Reasoned response"
+            assert response.message.reasoning == "I thought about this..."
+
+            call_kwargs = mock_client.complete.call_args.kwargs
+            assert call_kwargs["reasoning_effort"] == ReasoningEffort.MEDIUM

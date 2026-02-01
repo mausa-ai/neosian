@@ -8,7 +8,12 @@ import pytest
 
 from neosian._foundation.agent.base import Agent
 from neosian._foundation.llm.base import Message, Role
-from neosian._foundation.shared.types import AgentConfig, Model, SystemPrompt
+from neosian._foundation.shared.types import (
+    AgentConfig,
+    Model,
+    ReasoningEffort,
+    SystemPrompt,
+)
 from neosian._foundation.tools.base import Tool, ToolResult
 
 
@@ -187,3 +192,143 @@ class TestAgentWithGroq:
         assert len(events) >= 2
         # At minimum we should have some content and done
         assert any("done" in e for e in events)
+
+
+@pytest.mark.integration
+class TestAgentReasoningEffort:
+    """Test Agent with reasoning_effort enabled."""
+
+    @pytest.mark.asyncio
+    async def test_agent_with_reasoning_effort_high(self) -> None:
+        """Test agent with reasoning_effort=HIGH returns reasoning content."""
+        config = AgentConfig(
+            system_prompt=SystemPrompt(
+                "You are a helpful assistant. Think carefully before answering."
+            ),
+            tools=[],
+            model=Model.GPT_OSS_20B,
+            reasoning_effort=ReasoningEffort.HIGH,
+            enable_todo=False,
+        )
+        agent = Agent(config=config)
+
+        messages = [
+            Message(role=Role.USER, content="What is 17 * 23? Show your work.")
+        ]
+        response = await agent.run(messages, stream=False)
+
+        assert response.message.role == Role.ASSISTANT
+        assert response.message.content is not None
+        # The answer 391 should be in the response
+        assert "391" in response.message.content
+        # With HIGH reasoning, we expect reasoning content (though API behavior may vary)
+        # The key is the request succeeds and returns a valid response
+
+    @pytest.mark.asyncio
+    async def test_agent_with_reasoning_effort_low(self) -> None:
+        """Test agent with reasoning_effort=LOW works correctly."""
+        config = AgentConfig(
+            system_prompt=SystemPrompt("You are a helpful assistant."),
+            tools=[],
+            model=Model.GPT_OSS_20B,
+            reasoning_effort=ReasoningEffort.LOW,
+            enable_todo=False,
+        )
+        agent = Agent(config=config)
+
+        messages = [Message(role=Role.USER, content="What is 2 + 2? Just the number.")]
+        response = await agent.run(messages, stream=False)
+
+        assert response.message.role == Role.ASSISTANT
+        assert response.message.content is not None
+        assert "4" in response.message.content
+
+    @pytest.mark.asyncio
+    async def test_agent_with_reasoning_effort_streaming(self) -> None:
+        """Test agent with reasoning_effort streams correctly."""
+        config = AgentConfig(
+            system_prompt=SystemPrompt(
+                "You are a helpful assistant. Think step by step."
+            ),
+            tools=[],
+            model=Model.GPT_OSS_20B,
+            reasoning_effort=ReasoningEffort.HIGH,
+            enable_todo=False,
+        )
+        agent = Agent(config=config)
+
+        messages = [
+            Message(role=Role.USER, content="What is 8 + 9? Think step by step.")
+        ]
+        result = await agent.run(messages, stream=True)
+
+        events = []
+        async for sse in result:
+            events.append(sse)
+
+        # Should have events and done
+        assert len(events) >= 2
+        assert any("done" in e for e in events)
+
+        # With reasoning, we may get reasoning events before content
+        # Check if we have reasoning events
+        reasoning_events = [e for e in events if "reasoning" in e]
+        content_events = [e for e in events if "content" in e]
+
+        # We should have some response (either reasoning or content)
+        assert len(reasoning_events) > 0 or len(content_events) > 0
+
+    @pytest.mark.asyncio
+    async def test_agent_reasoning_with_session(self) -> None:
+        """Test agent with reasoning_effort works correctly with sessions."""
+        config = AgentConfig(
+            system_prompt=SystemPrompt("You are a helpful assistant."),
+            tools=[],
+            model=Model.GPT_OSS_20B,
+            reasoning_effort=ReasoningEffort.MEDIUM,
+            enable_todo=False,
+        )
+        agent = Agent(config=config)
+
+        async with agent.session() as session:
+            messages = [
+                Message(role=Role.USER, content="What is 5 * 6? Just the number.")
+            ]
+            response = await session.run(messages, stream=False)
+
+            assert response.message.role == Role.ASSISTANT
+            assert response.message.content is not None
+            assert "30" in response.message.content
+
+    @pytest.mark.asyncio
+    async def test_agent_reasoning_with_tools(self) -> None:
+        """Test agent with reasoning_effort and tools works correctly."""
+
+        @Tool(name="multiply", description="Multiply two numbers")
+        async def multiply(a: int, b: int) -> ToolResult[int]:
+            return ToolResult.ok(a * b)
+
+        config = AgentConfig(
+            system_prompt=SystemPrompt(
+                "You are a calculator. Think carefully and use the multiply tool."
+            ),
+            tools=[multiply],
+            model=Model.GPT_OSS_20B,
+            reasoning_effort=ReasoningEffort.HIGH,
+            enable_todo=False,
+        )
+        agent = Agent(config=config)
+
+        messages = [Message(role=Role.USER, content="What is 7 * 8?")]
+        response = await agent.run(messages, stream=False)
+
+        assert response.message.role == Role.ASSISTANT
+        assert response.message.content is not None
+
+        # Should have called the tool
+        assert len(response.tool_calls_made) >= 1
+        assert any(tc.name == "multiply" for tc in response.tool_calls_made)
+
+        # Tool result should be 56
+        multiply_results = [r for r in response.tool_results if r.data == 56]
+        assert len(multiply_results) >= 1

@@ -290,22 +290,37 @@ class AgentConfig:
     fallback: FallbackConfig | None = None
     enable_todo: bool = True
     guardrails: "GuardrailsConfig | None" = None
+    reasoning_effort: ReasoningEffort | None = None
 
     def __post_init__(self) -> None:
         """Validate configuration after initialization."""
+        # Lazy import to avoid circular dependency at module load time
+        from neosian._foundation.shared.constants import ErrorMessages
+        from neosian._foundation.shared.exceptions import (
+            InvalidModelError,
+            UnsupportedParameterError,
+        )
+
         # Runtime validation - model could be anything if user bypasses type hints
         model: object = self.model  # Type erasure to enable isinstance check
         if not isinstance(model, Model):
-            # Lazy import to avoid circular dependency at module load time
-            # (types -> exceptions -> constants -> types)
-            from neosian._foundation.shared.exceptions import InvalidModelError
-
             supported = ", ".join(f"Model.{m.name}" for m in Model)
-            message = (
-                f"Invalid model: expected Model enum, got {type(model).__name__} "
-                f"with value '{model}'. Supported models: {supported}"
+            message = ErrorMessages.INVALID_MODEL.format(
+                model_type=type(model).__name__,
+                model_value=model,
+                supported_models=supported,
             )
             raise InvalidModelError(message, model)
+
+        # Validate reasoning_effort is only used with models that support it
+        if self.reasoning_effort is not None and not self.model.supports_reasoning:
+            supported_models = ", ".join(f"Model.{m.name}" for m in _REASONING_MODELS)
+            raise UnsupportedParameterError(
+                ErrorMessages.REASONING_EFFORT_MODEL_MISMATCH.format(
+                    model=self.model.value,
+                    supported_models=supported_models,
+                )
+            )
 
 
 # Guardrail types

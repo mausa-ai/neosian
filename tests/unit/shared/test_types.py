@@ -2,12 +2,16 @@
 
 import pytest
 
-from neosian._foundation.shared.exceptions import InvalidModelError
+from neosian._foundation.shared.exceptions import (
+    InvalidModelError,
+    UnsupportedParameterError,
+)
 from neosian._foundation.shared.types import (
     AgentConfig,
     AgentName,
     Model,
     Provider,
+    ReasoningEffort,
     SystemPrompt,
     ToolName,
 )
@@ -137,3 +141,92 @@ class TestAgentConfigValidation:
         # Check that all models are listed
         for model in Model:
             assert f"Model.{model.name}" in error_msg
+
+
+@pytest.mark.unit
+class TestAgentConfigReasoningEffort:
+    """Test AgentConfig reasoning_effort validation."""
+
+    def test_reasoning_effort_with_gpt_oss_model_accepted(self) -> None:
+        """AgentConfig should accept reasoning_effort with GPT-OSS models."""
+        config = AgentConfig(
+            system_prompt=SystemPrompt("You are helpful."),
+            model=Model.GPT_OSS_20B,
+            reasoning_effort=ReasoningEffort.HIGH,
+        )
+        assert config.reasoning_effort == ReasoningEffort.HIGH
+
+    def test_reasoning_effort_with_gpt_oss_120b_accepted(self) -> None:
+        """AgentConfig should accept reasoning_effort with GPT-OSS-120B."""
+        config = AgentConfig(
+            system_prompt=SystemPrompt("You are helpful."),
+            model=Model.GPT_OSS_120B,
+            reasoning_effort=ReasoningEffort.MEDIUM,
+        )
+        assert config.reasoning_effort == ReasoningEffort.MEDIUM
+
+    def test_reasoning_effort_none_accepted_with_any_model(self) -> None:
+        """AgentConfig should accept reasoning_effort=None with any model."""
+        config = AgentConfig(
+            system_prompt=SystemPrompt("You are helpful."),
+            model=Model.LLAMA_3_3_70B,
+            reasoning_effort=None,
+        )
+        assert config.reasoning_effort is None
+
+    def test_reasoning_effort_default_is_none(self) -> None:
+        """AgentConfig should default reasoning_effort to None."""
+        config = AgentConfig(
+            system_prompt=SystemPrompt("You are helpful."),
+        )
+        assert config.reasoning_effort is None
+
+    def test_reasoning_effort_with_non_reasoning_model_raises_error(self) -> None:
+        """AgentConfig should raise error for reasoning_effort with non-GPT-OSS models."""
+        with pytest.raises(UnsupportedParameterError) as exc_info:
+            AgentConfig(
+                system_prompt=SystemPrompt("You are helpful."),
+                model=Model.LLAMA_3_3_70B,
+                reasoning_effort=ReasoningEffort.HIGH,
+            )
+
+        error_msg = str(exc_info.value)
+        assert "llama-3.3-70b-versatile" in error_msg
+        assert "GPT-OSS" in error_msg
+
+    def test_reasoning_effort_with_openai_model_raises_error(self) -> None:
+        """AgentConfig should raise error for reasoning_effort with OpenAI models."""
+        with pytest.raises(UnsupportedParameterError) as exc_info:
+            AgentConfig(
+                system_prompt=SystemPrompt("You are helpful."),
+                model=Model.GPT_5_NANO,
+                reasoning_effort=ReasoningEffort.LOW,
+            )
+
+        error_msg = str(exc_info.value)
+        assert "gpt-5-nano" in error_msg
+
+    def test_reasoning_effort_with_anthropic_model_raises_error(self) -> None:
+        """AgentConfig should raise error for reasoning_effort with Anthropic models."""
+        with pytest.raises(UnsupportedParameterError) as exc_info:
+            AgentConfig(
+                system_prompt=SystemPrompt("You are helpful."),
+                model=Model.CLAUDE_SONNET_4_5,
+                reasoning_effort=ReasoningEffort.HIGH,
+            )
+
+        error_msg = str(exc_info.value)
+        assert "claude-sonnet-4-5" in error_msg
+
+    def test_error_message_lists_supported_models(self) -> None:
+        """Error message should list supported models."""
+        with pytest.raises(UnsupportedParameterError) as exc_info:
+            AgentConfig(
+                system_prompt=SystemPrompt("You are helpful."),
+                model=Model.LLAMA_3_3_70B,
+                reasoning_effort=ReasoningEffort.HIGH,
+            )
+
+        error_msg = str(exc_info.value)
+        assert "Model.GPT_OSS_20B" in error_msg
+        assert "Model.GPT_OSS_120B" in error_msg
