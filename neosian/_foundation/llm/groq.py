@@ -20,10 +20,19 @@ from neosian._foundation.llm.base import (
     ToolDefinition,
     Usage,
 )
-from neosian._foundation.shared.constants import LLMDefaults
-from neosian._foundation.shared.exceptions import ToolCallGenerationError
+from neosian._foundation.shared.constants import ErrorMessages, LLMDefaults
+from neosian._foundation.shared.exceptions import (
+    ToolCallGenerationError,
+    UnsupportedParameterError,
+)
 from neosian._foundation.shared.serialization import safe_json_dumps
-from neosian._foundation.shared.types import Model, ResponseFormat, ToolCallId, ToolName
+from neosian._foundation.shared.types import (
+    Model,
+    ReasoningEffort,
+    ResponseFormat,
+    ToolCallId,
+    ToolName,
+)
 
 
 class GroqClient(BaseLLMClient):
@@ -48,6 +57,7 @@ class GroqClient(BaseLLMClient):
         tools: list[ToolDefinition] | None = None,
         temperature: float | None = None,
         response_format: ResponseFormat | None = None,
+        reasoning_effort: ReasoningEffort | None = None,
     ) -> CompletionResponse:
         """Send a completion request to Groq.
 
@@ -60,13 +70,21 @@ class GroqClient(BaseLLMClient):
             tools: Optional list of tools the model can call.
             temperature: Sampling temperature (0.0-2.0). None uses default.
             response_format: Optional structured output configuration.
+            reasoning_effort: Optional reasoning effort level (GPT-OSS models only).
 
         Returns:
             CompletionResponse with the model's response.
 
         Raises:
             ToolCallGenerationError: If tool call generation fails after retries.
+            UnsupportedParameterError: If reasoning_effort used with non-GPT-OSS model.
         """
+        # Validate reasoning_effort
+        if reasoning_effort is not None and not model.supports_reasoning:
+            raise UnsupportedParameterError(
+                ErrorMessages.REASONING_EFFORT_NOT_SUPPORTED.format(model=model.value)
+            )
+
         groq_messages = self._convert_messages(messages)
         groq_tools = self._convert_tools(tools) if tools else None
         groq_response_format = (
@@ -86,6 +104,9 @@ class GroqClient(BaseLLMClient):
                     tools=groq_tools,
                     temperature=current_temp,
                     response_format=groq_response_format,  # type: ignore[arg-type]
+                    reasoning_effort=(
+                        reasoning_effort.value if reasoning_effort else None
+                    ),
                 )
                 return self._parse_response(response)
 
@@ -148,10 +169,14 @@ class GroqClient(BaseLLMClient):
                     )
                 )
 
+        # Extract reasoning content if present (GPT-OSS models)
+        reasoning = getattr(response_message, "reasoning", None)
+
         return CompletionResponse(
             message=Message(
                 role=Role.ASSISTANT,
                 content=response_message.content,
+                reasoning=reasoning,
                 tool_calls=tool_calls,
             ),
             usage=Usage(
@@ -167,6 +192,7 @@ class GroqClient(BaseLLMClient):
         model: Model,
         tools: list[ToolDefinition] | None = None,
         temperature: float | None = None,
+        reasoning_effort: ReasoningEffort | None = None,
     ) -> AsyncIterator[StreamChunk]:
         """Stream a completion request from Groq.
 
@@ -175,10 +201,20 @@ class GroqClient(BaseLLMClient):
             model: Model identifier.
             tools: Optional list of tools the model can call.
             temperature: Sampling temperature (0.0-2.0). None uses default.
+            reasoning_effort: Optional reasoning effort level (GPT-OSS models only).
 
         Yields:
             StreamChunk objects as they arrive.
+
+        Raises:
+            UnsupportedParameterError: If reasoning_effort used with non-GPT-OSS model.
         """
+        # Validate reasoning_effort
+        if reasoning_effort is not None and not model.supports_reasoning:
+            raise UnsupportedParameterError(
+                ErrorMessages.REASONING_EFFORT_NOT_SUPPORTED.format(model=model.value)
+            )
+
         groq_messages = self._convert_messages(messages)
         groq_tools = self._convert_tools(tools) if tools else None
         temp = temperature if temperature is not None else LLMDefaults.TEMPERATURE
@@ -189,6 +225,7 @@ class GroqClient(BaseLLMClient):
             tools=groq_tools,
             temperature=temp,
             stream=True,
+            reasoning_effort=(reasoning_effort.value if reasoning_effort else None),
             extra_body={"stream_options": {"include_usage": True}},
         )
 
@@ -214,6 +251,9 @@ class GroqClient(BaseLLMClient):
 
             # Handle content
             content = delta.content if delta.content else None
+
+            # Handle reasoning (GPT-OSS models)
+            reasoning = getattr(delta, "reasoning", None)
 
             # Handle tool calls (streamed in parts)
             tool_calls: list[ToolCall] = []
@@ -253,6 +293,7 @@ class GroqClient(BaseLLMClient):
 
             yield StreamChunk(
                 content=content,
+                reasoning=reasoning,
                 tool_calls=tool_calls,
                 finish_reason=finish_reason,
             )

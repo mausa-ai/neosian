@@ -31,7 +31,13 @@ from neosian._foundation.shared.exceptions import (
     UnsupportedParameterError,
 )
 from neosian._foundation.shared.serialization import safe_json_dumps
-from neosian._foundation.shared.types import Model, ResponseFormat, ToolCallId, ToolName
+from neosian._foundation.shared.types import (
+    Model,
+    ReasoningEffort,
+    ResponseFormat,
+    ToolCallId,
+    ToolName,
+)
 
 
 class OpenAIClient(BaseLLMClient):
@@ -56,6 +62,7 @@ class OpenAIClient(BaseLLMClient):
         tools: list[ToolDefinition] | None = None,
         temperature: float | None = None,
         response_format: ResponseFormat | None = None,
+        reasoning_effort: ReasoningEffort | None = None,  # noqa: ARG002
     ) -> CompletionResponse:
         """Send a completion request to OpenAI.
 
@@ -68,6 +75,7 @@ class OpenAIClient(BaseLLMClient):
             tools: Optional list of tools the model can call.
             temperature: Not supported for GPT-5 models. Raises error if provided.
             response_format: Optional structured output configuration.
+            reasoning_effort: Ignored (Groq GPT-OSS only).
 
         Returns:
             CompletionResponse with the model's response.
@@ -182,6 +190,7 @@ class OpenAIClient(BaseLLMClient):
         model: Model,
         tools: list[ToolDefinition] | None = None,
         temperature: float | None = None,
+        reasoning_effort: ReasoningEffort | None = None,  # noqa: ARG002
     ) -> AsyncIterator[StreamChunk]:
         """Stream a completion request from OpenAI.
 
@@ -190,6 +199,7 @@ class OpenAIClient(BaseLLMClient):
             model: Model identifier.
             tools: Optional list of tools the model can call.
             temperature: Not supported for GPT-5 models. Raises error if provided.
+            reasoning_effort: Ignored (Groq GPT-OSS only).
 
         Yields:
             StreamChunk objects as they arrive.

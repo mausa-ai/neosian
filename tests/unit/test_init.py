@@ -63,6 +63,7 @@ def test_public_api_exports() -> None:
         __version__,
         heartbeat_event,
         load_prompt,
+        reasoning_event,
     )
 
     # Verify all imports are accessible
@@ -77,6 +78,7 @@ def test_public_api_exports() -> None:
     assert Usage is not None
     assert SSEEventType is not None
     assert heartbeat_event is not None
+    assert reasoning_event is not None
     assert Message is not None
     assert Role is not None
     assert Model is not None
@@ -137,12 +139,14 @@ def test_all_list_matches_exports() -> None:
         "MaxLen",
         "Pattern",
         # LLM
+        "ReasoningEffort",
         "ResponseFormat",
         "Usage",
         # Streaming
         "SSEEventType",
         "error_event",
         "heartbeat_event",
+        "reasoning_event",
         # Guardrails
         "GuardrailsConfig",
         "GuardrailMode",

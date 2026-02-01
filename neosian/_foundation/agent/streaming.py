@@ -17,6 +17,7 @@ class SSEEventType(str, Enum):
     """SSE event types for agent streaming."""
 
     CONTENT = "content"
+    REASONING = "reasoning"
     TOOL_CALL = "tool_call"
     TOOL_RESULT = "tool_result"
     ERROR = "error"
@@ -44,6 +45,11 @@ class SSEEvent:
 def content_event(content: str) -> SSEEvent:
     """Create a content SSE event."""
     return SSEEvent(event=SSEEventType.CONTENT, data={"content": content})
+
+
+def reasoning_event(reasoning: str) -> SSEEvent:
+    """Create a reasoning SSE event for model thinking/reasoning content."""
+    return SSEEvent(event=SSEEventType.REASONING, data={"reasoning": reasoning})
 
 
 def tool_call_event(tool_call: ToolCall) -> SSEEvent:
@@ -210,6 +216,10 @@ async def stream_to_sse(
     final_usage: Usage | None = None
 
     async for chunk in stream:
+        # Yield reasoning if present (comes before content for reasoning models)
+        if chunk.reasoning:
+            yield emitter.emit(reasoning_event(chunk.reasoning))
+
         # Yield content if present
         if chunk.content:
             yield emitter.emit(content_event(chunk.content))

@@ -8,8 +8,11 @@ from groq import BadRequestError
 from neosian._foundation.llm.base import Message, Role, ToolDefinition
 from neosian._foundation.llm.groq import GroqClient
 from neosian._foundation.shared.constants import LLMDefaults
-from neosian._foundation.shared.exceptions import ToolCallGenerationError
-from neosian._foundation.shared.types import Model, ToolName
+from neosian._foundation.shared.exceptions import (
+    ToolCallGenerationError,
+    UnsupportedParameterError,
+)
+from neosian._foundation.shared.types import Model, ReasoningEffort, ToolName
 
 
 @pytest.mark.unit
@@ -340,3 +343,300 @@ class TestGroqClientRetry:
 
         # Only one attempt - no retries for non-tool errors
         assert mock_create.call_count == 1
+
+
+@pytest.mark.unit
+class TestGroqClientReasoningEffort:
+    """Test reasoning_effort parameter handling."""
+
+    @pytest.mark.asyncio
+    async def test_reasoning_effort_passed_to_gpt_oss_model(self) -> None:
+        """reasoning_effort should be passed for GPT-OSS models."""
+        client = GroqClient(api_key="test-key")
+
+        mock_create = AsyncMock()
+        client._client.chat.completions.create = mock_create
+
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "Reasoning response"
+        mock_response.choices[0].message.tool_calls = None
+        mock_response.usage.prompt_tokens = 10
+        mock_response.usage.completion_tokens = 5
+        mock_response.model = "openai/gpt-oss-20b"
+
+        mock_create.return_value = mock_response
+
+        await client.complete(
+            messages=[Message(role=Role.USER, content="Think carefully about this")],
+            model=Model.GPT_OSS_20B,
+            reasoning_effort=ReasoningEffort.HIGH,
+        )
+
+        mock_create.assert_called_once()
+        assert mock_create.call_args.kwargs["reasoning_effort"] == "high"
+
+    @pytest.mark.asyncio
+    async def test_reasoning_effort_raises_for_non_reasoning_model(self) -> None:
+        """reasoning_effort should raise for non-GPT-OSS models."""
+        client = GroqClient(api_key="test-key")
+
+        with pytest.raises(UnsupportedParameterError) as exc_info:
+            await client.complete(
+                messages=[Message(role=Role.USER, content="Hi")],
+                model=Model.LLAMA_3_3_70B,
+                reasoning_effort=ReasoningEffort.HIGH,
+            )
+
+        assert "llama-3.3-70b-versatile" in str(exc_info.value)
+        assert "GPT-OSS" in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_reasoning_effort_none_passed_as_none(self) -> None:
+        """reasoning_effort=None should pass None to API."""
+        client = GroqClient(api_key="test-key")
+
+        mock_create = AsyncMock()
+        client._client.chat.completions.create = mock_create
+
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "Normal response"
+        mock_response.choices[0].message.tool_calls = None
+        mock_response.usage.prompt_tokens = 10
+        mock_response.usage.completion_tokens = 5
+        mock_response.model = "openai/gpt-oss-20b"
+
+        mock_create.return_value = mock_response
+
+        await client.complete(
+            messages=[Message(role=Role.USER, content="Hi")],
+            model=Model.GPT_OSS_20B,
+            reasoning_effort=None,
+        )
+
+        mock_create.assert_called_once()
+        assert mock_create.call_args.kwargs["reasoning_effort"] is None
+
+    @pytest.mark.asyncio
+    async def test_reasoning_effort_in_stream(self) -> None:
+        """reasoning_effort should work with stream() method."""
+        client = GroqClient(api_key="test-key")
+
+        mock_create = AsyncMock()
+        client._client.chat.completions.create = mock_create
+
+        # Mock async iterator
+        class MockAsyncIterator:
+            def __init__(self) -> None:
+                self.items: list[object] = []
+                self.index = 0
+
+            def __aiter__(self) -> "MockAsyncIterator":
+                return self
+
+            async def __anext__(self) -> object:
+                if self.index >= len(self.items):
+                    raise StopAsyncIteration
+                item = self.items[self.index]
+                self.index += 1
+                return item
+
+        mock_create.return_value = MockAsyncIterator()
+
+        # Consume the generator (even though empty)
+        async for _ in client.stream(
+            messages=[Message(role=Role.USER, content="Think")],
+            model=Model.GPT_OSS_20B,
+            reasoning_effort=ReasoningEffort.MEDIUM,
+        ):
+            pass
+
+        mock_create.assert_called_once()
+        assert mock_create.call_args.kwargs["reasoning_effort"] == "medium"
+
+    @pytest.mark.asyncio
+    async def test_reasoning_effort_stream_raises_for_non_reasoning_model(self) -> None:
+        """reasoning_effort in stream() should raise for non-GPT-OSS models."""
+        client = GroqClient(api_key="test-key")
+
+        with pytest.raises(UnsupportedParameterError):
+            async for _ in client.stream(
+                messages=[Message(role=Role.USER, content="Hi")],
+                model=Model.LLAMA_3_3_70B,
+                reasoning_effort=ReasoningEffort.LOW,
+            ):
+                pass
+
+
+@pytest.mark.unit
+class TestGroqClientReasoningContent:
+    """Test reasoning content parsing."""
+
+    @pytest.mark.asyncio
+    async def test_complete_parses_reasoning_content(self) -> None:
+        """complete() should parse reasoning from response message."""
+        client = GroqClient(api_key="test-key")
+
+        mock_create = AsyncMock()
+        client._client.chat.completions.create = mock_create
+
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "The answer is 42"
+        mock_response.choices[0].message.reasoning = "Let me think about this..."
+        mock_response.choices[0].message.tool_calls = None
+        mock_response.usage.prompt_tokens = 10
+        mock_response.usage.completion_tokens = 20
+        mock_response.model = "openai/gpt-oss-20b"
+
+        mock_create.return_value = mock_response
+
+        result = await client.complete(
+            messages=[Message(role=Role.USER, content="What is the meaning of life?")],
+            model=Model.GPT_OSS_20B,
+        )
+
+        assert result.message.content == "The answer is 42"
+        assert result.message.reasoning == "Let me think about this..."
+
+    @pytest.mark.asyncio
+    async def test_complete_handles_no_reasoning(self) -> None:
+        """complete() should handle responses without reasoning field."""
+        client = GroqClient(api_key="test-key")
+
+        mock_create = AsyncMock()
+        client._client.chat.completions.create = mock_create
+
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "Hello"
+        # No reasoning attribute on mock - getattr will return None
+        del mock_response.choices[0].message.reasoning
+        mock_response.choices[0].message.tool_calls = None
+        mock_response.usage.prompt_tokens = 5
+        mock_response.usage.completion_tokens = 2
+        mock_response.model = "llama-3.3-70b-versatile"
+
+        mock_create.return_value = mock_response
+
+        result = await client.complete(
+            messages=[Message(role=Role.USER, content="Hi")],
+            model=Model.LLAMA_3_3_70B,
+        )
+
+        assert result.message.content == "Hello"
+        assert result.message.reasoning is None
+
+    @pytest.mark.asyncio
+    async def test_stream_parses_reasoning_chunks(self) -> None:
+        """stream() should parse reasoning from delta."""
+        client = GroqClient(api_key="test-key")
+
+        mock_create = AsyncMock()
+        client._client.chat.completions.create = mock_create
+
+        class MockAsyncIterator:
+            def __init__(self, items: list[object]) -> None:
+                self.items = items
+                self.index = 0
+
+            def __aiter__(self) -> "MockAsyncIterator":
+                return self
+
+            async def __anext__(self) -> object:
+                if self.index >= len(self.items):
+                    raise StopAsyncIteration
+                item = self.items[self.index]
+                self.index += 1
+                return item
+
+        # Create mock chunks with reasoning
+        chunk1 = MagicMock()
+        chunk1.choices = [MagicMock()]
+        chunk1.choices[0].delta.content = None
+        chunk1.choices[0].delta.reasoning = "Let me think"
+        chunk1.choices[0].delta.tool_calls = None
+        chunk1.choices[0].finish_reason = None
+        chunk1.usage = None
+
+        chunk2 = MagicMock()
+        chunk2.choices = [MagicMock()]
+        chunk2.choices[0].delta.content = "Answer"
+        chunk2.choices[0].delta.reasoning = None
+        chunk2.choices[0].delta.tool_calls = None
+        chunk2.choices[0].finish_reason = None
+        chunk2.usage = None
+
+        chunk3 = MagicMock()
+        chunk3.choices = [MagicMock()]
+        chunk3.choices[0].delta.content = None
+        chunk3.choices[0].delta.reasoning = None
+        chunk3.choices[0].delta.tool_calls = None
+        chunk3.choices[0].finish_reason = "stop"
+        chunk3.usage = None
+
+        mock_create.return_value = MockAsyncIterator([chunk1, chunk2, chunk3])
+
+        chunks = []
+        async for chunk in client.stream(
+            messages=[Message(role=Role.USER, content="Think")],
+            model=Model.GPT_OSS_20B,
+        ):
+            chunks.append(chunk)
+
+        assert len(chunks) == 3
+        # First chunk has reasoning
+        assert chunks[0].reasoning == "Let me think"
+        assert chunks[0].content is None
+        # Second chunk has content
+        assert chunks[1].content == "Answer"
+        assert chunks[1].reasoning is None
+        # Third chunk has finish_reason
+        assert chunks[2].finish_reason == "stop"
+
+    @pytest.mark.asyncio
+    async def test_stream_handles_no_reasoning_attribute(self) -> None:
+        """stream() should handle deltas without reasoning attribute."""
+        client = GroqClient(api_key="test-key")
+
+        mock_create = AsyncMock()
+        client._client.chat.completions.create = mock_create
+
+        class MockAsyncIterator:
+            def __init__(self, items: list[object]) -> None:
+                self.items = items
+                self.index = 0
+
+            def __aiter__(self) -> "MockAsyncIterator":
+                return self
+
+            async def __anext__(self) -> object:
+                if self.index >= len(self.items):
+                    raise StopAsyncIteration
+                item = self.items[self.index]
+                self.index += 1
+                return item
+
+        # Create mock chunk without reasoning attribute
+        chunk = MagicMock()
+        chunk.choices = [MagicMock()]
+        chunk.choices[0].delta.content = "Hello"
+        # No reasoning attribute - getattr will return None
+        del chunk.choices[0].delta.reasoning
+        chunk.choices[0].delta.tool_calls = None
+        chunk.choices[0].finish_reason = "stop"
+        chunk.usage = None
+
+        mock_create.return_value = MockAsyncIterator([chunk])
+
+        chunks = []
+        async for c in client.stream(
+            messages=[Message(role=Role.USER, content="Hi")],
+            model=Model.LLAMA_3_3_70B,
+        ):
+            chunks.append(c)
+
+        assert len(chunks) == 1
+        assert chunks[0].content == "Hello"
+        assert chunks[0].reasoning is None

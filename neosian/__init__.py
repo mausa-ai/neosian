@@ -6,6 +6,7 @@ from neosian._foundation.agent.streaming import (
     SSEEventType,
     error_event,
     heartbeat_event,
+    reasoning_event,
 )
 from neosian._foundation.guardrails.policy import CommonPolicies, PolicyBuilder
 from neosian._foundation.llm.base import Message, Role, ToolCall, Usage
@@ -44,6 +45,7 @@ from neosian._foundation.shared.types import (
     Model,
     PolicyResult,
     Provider,
+    ReasoningEffort,
     ResponseFormat,
     ToolCallCapture,
     ToolCallId,
@@ -51,7 +53,7 @@ from neosian._foundation.shared.types import (
 )
 from neosian._foundation.tools.base import Tool, ToolResult
 
-__version__ = "0.27.0"
+__version__ = "0.28.0"
 
 __all__ = [
     # Agent
@@ -77,12 +79,14 @@ __all__ = [
     # LLM
     "Model",
     "Provider",
+    "ReasoningEffort",
     "ResponseFormat",
     "Usage",
     # Streaming
     "SSEEventType",
     "error_event",
     "heartbeat_event",
+    "reasoning_event",
     # Guardrails
     "GuardrailsConfig",
     "GuardrailMode",

@@ -9,7 +9,13 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-from neosian._foundation.shared.types import Model, ResponseFormat, ToolCallId, ToolName
+from neosian._foundation.shared.types import (
+    Model,
+    ReasoningEffort,
+    ResponseFormat,
+    ToolCallId,
+    ToolName,
+)
 
 
 class Role(str, Enum):
@@ -36,6 +42,7 @@ class Message:
 
     role: Role
     content: str | None = None
+    reasoning: str | None = None
     tool_calls: list[ToolCall] = field(default_factory=list)
     tool_call_id: ToolCallId | None = None
 
@@ -54,6 +61,7 @@ class StreamChunk:
     """A chunk of streamed response."""
 
     content: str | None = None
+    reasoning: str | None = None
     tool_calls: list[ToolCall] = field(default_factory=list)
     finish_reason: str | None = None
     usage: "Usage | None" = None
@@ -95,6 +103,7 @@ class BaseLLMClient(ABC):
         tools: list[ToolDefinition] | None = None,
         temperature: float | None = None,
         response_format: ResponseFormat | None = None,
+        reasoning_effort: ReasoningEffort | None = None,
     ) -> CompletionResponse:
         """Send a completion request to the LLM.
 
@@ -106,6 +115,7 @@ class BaseLLMClient(ABC):
             response_format: Optional structured output configuration. When provided,
                 the model will be constrained to generate valid JSON matching the
                 schema defined in the ResponseFormat.
+            reasoning_effort: Optional reasoning effort level (Groq GPT-OSS only).
 
         Returns:
             CompletionResponse with the model's response.
@@ -119,6 +129,7 @@ class BaseLLMClient(ABC):
         model: Model,
         tools: list[ToolDefinition] | None = None,
         temperature: float | None = None,
+        reasoning_effort: ReasoningEffort | None = None,
     ) -> AsyncIterator[StreamChunk]:
         """Stream a completion request from the LLM.
 
@@ -127,6 +138,7 @@ class BaseLLMClient(ABC):
             model: Model identifier.
             tools: Optional list of tools the model can call.
             temperature: Sampling temperature (0.0-2.0). None uses provider default.
+            reasoning_effort: Optional reasoning effort level (Groq GPT-OSS only).
 
         Yields:
             StreamChunk objects as they arrive.

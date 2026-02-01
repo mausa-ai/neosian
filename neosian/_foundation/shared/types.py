@@ -50,6 +50,18 @@ _MODEL_MAX_TOKENS: dict[str, int] = {}
 _DEFAULT_MAX_TOKENS = 8192
 
 
+class ReasoningEffort(str, Enum):
+    """Reasoning effort level for supported models.
+
+    Controls how many reasoning tokens the model uses.
+    Only supported by GPT-OSS models (gpt-oss-20b, gpt-oss-120b).
+    """
+
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+
 class Model(str, Enum):
     """Supported LLM models."""
 
@@ -91,6 +103,11 @@ class Model(str, Enum):
         """Get max output tokens for this model."""
         return _MODEL_MAX_TOKENS.get(self.value, _DEFAULT_MAX_TOKENS)
 
+    @property
+    def supports_reasoning(self) -> bool:
+        """Check if this model supports reasoning_effort parameter."""
+        return self in _REASONING_MODELS
+
 
 # Populate provider mappings
 _GROQ_MODELS = {
@@ -119,6 +136,14 @@ _ANTHROPIC_MODELS = {
     Model.CLAUDE_SONNET_4_5,
     Model.CLAUDE_HAIKU_4_5,
 }
+
+# Models that support reasoning_effort parameter (Groq GPT-OSS only)
+_REASONING_MODELS: frozenset[Model] = frozenset(
+    {
+        Model.GPT_OSS_20B,
+        Model.GPT_OSS_120B,
+    }
+)
 
 for m in _GROQ_MODELS:
     _MODEL_PROVIDERS[m.value] = Provider.GROQ

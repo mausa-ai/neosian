@@ -13,6 +13,7 @@ from neosian._foundation.agent.streaming import (
     done_event,
     error_event,
     heartbeat_event,
+    reasoning_event,
     stream_to_sse,
     tool_call_event,
     tool_result_event,
@@ -56,6 +57,13 @@ class TestEventFactories:
 
         assert event.event == SSEEventType.CONTENT
         assert event.data["content"] == "Hello world"
+
+    def test_reasoning_event(self) -> None:
+        """reasoning_event should create reasoning SSE event."""
+        event = reasoning_event("Let me think about this...")
+
+        assert event.event == SSEEventType.REASONING
+        assert event.data["reasoning"] == "Let me think about this..."
 
     def test_tool_call_event(self) -> None:
         """tool_call_event should create tool call SSE event."""
@@ -195,6 +203,52 @@ class TestStreamToSSE:
         assert "content" in events[0]
         assert "Hello " in events[0]
         assert "world" in events[1]
+        assert "done" in events[2]
+
+    @pytest.mark.asyncio
+    async def test_reasoning_chunks(self) -> None:
+        """stream_to_sse should convert reasoning chunks before content."""
+
+        async def mock_stream() -> "AsyncIterator[StreamChunk]":
+            yield StreamChunk(reasoning="Let me think...")
+            yield StreamChunk(reasoning="The answer is")
+            yield StreamChunk(content="42")
+            yield StreamChunk(finish_reason="stop")
+
+        events = []
+        async for sse in stream_to_sse(mock_stream()):
+            events.append(sse)
+
+        assert len(events) == 4
+        # Reasoning events come first
+        assert "reasoning" in events[0]
+        assert "Let me think..." in events[0]
+        assert "reasoning" in events[1]
+        assert "The answer is" in events[1]
+        # Then content
+        assert "content" in events[2]
+        assert "42" in events[2]
+        # Finally done
+        assert "done" in events[3]
+
+    @pytest.mark.asyncio
+    async def test_reasoning_and_content_in_same_chunk(self) -> None:
+        """stream_to_sse should emit reasoning before content when in same chunk."""
+
+        async def mock_stream() -> "AsyncIterator[StreamChunk]":
+            yield StreamChunk(reasoning="Thinking...", content="Answer")
+            yield StreamChunk(finish_reason="stop")
+
+        events = []
+        async for sse in stream_to_sse(mock_stream()):
+            events.append(sse)
+
+        assert len(events) == 3
+        # Reasoning first, even though same chunk
+        assert "reasoning" in events[0]
+        assert "Thinking..." in events[0]
+        assert "content" in events[1]
+        assert "Answer" in events[1]
         assert "done" in events[2]
 
     @pytest.mark.asyncio

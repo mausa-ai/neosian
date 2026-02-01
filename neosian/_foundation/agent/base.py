@@ -313,12 +313,16 @@ class Agent:
             self._guardrails is None
             or self._guardrails.input_mode == GuardrailMode.NONE
         ):
-            return await self._execute_agent_core(messages, response_format=response_format)
+            return await self._execute_agent_core(
+                messages, response_format=response_format
+            )
 
         # Extract user content for guardrail check
         user_content = self._extract_user_content(messages)
         if not user_content:
-            return await self._execute_agent_core(messages, response_format=response_format)
+            return await self._execute_agent_core(
+                messages, response_format=response_format
+            )
 
         # Run guard and agent in parallel
         guard_task = asyncio.create_task(self._check_guardrails(user_content, "input"))

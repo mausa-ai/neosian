@@ -55,6 +55,12 @@ class ErrorMessages:
         "Temperature parameter is not supported for OpenAI GPT-5 models"
     )
 
+    # Groq specific errors
+    REASONING_EFFORT_NOT_SUPPORTED: str = (
+        "reasoning_effort is only supported for GPT-OSS models. "
+        "Model '{model}' does not support reasoning_effort."
+    )
+
     # Provider/Fallback errors
     PROVIDER_FAILED: str = "Provider {provider} failed: {error}"
     MODEL_FAILED: str = "Model {model} failed: {error}"

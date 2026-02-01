@@ -17,7 +17,13 @@ from neosian._foundation.llm.base import (
 )
 from neosian._foundation.shared.constants import LLMDefaults, StructuredOutputs
 from neosian._foundation.shared.exceptions import ToolCallGenerationError
-from neosian._foundation.shared.types import Model, ResponseFormat, ToolCallId, ToolName
+from neosian._foundation.shared.types import (
+    Model,
+    ReasoningEffort,
+    ResponseFormat,
+    ToolCallId,
+    ToolName,
+)
 
 
 class AnthropicClient(BaseLLMClient):
@@ -42,6 +48,7 @@ class AnthropicClient(BaseLLMClient):
         tools: list[ToolDefinition] | None = None,
         temperature: float | None = None,
         response_format: ResponseFormat | None = None,
+        reasoning_effort: ReasoningEffort | None = None,  # noqa: ARG002
     ) -> CompletionResponse:
         """Send a completion request to Anthropic.
 
@@ -54,6 +61,7 @@ class AnthropicClient(BaseLLMClient):
             tools: Optional list of tools the model can call.
             temperature: Sampling temperature (0.0-1.0). None uses default.
             response_format: Optional structured output configuration.
+            reasoning_effort: Ignored (Groq GPT-OSS only).
 
         Returns:
             CompletionResponse with the model's response.
@@ -166,6 +174,7 @@ class AnthropicClient(BaseLLMClient):
         model: Model,
         tools: list[ToolDefinition] | None = None,  # noqa: ARG002
         temperature: float | None = None,
+        reasoning_effort: ReasoningEffort | None = None,  # noqa: ARG002
     ) -> AsyncIterator[StreamChunk]:
         """Stream a completion request from Anthropic.
 
@@ -177,6 +186,7 @@ class AnthropicClient(BaseLLMClient):
             model: Model identifier.
             tools: Not used (agent handles tools via complete()).
             temperature: Sampling temperature (0.0-1.0). None uses default.
+            reasoning_effort: Ignored (Groq GPT-OSS only).
 
         Yields:
             StreamChunk objects as they arrive.
