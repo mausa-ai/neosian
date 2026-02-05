@@ -1,5 +1,6 @@
 """Tests for structured output support."""
 
+from typing import Literal, Union
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -134,9 +135,7 @@ class TestStructuredOutputValidation:
         messages = [Message(role=Role.USER, content="What's the weather?")]
         rf = ResponseFormat(schema=WeatherResponse)
 
-        response = await agent_without_tools.run(
-            messages, stream=False, response_format=rf
-        )
+        await agent_without_tools.run(messages, stream=False, response_format=rf)
 
         # Verify response_format was passed to client
         mock_client.complete.assert_called_once()
@@ -219,3 +218,148 @@ class TestResponseFormatJsonSchema:
         assert schema["properties"]["temperature"]["type"] == "number"
         assert schema["properties"]["conditions"]["type"] == "string"
         assert schema["properties"]["humidity"]["type"] == "integer"
+
+
+# Union type test models
+class TTSOutput(BaseModel):
+    """TTS output model for Union testing."""
+
+    type: Literal["tts"]
+    audio_url: str
+
+
+class MusicOutput(BaseModel):
+    """Music output model for Union testing."""
+
+    type: Literal["music"]
+    track_id: str
+
+
+OutputUnion = Union[TTSOutput, MusicOutput]  # noqa: UP007 - Testing typing.Union
+
+
+@pytest.mark.unit
+class TestUnionTypeSupport:
+    """Tests for discriminated Union type support in ResponseFormat."""
+
+    @pytest.fixture
+    def mock_router(self) -> MagicMock:
+        """Create a mock router."""
+        router = MagicMock()
+        return router
+
+    @pytest.fixture
+    def agent_without_tools(self, mock_router: MagicMock) -> Agent:
+        """Create an agent without tools (including todo disabled)."""
+        config = AgentConfig(
+            system_prompt="You are a helpful assistant.",
+            enable_todo=False,
+        )
+        agent = Agent(config=config)
+        agent._router = mock_router
+        return agent
+
+    def test_response_format_with_union_type(self) -> None:
+        """Test creating ResponseFormat with a Union type."""
+        rf = ResponseFormat(schema=OutputUnion)
+        assert rf.strict is True
+
+    def test_response_format_with_pipe_union(self) -> None:
+        """Test creating ResponseFormat with pipe union syntax."""
+        PipeUnion = TTSOutput | MusicOutput
+        rf = ResponseFormat(schema=PipeUnion)
+        assert rf.strict is True
+
+    @pytest.mark.asyncio
+    async def test_union_type_parsed_as_tts(
+        self, agent_without_tools: Agent, mock_router: MagicMock
+    ) -> None:
+        """Test that Union type response is parsed into TTSOutput."""
+        mock_client = AsyncMock()
+        # LLM returns wrapped format for union types: {"result": {...}}
+        mock_client.complete = AsyncMock(
+            return_value=CompletionResponse(
+                message=Message(
+                    role=Role.ASSISTANT,
+                    content='{"result": {"type": "tts", "audio_url": "https://example.com/audio.mp3"}}',
+                ),
+                usage=Usage(input_tokens=10, output_tokens=20),
+                model="gpt-5-nano",
+            )
+        )
+        mock_router.create_client.return_value = mock_client
+
+        messages = [Message(role=Role.USER, content="Generate audio")]
+        rf = ResponseFormat(schema=OutputUnion)
+
+        response = await agent_without_tools.run(
+            messages, stream=False, response_format=rf
+        )
+
+        assert response.parsed is not None
+        assert isinstance(response.parsed, TTSOutput)
+        assert response.parsed.type == "tts"
+        assert response.parsed.audio_url == "https://example.com/audio.mp3"
+
+    @pytest.mark.asyncio
+    async def test_union_type_parsed_as_music(
+        self, agent_without_tools: Agent, mock_router: MagicMock
+    ) -> None:
+        """Test that Union type response is parsed into MusicOutput."""
+        mock_client = AsyncMock()
+        # LLM returns wrapped format for union types: {"result": {...}}
+        mock_client.complete = AsyncMock(
+            return_value=CompletionResponse(
+                message=Message(
+                    role=Role.ASSISTANT,
+                    content='{"result": {"type": "music", "track_id": "track-123"}}',
+                ),
+                usage=Usage(input_tokens=10, output_tokens=20),
+                model="gpt-5-nano",
+            )
+        )
+        mock_router.create_client.return_value = mock_client
+
+        messages = [Message(role=Role.USER, content="Generate music")]
+        rf = ResponseFormat(schema=OutputUnion)
+
+        response = await agent_without_tools.run(
+            messages, stream=False, response_format=rf
+        )
+
+        assert response.parsed is not None
+        assert isinstance(response.parsed, MusicOutput)
+        assert response.parsed.type == "music"
+        assert response.parsed.track_id == "track-123"
+
+    @pytest.mark.asyncio
+    async def test_pipe_union_type_parsed_correctly(
+        self, agent_without_tools: Agent, mock_router: MagicMock
+    ) -> None:
+        """Test that pipe union (A | B) syntax parses correctly."""
+        PipeUnion = TTSOutput | MusicOutput
+
+        mock_client = AsyncMock()
+        # LLM returns wrapped format for union types: {"result": {...}}
+        mock_client.complete = AsyncMock(
+            return_value=CompletionResponse(
+                message=Message(
+                    role=Role.ASSISTANT,
+                    content='{"result": {"type": "tts", "audio_url": "https://example.com/test.mp3"}}',
+                ),
+                usage=Usage(input_tokens=10, output_tokens=20),
+                model="gpt-5-nano",
+            )
+        )
+        mock_router.create_client.return_value = mock_client
+
+        messages = [Message(role=Role.USER, content="Generate audio")]
+        rf = ResponseFormat(schema=PipeUnion)
+
+        response = await agent_without_tools.run(
+            messages, stream=False, response_format=rf
+        )
+
+        assert response.parsed is not None
+        assert isinstance(response.parsed, TTSOutput)
+        assert response.parsed.audio_url == "https://example.com/test.mp3"

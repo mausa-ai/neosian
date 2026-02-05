@@ -1498,7 +1498,9 @@ class Agent:
         # Parse structured output if response_format was provided
         parsed: BaseModel | None = None
         if response_format is not None and message.content:
-            parsed = response_format.schema.model_validate_json(message.content)
+            from neosian._foundation.shared.schema import validate_json
+
+            parsed = validate_json(response_format.schema, message.content)
 
         return AgentResponse(
             message=message,

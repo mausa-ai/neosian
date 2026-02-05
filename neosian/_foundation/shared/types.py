@@ -220,17 +220,22 @@ class FallbackState:
 class ResponseFormat:
     """Structured output configuration.
 
-    Specifies a Pydantic model that the LLM response must conform to.
+    Specifies a Pydantic model or Union type that the LLM response must conform to.
     The LLM will be constrained to generate valid JSON matching the schema.
+
+    Supports:
+        - Single Pydantic BaseModel subclass
+        - Discriminated Union types (Union[ModelA, ModelB])
 
     Note: Incompatible with stream=True. Structured outputs require complete
     responses for schema validation.
 
     Attributes:
-        schema: Pydantic model class defining the output structure.
+        schema: Pydantic model class or Union type defining the output structure.
         strict: If True, model must exactly match schema. Defaults to True.
 
-    Example:
+    Examples:
+        # Single model
         from pydantic import BaseModel
         from neosian import Agent, AgentConfig, ResponseFormat
 
@@ -244,9 +249,27 @@ class ResponseFormat:
             response_format=ResponseFormat(schema=WeatherResponse),
         )
         # response.parsed is a WeatherResponse instance
+
+        # Discriminated Union
+        from typing import Literal, Union
+
+        class TTSOutput(BaseModel):
+            type: Literal["tts"]
+            audio_url: str
+
+        class MusicOutput(BaseModel):
+            type: Literal["music"]
+            track_id: str
+
+        response = await agent.run(
+            messages,
+            stream=False,
+            response_format=ResponseFormat(schema=Union[TTSOutput, MusicOutput]),
+        )
+        # response.parsed is TTSOutput or MusicOutput instance
     """
 
-    schema: type[BaseModel]
+    schema: type[BaseModel] | type  # Union types are `type` at runtime
     strict: bool = True
 
 

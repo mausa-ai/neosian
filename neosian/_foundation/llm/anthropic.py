@@ -317,7 +317,9 @@ class AnthropicClient(BaseLLMClient):
         Returns:
             Anthropic-compatible output_format dict.
         """
-        schema = response_format.schema.model_json_schema()
+        from neosian._foundation.shared.schema import get_json_schema
+
+        schema = get_json_schema(response_format.schema)
         # Anthropic requires additionalProperties: false for strict schemas
         if response_format.strict and "additionalProperties" not in schema:
             schema["additionalProperties"] = False

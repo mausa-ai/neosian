@@ -212,9 +212,7 @@ class TestAgentReasoningEffort:
         )
         agent = Agent(config=config)
 
-        messages = [
-            Message(role=Role.USER, content="What is 17 * 23? Show your work.")
-        ]
+        messages = [Message(role=Role.USER, content="What is 17 * 23? Show your work.")]
         response = await agent.run(messages, stream=False)
 
         assert response.message.role == Role.ASSISTANT

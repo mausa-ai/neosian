@@ -360,7 +360,9 @@ class OpenAIClient(BaseLLMClient):
         Returns:
             OpenAI-compatible response_format TypedDict.
         """
-        schema = response_format.schema.model_json_schema()
+        from neosian._foundation.shared.schema import get_json_schema, get_schema_name
+
+        schema = get_json_schema(response_format.schema)
         # OpenAI requires additionalProperties: false for strict mode
         schema["additionalProperties"] = False
         # Cast to OpenAI ResponseFormat TypedDict - SDK accepts this structure
@@ -369,7 +371,7 @@ class OpenAIClient(BaseLLMClient):
             {
                 "type": "json_schema",
                 "json_schema": {
-                    "name": response_format.schema.__name__,
+                    "name": get_schema_name(response_format.schema),
                     "strict": response_format.strict,
                     "schema": schema,
                 },
