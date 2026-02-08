@@ -232,17 +232,14 @@ class TestAgentConfigReasoningEffort:
         error_msg = str(exc_info.value)
         assert "llama-3.3-70b-versatile" in error_msg
 
-    def test_reasoning_effort_with_openai_model_raises_error(self) -> None:
-        """AgentConfig should raise error for reasoning_effort with OpenAI models."""
-        with pytest.raises(UnsupportedParameterError) as exc_info:
-            AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
-                model=Model.GPT_5_NANO,
-                reasoning_effort=ReasoningEffort.LOW,
-            )
-
-        error_msg = str(exc_info.value)
-        assert "gpt-5-nano" in error_msg
+    def test_reasoning_effort_with_openai_model_accepted(self) -> None:
+        """AgentConfig should accept reasoning_effort with OpenAI GPT-5 models."""
+        config = AgentConfig(
+            system_prompt=SystemPrompt("You are helpful."),
+            model=Model.GPT_5_NANO,
+            reasoning_effort=ReasoningEffort.LOW,
+        )
+        assert config.reasoning_effort == ReasoningEffort.LOW
 
     def test_reasoning_effort_with_non_reasoning_anthropic_model_raises_error(
         self,
@@ -289,6 +286,10 @@ class TestAgentConfigReasoningEffort:
         assert "Model.GPT_OSS_20B" in error_msg
         assert "Model.GPT_OSS_120B" in error_msg
         assert "Model.CLAUDE_OPUS_4_6" in error_msg
+        assert "Model.GPT_5_1" in error_msg
+        assert "Model.GPT_5_MINI" in error_msg
+        assert "Model.GPT_5_NANO" in error_msg
+        assert "Model.GPT_5_PRO" in error_msg
 
 
 @pytest.mark.unit

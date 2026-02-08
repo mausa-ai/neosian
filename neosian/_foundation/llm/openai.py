@@ -1,6 +1,7 @@
 """OpenAI LLM client implementation."""
 
 import json
+import logging
 from collections.abc import AsyncIterator
 from typing import cast
 
@@ -39,6 +40,8 @@ from neosian._foundation.shared.types import (
     ToolName,
 )
 
+logger = logging.getLogger(__name__)
+
 
 class OpenAIClient(BaseLLMClient):
     """OpenAI LLM client.
@@ -62,7 +65,7 @@ class OpenAIClient(BaseLLMClient):
         tools: list[ToolDefinition] | None = None,
         temperature: float | None = None,
         response_format: ResponseFormat | None = None,
-        reasoning_effort: ReasoningEffort | None = None,  # noqa: ARG002
+        reasoning_effort: ReasoningEffort | None = None,
         max_tokens: int = LLMDefaults.MAX_OUTPUT_TOKENS,
     ) -> CompletionResponse:
         """Send a completion request to OpenAI.
@@ -76,19 +79,23 @@ class OpenAIClient(BaseLLMClient):
             tools: Optional list of tools the model can call.
             temperature: Not supported for GPT-5 models. Raises error if provided.
             response_format: Optional structured output configuration.
-            reasoning_effort: Ignored (Groq GPT-OSS only).
+            reasoning_effort: Optional reasoning effort level for supported models.
+            max_tokens: Maximum output tokens for this request.
 
         Returns:
             CompletionResponse with the model's response.
 
         Raises:
-            UnsupportedParameterError: If temperature is provided.
+            UnsupportedParameterError: If temperature is provided or reasoning_effort
+                used with unsupported model.
             ToolCallGenerationError: If tool call generation fails after retries.
         """
         if temperature is not None:
             raise UnsupportedParameterError(
                 ErrorMessages.OPENAI_TEMPERATURE_NOT_SUPPORTED
             )
+
+        effective_effort = self._resolve_reasoning_effort(model, reasoning_effort)
 
         openai_messages = self._convert_messages(messages)
         openai_tools = self._convert_tools(tools) if tools else None
@@ -98,12 +105,17 @@ class OpenAIClient(BaseLLMClient):
 
         for attempt in range(LLMDefaults.MAX_TOOL_CALL_RETRIES + 1):
             try:
-                response = await self._client.chat.completions.create(
+                response = await self._client.chat.completions.create(  # type: ignore[call-overload]
                     model=model.value,
                     messages=openai_messages,
-                    tools=openai_tools if openai_tools else NOT_GIVEN,  # type: ignore[arg-type]
-                    max_tokens=max_tokens,
-                    response_format=openai_response_format if openai_response_format else NOT_GIVEN,  # type: ignore[arg-type]
+                    tools=openai_tools if openai_tools else NOT_GIVEN,
+                    max_completion_tokens=max_tokens,
+                    response_format=(
+                        openai_response_format if openai_response_format else NOT_GIVEN
+                    ),
+                    reasoning_effort=(
+                        effective_effort.value if effective_effort else NOT_GIVEN
+                    ),
                 )
                 return self._parse_response(response)
 
@@ -145,6 +157,56 @@ class OpenAIClient(BaseLLMClient):
                     or "function" in message.lower()
                 )
         return False
+
+    def _resolve_reasoning_effort(
+        self, model: Model, reasoning_effort: ReasoningEffort | None
+    ) -> ReasoningEffort | None:
+        """Validate and normalize reasoning_effort for OpenAI models.
+
+        Handles:
+        - Validation: raises UnsupportedParameterError for non-reasoning models.
+        - MAX downgrade: OpenAI does not support MAX, downgrade to HIGH.
+        - GPT-5-Pro constraint: only supports HIGH, force other values to HIGH.
+
+        Args:
+            model: The model being used.
+            reasoning_effort: The requested reasoning effort level, or None.
+
+        Returns:
+            The effective reasoning effort to pass to the API, or None.
+
+        Raises:
+            UnsupportedParameterError: If reasoning_effort used with non-reasoning model.
+        """
+        if reasoning_effort is None:
+            return None
+
+        if not model.supports_reasoning:
+            raise UnsupportedParameterError(
+                ErrorMessages.REASONING_EFFORT_NOT_SUPPORTED.format(model=model.value)
+            )
+
+        effective_effort = reasoning_effort
+
+        # OpenAI does not support MAX - downgrade to HIGH with warning
+        if reasoning_effort == ReasoningEffort.MAX:
+            logger.warning(
+                ErrorMessages.REASONING_EFFORT_MAX_DOWNGRADED_OPENAI.format(
+                    model=model.value
+                )
+            )
+            effective_effort = ReasoningEffort.HIGH
+
+        # GPT-5-Pro only supports HIGH - force with warning
+        if model == Model.GPT_5_PRO and effective_effort != ReasoningEffort.HIGH:
+            logger.warning(
+                ErrorMessages.REASONING_EFFORT_FORCED_HIGH.format(
+                    model=model.value, requested=effective_effort.value
+                )
+            )
+            effective_effort = ReasoningEffort.HIGH
+
+        return effective_effort
 
     def _parse_response(self, response: object) -> CompletionResponse:
         """Parse OpenAI response into CompletionResponse.
@@ -192,7 +254,7 @@ class OpenAIClient(BaseLLMClient):
         model: Model,
         tools: list[ToolDefinition] | None = None,
         temperature: float | None = None,
-        reasoning_effort: ReasoningEffort | None = None,  # noqa: ARG002
+        reasoning_effort: ReasoningEffort | None = None,
         max_tokens: int = LLMDefaults.MAX_OUTPUT_TOKENS,
     ) -> AsyncIterator[StreamChunk]:
         """Stream a completion request from OpenAI.
@@ -202,36 +264,41 @@ class OpenAIClient(BaseLLMClient):
             model: Model identifier.
             tools: Optional list of tools the model can call.
             temperature: Not supported for GPT-5 models. Raises error if provided.
-            reasoning_effort: Ignored (Groq GPT-OSS only).
+            reasoning_effort: Optional reasoning effort level for supported models.
+            max_tokens: Maximum output tokens for this request.
 
         Yields:
             StreamChunk objects as they arrive.
 
         Raises:
-            UnsupportedParameterError: If temperature is provided.
+            UnsupportedParameterError: If temperature is provided or reasoning_effort
+                used with unsupported model.
         """
         if temperature is not None:
             raise UnsupportedParameterError(
                 ErrorMessages.OPENAI_TEMPERATURE_NOT_SUPPORTED
             )
 
+        effective_effort = self._resolve_reasoning_effort(model, reasoning_effort)
+
         openai_messages = self._convert_messages(messages)
         openai_tools = self._convert_tools(tools) if tools else None
 
         stream_opts: ChatCompletionStreamOptionsParam = {"include_usage": True}
-        stream = await self._client.chat.completions.create(
+        stream = await self._client.chat.completions.create(  # type: ignore[call-overload]
             model=model,
             messages=openai_messages,
-            tools=openai_tools if openai_tools else NOT_GIVEN,  # type: ignore[arg-type]
-            max_tokens=max_tokens,
+            tools=openai_tools if openai_tools else NOT_GIVEN,
+            max_completion_tokens=max_tokens,
             stream=True,
             stream_options=stream_opts,
+            reasoning_effort=effective_effort.value if effective_effort else NOT_GIVEN,
         )
 
         # Track tool calls being built across chunks
         tool_call_builders: dict[int, dict[str, str]] = {}
 
-        async for chunk in stream:  # type: ignore[union-attr]
+        async for chunk in stream:
             # Handle usage-only chunk (comes after finish_reason)
             if not chunk.choices and chunk.usage:
                 yield StreamChunk(

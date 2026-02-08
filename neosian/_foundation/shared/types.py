@@ -58,8 +58,10 @@ class ReasoningEffort(str, Enum):
     """Reasoning effort level for supported models.
 
     Controls how many reasoning tokens the model uses.
-    Supported by GPT-OSS models (Groq) and Claude Opus 4.6 (Anthropic).
-    Note: MAX is Anthropic-only; Groq downgrades MAX to HIGH with a warning.
+    Supported by GPT-OSS models (Groq), GPT-5 models (OpenAI),
+    and Claude Opus 4.6 (Anthropic).
+    Note: MAX is Anthropic-only; Groq and OpenAI downgrade MAX to HIGH with a warning.
+    Note: GPT-5-Pro only supports HIGH; other values are forced to HIGH with a warning.
     """
 
     LOW = "low"
@@ -193,21 +195,25 @@ _MODEL_SPECS[Model.GPT_5_1.value] = ModelSpec(
     provider=Provider.OPENAI,
     context_window=400_000,
     max_output_tokens=128_000,
+    supports_reasoning=True,
 )
 _MODEL_SPECS[Model.GPT_5_MINI.value] = ModelSpec(
     provider=Provider.OPENAI,
     context_window=400_000,
     max_output_tokens=128_000,
+    supports_reasoning=True,
 )
 _MODEL_SPECS[Model.GPT_5_NANO.value] = ModelSpec(
     provider=Provider.OPENAI,
     context_window=400_000,
     max_output_tokens=128_000,
+    supports_reasoning=True,
 )
 _MODEL_SPECS[Model.GPT_5_PRO.value] = ModelSpec(
     provider=Provider.OPENAI,
     context_window=400_000,
     max_output_tokens=128_000,
+    supports_reasoning=True,
 )
 
 # Anthropic

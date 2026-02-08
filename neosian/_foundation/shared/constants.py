@@ -74,6 +74,18 @@ class ErrorMessages:
         "Downgrading to HIGH for model '{model}'."
     )
 
+    # OpenAI MAX-to-HIGH downgrade
+    REASONING_EFFORT_MAX_DOWNGRADED_OPENAI: str = (
+        "reasoning_effort=MAX is not supported by OpenAI models. "
+        "Downgrading to HIGH for model '{model}'."
+    )
+
+    # GPT-5-Pro only supports HIGH
+    REASONING_EFFORT_FORCED_HIGH: str = (
+        "Model '{model}' only supports reasoning_effort=HIGH. "
+        "Forcing reasoning_effort from {requested} to HIGH."
+    )
+
     # Max output tokens validation
     MAX_OUTPUT_TOKENS_EXCEEDED: str = (
         "max_output_tokens={requested} exceeds model '{model}' " "limit of {limit}"

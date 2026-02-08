@@ -12,7 +12,7 @@ from neosian._foundation.shared.exceptions import (
     ToolCallGenerationError,
     UnsupportedParameterError,
 )
-from neosian._foundation.shared.types import Model, ToolName
+from neosian._foundation.shared.types import Model, ReasoningEffort, ToolName
 
 
 @pytest.mark.unit
@@ -377,3 +377,232 @@ class TestOpenAIClientTemperature:
 
         assert result.message.content == "Hello"
         mock_create.assert_called_once()
+
+
+@pytest.mark.unit
+class TestOpenAIClientReasoningEffort:
+    """Test reasoning_effort parameter handling for OpenAI GPT-5 models."""
+
+    def _mock_response(self, model: str = "gpt-5-nano-2025-08-07") -> MagicMock:
+        """Create a mock OpenAI response."""
+        mock = MagicMock()
+        mock.choices = [MagicMock()]
+        mock.choices[0].message.content = "Response"
+        mock.choices[0].message.tool_calls = None
+        mock.usage.prompt_tokens = 10
+        mock.usage.completion_tokens = 5
+        mock.model = model
+        return mock
+
+    @pytest.mark.asyncio
+    async def test_reasoning_effort_passed_to_api(self) -> None:
+        """reasoning_effort HIGH should be passed to the API."""
+        client = OpenAIClient(api_key="test-key")
+        mock_create = AsyncMock(return_value=self._mock_response())
+        client._client.chat.completions.create = mock_create
+
+        await client.complete(
+            messages=[Message(role=Role.USER, content="Think carefully")],
+            model=Model.GPT_5_NANO,
+            reasoning_effort=ReasoningEffort.HIGH,
+        )
+
+        mock_create.assert_called_once()
+        assert mock_create.call_args.kwargs["reasoning_effort"] == "high"
+
+    @pytest.mark.asyncio
+    async def test_reasoning_effort_low_passed(self) -> None:
+        """reasoning_effort LOW should be passed for GPT-5 models."""
+        client = OpenAIClient(api_key="test-key")
+        mock_create = AsyncMock(return_value=self._mock_response())
+        client._client.chat.completions.create = mock_create
+
+        await client.complete(
+            messages=[Message(role=Role.USER, content="Hi")],
+            model=Model.GPT_5_NANO,
+            reasoning_effort=ReasoningEffort.LOW,
+        )
+
+        assert mock_create.call_args.kwargs["reasoning_effort"] == "low"
+
+    @pytest.mark.asyncio
+    async def test_reasoning_effort_none_uses_not_given(self) -> None:
+        """reasoning_effort=None should pass NOT_GIVEN to API."""
+        from openai import NOT_GIVEN
+
+        client = OpenAIClient(api_key="test-key")
+        mock_create = AsyncMock(return_value=self._mock_response())
+        client._client.chat.completions.create = mock_create
+
+        await client.complete(
+            messages=[Message(role=Role.USER, content="Hi")],
+            model=Model.GPT_5_NANO,
+        )
+
+        assert mock_create.call_args.kwargs["reasoning_effort"] is NOT_GIVEN
+
+    @pytest.mark.asyncio
+    async def test_reasoning_effort_max_downgraded_to_high(self) -> None:
+        """reasoning_effort MAX should be downgraded to HIGH for OpenAI models."""
+        client = OpenAIClient(api_key="test-key")
+        mock_create = AsyncMock(return_value=self._mock_response())
+        client._client.chat.completions.create = mock_create
+
+        await client.complete(
+            messages=[Message(role=Role.USER, content="Think")],
+            model=Model.GPT_5_NANO,
+            reasoning_effort=ReasoningEffort.MAX,
+        )
+
+        assert mock_create.call_args.kwargs["reasoning_effort"] == "high"
+
+    @pytest.mark.asyncio
+    async def test_reasoning_effort_max_logs_warning(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A warning should be logged when MAX is downgraded to HIGH."""
+        import logging
+
+        client = OpenAIClient(api_key="test-key")
+        mock_create = AsyncMock(return_value=self._mock_response())
+        client._client.chat.completions.create = mock_create
+
+        with caplog.at_level(logging.WARNING, logger="neosian._foundation.llm.openai"):
+            await client.complete(
+                messages=[Message(role=Role.USER, content="Think")],
+                model=Model.GPT_5_NANO,
+                reasoning_effort=ReasoningEffort.MAX,
+            )
+
+        assert any("MAX" in record.message for record in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_gpt5_pro_forces_high_from_low(self) -> None:
+        """GPT-5 Pro should force LOW to HIGH."""
+        client = OpenAIClient(api_key="test-key")
+        mock_create = AsyncMock(
+            return_value=self._mock_response("gpt-5-pro-2025-10-06")
+        )
+        client._client.chat.completions.create = mock_create
+
+        await client.complete(
+            messages=[Message(role=Role.USER, content="Think")],
+            model=Model.GPT_5_PRO,
+            reasoning_effort=ReasoningEffort.LOW,
+        )
+
+        assert mock_create.call_args.kwargs["reasoning_effort"] == "high"
+
+    @pytest.mark.asyncio
+    async def test_gpt5_pro_forces_high_from_medium(self) -> None:
+        """GPT-5 Pro should force MEDIUM to HIGH."""
+        client = OpenAIClient(api_key="test-key")
+        mock_create = AsyncMock(
+            return_value=self._mock_response("gpt-5-pro-2025-10-06")
+        )
+        client._client.chat.completions.create = mock_create
+
+        await client.complete(
+            messages=[Message(role=Role.USER, content="Think")],
+            model=Model.GPT_5_PRO,
+            reasoning_effort=ReasoningEffort.MEDIUM,
+        )
+
+        assert mock_create.call_args.kwargs["reasoning_effort"] == "high"
+
+    @pytest.mark.asyncio
+    async def test_gpt5_pro_high_passes_through(self) -> None:
+        """GPT-5 Pro with HIGH should pass through correctly."""
+        client = OpenAIClient(api_key="test-key")
+        mock_create = AsyncMock(
+            return_value=self._mock_response("gpt-5-pro-2025-10-06")
+        )
+        client._client.chat.completions.create = mock_create
+
+        await client.complete(
+            messages=[Message(role=Role.USER, content="Think")],
+            model=Model.GPT_5_PRO,
+            reasoning_effort=ReasoningEffort.HIGH,
+        )
+
+        assert mock_create.call_args.kwargs["reasoning_effort"] == "high"
+
+    @pytest.mark.asyncio
+    async def test_gpt5_pro_forced_high_logs_warning(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Warning should be logged when GPT-5-Pro forces HIGH."""
+        import logging
+
+        client = OpenAIClient(api_key="test-key")
+        mock_create = AsyncMock(
+            return_value=self._mock_response("gpt-5-pro-2025-10-06")
+        )
+        client._client.chat.completions.create = mock_create
+
+        with caplog.at_level(logging.WARNING, logger="neosian._foundation.llm.openai"):
+            await client.complete(
+                messages=[Message(role=Role.USER, content="Think")],
+                model=Model.GPT_5_PRO,
+                reasoning_effort=ReasoningEffort.LOW,
+            )
+
+        assert any("HIGH" in record.message for record in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_reasoning_effort_in_stream(self) -> None:
+        """reasoning_effort should be passed in stream() method."""
+        client = OpenAIClient(api_key="test-key")
+        mock_create = AsyncMock()
+        client._client.chat.completions.create = mock_create
+
+        async def empty_stream() -> None:
+            return
+
+        mock_iterator = MagicMock()
+        mock_iterator.__aiter__ = MagicMock(return_value=iter([]))
+
+        # Create a proper async iterator
+        class EmptyAsyncIter:
+            def __aiter__(self) -> "EmptyAsyncIter":
+                return self
+
+            async def __anext__(self) -> None:
+                raise StopAsyncIteration
+
+        mock_create.return_value = EmptyAsyncIter()
+
+        async for _ in client.stream(
+            messages=[Message(role=Role.USER, content="Think")],
+            model=Model.GPT_5_NANO,
+            reasoning_effort=ReasoningEffort.MEDIUM,
+        ):
+            pass
+
+        mock_create.assert_called_once()
+        assert mock_create.call_args.kwargs["reasoning_effort"] == "medium"
+
+    @pytest.mark.asyncio
+    async def test_reasoning_effort_max_in_stream_downgraded(self) -> None:
+        """reasoning_effort MAX in stream() should be downgraded to HIGH."""
+        client = OpenAIClient(api_key="test-key")
+        mock_create = AsyncMock()
+        client._client.chat.completions.create = mock_create
+
+        class EmptyAsyncIter:
+            def __aiter__(self) -> "EmptyAsyncIter":
+                return self
+
+            async def __anext__(self) -> None:
+                raise StopAsyncIteration
+
+        mock_create.return_value = EmptyAsyncIter()
+
+        async for _ in client.stream(
+            messages=[Message(role=Role.USER, content="Think")],
+            model=Model.GPT_5_NANO,
+            reasoning_effort=ReasoningEffort.MAX,
+        ):
+            pass
+
+        assert mock_create.call_args.kwargs["reasoning_effort"] == "high"
