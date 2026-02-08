@@ -1004,8 +1004,13 @@ class Agent:
                     return
                 guard_task = None  # Don't check again
 
-            # Get completion from LLM (not streaming for tool call detection)
-            response = await client.complete(
+            # Stream LLM response (real-time content + tool call detection)
+            content_parts: list[str] = []
+            reasoning_parts: list[str] = []
+            accumulated_tool_calls: list[ToolCall] = []
+            final_usage: Usage | None = None
+
+            stream = client.stream(
                 messages=full_messages,
                 model=model,
                 tools=self._tool_definitions if self._tool_definitions else None,
@@ -1013,24 +1018,63 @@ class Agent:
                 max_tokens=self._max_output_tokens,
             )
 
-            # If no tool calls, stream the final response
-            if not response.message.tool_calls:
-                async for sse in self._stream_final_with_client_and_guard(
-                    client=client,
-                    model=model,
-                    full_messages=full_messages,
-                    guard_task=guard_task,
-                    emitter=emitter,
-                    reasoning_effort=effective_reasoning,
-                ):
-                    yield sse
+            async for chunk in stream:
+                # Check guard during streaming
+                if guard_task is not None and guard_task.done():
+                    blocked_event_sse = self._check_guard_and_block(guard_task, emitter)
+                    if blocked_event_sse:
+                        yield blocked_event_sse
+                        return
+                    guard_task = None
+
+                if chunk.reasoning:
+                    reasoning_parts.append(chunk.reasoning)
+                    yield emitter.emit(reasoning_event(chunk.reasoning))
+
+                if chunk.content:
+                    content_parts.append(chunk.content)
+                    yield emitter.emit(content_event(chunk.content))
+
+                if chunk.tool_calls:
+                    accumulated_tool_calls.extend(chunk.tool_calls)
+
+                if chunk.usage:
+                    final_usage = chunk.usage
+
+            # Stream complete — no tool calls means final response
+            if not accumulated_tool_calls:
+                # Final guard await before done
+                if guard_task is not None:
+                    is_safe, classifier, policy = await self._await_guard_result_safe(
+                        guard_task
+                    )
+                    if (
+                        not is_safe
+                        and self._guardrails
+                        and self._guardrails.block_on_input
+                    ):
+                        categories = classifier.categories if classifier else None
+                        rationale = policy.rationale if policy else None
+                        yield emitter.emit(
+                            blocked_event(categories=categories, rationale=rationale)
+                        )
+                        return
+
+                yield emitter.emit(done_event(final_usage))
                 return
 
-            # Add assistant message with tool calls to history
-            full_messages.append(response.message)
+            # Tool calls detected — add assistant message to history
+            full_messages.append(
+                Message(
+                    role=Role.ASSISTANT,
+                    content="".join(content_parts) if content_parts else None,
+                    reasoning=("".join(reasoning_parts) if reasoning_parts else None),
+                    tool_calls=accumulated_tool_calls,
+                )
+            )
 
             # Execute each tool call and yield SSE events
-            for tool_call in response.message.tool_calls:
+            for tool_call in accumulated_tool_calls:
                 # Check guard before each tool call
                 if guard_task is not None and guard_task.done():
                     blocked_event_sse = self._check_guard_and_block(guard_task, emitter)
@@ -1066,7 +1110,7 @@ class Agent:
                     )
                 )
 
-        # Max iterations reached - stream final response
+        # Max iterations reached - stream final response without tools
         async for sse in self._stream_final_with_client_and_guard(
             client=client,
             model=model,

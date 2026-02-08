@@ -1,5 +1,6 @@
 """Anthropic Claude LLM client implementation."""
 
+import json
 import logging
 from collections.abc import AsyncIterator
 from typing import Any
@@ -202,20 +203,21 @@ class AnthropicClient(BaseLLMClient):
         self,
         messages: list[Message],
         model: Model,
-        tools: list[ToolDefinition] | None = None,  # noqa: ARG002
+        tools: list[ToolDefinition] | None = None,
         temperature: float | None = None,
         reasoning_effort: ReasoningEffort | None = None,
         max_tokens: int = LLMDefaults.MAX_OUTPUT_TOKENS,
     ) -> AsyncIterator[StreamChunk]:
         """Stream a completion request from Anthropic.
 
-        Note: Agent uses blocking complete() for tool detection, then streams
-        only the final natural language response. Tool handling not needed here.
+        Supports streaming content, reasoning, and tool calls. Tool call
+        blocks are accumulated and yielded as complete ToolCall objects
+        in the final StreamChunk.
 
         Args:
             messages: Conversation history.
             model: Model identifier.
-            tools: Not used (agent handles tools via complete()).
+            tools: Optional list of tools the model can call.
             temperature: Sampling temperature (0.0-1.0). None uses default.
             reasoning_effort: Optional reasoning effort level for supported models.
 
@@ -250,23 +252,55 @@ class AnthropicClient(BaseLLMClient):
         if system_prompt:
             kwargs["system"] = system_prompt
 
-        # Note: tools not passed - agent uses complete() for tool detection
+        if tools:
+            kwargs["tools"] = self._convert_tools(tools)
 
         async with self._client.messages.stream(**kwargs) as stream:
             usage_data: Usage | None = None
+
+            # Tool call accumulation state
+            accumulated_tool_calls: list[ToolCall] = []
+            current_tool_id: str | None = None
+            current_tool_name: str | None = None
+            current_tool_input: str = ""
+
             async for event in stream:
-                if event.type == "content_block_delta":
+                if event.type == "content_block_start":
+                    block = event.content_block
+                    if getattr(block, "type", None) == "tool_use":
+                        current_tool_id = block.id  # type: ignore[union-attr]
+                        current_tool_name = block.name  # type: ignore[union-attr]
+                        current_tool_input = ""
+
+                elif event.type == "content_block_delta":
                     delta_type = getattr(event.delta, "type", None)
                     if delta_type == "thinking_delta":
                         yield StreamChunk(
                             reasoning=event.delta.thinking,  # type: ignore[union-attr]
-                            finish_reason=None,
                         )
                     elif delta_type == "text_delta":
                         yield StreamChunk(
                             content=event.delta.text,  # type: ignore[union-attr]
-                            finish_reason=None,
                         )
+                    elif delta_type == "input_json_delta":
+                        current_tool_input += event.delta.partial_json  # type: ignore[union-attr]
+
+                elif event.type == "content_block_stop":
+                    if current_tool_id is not None:
+                        args = (
+                            json.loads(current_tool_input) if current_tool_input else {}
+                        )
+                        accumulated_tool_calls.append(
+                            ToolCall(
+                                id=ToolCallId(current_tool_id),
+                                name=ToolName(current_tool_name or ""),
+                                arguments=args if isinstance(args, dict) else {},
+                            )
+                        )
+                        current_tool_id = None
+                        current_tool_name = None
+                        current_tool_input = ""
+
                 elif event.type == "message_delta":
                     # Capture usage from message_delta event
                     if hasattr(event, "usage") and event.usage:
@@ -274,11 +308,13 @@ class AnthropicClient(BaseLLMClient):
                             input_tokens=event.usage.input_tokens or 0,
                             output_tokens=event.usage.output_tokens,
                         )
+
                 elif event.type == "message_stop":
+                    finish_reason = "tool_use" if accumulated_tool_calls else "stop"
                     yield StreamChunk(
-                        content=None,
-                        finish_reason="stop",
+                        finish_reason=finish_reason,
                         usage=usage_data,
+                        tool_calls=accumulated_tool_calls,
                     )
 
     def _convert_messages(

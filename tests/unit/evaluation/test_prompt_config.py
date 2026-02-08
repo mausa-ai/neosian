@@ -20,11 +20,9 @@ class TestLoadPromptConfig:
     def test_minimal_config(self, tmp_path: Path) -> None:
         """Load config with only system_prompt."""
         config_file = tmp_path / "minimal.yaml"
-        config_file.write_text(
-            """
+        config_file.write_text("""
 system_prompt: You are a helpful assistant.
-"""
-        )
+""")
 
         config = load_prompt_config(config_file)
 
@@ -35,8 +33,7 @@ system_prompt: You are a helpful assistant.
     def test_full_config(self, tmp_path: Path) -> None:
         """Load config with all fields."""
         config_file = tmp_path / "full.yaml"
-        config_file.write_text(
-            """
+        config_file.write_text("""
 system_prompt: |
   You are Mausa, a creative AI assistant.
 
@@ -51,8 +48,7 @@ tools:
 
 compact_summarize: |
   Summarize for continuity.
-"""
-        )
+""")
 
         config = load_prompt_config(config_file)
 
@@ -68,14 +64,12 @@ compact_summarize: |
     def test_tool_without_on_success(self, tmp_path: Path) -> None:
         """Tool without on_success field is valid."""
         config_file = tmp_path / "no_on_success.yaml"
-        config_file.write_text(
-            """
+        config_file.write_text("""
 system_prompt: Test prompt.
 tools:
   my_tool:
     description: Tool description.
-"""
-        )
+""")
 
         config = load_prompt_config(config_file)
 
@@ -90,12 +84,10 @@ tools:
     def test_invalid_yaml(self, tmp_path: Path) -> None:
         """Raise error for malformed YAML."""
         config_file = tmp_path / "invalid.yaml"
-        config_file.write_text(
-            """
+        config_file.write_text("""
 system_prompt: "unclosed string
   tools:
-"""
-        )
+""")
 
         with pytest.raises(PromptInvalidYAMLError):
             load_prompt_config(config_file)
@@ -103,13 +95,11 @@ system_prompt: "unclosed string
     def test_missing_system_prompt(self, tmp_path: Path) -> None:
         """Raise error when system_prompt is missing."""
         config_file = tmp_path / "no_prompt.yaml"
-        config_file.write_text(
-            """
+        config_file.write_text("""
 tools:
   my_tool:
     description: Tool description.
-"""
-        )
+""")
 
         with pytest.raises(PromptMissingKeyError) as exc_info:
             load_prompt_config(config_file)
@@ -119,14 +109,12 @@ tools:
     def test_tool_missing_description(self, tmp_path: Path) -> None:
         """Raise error when tool is missing description."""
         config_file = tmp_path / "no_desc.yaml"
-        config_file.write_text(
-            """
+        config_file.write_text("""
 system_prompt: Test prompt.
 tools:
   my_tool:
     on_success: Something.
-"""
-        )
+""")
 
         with pytest.raises(PromptMissingKeyError) as exc_info:
             load_prompt_config(config_file)
@@ -136,13 +124,11 @@ tools:
     def test_system_prompt_not_string(self, tmp_path: Path) -> None:
         """Raise error when system_prompt is not a string."""
         config_file = tmp_path / "list_prompt.yaml"
-        config_file.write_text(
-            """
+        config_file.write_text("""
 system_prompt:
   - item1
   - item2
-"""
-        )
+""")
 
         with pytest.raises(PromptInvalidYAMLError):
             load_prompt_config(config_file)
@@ -150,14 +136,12 @@ system_prompt:
     def test_tools_not_dict(self, tmp_path: Path) -> None:
         """Raise error when tools is not a dict."""
         config_file = tmp_path / "list_tools.yaml"
-        config_file.write_text(
-            """
+        config_file.write_text("""
 system_prompt: Test prompt.
 tools:
   - tool1
   - tool2
-"""
-        )
+""")
 
         with pytest.raises(PromptInvalidYAMLError):
             load_prompt_config(config_file)
@@ -165,13 +149,11 @@ tools:
     def test_tool_not_dict(self, tmp_path: Path) -> None:
         """Raise error when tool value is not a dict."""
         config_file = tmp_path / "string_tool.yaml"
-        config_file.write_text(
-            """
+        config_file.write_text("""
 system_prompt: Test prompt.
 tools:
   my_tool: "just a string"
-"""
-        )
+""")
 
         with pytest.raises(PromptInvalidYAMLError):
             load_prompt_config(config_file)
@@ -179,8 +161,7 @@ tools:
     def test_multiline_description(self, tmp_path: Path) -> None:
         """Multiline descriptions should preserve formatting."""
         config_file = tmp_path / "multiline.yaml"
-        config_file.write_text(
-            """
+        config_file.write_text("""
 system_prompt: Test.
 tools:
   my_tool:
@@ -188,8 +169,7 @@ tools:
       Line 1.
       Line 2.
       Line 3.
-"""
-        )
+""")
 
         config = load_prompt_config(config_file)
 

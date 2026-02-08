@@ -520,3 +520,308 @@ class TestAnthropicReasoningContent:
         assert chunks[1].content == "The answer."
         assert chunks[1].reasoning is None
         assert chunks[2].finish_reason == "stop"
+
+
+@pytest.mark.unit
+class TestAnthropicStreamingToolCalls:
+    """Tests for streaming tool call support in Anthropic client."""
+
+    @pytest.mark.asyncio
+    async def test_stream_yields_tool_calls(
+        self, client: AnthropicClient, sample_messages: list[Message]
+    ) -> None:
+        """Stream should accumulate tool_use blocks and yield ToolCalls."""
+        # content_block_start for tool_use
+        mock_block_start = MagicMock()
+        mock_block_start.type = "content_block_start"
+        mock_content_block = MagicMock(type="tool_use", id="toolu_abc")
+        mock_content_block.name = "get_weather"
+        mock_block_start.content_block = mock_content_block
+
+        # input_json_delta chunks
+        mock_input_delta1 = MagicMock()
+        mock_input_delta1.type = "content_block_delta"
+        mock_input_delta1.delta = MagicMock(
+            type="input_json_delta", partial_json='{"location":'
+        )
+
+        mock_input_delta2 = MagicMock()
+        mock_input_delta2.type = "content_block_delta"
+        mock_input_delta2.delta = MagicMock(
+            type="input_json_delta", partial_json=' "Paris"}'
+        )
+
+        # content_block_stop finalizes the tool call
+        mock_block_stop = MagicMock()
+        mock_block_stop.type = "content_block_stop"
+
+        # message_stop with usage
+        mock_msg_delta = MagicMock()
+        mock_msg_delta.type = "message_delta"
+        mock_msg_delta.usage = MagicMock(input_tokens=0, output_tokens=15)
+
+        mock_msg_stop = MagicMock()
+        mock_msg_stop.type = "message_stop"
+
+        async def mock_stream_events():  # type: ignore[return]
+            yield mock_block_start
+            yield mock_input_delta1
+            yield mock_input_delta2
+            yield mock_block_stop
+            yield mock_msg_delta
+            yield mock_msg_stop
+
+        mock_stream = MagicMock()
+        mock_stream.__aenter__ = AsyncMock(return_value=mock_stream)
+        mock_stream.__aexit__ = AsyncMock(return_value=None)
+        mock_stream.__aiter__ = lambda _: mock_stream_events()
+
+        client._client.messages.stream = MagicMock(return_value=mock_stream)
+
+        chunks = []
+        async for chunk in client.stream(
+            messages=sample_messages,
+            model=Model.CLAUDE_SONNET_4_5,
+            tools=[
+                ToolDefinition(
+                    name="get_weather",
+                    description="Get weather",
+                    parameters={"type": "object", "properties": {}},
+                )
+            ],
+        ):
+            chunks.append(chunk)
+
+        # Final chunk should have tool calls and finish_reason="tool_use"
+        final = chunks[-1]
+        assert final.finish_reason == "tool_use"
+        assert len(final.tool_calls) == 1
+        assert final.tool_calls[0].id == "toolu_abc"
+        assert final.tool_calls[0].name == "get_weather"
+        assert final.tool_calls[0].arguments == {"location": "Paris"}
+
+    @pytest.mark.asyncio
+    async def test_stream_mixed_content_and_tool_calls(
+        self, client: AnthropicClient, sample_messages: list[Message]
+    ) -> None:
+        """Stream should yield text content AND accumulate tool calls."""
+        # Text content first
+        mock_text_delta = MagicMock()
+        mock_text_delta.type = "content_block_delta"
+        mock_text_delta.delta = MagicMock(type="text_delta", text="Let me check.")
+
+        # Then a tool_use block
+        mock_block_start = MagicMock()
+        mock_block_start.type = "content_block_start"
+        mock_content_block = MagicMock(type="tool_use", id="toolu_xyz")
+        mock_content_block.name = "search"
+        mock_block_start.content_block = mock_content_block
+
+        mock_input_delta = MagicMock()
+        mock_input_delta.type = "content_block_delta"
+        mock_input_delta.delta = MagicMock(
+            type="input_json_delta", partial_json='{"query": "test"}'
+        )
+
+        mock_block_stop = MagicMock()
+        mock_block_stop.type = "content_block_stop"
+
+        mock_msg_stop = MagicMock()
+        mock_msg_stop.type = "message_stop"
+
+        async def mock_stream_events():  # type: ignore[return]
+            yield mock_text_delta
+            yield mock_block_start
+            yield mock_input_delta
+            yield mock_block_stop
+            yield mock_msg_stop
+
+        mock_stream = MagicMock()
+        mock_stream.__aenter__ = AsyncMock(return_value=mock_stream)
+        mock_stream.__aexit__ = AsyncMock(return_value=None)
+        mock_stream.__aiter__ = lambda _: mock_stream_events()
+
+        client._client.messages.stream = MagicMock(return_value=mock_stream)
+
+        chunks = []
+        async for chunk in client.stream(
+            messages=sample_messages,
+            model=Model.CLAUDE_SONNET_4_5,
+            tools=[
+                ToolDefinition(
+                    name="search",
+                    description="Search",
+                    parameters={"type": "object", "properties": {}},
+                )
+            ],
+        ):
+            chunks.append(chunk)
+
+        # First chunk: text content
+        assert chunks[0].content == "Let me check."
+        assert not chunks[0].tool_calls
+
+        # Final chunk: tool calls
+        final = chunks[-1]
+        assert final.finish_reason == "tool_use"
+        assert len(final.tool_calls) == 1
+        assert final.tool_calls[0].name == "search"
+        assert final.tool_calls[0].arguments == {"query": "test"}
+
+    @pytest.mark.asyncio
+    async def test_stream_passes_tools_to_api(
+        self, client: AnthropicClient, sample_messages: list[Message]
+    ) -> None:
+        """Stream should pass converted tools to the Anthropic API."""
+        mock_event = MagicMock()
+        mock_event.type = "message_stop"
+
+        async def mock_stream_events():  # type: ignore[return]
+            yield mock_event
+
+        mock_stream = MagicMock()
+        mock_stream.__aenter__ = AsyncMock(return_value=mock_stream)
+        mock_stream.__aexit__ = AsyncMock(return_value=None)
+        mock_stream.__aiter__ = lambda _: mock_stream_events()
+
+        client._client.messages.stream = MagicMock(return_value=mock_stream)
+
+        tool_def = ToolDefinition(
+            name="calc",
+            description="Calculate",
+            parameters={"type": "object", "properties": {"x": {"type": "number"}}},
+        )
+
+        async for _ in client.stream(
+            messages=sample_messages,
+            model=Model.CLAUDE_SONNET_4_5,
+            tools=[tool_def],
+        ):
+            pass
+
+        call_kwargs = client._client.messages.stream.call_args.kwargs
+        assert "tools" in call_kwargs
+        assert call_kwargs["tools"][0]["name"] == "calc"
+        assert call_kwargs["tools"][0]["input_schema"]["type"] == "object"
+
+    @pytest.mark.asyncio
+    async def test_stream_no_tools_no_tool_calls(
+        self, client: AnthropicClient, sample_messages: list[Message]
+    ) -> None:
+        """Stream without tools should yield empty tool_calls in final chunk."""
+        mock_text = MagicMock()
+        mock_text.type = "content_block_delta"
+        mock_text.delta = MagicMock(type="text_delta", text="Hello!")
+
+        mock_stop = MagicMock()
+        mock_stop.type = "message_stop"
+
+        async def mock_stream_events():  # type: ignore[return]
+            yield mock_text
+            yield mock_stop
+
+        mock_stream = MagicMock()
+        mock_stream.__aenter__ = AsyncMock(return_value=mock_stream)
+        mock_stream.__aexit__ = AsyncMock(return_value=None)
+        mock_stream.__aiter__ = lambda _: mock_stream_events()
+
+        client._client.messages.stream = MagicMock(return_value=mock_stream)
+
+        chunks = []
+        async for chunk in client.stream(
+            messages=sample_messages,
+            model=Model.CLAUDE_SONNET_4_5,
+        ):
+            chunks.append(chunk)
+
+        assert chunks[0].content == "Hello!"
+        final = chunks[-1]
+        assert final.finish_reason == "stop"
+        assert final.tool_calls == []
+
+        # Verify tools not passed to API when None
+        call_kwargs = client._client.messages.stream.call_args.kwargs
+        assert "tools" not in call_kwargs
+
+    @pytest.mark.asyncio
+    async def test_stream_multiple_tool_calls(
+        self, client: AnthropicClient, sample_messages: list[Message]
+    ) -> None:
+        """Stream should accumulate multiple tool_use blocks."""
+        # First tool
+        mock_start1 = MagicMock()
+        mock_start1.type = "content_block_start"
+        mock_block1 = MagicMock(type="tool_use", id="toolu_1")
+        mock_block1.name = "search"
+        mock_start1.content_block = mock_block1
+
+        mock_input1 = MagicMock()
+        mock_input1.type = "content_block_delta"
+        mock_input1.delta = MagicMock(
+            type="input_json_delta", partial_json='{"q": "a"}'
+        )
+
+        mock_stop1 = MagicMock()
+        mock_stop1.type = "content_block_stop"
+
+        # Second tool
+        mock_start2 = MagicMock()
+        mock_start2.type = "content_block_start"
+        mock_block2 = MagicMock(type="tool_use", id="toolu_2")
+        mock_block2.name = "fetch"
+        mock_start2.content_block = mock_block2
+
+        mock_input2 = MagicMock()
+        mock_input2.type = "content_block_delta"
+        mock_input2.delta = MagicMock(
+            type="input_json_delta", partial_json='{"url": "https://x.com"}'
+        )
+
+        mock_stop2 = MagicMock()
+        mock_stop2.type = "content_block_stop"
+
+        mock_msg_stop = MagicMock()
+        mock_msg_stop.type = "message_stop"
+
+        async def mock_stream_events():  # type: ignore[return]
+            yield mock_start1
+            yield mock_input1
+            yield mock_stop1
+            yield mock_start2
+            yield mock_input2
+            yield mock_stop2
+            yield mock_msg_stop
+
+        mock_stream = MagicMock()
+        mock_stream.__aenter__ = AsyncMock(return_value=mock_stream)
+        mock_stream.__aexit__ = AsyncMock(return_value=None)
+        mock_stream.__aiter__ = lambda _: mock_stream_events()
+
+        client._client.messages.stream = MagicMock(return_value=mock_stream)
+
+        chunks = []
+        async for chunk in client.stream(
+            messages=sample_messages,
+            model=Model.CLAUDE_SONNET_4_5,
+            tools=[
+                ToolDefinition(
+                    name="search",
+                    description="Search",
+                    parameters={"type": "object", "properties": {}},
+                ),
+                ToolDefinition(
+                    name="fetch",
+                    description="Fetch",
+                    parameters={"type": "object", "properties": {}},
+                ),
+            ],
+        ):
+            chunks.append(chunk)
+
+        final = chunks[-1]
+        assert final.finish_reason == "tool_use"
+        assert len(final.tool_calls) == 2
+        assert final.tool_calls[0].id == "toolu_1"
+        assert final.tool_calls[0].name == "search"
+        assert final.tool_calls[1].id == "toolu_2"
+        assert final.tool_calls[1].name == "fetch"

@@ -356,14 +356,7 @@ class TestAgentRunStreaming:
         """Agent should yield SSE events when streaming without tools."""
         mock_client = AsyncMock(spec=BaseLLMClient)
 
-        # First complete() call returns no tool calls
-        mock_client.complete.return_value = CompletionResponse(
-            message=Message(role=Role.ASSISTANT, content="Hello!"),
-            usage=Usage(input_tokens=10, output_tokens=5),
-            model="test-model",
-        )
-
-        # stream() yields content chunks
+        # stream() yields content chunks directly (no complete() in streaming path)
         async def mock_stream(
             *args: object, **kwargs: object  # noqa: ARG001
         ) -> AsyncIterator[StreamChunk]:
@@ -415,26 +408,21 @@ class TestAgentRunStreaming:
             arguments={"a": 2, "b": 3},
         )
 
-        # First complete() returns tool call, second returns no tools
-        mock_client.complete.side_effect = [
-            CompletionResponse(
-                message=Message(role=Role.ASSISTANT, tool_calls=[tool_call]),
-                usage=Usage(input_tokens=20, output_tokens=10),
-                model="test-model",
-            ),
-            CompletionResponse(
-                message=Message(role=Role.ASSISTANT, content="The sum is 5."),
-                usage=Usage(input_tokens=30, output_tokens=15),
-                model="test-model",
-            ),
-        ]
+        # Stateful stream: first call returns tool calls, second returns content
+        call_count = 0
 
-        # stream() yields final content
         async def mock_stream(
             *args: object, **kwargs: object  # noqa: ARG001
         ) -> AsyncIterator[StreamChunk]:
-            yield StreamChunk(content="The sum is 5.")
-            yield StreamChunk(finish_reason="stop")
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                # First iteration: tool call
+                yield StreamChunk(tool_calls=[tool_call], finish_reason="tool_calls")
+            else:
+                # Second iteration: final content
+                yield StreamChunk(content="The sum is 5.")
+                yield StreamChunk(finish_reason="stop")
 
         mock_client.stream = mock_stream
 
@@ -478,11 +466,6 @@ class TestAgentRunStreaming:
     async def test_streaming_returns_async_iterator(self) -> None:
         """Agent.run(stream=True) should return an AsyncIterator."""
         mock_client = AsyncMock(spec=BaseLLMClient)
-        mock_client.complete.return_value = CompletionResponse(
-            message=Message(role=Role.ASSISTANT, content="Hi"),
-            usage=Usage(input_tokens=10, output_tokens=5),
-            model="test-model",
-        )
 
         async def mock_stream(
             *args: object, **kwargs: object  # noqa: ARG001
@@ -530,25 +513,19 @@ class TestAgentHeartbeats:
             arguments={},
         )
 
-        # First complete() returns tool call, second returns no tools
-        mock_client.complete.side_effect = [
-            CompletionResponse(
-                message=Message(role=Role.ASSISTANT, tool_calls=[tool_call]),
-                usage=Usage(input_tokens=10, output_tokens=5),
-                model="test-model",
-            ),
-            CompletionResponse(
-                message=Message(role=Role.ASSISTANT, content="Done!"),
-                usage=Usage(input_tokens=15, output_tokens=8),
-                model="test-model",
-            ),
-        ]
+        # Stateful stream: first call returns tool call, second returns content
+        call_count = 0
 
         async def mock_stream(
             *args: object, **kwargs: object  # noqa: ARG001
         ) -> AsyncIterator[StreamChunk]:
-            yield StreamChunk(content="Done!")
-            yield StreamChunk(finish_reason="stop")
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                yield StreamChunk(tool_calls=[tool_call], finish_reason="tool_calls")
+            else:
+                yield StreamChunk(content="Done!")
+                yield StreamChunk(finish_reason="stop")
 
         mock_client.stream = mock_stream
 
@@ -593,24 +570,19 @@ class TestAgentHeartbeats:
             arguments={},
         )
 
-        mock_client.complete.side_effect = [
-            CompletionResponse(
-                message=Message(role=Role.ASSISTANT, tool_calls=[tool_call]),
-                usage=Usage(input_tokens=10, output_tokens=5),
-                model="test-model",
-            ),
-            CompletionResponse(
-                message=Message(role=Role.ASSISTANT, content="Finished!"),
-                usage=Usage(input_tokens=15, output_tokens=8),
-                model="test-model",
-            ),
-        ]
+        # Stateful stream: first call returns tool call, second returns content
+        call_count = 0
 
         async def mock_stream(
             *args: object, **kwargs: object  # noqa: ARG001
         ) -> AsyncIterator[StreamChunk]:
-            yield StreamChunk(content="Finished!")
-            yield StreamChunk(finish_reason="stop")
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                yield StreamChunk(tool_calls=[tool_call], finish_reason="tool_calls")
+            else:
+                yield StreamChunk(content="Finished!")
+                yield StreamChunk(finish_reason="stop")
 
         mock_client.stream = mock_stream
 
@@ -664,24 +636,19 @@ class TestAgentHeartbeats:
             arguments={},
         )
 
-        mock_client.complete.side_effect = [
-            CompletionResponse(
-                message=Message(role=Role.ASSISTANT, tool_calls=[tool_call]),
-                usage=Usage(input_tokens=10, output_tokens=5),
-                model="test-model",
-            ),
-            CompletionResponse(
-                message=Message(role=Role.ASSISTANT, content="Done!"),
-                usage=Usage(input_tokens=15, output_tokens=8),
-                model="test-model",
-            ),
-        ]
+        # Stateful stream: first call returns tool call, second returns content
+        call_count = 0
 
         async def mock_stream(
             *args: object, **kwargs: object  # noqa: ARG001
         ) -> AsyncIterator[StreamChunk]:
-            yield StreamChunk(content="Done!")
-            yield StreamChunk(finish_reason="stop")
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                yield StreamChunk(tool_calls=[tool_call], finish_reason="tool_calls")
+            else:
+                yield StreamChunk(content="Done!")
+                yield StreamChunk(finish_reason="stop")
 
         mock_client.stream = mock_stream
 
