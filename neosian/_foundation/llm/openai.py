@@ -63,6 +63,7 @@ class OpenAIClient(BaseLLMClient):
         temperature: float | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: ReasoningEffort | None = None,  # noqa: ARG002
+        max_tokens: int = LLMDefaults.MAX_OUTPUT_TOKENS,
     ) -> CompletionResponse:
         """Send a completion request to OpenAI.
 
@@ -101,6 +102,7 @@ class OpenAIClient(BaseLLMClient):
                     model=model.value,
                     messages=openai_messages,
                     tools=openai_tools if openai_tools else NOT_GIVEN,  # type: ignore[arg-type]
+                    max_tokens=max_tokens,
                     response_format=openai_response_format if openai_response_format else NOT_GIVEN,  # type: ignore[arg-type]
                 )
                 return self._parse_response(response)
@@ -191,6 +193,7 @@ class OpenAIClient(BaseLLMClient):
         tools: list[ToolDefinition] | None = None,
         temperature: float | None = None,
         reasoning_effort: ReasoningEffort | None = None,  # noqa: ARG002
+        max_tokens: int = LLMDefaults.MAX_OUTPUT_TOKENS,
     ) -> AsyncIterator[StreamChunk]:
         """Stream a completion request from OpenAI.
 
@@ -220,6 +223,7 @@ class OpenAIClient(BaseLLMClient):
             model=model,
             messages=openai_messages,
             tools=openai_tools if openai_tools else NOT_GIVEN,  # type: ignore[arg-type]
+            max_tokens=max_tokens,
             stream=True,
             stream_options=stream_opts,
         )

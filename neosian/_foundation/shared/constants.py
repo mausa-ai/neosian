@@ -68,6 +68,15 @@ class ErrorMessages:
         "Supported models: {supported_models}"
     )
 
+    # Max output tokens validation
+    MAX_OUTPUT_TOKENS_EXCEEDED: str = (
+        "max_output_tokens={requested} exceeds model '{model}' "
+        "limit of {limit}"
+    )
+    MAX_OUTPUT_TOKENS_INVALID: str = (
+        "max_output_tokens must be >= 1, got {requested}"
+    )
+
     # Provider/Fallback errors
     PROVIDER_FAILED: str = "Provider {provider} failed: {error}"
     MODEL_FAILED: str = "Model {model} failed: {error}"
@@ -137,6 +146,7 @@ class LLMDefaults:
     TEMPERATURE: float = 0.7
     RETRY_TEMPERATURE: float = 0.3
     MAX_TOOL_CALL_RETRIES: int = 2
+    MAX_OUTPUT_TOKENS: int = 8192
 
 
 class BuiltinTools:

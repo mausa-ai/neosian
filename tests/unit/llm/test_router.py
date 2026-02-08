@@ -92,11 +92,29 @@ class TestModelEnum:
             assert isinstance(model.max_output_tokens, int)
             assert model.max_output_tokens > 0
 
-    def test_anthropic_models_have_higher_token_limit(self) -> None:
-        """Test that Anthropic models have 8192 max tokens."""
+    def test_anthropic_models_have_expected_token_limits(self) -> None:
+        """Test that Anthropic models have correct max output tokens."""
+        assert Model.CLAUDE_OPUS_4_6.max_output_tokens == 128_000
+        assert Model.CLAUDE_SONNET_4_5.max_output_tokens == 64_000
+        assert Model.CLAUDE_HAIKU_4_5.max_output_tokens == 64_000
+
+    def test_model_has_context_window(self) -> None:
+        """Test that all models have context_window property."""
+        for model in Model:
+            assert isinstance(model.context_window, int)
+            assert model.context_window > 0
+
+    def test_openai_models_have_400k_context_window(self) -> None:
+        """Test that OpenAI models have 400k context window."""
+        openai_models = [m for m in Model if m.provider == Provider.OPENAI]
+        for model in openai_models:
+            assert model.context_window == 400_000
+
+    def test_anthropic_models_have_200k_context_window(self) -> None:
+        """Test that Anthropic models have 200k context window."""
         anthropic_models = [m for m in Model if m.provider == Provider.ANTHROPIC]
         for model in anthropic_models:
-            assert model.max_output_tokens == 8192
+            assert model.context_window == 200_000
 
     def test_model_value_is_string(self) -> None:
         """Test that Model enum values are strings (for API compatibility)."""

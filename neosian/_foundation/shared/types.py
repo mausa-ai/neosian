@@ -40,14 +40,18 @@ class Provider(str, Enum):
     ANTHROPIC = "anthropic"
 
 
-# Model to provider mapping (populated after Model enum is defined)
-_MODEL_PROVIDERS: dict[str, Provider] = {}
+@dataclass(frozen=True)
+class ModelSpec:
+    """Immutable specification for a model's capabilities."""
 
-# Model to max output tokens mapping
-_MODEL_MAX_TOKENS: dict[str, int] = {}
+    provider: Provider
+    context_window: int
+    max_output_tokens: int
+    supports_reasoning: bool = False
 
-# Default max output tokens (used when not specified)
-_DEFAULT_MAX_TOKENS = 8192
+
+# Model specs registry (populated after Model enum is defined)
+_MODEL_SPECS: dict[str, ModelSpec] = {}
 
 
 class ReasoningEffort(str, Enum):
@@ -89,71 +93,101 @@ class Model(str, Enum):
     GPT_5_PRO = "gpt-5-pro-2025-10-06"
 
     # Anthropic
-    CLAUDE_OPUS_4_5 = "claude-opus-4-5-20251101"
+    CLAUDE_OPUS_4_6 = "claude-opus-4-6"
     CLAUDE_SONNET_4_5 = "claude-sonnet-4-5-20250929"
     CLAUDE_HAIKU_4_5 = "claude-haiku-4-5-20251001"
 
     @property
+    def spec(self) -> ModelSpec:
+        """Get the full specification for this model."""
+        return _MODEL_SPECS[self.value]
+
+    @property
     def provider(self) -> Provider:
         """Get the provider for this model."""
-        return _MODEL_PROVIDERS[self.value]
+        return _MODEL_SPECS[self.value].provider
 
     @property
     def max_output_tokens(self) -> int:
-        """Get max output tokens for this model."""
-        return _MODEL_MAX_TOKENS.get(self.value, _DEFAULT_MAX_TOKENS)
+        """Get max output tokens (API ceiling) for this model."""
+        return _MODEL_SPECS[self.value].max_output_tokens
+
+    @property
+    def context_window(self) -> int:
+        """Get context window size for this model."""
+        return _MODEL_SPECS[self.value].context_window
 
     @property
     def supports_reasoning(self) -> bool:
         """Check if this model supports reasoning_effort parameter."""
-        return self in _REASONING_MODELS
+        return _MODEL_SPECS[self.value].supports_reasoning
 
 
-# Populate provider mappings
-_GROQ_MODELS = {
-    Model.LLAMA_3_3_70B,
-    Model.LLAMA_3_1_8B,
-    Model.GPT_OSS_120B,
-    Model.GPT_OSS_20B,
-    Model.LLAMA_4_MAVERICK_17B,
-    Model.LLAMA_4_SCOUT_17B,
-    Model.QWEN3_32B,
-    Model.KIMI_K2,
-    Model.KIMI_K2_0905,
-    Model.LLAMA_GUARD_4_12B,
-    Model.GPT_OSS_SAFEGUARD_20B,
-}
-
-_OPENAI_MODELS = {
-    Model.GPT_5_1,
-    Model.GPT_5_MINI,
-    Model.GPT_5_NANO,
-    Model.GPT_5_PRO,
-}
-
-_ANTHROPIC_MODELS = {
-    Model.CLAUDE_OPUS_4_5,
-    Model.CLAUDE_SONNET_4_5,
-    Model.CLAUDE_HAIKU_4_5,
-}
-
-# Models that support reasoning_effort parameter (Groq GPT-OSS only)
-_REASONING_MODELS: frozenset[Model] = frozenset(
-    {
-        Model.GPT_OSS_20B,
-        Model.GPT_OSS_120B,
-    }
+# Groq - Production
+_MODEL_SPECS[Model.LLAMA_3_3_70B.value] = ModelSpec(
+    provider=Provider.GROQ, context_window=131_072, max_output_tokens=32_768,
+)
+_MODEL_SPECS[Model.LLAMA_3_1_8B.value] = ModelSpec(
+    provider=Provider.GROQ, context_window=131_072, max_output_tokens=131_072,
+)
+_MODEL_SPECS[Model.GPT_OSS_120B.value] = ModelSpec(
+    provider=Provider.GROQ, context_window=131_072, max_output_tokens=65_536,
+    supports_reasoning=True,
+)
+_MODEL_SPECS[Model.GPT_OSS_20B.value] = ModelSpec(
+    provider=Provider.GROQ, context_window=131_072, max_output_tokens=65_536,
+    supports_reasoning=True,
 )
 
-for m in _GROQ_MODELS:
-    _MODEL_PROVIDERS[m.value] = Provider.GROQ
+# Groq - Preview
+_MODEL_SPECS[Model.LLAMA_4_MAVERICK_17B.value] = ModelSpec(
+    provider=Provider.GROQ, context_window=131_072, max_output_tokens=8_192,
+)
+_MODEL_SPECS[Model.LLAMA_4_SCOUT_17B.value] = ModelSpec(
+    provider=Provider.GROQ, context_window=131_072, max_output_tokens=8_192,
+)
+_MODEL_SPECS[Model.QWEN3_32B.value] = ModelSpec(
+    provider=Provider.GROQ, context_window=131_072, max_output_tokens=40_960,
+)
+_MODEL_SPECS[Model.KIMI_K2.value] = ModelSpec(
+    provider=Provider.GROQ, context_window=131_072, max_output_tokens=16_384,
+)
+_MODEL_SPECS[Model.KIMI_K2_0905.value] = ModelSpec(
+    provider=Provider.GROQ, context_window=262_144, max_output_tokens=16_384,
+)
 
-for m in _OPENAI_MODELS:
-    _MODEL_PROVIDERS[m.value] = Provider.OPENAI
+# Groq - Guardrails
+_MODEL_SPECS[Model.LLAMA_GUARD_4_12B.value] = ModelSpec(
+    provider=Provider.GROQ, context_window=131_072, max_output_tokens=1_024,
+)
+_MODEL_SPECS[Model.GPT_OSS_SAFEGUARD_20B.value] = ModelSpec(
+    provider=Provider.GROQ, context_window=131_072, max_output_tokens=65_536,
+)
 
-for m in _ANTHROPIC_MODELS:
-    _MODEL_PROVIDERS[m.value] = Provider.ANTHROPIC
-    _MODEL_MAX_TOKENS[m.value] = 8192  # 64k for Claude 4.5 models
+# OpenAI
+_MODEL_SPECS[Model.GPT_5_1.value] = ModelSpec(
+    provider=Provider.OPENAI, context_window=400_000, max_output_tokens=128_000,
+)
+_MODEL_SPECS[Model.GPT_5_MINI.value] = ModelSpec(
+    provider=Provider.OPENAI, context_window=400_000, max_output_tokens=128_000,
+)
+_MODEL_SPECS[Model.GPT_5_NANO.value] = ModelSpec(
+    provider=Provider.OPENAI, context_window=400_000, max_output_tokens=128_000,
+)
+_MODEL_SPECS[Model.GPT_5_PRO.value] = ModelSpec(
+    provider=Provider.OPENAI, context_window=400_000, max_output_tokens=128_000,
+)
+
+# Anthropic
+_MODEL_SPECS[Model.CLAUDE_OPUS_4_6.value] = ModelSpec(
+    provider=Provider.ANTHROPIC, context_window=200_000, max_output_tokens=128_000,
+)
+_MODEL_SPECS[Model.CLAUDE_SONNET_4_5.value] = ModelSpec(
+    provider=Provider.ANTHROPIC, context_window=200_000, max_output_tokens=64_000,
+)
+_MODEL_SPECS[Model.CLAUDE_HAIKU_4_5.value] = ModelSpec(
+    provider=Provider.ANTHROPIC, context_window=200_000, max_output_tokens=64_000,
+)
 
 
 # Default models per provider
@@ -187,7 +221,7 @@ class FallbackConfig:
 
         config = AgentConfig(
             system_prompt="You are helpful.",
-            model=Model.CLAUDE_OPUS_4_5,
+            model=Model.CLAUDE_OPUS_4_6,
             fallback=FallbackConfig(
                 model=Model.GPT_5_PRO,
                 retry_main_after=5,  # Try main again after 5 successful calls
@@ -314,15 +348,20 @@ class AgentConfig:
     enable_todo: bool = True
     guardrails: "GuardrailsConfig | None" = None
     reasoning_effort: ReasoningEffort | None = None
+    max_output_tokens: int | None = None
 
     def __post_init__(self) -> None:
         """Validate configuration after initialization."""
         # Lazy import to avoid circular dependency at module load time
-        from neosian._foundation.shared.constants import ErrorMessages
+        from neosian._foundation.shared.constants import ErrorMessages, LLMDefaults
         from neosian._foundation.shared.exceptions import (
             InvalidModelError,
             UnsupportedParameterError,
         )
+
+        # Apply default max_output_tokens from config
+        if self.max_output_tokens is None:
+            object.__setattr__(self, "max_output_tokens", LLMDefaults.MAX_OUTPUT_TOKENS)
 
         # Runtime validation - model could be anything if user bypasses type hints
         model: object = self.model  # Type erasure to enable isinstance check
@@ -337,11 +376,31 @@ class AgentConfig:
 
         # Validate reasoning_effort is only used with models that support it
         if self.reasoning_effort is not None and not self.model.supports_reasoning:
-            supported_models = ", ".join(f"Model.{m.name}" for m in _REASONING_MODELS)
+            reasoning_models = [m for m in Model if m.supports_reasoning]
+            supported_models = ", ".join(
+                f"Model.{m.name}" for m in reasoning_models
+            )
             raise UnsupportedParameterError(
                 ErrorMessages.REASONING_EFFORT_MODEL_MISMATCH.format(
                     model=self.model.value,
                     supported_models=supported_models,
+                )
+            )
+
+        # Validate max_output_tokens
+        assert self.max_output_tokens is not None  # Set above
+        if self.max_output_tokens < 1:
+            raise UnsupportedParameterError(
+                ErrorMessages.MAX_OUTPUT_TOKENS_INVALID.format(
+                    requested=self.max_output_tokens,
+                )
+            )
+        if self.max_output_tokens > self.model.max_output_tokens:
+            raise UnsupportedParameterError(
+                ErrorMessages.MAX_OUTPUT_TOKENS_EXCEEDED.format(
+                    requested=self.max_output_tokens,
+                    model=self.model.value,
+                    limit=self.model.max_output_tokens,
                 )
             )
 

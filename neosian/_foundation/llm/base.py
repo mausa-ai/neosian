@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
+from neosian._foundation.shared.constants import LLMDefaults
 from neosian._foundation.shared.types import (
     Model,
     ReasoningEffort,
@@ -104,6 +105,7 @@ class BaseLLMClient(ABC):
         temperature: float | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: ReasoningEffort | None = None,
+        max_tokens: int = LLMDefaults.MAX_OUTPUT_TOKENS,
     ) -> CompletionResponse:
         """Send a completion request to the LLM.
 
@@ -116,6 +118,7 @@ class BaseLLMClient(ABC):
                 the model will be constrained to generate valid JSON matching the
                 schema defined in the ResponseFormat.
             reasoning_effort: Optional reasoning effort level (Groq GPT-OSS only).
+            max_tokens: Maximum output tokens for this request.
 
         Returns:
             CompletionResponse with the model's response.
@@ -130,6 +133,7 @@ class BaseLLMClient(ABC):
         tools: list[ToolDefinition] | None = None,
         temperature: float | None = None,
         reasoning_effort: ReasoningEffort | None = None,
+        max_tokens: int = LLMDefaults.MAX_OUTPUT_TOKENS,
     ) -> AsyncIterator[StreamChunk]:
         """Stream a completion request from the LLM.
 
@@ -139,6 +143,7 @@ class BaseLLMClient(ABC):
             tools: Optional list of tools the model can call.
             temperature: Sampling temperature (0.0-2.0). None uses provider default.
             reasoning_effort: Optional reasoning effort level (Groq GPT-OSS only).
+            max_tokens: Maximum output tokens for this request.
 
         Yields:
             StreamChunk objects as they arrive.

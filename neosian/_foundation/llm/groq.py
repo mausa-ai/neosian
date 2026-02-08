@@ -58,6 +58,7 @@ class GroqClient(BaseLLMClient):
         temperature: float | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: ReasoningEffort | None = None,
+        max_tokens: int = LLMDefaults.MAX_OUTPUT_TOKENS,
     ) -> CompletionResponse:
         """Send a completion request to Groq.
 
@@ -103,6 +104,7 @@ class GroqClient(BaseLLMClient):
                     messages=groq_messages,
                     tools=groq_tools,
                     temperature=current_temp,
+                    max_tokens=max_tokens,
                     response_format=groq_response_format,  # type: ignore[arg-type]
                     reasoning_effort=(
                         reasoning_effort.value if reasoning_effort else None
@@ -193,6 +195,7 @@ class GroqClient(BaseLLMClient):
         tools: list[ToolDefinition] | None = None,
         temperature: float | None = None,
         reasoning_effort: ReasoningEffort | None = None,
+        max_tokens: int = LLMDefaults.MAX_OUTPUT_TOKENS,
     ) -> AsyncIterator[StreamChunk]:
         """Stream a completion request from Groq.
 
@@ -224,6 +227,7 @@ class GroqClient(BaseLLMClient):
             messages=groq_messages,
             tools=groq_tools,
             temperature=temp,
+            max_tokens=max_tokens,
             stream=True,
             reasoning_effort=(reasoning_effort.value if reasoning_effort else None),
             extra_body={"stream_options": {"include_usage": True}},

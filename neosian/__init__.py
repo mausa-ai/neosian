@@ -43,6 +43,7 @@ from neosian._foundation.shared.types import (
     GuardrailResult,
     GuardrailsConfig,
     Model,
+    ModelSpec,
     PolicyResult,
     Provider,
     ReasoningEffort,
@@ -53,7 +54,7 @@ from neosian._foundation.shared.types import (
 )
 from neosian._foundation.tools.base import Tool, ToolResult
 
-__version__ = "0.31.0"
+__version__ = "0.32.0"
 
 __all__ = [
     # Agent
@@ -78,6 +79,7 @@ __all__ = [
     "Pattern",
     # LLM
     "Model",
+    "ModelSpec",
     "Provider",
     "ReasoningEffort",
     "ResponseFormat",

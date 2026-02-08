@@ -49,6 +49,7 @@ class AnthropicClient(BaseLLMClient):
         temperature: float | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: ReasoningEffort | None = None,  # noqa: ARG002
+        max_tokens: int = LLMDefaults.MAX_OUTPUT_TOKENS,
     ) -> CompletionResponse:
         """Send a completion request to Anthropic.
 
@@ -81,7 +82,7 @@ class AnthropicClient(BaseLLMClient):
                 kwargs: dict[str, Any] = {
                     "model": model,
                     "messages": anthropic_messages,
-                    "max_tokens": model.max_output_tokens,
+                    "max_tokens": max_tokens,
                     "temperature": current_temp,
                 }
 
@@ -175,6 +176,7 @@ class AnthropicClient(BaseLLMClient):
         tools: list[ToolDefinition] | None = None,  # noqa: ARG002
         temperature: float | None = None,
         reasoning_effort: ReasoningEffort | None = None,  # noqa: ARG002
+        max_tokens: int = LLMDefaults.MAX_OUTPUT_TOKENS,
     ) -> AsyncIterator[StreamChunk]:
         """Stream a completion request from Anthropic.
 
@@ -197,7 +199,7 @@ class AnthropicClient(BaseLLMClient):
         kwargs: dict[str, Any] = {
             "model": model,
             "messages": anthropic_messages,
-            "max_tokens": model.max_output_tokens,
+            "max_tokens": max_tokens,
             "temperature": temp,
         }
 

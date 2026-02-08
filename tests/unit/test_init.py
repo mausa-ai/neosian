@@ -125,6 +125,7 @@ def test_all_list_matches_exports() -> None:
         "Role",
         # Models and Providers
         "Model",
+        "ModelSpec",
         "Provider",
         # Tools
         "Tool",

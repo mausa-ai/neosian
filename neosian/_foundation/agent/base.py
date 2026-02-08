@@ -184,6 +184,8 @@ class Agent:
         self._system_prompt = config.system_prompt
         self._max_tool_iterations = max_tool_iterations
         self._reasoning_effort = config.reasoning_effort
+        assert config.max_output_tokens is not None  # Set by AgentConfig.__post_init__
+        self._max_output_tokens = config.max_output_tokens
 
         # Store guardrails config and create client if needed
         self._guardrails = config.guardrails
@@ -617,6 +619,7 @@ class Agent:
                 tools=self._tool_definitions if self._tool_definitions else None,
                 response_format=response_format,
                 reasoning_effort=effective_reasoning,
+                max_tokens=self._max_output_tokens,
             )
 
             # Accumulate usage
@@ -662,6 +665,7 @@ class Agent:
             tools=None,  # No tools on final call to force text response
             response_format=response_format,
             reasoning_effort=effective_reasoning,
+            max_tokens=self._max_output_tokens,
         )
 
         total_usage = Usage(
@@ -1006,6 +1010,7 @@ class Agent:
                 model=model,
                 tools=self._tool_definitions if self._tool_definitions else None,
                 reasoning_effort=effective_reasoning,
+                max_tokens=self._max_output_tokens,
             )
 
             # If no tool calls, stream the final response
@@ -1206,6 +1211,7 @@ class Agent:
             model=model,
             tools=None,
             reasoning_effort=reasoning_effort,
+            max_tokens=self._max_output_tokens,
         )
 
         # Track usage and pending done for different provider patterns

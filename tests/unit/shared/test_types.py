@@ -10,6 +10,7 @@ from neosian._foundation.shared.types import (
     AgentConfig,
     AgentName,
     Model,
+    ModelSpec,
     Provider,
     ReasoningEffort,
     SystemPrompt,
@@ -75,16 +76,54 @@ class TestModelEnum:
         assert Model.CLAUDE_SONNET_4_5.provider == Provider.ANTHROPIC
 
     def test_model_max_output_tokens_property(self) -> None:
-        """Model should have max_output_tokens property."""
-        # Default is 8192
-        assert Model.GPT_OSS_20B.max_output_tokens == 8192
-        assert Model.LLAMA_3_3_70B.max_output_tokens == 8192
-        assert Model.GPT_5_NANO.max_output_tokens == 8192
+        """Model should have max_output_tokens property matching API ceilings."""
+        # Groq - Production
+        assert Model.GPT_OSS_20B.max_output_tokens == 65_536
+        assert Model.GPT_OSS_120B.max_output_tokens == 65_536
+        assert Model.LLAMA_3_3_70B.max_output_tokens == 32_768
+        assert Model.LLAMA_3_1_8B.max_output_tokens == 131_072
 
-        # Claude models have 8192
-        assert Model.CLAUDE_SONNET_4_5.max_output_tokens == 8192
-        assert Model.CLAUDE_OPUS_4_5.max_output_tokens == 8192
-        assert Model.CLAUDE_HAIKU_4_5.max_output_tokens == 8192
+        # OpenAI
+        assert Model.GPT_5_NANO.max_output_tokens == 128_000
+        assert Model.GPT_5_PRO.max_output_tokens == 128_000
+
+        # Anthropic
+        assert Model.CLAUDE_OPUS_4_6.max_output_tokens == 128_000
+        assert Model.CLAUDE_SONNET_4_5.max_output_tokens == 64_000
+        assert Model.CLAUDE_HAIKU_4_5.max_output_tokens == 64_000
+
+    def test_model_spec_property(self) -> None:
+        """Model.spec should return the ModelSpec for that model."""
+        spec = Model.GPT_OSS_20B.spec
+        assert isinstance(spec, ModelSpec)
+        assert spec.provider == Provider.GROQ
+        assert spec.context_window == 131_072
+        assert spec.max_output_tokens == 65_536
+        assert spec.supports_reasoning is True
+
+    def test_model_spec_is_frozen(self) -> None:
+        """ModelSpec should be immutable."""
+        spec = Model.GPT_OSS_20B.spec
+        with pytest.raises(AttributeError):
+            spec.max_output_tokens = 999  # type: ignore[misc]
+
+    def test_model_context_window_property(self) -> None:
+        """Model should have context_window property."""
+        # Groq: 131,072
+        assert Model.GPT_OSS_20B.context_window == 131_072
+        assert Model.LLAMA_3_3_70B.context_window == 131_072
+
+        # Groq: kimi-k2-0905 has 262,144
+        assert Model.KIMI_K2_0905.context_window == 262_144
+
+        # OpenAI: 400k
+        assert Model.GPT_5_NANO.context_window == 400_000
+        assert Model.GPT_5_PRO.context_window == 400_000
+
+        # Anthropic: 200k
+        assert Model.CLAUDE_SONNET_4_5.context_window == 200_000
+        assert Model.CLAUDE_OPUS_4_6.context_window == 200_000
+        assert Model.CLAUDE_HAIKU_4_5.context_window == 200_000
 
 
 @pytest.mark.unit
@@ -230,3 +269,64 @@ class TestAgentConfigReasoningEffort:
         error_msg = str(exc_info.value)
         assert "Model.GPT_OSS_20B" in error_msg
         assert "Model.GPT_OSS_120B" in error_msg
+
+
+@pytest.mark.unit
+class TestAgentConfigMaxOutputTokens:
+    """Test AgentConfig max_output_tokens validation."""
+
+    def test_max_output_tokens_default(self) -> None:
+        """AgentConfig should default max_output_tokens from LLMDefaults."""
+        from neosian._foundation.shared.constants import LLMDefaults
+
+        config = AgentConfig(
+            system_prompt=SystemPrompt("You are helpful."),
+        )
+        assert config.max_output_tokens == LLMDefaults.MAX_OUTPUT_TOKENS
+
+    def test_max_output_tokens_custom_value(self) -> None:
+        """AgentConfig should accept custom max_output_tokens within model limit."""
+        config = AgentConfig(
+            system_prompt=SystemPrompt("You are helpful."),
+            model=Model.GPT_OSS_20B,
+            max_output_tokens=4096,
+        )
+        assert config.max_output_tokens == 4096
+
+    def test_max_output_tokens_at_model_limit(self) -> None:
+        """AgentConfig should accept max_output_tokens equal to model limit."""
+        config = AgentConfig(
+            system_prompt=SystemPrompt("You are helpful."),
+            model=Model.GPT_OSS_20B,
+            max_output_tokens=Model.GPT_OSS_20B.max_output_tokens,
+        )
+        assert config.max_output_tokens == 65_536
+
+    def test_max_output_tokens_exceeds_limit_raises_error(self) -> None:
+        """AgentConfig should raise error when max_output_tokens exceeds model limit."""
+        with pytest.raises(UnsupportedParameterError) as exc_info:
+            AgentConfig(
+                system_prompt=SystemPrompt("You are helpful."),
+                model=Model.GPT_OSS_20B,
+                max_output_tokens=100_000,
+            )
+
+        error_msg = str(exc_info.value)
+        assert "100000" in error_msg
+        assert "65536" in error_msg
+
+    def test_max_output_tokens_zero_raises_error(self) -> None:
+        """AgentConfig should raise error when max_output_tokens is 0."""
+        with pytest.raises(UnsupportedParameterError):
+            AgentConfig(
+                system_prompt=SystemPrompt("You are helpful."),
+                max_output_tokens=0,
+            )
+
+    def test_max_output_tokens_negative_raises_error(self) -> None:
+        """AgentConfig should raise error when max_output_tokens is negative."""
+        with pytest.raises(UnsupportedParameterError):
+            AgentConfig(
+                system_prompt=SystemPrompt("You are helpful."),
+                max_output_tokens=-1,
+            )
