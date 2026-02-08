@@ -55,27 +55,30 @@ class ErrorMessages:
         "Temperature parameter is not supported for OpenAI GPT-5 models"
     )
 
-    # Groq specific errors
+    # Reasoning effort errors
     REASONING_EFFORT_NOT_SUPPORTED: str = (
-        "reasoning_effort is only supported for GPT-OSS models. "
+        "reasoning_effort is only supported for models with reasoning capability. "
         "Model '{model}' does not support reasoning_effort."
     )
 
     # AgentConfig reasoning_effort validation
     REASONING_EFFORT_MODEL_MISMATCH: str = (
-        "reasoning_effort is only supported for GPT-OSS models. "
+        "reasoning_effort is only supported for models with reasoning capability. "
         "Model '{model}' does not support reasoning_effort. "
         "Supported models: {supported_models}"
     )
 
+    # Groq MAX-to-HIGH downgrade
+    REASONING_EFFORT_MAX_DOWNGRADED: str = (
+        "reasoning_effort=MAX is not supported by Groq models. "
+        "Downgrading to HIGH for model '{model}'."
+    )
+
     # Max output tokens validation
     MAX_OUTPUT_TOKENS_EXCEEDED: str = (
-        "max_output_tokens={requested} exceeds model '{model}' "
-        "limit of {limit}"
+        "max_output_tokens={requested} exceeds model '{model}' " "limit of {limit}"
     )
-    MAX_OUTPUT_TOKENS_INVALID: str = (
-        "max_output_tokens must be >= 1, got {requested}"
-    )
+    MAX_OUTPUT_TOKENS_INVALID: str = "max_output_tokens must be >= 1, got {requested}"
 
     # Provider/Fallback errors
     PROVIDER_FAILED: str = "Provider {provider} failed: {error}"

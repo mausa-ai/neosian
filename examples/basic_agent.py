@@ -17,6 +17,7 @@ from neosian import (
     Tool,
     ToolResult,
 )
+from neosian._foundation.shared.types import ReasoningEffort
 
 
 @Tool(name="get_current_datetime", description="Get the current date and time")
@@ -113,7 +114,8 @@ Be concise and helpful in your responses.""",
         write_file,
         list_directory,
     ],
-    model=Model.GPT_OSS_20B,  # Default Groq model
+    model=Model.CLAUDE_OPUS_4_6,
+    reasoning_effort=ReasoningEffort.HIGH,
     guardrails=GuardrailsConfig(
         # Input guardrails: classifier only (fast, no policy check)
         input_mode=GuardrailMode.CLASSIFIER_ONLY,

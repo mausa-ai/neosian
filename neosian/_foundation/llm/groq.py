@@ -1,6 +1,7 @@
 """Groq LLM client implementation."""
 
 import json
+import logging
 from collections.abc import AsyncIterator
 
 from groq import AsyncGroq, BadRequestError
@@ -33,6 +34,8 @@ from neosian._foundation.shared.types import (
     ToolCallId,
     ToolName,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class GroqClient(BaseLLMClient):
@@ -86,6 +89,14 @@ class GroqClient(BaseLLMClient):
                 ErrorMessages.REASONING_EFFORT_NOT_SUPPORTED.format(model=model.value)
             )
 
+        # Groq does not support MAX - downgrade to HIGH with warning
+        effective_effort = reasoning_effort
+        if reasoning_effort == ReasoningEffort.MAX:
+            logger.warning(
+                ErrorMessages.REASONING_EFFORT_MAX_DOWNGRADED.format(model=model.value)
+            )
+            effective_effort = ReasoningEffort.HIGH
+
         groq_messages = self._convert_messages(messages)
         groq_tools = self._convert_tools(tools) if tools else None
         groq_response_format = (
@@ -107,7 +118,9 @@ class GroqClient(BaseLLMClient):
                     max_tokens=max_tokens,
                     response_format=groq_response_format,  # type: ignore[arg-type]
                     reasoning_effort=(
-                        reasoning_effort.value if reasoning_effort else None
+                        effective_effort.value  # type: ignore[arg-type]
+                        if effective_effort
+                        else None
                     ),
                 )
                 return self._parse_response(response)
@@ -218,6 +231,14 @@ class GroqClient(BaseLLMClient):
                 ErrorMessages.REASONING_EFFORT_NOT_SUPPORTED.format(model=model.value)
             )
 
+        # Groq does not support MAX - downgrade to HIGH with warning
+        effective_effort = reasoning_effort
+        if reasoning_effort == ReasoningEffort.MAX:
+            logger.warning(
+                ErrorMessages.REASONING_EFFORT_MAX_DOWNGRADED.format(model=model.value)
+            )
+            effective_effort = ReasoningEffort.HIGH
+
         groq_messages = self._convert_messages(messages)
         groq_tools = self._convert_tools(tools) if tools else None
         temp = temperature if temperature is not None else LLMDefaults.TEMPERATURE
@@ -229,14 +250,18 @@ class GroqClient(BaseLLMClient):
             temperature=temp,
             max_tokens=max_tokens,
             stream=True,
-            reasoning_effort=(reasoning_effort.value if reasoning_effort else None),
+            reasoning_effort=(
+                effective_effort.value  # type: ignore[arg-type]
+                if effective_effort
+                else None
+            ),
             extra_body={"stream_options": {"include_usage": True}},
         )
 
         # Track tool calls being built across chunks
         tool_call_builders: dict[int, dict[str, str]] = {}
 
-        async for chunk in stream:
+        async for chunk in stream:  # type: ignore[union-attr]
             # Handle usage-only chunk (comes after finish_reason)
             if not chunk.choices and chunk.usage:
                 yield StreamChunk(

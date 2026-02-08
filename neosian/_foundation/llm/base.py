@@ -117,7 +117,7 @@ class BaseLLMClient(ABC):
             response_format: Optional structured output configuration. When provided,
                 the model will be constrained to generate valid JSON matching the
                 schema defined in the ResponseFormat.
-            reasoning_effort: Optional reasoning effort level (Groq GPT-OSS only).
+            reasoning_effort: Optional reasoning effort level for supported models.
             max_tokens: Maximum output tokens for this request.
 
         Returns:
@@ -142,7 +142,7 @@ class BaseLLMClient(ABC):
             model: Model identifier.
             tools: Optional list of tools the model can call.
             temperature: Sampling temperature (0.0-2.0). None uses provider default.
-            reasoning_effort: Optional reasoning effort level (Groq GPT-OSS only).
+            reasoning_effort: Optional reasoning effort level for supported models.
             max_tokens: Maximum output tokens for this request.
 
         Yields:

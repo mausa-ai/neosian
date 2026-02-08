@@ -54,7 +54,7 @@ from neosian._foundation.shared.types import (
 )
 from neosian._foundation.tools.base import Tool, ToolResult
 
-__version__ = "0.32.0"
+__version__ = "0.33.0"
 
 __all__ = [
     # Agent

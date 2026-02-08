@@ -1,5 +1,6 @@
 """Anthropic Claude LLM client implementation."""
 
+import logging
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -15,8 +16,15 @@ from neosian._foundation.llm.base import (
     ToolDefinition,
     Usage,
 )
-from neosian._foundation.shared.constants import LLMDefaults, StructuredOutputs
-from neosian._foundation.shared.exceptions import ToolCallGenerationError
+from neosian._foundation.shared.constants import (
+    ErrorMessages,
+    LLMDefaults,
+    StructuredOutputs,
+)
+from neosian._foundation.shared.exceptions import (
+    ToolCallGenerationError,
+    UnsupportedParameterError,
+)
 from neosian._foundation.shared.types import (
     Model,
     ReasoningEffort,
@@ -24,6 +32,8 @@ from neosian._foundation.shared.types import (
     ToolCallId,
     ToolName,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class AnthropicClient(BaseLLMClient):
@@ -48,7 +58,7 @@ class AnthropicClient(BaseLLMClient):
         tools: list[ToolDefinition] | None = None,
         temperature: float | None = None,
         response_format: ResponseFormat | None = None,
-        reasoning_effort: ReasoningEffort | None = None,  # noqa: ARG002
+        reasoning_effort: ReasoningEffort | None = None,
         max_tokens: int = LLMDefaults.MAX_OUTPUT_TOKENS,
     ) -> CompletionResponse:
         """Send a completion request to Anthropic.
@@ -62,14 +72,21 @@ class AnthropicClient(BaseLLMClient):
             tools: Optional list of tools the model can call.
             temperature: Sampling temperature (0.0-1.0). None uses default.
             response_format: Optional structured output configuration.
-            reasoning_effort: Ignored (Groq GPT-OSS only).
+            reasoning_effort: Optional reasoning effort level for supported models.
 
         Returns:
             CompletionResponse with the model's response.
 
         Raises:
             ToolCallGenerationError: If tool call generation fails after retries.
+            UnsupportedParameterError: If reasoning_effort used with unsupported model.
         """
+        # Validate reasoning_effort
+        if reasoning_effort is not None and not model.supports_reasoning:
+            raise UnsupportedParameterError(
+                ErrorMessages.REASONING_EFFORT_NOT_SUPPORTED.format(model=model.value)
+            )
+
         system_prompt, anthropic_messages = self._convert_messages(messages)
         anthropic_tools = self._convert_tools(tools) if tools else None
 
@@ -83,8 +100,14 @@ class AnthropicClient(BaseLLMClient):
                     "model": model,
                     "messages": anthropic_messages,
                     "max_tokens": max_tokens,
-                    "temperature": current_temp,
                 }
+
+                # Thinking mode: add adaptive thinking + effort, omit temperature
+                if reasoning_effort is not None:
+                    kwargs["thinking"] = {"type": "adaptive"}
+                    kwargs["output_config"] = {"effort": reasoning_effort.value}
+                else:
+                    kwargs["temperature"] = current_temp
 
                 if system_prompt:
                     kwargs["system"] = system_prompt
@@ -138,12 +161,17 @@ class AnthropicClient(BaseLLMClient):
         Returns:
             Parsed CompletionResponse.
         """
-        # Build text content and tool calls from content blocks
+        # Build text content, reasoning, and tool calls from content blocks
         text_content = ""
+        reasoning_content = ""
         tool_calls: list[ToolCall] = []
 
         for block in response.content:  # type: ignore[attr-defined]
-            if block.type == "text":
+            if block.type == "thinking":
+                reasoning_content += block.thinking
+            elif block.type == "redacted_thinking":
+                pass  # Encrypted thinking block - cannot read content
+            elif block.type == "text":
                 text_content += block.text
             elif block.type == "tool_use":
                 tool_calls.append(
@@ -160,6 +188,7 @@ class AnthropicClient(BaseLLMClient):
             message=Message(
                 role=Role.ASSISTANT,
                 content=text_content if text_content else None,
+                reasoning=reasoning_content if reasoning_content else None,
                 tool_calls=tool_calls,
             ),
             usage=Usage(
@@ -175,7 +204,7 @@ class AnthropicClient(BaseLLMClient):
         model: Model,
         tools: list[ToolDefinition] | None = None,  # noqa: ARG002
         temperature: float | None = None,
-        reasoning_effort: ReasoningEffort | None = None,  # noqa: ARG002
+        reasoning_effort: ReasoningEffort | None = None,
         max_tokens: int = LLMDefaults.MAX_OUTPUT_TOKENS,
     ) -> AsyncIterator[StreamChunk]:
         """Stream a completion request from Anthropic.
@@ -188,11 +217,20 @@ class AnthropicClient(BaseLLMClient):
             model: Model identifier.
             tools: Not used (agent handles tools via complete()).
             temperature: Sampling temperature (0.0-1.0). None uses default.
-            reasoning_effort: Ignored (Groq GPT-OSS only).
+            reasoning_effort: Optional reasoning effort level for supported models.
 
         Yields:
             StreamChunk objects as they arrive.
+
+        Raises:
+            UnsupportedParameterError: If reasoning_effort used with unsupported model.
         """
+        # Validate reasoning_effort
+        if reasoning_effort is not None and not model.supports_reasoning:
+            raise UnsupportedParameterError(
+                ErrorMessages.REASONING_EFFORT_NOT_SUPPORTED.format(model=model.value)
+            )
+
         system_prompt, anthropic_messages = self._convert_messages(messages)
         temp = temperature if temperature is not None else LLMDefaults.TEMPERATURE
 
@@ -200,8 +238,14 @@ class AnthropicClient(BaseLLMClient):
             "model": model,
             "messages": anthropic_messages,
             "max_tokens": max_tokens,
-            "temperature": temp,
         }
+
+        # Thinking mode: add adaptive thinking + effort, omit temperature
+        if reasoning_effort is not None:
+            kwargs["thinking"] = {"type": "adaptive"}
+            kwargs["output_config"] = {"effort": reasoning_effort.value}
+        else:
+            kwargs["temperature"] = temp
 
         if system_prompt:
             kwargs["system"] = system_prompt
@@ -212,9 +256,15 @@ class AnthropicClient(BaseLLMClient):
             usage_data: Usage | None = None
             async for event in stream:
                 if event.type == "content_block_delta":
-                    if hasattr(event.delta, "text"):
+                    delta_type = getattr(event.delta, "type", None)
+                    if delta_type == "thinking_delta":
                         yield StreamChunk(
-                            content=event.delta.text,
+                            reasoning=event.delta.thinking,  # type: ignore[union-attr]
+                            finish_reason=None,
+                        )
+                    elif delta_type == "text_delta":
+                        yield StreamChunk(
+                            content=event.delta.text,  # type: ignore[union-attr]
                             finish_reason=None,
                         )
                 elif event.type == "message_delta":

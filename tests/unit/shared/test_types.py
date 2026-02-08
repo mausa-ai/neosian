@@ -221,7 +221,7 @@ class TestAgentConfigReasoningEffort:
         assert config.reasoning_effort is None
 
     def test_reasoning_effort_with_non_reasoning_model_raises_error(self) -> None:
-        """AgentConfig should raise error for reasoning_effort with non-GPT-OSS models."""
+        """AgentConfig should raise error for reasoning_effort with non-reasoning models."""
         with pytest.raises(UnsupportedParameterError) as exc_info:
             AgentConfig(
                 system_prompt=SystemPrompt("You are helpful."),
@@ -231,7 +231,6 @@ class TestAgentConfigReasoningEffort:
 
         error_msg = str(exc_info.value)
         assert "llama-3.3-70b-versatile" in error_msg
-        assert "GPT-OSS" in error_msg
 
     def test_reasoning_effort_with_openai_model_raises_error(self) -> None:
         """AgentConfig should raise error for reasoning_effort with OpenAI models."""
@@ -245,8 +244,10 @@ class TestAgentConfigReasoningEffort:
         error_msg = str(exc_info.value)
         assert "gpt-5-nano" in error_msg
 
-    def test_reasoning_effort_with_anthropic_model_raises_error(self) -> None:
-        """AgentConfig should raise error for reasoning_effort with Anthropic models."""
+    def test_reasoning_effort_with_non_reasoning_anthropic_model_raises_error(
+        self,
+    ) -> None:
+        """AgentConfig should raise error for reasoning_effort with non-reasoning Anthropic models."""
         with pytest.raises(UnsupportedParameterError) as exc_info:
             AgentConfig(
                 system_prompt=SystemPrompt("You are helpful."),
@@ -256,6 +257,24 @@ class TestAgentConfigReasoningEffort:
 
         error_msg = str(exc_info.value)
         assert "claude-sonnet-4-5" in error_msg
+
+    def test_reasoning_effort_with_claude_opus_accepted(self) -> None:
+        """AgentConfig should accept reasoning_effort with Claude Opus 4.6."""
+        config = AgentConfig(
+            system_prompt=SystemPrompt("You are helpful."),
+            model=Model.CLAUDE_OPUS_4_6,
+            reasoning_effort=ReasoningEffort.HIGH,
+        )
+        assert config.reasoning_effort == ReasoningEffort.HIGH
+
+    def test_reasoning_effort_max_accepted(self) -> None:
+        """AgentConfig should accept reasoning_effort MAX with supported models."""
+        config = AgentConfig(
+            system_prompt=SystemPrompt("You are helpful."),
+            model=Model.CLAUDE_OPUS_4_6,
+            reasoning_effort=ReasoningEffort.MAX,
+        )
+        assert config.reasoning_effort == ReasoningEffort.MAX
 
     def test_error_message_lists_supported_models(self) -> None:
         """Error message should list supported models."""
@@ -269,6 +288,7 @@ class TestAgentConfigReasoningEffort:
         error_msg = str(exc_info.value)
         assert "Model.GPT_OSS_20B" in error_msg
         assert "Model.GPT_OSS_120B" in error_msg
+        assert "Model.CLAUDE_OPUS_4_6" in error_msg
 
 
 @pytest.mark.unit

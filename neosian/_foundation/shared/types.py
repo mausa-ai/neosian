@@ -58,12 +58,14 @@ class ReasoningEffort(str, Enum):
     """Reasoning effort level for supported models.
 
     Controls how many reasoning tokens the model uses.
-    Only supported by GPT-OSS models (gpt-oss-20b, gpt-oss-120b).
+    Supported by GPT-OSS models (Groq) and Claude Opus 4.6 (Anthropic).
+    Note: MAX is Anthropic-only; Groq downgrades MAX to HIGH with a warning.
     """
 
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
+    MAX = "max"
 
 
 class Model(str, Enum):
@@ -125,68 +127,105 @@ class Model(str, Enum):
 
 # Groq - Production
 _MODEL_SPECS[Model.LLAMA_3_3_70B.value] = ModelSpec(
-    provider=Provider.GROQ, context_window=131_072, max_output_tokens=32_768,
+    provider=Provider.GROQ,
+    context_window=131_072,
+    max_output_tokens=32_768,
 )
 _MODEL_SPECS[Model.LLAMA_3_1_8B.value] = ModelSpec(
-    provider=Provider.GROQ, context_window=131_072, max_output_tokens=131_072,
+    provider=Provider.GROQ,
+    context_window=131_072,
+    max_output_tokens=131_072,
 )
 _MODEL_SPECS[Model.GPT_OSS_120B.value] = ModelSpec(
-    provider=Provider.GROQ, context_window=131_072, max_output_tokens=65_536,
+    provider=Provider.GROQ,
+    context_window=131_072,
+    max_output_tokens=65_536,
     supports_reasoning=True,
 )
 _MODEL_SPECS[Model.GPT_OSS_20B.value] = ModelSpec(
-    provider=Provider.GROQ, context_window=131_072, max_output_tokens=65_536,
+    provider=Provider.GROQ,
+    context_window=131_072,
+    max_output_tokens=65_536,
     supports_reasoning=True,
 )
 
 # Groq - Preview
 _MODEL_SPECS[Model.LLAMA_4_MAVERICK_17B.value] = ModelSpec(
-    provider=Provider.GROQ, context_window=131_072, max_output_tokens=8_192,
+    provider=Provider.GROQ,
+    context_window=131_072,
+    max_output_tokens=8_192,
 )
 _MODEL_SPECS[Model.LLAMA_4_SCOUT_17B.value] = ModelSpec(
-    provider=Provider.GROQ, context_window=131_072, max_output_tokens=8_192,
+    provider=Provider.GROQ,
+    context_window=131_072,
+    max_output_tokens=8_192,
 )
 _MODEL_SPECS[Model.QWEN3_32B.value] = ModelSpec(
-    provider=Provider.GROQ, context_window=131_072, max_output_tokens=40_960,
+    provider=Provider.GROQ,
+    context_window=131_072,
+    max_output_tokens=40_960,
 )
 _MODEL_SPECS[Model.KIMI_K2.value] = ModelSpec(
-    provider=Provider.GROQ, context_window=131_072, max_output_tokens=16_384,
+    provider=Provider.GROQ,
+    context_window=131_072,
+    max_output_tokens=16_384,
 )
 _MODEL_SPECS[Model.KIMI_K2_0905.value] = ModelSpec(
-    provider=Provider.GROQ, context_window=262_144, max_output_tokens=16_384,
+    provider=Provider.GROQ,
+    context_window=262_144,
+    max_output_tokens=16_384,
 )
 
 # Groq - Guardrails
 _MODEL_SPECS[Model.LLAMA_GUARD_4_12B.value] = ModelSpec(
-    provider=Provider.GROQ, context_window=131_072, max_output_tokens=1_024,
+    provider=Provider.GROQ,
+    context_window=131_072,
+    max_output_tokens=1_024,
 )
 _MODEL_SPECS[Model.GPT_OSS_SAFEGUARD_20B.value] = ModelSpec(
-    provider=Provider.GROQ, context_window=131_072, max_output_tokens=65_536,
+    provider=Provider.GROQ,
+    context_window=131_072,
+    max_output_tokens=65_536,
 )
 
 # OpenAI
 _MODEL_SPECS[Model.GPT_5_1.value] = ModelSpec(
-    provider=Provider.OPENAI, context_window=400_000, max_output_tokens=128_000,
+    provider=Provider.OPENAI,
+    context_window=400_000,
+    max_output_tokens=128_000,
 )
 _MODEL_SPECS[Model.GPT_5_MINI.value] = ModelSpec(
-    provider=Provider.OPENAI, context_window=400_000, max_output_tokens=128_000,
+    provider=Provider.OPENAI,
+    context_window=400_000,
+    max_output_tokens=128_000,
 )
 _MODEL_SPECS[Model.GPT_5_NANO.value] = ModelSpec(
-    provider=Provider.OPENAI, context_window=400_000, max_output_tokens=128_000,
+    provider=Provider.OPENAI,
+    context_window=400_000,
+    max_output_tokens=128_000,
 )
 _MODEL_SPECS[Model.GPT_5_PRO.value] = ModelSpec(
-    provider=Provider.OPENAI, context_window=400_000, max_output_tokens=128_000,
+    provider=Provider.OPENAI,
+    context_window=400_000,
+    max_output_tokens=128_000,
 )
 
 # Anthropic
 _MODEL_SPECS[Model.CLAUDE_OPUS_4_6.value] = ModelSpec(
-    provider=Provider.ANTHROPIC, context_window=200_000, max_output_tokens=128_000,
+    provider=Provider.ANTHROPIC,
+    context_window=200_000,
+    max_output_tokens=128_000,
+    supports_reasoning=True,
 )
 _MODEL_SPECS[Model.CLAUDE_SONNET_4_5.value] = ModelSpec(
-    provider=Provider.ANTHROPIC, context_window=200_000, max_output_tokens=64_000,
+    provider=Provider.ANTHROPIC,
+    context_window=200_000,
+    max_output_tokens=64_000,
 )
 _MODEL_SPECS[Model.CLAUDE_HAIKU_4_5.value] = ModelSpec(
-    provider=Provider.ANTHROPIC, context_window=200_000, max_output_tokens=64_000,
+    provider=Provider.ANTHROPIC,
+    context_window=200_000,
+    max_output_tokens=64_000,
 )
 
 
@@ -377,9 +416,7 @@ class AgentConfig:
         # Validate reasoning_effort is only used with models that support it
         if self.reasoning_effort is not None and not self.model.supports_reasoning:
             reasoning_models = [m for m in Model if m.supports_reasoning]
-            supported_models = ", ".join(
-                f"Model.{m.name}" for m in reasoning_models
-            )
+            supported_models = ", ".join(f"Model.{m.name}" for m in reasoning_models)
             raise UnsupportedParameterError(
                 ErrorMessages.REASONING_EFFORT_MODEL_MISMATCH.format(
                     model=self.model.value,

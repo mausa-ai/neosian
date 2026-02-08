@@ -1,0 +1,15 @@
+Probability of Drawing 2 Aces in a Row (Without Replacement)
+=============================================================
+
+Given: A standard deck of 52 cards containing 4 aces.
+
+Step 1: P(1st card is an Ace) = 4/52
+Step 2: P(2nd card is an Ace | 1st was an Ace) = 3/51
+
+Combined Probability:
+  P(2 Aces in a row) = (4/52) x (3/51)
+                      = 12 / 2652
+                      = 1 / 221
+                      ≈ 0.004525 (or about 0.4525%)
+
+Answer: 1/221 ≈ 0.4525%

@@ -389,7 +389,6 @@ class TestGroqClientReasoningEffort:
             )
 
         assert "llama-3.3-70b-versatile" in str(exc_info.value)
-        assert "GPT-OSS" in str(exc_info.value)
 
     @pytest.mark.asyncio
     async def test_reasoning_effort_none_passed_as_none(self) -> None:
@@ -467,6 +466,100 @@ class TestGroqClientReasoningEffort:
                 reasoning_effort=ReasoningEffort.LOW,
             ):
                 pass
+
+    @pytest.mark.asyncio
+    async def test_reasoning_effort_max_downgraded_to_high(self) -> None:
+        """reasoning_effort MAX should be downgraded to HIGH for Groq models."""
+        client = GroqClient(api_key="test-key")
+
+        mock_create = AsyncMock()
+        client._client.chat.completions.create = mock_create
+
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "Response"
+        mock_response.choices[0].message.tool_calls = None
+        mock_response.usage.prompt_tokens = 10
+        mock_response.usage.completion_tokens = 5
+        mock_response.model = "openai/gpt-oss-20b"
+
+        mock_create.return_value = mock_response
+
+        await client.complete(
+            messages=[Message(role=Role.USER, content="Think")],
+            model=Model.GPT_OSS_20B,
+            reasoning_effort=ReasoningEffort.MAX,
+        )
+
+        mock_create.assert_called_once()
+        assert mock_create.call_args.kwargs["reasoning_effort"] == "high"
+
+    @pytest.mark.asyncio
+    async def test_reasoning_effort_max_logs_warning(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A warning should be logged when MAX is downgraded to HIGH."""
+        import logging
+
+        client = GroqClient(api_key="test-key")
+
+        mock_create = AsyncMock()
+        client._client.chat.completions.create = mock_create
+
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "Response"
+        mock_response.choices[0].message.tool_calls = None
+        mock_response.usage.prompt_tokens = 10
+        mock_response.usage.completion_tokens = 5
+        mock_response.model = "openai/gpt-oss-20b"
+
+        mock_create.return_value = mock_response
+
+        with caplog.at_level(logging.WARNING, logger="neosian._foundation.llm.groq"):
+            await client.complete(
+                messages=[Message(role=Role.USER, content="Think")],
+                model=Model.GPT_OSS_20B,
+                reasoning_effort=ReasoningEffort.MAX,
+            )
+
+        assert any("MAX" in record.message for record in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_reasoning_effort_max_in_stream_downgraded(self) -> None:
+        """reasoning_effort MAX in stream() should be downgraded to HIGH."""
+        client = GroqClient(api_key="test-key")
+
+        mock_create = AsyncMock()
+        client._client.chat.completions.create = mock_create
+
+        # Mock async iterator
+        class MockAsyncIterator:
+            def __init__(self) -> None:
+                self.items: list[object] = []
+                self.index = 0
+
+            def __aiter__(self) -> "MockAsyncIterator":
+                return self
+
+            async def __anext__(self) -> object:
+                if self.index >= len(self.items):
+                    raise StopAsyncIteration
+                item = self.items[self.index]
+                self.index += 1
+                return item
+
+        mock_create.return_value = MockAsyncIterator()
+
+        async for _ in client.stream(
+            messages=[Message(role=Role.USER, content="Think")],
+            model=Model.GPT_OSS_20B,
+            reasoning_effort=ReasoningEffort.MAX,
+        ):
+            pass
+
+        mock_create.assert_called_once()
+        assert mock_create.call_args.kwargs["reasoning_effort"] == "high"
 
 
 @pytest.mark.unit

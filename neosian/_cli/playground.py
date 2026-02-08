@@ -634,6 +634,8 @@ def run_playground(agent_path: str, menu: bool = False, arena: bool = False) -> 
             model=selected_model,
             enable_todo=base_config.enable_todo,
             guardrails=base_config.guardrails,
+            reasoning_effort=base_config.reasoning_effort,
+            max_output_tokens=base_config.max_output_tokens,
         )
 
     # Create agent from config
@@ -695,6 +697,8 @@ def _run_arena_mode(
             model=model,
             enable_todo=base_config.enable_todo,
             guardrails=base_config.guardrails,
+            reasoning_effort=base_config.reasoning_effort,
+            max_output_tokens=base_config.max_output_tokens,
         )
         try:
             agent = Agent(config=config)
@@ -884,6 +888,16 @@ async def _chat_loop(
                         tool_text,
                         title=PlaygroundUI.TOOL_CALL_LABEL,
                         border_style="yellow",
+                    )
+                )
+
+            # Display reasoning if present
+            if response.message.reasoning:
+                console.print(
+                    Panel(
+                        Markdown(response.message.reasoning),
+                        title="Reasoning",
+                        border_style="dim",
                     )
                 )
 
