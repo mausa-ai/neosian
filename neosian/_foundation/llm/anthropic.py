@@ -91,6 +91,11 @@ class AnthropicClient(BaseLLMClient):
         system_prompt, anthropic_messages = self._convert_messages(messages)
         anthropic_tools = self._convert_tools(tools) if tools else None
 
+        # Apply prompt caching breakpoints
+        cached_system, anthropic_messages = self._apply_cache_control(
+            system_prompt, anthropic_messages
+        )
+
         current_temp = (
             temperature if temperature is not None else LLMDefaults.TEMPERATURE
         )
@@ -110,8 +115,8 @@ class AnthropicClient(BaseLLMClient):
                 else:
                     kwargs["temperature"] = current_temp
 
-                if system_prompt:
-                    kwargs["system"] = system_prompt
+                if cached_system:
+                    kwargs["system"] = cached_system
 
                 if anthropic_tools:
                     kwargs["tools"] = anthropic_tools
@@ -195,6 +200,8 @@ class AnthropicClient(BaseLLMClient):
             usage=Usage(
                 input_tokens=response.usage.input_tokens,  # type: ignore[attr-defined]
                 output_tokens=response.usage.output_tokens,  # type: ignore[attr-defined]
+                cache_creation_input_tokens=getattr(response.usage, "cache_creation_input_tokens", 0) or 0,  # type: ignore[attr-defined]
+                cache_read_input_tokens=getattr(response.usage, "cache_read_input_tokens", 0) or 0,  # type: ignore[attr-defined]
             ),
             model=response.model,  # type: ignore[attr-defined]
         )
@@ -234,6 +241,13 @@ class AnthropicClient(BaseLLMClient):
             )
 
         system_prompt, anthropic_messages = self._convert_messages(messages)
+        anthropic_tools = self._convert_tools(tools) if tools else None
+
+        # Apply prompt caching breakpoints
+        cached_system, anthropic_messages = self._apply_cache_control(
+            system_prompt, anthropic_messages
+        )
+
         temp = temperature if temperature is not None else LLMDefaults.TEMPERATURE
 
         kwargs: dict[str, Any] = {
@@ -249,14 +263,18 @@ class AnthropicClient(BaseLLMClient):
         else:
             kwargs["temperature"] = temp
 
-        if system_prompt:
-            kwargs["system"] = system_prompt
+        if cached_system:
+            kwargs["system"] = cached_system
 
-        if tools:
-            kwargs["tools"] = self._convert_tools(tools)
+        if anthropic_tools:
+            kwargs["tools"] = anthropic_tools
 
         async with self._client.messages.stream(**kwargs) as stream:
-            usage_data: Usage | None = None
+            # Usage tracking: input/cache from message_start, output from message_delta
+            input_tokens: int = 0
+            output_tokens: int = 0
+            cache_creation_tokens: int = 0
+            cache_read_tokens: int = 0
 
             # Tool call accumulation state
             accumulated_tool_calls: list[ToolCall] = []
@@ -265,7 +283,19 @@ class AnthropicClient(BaseLLMClient):
             current_tool_input: str = ""
 
             async for event in stream:
-                if event.type == "content_block_start":
+                if event.type == "message_start":
+                    # Input and cache tokens are reported in message_start
+                    if hasattr(event, "message") and hasattr(event.message, "usage"):
+                        msg_usage = event.message.usage
+                        input_tokens = getattr(msg_usage, "input_tokens", 0) or 0
+                        cache_creation_tokens = (
+                            getattr(msg_usage, "cache_creation_input_tokens", 0) or 0
+                        )
+                        cache_read_tokens = (
+                            getattr(msg_usage, "cache_read_input_tokens", 0) or 0
+                        )
+
+                elif event.type == "content_block_start":
                     block = event.content_block
                     if getattr(block, "type", None) == "tool_use":
                         current_tool_id = block.id  # type: ignore[union-attr]
@@ -302,18 +332,20 @@ class AnthropicClient(BaseLLMClient):
                         current_tool_input = ""
 
                 elif event.type == "message_delta":
-                    # Capture usage from message_delta event
+                    # Output tokens are reported in message_delta
                     if hasattr(event, "usage") and event.usage:
-                        usage_data = Usage(
-                            input_tokens=event.usage.input_tokens or 0,
-                            output_tokens=event.usage.output_tokens,
-                        )
+                        output_tokens = event.usage.output_tokens
 
                 elif event.type == "message_stop":
                     finish_reason = "tool_use" if accumulated_tool_calls else "stop"
                     yield StreamChunk(
                         finish_reason=finish_reason,
-                        usage=usage_data,
+                        usage=Usage(
+                            input_tokens=input_tokens,
+                            output_tokens=output_tokens,
+                            cache_creation_input_tokens=cache_creation_tokens,
+                            cache_read_input_tokens=cache_read_tokens,
+                        ),
                         tool_calls=accumulated_tool_calls,
                     )
 
@@ -379,13 +411,17 @@ class AnthropicClient(BaseLLMClient):
     def _convert_tools(self, tools: list[ToolDefinition]) -> list[dict[str, Any]]:
         """Convert internal tool definitions to Anthropic format.
 
+        Adds cache_control to the last tool definition. Anthropic caches
+        everything up to and including the marked block, so marking the
+        last tool caches all tool definitions.
+
         Args:
             tools: Internal ToolDefinition objects.
 
         Returns:
-            Anthropic-formatted tool definitions.
+            Anthropic-formatted tool definitions with cache_control on last.
         """
-        return [
+        result = [
             {
                 "name": tool.name,
                 "description": tool.description,
@@ -393,6 +429,64 @@ class AnthropicClient(BaseLLMClient):
             }
             for tool in tools
         ]
+        if result:
+            result[-1]["cache_control"] = {"type": "ephemeral"}
+        return result
+
+    def _apply_cache_control(
+        self,
+        system_prompt: str | None,
+        anthropic_messages: list[dict[str, Any]],
+    ) -> tuple[list[dict[str, Any]] | None, list[dict[str, Any]]]:
+        """Apply cache_control breakpoints for Anthropic prompt caching.
+
+        Adds ephemeral cache breakpoints to the system prompt and the last
+        message in the conversation. This enables Anthropic to cache the
+        prefix (tools + system + conversation history) across API calls,
+        reducing input token costs by up to 90% on cache reads.
+
+        Cache order: tools (handled by _convert_tools) → system → messages.
+
+        Args:
+            system_prompt: The system prompt string (or None).
+            anthropic_messages: Converted Anthropic-format messages.
+
+        Returns:
+            Tuple of (cached_system, cached_messages).
+            cached_system is a structured list with cache_control, or None.
+            cached_messages has cache_control on the last message's content.
+        """
+        # System: plain string → structured list with cache_control
+        cached_system: list[dict[str, Any]] | None = None
+        if system_prompt:
+            cached_system = [
+                {
+                    "type": "text",
+                    "text": system_prompt,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ]
+
+        # Last message: add cache_control to the last content block.
+        # This caches the entire prefix (tools + system + all messages up
+        # to this point) so subsequent calls only process new messages.
+        if anthropic_messages:
+            last_msg = anthropic_messages[-1]
+            content = last_msg["content"]
+            if isinstance(content, str):
+                # Convert string content to structured format with cache_control
+                last_msg["content"] = [
+                    {
+                        "type": "text",
+                        "text": content,
+                        "cache_control": {"type": "ephemeral"},
+                    }
+                ]
+            elif isinstance(content, list) and content:
+                # Add cache_control to the last block in the list
+                content[-1]["cache_control"] = {"type": "ephemeral"}
+
+        return cached_system, anthropic_messages
 
     def _convert_response_format(
         self, response_format: ResponseFormat

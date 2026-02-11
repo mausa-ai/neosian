@@ -70,15 +70,31 @@ class StreamChunk:
 
 @dataclass
 class Usage:
-    """Token usage information."""
+    """Token usage information.
+
+    Cache fields are populated by providers with prompt caching:
+    - Anthropic: cache_creation_input_tokens + cache_read_input_tokens
+    - OpenAI: cache_read_input_tokens only (automatic caching, no creation concept)
+    - Groq: defaults to 0
+
+    All providers normalize input_tokens to mean non-cached input tokens.
+    total_tokens = input_tokens + output_tokens + cache_creation + cache_read.
+    """
 
     input_tokens: int
     output_tokens: int
+    cache_creation_input_tokens: int = 0
+    cache_read_input_tokens: int = 0
 
     @property
     def total_tokens(self) -> int:
-        """Total tokens used."""
-        return self.input_tokens + self.output_tokens
+        """Total tokens used (includes cached tokens)."""
+        return (
+            self.input_tokens
+            + self.output_tokens
+            + self.cache_creation_input_tokens
+            + self.cache_read_input_tokens
+        )
 
 
 @dataclass

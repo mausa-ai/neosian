@@ -122,7 +122,7 @@ class TestAnthropicClient:
     def test_convert_tools(
         self, client: AnthropicClient, sample_tool: ToolDefinition
     ) -> None:
-        """Test tool definition conversion."""
+        """Test tool definition conversion with cache_control on last tool."""
         converted = client._convert_tools([sample_tool])
 
         assert len(converted) == 1
@@ -130,6 +130,7 @@ class TestAnthropicClient:
         assert converted[0]["description"] == "Get the weather for a location"
         assert "input_schema" in converted[0]
         assert converted[0]["input_schema"]["type"] == "object"
+        assert converted[0]["cache_control"] == {"type": "ephemeral"}
 
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -825,3 +826,363 @@ class TestAnthropicStreamingToolCalls:
         assert final.tool_calls[0].name == "search"
         assert final.tool_calls[1].id == "toolu_2"
         assert final.tool_calls[1].name == "fetch"
+
+
+@pytest.mark.unit
+class TestAnthropicPromptCaching:
+    """Tests for Anthropic prompt caching (cache_control breakpoints)."""
+
+    def test_apply_cache_control_system_prompt(self, client: AnthropicClient) -> None:
+        """System prompt should be converted to structured list with cache_control."""
+        cached_system, _ = client._apply_cache_control("You are helpful.", [])
+
+        assert cached_system is not None
+        assert len(cached_system) == 1
+        assert cached_system[0]["type"] == "text"
+        assert cached_system[0]["text"] == "You are helpful."
+        assert cached_system[0]["cache_control"] == {"type": "ephemeral"}
+
+    def test_apply_cache_control_no_system_prompt(
+        self, client: AnthropicClient
+    ) -> None:
+        """None system prompt should return None cached_system."""
+        cached_system, _ = client._apply_cache_control(None, [])
+
+        assert cached_system is None
+
+    def test_apply_cache_control_last_user_message_string(
+        self, client: AnthropicClient
+    ) -> None:
+        """Last user message (string content) should get cache_control."""
+        messages = [
+            {"role": "user", "content": "Hello!"},
+        ]
+        _, cached_messages = client._apply_cache_control(None, messages)
+
+        # String content should be converted to structured list
+        last = cached_messages[-1]
+        assert isinstance(last["content"], list)
+        assert len(last["content"]) == 1
+        assert last["content"][0]["type"] == "text"
+        assert last["content"][0]["text"] == "Hello!"
+        assert last["content"][0]["cache_control"] == {"type": "ephemeral"}
+
+    def test_apply_cache_control_last_tool_result(
+        self, client: AnthropicClient
+    ) -> None:
+        """Last tool_result message (list content) should get cache_control on last block."""
+        messages = [
+            {"role": "user", "content": "Hello!"},
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "call_123",
+                        "content": '{"temp": 22}',
+                    }
+                ],
+            },
+        ]
+        _, cached_messages = client._apply_cache_control(None, messages)
+
+        # First message should NOT have cache_control
+        first = cached_messages[0]
+        assert isinstance(first["content"], str)  # Unchanged
+
+        # Last message's last block should have cache_control
+        last = cached_messages[-1]
+        assert isinstance(last["content"], list)
+        assert last["content"][-1]["cache_control"] == {"type": "ephemeral"}
+
+    def test_apply_cache_control_last_assistant_message(
+        self, client: AnthropicClient
+    ) -> None:
+        """Last assistant message (list content) should get cache_control on last block."""
+        messages = [
+            {
+                "role": "assistant",
+                "content": [
+                    {"type": "text", "text": "Let me check."},
+                    {
+                        "type": "tool_use",
+                        "id": "call_1",
+                        "name": "search",
+                        "input": {"q": "test"},
+                    },
+                ],
+            },
+        ]
+        _, cached_messages = client._apply_cache_control(None, messages)
+
+        last = cached_messages[-1]
+        # cache_control should be on the last block (tool_use)
+        assert last["content"][-1]["cache_control"] == {"type": "ephemeral"}
+        # First block should NOT have cache_control
+        assert "cache_control" not in last["content"][0]
+
+    def test_apply_cache_control_empty_messages(self, client: AnthropicClient) -> None:
+        """Empty messages list should not raise."""
+        cached_system, cached_messages = client._apply_cache_control("system", [])
+
+        assert cached_system is not None
+        assert cached_messages == []
+
+    def test_convert_tools_cache_control_on_last_only(
+        self, client: AnthropicClient
+    ) -> None:
+        """Only the last tool should have cache_control."""
+        tools = [
+            ToolDefinition(
+                name="tool_a",
+                description="Tool A",
+                parameters={"type": "object", "properties": {}},
+            ),
+            ToolDefinition(
+                name="tool_b",
+                description="Tool B",
+                parameters={"type": "object", "properties": {}},
+            ),
+        ]
+        converted = client._convert_tools(tools)
+
+        assert "cache_control" not in converted[0]
+        assert converted[1]["cache_control"] == {"type": "ephemeral"}
+
+    def test_convert_tools_empty_list(self, client: AnthropicClient) -> None:
+        """Empty tools list should not raise."""
+        converted = client._convert_tools([])
+        assert converted == []
+
+    @pytest.mark.asyncio
+    async def test_complete_sends_structured_system(
+        self, client: AnthropicClient, sample_messages: list[Message]
+    ) -> None:
+        """complete() should send system as structured list with cache_control."""
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(type="text", text="Hi")]
+        mock_response.usage = MagicMock(
+            input_tokens=10,
+            output_tokens=5,
+            cache_creation_input_tokens=100,
+            cache_read_input_tokens=0,
+        )
+        mock_response.model = "claude-sonnet-4-5-latest"
+
+        client._client.messages.create = AsyncMock(return_value=mock_response)
+
+        await client.complete(
+            messages=sample_messages,
+            model=Model.CLAUDE_SONNET_4_5,
+        )
+
+        call_kwargs = client._client.messages.create.call_args.kwargs
+        # System should be structured list, not plain string
+        system = call_kwargs["system"]
+        assert isinstance(system, list)
+        assert system[0]["type"] == "text"
+        assert system[0]["cache_control"] == {"type": "ephemeral"}
+
+        # Last message should have cache_control
+        messages = call_kwargs["messages"]
+        last_msg = messages[-1]
+        assert isinstance(last_msg["content"], list)
+        assert last_msg["content"][-1]["cache_control"] == {"type": "ephemeral"}
+
+    @pytest.mark.asyncio
+    async def test_complete_extracts_cache_tokens(
+        self, client: AnthropicClient, sample_messages: list[Message]
+    ) -> None:
+        """complete() should extract cache token counts from response usage."""
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(type="text", text="Hi")]
+        mock_response.usage = MagicMock(
+            input_tokens=50,
+            output_tokens=10,
+            cache_creation_input_tokens=2500,
+            cache_read_input_tokens=0,
+        )
+        mock_response.model = "claude-sonnet-4-5-latest"
+
+        client._client.messages.create = AsyncMock(return_value=mock_response)
+
+        response = await client.complete(
+            messages=sample_messages,
+            model=Model.CLAUDE_SONNET_4_5,
+        )
+
+        assert response.usage.input_tokens == 50
+        assert response.usage.output_tokens == 10
+        assert response.usage.cache_creation_input_tokens == 2500
+        assert response.usage.cache_read_input_tokens == 0
+
+    @pytest.mark.asyncio
+    async def test_complete_extracts_cache_read_tokens(
+        self, client: AnthropicClient, sample_messages: list[Message]
+    ) -> None:
+        """complete() should extract cache read tokens (cache hit scenario)."""
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(type="text", text="Hi")]
+        mock_response.usage = MagicMock(
+            input_tokens=50,
+            output_tokens=10,
+            cache_creation_input_tokens=0,
+            cache_read_input_tokens=2500,
+        )
+        mock_response.model = "claude-sonnet-4-5-latest"
+
+        client._client.messages.create = AsyncMock(return_value=mock_response)
+
+        response = await client.complete(
+            messages=sample_messages,
+            model=Model.CLAUDE_SONNET_4_5,
+        )
+
+        assert response.usage.cache_creation_input_tokens == 0
+        assert response.usage.cache_read_input_tokens == 2500
+        assert response.usage.total_tokens == 50 + 10 + 0 + 2500
+
+    @pytest.mark.asyncio
+    async def test_complete_handles_missing_cache_fields(
+        self, client: AnthropicClient, sample_messages: list[Message]
+    ) -> None:
+        """complete() should handle responses without cache fields (graceful fallback)."""
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(type="text", text="Hi")]
+        # Simulate response without cache fields (spec=False lets getattr return default)
+        mock_usage = MagicMock()
+        mock_usage.input_tokens = 10
+        mock_usage.output_tokens = 5
+        del mock_usage.cache_creation_input_tokens
+        del mock_usage.cache_read_input_tokens
+        mock_response.usage = mock_usage
+        mock_response.model = "claude-sonnet-4-5-latest"
+
+        client._client.messages.create = AsyncMock(return_value=mock_response)
+
+        response = await client.complete(
+            messages=sample_messages,
+            model=Model.CLAUDE_SONNET_4_5,
+        )
+
+        assert response.usage.cache_creation_input_tokens == 0
+        assert response.usage.cache_read_input_tokens == 0
+
+    @pytest.mark.asyncio
+    async def test_stream_sends_structured_system(
+        self, client: AnthropicClient, sample_messages: list[Message]
+    ) -> None:
+        """stream() should send system as structured list with cache_control."""
+        mock_event = MagicMock()
+        mock_event.type = "message_stop"
+
+        async def mock_stream_events():
+            yield mock_event
+
+        mock_stream = MagicMock()
+        mock_stream.__aenter__ = AsyncMock(return_value=mock_stream)
+        mock_stream.__aexit__ = AsyncMock(return_value=None)
+        mock_stream.__aiter__ = lambda _: mock_stream_events()
+
+        client._client.messages.stream = MagicMock(return_value=mock_stream)
+
+        async for _ in client.stream(
+            messages=sample_messages,
+            model=Model.CLAUDE_SONNET_4_5,
+        ):
+            pass
+
+        call_kwargs = client._client.messages.stream.call_args.kwargs
+        system = call_kwargs["system"]
+        assert isinstance(system, list)
+        assert system[0]["cache_control"] == {"type": "ephemeral"}
+
+    @pytest.mark.asyncio
+    async def test_stream_extracts_cache_tokens(
+        self, client: AnthropicClient, sample_messages: list[Message]
+    ) -> None:
+        """stream() should extract cache tokens from message_start event."""
+        # message_start with input + cache tokens
+        mock_msg_start = MagicMock()
+        mock_msg_start.type = "message_start"
+        mock_msg_start.message = MagicMock()
+        mock_msg_start.message.usage = MagicMock(
+            input_tokens=50,
+            cache_creation_input_tokens=2500,
+            cache_read_input_tokens=0,
+        )
+
+        mock_text = MagicMock()
+        mock_text.type = "content_block_delta"
+        mock_text.delta = MagicMock(type="text_delta", text="Hi")
+
+        # message_delta with output tokens
+        mock_msg_delta = MagicMock()
+        mock_msg_delta.type = "message_delta"
+        mock_msg_delta.usage = MagicMock(output_tokens=10)
+
+        mock_msg_stop = MagicMock()
+        mock_msg_stop.type = "message_stop"
+
+        async def mock_stream_events():
+            yield mock_msg_start
+            yield mock_text
+            yield mock_msg_delta
+            yield mock_msg_stop
+
+        mock_stream = MagicMock()
+        mock_stream.__aenter__ = AsyncMock(return_value=mock_stream)
+        mock_stream.__aexit__ = AsyncMock(return_value=None)
+        mock_stream.__aiter__ = lambda _: mock_stream_events()
+
+        client._client.messages.stream = MagicMock(return_value=mock_stream)
+
+        chunks = []
+        async for chunk in client.stream(
+            messages=sample_messages,
+            model=Model.CLAUDE_SONNET_4_5,
+        ):
+            chunks.append(chunk)
+
+        # Final chunk should have combined usage from message_start + message_delta
+        final = chunks[-1]
+        assert final.usage is not None
+        assert final.usage.input_tokens == 50
+        assert final.usage.output_tokens == 10
+        assert final.usage.cache_creation_input_tokens == 2500
+        assert final.usage.cache_read_input_tokens == 0
+
+    @pytest.mark.asyncio
+    async def test_stream_tools_have_cache_control(
+        self, client: AnthropicClient, sample_messages: list[Message]
+    ) -> None:
+        """stream() should send tools with cache_control on last tool."""
+        mock_event = MagicMock()
+        mock_event.type = "message_stop"
+
+        async def mock_stream_events():
+            yield mock_event
+
+        mock_stream = MagicMock()
+        mock_stream.__aenter__ = AsyncMock(return_value=mock_stream)
+        mock_stream.__aexit__ = AsyncMock(return_value=None)
+        mock_stream.__aiter__ = lambda _: mock_stream_events()
+
+        client._client.messages.stream = MagicMock(return_value=mock_stream)
+
+        tool_def = ToolDefinition(
+            name="calc",
+            description="Calculate",
+            parameters={"type": "object", "properties": {}},
+        )
+
+        async for _ in client.stream(
+            messages=sample_messages,
+            model=Model.CLAUDE_SONNET_4_5,
+            tools=[tool_def],
+        ):
+            pass
+
+        call_kwargs = client._client.messages.stream.call_args.kwargs
+        tools = call_kwargs["tools"]
+        assert tools[-1]["cache_control"] == {"type": "ephemeral"}

@@ -235,6 +235,16 @@ class OpenAIClient(BaseLLMClient):
                     )
                 )
 
+        # Extract cached token count (OpenAI automatic prompt caching)
+        cached_tokens = 0
+        prompt_tokens = 0
+        output_tokens = 0
+        if response.usage:  # type: ignore[attr-defined]
+            prompt_tokens = response.usage.prompt_tokens  # type: ignore[attr-defined]
+            output_tokens = response.usage.completion_tokens  # type: ignore[attr-defined]
+            details = getattr(response.usage, "prompt_tokens_details", None)  # type: ignore[attr-defined]
+            cached_tokens = getattr(details, "cached_tokens", 0) or 0
+
         return CompletionResponse(
             message=Message(
                 role=Role.ASSISTANT,
@@ -242,8 +252,9 @@ class OpenAIClient(BaseLLMClient):
                 tool_calls=tool_calls,
             ),
             usage=Usage(
-                input_tokens=response.usage.prompt_tokens if response.usage else 0,  # type: ignore[attr-defined]
-                output_tokens=response.usage.completion_tokens if response.usage else 0,  # type: ignore[attr-defined]
+                input_tokens=prompt_tokens - cached_tokens,
+                output_tokens=output_tokens,
+                cache_read_input_tokens=cached_tokens,
             ),
             model=response.model,  # type: ignore[attr-defined]
         )
@@ -301,10 +312,15 @@ class OpenAIClient(BaseLLMClient):
         async for chunk in stream:
             # Handle usage-only chunk (comes after finish_reason)
             if not chunk.choices and chunk.usage:
+                details = getattr(chunk.usage, "prompt_tokens_details", None)
+                cached_tokens = getattr(details, "cached_tokens", 0) or 0
+                prompt_tokens = chunk.usage.prompt_tokens
+
                 yield StreamChunk(
                     usage=Usage(
-                        input_tokens=chunk.usage.prompt_tokens,
+                        input_tokens=prompt_tokens - cached_tokens,
                         output_tokens=chunk.usage.completion_tokens,
+                        cache_read_input_tokens=cached_tokens,
                     ),
                 )
                 continue

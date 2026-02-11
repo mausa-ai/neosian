@@ -96,6 +96,8 @@ def done_event(usage: Usage | None = None) -> SSEEvent:
         data["usage"] = {
             "input_tokens": usage.input_tokens,
             "output_tokens": usage.output_tokens,
+            "cache_creation_input_tokens": usage.cache_creation_input_tokens,
+            "cache_read_input_tokens": usage.cache_read_input_tokens,
             "total_tokens": usage.total_tokens,
         }
     return SSEEvent(event=SSEEventType.DONE, data=data)

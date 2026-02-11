@@ -622,10 +622,14 @@ class Agent:
                 max_tokens=self._max_output_tokens,
             )
 
-            # Accumulate usage
+            # Accumulate usage (includes cache tokens from Anthropic)
             total_usage = Usage(
                 input_tokens=total_usage.input_tokens + response.usage.input_tokens,
                 output_tokens=total_usage.output_tokens + response.usage.output_tokens,
+                cache_creation_input_tokens=total_usage.cache_creation_input_tokens
+                + response.usage.cache_creation_input_tokens,
+                cache_read_input_tokens=total_usage.cache_read_input_tokens
+                + response.usage.cache_read_input_tokens,
             )
 
             # If no tool calls, we're done - check output guardrails
@@ -672,6 +676,10 @@ class Agent:
             input_tokens=total_usage.input_tokens + final_response.usage.input_tokens,
             output_tokens=total_usage.output_tokens
             + final_response.usage.output_tokens,
+            cache_creation_input_tokens=total_usage.cache_creation_input_tokens
+            + final_response.usage.cache_creation_input_tokens,
+            cache_read_input_tokens=total_usage.cache_read_input_tokens
+            + final_response.usage.cache_read_input_tokens,
         )
 
         return await self._finalize_response(
