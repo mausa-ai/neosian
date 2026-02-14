@@ -266,7 +266,6 @@ _MODEL_SPECS[Model.CEREBRAS_ZAI_GLM_4_7.value] = ModelSpec(
     provider=Provider.CEREBRAS,
     context_window=131_072,
     max_output_tokens=40_960,
-    supports_reasoning=True,
 )
 
 

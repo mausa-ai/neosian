@@ -202,6 +202,8 @@ class CerebrasClient(BaseLLMClient):
             if details:
                 cache_read = getattr(details, "cached_tokens", 0) or 0
 
+        prompt_tokens = usage.prompt_tokens if usage else 0
+
         return CompletionResponse(
             message=Message(
                 role=Role.ASSISTANT,
@@ -210,7 +212,7 @@ class CerebrasClient(BaseLLMClient):
                 tool_calls=tool_calls,
             ),
             usage=Usage(
-                input_tokens=usage.prompt_tokens if usage else 0,
+                input_tokens=prompt_tokens - cache_read,
                 output_tokens=usage.completion_tokens if usage else 0,
                 cache_read_input_tokens=cache_read,
             ),
@@ -293,9 +295,11 @@ class CerebrasClient(BaseLLMClient):
                 if details:
                     cache_read = getattr(details, "cached_tokens", 0) or 0
 
+                prompt_tokens = chunk.usage.prompt_tokens  # type: ignore[union-attr]
+
                 yield StreamChunk(
                     usage=Usage(
-                        input_tokens=chunk.usage.prompt_tokens,  # type: ignore[union-attr]
+                        input_tokens=prompt_tokens - cache_read,
                         output_tokens=chunk.usage.completion_tokens,  # type: ignore[union-attr]
                         cache_read_input_tokens=cache_read,
                     ),

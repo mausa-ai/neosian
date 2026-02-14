@@ -75,6 +75,7 @@ class Usage:
     Cache fields are populated by providers with prompt caching:
     - Anthropic: cache_creation_input_tokens + cache_read_input_tokens
     - OpenAI: cache_read_input_tokens only (automatic caching, no creation concept)
+    - Cerebras: cache_read_input_tokens only (automatic caching, like OpenAI)
     - Groq: defaults to 0
 
     All providers normalize input_tokens to mean non-cached input tokens.

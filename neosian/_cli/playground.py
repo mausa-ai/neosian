@@ -88,15 +88,21 @@ def _load_header() -> str:
         return ""
 
 
-def _get_models_for_provider(provider: Provider) -> list[tuple[Model, str]]:
+def _get_models_for_provider(
+    provider: Provider, *, require_reasoning: bool = False
+) -> list[tuple[Model, str]]:
     """Get available models for a provider.
+
+    Args:
+        provider: The LLM provider.
+        require_reasoning: If True, only return models that support reasoning.
 
     Returns:
         List of (Model, display_name) tuples.
     """
     match provider:
         case Provider.GROQ:
-            return [
+            models = [
                 # Production models
                 (Model.GROQ_GPT_OSS_20B, "openai/gpt-oss-20b (default)"),
                 (Model.GROQ_GPT_OSS_120B, "openai/gpt-oss-120b"),
@@ -109,117 +115,166 @@ def _get_models_for_provider(provider: Provider) -> list[tuple[Model, str]]:
                 (Model.GROQ_KIMI_K2, "kimi-k2 (preview)"),
             ]
         case Provider.OPENAI:
-            return [
+            models = [
                 (Model.GPT_5_NANO, "gpt-5-nano (default, fastest)"),
                 (Model.GPT_5_MINI, "gpt-5-mini (balanced)"),
                 (Model.GPT_5_1, "gpt-5.1 (best for coding)"),
                 (Model.GPT_5_PRO, "gpt-5-pro (most precise)"),
             ]
         case Provider.ANTHROPIC:
-            return [
+            models = [
                 (Model.CLAUDE_SONNET_4_5, "claude-sonnet-4-5 (default, balanced)"),
                 (Model.CLAUDE_HAIKU_4_5, "claude-haiku-4-5 (fastest)"),
                 (Model.CLAUDE_OPUS_4_6, "claude-opus-4-6 (most capable)"),
             ]
         case Provider.CEREBRAS:
-            return [
+            models = [
                 (Model.CEREBRAS_GPT_OSS_120B, "gpt-oss-120b (default, fastest 120B)"),
                 (Model.CEREBRAS_LLAMA_3_1_8B, "llama3.1-8b (fastest)"),
                 (Model.CEREBRAS_QWEN3_235B, "qwen-3-235b (preview, multilingual)"),
                 (Model.CEREBRAS_ZAI_GLM_4_7, "zai-glm-4.7 (preview, reasoning)"),
             ]
 
+    if require_reasoning:
+        models = [(m, name) for m, name in models if m.supports_reasoning]
 
-def _select_provider_and_model(console: Console) -> Model | None:
+    return models
+
+
+_ALL_PROVIDERS: list[tuple[Provider, str]] = [
+    (Provider.GROQ, "Groq (fastest inference)"),
+    (Provider.OPENAI, "OpenAI"),
+    (Provider.ANTHROPIC, "Anthropic (Claude)"),
+    (Provider.CEREBRAS, "Cerebras (fast open models)"),
+]
+
+
+def _get_available_providers(
+    *,
+    require_reasoning: bool = False,
+) -> list[tuple[Provider, str]]:
+    """Get providers that have at least one available model.
+
+    Args:
+        require_reasoning: If True, only include providers with reasoning models.
+
+    Returns:
+        Filtered list of (Provider, display_name) tuples.
+    """
+    return [
+        (p, label)
+        for p, label in _ALL_PROVIDERS
+        if _get_models_for_provider(p, require_reasoning=require_reasoning)
+    ]
+
+
+def _select_provider_and_model(
+    console: Console, *, require_reasoning: bool = False
+) -> Model | None:
     """Show interactive menu to select provider and model.
+
+    Args:
+        console: Rich console for output.
+        require_reasoning: If True, only show models that support reasoning.
 
     Returns:
         Selected Model or None if cancelled.
     """
-    # Provider selection
-    providers = [
-        (Provider.GROQ, "Groq (fastest inference)"),
-        (Provider.OPENAI, "OpenAI"),
-        (Provider.ANTHROPIC, "Anthropic (Claude)"),
-        (Provider.CEREBRAS, "Cerebras (fast open models)"),
-    ]
-
-    console.print("\n[bold]Select Provider:[/bold]")
-    provider_menu = TerminalMenu(
-        [p[1] for p in providers],
-        cursor_index=0,
-    )
-    provider_choice = provider_menu.show()
-
-    if provider_choice is None:
+    providers = _get_available_providers(require_reasoning=require_reasoning)
+    if not providers:
         return None
 
-    selected_provider = providers[provider_choice][0]
+    while True:
+        console.print("\n[bold]Select Provider:[/bold]")
+        provider_menu = TerminalMenu(
+            [p[1] for p in providers],
+            cursor_index=0,
+        )
+        provider_choice = provider_menu.show()
 
-    # Model selection based on provider
-    models = _get_models_for_provider(selected_provider)
-    if not models:
-        return None
+        if provider_choice is None:
+            return None
 
-    console.print(f"\n[bold]Select Model ({selected_provider.value}):[/bold]")
-    model_menu = TerminalMenu(
-        [m[1] for m in models],
-        cursor_index=0,
-    )
-    model_choice = model_menu.show()
+        selected_provider = providers[provider_choice][0]
 
-    if model_choice is None:
-        return None
+        # Model selection based on provider
+        models = _get_models_for_provider(
+            selected_provider, require_reasoning=require_reasoning
+        )
+        if not models:
+            return None
 
-    selected_model: Model = models[model_choice][0]
-    return selected_model
+        console.print(f"\n[bold]Select Model ({selected_provider.value}):[/bold]")
+        model_names = [m[1] for m in models] + ["← Back"]
+        model_menu = TerminalMenu(model_names, cursor_index=0)
+        model_choice = model_menu.show()
+
+        if model_choice is None or model_choice == len(models):
+            # Back to provider selection
+            continue
+
+        selected_model: Model = models[model_choice][0]
+        return selected_model
 
 
-def _select_provider_and_model_labeled(console: Console, label: str) -> Model | None:
+def _select_provider_and_model_labeled(
+    console: Console, label: str, *, require_reasoning: bool = False
+) -> Model | None:
     """Show interactive menu to select provider and model with a label.
 
     Args:
         console: Rich console for output.
         label: Label to show (e.g., "Model 1").
+        require_reasoning: If True, only show models that support reasoning.
 
     Returns:
         Selected Model or None if cancelled.
     """
-    providers = [
-        (Provider.GROQ, "Groq (fastest inference)"),
-        (Provider.OPENAI, "OpenAI"),
-        (Provider.ANTHROPIC, "Anthropic (Claude)"),
-        (Provider.CEREBRAS, "Cerebras (fast open models)"),
-    ]
-
-    console.print(f"\n[bold]{ArenaUI.SELECT_PROVIDER.format(label=label)}[/bold]")
-    provider_menu = TerminalMenu([p[1] for p in providers], cursor_index=0)
-    provider_choice = provider_menu.show()
-
-    if provider_choice is None:
+    providers = _get_available_providers(require_reasoning=require_reasoning)
+    if not providers:
         return None
 
-    selected_provider = providers[provider_choice][0]
+    while True:
+        console.print(
+            f"\n[bold]{ArenaUI.SELECT_PROVIDER.format(label=label)}[/bold]"
+        )
+        provider_menu = TerminalMenu([p[1] for p in providers], cursor_index=0)
+        provider_choice = provider_menu.show()
 
-    models = _get_models_for_provider(selected_provider)
-    if not models:
-        return None
+        if provider_choice is None:
+            return None
 
-    console.print(
-        f"\n[bold]{ArenaUI.SELECT_MODEL.format(label=label, provider=selected_provider.value)}[/bold]"
-    )
-    model_menu = TerminalMenu([m[1] for m in models], cursor_index=0)
-    model_choice = model_menu.show()
+        selected_provider = providers[provider_choice][0]
 
-    if model_choice is None:
-        return None
+        models = _get_models_for_provider(
+            selected_provider, require_reasoning=require_reasoning
+        )
+        if not models:
+            return None
 
-    labeled_model: Model = models[model_choice][0]
-    return labeled_model
+        console.print(
+            f"\n[bold]{ArenaUI.SELECT_MODEL.format(label=label, provider=selected_provider.value)}[/bold]"
+        )
+        model_names = [m[1] for m in models] + ["← Back"]
+        model_menu = TerminalMenu(model_names, cursor_index=0)
+        model_choice = model_menu.show()
+
+        if model_choice is None or model_choice == len(models):
+            # Back to provider selection
+            continue
+
+        labeled_model: Model = models[model_choice][0]
+        return labeled_model
 
 
-def _select_arena_models(console: Console) -> list[Model] | None:
+def _select_arena_models(
+    console: Console, *, require_reasoning: bool = False
+) -> list[Model] | None:
     """Select models for arena mode.
+
+    Args:
+        console: Rich console for output.
+        require_reasoning: If True, only show models that support reasoning.
 
     Returns:
         List of Model enums or None if cancelled.
@@ -238,7 +293,9 @@ def _select_arena_models(console: Console) -> list[Model] | None:
     selections: list[Model] = []
     for i in range(model_count):
         label = ArenaUI.MODEL_LABEL.format(n=i + 1)
-        selection = _select_provider_and_model_labeled(console, label)
+        selection = _select_provider_and_model_labeled(
+            console, label, require_reasoning=require_reasoning
+        )
         if selection is None:
             return None
         selections.append(selection)
@@ -638,7 +695,10 @@ def run_playground(agent_path: str, menu: bool = False, arena: bool = False) -> 
     # Interactive menu override
     config = base_config
     if menu:
-        selected_model = _select_provider_and_model(console)
+        require_reasoning = base_config.reasoning_effort is not None
+        selected_model = _select_provider_and_model(
+            console, require_reasoning=require_reasoning
+        )
         if selected_model is None:
             console.print("[dim]Cancelled.[/dim]")
             return
@@ -695,7 +755,8 @@ def _run_arena_mode(
         agent_name: Name of the agent.
     """
     # Select models
-    selected_models = _select_arena_models(console)
+    require_reasoning = base_config.reasoning_effort is not None
+    selected_models = _select_arena_models(console, require_reasoning=require_reasoning)
     if selected_models is None:
         console.print("[dim]Cancelled.[/dim]")
         return

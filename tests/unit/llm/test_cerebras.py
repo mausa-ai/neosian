@@ -767,3 +767,154 @@ class TestCerebrasClientMaxCompletionTokens:
         mock_create.assert_called_once()
         assert mock_create.call_args.kwargs["max_completion_tokens"] == 4096
         assert "max_tokens" not in mock_create.call_args.kwargs
+
+
+@pytest.mark.unit
+class TestCerebrasClientCaching:
+    """Test prompt caching token extraction."""
+
+    def _mock_response(
+        self,
+        prompt_tokens: int = 1000,
+        completion_tokens: int = 50,
+        cached_tokens: int | None = None,
+        model: str = "gpt-oss-120b",
+    ) -> MagicMock:
+        """Create a mock Cerebras response with optional cache details."""
+        mock = MagicMock()
+        mock.choices = [MagicMock()]
+        mock.choices[0].message.content = "Hello"
+        mock.choices[0].message.tool_calls = None
+        mock.usage.prompt_tokens = prompt_tokens
+        mock.usage.completion_tokens = completion_tokens
+
+        if cached_tokens is not None:
+            mock.usage.prompt_tokens_details = MagicMock()
+            mock.usage.prompt_tokens_details.cached_tokens = cached_tokens
+        else:
+            mock.usage.prompt_tokens_details = None
+
+        mock.model = model
+        return mock
+
+    @pytest.mark.asyncio
+    async def test_parse_response_extracts_cached_tokens(self) -> None:
+        """Should extract cached tokens and normalize input_tokens."""
+        client = CerebrasClient(api_key="test-key")
+        mock_create = AsyncMock(
+            return_value=self._mock_response(
+                prompt_tokens=1000, completion_tokens=50, cached_tokens=800
+            )
+        )
+        client._client.chat.completions.create = mock_create
+
+        response = await client.complete(
+            messages=[Message(role=Role.USER, content="Hi")],
+            model=Model.CEREBRAS_GPT_OSS_120B,
+        )
+
+        # input_tokens should be normalized: prompt_tokens - cached_tokens
+        assert response.usage.input_tokens == 200
+        assert response.usage.cache_read_input_tokens == 800
+        assert response.usage.cache_creation_input_tokens == 0
+        assert response.usage.output_tokens == 50
+
+    @pytest.mark.asyncio
+    async def test_parse_response_no_cache_details(self) -> None:
+        """Should handle None prompt_tokens_details gracefully."""
+        client = CerebrasClient(api_key="test-key")
+        mock_create = AsyncMock(
+            return_value=self._mock_response(
+                prompt_tokens=500, completion_tokens=20, cached_tokens=None
+            )
+        )
+        client._client.chat.completions.create = mock_create
+
+        response = await client.complete(
+            messages=[Message(role=Role.USER, content="Hi")],
+            model=Model.CEREBRAS_GPT_OSS_120B,
+        )
+
+        assert response.usage.input_tokens == 500
+        assert response.usage.cache_read_input_tokens == 0
+
+    @pytest.mark.asyncio
+    async def test_parse_response_cached_tokens_none(self) -> None:
+        """Should handle cached_tokens=None in prompt_tokens_details."""
+        client = CerebrasClient(api_key="test-key")
+        mock_resp = self._mock_response(prompt_tokens=500, completion_tokens=20)
+        mock_resp.usage.prompt_tokens_details = MagicMock()
+        mock_resp.usage.prompt_tokens_details.cached_tokens = None
+        mock_create = AsyncMock(return_value=mock_resp)
+        client._client.chat.completions.create = mock_create
+
+        response = await client.complete(
+            messages=[Message(role=Role.USER, content="Hi")],
+            model=Model.CEREBRAS_GPT_OSS_120B,
+        )
+
+        assert response.usage.input_tokens == 500
+        assert response.usage.cache_read_input_tokens == 0
+
+    @pytest.mark.asyncio
+    async def test_parse_response_total_tokens_correct_with_cache(self) -> None:
+        """total_tokens should equal prompt_tokens + completion_tokens."""
+        client = CerebrasClient(api_key="test-key")
+        mock_create = AsyncMock(
+            return_value=self._mock_response(
+                prompt_tokens=1000, completion_tokens=50, cached_tokens=600
+            )
+        )
+        client._client.chat.completions.create = mock_create
+
+        response = await client.complete(
+            messages=[Message(role=Role.USER, content="Hi")],
+            model=Model.CEREBRAS_GPT_OSS_120B,
+        )
+
+        # total = (1000 - 600) + 50 + 0 + 600 = 1050
+        assert response.usage.total_tokens == 1000 + 50
+
+    @pytest.mark.asyncio
+    async def test_stream_extracts_cached_tokens(self) -> None:
+        """Streaming should extract cached tokens from usage-only chunk."""
+        client = CerebrasClient(api_key="test-key")
+        mock_create = AsyncMock()
+        client._client.chat.completions.create = mock_create
+
+        # Create a usage-only chunk (no choices, has usage)
+        usage_chunk = MagicMock()
+        usage_chunk.choices = []
+        usage_chunk.usage = MagicMock()
+        usage_chunk.usage.prompt_tokens = 1000
+        usage_chunk.usage.completion_tokens = 50
+        usage_chunk.usage.prompt_tokens_details = MagicMock()
+        usage_chunk.usage.prompt_tokens_details.cached_tokens = 700
+
+        class SingleChunkIter:
+            def __init__(self) -> None:
+                self._yielded = False
+
+            def __aiter__(self) -> "SingleChunkIter":
+                return self
+
+            async def __anext__(self) -> MagicMock:
+                if self._yielded:
+                    raise StopAsyncIteration
+                self._yielded = True
+                return usage_chunk
+
+        mock_create.return_value = SingleChunkIter()
+
+        chunks = []
+        async for chunk in client.stream(
+            messages=[Message(role=Role.USER, content="Hi")],
+            model=Model.CEREBRAS_GPT_OSS_120B,
+        ):
+            chunks.append(chunk)
+
+        assert len(chunks) == 1
+        assert chunks[0].usage is not None
+        assert chunks[0].usage.input_tokens == 300
+        assert chunks[0].usage.cache_read_input_tokens == 700
+        assert chunks[0].usage.output_tokens == 50
