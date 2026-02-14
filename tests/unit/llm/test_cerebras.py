@@ -1,12 +1,12 @@
-"""Tests for Groq LLM client."""
+"""Tests for Cerebras LLM client."""
 
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from groq import BadRequestError
+from cerebras.cloud.sdk import BadRequestError
 
 from neosian._foundation.llm.base import Message, Role, ToolDefinition
-from neosian._foundation.llm.groq import GroqClient
+from neosian._foundation.llm.cerebras import CerebrasClient
 from neosian._foundation.shared.constants import LLMDefaults
 from neosian._foundation.shared.exceptions import (
     ToolCallGenerationError,
@@ -16,30 +16,27 @@ from neosian._foundation.shared.types import Model, ReasoningEffort, ToolName
 
 
 @pytest.mark.unit
-class TestGroqClientInit:
-    """Test GroqClient initialization."""
+class TestCerebrasClientInit:
+    """Test CerebrasClient initialization."""
 
     def test_requires_api_key(self) -> None:
-        """GroqClient should require an explicit API key."""
-        # This should work - explicit key
-        client = GroqClient(api_key="test-key")
+        """CerebrasClient should require an explicit API key."""
+        client = CerebrasClient(api_key="test-key")
         assert client is not None
 
     def test_api_key_is_required_parameter(self) -> None:
-        """GroqClient should not accept None as api_key."""
-        # The type signature enforces str, not str | None
-        # This test documents the expected behavior
+        """CerebrasClient should not accept None as api_key."""
         with pytest.raises(TypeError):
-            GroqClient()  # type: ignore[call-arg]
+            CerebrasClient()  # type: ignore[call-arg]
 
 
 @pytest.mark.unit
-class TestGroqClientMessageConversion:
-    """Test message conversion to Groq format."""
+class TestCerebrasClientMessageConversion:
+    """Test message conversion to Cerebras format."""
 
     def test_convert_system_message(self) -> None:
         """System messages should convert correctly."""
-        client = GroqClient(api_key="test-key")
+        client = CerebrasClient(api_key="test-key")
         messages = [Message(role=Role.SYSTEM, content="You are helpful.")]
 
         result = client._convert_messages(messages)
@@ -50,7 +47,7 @@ class TestGroqClientMessageConversion:
 
     def test_convert_user_message(self) -> None:
         """User messages should convert correctly."""
-        client = GroqClient(api_key="test-key")
+        client = CerebrasClient(api_key="test-key")
         messages = [Message(role=Role.USER, content="Hello")]
 
         result = client._convert_messages(messages)
@@ -61,7 +58,7 @@ class TestGroqClientMessageConversion:
 
     def test_convert_assistant_message(self) -> None:
         """Assistant messages should convert correctly."""
-        client = GroqClient(api_key="test-key")
+        client = CerebrasClient(api_key="test-key")
         messages = [Message(role=Role.ASSISTANT, content="Hi there!")]
 
         result = client._convert_messages(messages)
@@ -72,12 +69,12 @@ class TestGroqClientMessageConversion:
 
 
 @pytest.mark.unit
-class TestGroqClientToolConversion:
-    """Test tool conversion to Groq format."""
+class TestCerebrasClientToolConversion:
+    """Test tool conversion to Cerebras format."""
 
     def test_convert_tool_definition(self) -> None:
         """Tool definitions should convert correctly."""
-        client = GroqClient(api_key="test-key")
+        client = CerebrasClient(api_key="test-key")
         tools = [
             ToolDefinition(
                 name=ToolName("search"),
@@ -100,12 +97,12 @@ class TestGroqClientToolConversion:
 
 
 @pytest.mark.unit
-class TestGroqClientToolCallError:
+class TestCerebrasClientToolCallError:
     """Test tool call error detection."""
 
-    def test_is_tool_call_error_true(self) -> None:
+    def test_is_tool_call_error_true_code(self) -> None:
         """Should detect tool_use_failed error code."""
-        client = GroqClient(api_key="test-key")
+        client = CerebrasClient(api_key="test-key")
 
         error = BadRequestError(
             message="Tool use failed",
@@ -115,9 +112,38 @@ class TestGroqClientToolCallError:
 
         assert client._is_tool_call_error(error) is True
 
+    def test_is_tool_call_error_true_message(self) -> None:
+        """Should detect tool-related error in message string."""
+        client = CerebrasClient(api_key="test-key")
+
+        error = BadRequestError(
+            message="Tool error",
+            body={"error": {"code": "bad_request", "message": "Invalid tool call"}},
+            response=MagicMock(),
+        )
+
+        assert client._is_tool_call_error(error) is True
+
+    def test_is_tool_call_error_true_function_message(self) -> None:
+        """Should detect function-related error in message string."""
+        client = CerebrasClient(api_key="test-key")
+
+        error = BadRequestError(
+            message="Function error",
+            body={
+                "error": {
+                    "code": "bad_request",
+                    "message": "Invalid function arguments",
+                }
+            },
+            response=MagicMock(),
+        )
+
+        assert client._is_tool_call_error(error) is True
+
     def test_is_tool_call_error_false_different_code(self) -> None:
         """Should return False for other error codes."""
-        client = GroqClient(api_key="test-key")
+        client = CerebrasClient(api_key="test-key")
 
         error = BadRequestError(
             message="Invalid request",
@@ -129,7 +155,7 @@ class TestGroqClientToolCallError:
 
     def test_is_tool_call_error_false_no_body(self) -> None:
         """Should return False when body is None."""
-        client = GroqClient(api_key="test-key")
+        client = CerebrasClient(api_key="test-key")
 
         error = BadRequestError(
             message="Error",
@@ -141,7 +167,7 @@ class TestGroqClientToolCallError:
 
     def test_is_tool_call_error_false_non_dict_error(self) -> None:
         """Should return False when error field is not a dict."""
-        client = GroqClient(api_key="test-key")
+        client = CerebrasClient(api_key="test-key")
 
         error = BadRequestError(
             message="Error",
@@ -151,29 +177,16 @@ class TestGroqClientToolCallError:
 
         assert client._is_tool_call_error(error) is False
 
-    def test_is_tool_call_error_false_missing_error_field(self) -> None:
-        """Should return False when error field is missing."""
-        client = GroqClient(api_key="test-key")
-
-        error = BadRequestError(
-            message="Error",
-            body={"message": "some error"},
-            response=MagicMock(),
-        )
-
-        assert client._is_tool_call_error(error) is False
-
 
 @pytest.mark.unit
-class TestGroqClientRetry:
+class TestCerebrasClientRetry:
     """Test retry logic for tool call failures."""
 
     @pytest.mark.asyncio
     async def test_retry_on_tool_call_failure(self) -> None:
         """Should retry with lower temperature on tool_use_failed."""
-        client = GroqClient(api_key="test-key")
+        client = CerebrasClient(api_key="test-key")
 
-        # Mock the internal client
         mock_create = AsyncMock()
         client._client.chat.completions.create = mock_create
 
@@ -190,7 +203,7 @@ class TestGroqClientRetry:
         mock_response.choices[0].message.tool_calls = None
         mock_response.usage.prompt_tokens = 10
         mock_response.usage.completion_tokens = 5
-        mock_response.model = "test-model"
+        mock_response.model = "gpt-oss-120b"
 
         mock_create.side_effect = [tool_error, mock_response]
 
@@ -204,7 +217,7 @@ class TestGroqClientRetry:
 
         result = await client.complete(
             messages=[Message(role=Role.USER, content="Hi")],
-            model=Model.GROQ_GPT_OSS_20B,
+            model=Model.CEREBRAS_GPT_OSS_120B,
             tools=tools,
         )
 
@@ -222,7 +235,7 @@ class TestGroqClientRetry:
     @pytest.mark.asyncio
     async def test_raises_after_max_retries(self) -> None:
         """Should raise ToolCallGenerationError after max retries."""
-        client = GroqClient(api_key="test-key")
+        client = CerebrasClient(api_key="test-key")
 
         mock_create = AsyncMock()
         client._client.chat.completions.create = mock_create
@@ -247,18 +260,17 @@ class TestGroqClientRetry:
         with pytest.raises(ToolCallGenerationError) as exc_info:
             await client.complete(
                 messages=[Message(role=Role.USER, content="Hi")],
-                model=Model.GROQ_GPT_OSS_20B,
+                model=Model.CEREBRAS_GPT_OSS_120B,
                 tools=tools,
             )
 
         assert exc_info.value.retries == LLMDefaults.MAX_TOOL_CALL_RETRIES
-        # Should have tried initial + retries
         assert mock_create.call_count == LLMDefaults.MAX_TOOL_CALL_RETRIES + 1
 
     @pytest.mark.asyncio
     async def test_no_retry_without_tools(self) -> None:
         """Should not retry tool errors when no tools provided."""
-        client = GroqClient(api_key="test-key")
+        client = CerebrasClient(api_key="test-key")
 
         mock_create = AsyncMock()
         client._client.chat.completions.create = mock_create
@@ -271,11 +283,10 @@ class TestGroqClientRetry:
 
         mock_create.side_effect = tool_error
 
-        # No tools provided - should re-raise immediately
         with pytest.raises(BadRequestError):
             await client.complete(
                 messages=[Message(role=Role.USER, content="Hi")],
-                model=Model.GROQ_GPT_OSS_20B,
+                model=Model.CEREBRAS_GPT_OSS_120B,
                 tools=None,
             )
 
@@ -284,7 +295,7 @@ class TestGroqClientRetry:
     @pytest.mark.asyncio
     async def test_custom_temperature_used(self) -> None:
         """Should use custom temperature when provided."""
-        client = GroqClient(api_key="test-key")
+        client = CerebrasClient(api_key="test-key")
 
         mock_create = AsyncMock()
         client._client.chat.completions.create = mock_create
@@ -295,13 +306,13 @@ class TestGroqClientRetry:
         mock_response.choices[0].message.tool_calls = None
         mock_response.usage.prompt_tokens = 10
         mock_response.usage.completion_tokens = 5
-        mock_response.model = "test-model"
+        mock_response.model = "gpt-oss-120b"
 
         mock_create.return_value = mock_response
 
         await client.complete(
             messages=[Message(role=Role.USER, content="Hi")],
-            model=Model.GROQ_GPT_OSS_20B,
+            model=Model.CEREBRAS_GPT_OSS_120B,
             temperature=0.5,
         )
 
@@ -311,12 +322,11 @@ class TestGroqClientRetry:
     @pytest.mark.asyncio
     async def test_non_tool_error_reraises_immediately(self) -> None:
         """Should re-raise non-tool BadRequestError without retry."""
-        client = GroqClient(api_key="test-key")
+        client = CerebrasClient(api_key="test-key")
 
         mock_create = AsyncMock()
         client._client.chat.completions.create = mock_create
 
-        # Different error code - not a tool call error
         other_error = BadRequestError(
             message="Invalid request",
             body={"error": {"code": "invalid_request", "message": "Bad"}},
@@ -333,26 +343,24 @@ class TestGroqClientRetry:
             )
         ]
 
-        # Should re-raise immediately without retry
         with pytest.raises(BadRequestError):
             await client.complete(
                 messages=[Message(role=Role.USER, content="Hi")],
-                model=Model.GROQ_GPT_OSS_20B,
+                model=Model.CEREBRAS_GPT_OSS_120B,
                 tools=tools,
             )
 
-        # Only one attempt - no retries for non-tool errors
         assert mock_create.call_count == 1
 
 
 @pytest.mark.unit
-class TestGroqClientReasoningEffort:
+class TestCerebrasClientReasoningEffort:
     """Test reasoning_effort parameter handling."""
 
     @pytest.mark.asyncio
-    async def test_reasoning_effort_passed_to_gpt_oss_model(self) -> None:
-        """reasoning_effort should be passed for GPT-OSS models."""
-        client = GroqClient(api_key="test-key")
+    async def test_reasoning_effort_passed_to_supported_model(self) -> None:
+        """reasoning_effort should be passed for reasoning-capable models."""
+        client = CerebrasClient(api_key="test-key")
 
         mock_create = AsyncMock()
         client._client.chat.completions.create = mock_create
@@ -363,13 +371,13 @@ class TestGroqClientReasoningEffort:
         mock_response.choices[0].message.tool_calls = None
         mock_response.usage.prompt_tokens = 10
         mock_response.usage.completion_tokens = 5
-        mock_response.model = "openai/gpt-oss-20b"
+        mock_response.model = "gpt-oss-120b"
 
         mock_create.return_value = mock_response
 
         await client.complete(
             messages=[Message(role=Role.USER, content="Think carefully about this")],
-            model=Model.GROQ_GPT_OSS_20B,
+            model=Model.CEREBRAS_GPT_OSS_120B,
             reasoning_effort=ReasoningEffort.HIGH,
         )
 
@@ -378,22 +386,22 @@ class TestGroqClientReasoningEffort:
 
     @pytest.mark.asyncio
     async def test_reasoning_effort_raises_for_non_reasoning_model(self) -> None:
-        """reasoning_effort should raise for non-GPT-OSS models."""
-        client = GroqClient(api_key="test-key")
+        """reasoning_effort should raise for non-reasoning models."""
+        client = CerebrasClient(api_key="test-key")
 
         with pytest.raises(UnsupportedParameterError) as exc_info:
             await client.complete(
                 messages=[Message(role=Role.USER, content="Hi")],
-                model=Model.GROQ_LLAMA_3_3_70B,
+                model=Model.CEREBRAS_LLAMA_3_1_8B,
                 reasoning_effort=ReasoningEffort.HIGH,
             )
 
-        assert "llama-3.3-70b-versatile" in str(exc_info.value)
+        assert "llama3.1-8b" in str(exc_info.value)
 
     @pytest.mark.asyncio
     async def test_reasoning_effort_none_passed_as_none(self) -> None:
         """reasoning_effort=None should pass None to API."""
-        client = GroqClient(api_key="test-key")
+        client = CerebrasClient(api_key="test-key")
 
         mock_create = AsyncMock()
         client._client.chat.completions.create = mock_create
@@ -404,13 +412,13 @@ class TestGroqClientReasoningEffort:
         mock_response.choices[0].message.tool_calls = None
         mock_response.usage.prompt_tokens = 10
         mock_response.usage.completion_tokens = 5
-        mock_response.model = "openai/gpt-oss-20b"
+        mock_response.model = "gpt-oss-120b"
 
         mock_create.return_value = mock_response
 
         await client.complete(
             messages=[Message(role=Role.USER, content="Hi")],
-            model=Model.GROQ_GPT_OSS_20B,
+            model=Model.CEREBRAS_GPT_OSS_120B,
             reasoning_effort=None,
         )
 
@@ -420,12 +428,11 @@ class TestGroqClientReasoningEffort:
     @pytest.mark.asyncio
     async def test_reasoning_effort_in_stream(self) -> None:
         """reasoning_effort should work with stream() method."""
-        client = GroqClient(api_key="test-key")
+        client = CerebrasClient(api_key="test-key")
 
         mock_create = AsyncMock()
         client._client.chat.completions.create = mock_create
 
-        # Mock async iterator
         class MockAsyncIterator:
             def __init__(self) -> None:
                 self.items: list[object] = []
@@ -443,10 +450,9 @@ class TestGroqClientReasoningEffort:
 
         mock_create.return_value = MockAsyncIterator()
 
-        # Consume the generator (even though empty)
         async for _ in client.stream(
             messages=[Message(role=Role.USER, content="Think")],
-            model=Model.GROQ_GPT_OSS_20B,
+            model=Model.CEREBRAS_GPT_OSS_120B,
             reasoning_effort=ReasoningEffort.MEDIUM,
         ):
             pass
@@ -456,21 +462,21 @@ class TestGroqClientReasoningEffort:
 
     @pytest.mark.asyncio
     async def test_reasoning_effort_stream_raises_for_non_reasoning_model(self) -> None:
-        """reasoning_effort in stream() should raise for non-GPT-OSS models."""
-        client = GroqClient(api_key="test-key")
+        """reasoning_effort in stream() should raise for non-reasoning models."""
+        client = CerebrasClient(api_key="test-key")
 
         with pytest.raises(UnsupportedParameterError):
             async for _ in client.stream(
                 messages=[Message(role=Role.USER, content="Hi")],
-                model=Model.GROQ_LLAMA_3_3_70B,
+                model=Model.CEREBRAS_LLAMA_3_1_8B,
                 reasoning_effort=ReasoningEffort.LOW,
             ):
                 pass
 
     @pytest.mark.asyncio
     async def test_reasoning_effort_max_downgraded_to_high(self) -> None:
-        """reasoning_effort MAX should be downgraded to HIGH for Groq models."""
-        client = GroqClient(api_key="test-key")
+        """reasoning_effort MAX should be downgraded to HIGH for Cerebras models."""
+        client = CerebrasClient(api_key="test-key")
 
         mock_create = AsyncMock()
         client._client.chat.completions.create = mock_create
@@ -481,13 +487,13 @@ class TestGroqClientReasoningEffort:
         mock_response.choices[0].message.tool_calls = None
         mock_response.usage.prompt_tokens = 10
         mock_response.usage.completion_tokens = 5
-        mock_response.model = "openai/gpt-oss-20b"
+        mock_response.model = "gpt-oss-120b"
 
         mock_create.return_value = mock_response
 
         await client.complete(
             messages=[Message(role=Role.USER, content="Think")],
-            model=Model.GROQ_GPT_OSS_20B,
+            model=Model.CEREBRAS_GPT_OSS_120B,
             reasoning_effort=ReasoningEffort.MAX,
         )
 
@@ -501,7 +507,7 @@ class TestGroqClientReasoningEffort:
         """A warning should be logged when MAX is downgraded to HIGH."""
         import logging
 
-        client = GroqClient(api_key="test-key")
+        client = CerebrasClient(api_key="test-key")
 
         mock_create = AsyncMock()
         client._client.chat.completions.create = mock_create
@@ -512,14 +518,16 @@ class TestGroqClientReasoningEffort:
         mock_response.choices[0].message.tool_calls = None
         mock_response.usage.prompt_tokens = 10
         mock_response.usage.completion_tokens = 5
-        mock_response.model = "openai/gpt-oss-20b"
+        mock_response.model = "gpt-oss-120b"
 
         mock_create.return_value = mock_response
 
-        with caplog.at_level(logging.WARNING, logger="neosian._foundation.llm.groq"):
+        with caplog.at_level(
+            logging.WARNING, logger="neosian._foundation.llm.cerebras"
+        ):
             await client.complete(
                 messages=[Message(role=Role.USER, content="Think")],
-                model=Model.GROQ_GPT_OSS_20B,
+                model=Model.CEREBRAS_GPT_OSS_120B,
                 reasoning_effort=ReasoningEffort.MAX,
             )
 
@@ -528,12 +536,11 @@ class TestGroqClientReasoningEffort:
     @pytest.mark.asyncio
     async def test_reasoning_effort_max_in_stream_downgraded(self) -> None:
         """reasoning_effort MAX in stream() should be downgraded to HIGH."""
-        client = GroqClient(api_key="test-key")
+        client = CerebrasClient(api_key="test-key")
 
         mock_create = AsyncMock()
         client._client.chat.completions.create = mock_create
 
-        # Mock async iterator
         class MockAsyncIterator:
             def __init__(self) -> None:
                 self.items: list[object] = []
@@ -553,7 +560,7 @@ class TestGroqClientReasoningEffort:
 
         async for _ in client.stream(
             messages=[Message(role=Role.USER, content="Think")],
-            model=Model.GROQ_GPT_OSS_20B,
+            model=Model.CEREBRAS_GPT_OSS_120B,
             reasoning_effort=ReasoningEffort.MAX,
         ):
             pass
@@ -563,13 +570,13 @@ class TestGroqClientReasoningEffort:
 
 
 @pytest.mark.unit
-class TestGroqClientReasoningContent:
+class TestCerebrasClientReasoningContent:
     """Test reasoning content parsing."""
 
     @pytest.mark.asyncio
     async def test_complete_parses_reasoning_content(self) -> None:
         """complete() should parse reasoning from response message."""
-        client = GroqClient(api_key="test-key")
+        client = CerebrasClient(api_key="test-key")
 
         mock_create = AsyncMock()
         client._client.chat.completions.create = mock_create
@@ -581,13 +588,13 @@ class TestGroqClientReasoningContent:
         mock_response.choices[0].message.tool_calls = None
         mock_response.usage.prompt_tokens = 10
         mock_response.usage.completion_tokens = 20
-        mock_response.model = "openai/gpt-oss-20b"
+        mock_response.model = "gpt-oss-120b"
 
         mock_create.return_value = mock_response
 
         result = await client.complete(
             messages=[Message(role=Role.USER, content="What is the meaning of life?")],
-            model=Model.GROQ_GPT_OSS_20B,
+            model=Model.CEREBRAS_GPT_OSS_120B,
         )
 
         assert result.message.content == "The answer is 42"
@@ -596,7 +603,7 @@ class TestGroqClientReasoningContent:
     @pytest.mark.asyncio
     async def test_complete_handles_no_reasoning(self) -> None:
         """complete() should handle responses without reasoning field."""
-        client = GroqClient(api_key="test-key")
+        client = CerebrasClient(api_key="test-key")
 
         mock_create = AsyncMock()
         client._client.chat.completions.create = mock_create
@@ -604,18 +611,17 @@ class TestGroqClientReasoningContent:
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
         mock_response.choices[0].message.content = "Hello"
-        # No reasoning attribute on mock - getattr will return None
         del mock_response.choices[0].message.reasoning
         mock_response.choices[0].message.tool_calls = None
         mock_response.usage.prompt_tokens = 5
         mock_response.usage.completion_tokens = 2
-        mock_response.model = "llama-3.3-70b-versatile"
+        mock_response.model = "llama3.1-8b"
 
         mock_create.return_value = mock_response
 
         result = await client.complete(
             messages=[Message(role=Role.USER, content="Hi")],
-            model=Model.GROQ_LLAMA_3_3_70B,
+            model=Model.CEREBRAS_LLAMA_3_1_8B,
         )
 
         assert result.message.content == "Hello"
@@ -624,7 +630,7 @@ class TestGroqClientReasoningContent:
     @pytest.mark.asyncio
     async def test_stream_parses_reasoning_chunks(self) -> None:
         """stream() should parse reasoning from delta."""
-        client = GroqClient(api_key="test-key")
+        client = CerebrasClient(api_key="test-key")
 
         mock_create = AsyncMock()
         client._client.chat.completions.create = mock_create
@@ -674,24 +680,21 @@ class TestGroqClientReasoningContent:
         chunks = []
         async for chunk in client.stream(
             messages=[Message(role=Role.USER, content="Think")],
-            model=Model.GROQ_GPT_OSS_20B,
+            model=Model.CEREBRAS_GPT_OSS_120B,
         ):
             chunks.append(chunk)
 
         assert len(chunks) == 3
-        # First chunk has reasoning
         assert chunks[0].reasoning == "Let me think"
         assert chunks[0].content is None
-        # Second chunk has content
         assert chunks[1].content == "Answer"
         assert chunks[1].reasoning is None
-        # Third chunk has finish_reason
         assert chunks[2].finish_reason == "stop"
 
     @pytest.mark.asyncio
     async def test_stream_handles_no_reasoning_attribute(self) -> None:
         """stream() should handle deltas without reasoning attribute."""
-        client = GroqClient(api_key="test-key")
+        client = CerebrasClient(api_key="test-key")
 
         mock_create = AsyncMock()
         client._client.chat.completions.create = mock_create
@@ -711,11 +714,9 @@ class TestGroqClientReasoningContent:
                 self.index += 1
                 return item
 
-        # Create mock chunk without reasoning attribute
         chunk = MagicMock()
         chunk.choices = [MagicMock()]
         chunk.choices[0].delta.content = "Hello"
-        # No reasoning attribute - getattr will return None
         del chunk.choices[0].delta.reasoning
         chunk.choices[0].delta.tool_calls = None
         chunk.choices[0].finish_reason = "stop"
@@ -726,10 +727,43 @@ class TestGroqClientReasoningContent:
         chunks = []
         async for c in client.stream(
             messages=[Message(role=Role.USER, content="Hi")],
-            model=Model.GROQ_LLAMA_3_3_70B,
+            model=Model.CEREBRAS_LLAMA_3_1_8B,
         ):
             chunks.append(c)
 
         assert len(chunks) == 1
         assert chunks[0].content == "Hello"
         assert chunks[0].reasoning is None
+
+
+@pytest.mark.unit
+class TestCerebrasClientMaxCompletionTokens:
+    """Test that Cerebras uses max_completion_tokens (not max_tokens)."""
+
+    @pytest.mark.asyncio
+    async def test_uses_max_completion_tokens(self) -> None:
+        """complete() should pass max_completion_tokens to the API."""
+        client = CerebrasClient(api_key="test-key")
+
+        mock_create = AsyncMock()
+        client._client.chat.completions.create = mock_create
+
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "Response"
+        mock_response.choices[0].message.tool_calls = None
+        mock_response.usage.prompt_tokens = 10
+        mock_response.usage.completion_tokens = 5
+        mock_response.model = "gpt-oss-120b"
+
+        mock_create.return_value = mock_response
+
+        await client.complete(
+            messages=[Message(role=Role.USER, content="Hi")],
+            model=Model.CEREBRAS_GPT_OSS_120B,
+            max_tokens=4096,
+        )
+
+        mock_create.assert_called_once()
+        assert mock_create.call_args.kwargs["max_completion_tokens"] == 4096
+        assert "max_tokens" not in mock_create.call_args.kwargs

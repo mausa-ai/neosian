@@ -48,6 +48,12 @@ def _load_credentials_from_config() -> None:
         if anthropic_key:
             os.environ["ANTHROPIC_API_KEY"] = anthropic_key
 
+    # Cerebras
+    if not os.environ.get("CEREBRAS_API_KEY"):
+        cerebras_key = get_api_key(Config.CEREBRAS_API_KEY)
+        if cerebras_key:
+            os.environ["CEREBRAS_API_KEY"] = cerebras_key
+
 
 def _load_header() -> str:
     """Construct the ASCII art header from logo and ascii files."""
@@ -92,15 +98,15 @@ def _get_models_for_provider(provider: Provider) -> list[tuple[Model, str]]:
         case Provider.GROQ:
             return [
                 # Production models
-                (Model.GPT_OSS_20B, "openai/gpt-oss-20b (default)"),
-                (Model.GPT_OSS_120B, "openai/gpt-oss-120b"),
-                (Model.LLAMA_3_3_70B, "llama-3.3-70b-versatile"),
-                (Model.LLAMA_3_1_8B, "llama-3.1-8b-instant"),
+                (Model.GROQ_GPT_OSS_20B, "openai/gpt-oss-20b (default)"),
+                (Model.GROQ_GPT_OSS_120B, "openai/gpt-oss-120b"),
+                (Model.GROQ_LLAMA_3_3_70B, "llama-3.3-70b-versatile"),
+                (Model.GROQ_LLAMA_3_1_8B, "llama-3.1-8b-instant"),
                 # Preview models
-                (Model.LLAMA_4_MAVERICK_17B, "llama-4-maverick-17b (preview)"),
-                (Model.LLAMA_4_SCOUT_17B, "llama-4-scout-17b (preview)"),
-                (Model.QWEN3_32B, "qwen3-32b (preview)"),
-                (Model.KIMI_K2, "kimi-k2 (preview)"),
+                (Model.GROQ_LLAMA_4_MAVERICK_17B, "llama-4-maverick-17b (preview)"),
+                (Model.GROQ_LLAMA_4_SCOUT_17B, "llama-4-scout-17b (preview)"),
+                (Model.GROQ_QWEN3_32B, "qwen3-32b (preview)"),
+                (Model.GROQ_KIMI_K2, "kimi-k2 (preview)"),
             ]
         case Provider.OPENAI:
             return [
@@ -115,6 +121,13 @@ def _get_models_for_provider(provider: Provider) -> list[tuple[Model, str]]:
                 (Model.CLAUDE_HAIKU_4_5, "claude-haiku-4-5 (fastest)"),
                 (Model.CLAUDE_OPUS_4_6, "claude-opus-4-6 (most capable)"),
             ]
+        case Provider.CEREBRAS:
+            return [
+                (Model.CEREBRAS_GPT_OSS_120B, "gpt-oss-120b (default, fastest 120B)"),
+                (Model.CEREBRAS_LLAMA_3_1_8B, "llama3.1-8b (fastest)"),
+                (Model.CEREBRAS_QWEN3_235B, "qwen-3-235b (preview, multilingual)"),
+                (Model.CEREBRAS_ZAI_GLM_4_7, "zai-glm-4.7 (preview, reasoning)"),
+            ]
 
 
 def _select_provider_and_model(console: Console) -> Model | None:
@@ -128,6 +141,7 @@ def _select_provider_and_model(console: Console) -> Model | None:
         (Provider.GROQ, "Groq (fastest inference)"),
         (Provider.OPENAI, "OpenAI"),
         (Provider.ANTHROPIC, "Anthropic (Claude)"),
+        (Provider.CEREBRAS, "Cerebras (fast open models)"),
     ]
 
     console.print("\n[bold]Select Provider:[/bold]")
@@ -175,6 +189,7 @@ def _select_provider_and_model_labeled(console: Console, label: str) -> Model | 
         (Provider.GROQ, "Groq (fastest inference)"),
         (Provider.OPENAI, "OpenAI"),
         (Provider.ANTHROPIC, "Anthropic (Claude)"),
+        (Provider.CEREBRAS, "Cerebras (fast open models)"),
     ]
 
     console.print(f"\n[bold]{ArenaUI.SELECT_PROVIDER.format(label=label)}[/bold]")

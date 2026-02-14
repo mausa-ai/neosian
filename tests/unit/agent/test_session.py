@@ -437,7 +437,7 @@ class TestAgentSessionMultipleClients:
         ):
             config = AgentConfig(
                 system_prompt=SystemPrompt("You are helpful."),
-                model=Model.GPT_OSS_20B,  # Groq model
+                model=Model.GROQ_GPT_OSS_20B,  # Groq model
                 fallback=FallbackConfig(model=Model.GPT_5_NANO),  # OpenAI fallback
                 tools=[],
                 enable_todo=False,

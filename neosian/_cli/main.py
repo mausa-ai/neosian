@@ -151,6 +151,13 @@ def _show_credentials_table(console: Console) -> None:
     else:
         table.add_row("Anthropic", "[red]●[/red]", "[dim]Not configured[/dim]")
 
+    # Cerebras
+    cerebras_key = credentials.get(Config.CEREBRAS_API_KEY)
+    if cerebras_key:
+        table.add_row("Cerebras", "[green]●[/green]", _mask_key(cerebras_key))
+    else:
+        table.add_row("Cerebras", "[red]●[/red]", "[dim]Not configured[/dim]")
+
     console.print()
     console.print(table)
     console.print(f"\n[dim]Config file: {get_config_path()}[/dim]")
@@ -200,6 +207,19 @@ def _configure_credentials(console: Console) -> None:
         console.print("[green]Anthropic API key saved.[/green]")
     elif existing_anthropic:
         console.print("[dim]Anthropic API key unchanged.[/dim]")
+
+    # Cerebras
+    existing_cerebras = credentials.get(Config.CEREBRAS_API_KEY, "")
+    cerebras_prompt = "Cerebras API key"
+    if existing_cerebras:
+        cerebras_prompt += f" [dim]({_mask_key(existing_cerebras)})[/dim]"
+
+    cerebras_key = Prompt.ask(cerebras_prompt, password=True, default="")
+    if cerebras_key:
+        set_api_key(Config.CEREBRAS_API_KEY, cerebras_key)
+        console.print("[green]Cerebras API key saved.[/green]")
+    elif existing_cerebras:
+        console.print("[dim]Cerebras API key unchanged.[/dim]")
 
 
 def _delete_configuration(console: Console) -> None:

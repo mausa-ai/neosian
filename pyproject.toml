@@ -1,11 +1,12 @@
 [project]
 name = "neosian"
-version = "0.36.0"
+version = "0.37.0"
 description = "Stateless agentic AI library. LLM orchestration, tool execution, streaming."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "anthropic>=0.75.0",
+    "cerebras-cloud-sdk>=1.67.0",
     "groq>=0.37.1",
     "httpx>=0.28.1",
     "openai>=2.9.0",

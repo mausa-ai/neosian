@@ -27,7 +27,7 @@ class TestAgentWithGroq:
         config = AgentConfig(
             system_prompt=SystemPrompt("You are a helpful assistant. Be concise."),
             tools=[],
-            model=Model.GPT_OSS_20B,
+            model=Model.GROQ_GPT_OSS_20B,
             enable_todo=False,
         )
         agent = Agent(config=config)
@@ -54,7 +54,7 @@ class TestAgentWithGroq:
                 "You are a weather assistant. Use the get_weather tool to answer questions."
             ),
             tools=[get_weather],
-            model=Model.GPT_OSS_20B,
+            model=Model.GROQ_GPT_OSS_20B,
             enable_todo=False,
         )
         agent = Agent(config=config)
@@ -94,7 +94,7 @@ class TestAgentWithGroq:
                 "You are a calculator. Use the tools for all math operations."
             ),
             tools=[add, multiply],
-            model=Model.GPT_OSS_20B,
+            model=Model.GROQ_GPT_OSS_20B,
             enable_todo=False,
         )
         agent = Agent(config=config)
@@ -123,7 +123,7 @@ class TestAgentWithGroq:
         config = AgentConfig(
             system_prompt=SystemPrompt("You have access to a tool. Try to use it."),
             tools=[failing_tool],
-            model=Model.GPT_OSS_20B,
+            model=Model.GROQ_GPT_OSS_20B,
             enable_todo=False,
         )
         agent = Agent(config=config)
@@ -145,7 +145,7 @@ class TestAgentWithGroq:
         config = AgentConfig(
             system_prompt=SystemPrompt("You are a helpful assistant. Be concise."),
             tools=[],
-            model=Model.GPT_OSS_20B,
+            model=Model.GROQ_GPT_OSS_20B,
             enable_todo=False,
         )
         agent = Agent(config=config)
@@ -176,7 +176,7 @@ class TestAgentWithGroq:
                 "You are a number assistant. Use the get_number tool when asked for a number."
             ),
             tools=[get_number],
-            model=Model.GPT_OSS_20B,
+            model=Model.GROQ_GPT_OSS_20B,
             enable_todo=False,
         )
         agent = Agent(config=config)
@@ -206,7 +206,7 @@ class TestAgentReasoningEffort:
                 "You are a helpful assistant. Think carefully before answering."
             ),
             tools=[],
-            model=Model.GPT_OSS_20B,
+            model=Model.GROQ_GPT_OSS_20B,
             reasoning_effort=ReasoningEffort.HIGH,
             enable_todo=False,
         )
@@ -228,7 +228,7 @@ class TestAgentReasoningEffort:
         config = AgentConfig(
             system_prompt=SystemPrompt("You are a helpful assistant."),
             tools=[],
-            model=Model.GPT_OSS_20B,
+            model=Model.GROQ_GPT_OSS_20B,
             reasoning_effort=ReasoningEffort.LOW,
             enable_todo=False,
         )
@@ -249,7 +249,7 @@ class TestAgentReasoningEffort:
                 "You are a helpful assistant. Think step by step."
             ),
             tools=[],
-            model=Model.GPT_OSS_20B,
+            model=Model.GROQ_GPT_OSS_20B,
             reasoning_effort=ReasoningEffort.HIGH,
             enable_todo=False,
         )
@@ -282,7 +282,7 @@ class TestAgentReasoningEffort:
         config = AgentConfig(
             system_prompt=SystemPrompt("You are a helpful assistant."),
             tools=[],
-            model=Model.GPT_OSS_20B,
+            model=Model.GROQ_GPT_OSS_20B,
             reasoning_effort=ReasoningEffort.MEDIUM,
             enable_todo=False,
         )
@@ -311,7 +311,7 @@ class TestAgentReasoningEffort:
                 "You are a calculator. Think carefully and use the multiply tool."
             ),
             tools=[multiply],
-            model=Model.GPT_OSS_20B,
+            model=Model.GROQ_GPT_OSS_20B,
             reasoning_effort=ReasoningEffort.HIGH,
             enable_todo=False,
         )

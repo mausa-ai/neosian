@@ -51,7 +51,7 @@ async def example_stateless() -> None:
     config = AgentConfig(
         system_prompt="You are a helpful assistant. Be concise.",
         tools=[],
-        model=Model.GPT_OSS_20B,
+        model=Model.GROQ_GPT_OSS_20B,
         enable_todo=False,
     )
     agent = Agent(config=config)
@@ -78,7 +78,7 @@ async def example_session() -> None:
     config = AgentConfig(
         system_prompt="You are a helpful assistant. Be concise.",
         tools=[],
-        model=Model.GPT_OSS_20B,
+        model=Model.GROQ_GPT_OSS_20B,
         enable_todo=False,
     )
     agent = Agent(config=config)
@@ -110,7 +110,7 @@ async def example_chat_loop() -> None:
     config = AgentConfig(
         system_prompt="You are a helpful assistant. Keep track of the conversation.",
         tools=[],
-        model=Model.GPT_OSS_20B,
+        model=Model.GROQ_GPT_OSS_20B,
         enable_todo=False,
     )
     agent = Agent(config=config)

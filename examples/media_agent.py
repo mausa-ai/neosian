@@ -142,5 +142,5 @@ After generating media, present relevant follow-up options to the user.""",
         generate_music,
         present_options,
     ],
-    model=Model.GPT_OSS_20B,
+    model=Model.GROQ_GPT_OSS_20B,
 )

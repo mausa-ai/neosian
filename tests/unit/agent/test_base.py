@@ -696,7 +696,7 @@ class TestAgentReasoningEffort:
         ):
             config = AgentConfig(
                 system_prompt=SystemPrompt("You are helpful."),
-                model=Model.GPT_OSS_20B,
+                model=Model.GROQ_GPT_OSS_20B,
                 reasoning_effort=ReasoningEffort.HIGH,
                 enable_todo=False,
             )
@@ -722,7 +722,7 @@ class TestAgentReasoningEffort:
         ):
             config = AgentConfig(
                 system_prompt=SystemPrompt("You are helpful."),
-                model=Model.GPT_OSS_20B,
+                model=Model.GROQ_GPT_OSS_20B,
                 reasoning_effort=ReasoningEffort.HIGH,
                 enable_todo=False,
             )
@@ -754,7 +754,7 @@ class TestAgentReasoningEffort:
         ):
             config = AgentConfig(
                 system_prompt=SystemPrompt("You are helpful."),
-                model=Model.GPT_OSS_20B,
+                model=Model.GROQ_GPT_OSS_20B,
                 reasoning_effort=None,  # Explicitly None
                 enable_todo=False,
             )
@@ -804,9 +804,9 @@ class TestAgentReasoningEffort:
         ):
             config = AgentConfig(
                 system_prompt=SystemPrompt("You are helpful."),
-                model=Model.GPT_OSS_20B,  # Supports reasoning
+                model=Model.GROQ_GPT_OSS_20B,  # Supports reasoning
                 reasoning_effort=ReasoningEffort.HIGH,
-                fallback=FallbackConfig(model=Model.LLAMA_3_3_70B),  # No reasoning
+                fallback=FallbackConfig(model=Model.GROQ_LLAMA_3_3_70B),  # No reasoning
                 enable_todo=False,
             )
             agent = Agent(config=config)
@@ -847,7 +847,7 @@ class TestAgentReasoningEffort:
         ):
             config = AgentConfig(
                 system_prompt=SystemPrompt("You are helpful."),
-                model=Model.GPT_OSS_20B,
+                model=Model.GROQ_GPT_OSS_20B,
                 reasoning_effort=ReasoningEffort.MEDIUM,
                 enable_todo=False,
             )

@@ -49,6 +49,7 @@ class ErrorMessages:
     GROQ_API_KEY_MISSING: str = "GROQ_API_KEY environment variable not set"
     OPENAI_API_KEY_MISSING: str = "OPENAI_API_KEY environment variable not set"
     ANTHROPIC_API_KEY_MISSING: str = "ANTHROPIC_API_KEY environment variable not set"
+    CEREBRAS_API_KEY_MISSING: str = "CEREBRAS_API_KEY environment variable not set"
 
     # OpenAI specific errors
     OPENAI_TEMPERATURE_NOT_SUPPORTED: str = (
@@ -77,6 +78,12 @@ class ErrorMessages:
     # OpenAI MAX-to-HIGH downgrade
     REASONING_EFFORT_MAX_DOWNGRADED_OPENAI: str = (
         "reasoning_effort=MAX is not supported by OpenAI models. "
+        "Downgrading to HIGH for model '{model}'."
+    )
+
+    # Cerebras MAX-to-HIGH downgrade
+    REASONING_EFFORT_MAX_DOWNGRADED_CEREBRAS: str = (
+        "reasoning_effort=MAX is not supported by Cerebras models. "
         "Downgrading to HIGH for model '{model}'."
     )
 
@@ -235,6 +242,7 @@ class Config:
     GROQ_API_KEY: str = "groq_api_key"
     OPENAI_API_KEY: str = "openai_api_key"
     ANTHROPIC_API_KEY: str = "anthropic_api_key"
+    CEREBRAS_API_KEY: str = "cerebras_api_key"
 
 
 class EnvVars:
@@ -243,6 +251,7 @@ class EnvVars:
     GROQ_API_KEY: str = "GROQ_API_KEY"
     OPENAI_API_KEY: str = "OPENAI_API_KEY"
     ANTHROPIC_API_KEY: str = "ANTHROPIC_API_KEY"
+    CEREBRAS_API_KEY: str = "CEREBRAS_API_KEY"
 
 
 class ArenaUI:
@@ -261,8 +270,8 @@ class Guardrails:
     """Constants for guardrail system."""
 
     # Default models
-    CLASSIFIER_MODEL: Model = Model.LLAMA_GUARD_4_12B
-    POLICY_MODEL: Model = Model.GPT_OSS_SAFEGUARD_20B
+    CLASSIFIER_MODEL: Model = Model.GROQ_LLAMA_GUARD_4_12B
+    POLICY_MODEL: Model = Model.GROQ_GPT_OSS_SAFEGUARD_20B
 
     # Temperature for guardrail calls (deterministic)
     TEMPERATURE: float = 0.0

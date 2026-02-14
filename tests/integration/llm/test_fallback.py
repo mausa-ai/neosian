@@ -120,7 +120,7 @@ class TestFallbackFirstProviderFails:
                     "You are a helpful assistant. Reply concisely."
                 ),
                 tools=[],
-                model=Model.LLAMA_3_3_70B,  # Groq model
+                model=Model.GROQ_LLAMA_3_3_70B,  # Groq model
                 fallback=FallbackConfig(model=Model.GPT_5_NANO),  # OpenAI fallback
                 enable_todo=False,
             )
@@ -155,7 +155,9 @@ class TestFallbackFirstProviderFails:
                 ),
                 tools=[],
                 model=Model.GPT_5_MINI,  # OpenAI model
-                fallback=FallbackConfig(model=Model.LLAMA_3_3_70B),  # Groq fallback
+                fallback=FallbackConfig(
+                    model=Model.GROQ_LLAMA_3_3_70B
+                ),  # Groq fallback
                 enable_todo=False,
             )
             agent = Agent(config=config)
@@ -191,7 +193,7 @@ class TestNoFallbackConfigured:
             config = AgentConfig(
                 system_prompt=SystemPrompt("You are a helpful assistant."),
                 tools=[],
-                model=Model.LLAMA_3_3_70B,
+                model=Model.GROQ_LLAMA_3_3_70B,
                 # No fallback configured
                 enable_todo=False,
             )
@@ -228,7 +230,7 @@ class TestFallbackExhausted:
             config = AgentConfig(
                 system_prompt=SystemPrompt("You are a helpful assistant."),
                 tools=[],
-                model=Model.LLAMA_3_3_70B,  # Will fail
+                model=Model.GROQ_LLAMA_3_3_70B,  # Will fail
                 fallback=FallbackConfig(model=Model.GPT_5_NANO),  # Will also fail
                 enable_todo=False,
             )
@@ -267,7 +269,7 @@ class TestSingleProviderWorks:
                     "You are a helpful assistant. Reply concisely."
                 ),
                 tools=[],
-                model=Model.LLAMA_3_3_70B,
+                model=Model.GROQ_LLAMA_3_3_70B,
                 enable_todo=False,
             )
             agent = Agent(config=config)
@@ -303,7 +305,7 @@ class TestFallbackStreaming:
                     "You are a helpful assistant. Reply concisely."
                 ),
                 tools=[],
-                model=Model.LLAMA_3_3_70B,
+                model=Model.GROQ_LLAMA_3_3_70B,
                 fallback=FallbackConfig(model=Model.GPT_5_NANO),
                 enable_todo=False,
             )
@@ -340,7 +342,7 @@ class TestFallbackStreaming:
             config = AgentConfig(
                 system_prompt=SystemPrompt("You are a helpful assistant."),
                 tools=[],
-                model=Model.LLAMA_3_3_70B,
+                model=Model.GROQ_LLAMA_3_3_70B,
                 fallback=FallbackConfig(model=Model.GPT_5_NANO),
                 enable_todo=False,
             )
@@ -370,7 +372,7 @@ class TestFallbackStreaming:
             config = AgentConfig(
                 system_prompt=SystemPrompt("You are a helpful assistant."),
                 tools=[],
-                model=Model.LLAMA_3_3_70B,
+                model=Model.GROQ_LLAMA_3_3_70B,
                 # No fallback
                 enable_todo=False,
             )
@@ -411,7 +413,7 @@ class TestStickyFallbackWithSession:
                     "You are a helpful assistant. Reply concisely."
                 ),
                 tools=[],
-                model=Model.LLAMA_3_3_70B,
+                model=Model.GROQ_LLAMA_3_3_70B,
                 fallback=FallbackConfig(
                     model=Model.GPT_5_NANO,
                     retry_main_after=0,  # Never retry main

@@ -191,7 +191,7 @@ async def main() -> None:
     config = AgentConfig(
         system_prompt="You are a helpful assistant. Be extremely concise.",
         tools=[],
-        model=Model.GPT_OSS_20B,
+        model=Model.GROQ_GPT_OSS_20B,
         enable_todo=False,
     )
     agent = Agent(config=config)

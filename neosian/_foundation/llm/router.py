@@ -7,6 +7,7 @@ import os
 
 from neosian._foundation.llm.anthropic import AnthropicClient
 from neosian._foundation.llm.base import BaseLLMClient
+from neosian._foundation.llm.cerebras import CerebrasClient
 from neosian._foundation.llm.groq import GroqClient
 from neosian._foundation.llm.openai import OpenAIClient
 from neosian._foundation.shared.constants import (
@@ -46,6 +47,8 @@ class ProviderRouter:
             available.add(Provider.OPENAI)
         if os.environ.get(EnvVars.ANTHROPIC_API_KEY):
             available.add(Provider.ANTHROPIC)
+        if os.environ.get(EnvVars.CEREBRAS_API_KEY):
+            available.add(Provider.CEREBRAS)
 
         return available
 
@@ -87,5 +90,9 @@ class ProviderRouter:
         if provider == Provider.ANTHROPIC:
             key = api_key or os.environ.get(EnvVars.ANTHROPIC_API_KEY, "")
             return AnthropicClient(api_key=key)
+
+        if provider == Provider.CEREBRAS:
+            key = api_key or os.environ.get(EnvVars.CEREBRAS_API_KEY, "")
+            return CerebrasClient(api_key=key)
 
         raise ValueError(ErrorMessages.UNSUPPORTED_PROVIDER.format(provider=provider))

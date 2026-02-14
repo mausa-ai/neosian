@@ -38,6 +38,7 @@ class Provider(str, Enum):
     GROQ = "groq"
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
+    CEREBRAS = "cerebras"
 
 
 @dataclass(frozen=True)
@@ -74,21 +75,21 @@ class Model(str, Enum):
     """Supported LLM models."""
 
     # Groq - Production
-    LLAMA_3_3_70B = "llama-3.3-70b-versatile"
-    LLAMA_3_1_8B = "llama-3.1-8b-instant"
-    GPT_OSS_120B = "openai/gpt-oss-120b"
-    GPT_OSS_20B = "openai/gpt-oss-20b"
+    GROQ_LLAMA_3_3_70B = "llama-3.3-70b-versatile"
+    GROQ_LLAMA_3_1_8B = "llama-3.1-8b-instant"
+    GROQ_GPT_OSS_120B = "openai/gpt-oss-120b"
+    GROQ_GPT_OSS_20B = "openai/gpt-oss-20b"
 
     # Groq - Preview
-    LLAMA_4_MAVERICK_17B = "meta-llama/llama-4-maverick-17b-128e-instruct"
-    LLAMA_4_SCOUT_17B = "meta-llama/llama-4-scout-17b-16e-instruct"
-    QWEN3_32B = "qwen/qwen3-32b"
-    KIMI_K2 = "moonshotai/kimi-k2-instruct"
-    KIMI_K2_0905 = "moonshotai/kimi-k2-instruct-0905"
+    GROQ_LLAMA_4_MAVERICK_17B = "meta-llama/llama-4-maverick-17b-128e-instruct"
+    GROQ_LLAMA_4_SCOUT_17B = "meta-llama/llama-4-scout-17b-16e-instruct"
+    GROQ_QWEN3_32B = "qwen/qwen3-32b"
+    GROQ_KIMI_K2 = "moonshotai/kimi-k2-instruct"
+    GROQ_KIMI_K2_0905 = "moonshotai/kimi-k2-instruct-0905"
 
     # Groq - Guardrails
-    LLAMA_GUARD_4_12B = "meta-llama/llama-guard-4-12b"
-    GPT_OSS_SAFEGUARD_20B = "openai/gpt-oss-safeguard-20b"
+    GROQ_LLAMA_GUARD_4_12B = "meta-llama/llama-guard-4-12b"
+    GROQ_GPT_OSS_SAFEGUARD_20B = "openai/gpt-oss-safeguard-20b"
 
     # OpenAI
     GPT_5_1 = "gpt-5.1-2025-11-13"
@@ -100,6 +101,14 @@ class Model(str, Enum):
     CLAUDE_OPUS_4_6 = "claude-opus-4-6"
     CLAUDE_SONNET_4_5 = "claude-sonnet-4-5-20250929"
     CLAUDE_HAIKU_4_5 = "claude-haiku-4-5-20251001"
+
+    # Cerebras - Production
+    CEREBRAS_GPT_OSS_120B = "gpt-oss-120b"
+    CEREBRAS_LLAMA_3_1_8B = "llama3.1-8b"
+
+    # Cerebras - Preview
+    CEREBRAS_QWEN3_235B = "qwen-3-235b-a22b-instruct-2507"
+    CEREBRAS_ZAI_GLM_4_7 = "zai-glm-4.7"
 
     @property
     def spec(self) -> ModelSpec:
@@ -128,23 +137,23 @@ class Model(str, Enum):
 
 
 # Groq - Production
-_MODEL_SPECS[Model.LLAMA_3_3_70B.value] = ModelSpec(
+_MODEL_SPECS[Model.GROQ_LLAMA_3_3_70B.value] = ModelSpec(
     provider=Provider.GROQ,
     context_window=131_072,
     max_output_tokens=32_768,
 )
-_MODEL_SPECS[Model.LLAMA_3_1_8B.value] = ModelSpec(
+_MODEL_SPECS[Model.GROQ_LLAMA_3_1_8B.value] = ModelSpec(
     provider=Provider.GROQ,
     context_window=131_072,
     max_output_tokens=131_072,
 )
-_MODEL_SPECS[Model.GPT_OSS_120B.value] = ModelSpec(
+_MODEL_SPECS[Model.GROQ_GPT_OSS_120B.value] = ModelSpec(
     provider=Provider.GROQ,
     context_window=131_072,
     max_output_tokens=65_536,
     supports_reasoning=True,
 )
-_MODEL_SPECS[Model.GPT_OSS_20B.value] = ModelSpec(
+_MODEL_SPECS[Model.GROQ_GPT_OSS_20B.value] = ModelSpec(
     provider=Provider.GROQ,
     context_window=131_072,
     max_output_tokens=65_536,
@@ -152,39 +161,39 @@ _MODEL_SPECS[Model.GPT_OSS_20B.value] = ModelSpec(
 )
 
 # Groq - Preview
-_MODEL_SPECS[Model.LLAMA_4_MAVERICK_17B.value] = ModelSpec(
+_MODEL_SPECS[Model.GROQ_LLAMA_4_MAVERICK_17B.value] = ModelSpec(
     provider=Provider.GROQ,
     context_window=131_072,
     max_output_tokens=8_192,
 )
-_MODEL_SPECS[Model.LLAMA_4_SCOUT_17B.value] = ModelSpec(
+_MODEL_SPECS[Model.GROQ_LLAMA_4_SCOUT_17B.value] = ModelSpec(
     provider=Provider.GROQ,
     context_window=131_072,
     max_output_tokens=8_192,
 )
-_MODEL_SPECS[Model.QWEN3_32B.value] = ModelSpec(
+_MODEL_SPECS[Model.GROQ_QWEN3_32B.value] = ModelSpec(
     provider=Provider.GROQ,
     context_window=131_072,
     max_output_tokens=40_960,
 )
-_MODEL_SPECS[Model.KIMI_K2.value] = ModelSpec(
+_MODEL_SPECS[Model.GROQ_KIMI_K2.value] = ModelSpec(
     provider=Provider.GROQ,
     context_window=131_072,
     max_output_tokens=16_384,
 )
-_MODEL_SPECS[Model.KIMI_K2_0905.value] = ModelSpec(
+_MODEL_SPECS[Model.GROQ_KIMI_K2_0905.value] = ModelSpec(
     provider=Provider.GROQ,
     context_window=262_144,
     max_output_tokens=16_384,
 )
 
 # Groq - Guardrails
-_MODEL_SPECS[Model.LLAMA_GUARD_4_12B.value] = ModelSpec(
+_MODEL_SPECS[Model.GROQ_LLAMA_GUARD_4_12B.value] = ModelSpec(
     provider=Provider.GROQ,
     context_window=131_072,
     max_output_tokens=1_024,
 )
-_MODEL_SPECS[Model.GPT_OSS_SAFEGUARD_20B.value] = ModelSpec(
+_MODEL_SPECS[Model.GROQ_GPT_OSS_SAFEGUARD_20B.value] = ModelSpec(
     provider=Provider.GROQ,
     context_window=131_072,
     max_output_tokens=65_536,
@@ -234,12 +243,39 @@ _MODEL_SPECS[Model.CLAUDE_HAIKU_4_5.value] = ModelSpec(
     max_output_tokens=64_000,
 )
 
+# Cerebras - Production
+_MODEL_SPECS[Model.CEREBRAS_GPT_OSS_120B.value] = ModelSpec(
+    provider=Provider.CEREBRAS,
+    context_window=131_072,
+    max_output_tokens=40_960,
+    supports_reasoning=True,
+)
+_MODEL_SPECS[Model.CEREBRAS_LLAMA_3_1_8B.value] = ModelSpec(
+    provider=Provider.CEREBRAS,
+    context_window=32_768,
+    max_output_tokens=8_192,
+)
+
+# Cerebras - Preview
+_MODEL_SPECS[Model.CEREBRAS_QWEN3_235B.value] = ModelSpec(
+    provider=Provider.CEREBRAS,
+    context_window=131_072,
+    max_output_tokens=40_960,
+)
+_MODEL_SPECS[Model.CEREBRAS_ZAI_GLM_4_7.value] = ModelSpec(
+    provider=Provider.CEREBRAS,
+    context_window=131_072,
+    max_output_tokens=40_960,
+    supports_reasoning=True,
+)
+
 
 # Default models per provider
 DEFAULT_MODELS: dict[Provider, Model] = {
-    Provider.GROQ: Model.GPT_OSS_20B,
+    Provider.GROQ: Model.GROQ_GPT_OSS_20B,
     Provider.OPENAI: Model.GPT_5_NANO,
     Provider.ANTHROPIC: Model.CLAUDE_SONNET_4_5,
+    Provider.CEREBRAS: Model.CEREBRAS_GPT_OSS_120B,
 }
 
 
@@ -378,9 +414,9 @@ class AgentConfig:
         configuration = AgentConfig(
             system_prompt="You are helpful.",
             tools=[greet],
-            model=Model.LLAMA_3_3_70B,
+            model=Model.GROQ_LLAMA_3_3_70B,
             fallback=FallbackConfig(
-                model=Model.GPT_OSS_20B,
+                model=Model.GROQ_GPT_OSS_20B,
                 retry_main_after=5,
             ),
         )
@@ -388,7 +424,7 @@ class AgentConfig:
 
     system_prompt: SystemPrompt
     tools: list[ToolFunction] = field(default_factory=list)
-    model: Model = Model.GPT_OSS_20B
+    model: Model = Model.GROQ_GPT_OSS_20B
     fallback: FallbackConfig | None = None
     enable_todo: bool = True
     guardrails: "GuardrailsConfig | None" = None
