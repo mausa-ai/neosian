@@ -399,8 +399,8 @@ class TestCerebrasClientReasoningEffort:
         assert "llama3.1-8b" in str(exc_info.value)
 
     @pytest.mark.asyncio
-    async def test_reasoning_effort_none_passed_as_none(self) -> None:
-        """reasoning_effort=None should pass None to API."""
+    async def test_reasoning_effort_none_omitted_from_request(self) -> None:
+        """reasoning_effort=None should omit reasoning params from API call."""
         client = CerebrasClient(api_key="test-key")
 
         mock_create = AsyncMock()
@@ -423,7 +423,8 @@ class TestCerebrasClientReasoningEffort:
         )
 
         mock_create.assert_called_once()
-        assert mock_create.call_args.kwargs["reasoning_effort"] is None
+        assert "reasoning_effort" not in mock_create.call_args.kwargs
+        assert "reasoning_format" not in mock_create.call_args.kwargs
 
     @pytest.mark.asyncio
     async def test_reasoning_effort_in_stream(self) -> None:

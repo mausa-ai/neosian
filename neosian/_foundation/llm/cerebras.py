@@ -108,24 +108,24 @@ class CerebrasClient(BaseLLMClient):
             temperature if temperature is not None else LLMDefaults.TEMPERATURE
         )
 
-        # Build reasoning_format with correct type
-        reasoning_fmt: str | None = "parsed" if effective_effort else None
+        # Build kwargs — only include reasoning params when set,
+        # as Cerebras API rejects None values for these fields.
+        kwargs: dict[str, Any] = {
+            "model": model.value,
+            "messages": cerebras_messages,
+            "tools": cerebras_tools,
+            "temperature": current_temp,
+            "max_completion_tokens": max_tokens,
+            "response_format": cerebras_response_format,
+        }
+        if effective_effort:
+            kwargs["reasoning_effort"] = effective_effort.value
+            kwargs["reasoning_format"] = "parsed"
 
         for attempt in range(LLMDefaults.MAX_TOOL_CALL_RETRIES + 1):
             try:
                 response = await self._client.chat.completions.create(
-                    model=model.value,
-                    messages=cerebras_messages,
-                    tools=cerebras_tools,
-                    temperature=current_temp,
-                    max_completion_tokens=max_tokens,
-                    response_format=cerebras_response_format,
-                    reasoning_effort=(
-                        effective_effort.value  # type: ignore[arg-type]
-                        if effective_effort
-                        else None
-                    ),
-                    reasoning_format=reasoning_fmt,  # type: ignore[arg-type]
+                    **kwargs,
                 )
                 return self._parse_response(response)
 
@@ -134,7 +134,7 @@ class CerebrasClient(BaseLLMClient):
                 if self._is_tool_call_error(e) and tools is not None:
                     # If we have retries left, try with lower temperature
                     if attempt < LLMDefaults.MAX_TOOL_CALL_RETRIES:
-                        current_temp = LLMDefaults.RETRY_TEMPERATURE
+                        kwargs["temperature"] = LLMDefaults.RETRY_TEMPERATURE
                         continue
                     # Max retries exceeded
                     raise ToolCallGenerationError(
@@ -264,23 +264,23 @@ class CerebrasClient(BaseLLMClient):
         cerebras_tools = self._convert_tools(tools) if tools else None
         temp = temperature if temperature is not None else LLMDefaults.TEMPERATURE
 
-        # Build reasoning_format with correct type
-        reasoning_fmt: str | None = "parsed" if effective_effort else None
+        # Build kwargs — only include reasoning params when set,
+        # as Cerebras API rejects None values for these fields.
+        kwargs: dict[str, Any] = {
+            "model": model.value,
+            "messages": cerebras_messages,
+            "tools": cerebras_tools,
+            "temperature": temp,
+            "max_completion_tokens": max_tokens,
+            "stream": True,
+            "stream_options": {"include_usage": True},
+        }
+        if effective_effort:
+            kwargs["reasoning_effort"] = effective_effort.value
+            kwargs["reasoning_format"] = "parsed"
 
         stream = await self._client.chat.completions.create(
-            model=model.value,
-            messages=cerebras_messages,
-            tools=cerebras_tools,
-            temperature=temp,
-            max_completion_tokens=max_tokens,
-            stream=True,
-            reasoning_effort=(
-                effective_effort.value  # type: ignore[arg-type]
-                if effective_effort
-                else None
-            ),
-            reasoning_format=reasoning_fmt,  # type: ignore[arg-type]
-            stream_options={"include_usage": True},
+            **kwargs,
         )
 
         # Track tool calls being built across chunks
