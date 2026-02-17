@@ -119,9 +119,6 @@ class ErrorMessages:
     # Guardrail errors
     GUARDRAIL_INPUT_BLOCKED: str = "Input blocked by {guardrail_type}: {reason}"
     GUARDRAIL_OUTPUT_BLOCKED: str = "Output blocked by {guardrail_type}: {reason}"
-    GUARDRAIL_CLASSIFIER_PARSE_ERROR: str = (
-        "Failed to parse classifier response: {response}"
-    )
     GUARDRAIL_POLICY_PARSE_ERROR: str = "Failed to parse policy response: {response}"
     GUARDRAIL_POLICY_REQUIRED: str = "{mode} requires {policy_field} to be set"
     GUARDRAIL_OUTPUT_REQUIRES_BLOCKING: str = (
@@ -221,7 +218,6 @@ class PlaygroundUI:
     GUARDRAIL_BLOCKED_LABEL: str = "Guardrail Blocked"
     GUARDRAIL_INPUT_BLOCKED: str = "Input blocked by safety guardrails"
     GUARDRAIL_OUTPUT_BLOCKED: str = "Output blocked by safety guardrails"
-    GUARDRAIL_CATEGORIES: str = "Categories: {categories}"
     GUARDRAIL_RATIONALE: str = "Reason: {rationale}"
 
 
@@ -267,20 +263,13 @@ class ArenaUI:
 
 
 class Guardrails:
-    """Constants for guardrail system."""
+    """Constants for GPT-OSS-Safeguard guardrail system."""
 
     # Default models
-    CLASSIFIER_MODEL: Model = Model.GROQ_LLAMA_GUARD_4_12B
     POLICY_MODEL: Model = Model.GROQ_GPT_OSS_SAFEGUARD_20B
 
     # Temperature for guardrail calls (deterministic)
     TEMPERATURE: float = 0.0
-
-    class ClassifierResponse:
-        """Llama Guard response format constants."""
-
-        SAFE: str = "safe"
-        UNSAFE: str = "unsafe"
 
     class TestPolicy:
         """Test policy constants."""
@@ -288,82 +277,6 @@ class Guardrails:
         MARKER: str = "__TEST_POLICY_50_PERCENT__"
         CATEGORY: str = "TEST"
         RATIONALE: str = "Random test flag (50% chance)"
-
-    class Categories:
-        """Llama Guard 4 safety categories (S1-S14)."""
-
-        class S1:
-            CODE: str = "S1"
-            NAME: str = "Violent Crimes"
-
-        class S2:
-            CODE: str = "S2"
-            NAME: str = "Non-Violent Crimes"
-
-        class S3:
-            CODE: str = "S3"
-            NAME: str = "Sex-Related Crimes"
-
-        class S4:
-            CODE: str = "S4"
-            NAME: str = "Child Sexual Exploitation"
-
-        class S5:
-            CODE: str = "S5"
-            NAME: str = "Defamation"
-
-        class S6:
-            CODE: str = "S6"
-            NAME: str = "Specialized Advice"
-
-        class S7:
-            CODE: str = "S7"
-            NAME: str = "Privacy"
-
-        class S8:
-            CODE: str = "S8"
-            NAME: str = "Intellectual Property"
-
-        class S9:
-            CODE: str = "S9"
-            NAME: str = "Indiscriminate Weapons"
-
-        class S10:
-            CODE: str = "S10"
-            NAME: str = "Hate"
-
-        class S11:
-            CODE: str = "S11"
-            NAME: str = "Suicide & Self-Harm"
-
-        class S12:
-            CODE: str = "S12"
-            NAME: str = "Sexual Content"
-
-        class S13:
-            CODE: str = "S13"
-            NAME: str = "Elections"
-
-        class S14:
-            CODE: str = "S14"
-            NAME: str = "Code Interpreter Abuse"
-
-        ALL_CODES: tuple[str, ...] = (
-            "S1",
-            "S2",
-            "S3",
-            "S4",
-            "S5",
-            "S6",
-            "S7",
-            "S8",
-            "S9",
-            "S10",
-            "S11",
-            "S12",
-            "S13",
-            "S14",
-        )
 
     class PolicyPrompt:
         """Policy prompt templates for GPT-OSS-Safeguard."""

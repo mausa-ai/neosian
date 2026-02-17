@@ -21,6 +21,10 @@ from neosian._foundation.shared.types import (
     SystemPrompt,
 )
 
+_POLICY = "test policy string"
+_UNSAFE_JSON = '{"violation": 1, "category": "P1", "rationale": "Flagged content"}'
+_SAFE_JSON = '{"violation": 0, "category": null, "rationale": "Content is safe"}'
+
 
 def _create_mock_router(mock_client: BaseLLMClient | None = None) -> MagicMock:
     """Create a mock ProviderRouter that returns the given client.
@@ -38,6 +42,11 @@ def _create_mock_router(mock_client: BaseLLMClient | None = None) -> MagicMock:
     mock_router.has_provider.return_value = True
     mock_router.create_client.return_value = mock_client
     return mock_router
+
+
+def _mock_guardrail_response(content: str) -> AsyncMock:
+    """Create a mock guardrail API response."""
+    return AsyncMock(choices=[AsyncMock(message=AsyncMock(content=content))])
 
 
 @pytest.mark.unit
@@ -60,7 +69,8 @@ class TestAgentGuardrailsInit:
                 tools=[],
                 enable_todo=False,
                 guardrails=GuardrailsConfig(
-                    input_mode=GuardrailMode.CLASSIFIER_ONLY,
+                    input_mode=GuardrailMode.POLICY_ONLY,
+                    input_policy=_POLICY,
                 ),
             )
             agent = Agent(config=config)
@@ -105,7 +115,8 @@ class TestAgentStreamingWithOutputGuardrails:
                 tools=[],
                 enable_todo=False,
                 guardrails=GuardrailsConfig(
-                    output_mode=GuardrailMode.CLASSIFIER_ONLY,
+                    output_mode=GuardrailMode.POLICY_ONLY,
+                    output_policy=_POLICY,
                 ),
             )
             agent = Agent(config=config)
@@ -134,7 +145,8 @@ class TestAgentStreamingWithOutputGuardrails:
                 tools=[],
                 enable_todo=False,
                 guardrails=GuardrailsConfig(
-                    input_mode=GuardrailMode.CLASSIFIER_ONLY,
+                    input_mode=GuardrailMode.POLICY_ONLY,
+                    input_policy=_POLICY,
                     output_mode=GuardrailMode.NONE,  # No output guardrails
                 ),
             )
@@ -233,19 +245,13 @@ class TestAgentInputGuardrails:
 
     @pytest.mark.asyncio
     async def test_input_blocked_returns_blocked_response(self) -> None:
-        """Flagged input with block_on_input=True should return blocked response.
-
-        Note: With parallel execution, agent task starts simultaneously with guard.
-        The guard result determines whether the response is blocked, not whether
-        the agent was called. In production, guard typically finishes first due
-        to smaller model and single call.
-        """
+        """Flagged input with block_on_input=True should return blocked response."""
         mock_client = AsyncMock(spec=BaseLLMClient)
         mock_guardrail_client = AsyncMock()
 
-        # Mock classifier to return unsafe
-        mock_guardrail_client.chat.completions.create.return_value = AsyncMock(
-            choices=[AsyncMock(message=AsyncMock(content="unsafe\nS1"))]
+        # Mock policy to return unsafe
+        mock_guardrail_client.chat.completions.create.return_value = (
+            _mock_guardrail_response(_UNSAFE_JSON)
         )
 
         with (
@@ -263,7 +269,8 @@ class TestAgentInputGuardrails:
                 tools=[],
                 enable_todo=False,
                 guardrails=GuardrailsConfig(
-                    input_mode=GuardrailMode.CLASSIFIER_ONLY,
+                    input_mode=GuardrailMode.POLICY_ONLY,
+                    input_policy=_POLICY,
                     block_on_input=True,
                 ),
             )
@@ -293,9 +300,9 @@ class TestAgentInputGuardrails:
         )
 
         mock_guardrail_client = AsyncMock()
-        # Mock classifier to return unsafe
-        mock_guardrail_client.chat.completions.create.return_value = AsyncMock(
-            choices=[AsyncMock(message=AsyncMock(content="unsafe\nS1"))]
+        # Mock policy to return unsafe
+        mock_guardrail_client.chat.completions.create.return_value = (
+            _mock_guardrail_response(_UNSAFE_JSON)
         )
 
         with (
@@ -313,7 +320,8 @@ class TestAgentInputGuardrails:
                 tools=[],
                 enable_todo=False,
                 guardrails=GuardrailsConfig(
-                    input_mode=GuardrailMode.CLASSIFIER_ONLY,
+                    input_mode=GuardrailMode.POLICY_ONLY,
+                    input_policy=_POLICY,
                     block_on_input=False,  # Don't block
                 ),
             )
@@ -328,8 +336,8 @@ class TestAgentInputGuardrails:
 
             # Guardrail result should still be populated
             assert response.guardrail_result is not None
-            assert response.guardrail_result.input_classifier is not None
-            assert response.guardrail_result.input_classifier.safe is False
+            assert response.guardrail_result.input_policy is not None
+            assert response.guardrail_result.input_policy.safe is False
 
     @pytest.mark.asyncio
     async def test_input_safe_continues_execution(self) -> None:
@@ -342,9 +350,9 @@ class TestAgentInputGuardrails:
         )
 
         mock_guardrail_client = AsyncMock()
-        # Mock classifier to return safe
-        mock_guardrail_client.chat.completions.create.return_value = AsyncMock(
-            choices=[AsyncMock(message=AsyncMock(content="safe"))]
+        # Mock policy to return safe
+        mock_guardrail_client.chat.completions.create.return_value = (
+            _mock_guardrail_response(_SAFE_JSON)
         )
 
         with (
@@ -362,7 +370,8 @@ class TestAgentInputGuardrails:
                 tools=[],
                 enable_todo=False,
                 guardrails=GuardrailsConfig(
-                    input_mode=GuardrailMode.CLASSIFIER_ONLY,
+                    input_mode=GuardrailMode.POLICY_ONLY,
+                    input_policy=_POLICY,
                     block_on_input=True,
                 ),
             )
@@ -391,9 +400,9 @@ class TestAgentOutputGuardrails:
         )
 
         mock_guardrail_client = AsyncMock()
-        # Mock classifier to return unsafe for output
-        mock_guardrail_client.chat.completions.create.return_value = AsyncMock(
-            choices=[AsyncMock(message=AsyncMock(content="unsafe\nS2"))]
+        # Mock policy to return unsafe for output
+        mock_guardrail_client.chat.completions.create.return_value = (
+            _mock_guardrail_response(_UNSAFE_JSON)
         )
 
         with (
@@ -411,7 +420,8 @@ class TestAgentOutputGuardrails:
                 tools=[],
                 enable_todo=False,
                 guardrails=GuardrailsConfig(
-                    output_mode=GuardrailMode.CLASSIFIER_ONLY,
+                    output_mode=GuardrailMode.POLICY_ONLY,
+                    output_policy=_POLICY,
                 ),
             )
             agent = Agent(config=config)
@@ -423,8 +433,8 @@ class TestAgentOutputGuardrails:
             assert response.message.content == "Bad output"  # Preserved for logging
             assert response.guardrail_result is not None
             assert response.guardrail_result.flagged_at == "output"
-            assert response.guardrail_result.output_classifier is not None
-            assert response.guardrail_result.output_classifier.categories == ["S2"]
+            assert response.guardrail_result.output_policy is not None
+            assert response.guardrail_result.output_policy.category == "P1"
 
     @pytest.mark.asyncio
     async def test_output_safe_not_blocked(self) -> None:
@@ -437,9 +447,9 @@ class TestAgentOutputGuardrails:
         )
 
         mock_guardrail_client = AsyncMock()
-        # Mock classifier to return safe
-        mock_guardrail_client.chat.completions.create.return_value = AsyncMock(
-            choices=[AsyncMock(message=AsyncMock(content="safe"))]
+        # Mock policy to return safe
+        mock_guardrail_client.chat.completions.create.return_value = (
+            _mock_guardrail_response(_SAFE_JSON)
         )
 
         with (
@@ -457,7 +467,8 @@ class TestAgentOutputGuardrails:
                 tools=[],
                 enable_todo=False,
                 guardrails=GuardrailsConfig(
-                    output_mode=GuardrailMode.CLASSIFIER_ONLY,
+                    output_mode=GuardrailMode.POLICY_ONLY,
+                    output_policy=_POLICY,
                 ),
             )
             agent = Agent(config=config)
@@ -555,7 +566,8 @@ class TestGuardrailErrorPolicy:
                 tools=[],
                 enable_todo=False,
                 guardrails=GuardrailsConfig(
-                    input_mode=GuardrailMode.CLASSIFIER_ONLY,
+                    input_mode=GuardrailMode.POLICY_ONLY,
+                    input_policy=_POLICY,
                     block_on_input=True,
                     error_policy=GuardrailErrorPolicy.FAIL_OPEN,  # Default
                 ),
@@ -600,7 +612,8 @@ class TestGuardrailErrorPolicy:
                 tools=[],
                 enable_todo=False,
                 guardrails=GuardrailsConfig(
-                    input_mode=GuardrailMode.CLASSIFIER_ONLY,
+                    input_mode=GuardrailMode.POLICY_ONLY,
+                    input_policy=_POLICY,
                     block_on_input=True,
                     error_policy=GuardrailErrorPolicy.FAIL_CLOSED,
                 ),
@@ -617,6 +630,7 @@ class TestGuardrailErrorPolicy:
     def test_guardrails_config_default_error_policy(self) -> None:
         """GuardrailsConfig should default to FAIL_OPEN."""
         config = GuardrailsConfig(
-            input_mode=GuardrailMode.CLASSIFIER_ONLY,
+            input_mode=GuardrailMode.POLICY_ONLY,
+            input_policy=_POLICY,
         )
         assert config.error_policy == GuardrailErrorPolicy.FAIL_OPEN

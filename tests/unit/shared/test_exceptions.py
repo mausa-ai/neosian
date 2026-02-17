@@ -4,7 +4,6 @@ import pytest
 
 from neosian._foundation.shared.constants import ErrorMessages, LLMDefaults
 from neosian._foundation.shared.exceptions import (
-    GuardrailClassifierParseError,
     GuardrailError,
     GuardrailPolicyParseError,
     GuardrailStreamingError,
@@ -150,25 +149,6 @@ class TestGuardrailError:
         """GuardrailError should be catchable as NeosianError."""
         with pytest.raises(NeosianError):
             raise GuardrailError("guardrail error")
-
-
-@pytest.mark.unit
-class TestGuardrailClassifierParseError:
-    """Test classifier parse error."""
-
-    def test_inherits_from_guardrail_error(self) -> None:
-        """Should inherit from GuardrailError."""
-        assert issubclass(GuardrailClassifierParseError, GuardrailError)
-
-    def test_stores_response(self) -> None:
-        """Should store the original response."""
-        error = GuardrailClassifierParseError(response="bad response")
-        assert error.response == "bad response"
-
-    def test_message_includes_response(self) -> None:
-        """Error message should include the response."""
-        error = GuardrailClassifierParseError(response="unexpected")
-        assert "unexpected" in str(error)
 
 
 @pytest.mark.unit

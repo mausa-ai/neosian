@@ -235,9 +235,7 @@ def _select_provider_and_model_labeled(
         return None
 
     while True:
-        console.print(
-            f"\n[bold]{ArenaUI.SELECT_PROVIDER.format(label=label)}[/bold]"
-        )
+        console.print(f"\n[bold]{ArenaUI.SELECT_PROVIDER.format(label=label)}[/bold]")
         provider_menu = TerminalMenu([p[1] for p in providers], cursor_index=0)
         provider_choice = provider_menu.show()
 
@@ -315,7 +313,6 @@ class ArenaModelResult:
     elapsed_time: float
     error: str | None = None
     blocked: bool = False
-    blocked_categories: list[str] | None = None
     blocked_rationale: str | None = None
 
 
@@ -343,15 +340,6 @@ def _build_arena_cell_content(result: ArenaModelResult) -> RenderableType:
         # Build blocked message
         blocked_text = Text()
         blocked_text.append(PlaygroundUI.GUARDRAIL_INPUT_BLOCKED, style="bold red")
-
-        if result.blocked_categories:
-            blocked_text.append("\n")
-            blocked_text.append(
-                PlaygroundUI.GUARDRAIL_CATEGORIES.format(
-                    categories=", ".join(result.blocked_categories)
-                ),
-                style="yellow",
-            )
 
         if result.blocked_rationale:
             blocked_text.append("\n")
@@ -502,11 +490,9 @@ def _build_arena_result(
 
     # Check if blocked by guardrails
     blocked = response.blocked
-    blocked_categories: list[str] | None = None
     blocked_rationale: str | None = None
 
     if blocked and response.guardrail_result:
-        blocked_categories = response.guardrail_result.flagged_categories or None
         blocked_rationale = response.guardrail_result.policy_rationale
 
     return ArenaModelResult(
@@ -517,7 +503,6 @@ def _build_arena_result(
         tool_calls_raw=tool_calls_raw,
         elapsed_time=elapsed_time,
         blocked=blocked,
-        blocked_categories=blocked_categories,
         blocked_rationale=blocked_rationale,
     )
 
@@ -884,9 +869,9 @@ async def _chat_loop(
                     guard_text.append("safe", style="green")
                 else:
                     guard_text.append("flagged", style="red")
-                    if gr_result.flagged_categories:
+                    if gr_result.policy_rationale:
                         guard_text.append(
-                            f" ({', '.join(gr_result.flagged_categories)})",
+                            f" ({gr_result.policy_rationale})",
                             style="yellow",
                         )
 
@@ -905,16 +890,6 @@ async def _chat_loop(
                 else:
                     blocked_text.append(
                         PlaygroundUI.GUARDRAIL_OUTPUT_BLOCKED, style="bold red"
-                    )
-
-                # Add categories if present
-                if gr_result.flagged_categories:
-                    blocked_text.append("\n")
-                    blocked_text.append(
-                        PlaygroundUI.GUARDRAIL_CATEGORIES.format(
-                            categories=", ".join(gr_result.flagged_categories)
-                        ),
-                        style="yellow",
                     )
 
                 # Add rationale if present

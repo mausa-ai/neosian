@@ -191,16 +191,6 @@ class GuardrailError(NeosianError):
     pass
 
 
-class GuardrailClassifierParseError(GuardrailError):
-    """Raised when classifier response cannot be parsed."""
-
-    def __init__(self, response: str) -> None:
-        super().__init__(
-            ErrorMessages.GUARDRAIL_CLASSIFIER_PARSE_ERROR.format(response=response)
-        )
-        self.response = response
-
-
 class GuardrailPolicyParseError(GuardrailError):
     """Raised when policy response cannot be parsed."""
 

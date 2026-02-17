@@ -32,7 +32,6 @@ from neosian._foundation.agent.streaming import (
     tool_result_event,
 )
 from neosian._foundation.guardrails.checker import check_with_policy
-from neosian._foundation.guardrails.classifier import check_with_classifier
 from neosian._foundation.llm.base import (
     BaseLLMClient,
     Message,
@@ -53,7 +52,6 @@ from neosian._foundation.shared.exceptions import (
 )
 from neosian._foundation.shared.types import (
     AgentConfig,
-    ClassifierResult,
     FallbackState,
     GuardrailErrorPolicy,
     GuardrailMode,
@@ -104,7 +102,7 @@ def _get_api_key(env_var: str) -> str:
 def _create_guardrail_client() -> AsyncGroq:
     """Create Groq client for guardrail models.
 
-    Guardrails use Groq provider for both Llama Guard and GPT-OSS-Safeguard.
+    Guardrails use Groq provider for GPT-OSS-Safeguard policy checks.
 
     Returns:
         AsyncGroq client for guardrail calls.
@@ -343,9 +341,7 @@ class Agent:
 
         # Case 1: Guard finished first
         if guard_task in done and agent_task in pending:
-            is_safe, input_classifier, input_policy = self._get_guard_result_safe(
-                guard_task
-            )
+            is_safe, input_policy = self._get_guard_result_safe(guard_task)
 
             if not is_safe and self._guardrails.block_on_input:
                 # Cancel agent to save resources
@@ -358,24 +354,19 @@ class Agent:
                     guardrail_result=GuardrailResult(
                         safe=False,
                         flagged_at="input",
-                        input_classifier=input_classifier,
                         input_policy=input_policy,
                     ),
                 )
 
             # Safe or block_on_input=False - wait for agent and attach guard results
             agent_response = await agent_task
-            return self._attach_input_guard_results(
-                agent_response, input_classifier, input_policy
-            )
+            return self._attach_input_guard_results(agent_response, input_policy)
 
         # Case 2: Agent finished first
         agent_response = agent_task.result()
 
         # Still need guard verdict (with error handling)
-        is_safe, input_classifier, input_policy = await self._await_guard_result_safe(
-            guard_task
-        )
+        is_safe, input_policy = await self._await_guard_result_safe(guard_task)
 
         if not is_safe and self._guardrails.block_on_input:
             # Agent ran but we must block - discard response
@@ -385,15 +376,12 @@ class Agent:
                 guardrail_result=GuardrailResult(
                     safe=False,
                     flagged_at="input",
-                    input_classifier=input_classifier,
                     input_policy=input_policy,
                 ),
             )
 
         # Safe or block_on_input=False - return with guard results
-        return self._attach_input_guard_results(
-            agent_response, input_classifier, input_policy
-        )
+        return self._attach_input_guard_results(agent_response, input_policy)
 
     async def _execute_agent_core(
         self,
@@ -693,7 +681,6 @@ class Agent:
     def _attach_input_guard_results(
         self,
         response: AgentResponse,
-        input_classifier: ClassifierResult | None,
         input_policy: PolicyResult | None,
     ) -> AgentResponse:
         """Attach input guardrail results to an existing AgentResponse.
@@ -702,21 +689,16 @@ class Agent:
 
         Args:
             response: The agent response to augment.
-            input_classifier: Input classifier result.
             input_policy: Input policy result.
 
         Returns:
             AgentResponse with updated guardrail_result.
         """
-        if input_classifier is None and input_policy is None:
+        if input_policy is None:
             return response
 
         # Determine input safety
-        is_input_safe = True
-        if input_classifier is not None and not input_classifier.safe:
-            is_input_safe = False
-        if input_policy is not None and not input_policy.safe:
-            is_input_safe = False
+        is_input_safe = input_policy.safe
 
         # Merge with existing guardrail result (from output check)
         existing = response.guardrail_result
@@ -726,16 +708,13 @@ class Agent:
             guardrail_result = GuardrailResult(
                 safe=overall_safe,
                 flagged_at=flagged_at,
-                input_classifier=input_classifier,
                 input_policy=input_policy,
-                output_classifier=existing.output_classifier,
                 output_policy=existing.output_policy,
             )
         else:
             guardrail_result = GuardrailResult(
                 safe=is_input_safe,
                 flagged_at="input" if not is_input_safe else None,
-                input_classifier=input_classifier,
                 input_policy=input_policy,
             )
 
@@ -769,10 +748,7 @@ class Agent:
         user_content = self._extract_user_content(messages) if has_input_guard else ""
 
         # Start guard task in background if needed
-        guard_task: (
-            asyncio.Task[tuple[bool, ClassifierResult | None, PolicyResult | None]]
-            | None
-        ) = None
+        guard_task: asyncio.Task[tuple[bool, PolicyResult | None]] | None = None
         if has_input_guard and user_content:
             guard_task = asyncio.create_task(
                 self._check_guardrails(user_content, "input")
@@ -785,10 +761,7 @@ class Agent:
     async def _stream_agent_with_guard(
         self,
         messages: list[Message],
-        guard_task: (
-            asyncio.Task[tuple[bool, ClassifierResult | None, PolicyResult | None]]
-            | None
-        ),
+        guard_task: asyncio.Task[tuple[bool, PolicyResult | None]] | None,
         fallback_state: FallbackState | None = None,
     ) -> AsyncIterator[str]:
         """Stream agent response while monitoring guard task.
@@ -899,10 +872,7 @@ class Agent:
     async def _stream_with_fallback_model(
         self,
         full_messages: list[Message],
-        guard_task: (
-            asyncio.Task[tuple[bool, ClassifierResult | None, PolicyResult | None]]
-            | None
-        ),
+        guard_task: asyncio.Task[tuple[bool, PolicyResult | None]] | None,
         emitter: SSEEventEmitter,
         fallback_state: FallbackState,
     ) -> AsyncIterator[str]:
@@ -977,10 +947,7 @@ class Agent:
         client: BaseLLMClient,
         model: Model,
         full_messages: list[Message],
-        guard_task: (
-            asyncio.Task[tuple[bool, ClassifierResult | None, PolicyResult | None]]
-            | None
-        ),
+        guard_task: asyncio.Task[tuple[bool, PolicyResult | None]] | None,
         emitter: SSEEventEmitter | None = None,
     ) -> AsyncIterator[str]:
         """Stream agent response with a specific client while monitoring guard task.
@@ -1053,19 +1020,14 @@ class Agent:
             if not accumulated_tool_calls:
                 # Final guard await before done
                 if guard_task is not None:
-                    is_safe, classifier, policy = await self._await_guard_result_safe(
-                        guard_task
-                    )
+                    is_safe, policy = await self._await_guard_result_safe(guard_task)
                     if (
                         not is_safe
                         and self._guardrails
                         and self._guardrails.block_on_input
                     ):
-                        categories = classifier.categories if classifier else None
                         rationale = policy.rationale if policy else None
-                        yield emitter.emit(
-                            blocked_event(categories=categories, rationale=rationale)
-                        )
+                        yield emitter.emit(blocked_event(rationale=rationale))
                         return
 
                 yield emitter.emit(done_event(final_usage))
@@ -1131,10 +1093,8 @@ class Agent:
 
     def _get_guard_result_safe(
         self,
-        guard_task: asyncio.Task[
-            tuple[bool, ClassifierResult | None, PolicyResult | None]
-        ],
-    ) -> tuple[bool, ClassifierResult | None, PolicyResult | None]:
+        guard_task: asyncio.Task[tuple[bool, PolicyResult | None]],
+    ) -> tuple[bool, PolicyResult | None]:
         """Get guard task result with error policy handling.
 
         Handles exceptions from guard task based on configured error_policy:
@@ -1145,7 +1105,7 @@ class Agent:
             guard_task: Completed guard task.
 
         Returns:
-            Tuple of (is_safe, classifier_result, policy_result).
+            Tuple of (is_safe, policy_result).
         """
         try:
             return guard_task.result()
@@ -1154,10 +1114,8 @@ class Agent:
 
     async def _await_guard_result_safe(
         self,
-        guard_task: asyncio.Task[
-            tuple[bool, ClassifierResult | None, PolicyResult | None]
-        ],
-    ) -> tuple[bool, ClassifierResult | None, PolicyResult | None]:
+        guard_task: asyncio.Task[tuple[bool, PolicyResult | None]],
+    ) -> tuple[bool, PolicyResult | None]:
         """Await guard task result with error policy handling.
 
         Async version of _get_guard_result_safe for awaiting pending tasks.
@@ -1166,23 +1124,21 @@ class Agent:
             guard_task: Guard task to await.
 
         Returns:
-            Tuple of (is_safe, classifier_result, policy_result).
+            Tuple of (is_safe, policy_result).
         """
         try:
             return await guard_task
         except Exception as e:
             return self._handle_guard_error(e)
 
-    def _handle_guard_error(
-        self, error: Exception
-    ) -> tuple[bool, ClassifierResult | None, PolicyResult | None]:
+    def _handle_guard_error(self, error: Exception) -> tuple[bool, PolicyResult | None]:
         """Handle guardrail error based on error_policy.
 
         Args:
             error: The exception that occurred.
 
         Returns:
-            Tuple of (is_safe, None, None) based on error policy.
+            Tuple of (is_safe, policy_result) based on error policy.
         """
         error_policy = (
             self._guardrails.error_policy
@@ -1195,19 +1151,17 @@ class Agent:
                 "Guardrail check failed (fail-open): %s. Treating as safe.",
                 str(error),
             )
-            return (True, None, None)
+            return (True, None)
         else:
             logger.error(
                 "Guardrail check failed (fail-closed): %s. Treating as blocked.",
                 str(error),
             )
-            return (False, None, None)
+            return (False, None)
 
     def _check_guard_and_block(
         self,
-        guard_task: asyncio.Task[
-            tuple[bool, ClassifierResult | None, PolicyResult | None]
-        ],
+        guard_task: asyncio.Task[tuple[bool, PolicyResult | None]],
         emitter: SSEEventEmitter | None = None,
     ) -> str | None:
         """Check completed guard task and return blocked event if needed.
@@ -1221,12 +1175,11 @@ class Agent:
         Returns:
             Blocked SSE string if guard flagged and block_on_input=True, else None.
         """
-        is_safe, classifier, policy = self._get_guard_result_safe(guard_task)
+        is_safe, policy = self._get_guard_result_safe(guard_task)
 
         if not is_safe and self._guardrails and self._guardrails.block_on_input:
-            categories = classifier.categories if classifier else None
             rationale = policy.rationale if policy else None
-            event = blocked_event(categories=categories, rationale=rationale)
+            event = blocked_event(rationale=rationale)
             if emitter is not None:
                 return emitter.emit(event)
             return event.to_sse()
@@ -1238,10 +1191,7 @@ class Agent:
         client: BaseLLMClient,
         model: Model,
         full_messages: list[Message],
-        guard_task: (
-            asyncio.Task[tuple[bool, ClassifierResult | None, PolicyResult | None]]
-            | None
-        ),
+        guard_task: asyncio.Task[tuple[bool, PolicyResult | None]] | None,
         emitter: SSEEventEmitter,
         reasoning_effort: ReasoningEffort | None = None,
     ) -> AsyncIterator[str]:
@@ -1291,19 +1241,14 @@ class Agent:
             if chunk.finish_reason:
                 # Final guard check before done (with error handling)
                 if guard_task is not None:
-                    is_safe, classifier, policy = await self._await_guard_result_safe(
-                        guard_task
-                    )
+                    is_safe, policy = await self._await_guard_result_safe(guard_task)
                     if (
                         not is_safe
                         and self._guardrails
                         and self._guardrails.block_on_input
                     ):
-                        categories = classifier.categories if classifier else None
                         rationale = policy.rationale if policy else None
-                        yield emitter.emit(
-                            blocked_event(categories=categories, rationale=rationale)
-                        )
+                        yield emitter.emit(blocked_event(rationale=rationale))
                         return
 
                 if chunk.usage:
@@ -1410,24 +1355,18 @@ class Agent:
         self,
         content: str,
         checkpoint: Literal["input", "output"],
-    ) -> tuple[bool, ClassifierResult | None, PolicyResult | None]:
+    ) -> tuple[bool, PolicyResult | None]:
         """Check content against configured guardrails at the given checkpoint.
-
-        Execution order depends on mode:
-        - CLASSIFIER_ONLY: Run classifier only
-        - POLICY_ONLY: Run policy only
-        - CLASSIFIER_AND_POLICY: Run classifier, then always run policy
-        - CLASSIFIER_THEN_POLICY: Run classifier, only run policy if classifier flags
 
         Args:
             content: Content to check.
             checkpoint: "input" or "output" checkpoint.
 
         Returns:
-            Tuple of (is_safe, classifier_result, policy_result).
+            Tuple of (is_safe, policy_result).
         """
         if self._guardrails is None or self._guardrail_client is None:
-            return (True, None, None)
+            return (True, None)
 
         # Select config fields based on checkpoint
         mode = (
@@ -1443,45 +1382,19 @@ class Agent:
 
         # No guardrails configured for this checkpoint
         if mode == GuardrailMode.NONE:
-            return (True, None, None)
+            return (True, None)
 
-        classifier_result: ClassifierResult | None = None
-        policy_result: PolicyResult | None = None
-
-        # Run classifier if mode uses it
-        if mode.uses_classifier():
-            classifier_result = await check_with_classifier(
-                content=content,
-                client=self._guardrail_client,
-            )
-
-            # For CLASSIFIER_ONLY, return immediately based on classifier result
-            if mode == GuardrailMode.CLASSIFIER_ONLY:
-                return (classifier_result.safe, classifier_result, None)
-
-            # For CLASSIFIER_THEN_POLICY, only run policy if classifier flags
-            if mode == GuardrailMode.CLASSIFIER_THEN_POLICY and classifier_result.safe:
-                # Classifier passed, skip policy (optimization)
-                return (True, classifier_result, None)
-            # Classifier flagged, continue to run policy for detailed analysis
-
-        # Run policy if mode uses it
-        if mode.uses_policy() and policy is not None:
+        # Run policy check
+        if policy is not None:
             policy_result = await check_with_policy(
                 content=content,
                 policy=policy,
                 client=self._guardrail_client,
             )
-
-            # Determine overall safety
-            is_safe = policy_result.safe
-            if classifier_result is not None and not classifier_result.safe:
-                is_safe = False
-
-            return (is_safe, classifier_result, policy_result)
+            return (policy_result.safe, policy_result)
 
         # Fallback (shouldn't reach here with valid config)
-        return (True, classifier_result, policy_result)
+        return (True, None)
 
     def _extract_user_content(self, messages: list[Message]) -> str:
         """Extract user content from messages for guardrail checking.
@@ -1529,7 +1442,6 @@ class Agent:
         Returns:
             AgentResponse with output guardrail results and parsed content (if any).
         """
-        output_classifier: ClassifierResult | None = None
         output_policy: PolicyResult | None = None
         is_output_safe = True
 
@@ -1539,17 +1451,16 @@ class Agent:
             and self._guardrails.has_output_guardrails
             and message.content
         ):
-            is_output_safe, output_classifier, output_policy = (
-                await self._check_guardrails(message.content, "output")
+            is_output_safe, output_policy = await self._check_guardrails(
+                message.content, "output"
             )
 
         # Build guardrail result if output guardrails were run
         guardrail_result: GuardrailResult | None = None
-        if output_classifier is not None or output_policy is not None:
+        if output_policy is not None:
             guardrail_result = GuardrailResult(
                 safe=is_output_safe,
                 flagged_at="output" if not is_output_safe else None,
-                output_classifier=output_classifier,
                 output_policy=output_policy,
             )
 
@@ -1659,9 +1570,7 @@ class Agent:
 
         # Case 1: Guard finished first
         if guard_task in done and agent_task in pending:
-            is_safe, input_classifier, input_policy = self._get_guard_result_safe(
-                guard_task
-            )
+            is_safe, input_policy = self._get_guard_result_safe(guard_task)
 
             if not is_safe and self._guardrails.block_on_input:
                 # Cancel agent to save resources
@@ -1674,24 +1583,19 @@ class Agent:
                     guardrail_result=GuardrailResult(
                         safe=False,
                         flagged_at="input",
-                        input_classifier=input_classifier,
                         input_policy=input_policy,
                     ),
                 )
 
             # Safe or block_on_input=False - wait for agent and attach guard results
             agent_response = await agent_task
-            return self._attach_input_guard_results(
-                agent_response, input_classifier, input_policy
-            )
+            return self._attach_input_guard_results(agent_response, input_policy)
 
         # Case 2: Agent finished first
         agent_response = agent_task.result()
 
         # Still need guard verdict (with error handling)
-        is_safe, input_classifier, input_policy = await self._await_guard_result_safe(
-            guard_task
-        )
+        is_safe, input_policy = await self._await_guard_result_safe(guard_task)
 
         if not is_safe and self._guardrails.block_on_input:
             # Agent ran but we must block - discard response
@@ -1701,15 +1605,12 @@ class Agent:
                 guardrail_result=GuardrailResult(
                     safe=False,
                     flagged_at="input",
-                    input_classifier=input_classifier,
                     input_policy=input_policy,
                 ),
             )
 
         # Safe or block_on_input=False - return with guard results
-        return self._attach_input_guard_results(
-            agent_response, input_classifier, input_policy
-        )
+        return self._attach_input_guard_results(agent_response, input_policy)
 
     async def _execute_agent_core_with_session(
         self,
@@ -1922,10 +1823,7 @@ class Agent:
         user_content = self._extract_user_content(messages) if has_input_guard else ""
 
         # Start guard task in background if needed
-        guard_task: (
-            asyncio.Task[tuple[bool, ClassifierResult | None, PolicyResult | None]]
-            | None
-        ) = None
+        guard_task: asyncio.Task[tuple[bool, PolicyResult | None]] | None = None
         if has_input_guard and user_content:
             guard_task = asyncio.create_task(
                 self._check_guardrails(user_content, "input")
@@ -1940,10 +1838,7 @@ class Agent:
     async def _stream_agent_with_guard_and_session(
         self,
         messages: list[Message],
-        guard_task: (
-            asyncio.Task[tuple[bool, ClassifierResult | None, PolicyResult | None]]
-            | None
-        ),
+        guard_task: asyncio.Task[tuple[bool, PolicyResult | None]] | None,
         session: AgentSession,
     ) -> AsyncIterator[str]:
         """Stream agent response using session's cached clients.
@@ -2053,10 +1948,7 @@ class Agent:
     async def _stream_with_fallback_model_session(
         self,
         full_messages: list[Message],
-        guard_task: (
-            asyncio.Task[tuple[bool, ClassifierResult | None, PolicyResult | None]]
-            | None
-        ),
+        guard_task: asyncio.Task[tuple[bool, PolicyResult | None]] | None,
         emitter: SSEEventEmitter,
         session: AgentSession,
         fallback_state: FallbackState,

@@ -104,23 +104,17 @@ def done_event(usage: Usage | None = None) -> SSEEvent:
 
 
 def blocked_event(
-    categories: list[str] | None = None,
     rationale: str | None = None,
 ) -> SSEEvent:
     """Create a blocked SSE event for guardrail interruption.
 
-    Supports both classifier-only (categories) and policy (rationale) results.
-
     Args:
-        categories: Llama Guard category codes (e.g., ["S1", "S2"]).
         rationale: Policy rationale explaining the block.
 
     Returns:
         SSEEvent with blocked data. Only includes non-None fields.
     """
     data: dict[str, Any] = {}
-    if categories:
-        data["categories"] = categories
     if rationale:
         data["rationale"] = rationale
     return SSEEvent(event=SSEEventType.BLOCKED, data=data)

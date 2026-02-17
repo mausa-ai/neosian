@@ -30,7 +30,6 @@ from neosian._foundation.shared.exceptions import (
 from neosian._foundation.shared.prompt import load_prompt
 from neosian._foundation.shared.types import (
     AgentConfig,
-    ClassifierResult,
     EvalCase,
     EvalConfig,
     EvalResult,
@@ -54,7 +53,7 @@ from neosian._foundation.shared.types import (
 )
 from neosian._foundation.tools.base import Tool, ToolResult
 
-__version__ = "0.39.0"
+__version__ = "0.40.0"
 
 __all__ = [
     # Agent
@@ -94,7 +93,6 @@ __all__ = [
     "GuardrailMode",
     "GuardrailErrorPolicy",
     "GuardrailResult",
-    "ClassifierResult",
     "PolicyResult",
     "PolicyBuilder",
     "CommonPolicies",

@@ -29,7 +29,6 @@ def test_public_api_exports() -> None:
         AgentConfig,
         AgentResponse,
         AgentSession,
-        ClassifierResult,
         CommonPolicies,
         Desc,
         EvalCase,
@@ -87,7 +86,6 @@ def test_public_api_exports() -> None:
     assert GuardrailMode is not None
     assert GuardrailErrorPolicy is not None
     assert GuardrailResult is not None
-    assert ClassifierResult is not None
     assert PolicyResult is not None
     assert PolicyBuilder is not None
     assert CommonPolicies is not None
@@ -153,7 +151,6 @@ def test_all_list_matches_exports() -> None:
         "GuardrailMode",
         "GuardrailErrorPolicy",
         "GuardrailResult",
-        "ClassifierResult",
         "PolicyResult",
         "PolicyBuilder",
         "CommonPolicies",

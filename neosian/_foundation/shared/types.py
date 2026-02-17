@@ -88,7 +88,6 @@ class Model(str, Enum):
     GROQ_KIMI_K2_0905 = "moonshotai/kimi-k2-instruct-0905"
 
     # Groq - Guardrails
-    GROQ_LLAMA_GUARD_4_12B = "meta-llama/llama-guard-4-12b"
     GROQ_GPT_OSS_SAFEGUARD_20B = "openai/gpt-oss-safeguard-20b"
 
     # OpenAI
@@ -188,11 +187,6 @@ _MODEL_SPECS[Model.GROQ_KIMI_K2_0905.value] = ModelSpec(
 )
 
 # Groq - Guardrails
-_MODEL_SPECS[Model.GROQ_LLAMA_GUARD_4_12B.value] = ModelSpec(
-    provider=Provider.GROQ,
-    context_window=131_072,
-    max_output_tokens=1_024,
-)
 _MODEL_SPECS[Model.GROQ_GPT_OSS_SAFEGUARD_20B.value] = ModelSpec(
     provider=Provider.GROQ,
     context_window=131_072,
@@ -487,35 +481,12 @@ class AgentConfig:
 class GuardrailMode(str, Enum):
     """Guardrail execution mode.
 
-    Defines how classifier and policy guardrails interact:
     - NONE: No guardrails
-    - CLASSIFIER_ONLY: Run Llama Guard classifier only
-    - POLICY_ONLY: Run custom policy only
-    - CLASSIFIER_AND_POLICY: Run both, always
-    - CLASSIFIER_THEN_POLICY: Run policy only if classifier flags (optimization)
+    - POLICY_ONLY: Run custom policy via GPT-OSS-Safeguard
     """
 
     NONE = "none"
-    CLASSIFIER_ONLY = "classifier_only"
     POLICY_ONLY = "policy_only"
-    CLASSIFIER_AND_POLICY = "classifier_and_policy"
-    CLASSIFIER_THEN_POLICY = "classifier_then_policy"
-
-    def uses_classifier(self) -> bool:
-        """Check if this mode uses the classifier."""
-        return self in (
-            GuardrailMode.CLASSIFIER_ONLY,
-            GuardrailMode.CLASSIFIER_AND_POLICY,
-            GuardrailMode.CLASSIFIER_THEN_POLICY,
-        )
-
-    def uses_policy(self) -> bool:
-        """Check if this mode uses policy."""
-        return self in (
-            GuardrailMode.POLICY_ONLY,
-            GuardrailMode.CLASSIFIER_AND_POLICY,
-            GuardrailMode.CLASSIFIER_THEN_POLICY,
-        )
 
 
 class GuardrailErrorPolicy(str, Enum):
@@ -533,16 +504,11 @@ class GuardrailErrorPolicy(str, Enum):
 class GuardrailsConfig:
     """Configuration for input and output guardrails.
 
-    Two guardrail types:
-    - Classifier (Llama Guard 4): Fast, fixed taxonomy (S1-S14)
-    - Policy (GPT-OSS-Safeguard): Custom rules, flexible
+    Uses GPT-OSS-Safeguard for custom policy-based content moderation.
 
     Modes:
     - NONE: No guardrails
-    - CLASSIFIER_ONLY: Run Llama Guard only
-    - POLICY_ONLY: Run custom policy only (requires policy string)
-    - CLASSIFIER_AND_POLICY: Run both, always
-    - CLASSIFIER_THEN_POLICY: Run policy only if classifier flags (optimization)
+    - POLICY_ONLY: Run custom policy (requires policy string)
 
     Error Policy:
     - FAIL_OPEN: On guardrail API error, treat as safe (default). Best for UX.
@@ -553,27 +519,17 @@ class GuardrailsConfig:
     Example:
         from neosian import GuardrailsConfig, GuardrailMode, PolicyBuilder
 
-        # Classifier only
-        guardrails = GuardrailsConfig(
-            input_mode=GuardrailMode.CLASSIFIER_ONLY,
-        )
-
-        # Policy only
+        # Policy guardrails
         guardrails = GuardrailsConfig(
             input_mode=GuardrailMode.POLICY_ONLY,
-            input_policy=PolicyBuilder.default(),
-        )
-
-        # Classifier as pre-filter, policy for detailed check
-        guardrails = GuardrailsConfig(
-            input_mode=GuardrailMode.CLASSIFIER_THEN_POLICY,
             input_policy=PolicyBuilder.default(),
             block_on_input=True,
         )
 
         # High-security: block on any guardrail error
         guardrails = GuardrailsConfig(
-            input_mode=GuardrailMode.CLASSIFIER_ONLY,
+            input_mode=GuardrailMode.POLICY_ONLY,
+            input_policy=PolicyBuilder.default(),
             error_policy=GuardrailErrorPolicy.FAIL_CLOSED,
         )
     """
@@ -593,13 +549,13 @@ class GuardrailsConfig:
     def __post_init__(self) -> None:
         """Validate configuration."""
         # Check input policy requirement
-        if self.input_mode.uses_policy() and self.input_policy is None:
+        if self.input_mode != GuardrailMode.NONE and self.input_policy is None:
             raise ValueError(
                 f"input_mode={self.input_mode.value} requires input_policy to be set"
             )
 
         # Check output policy requirement
-        if self.output_mode.uses_policy() and self.output_policy is None:
+        if self.output_mode != GuardrailMode.NONE and self.output_policy is None:
             raise ValueError(
                 f"output_mode={self.output_mode.value} requires output_policy to be set"
             )
@@ -608,19 +564,6 @@ class GuardrailsConfig:
     def has_output_guardrails(self) -> bool:
         """Check if any output guardrails are configured."""
         return self.output_mode != GuardrailMode.NONE
-
-
-@dataclass
-class ClassifierResult:
-    """Result from Llama Guard classification.
-
-    Attributes:
-        safe: Whether the content passed classification.
-        categories: List of flagged category codes (e.g., ["S2", "S5"]).
-    """
-
-    safe: bool
-    categories: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -645,28 +588,14 @@ class GuardrailResult:
     Attributes:
         safe: Overall safety status.
         flagged_at: Where content was flagged ("input" or "output"), if any.
-        input_classifier: Llama Guard result for input.
         input_policy: Policy result for input.
-        output_classifier: Llama Guard result for output.
         output_policy: Policy result for output.
     """
 
     safe: bool
     flagged_at: Literal["input", "output"] | None = None
-    input_classifier: ClassifierResult | None = None
     input_policy: PolicyResult | None = None
-    output_classifier: ClassifierResult | None = None
     output_policy: PolicyResult | None = None
-
-    @property
-    def flagged_categories(self) -> list[str]:
-        """All flagged Llama Guard categories from both input and output."""
-        categories: list[str] = []
-        if self.input_classifier:
-            categories.extend(self.input_classifier.categories)
-        if self.output_classifier:
-            categories.extend(self.output_classifier.categories)
-        return categories
 
     @property
     def policy_rationale(self) -> str | None:

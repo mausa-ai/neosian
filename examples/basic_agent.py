@@ -117,8 +117,9 @@ Be concise and helpful in your responses.""",
     model=Model.CLAUDE_OPUS_4_6,
     reasoning_effort=ReasoningEffort.HIGH,
     guardrails=GuardrailsConfig(
-        # Input guardrails: classifier only (fast, no policy check)
-        input_mode=GuardrailMode.CLASSIFIER_ONLY,
+        # Input guardrails: policy check via GPT-OSS-Safeguard
+        input_mode=GuardrailMode.POLICY_ONLY,
+        input_policy=custom_policy,
         block_on_input=True,
         # Output guardrails: disabled (allows streaming)
         output_mode=GuardrailMode.NONE,
