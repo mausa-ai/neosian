@@ -88,6 +88,16 @@ class AnthropicClient(BaseLLMClient):
                 ErrorMessages.REASONING_EFFORT_NOT_SUPPORTED.format(model=model.value)
             )
 
+        # Anthropic MAX is Opus 4.6 only — downgrade to HIGH for other models
+        effective_effort = reasoning_effort
+        if reasoning_effort == ReasoningEffort.MAX and model != Model.CLAUDE_OPUS_4_6:
+            logger.warning(
+                ErrorMessages.REASONING_EFFORT_MAX_DOWNGRADED_ANTHROPIC.format(
+                    model=model.value
+                )
+            )
+            effective_effort = ReasoningEffort.HIGH
+
         system_prompt, anthropic_messages = self._convert_messages(messages)
         anthropic_tools = self._convert_tools(tools) if tools else None
 
@@ -109,9 +119,9 @@ class AnthropicClient(BaseLLMClient):
                 }
 
                 # Thinking mode: add adaptive thinking + effort, omit temperature
-                if reasoning_effort is not None:
+                if effective_effort is not None:
                     kwargs["thinking"] = {"type": "adaptive"}
-                    kwargs["output_config"] = {"effort": reasoning_effort.value}
+                    kwargs["output_config"] = {"effort": effective_effort.value}
                 else:
                     kwargs["temperature"] = current_temp
 
@@ -240,6 +250,16 @@ class AnthropicClient(BaseLLMClient):
                 ErrorMessages.REASONING_EFFORT_NOT_SUPPORTED.format(model=model.value)
             )
 
+        # Anthropic MAX is Opus 4.6 only — downgrade to HIGH for other models
+        effective_effort = reasoning_effort
+        if reasoning_effort == ReasoningEffort.MAX and model != Model.CLAUDE_OPUS_4_6:
+            logger.warning(
+                ErrorMessages.REASONING_EFFORT_MAX_DOWNGRADED_ANTHROPIC.format(
+                    model=model.value
+                )
+            )
+            effective_effort = ReasoningEffort.HIGH
+
         system_prompt, anthropic_messages = self._convert_messages(messages)
         anthropic_tools = self._convert_tools(tools) if tools else None
 
@@ -257,9 +277,9 @@ class AnthropicClient(BaseLLMClient):
         }
 
         # Thinking mode: add adaptive thinking + effort, omit temperature
-        if reasoning_effort is not None:
+        if effective_effort is not None:
             kwargs["thinking"] = {"type": "adaptive"}
-            kwargs["output_config"] = {"effort": reasoning_effort.value}
+            kwargs["output_config"] = {"effort": effective_effort.value}
         else:
             kwargs["temperature"] = temp
 

@@ -98,7 +98,7 @@ class Model(str, Enum):
 
     # Anthropic
     CLAUDE_OPUS_4_6 = "claude-opus-4-6"
-    CLAUDE_SONNET_4_5 = "claude-sonnet-4-5-20250929"
+    CLAUDE_SONNET_4_6 = "claude-sonnet-4-6"
     CLAUDE_HAIKU_4_5 = "claude-haiku-4-5-20251001"
 
     # Cerebras - Production
@@ -226,10 +226,11 @@ _MODEL_SPECS[Model.CLAUDE_OPUS_4_6.value] = ModelSpec(
     max_output_tokens=128_000,
     supports_reasoning=True,
 )
-_MODEL_SPECS[Model.CLAUDE_SONNET_4_5.value] = ModelSpec(
+_MODEL_SPECS[Model.CLAUDE_SONNET_4_6.value] = ModelSpec(
     provider=Provider.ANTHROPIC,
     context_window=200_000,
     max_output_tokens=64_000,
+    supports_reasoning=True,
 )
 _MODEL_SPECS[Model.CLAUDE_HAIKU_4_5.value] = ModelSpec(
     provider=Provider.ANTHROPIC,
@@ -267,7 +268,7 @@ _MODEL_SPECS[Model.CEREBRAS_ZAI_GLM_4_7.value] = ModelSpec(
 DEFAULT_MODELS: dict[Provider, Model] = {
     Provider.GROQ: Model.GROQ_GPT_OSS_20B,
     Provider.OPENAI: Model.GPT_5_NANO,
-    Provider.ANTHROPIC: Model.CLAUDE_SONNET_4_5,
+    Provider.ANTHROPIC: Model.CLAUDE_SONNET_4_6,
     Provider.CEREBRAS: Model.CEREBRAS_GPT_OSS_120B,
 }
 

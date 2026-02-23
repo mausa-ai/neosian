@@ -87,6 +87,12 @@ class ErrorMessages:
         "Downgrading to HIGH for model '{model}'."
     )
 
+    # Anthropic MAX-to-HIGH downgrade (MAX is Opus 4.6 only)
+    REASONING_EFFORT_MAX_DOWNGRADED_ANTHROPIC: str = (
+        "reasoning_effort=MAX is only supported by Claude Opus 4.6. "
+        "Downgrading to HIGH for model '{model}'."
+    )
+
     # GPT-5-Pro only supports HIGH
     REASONING_EFFORT_FORCED_HIGH: str = (
         "Model '{model}' only supports reasoning_effort=HIGH. "

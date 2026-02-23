@@ -123,7 +123,7 @@ def _get_models_for_provider(
             ]
         case Provider.ANTHROPIC:
             models = [
-                (Model.CLAUDE_SONNET_4_5, "claude-sonnet-4-5 (default, balanced)"),
+                (Model.CLAUDE_SONNET_4_6, "claude-sonnet-4-6 (default, balanced)"),
                 (Model.CLAUDE_HAIKU_4_5, "claude-haiku-4-5 (fastest)"),
                 (Model.CLAUDE_OPUS_4_6, "claude-opus-4-6 (most capable)"),
             ]
