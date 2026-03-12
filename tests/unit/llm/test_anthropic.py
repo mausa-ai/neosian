@@ -4,7 +4,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from neosian._foundation.llm.anthropic import AnthropicClient
+from neosian._foundation.llm.anthropic import (
+    AnthropicClient,
+    _strip_numeric_constraints,
+)
 from neosian._foundation.llm.base import Message, Role, ToolDefinition
 from neosian._foundation.shared.exceptions import UnsupportedParameterError
 from neosian._foundation.shared.types import Model, ReasoningEffort
@@ -1279,3 +1282,146 @@ class TestAnthropicPromptCaching:
         call_kwargs = client._client.messages.stream.call_args.kwargs
         tools = call_kwargs["tools"]
         assert tools[-1]["cache_control"] == {"type": "ephemeral"}
+
+
+@pytest.mark.unit
+class TestStripNumericConstraints:
+    """Tests for _strip_numeric_constraints schema sanitizer."""
+
+    def test_strips_integer_constraints(self) -> None:
+        """minimum/maximum should be removed from integer properties."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "fontsize": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 20,
+                    "description": "Font size",
+                },
+            },
+        }
+        result = _strip_numeric_constraints(schema)
+        prop = result["properties"]["fontsize"]
+        assert "minimum" not in prop
+        assert "maximum" not in prop
+        assert prop["description"] == "Font size"
+
+    def test_strips_number_constraints(self) -> None:
+        """minimum/maximum should be removed from number properties."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "width": {
+                    "type": "number",
+                    "minimum": 0.5,
+                    "maximum": 5.0,
+                },
+            },
+        }
+        result = _strip_numeric_constraints(schema)
+        assert "minimum" not in result["properties"]["width"]
+        assert "maximum" not in result["properties"]["width"]
+
+    def test_strips_exclusive_constraints(self) -> None:
+        """exclusiveMinimum/exclusiveMaximum should also be removed."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "val": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "exclusiveMaximum": 100,
+                },
+            },
+        }
+        result = _strip_numeric_constraints(schema)
+        assert "exclusiveMinimum" not in result["properties"]["val"]
+        assert "exclusiveMaximum" not in result["properties"]["val"]
+
+    def test_preserves_string_constraints(self) -> None:
+        """String constraints (minLength, maxLength, pattern) should NOT be removed."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100,
+                    "pattern": "^[a-z]+$",
+                },
+            },
+        }
+        result = _strip_numeric_constraints(schema)
+        prop = result["properties"]["name"]
+        assert prop["minLength"] == 1
+        assert prop["maxLength"] == 100
+        assert prop["pattern"] == "^[a-z]+$"
+
+    def test_recurses_into_defs(self) -> None:
+        """Should strip constraints in $defs."""
+        schema = {
+            "type": "object",
+            "$defs": {
+                "Size": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100,
+                },
+            },
+            "properties": {},
+        }
+        result = _strip_numeric_constraints(schema)
+        assert "minimum" not in result["$defs"]["Size"]
+        assert "maximum" not in result["$defs"]["Size"]
+
+    def test_recurses_into_anyof(self) -> None:
+        """Should strip constraints inside anyOf variants."""
+        schema = {
+            "anyOf": [
+                {
+                    "type": "object",
+                    "properties": {
+                        "count": {"type": "integer", "minimum": 0},
+                    },
+                },
+            ],
+        }
+        result = _strip_numeric_constraints(schema)
+        assert "minimum" not in result["anyOf"][0]["properties"]["count"]
+
+    def test_does_not_mutate_original(self) -> None:
+        """Original schema dict should not be modified."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "x": {"type": "integer", "minimum": 1, "maximum": 10},
+            },
+        }
+        _strip_numeric_constraints(schema)
+        assert schema["properties"]["x"]["minimum"] == 1
+        assert schema["properties"]["x"]["maximum"] == 10
+
+    def test_convert_tools_strips_constraints(
+        self, client: AnthropicClient
+    ) -> None:
+        """_convert_tools should produce schemas without numeric constraints."""
+        tool = ToolDefinition(
+            name="caption",
+            description="Add captions",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "fontsize": {"type": "integer", "minimum": 1, "maximum": 20},
+                    "label": {"type": "string", "minLength": 1},
+                },
+            },
+        )
+        converted = client._convert_tools([tool])
+        props = converted[0]["input_schema"]["properties"]
+        assert "minimum" not in props["fontsize"]
+        assert "maximum" not in props["fontsize"]
+        # String constraints preserved
+        assert props["label"]["minLength"] == 1
+        # Original not mutated
+        assert tool.parameters["properties"]["fontsize"]["minimum"] == 1

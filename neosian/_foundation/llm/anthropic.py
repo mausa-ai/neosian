@@ -1,5 +1,6 @@
 """Anthropic Claude LLM client implementation."""
 
+import copy
 import json
 import logging
 from collections.abc import AsyncIterator
@@ -35,6 +36,54 @@ from neosian._foundation.shared.types import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Anthropic rejects these JSON Schema keywords on integer/number types.
+_UNSUPPORTED_NUMERIC_KEYS = frozenset({
+    "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum",
+})
+
+
+def _strip_numeric_constraints_recursive(schema: Any) -> None:
+    """Recursively strip numeric constraints in place."""
+    if not isinstance(schema, dict):
+        return
+
+    if schema.get("type") in ("integer", "number"):
+        for key in _UNSUPPORTED_NUMERIC_KEYS:
+            schema.pop(key, None)
+
+    if "properties" in schema:
+        for prop_schema in schema["properties"].values():
+            _strip_numeric_constraints_recursive(prop_schema)
+
+    if "$defs" in schema:
+        for def_schema in schema["$defs"].values():
+            _strip_numeric_constraints_recursive(def_schema)
+
+    for key in ("anyOf", "oneOf", "allOf"):
+        if key in schema:
+            for item in schema[key]:
+                _strip_numeric_constraints_recursive(item)
+
+    if "items" in schema:
+        _strip_numeric_constraints_recursive(schema["items"])
+
+
+def _strip_numeric_constraints(schema: dict[str, Any]) -> dict[str, Any]:
+    """Remove numeric constraints unsupported by the Anthropic API.
+
+    Anthropic rejects minimum/maximum on integer/number fields.
+    Returns a sanitized copy, leaving the original schema unchanged.
+
+    Args:
+        schema: JSON schema dict (will not be mutated).
+
+    Returns:
+        A new schema dict with numeric constraints removed.
+    """
+    result: dict[str, Any] = copy.deepcopy(schema)
+    _strip_numeric_constraints_recursive(result)
+    return result
 
 
 class AnthropicClient(BaseLLMClient):
@@ -445,7 +494,7 @@ class AnthropicClient(BaseLLMClient):
             {
                 "name": tool.name,
                 "description": tool.description,
-                "input_schema": tool.parameters,
+                "input_schema": _strip_numeric_constraints(tool.parameters),
             }
             for tool in tools
         ]
@@ -521,7 +570,7 @@ class AnthropicClient(BaseLLMClient):
         """
         from neosian._foundation.shared.schema import get_json_schema
 
-        schema = get_json_schema(response_format.schema)
+        schema = _strip_numeric_constraints(get_json_schema(response_format.schema))
         # Anthropic requires additionalProperties: false for strict schemas
         if response_format.strict and "additionalProperties" not in schema:
             schema["additionalProperties"] = False
