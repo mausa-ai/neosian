@@ -38,9 +38,14 @@ from neosian._foundation.shared.types import (
 logger = logging.getLogger(__name__)
 
 # Anthropic rejects these JSON Schema keywords on integer/number types.
-_UNSUPPORTED_NUMERIC_KEYS = frozenset({
-    "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum",
-})
+_UNSUPPORTED_NUMERIC_KEYS = frozenset(
+    {
+        "minimum",
+        "maximum",
+        "exclusiveMinimum",
+        "exclusiveMaximum",
+    }
+)
 
 
 def _strip_numeric_constraints_recursive(schema: Any) -> None:

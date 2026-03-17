@@ -19,6 +19,7 @@ AgentName = NewType("AgentName", str)
 ToolName = NewType("ToolName", str)
 ToolCallId = NewType("ToolCallId", str)
 PlaybookName = NewType("PlaybookName", str)
+BlackboardName = NewType("BlackboardName", str)
 
 # Content types
 SystemPrompt = NewType("SystemPrompt", str)
@@ -394,6 +395,22 @@ class TodoStatus(str, Enum):
 
 
 @dataclass(frozen=True)
+class BlackboardEntry:
+    """An entry in the blackboard listing.
+
+    Represents the metadata of a blackboard entry (name and description).
+    The actual content is read on-demand via the provider.
+
+    Attributes:
+        name: Unique identifier for the entry.
+        description: Human-readable description shown when listing entries.
+    """
+
+    name: BlackboardName
+    description: str
+
+
+@dataclass(frozen=True)
 class Playbook:
     """A playbook loaded from a markdown file.
 
@@ -445,6 +462,7 @@ class AgentConfig:
     reasoning_effort: ReasoningEffort | None = None
     max_output_tokens: int | None = None
     playbook_dir: str | Path | None = None
+    blackboard: Any = None  # BlackboardProvider | None (Any to avoid circular import)
 
     # Internal: loaded playbooks (set by __post_init__)
     _playbooks: list[Playbook] = field(default_factory=list, init=False, repr=False)

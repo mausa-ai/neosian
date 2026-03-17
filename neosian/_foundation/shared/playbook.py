@@ -6,8 +6,6 @@ Mirrors the prompt.py loader pattern.
 
 from pathlib import Path
 
-import yaml
-
 from neosian._foundation.shared.constants import PlaybookLoader
 from neosian._foundation.shared.exceptions import (
     PlaybookDirectoryNotFoundError,
@@ -16,44 +14,8 @@ from neosian._foundation.shared.exceptions import (
     PlaybookInvalidFrontmatterError,
     PlaybookMissingKeyError,
 )
+from neosian._foundation.shared.frontmatter import FrontmatterError, parse_frontmatter
 from neosian._foundation.shared.types import Playbook, PlaybookName
-
-
-def _parse_frontmatter(content: str, path_str: str) -> tuple[dict[str, str], str]:
-    """Split markdown content into YAML frontmatter and body.
-
-    Args:
-        content: Raw file content.
-        path_str: File path for error messages.
-
-    Returns:
-        Tuple of (frontmatter dict, body string).
-
-    Raises:
-        PlaybookInvalidFrontmatterError: If frontmatter is missing or invalid.
-    """
-    stripped = content.strip()
-
-    if not stripped.startswith("---"):
-        raise PlaybookInvalidFrontmatterError(path_str)
-
-    # Find closing ---
-    end_index = stripped.find("---", 3)
-    if end_index == -1:
-        raise PlaybookInvalidFrontmatterError(path_str)
-
-    frontmatter_raw = stripped[3:end_index]
-    body = stripped[end_index + 3 :]
-
-    try:
-        data = yaml.safe_load(frontmatter_raw)
-    except yaml.YAMLError as e:
-        raise PlaybookInvalidFrontmatterError(path_str) from e
-
-    if not isinstance(data, dict):
-        raise PlaybookInvalidFrontmatterError(path_str)
-
-    return data, body.strip()
 
 
 def load_playbook(path: str | Path) -> Playbook:
@@ -88,7 +50,11 @@ def load_playbook(path: str | Path) -> Playbook:
         raise PlaybookFileNotFoundError(path_str)
 
     content = path.read_text(encoding="utf-8")
-    frontmatter, body = _parse_frontmatter(content, path_str)
+
+    try:
+        frontmatter, body = parse_frontmatter(content, path_str)
+    except FrontmatterError:
+        raise PlaybookInvalidFrontmatterError(path_str)
 
     if PlaybookLoader.NAME_KEY not in frontmatter:
         raise PlaybookMissingKeyError(PlaybookLoader.NAME_KEY, path_str)

@@ -68,6 +68,7 @@ from neosian._foundation.tools.base import (
     get_tool_definition,
     get_tool_metadata,
 )
+from neosian._foundation.tools.builtin.blackboard import create_blackboard_tools
 from neosian._foundation.tools.builtin.playbook import create_playbook_tools
 from neosian._foundation.tools.builtin.todo import update_todo
 
@@ -205,6 +206,13 @@ class Agent:
             list_pb, load_pb = create_playbook_tools(config.playbooks)
             self._register_tool(list_pb)
             self._register_tool(load_pb)
+
+        # Register blackboard tools if blackboard is configured
+        if config.blackboard is not None:
+            list_bb, read_bb, update_bb = create_blackboard_tools(config.blackboard)
+            self._register_tool(list_bb)
+            self._register_tool(read_bb)
+            self._register_tool(update_bb)
 
         # Register user-provided tools
         for tool_func in config.tools:

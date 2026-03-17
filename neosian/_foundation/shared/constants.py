@@ -168,6 +168,16 @@ class ErrorMessages:
     PLAYBOOK_DIRECTORY_NOT_FOUND: str = "Playbooks directory not found: {path}"
     PLAYBOOK_NOT_FOUND: str = "Playbook '{name}' not found"
 
+    # Blackboard errors
+    BLACKBOARD_ENTRY_NOT_FOUND: str = "Blackboard entry '{name}' not found"
+    BLACKBOARD_READ_ERROR: str = "Failed to read blackboard entry '{name}': {error}"
+    BLACKBOARD_UPDATE_ERROR: str = "Failed to update blackboard entry '{name}': {error}"
+
+    # FileBlackboard-specific errors
+    FILE_BLACKBOARD_DIRECTORY_NOT_FOUND: str = (
+        "FileBlackboard directory not found: {path}"
+    )
+
     # Evaluation errors
     EVAL_CONFIG_NOT_FOUND: str = "Eval config file not found: {path}"
     EVAL_CONFIG_INVALID_YAML: str = "Invalid YAML in eval config: {path}"
@@ -213,6 +223,25 @@ class BuiltinTools:
         LOAD_DESCRIPTION: str = (
             "Load a playbook by name. Returns the full instructions. "
             "Use list_playbooks first to see what's available."
+        )
+
+    class Blackboard:
+        """Blackboard tool constants."""
+
+        LIST_NAME: str = "list_blackboard"
+        LIST_DESCRIPTION: str = (
+            "List available blackboard entries with their names and descriptions. "
+            "Blackboard contains dynamic context that may change during the session."
+        )
+        READ_NAME: str = "read_blackboard"
+        READ_DESCRIPTION: str = (
+            "Read the current content of a blackboard entry by name. "
+            "Use list_blackboard first to see what's available."
+        )
+        UPDATE_NAME: str = "update_blackboard"
+        UPDATE_DESCRIPTION: str = (
+            "Update an existing blackboard entry with new content. "
+            "Can only update entries that already exist, not create new ones."
         )
 
 

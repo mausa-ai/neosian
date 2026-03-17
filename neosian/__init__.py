@@ -18,7 +18,10 @@ from neosian._foundation.shared.constraints import (
     MinLen,
     Pattern,
 )
+from neosian._foundation.blackboard.base import BlackboardProvider
+from neosian._foundation.blackboard.file import FileBlackboard
 from neosian._foundation.shared.exceptions import (
+    BlackboardError,
     FallbackExhaustedError,
     InvalidModelError,
     MessageSerializationError,
@@ -32,6 +35,8 @@ from neosian._foundation.shared.playbook import load_playbook, load_playbooks
 from neosian._foundation.shared.prompt import load_prompt
 from neosian._foundation.shared.types import (
     AgentConfig,
+    BlackboardEntry,
+    BlackboardName,
     EvalCase,
     EvalConfig,
     EvalResult,
@@ -57,7 +62,7 @@ from neosian._foundation.shared.types import (
 )
 from neosian._foundation.tools.base import Tool, ToolResult
 
-__version__ = "0.43.0"
+__version__ = "0.44.0"
 
 __all__ = [
     # Agent
@@ -114,6 +119,12 @@ __all__ = [
     "PlaybookLoadError",
     "load_playbook",
     "load_playbooks",
+    # Blackboard
+    "BlackboardProvider",
+    "BlackboardEntry",
+    "BlackboardName",
+    "FileBlackboard",
+    "BlackboardError",
     # Utilities
     "load_prompt",
     # Fallback

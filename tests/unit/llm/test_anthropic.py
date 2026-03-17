@@ -1402,9 +1402,7 @@ class TestStripNumericConstraints:
         assert schema["properties"]["x"]["minimum"] == 1
         assert schema["properties"]["x"]["maximum"] == 10
 
-    def test_convert_tools_strips_constraints(
-        self, client: AnthropicClient
-    ) -> None:
+    def test_convert_tools_strips_constraints(self, client: AnthropicClient) -> None:
         """_convert_tools should produce schemas without numeric constraints."""
         tool = ToolDefinition(
             name="caption",

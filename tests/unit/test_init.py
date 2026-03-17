@@ -168,6 +168,12 @@ def test_all_list_matches_exports() -> None:
         "PlaybookLoadError",
         "load_playbook",
         "load_playbooks",
+        # Blackboard
+        "BlackboardProvider",
+        "BlackboardEntry",
+        "BlackboardName",
+        "FileBlackboard",
+        "BlackboardError",
         # Utilities
         "load_prompt",
         # Fallback
