@@ -154,6 +154,20 @@ class ErrorMessages:
         "Convert to a JSON-compatible type before passing to neosian."
     )
 
+    # Playbook loading errors
+    PLAYBOOK_FILE_NOT_FOUND: str = "Playbook file not found: {path}"
+    PLAYBOOK_INVALID_FRONTMATTER: str = (
+        "Invalid or missing frontmatter in playbook file: {path}"
+    )
+    PLAYBOOK_MISSING_KEY: str = (
+        "Missing required key '{key}' in playbook frontmatter: {path}"
+    )
+    PLAYBOOK_DUPLICATE_NAME: str = (
+        "Duplicate playbook name '{name}' - playbooks must have unique names"
+    )
+    PLAYBOOK_DIRECTORY_NOT_FOUND: str = "Playbooks directory not found: {path}"
+    PLAYBOOK_NOT_FOUND: str = "Playbook '{name}' not found"
+
     # Evaluation errors
     EVAL_CONFIG_NOT_FOUND: str = "Eval config file not found: {path}"
     EVAL_CONFIG_INVALID_YAML: str = "Invalid YAML in eval config: {path}"
@@ -186,6 +200,27 @@ class BuiltinTools:
             "this replaces all existing tasks. Use status: 'pending' for not started, "
             "'in_progress' for current work (keep to one at a time), 'completed' when done."
         )
+
+    class Playbook:
+        """Playbook tool constants."""
+
+        LIST_NAME: str = "list_playbooks"
+        LIST_DESCRIPTION: str = (
+            "List available playbooks with their names and descriptions. "
+            "Use this to discover what playbooks are available before loading one."
+        )
+        LOAD_NAME: str = "load_playbook"
+        LOAD_DESCRIPTION: str = (
+            "Load a playbook by name. Returns the full instructions. "
+            "Use list_playbooks first to see what's available."
+        )
+
+
+class PlaybookLoader:
+    """Constants for playbook file loading."""
+
+    NAME_KEY: str = "name"
+    DESCRIPTION_KEY: str = "description"
 
 
 class PromptLoader:

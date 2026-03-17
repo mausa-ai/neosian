@@ -68,6 +68,7 @@ from neosian._foundation.tools.base import (
     get_tool_definition,
     get_tool_metadata,
 )
+from neosian._foundation.tools.builtin.playbook import create_playbook_tools
 from neosian._foundation.tools.builtin.todo import update_todo
 
 logger = logging.getLogger(__name__)
@@ -198,6 +199,12 @@ class Agent:
         # Add global todo tool if enabled
         if config.enable_todo:
             self._register_tool(update_todo)
+
+        # Register playbook tools if playbooks are configured
+        if config.playbooks:
+            list_pb, load_pb = create_playbook_tools(config.playbooks)
+            self._register_tool(list_pb)
+            self._register_tool(load_pb)
 
         # Register user-provided tools
         for tool_func in config.tools:

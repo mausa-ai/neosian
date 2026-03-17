@@ -23,10 +23,12 @@ from neosian._foundation.shared.exceptions import (
     InvalidModelError,
     MessageSerializationError,
     ModelFailedError,
+    PlaybookLoadError,
     StructuredOutputError,
     StructuredOutputStreamingError,
     StructuredOutputToolsError,
 )
+from neosian._foundation.shared.playbook import load_playbook, load_playbooks
 from neosian._foundation.shared.prompt import load_prompt
 from neosian._foundation.shared.types import (
     AgentConfig,
@@ -43,6 +45,8 @@ from neosian._foundation.shared.types import (
     GuardrailsConfig,
     Model,
     ModelSpec,
+    Playbook,
+    PlaybookName,
     PolicyResult,
     Provider,
     ReasoningEffort,
@@ -53,7 +57,7 @@ from neosian._foundation.shared.types import (
 )
 from neosian._foundation.tools.base import Tool, ToolResult
 
-__version__ = "0.42.0"
+__version__ = "0.43.0"
 
 __all__ = [
     # Agent
@@ -104,6 +108,12 @@ __all__ = [
     "TurnResult",
     "Expectation",
     "ToolCallCapture",
+    # Playbooks
+    "Playbook",
+    "PlaybookName",
+    "PlaybookLoadError",
+    "load_playbook",
+    "load_playbooks",
     # Utilities
     "load_prompt",
     # Fallback

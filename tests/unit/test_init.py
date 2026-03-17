@@ -162,6 +162,12 @@ def test_all_list_matches_exports() -> None:
         "TurnResult",
         "Expectation",
         "ToolCallCapture",
+        # Playbooks
+        "Playbook",
+        "PlaybookName",
+        "PlaybookLoadError",
+        "load_playbook",
+        "load_playbooks",
         # Utilities
         "load_prompt",
         # Fallback

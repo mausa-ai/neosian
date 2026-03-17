@@ -6,6 +6,7 @@ All NewType definitions are centralized here.
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, NewType
 
 from pydantic import BaseModel
@@ -17,6 +18,7 @@ if TYPE_CHECKING:
 AgentName = NewType("AgentName", str)
 ToolName = NewType("ToolName", str)
 ToolCallId = NewType("ToolCallId", str)
+PlaybookName = NewType("PlaybookName", str)
 
 # Content types
 SystemPrompt = NewType("SystemPrompt", str)
@@ -391,6 +393,24 @@ class TodoStatus(str, Enum):
     COMPLETED = "completed"
 
 
+@dataclass(frozen=True)
+class Playbook:
+    """A playbook loaded from a markdown file.
+
+    Playbooks are markdown instructions that the agent can discover and load
+    on-demand via built-in tools. They are NOT injected into the system prompt.
+
+    Attributes:
+        name: Unique identifier for the playbook.
+        description: Human-readable description shown when listing playbooks.
+        content: The markdown body (without frontmatter).
+    """
+
+    name: PlaybookName
+    description: str
+    content: str
+
+
 @dataclass
 class AgentConfig:
     """Configuration for an agent.
@@ -424,6 +444,15 @@ class AgentConfig:
     guardrails: "GuardrailsConfig | None" = None
     reasoning_effort: ReasoningEffort | None = None
     max_output_tokens: int | None = None
+    playbook_dir: str | Path | None = None
+
+    # Internal: loaded playbooks (set by __post_init__)
+    _playbooks: list[Playbook] = field(default_factory=list, init=False, repr=False)
+
+    @property
+    def playbooks(self) -> list[Playbook]:
+        """Get loaded playbooks from playbook_dir."""
+        return self._playbooks
 
     def __post_init__(self) -> None:
         """Validate configuration after initialization."""
@@ -476,6 +505,13 @@ class AgentConfig:
                     limit=self.model.max_output_tokens,
                 )
             )
+
+        # Load playbooks from directory if configured
+        if self.playbook_dir is not None:
+            from neosian._foundation.shared.playbook import load_playbooks
+
+            loaded = load_playbooks(self.playbook_dir)
+            object.__setattr__(self, "_playbooks", loaded)
 
 
 # Guardrail types

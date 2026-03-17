@@ -372,3 +372,59 @@ class EvalRunError(EvalError):
         self.model = model
         self.case = case
         self.error = error
+
+
+# Playbook Errors
+class PlaybookLoadError(NeosianError):
+    """Base exception for playbook loading errors."""
+
+    pass
+
+
+class PlaybookFileNotFoundError(PlaybookLoadError):
+    """Raised when a playbook file is not found."""
+
+    def __init__(self, path: str) -> None:
+        super().__init__(ErrorMessages.PLAYBOOK_FILE_NOT_FOUND.format(path=path))
+        self.path = path
+
+
+class PlaybookInvalidFrontmatterError(PlaybookLoadError):
+    """Raised when a playbook file has invalid or missing frontmatter."""
+
+    def __init__(self, path: str) -> None:
+        super().__init__(
+            ErrorMessages.PLAYBOOK_INVALID_FRONTMATTER.format(path=path)
+        )
+        self.path = path
+
+
+class PlaybookMissingKeyError(PlaybookLoadError):
+    """Raised when a required key is missing from playbook frontmatter."""
+
+    def __init__(self, key: str, path: str) -> None:
+        super().__init__(
+            ErrorMessages.PLAYBOOK_MISSING_KEY.format(key=key, path=path)
+        )
+        self.key = key
+        self.path = path
+
+
+class PlaybookDuplicateNameError(PlaybookLoadError):
+    """Raised when multiple playbooks share the same name."""
+
+    def __init__(self, name: str) -> None:
+        super().__init__(
+            ErrorMessages.PLAYBOOK_DUPLICATE_NAME.format(name=name)
+        )
+        self.name = name
+
+
+class PlaybookDirectoryNotFoundError(PlaybookLoadError):
+    """Raised when the playbook directory does not exist."""
+
+    def __init__(self, path: str) -> None:
+        super().__init__(
+            ErrorMessages.PLAYBOOK_DIRECTORY_NOT_FOUND.format(path=path)
+        )
+        self.path = path
