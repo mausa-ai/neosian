@@ -6,7 +6,7 @@ import pytest
 
 from neosian._foundation.llm.anthropic import (
     AnthropicClient,
-    _strip_strict_unsupported_constraints,
+    _strip_unsupported_constraints,
 )
 from neosian._foundation.llm.base import Message, Role, ToolDefinition
 from neosian._foundation.shared.exceptions import UnsupportedParameterError
@@ -1285,8 +1285,8 @@ class TestAnthropicPromptCaching:
 
 
 @pytest.mark.unit
-class TestStripStrictUnsupportedConstraints:
-    """Tests for _strip_strict_unsupported_constraints schema sanitizer."""
+class TestStripUnsupportedConstraints:
+    """Tests for _strip_unsupported_constraints schema sanitizer."""
 
     def test_strips_integer_constraints(self) -> None:
         """minimum/maximum should be removed from integer properties."""
@@ -1301,7 +1301,7 @@ class TestStripStrictUnsupportedConstraints:
                 },
             },
         }
-        result = _strip_strict_unsupported_constraints(schema)
+        result = _strip_unsupported_constraints(schema, strict=True)
         prop = result["properties"]["fontsize"]
         assert "minimum" not in prop
         assert "maximum" not in prop
@@ -1319,7 +1319,7 @@ class TestStripStrictUnsupportedConstraints:
                 },
             },
         }
-        result = _strip_strict_unsupported_constraints(schema)
+        result = _strip_unsupported_constraints(schema, strict=True)
         assert "minimum" not in result["properties"]["width"]
         assert "maximum" not in result["properties"]["width"]
 
@@ -1335,7 +1335,7 @@ class TestStripStrictUnsupportedConstraints:
                 },
             },
         }
-        result = _strip_strict_unsupported_constraints(schema)
+        result = _strip_unsupported_constraints(schema, strict=True)
         assert "exclusiveMinimum" not in result["properties"]["val"]
         assert "exclusiveMaximum" not in result["properties"]["val"]
 
@@ -1352,7 +1352,7 @@ class TestStripStrictUnsupportedConstraints:
                 },
             },
         }
-        result = _strip_strict_unsupported_constraints(schema)
+        result = _strip_unsupported_constraints(schema, strict=True)
         prop = result["properties"]["name"]
         assert "minLength" not in prop
         assert "maxLength" not in prop
@@ -1371,7 +1371,7 @@ class TestStripStrictUnsupportedConstraints:
             },
             "properties": {},
         }
-        result = _strip_strict_unsupported_constraints(schema)
+        result = _strip_unsupported_constraints(schema, strict=True)
         assert "minimum" not in result["$defs"]["Size"]
         assert "maximum" not in result["$defs"]["Size"]
 
@@ -1387,7 +1387,7 @@ class TestStripStrictUnsupportedConstraints:
                 },
             ],
         }
-        result = _strip_strict_unsupported_constraints(schema)
+        result = _strip_unsupported_constraints(schema, strict=True)
         assert "minimum" not in result["anyOf"][0]["properties"]["count"]
 
     def test_does_not_mutate_original(self) -> None:
@@ -1398,12 +1398,12 @@ class TestStripStrictUnsupportedConstraints:
                 "x": {"type": "integer", "minimum": 1, "maximum": 10},
             },
         }
-        _strip_strict_unsupported_constraints(schema)
+        _strip_unsupported_constraints(schema, strict=True)
         assert schema["properties"]["x"]["minimum"] == 1
         assert schema["properties"]["x"]["maximum"] == 10
 
     def test_convert_tools_strips_constraints(self, client: AnthropicClient) -> None:
-        """_convert_tools should produce schemas without strict-incompatible keys."""
+        """Strict tools get full strict-mode stripping via _convert_tools."""
         tool = ToolDefinition(
             name="caption",
             description="Add captions",
@@ -1414,6 +1414,7 @@ class TestStripStrictUnsupportedConstraints:
                     "label": {"type": "string", "minLength": 1, "maxLength": 50},
                 },
             },
+            strict=True,
         )
         converted = client._convert_tools([tool])
         props = converted[0]["input_schema"]["properties"]
@@ -1434,7 +1435,7 @@ class TestStripStrictUnsupportedConstraints:
                 "name": {"type": "string", "minLength": 1},
             },
         }
-        result = _strip_strict_unsupported_constraints(schema)
+        result = _strip_unsupported_constraints(schema, strict=True)
         assert "minLength" not in result["properties"]["name"]
 
     def test_strips_maxlength_on_strings(self) -> None:
@@ -1445,7 +1446,7 @@ class TestStripStrictUnsupportedConstraints:
                 "name": {"type": "string", "maxLength": 100},
             },
         }
-        result = _strip_strict_unsupported_constraints(schema)
+        result = _strip_unsupported_constraints(schema, strict=True)
         assert "maxLength" not in result["properties"]["name"]
 
     def test_strips_multipleof_on_numbers(self) -> None:
@@ -1457,7 +1458,7 @@ class TestStripStrictUnsupportedConstraints:
                 "f": {"type": "number", "multipleOf": 0.25},
             },
         }
-        result = _strip_strict_unsupported_constraints(schema)
+        result = _strip_unsupported_constraints(schema, strict=True)
         assert "multipleOf" not in result["properties"]["n"]
         assert "multipleOf" not in result["properties"]["f"]
 
@@ -1469,7 +1470,7 @@ class TestStripStrictUnsupportedConstraints:
                 "tags": {"type": "array", "minItems": 3, "items": {"type": "string"}},
             },
         }
-        result = _strip_strict_unsupported_constraints(schema)
+        result = _strip_unsupported_constraints(schema, strict=True)
         assert "minItems" not in result["properties"]["tags"]
 
     def test_keeps_minitems_zero_or_one(self) -> None:
@@ -1481,7 +1482,7 @@ class TestStripStrictUnsupportedConstraints:
                 "b": {"type": "array", "minItems": 1, "items": {"type": "string"}},
             },
         }
-        result = _strip_strict_unsupported_constraints(schema)
+        result = _strip_unsupported_constraints(schema, strict=True)
         assert result["properties"]["a"]["minItems"] == 0
         assert result["properties"]["b"]["minItems"] == 1
 
@@ -1493,7 +1494,7 @@ class TestStripStrictUnsupportedConstraints:
                 "tags": {"type": "array", "maxItems": 10, "items": {"type": "string"}},
             },
         }
-        result = _strip_strict_unsupported_constraints(schema)
+        result = _strip_unsupported_constraints(schema, strict=True)
         assert "maxItems" not in result["properties"]["tags"]
 
     def test_keeps_maxitems_zero_or_one(self) -> None:
@@ -1505,33 +1506,73 @@ class TestStripStrictUnsupportedConstraints:
                 "b": {"type": "array", "maxItems": 1, "items": {"type": "string"}},
             },
         }
-        result = _strip_strict_unsupported_constraints(schema)
+        result = _strip_unsupported_constraints(schema, strict=True)
         assert result["properties"]["a"]["maxItems"] == 0
         assert result["properties"]["b"]["maxItems"] == 1
+
+    def test_strict_false_preserves_minlength(self) -> None:
+        """strict=False keeps minLength on string schemas."""
+        schema = {
+            "type": "object",
+            "properties": {"name": {"type": "string", "minLength": 1}},
+        }
+        result = _strip_unsupported_constraints(schema, strict=False)
+        assert result["properties"]["name"]["minLength"] == 1
+
+    def test_strict_false_preserves_multipleof(self) -> None:
+        """strict=False keeps multipleOf on integer/number schemas."""
+        schema = {
+            "type": "object",
+            "properties": {"n": {"type": "integer", "multipleOf": 5}},
+        }
+        result = _strip_unsupported_constraints(schema, strict=False)
+        assert result["properties"]["n"]["multipleOf"] == 5
+
+    def test_strict_false_still_strips_numeric_minimum(self) -> None:
+        """strict=False still strips minimum/maximum (Anthropic always rejects)."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "n": {"type": "integer", "minimum": 1, "maximum": 100},
+            },
+        }
+        result = _strip_unsupported_constraints(schema, strict=False)
+        assert "minimum" not in result["properties"]["n"]
+        assert "maximum" not in result["properties"]["n"]
 
 
 @pytest.mark.unit
 class TestAnthropicStrictToolUse:
     """Tests for strict tool use payload shape."""
 
-    def test_tool_call_includes_strict_flag(
-        self, client: AnthropicClient, sample_tool: ToolDefinition
-    ) -> None:
-        """Each converted tool must declare strict: true."""
-        converted = client._convert_tools([sample_tool])
-        assert all(tool["strict"] is True for tool in converted)
+    def test_strict_tool_emits_strict_flag(self, client: AnthropicClient) -> None:
+        """A tool with strict=True declares strict: true on the wire."""
+        tool = ToolDefinition(
+            name="get_weather",
+            description="Get the weather",
+            parameters={"type": "object", "properties": {}},
+            strict=True,
+        )
+        converted = client._convert_tools([tool])
+        assert converted[0]["strict"] is True
 
-    def test_tool_input_schema_sets_additional_properties_false(
-        self, client: AnthropicClient, sample_tool: ToolDefinition
-    ) -> None:
-        """Object-typed input_schema gets additionalProperties: false set."""
-        converted = client._convert_tools([sample_tool])
-        assert converted[0]["input_schema"]["additionalProperties"] is False
-
-    def test_tool_preserves_existing_additional_properties(
+    def test_strict_tool_sets_additional_properties_false(
         self, client: AnthropicClient
     ) -> None:
-        """If a tool already declares additionalProperties, do not overwrite."""
+        """Strict tool's object input_schema gets additionalProperties: false set."""
+        tool = ToolDefinition(
+            name="get_weather",
+            description="Get the weather",
+            parameters={"type": "object", "properties": {}},
+            strict=True,
+        )
+        converted = client._convert_tools([tool])
+        assert converted[0]["input_schema"]["additionalProperties"] is False
+
+    def test_strict_tool_preserves_existing_additional_properties(
+        self, client: AnthropicClient
+    ) -> None:
+        """A strict tool that already declares additionalProperties is not overwritten."""
         tool = ToolDefinition(
             name="passthrough",
             description="Passthrough tool",
@@ -1540,9 +1581,113 @@ class TestAnthropicStrictToolUse:
                 "properties": {"x": {"type": "string"}},
                 "additionalProperties": True,
             },
+            strict=True,
         )
         converted = client._convert_tools([tool])
         assert converted[0]["input_schema"]["additionalProperties"] is True
+
+    def test_non_strict_tool_omits_strict_key(
+        self, client: AnthropicClient, sample_tool: ToolDefinition
+    ) -> None:
+        """Non-strict tools must not have a `strict` key on the wire."""
+        # sample_tool fixture has strict=False (default)
+        converted = client._convert_tools([sample_tool])
+        assert "strict" not in converted[0]
+
+    def test_non_strict_tool_omits_additional_properties_injection(
+        self, client: AnthropicClient, sample_tool: ToolDefinition
+    ) -> None:
+        """Non-strict tools must not get auto-injected additionalProperties."""
+        converted = client._convert_tools([sample_tool])
+        assert "additionalProperties" not in converted[0]["input_schema"]
+
+    def test_non_strict_tool_preserves_caller_additional_properties(
+        self, client: AnthropicClient
+    ) -> None:
+        """If a caller declared additionalProperties on a non-strict tool, keep it."""
+        tool = ToolDefinition(
+            name="passthrough",
+            description="Passthrough tool",
+            parameters={
+                "type": "object",
+                "properties": {"x": {"type": "string"}},
+                "additionalProperties": True,
+            },
+            strict=False,
+        )
+        converted = client._convert_tools([tool])
+        assert converted[0]["input_schema"]["additionalProperties"] is True
+
+    def test_mixed_strict_and_non_strict_tools_in_one_call(
+        self, client: AnthropicClient
+    ) -> None:
+        """Each tool is treated independently when strict differs across the list."""
+        strict_tool = ToolDefinition(
+            name="strict_one",
+            description="Strict tool",
+            parameters={"type": "object", "properties": {}},
+            strict=True,
+        )
+        non_strict_tool = ToolDefinition(
+            name="lax_one",
+            description="Non-strict tool",
+            parameters={"type": "object", "properties": {}},
+            strict=False,
+        )
+        converted = client._convert_tools([strict_tool, non_strict_tool])
+
+        assert converted[0]["strict"] is True
+        assert converted[0]["input_schema"]["additionalProperties"] is False
+
+        assert "strict" not in converted[1]
+        assert "additionalProperties" not in converted[1]["input_schema"]
+
+    def test_non_strict_tool_preserves_string_length_constraints(
+        self, client: AnthropicClient
+    ) -> None:
+        """Non-strict tools keep minLength/maxLength (only strict mode strips them)."""
+        tool = ToolDefinition(
+            name="caption",
+            description="Add captions",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "label": {"type": "string", "minLength": 1, "maxLength": 50},
+                },
+            },
+            strict=False,
+        )
+        converted = client._convert_tools([tool])
+        label = converted[0]["input_schema"]["properties"]["label"]
+        assert label["minLength"] == 1
+        assert label["maxLength"] == 50
+
+    def test_non_strict_tool_strips_only_always_unsupported_numeric(
+        self, client: AnthropicClient
+    ) -> None:
+        """Non-strict tools still drop minimum/maximum (always rejected by Anthropic)
+        but keep multipleOf (rejected only under strict mode)."""
+        tool = ToolDefinition(
+            name="size",
+            description="Size in pixels",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "px": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 100,
+                        "multipleOf": 5,
+                    },
+                },
+            },
+            strict=False,
+        )
+        converted = client._convert_tools([tool])
+        px = converted[0]["input_schema"]["properties"]["px"]
+        assert "minimum" not in px
+        assert "maximum" not in px
+        assert px["multipleOf"] == 5
 
 
 @pytest.mark.unit

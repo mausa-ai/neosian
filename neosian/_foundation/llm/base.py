@@ -50,11 +50,17 @@ class Message:
 
 @dataclass
 class ToolDefinition:
-    """Definition of a tool that the model can call."""
+    """Definition of a tool that the model can call.
+
+    `strict` opts into provider-enforced constrained decoding. Honored only by
+    Anthropic today (counts against its per-request schema-complexity budget);
+    other providers ignore the field. Default False = best-effort.
+    """
 
     name: ToolName
     description: str
     parameters: dict[str, Any]
+    strict: bool = False
 
 
 @dataclass

@@ -97,6 +97,39 @@ class TestToolDecorator:
         assert "required_arg" in definition.parameters["required"]
         assert "optional_arg" not in definition.parameters["required"]
 
+    def test_tool_strict_defaults_false(self) -> None:
+        """@Tool without strict kwarg produces a non-strict definition."""
+
+        @Tool(name="lax", description="Default tool")
+        async def lax() -> ToolResult[str]:
+            return ToolResult.ok("ok")
+
+        definition = get_tool_definition(lax)
+        assert definition is not None
+        assert definition.strict is False
+
+    def test_tool_strict_true_propagates(self) -> None:
+        """@Tool(strict=True) propagates to ToolDefinition.strict."""
+
+        @Tool(name="exact", description="Strict tool", strict=True)
+        async def exact() -> ToolResult[str]:
+            return ToolResult.ok("ok")
+
+        definition = get_tool_definition(exact)
+        assert definition is not None
+        assert definition.strict is True
+
+    def test_tool_strict_false_explicit(self) -> None:
+        """@Tool(strict=False) explicitly produces a non-strict definition."""
+
+        @Tool(name="lax2", description="Explicit lax tool", strict=False)
+        async def lax() -> ToolResult[str]:
+            return ToolResult.ok("ok")
+
+        definition = get_tool_definition(lax)
+        assert definition is not None
+        assert definition.strict is False
+
     def test_type_conversion_str(self) -> None:
         """String type should convert to JSON string."""
 

@@ -356,15 +356,21 @@ class Tool:
             return ToolResult.ok(results)
     """
 
-    def __init__(self, name: str, description: str) -> None:
+    def __init__(self, name: str, description: str, *, strict: bool = False) -> None:
         """Initialize tool decorator.
 
         Args:
             name: Tool name for LLM tool calling.
             description: Description shown to the LLM.
+            strict: Opt into provider-enforced constrained decoding (Anthropic
+                only today; ignored by other providers). Strict guarantees the
+                model emits arguments matching the schema but counts against
+                Anthropic's per-request schema-complexity budget. Default
+                False (best-effort).
         """
         self.name = ToolName(name)
         self.description = description
+        self.strict = strict
 
     def __call__(self, func: ToolFunction) -> ToolFunction:
         """Apply decorator to function."""
@@ -376,6 +382,7 @@ class Tool:
             name=self.name,
             description=self.description,
             parameters=parameters,
+            strict=self.strict,
         )
 
         # Attach metadata to function
