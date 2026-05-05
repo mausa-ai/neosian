@@ -6,7 +6,7 @@ import pytest
 
 from neosian._foundation.llm.anthropic import (
     AnthropicClient,
-    _strip_numeric_constraints,
+    _strip_strict_unsupported_constraints,
 )
 from neosian._foundation.llm.base import Message, Role, ToolDefinition
 from neosian._foundation.shared.exceptions import UnsupportedParameterError
@@ -1285,8 +1285,8 @@ class TestAnthropicPromptCaching:
 
 
 @pytest.mark.unit
-class TestStripNumericConstraints:
-    """Tests for _strip_numeric_constraints schema sanitizer."""
+class TestStripStrictUnsupportedConstraints:
+    """Tests for _strip_strict_unsupported_constraints schema sanitizer."""
 
     def test_strips_integer_constraints(self) -> None:
         """minimum/maximum should be removed from integer properties."""
@@ -1301,7 +1301,7 @@ class TestStripNumericConstraints:
                 },
             },
         }
-        result = _strip_numeric_constraints(schema)
+        result = _strip_strict_unsupported_constraints(schema)
         prop = result["properties"]["fontsize"]
         assert "minimum" not in prop
         assert "maximum" not in prop
@@ -1319,7 +1319,7 @@ class TestStripNumericConstraints:
                 },
             },
         }
-        result = _strip_numeric_constraints(schema)
+        result = _strip_strict_unsupported_constraints(schema)
         assert "minimum" not in result["properties"]["width"]
         assert "maximum" not in result["properties"]["width"]
 
@@ -1335,12 +1335,12 @@ class TestStripNumericConstraints:
                 },
             },
         }
-        result = _strip_numeric_constraints(schema)
+        result = _strip_strict_unsupported_constraints(schema)
         assert "exclusiveMinimum" not in result["properties"]["val"]
         assert "exclusiveMaximum" not in result["properties"]["val"]
 
-    def test_preserves_string_constraints(self) -> None:
-        """String constraints (minLength, maxLength, pattern) should NOT be removed."""
+    def test_strips_string_length_constraints_preserves_pattern(self) -> None:
+        """minLength/maxLength stripped; pattern preserved (per strict-mode docs)."""
         schema = {
             "type": "object",
             "properties": {
@@ -1352,10 +1352,10 @@ class TestStripNumericConstraints:
                 },
             },
         }
-        result = _strip_numeric_constraints(schema)
+        result = _strip_strict_unsupported_constraints(schema)
         prop = result["properties"]["name"]
-        assert prop["minLength"] == 1
-        assert prop["maxLength"] == 100
+        assert "minLength" not in prop
+        assert "maxLength" not in prop
         assert prop["pattern"] == "^[a-z]+$"
 
     def test_recurses_into_defs(self) -> None:
@@ -1371,7 +1371,7 @@ class TestStripNumericConstraints:
             },
             "properties": {},
         }
-        result = _strip_numeric_constraints(schema)
+        result = _strip_strict_unsupported_constraints(schema)
         assert "minimum" not in result["$defs"]["Size"]
         assert "maximum" not in result["$defs"]["Size"]
 
@@ -1387,7 +1387,7 @@ class TestStripNumericConstraints:
                 },
             ],
         }
-        result = _strip_numeric_constraints(schema)
+        result = _strip_strict_unsupported_constraints(schema)
         assert "minimum" not in result["anyOf"][0]["properties"]["count"]
 
     def test_does_not_mutate_original(self) -> None:
@@ -1398,12 +1398,12 @@ class TestStripNumericConstraints:
                 "x": {"type": "integer", "minimum": 1, "maximum": 10},
             },
         }
-        _strip_numeric_constraints(schema)
+        _strip_strict_unsupported_constraints(schema)
         assert schema["properties"]["x"]["minimum"] == 1
         assert schema["properties"]["x"]["maximum"] == 10
 
     def test_convert_tools_strips_constraints(self, client: AnthropicClient) -> None:
-        """_convert_tools should produce schemas without numeric constraints."""
+        """_convert_tools should produce schemas without strict-incompatible keys."""
         tool = ToolDefinition(
             name="caption",
             description="Add captions",
@@ -1411,7 +1411,7 @@ class TestStripNumericConstraints:
                 "type": "object",
                 "properties": {
                     "fontsize": {"type": "integer", "minimum": 1, "maximum": 20},
-                    "label": {"type": "string", "minLength": 1},
+                    "label": {"type": "string", "minLength": 1, "maxLength": 50},
                 },
             },
         )
@@ -1419,7 +1419,199 @@ class TestStripNumericConstraints:
         props = converted[0]["input_schema"]["properties"]
         assert "minimum" not in props["fontsize"]
         assert "maximum" not in props["fontsize"]
-        # String constraints preserved
-        assert props["label"]["minLength"] == 1
+        # String length constraints also stripped under strict mode
+        assert "minLength" not in props["label"]
+        assert "maxLength" not in props["label"]
         # Original not mutated
         assert tool.parameters["properties"]["fontsize"]["minimum"] == 1
+        assert tool.parameters["properties"]["label"]["minLength"] == 1
+
+    def test_strips_minlength_on_strings(self) -> None:
+        """minLength on string properties is stripped."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "minLength": 1},
+            },
+        }
+        result = _strip_strict_unsupported_constraints(schema)
+        assert "minLength" not in result["properties"]["name"]
+
+    def test_strips_maxlength_on_strings(self) -> None:
+        """maxLength on string properties is stripped."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "maxLength": 100},
+            },
+        }
+        result = _strip_strict_unsupported_constraints(schema)
+        assert "maxLength" not in result["properties"]["name"]
+
+    def test_strips_multipleof_on_numbers(self) -> None:
+        """multipleOf is stripped from integer/number properties."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "n": {"type": "integer", "multipleOf": 5},
+                "f": {"type": "number", "multipleOf": 0.25},
+            },
+        }
+        result = _strip_strict_unsupported_constraints(schema)
+        assert "multipleOf" not in result["properties"]["n"]
+        assert "multipleOf" not in result["properties"]["f"]
+
+    def test_strips_minitems_above_one(self) -> None:
+        """minItems > 1 is stripped from array properties."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "tags": {"type": "array", "minItems": 3, "items": {"type": "string"}},
+            },
+        }
+        result = _strip_strict_unsupported_constraints(schema)
+        assert "minItems" not in result["properties"]["tags"]
+
+    def test_keeps_minitems_zero_or_one(self) -> None:
+        """minItems of 0 or 1 is kept (allowed under strict mode)."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "a": {"type": "array", "minItems": 0, "items": {"type": "string"}},
+                "b": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+            },
+        }
+        result = _strip_strict_unsupported_constraints(schema)
+        assert result["properties"]["a"]["minItems"] == 0
+        assert result["properties"]["b"]["minItems"] == 1
+
+    def test_strips_maxitems_above_one(self) -> None:
+        """maxItems > 1 is stripped from array properties."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "tags": {"type": "array", "maxItems": 10, "items": {"type": "string"}},
+            },
+        }
+        result = _strip_strict_unsupported_constraints(schema)
+        assert "maxItems" not in result["properties"]["tags"]
+
+    def test_keeps_maxitems_zero_or_one(self) -> None:
+        """maxItems of 0 or 1 is kept (allowed under strict mode)."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "a": {"type": "array", "maxItems": 0, "items": {"type": "string"}},
+                "b": {"type": "array", "maxItems": 1, "items": {"type": "string"}},
+            },
+        }
+        result = _strip_strict_unsupported_constraints(schema)
+        assert result["properties"]["a"]["maxItems"] == 0
+        assert result["properties"]["b"]["maxItems"] == 1
+
+
+@pytest.mark.unit
+class TestAnthropicStrictToolUse:
+    """Tests for strict tool use payload shape."""
+
+    def test_tool_call_includes_strict_flag(
+        self, client: AnthropicClient, sample_tool: ToolDefinition
+    ) -> None:
+        """Each converted tool must declare strict: true."""
+        converted = client._convert_tools([sample_tool])
+        assert all(tool["strict"] is True for tool in converted)
+
+    def test_tool_input_schema_sets_additional_properties_false(
+        self, client: AnthropicClient, sample_tool: ToolDefinition
+    ) -> None:
+        """Object-typed input_schema gets additionalProperties: false set."""
+        converted = client._convert_tools([sample_tool])
+        assert converted[0]["input_schema"]["additionalProperties"] is False
+
+    def test_tool_preserves_existing_additional_properties(
+        self, client: AnthropicClient
+    ) -> None:
+        """If a tool already declares additionalProperties, do not overwrite."""
+        tool = ToolDefinition(
+            name="passthrough",
+            description="Passthrough tool",
+            parameters={
+                "type": "object",
+                "properties": {"x": {"type": "string"}},
+                "additionalProperties": True,
+            },
+        )
+        converted = client._convert_tools([tool])
+        assert converted[0]["input_schema"]["additionalProperties"] is True
+
+
+@pytest.mark.unit
+class TestAnthropicStructuredOutput:
+    """Tests for GA structured-output payload shape (output_config.format)."""
+
+    @pytest.mark.asyncio
+    async def test_uses_output_config_format(
+        self, client: AnthropicClient, sample_messages: list[Message]
+    ) -> None:
+        """response_format is sent under output_config.format on the GA endpoint."""
+        from pydantic import BaseModel
+
+        from neosian._foundation.shared.types import ResponseFormat
+
+        class Out(BaseModel):
+            answer: str
+
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(type="text", text='{"answer":"hi"}')]
+        mock_response.usage = MagicMock(input_tokens=5, output_tokens=3)
+        mock_response.model = "claude-sonnet-4-6"
+
+        client._client.messages.create = AsyncMock(return_value=mock_response)
+
+        await client.complete(
+            messages=sample_messages,
+            model=Model.CLAUDE_SONNET_4_6,
+            response_format=ResponseFormat(schema=Out),
+        )
+
+        client._client.messages.create.assert_called_once()
+        call_kwargs = client._client.messages.create.call_args.kwargs
+        # GA shape: format lives under output_config["format"]
+        assert "output_config" in call_kwargs
+        format_spec = call_kwargs["output_config"]["format"]
+        assert format_spec["type"] == "json_schema"
+        assert "schema" in format_spec
+        # Beta-era keys must be absent
+        assert "output_format" not in call_kwargs
+        assert "betas" not in call_kwargs
+
+    @pytest.mark.asyncio
+    async def test_output_config_format_merges_with_reasoning_effort(
+        self, client: AnthropicClient, sample_messages: list[Message]
+    ) -> None:
+        """When reasoning_effort and response_format both set, output_config holds both."""
+        from pydantic import BaseModel
+
+        from neosian._foundation.shared.types import ResponseFormat
+
+        class Out(BaseModel):
+            answer: str
+
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(type="text", text='{"answer":"hi"}')]
+        mock_response.usage = MagicMock(input_tokens=5, output_tokens=3)
+        mock_response.model = "claude-opus-4-6"
+
+        client._client.messages.create = AsyncMock(return_value=mock_response)
+
+        await client.complete(
+            messages=sample_messages,
+            model=Model.CLAUDE_OPUS_4_6,
+            response_format=ResponseFormat(schema=Out),
+            reasoning_effort=ReasoningEffort.HIGH,
+        )
+
+        call_kwargs = client._client.messages.create.call_args.kwargs
+        output_config = call_kwargs["output_config"]
+        assert output_config["effort"] == "high"
+        assert output_config["format"]["type"] == "json_schema"

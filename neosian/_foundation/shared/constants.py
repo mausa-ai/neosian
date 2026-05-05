@@ -381,14 +381,6 @@ class Streaming:
     HEARTBEAT_INTERVAL_SECONDS: float = 15.0
 
 
-class StructuredOutputs:
-    """Constants for structured output configuration."""
-
-    # Anthropic beta header for structured outputs (public beta)
-    # See: https://platform.claude.com/docs/en/build-with-claude/structured-outputs
-    ANTHROPIC_BETA: str = "structured-outputs-2025-11-13"
-
-
 class Evaluation:
     """Constants for agent evaluation framework."""
 

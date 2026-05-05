@@ -21,7 +21,6 @@ from neosian._foundation.llm.base import (
 from neosian._foundation.shared.constants import (
     ErrorMessages,
     LLMDefaults,
-    StructuredOutputs,
 )
 from neosian._foundation.shared.exceptions import (
     ToolCallGenerationError,
@@ -37,57 +36,74 @@ from neosian._foundation.shared.types import (
 
 logger = logging.getLogger(__name__)
 
-# Anthropic rejects these JSON Schema keywords on integer/number types.
+# JSON Schema keywords Anthropic strict mode rejects, by JSON type.
+# Stripping is required because tool calls are sent with strict: true and any
+# unsupported keyword in a consumer's parameter schema yields a 400 from the API.
 _UNSUPPORTED_NUMERIC_KEYS = frozenset(
     {
         "minimum",
         "maximum",
         "exclusiveMinimum",
         "exclusiveMaximum",
+        "multipleOf",
     }
 )
+_UNSUPPORTED_STRING_KEYS = frozenset({"minLength", "maxLength"})
+# minItems/maxItems are allowed only when 0 or 1; values > 1 are rejected.
+_BOUNDED_ARRAY_KEYS = frozenset({"minItems", "maxItems"})
 
 
-def _strip_numeric_constraints_recursive(schema: Any) -> None:
-    """Recursively strip numeric constraints in place."""
+def _strip_strict_unsupported_recursive(schema: Any) -> None:
+    """Recursively strip strict-mode-incompatible keywords in place."""
     if not isinstance(schema, dict):
         return
 
-    if schema.get("type") in ("integer", "number"):
+    schema_type = schema.get("type")
+    if schema_type in ("integer", "number"):
         for key in _UNSUPPORTED_NUMERIC_KEYS:
             schema.pop(key, None)
+    elif schema_type == "string":
+        for key in _UNSUPPORTED_STRING_KEYS:
+            schema.pop(key, None)
+    elif schema_type == "array":
+        for key in _BOUNDED_ARRAY_KEYS:
+            value = schema.get(key)
+            if isinstance(value, int) and value > 1:
+                schema.pop(key, None)
 
     if "properties" in schema:
         for prop_schema in schema["properties"].values():
-            _strip_numeric_constraints_recursive(prop_schema)
+            _strip_strict_unsupported_recursive(prop_schema)
 
     if "$defs" in schema:
         for def_schema in schema["$defs"].values():
-            _strip_numeric_constraints_recursive(def_schema)
+            _strip_strict_unsupported_recursive(def_schema)
 
     for key in ("anyOf", "oneOf", "allOf"):
         if key in schema:
             for item in schema[key]:
-                _strip_numeric_constraints_recursive(item)
+                _strip_strict_unsupported_recursive(item)
 
     if "items" in schema:
-        _strip_numeric_constraints_recursive(schema["items"])
+        _strip_strict_unsupported_recursive(schema["items"])
 
 
-def _strip_numeric_constraints(schema: dict[str, Any]) -> dict[str, Any]:
-    """Remove numeric constraints unsupported by the Anthropic API.
+def _strip_strict_unsupported_constraints(schema: dict[str, Any]) -> dict[str, Any]:
+    """Remove JSON Schema keywords incompatible with Anthropic strict mode.
 
-    Anthropic rejects minimum/maximum on integer/number fields.
-    Returns a sanitized copy, leaving the original schema unchanged.
+    Strict mode (used on tool calls and structured outputs) rejects:
+      - minimum/maximum/exclusiveMinimum/exclusiveMaximum/multipleOf on integer/number
+      - minLength/maxLength on string
+      - minItems/maxItems > 1 on array (0 and 1 are allowed)
 
-    Args:
-        schema: JSON schema dict (will not be mutated).
+    `pattern` is preserved; only specific regex constructs (backreferences,
+    lookaheads, word boundaries) are rejected, and detecting those is left as
+    a follow-up if real bugs appear.
 
-    Returns:
-        A new schema dict with numeric constraints removed.
+    Returns a sanitized deep copy; the input is not mutated.
     """
     result: dict[str, Any] = copy.deepcopy(schema)
-    _strip_numeric_constraints_recursive(result)
+    _strip_strict_unsupported_recursive(result)
     return result
 
 
@@ -185,15 +201,14 @@ class AnthropicClient(BaseLLMClient):
                 if anthropic_tools:
                     kwargs["tools"] = anthropic_tools
 
-                # Use beta API for structured outputs
                 if response_format:
-                    kwargs["betas"] = [StructuredOutputs.ANTHROPIC_BETA]
-                    kwargs["output_format"] = self._convert_response_format(
+                    # output_config may already exist from reasoning effort above;
+                    # merge rather than overwrite.
+                    output_config = kwargs.setdefault("output_config", {})
+                    output_config["format"] = self._convert_response_format(
                         response_format
                     )
-                    response = await self._client.beta.messages.create(**kwargs)
-                else:
-                    response = await self._client.messages.create(**kwargs)
+                response = await self._client.messages.create(**kwargs)
 
                 return self._parse_response(response)
 
@@ -485,6 +500,11 @@ class AnthropicClient(BaseLLMClient):
     def _convert_tools(self, tools: list[ToolDefinition]) -> list[dict[str, Any]]:
         """Convert internal tool definitions to Anthropic format.
 
+        Tools are sent with strict: true so the model is constrained to emit
+        arguments matching the input_schema. Strict mode caps at 20 tools per
+        request (upstream Anthropic limit; not enforced here) and requires
+        additionalProperties: false on the root object schema.
+
         Adds cache_control to the last tool definition. Anthropic caches
         everything up to and including the marked block, so marking the
         last tool caches all tool definitions.
@@ -495,14 +515,22 @@ class AnthropicClient(BaseLLMClient):
         Returns:
             Anthropic-formatted tool definitions with cache_control on last.
         """
-        result = [
-            {
-                "name": tool.name,
-                "description": tool.description,
-                "input_schema": _strip_numeric_constraints(tool.parameters),
-            }
-            for tool in tools
-        ]
+        result: list[dict[str, Any]] = []
+        for tool in tools:
+            input_schema = _strip_strict_unsupported_constraints(tool.parameters)
+            if (
+                input_schema.get("type") == "object"
+                and "additionalProperties" not in input_schema
+            ):
+                input_schema["additionalProperties"] = False
+            result.append(
+                {
+                    "name": tool.name,
+                    "description": tool.description,
+                    "strict": True,
+                    "input_schema": input_schema,
+                }
+            )
         if result:
             result[-1]["cache_control"] = {"type": "ephemeral"}
         return result
@@ -565,17 +593,19 @@ class AnthropicClient(BaseLLMClient):
     def _convert_response_format(
         self, response_format: ResponseFormat
     ) -> dict[str, object]:
-        """Convert ResponseFormat to Anthropic output_format.
+        """Convert ResponseFormat to the value of Anthropic's output_config.format.
 
         Args:
             response_format: Internal ResponseFormat configuration.
 
         Returns:
-            Anthropic-compatible output_format dict.
+            Anthropic-compatible format spec (placed at output_config["format"]).
         """
         from neosian._foundation.shared.schema import get_json_schema
 
-        schema = _strip_numeric_constraints(get_json_schema(response_format.schema))
+        schema = _strip_strict_unsupported_constraints(
+            get_json_schema(response_format.schema)
+        )
         # Anthropic requires additionalProperties: false for strict schemas
         if response_format.strict and "additionalProperties" not in schema:
             schema["additionalProperties"] = False
