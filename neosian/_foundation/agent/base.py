@@ -60,6 +60,7 @@ from neosian._foundation.shared.types import (
     PolicyResult,
     ReasoningEffort,
     ResponseFormat,
+    ToolCallId,
     ToolFunction,
     ToolName,
 )
@@ -186,6 +187,8 @@ class Agent:
         self._reasoning_effort = config.reasoning_effort
         assert config.max_output_tokens is not None  # Set by AgentConfig.__post_init__
         self._max_output_tokens = config.max_output_tokens
+        assert config.max_parallel_tools is not None  # Set by AgentConfig.__post_init__
+        self._max_parallel_tools = config.max_parallel_tools
 
         # Store guardrails config and create client if needed
         self._guardrails = config.guardrails
@@ -648,14 +651,26 @@ class Agent:
             # Add assistant message with tool calls to history
             full_messages.append(response.message)
 
-            # Execute each tool call
-            for tool_call in response.message.tool_calls:
-                all_tool_calls.append(tool_call)
+            # Execute tool calls in parallel, capped by max_parallel_tools.
+            # _execute_tool wraps all failures in ToolResult.fail (see below),
+            # so plain asyncio.gather (no return_exceptions=True) is correct —
+            # any leaked exception surfaces as a real bug.
+            tool_calls = response.message.tool_calls
+            all_tool_calls.extend(tool_calls)
 
-                result = await self._execute_tool(tool_call)
+            semaphore = asyncio.Semaphore(self._max_parallel_tools)
+
+            async def _gated_execute(tc: ToolCall) -> ToolResult[Any]:
+                async with semaphore:
+                    return await self._execute_tool(tc)
+
+            results = await asyncio.gather(*(_gated_execute(tc) for tc in tool_calls))
+
+            # Append in submission order — Anthropic requires tool_result
+            # blocks to match the order of tool_use blocks in the preceding
+            # assistant message.
+            for tool_call, result in zip(tool_calls, results, strict=True):
                 all_tool_results.append(result)
-
-                # Add tool result to messages
                 tool_result_content = self._format_tool_result(result)
                 full_messages.append(
                     Message(
@@ -1058,35 +1073,67 @@ class Agent:
                 )
             )
 
-            # Execute each tool call and yield SSE events
-            for tool_call in accumulated_tool_calls:
-                # Check guard before each tool call
-                if guard_task is not None and guard_task.done():
-                    blocked_event_sse = self._check_guard_and_block(guard_task, emitter)
-                    if blocked_event_sse:
-                        yield blocked_event_sse
-                        return
-                    guard_task = None
+            # Pre-batch guard check. Note: with parallel execution the guard
+            # cannot interrupt mid-batch; in-flight tools run to completion.
+            # The post-batch check below blocks the next LLM call.
+            if guard_task is not None and guard_task.done():
+                blocked_event_sse = self._check_guard_and_block(guard_task, emitter)
+                if blocked_event_sse:
+                    yield blocked_event_sse
+                    return
+                guard_task = None
 
-                # Yield tool call event
+            # 1. Emit all tool_call events first, in LLM submission order.
+            #    SSEEventEmitter.emit() has no awaits — sequence assignment
+            #    is atomic under cooperative async.
+            for tool_call in accumulated_tool_calls:
                 yield emitter.emit(tool_call_event(tool_call))
 
-                # Execute tool with heartbeats for long-running tools
-                tool_result: ToolResult[Any] | None = None
-                async for result, heartbeat_sse in self._execute_tool_with_heartbeats(
-                    tool_call, emitter
-                ):
-                    if heartbeat_sse is not None:
-                        yield heartbeat_sse
-                    if result is not None:
-                        tool_result = result
+            # 2. Spawn one wrapper task per tool; concurrency capped by
+            #    semaphore. tool_result events arrive in completion order;
+            #    each wrapper coalesces its completion into a single None
+            #    sentinel via the shared counter (see _run_tool_stream).
+            queue: asyncio.Queue[str | None] = asyncio.Queue()
+            results: dict[ToolCallId, ToolResult[Any]] = {}
+            counter = [len(accumulated_tool_calls)]
+            semaphore = asyncio.Semaphore(self._max_parallel_tools)
+            tasks = [
+                asyncio.create_task(
+                    self._run_tool_stream(
+                        tc, emitter, queue, results, counter, semaphore
+                    )
+                )
+                for tc in accumulated_tool_calls
+            ]
 
-                # Yield tool result event
-                assert tool_result is not None  # Always set after loop completes
-                yield emitter.emit(tool_result_event(tool_call.id, tool_result))
+            # 3. Drain queue; cancel surviving tasks on early exit (e.g.
+            #    consumer disconnect) to prevent orphaned tool tasks.
+            try:
+                while True:
+                    item = await queue.get()
+                    if item is None:
+                        break
+                    yield item
+                await asyncio.gather(*tasks)
+            finally:
+                for t in tasks:
+                    if not t.done():
+                        t.cancel()
 
-                # Add tool result to messages
-                tool_result_content = self._format_tool_result(tool_result)
+            # 4. Post-batch guard check.
+            if guard_task is not None and guard_task.done():
+                blocked_event_sse = self._check_guard_and_block(guard_task, emitter)
+                if blocked_event_sse:
+                    yield blocked_event_sse
+                    return
+                guard_task = None
+
+            # 5. Append Tool messages in SUBMISSION order (Anthropic API
+            #    contract). SSE emission used completion order; LLM history
+            #    must use submission order.
+            for tool_call in accumulated_tool_calls:
+                result = results[tool_call.id]
+                tool_result_content = self._format_tool_result(result)
                 full_messages.append(
                     Message(
                         role=Role.TOOL,
@@ -1354,6 +1401,42 @@ class Agent:
 
         # Tool completed - yield result
         yield (tool_task.result(), None)
+
+    async def _run_tool_stream(
+        self,
+        tool_call: ToolCall,
+        emitter: SSEEventEmitter,
+        queue: asyncio.Queue[str | None],
+        results: dict[ToolCallId, ToolResult[Any]],
+        counter: list[int],
+        semaphore: asyncio.Semaphore,
+    ) -> None:
+        """Run one tool, push heartbeats and result SSE to the shared queue.
+
+        Used by _stream_with_client to fan out N tool executions and fan in
+        their SSE events in completion order. Caller appends Tool messages
+        to full_messages in submission order using `results` keyed by id.
+
+        The shared `counter` is decremented in `finally`; the last finisher
+        pushes a single None sentinel to close the queue. `try/finally`
+        guarantees this fires under CancelledError.
+        """
+        try:
+            async with semaphore:
+                async for result, heartbeat_sse in self._execute_tool_with_heartbeats(
+                    tool_call, emitter
+                ):
+                    if heartbeat_sse is not None:
+                        await queue.put(heartbeat_sse)
+                    if result is not None:
+                        results[tool_call.id] = result
+                        await queue.put(
+                            emitter.emit(tool_result_event(tool_call.id, result))
+                        )
+        finally:
+            counter[0] -= 1
+            if counter[0] == 0:
+                queue.put_nowait(None)
 
     def _format_tool_result(self, result: ToolResult[Any]) -> str:
         """Format a tool result as a string for the LLM.

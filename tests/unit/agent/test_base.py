@@ -1,6 +1,11 @@
 """Tests for Agent core."""
 
+import asyncio
+import json
+import time
+import weakref
 from collections.abc import AsyncIterator
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -15,6 +20,7 @@ from neosian._foundation.llm.base import (
     ToolCall,
     Usage,
 )
+from neosian._foundation.shared.exceptions import UnsupportedParameterError
 from neosian._foundation.shared.types import (
     AgentConfig,
     FallbackConfig,
@@ -26,6 +32,14 @@ from neosian._foundation.shared.types import (
     ToolName,
 )
 from neosian._foundation.tools.base import Tool, ToolResult
+
+
+def _parse_sse(sse: str) -> tuple[str, dict[str, Any]]:
+    """Parse one SSE string into (event_type, data_dict)."""
+    lines = sse.strip().split("\n")
+    event_type = lines[0].removeprefix("event: ")
+    data = json.loads(lines[1].removeprefix("data: "))
+    return event_type, data
 
 
 def _create_mock_router(mock_client: BaseLLMClient | None = None) -> MagicMock:
@@ -861,3 +875,575 @@ class TestAgentReasoningEffort:
 
             call_kwargs = mock_client.complete.call_args.kwargs
             assert call_kwargs["reasoning_effort"] == ReasoningEffort.MEDIUM
+
+
+@pytest.mark.unit
+class TestAgentParallelToolExecution:
+    """Test parallel dispatch of tool calls from a single assistant turn."""
+
+    @pytest.mark.asyncio
+    async def test_blocking_parallel_wall_clock(self) -> None:
+        """Three tools at 300/100/200ms must finish in ~max, not sum."""
+
+        @Tool(name="t_a", description="A")
+        async def t_a() -> ToolResult[str]:
+            await asyncio.sleep(0.3)
+            return ToolResult.ok("a")
+
+        @Tool(name="t_b", description="B")
+        async def t_b() -> ToolResult[str]:
+            await asyncio.sleep(0.1)
+            return ToolResult.ok("b")
+
+        @Tool(name="t_c", description="C")
+        async def t_c() -> ToolResult[str]:
+            await asyncio.sleep(0.2)
+            return ToolResult.ok("c")
+
+        mock_client = AsyncMock(spec=BaseLLMClient)
+        tool_calls = [
+            ToolCall(id=ToolCallId("id_a"), name=ToolName("t_a"), arguments={}),
+            ToolCall(id=ToolCallId("id_b"), name=ToolName("t_b"), arguments={}),
+            ToolCall(id=ToolCallId("id_c"), name=ToolName("t_c"), arguments={}),
+        ]
+        mock_client.complete.side_effect = [
+            CompletionResponse(
+                message=Message(role=Role.ASSISTANT, tool_calls=tool_calls),
+                usage=Usage(input_tokens=10, output_tokens=5),
+                model="test-model",
+            ),
+            CompletionResponse(
+                message=Message(role=Role.ASSISTANT, content="done"),
+                usage=Usage(input_tokens=20, output_tokens=5),
+                model="test-model",
+            ),
+        ]
+
+        with patch(
+            "neosian._foundation.agent.base.ProviderRouter",
+            return_value=_create_mock_router(mock_client),
+        ):
+            config = AgentConfig(
+                system_prompt=SystemPrompt("S"),
+                tools=[t_a, t_b, t_c],
+                enable_todo=False,
+            )
+            agent = Agent(config=config)
+            messages = [Message(role=Role.USER, content="go")]
+
+            start = time.monotonic()
+            response = await agent.run(messages, stream=False)
+            elapsed = time.monotonic() - start
+
+            # Parallel ~0.3s; sequential would be ~0.6s. 0.5s gives CI slack.
+            assert elapsed < 0.5, f"expected parallel execution, took {elapsed:.3f}s"
+
+            assert [tc.name for tc in response.tool_calls_made] == ["t_a", "t_b", "t_c"]
+            assert [r.data for r in response.tool_results] == ["a", "b", "c"]
+
+    @pytest.mark.asyncio
+    async def test_streaming_emits_results_in_completion_order(self) -> None:
+        """tool_call events: submission order. tool_result events: completion order."""
+
+        @Tool(name="slow", description="slow")
+        async def slow() -> ToolResult[str]:
+            await asyncio.sleep(0.2)
+            return ToolResult.ok("slow")
+
+        @Tool(name="fast", description="fast")
+        async def fast() -> ToolResult[str]:
+            await asyncio.sleep(0.05)
+            return ToolResult.ok("fast")
+
+        @Tool(name="mid", description="mid")
+        async def mid() -> ToolResult[str]:
+            await asyncio.sleep(0.1)
+            return ToolResult.ok("mid")
+
+        tool_calls = [
+            ToolCall(id=ToolCallId("id_slow"), name=ToolName("slow"), arguments={}),
+            ToolCall(id=ToolCallId("id_fast"), name=ToolName("fast"), arguments={}),
+            ToolCall(id=ToolCallId("id_mid"), name=ToolName("mid"), arguments={}),
+        ]
+
+        call_count = 0
+
+        async def mock_stream(
+            *args: object, **kwargs: object  # noqa: ARG001
+        ) -> AsyncIterator[StreamChunk]:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                yield StreamChunk(tool_calls=tool_calls, finish_reason="tool_calls")
+            else:
+                yield StreamChunk(content="done")
+                yield StreamChunk(finish_reason="stop")
+
+        mock_client = AsyncMock(spec=BaseLLMClient)
+        mock_client.stream = mock_stream
+
+        with (
+            patch(
+                "neosian._foundation.agent.base.ProviderRouter",
+                return_value=_create_mock_router(mock_client),
+            ),
+            patch(
+                "neosian._foundation.agent.base.Streaming.HEARTBEAT_INTERVAL_SECONDS",
+                30.0,
+            ),
+        ):
+            config = AgentConfig(
+                system_prompt=SystemPrompt("S"),
+                tools=[slow, fast, mid],
+                enable_todo=False,
+            )
+            agent = Agent(config=config)
+            messages = [Message(role=Role.USER, content="go")]
+            stream = await agent.run(messages, stream=True)
+            parsed = [_parse_sse(s) async for s in stream]
+
+        call_events = [(et, d) for et, d in parsed if et == "tool_call"]
+        result_events = [(et, d) for et, d in parsed if et == "tool_result"]
+
+        assert [d["id"] for _, d in call_events] == ["id_slow", "id_fast", "id_mid"]
+        assert [d["tool_call_id"] for _, d in result_events] == [
+            "id_fast",
+            "id_mid",
+            "id_slow",
+        ]
+
+        # All tool_call events must precede any tool_result event.
+        first_result_idx = next(
+            i for i, (et, _) in enumerate(parsed) if et == "tool_result"
+        )
+        last_call_idx = max(i for i, (et, _) in enumerate(parsed) if et == "tool_call")
+        assert last_call_idx < first_result_idx
+
+        # Sequence numbers strictly monotonic.
+        seqs = [d["sequence"] for _, d in parsed]
+        assert seqs == sorted(seqs) and len(set(seqs)) == len(seqs)
+
+    @pytest.mark.asyncio
+    async def test_streaming_full_messages_submission_order(self) -> None:
+        """Tool-role messages must reach the next LLM call in submission order."""
+
+        @Tool(name="slow", description="slow")
+        async def slow() -> ToolResult[str]:
+            await asyncio.sleep(0.2)
+            return ToolResult.ok("slow")
+
+        @Tool(name="fast", description="fast")
+        async def fast() -> ToolResult[str]:
+            await asyncio.sleep(0.05)
+            return ToolResult.ok("fast")
+
+        @Tool(name="mid", description="mid")
+        async def mid() -> ToolResult[str]:
+            await asyncio.sleep(0.1)
+            return ToolResult.ok("mid")
+
+        tool_calls = [
+            ToolCall(id=ToolCallId("id_slow"), name=ToolName("slow"), arguments={}),
+            ToolCall(id=ToolCallId("id_fast"), name=ToolName("fast"), arguments={}),
+            ToolCall(id=ToolCallId("id_mid"), name=ToolName("mid"), arguments={}),
+        ]
+
+        call_count = 0
+        captured_messages: list[Message] = []
+
+        async def mock_stream(
+            *args: object, **kwargs: object  # noqa: ARG001
+        ) -> AsyncIterator[StreamChunk]:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                yield StreamChunk(tool_calls=tool_calls, finish_reason="tool_calls")
+            else:
+                # Snapshot the messages passed to the second LLM call
+                captured_messages.extend(kwargs["messages"])  # type: ignore[arg-type]
+                yield StreamChunk(content="done")
+                yield StreamChunk(finish_reason="stop")
+
+        mock_client = AsyncMock(spec=BaseLLMClient)
+        mock_client.stream = mock_stream
+
+        with (
+            patch(
+                "neosian._foundation.agent.base.ProviderRouter",
+                return_value=_create_mock_router(mock_client),
+            ),
+            patch(
+                "neosian._foundation.agent.base.Streaming.HEARTBEAT_INTERVAL_SECONDS",
+                30.0,
+            ),
+        ):
+            config = AgentConfig(
+                system_prompt=SystemPrompt("S"),
+                tools=[slow, fast, mid],
+                enable_todo=False,
+            )
+            agent = Agent(config=config)
+            stream = await agent.run(
+                [Message(role=Role.USER, content="go")], stream=True
+            )
+            async for _ in stream:
+                pass
+
+        tool_msgs = [m for m in captured_messages if m.role == Role.TOOL]
+        assert [m.tool_call_id for m in tool_msgs] == ["id_slow", "id_fast", "id_mid"]
+
+    @pytest.mark.asyncio
+    async def test_streaming_mixed_success_and_failure(self) -> None:
+        """A tool that raises must not break the batch; other results still emit."""
+
+        @Tool(name="ok1", description="ok")
+        async def ok1() -> ToolResult[str]:
+            await asyncio.sleep(0.02)
+            return ToolResult.ok("ok1")
+
+        @Tool(name="bad", description="bad")
+        async def bad() -> ToolResult[str]:
+            raise ValueError("boom")
+
+        @Tool(name="ok2", description="ok")
+        async def ok2() -> ToolResult[str]:
+            await asyncio.sleep(0.01)
+            return ToolResult.ok("ok2")
+
+        tool_calls = [
+            ToolCall(id=ToolCallId("id_ok1"), name=ToolName("ok1"), arguments={}),
+            ToolCall(id=ToolCallId("id_bad"), name=ToolName("bad"), arguments={}),
+            ToolCall(id=ToolCallId("id_ok2"), name=ToolName("ok2"), arguments={}),
+        ]
+
+        call_count = 0
+
+        async def mock_stream(
+            *args: object, **kwargs: object  # noqa: ARG001
+        ) -> AsyncIterator[StreamChunk]:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                yield StreamChunk(tool_calls=tool_calls, finish_reason="tool_calls")
+            else:
+                yield StreamChunk(content="d")
+                yield StreamChunk(finish_reason="stop")
+
+        mock_client = AsyncMock(spec=BaseLLMClient)
+        mock_client.stream = mock_stream
+
+        with (
+            patch(
+                "neosian._foundation.agent.base.ProviderRouter",
+                return_value=_create_mock_router(mock_client),
+            ),
+            patch(
+                "neosian._foundation.agent.base.Streaming.HEARTBEAT_INTERVAL_SECONDS",
+                30.0,
+            ),
+        ):
+            config = AgentConfig(
+                system_prompt=SystemPrompt("S"),
+                tools=[ok1, bad, ok2],
+                enable_todo=False,
+            )
+            agent = Agent(config=config)
+            stream = await agent.run(
+                [Message(role=Role.USER, content="go")], stream=True
+            )
+            parsed = [_parse_sse(s) async for s in stream]
+
+        results_by_id = {
+            d["tool_call_id"]: d for et, d in parsed if et == "tool_result"
+        }
+        assert results_by_id["id_ok1"]["success"] is True
+        assert results_by_id["id_ok2"]["success"] is True
+        assert results_by_id["id_bad"]["success"] is False
+        assert "boom" in results_by_id["id_bad"]["error"]
+
+    @pytest.mark.asyncio
+    async def test_streaming_heartbeat_interleaving(self) -> None:
+        """Slow tool emits heartbeats while a fast tool's result already arrived."""
+
+        @Tool(name="slow", description="slow")
+        async def slow() -> ToolResult[str]:
+            await asyncio.sleep(0.3)
+            return ToolResult.ok("slow")
+
+        @Tool(name="fast", description="fast")
+        async def fast() -> ToolResult[str]:
+            await asyncio.sleep(0.01)
+            return ToolResult.ok("fast")
+
+        tool_calls = [
+            ToolCall(id=ToolCallId("id_slow"), name=ToolName("slow"), arguments={}),
+            ToolCall(id=ToolCallId("id_fast"), name=ToolName("fast"), arguments={}),
+        ]
+
+        call_count = 0
+
+        async def mock_stream(
+            *args: object, **kwargs: object  # noqa: ARG001
+        ) -> AsyncIterator[StreamChunk]:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                yield StreamChunk(tool_calls=tool_calls, finish_reason="tool_calls")
+            else:
+                yield StreamChunk(content="d")
+                yield StreamChunk(finish_reason="stop")
+
+        mock_client = AsyncMock(spec=BaseLLMClient)
+        mock_client.stream = mock_stream
+
+        with (
+            patch(
+                "neosian._foundation.agent.base.ProviderRouter",
+                return_value=_create_mock_router(mock_client),
+            ),
+            patch(
+                "neosian._foundation.agent.base.Streaming.HEARTBEAT_INTERVAL_SECONDS",
+                0.05,
+            ),
+        ):
+            config = AgentConfig(
+                system_prompt=SystemPrompt("S"),
+                tools=[slow, fast],
+                enable_todo=False,
+            )
+            agent = Agent(config=config)
+            stream = await agent.run(
+                [Message(role=Role.USER, content="go")], stream=True
+            )
+            parsed = [_parse_sse(s) async for s in stream]
+
+        heartbeats = [(et, d) for et, d in parsed if et == "heartbeat"]
+        assert len(heartbeats) >= 1
+        # All heartbeats carry the slow tool's id (fast tool finished before any HB).
+        assert all(d["tool_call_id"] == "id_slow" for _, d in heartbeats)
+
+        # Fast tool_result must appear before slow tool_result.
+        results = [
+            (i, d["tool_call_id"])
+            for i, (et, d) in enumerate(parsed)
+            if et == "tool_result"
+        ]
+        fast_idx = next(i for i, tid in results if tid == "id_fast")
+        slow_idx = next(i for i, tid in results if tid == "id_slow")
+        assert fast_idx < slow_idx
+
+    @pytest.mark.asyncio
+    async def test_parallel_path_with_single_tool(self) -> None:
+        """N=1 still works after refactor — submission order trivially preserved."""
+
+        @Tool(name="solo", description="solo")
+        async def solo() -> ToolResult[str]:
+            return ToolResult.ok("solo")
+
+        tool_calls = [
+            ToolCall(id=ToolCallId("only"), name=ToolName("solo"), arguments={}),
+        ]
+        call_count = 0
+
+        async def mock_stream(
+            *args: object, **kwargs: object  # noqa: ARG001
+        ) -> AsyncIterator[StreamChunk]:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                yield StreamChunk(tool_calls=tool_calls, finish_reason="tool_calls")
+            else:
+                yield StreamChunk(content="d")
+                yield StreamChunk(finish_reason="stop")
+
+        mock_client = AsyncMock(spec=BaseLLMClient)
+        mock_client.stream = mock_stream
+
+        with patch(
+            "neosian._foundation.agent.base.ProviderRouter",
+            return_value=_create_mock_router(mock_client),
+        ):
+            config = AgentConfig(
+                system_prompt=SystemPrompt("S"),
+                tools=[solo],
+                enable_todo=False,
+            )
+            agent = Agent(config=config)
+            stream = await agent.run(
+                [Message(role=Role.USER, content="go")], stream=True
+            )
+            parsed = [_parse_sse(s) async for s in stream]
+
+        kinds = [et for et, _ in parsed]
+        assert kinds.count("tool_call") == 1
+        assert kinds.count("tool_result") == 1
+        result = next(d for et, d in parsed if et == "tool_result")
+        assert result["tool_call_id"] == "only"
+        assert result["success"] is True
+
+    @pytest.mark.asyncio
+    async def test_streaming_cancellation_no_orphan_tasks(self) -> None:
+        """When the SSE consumer disconnects mid-batch, tool tasks must not orphan."""
+
+        task_refs: list[weakref.ref[asyncio.Task[Any]]] = []
+        original_create_task = asyncio.create_task
+
+        def tracking_create_task(coro: Any, **kw: Any) -> asyncio.Task[Any]:
+            t = original_create_task(coro, **kw)
+            # Track only _run_tool_stream's task spawns.
+            if "_run_tool_stream" in repr(coro):
+                task_refs.append(weakref.ref(t))
+            return t
+
+        @Tool(name="hang", description="hang")
+        async def hang() -> ToolResult[str]:
+            await asyncio.sleep(10.0)
+            return ToolResult.ok("never")
+
+        tool_calls = [
+            ToolCall(id=ToolCallId(f"id{i}"), name=ToolName("hang"), arguments={})
+            for i in range(3)
+        ]
+
+        async def mock_stream(
+            *args: object, **kwargs: object  # noqa: ARG001
+        ) -> AsyncIterator[StreamChunk]:
+            yield StreamChunk(tool_calls=tool_calls, finish_reason="tool_calls")
+
+        mock_client = AsyncMock(spec=BaseLLMClient)
+        mock_client.stream = mock_stream
+
+        with (
+            patch(
+                "neosian._foundation.agent.base.ProviderRouter",
+                return_value=_create_mock_router(mock_client),
+            ),
+            patch(
+                "neosian._foundation.agent.base.asyncio.create_task",
+                side_effect=tracking_create_task,
+            ),
+            patch(
+                "neosian._foundation.agent.base.Streaming.HEARTBEAT_INTERVAL_SECONDS",
+                30.0,
+            ),
+        ):
+            config = AgentConfig(
+                system_prompt=SystemPrompt("S"),
+                tools=[hang],
+                enable_todo=False,
+            )
+            agent = Agent(config=config)
+            stream = await agent.run(
+                [Message(role=Role.USER, content="go")], stream=True
+            )
+
+            # Pull tool_call events for all 3 tools, then close mid-batch.
+            collected: list[str] = []
+            async for sse in stream:
+                collected.append(sse)
+                if sum(1 for s in collected if "tool_call\n" in s) >= 3:
+                    break
+            await stream.aclose()  # type: ignore[attr-defined]
+
+            # Let the event loop reap cancellations.
+            await asyncio.sleep(0.05)
+
+        live = [ref() for ref in task_refs]
+        # All tracked tool wrapper tasks should be done (cancelled or completed).
+        assert all(
+            t is None or t.done() for t in live
+        ), f"orphans: {[t for t in live if t and not t.done()]}"
+
+    @pytest.mark.asyncio
+    async def test_max_parallel_tools_caps_concurrency(self) -> None:
+        """With max_parallel_tools=2, peak in-flight tools must not exceed 2."""
+
+        in_flight = 0
+        peak = 0
+        lock = asyncio.Lock()
+
+        async def _tracked() -> ToolResult[str]:
+            nonlocal in_flight, peak
+            async with lock:
+                in_flight += 1
+                peak = max(peak, in_flight)
+            try:
+                await asyncio.sleep(0.1)
+                return ToolResult.ok("done")
+            finally:
+                async with lock:
+                    in_flight -= 1
+
+        @Tool(name="t1", description="t")
+        async def t1() -> ToolResult[str]:
+            return await _tracked()
+
+        @Tool(name="t2", description="t")
+        async def t2() -> ToolResult[str]:
+            return await _tracked()
+
+        @Tool(name="t3", description="t")
+        async def t3() -> ToolResult[str]:
+            return await _tracked()
+
+        @Tool(name="t4", description="t")
+        async def t4() -> ToolResult[str]:
+            return await _tracked()
+
+        mock_client = AsyncMock(spec=BaseLLMClient)
+        tool_calls = [
+            ToolCall(id=ToolCallId(f"id{i}"), name=ToolName(f"t{i+1}"), arguments={})
+            for i in range(4)
+        ]
+        mock_client.complete.side_effect = [
+            CompletionResponse(
+                message=Message(role=Role.ASSISTANT, tool_calls=tool_calls),
+                usage=Usage(input_tokens=10, output_tokens=5),
+                model="test-model",
+            ),
+            CompletionResponse(
+                message=Message(role=Role.ASSISTANT, content="done"),
+                usage=Usage(input_tokens=10, output_tokens=5),
+                model="test-model",
+            ),
+        ]
+
+        with patch(
+            "neosian._foundation.agent.base.ProviderRouter",
+            return_value=_create_mock_router(mock_client),
+        ):
+            config = AgentConfig(
+                system_prompt=SystemPrompt("S"),
+                tools=[t1, t2, t3, t4],
+                enable_todo=False,
+                max_parallel_tools=2,
+            )
+            agent = Agent(config=config)
+
+            start = time.monotonic()
+            await agent.run([Message(role=Role.USER, content="go")], stream=False)
+            elapsed = time.monotonic() - start
+
+        assert peak <= 2, f"expected peak<=2, got {peak}"
+        # Two batches of 2 × 100ms ≈ 0.2s; full parallel would be ~0.1s.
+        assert 0.18 < elapsed < 0.5, f"unexpected wall-clock {elapsed:.3f}s"
+
+    def test_max_parallel_tools_validation_zero(self) -> None:
+        """max_parallel_tools=0 must raise."""
+        with pytest.raises(UnsupportedParameterError, match="max_parallel_tools"):
+            AgentConfig(
+                system_prompt=SystemPrompt("S"),
+                tools=[],
+                enable_todo=False,
+                max_parallel_tools=0,
+            )
+
+    def test_max_parallel_tools_validation_negative(self) -> None:
+        """Negative max_parallel_tools must raise."""
+        with pytest.raises(UnsupportedParameterError, match="max_parallel_tools"):
+            AgentConfig(
+                system_prompt=SystemPrompt("S"),
+                tools=[],
+                enable_todo=False,
+                max_parallel_tools=-1,
+            )

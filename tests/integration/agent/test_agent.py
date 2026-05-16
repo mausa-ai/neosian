@@ -4,6 +4,9 @@ Requires GROQ_API_KEY environment variable.
 Run with: GROQ_API_KEY=gsk_xxx uv run pytest -m integration -v
 """
 
+import asyncio
+import time
+
 import pytest
 
 from neosian._foundation.agent.base import Agent
@@ -330,3 +333,51 @@ class TestAgentReasoningEffort:
         # Tool result should be 56
         multiply_results = [r for r in response.tool_results if r.data == 56]
         assert len(multiply_results) >= 1
+
+    @pytest.mark.asyncio
+    async def test_parallel_tool_execution_with_real_provider(self) -> None:
+        """Two slow tools called in one turn should overlap, not stack.
+
+        Non-deterministic: the model may split the calls across turns. If it
+        does, skip rather than fail.
+        """
+
+        @Tool(
+            name="fetch_a",
+            description="Fetch resource A. Always call together with fetch_b.",
+        )
+        async def fetch_a() -> ToolResult[str]:
+            await asyncio.sleep(2.0)
+            return ToolResult.ok("A done")
+
+        @Tool(
+            name="fetch_b",
+            description="Fetch resource B. Always call together with fetch_a.",
+        )
+        async def fetch_b() -> ToolResult[str]:
+            await asyncio.sleep(2.0)
+            return ToolResult.ok("B done")
+
+        config = AgentConfig(
+            system_prompt=SystemPrompt(
+                "You must call BOTH fetch_a and fetch_b in a single response."
+            ),
+            tools=[fetch_a, fetch_b],
+            model=Model.GROQ_LLAMA_3_3_70B,
+            enable_todo=False,
+        )
+        agent = Agent(config=config)
+        messages = [Message(role=Role.USER, content="Fetch both A and B.")]
+
+        start = time.monotonic()
+        response = await agent.run(messages, stream=False)
+        elapsed = time.monotonic() - start
+
+        if len(response.tool_calls_made) < 2:
+            pytest.skip(
+                "Provider did not emit parallel tool calls in this run "
+                f"(got {len(response.tool_calls_made)})."
+            )
+
+        # Parallel: ~2s for both tools + LLM round trips. Sequential would be ~4s+.
+        assert elapsed < 4.0, f"tools likely ran sequentially: {elapsed:.2f}s"

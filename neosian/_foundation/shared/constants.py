@@ -105,6 +105,9 @@ class ErrorMessages:
     )
     MAX_OUTPUT_TOKENS_INVALID: str = "max_output_tokens must be >= 1, got {requested}"
 
+    # Max parallel tools validation
+    INVALID_MAX_PARALLEL_TOOLS: str = "max_parallel_tools must be >= 1, got {value}"
+
     # Provider/Fallback errors
     PROVIDER_FAILED: str = "Provider {provider} failed: {error}"
     MODEL_FAILED: str = "Model {model} failed: {error}"
@@ -196,6 +199,10 @@ class LLMDefaults:
     RETRY_TEMPERATURE: float = 0.3
     MAX_TOOL_CALL_RETRIES: int = 2
     MAX_OUTPUT_TOKENS: int = 8192
+    # Safety-net cap on concurrent tool execution within one assistant turn.
+    # Default tuned for normal LLM emission (1-5 calls); catches runaway
+    # cases. Users can override via AgentConfig.max_parallel_tools.
+    MAX_PARALLEL_TOOLS: int = 10
 
 
 class BuiltinTools:

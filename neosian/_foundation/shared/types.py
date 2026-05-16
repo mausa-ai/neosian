@@ -461,6 +461,7 @@ class AgentConfig:
     guardrails: "GuardrailsConfig | None" = None
     reasoning_effort: ReasoningEffort | None = None
     max_output_tokens: int | None = None
+    max_parallel_tools: int | None = None
     playbook_dir: str | Path | None = None
     blackboard: Any = None  # BlackboardProvider | None (Any to avoid circular import)
 
@@ -484,6 +485,12 @@ class AgentConfig:
         # Apply default max_output_tokens from config
         if self.max_output_tokens is None:
             object.__setattr__(self, "max_output_tokens", LLMDefaults.MAX_OUTPUT_TOKENS)
+
+        # Apply default max_parallel_tools from config
+        if self.max_parallel_tools is None:
+            object.__setattr__(
+                self, "max_parallel_tools", LLMDefaults.MAX_PARALLEL_TOOLS
+            )
 
         # Runtime validation - model could be anything if user bypasses type hints
         model: object = self.model  # Type erasure to enable isinstance check
@@ -521,6 +528,15 @@ class AgentConfig:
                     requested=self.max_output_tokens,
                     model=self.model.value,
                     limit=self.model.max_output_tokens,
+                )
+            )
+
+        # Validate max_parallel_tools
+        assert self.max_parallel_tools is not None  # Set above
+        if self.max_parallel_tools < 1:
+            raise UnsupportedParameterError(
+                ErrorMessages.INVALID_MAX_PARALLEL_TOOLS.format(
+                    value=self.max_parallel_tools,
                 )
             )
 
