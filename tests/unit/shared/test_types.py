@@ -59,7 +59,7 @@ class TestModelEnum:
         assert Model.GROQ_GPT_OSS_20B.value == "openai/gpt-oss-20b"
         assert Model.GROQ_LLAMA_3_3_70B.value == "llama-3.3-70b-versatile"
         assert Model.GPT_5_NANO.value == "gpt-5-nano-2025-08-07"
-        assert Model.CLAUDE_SONNET_4_6.value == "claude-sonnet-4-6"
+        assert Model.CLAUDE_SONNET_5.value == "claude-sonnet-5"
 
     def test_model_is_string_compatible(self) -> None:
         """Model should be string-compatible."""
@@ -73,7 +73,7 @@ class TestModelEnum:
         assert Model.GROQ_GPT_OSS_20B.provider == Provider.GROQ
         assert Model.GROQ_LLAMA_3_3_70B.provider == Provider.GROQ
         assert Model.GPT_5_NANO.provider == Provider.OPENAI
-        assert Model.CLAUDE_SONNET_4_6.provider == Provider.ANTHROPIC
+        assert Model.CLAUDE_SONNET_5.provider == Provider.ANTHROPIC
 
     def test_model_max_output_tokens_property(self) -> None:
         """Model should have max_output_tokens property matching API ceilings."""
@@ -89,7 +89,7 @@ class TestModelEnum:
 
         # Anthropic
         assert Model.CLAUDE_OPUS_4_6.max_output_tokens == 128_000
-        assert Model.CLAUDE_SONNET_4_6.max_output_tokens == 64_000
+        assert Model.CLAUDE_SONNET_5.max_output_tokens == 64_000
         assert Model.CLAUDE_HAIKU_4_5.max_output_tokens == 64_000
 
     def test_model_spec_property(self) -> None:
@@ -121,7 +121,7 @@ class TestModelEnum:
         assert Model.GPT_5_PRO.context_window == 400_000
 
         # Anthropic: 200k
-        assert Model.CLAUDE_SONNET_4_6.context_window == 200_000
+        assert Model.CLAUDE_SONNET_5.context_window == 200_000
         assert Model.CLAUDE_OPUS_4_6.context_window == 200_000
         assert Model.CLAUDE_HAIKU_4_5.context_window == 200_000
 

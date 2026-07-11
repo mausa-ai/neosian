@@ -95,7 +95,7 @@ class TestModelEnum:
     def test_anthropic_models_have_expected_token_limits(self) -> None:
         """Test that Anthropic models have correct max output tokens."""
         assert Model.CLAUDE_OPUS_4_6.max_output_tokens == 128_000
-        assert Model.CLAUDE_SONNET_4_6.max_output_tokens == 64_000
+        assert Model.CLAUDE_SONNET_5.max_output_tokens == 64_000
         assert Model.CLAUDE_HAIKU_4_5.max_output_tokens == 64_000
 
     def test_model_has_context_window(self) -> None:

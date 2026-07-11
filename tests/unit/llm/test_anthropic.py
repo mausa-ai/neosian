@@ -145,13 +145,13 @@ class TestAnthropicClient:
         mock_response = MagicMock()
         mock_response.content = [MagicMock(type="text", text="Hello there!")]
         mock_response.usage = MagicMock(input_tokens=10, output_tokens=5)
-        mock_response.model = "claude-sonnet-4-6"
+        mock_response.model = "claude-sonnet-5"
 
         client._client.messages.create = AsyncMock(return_value=mock_response)
 
         response = await client.complete(
             messages=sample_messages,
-            model=Model.CLAUDE_SONNET_4_6,
+            model=Model.CLAUDE_SONNET_5,
         )
 
         assert response.message.role == Role.ASSISTANT
@@ -174,13 +174,13 @@ class TestAnthropicClient:
         mock_response = MagicMock()
         mock_response.content = [mock_tool_use]
         mock_response.usage = MagicMock(input_tokens=15, output_tokens=8)
-        mock_response.model = "claude-sonnet-4-6"
+        mock_response.model = "claude-sonnet-5"
 
         client._client.messages.create = AsyncMock(return_value=mock_response)
 
         response = await client.complete(
             messages=sample_messages,
-            model=Model.CLAUDE_SONNET_4_6,
+            model=Model.CLAUDE_SONNET_5,
             tools=[
                 ToolDefinition(
                     name="get_weather",
@@ -231,7 +231,7 @@ class TestAnthropicClient:
         chunks = []
         async for chunk in client.stream(
             messages=sample_messages,
-            model=Model.CLAUDE_SONNET_4_6,
+            model=Model.CLAUDE_SONNET_5,
         ):
             chunks.append(chunk)
 
@@ -337,13 +337,13 @@ class TestAnthropicReasoningEffort:
         mock_response = MagicMock()
         mock_response.content = [MagicMock(type="text", text="Answer")]
         mock_response.usage = MagicMock(input_tokens=10, output_tokens=5)
-        mock_response.model = "claude-sonnet-4-6"
+        mock_response.model = "claude-sonnet-5"
 
         client._client.messages.create = AsyncMock(return_value=mock_response)
 
         await client.complete(
             messages=sample_messages,
-            model=Model.CLAUDE_SONNET_4_6,
+            model=Model.CLAUDE_SONNET_5,
         )
 
         call_kwargs = client._client.messages.create.call_args.kwargs
@@ -396,20 +396,20 @@ class TestAnthropicReasoningEffort:
                 pass
 
     @pytest.mark.asyncio
-    async def test_sonnet_4_6_supports_reasoning(
+    async def test_sonnet_5_supports_reasoning(
         self, client: AnthropicClient, sample_messages: list[Message]
     ) -> None:
         """Verify Sonnet 4.6 supports reasoning with adaptive thinking."""
         mock_response = MagicMock()
         mock_response.content = [MagicMock(type="text", text="Answer")]
         mock_response.usage = MagicMock(input_tokens=10, output_tokens=5)
-        mock_response.model = "claude-sonnet-4-6"
+        mock_response.model = "claude-sonnet-5"
 
         client._client.messages.create = AsyncMock(return_value=mock_response)
 
         await client.complete(
             messages=sample_messages,
-            model=Model.CLAUDE_SONNET_4_6,
+            model=Model.CLAUDE_SONNET_5,
             reasoning_effort=ReasoningEffort.HIGH,
         )
 
@@ -426,13 +426,13 @@ class TestAnthropicReasoningEffort:
         mock_response = MagicMock()
         mock_response.content = [MagicMock(type="text", text="Answer")]
         mock_response.usage = MagicMock(input_tokens=10, output_tokens=5)
-        mock_response.model = "claude-sonnet-4-6"
+        mock_response.model = "claude-sonnet-5"
 
         client._client.messages.create = AsyncMock(return_value=mock_response)
 
         await client.complete(
             messages=sample_messages,
-            model=Model.CLAUDE_SONNET_4_6,
+            model=Model.CLAUDE_SONNET_5,
             reasoning_effort=ReasoningEffort.MAX,
         )
 
@@ -480,7 +480,7 @@ class TestAnthropicReasoningEffort:
 
         async for _ in client.stream(
             messages=sample_messages,
-            model=Model.CLAUDE_SONNET_4_6,
+            model=Model.CLAUDE_SONNET_5,
             reasoning_effort=ReasoningEffort.MAX,
         ):
             pass
@@ -559,13 +559,13 @@ class TestAnthropicReasoningContent:
         mock_response = MagicMock()
         mock_response.content = [MagicMock(type="text", text="Hello!")]
         mock_response.usage = MagicMock(input_tokens=10, output_tokens=5)
-        mock_response.model = "claude-sonnet-4-6"
+        mock_response.model = "claude-sonnet-5"
 
         client._client.messages.create = AsyncMock(return_value=mock_response)
 
         response = await client.complete(
             messages=sample_messages,
-            model=Model.CLAUDE_SONNET_4_6,
+            model=Model.CLAUDE_SONNET_5,
         )
 
         assert response.message.reasoning is None
@@ -678,7 +678,7 @@ class TestAnthropicStreamingToolCalls:
         chunks = []
         async for chunk in client.stream(
             messages=sample_messages,
-            model=Model.CLAUDE_SONNET_4_6,
+            model=Model.CLAUDE_SONNET_5,
             tools=[
                 ToolDefinition(
                     name="get_weather",
@@ -743,7 +743,7 @@ class TestAnthropicStreamingToolCalls:
         chunks = []
         async for chunk in client.stream(
             messages=sample_messages,
-            model=Model.CLAUDE_SONNET_4_6,
+            model=Model.CLAUDE_SONNET_5,
             tools=[
                 ToolDefinition(
                     name="search",
@@ -791,7 +791,7 @@ class TestAnthropicStreamingToolCalls:
 
         async for _ in client.stream(
             messages=sample_messages,
-            model=Model.CLAUDE_SONNET_4_6,
+            model=Model.CLAUDE_SONNET_5,
             tools=[tool_def],
         ):
             pass
@@ -827,7 +827,7 @@ class TestAnthropicStreamingToolCalls:
         chunks = []
         async for chunk in client.stream(
             messages=sample_messages,
-            model=Model.CLAUDE_SONNET_4_6,
+            model=Model.CLAUDE_SONNET_5,
         ):
             chunks.append(chunk)
 
@@ -899,7 +899,7 @@ class TestAnthropicStreamingToolCalls:
         chunks = []
         async for chunk in client.stream(
             messages=sample_messages,
-            model=Model.CLAUDE_SONNET_4_6,
+            model=Model.CLAUDE_SONNET_5,
             tools=[
                 ToolDefinition(
                     name="search",
@@ -1063,13 +1063,13 @@ class TestAnthropicPromptCaching:
             cache_creation_input_tokens=100,
             cache_read_input_tokens=0,
         )
-        mock_response.model = "claude-sonnet-4-6"
+        mock_response.model = "claude-sonnet-5"
 
         client._client.messages.create = AsyncMock(return_value=mock_response)
 
         await client.complete(
             messages=sample_messages,
-            model=Model.CLAUDE_SONNET_4_6,
+            model=Model.CLAUDE_SONNET_5,
         )
 
         call_kwargs = client._client.messages.create.call_args.kwargs
@@ -1098,13 +1098,13 @@ class TestAnthropicPromptCaching:
             cache_creation_input_tokens=2500,
             cache_read_input_tokens=0,
         )
-        mock_response.model = "claude-sonnet-4-6"
+        mock_response.model = "claude-sonnet-5"
 
         client._client.messages.create = AsyncMock(return_value=mock_response)
 
         response = await client.complete(
             messages=sample_messages,
-            model=Model.CLAUDE_SONNET_4_6,
+            model=Model.CLAUDE_SONNET_5,
         )
 
         assert response.usage.input_tokens == 50
@@ -1125,13 +1125,13 @@ class TestAnthropicPromptCaching:
             cache_creation_input_tokens=0,
             cache_read_input_tokens=2500,
         )
-        mock_response.model = "claude-sonnet-4-6"
+        mock_response.model = "claude-sonnet-5"
 
         client._client.messages.create = AsyncMock(return_value=mock_response)
 
         response = await client.complete(
             messages=sample_messages,
-            model=Model.CLAUDE_SONNET_4_6,
+            model=Model.CLAUDE_SONNET_5,
         )
 
         assert response.usage.cache_creation_input_tokens == 0
@@ -1152,13 +1152,13 @@ class TestAnthropicPromptCaching:
         del mock_usage.cache_creation_input_tokens
         del mock_usage.cache_read_input_tokens
         mock_response.usage = mock_usage
-        mock_response.model = "claude-sonnet-4-6"
+        mock_response.model = "claude-sonnet-5"
 
         client._client.messages.create = AsyncMock(return_value=mock_response)
 
         response = await client.complete(
             messages=sample_messages,
-            model=Model.CLAUDE_SONNET_4_6,
+            model=Model.CLAUDE_SONNET_5,
         )
 
         assert response.usage.cache_creation_input_tokens == 0
@@ -1184,7 +1184,7 @@ class TestAnthropicPromptCaching:
 
         async for _ in client.stream(
             messages=sample_messages,
-            model=Model.CLAUDE_SONNET_4_6,
+            model=Model.CLAUDE_SONNET_5,
         ):
             pass
 
@@ -1236,7 +1236,7 @@ class TestAnthropicPromptCaching:
         chunks = []
         async for chunk in client.stream(
             messages=sample_messages,
-            model=Model.CLAUDE_SONNET_4_6,
+            model=Model.CLAUDE_SONNET_5,
         ):
             chunks.append(chunk)
 
@@ -1274,7 +1274,7 @@ class TestAnthropicPromptCaching:
 
         async for _ in client.stream(
             messages=sample_messages,
-            model=Model.CLAUDE_SONNET_4_6,
+            model=Model.CLAUDE_SONNET_5,
             tools=[tool_def],
         ):
             pass
@@ -1709,13 +1709,13 @@ class TestAnthropicStructuredOutput:
         mock_response = MagicMock()
         mock_response.content = [MagicMock(type="text", text='{"answer":"hi"}')]
         mock_response.usage = MagicMock(input_tokens=5, output_tokens=3)
-        mock_response.model = "claude-sonnet-4-6"
+        mock_response.model = "claude-sonnet-5"
 
         client._client.messages.create = AsyncMock(return_value=mock_response)
 
         await client.complete(
             messages=sample_messages,
-            model=Model.CLAUDE_SONNET_4_6,
+            model=Model.CLAUDE_SONNET_5,
             response_format=ResponseFormat(schema=Out),
         )
 
