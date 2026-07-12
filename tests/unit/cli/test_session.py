@@ -126,3 +126,33 @@ class TestSession:
         assert filename.endswith(".json")
         # Should have date format: YYYY-MM-DD_HH-MM_name.json
         assert "_" in filename
+
+
+@pytest.mark.unit
+class TestSessionMultimodalPersistence:
+    """Sessions with block-list content must stay JSON-serializable."""
+
+    def test_to_dict_with_block_content_is_json_serializable(self) -> None:
+        import json
+
+        from neosian._foundation.llm.base import DocumentBlock, TextBlock
+
+        session = Session(agent_name="test-agent")
+        session.add_message(
+            Message(
+                role=Role.USER,
+                content=[
+                    DocumentBlock(media_type="application/pdf", data="JVBERi0="),
+                    TextBlock(text="Transcribe this."),
+                ],
+            )
+        )
+        session.add_assistant_message("# Transcription")
+
+        data = session.to_dict()
+        encoded = json.dumps(data)  # Must not raise
+
+        assert "Transcribe this." in encoded
+        messages = data["messages"]
+        assert isinstance(messages, list)
+        assert messages[0]["content"][0]["type"] == "document"

@@ -8,7 +8,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-from neosian._foundation.llm.base import Message, Role
+from neosian._foundation.llm.base import Message, Role, content_to_json
 from neosian._foundation.shared.types import GuardrailResult
 
 
@@ -73,7 +73,7 @@ class Session:
             "messages": [
                 {
                     "role": m.role.value,
-                    "content": m.content,
+                    "content": content_to_json(m.content),
                     "tool_calls": [asdict(tc) for tc in m.tool_calls],
                     "tool_call_id": m.tool_call_id,
                 }

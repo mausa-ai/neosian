@@ -11,12 +11,17 @@ from anthropic import AsyncAnthropic, BadRequestError
 from neosian._foundation.llm.base import (
     BaseLLMClient,
     CompletionResponse,
+    ContentBlock,
+    DocumentBlock,
+    ImageBlock,
     Message,
     Role,
     StreamChunk,
+    TextBlock,
     ToolCall,
     ToolDefinition,
     Usage,
+    required_content_types,
 )
 from neosian._foundation.shared.constants import (
     ErrorMessages,
@@ -24,6 +29,7 @@ from neosian._foundation.shared.constants import (
 )
 from neosian._foundation.shared.exceptions import (
     ToolCallGenerationError,
+    UnsupportedContentError,
     UnsupportedParameterError,
 )
 from neosian._foundation.shared.types import (
@@ -137,11 +143,16 @@ class AnthropicClient(BaseLLMClient):
         response_format: ResponseFormat | None = None,
         reasoning_effort: ReasoningEffort | None = None,
         max_tokens: int = LLMDefaults.MAX_OUTPUT_TOKENS,
+        cache_conversation: bool = True,
     ) -> CompletionResponse:
         """Send a completion request to Anthropic.
 
         Automatically retries if tool call generation fails.
         After max retries, raises ToolCallGenerationError.
+
+        The request is streamed internally (messages.stream +
+        get_final_message) so large max_tokens values don't trip the SDK's
+        non-streaming timeout guard on long-output workloads.
 
         Args:
             messages: Conversation history.
@@ -150,6 +161,9 @@ class AnthropicClient(BaseLLMClient):
             temperature: Sampling temperature (0.0-1.0). None uses default.
             response_format: Optional structured output configuration.
             reasoning_effort: Optional reasoning effort level for supported models.
+            max_tokens: Maximum output tokens for this request.
+            cache_conversation: When False, skip the last-message cache
+                breakpoint (one-shot calls); system/tool caching unaffected.
 
         Returns:
             CompletionResponse with the model's response.
@@ -157,12 +171,16 @@ class AnthropicClient(BaseLLMClient):
         Raises:
             ToolCallGenerationError: If tool call generation fails after retries.
             UnsupportedParameterError: If reasoning_effort used with unsupported model.
+            UnsupportedContentError: If messages carry content blocks the
+                model does not support.
         """
         # Validate reasoning_effort
         if reasoning_effort is not None and not model.supports_reasoning:
             raise UnsupportedParameterError(
                 ErrorMessages.REASONING_EFFORT_NOT_SUPPORTED.format(model=model.value)
             )
+
+        self._validate_content_support(messages, model)
 
         # Anthropic MAX is Opus 4.6 only — downgrade to HIGH for other models
         effective_effort = reasoning_effort
@@ -179,12 +197,13 @@ class AnthropicClient(BaseLLMClient):
 
         # Apply prompt caching breakpoints
         cached_system, anthropic_messages = self._apply_cache_control(
-            system_prompt, anthropic_messages
+            system_prompt, anthropic_messages, cache_last_message=cache_conversation
         )
 
-        current_temp = (
-            temperature if temperature is not None else LLMDefaults.TEMPERATURE
-        )
+        # Only send temperature when explicitly requested: newer Claude
+        # models (e.g. Sonnet 5) reject non-default sampling parameters
+        # with a 400, so the API default must apply when unset.
+        current_temp: float | None = temperature
 
         for attempt in range(LLMDefaults.MAX_TOOL_CALL_RETRIES + 1):
             try:
@@ -198,7 +217,7 @@ class AnthropicClient(BaseLLMClient):
                 if effective_effort is not None:
                     kwargs["thinking"] = {"type": "adaptive"}
                     kwargs["output_config"] = {"effort": effective_effort.value}
-                else:
+                elif current_temp is not None:
                     kwargs["temperature"] = current_temp
 
                 if cached_system:
@@ -214,14 +233,22 @@ class AnthropicClient(BaseLLMClient):
                     output_config["format"] = self._convert_response_format(
                         response_format
                     )
-                response = await self._client.messages.create(**kwargs)
+                # Stream internally: the SDK refuses non-streaming requests
+                # it estimates may exceed ~10 minutes (large max_tokens).
+                async with self._client.messages.stream(**kwargs) as stream:
+                    response = await stream.get_final_message()
 
                 return self._parse_response(response)
 
             except BadRequestError as e:
                 if self._is_tool_call_error(e) and tools is not None:
                     if attempt < LLMDefaults.MAX_TOOL_CALL_RETRIES:
-                        current_temp = LLMDefaults.RETRY_TEMPERATURE
+                        # Lower the temperature on retry only when one was
+                        # explicitly in play — injecting it on models that
+                        # reject sampling params would turn the retry into
+                        # a 400.
+                        if current_temp is not None:
+                            current_temp = LLMDefaults.RETRY_TEMPERATURE
                         continue
                     raise ToolCallGenerationError(
                         retries=LLMDefaults.MAX_TOOL_CALL_RETRIES
@@ -289,6 +316,7 @@ class AnthropicClient(BaseLLMClient):
                 cache_read_input_tokens=getattr(response.usage, "cache_read_input_tokens", 0) or 0,  # type: ignore[attr-defined]
             ),
             model=response.model,  # type: ignore[attr-defined]
+            stop_reason=getattr(response, "stop_reason", None),
         )
 
     async def stream(
@@ -299,6 +327,7 @@ class AnthropicClient(BaseLLMClient):
         temperature: float | None = None,
         reasoning_effort: ReasoningEffort | None = None,
         max_tokens: int = LLMDefaults.MAX_OUTPUT_TOKENS,
+        cache_conversation: bool = True,
     ) -> AsyncIterator[StreamChunk]:
         """Stream a completion request from Anthropic.
 
@@ -312,18 +341,25 @@ class AnthropicClient(BaseLLMClient):
             tools: Optional list of tools the model can call.
             temperature: Sampling temperature (0.0-1.0). None uses default.
             reasoning_effort: Optional reasoning effort level for supported models.
+            max_tokens: Maximum output tokens for this request.
+            cache_conversation: When False, skip the last-message cache
+                breakpoint (one-shot calls); system/tool caching unaffected.
 
         Yields:
             StreamChunk objects as they arrive.
 
         Raises:
             UnsupportedParameterError: If reasoning_effort used with unsupported model.
+            UnsupportedContentError: If messages carry content blocks the
+                model does not support.
         """
         # Validate reasoning_effort
         if reasoning_effort is not None and not model.supports_reasoning:
             raise UnsupportedParameterError(
                 ErrorMessages.REASONING_EFFORT_NOT_SUPPORTED.format(model=model.value)
             )
+
+        self._validate_content_support(messages, model)
 
         # Anthropic MAX is Opus 4.6 only — downgrade to HIGH for other models
         effective_effort = reasoning_effort
@@ -340,10 +376,8 @@ class AnthropicClient(BaseLLMClient):
 
         # Apply prompt caching breakpoints
         cached_system, anthropic_messages = self._apply_cache_control(
-            system_prompt, anthropic_messages
+            system_prompt, anthropic_messages, cache_last_message=cache_conversation
         )
-
-        temp = temperature if temperature is not None else LLMDefaults.TEMPERATURE
 
         kwargs: dict[str, Any] = {
             "model": model,
@@ -351,12 +385,14 @@ class AnthropicClient(BaseLLMClient):
             "max_tokens": max_tokens,
         }
 
-        # Thinking mode: add adaptive thinking + effort, omit temperature
+        # Thinking mode: add adaptive thinking + effort, omit temperature.
+        # Temperature is only sent when explicitly requested: newer Claude
+        # models (e.g. Sonnet 5) reject non-default sampling parameters.
         if effective_effort is not None:
             kwargs["thinking"] = {"type": "adaptive"}
             kwargs["output_config"] = {"effort": effective_effort.value}
-        else:
-            kwargs["temperature"] = temp
+        elif temperature is not None:
+            kwargs["temperature"] = temperature
 
         if cached_system:
             kwargs["system"] = cached_system
@@ -376,6 +412,9 @@ class AnthropicClient(BaseLLMClient):
             current_tool_id: str | None = None
             current_tool_name: str | None = None
             current_tool_input: str = ""
+
+            # Real stop reason from the API (reported in message_delta)
+            stop_reason: str | None = None
 
             async for event in stream:
                 if event.type == "message_start":
@@ -430,9 +469,19 @@ class AnthropicClient(BaseLLMClient):
                     # Output tokens are reported in message_delta
                     if hasattr(event, "usage") and event.usage:
                         output_tokens = event.usage.output_tokens
+                    # The API's actual stop reason (e.g. "max_tokens",
+                    # "end_turn", "tool_use") also arrives here.
+                    delta = getattr(event, "delta", None)
+                    delta_stop = getattr(delta, "stop_reason", None)
+                    if delta_stop:
+                        stop_reason = delta_stop
 
                 elif event.type == "message_stop":
-                    finish_reason = "tool_use" if accumulated_tool_calls else "stop"
+                    # Prefer the API's stop reason; fall back to the
+                    # synthesized value if the event never carried one.
+                    finish_reason = stop_reason or (
+                        "tool_use" if accumulated_tool_calls else "stop"
+                    )
                     yield StreamChunk(
                         finish_reason=finish_reason,
                         usage=Usage(
@@ -462,12 +511,34 @@ class AnthropicClient(BaseLLMClient):
 
         for msg in messages:
             if msg.role == Role.SYSTEM:
+                if isinstance(msg.content, list):
+                    raise UnsupportedContentError(
+                        ErrorMessages.CONTENT_BLOCKS_NOT_SUPPORTED.format(
+                            provider="anthropic (system role)",
+                            block_type="system-message",
+                        )
+                    )
                 system_prompt = msg.content
             elif msg.role == Role.USER:
-                anthropic_messages.append(
-                    {"role": "user", "content": msg.content or ""}
-                )
+                if isinstance(msg.content, list):
+                    anthropic_messages.append(
+                        {
+                            "role": "user",
+                            "content": self._convert_content_blocks(msg.content),
+                        }
+                    )
+                else:
+                    anthropic_messages.append(
+                        {"role": "user", "content": msg.content or ""}
+                    )
             elif msg.role == Role.ASSISTANT:
+                if isinstance(msg.content, list):
+                    raise UnsupportedContentError(
+                        ErrorMessages.CONTENT_BLOCKS_NOT_SUPPORTED.format(
+                            provider="anthropic (assistant role)",
+                            block_type="assistant-message",
+                        )
+                    )
                 if msg.tool_calls:
                     content: list[dict[str, Any]] = []
                     if msg.content:
@@ -487,6 +558,13 @@ class AnthropicClient(BaseLLMClient):
                         {"role": "assistant", "content": msg.content or ""}
                     )
             elif msg.role == Role.TOOL:
+                if isinstance(msg.content, list):
+                    raise UnsupportedContentError(
+                        ErrorMessages.CONTENT_BLOCKS_NOT_SUPPORTED.format(
+                            provider="anthropic (tool role)",
+                            block_type="tool-result",
+                        )
+                    )
                 # Tool results in Anthropic are user messages with tool_result content
                 anthropic_messages.append(
                     {
@@ -502,6 +580,55 @@ class AnthropicClient(BaseLLMClient):
                 )
 
         return system_prompt, anthropic_messages
+
+    def _convert_content_blocks(
+        self, blocks: list[ContentBlock]
+    ) -> list[dict[str, Any]]:
+        """Convert internal content blocks to Anthropic content-block dicts.
+
+        Caller block order is preserved. Anthropic recommends placing media
+        blocks before text blocks for best results — callers control this.
+        """
+        result: list[dict[str, Any]] = []
+        for block in blocks:
+            if isinstance(block, TextBlock):
+                result.append({"type": "text", "text": block.text})
+            elif isinstance(block, (ImageBlock, DocumentBlock)):
+                block_type = "image" if isinstance(block, ImageBlock) else "document"
+                source: dict[str, Any]
+                if block.data is not None:
+                    source = {
+                        "type": "base64",
+                        "media_type": block.media_type,
+                        "data": block.data,
+                    }
+                else:
+                    source = {"type": "url", "url": block.url}
+                result.append({"type": block_type, "source": source})
+        return result
+
+    def _validate_content_support(self, messages: list[Message], model: Model) -> None:
+        """Raise if messages carry content blocks the model cannot handle.
+
+        All currently registered Claude models support both images and
+        documents; this gate future-proofs against text-only entries.
+
+        Raises:
+            UnsupportedContentError: If a required capability is missing.
+        """
+        needs_images, needs_documents = required_content_types(messages)
+        if needs_images and not model.supports_images:
+            raise UnsupportedContentError(
+                ErrorMessages.CONTENT_TYPE_NOT_SUPPORTED_BY_MODEL.format(
+                    model=model.value, block_type="image"
+                )
+            )
+        if needs_documents and not model.supports_documents:
+            raise UnsupportedContentError(
+                ErrorMessages.CONTENT_TYPE_NOT_SUPPORTED_BY_MODEL.format(
+                    model=model.value, block_type="document"
+                )
+            )
 
     def _convert_tools(self, tools: list[ToolDefinition]) -> list[dict[str, Any]]:
         """Convert internal tool definitions to Anthropic format.
@@ -548,6 +675,7 @@ class AnthropicClient(BaseLLMClient):
         self,
         system_prompt: str | None,
         anthropic_messages: list[dict[str, Any]],
+        cache_last_message: bool = True,
     ) -> tuple[list[dict[str, Any]] | None, list[dict[str, Any]]]:
         """Apply cache_control breakpoints for Anthropic prompt caching.
 
@@ -558,9 +686,18 @@ class AnthropicClient(BaseLLMClient):
 
         Cache order: tools (handled by _convert_tools) → system → messages.
 
+        The last-message breakpoint lands on the final content block
+        whatever its type — cache_control is valid on image/document blocks,
+        and media tokens are exactly the expensive prefix worth caching in
+        multi-turn conversations. For one-shot calls whose conversation is
+        never re-sent, pass cache_last_message=False to skip the breakpoint
+        (avoids paying the 1.25x cache-write premium for nothing); the
+        system-prompt breakpoint is unaffected.
+
         Args:
             system_prompt: The system prompt string (or None).
             anthropic_messages: Converted Anthropic-format messages.
+            cache_last_message: Whether to place the last-message breakpoint.
 
         Returns:
             Tuple of (cached_system, cached_messages).
@@ -581,7 +718,7 @@ class AnthropicClient(BaseLLMClient):
         # Last message: add cache_control to the last content block.
         # This caches the entire prefix (tools + system + all messages up
         # to this point) so subsequent calls only process new messages.
-        if anthropic_messages:
+        if cache_last_message and anthropic_messages:
             last_msg = anthropic_messages[-1]
             content = last_msg["content"]
             if isinstance(content, str):

@@ -39,6 +39,8 @@ from neosian._foundation.llm.base import (
     ToolCall,
     ToolDefinition,
     Usage,
+    required_content_types,
+    text_of,
 )
 from neosian._foundation.llm.router import ProviderRouter
 from neosian._foundation.shared.constants import EnvVars, ErrorMessages, Streaming
@@ -49,6 +51,7 @@ from neosian._foundation.shared.exceptions import (
     ModelFailedError,
     StructuredOutputStreamingError,
     StructuredOutputToolsError,
+    UnsupportedContentError,
 )
 from neosian._foundation.shared.types import (
     AgentConfig,
@@ -130,6 +133,9 @@ class AgentResponse:
         guardrail_result: Detailed guardrail check results (if guardrails enabled).
         parsed: Parsed Pydantic model instance when response_format was provided.
             None when response_format was not used.
+        stop_reason: Provider-native stop reason for the final completion —
+            truncation is "max_tokens" on Anthropic and "length" on
+            OpenAI-compatible providers. None on guardrail-blocked responses.
     """
 
     message: Message
@@ -139,6 +145,7 @@ class AgentResponse:
     blocked: bool = False
     guardrail_result: GuardrailResult | None = None
     parsed: BaseModel | None = None
+    stop_reason: str | None = None
 
 
 class Agent:
@@ -187,6 +194,7 @@ class Agent:
         self._reasoning_effort = config.reasoning_effort
         assert config.max_output_tokens is not None  # Set by AgentConfig.__post_init__
         self._max_output_tokens = config.max_output_tokens
+        self._cache_conversation = config.cache_conversation
         assert config.max_parallel_tools is not None  # Set by AgentConfig.__post_init__
         self._max_parallel_tools = config.max_parallel_tools
 
@@ -401,6 +409,53 @@ class Agent:
         # Safe or block_on_input=False - return with guard results
         return self._attach_input_guard_results(agent_response, input_policy)
 
+    def _unsupported_content_types(
+        self, model: Model, messages: list[Message]
+    ) -> list[str]:
+        """Content block types in messages that the model cannot handle.
+
+        Returns:
+            Subset of ["image", "document"]; empty when the model supports
+            everything the conversation carries (including all-text).
+        """
+        needs_images, needs_documents = required_content_types(messages)
+        missing: list[str] = []
+        if needs_images and not model.supports_images:
+            missing.append("image")
+        if needs_documents and not model.supports_documents:
+            missing.append("document")
+        return missing
+
+    def _ensure_fallback_viable(
+        self, error: Exception, full_messages: list[Message]
+    ) -> None:
+        """Gate a fallback attempt on the fallback model's content capabilities.
+
+        Called inside a main-model except block once a fallback is
+        configured. Returns normally when the fallback model can handle the
+        conversation's content. Otherwise logs the skip and raises — the
+        original UnsupportedContentError as-is, anything else wrapped in
+        ModelFailedError — so media is never downgraded onto a model that
+        can't handle it.
+        """
+        assert self._fallback is not None  # Callers check before invoking
+        missing = self._unsupported_content_types(self._fallback.model, full_messages)
+        if not missing:
+            return
+        logger.warning(
+            ErrorMessages.FALLBACK_SKIPPED_UNSUPPORTED_CONTENT.format(
+                model=self._fallback.model.value,
+                block_type="/".join(missing),
+            )
+        )
+        if isinstance(error, UnsupportedContentError):
+            raise error
+        raise ModelFailedError(
+            model=self._model.value,
+            error=str(error),
+            has_fallback=False,
+        ) from error
+
     async def _execute_agent_core(
         self,
         messages: list[Message],
@@ -469,11 +524,17 @@ class Agent:
             main_error = str(e)
             # No fallback configured - raise immediately
             if self._fallback is None:
+                if isinstance(e, UnsupportedContentError):
+                    raise
                 raise ModelFailedError(
                     model=self._model.value,
                     error=main_error,
                     has_fallback=False,
                 ) from e
+
+            # Capability-aware: never downgrade media onto a fallback model
+            # that can't handle it.
+            self._ensure_fallback_viable(e, full_messages)
 
             # Try fallback
             logger.warning(
@@ -531,6 +592,30 @@ class Agent:
                 error="No fallback configured but fallback_state.using_fallback=True",
                 has_fallback=False,
             )
+
+        # Capability-aware: media the sticky fallback model can't handle
+        # routes straight to the main model.
+        if self._unsupported_content_types(self._fallback.model, full_messages):
+            try:
+                main_client = self._router.create_client(self._model.provider)
+                response = await self._execute_with_client(
+                    client=main_client,
+                    model=self._model,
+                    full_messages=full_messages,
+                    response_format=response_format,
+                )
+                # Main handled it - reset sticky state
+                fallback_state.using_fallback = False
+                fallback_state.successful_fallback_calls = 0
+                return response
+            except Exception as e:
+                if isinstance(e, UnsupportedContentError):
+                    raise
+                raise ModelFailedError(
+                    model=self._model.value,
+                    error=str(e),
+                    has_fallback=False,
+                ) from e
 
         try:
             client = self._router.create_client(self._fallback.model.provider)
@@ -626,6 +711,7 @@ class Agent:
                 response_format=response_format,
                 reasoning_effort=effective_reasoning,
                 max_tokens=self._max_output_tokens,
+                cache_conversation=self._cache_conversation,
             )
 
             # Accumulate usage (includes cache tokens from Anthropic)
@@ -646,6 +732,7 @@ class Agent:
                     tool_results=all_tool_results,
                     usage=total_usage,
                     response_format=response_format,
+                    stop_reason=response.stop_reason,
                 )
 
             # Add assistant message with tool calls to history
@@ -688,6 +775,7 @@ class Agent:
             response_format=response_format,
             reasoning_effort=effective_reasoning,
             max_tokens=self._max_output_tokens,
+            cache_conversation=self._cache_conversation,
         )
 
         total_usage = Usage(
@@ -706,6 +794,7 @@ class Agent:
             tool_results=all_tool_results,
             usage=total_usage,
             response_format=response_format,
+            stop_reason=final_response.stop_reason,
         )
 
     def _attach_input_guard_results(
@@ -755,6 +844,8 @@ class Agent:
             usage=response.usage,
             blocked=response.blocked,
             guardrail_result=guardrail_result,
+            parsed=response.parsed,
+            stop_reason=response.stop_reason,
         )
 
     async def _run_streaming(self, messages: list[Message]) -> AsyncIterator[str]:
@@ -860,11 +951,17 @@ class Agent:
             main_error = str(e)
             # No fallback configured - raise immediately
             if self._fallback is None:
+                if isinstance(e, UnsupportedContentError):
+                    raise
                 raise ModelFailedError(
                     model=self._model.value,
                     error=main_error,
                     has_fallback=False,
                 ) from e
+
+            # Capability-aware: never downgrade media onto a fallback model
+            # that can't handle it.
+            self._ensure_fallback_viable(e, full_messages)
 
             # Try fallback
             logger.warning(
@@ -926,6 +1023,32 @@ class Agent:
                 error="No fallback configured but fallback_state.using_fallback=True",
                 has_fallback=False,
             )
+
+        # Capability-aware: media the sticky fallback model can't handle
+        # routes straight to the main model.
+        if self._unsupported_content_types(self._fallback.model, full_messages):
+            try:
+                main_client = self._router.create_client(self._model.provider)
+                async for sse in self._stream_with_client(
+                    client=main_client,
+                    model=self._model,
+                    full_messages=full_messages,
+                    guard_task=guard_task,
+                    emitter=emitter,
+                ):
+                    yield sse
+                # Main handled it - reset sticky state
+                fallback_state.using_fallback = False
+                fallback_state.successful_fallback_calls = 0
+                return
+            except Exception as e:
+                if isinstance(e, UnsupportedContentError):
+                    raise
+                raise ModelFailedError(
+                    model=self._model.value,
+                    error=str(e),
+                    has_fallback=False,
+                ) from e
 
         try:
             client = self._router.create_client(self._fallback.model.provider)
@@ -1021,6 +1144,7 @@ class Agent:
                 tools=self._tool_definitions if self._tool_definitions else None,
                 reasoning_effort=effective_reasoning,
                 max_tokens=self._max_output_tokens,
+                cache_conversation=self._cache_conversation,
             )
 
             async for chunk in stream:
@@ -1276,6 +1400,7 @@ class Agent:
             tools=None,
             reasoning_effort=reasoning_effort,
             max_tokens=self._max_output_tokens,
+            cache_conversation=self._cache_conversation,
         )
 
         # Track usage and pending done for different provider patterns
@@ -1513,8 +1638,10 @@ class Agent:
             Content of the last user message, or empty string if none found.
         """
         for message in reversed(messages):
-            if message.role == Role.USER and message.content:
-                return message.content
+            if message.role == Role.USER and text_of(message):
+                # Media-only user messages read as empty and are skipped,
+                # matching the existing None-content behavior.
+                return text_of(message)
         return ""
 
     async def _finalize_response(
@@ -1524,6 +1651,7 @@ class Agent:
         tool_results: list[ToolResult[Any]],
         usage: Usage,
         response_format: ResponseFormat | None = None,
+        stop_reason: str | None = None,
     ) -> AgentResponse:
         """Finalize response with output guardrails check and structured output parsing.
 
@@ -1536,21 +1664,23 @@ class Agent:
             tool_results: Results from tool executions.
             usage: Token usage statistics.
             response_format: Optional structured output configuration for parsing.
+            stop_reason: Provider-native stop reason of the final completion.
 
         Returns:
             AgentResponse with output guardrail results and parsed content (if any).
         """
         output_policy: PolicyResult | None = None
         is_output_safe = True
+        message_text = text_of(message)
 
         # Check output guardrails if configured
         if (
             self._guardrails is not None
             and self._guardrails.has_output_guardrails
-            and message.content
+            and message_text
         ):
             is_output_safe, output_policy = await self._check_guardrails(
-                message.content, "output"
+                message_text, "output"
             )
 
         # Build guardrail result if output guardrails were run
@@ -1564,10 +1694,10 @@ class Agent:
 
         # Parse structured output if response_format was provided
         parsed: BaseModel | None = None
-        if response_format is not None and message.content:
+        if response_format is not None and message_text:
             from neosian._foundation.shared.schema import validate_json
 
-            parsed = validate_json(response_format.schema, message.content)
+            parsed = validate_json(response_format.schema, message_text)
 
         return AgentResponse(
             message=message,
@@ -1577,6 +1707,7 @@ class Agent:
             blocked=not is_output_safe,
             guardrail_result=guardrail_result,
             parsed=parsed,
+            stop_reason=stop_reason,
         )
 
     # =========================================================================
@@ -1776,11 +1907,17 @@ class Agent:
             main_error = str(e)
             # No fallback configured - raise immediately
             if self._fallback is None:
+                if isinstance(e, UnsupportedContentError):
+                    raise
                 raise ModelFailedError(
                     model=self._model.value,
                     error=main_error,
                     has_fallback=False,
                 ) from e
+
+            # Capability-aware: never downgrade media onto a fallback model
+            # that can't handle it.
+            self._ensure_fallback_viable(e, full_messages)
 
             # Try fallback
             logger.warning(
@@ -1839,6 +1976,30 @@ class Agent:
                 error="No fallback configured but fallback_state.using_fallback=True",
                 has_fallback=False,
             )
+
+        # Capability-aware: media the sticky fallback model can't handle
+        # routes straight to the main model.
+        if self._unsupported_content_types(self._fallback.model, full_messages):
+            try:
+                main_client = session._get_or_create_client(self._model.provider)
+                response = await self._execute_with_client(
+                    client=main_client,
+                    model=self._model,
+                    full_messages=full_messages,
+                    response_format=response_format,
+                )
+                # Main handled it - reset sticky state
+                fallback_state.using_fallback = False
+                fallback_state.successful_fallback_calls = 0
+                return response
+            except Exception as e:
+                if isinstance(e, UnsupportedContentError):
+                    raise
+                raise ModelFailedError(
+                    model=self._model.value,
+                    error=str(e),
+                    has_fallback=False,
+                ) from e
 
         try:
             client = session._get_or_create_client(self._fallback.model.provider)
@@ -2005,11 +2166,17 @@ class Agent:
             main_error = str(e)
             # No fallback configured - raise immediately
             if self._fallback is None:
+                if isinstance(e, UnsupportedContentError):
+                    raise
                 raise ModelFailedError(
                     model=self._model.value,
                     error=main_error,
                     has_fallback=False,
                 ) from e
+
+            # Capability-aware: never downgrade media onto a fallback model
+            # that can't handle it.
+            self._ensure_fallback_viable(e, full_messages)
 
             # Try fallback
             logger.warning(
@@ -2072,6 +2239,32 @@ class Agent:
                 error="No fallback configured but fallback_state.using_fallback=True",
                 has_fallback=False,
             )
+
+        # Capability-aware: media the sticky fallback model can't handle
+        # routes straight to the main model.
+        if self._unsupported_content_types(self._fallback.model, full_messages):
+            try:
+                main_client = session._get_or_create_client(self._model.provider)
+                async for sse in self._stream_with_client(
+                    client=main_client,
+                    model=self._model,
+                    full_messages=full_messages,
+                    guard_task=guard_task,
+                    emitter=emitter,
+                ):
+                    yield sse
+                # Main handled it - reset sticky state
+                fallback_state.using_fallback = False
+                fallback_state.successful_fallback_calls = 0
+                return
+            except Exception as e:
+                if isinstance(e, UnsupportedContentError):
+                    raise
+                raise ModelFailedError(
+                    model=self._model.value,
+                    error=str(e),
+                    has_fallback=False,
+                ) from e
 
         try:
             client = session._get_or_create_client(self._fallback.model.provider)

@@ -125,6 +125,20 @@ class ErrorMessages:
     UNSUPPORTED_PROVIDER: str = "Unsupported provider: {provider}"
     INVALID_PROVIDER_MODEL_FORMAT: str = "Invalid provider:model format: {value}"
 
+    # Multimodal content errors
+    CONTENT_BLOCKS_NOT_SUPPORTED: str = (
+        "Provider '{provider}' does not support {block_type} content blocks. "
+        "Multimodal content (images / documents) is only supported by the "
+        "Anthropic provider. Content is never silently dropped."
+    )
+    CONTENT_TYPE_NOT_SUPPORTED_BY_MODEL: str = (
+        "Model '{model}' does not support {block_type} content."
+    )
+    FALLBACK_SKIPPED_UNSUPPORTED_CONTENT: str = (
+        "Fallback to '{model}' skipped: it does not support the {block_type} "
+        "content in this conversation."
+    )
+
     # Guardrail errors
     GUARDRAIL_INPUT_BLOCKED: str = "Input blocked by {guardrail_type}: {reason}"
     GUARDRAIL_OUTPUT_BLOCKED: str = "Output blocked by {guardrail_type}: {reason}"

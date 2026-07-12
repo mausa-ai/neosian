@@ -185,6 +185,21 @@ class UnsupportedParameterError(LLMError):
         self.message = message
 
 
+class UnsupportedContentError(LLMError):
+    """Raised when multimodal content blocks reach a provider or model
+    that cannot handle them.
+
+    Content is never silently dropped: providers without a content-block
+    converter (OpenAI, Groq, Cerebras) raise this on any block-list message,
+    and the Anthropic client raises it when the target model's ModelSpec
+    lacks the required capability.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+        self.message = message
+
+
 class GuardrailError(NeosianError):
     """Base exception for guardrail-related errors."""
 

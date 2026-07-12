@@ -1447,3 +1447,269 @@ class TestAgentParallelToolExecution:
                 enable_todo=False,
                 max_parallel_tools=-1,
             )
+
+
+@pytest.mark.unit
+class TestAgentStopReason:
+    """AgentResponse must surface the completion's stop_reason."""
+
+    @pytest.mark.asyncio
+    async def test_stop_reason_threaded_to_agent_response(self) -> None:
+        """stop_reason from the final completion lands on AgentResponse."""
+        mock_client = AsyncMock(spec=BaseLLMClient)
+        mock_client.complete.return_value = CompletionResponse(
+            message=Message(role=Role.ASSISTANT, content="Truncated..."),
+            usage=Usage(input_tokens=10, output_tokens=5),
+            model="test-model",
+            stop_reason="max_tokens",
+        )
+
+        with patch(
+            "neosian._foundation.agent.base.ProviderRouter",
+            return_value=_create_mock_router(mock_client),
+        ):
+            config = AgentConfig(
+                system_prompt=SystemPrompt("You are helpful."),
+                tools=[],
+                enable_todo=False,
+            )
+            agent = Agent(config=config)
+
+            response = await agent.run(
+                [Message(role=Role.USER, content="Hi")], stream=False
+            )
+
+            assert response.stop_reason == "max_tokens"
+
+
+@pytest.mark.unit
+class TestAgentCacheConversation:
+    """cache_conversation must reach the client call."""
+
+    @pytest.mark.asyncio
+    async def test_cache_conversation_false_passed_to_client(self) -> None:
+        """AgentConfig(cache_conversation=False) reaches client.complete."""
+        mock_client = AsyncMock(spec=BaseLLMClient)
+        mock_client.complete.return_value = CompletionResponse(
+            message=Message(role=Role.ASSISTANT, content="Done."),
+            usage=Usage(input_tokens=10, output_tokens=5),
+            model="test-model",
+        )
+
+        with patch(
+            "neosian._foundation.agent.base.ProviderRouter",
+            return_value=_create_mock_router(mock_client),
+        ):
+            config = AgentConfig(
+                system_prompt=SystemPrompt("You transcribe PDFs."),
+                tools=[],
+                enable_todo=False,
+                cache_conversation=False,
+            )
+            agent = Agent(config=config)
+
+            await agent.run([Message(role=Role.USER, content="Hi")], stream=False)
+
+            call_kwargs = mock_client.complete.call_args.kwargs
+            assert call_kwargs["cache_conversation"] is False
+
+    @pytest.mark.asyncio
+    async def test_cache_conversation_defaults_to_true(self) -> None:
+        """Default config keeps conversation caching on."""
+        mock_client = AsyncMock(spec=BaseLLMClient)
+        mock_client.complete.return_value = CompletionResponse(
+            message=Message(role=Role.ASSISTANT, content="Done."),
+            usage=Usage(input_tokens=10, output_tokens=5),
+            model="test-model",
+        )
+
+        with patch(
+            "neosian._foundation.agent.base.ProviderRouter",
+            return_value=_create_mock_router(mock_client),
+        ):
+            config = AgentConfig(
+                system_prompt=SystemPrompt("You are helpful."),
+                tools=[],
+                enable_todo=False,
+            )
+            agent = Agent(config=config)
+
+            await agent.run([Message(role=Role.USER, content="Hi")], stream=False)
+
+            call_kwargs = mock_client.complete.call_args.kwargs
+            assert call_kwargs["cache_conversation"] is True
+
+
+@pytest.mark.unit
+class TestCapabilityAwareFallback:
+    """Media-bearing conversations never downgrade to a non-supporting model."""
+
+    def _doc_messages(self) -> list[Message]:
+        from neosian._foundation.llm.base import DocumentBlock, TextBlock
+
+        return [
+            Message(
+                role=Role.USER,
+                content=[
+                    DocumentBlock(media_type="application/pdf", data="JVBERi0="),
+                    TextBlock(text="Transcribe this."),
+                ],
+            ),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_fallback_skipped_when_model_lacks_support(self) -> None:
+        """Transient main failure + doc message + Groq fallback -> no fallback try."""
+        from neosian._foundation.shared.exceptions import ModelFailedError
+
+        main_client = AsyncMock(spec=BaseLLMClient)
+        main_client.complete.side_effect = RuntimeError("rate limited")
+        fallback_client = AsyncMock(spec=BaseLLMClient)
+
+        clients = {
+            Provider.ANTHROPIC: main_client,
+            Provider.GROQ: fallback_client,
+        }
+        mock_router = MagicMock()
+        mock_router.has_provider.return_value = True
+        mock_router.create_client.side_effect = lambda provider: clients[provider]
+
+        with patch(
+            "neosian._foundation.agent.base.ProviderRouter",
+            return_value=mock_router,
+        ):
+            config = AgentConfig(
+                system_prompt=SystemPrompt("You transcribe PDFs."),
+                tools=[],
+                enable_todo=False,
+                model=Model.CLAUDE_SONNET_5,
+                fallback=FallbackConfig(model=Model.GROQ_LLAMA_3_3_70B),
+            )
+            agent = Agent(config=config)
+
+            with pytest.raises(ModelFailedError):
+                await agent.run(self._doc_messages(), stream=False)
+
+            fallback_client.complete.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_unsupported_content_error_bypasses_wrapping_without_fallback(
+        self,
+    ) -> None:
+        """No fallback configured: UnsupportedContentError re-raises unwrapped."""
+        from neosian._foundation.shared.exceptions import UnsupportedContentError
+
+        mock_client = AsyncMock(spec=BaseLLMClient)
+        mock_client.complete.side_effect = UnsupportedContentError(
+            "Provider 'openai' does not support multimodal content blocks."
+        )
+
+        with patch(
+            "neosian._foundation.agent.base.ProviderRouter",
+            return_value=_create_mock_router(mock_client),
+        ):
+            config = AgentConfig(
+                system_prompt=SystemPrompt("You are helpful."),
+                tools=[],
+                enable_todo=False,
+                model=Model.GPT_5_NANO,
+            )
+            agent = Agent(config=config)
+
+            with pytest.raises(UnsupportedContentError):
+                await agent.run(self._doc_messages(), stream=False)
+
+    @pytest.mark.asyncio
+    async def test_fallback_to_supporting_model_still_works(self) -> None:
+        """Main can't handle the doc, but a Claude fallback picks it up."""
+        from neosian._foundation.shared.exceptions import UnsupportedContentError
+
+        main_client = AsyncMock(spec=BaseLLMClient)
+        main_client.complete.side_effect = UnsupportedContentError(
+            "Provider 'openai' does not support multimodal content blocks."
+        )
+        fallback_client = AsyncMock(spec=BaseLLMClient)
+        fallback_client.complete.return_value = CompletionResponse(
+            message=Message(role=Role.ASSISTANT, content="# Transcription"),
+            usage=Usage(input_tokens=100, output_tokens=50),
+            model="claude-sonnet-5",
+            stop_reason="end_turn",
+        )
+
+        clients = {
+            Provider.OPENAI: main_client,
+            Provider.ANTHROPIC: fallback_client,
+        }
+        mock_router = MagicMock()
+        mock_router.has_provider.return_value = True
+        mock_router.create_client.side_effect = lambda provider: clients[provider]
+
+        with patch(
+            "neosian._foundation.agent.base.ProviderRouter",
+            return_value=mock_router,
+        ):
+            config = AgentConfig(
+                system_prompt=SystemPrompt("You transcribe PDFs."),
+                tools=[],
+                enable_todo=False,
+                model=Model.GPT_5_NANO,
+                fallback=FallbackConfig(model=Model.CLAUDE_SONNET_5),
+            )
+            agent = Agent(config=config)
+
+            response = await agent.run(self._doc_messages(), stream=False)
+
+            assert response.message.content == "# Transcription"
+            assert response.stop_reason == "end_turn"
+            fallback_client.complete.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_sticky_fallback_routes_media_to_main(self) -> None:
+        """Sticky-on-Groq session + doc message -> straight to the Claude main."""
+        from neosian._foundation.shared.types import FallbackState
+
+        main_client = AsyncMock(spec=BaseLLMClient)
+        main_client.complete.return_value = CompletionResponse(
+            message=Message(role=Role.ASSISTANT, content="# Transcription"),
+            usage=Usage(input_tokens=100, output_tokens=50),
+            model="claude-sonnet-5",
+        )
+        fallback_client = AsyncMock(spec=BaseLLMClient)
+
+        clients = {
+            Provider.ANTHROPIC: main_client,
+            Provider.GROQ: fallback_client,
+        }
+        mock_router = MagicMock()
+        mock_router.has_provider.return_value = True
+        mock_router.create_client.side_effect = lambda provider: clients[provider]
+
+        with patch(
+            "neosian._foundation.agent.base.ProviderRouter",
+            return_value=mock_router,
+        ):
+            config = AgentConfig(
+                system_prompt=SystemPrompt("You transcribe PDFs."),
+                tools=[],
+                enable_todo=False,
+                model=Model.CLAUDE_SONNET_5,
+                fallback=FallbackConfig(model=Model.GROQ_LLAMA_3_3_70B),
+            )
+            agent = Agent(config=config)
+
+            fallback_state = FallbackState(
+                using_fallback=True, successful_fallback_calls=1
+            )
+            full_messages = [
+                Message(role=Role.SYSTEM, content="You transcribe PDFs."),
+                *self._doc_messages(),
+            ]
+
+            response = await agent._execute_with_fallback_model(
+                full_messages, fallback_state
+            )
+
+            assert response.message.content == "# Transcription"
+            fallback_client.complete.assert_not_called()
+            # Main handled it - sticky state resets
+            assert fallback_state.using_fallback is False

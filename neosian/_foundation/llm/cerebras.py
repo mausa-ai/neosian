@@ -20,6 +20,7 @@ from neosian._foundation.llm.base import (
 from neosian._foundation.shared.constants import ErrorMessages, LLMDefaults
 from neosian._foundation.shared.exceptions import (
     ToolCallGenerationError,
+    UnsupportedContentError,
     UnsupportedParameterError,
 )
 from neosian._foundation.shared.serialization import safe_json_dumps
@@ -59,6 +60,7 @@ class CerebrasClient(BaseLLMClient):
         response_format: ResponseFormat | None = None,
         reasoning_effort: ReasoningEffort | None = None,
         max_tokens: int = LLMDefaults.MAX_OUTPUT_TOKENS,
+        cache_conversation: bool = True,  # noqa: ARG002 - no explicit cache breakpoints
     ) -> CompletionResponse:
         """Send a completion request to Cerebras.
 
@@ -217,6 +219,7 @@ class CerebrasClient(BaseLLMClient):
                 cache_read_input_tokens=cache_read,
             ),
             model=response.model,  # type: ignore[attr-defined]
+            stop_reason=getattr(choice, "finish_reason", None),
         )
 
     async def stream(
@@ -227,6 +230,7 @@ class CerebrasClient(BaseLLMClient):
         temperature: float | None = None,
         reasoning_effort: ReasoningEffort | None = None,
         max_tokens: int = LLMDefaults.MAX_OUTPUT_TOKENS,
+        cache_conversation: bool = True,  # noqa: ARG002 - no explicit cache breakpoints
     ) -> AsyncIterator[StreamChunk]:
         """Stream a completion request from Cerebras.
 
@@ -362,10 +366,22 @@ class CerebrasClient(BaseLLMClient):
             )
 
     def _convert_messages(self, messages: list[Message]) -> list[dict[str, Any]]:
-        """Convert internal messages to Cerebras format (OpenAI-compatible)."""
+        """Convert internal messages to Cerebras format (OpenAI-compatible).
+
+        Raises:
+            UnsupportedContentError: On block-list content — neosian's
+                Cerebras converter is text-only; media is never silently
+                dropped.
+        """
         result: list[dict[str, Any]] = []
 
         for msg in messages:
+            if isinstance(msg.content, list):
+                raise UnsupportedContentError(
+                    ErrorMessages.CONTENT_BLOCKS_NOT_SUPPORTED.format(
+                        provider="cerebras", block_type="multimodal"
+                    )
+                )
             if msg.role == Role.SYSTEM:
                 result.append({"role": "system", "content": msg.content or ""})
             elif msg.role == Role.USER:

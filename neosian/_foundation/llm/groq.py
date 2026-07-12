@@ -24,6 +24,7 @@ from neosian._foundation.llm.base import (
 from neosian._foundation.shared.constants import ErrorMessages, LLMDefaults
 from neosian._foundation.shared.exceptions import (
     ToolCallGenerationError,
+    UnsupportedContentError,
     UnsupportedParameterError,
 )
 from neosian._foundation.shared.serialization import safe_json_dumps
@@ -62,6 +63,7 @@ class GroqClient(BaseLLMClient):
         response_format: ResponseFormat | None = None,
         reasoning_effort: ReasoningEffort | None = None,
         max_tokens: int = LLMDefaults.MAX_OUTPUT_TOKENS,
+        cache_conversation: bool = True,  # noqa: ARG002 - no explicit cache breakpoints
     ) -> CompletionResponse:
         """Send a completion request to Groq.
 
@@ -199,6 +201,7 @@ class GroqClient(BaseLLMClient):
                 output_tokens=response.usage.completion_tokens if response.usage else 0,  # type: ignore[attr-defined]
             ),
             model=response.model,  # type: ignore[attr-defined]
+            stop_reason=getattr(choice, "finish_reason", None),
         )
 
     async def stream(
@@ -209,6 +212,7 @@ class GroqClient(BaseLLMClient):
         temperature: float | None = None,
         reasoning_effort: ReasoningEffort | None = None,
         max_tokens: int = LLMDefaults.MAX_OUTPUT_TOKENS,
+        cache_conversation: bool = True,  # noqa: ARG002 - no explicit cache breakpoints
     ) -> AsyncIterator[StreamChunk]:
         """Stream a completion request from Groq.
 
@@ -330,10 +334,22 @@ class GroqClient(BaseLLMClient):
     def _convert_messages(
         self, messages: list[Message]
     ) -> list[ChatCompletionMessageParam]:
-        """Convert internal messages to Groq format."""
+        """Convert internal messages to Groq format.
+
+        Raises:
+            UnsupportedContentError: On block-list content — neosian's
+                Groq converter is text-only; media is never silently
+                dropped.
+        """
         result: list[ChatCompletionMessageParam] = []
 
         for msg in messages:
+            if isinstance(msg.content, list):
+                raise UnsupportedContentError(
+                    ErrorMessages.CONTENT_BLOCKS_NOT_SUPPORTED.format(
+                        provider="groq", block_type="multimodal"
+                    )
+                )
             if msg.role == Role.SYSTEM:
                 result.append({"role": "system", "content": msg.content or ""})
             elif msg.role == Role.USER:

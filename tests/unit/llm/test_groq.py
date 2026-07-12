@@ -733,3 +733,23 @@ class TestGroqClientReasoningContent:
         assert len(chunks) == 1
         assert chunks[0].content == "Hello"
         assert chunks[0].reasoning is None
+
+
+@pytest.mark.unit
+class TestGroqMultimodalRejected:
+    """Groq's converter is text-only — block content must fail loudly."""
+
+    def test_convert_messages_block_content_raises(self) -> None:
+        from neosian._foundation.llm.base import ImageBlock
+        from neosian._foundation.shared.exceptions import UnsupportedContentError
+
+        client = GroqClient(api_key="test-key")
+        messages = [
+            Message(
+                role=Role.USER,
+                content=[ImageBlock(media_type="image/png", data="aGVsbG8=")],
+            ),
+        ]
+
+        with pytest.raises(UnsupportedContentError, match="groq"):
+            client._convert_messages(messages)

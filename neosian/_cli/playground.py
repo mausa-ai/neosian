@@ -23,7 +23,7 @@ from neosian._cli.loader import load_agent_config
 from neosian._cli.session import ArenaModelResponse, ArenaSession, Session
 from neosian._foundation.agent.base import Agent
 from neosian._foundation.agent.session import AgentSession
-from neosian._foundation.llm.base import Message, Role
+from neosian._foundation.llm.base import Message, Role, text_of
 from neosian._foundation.shared.constants import ArenaUI, Assets, Config, PlaygroundUI
 from neosian._foundation.shared.types import AgentConfig, Model, Provider
 
@@ -498,7 +498,7 @@ def _build_arena_result(
     return ArenaModelResult(
         provider=provider,
         model=model,
-        content=response.message.content or "",
+        content=text_of(response.message),
         tool_calls_text=tool_calls_text,
         tool_calls_raw=tool_calls_raw,
         elapsed_time=elapsed_time,
@@ -953,15 +953,16 @@ async def _chat_loop(
                 )
 
             # Display assistant response
-            if response.message.content:
-                session.add_assistant_message(response.message.content)
+            assistant_text = text_of(response.message)
+            if assistant_text:
+                session.add_assistant_message(assistant_text)
                 title = Text()
                 title.append(provider, style="cyan")
                 title.append("/", style="dim")
                 title.append(model, style="blue")
                 console.print(
                     Panel(
-                        Markdown(response.message.content),
+                        Markdown(assistant_text),
                         title=title,
                         border_style="blue",
                     )

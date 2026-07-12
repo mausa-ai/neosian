@@ -121,6 +121,11 @@ def test_all_list_matches_exports() -> None:
         # Messages
         "Message",
         "Role",
+        "ContentBlock",
+        "TextBlock",
+        "ImageBlock",
+        "DocumentBlock",
+        "text_of",
         # Models and Providers
         "Model",
         "ModelSpec",
@@ -187,6 +192,7 @@ def test_all_list_matches_exports() -> None:
         "StructuredOutputError",
         "StructuredOutputStreamingError",
         "StructuredOutputToolsError",
+        "UnsupportedContentError",
         # Meta
         "__version__",
     }

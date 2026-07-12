@@ -798,3 +798,26 @@ class TestOpenAIPromptCaching:
         assert chunks[0].usage is not None
         assert chunks[0].usage.input_tokens == 500
         assert chunks[0].usage.cache_read_input_tokens == 0
+
+
+@pytest.mark.unit
+class TestOpenAIMultimodalRejected:
+    """OpenAI's converter is text-only — block content must fail loudly."""
+
+    def test_convert_messages_block_content_raises(self) -> None:
+        from neosian._foundation.llm.base import DocumentBlock, TextBlock
+        from neosian._foundation.shared.exceptions import UnsupportedContentError
+
+        client = OpenAIClient(api_key="test-key")
+        messages = [
+            Message(
+                role=Role.USER,
+                content=[
+                    DocumentBlock(media_type="application/pdf", data="JVBERi0="),
+                    TextBlock(text="Transcribe this."),
+                ],
+            ),
+        ]
+
+        with pytest.raises(UnsupportedContentError, match="openai"):
+            client._convert_messages(messages)

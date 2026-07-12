@@ -46,12 +46,19 @@ class Provider(str, Enum):
 
 @dataclass(frozen=True)
 class ModelSpec:
-    """Immutable specification for a model's capabilities."""
+    """Immutable specification for a model's capabilities.
+
+    supports_images / supports_documents describe what neosian's converters
+    implement, not the raw provider capability (e.g. GPT-5 has vision
+    upstream, but neosian's OpenAI converter does not — so it stays False).
+    """
 
     provider: Provider
     context_window: int
     max_output_tokens: int
     supports_reasoning: bool = False
+    supports_images: bool = False
+    supports_documents: bool = False
 
 
 # Model specs registry (populated after Model enum is defined)
@@ -136,6 +143,16 @@ class Model(str, Enum):
     def supports_reasoning(self) -> bool:
         """Check if this model supports reasoning_effort parameter."""
         return _MODEL_SPECS[self.value].supports_reasoning
+
+    @property
+    def supports_images(self) -> bool:
+        """Check if neosian's converter supports image content for this model."""
+        return _MODEL_SPECS[self.value].supports_images
+
+    @property
+    def supports_documents(self) -> bool:
+        """Check if neosian's converter supports document content for this model."""
+        return _MODEL_SPECS[self.value].supports_documents
 
 
 # Groq - Production
@@ -228,17 +245,23 @@ _MODEL_SPECS[Model.CLAUDE_OPUS_4_6.value] = ModelSpec(
     context_window=200_000,
     max_output_tokens=128_000,
     supports_reasoning=True,
+    supports_images=True,
+    supports_documents=True,
 )
 _MODEL_SPECS[Model.CLAUDE_SONNET_5.value] = ModelSpec(
     provider=Provider.ANTHROPIC,
     context_window=200_000,
     max_output_tokens=64_000,
     supports_reasoning=True,
+    supports_images=True,
+    supports_documents=True,
 )
 _MODEL_SPECS[Model.CLAUDE_HAIKU_4_5.value] = ModelSpec(
     provider=Provider.ANTHROPIC,
     context_window=200_000,
     max_output_tokens=64_000,
+    supports_images=True,
+    supports_documents=True,
 )
 
 # Cerebras - Production
@@ -462,6 +485,7 @@ class AgentConfig:
     reasoning_effort: ReasoningEffort | None = None
     max_output_tokens: int | None = None
     max_parallel_tools: int | None = None
+    cache_conversation: bool = True
     playbook_dir: str | Path | None = None
     blackboard: Any = None  # BlackboardProvider | None (Any to avoid circular import)
 

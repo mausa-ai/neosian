@@ -9,7 +9,17 @@ from neosian._foundation.agent.streaming import (
     reasoning_event,
 )
 from neosian._foundation.guardrails.policy import CommonPolicies, PolicyBuilder
-from neosian._foundation.llm.base import Message, Role, ToolCall, Usage
+from neosian._foundation.llm.base import (
+    ContentBlock,
+    DocumentBlock,
+    ImageBlock,
+    Message,
+    Role,
+    TextBlock,
+    ToolCall,
+    Usage,
+    text_of,
+)
 from neosian._foundation.shared.constraints import (
     Desc,
     Max,
@@ -30,6 +40,7 @@ from neosian._foundation.shared.exceptions import (
     StructuredOutputError,
     StructuredOutputStreamingError,
     StructuredOutputToolsError,
+    UnsupportedContentError,
 )
 from neosian._foundation.shared.playbook import load_playbook, load_playbooks
 from neosian._foundation.shared.prompt import load_prompt
@@ -62,7 +73,7 @@ from neosian._foundation.shared.types import (
 )
 from neosian._foundation.tools.base import Tool, ToolResult
 
-__version__ = "0.48.0"
+__version__ = "0.49.0"
 
 __all__ = [
     # Agent
@@ -73,6 +84,11 @@ __all__ = [
     # Messages
     "Message",
     "Role",
+    "ContentBlock",
+    "TextBlock",
+    "ImageBlock",
+    "DocumentBlock",
+    "text_of",
     # Tools
     "Tool",
     "ToolCall",
@@ -138,6 +154,7 @@ __all__ = [
     "StructuredOutputError",
     "StructuredOutputStreamingError",
     "StructuredOutputToolsError",
+    "UnsupportedContentError",
     # Meta
     "__version__",
 ]

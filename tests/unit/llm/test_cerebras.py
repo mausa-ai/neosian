@@ -919,3 +919,23 @@ class TestCerebrasClientCaching:
         assert chunks[0].usage.input_tokens == 300
         assert chunks[0].usage.cache_read_input_tokens == 700
         assert chunks[0].usage.output_tokens == 50
+
+
+@pytest.mark.unit
+class TestCerebrasMultimodalRejected:
+    """Cerebras's converter is text-only — block content must fail loudly."""
+
+    def test_convert_messages_block_content_raises(self) -> None:
+        from neosian._foundation.llm.base import DocumentBlock
+        from neosian._foundation.shared.exceptions import UnsupportedContentError
+
+        client = CerebrasClient(api_key="test-key")
+        messages = [
+            Message(
+                role=Role.USER,
+                content=[DocumentBlock(media_type="application/pdf", data="JVBERi0=")],
+            ),
+        ]
+
+        with pytest.raises(UnsupportedContentError, match="cerebras"):
+            client._convert_messages(messages)

@@ -8,9 +8,34 @@ from neosian._foundation.llm.anthropic import (
     AnthropicClient,
     _strip_unsupported_constraints,
 )
-from neosian._foundation.llm.base import Message, Role, ToolDefinition
-from neosian._foundation.shared.exceptions import UnsupportedParameterError
+from neosian._foundation.llm.base import (
+    DocumentBlock,
+    ImageBlock,
+    Message,
+    Role,
+    TextBlock,
+    ToolDefinition,
+)
+from neosian._foundation.shared.exceptions import (
+    UnsupportedContentError,
+    UnsupportedParameterError,
+)
 from neosian._foundation.shared.types import Model, ReasoningEffort
+
+
+def _mock_complete(client: AnthropicClient, mock_response: MagicMock) -> None:
+    """Wire a mocked final message into complete()'s internal-streaming path.
+
+    complete() uses messages.stream() + get_final_message() rather than
+    messages.create(), so tests mock the stream context manager and inspect
+    client._client.messages.stream.call_args.
+    """
+    inner = MagicMock()
+    inner.get_final_message = AsyncMock(return_value=mock_response)
+    mock_stream = MagicMock()
+    mock_stream.__aenter__ = AsyncMock(return_value=inner)
+    mock_stream.__aexit__ = AsyncMock(return_value=False)
+    client._client.messages.stream = MagicMock(return_value=mock_stream)
 
 
 @pytest.fixture
@@ -147,7 +172,7 @@ class TestAnthropicClient:
         mock_response.usage = MagicMock(input_tokens=10, output_tokens=5)
         mock_response.model = "claude-sonnet-5"
 
-        client._client.messages.create = AsyncMock(return_value=mock_response)
+        _mock_complete(client, mock_response)
 
         response = await client.complete(
             messages=sample_messages,
@@ -176,7 +201,7 @@ class TestAnthropicClient:
         mock_response.usage = MagicMock(input_tokens=15, output_tokens=8)
         mock_response.model = "claude-sonnet-5"
 
-        client._client.messages.create = AsyncMock(return_value=mock_response)
+        _mock_complete(client, mock_response)
 
         response = await client.complete(
             messages=sample_messages,
@@ -280,7 +305,7 @@ class TestAnthropicReasoningEffort:
         mock_response.usage = MagicMock(input_tokens=10, output_tokens=5)
         mock_response.model = "claude-opus-4-6"
 
-        client._client.messages.create = AsyncMock(return_value=mock_response)
+        _mock_complete(client, mock_response)
 
         await client.complete(
             messages=sample_messages,
@@ -288,8 +313,8 @@ class TestAnthropicReasoningEffort:
             reasoning_effort=ReasoningEffort.HIGH,
         )
 
-        client._client.messages.create.assert_called_once()
-        call_kwargs = client._client.messages.create.call_args.kwargs
+        client._client.messages.stream.assert_called_once()
+        call_kwargs = client._client.messages.stream.call_args.kwargs
         assert call_kwargs["thinking"] == {"type": "adaptive"}
         assert call_kwargs["output_config"] == {"effort": "high"}
         assert "temperature" not in call_kwargs
@@ -304,7 +329,7 @@ class TestAnthropicReasoningEffort:
         mock_response.usage = MagicMock(input_tokens=10, output_tokens=5)
         mock_response.model = "claude-opus-4-6"
 
-        client._client.messages.create = AsyncMock(return_value=mock_response)
+        _mock_complete(client, mock_response)
 
         await client.complete(
             messages=sample_messages,
@@ -312,7 +337,7 @@ class TestAnthropicReasoningEffort:
             reasoning_effort=ReasoningEffort.MAX,
         )
 
-        call_kwargs = client._client.messages.create.call_args.kwargs
+        call_kwargs = client._client.messages.stream.call_args.kwargs
         assert call_kwargs["output_config"] == {"effort": "max"}
 
     @pytest.mark.asyncio
@@ -330,26 +355,51 @@ class TestAnthropicReasoningEffort:
         assert "claude-haiku-4-5" in str(exc_info.value)
 
     @pytest.mark.asyncio
-    async def test_reasoning_effort_none_includes_temperature(
+    async def test_reasoning_effort_none_omits_temperature_by_default(
         self, client: AnthropicClient, sample_messages: list[Message]
     ) -> None:
-        """Verify temperature is included when reasoning_effort is None."""
+        """No reasoning effort and no explicit temperature -> neither is sent.
+
+        Newer Claude models (e.g. Sonnet 5) reject non-default sampling
+        parameters with a 400, so the API default must apply when unset.
+        """
         mock_response = MagicMock()
         mock_response.content = [MagicMock(type="text", text="Answer")]
         mock_response.usage = MagicMock(input_tokens=10, output_tokens=5)
         mock_response.model = "claude-sonnet-5"
 
-        client._client.messages.create = AsyncMock(return_value=mock_response)
+        _mock_complete(client, mock_response)
 
         await client.complete(
             messages=sample_messages,
             model=Model.CLAUDE_SONNET_5,
         )
 
-        call_kwargs = client._client.messages.create.call_args.kwargs
-        assert "temperature" in call_kwargs
+        call_kwargs = client._client.messages.stream.call_args.kwargs
+        assert "temperature" not in call_kwargs
         assert "thinking" not in call_kwargs
         assert "output_config" not in call_kwargs
+
+    @pytest.mark.asyncio
+    async def test_explicit_temperature_is_sent(
+        self, client: AnthropicClient, sample_messages: list[Message]
+    ) -> None:
+        """An explicitly provided temperature still reaches the API."""
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(type="text", text="Answer")]
+        mock_response.usage = MagicMock(input_tokens=10, output_tokens=5)
+        mock_response.model = "claude-haiku-4-5"
+
+        _mock_complete(client, mock_response)
+
+        await client.complete(
+            messages=sample_messages,
+            model=Model.CLAUDE_HAIKU_4_5,
+            temperature=0.3,
+        )
+
+        call_kwargs = client._client.messages.stream.call_args.kwargs
+        assert call_kwargs["temperature"] == 0.3
 
     @pytest.mark.asyncio
     async def test_reasoning_effort_in_stream_passes_thinking_kwargs(
@@ -405,7 +455,7 @@ class TestAnthropicReasoningEffort:
         mock_response.usage = MagicMock(input_tokens=10, output_tokens=5)
         mock_response.model = "claude-sonnet-5"
 
-        client._client.messages.create = AsyncMock(return_value=mock_response)
+        _mock_complete(client, mock_response)
 
         await client.complete(
             messages=sample_messages,
@@ -413,7 +463,7 @@ class TestAnthropicReasoningEffort:
             reasoning_effort=ReasoningEffort.HIGH,
         )
 
-        call_kwargs = client._client.messages.create.call_args.kwargs
+        call_kwargs = client._client.messages.stream.call_args.kwargs
         assert call_kwargs["thinking"] == {"type": "adaptive"}
         assert call_kwargs["output_config"] == {"effort": "high"}
         assert "temperature" not in call_kwargs
@@ -428,7 +478,7 @@ class TestAnthropicReasoningEffort:
         mock_response.usage = MagicMock(input_tokens=10, output_tokens=5)
         mock_response.model = "claude-sonnet-5"
 
-        client._client.messages.create = AsyncMock(return_value=mock_response)
+        _mock_complete(client, mock_response)
 
         await client.complete(
             messages=sample_messages,
@@ -436,7 +486,7 @@ class TestAnthropicReasoningEffort:
             reasoning_effort=ReasoningEffort.MAX,
         )
 
-        call_kwargs = client._client.messages.create.call_args.kwargs
+        call_kwargs = client._client.messages.stream.call_args.kwargs
         assert call_kwargs["output_config"] == {"effort": "high"}
 
     @pytest.mark.asyncio
@@ -449,7 +499,7 @@ class TestAnthropicReasoningEffort:
         mock_response.usage = MagicMock(input_tokens=10, output_tokens=5)
         mock_response.model = "claude-opus-4-6"
 
-        client._client.messages.create = AsyncMock(return_value=mock_response)
+        _mock_complete(client, mock_response)
 
         await client.complete(
             messages=sample_messages,
@@ -457,7 +507,7 @@ class TestAnthropicReasoningEffort:
             reasoning_effort=ReasoningEffort.MAX,
         )
 
-        call_kwargs = client._client.messages.create.call_args.kwargs
+        call_kwargs = client._client.messages.stream.call_args.kwargs
         assert call_kwargs["output_config"] == {"effort": "max"}
 
     @pytest.mark.asyncio
@@ -511,7 +561,7 @@ class TestAnthropicReasoningContent:
         mock_response.usage = MagicMock(input_tokens=10, output_tokens=20)
         mock_response.model = "claude-opus-4-6"
 
-        client._client.messages.create = AsyncMock(return_value=mock_response)
+        _mock_complete(client, mock_response)
 
         response = await client.complete(
             messages=sample_messages,
@@ -540,7 +590,7 @@ class TestAnthropicReasoningContent:
         mock_response.usage = MagicMock(input_tokens=10, output_tokens=5)
         mock_response.model = "claude-opus-4-6"
 
-        client._client.messages.create = AsyncMock(return_value=mock_response)
+        _mock_complete(client, mock_response)
 
         response = await client.complete(
             messages=sample_messages,
@@ -561,7 +611,7 @@ class TestAnthropicReasoningContent:
         mock_response.usage = MagicMock(input_tokens=10, output_tokens=5)
         mock_response.model = "claude-sonnet-5"
 
-        client._client.messages.create = AsyncMock(return_value=mock_response)
+        _mock_complete(client, mock_response)
 
         response = await client.complete(
             messages=sample_messages,
@@ -652,10 +702,12 @@ class TestAnthropicStreamingToolCalls:
         mock_block_stop = MagicMock()
         mock_block_stop.type = "content_block_stop"
 
-        # message_stop with usage
+        # message_stop with usage; the API reports the real stop reason
+        # on the message_delta event
         mock_msg_delta = MagicMock()
         mock_msg_delta.type = "message_delta"
         mock_msg_delta.usage = MagicMock(input_tokens=0, output_tokens=15)
+        mock_msg_delta.delta = MagicMock(stop_reason="tool_use")
 
         mock_msg_stop = MagicMock()
         mock_msg_stop.type = "message_stop"
@@ -1065,14 +1117,14 @@ class TestAnthropicPromptCaching:
         )
         mock_response.model = "claude-sonnet-5"
 
-        client._client.messages.create = AsyncMock(return_value=mock_response)
+        _mock_complete(client, mock_response)
 
         await client.complete(
             messages=sample_messages,
             model=Model.CLAUDE_SONNET_5,
         )
 
-        call_kwargs = client._client.messages.create.call_args.kwargs
+        call_kwargs = client._client.messages.stream.call_args.kwargs
         # System should be structured list, not plain string
         system = call_kwargs["system"]
         assert isinstance(system, list)
@@ -1100,7 +1152,7 @@ class TestAnthropicPromptCaching:
         )
         mock_response.model = "claude-sonnet-5"
 
-        client._client.messages.create = AsyncMock(return_value=mock_response)
+        _mock_complete(client, mock_response)
 
         response = await client.complete(
             messages=sample_messages,
@@ -1127,7 +1179,7 @@ class TestAnthropicPromptCaching:
         )
         mock_response.model = "claude-sonnet-5"
 
-        client._client.messages.create = AsyncMock(return_value=mock_response)
+        _mock_complete(client, mock_response)
 
         response = await client.complete(
             messages=sample_messages,
@@ -1154,7 +1206,7 @@ class TestAnthropicPromptCaching:
         mock_response.usage = mock_usage
         mock_response.model = "claude-sonnet-5"
 
-        client._client.messages.create = AsyncMock(return_value=mock_response)
+        _mock_complete(client, mock_response)
 
         response = await client.complete(
             messages=sample_messages,
@@ -1711,7 +1763,7 @@ class TestAnthropicStructuredOutput:
         mock_response.usage = MagicMock(input_tokens=5, output_tokens=3)
         mock_response.model = "claude-sonnet-5"
 
-        client._client.messages.create = AsyncMock(return_value=mock_response)
+        _mock_complete(client, mock_response)
 
         await client.complete(
             messages=sample_messages,
@@ -1719,8 +1771,8 @@ class TestAnthropicStructuredOutput:
             response_format=ResponseFormat(schema=Out),
         )
 
-        client._client.messages.create.assert_called_once()
-        call_kwargs = client._client.messages.create.call_args.kwargs
+        client._client.messages.stream.assert_called_once()
+        call_kwargs = client._client.messages.stream.call_args.kwargs
         # GA shape: format lives under output_config["format"]
         assert "output_config" in call_kwargs
         format_spec = call_kwargs["output_config"]["format"]
@@ -1747,7 +1799,7 @@ class TestAnthropicStructuredOutput:
         mock_response.usage = MagicMock(input_tokens=5, output_tokens=3)
         mock_response.model = "claude-opus-4-6"
 
-        client._client.messages.create = AsyncMock(return_value=mock_response)
+        _mock_complete(client, mock_response)
 
         await client.complete(
             messages=sample_messages,
@@ -1756,7 +1808,366 @@ class TestAnthropicStructuredOutput:
             reasoning_effort=ReasoningEffort.HIGH,
         )
 
-        call_kwargs = client._client.messages.create.call_args.kwargs
+        call_kwargs = client._client.messages.stream.call_args.kwargs
         output_config = call_kwargs["output_config"]
         assert output_config["effort"] == "high"
         assert output_config["format"]["type"] == "json_schema"
+
+
+@pytest.mark.unit
+class TestAnthropicMultimodal:
+    """Tests for image/document content block support."""
+
+    def test_convert_messages_image_block_base64(self, client: AnthropicClient) -> None:
+        """ImageBlock with base64 data maps to a base64 image source."""
+        messages = [
+            Message(
+                role=Role.USER,
+                content=[
+                    ImageBlock(media_type="image/png", data="aGVsbG8="),
+                    TextBlock(text="What is in this image?"),
+                ],
+            ),
+        ]
+
+        _, converted = client._convert_messages(messages)
+
+        assert len(converted) == 1
+        assert converted[0]["role"] == "user"
+        content = converted[0]["content"]
+        assert content[0] == {
+            "type": "image",
+            "source": {
+                "type": "base64",
+                "media_type": "image/png",
+                "data": "aGVsbG8=",
+            },
+        }
+        assert content[1] == {"type": "text", "text": "What is in this image?"}
+
+    def test_convert_messages_image_block_url(self, client: AnthropicClient) -> None:
+        """ImageBlock with url maps to a url image source (no media_type)."""
+        messages = [
+            Message(
+                role=Role.USER,
+                content=[
+                    ImageBlock(url="https://example.com/cat.png"),
+                    TextBlock(text="Describe this image"),
+                ],
+            ),
+        ]
+
+        _, converted = client._convert_messages(messages)
+
+        assert converted[0]["content"][0] == {
+            "type": "image",
+            "source": {"type": "url", "url": "https://example.com/cat.png"},
+        }
+
+    def test_convert_messages_document_block_base64(
+        self, client: AnthropicClient
+    ) -> None:
+        """DocumentBlock with base64 data maps to a base64 document source."""
+        messages = [
+            Message(
+                role=Role.USER,
+                content=[
+                    DocumentBlock(media_type="application/pdf", data="JVBERi0="),
+                    TextBlock(text="Transcribe this document."),
+                ],
+            ),
+        ]
+
+        _, converted = client._convert_messages(messages)
+
+        assert converted[0]["content"][0] == {
+            "type": "document",
+            "source": {
+                "type": "base64",
+                "media_type": "application/pdf",
+                "data": "JVBERi0=",
+            },
+        }
+
+    def test_convert_messages_document_block_url(self, client: AnthropicClient) -> None:
+        """DocumentBlock with url maps to a url document source."""
+        messages = [
+            Message(
+                role=Role.USER,
+                content=[DocumentBlock(url="https://example.com/paper.pdf")],
+            ),
+        ]
+
+        _, converted = client._convert_messages(messages)
+
+        assert converted[0]["content"][0] == {
+            "type": "document",
+            "source": {"type": "url", "url": "https://example.com/paper.pdf"},
+        }
+
+    def test_convert_messages_preserves_block_order(
+        self, client: AnthropicClient
+    ) -> None:
+        """Caller block order is preserved — no silent reordering."""
+        messages = [
+            Message(
+                role=Role.USER,
+                content=[
+                    TextBlock(text="The document below:"),
+                    DocumentBlock(media_type="application/pdf", data="JVBERi0="),
+                ],
+            ),
+        ]
+
+        _, converted = client._convert_messages(messages)
+
+        content = converted[0]["content"]
+        assert [block["type"] for block in content] == ["text", "document"]
+
+    def test_convert_messages_plain_str_unchanged(
+        self, client: AnthropicClient
+    ) -> None:
+        """Regression: plain-str user content stays a bare string, not a list."""
+        _, converted = client._convert_messages(
+            [Message(role=Role.USER, content="Hello!")]
+        )
+        assert converted[0]["content"] == "Hello!"
+
+    def test_system_block_content_raises(self, client: AnthropicClient) -> None:
+        """SYSTEM messages must stay plain-str content."""
+        messages = [
+            Message(role=Role.SYSTEM, content=[TextBlock(text="Be helpful.")]),
+        ]
+        with pytest.raises(UnsupportedContentError):
+            client._convert_messages(messages)
+
+    def test_assistant_block_content_raises(self, client: AnthropicClient) -> None:
+        """ASSISTANT messages must stay plain-str content."""
+        messages = [
+            Message(role=Role.ASSISTANT, content=[TextBlock(text="Hi.")]),
+        ]
+        with pytest.raises(UnsupportedContentError):
+            client._convert_messages(messages)
+
+    def test_tool_block_content_raises(self, client: AnthropicClient) -> None:
+        """TOOL messages must stay plain-str content."""
+        messages = [
+            Message(
+                role=Role.TOOL,
+                content=[TextBlock(text="result")],
+                tool_call_id="call_123",
+            ),
+        ]
+        with pytest.raises(UnsupportedContentError):
+            client._convert_messages(messages)
+
+    def test_cache_control_on_last_block_of_block_list(
+        self, client: AnthropicClient
+    ) -> None:
+        """The breakpoint lands on the final converted block only."""
+        messages = [
+            Message(
+                role=Role.USER,
+                content=[
+                    DocumentBlock(media_type="application/pdf", data="JVBERi0="),
+                    TextBlock(text="Transcribe."),
+                ],
+            ),
+        ]
+        system_prompt, converted = client._convert_messages(messages)
+
+        _, cached = client._apply_cache_control(system_prompt, converted)
+
+        content = cached[-1]["content"]
+        assert "cache_control" not in content[0]
+        assert content[1]["cache_control"] == {"type": "ephemeral"}
+
+    def test_cache_control_on_trailing_document_block(
+        self, client: AnthropicClient
+    ) -> None:
+        """A trailing media block validly carries the breakpoint."""
+        messages = [
+            Message(
+                role=Role.USER,
+                content=[
+                    TextBlock(text="The document below:"),
+                    DocumentBlock(media_type="application/pdf", data="JVBERi0="),
+                ],
+            ),
+        ]
+        system_prompt, converted = client._convert_messages(messages)
+
+        _, cached = client._apply_cache_control(system_prompt, converted)
+
+        content = cached[-1]["content"]
+        assert content[-1]["type"] == "document"
+        assert content[-1]["cache_control"] == {"type": "ephemeral"}
+
+    def test_cache_last_message_false_skips_breakpoint(
+        self, client: AnthropicClient
+    ) -> None:
+        """cache_last_message=False leaves messages unmarked; system still cached."""
+        messages = [
+            Message(
+                role=Role.USER,
+                content=[
+                    DocumentBlock(media_type="application/pdf", data="JVBERi0="),
+                    TextBlock(text="Transcribe."),
+                ],
+            ),
+        ]
+        system_prompt, converted = client._convert_messages(
+            [Message(role=Role.SYSTEM, content="You transcribe PDFs."), *messages]
+        )
+
+        cached_system, cached = client._apply_cache_control(
+            system_prompt, converted, cache_last_message=False
+        )
+
+        assert cached_system is not None
+        assert cached_system[0]["cache_control"] == {"type": "ephemeral"}
+        for block in cached[-1]["content"]:
+            assert "cache_control" not in block
+
+    def test_cache_last_message_false_plain_str_untouched(
+        self, client: AnthropicClient
+    ) -> None:
+        """cache_last_message=False keeps plain-str content as a bare string."""
+        _, cached = client._apply_cache_control(
+            None,
+            [{"role": "user", "content": "Hello!"}],
+            cache_last_message=False,
+        )
+        assert cached[-1]["content"] == "Hello!"
+
+    @pytest.mark.asyncio
+    async def test_unsupported_model_raises_for_documents(
+        self,
+        client: AnthropicClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """complete() raises before any API call when the model lacks support."""
+        from neosian._foundation.shared.types import _MODEL_SPECS, ModelSpec, Provider
+
+        monkeypatch.setitem(
+            _MODEL_SPECS,
+            Model.CLAUDE_HAIKU_4_5.value,
+            ModelSpec(
+                provider=Provider.ANTHROPIC,
+                context_window=200_000,
+                max_output_tokens=64_000,
+                supports_images=True,
+                supports_documents=False,
+            ),
+        )
+        client._client.messages.stream = MagicMock()
+
+        messages = [
+            Message(
+                role=Role.USER,
+                content=[DocumentBlock(media_type="application/pdf", data="JVBERi0=")],
+            ),
+        ]
+
+        with pytest.raises(UnsupportedContentError, match="document"):
+            await client.complete(messages=messages, model=Model.CLAUDE_HAIKU_4_5)
+
+        client._client.messages.stream.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_complete_surfaces_stop_reason(
+        self, client: AnthropicClient, sample_messages: list[Message]
+    ) -> None:
+        """complete() passes the API's stop_reason through."""
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(type="text", text="Truncated...")]
+        mock_response.usage = MagicMock(input_tokens=10, output_tokens=5)
+        mock_response.model = "claude-sonnet-5"
+        mock_response.stop_reason = "max_tokens"
+
+        _mock_complete(client, mock_response)
+
+        response = await client.complete(
+            messages=sample_messages,
+            model=Model.CLAUDE_SONNET_5,
+        )
+
+        assert response.stop_reason == "max_tokens"
+
+    @pytest.mark.asyncio
+    async def test_complete_never_calls_messages_create(
+        self, client: AnthropicClient, sample_messages: list[Message]
+    ) -> None:
+        """complete() streams internally — messages.create must not be used."""
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(type="text", text="Hi")]
+        mock_response.usage = MagicMock(input_tokens=1, output_tokens=1)
+        mock_response.model = "claude-sonnet-5"
+
+        _mock_complete(client, mock_response)
+        client._client.messages.create = AsyncMock()
+
+        await client.complete(messages=sample_messages, model=Model.CLAUDE_SONNET_5)
+
+        client._client.messages.create.assert_not_called()
+        client._client.messages.stream.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_complete_passes_cache_conversation(
+        self, client: AnthropicClient, sample_messages: list[Message]
+    ) -> None:
+        """cache_conversation=False must reach _apply_cache_control."""
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(type="text", text="Hi")]
+        mock_response.usage = MagicMock(input_tokens=1, output_tokens=1)
+        mock_response.model = "claude-sonnet-5"
+
+        _mock_complete(client, mock_response)
+
+        await client.complete(
+            messages=sample_messages,
+            model=Model.CLAUDE_SONNET_5,
+            cache_conversation=False,
+        )
+
+        call_kwargs = client._client.messages.stream.call_args.kwargs
+        # Last message keeps its plain-str content (no breakpoint applied)
+        assert call_kwargs["messages"][-1]["content"] == "Hello!"
+
+    @pytest.mark.asyncio
+    async def test_stream_surfaces_real_stop_reason(
+        self, client: AnthropicClient, sample_messages: list[Message]
+    ) -> None:
+        """The final chunk carries the API's stop_reason, not a synthesized one."""
+        mock_text_delta = MagicMock()
+        mock_text_delta.type = "content_block_delta"
+        mock_text_delta.delta = MagicMock(type="text_delta", text="Truncated")
+
+        mock_msg_delta = MagicMock()
+        mock_msg_delta.type = "message_delta"
+        mock_msg_delta.usage = MagicMock(output_tokens=5)
+        mock_msg_delta.delta = MagicMock(stop_reason="max_tokens")
+
+        mock_msg_stop = MagicMock()
+        mock_msg_stop.type = "message_stop"
+
+        async def mock_stream_events():  # type: ignore[return]
+            yield mock_text_delta
+            yield mock_msg_delta
+            yield mock_msg_stop
+
+        mock_stream = MagicMock()
+        mock_stream.__aenter__ = AsyncMock(return_value=mock_stream)
+        mock_stream.__aexit__ = AsyncMock(return_value=None)
+        mock_stream.__aiter__ = lambda _: mock_stream_events()
+
+        client._client.messages.stream = MagicMock(return_value=mock_stream)
+
+        chunks = []
+        async for chunk in client.stream(
+            messages=sample_messages,
+            model=Model.CLAUDE_SONNET_5,
+        ):
+            chunks.append(chunk)
+
+        assert chunks[-1].finish_reason == "max_tokens"

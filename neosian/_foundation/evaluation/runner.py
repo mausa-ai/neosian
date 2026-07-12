@@ -20,7 +20,13 @@ from neosian._foundation.agent.base import Agent
 from neosian._foundation.evaluation.mocker import mock_agent_tools
 from neosian._foundation.evaluation.prompt_config import load_prompt_config
 from neosian._foundation.evaluation.scorer import score_turn
-from neosian._foundation.llm.base import Message, Role, ToolCall, ToolDefinition
+from neosian._foundation.llm.base import (
+    Message,
+    Role,
+    ToolCall,
+    ToolDefinition,
+    text_of,
+)
 from neosian._foundation.shared.constants import Evaluation
 from neosian._foundation.shared.types import (
     EvalCase,
@@ -289,7 +295,7 @@ async def _run_one_shot(
     turn_result = score_turn(
         expectation=case.expect or _empty_expectation(),
         tool_calls=captures,
-        response_content=response.message.content,
+        response_content=text_of(response.message) or None,
         turn_index=0,
     )
 
@@ -361,7 +367,7 @@ async def _run_conversational(
         turn_result = score_turn(
             expectation=turn.expect,
             tool_calls=captures,
-            response_content=response.message.content,
+            response_content=text_of(response.message) or None,
             turn_index=turn_idx,
         )
         all_turns.append(turn_result)
