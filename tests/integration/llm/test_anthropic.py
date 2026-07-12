@@ -1,4 +1,4 @@
-"""Integration tests for the Anthropic client (multimodal input).
+"""Integration tests for the Anthropic client (multimodal input, structured output).
 
 Requires a real API key:
 - ANTHROPIC_API_KEY: Anthropic API key
@@ -10,6 +10,7 @@ Run with:
 import base64
 
 import pytest
+from pydantic import BaseModel
 
 from neosian._foundation.agent.base import Agent
 from neosian._foundation.llm.anthropic import AnthropicClient
@@ -20,7 +21,13 @@ from neosian._foundation.llm.base import (
     TextBlock,
     text_of,
 )
-from neosian._foundation.shared.types import AgentConfig, Model, SystemPrompt
+from neosian._foundation.shared.schema import validate_json
+from neosian._foundation.shared.types import (
+    AgentConfig,
+    Model,
+    ResponseFormat,
+    SystemPrompt,
+)
 
 # Distinctive token the model must reproduce verbatim in its transcription.
 _SENTINEL = "NEOSIAN-7391-MULTIMODAL"
@@ -135,3 +142,71 @@ class TestAnthropicMultimodal:
 
         assert _SENTINEL in text_of(response.message)
         assert response.stop_reason is not None
+
+
+class _QuizQuestion(BaseModel):
+    """Nested child model — forces Pydantic to emit $defs."""
+
+    question: str
+    options: list[str]
+
+
+class _Quiz(BaseModel):
+    """Parent model containing a nested model."""
+
+    questions: list[_QuizQuestion]
+
+
+@pytest.mark.integration
+class TestAnthropicStructuredOutputNested:
+    """A nested BaseModel must round-trip through the real API.
+
+    Regression: $defs objects shipped without additionalProperties, so any
+    nested schema 400'd. This is the case that would have caught it.
+    """
+
+    @pytest.mark.asyncio
+    async def test_nested_model_round_trips(
+        self, anthropic_client: AnthropicClient
+    ) -> None:
+        """Nested schema is accepted and the response validates against it."""
+        response = await anthropic_client.complete(
+            messages=[
+                Message(
+                    role=Role.USER,
+                    content=(
+                        "Write exactly 2 quiz questions about gradient descent, "
+                        "each with 4 options."
+                    ),
+                )
+            ],
+            model=Model.CLAUDE_HAIKU_4_5,
+            response_format=ResponseFormat(schema=_Quiz),
+            max_tokens=2000,
+        )
+
+        quiz = validate_json(_Quiz, text_of(response.message))
+        assert isinstance(quiz, _Quiz)
+        assert len(quiz.questions) == 2
+        assert all(q.question and q.options for q in quiz.questions)
+
+    @pytest.mark.asyncio
+    async def test_nested_model_round_trips_non_strict(
+        self, anthropic_client: AnthropicClient
+    ) -> None:
+        """Regression: strict=False used to skip the root patch and 400."""
+        response = await anthropic_client.complete(
+            messages=[
+                Message(
+                    role=Role.USER,
+                    content="Write exactly 1 quiz question about MSE, 3 options.",
+                )
+            ],
+            model=Model.CLAUDE_HAIKU_4_5,
+            response_format=ResponseFormat(schema=_Quiz, strict=False),
+            max_tokens=1000,
+        )
+
+        quiz = validate_json(_Quiz, text_of(response.message))
+        assert isinstance(quiz, _Quiz)
+        assert len(quiz.questions) >= 1

@@ -416,9 +416,9 @@ class GroqClient(BaseLLMClient):
         """
         from neosian._foundation.shared.schema import get_json_schema, get_schema_name
 
+        # Groq strict mode requires additionalProperties: false on every
+        # object; get_json_schema guarantees it (root and $defs).
         schema = get_json_schema(response_format.schema)
-        # Groq requires additionalProperties: false for strict mode
-        schema["additionalProperties"] = False
         return {
             "type": "json_schema",
             "json_schema": {

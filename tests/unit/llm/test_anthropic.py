@@ -2171,3 +2171,49 @@ class TestAnthropicMultimodal:
             chunks.append(chunk)
 
         assert chunks[-1].finish_reason == "max_tokens"
+
+
+@pytest.mark.unit
+class TestAnthropicSchemaAdditionalProperties:
+    """Every object in an output-format schema must carry additionalProperties.
+
+    Anthropic rejects object schemas without it — including nested models
+    under $defs, and regardless of strict mode.
+    """
+
+    def _nested_format(self, strict: bool = True) -> object:
+        from pydantic import BaseModel
+
+        from neosian._foundation.shared.types import ResponseFormat
+
+        class Question(BaseModel):
+            question: str
+            options: list[str]
+
+        class Quiz(BaseModel):
+            questions: list[Question]
+
+        return ResponseFormat(schema=Quiz, strict=strict)
+
+    def test_nested_model_defs_carry_additional_properties(
+        self, client: AnthropicClient
+    ) -> None:
+        """Regression: $defs objects reached the API without the flag (400)."""
+        payload = client._convert_response_format(self._nested_format())  # type: ignore[arg-type]
+        schema = payload["schema"]
+
+        assert schema["additionalProperties"] is False  # type: ignore[index]
+        assert schema["$defs"]["Question"]["additionalProperties"] is False  # type: ignore[index]
+
+    def test_non_strict_schema_still_carries_additional_properties(
+        self, client: AnthropicClient
+    ) -> None:
+        """Regression: the root patch used to be gated on strict, so
+        strict=False sent an object schema without the flag and 400'd."""
+        payload = client._convert_response_format(
+            self._nested_format(strict=False)  # type: ignore[arg-type]
+        )
+        schema = payload["schema"]
+
+        assert schema["additionalProperties"] is False  # type: ignore[index]
+        assert schema["$defs"]["Question"]["additionalProperties"] is False  # type: ignore[index]

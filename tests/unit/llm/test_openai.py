@@ -821,3 +821,27 @@ class TestOpenAIMultimodalRejected:
 
         with pytest.raises(UnsupportedContentError, match="openai"):
             client._convert_messages(messages)
+
+
+@pytest.mark.unit
+class TestOpenAINestedSchema:
+    """OpenAI strict mode requires additionalProperties on every object."""
+
+    def test_nested_model_defs_carry_additional_properties(self) -> None:
+        from pydantic import BaseModel
+
+        from neosian._foundation.shared.types import ResponseFormat
+
+        class Question(BaseModel):
+            question: str
+            options: list[str]
+
+        class Quiz(BaseModel):
+            questions: list[Question]
+
+        client = OpenAIClient(api_key="test-key")
+        payload = client._convert_response_format(ResponseFormat(schema=Quiz))
+        schema = payload["json_schema"]["schema"]  # type: ignore[index,typeddict-item]
+
+        assert schema["additionalProperties"] is False
+        assert schema["$defs"]["Question"]["additionalProperties"] is False

@@ -749,12 +749,12 @@ class AnthropicClient(BaseLLMClient):
         """
         from neosian._foundation.shared.schema import get_json_schema
 
+        # get_json_schema guarantees additionalProperties: false on every
+        # object (root and $defs). Anthropic requires it on output-format
+        # schemas regardless of strict mode, so no adapter-side patch here.
         schema = _strip_unsupported_constraints(
             get_json_schema(response_format.schema), strict=response_format.strict
         )
-        # Anthropic requires additionalProperties: false for strict schemas
-        if response_format.strict and "additionalProperties" not in schema:
-            schema["additionalProperties"] = False
         return {
             "type": "json_schema",
             "schema": schema,

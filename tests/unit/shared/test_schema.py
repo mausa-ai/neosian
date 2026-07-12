@@ -20,6 +20,26 @@ class SimpleModel(BaseModel):
     value: int
 
 
+class NestedChild(BaseModel):
+    """Child model — forces Pydantic to emit $defs in the parent."""
+
+    question: str
+    options: list[str]
+
+
+class NestedParent(BaseModel):
+    """Parent with a nested model (list of children)."""
+
+    questions: list[NestedChild]
+
+
+class DeeplyNested(BaseModel):
+    """Three levels: DeeplyNested -> NestedParent -> NestedChild."""
+
+    quiz: NestedParent
+    label: str
+
+
 class TypeA(BaseModel):
     """Type A for Union testing."""
 
@@ -124,6 +144,75 @@ class TestGetJsonSchema:
         schema = get_json_schema(PipeUnion)
         assert schema["type"] == "object"
         assert "result" in schema["properties"]
+
+
+def _objects_missing_additional_properties(
+    node: object, path: str = "root"
+) -> list[str]:
+    """Paths of every object subschema lacking additionalProperties.
+
+    LLM APIs reject object schemas without it — including nested models
+    under $defs — so the correct result is always an empty list.
+    """
+    missing: list[str] = []
+    if not isinstance(node, dict):
+        return missing
+    if node.get("type") == "object" and "additionalProperties" not in node:
+        missing.append(path)
+    for key, value in node.items():
+        if key in ("properties", "$defs") and isinstance(value, dict):
+            for name, sub in value.items():
+                missing += _objects_missing_additional_properties(
+                    sub, f"{path}.{key}.{name}"
+                )
+        elif key in ("anyOf", "oneOf", "allOf") and isinstance(value, list):
+            for index, sub in enumerate(value):
+                missing += _objects_missing_additional_properties(
+                    sub, f"{path}.{key}[{index}]"
+                )
+        elif key == "items":
+            missing += _objects_missing_additional_properties(value, f"{path}.items")
+    return missing
+
+
+@pytest.mark.unit
+class TestAdditionalPropertiesInvariant:
+    """get_json_schema must set additionalProperties: false on EVERY object.
+
+    Anthropic (and OpenAI/Groq strict mode) reject any object schema without
+    it, including nested models Pydantic emits under $defs. Anthropic rejects
+    them regardless of strict mode, so adapters cannot be relied on to patch
+    the root — the invariant lives here.
+    """
+
+    def test_flat_basemodel_root_patched(self) -> None:
+        """Regression guard: a flat model's root object carries the flag."""
+        schema = get_json_schema(SimpleModel)
+        assert schema["additionalProperties"] is False
+        assert _objects_missing_additional_properties(schema) == []
+
+    def test_nested_basemodel_defs_patched(self) -> None:
+        """The reported bug: nested models under $defs were left unpatched."""
+        schema = get_json_schema(NestedParent)
+
+        assert "$defs" in schema  # Pydantic emits the child here
+        assert schema["additionalProperties"] is False
+        assert schema["$defs"]["NestedChild"]["additionalProperties"] is False
+        assert _objects_missing_additional_properties(schema) == []
+
+    def test_deeply_nested_all_levels_patched(self) -> None:
+        """Every level of a model -> model -> model chain is patched."""
+        schema = get_json_schema(DeeplyNested)
+
+        assert schema["additionalProperties"] is False
+        for def_name in ("NestedParent", "NestedChild"):
+            assert schema["$defs"][def_name]["additionalProperties"] is False
+        assert _objects_missing_additional_properties(schema) == []
+
+    def test_union_unchanged(self) -> None:
+        """Unions already worked — behavior must not regress."""
+        schema = get_json_schema(UnionAB)
+        assert _objects_missing_additional_properties(schema) == []
 
 
 @pytest.mark.unit

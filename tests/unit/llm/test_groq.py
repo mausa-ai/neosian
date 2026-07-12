@@ -753,3 +753,27 @@ class TestGroqMultimodalRejected:
 
         with pytest.raises(UnsupportedContentError, match="groq"):
             client._convert_messages(messages)
+
+
+@pytest.mark.unit
+class TestGroqNestedSchema:
+    """Groq strict mode requires additionalProperties on every object."""
+
+    def test_nested_model_defs_carry_additional_properties(self) -> None:
+        from pydantic import BaseModel
+
+        from neosian._foundation.shared.types import ResponseFormat
+
+        class Question(BaseModel):
+            question: str
+            options: list[str]
+
+        class Quiz(BaseModel):
+            questions: list[Question]
+
+        client = GroqClient(api_key="test-key")
+        payload = client._convert_response_format(ResponseFormat(schema=Quiz))
+        schema = payload["json_schema"]["schema"]  # type: ignore[index]
+
+        assert schema["additionalProperties"] is False
+        assert schema["$defs"]["Question"]["additionalProperties"] is False

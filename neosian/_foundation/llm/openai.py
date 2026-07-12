@@ -465,9 +465,9 @@ class OpenAIClient(BaseLLMClient):
         """
         from neosian._foundation.shared.schema import get_json_schema, get_schema_name
 
+        # OpenAI strict mode requires additionalProperties: false on every
+        # object; get_json_schema guarantees it (root and $defs).
         schema = get_json_schema(response_format.schema)
-        # OpenAI requires additionalProperties: false for strict mode
-        schema["additionalProperties"] = False
         # Cast to OpenAI ResponseFormat TypedDict - SDK accepts this structure
         return cast(
             OpenAIResponseFormat,

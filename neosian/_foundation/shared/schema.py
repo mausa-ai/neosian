@@ -107,6 +107,13 @@ def get_json_schema(schema: SchemaType) -> dict[str, Any]:
     Union types are wrapped in an object schema because LLM APIs require
     root-level schemas to be objects, not anyOf/oneOf.
 
+    Invariant: every object schema in the result carries
+    additionalProperties: false — including nested models under $defs. LLM
+    APIs (Anthropic, OpenAI, Groq, Cerebras) reject object schemas without
+    it, and Anthropic does so regardless of strict mode. Owning the
+    invariant here keeps it provider-independent; adapters must not need to
+    patch the schema themselves.
+
     Args:
         schema: BaseModel subclass or Union type.
 
@@ -139,8 +146,12 @@ def get_json_schema(schema: SchemaType) -> dict[str, Any]:
 
         return wrapper_schema
 
-    # For BaseModel subclasses, use the native method
-    return schema.model_json_schema()
+    # For BaseModel subclasses, use the native method. Pydantic emits nested
+    # models under $defs without additionalProperties, so patch the whole
+    # tree — root and every $defs entry.
+    json_schema: dict[str, Any] = schema.model_json_schema()
+    _add_additional_properties_false(json_schema)
+    return json_schema
 
 
 def validate_json(schema: SchemaType, json_string: str) -> Any:
