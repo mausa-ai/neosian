@@ -77,9 +77,29 @@ def tool_result_event(tool_call_id: str, result: ToolResult[Any]) -> SSEEvent:
     )
 
 
-def error_event(error: str) -> SSEEvent:
-    """Create an error SSE event."""
-    return SSEEvent(event=SSEEventType.ERROR, data={"error": error})
+def _usage_payload(usage: Usage) -> dict[str, Any]:
+    """Serialize Usage to the SSE data payload shared by done/blocked/error."""
+    return {
+        "input_tokens": usage.input_tokens,
+        "output_tokens": usage.output_tokens,
+        "cache_creation_input_tokens": usage.cache_creation_input_tokens,
+        "cache_read_input_tokens": usage.cache_read_input_tokens,
+        "total_tokens": usage.total_tokens,
+    }
+
+
+def error_event(error: str, usage: Usage | None = None) -> SSEEvent:
+    """Create an error SSE event.
+
+    Args:
+        error: Error description.
+        usage: Best-effort token usage billed before the failure
+            (same keys as the done event).
+    """
+    data: dict[str, Any] = {"error": error}
+    if usage:
+        data["usage"] = _usage_payload(usage)
+    return SSEEvent(event=SSEEventType.ERROR, data=data)
 
 
 def done_event(usage: Usage | None = None) -> SSEEvent:
@@ -93,23 +113,20 @@ def done_event(usage: Usage | None = None) -> SSEEvent:
     """
     data: dict[str, Any] = {}
     if usage:
-        data["usage"] = {
-            "input_tokens": usage.input_tokens,
-            "output_tokens": usage.output_tokens,
-            "cache_creation_input_tokens": usage.cache_creation_input_tokens,
-            "cache_read_input_tokens": usage.cache_read_input_tokens,
-            "total_tokens": usage.total_tokens,
-        }
+        data["usage"] = _usage_payload(usage)
     return SSEEvent(event=SSEEventType.DONE, data=data)
 
 
 def blocked_event(
     rationale: str | None = None,
+    usage: Usage | None = None,
 ) -> SSEEvent:
     """Create a blocked SSE event for guardrail interruption.
 
     Args:
         rationale: Policy rationale explaining the block.
+        usage: Best-effort token usage billed before the block
+            (same keys as the done event).
 
     Returns:
         SSEEvent with blocked data. Only includes non-None fields.
@@ -117,6 +134,8 @@ def blocked_event(
     data: dict[str, Any] = {}
     if rationale:
         data["rationale"] = rationale
+    if usage:
+        data["usage"] = _usage_payload(usage)
     return SSEEvent(event=SSEEventType.BLOCKED, data=data)
 
 

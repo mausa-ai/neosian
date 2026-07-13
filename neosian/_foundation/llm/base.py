@@ -178,6 +178,17 @@ class Usage:
             + self.cache_read_input_tokens
         )
 
+    def __add__(self, other: "Usage") -> "Usage":
+        """Field-wise sum, for accumulating usage across LLM calls."""
+        return Usage(
+            input_tokens=self.input_tokens + other.input_tokens,
+            output_tokens=self.output_tokens + other.output_tokens,
+            cache_creation_input_tokens=self.cache_creation_input_tokens
+            + other.cache_creation_input_tokens,
+            cache_read_input_tokens=self.cache_read_input_tokens
+            + other.cache_read_input_tokens,
+        )
+
 
 @dataclass
 class CompletionResponse:

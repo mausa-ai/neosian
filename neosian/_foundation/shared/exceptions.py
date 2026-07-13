@@ -4,7 +4,14 @@ All exceptions are centralized here with their error messages.
 Add exceptions as needed, not speculatively.
 """
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from neosian._foundation.shared.constants import ErrorMessages
+
+if TYPE_CHECKING:
+    from neosian._foundation.llm.base import Usage
 
 
 class NeosianError(Exception):
@@ -270,7 +277,14 @@ class ModelFailedError(LLMError):
     and the caller should handle the failure appropriately.
     """
 
-    def __init__(self, model: str, error: str, *, has_fallback: bool) -> None:
+    def __init__(
+        self,
+        model: str,
+        error: str,
+        *,
+        has_fallback: bool,
+        usage: Usage | None = None,
+    ) -> None:
         """Initialize with model and error details.
 
         Args:
@@ -278,6 +292,8 @@ class ModelFailedError(LLMError):
             error: Error description.
             has_fallback: True if a fallback is configured (failure is recoverable),
                 False if no fallback exists (this is the final error).
+            usage: Best-effort token usage billed before the failure
+                (populated on streaming paths; None otherwise).
         """
         if has_fallback:
             message = ErrorMessages.MODEL_FAILED.format(model=model, error=error)
@@ -289,6 +305,7 @@ class ModelFailedError(LLMError):
         self.model = model
         self.error = error
         self.has_fallback = has_fallback
+        self.usage = usage
 
 
 class FallbackExhaustedError(LLMError):
@@ -300,6 +317,8 @@ class FallbackExhaustedError(LLMError):
         main_error: str,
         fallback_model: str,
         fallback_error: str,
+        *,
+        usage: Usage | None = None,
     ) -> None:
         """Initialize with details from both failed models.
 
@@ -308,6 +327,8 @@ class FallbackExhaustedError(LLMError):
             main_error: Error from the primary model.
             fallback_model: The fallback model that also failed.
             fallback_error: Error from the fallback model.
+            usage: Best-effort combined token usage billed across both
+                failed attempts (populated on streaming paths; None otherwise).
         """
         super().__init__(
             ErrorMessages.FALLBACK_EXHAUSTED.format(
@@ -321,6 +342,7 @@ class FallbackExhaustedError(LLMError):
         self.main_error = main_error
         self.fallback_model = fallback_model
         self.fallback_error = fallback_error
+        self.usage = usage
 
 
 # Evaluation Errors

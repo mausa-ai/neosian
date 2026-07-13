@@ -78,6 +78,37 @@ from neosian._foundation.tools.builtin.todo import update_todo
 
 logger = logging.getLogger(__name__)
 
+# Attribute used to ride best-effort streaming usage on exceptions escaping
+# _stream_with_client, so wrapper methods can populate the typed exceptions
+# (ModelFailedError/FallbackExhaustedError) without wrapping the original
+# exception object (isinstance checks on it must keep working).
+_USAGE_ATTR = "_neosian_stream_usage"
+
+
+def _merge_usage(a: Usage | None, b: Usage | None) -> Usage | None:
+    """Sum two optional Usage values; None+None stays None."""
+    if a is None:
+        return b
+    if b is None:
+        return a
+    return a + b
+
+
+def _attach_usage(exc: BaseException, usage: Usage | None) -> None:
+    """Attach best-effort usage to an exception (first write wins).
+
+    The innermost frame has the most complete picture, so a later
+    (outer) attach must not clobber an earlier one.
+    """
+    if usage is not None and getattr(exc, _USAGE_ATTR, None) is None:
+        setattr(exc, _USAGE_ATTR, usage)
+
+
+def _extract_usage(exc: BaseException) -> Usage | None:
+    """Read usage attached by _attach_usage, if any."""
+    usage = getattr(exc, _USAGE_ATTR, None)
+    return usage if isinstance(usage, Usage) else None
+
 
 def _get_api_key(env_var: str) -> str:
     """Get API key from environment variable.
@@ -454,6 +485,7 @@ class Agent:
             model=self._model.value,
             error=str(error),
             has_fallback=False,
+            usage=_extract_usage(error),
         ) from error
 
     async def _execute_agent_core(
@@ -715,14 +747,7 @@ class Agent:
             )
 
             # Accumulate usage (includes cache tokens from Anthropic)
-            total_usage = Usage(
-                input_tokens=total_usage.input_tokens + response.usage.input_tokens,
-                output_tokens=total_usage.output_tokens + response.usage.output_tokens,
-                cache_creation_input_tokens=total_usage.cache_creation_input_tokens
-                + response.usage.cache_creation_input_tokens,
-                cache_read_input_tokens=total_usage.cache_read_input_tokens
-                + response.usage.cache_read_input_tokens,
-            )
+            total_usage = total_usage + response.usage
 
             # If no tool calls, we're done - check output guardrails
             if not response.message.tool_calls:
@@ -778,15 +803,7 @@ class Agent:
             cache_conversation=self._cache_conversation,
         )
 
-        total_usage = Usage(
-            input_tokens=total_usage.input_tokens + final_response.usage.input_tokens,
-            output_tokens=total_usage.output_tokens
-            + final_response.usage.output_tokens,
-            cache_creation_input_tokens=total_usage.cache_creation_input_tokens
-            + final_response.usage.cache_creation_input_tokens,
-            cache_read_input_tokens=total_usage.cache_read_input_tokens
-            + final_response.usage.cache_read_input_tokens,
-        )
+        total_usage = total_usage + final_response.usage
 
         return await self._finalize_response(
             message=final_response.message,
@@ -949,6 +966,7 @@ class Agent:
             return
         except Exception as e:
             main_error = str(e)
+            main_usage = _extract_usage(e)
             # No fallback configured - raise immediately
             if self._fallback is None:
                 if isinstance(e, UnsupportedContentError):
@@ -957,6 +975,7 @@ class Agent:
                     model=self._model.value,
                     error=main_error,
                     has_fallback=False,
+                    usage=main_usage,
                 ) from e
 
             # Capability-aware: never downgrade media onto a fallback model
@@ -994,6 +1013,7 @@ class Agent:
                     main_error=main_error,
                     fallback_model=self._fallback.model.value,
                     fallback_error=str(fallback_e),
+                    usage=_merge_usage(main_usage, _extract_usage(fallback_e)),
                 ) from fallback_e
 
     async def _stream_with_fallback_model(
@@ -1048,6 +1068,7 @@ class Agent:
                     model=self._model.value,
                     error=str(e),
                     has_fallback=False,
+                    usage=_extract_usage(e),
                 ) from e
 
         try:
@@ -1073,6 +1094,7 @@ class Agent:
                 )
             )
             fallback_error = str(e)
+            fallback_usage = _extract_usage(e)
             try:
                 main_client = self._router.create_client(self._model.provider)
                 async for sse in self._stream_with_client(
@@ -1093,6 +1115,7 @@ class Agent:
                     main_error=str(main_e),
                     fallback_model=self._fallback.model.value,
                     fallback_error=fallback_error,
+                    usage=_merge_usage(fallback_usage, _extract_usage(main_e)),
                 ) from main_e
 
     async def _stream_with_client(
@@ -1123,159 +1146,196 @@ class Agent:
             self._reasoning_effort if model.supports_reasoning else None
         )
 
-        for _ in range(self._max_tool_iterations):
-            # Check guard before each LLM call
-            if guard_task is not None and guard_task.done():
-                blocked_event_sse = self._check_guard_and_block(guard_task, emitter)
-                if blocked_event_sse:
-                    yield blocked_event_sse
-                    return
-                guard_task = None  # Don't check again
+        # total_usage sums completed iterations (mirrors the non-streaming
+        # path); final_usage is last-wins within the current turn so a
+        # provider's partial usage chunk is overwritten by the complete one.
+        # Hoisted above the try so the except handler can always read them.
+        total_usage: Usage | None = None
+        final_usage: Usage | None = None
 
-            # Stream LLM response (real-time content + tool call detection)
-            content_parts: list[str] = []
-            reasoning_parts: list[str] = []
-            accumulated_tool_calls: list[ToolCall] = []
-            final_usage: Usage | None = None
-
-            stream = client.stream(
-                messages=full_messages,
-                model=model,
-                tools=self._tool_definitions if self._tool_definitions else None,
-                reasoning_effort=effective_reasoning,
-                max_tokens=self._max_output_tokens,
-                cache_conversation=self._cache_conversation,
-            )
-
-            async for chunk in stream:
-                # Check guard during streaming
+        try:
+            for _ in range(self._max_tool_iterations):
+                # Check guard before each LLM call
                 if guard_task is not None and guard_task.done():
-                    blocked_event_sse = self._check_guard_and_block(guard_task, emitter)
+                    blocked_event_sse = self._check_guard_and_block(
+                        guard_task, emitter, usage=total_usage
+                    )
+                    if blocked_event_sse:
+                        yield blocked_event_sse
+                        return
+                    guard_task = None  # Don't check again
+
+                # Stream LLM response (real-time content + tool call detection)
+                content_parts: list[str] = []
+                reasoning_parts: list[str] = []
+                accumulated_tool_calls: list[ToolCall] = []
+                final_usage = None
+
+                stream = client.stream(
+                    messages=full_messages,
+                    model=model,
+                    tools=self._tool_definitions if self._tool_definitions else None,
+                    reasoning_effort=effective_reasoning,
+                    max_tokens=self._max_output_tokens,
+                    cache_conversation=self._cache_conversation,
+                )
+
+                async for chunk in stream:
+                    # Check guard during streaming
+                    if guard_task is not None and guard_task.done():
+                        blocked_event_sse = self._check_guard_and_block(
+                            guard_task,
+                            emitter,
+                            usage=_merge_usage(total_usage, final_usage),
+                        )
+                        if blocked_event_sse:
+                            yield blocked_event_sse
+                            return
+                        guard_task = None
+
+                    if chunk.reasoning:
+                        reasoning_parts.append(chunk.reasoning)
+                        yield emitter.emit(reasoning_event(chunk.reasoning))
+
+                    if chunk.content:
+                        content_parts.append(chunk.content)
+                        yield emitter.emit(content_event(chunk.content))
+
+                    if chunk.tool_calls:
+                        accumulated_tool_calls.extend(chunk.tool_calls)
+
+                    if chunk.usage:
+                        final_usage = chunk.usage
+
+                # Turn complete — fold its usage into the running total and
+                # reset so guard checks / the except handler don't double count.
+                total_usage = _merge_usage(total_usage, final_usage)
+                final_usage = None
+
+                # Stream complete — no tool calls means final response
+                if not accumulated_tool_calls:
+                    # Final guard await before done
+                    if guard_task is not None:
+                        is_safe, policy = await self._await_guard_result_safe(
+                            guard_task
+                        )
+                        if (
+                            not is_safe
+                            and self._guardrails
+                            and self._guardrails.block_on_input
+                        ):
+                            rationale = policy.rationale if policy else None
+                            yield emitter.emit(
+                                blocked_event(rationale=rationale, usage=total_usage)
+                            )
+                            return
+
+                    yield emitter.emit(done_event(total_usage))
+                    return
+
+                # Tool calls detected — add assistant message to history
+                full_messages.append(
+                    Message(
+                        role=Role.ASSISTANT,
+                        content="".join(content_parts) if content_parts else None,
+                        reasoning=(
+                            "".join(reasoning_parts) if reasoning_parts else None
+                        ),
+                        tool_calls=accumulated_tool_calls,
+                    )
+                )
+
+                # Pre-batch guard check. Note: with parallel execution the guard
+                # cannot interrupt mid-batch; in-flight tools run to completion.
+                # The post-batch check below blocks the next LLM call.
+                if guard_task is not None and guard_task.done():
+                    blocked_event_sse = self._check_guard_and_block(
+                        guard_task, emitter, usage=total_usage
+                    )
                     if blocked_event_sse:
                         yield blocked_event_sse
                         return
                     guard_task = None
 
-                if chunk.reasoning:
-                    reasoning_parts.append(chunk.reasoning)
-                    yield emitter.emit(reasoning_event(chunk.reasoning))
+                # 1. Emit all tool_call events first, in LLM submission order.
+                #    SSEEventEmitter.emit() has no awaits — sequence assignment
+                #    is atomic under cooperative async.
+                for tool_call in accumulated_tool_calls:
+                    yield emitter.emit(tool_call_event(tool_call))
 
-                if chunk.content:
-                    content_parts.append(chunk.content)
-                    yield emitter.emit(content_event(chunk.content))
+                # 2. Spawn one wrapper task per tool; concurrency capped by
+                #    semaphore. tool_result events arrive in completion order;
+                #    each wrapper coalesces its completion into a single None
+                #    sentinel via the shared counter (see _run_tool_stream).
+                queue: asyncio.Queue[str | None] = asyncio.Queue()
+                results: dict[ToolCallId, ToolResult[Any]] = {}
+                counter = [len(accumulated_tool_calls)]
+                semaphore = asyncio.Semaphore(self._max_parallel_tools)
+                tasks = [
+                    asyncio.create_task(
+                        self._run_tool_stream(
+                            tc, emitter, queue, results, counter, semaphore
+                        )
+                    )
+                    for tc in accumulated_tool_calls
+                ]
 
-                if chunk.tool_calls:
-                    accumulated_tool_calls.extend(chunk.tool_calls)
+                # 3. Drain queue; cancel surviving tasks on early exit (e.g.
+                #    consumer disconnect) to prevent orphaned tool tasks.
+                try:
+                    while True:
+                        item = await queue.get()
+                        if item is None:
+                            break
+                        yield item
+                    await asyncio.gather(*tasks)
+                finally:
+                    for t in tasks:
+                        if not t.done():
+                            t.cancel()
 
-                if chunk.usage:
-                    final_usage = chunk.usage
-
-            # Stream complete — no tool calls means final response
-            if not accumulated_tool_calls:
-                # Final guard await before done
-                if guard_task is not None:
-                    is_safe, policy = await self._await_guard_result_safe(guard_task)
-                    if (
-                        not is_safe
-                        and self._guardrails
-                        and self._guardrails.block_on_input
-                    ):
-                        rationale = policy.rationale if policy else None
-                        yield emitter.emit(blocked_event(rationale=rationale))
+                # 4. Post-batch guard check.
+                if guard_task is not None and guard_task.done():
+                    blocked_event_sse = self._check_guard_and_block(
+                        guard_task, emitter, usage=total_usage
+                    )
+                    if blocked_event_sse:
+                        yield blocked_event_sse
                         return
+                    guard_task = None
 
-                yield emitter.emit(done_event(final_usage))
-                return
-
-            # Tool calls detected — add assistant message to history
-            full_messages.append(
-                Message(
-                    role=Role.ASSISTANT,
-                    content="".join(content_parts) if content_parts else None,
-                    reasoning=("".join(reasoning_parts) if reasoning_parts else None),
-                    tool_calls=accumulated_tool_calls,
-                )
-            )
-
-            # Pre-batch guard check. Note: with parallel execution the guard
-            # cannot interrupt mid-batch; in-flight tools run to completion.
-            # The post-batch check below blocks the next LLM call.
-            if guard_task is not None and guard_task.done():
-                blocked_event_sse = self._check_guard_and_block(guard_task, emitter)
-                if blocked_event_sse:
-                    yield blocked_event_sse
-                    return
-                guard_task = None
-
-            # 1. Emit all tool_call events first, in LLM submission order.
-            #    SSEEventEmitter.emit() has no awaits — sequence assignment
-            #    is atomic under cooperative async.
-            for tool_call in accumulated_tool_calls:
-                yield emitter.emit(tool_call_event(tool_call))
-
-            # 2. Spawn one wrapper task per tool; concurrency capped by
-            #    semaphore. tool_result events arrive in completion order;
-            #    each wrapper coalesces its completion into a single None
-            #    sentinel via the shared counter (see _run_tool_stream).
-            queue: asyncio.Queue[str | None] = asyncio.Queue()
-            results: dict[ToolCallId, ToolResult[Any]] = {}
-            counter = [len(accumulated_tool_calls)]
-            semaphore = asyncio.Semaphore(self._max_parallel_tools)
-            tasks = [
-                asyncio.create_task(
-                    self._run_tool_stream(
-                        tc, emitter, queue, results, counter, semaphore
+                # 5. Append Tool messages in SUBMISSION order (Anthropic API
+                #    contract). SSE emission used completion order; LLM history
+                #    must use submission order.
+                for tool_call in accumulated_tool_calls:
+                    result = results[tool_call.id]
+                    tool_result_content = self._format_tool_result(result)
+                    full_messages.append(
+                        Message(
+                            role=Role.TOOL,
+                            content=tool_result_content,
+                            tool_call_id=tool_call.id,
+                        )
                     )
-                )
-                for tc in accumulated_tool_calls
-            ]
 
-            # 3. Drain queue; cancel surviving tasks on early exit (e.g.
-            #    consumer disconnect) to prevent orphaned tool tasks.
-            try:
-                while True:
-                    item = await queue.get()
-                    if item is None:
-                        break
-                    yield item
-                await asyncio.gather(*tasks)
-            finally:
-                for t in tasks:
-                    if not t.done():
-                        t.cancel()
-
-            # 4. Post-batch guard check.
-            if guard_task is not None and guard_task.done():
-                blocked_event_sse = self._check_guard_and_block(guard_task, emitter)
-                if blocked_event_sse:
-                    yield blocked_event_sse
-                    return
-                guard_task = None
-
-            # 5. Append Tool messages in SUBMISSION order (Anthropic API
-            #    contract). SSE emission used completion order; LLM history
-            #    must use submission order.
-            for tool_call in accumulated_tool_calls:
-                result = results[tool_call.id]
-                tool_result_content = self._format_tool_result(result)
-                full_messages.append(
-                    Message(
-                        role=Role.TOOL,
-                        content=tool_result_content,
-                        tool_call_id=tool_call.id,
-                    )
-                )
-
-        # Max iterations reached - stream final response without tools
-        async for sse in self._stream_final_with_client_and_guard(
-            client=client,
-            model=model,
-            full_messages=full_messages,
-            guard_task=guard_task,
-            emitter=emitter,
-            reasoning_effort=effective_reasoning,
-        ):
-            yield sse
+            # Max iterations reached - stream final response without tools
+            async for sse in self._stream_final_with_client_and_guard(
+                client=client,
+                model=model,
+                full_messages=full_messages,
+                guard_task=guard_task,
+                emitter=emitter,
+                reasoning_effort=effective_reasoning,
+                prior_usage=total_usage,
+            ):
+                yield sse
+        except Exception as e:
+            # Ride best-effort usage on the exception so wrapper methods can
+            # populate ModelFailedError/FallbackExhaustedError for metering.
+            # Exception (not BaseException) deliberately excludes
+            # GeneratorExit/CancelledError from consumer disconnects.
+            _attach_usage(e, _merge_usage(total_usage, final_usage))
+            raise
 
     def _get_guard_result_safe(
         self,
@@ -1349,6 +1409,7 @@ class Agent:
         self,
         guard_task: asyncio.Task[tuple[bool, PolicyResult | None]],
         emitter: SSEEventEmitter | None = None,
+        usage: Usage | None = None,
     ) -> str | None:
         """Check completed guard task and return blocked event if needed.
 
@@ -1357,6 +1418,8 @@ class Agent:
         Args:
             guard_task: Completed guard task.
             emitter: Optional SSE event emitter for metadata.
+            usage: Best-effort token usage billed before the block,
+                included in the blocked event data.
 
         Returns:
             Blocked SSE string if guard flagged and block_on_input=True, else None.
@@ -1365,7 +1428,7 @@ class Agent:
 
         if not is_safe and self._guardrails and self._guardrails.block_on_input:
             rationale = policy.rationale if policy else None
-            event = blocked_event(rationale=rationale)
+            event = blocked_event(rationale=rationale, usage=usage)
             if emitter is not None:
                 return emitter.emit(event)
             return event.to_sse()
@@ -1380,6 +1443,7 @@ class Agent:
         guard_task: asyncio.Task[tuple[bool, PolicyResult | None]] | None,
         emitter: SSEEventEmitter,
         reasoning_effort: ReasoningEffort | None = None,
+        prior_usage: Usage | None = None,
     ) -> AsyncIterator[str]:
         """Stream final response with a specific client while monitoring guard task.
 
@@ -1390,71 +1454,98 @@ class Agent:
             guard_task: Background guard task to monitor (or None).
             emitter: SSE event emitter for metadata (required, passed from caller).
             reasoning_effort: Optional reasoning effort (pre-filtered for model support).
+            prior_usage: Usage already accumulated across the exhausted tool
+                iterations; merged into the done/blocked event usage.
 
         Yields:
             SSE-formatted strings for content chunks, blocked, and done event.
         """
-        stream = client.stream(
-            messages=full_messages,
-            model=model,
-            tools=None,
-            reasoning_effort=reasoning_effort,
-            max_tokens=self._max_output_tokens,
-            cache_conversation=self._cache_conversation,
-        )
-
         # Track usage and pending done for different provider patterns
         # OpenAI/Groq: usage comes in separate chunk after finish_reason
         # Anthropic: usage comes with finish_reason chunk
         pending_done = False
         final_usage: Usage | None = None
 
-        async for chunk in stream:
-            # Check guard during streaming
-            if guard_task is not None and guard_task.done():
-                blocked_event_sse = self._check_guard_and_block(guard_task, emitter)
-                if blocked_event_sse:
-                    yield blocked_event_sse
-                    return
-                guard_task = None
+        try:
+            stream = client.stream(
+                messages=full_messages,
+                model=model,
+                tools=None,
+                reasoning_effort=reasoning_effort,
+                max_tokens=self._max_output_tokens,
+                cache_conversation=self._cache_conversation,
+            )
 
-            # Emit reasoning before content (for reasoning models)
-            if chunk.reasoning:
-                yield emitter.emit(reasoning_event(chunk.reasoning))
-
-            if chunk.content:
-                yield emitter.emit(content_event(chunk.content))
-
-            if chunk.finish_reason:
-                # Final guard check before done (with error handling)
-                if guard_task is not None:
-                    is_safe, policy = await self._await_guard_result_safe(guard_task)
-                    if (
-                        not is_safe
-                        and self._guardrails
-                        and self._guardrails.block_on_input
-                    ):
-                        rationale = policy.rationale if policy else None
-                        yield emitter.emit(blocked_event(rationale=rationale))
+            async for chunk in stream:
+                # Check guard during streaming
+                if guard_task is not None and guard_task.done():
+                    blocked_event_sse = self._check_guard_and_block(
+                        guard_task,
+                        emitter,
+                        usage=_merge_usage(prior_usage, final_usage),
+                    )
+                    if blocked_event_sse:
+                        yield blocked_event_sse
                         return
+                    guard_task = None
 
-                if chunk.usage:
-                    # Anthropic: usage comes with finish_reason
-                    yield emitter.emit(done_event(chunk.usage))
-                else:
-                    # OpenAI/Groq: usage may come in next chunk
-                    pending_done = True
+                # Emit reasoning before content (for reasoning models)
+                if chunk.reasoning:
+                    yield emitter.emit(reasoning_event(chunk.reasoning))
 
-            # Handle usage-only chunk (OpenAI/Groq pattern)
-            if chunk.usage and not chunk.finish_reason and not chunk.content:
-                final_usage = chunk.usage
-                if pending_done:
-                    yield emitter.emit(done_event(final_usage))
-                    pending_done = False
+                if chunk.content:
+                    yield emitter.emit(content_event(chunk.content))
 
-        # If we have a pending done without usage, emit it now
-        if pending_done:
-            yield emitter.emit(done_event(final_usage))
+                if chunk.finish_reason:
+                    # Final guard check before done (with error handling)
+                    if guard_task is not None:
+                        is_safe, policy = await self._await_guard_result_safe(
+                            guard_task
+                        )
+                        if (
+                            not is_safe
+                            and self._guardrails
+                            and self._guardrails.block_on_input
+                        ):
+                            rationale = policy.rationale if policy else None
+                            # chunk.usage (complete) beats final_usage (possibly
+                            # an early partial) — pick, never sum.
+                            yield emitter.emit(
+                                blocked_event(
+                                    rationale=rationale,
+                                    usage=_merge_usage(
+                                        prior_usage, chunk.usage or final_usage
+                                    ),
+                                )
+                            )
+                            return
+
+                    if chunk.usage:
+                        # Anthropic: usage comes with finish_reason
+                        yield emitter.emit(
+                            done_event(_merge_usage(prior_usage, chunk.usage))
+                        )
+                    else:
+                        # OpenAI/Groq: usage may come in next chunk
+                        pending_done = True
+
+                # Handle usage-only chunk (OpenAI/Groq pattern)
+                if chunk.usage and not chunk.finish_reason and not chunk.content:
+                    final_usage = chunk.usage
+                    if pending_done:
+                        yield emitter.emit(
+                            done_event(_merge_usage(prior_usage, final_usage))
+                        )
+                        pending_done = False
+
+            # If we have a pending done without usage, emit it now
+            if pending_done:
+                yield emitter.emit(done_event(_merge_usage(prior_usage, final_usage)))
+        except Exception as e:
+            # First-write-wins in _attach_usage composes with the outer
+            # handler in _stream_with_client (this frame is more complete).
+            _attach_usage(e, _merge_usage(prior_usage, final_usage))
+            raise
 
     async def _execute_tool(self, tool_call: ToolCall) -> ToolResult[Any]:
         """Execute a single tool call.
@@ -2164,6 +2255,7 @@ class Agent:
             return
         except Exception as e:
             main_error = str(e)
+            main_usage = _extract_usage(e)
             # No fallback configured - raise immediately
             if self._fallback is None:
                 if isinstance(e, UnsupportedContentError):
@@ -2172,6 +2264,7 @@ class Agent:
                     model=self._model.value,
                     error=main_error,
                     has_fallback=False,
+                    usage=main_usage,
                 ) from e
 
             # Capability-aware: never downgrade media onto a fallback model
@@ -2208,6 +2301,7 @@ class Agent:
                     main_error=main_error,
                     fallback_model=self._fallback.model.value,
                     fallback_error=str(fallback_e),
+                    usage=_merge_usage(main_usage, _extract_usage(fallback_e)),
                 ) from fallback_e
 
     async def _stream_with_fallback_model_session(
@@ -2264,6 +2358,7 @@ class Agent:
                     model=self._model.value,
                     error=str(e),
                     has_fallback=False,
+                    usage=_extract_usage(e),
                 ) from e
 
         try:
@@ -2289,6 +2384,7 @@ class Agent:
                 )
             )
             fallback_error = str(e)
+            fallback_usage = _extract_usage(e)
             try:
                 main_client = session._get_or_create_client(self._model.provider)
                 async for sse in self._stream_with_client(
@@ -2309,4 +2405,5 @@ class Agent:
                     main_error=str(main_e),
                     fallback_model=self._fallback.model.value,
                     fallback_error=fallback_error,
+                    usage=_merge_usage(fallback_usage, _extract_usage(main_e)),
                 ) from main_e

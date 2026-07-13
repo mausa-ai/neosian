@@ -428,6 +428,19 @@ class AnthropicClient(BaseLLMClient):
                         cache_read_tokens = (
                             getattr(msg_usage, "cache_read_input_tokens", 0) or 0
                         )
+                        # Surface the partial usage immediately so consumers
+                        # interrupted mid-stream (guard block, error) can meter
+                        # the input/cache tokens already billed. The complete
+                        # usage on the message_stop chunk supersedes this one —
+                        # consumers must treat per-stream usage as last-wins.
+                        yield StreamChunk(
+                            usage=Usage(
+                                input_tokens=input_tokens,
+                                output_tokens=0,
+                                cache_creation_input_tokens=cache_creation_tokens,
+                                cache_read_input_tokens=cache_read_tokens,
+                            )
+                        )
 
                 elif event.type == "content_block_start":
                     block = event.content_block

@@ -1301,6 +1301,70 @@ class TestAnthropicPromptCaching:
         assert final.usage.cache_read_input_tokens == 0
 
     @pytest.mark.asyncio
+    async def test_stream_yields_early_partial_usage_chunk(
+        self, client: AnthropicClient, sample_messages: list[Message]
+    ) -> None:
+        """stream() should surface a usage-only chunk right after message_start
+        so consumers interrupted mid-stream can meter input/cache tokens."""
+        mock_msg_start = MagicMock()
+        mock_msg_start.type = "message_start"
+        mock_msg_start.message = MagicMock()
+        mock_msg_start.message.usage = MagicMock(
+            input_tokens=50,
+            cache_creation_input_tokens=2500,
+            cache_read_input_tokens=0,
+        )
+
+        mock_text = MagicMock()
+        mock_text.type = "content_block_delta"
+        mock_text.delta = MagicMock(type="text_delta", text="Hi")
+
+        mock_msg_delta = MagicMock()
+        mock_msg_delta.type = "message_delta"
+        mock_msg_delta.usage = MagicMock(output_tokens=10)
+        mock_msg_delta.delta = MagicMock(stop_reason="end_turn")
+
+        mock_msg_stop = MagicMock()
+        mock_msg_stop.type = "message_stop"
+
+        async def mock_stream_events():
+            yield mock_msg_start
+            yield mock_text
+            yield mock_msg_delta
+            yield mock_msg_stop
+
+        mock_stream = MagicMock()
+        mock_stream.__aenter__ = AsyncMock(return_value=mock_stream)
+        mock_stream.__aexit__ = AsyncMock(return_value=None)
+        mock_stream.__aiter__ = lambda _: mock_stream_events()
+
+        client._client.messages.stream = MagicMock(return_value=mock_stream)
+
+        chunks = []
+        async for chunk in client.stream(
+            messages=sample_messages,
+            model=Model.CLAUDE_SONNET_5,
+        ):
+            chunks.append(chunk)
+
+        # First chunk is usage-only: partial usage, no content/finish_reason
+        partial = chunks[0]
+        assert partial.content is None
+        assert partial.finish_reason is None
+        assert partial.usage is not None
+        assert partial.usage.input_tokens == 50
+        assert partial.usage.output_tokens == 0
+        assert partial.usage.cache_creation_input_tokens == 2500
+
+        # Final chunk still carries the complete usage (last-wins for consumers)
+        final = chunks[-1]
+        assert final.finish_reason == "end_turn"
+        assert final.usage is not None
+        assert final.usage.input_tokens == 50
+        assert final.usage.output_tokens == 10
+        assert final.usage.cache_creation_input_tokens == 2500
+
+    @pytest.mark.asyncio
     async def test_stream_tools_have_cache_control(
         self, client: AnthropicClient, sample_messages: list[Message]
     ) -> None:

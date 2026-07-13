@@ -508,6 +508,279 @@ class TestAgentRunStreaming:
 
 
 @pytest.mark.unit
+class TestStreamingUsageReporting:
+    """Test usage accumulation and reporting in the streaming path."""
+
+    @pytest.mark.asyncio
+    async def test_streaming_sums_usage_across_iterations(self) -> None:
+        """The done frame should carry usage summed over all tool iterations."""
+
+        @Tool(name="add", description="Add two numbers")
+        async def add(a: int, b: int) -> ToolResult[int]:
+            return ToolResult.ok(a + b)
+
+        mock_client = AsyncMock(spec=BaseLLMClient)
+
+        tool_call = ToolCall(
+            id=ToolCallId("call_1"),
+            name=ToolName("add"),
+            arguments={"a": 2, "b": 3},
+        )
+
+        call_count = 0
+
+        async def mock_stream(
+            *args: object, **kwargs: object  # noqa: ARG001
+        ) -> AsyncIterator[StreamChunk]:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                yield StreamChunk(
+                    tool_calls=[tool_call],
+                    finish_reason="tool_calls",
+                    usage=Usage(input_tokens=20, output_tokens=10),
+                )
+            else:
+                yield StreamChunk(content="The sum is 5.")
+                yield StreamChunk(
+                    finish_reason="stop",
+                    usage=Usage(input_tokens=30, output_tokens=15),
+                )
+
+        mock_client.stream = mock_stream
+
+        with patch(
+            "neosian._foundation.agent.base.ProviderRouter",
+            return_value=_create_mock_router(mock_client),
+        ):
+            config = AgentConfig(
+                system_prompt=SystemPrompt("You are a calculator."),
+                tools=[add],
+                enable_todo=False,
+            )
+            agent = Agent(config=config)
+
+            messages = [Message(role=Role.USER, content="What is 2 + 3?")]
+            result = await agent.run(messages, stream=True)
+
+            events = [sse async for sse in result]
+
+        done_events = [e for e in events if e.startswith("event: done")]
+        assert len(done_events) == 1
+        _, data = _parse_sse(done_events[0])
+        # 20+10 (tool iteration) + 30+15 (final iteration) = 75
+        assert data["usage"]["input_tokens"] == 50
+        assert data["usage"]["output_tokens"] == 25
+        assert data["usage"]["total_tokens"] == 75
+
+    @pytest.mark.asyncio
+    async def test_streaming_max_iterations_includes_prior_usage(self) -> None:
+        """The forced final response should merge usage from exhausted iterations."""
+
+        @Tool(name="add", description="Add two numbers")
+        async def add(a: int, b: int) -> ToolResult[int]:
+            return ToolResult.ok(a + b)
+
+        mock_client = AsyncMock(spec=BaseLLMClient)
+
+        tool_call = ToolCall(
+            id=ToolCallId("call_1"),
+            name=ToolName("add"),
+            arguments={"a": 2, "b": 3},
+        )
+
+        call_count = 0
+
+        async def mock_stream(
+            *args: object, **kwargs: object  # noqa: ARG001
+        ) -> AsyncIterator[StreamChunk]:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                yield StreamChunk(
+                    tool_calls=[tool_call],
+                    finish_reason="tool_calls",
+                    usage=Usage(input_tokens=20, output_tokens=10),
+                )
+            else:
+                # Forced final response (tools=None after max iterations)
+                yield StreamChunk(content="Best guess: 5.")
+                yield StreamChunk(
+                    finish_reason="stop",
+                    usage=Usage(input_tokens=30, output_tokens=15),
+                )
+
+        mock_client.stream = mock_stream
+
+        with patch(
+            "neosian._foundation.agent.base.ProviderRouter",
+            return_value=_create_mock_router(mock_client),
+        ):
+            config = AgentConfig(
+                system_prompt=SystemPrompt("You are a calculator."),
+                tools=[add],
+                enable_todo=False,
+            )
+            agent = Agent(config=config, max_tool_iterations=1)
+
+            messages = [Message(role=Role.USER, content="What is 2 + 3?")]
+            result = await agent.run(messages, stream=True)
+
+            events = [sse async for sse in result]
+
+        done_events = [e for e in events if e.startswith("event: done")]
+        assert len(done_events) == 1
+        _, data = _parse_sse(done_events[0])
+        assert data["usage"]["total_tokens"] == 75
+
+    @pytest.mark.asyncio
+    async def test_model_failed_error_carries_usage(self) -> None:
+        """ModelFailedError should carry accumulated + partial usage."""
+        from neosian._foundation.shared.exceptions import ModelFailedError
+
+        @Tool(name="add", description="Add two numbers")
+        async def add(a: int, b: int) -> ToolResult[int]:
+            return ToolResult.ok(a + b)
+
+        mock_client = AsyncMock(spec=BaseLLMClient)
+
+        tool_call = ToolCall(
+            id=ToolCallId("call_1"),
+            name=ToolName("add"),
+            arguments={"a": 2, "b": 3},
+        )
+
+        call_count = 0
+
+        async def mock_stream(
+            *args: object, **kwargs: object  # noqa: ARG001
+        ) -> AsyncIterator[StreamChunk]:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                yield StreamChunk(
+                    tool_calls=[tool_call],
+                    finish_reason="tool_calls",
+                    usage=Usage(input_tokens=20, output_tokens=10),
+                )
+            else:
+                # Partial usage arrives (input tokens known), then the stream dies
+                yield StreamChunk(usage=Usage(input_tokens=30, output_tokens=0))
+                raise RuntimeError("connection dropped")
+
+        mock_client.stream = mock_stream
+
+        with patch(
+            "neosian._foundation.agent.base.ProviderRouter",
+            return_value=_create_mock_router(mock_client),
+        ):
+            config = AgentConfig(
+                system_prompt=SystemPrompt("You are a calculator."),
+                tools=[add],
+                enable_todo=False,
+            )
+            agent = Agent(config=config)
+
+            messages = [Message(role=Role.USER, content="What is 2 + 3?")]
+            result = await agent.run(messages, stream=True)
+
+            with pytest.raises(ModelFailedError) as exc_info:
+                async for _ in result:
+                    pass
+
+        # 20+10 (completed iteration) + 30+0 (partial of failed turn) = 60
+        assert exc_info.value.usage is not None
+        assert exc_info.value.usage.total_tokens == 60
+
+    @pytest.mark.asyncio
+    async def test_fallback_exhausted_error_sums_both_attempts(self) -> None:
+        """FallbackExhaustedError should sum usage billed by both attempts."""
+        from neosian._foundation.shared.exceptions import FallbackExhaustedError
+
+        async def main_stream(
+            *args: object, **kwargs: object  # noqa: ARG001
+        ) -> AsyncIterator[StreamChunk]:
+            yield StreamChunk(usage=Usage(input_tokens=20, output_tokens=0))
+            raise RuntimeError("main died")
+
+        async def fallback_stream(
+            *args: object, **kwargs: object  # noqa: ARG001
+        ) -> AsyncIterator[StreamChunk]:
+            yield StreamChunk(usage=Usage(input_tokens=5, output_tokens=0))
+            raise RuntimeError("fallback died")
+
+        main_client = AsyncMock(spec=BaseLLMClient)
+        main_client.stream = main_stream
+        fallback_client = AsyncMock(spec=BaseLLMClient)
+        fallback_client.stream = fallback_stream
+
+        clients = {
+            Provider.ANTHROPIC: main_client,
+            Provider.GROQ: fallback_client,
+        }
+        mock_router = MagicMock()
+        mock_router.has_provider.return_value = True
+        mock_router.create_client.side_effect = lambda provider: clients[provider]
+
+        with patch(
+            "neosian._foundation.agent.base.ProviderRouter",
+            return_value=mock_router,
+        ):
+            config = AgentConfig(
+                system_prompt=SystemPrompt("You are helpful."),
+                tools=[],
+                enable_todo=False,
+                model=Model.CLAUDE_SONNET_5,
+                fallback=FallbackConfig(model=Model.GROQ_LLAMA_3_3_70B),
+            )
+            agent = Agent(config=config)
+
+            messages = [Message(role=Role.USER, content="Hi")]
+            result = await agent.run(messages, stream=True)
+
+            with pytest.raises(FallbackExhaustedError) as exc_info:
+                async for _ in result:
+                    pass
+
+        # 20 (main attempt) + 5 (fallback attempt) — both were billed
+        assert exc_info.value.usage is not None
+        assert exc_info.value.usage.input_tokens == 25
+
+    @pytest.mark.asyncio
+    async def test_check_guard_and_block_includes_usage(self) -> None:
+        """Blocked SSE frame should carry the usage passed in."""
+        from neosian._foundation.shared.types import GuardrailsConfig, PolicyResult
+
+        with patch(
+            "neosian._foundation.agent.base.ProviderRouter",
+            return_value=_create_mock_router(),
+        ):
+            config = AgentConfig(
+                system_prompt=SystemPrompt("You are helpful."),
+                tools=[],
+                enable_todo=False,
+            )
+            agent = Agent(config=config)
+            agent._guardrails = GuardrailsConfig(block_on_input=True)
+
+        async def guard() -> tuple[bool, PolicyResult | None]:
+            return (False, PolicyResult(safe=False, rationale="policy violation"))
+
+        guard_task = asyncio.ensure_future(guard())
+        await guard_task
+
+        sse = agent._check_guard_and_block(
+            guard_task, usage=Usage(input_tokens=20, output_tokens=10)
+        )
+
+        assert sse is not None
+        event_type, data = _parse_sse(sse)
+        assert event_type == "blocked"
+        assert data["rationale"] == "policy violation"
+        assert data["usage"]["total_tokens"] == 30
+
+
+@pytest.mark.unit
 class TestAgentHeartbeats:
     """Test Agent heartbeat functionality during tool execution."""
 

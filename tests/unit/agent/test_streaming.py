@@ -9,6 +9,7 @@ from neosian._foundation.agent.streaming import (
     SSEEvent,
     SSEEventEmitter,
     SSEEventType,
+    blocked_event,
     content_event,
     done_event,
     error_event,
@@ -18,7 +19,7 @@ from neosian._foundation.agent.streaming import (
     tool_call_event,
     tool_result_event,
 )
-from neosian._foundation.llm.base import StreamChunk, ToolCall
+from neosian._foundation.llm.base import StreamChunk, ToolCall, Usage
 from neosian._foundation.shared.types import ToolCallId, ToolName
 from neosian._foundation.tools.base import ToolResult
 
@@ -107,6 +108,27 @@ class TestEventFactories:
 
         assert event.event == SSEEventType.ERROR
         assert event.data["error"] == "Connection failed"
+        assert "usage" not in event.data
+
+    def test_error_event_with_usage(self) -> None:
+        """error_event should include usage payload when provided."""
+        usage = Usage(
+            input_tokens=20,
+            output_tokens=10,
+            cache_creation_input_tokens=5,
+            cache_read_input_tokens=15,
+        )
+        event = error_event("Connection failed", usage=usage)
+
+        assert event.event == SSEEventType.ERROR
+        assert event.data["error"] == "Connection failed"
+        assert event.data["usage"] == {
+            "input_tokens": 20,
+            "output_tokens": 10,
+            "cache_creation_input_tokens": 5,
+            "cache_read_input_tokens": 15,
+            "total_tokens": 50,
+        }
 
     def test_done_event(self) -> None:
         """done_event should create done SSE event."""
@@ -114,6 +136,47 @@ class TestEventFactories:
 
         assert event.event == SSEEventType.DONE
         assert event.data == {}
+
+    def test_done_event_with_usage(self) -> None:
+        """done_event should include the full usage payload."""
+        usage = Usage(
+            input_tokens=100,
+            output_tokens=50,
+            cache_creation_input_tokens=200,
+            cache_read_input_tokens=300,
+        )
+        event = done_event(usage)
+
+        assert event.event == SSEEventType.DONE
+        assert event.data["usage"] == {
+            "input_tokens": 100,
+            "output_tokens": 50,
+            "cache_creation_input_tokens": 200,
+            "cache_read_input_tokens": 300,
+            "total_tokens": 650,
+        }
+
+    def test_blocked_event(self) -> None:
+        """blocked_event without args should have empty data."""
+        event = blocked_event()
+
+        assert event.event == SSEEventType.BLOCKED
+        assert event.data == {}
+
+    def test_blocked_event_with_usage(self) -> None:
+        """blocked_event should include rationale and usage when provided."""
+        usage = Usage(input_tokens=20, output_tokens=10)
+        event = blocked_event(rationale="policy violation", usage=usage)
+
+        assert event.event == SSEEventType.BLOCKED
+        assert event.data["rationale"] == "policy violation"
+        assert event.data["usage"] == {
+            "input_tokens": 20,
+            "output_tokens": 10,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "total_tokens": 30,
+        }
 
     def test_heartbeat_event(self) -> None:
         """heartbeat_event should create heartbeat SSE event."""
@@ -331,3 +394,30 @@ class TestStreamToSSE:
         data_json = data_line.replace("data: ", "")
         parsed = json.loads(data_json)
         assert parsed["sequence"] == 3  # Continues from pre-emitted events
+
+    @pytest.mark.asyncio
+    async def test_early_partial_usage_chunk_superseded_by_final(self) -> None:
+        """An early usage-only chunk (Anthropic message_start partial) must not
+        produce a done event; the finish chunk's complete usage wins."""
+
+        async def mock_stream() -> "AsyncIterator[StreamChunk]":
+            # Partial usage surfaced right after message_start
+            yield StreamChunk(usage=Usage(input_tokens=50, output_tokens=0))
+            yield StreamChunk(content="Hello")
+            # Anthropic pattern: complete usage rides with finish_reason
+            yield StreamChunk(
+                finish_reason="stop",
+                usage=Usage(input_tokens=50, output_tokens=10),
+            )
+
+        events = []
+        async for sse in stream_to_sse(mock_stream()):
+            events.append(sse)
+
+        done_events = [e for e in events if e.startswith("event: done")]
+        assert len(done_events) == 1
+
+        data = json.loads(done_events[0].strip().split("\n")[1].removeprefix("data: "))
+        # Final usage, not the early partial and not a sum
+        assert data["usage"]["input_tokens"] == 50
+        assert data["usage"]["output_tokens"] == 10
