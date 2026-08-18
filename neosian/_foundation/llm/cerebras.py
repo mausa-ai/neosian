@@ -6,6 +6,10 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 from cerebras.cloud.sdk import AsyncCerebras, BadRequestError
+from cerebras.cloud.sdk.types.chat.chat_completion import (
+    ChatChunkResponse,
+    ErrorChunkResponse,
+)
 
 from neosian._foundation.llm.base import (
     BaseLLMClient,
@@ -19,6 +23,7 @@ from neosian._foundation.llm.base import (
 )
 from neosian._foundation.shared.constants import ErrorMessages, LLMDefaults
 from neosian._foundation.shared.exceptions import (
+    ProviderError,
     ToolCallGenerationError,
     UnsupportedContentError,
     UnsupportedParameterError,
@@ -291,20 +296,27 @@ class CerebrasClient(BaseLLMClient):
         tool_call_builders: dict[int, dict[str, str]] = {}
 
         async for chunk in stream:  # type: ignore[union-attr]
+            # The stream union also carries ErrorChunkResponse; surface it
+            # rather than silently dropping a mid-stream provider error.
+            if isinstance(chunk, ErrorChunkResponse):
+                raise ProviderError(provider="cerebras", error=str(chunk.error))
+            if not isinstance(chunk, ChatChunkResponse):
+                continue
+
             # Handle usage-only chunk (comes after finish_reason)
             if not chunk.choices and chunk.usage:
                 # Extract cache tokens if available
                 cache_read = 0
-                details = getattr(chunk.usage, "prompt_tokens_details", None)
+                details = chunk.usage.prompt_tokens_details
                 if details:
-                    cache_read = getattr(details, "cached_tokens", 0) or 0
+                    cache_read = details.cached_tokens or 0
 
-                prompt_tokens = chunk.usage.prompt_tokens  # type: ignore[union-attr]
+                prompt_tokens = chunk.usage.prompt_tokens or 0
 
                 yield StreamChunk(
                     usage=Usage(
                         input_tokens=prompt_tokens - cache_read,
-                        output_tokens=chunk.usage.completion_tokens,  # type: ignore[union-attr]
+                        output_tokens=chunk.usage.completion_tokens or 0,
                         cache_read_input_tokens=cache_read,
                     ),
                 )
@@ -313,20 +325,20 @@ class CerebrasClient(BaseLLMClient):
             if not chunk.choices:
                 continue
 
-            choice = chunk.choices[0]  # type: ignore[index]
+            choice = chunk.choices[0]
             delta = choice.delta
 
             # Handle content
-            content = delta.content if delta.content else None
+            content = delta.content if delta and delta.content else None
 
             # Handle reasoning
-            reasoning = getattr(delta, "reasoning", None)
+            reasoning = getattr(delta, "reasoning", None) if delta else None
 
             # Handle tool calls (streamed in parts)
             tool_calls: list[ToolCall] = []
-            if delta.tool_calls:
+            if delta and delta.tool_calls:
                 for tc in delta.tool_calls:
-                    idx = tc.index
+                    idx = tc.index if tc.index is not None else 0
                     if idx not in tool_call_builders:
                         tool_call_builders[idx] = {
                             "id": "",

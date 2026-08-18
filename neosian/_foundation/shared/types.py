@@ -59,6 +59,7 @@ class ModelSpec:
     supports_reasoning: bool = False
     supports_images: bool = False
     supports_documents: bool = False
+    supports_max_effort: bool = False
 
 
 # Model specs registry (populated after Model enum is defined)
@@ -70,8 +71,9 @@ class ReasoningEffort(str, Enum):
 
     Controls how many reasoning tokens the model uses.
     Supported by GPT-OSS models (Groq), GPT-5 models (OpenAI),
-    and Claude Opus 4.6 (Anthropic).
-    Note: MAX is Anthropic-only; Groq and OpenAI downgrade MAX to HIGH with a warning.
+    and reasoning-capable Claude models (Anthropic).
+    Note: MAX is only passed through for models whose spec sets
+    supports_max_effort; Groq and OpenAI downgrade MAX to HIGH with a warning.
     Note: GPT-5-Pro only supports HIGH; other values are forced to HIGH with a warning.
     """
 
@@ -107,6 +109,7 @@ class Model(str, Enum):
     GPT_5_PRO = "gpt-5-pro-2025-10-06"
 
     # Anthropic
+    CLAUDE_OPUS_5 = "claude-opus-5"
     CLAUDE_OPUS_4_6 = "claude-opus-4-6"
     CLAUDE_SONNET_5 = "claude-sonnet-5"
     CLAUDE_HAIKU_4_5 = "claude-haiku-4-5-20251001"
@@ -153,6 +156,11 @@ class Model(str, Enum):
     def supports_documents(self) -> bool:
         """Check if neosian's converter supports document content for this model."""
         return _MODEL_SPECS[self.value].supports_documents
+
+    @property
+    def supports_max_effort(self) -> bool:
+        """Check if this model accepts reasoning_effort=MAX without downgrade."""
+        return _MODEL_SPECS[self.value].supports_max_effort
 
 
 # Groq - Production
@@ -240,21 +248,32 @@ _MODEL_SPECS[Model.GPT_5_PRO.value] = ModelSpec(
 )
 
 # Anthropic
-_MODEL_SPECS[Model.CLAUDE_OPUS_4_6.value] = ModelSpec(
+_MODEL_SPECS[Model.CLAUDE_OPUS_5.value] = ModelSpec(
     provider=Provider.ANTHROPIC,
-    context_window=200_000,
+    context_window=1_000_000,
     max_output_tokens=128_000,
     supports_reasoning=True,
     supports_images=True,
     supports_documents=True,
+    supports_max_effort=True,
 )
-_MODEL_SPECS[Model.CLAUDE_SONNET_5.value] = ModelSpec(
+_MODEL_SPECS[Model.CLAUDE_OPUS_4_6.value] = ModelSpec(
     provider=Provider.ANTHROPIC,
-    context_window=200_000,
-    max_output_tokens=64_000,
+    context_window=1_000_000,
+    max_output_tokens=128_000,
     supports_reasoning=True,
     supports_images=True,
     supports_documents=True,
+    supports_max_effort=True,
+)
+_MODEL_SPECS[Model.CLAUDE_SONNET_5.value] = ModelSpec(
+    provider=Provider.ANTHROPIC,
+    context_window=1_000_000,
+    max_output_tokens=128_000,
+    supports_reasoning=True,
+    supports_images=True,
+    supports_documents=True,
+    supports_max_effort=True,
 )
 _MODEL_SPECS[Model.CLAUDE_HAIKU_4_5.value] = ModelSpec(
     provider=Provider.ANTHROPIC,

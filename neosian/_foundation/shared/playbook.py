@@ -53,8 +53,8 @@ def load_playbook(path: str | Path) -> Playbook:
 
     try:
         frontmatter, body = parse_frontmatter(content, path_str)
-    except FrontmatterError:
-        raise PlaybookInvalidFrontmatterError(path_str)
+    except FrontmatterError as err:
+        raise PlaybookInvalidFrontmatterError(path_str) from err
 
     if PlaybookLoader.NAME_KEY not in frontmatter:
         raise PlaybookMissingKeyError(PlaybookLoader.NAME_KEY, path_str)

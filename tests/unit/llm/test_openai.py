@@ -426,9 +426,9 @@ class TestOpenAIClientReasoningEffort:
         assert mock_create.call_args.kwargs["reasoning_effort"] == "low"
 
     @pytest.mark.asyncio
-    async def test_reasoning_effort_none_uses_not_given(self) -> None:
-        """reasoning_effort=None should pass NOT_GIVEN to API."""
-        from openai import NOT_GIVEN
+    async def test_reasoning_effort_none_uses_omit(self) -> None:
+        """reasoning_effort=None should pass the omit sentinel to the API."""
+        from openai import omit
 
         client = OpenAIClient(api_key="test-key")
         mock_create = AsyncMock(return_value=self._mock_response())
@@ -439,7 +439,7 @@ class TestOpenAIClientReasoningEffort:
             model=Model.GPT_5_NANO,
         )
 
-        assert mock_create.call_args.kwargs["reasoning_effort"] is NOT_GIVEN
+        assert mock_create.call_args.kwargs["reasoning_effort"] is omit
 
     @pytest.mark.asyncio
     async def test_reasoning_effort_max_downgraded_to_high(self) -> None:

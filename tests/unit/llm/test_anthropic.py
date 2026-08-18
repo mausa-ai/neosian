@@ -1,6 +1,7 @@
 """Unit tests for the Anthropic LLM client."""
 
-from unittest.mock import AsyncMock, MagicMock
+import dataclasses
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -16,6 +17,7 @@ from neosian._foundation.llm.base import (
     TextBlock,
     ToolDefinition,
 )
+from neosian._foundation.shared import types as types_module
 from neosian._foundation.shared.exceptions import (
     UnsupportedContentError,
     UnsupportedParameterError,
@@ -469,10 +471,35 @@ class TestAnthropicReasoningEffort:
         assert "temperature" not in call_kwargs
 
     @pytest.mark.asyncio
-    async def test_max_effort_downgraded_to_high_for_sonnet(
+    async def test_temperature_rejected_for_opus_5(
         self, client: AnthropicClient, sample_messages: list[Message]
     ) -> None:
-        """Verify MAX effort is downgraded to HIGH for Sonnet 4.6 (Opus-only)."""
+        """Verify explicit temperature raises for models rejecting sampling params."""
+        with pytest.raises(UnsupportedParameterError):
+            await client.complete(
+                messages=sample_messages,
+                model=Model.CLAUDE_OPUS_5,
+                temperature=0.5,
+            )
+
+    @pytest.mark.asyncio
+    async def test_temperature_rejected_for_opus_5_stream(
+        self, client: AnthropicClient, sample_messages: list[Message]
+    ) -> None:
+        """Verify explicit temperature raises in the stream path too."""
+        with pytest.raises(UnsupportedParameterError):
+            async for _ in client.stream(
+                messages=sample_messages,
+                model=Model.CLAUDE_OPUS_5,
+                temperature=0.5,
+            ):
+                pass
+
+    @pytest.mark.asyncio
+    async def test_max_effort_passed_through_for_sonnet(
+        self, client: AnthropicClient, sample_messages: list[Message]
+    ) -> None:
+        """Verify MAX effort is passed through for Sonnet 5 (supports_max_effort)."""
         mock_response = MagicMock()
         mock_response.content = [MagicMock(type="text", text="Answer")]
         mock_response.usage = MagicMock(input_tokens=10, output_tokens=5)
@@ -485,6 +512,33 @@ class TestAnthropicReasoningEffort:
             model=Model.CLAUDE_SONNET_5,
             reasoning_effort=ReasoningEffort.MAX,
         )
+
+        call_kwargs = client._client.messages.stream.call_args.kwargs
+        assert call_kwargs["output_config"] == {"effort": "max"}
+
+    @pytest.mark.asyncio
+    async def test_max_effort_downgraded_without_spec_support(
+        self, client: AnthropicClient, sample_messages: list[Message]
+    ) -> None:
+        """Verify MAX effort is downgraded when the spec disallows it."""
+        spec = types_module._MODEL_SPECS[Model.CLAUDE_SONNET_5.value]
+        patched = dataclasses.replace(spec, supports_max_effort=False)
+
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(type="text", text="Answer")]
+        mock_response.usage = MagicMock(input_tokens=10, output_tokens=5)
+        mock_response.model = "claude-sonnet-5"
+
+        _mock_complete(client, mock_response)
+
+        with patch.dict(
+            types_module._MODEL_SPECS, {Model.CLAUDE_SONNET_5.value: patched}
+        ):
+            await client.complete(
+                messages=sample_messages,
+                model=Model.CLAUDE_SONNET_5,
+                reasoning_effort=ReasoningEffort.MAX,
+            )
 
         call_kwargs = client._client.messages.stream.call_args.kwargs
         assert call_kwargs["output_config"] == {"effort": "high"}
@@ -511,10 +565,10 @@ class TestAnthropicReasoningEffort:
         assert call_kwargs["output_config"] == {"effort": "max"}
 
     @pytest.mark.asyncio
-    async def test_max_effort_downgraded_in_stream_for_sonnet(
+    async def test_max_effort_passed_through_in_stream_for_sonnet(
         self, client: AnthropicClient, sample_messages: list[Message]
     ) -> None:
-        """Verify MAX effort is downgraded to HIGH in stream for Sonnet 4.6."""
+        """Verify MAX effort is passed through in stream for Sonnet 5."""
         mock_event = MagicMock()
         mock_event.type = "message_stop"
 
@@ -536,7 +590,7 @@ class TestAnthropicReasoningEffort:
             pass
 
         call_kwargs = client._client.messages.stream.call_args.kwargs
-        assert call_kwargs["output_config"] == {"effort": "high"}
+        assert call_kwargs["output_config"] == {"effort": "max"}
 
 
 @pytest.mark.unit

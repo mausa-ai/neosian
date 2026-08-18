@@ -125,7 +125,7 @@ class TestAgentStreamingWithOutputGuardrails:
                 # Note: run() with stream=True is synchronous until iteration
                 import asyncio
 
-                asyncio.get_event_loop().run_until_complete(
+                asyncio.run(
                     agent.run([Message(role=Role.USER, content="Hi")], stream=True)
                 )
 

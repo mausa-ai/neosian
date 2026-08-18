@@ -56,6 +56,12 @@ class ErrorMessages:
         "Temperature parameter is not supported for OpenAI GPT-5 models"
     )
 
+    # Anthropic: sampling parameters removed on Claude Opus 5
+    ANTHROPIC_TEMPERATURE_NOT_SUPPORTED: str = (
+        "Temperature parameter is not supported for model '{model}' "
+        "(sampling parameters are rejected by the API)"
+    )
+
     # Reasoning effort errors
     REASONING_EFFORT_NOT_SUPPORTED: str = (
         "reasoning_effort is only supported for models with reasoning capability. "
@@ -87,10 +93,10 @@ class ErrorMessages:
         "Downgrading to HIGH for model '{model}'."
     )
 
-    # Anthropic MAX-to-HIGH downgrade (MAX is Opus 4.6 only)
+    # Anthropic MAX-to-HIGH downgrade (models without supports_max_effort)
     REASONING_EFFORT_MAX_DOWNGRADED_ANTHROPIC: str = (
-        "reasoning_effort=MAX is only supported by Claude Opus 4.6. "
-        "Downgrading to HIGH for model '{model}'."
+        "reasoning_effort=MAX is not supported by model '{model}'. "
+        "Downgrading to HIGH."
     )
 
     # GPT-5-Pro only supports HIGH

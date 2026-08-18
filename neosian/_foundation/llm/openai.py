@@ -5,7 +5,7 @@ import logging
 from collections.abc import AsyncIterator
 from typing import cast
 
-from openai import NOT_GIVEN, AsyncOpenAI, BadRequestError
+from openai import AsyncOpenAI, BadRequestError, omit
 from openai.types.chat import (
     ChatCompletionAssistantMessageParam,
     ChatCompletionMessageParam,
@@ -107,16 +107,16 @@ class OpenAIClient(BaseLLMClient):
 
         for attempt in range(LLMDefaults.MAX_TOOL_CALL_RETRIES + 1):
             try:
-                response = await self._client.chat.completions.create(  # type: ignore[call-overload]
+                response = await self._client.chat.completions.create(
                     model=model.value,
                     messages=openai_messages,
-                    tools=openai_tools if openai_tools else NOT_GIVEN,
+                    tools=openai_tools if openai_tools else omit,
                     max_completion_tokens=max_tokens,
                     response_format=(
-                        openai_response_format if openai_response_format else NOT_GIVEN
+                        openai_response_format if openai_response_format else omit
                     ),
                     reasoning_effort=(
-                        effective_effort.value if effective_effort else NOT_GIVEN
+                        effective_effort.value if effective_effort else omit
                     ),
                 )
                 return self._parse_response(response)
@@ -300,14 +300,14 @@ class OpenAIClient(BaseLLMClient):
         openai_tools = self._convert_tools(tools) if tools else None
 
         stream_opts: ChatCompletionStreamOptionsParam = {"include_usage": True}
-        stream = await self._client.chat.completions.create(  # type: ignore[call-overload]
-            model=model,
+        stream = await self._client.chat.completions.create(
+            model=model.value,
             messages=openai_messages,
-            tools=openai_tools if openai_tools else NOT_GIVEN,
+            tools=openai_tools if openai_tools else omit,
             max_completion_tokens=max_tokens,
             stream=True,
             stream_options=stream_opts,
-            reasoning_effort=effective_effort.value if effective_effort else NOT_GIVEN,
+            reasoning_effort=effective_effort.value if effective_effort else omit,
         )
 
         # Track tool calls being built across chunks

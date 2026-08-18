@@ -4,16 +4,15 @@ These tests use real API calls to verify fallback behavior when providers fail.
 Invalid API keys are used to trigger authentication errors (401), exercising
 the complete fallback path in agent execution.
 
-API keys are loaded from ~/Documents/api_keys/ directory:
-- groq_api_key.txt
-- openai_api_key.txt
-- anthropic_api_key.txt
+API keys are read from environment variables (matching tests/integration/conftest.py):
+- GROQ_API_KEY
+- OPENAI_API_KEY
+- ANTHROPIC_API_KEY
 
 Run with: uv run pytest tests/integration/llm/test_fallback.py -v
 """
 
 import os
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -31,40 +30,6 @@ from neosian._foundation.shared.types import (
     SystemPrompt,
 )
 
-# Path to API keys directory
-API_KEYS_DIR = Path.home() / "Documents" / "api_keys"
-
-
-def load_api_key(filename: str) -> str | None:
-    """Load API key from file.
-
-    Args:
-        filename: Name of the file containing the API key.
-
-    Returns:
-        API key string or None if file doesn't exist.
-    """
-    path = API_KEYS_DIR / filename
-    if not path.exists():
-        return None
-    return path.read_text().strip()
-
-
-def get_valid_groq_key() -> str | None:
-    """Get valid Groq API key from file."""
-    return load_api_key("groq_api_key.txt")
-
-
-def get_valid_openai_key() -> str | None:
-    """Get valid OpenAI API key from file."""
-    return load_api_key("openai_api_key.txt")
-
-
-def get_valid_anthropic_key() -> str | None:
-    """Get valid Anthropic API key from file."""
-    return load_api_key("anthropic_api_key.txt")
-
-
 # Invalid API keys that will trigger authentication errors
 INVALID_GROQ_KEY = "gsk_invalid_test_key_12345"
 INVALID_OPENAI_KEY = "sk-invalid_test_key_12345"
@@ -74,27 +39,27 @@ INVALID_ANTHROPIC_KEY = "sk-ant-invalid_test_key_12345"
 @pytest.fixture
 def valid_groq_key() -> str:
     """Fixture that provides valid Groq API key or skips test."""
-    key = get_valid_groq_key()
+    key = os.environ.get("GROQ_API_KEY")
     if not key:
-        pytest.skip("Valid Groq API key not found in ~/Documents/api_keys/")
+        pytest.skip("GROQ_API_KEY environment variable not set")
     return key
 
 
 @pytest.fixture
 def valid_openai_key() -> str:
     """Fixture that provides valid OpenAI API key or skips test."""
-    key = get_valid_openai_key()
+    key = os.environ.get("OPENAI_API_KEY")
     if not key:
-        pytest.skip("Valid OpenAI API key not found in ~/Documents/api_keys/")
+        pytest.skip("OPENAI_API_KEY environment variable not set")
     return key
 
 
 @pytest.fixture
 def valid_anthropic_key() -> str:
     """Fixture that provides valid Anthropic API key or skips test."""
-    key = get_valid_anthropic_key()
+    key = os.environ.get("ANTHROPIC_API_KEY")
     if not key:
-        pytest.skip("Valid Anthropic API key not found in ~/Documents/api_keys/")
+        pytest.skip("ANTHROPIC_API_KEY environment variable not set")
     return key
 
 

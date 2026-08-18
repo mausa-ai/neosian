@@ -4,6 +4,13 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from cerebras.cloud.sdk import BadRequestError
+from cerebras.cloud.sdk.types.chat.chat_completion import (
+    ChatChunkResponse,
+    ChatChunkResponseChoice,
+    ChatChunkResponseChoiceDelta,
+    ChatChunkResponseUsage,
+    ChatChunkResponseUsagePromptTokensDetails,
+)
 
 from neosian._foundation.llm.base import Message, Role, ToolDefinition
 from neosian._foundation.llm.cerebras import CerebrasClient
@@ -13,6 +20,37 @@ from neosian._foundation.shared.exceptions import (
     UnsupportedParameterError,
 )
 from neosian._foundation.shared.types import Model, ReasoningEffort, ToolName
+
+
+def _make_stream_chunk(
+    *,
+    content: str | None = None,
+    reasoning: str | None = None,
+    finish_reason: str | None = None,
+    usage: ChatChunkResponseUsage | None = None,
+    with_choice: bool = True,
+) -> ChatChunkResponse:
+    """Build a real SDK stream chunk — stream() narrows on ChatChunkResponse."""
+    choices: list[ChatChunkResponseChoice] = []
+    if with_choice:
+        choices = [
+            ChatChunkResponseChoice(
+                index=0,
+                delta=ChatChunkResponseChoiceDelta(
+                    content=content, reasoning=reasoning
+                ),
+                finish_reason=finish_reason,
+            )
+        ]
+    return ChatChunkResponse(
+        id="chunk-1",
+        created=0,
+        model="gpt-oss-120b",
+        object="chat.completion.chunk",
+        system_fingerprint="fp",
+        choices=choices,
+        usage=usage,
+    )
 
 
 @pytest.mark.unit
@@ -651,30 +689,10 @@ class TestCerebrasClientReasoningContent:
                 self.index += 1
                 return item
 
-        # Create mock chunks with reasoning
-        chunk1 = MagicMock()
-        chunk1.choices = [MagicMock()]
-        chunk1.choices[0].delta.content = None
-        chunk1.choices[0].delta.reasoning = "Let me think"
-        chunk1.choices[0].delta.tool_calls = None
-        chunk1.choices[0].finish_reason = None
-        chunk1.usage = None
-
-        chunk2 = MagicMock()
-        chunk2.choices = [MagicMock()]
-        chunk2.choices[0].delta.content = "Answer"
-        chunk2.choices[0].delta.reasoning = None
-        chunk2.choices[0].delta.tool_calls = None
-        chunk2.choices[0].finish_reason = None
-        chunk2.usage = None
-
-        chunk3 = MagicMock()
-        chunk3.choices = [MagicMock()]
-        chunk3.choices[0].delta.content = None
-        chunk3.choices[0].delta.reasoning = None
-        chunk3.choices[0].delta.tool_calls = None
-        chunk3.choices[0].finish_reason = "stop"
-        chunk3.usage = None
+        # Create real SDK chunks with reasoning
+        chunk1 = _make_stream_chunk(reasoning="Let me think")
+        chunk2 = _make_stream_chunk(content="Answer")
+        chunk3 = _make_stream_chunk(finish_reason="stop")
 
         mock_create.return_value = MockAsyncIterator([chunk1, chunk2, chunk3])
 
@@ -715,13 +733,7 @@ class TestCerebrasClientReasoningContent:
                 self.index += 1
                 return item
 
-        chunk = MagicMock()
-        chunk.choices = [MagicMock()]
-        chunk.choices[0].delta.content = "Hello"
-        del chunk.choices[0].delta.reasoning
-        chunk.choices[0].delta.tool_calls = None
-        chunk.choices[0].finish_reason = "stop"
-        chunk.usage = None
+        chunk = _make_stream_chunk(content="Hello", finish_reason="stop")
 
         mock_create.return_value = MockAsyncIterator([chunk])
 
@@ -884,13 +896,16 @@ class TestCerebrasClientCaching:
         client._client.chat.completions.create = mock_create
 
         # Create a usage-only chunk (no choices, has usage)
-        usage_chunk = MagicMock()
-        usage_chunk.choices = []
-        usage_chunk.usage = MagicMock()
-        usage_chunk.usage.prompt_tokens = 1000
-        usage_chunk.usage.completion_tokens = 50
-        usage_chunk.usage.prompt_tokens_details = MagicMock()
-        usage_chunk.usage.prompt_tokens_details.cached_tokens = 700
+        usage_chunk = _make_stream_chunk(
+            with_choice=False,
+            usage=ChatChunkResponseUsage(
+                prompt_tokens=1000,
+                completion_tokens=50,
+                prompt_tokens_details=ChatChunkResponseUsagePromptTokensDetails(
+                    cached_tokens=700
+                ),
+            ),
+        )
 
         class SingleChunkIter:
             def __init__(self) -> None:
@@ -899,7 +914,7 @@ class TestCerebrasClientCaching:
             def __aiter__(self) -> "SingleChunkIter":
                 return self
 
-            async def __anext__(self) -> MagicMock:
+            async def __anext__(self) -> ChatChunkResponse:
                 if self._yielded:
                     raise StopAsyncIteration
                 self._yielded = True

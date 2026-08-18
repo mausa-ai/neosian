@@ -1,15 +1,14 @@
 """Raw Groq API call for latency baseline measurement."""
 
 import asyncio
+import os
 import time
 
 from groq import AsyncGroq
 
 
 async def main() -> None:
-    # Load API key from file
-    with open("~/Documents/api_keys/groq_api_key.txt") as f:
-        api_key = f.read().strip()
+    api_key = os.environ["GROQ_API_KEY"]
 
     # Client instantiation outside timer
     client = AsyncGroq(api_key=api_key)

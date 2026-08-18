@@ -16,13 +16,7 @@ from neosian import Agent, AgentConfig, Message, Model, Role
 
 def _load_credentials_from_config() -> None:
     """Load API keys from ~/.neosian/config.toml if not already in environment."""
-    try:
-        import tomllib
-    except ImportError:
-        try:
-            import tomli as tomllib  # type: ignore[import-not-found,no-redef]
-        except ImportError:
-            return
+    import tomllib
 
     config_path = Path.home() / ".neosian" / "config.toml"
     if not config_path.exists():

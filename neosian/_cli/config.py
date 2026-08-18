@@ -3,16 +3,12 @@
 Handles reading and writing credentials from ~/.neosian/config.toml.
 """
 
+import tomllib
 from pathlib import Path
 
-from neosian._foundation.shared.constants import Config
-
-try:
-    import tomllib
-except ImportError:
-    import tomli as tomllib  # type: ignore[import-not-found,no-redef]
-
 import tomli_w
+
+from neosian._foundation.shared.constants import Config
 
 
 def _get_config_path() -> Path:

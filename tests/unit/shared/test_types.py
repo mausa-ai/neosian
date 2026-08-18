@@ -88,8 +88,9 @@ class TestModelEnum:
         assert Model.GPT_5_PRO.max_output_tokens == 128_000
 
         # Anthropic
+        assert Model.CLAUDE_OPUS_5.max_output_tokens == 128_000
         assert Model.CLAUDE_OPUS_4_6.max_output_tokens == 128_000
-        assert Model.CLAUDE_SONNET_5.max_output_tokens == 64_000
+        assert Model.CLAUDE_SONNET_5.max_output_tokens == 128_000
         assert Model.CLAUDE_HAIKU_4_5.max_output_tokens == 64_000
 
     def test_model_spec_property(self) -> None:
@@ -120,9 +121,10 @@ class TestModelEnum:
         assert Model.GPT_5_NANO.context_window == 400_000
         assert Model.GPT_5_PRO.context_window == 400_000
 
-        # Anthropic: 200k
-        assert Model.CLAUDE_SONNET_5.context_window == 200_000
-        assert Model.CLAUDE_OPUS_4_6.context_window == 200_000
+        # Anthropic: 1M except Haiku (200k)
+        assert Model.CLAUDE_OPUS_5.context_window == 1_000_000
+        assert Model.CLAUDE_SONNET_5.context_window == 1_000_000
+        assert Model.CLAUDE_OPUS_4_6.context_window == 1_000_000
         assert Model.CLAUDE_HAIKU_4_5.context_window == 200_000
 
 

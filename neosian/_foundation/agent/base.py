@@ -772,8 +772,10 @@ class Agent:
 
             semaphore = asyncio.Semaphore(self._max_parallel_tools)
 
-            async def _gated_execute(tc: ToolCall) -> ToolResult[Any]:
-                async with semaphore:
+            async def _gated_execute(
+                tc: ToolCall, *, sem: asyncio.Semaphore = semaphore
+            ) -> ToolResult[Any]:
+                async with sem:
                     return await self._execute_tool(tc)
 
             results = await asyncio.gather(*(_gated_execute(tc) for tc in tool_calls))

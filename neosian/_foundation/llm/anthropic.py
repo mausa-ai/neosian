@@ -119,6 +119,11 @@ def _strip_unsupported_constraints(
     return result
 
 
+# Models on which the API rejects sampling parameters entirely (temperature,
+# top_p, top_k all return a 400 — removed, not merely defaulted).
+_SAMPLING_REJECTED_MODELS: frozenset[Model] = frozenset({Model.CLAUDE_OPUS_5})
+
+
 class AnthropicClient(BaseLLMClient):
     """Anthropic Claude LLM client.
 
@@ -133,6 +138,47 @@ class AnthropicClient(BaseLLMClient):
             api_key: Anthropic API key. Required, no implicit env var reading.
         """
         self._client = AsyncAnthropic(api_key=api_key)
+
+    def _validate_temperature_support(
+        self, model: Model, temperature: float | None
+    ) -> None:
+        """Reject explicit temperature on models that removed sampling params.
+
+        Args:
+            model: Target model.
+            temperature: Requested temperature, if any.
+
+        Raises:
+            UnsupportedParameterError: If temperature was explicitly provided
+                for a model whose API rejects sampling parameters.
+        """
+        if temperature is not None and model in _SAMPLING_REJECTED_MODELS:
+            raise UnsupportedParameterError(
+                ErrorMessages.ANTHROPIC_TEMPERATURE_NOT_SUPPORTED.format(
+                    model=model.value
+                )
+            )
+
+    def _resolve_effort(
+        self, model: Model, reasoning_effort: ReasoningEffort | None
+    ) -> ReasoningEffort | None:
+        """Downgrade MAX effort on models whose spec doesn't allow it.
+
+        Args:
+            model: Target model.
+            reasoning_effort: Requested effort level, if any.
+
+        Returns:
+            The effort level to send to the API.
+        """
+        if reasoning_effort == ReasoningEffort.MAX and not model.supports_max_effort:
+            logger.warning(
+                ErrorMessages.REASONING_EFFORT_MAX_DOWNGRADED_ANTHROPIC.format(
+                    model=model.value
+                )
+            )
+            return ReasoningEffort.HIGH
+        return reasoning_effort
 
     async def complete(
         self,
@@ -180,17 +226,10 @@ class AnthropicClient(BaseLLMClient):
                 ErrorMessages.REASONING_EFFORT_NOT_SUPPORTED.format(model=model.value)
             )
 
+        self._validate_temperature_support(model, temperature)
         self._validate_content_support(messages, model)
 
-        # Anthropic MAX is Opus 4.6 only — downgrade to HIGH for other models
-        effective_effort = reasoning_effort
-        if reasoning_effort == ReasoningEffort.MAX and model != Model.CLAUDE_OPUS_4_6:
-            logger.warning(
-                ErrorMessages.REASONING_EFFORT_MAX_DOWNGRADED_ANTHROPIC.format(
-                    model=model.value
-                )
-            )
-            effective_effort = ReasoningEffort.HIGH
+        effective_effort = self._resolve_effort(model, reasoning_effort)
 
         system_prompt, anthropic_messages = self._convert_messages(messages)
         anthropic_tools = self._convert_tools(tools) if tools else None
@@ -359,17 +398,10 @@ class AnthropicClient(BaseLLMClient):
                 ErrorMessages.REASONING_EFFORT_NOT_SUPPORTED.format(model=model.value)
             )
 
+        self._validate_temperature_support(model, temperature)
         self._validate_content_support(messages, model)
 
-        # Anthropic MAX is Opus 4.6 only — downgrade to HIGH for other models
-        effective_effort = reasoning_effort
-        if reasoning_effort == ReasoningEffort.MAX and model != Model.CLAUDE_OPUS_4_6:
-            logger.warning(
-                ErrorMessages.REASONING_EFFORT_MAX_DOWNGRADED_ANTHROPIC.format(
-                    model=model.value
-                )
-            )
-            effective_effort = ReasoningEffort.HIGH
+        effective_effort = self._resolve_effort(model, reasoning_effort)
 
         system_prompt, anthropic_messages = self._convert_messages(messages)
         anthropic_tools = self._convert_tools(tools) if tools else None

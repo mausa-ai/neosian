@@ -113,11 +113,11 @@ class GroqClient(BaseLLMClient):
         for attempt in range(LLMDefaults.MAX_TOOL_CALL_RETRIES + 1):
             try:
                 response = await self._client.chat.completions.create(
-                    model=model,
+                    model=model.value,
                     messages=groq_messages,
                     tools=groq_tools,
                     temperature=current_temp,
-                    max_tokens=max_tokens,
+                    max_completion_tokens=max_tokens,
                     response_format=groq_response_format,  # type: ignore[arg-type]
                     reasoning_effort=(
                         effective_effort.value  # type: ignore[arg-type]
@@ -248,11 +248,11 @@ class GroqClient(BaseLLMClient):
         temp = temperature if temperature is not None else LLMDefaults.TEMPERATURE
 
         stream = await self._client.chat.completions.create(
-            model=model,
+            model=model.value,
             messages=groq_messages,
             tools=groq_tools,
             temperature=temp,
-            max_tokens=max_tokens,
+            max_completion_tokens=max_tokens,
             stream=True,
             reasoning_effort=(
                 effective_effort.value  # type: ignore[arg-type]

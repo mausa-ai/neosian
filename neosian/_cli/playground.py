@@ -25,7 +25,12 @@ from neosian._foundation.agent.base import Agent
 from neosian._foundation.agent.session import AgentSession
 from neosian._foundation.llm.base import Message, Role, text_of
 from neosian._foundation.shared.constants import ArenaUI, Assets, Config, PlaygroundUI
-from neosian._foundation.shared.types import AgentConfig, Model, Provider
+from neosian._foundation.shared.types import (
+    DEFAULT_MODELS,
+    AgentConfig,
+    Model,
+    Provider,
+)
 
 
 def _load_credentials_from_config() -> None:
@@ -88,57 +93,64 @@ def _load_header() -> str:
         return ""
 
 
+# Models hidden from the interactive picker (special-purpose, e.g. guardrails).
+_HIDDEN_MODELS: frozenset[Model] = frozenset({Model.GROQ_GPT_OSS_SAFEGUARD_20B})
+
+# Optional flavor text appended to a model's display name. The "(default)"
+# marker is derived from DEFAULT_MODELS, not baked in here.
+_MODEL_NOTES: dict[Model, str] = {
+    Model.GROQ_LLAMA_4_MAVERICK_17B: "preview",
+    Model.GROQ_LLAMA_4_SCOUT_17B: "preview",
+    Model.GROQ_QWEN3_32B: "preview",
+    Model.GROQ_KIMI_K2: "preview",
+    Model.GROQ_KIMI_K2_0905: "preview",
+    Model.GPT_5_NANO: "fastest",
+    Model.GPT_5_MINI: "balanced",
+    Model.GPT_5_1: "best for coding",
+    Model.GPT_5_PRO: "most precise",
+    Model.CLAUDE_OPUS_5: "most capable",
+    Model.CLAUDE_SONNET_5: "balanced",
+    Model.CLAUDE_HAIKU_4_5: "fastest",
+    Model.CEREBRAS_GPT_OSS_120B: "fastest 120B",
+    Model.CEREBRAS_LLAMA_3_1_8B: "fastest",
+    Model.CEREBRAS_QWEN3_235B: "preview, multilingual",
+    Model.CEREBRAS_ZAI_GLM_4_7: "preview, reasoning",
+}
+
+
+def _display_name(model: Model) -> str:
+    """Build the picker label for a model from the registry."""
+    notes: list[str] = []
+    if DEFAULT_MODELS.get(model.provider) is model:
+        notes.append("default")
+    note = _MODEL_NOTES.get(model)
+    if note is not None:
+        notes.append(note)
+    return f"{model.value} ({', '.join(notes)})" if notes else model.value
+
+
 def _get_models_for_provider(
     provider: Provider, *, require_reasoning: bool = False
 ) -> list[tuple[Model, str]]:
-    """Get available models for a provider.
+    """Get available models for a provider, derived from the Model registry.
 
     Args:
         provider: The LLM provider.
         require_reasoning: If True, only return models that support reasoning.
 
     Returns:
-        List of (Model, display_name) tuples.
+        List of (Model, display_name) tuples, default model first.
     """
-    match provider:
-        case Provider.GROQ:
-            models = [
-                # Production models
-                (Model.GROQ_GPT_OSS_20B, "openai/gpt-oss-20b (default)"),
-                (Model.GROQ_GPT_OSS_120B, "openai/gpt-oss-120b"),
-                (Model.GROQ_LLAMA_3_3_70B, "llama-3.3-70b-versatile"),
-                (Model.GROQ_LLAMA_3_1_8B, "llama-3.1-8b-instant"),
-                # Preview models
-                (Model.GROQ_LLAMA_4_MAVERICK_17B, "llama-4-maverick-17b (preview)"),
-                (Model.GROQ_LLAMA_4_SCOUT_17B, "llama-4-scout-17b (preview)"),
-                (Model.GROQ_QWEN3_32B, "qwen3-32b (preview)"),
-                (Model.GROQ_KIMI_K2, "kimi-k2 (preview)"),
-            ]
-        case Provider.OPENAI:
-            models = [
-                (Model.GPT_5_NANO, "gpt-5-nano (default, fastest)"),
-                (Model.GPT_5_MINI, "gpt-5-mini (balanced)"),
-                (Model.GPT_5_1, "gpt-5.1 (best for coding)"),
-                (Model.GPT_5_PRO, "gpt-5-pro (most precise)"),
-            ]
-        case Provider.ANTHROPIC:
-            models = [
-                (Model.CLAUDE_SONNET_5, "claude-sonnet-5 (default, balanced)"),
-                (Model.CLAUDE_HAIKU_4_5, "claude-haiku-4-5 (fastest)"),
-                (Model.CLAUDE_OPUS_4_6, "claude-opus-4-6 (most capable)"),
-            ]
-        case Provider.CEREBRAS:
-            models = [
-                (Model.CEREBRAS_GPT_OSS_120B, "gpt-oss-120b (default, fastest 120B)"),
-                (Model.CEREBRAS_LLAMA_3_1_8B, "llama3.1-8b (fastest)"),
-                (Model.CEREBRAS_QWEN3_235B, "qwen-3-235b (preview, multilingual)"),
-                (Model.CEREBRAS_ZAI_GLM_4_7, "zai-glm-4.7 (preview, reasoning)"),
-            ]
-
-    if require_reasoning:
-        models = [(m, name) for m, name in models if m.supports_reasoning]
-
-    return models
+    models = [
+        m
+        for m in Model
+        if m.provider is provider
+        and m not in _HIDDEN_MODELS
+        and (not require_reasoning or m.supports_reasoning)
+    ]
+    default = DEFAULT_MODELS.get(provider)
+    models.sort(key=lambda m: m is not default)  # stable: default first
+    return [(m, _display_name(m)) for m in models]
 
 
 _ALL_PROVIDERS: list[tuple[Provider, str]] = [
