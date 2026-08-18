@@ -1,10 +1,44 @@
 # Neosian Roadmap — Memory & Conversation
 
-> Status: **active** (2026-08-18). Companion to [VISION.md](VISION.md) —
-> the vision says *why and what*, this says *in what order*. Version numbers are
-> cadence markers, not dates. Each phase ends dogfooded before the next begins.
-> Each phase carries a status line (`current` / `pending` / `done`) — machine-read
-> by the `/phase` command; exactly one phase is `current` at a time.
+> **▶ Current phase: NH — The house**
+>
+> *(2026-08-18: the ecosystem contract landed — [ECOSYSTEM.md](ECOSYSTEM.md) is
+> canonical here, referenced by neosae-kit's DESIGN §5.7; the constitution docs
+> (DESIGN, CLAUDE, SERVICES, LICENSE) exist. Standing ruling: neosian's phases
+> NH, NS, then N0–N4 run to completion before the kit's P10 vendors from a
+> `v<X.Y.Z>` release tag. Next: NH → NS → N0.)*
+>
+> The pointer above must equal the first phase heading without ✅ — if they
+> disagree, say so and trust the checkboxes. Companion to [VISION.md](VISION.md)
+> (*why and what*) and [DESIGN.md](DESIGN.md) (*how*); this file says *in what
+> order* and holds cross-session state. Version numbers are cadence markers,
+> not dates. Each phase ends dogfooded before the next begins.
+
+## Session protocol
+
+1. **Start:** read this file fully, then the [DESIGN.md](DESIGN.md) sections
+   the current phase names, then [CLAUDE.md](CLAUDE.md). The Decided
+   constraints below and [ECOSYSTEM.md](ECOSYSTEM.md) are settled — never
+   relitigated inside a phase.
+2. **One phase per session.** The user reviews between phases; split a phase
+   rather than overrun it.
+3. **During:** if reality contradicts DESIGN.md, the same session either bends
+   the code or adds a §12 ledger entry — never a silent divergence.
+4. **End:** tick the phase's boxes, carry unfinished tasks forward explicitly,
+   append a session-log line, mark the heading ✅ with the date, move the
+   ▶ pointer, commit (`<ID>: <what became true>`), tag `<id>-done` (annotated),
+   stop for review.
+
+## Phase ids, tags, versions
+
+- Phase ids: `NH`, `NS`, `N0`–`N4`. Commit subjects `<ID>: <what became true>`
+  (≤ 72 chars); `meta:` for repo housekeeping. The `v:X.Y.Z. …` subject style
+  is retired (DESIGN §12 #7).
+- Progress axis: annotated **`<id>-done`** tags at each phase close.
+- Release axis: annotated **`v<X.Y.Z>`** tags — what hosts vendor
+  (ECOSYSTEM §11). The version literal lives once in
+  `pyproject [project].version` (from NH); bump on public-surface change at
+  phase close, not per commit. Push with `--follow-tags`.
 
 ## The destination
 
@@ -47,7 +81,7 @@ These are settled and shape every phase:
 - **Two-key model**: `conversation_id` keys history (per thread);
   memory is keyed by **mounts** — a list of
   `(scope, mount_path, read_only, description)`. Scopes are opaque strings
-  (`user:123`, `user:123/project:erp`, `tenant:acme/kb`); hierarchy is a
+  (`user:123`, `user:123/proj:erp`, `tenant:acme/kb`); hierarchy is a
   naming convention plus explicit mounting, never inheritance logic in the
   storage layer. Canonical configuration mirrors Claude Code: a user mount
   plus a project mount. `memory=True` requires an explicit scope — no
@@ -71,53 +105,135 @@ These are settled and shape every phase:
   agent creation. Lives in the Conversation layer, triggers off
   `ModelSpec.context_window`. Anthropic server-side compaction becomes an
   opt-in optimization where available, never the foundation. (Design
-  direction sketched under Phase 2 — refine in a dedicated discussion
-  before implementation.)
+  direction sketched under N2 — refine in a dedicated discussion before
+  implementation.)
+- **The seam-level constraints are normative in [ECOSYSTEM.md](ECOSYSTEM.md)**
+  (scope grammar, token classes, integer µ$, event vocabulary, error codes,
+  FakeProvider, prompts-as-data, UTC, ABC-is-the-contract, vendoring);
+  rationale lives in [DESIGN.md](DESIGN.md). Changing one is a two-repo move
+  (ECOSYSTEM §12).
 
 ---
 
-## Phase 0 — Enablers (v0.53–0.55)
+## NH — The house (v0.53)
 
-**Status: current**
+DESIGN: §10, §11, §12.
 
-The prerequisites identified in VISION.md, unchanged. Required regardless of
-everything below.
+The kit-grade development-to-ship systems, adopted wholesale. No public-API
+changes in this phase.
+
+- [ ] The four constitution docs cross-link and agree (ECOSYSTEM, DESIGN,
+      CLAUDE, SERVICES — written 2026-08-18; NH verifies and fixes drift)
+- [ ] `.claude/` tracked (only `settings.local.json` ignored); `/phase` and
+      `/ship` rewritten against this file's protocol *(done 2026-08-18 —
+      verify they match the Makefile once it exists)*
+- [ ] `Makefile` per DESIGN §11 (help idiom; lint / format / typecheck / test /
+      test-external / size / release / phase-tag; dirty-tree + required-arg
+      guards)
+- [ ] Version flip: `[project].version` literal, `__version__` via
+      `importlib.metadata`, `[tool.hatch.version]` deleted,
+      `tests/unit/test_version.py` pins the derivation
+- [ ] Test-tier rename: real-API "integration" → `external_<provider>`
+      markers; addopts exclude external by default; auto-mark by path in the
+      root conftest; per-test skip helpers (never module-level); falsiness
+      key checks
+- [ ] `scripts/external_env.py` (value-blind cred injection, per-suite key
+      allowlist, prints names only) + `scripts/check_file_size.py` (warn 300 /
+      fail 500; allowlist `neosian/_foundation/agent/base.py` with reason
+      "split lands in N0")
+- [ ] import-linter contracts in pyproject (DESIGN §1) wired into `make lint`
+- [ ] CI reshape per DESIGN §11: lint job · test matrix 3.12/3.13/3.14 with
+      **no secrets** · external-provider jobs (schedule/dispatch,
+      empty-string self-skip); event-keyed concurrency; pinned ubuntu-24.04
+- [ ] LICENSE = Apache-2.0 committed *(done 2026-08-18)*
+
+**Done when:** `make lint typecheck test` is green with zero API keys set; CI
+is green on 3.12, 3.13 and 3.14; the docs agree with the tree.
+
+## NS — The seams freeze (v0.54)
+
+DESIGN: §4, §5, §2, §7 + ECOSYSTEM. Breaking changes batched into one release;
+order within the phase: §4 (vocabulary) → §5 (errors) → FakeProvider → §7
+(prompts-as-data).
+
+- [ ] Token-class rename (`cache_read_tokens`/`cache_write_tokens`) +
+      `ModelPricing` to int µ$/MTok (kit field order; no-rounding test) +
+      `cost_micro_usd()` ceiling division + `format_micro_usd` +
+      `PRICES_FINGERPRINT` gate; `Usage.cost()` float dropped;
+      `Usage`/`ModelPricing` frozen+slots; `ModelUsage` type
+- [ ] Error codes per DESIGN §5: `NeosianError` base with
+      `code`/`retryable`/`details`, the full append-only table,
+      `wrap_provider_error` at all four client boundaries
+      (`raise … from exc`), `ContextWindowExceededError`,
+      `ModelFailedError.cause_code`/`provider_status`, `ERROR_CODES` registry
+      + `python -m neosian.schemas errors`; exports updated
+- [ ] FakeProvider per DESIGN §2: `Provider.FAKE`, `Model.FAKE` /
+      `FAKE_SMALL` / `FAKE_REASONING` as real registry members;
+      `neosian.fake` public module (lazy-imported, root `__all__` untouched);
+      `FakeScript`/`FakeTurn` determinism rules; router always includes FAKE
+      (keyless boot); `AgentConfig.client_factory` seam
+- [ ] Prompts-as-data extraction (DESIGN §7): guardrail classifier prompt +
+      category template + CommonPolicies content + builtin tool descriptions
+      → `assets/` YAML, loaded/validated at import, overridable
+- [ ] In-blast-radius bug fixes: `_validate_run` extracted and shared by
+      `Agent.run` + `AgentSession.run` (the session currently skips all four
+      guards); `_attach_input_guard_results` → `dataclasses.replace` (fixes
+      the dropped `model=`)
+- [ ] `__all__` + `test_init` pin updated per contract; ECOSYSTEM marked v1;
+      **first release tag `v0.54.0`** cut with `make release`
+
+**Done when:** every vocabulary item frozen in ECOSYSTEM is exercised by a
+test; the annotated `v0.54.0` tag exists (the kit's first vendoring point).
+
+## N0 — Enablers (v0.55–0.56)
+
+DESIGN: §3, §6.
+
+The prerequisites identified in VISION.md, plus the event schema v2 that
+depends on them. Required regardless of everything below.
 
 | Deliverable | Why |
 |---|---|
-| Session-twin refactor (`client_factory` collapsing the `_with_session` duplicates in `agent/base.py`) | Every later insertion point is currently doubled; halves the diff of all memory work |
-| Turn capture — `AgentResponse.turn_messages` | Callers cannot faithfully persist a turn today; `Conversation` is impossible without it |
-| `AgentHooks` (`on_turn` / `on_llm_call` / `on_tool` / `on_fallback`) | Memory persistence in streaming mode needs a turn hook; replaces the eval runner's log-scraping |
-| `ContextPolicy` — token counting + window fitting | Makes `ModelSpec.context_window` live; the compaction trigger later |
+| Session-twin refactor (`client_factory` collapsing the `_with_session` duplicates in `agent/base.py`; the file leaves the size-gate allowlist) | Every later insertion point is currently doubled; halves the diff of all memory work |
+| Turn capture — `AgentResponse.turn_messages` (contract in DESIGN §3: tuple of provider-order messages; `turn_messages[-1] is response.message`; input + turn_messages replays as valid history) | Callers cannot faithfully persist a turn today; `Conversation` is impossible without it |
+| `AgentHooks` (`on_turn` / `on_llm_call` / `on_tool` / `on_fallback`; one frozen event dataclass per hook; sync-or-async; swallow-unless-strict; `LlmCallEvent.model` is the API-reported string) | Memory persistence in streaming mode needs a turn hook; replaces the eval runner's log-scraping; `on_llm_call` maps 1:1 onto a host's metering `record()` |
+| `ContextPolicy` — token counting + window fitting; proactive `ContextWindowExceededError`; no-fallback-to-smaller-window rule | Makes `ModelSpec.context_window` live; the compaction trigger later |
+| Event schema v2 (DESIGN §6): typed frozen events, `run(stream=True) -> AsyncIterator[AgentEvent]`, `StreamChunk.model`, `usage_by_model` on terminal events, `sse_stream`, `event_schemas()` export; old SSE surface removed | Consumes the hooks' resolved model + per-model usage; the host-facing stream contract |
+| `AgentResponse` frozen+slots, tuple fields, `usage_by_model`; usage-smuggling private attrs retired (public `LLMError.usage`/`usage_by_model`) | One value object, no field-dropping rebuilds |
+| Eval harness moves onto hooks + FakeProvider (fallback detection via `on_fallback`, not log substrings; `FakeClient` conformance for both provider stream shapes) | Deletes the log-scraper; keyless eval runs |
 
-**Exit criteria:** the CLI can faithfully persist and replay a full
-multi-turn session including intermediate tool messages.
+**Done when:** the CLI can faithfully persist and replay a full multi-turn
+session including intermediate tool messages.
 
-## Phase 1 — Memory core (v0.56–0.58)
+## N1 — Memory core (v0.57–0.59)
 
-**Status: pending**
+DESIGN: §8, §7.
 
-- `MemoryStore` ABC: documents, opaque scopes, version rows, `redact()`.
-  Contract speaks in documents/scopes/versions — no filesystem assumptions.
+- Opens with the `MemoryStore` ABC exactly per DESIGN §8 (the seven
+  constraints), the scope validator (`parse_scope`, ECOSYSTEM §2), and the
+  shipped `MemoryStoreContract` conformance kit.
 - `FileStore` memory implementation (markdown + frontmatter; JSONL version
   sidecar).
-- Memory documents carry a **format-version marker** in frontmatter from
-  the first release — the escape hatch for evolving the schema without
-  breaking existing stores.
+- Memory documents carry the **format-version marker** in frontmatter from
+  the first release (`neosian_format: 1`) — the escape hatch for evolving the
+  schema without breaking existing stores.
 - The six-command tool set as provider-agnostic function tools, operating on
-  one virtual path space (mounts appear as top-level directories).
+  one virtual path space (mounts appear as top-level directories);
+  `str_replace`/`insert` are tool-layer compositions (the store stays at 7
+  methods).
 - **The prompt pack** — memory is tool + prompt + index, three pieces:
   write discipline (check before create, update not duplicate, delete what
   proved wrong) and mount routing (user-durable facts up, project facts
-  local), modeled on Claude Code's.
+  local), modeled on Claude Code's. Ships as data (DESIGN §7), never prose
+  in Python.
 - Index generation + injection (frozen per conversation).
 
-**Exit criteria:** an agent in the CLI demonstrably accumulates memory in
-one session and uses it in the next.
+**Done when:** an agent in the CLI demonstrably accumulates memory in one
+session and uses it in the next.
 
-## Phase 2 — Conversation layer (v0.59–0.61)
+## N2 — Conversation layer (v0.60–0.62)
 
-**Status: pending**
+DESIGN: §9 (written by this phase's design discussion), §3.
 
 - `Conversation`: append-only history, `send()` with streaming parity,
   `resume(conversation_id)`, configurable defaults.
@@ -144,38 +260,42 @@ one session and uses it in the next.
     labels stay full words (`USER`, `TOOL`, `AGENT` are single tokens in
     modern vocabularies, model-native, and human-greppable; four provider
     tokenizers make micro-optimization fragile anyway). Token discipline
-    comes from digest length and epoch folding, measured by the Phase 4
-    harness.
-  - Distillation calls report through the existing cost accounting
-    (`Usage.cost`) — compaction spend is visible, never hidden.
+    comes from digest length and epoch folding, measured by the N4 harness.
+  - Distillation calls report through the cost accounting
+    (`cost_micro_usd`) — compaction spend is visible, never hidden.
 - **CLI migrates onto `Conversation` + `FileStore`** — the dogfood that
   also fixes its lost-tool-history bug.
 
 Explicitly **not** in scope: branching/forking, history editing (ruled out
 in VISION.md), transport, auth.
 
-**Exit criteria:** the three-line quickstart — construct store, construct
+**Done when:** the three-line quickstart — construct store, construct
 conversation, `send()` — yields a stateful, memory-bearing agent.
 
-## Phase 3 — PostgresStore (v0.62–0.64)
+## N3 — PostgresStore (v0.63–0.64)
 
-**Status: pending**
+DESIGN: §8.
 
 - Schema: `conversations`, `turns`, `memories`, `memory_versions`; scope
   column on every memory row; row-level-security-friendly layout.
-- Optimistic concurrency for multi-worker web deployments (the thing files
-  cannot do and the reason this substrate exists).
+- Optimistic concurrency for multi-worker web deployments
+  (`supports_optimistic_concurrency = True` — the thing files cannot do and
+  the reason this substrate exists).
 - FTS escape hatch (`tsvector`) behind the same recall interface — dormant
   until a tenant's memory outgrows index-scan-plus-grep.
-- Migration story (SQL files or alembic — decide small).
+- Migration story (SQL files or alembic — decide small). Reference
+  implementation for **standalone** deployments; a host embedding neosian
+  implements its own store against the ABC + `MemoryStoreContract`
+  (ECOSYSTEM §10).
 
-**Exit criteria:** two concurrent web workers on one conversation behave
+**Done when:** two concurrent web workers on one conversation behave
 correctly; an `examples/` FastAPI chatbot demonstrates the multi-tenant
-integration end to end.
+integration end to end — including the relay pattern of DESIGN §6 (typed
+events → SSE, host-owned keepalive and error frames).
 
-## Phase 4 — Completeness (v0.65 → 1.0)
+## N4 — Completeness (v0.65 → 1.0)
 
-**Status: pending**
+DESIGN: §2, §6, §10.
 
 - Native `memory_20250818` tool type on Anthropic behind a flag (same
   store, provider-native surface; rides the trained behavior).
@@ -187,9 +307,11 @@ integration end to end.
 - Memory eval harness built on the existing `evaluation/` module — there is
   no public benchmark for the agent-memory regime (LoCoMo measures the
   personalization regime), so we measure ourselves: write discipline,
-  recall-in-next-session, dedup behavior — per provider.
+  recall-in-next-session, dedup behavior — per provider, FakeProvider
+  baselines first.
 - Docs and quickstarts. **1.0 = API stability promise** for `Agent`,
-  `Conversation`, `MemoryStore`.
+  `Conversation`, `MemoryStore` — and the ECOSYSTEM seams move from
+  append-only-by-convention to SemVer-guaranteed.
 
 ---
 
@@ -197,12 +319,33 @@ integration end to end.
 
 - **Trained-behavior asymmetry.** Anthropic models are post-trained on the
   memory command set; other providers' models less so. The prompt pack
-  carries more weight off-Anthropic — the Phase 4 eval harness measures
-  this per provider instead of assuming.
+  carries more weight off-Anthropic — the N4 eval harness measures this per
+  provider instead of assuming.
 - **Conversation-layer scope creep.** `Conversation` is where frameworks
-  bloat. The not-in-scope list in Phase 2 is a commitment, not a
-  suggestion; anything beyond append-only + resume + memory + compaction
-  needs a vision-level discussion first.
+  bloat. The not-in-scope list in N2 is a commitment, not a suggestion;
+  anything beyond append-only + resume + memory + compaction needs a
+  vision-level discussion first.
 - **Solo-maintainer bandwidth.** Defense: every phase is small, shippable,
   and independently useful — the library is already better off if the
   roadmap stops after any phase.
+
+---
+
+## Session log
+
+- 2026-08-18 | meta | **The ecosystem contract + the constitution.** Joint
+  design session with neosae-kit (its ledger #205, DESIGN §5.7): ECOSYSTEM.md
+  written as the canonical frozen-seam contract; DESIGN.md created (12
+  sections, seeded ledger); this file reshaped to the kit's form (pointer
+  block, session protocol, NH/NS phases inserted before the memory arc,
+  Done-when lines, this log); CLAUDE.md, SERVICES.md, LICENSE (Apache-2.0)
+  created; `.claude/commands` now tracked and rewritten. Rulings: integer µ$
+  canonical (float `cost()` dies — zero call sites); kit token-class names
+  adopted; ABC-is-the-contract (hosts implement their own store; the kit never
+  uses PostgresStore); machine error codes append-only under family prefixes;
+  events become typed frozen dataclasses with `run(stream=True) →
+  AsyncIterator[AgentEvent]`; FakeProvider as real registry members; py-floor
+  stays 3.12 with a 3.12–3.14 CI matrix. Audit found three real defects
+  (session guard skip; `model=` dropped when input guardrails pass; per-model
+  usage impossible under fallback) — registered in DESIGN §3, scheduled NS/N0.
+  Docs only; no code touched.
