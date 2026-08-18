@@ -21,8 +21,10 @@ from neosian._foundation.llm.base import (
     ToolDefinition,
     Usage,
 )
+from neosian._foundation.llm.errors import wrap_provider_error
 from neosian._foundation.shared.constants import ErrorMessages, LLMDefaults
 from neosian._foundation.shared.exceptions import (
+    NeosianError,
     ProviderError,
     ToolCallGenerationError,
     UnsupportedContentError,
@@ -151,8 +153,9 @@ class CerebrasClient(BaseLLMClient):
                     raise ToolCallGenerationError(
                         retries=LLMDefaults.MAX_TOOL_CALL_RETRIES
                     ) from e
-                # Not a tool call error, re-raise
-                raise
+                raise wrap_provider_error("cerebras", e, model=model) from e
+            except Exception as exc:
+                raise wrap_provider_error("cerebras", exc, model=model) from exc
 
         # Should not reach here, but satisfy type checker
         raise ToolCallGenerationError(retries=LLMDefaults.MAX_TOOL_CALL_RETRIES)
@@ -225,7 +228,7 @@ class CerebrasClient(BaseLLMClient):
             usage=Usage(
                 input_tokens=prompt_tokens - cache_read,
                 output_tokens=usage.completion_tokens if usage else 0,
-                cache_read_input_tokens=cache_read,
+                cache_read_tokens=cache_read,
             ),
             model=response.model,  # type: ignore[attr-defined]
             stop_reason=getattr(choice, "finish_reason", None),
@@ -292,94 +295,99 @@ class CerebrasClient(BaseLLMClient):
             kwargs["reasoning_effort"] = effective_effort.value
             kwargs["reasoning_format"] = "parsed"
 
-        stream = await self._client.chat.completions.create(
-            **kwargs,
-        )
+        try:
+            stream = await self._client.chat.completions.create(
+                **kwargs,
+            )
 
-        # Track tool calls being built across chunks
-        tool_call_builders: dict[int, dict[str, str]] = {}
+            # Track tool calls being built across chunks
+            tool_call_builders: dict[int, dict[str, str]] = {}
 
-        async for chunk in stream:  # type: ignore[union-attr]
-            # The stream union also carries ErrorChunkResponse; surface it
-            # rather than silently dropping a mid-stream provider error.
-            if isinstance(chunk, ErrorChunkResponse):
-                raise ProviderError(provider="cerebras", error=str(chunk.error))
-            if not isinstance(chunk, ChatChunkResponse):
-                continue
+            async for chunk in stream:  # type: ignore[union-attr]
+                # The stream union also carries ErrorChunkResponse; surface it
+                # rather than silently dropping a mid-stream provider error.
+                if isinstance(chunk, ErrorChunkResponse):
+                    raise ProviderError("cerebras", str(chunk.error))
+                if not isinstance(chunk, ChatChunkResponse):
+                    continue
 
-            # Handle usage-only chunk (comes after finish_reason)
-            if not chunk.choices and chunk.usage:
-                # Extract cache tokens if available
-                cache_read = 0
-                details = chunk.usage.prompt_tokens_details
-                if details:
-                    cache_read = details.cached_tokens or 0
+                # Handle usage-only chunk (comes after finish_reason)
+                if not chunk.choices and chunk.usage:
+                    # Extract cache tokens if available
+                    cache_read = 0
+                    details = chunk.usage.prompt_tokens_details
+                    if details:
+                        cache_read = details.cached_tokens or 0
 
-                prompt_tokens = chunk.usage.prompt_tokens or 0
+                    prompt_tokens = chunk.usage.prompt_tokens or 0
+
+                    yield StreamChunk(
+                        usage=Usage(
+                            input_tokens=prompt_tokens - cache_read,
+                            output_tokens=chunk.usage.completion_tokens or 0,
+                            cache_read_tokens=cache_read,
+                        ),
+                    )
+                    continue
+
+                if not chunk.choices:
+                    continue
+
+                choice = chunk.choices[0]
+                delta = choice.delta
+
+                # Handle content
+                content = delta.content if delta and delta.content else None
+
+                # Handle reasoning
+                reasoning = getattr(delta, "reasoning", None) if delta else None
+
+                # Handle tool calls (streamed in parts)
+                tool_calls: list[ToolCall] = []
+                if delta and delta.tool_calls:
+                    for tc in delta.tool_calls:
+                        idx = tc.index if tc.index is not None else 0
+                        if idx not in tool_call_builders:
+                            tool_call_builders[idx] = {
+                                "id": "",
+                                "name": "",
+                                "arguments": "",
+                            }
+
+                        if tc.id:
+                            tool_call_builders[idx]["id"] = tc.id
+                        if tc.function:
+                            if tc.function.name:
+                                tool_call_builders[idx]["name"] = tc.function.name
+                            if tc.function.arguments:
+                                tool_call_builders[idx][
+                                    "arguments"
+                                ] += tc.function.arguments
+
+                # On finish, yield completed tool calls
+                finish_reason = choice.finish_reason
+                if finish_reason == "tool_calls" and tool_call_builders:
+                    for builder in tool_call_builders.values():
+                        # Normalize empty arguments to {}
+                        args_str = builder["arguments"] or "{}"
+                        tool_calls.append(
+                            ToolCall(
+                                id=ToolCallId(builder["id"]),
+                                name=ToolName(builder["name"]),
+                                arguments=json.loads(args_str),
+                            )
+                        )
 
                 yield StreamChunk(
-                    usage=Usage(
-                        input_tokens=prompt_tokens - cache_read,
-                        output_tokens=chunk.usage.completion_tokens or 0,
-                        cache_read_input_tokens=cache_read,
-                    ),
+                    content=content,
+                    reasoning=reasoning,
+                    tool_calls=tool_calls,
+                    finish_reason=finish_reason,
                 )
-                continue
-
-            if not chunk.choices:
-                continue
-
-            choice = chunk.choices[0]
-            delta = choice.delta
-
-            # Handle content
-            content = delta.content if delta and delta.content else None
-
-            # Handle reasoning
-            reasoning = getattr(delta, "reasoning", None) if delta else None
-
-            # Handle tool calls (streamed in parts)
-            tool_calls: list[ToolCall] = []
-            if delta and delta.tool_calls:
-                for tc in delta.tool_calls:
-                    idx = tc.index if tc.index is not None else 0
-                    if idx not in tool_call_builders:
-                        tool_call_builders[idx] = {
-                            "id": "",
-                            "name": "",
-                            "arguments": "",
-                        }
-
-                    if tc.id:
-                        tool_call_builders[idx]["id"] = tc.id
-                    if tc.function:
-                        if tc.function.name:
-                            tool_call_builders[idx]["name"] = tc.function.name
-                        if tc.function.arguments:
-                            tool_call_builders[idx][
-                                "arguments"
-                            ] += tc.function.arguments
-
-            # On finish, yield completed tool calls
-            finish_reason = choice.finish_reason
-            if finish_reason == "tool_calls" and tool_call_builders:
-                for builder in tool_call_builders.values():
-                    # Normalize empty arguments to {}
-                    args_str = builder["arguments"] or "{}"
-                    tool_calls.append(
-                        ToolCall(
-                            id=ToolCallId(builder["id"]),
-                            name=ToolName(builder["name"]),
-                            arguments=json.loads(args_str),
-                        )
-                    )
-
-            yield StreamChunk(
-                content=content,
-                reasoning=reasoning,
-                tool_calls=tool_calls,
-                finish_reason=finish_reason,
-            )
+        except NeosianError:
+            raise
+        except Exception as exc:
+            raise wrap_provider_error("cerebras", exc, model=model) from exc
 
     def _convert_messages(self, messages: list[Message]) -> list[dict[str, Any]]:
         """Convert internal messages to Cerebras format (OpenAI-compatible).

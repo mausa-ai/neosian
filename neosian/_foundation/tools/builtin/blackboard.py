@@ -10,6 +10,7 @@ The BlackboardProvider is bound via closure.
 
 from neosian._foundation.blackboard.base import BlackboardProvider
 from neosian._foundation.shared.constants import BuiltinTools, ErrorMessages
+from neosian._foundation.shared.prompt_assets import get_prompt
 from neosian._foundation.shared.types import ToolFunction
 from neosian._foundation.tools.base import Tool, ToolResult
 
@@ -28,7 +29,7 @@ def create_blackboard_tools(
 
     @Tool(
         name=BuiltinTools.Blackboard.LIST_NAME,
-        description=BuiltinTools.Blackboard.LIST_DESCRIPTION,
+        description=get_prompt("tools.blackboard_list"),
     )
     async def list_blackboard() -> ToolResult[list[dict[str, str]]]:
         """List all available blackboard entries."""
@@ -39,7 +40,7 @@ def create_blackboard_tools(
 
     @Tool(
         name=BuiltinTools.Blackboard.READ_NAME,
-        description=BuiltinTools.Blackboard.READ_DESCRIPTION,
+        description=get_prompt("tools.blackboard_read"),
     )
     async def read_blackboard(name: str) -> ToolResult[str]:
         """Read the current content of a blackboard entry.
@@ -60,7 +61,7 @@ def create_blackboard_tools(
 
     @Tool(
         name=BuiltinTools.Blackboard.UPDATE_NAME,
-        description=BuiltinTools.Blackboard.UPDATE_DESCRIPTION,
+        description=get_prompt("tools.blackboard_update"),
     )
     async def update_blackboard(name: str, content: str) -> ToolResult[str]:
         """Update an existing blackboard entry with new content.

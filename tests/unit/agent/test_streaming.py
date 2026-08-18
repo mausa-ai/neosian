@@ -115,8 +115,8 @@ class TestEventFactories:
         usage = Usage(
             input_tokens=20,
             output_tokens=10,
-            cache_creation_input_tokens=5,
-            cache_read_input_tokens=15,
+            cache_read_tokens=15,
+            cache_write_tokens=5,
         )
         event = error_event("Connection failed", usage=usage)
 
@@ -125,8 +125,8 @@ class TestEventFactories:
         assert event.data["usage"] == {
             "input_tokens": 20,
             "output_tokens": 10,
-            "cache_creation_input_tokens": 5,
-            "cache_read_input_tokens": 15,
+            "cache_read_tokens": 15,
+            "cache_write_tokens": 5,
             "total_tokens": 50,
         }
 
@@ -142,8 +142,8 @@ class TestEventFactories:
         usage = Usage(
             input_tokens=100,
             output_tokens=50,
-            cache_creation_input_tokens=200,
-            cache_read_input_tokens=300,
+            cache_read_tokens=300,
+            cache_write_tokens=200,
         )
         event = done_event(usage)
 
@@ -151,8 +151,8 @@ class TestEventFactories:
         assert event.data["usage"] == {
             "input_tokens": 100,
             "output_tokens": 50,
-            "cache_creation_input_tokens": 200,
-            "cache_read_input_tokens": 300,
+            "cache_read_tokens": 300,
+            "cache_write_tokens": 200,
             "total_tokens": 650,
         }
 
@@ -173,8 +173,8 @@ class TestEventFactories:
         assert event.data["usage"] == {
             "input_tokens": 20,
             "output_tokens": 10,
-            "cache_creation_input_tokens": 0,
-            "cache_read_input_tokens": 0,
+            "cache_read_tokens": 0,
+            "cache_write_tokens": 0,
             "total_tokens": 30,
         }
 

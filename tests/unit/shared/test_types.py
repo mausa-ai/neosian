@@ -351,3 +351,51 @@ class TestAgentConfigMaxOutputTokens:
                 system_prompt=SystemPrompt("You are helpful."),
                 max_output_tokens=-1,
             )
+
+
+@pytest.mark.unit
+class TestFakeModels:
+    """The FAKE registry members (DESIGN §2, ECOSYSTEM §7)."""
+
+    def test_specs_resolve(self) -> None:
+        for model in (Model.FAKE, Model.FAKE_SMALL, Model.FAKE_REASONING):
+            spec = model.spec
+            assert spec.provider is Provider.FAKE
+            assert model.pricing is not None
+            assert model.max_output_tokens == 8_192
+
+    def test_capability_split(self) -> None:
+        assert Model.FAKE.supports_images and Model.FAKE.supports_documents
+        assert not Model.FAKE_SMALL.supports_images
+        assert not Model.FAKE_SMALL.supports_documents
+        assert Model.FAKE_REASONING.supports_reasoning
+        assert Model.FAKE_REASONING.supports_max_effort
+        assert not Model.FAKE.supports_reasoning
+        assert Model.FAKE_SMALL.context_window < Model.FAKE.context_window
+
+    def test_default_agent_config_constructs_on_fake_models(self) -> None:
+        """max_output_tokens >= the 8192 default — the keyless-boot guard."""
+        for model in (Model.FAKE, Model.FAKE_SMALL, Model.FAKE_REASONING):
+            config = AgentConfig(
+                system_prompt=SystemPrompt("You are helpful."), model=model
+            )
+            assert config.model is model
+
+    def test_reasoning_effort_rejected_on_non_reasoning_fake(self) -> None:
+        AgentConfig(
+            system_prompt=SystemPrompt("You are helpful."),
+            model=Model.FAKE_REASONING,
+            reasoning_effort=ReasoningEffort.LOW,
+        )
+        with pytest.raises(UnsupportedParameterError):
+            AgentConfig(
+                system_prompt=SystemPrompt("You are helpful."),
+                model=Model.FAKE,
+                reasoning_effort=ReasoningEffort.LOW,
+            )
+
+    def test_default_models_total_over_providers(self) -> None:
+        from neosian._foundation.shared.types import DEFAULT_MODELS
+
+        assert set(DEFAULT_MODELS) == set(Provider)
+        assert DEFAULT_MODELS[Provider.FAKE] is Model.FAKE

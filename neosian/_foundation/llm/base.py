@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import Any, Final
 
 from neosian._foundation.shared.constants import LLMDefaults
 from neosian._foundation.shared.types import (
@@ -149,24 +149,27 @@ class StreamChunk:
     usage: "Usage | None" = None
 
 
-@dataclass
-class Usage:
-    """Token usage information.
+_MTOK: Final = 1_000_000  # tokens per MTok — the pricing-rate divisor
 
-    Cache fields are populated by providers with prompt caching:
-    - Anthropic: cache_creation_input_tokens + cache_read_input_tokens
-    - OpenAI: cache_read_input_tokens only (automatic caching, no creation concept)
-    - Cerebras: cache_read_input_tokens only (automatic caching, like OpenAI)
+
+@dataclass(frozen=True, slots=True)
+class Usage:
+    """Token usage in the four ecosystem token classes (ECOSYSTEM §3).
+
+    input_tokens always means non-cached input. Cache fields are populated
+    by providers with prompt caching:
+    - Anthropic: cache_write_tokens + cache_read_tokens
+    - OpenAI: cache_read_tokens only (automatic caching, no write concept)
+    - Cerebras: cache_read_tokens only (automatic caching, like OpenAI)
     - Groq: defaults to 0
 
-    All providers normalize input_tokens to mean non-cached input tokens.
-    total_tokens = input_tokens + output_tokens + cache_creation + cache_read.
+    total_tokens = input + output + cache_read + cache_write.
     """
 
     input_tokens: int
     output_tokens: int
-    cache_creation_input_tokens: int = 0
-    cache_read_input_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
 
     @property
     def total_tokens(self) -> int:
@@ -174,8 +177,8 @@ class Usage:
         return (
             self.input_tokens
             + self.output_tokens
-            + self.cache_creation_input_tokens
-            + self.cache_read_input_tokens
+            + self.cache_read_tokens
+            + self.cache_write_tokens
         )
 
     def __add__(self, other: "Usage") -> "Usage":
@@ -183,47 +186,48 @@ class Usage:
         return Usage(
             input_tokens=self.input_tokens + other.input_tokens,
             output_tokens=self.output_tokens + other.output_tokens,
-            cache_creation_input_tokens=self.cache_creation_input_tokens
-            + other.cache_creation_input_tokens,
-            cache_read_input_tokens=self.cache_read_input_tokens
-            + other.cache_read_input_tokens,
+            cache_read_tokens=self.cache_read_tokens + other.cache_read_tokens,
+            cache_write_tokens=self.cache_write_tokens + other.cache_write_tokens,
         )
 
-    def cost(self, model: Model) -> float | None:
-        """Estimate the USD cost of this usage at the model's list prices.
+    def cost_micro_usd(self, model: Model) -> int | None:
+        """Cost of this usage in integer micro-USD at the model's list prices.
 
-        Approximate, for observability — not a billing source (see
-        PRICES_AS_OF in shared.types for the verification date). Cache
-        token classes fall back to the input price when the provider
-        publishes no separate cache rate.
+        Ceiling division — never undercount (ECOSYSTEM §4). Approximate, for
+        observability, not a billing source (see PRICES_AS_OF in
+        shared.types for the verification date). Cache token classes fall
+        back to the input rate when the provider publishes no separate
+        cache rate.
 
         Args:
             model: The model whose pricing to apply. For multi-model runs
                 (fallback), price each model's usage separately.
 
         Returns:
-            Estimated cost in USD, or None if the model has no verified
-            pricing.
+            Cost in micro-USD, or None if the model has no verified pricing.
         """
         pricing = model.pricing
         if pricing is None:
             return None
-        cache_write = (
-            pricing.cache_write_per_mtok
-            if pricing.cache_write_per_mtok is not None
-            else pricing.input_per_mtok
-        )
-        cache_read = (
-            pricing.cache_read_per_mtok
-            if pricing.cache_read_per_mtok is not None
-            else pricing.input_per_mtok
-        )
-        return (
+        total = (
             self.input_tokens * pricing.input_per_mtok
             + self.output_tokens * pricing.output_per_mtok
-            + self.cache_creation_input_tokens * cache_write
-            + self.cache_read_input_tokens * cache_read
-        ) / 1_000_000
+            + self.cache_read_tokens * pricing.effective_cache_read_per_mtok
+            + self.cache_write_tokens * pricing.effective_cache_write_per_mtok
+        )
+        return -(-total // _MTOK)  # ceiling — never undercount
+
+
+@dataclass(frozen=True, slots=True)
+class ModelUsage:
+    """Usage attributed to one API-reported model string.
+
+    One entry per distinct model, first-appearance order; aggregated onto
+    AgentResponse.usage_by_model and terminal events (DESIGN §4).
+    """
+
+    model: str
+    usage: Usage
 
 
 class StopReason(str, Enum):

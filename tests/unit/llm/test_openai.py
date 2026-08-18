@@ -10,6 +10,7 @@ from neosian._foundation.llm.base import Message, Role, ToolDefinition
 from neosian._foundation.llm.openai import OpenAIClient
 from neosian._foundation.shared.constants import LLMDefaults
 from neosian._foundation.shared.exceptions import (
+    ProviderError,
     ToolCallGenerationError,
     UnsupportedParameterError,
 )
@@ -294,7 +295,7 @@ class TestOpenAIClientRetry:
         mock_create.side_effect = tool_error
 
         # No tools provided - should re-raise immediately
-        with pytest.raises(BadRequestError):
+        with pytest.raises(ProviderError):
             await client.complete(
                 messages=[Message(role=Role.USER, content="Hi")],
                 model=Model.GPT_5_MINI,
@@ -329,7 +330,7 @@ class TestOpenAIClientRetry:
         ]
 
         # Should re-raise immediately without retry
-        with pytest.raises(BadRequestError):
+        with pytest.raises(ProviderError):
             await client.complete(
                 messages=[Message(role=Role.USER, content="Hi")],
                 model=Model.GPT_5_MINI,
@@ -660,8 +661,8 @@ class TestOpenAIPromptCaching:
 
         # input_tokens should be normalized: prompt_tokens - cached_tokens
         assert response.usage.input_tokens == 200
-        assert response.usage.cache_read_input_tokens == 800
-        assert response.usage.cache_creation_input_tokens == 0
+        assert response.usage.cache_read_tokens == 800
+        assert response.usage.cache_write_tokens == 0
         assert response.usage.output_tokens == 50
 
     @pytest.mark.asyncio
@@ -681,7 +682,7 @@ class TestOpenAIPromptCaching:
         )
 
         assert response.usage.input_tokens == 500
-        assert response.usage.cache_read_input_tokens == 0
+        assert response.usage.cache_read_tokens == 0
 
     @pytest.mark.asyncio
     async def test_parse_response_cached_tokens_none(self) -> None:
@@ -699,7 +700,7 @@ class TestOpenAIPromptCaching:
         )
 
         assert response.usage.input_tokens == 500
-        assert response.usage.cache_read_input_tokens == 0
+        assert response.usage.cache_read_tokens == 0
 
     @pytest.mark.asyncio
     async def test_parse_response_total_tokens_correct_with_cache(self) -> None:
@@ -761,7 +762,7 @@ class TestOpenAIPromptCaching:
         assert len(chunks) == 1
         assert chunks[0].usage is not None
         assert chunks[0].usage.input_tokens == 300
-        assert chunks[0].usage.cache_read_input_tokens == 700
+        assert chunks[0].usage.cache_read_tokens == 700
         assert chunks[0].usage.output_tokens == 50
 
     @pytest.mark.asyncio
@@ -803,7 +804,7 @@ class TestOpenAIPromptCaching:
         assert len(chunks) == 1
         assert chunks[0].usage is not None
         assert chunks[0].usage.input_tokens == 500
-        assert chunks[0].usage.cache_read_input_tokens == 0
+        assert chunks[0].usage.cache_read_tokens == 0
 
 
 @pytest.mark.unit

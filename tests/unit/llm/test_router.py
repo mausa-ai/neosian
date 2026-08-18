@@ -54,6 +54,20 @@ class TestProviderRouter:
             assert not router.has_provider(Provider.OPENAI)
             assert not router.has_provider(Provider.ANTHROPIC)
 
+    def test_fake_is_always_available(self) -> None:
+        """FAKE needs no key — the keyless-boot guarantee (ECOSYSTEM §7)."""
+        with patch.dict(os.environ, {}, clear=True):
+            router = ProviderRouter()
+            assert router.has_provider(Provider.FAKE)
+
+    def test_create_client_fake(self) -> None:
+        """create_client(FAKE) returns a canned FakeClient, keylessly."""
+        from neosian._foundation.llm.fake import FakeClient
+
+        with patch.dict(os.environ, {}, clear=True):
+            router = ProviderRouter()
+            assert isinstance(router.create_client(Provider.FAKE), FakeClient)
+
     def test_create_client_groq(self, groq_only: dict[str, str]) -> None:
         """Test creating Groq client."""
         with patch.dict(os.environ, groq_only, clear=True):

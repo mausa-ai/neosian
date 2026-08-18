@@ -23,6 +23,7 @@ from neosian._foundation.llm.base import (
     Usage,
     required_content_types,
 )
+from neosian._foundation.llm.errors import wrap_provider_error
 from neosian._foundation.shared.constants import (
     ErrorMessages,
     LLMDefaults,
@@ -296,7 +297,9 @@ class AnthropicClient(BaseLLMClient):
                     raise ToolCallGenerationError(
                         retries=LLMDefaults.MAX_TOOL_CALL_RETRIES
                     ) from e
-                raise
+                raise wrap_provider_error("anthropic", e, model=model) from e
+            except Exception as exc:
+                raise wrap_provider_error("anthropic", exc, model=model) from exc
 
         # Should not reach here, but satisfy type checker
         raise ToolCallGenerationError(retries=LLMDefaults.MAX_TOOL_CALL_RETRIES)
@@ -355,8 +358,8 @@ class AnthropicClient(BaseLLMClient):
             usage=Usage(
                 input_tokens=response.usage.input_tokens,  # type: ignore[attr-defined]
                 output_tokens=response.usage.output_tokens,  # type: ignore[attr-defined]
-                cache_creation_input_tokens=getattr(response.usage, "cache_creation_input_tokens", 0) or 0,  # type: ignore[attr-defined]
-                cache_read_input_tokens=getattr(response.usage, "cache_read_input_tokens", 0) or 0,  # type: ignore[attr-defined]
+                cache_read_tokens=getattr(response.usage, "cache_read_input_tokens", 0) or 0,  # type: ignore[attr-defined]
+                cache_write_tokens=getattr(response.usage, "cache_creation_input_tokens", 0) or 0,  # type: ignore[attr-defined]
             ),
             model=response.model,  # type: ignore[attr-defined]
             stop_reason=getattr(response, "stop_reason", None),
@@ -436,111 +439,119 @@ class AnthropicClient(BaseLLMClient):
         if anthropic_tools:
             kwargs["tools"] = anthropic_tools
 
-        async with self._client.messages.stream(**kwargs) as stream:
-            # Usage tracking: input/cache from message_start, output from message_delta
-            input_tokens: int = 0
-            output_tokens: int = 0
-            cache_creation_tokens: int = 0
-            cache_read_tokens: int = 0
+        try:
+            async with self._client.messages.stream(**kwargs) as stream:
+                # Usage tracking: input/cache from message_start, output from message_delta
+                input_tokens: int = 0
+                output_tokens: int = 0
+                cache_creation_tokens: int = 0
+                cache_read_tokens: int = 0
 
-            # Tool call accumulation state
-            accumulated_tool_calls: list[ToolCall] = []
-            current_tool_id: str | None = None
-            current_tool_name: str | None = None
-            current_tool_input: str = ""
+                # Tool call accumulation state
+                accumulated_tool_calls: list[ToolCall] = []
+                current_tool_id: str | None = None
+                current_tool_name: str | None = None
+                current_tool_input: str = ""
 
-            # Real stop reason from the API (reported in message_delta)
-            stop_reason: str | None = None
+                # Real stop reason from the API (reported in message_delta)
+                stop_reason: str | None = None
 
-            async for event in stream:
-                if event.type == "message_start":
-                    # Input and cache tokens are reported in message_start
-                    if hasattr(event, "message") and hasattr(event.message, "usage"):
-                        msg_usage = event.message.usage
-                        input_tokens = getattr(msg_usage, "input_tokens", 0) or 0
-                        cache_creation_tokens = (
-                            getattr(msg_usage, "cache_creation_input_tokens", 0) or 0
+                async for event in stream:
+                    if event.type == "message_start":
+                        # Input and cache tokens are reported in message_start
+                        if hasattr(event, "message") and hasattr(
+                            event.message, "usage"
+                        ):
+                            msg_usage = event.message.usage
+                            input_tokens = getattr(msg_usage, "input_tokens", 0) or 0
+                            cache_creation_tokens = (
+                                getattr(msg_usage, "cache_creation_input_tokens", 0)
+                                or 0
+                            )
+                            cache_read_tokens = (
+                                getattr(msg_usage, "cache_read_input_tokens", 0) or 0
+                            )
+                            # Surface the partial usage immediately so consumers
+                            # interrupted mid-stream (guard block, error) can meter
+                            # the input/cache tokens already billed. The complete
+                            # usage on the message_stop chunk supersedes this one —
+                            # consumers must treat per-stream usage as last-wins.
+                            yield StreamChunk(
+                                usage=Usage(
+                                    input_tokens=input_tokens,
+                                    output_tokens=0,
+                                    cache_read_tokens=cache_read_tokens,
+                                    cache_write_tokens=cache_creation_tokens,
+                                )
+                            )
+
+                    elif event.type == "content_block_start":
+                        block = event.content_block
+                        if getattr(block, "type", None) == "tool_use":
+                            current_tool_id = block.id  # type: ignore[union-attr]
+                            current_tool_name = block.name  # type: ignore[union-attr]
+                            current_tool_input = ""
+
+                    elif event.type == "content_block_delta":
+                        delta_type = getattr(event.delta, "type", None)
+                        if delta_type == "thinking_delta":
+                            yield StreamChunk(
+                                reasoning=event.delta.thinking,  # type: ignore[union-attr]
+                            )
+                        elif delta_type == "text_delta":
+                            yield StreamChunk(
+                                content=event.delta.text,  # type: ignore[union-attr]
+                            )
+                        elif delta_type == "input_json_delta":
+                            current_tool_input += event.delta.partial_json  # type: ignore[union-attr]
+
+                    elif event.type == "content_block_stop":
+                        if current_tool_id is not None:
+                            args = (
+                                json.loads(current_tool_input)
+                                if current_tool_input
+                                else {}
+                            )
+                            accumulated_tool_calls.append(
+                                ToolCall(
+                                    id=ToolCallId(current_tool_id),
+                                    name=ToolName(current_tool_name or ""),
+                                    arguments=args if isinstance(args, dict) else {},
+                                )
+                            )
+                            current_tool_id = None
+                            current_tool_name = None
+                            current_tool_input = ""
+
+                    elif event.type == "message_delta":
+                        # Output tokens are reported in message_delta
+                        if hasattr(event, "usage") and event.usage:
+                            output_tokens = event.usage.output_tokens
+                        # The API's actual stop reason (e.g. "max_tokens",
+                        # "end_turn", "tool_use") also arrives here.
+                        delta = getattr(event, "delta", None)
+                        delta_stop = getattr(delta, "stop_reason", None)
+                        if delta_stop:
+                            stop_reason = delta_stop
+
+                    elif event.type == "message_stop":
+                        # Prefer the API's stop reason; fall back to the
+                        # synthesized value if the event never carried one.
+                        finish_reason = stop_reason or (
+                            "tool_use" if accumulated_tool_calls else "stop"
                         )
-                        cache_read_tokens = (
-                            getattr(msg_usage, "cache_read_input_tokens", 0) or 0
-                        )
-                        # Surface the partial usage immediately so consumers
-                        # interrupted mid-stream (guard block, error) can meter
-                        # the input/cache tokens already billed. The complete
-                        # usage on the message_stop chunk supersedes this one —
-                        # consumers must treat per-stream usage as last-wins.
                         yield StreamChunk(
+                            finish_reason=finish_reason,
                             usage=Usage(
                                 input_tokens=input_tokens,
-                                output_tokens=0,
-                                cache_creation_input_tokens=cache_creation_tokens,
-                                cache_read_input_tokens=cache_read_tokens,
-                            )
+                                output_tokens=output_tokens,
+                                cache_read_tokens=cache_read_tokens,
+                                cache_write_tokens=cache_creation_tokens,
+                            ),
+                            tool_calls=accumulated_tool_calls,
                         )
-
-                elif event.type == "content_block_start":
-                    block = event.content_block
-                    if getattr(block, "type", None) == "tool_use":
-                        current_tool_id = block.id  # type: ignore[union-attr]
-                        current_tool_name = block.name  # type: ignore[union-attr]
-                        current_tool_input = ""
-
-                elif event.type == "content_block_delta":
-                    delta_type = getattr(event.delta, "type", None)
-                    if delta_type == "thinking_delta":
-                        yield StreamChunk(
-                            reasoning=event.delta.thinking,  # type: ignore[union-attr]
-                        )
-                    elif delta_type == "text_delta":
-                        yield StreamChunk(
-                            content=event.delta.text,  # type: ignore[union-attr]
-                        )
-                    elif delta_type == "input_json_delta":
-                        current_tool_input += event.delta.partial_json  # type: ignore[union-attr]
-
-                elif event.type == "content_block_stop":
-                    if current_tool_id is not None:
-                        args = (
-                            json.loads(current_tool_input) if current_tool_input else {}
-                        )
-                        accumulated_tool_calls.append(
-                            ToolCall(
-                                id=ToolCallId(current_tool_id),
-                                name=ToolName(current_tool_name or ""),
-                                arguments=args if isinstance(args, dict) else {},
-                            )
-                        )
-                        current_tool_id = None
-                        current_tool_name = None
-                        current_tool_input = ""
-
-                elif event.type == "message_delta":
-                    # Output tokens are reported in message_delta
-                    if hasattr(event, "usage") and event.usage:
-                        output_tokens = event.usage.output_tokens
-                    # The API's actual stop reason (e.g. "max_tokens",
-                    # "end_turn", "tool_use") also arrives here.
-                    delta = getattr(event, "delta", None)
-                    delta_stop = getattr(delta, "stop_reason", None)
-                    if delta_stop:
-                        stop_reason = delta_stop
-
-                elif event.type == "message_stop":
-                    # Prefer the API's stop reason; fall back to the
-                    # synthesized value if the event never carried one.
-                    finish_reason = stop_reason or (
-                        "tool_use" if accumulated_tool_calls else "stop"
-                    )
-                    yield StreamChunk(
-                        finish_reason=finish_reason,
-                        usage=Usage(
-                            input_tokens=input_tokens,
-                            output_tokens=output_tokens,
-                            cache_creation_input_tokens=cache_creation_tokens,
-                            cache_read_input_tokens=cache_read_tokens,
-                        ),
-                        tool_calls=accumulated_tool_calls,
-                    )
+        except Exception as exc:
+            raise wrap_provider_error("anthropic", exc, model=model) from exc
 
     def _convert_messages(
         self, messages: list[Message]

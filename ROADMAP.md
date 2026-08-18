@@ -1,12 +1,13 @@
 # Neosian Roadmap — Memory & Conversation
 
-> **▶ Current phase: NS — The seams freeze**
+> **▶ Current phase: N0 — Enablers**
 >
-> *(2026-08-18: NH done — Makefile + gates (incl. `mypy --strict` over tests),
-> `external_<provider>` tiering, version flip to 0.53.0, CI matrix 3.12–3.14;
-> matrix-green is confirmed at /ship. Standing ruling: neosian's phases
-> NH, NS, then N0–N4 run to completion before the kit's P10 vendors from a
-> `v<X.Y.Z>` release tag. Next: NS → N0.)*
+> *(2026-08-18: NS done — the seams are frozen in code: µ$ money + token
+> classes, machine error codes + SDK wrap, FakeProvider registry members +
+> `neosian.fake`, prompts-as-data, the two register bugs fixed; `v0.54.0`
+> cut — the kit's first vendoring point. Standing ruling: neosian's phases
+> run to completion before the kit's P10 vendors from a `v<X.Y.Z>` release
+> tag. Next: N0 → N1.)*
 >
 > The pointer above must equal the first phase heading without ✅ — if they
 > disagree, say so and trust the checkboxes. Companion to [VISION.md](VISION.md)
@@ -156,36 +157,46 @@ changes in this phase.
 **Done when:** `make lint typecheck test` is green with zero API keys set; CI
 is green on 3.12, 3.13 and 3.14; the docs agree with the tree.
 
-## NS — The seams freeze (v0.54)
+## NS — The seams freeze (v0.54) ✅ 2026-08-18
 
 DESIGN: §4, §5, §2, §7 + ECOSYSTEM. Breaking changes batched into one release;
 order within the phase: §4 (vocabulary) → §5 (errors) → FakeProvider → §7
 (prompts-as-data).
 
-- [ ] Token-class rename (`cache_read_tokens`/`cache_write_tokens`) +
+- [x] Token-class rename (`cache_read_tokens`/`cache_write_tokens`) +
       `ModelPricing` to int µ$/MTok (kit field order; no-rounding test) +
       `cost_micro_usd()` ceiling division + `format_micro_usd` +
       `PRICES_FINGERPRINT` gate; `Usage.cost()` float dropped;
-      `Usage`/`ModelPricing` frozen+slots; `ModelUsage` type
-- [ ] Error codes per DESIGN §5: `NeosianError` base with
+      `Usage`/`ModelPricing` frozen+slots; `ModelUsage` type *(golden rate
+      card + ceiling vectors in tests/unit/shared/test_pricing.py; SSE usage
+      payload keys renamed with the vocabulary — deliberate batched break)*
+- [x] Error codes per DESIGN §5: `NeosianError` base with
       `code`/`retryable`/`details`, the full append-only table,
       `wrap_provider_error` at all four client boundaries
       (`raise … from exc`), `ContextWindowExceededError`,
       `ModelFailedError.cause_code`/`provider_status`, `ERROR_CODES` registry
-      + `python -m neosian.schemas errors`; exports updated
-- [ ] FakeProvider per DESIGN §2: `Provider.FAKE`, `Model.FAKE` /
+      + `python -m neosian.schemas errors`; exports updated *(47 codes, all
+      pinned; wrap gained keyword-only `model=` — DESIGN §5; Groq-413 gap
+      recorded as ledger #13)*
+- [x] FakeProvider per DESIGN §2: `Provider.FAKE`, `Model.FAKE` /
       `FAKE_SMALL` / `FAKE_REASONING` as real registry members;
       `neosian.fake` public module (lazy-imported, root `__all__` untouched);
       `FakeScript`/`FakeTurn` determinism rules; router always includes FAKE
-      (keyless boot); `AgentConfig.client_factory` seam
-- [ ] Prompts-as-data extraction (DESIGN §7): guardrail classifier prompt +
+      (keyless boot); `AgentConfig.client_factory` seam *(media/reasoning
+      capability split across the three fakes; keyless agent end-to-end
+      suite incl. tool loop, fallback, sessions; `FakeScriptExhaustedError`
+      appended to the §5 table)*
+- [x] Prompts-as-data extraction (DESIGN §7): guardrail classifier prompt +
       category template + CommonPolicies content + builtin tool descriptions
-      → `assets/` YAML, loaded/validated at import, overridable
-- [ ] In-blast-radius bug fixes: `_validate_run` extracted and shared by
-      `Agent.run` + `AgentSession.run` (the session currently skips all four
-      guards); `_attach_input_guard_results` → `dataclasses.replace` (fixes
-      the dropped `model=`)
-- [ ] `__all__` + `test_init` pin updated per contract; ECOSYSTEM marked v1;
+      → `assets/` YAML, loaded/validated at import, overridable *(golden
+      tests pin byte-identical assembly against the v0.53 in-Python strings)*
+- [x] In-blast-radius bug fixes: `_validate_run` extracted and shared by
+      `Agent.run` + `AgentSession.run` (the session skipped all guards —
+      three, not four; DESIGN §3 wording fixed); `_attach_input_guard_results`
+      → `dataclasses.replace` (fixes the dropped `model=`) *(parametrized
+      suite runs identical scenarios over both entry points)*
+- [x] `__all__` + `test_init` pin updated per contract; ECOSYSTEM already
+      carries the v1-frozen header (verified, no edit);
       **first release tag `v0.54.0`** cut with `make release`
 
 **Done when:** every vocabulary item frozen in ECOSYSTEM is exercised by a
@@ -371,3 +382,29 @@ DESIGN: §2, §6, §10.
   external×4 with per-provider secret isolation; event-keyed concurrency;
   ubuntu-24.04. Docs drift fixed (CLAUDE/SERVICES/README/commands).
   Carried forward: matrix-green confirmation happens at /ship.
+- 2026-08-18 | NS | **The seams freeze.** §4: token classes renamed
+  (`cache_read/write_tokens`), `ModelPricing` → int µ$/MTok kit order (12
+  literals converted exactly; no-rounding golden card), `cost_micro_usd`
+  ceiling division + `format_micro_usd` + `MICRO_PER_USD` +
+  `PRICES_FINGERPRINT` gate, float `cost()` dead, `Usage`/`ModelPricing`
+  frozen+slots, `ModelUsage` added; SSE usage keys follow the vocabulary.
+  §5: every exception carries `code`/`retryable`/`details` (47 codes, table
+  pinned append-only), `wrap_provider_error` wraps all eight complete/stream
+  bodies (`raise … from exc`; streams' `except Exception` spares
+  GeneratorExit/CancelledError; anthropic's `async with` inside the try),
+  `ContextWindowExceededError` (wrap gained keyword-only `model=`),
+  `ProviderError(provider, message, *, status, retryable, request_id)`,
+  `cause_code`/`provider_status` on terminal errors, `ERROR_CODES` +
+  `python -m neosian.schemas errors`. FakeProvider: three registry models
+  with a deliberate capability split, `neosian.fake` (FakeClient/FakeScript/
+  FakeTurn/FakeCall, both stream shapes, failure injection through the
+  wrap), router always offers FAKE, `AgentConfig.client_factory` honored at
+  every creation site via one `_create_client` helper (twins intact for N0).
+  §7: guardrail classifier + category + six policies + six tool descriptions
+  → `assets/prompts/*.yaml` ({{var}} interpolation), loaded fail-fast at
+  import; golden tests pin byte-identical assembly. Bugs: `_validate_run`
+  shared by both entry points (three guards; DESIGN §3 said four — wording
+  fixed); `_attach_input_guard_results` → `dataclasses.replace` (model= no
+  longer dropped). Ledger #13 (Groq 413) and #14 (fakes visible in
+  INVALID_MODEL) added. 935 unit tests, zero keys; v0.54.0 — the kit's
+  first vendoring point.

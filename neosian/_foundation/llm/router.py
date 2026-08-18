@@ -8,6 +8,7 @@ import os
 from neosian._foundation.llm.anthropic import AnthropicClient
 from neosian._foundation.llm.base import BaseLLMClient
 from neosian._foundation.llm.cerebras import CerebrasClient
+from neosian._foundation.llm.fake import FakeClient
 from neosian._foundation.llm.groq import GroqClient
 from neosian._foundation.llm.openai import OpenAIClient
 from neosian._foundation.shared.constants import (
@@ -57,6 +58,9 @@ class ProviderRouter:
         if os.environ.get(EnvVars.CEREBRAS_API_KEY):
             available.add(Provider.CEREBRAS)
 
+        # FAKE needs no key — keyless boot (DESIGN §2, ECOSYSTEM §7).
+        available.add(Provider.FAKE)
+
         return available
 
     def has_provider(self, provider: Provider) -> bool:
@@ -101,5 +105,10 @@ class ProviderRouter:
         if provider == Provider.CEREBRAS:
             key = api_key or os.environ.get(EnvVars.CEREBRAS_API_KEY, "")
             return CerebrasClient(api_key=key, max_retries=self._max_retries)
+
+        if provider == Provider.FAKE:
+            # Canned, repeat-last behavior; scripted fakes are injected via
+            # AgentConfig.client_factory, never through the router.
+            return FakeClient()
 
         raise ValueError(ErrorMessages.UNSUPPORTED_PROVIDER.format(provider=provider))

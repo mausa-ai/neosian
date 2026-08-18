@@ -10,6 +10,7 @@ from groq import AsyncGroq
 from neosian._foundation.guardrails.policy import evaluate_test_policy, is_test_policy
 from neosian._foundation.shared.constants import Guardrails
 from neosian._foundation.shared.exceptions import GuardrailPolicyParseError
+from neosian._foundation.shared.prompt_assets import get_prompt, render
 from neosian._foundation.shared.types import PolicyResult
 
 
@@ -81,7 +82,8 @@ async def check_with_policy(
     model = model or Guardrails.POLICY_MODEL
 
     # Build the full prompt with policy and content
-    full_prompt = Guardrails.PolicyPrompt.TEMPLATE.format(
+    full_prompt = render(
+        get_prompt("guardrails.classifier"),
         policies=policy,
         content=content,
     )

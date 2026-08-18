@@ -63,7 +63,7 @@ loops (`on_llm_call`), tool execution (`on_tool`), finalize/terminal-emission
 (`on_turn`), the fallback warning sites (`on_fallback`).
 
 Found-bug register (fixed in NS/N0, tests pin each):
-1. `AgentSession.run` skipped all four validation guards (NS).
+1. `AgentSession.run` skipped all three validation guards (NS).
 2. `_attach_input_guard_results` rebuilt `AgentResponse` field-by-field and
    dropped `model=`; the fix is `dataclasses.replace` — manual rebuilds are how
    fields get lost (NS).
@@ -142,6 +142,7 @@ it as JSON for host i18n-coverage tests):
 | ModelFailedError | `llm_model_failed` | no |
 | FallbackExhaustedError | `llm_fallback_exhausted` | no |
 | ToolCallGenerationError | `llm_tool_call_generation_failed` | **yes** |
+| FakeScriptExhaustedError *(NS)* | `llm_fake_script_exhausted` | no |
 | MessageSerializationError | `llm_message_serialization_failed` | no |
 | UnsupportedParameterError | `llm_unsupported_parameter` | no |
 | UnsupportedContentError | `llm_unsupported_content` | no |
@@ -162,7 +163,10 @@ shadows a Python builtin in `__all__`.
 
 **The SDK wrap.** `ProviderError(provider, message, *, status=None,
 retryable=False, request_id=None)`; new `llm/errors.py::wrap_provider_error
-(provider, exc)`: never wraps a `NeosianError`; duck-typed status extraction
+(provider, exc, *, model=None)` — the keyword-only `model` lets the 400
+classifier build a `ContextWindowExceededError` carrying `context_window`
+structurally (ECOSYSTEM §6); the two-argument form stays valid. Never wraps
+a `NeosianError`; duck-typed status extraction
 (`.status_code`, then `.response.status_code`); 429/408/5xx/connection/timeout
 → `retryable=True`; a 400 matching context signatures
 (`context_length_exceeded`, `prompt is too long`,
@@ -390,3 +394,5 @@ never a silent divergence. Numbering is monotonic, never reused.
 | 10 | Error codes renamable while pre-1.0 | **Codes append-only from NS** | Hosts key i18n and alerting on them the day they exist |
 | 11 | No license file | **Apache-2.0** | Open-core: permissive lib for adoption (+ patent grant); product value lives in hosts; sole copyright holder keeps relicensing freedom (add DCO/CLA if external PRs are ever accepted) |
 | 12 | Raw SDK exceptions escaping / stringified into fallback errors | **`wrap_provider_error` at the client boundary**; provider, status, retryable preserved; `raise … from exc` | Structure survives to the host's logs and wire codes; `str(e)` destroyed both |
+| 13 | Groq reports "Request too large" with HTTP 413 | **Context-overflow classifier keys on 400 only**, as specced; 413 widening deferred | Widening blind risks misclassifying non-context 413s; append the status when a real one is observed |
+| 14 | Hide fake models from user-facing errors | **`Model.FAKE*` appear in the INVALID_MODEL supported-models listing** | Fakes are real registry members (DESIGN §2); filtering would special-case the registry for cosmetics |

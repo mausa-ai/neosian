@@ -87,8 +87,8 @@ def _usage_payload(usage: Usage) -> dict[str, Any]:
     return {
         "input_tokens": usage.input_tokens,
         "output_tokens": usage.output_tokens,
-        "cache_creation_input_tokens": usage.cache_creation_input_tokens,
-        "cache_read_input_tokens": usage.cache_read_input_tokens,
+        "cache_read_tokens": usage.cache_read_tokens,
+        "cache_write_tokens": usage.cache_write_tokens,
         "total_tokens": usage.total_tokens,
     }
 

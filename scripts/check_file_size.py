@@ -17,11 +17,15 @@ ALLOWLIST: dict[str, str] = {
     # path (relative to repo root) -> reason (mandatory)
     "neosian/_foundation/agent/base.py": "split lands in N0 (session-twin collapse)",
     "neosian/_cli/playground.py": "CLI monolith; migrates onto Conversation in N2",
-    "neosian/_foundation/shared/types.py": "NS §4 usage/pricing rework restructures it",
+    "neosian/_foundation/shared/types.py": (
+        "the model registry + config types; NS grew it with µ$ pricing and FAKE"
+    ),
     "neosian/_foundation/llm/anthropic.py": (
         "grew with v0.49 multimodal; single-file adapter until a real seam appears"
     ),
-    "neosian/_foundation/shared/exceptions.py": "NS §5 error-code rework rewrites it",
+    "neosian/_foundation/shared/exceptions.py": (
+        "one class per error code (DESIGN §5); size is the full registry, not debt"
+    ),
 }
 
 

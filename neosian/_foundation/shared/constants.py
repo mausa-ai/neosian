@@ -230,50 +230,29 @@ class LLMDefaults:
 
 
 class BuiltinTools:
-    """Constants for built-in tools."""
+    """Constants for built-in tools.
+
+    Model-facing description prose lives in assets/prompts/tools.yaml
+    (ECOSYSTEM §8); only the machine names stay here.
+    """
 
     class Todo:
         """Todo tool constants."""
 
         NAME: str = "update_todo"
-        DESCRIPTION: str = (
-            "Update the task list with current progress. Pass the complete list of tasks - "
-            "this replaces all existing tasks. Use status: 'pending' for not started, "
-            "'in_progress' for current work (keep to one at a time), 'completed' when done."
-        )
 
     class Playbook:
         """Playbook tool constants."""
 
         LIST_NAME: str = "list_playbooks"
-        LIST_DESCRIPTION: str = (
-            "List available playbooks with their names and descriptions. "
-            "Use this to discover what playbooks are available before loading one."
-        )
         LOAD_NAME: str = "load_playbook"
-        LOAD_DESCRIPTION: str = (
-            "Load a playbook by name. Returns the full instructions. "
-            "Use list_playbooks first to see what's available."
-        )
 
     class Blackboard:
         """Blackboard tool constants."""
 
         LIST_NAME: str = "list_blackboard"
-        LIST_DESCRIPTION: str = (
-            "List available blackboard entries with their names and descriptions. "
-            "Blackboard contains dynamic context that may change during the session."
-        )
         READ_NAME: str = "read_blackboard"
-        READ_DESCRIPTION: str = (
-            "Read the current content of a blackboard entry by name. "
-            "Use list_blackboard first to see what's available."
-        )
         UPDATE_NAME: str = "update_blackboard"
-        UPDATE_DESCRIPTION: str = (
-            "Update an existing blackboard entry with new content. "
-            "Can only update entries that already exist, not create new ones."
-        )
 
 
 class PlaybookLoader:
@@ -379,29 +358,8 @@ class Guardrails:
         CATEGORY: str = "TEST"
         RATIONALE: str = "Random test flag (50% chance)"
 
-    class PolicyPrompt:
-        """Policy prompt templates for GPT-OSS-Safeguard."""
-
-        TEMPLATE: str = (
-            "# Content Policy\n\n"
-            "## INSTRUCTIONS\n"
-            "Classify the content against the policies below. Return JSON with:\n"
-            "- violation: 1 if violates any policy, 0 if safe\n"
-            '- category: The policy code (e.g., "P1") or null if safe\n'
-            "- rationale: Brief explanation of your decision\n\n"
-            "## POLICIES\n{policies}\n\n"
-            "## OUTPUT FORMAT\n"
-            "Return ONLY valid JSON: "
-            '{{"violation": 0|1, "category": "CODE"|null, "rationale": "..."}}\n\n'
-            "Content to evaluate:\n{content}"
-        )
-
-        CATEGORY_TEMPLATE: str = (
-            "### {code}: {name}\n"
-            "{description}\n"
-            "VIOLATES: {violates}\n"
-            "SAFE: {safe}\n"
-        )
+    # The classifier and category prompt templates live in
+    # assets/prompts/guardrails.yaml (ECOSYSTEM §8) — never prose here.
 
 
 class Streaming:

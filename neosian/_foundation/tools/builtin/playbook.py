@@ -8,6 +8,7 @@ Playbook data is bound via closure — no mutable state.
 """
 
 from neosian._foundation.shared.constants import BuiltinTools, ErrorMessages
+from neosian._foundation.shared.prompt_assets import get_prompt
 from neosian._foundation.shared.types import Playbook, PlaybookName, ToolFunction
 from neosian._foundation.tools.base import Tool, ToolResult
 
@@ -27,7 +28,7 @@ def create_playbook_tools(
 
     @Tool(
         name=BuiltinTools.Playbook.LIST_NAME,
-        description=BuiltinTools.Playbook.LIST_DESCRIPTION,
+        description=get_prompt("tools.playbook_list"),
     )
     async def list_playbooks() -> ToolResult[list[dict[str, str]]]:
         """List all available playbooks with their names and descriptions."""
@@ -37,7 +38,7 @@ def create_playbook_tools(
 
     @Tool(
         name=BuiltinTools.Playbook.LOAD_NAME,
-        description=BuiltinTools.Playbook.LOAD_DESCRIPTION,
+        description=get_prompt("tools.playbook_load"),
     )
     async def load_playbook(name: str) -> ToolResult[str]:
         """Load a playbook by name and return its full content.

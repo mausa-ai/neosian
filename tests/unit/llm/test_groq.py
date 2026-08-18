@@ -10,6 +10,7 @@ from neosian._foundation.llm.base import Message, Role, ToolDefinition
 from neosian._foundation.llm.groq import GroqClient
 from neosian._foundation.shared.constants import LLMDefaults
 from neosian._foundation.shared.exceptions import (
+    ProviderError,
     ToolCallGenerationError,
     UnsupportedParameterError,
 )
@@ -278,7 +279,7 @@ class TestGroqClientRetry:
         mock_create.side_effect = tool_error
 
         # No tools provided - should re-raise immediately
-        with pytest.raises(BadRequestError):
+        with pytest.raises(ProviderError):
             await client.complete(
                 messages=[Message(role=Role.USER, content="Hi")],
                 model=Model.GROQ_GPT_OSS_20B,
@@ -340,7 +341,7 @@ class TestGroqClientRetry:
         ]
 
         # Should re-raise immediately without retry
-        with pytest.raises(BadRequestError):
+        with pytest.raises(ProviderError):
             await client.complete(
                 messages=[Message(role=Role.USER, content="Hi")],
                 model=Model.GROQ_GPT_OSS_20B,

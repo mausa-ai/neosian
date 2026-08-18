@@ -41,38 +41,43 @@ class TestNormalizeStopReason:
 
 
 @pytest.mark.unit
-class TestUsageCost:
-    """Usage.cost estimates USD spend at the model's list prices."""
+class TestUsageCostMicroUsd:
+    """Usage.cost_micro_usd prices usage in integer micro-USD."""
 
     def test_cost_with_full_pricing(self) -> None:
         """All four token classes are priced (Anthropic-style pricing)."""
         usage = Usage(
             input_tokens=1_000_000,
             output_tokens=1_000_000,
-            cache_creation_input_tokens=1_000_000,
-            cache_read_input_tokens=1_000_000,
+            cache_read_tokens=1_000_000,
+            cache_write_tokens=1_000_000,
         )
-        # Opus 5: $5 in, $25 out, $6.25 cache write, $0.50 cache read
-        cost = usage.cost(Model.CLAUDE_OPUS_5)
-        assert cost == pytest.approx(5.00 + 25.00 + 6.25 + 0.50)
+        # Opus 5: $5 in, $25 out, $0.50 cache read, $6.25 cache write
+        cost = usage.cost_micro_usd(Model.CLAUDE_OPUS_5)
+        assert cost == 5_000_000 + 25_000_000 + 500_000 + 6_250_000
 
-    def test_cost_cache_falls_back_to_input_price(self) -> None:
+    def test_cost_cache_falls_back_to_input_rate(self) -> None:
         """Providers without cache rates price cache tokens at input rate."""
         usage = Usage(
             input_tokens=0,
             output_tokens=0,
-            cache_read_input_tokens=1_000_000,
+            cache_read_tokens=1_000_000,
         )
-        # Groq gpt-oss-20b has no cache pricing; falls back to $0.10 input
-        cost = usage.cost(Model.GROQ_GPT_OSS_20B)
-        assert cost == pytest.approx(0.10)
+        # Groq gpt-oss-20b has no cache pricing; falls back to 100_000 µ$ input
+        assert usage.cost_micro_usd(Model.GROQ_GPT_OSS_20B) == 100_000
+
+    def test_cost_rounds_up_never_down(self) -> None:
+        """Ceiling division: any fractional micro-USD bills a whole one."""
+        # 1 input token on Groq 20B = 100_000 / 1_000_000 = 0.1 µ$ → 1 µ$
+        usage = Usage(input_tokens=1, output_tokens=0)
+        assert usage.cost_micro_usd(Model.GROQ_GPT_OSS_20B) == 1
 
     def test_cost_unpriced_model_returns_none(self) -> None:
-        """Models without verified pricing return None, never a guess."""
+        """Models without verified pricing return None, never 0."""
         usage = Usage(input_tokens=100, output_tokens=100)
         assert Model.CEREBRAS_GEMMA_4_31B.pricing is None
-        assert usage.cost(Model.CEREBRAS_GEMMA_4_31B) is None
+        assert usage.cost_micro_usd(Model.CEREBRAS_GEMMA_4_31B) is None
 
     def test_zero_usage_costs_zero(self) -> None:
         usage = Usage(input_tokens=0, output_tokens=0)
-        assert usage.cost(Model.CLAUDE_SONNET_5) == 0.0
+        assert usage.cost_micro_usd(Model.CLAUDE_SONNET_5) == 0

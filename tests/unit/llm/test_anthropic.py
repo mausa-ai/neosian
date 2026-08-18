@@ -1227,8 +1227,8 @@ class TestAnthropicPromptCaching:
 
         assert response.usage.input_tokens == 50
         assert response.usage.output_tokens == 10
-        assert response.usage.cache_creation_input_tokens == 2500
-        assert response.usage.cache_read_input_tokens == 0
+        assert response.usage.cache_write_tokens == 2500
+        assert response.usage.cache_read_tokens == 0
 
     @pytest.mark.asyncio
     async def test_complete_extracts_cache_read_tokens(
@@ -1252,8 +1252,8 @@ class TestAnthropicPromptCaching:
             model=Model.CLAUDE_SONNET_5,
         )
 
-        assert response.usage.cache_creation_input_tokens == 0
-        assert response.usage.cache_read_input_tokens == 2500
+        assert response.usage.cache_write_tokens == 0
+        assert response.usage.cache_read_tokens == 2500
         assert response.usage.total_tokens == 50 + 10 + 0 + 2500
 
     @pytest.mark.asyncio
@@ -1279,8 +1279,8 @@ class TestAnthropicPromptCaching:
             model=Model.CLAUDE_SONNET_5,
         )
 
-        assert response.usage.cache_creation_input_tokens == 0
-        assert response.usage.cache_read_input_tokens == 0
+        assert response.usage.cache_write_tokens == 0
+        assert response.usage.cache_read_tokens == 0
 
     @pytest.mark.asyncio
     async def test_stream_sends_structured_system(
@@ -1363,8 +1363,8 @@ class TestAnthropicPromptCaching:
         assert final.usage is not None
         assert final.usage.input_tokens == 50
         assert final.usage.output_tokens == 10
-        assert final.usage.cache_creation_input_tokens == 2500
-        assert final.usage.cache_read_input_tokens == 0
+        assert final.usage.cache_write_tokens == 2500
+        assert final.usage.cache_read_tokens == 0
 
     @pytest.mark.asyncio
     async def test_stream_yields_early_partial_usage_chunk(
@@ -1420,7 +1420,7 @@ class TestAnthropicPromptCaching:
         assert partial.usage is not None
         assert partial.usage.input_tokens == 50
         assert partial.usage.output_tokens == 0
-        assert partial.usage.cache_creation_input_tokens == 2500
+        assert partial.usage.cache_write_tokens == 2500
 
         # Final chunk still carries the complete usage (last-wins for consumers)
         final = chunks[-1]
@@ -1428,7 +1428,7 @@ class TestAnthropicPromptCaching:
         assert final.usage is not None
         assert final.usage.input_tokens == 50
         assert final.usage.output_tokens == 10
-        assert final.usage.cache_creation_input_tokens == 2500
+        assert final.usage.cache_write_tokens == 2500
 
     @pytest.mark.asyncio
     async def test_stream_tools_have_cache_control(

@@ -1,0 +1,84 @@
+"""Shipped prompt data (ECOSYSTEM §8, DESIGN §7).
+
+Every prompt neosian ships lives in assets/ YAML, loaded and validated
+here at import — fail-fast, never prose in Python. Overriding is done at
+the consumer seam: custom PolicyCategory lists replace the shipped policy
+pack, and user-defined @Tool descriptions replace the builtin ones.
+"""
+
+from importlib import resources
+from typing import Any, Final
+
+import yaml
+
+from neosian._foundation.shared.exceptions import (
+    PromptInvalidYAMLError,
+    PromptMissingKeyError,
+)
+
+_PACKAGE: Final = "neosian.assets"
+_GUARDRAILS_FILE: Final = "prompts/guardrails.yaml"
+_TOOLS_FILE: Final = "prompts/tools.yaml"
+_POLICY_KEYS: Final = ("name", "code", "description", "violates", "safe")
+_TOOL_KEYS: Final = (
+    "todo",
+    "playbook_list",
+    "playbook_load",
+    "blackboard_list",
+    "blackboard_read",
+    "blackboard_update",
+)
+
+
+def render(template: str, **variables: str) -> str:
+    """Interpolate {{var}} placeholders (the ECOSYSTEM §8 template syntax)."""
+    for key, value in variables.items():
+        template = template.replace("{{" + key + "}}", value)
+    return template
+
+
+def _load_yaml(filename: str) -> dict[str, Any]:
+    text = resources.files(_PACKAGE).joinpath(filename).read_text(encoding="utf-8")
+    try:
+        data = yaml.safe_load(text)
+    except yaml.YAMLError as exc:
+        raise PromptInvalidYAMLError(filename) from exc
+    if not isinstance(data, dict):
+        raise PromptInvalidYAMLError(filename)
+    return data
+
+
+def _require(data: dict[str, Any], key: str, filename: str) -> Any:
+    if key not in data:
+        raise PromptMissingKeyError(key, filename)
+    return data[key]
+
+
+def _load() -> tuple[dict[str, str], tuple[dict[str, Any], ...]]:
+    guardrails = _load_yaml(_GUARDRAILS_FILE)
+    tools = _load_yaml(_TOOLS_FILE)
+    prompts = {
+        "guardrails.classifier": str(
+            _require(guardrails, "classifier", _GUARDRAILS_FILE)
+        ),
+        "guardrails.category": str(_require(guardrails, "category", _GUARDRAILS_FILE)),
+    }
+    for key in _TOOL_KEYS:
+        prompts[f"tools.{key}"] = str(_require(tools, key, _TOOLS_FILE))
+    policies = tuple(_require(guardrails, "policies", _GUARDRAILS_FILE))
+    for entry in policies:
+        if not isinstance(entry, dict):
+            raise PromptInvalidYAMLError(_GUARDRAILS_FILE)
+        for key in _POLICY_KEYS:
+            _require(entry, key, _GUARDRAILS_FILE)
+    return prompts, policies
+
+
+_PROMPTS, POLICY_DATA = _load()
+
+
+def get_prompt(key: str) -> str:
+    """A shipped prompt by registry key (e.g. "guardrails.classifier")."""
+    if key not in _PROMPTS:
+        raise PromptMissingKeyError(key, "prompt registry")
+    return _PROMPTS[key]

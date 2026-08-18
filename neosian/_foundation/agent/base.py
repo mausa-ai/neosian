@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import dataclasses
 import logging
 import os
 import time
@@ -63,6 +64,7 @@ from neosian._foundation.shared.types import (
     GuardrailResult,
     Model,
     PolicyResult,
+    Provider,
     ReasoningEffort,
     ResponseFormat,
     ToolCallId,
@@ -233,6 +235,7 @@ class Agent:
         # Initialize router for provider management
         assert config.max_retries is not None  # Set by AgentConfig.__post_init__
         self._router = ProviderRouter(max_retries=config.max_retries)
+        self._client_factory = config.client_factory
 
         # Model and fallback configuration
         self._model = config.model
@@ -303,6 +306,36 @@ class Agent:
         self._tools[metadata.name] = tool_func
         self._tool_definitions.append(definition)
 
+    def _create_client(self, provider: Provider) -> BaseLLMClient:
+        """Create a client for provider, honoring the configured factory."""
+        if self._client_factory is not None:
+            return self._client_factory(provider)
+        return self._router.create_client(provider)
+
+    def _validate_run(
+        self, *, stream: bool, response_format: ResponseFormat | None
+    ) -> None:
+        """Run-entry guards, shared verbatim by Agent.run and AgentSession.run.
+
+        The session twin skipping these was a defect class, not a variant
+        (DESIGN §3 found-bug register #1).
+        """
+        # Structured outputs require blocking mode
+        if response_format is not None and stream:
+            raise StructuredOutputStreamingError()
+
+        # Structured outputs are incompatible with tool-enabled agents
+        if response_format is not None and self._tool_definitions:
+            raise StructuredOutputToolsError()
+
+        # Output guardrails require blocking mode
+        if (
+            stream
+            and self._guardrails is not None
+            and self._guardrails.has_output_guardrails
+        ):
+            raise GuardrailStreamingError()
+
     @overload
     async def run(
         self,
@@ -347,21 +380,7 @@ class Agent:
             ModelFailedError: If model fails and no fallback is configured.
             FallbackExhaustedError: If both main and fallback models fail.
         """
-        # Structured outputs require blocking mode
-        if response_format is not None and stream:
-            raise StructuredOutputStreamingError()
-
-        # Structured outputs are incompatible with tool-enabled agents
-        if response_format is not None and self._tool_definitions:
-            raise StructuredOutputToolsError()
-
-        # Output guardrails require blocking mode
-        if (
-            stream
-            and self._guardrails is not None
-            and self._guardrails.has_output_guardrails
-        ):
-            raise GuardrailStreamingError()
+        self._validate_run(stream=stream, response_format=response_format)
 
         if stream:
             return self._run_streaming(messages)
@@ -557,7 +576,7 @@ class Agent:
 
         # Try main model
         try:
-            client = self._router.create_client(self._model.provider)
+            client = self._create_client(self._model.provider)
             response = await self._execute_with_client(
                 client=client,
                 model=self._model,
@@ -594,9 +613,7 @@ class Agent:
                 )
             )
             try:
-                fallback_client = self._router.create_client(
-                    self._fallback.model.provider
-                )
+                fallback_client = self._create_client(self._fallback.model.provider)
                 response = await self._execute_with_client(
                     client=fallback_client,
                     model=self._fallback.model,
@@ -646,7 +663,7 @@ class Agent:
         # routes straight to the main model.
         if self._unsupported_content_types(self._fallback.model, full_messages):
             try:
-                main_client = self._router.create_client(self._model.provider)
+                main_client = self._create_client(self._model.provider)
                 response = await self._execute_with_client(
                     client=main_client,
                     model=self._model,
@@ -667,7 +684,7 @@ class Agent:
                 ) from e
 
         try:
-            client = self._router.create_client(self._fallback.model.provider)
+            client = self._create_client(self._fallback.model.provider)
             response = await self._execute_with_client(
                 client=client,
                 model=self._fallback.model,
@@ -688,7 +705,7 @@ class Agent:
             )
             fallback_error = str(e)
             try:
-                main_client = self._router.create_client(self._model.provider)
+                main_client = self._create_client(self._model.provider)
                 response = await self._execute_with_client(
                     client=main_client,
                     model=self._model,
@@ -875,16 +892,9 @@ class Agent:
                 input_policy=input_policy,
             )
 
-        return AgentResponse(
-            message=response.message,
-            tool_calls_made=response.tool_calls_made,
-            tool_results=response.tool_results,
-            usage=response.usage,
-            blocked=response.blocked,
-            guardrail_result=guardrail_result,
-            parsed=response.parsed,
-            stop_reason=response.stop_reason,
-        )
+        # dataclasses.replace, never a field-by-field rebuild — the manual
+        # version silently dropped model= (DESIGN §3 found-bug register #2).
+        return dataclasses.replace(response, guardrail_result=guardrail_result)
 
     async def _run_streaming(self, messages: list[Message]) -> AsyncIterator[str]:
         """Execute agent with streaming (SSE mode).
@@ -971,7 +981,7 @@ class Agent:
 
         # Try main model
         try:
-            client = self._router.create_client(self._model.provider)
+            client = self._create_client(self._model.provider)
             async for sse in self._stream_with_client(
                 client=client,
                 model=self._model,
@@ -1012,9 +1022,7 @@ class Agent:
                 )
             )
             try:
-                fallback_client = self._router.create_client(
-                    self._fallback.model.provider
-                )
+                fallback_client = self._create_client(self._fallback.model.provider)
                 async for sse in self._stream_with_client(
                     client=fallback_client,
                     model=self._fallback.model,
@@ -1069,7 +1077,7 @@ class Agent:
         # routes straight to the main model.
         if self._unsupported_content_types(self._fallback.model, full_messages):
             try:
-                main_client = self._router.create_client(self._model.provider)
+                main_client = self._create_client(self._model.provider)
                 async for sse in self._stream_with_client(
                     client=main_client,
                     model=self._model,
@@ -1093,7 +1101,7 @@ class Agent:
                 ) from e
 
         try:
-            client = self._router.create_client(self._fallback.model.provider)
+            client = self._create_client(self._fallback.model.provider)
             async for sse in self._stream_with_client(
                 client=client,
                 model=self._fallback.model,
@@ -1117,7 +1125,7 @@ class Agent:
             fallback_error = str(e)
             fallback_usage = _extract_usage(e)
             try:
-                main_client = self._router.create_client(self._model.provider)
+                main_client = self._create_client(self._model.provider)
                 async for sse in self._stream_with_client(
                     client=main_client,
                     model=self._model,

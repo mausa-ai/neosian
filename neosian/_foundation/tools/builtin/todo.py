@@ -7,6 +7,7 @@ Stateless - validates input and echoes back the list. State lives in conversatio
 from typing import Literal, TypedDict
 
 from neosian._foundation.shared.constants import BuiltinTools
+from neosian._foundation.shared.prompt_assets import get_prompt
 from neosian._foundation.shared.types import TodoStatus
 from neosian._foundation.tools.base import Tool, ToolResult
 
@@ -24,7 +25,7 @@ class TodoItemInput(TypedDict):
 
 @Tool(
     name=BuiltinTools.Todo.NAME,
-    description=BuiltinTools.Todo.DESCRIPTION,
+    description=get_prompt("tools.todo"),
 )
 async def update_todo(
     todos: list[TodoItemInput],

@@ -21,6 +21,7 @@ from neosian._foundation.llm.base import (
     ToolDefinition,
     Usage,
 )
+from neosian._foundation.llm.errors import wrap_provider_error
 from neosian._foundation.shared.constants import ErrorMessages, LLMDefaults
 from neosian._foundation.shared.exceptions import (
     ToolCallGenerationError,
@@ -142,8 +143,9 @@ class GroqClient(BaseLLMClient):
                     raise ToolCallGenerationError(
                         retries=LLMDefaults.MAX_TOOL_CALL_RETRIES
                     ) from e
-                # Not a tool call error, re-raise
-                raise
+                raise wrap_provider_error("groq", e, model=model) from e
+            except Exception as exc:
+                raise wrap_provider_error("groq", exc, model=model) from exc
 
         # Should not reach here, but satisfy type checker
         raise ToolCallGenerationError(retries=LLMDefaults.MAX_TOOL_CALL_RETRIES)
@@ -251,89 +253,92 @@ class GroqClient(BaseLLMClient):
         groq_tools = self._convert_tools(tools) if tools else None
         temp = temperature if temperature is not None else LLMDefaults.TEMPERATURE
 
-        stream = await self._client.chat.completions.create(
-            model=model.value,
-            messages=groq_messages,
-            tools=groq_tools,
-            temperature=temp,
-            max_completion_tokens=max_tokens,
-            stream=True,
-            reasoning_effort=(
-                effective_effort.value  # type: ignore[arg-type]
-                if effective_effort
-                else None
-            ),
-            extra_body={"stream_options": {"include_usage": True}},
-        )
-
-        # Track tool calls being built across chunks
-        tool_call_builders: dict[int, dict[str, str]] = {}
-
-        async for chunk in stream:  # type: ignore[union-attr]
-            # Handle usage-only chunk (comes after finish_reason)
-            if not chunk.choices and chunk.usage:
-                yield StreamChunk(
-                    usage=Usage(
-                        input_tokens=chunk.usage.prompt_tokens,
-                        output_tokens=chunk.usage.completion_tokens,
-                    ),
-                )
-                continue
-
-            if not chunk.choices:
-                continue
-
-            choice = chunk.choices[0]
-            delta = choice.delta
-
-            # Handle content
-            content = delta.content if delta.content else None
-
-            # Handle reasoning (GPT-OSS models)
-            reasoning = getattr(delta, "reasoning", None)
-
-            # Handle tool calls (streamed in parts)
-            tool_calls: list[ToolCall] = []
-            if delta.tool_calls:
-                for tc in delta.tool_calls:
-                    idx = tc.index
-                    if idx not in tool_call_builders:
-                        tool_call_builders[idx] = {
-                            "id": "",
-                            "name": "",
-                            "arguments": "",
-                        }
-
-                    if tc.id:
-                        tool_call_builders[idx]["id"] = tc.id
-                    if tc.function:
-                        if tc.function.name:
-                            tool_call_builders[idx]["name"] = tc.function.name
-                        if tc.function.arguments:
-                            tool_call_builders[idx][
-                                "arguments"
-                            ] += tc.function.arguments
-
-            # On finish, yield completed tool calls
-            finish_reason = choice.finish_reason
-            if finish_reason == "tool_calls" and tool_call_builders:
-                for builder in tool_call_builders.values():
-                    # Normalize empty arguments to {}
-                    args_str = builder["arguments"] or "{}"
-                    tool_calls.append(
-                        ToolCall(
-                            id=ToolCallId(builder["id"]),
-                            name=ToolName(builder["name"]),
-                            arguments=json.loads(args_str),
-                        )
-                    )
-
-            yield StreamChunk(
-                content=content,
-                reasoning=reasoning,
-                tool_calls=tool_calls,
-                finish_reason=finish_reason,
+        try:
+            stream = await self._client.chat.completions.create(
+                model=model.value,
+                messages=groq_messages,
+                tools=groq_tools,
+                temperature=temp,
+                max_completion_tokens=max_tokens,
+                stream=True,
+                reasoning_effort=(
+                    effective_effort.value  # type: ignore[arg-type]
+                    if effective_effort
+                    else None
+                ),
+                extra_body={"stream_options": {"include_usage": True}},
             )
+
+            # Track tool calls being built across chunks
+            tool_call_builders: dict[int, dict[str, str]] = {}
+
+            async for chunk in stream:  # type: ignore[union-attr]
+                # Handle usage-only chunk (comes after finish_reason)
+                if not chunk.choices and chunk.usage:
+                    yield StreamChunk(
+                        usage=Usage(
+                            input_tokens=chunk.usage.prompt_tokens,
+                            output_tokens=chunk.usage.completion_tokens,
+                        ),
+                    )
+                    continue
+
+                if not chunk.choices:
+                    continue
+
+                choice = chunk.choices[0]
+                delta = choice.delta
+
+                # Handle content
+                content = delta.content if delta.content else None
+
+                # Handle reasoning (GPT-OSS models)
+                reasoning = getattr(delta, "reasoning", None)
+
+                # Handle tool calls (streamed in parts)
+                tool_calls: list[ToolCall] = []
+                if delta.tool_calls:
+                    for tc in delta.tool_calls:
+                        idx = tc.index
+                        if idx not in tool_call_builders:
+                            tool_call_builders[idx] = {
+                                "id": "",
+                                "name": "",
+                                "arguments": "",
+                            }
+
+                        if tc.id:
+                            tool_call_builders[idx]["id"] = tc.id
+                        if tc.function:
+                            if tc.function.name:
+                                tool_call_builders[idx]["name"] = tc.function.name
+                            if tc.function.arguments:
+                                tool_call_builders[idx][
+                                    "arguments"
+                                ] += tc.function.arguments
+
+                # On finish, yield completed tool calls
+                finish_reason = choice.finish_reason
+                if finish_reason == "tool_calls" and tool_call_builders:
+                    for builder in tool_call_builders.values():
+                        # Normalize empty arguments to {}
+                        args_str = builder["arguments"] or "{}"
+                        tool_calls.append(
+                            ToolCall(
+                                id=ToolCallId(builder["id"]),
+                                name=ToolName(builder["name"]),
+                                arguments=json.loads(args_str),
+                            )
+                        )
+
+                yield StreamChunk(
+                    content=content,
+                    reasoning=reasoning,
+                    tool_calls=tool_calls,
+                    finish_reason=finish_reason,
+                )
+        except Exception as exc:
+            raise wrap_provider_error("groq", exc, model=model) from exc
 
     def _convert_messages(
         self, messages: list[Message]

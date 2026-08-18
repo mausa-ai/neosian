@@ -65,7 +65,7 @@ class AgentSession:
             The cached or newly created LLM client.
         """
         if provider not in self._clients:
-            self._clients[provider] = self._agent._router.create_client(provider)
+            self._clients[provider] = self._agent._create_client(provider)
         return self._clients[provider]
 
     @overload
@@ -106,6 +106,8 @@ class AgentSession:
         Returns:
             AgentResponse when stream=False, AsyncIterator[str] when stream=True.
         """
+        self._agent._validate_run(stream=stream, response_format=response_format)
+
         # Delegate to agent's internal methods but provide our client getter
         if stream:
             return self._agent._run_streaming_with_session(messages, self)

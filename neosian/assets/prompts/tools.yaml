@@ -1,0 +1,13 @@
+# Model-facing descriptions of the built-in tools (ECOSYSTEM §8).
+
+todo: "Update the task list with current progress. Pass the complete list of tasks - this replaces all existing tasks. Use status: 'pending' for not started, 'in_progress' for current work (keep to one at a time), 'completed' when done."
+
+playbook_list: "List available playbooks with their names and descriptions. Use this to discover what playbooks are available before loading one."
+
+playbook_load: "Load a playbook by name. Returns the full instructions. Use list_playbooks first to see what's available."
+
+blackboard_list: "List available blackboard entries with their names and descriptions. Blackboard contains dynamic context that may change during the session."
+
+blackboard_read: "Read the current content of a blackboard entry by name. Use list_blackboard first to see what's available."
+
+blackboard_update: "Update an existing blackboard entry with new content. Can only update entries that already exist, not create new ones."
