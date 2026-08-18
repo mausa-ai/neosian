@@ -7,8 +7,8 @@ prompts:
   - examples/basic_agent.py
 
 models:
-  - groq:llama-3.3-70b-versatile
-  - groq:llama-3.1-8b-instant
+  - groq:openai/gpt-oss-120b
+  - groq:openai/gpt-oss-20b
 
 cases:
   # Test 1: Should call get_current_datetime

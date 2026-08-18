@@ -57,7 +57,7 @@ class TestModelEnum:
     def test_model_values(self) -> None:
         """Model enum should have expected values."""
         assert Model.GROQ_GPT_OSS_20B.value == "openai/gpt-oss-20b"
-        assert Model.GROQ_LLAMA_3_3_70B.value == "llama-3.3-70b-versatile"
+        assert Model.GROQ_QWEN3_6_27B.value == "qwen/qwen3.6-27b"
         assert Model.GPT_5_NANO.value == "gpt-5-nano-2025-08-07"
         assert Model.CLAUDE_SONNET_5.value == "claude-sonnet-5"
 
@@ -71,17 +71,16 @@ class TestModelEnum:
     def test_model_provider_property(self) -> None:
         """Model should have provider property."""
         assert Model.GROQ_GPT_OSS_20B.provider == Provider.GROQ
-        assert Model.GROQ_LLAMA_3_3_70B.provider == Provider.GROQ
+        assert Model.GROQ_QWEN3_6_27B.provider == Provider.GROQ
         assert Model.GPT_5_NANO.provider == Provider.OPENAI
         assert Model.CLAUDE_SONNET_5.provider == Provider.ANTHROPIC
 
     def test_model_max_output_tokens_property(self) -> None:
         """Model should have max_output_tokens property matching API ceilings."""
-        # Groq - Production
+        # Groq
         assert Model.GROQ_GPT_OSS_20B.max_output_tokens == 65_536
         assert Model.GROQ_GPT_OSS_120B.max_output_tokens == 65_536
-        assert Model.GROQ_LLAMA_3_3_70B.max_output_tokens == 32_768
-        assert Model.GROQ_LLAMA_3_1_8B.max_output_tokens == 131_072
+        assert Model.GROQ_QWEN3_6_27B.max_output_tokens == 32_768
 
         # OpenAI
         assert Model.GPT_5_NANO.max_output_tokens == 128_000
@@ -112,10 +111,7 @@ class TestModelEnum:
         """Model should have context_window property."""
         # Groq: 131,072
         assert Model.GROQ_GPT_OSS_20B.context_window == 131_072
-        assert Model.GROQ_LLAMA_3_3_70B.context_window == 131_072
-
-        # Groq: kimi-k2-0905 has 262,144
-        assert Model.GROQ_KIMI_K2_0905.context_window == 262_144
+        assert Model.GROQ_QWEN3_6_27B.context_window == 131_072
 
         # OpenAI: 400k
         assert Model.GPT_5_NANO.context_window == 400_000
@@ -210,7 +206,7 @@ class TestAgentConfigReasoningEffort:
         """AgentConfig should accept reasoning_effort=None with any model."""
         config = AgentConfig(
             system_prompt=SystemPrompt("You are helpful."),
-            model=Model.GROQ_LLAMA_3_3_70B,
+            model=Model.GROQ_QWEN3_6_27B,
             reasoning_effort=None,
         )
         assert config.reasoning_effort is None
@@ -227,12 +223,12 @@ class TestAgentConfigReasoningEffort:
         with pytest.raises(UnsupportedParameterError) as exc_info:
             AgentConfig(
                 system_prompt=SystemPrompt("You are helpful."),
-                model=Model.GROQ_LLAMA_3_3_70B,
+                model=Model.GROQ_QWEN3_6_27B,
                 reasoning_effort=ReasoningEffort.HIGH,
             )
 
         error_msg = str(exc_info.value)
-        assert "llama-3.3-70b-versatile" in error_msg
+        assert "qwen/qwen3.6-27b" in error_msg
 
     def test_reasoning_effort_with_openai_model_accepted(self) -> None:
         """AgentConfig should accept reasoning_effort with OpenAI GPT-5 models."""
@@ -280,7 +276,7 @@ class TestAgentConfigReasoningEffort:
         with pytest.raises(UnsupportedParameterError) as exc_info:
             AgentConfig(
                 system_prompt=SystemPrompt("You are helpful."),
-                model=Model.GROQ_LLAMA_3_3_70B,
+                model=Model.GROQ_QWEN3_6_27B,
                 reasoning_effort=ReasoningEffort.HIGH,
             )
 

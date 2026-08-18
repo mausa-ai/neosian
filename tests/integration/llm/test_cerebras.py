@@ -24,7 +24,7 @@ class TestCerebrasCompletion:
 
         response = await cerebras_client.complete(
             messages=messages,
-            model=Model.CEREBRAS_LLAMA_3_1_8B,
+            model=Model.CEREBRAS_GEMMA_4_31B,
         )
 
         assert response.message.role == Role.ASSISTANT
@@ -45,7 +45,7 @@ class TestCerebrasCompletion:
 
         response = await cerebras_client.complete(
             messages=messages,
-            model=Model.CEREBRAS_LLAMA_3_1_8B,
+            model=Model.CEREBRAS_GEMMA_4_31B,
         )
 
         assert response.message.content is not None
@@ -108,7 +108,7 @@ class TestCerebrasStreaming:
         chunks = []
         async for chunk in cerebras_client.stream(
             messages=messages,
-            model=Model.CEREBRAS_LLAMA_3_1_8B,
+            model=Model.CEREBRAS_GEMMA_4_31B,
         ):
             chunks.append(chunk)
 

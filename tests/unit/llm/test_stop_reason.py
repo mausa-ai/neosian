@@ -70,8 +70,8 @@ class TestUsageCost:
     def test_cost_unpriced_model_returns_none(self) -> None:
         """Models without verified pricing return None, never a guess."""
         usage = Usage(input_tokens=100, output_tokens=100)
-        assert Model.CEREBRAS_ZAI_GLM_4_7.pricing is None
-        assert usage.cost(Model.CEREBRAS_ZAI_GLM_4_7) is None
+        assert Model.CEREBRAS_GEMMA_4_31B.pricing is None
+        assert usage.cost(Model.CEREBRAS_GEMMA_4_31B) is None
 
     def test_zero_usage_costs_zero(self) -> None:
         usage = Usage(input_tokens=0, output_tokens=0)

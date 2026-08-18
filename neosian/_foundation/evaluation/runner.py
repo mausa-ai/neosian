@@ -451,8 +451,8 @@ def _parse_model(model_str: str) -> Model:
 
     Args:
         model_str: Model string, either:
-            - provider:model format (e.g., "groq:llama-3.3-70b-versatile")
-            - model name only (e.g., "llama-3.3-70b-versatile")
+            - provider:model format (e.g., "groq:openai/gpt-oss-120b")
+            - model name only (e.g., "openai/gpt-oss-120b")
 
     Returns:
         Model enum value.

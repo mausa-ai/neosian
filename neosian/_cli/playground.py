@@ -99,11 +99,7 @@ _HIDDEN_MODELS: frozenset[Model] = frozenset({Model.GROQ_GPT_OSS_SAFEGUARD_20B})
 # Optional flavor text appended to a model's display name. The "(default)"
 # marker is derived from DEFAULT_MODELS, not baked in here.
 _MODEL_NOTES: dict[Model, str] = {
-    Model.GROQ_LLAMA_4_MAVERICK_17B: "preview",
-    Model.GROQ_LLAMA_4_SCOUT_17B: "preview",
-    Model.GROQ_QWEN3_32B: "preview",
-    Model.GROQ_KIMI_K2: "preview",
-    Model.GROQ_KIMI_K2_0905: "preview",
+    Model.GROQ_QWEN3_6_27B: "preview",
     Model.GPT_5_NANO: "fastest",
     Model.GPT_5_MINI: "balanced",
     Model.GPT_5_1: "best for coding",
@@ -112,9 +108,7 @@ _MODEL_NOTES: dict[Model, str] = {
     Model.CLAUDE_SONNET_5: "balanced",
     Model.CLAUDE_HAIKU_4_5: "fastest",
     Model.CEREBRAS_GPT_OSS_120B: "fastest 120B",
-    Model.CEREBRAS_LLAMA_3_1_8B: "fastest",
-    Model.CEREBRAS_QWEN3_235B: "preview, multilingual",
-    Model.CEREBRAS_ZAI_GLM_4_7: "preview, reasoning",
+    Model.CEREBRAS_GEMMA_4_31B: "preview",
 }
 
 

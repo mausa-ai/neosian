@@ -151,13 +151,13 @@ class TestAgentConfig:
         config = AgentConfig(
             system_prompt="Test prompt",
             tools=[],
-            model=Model.GROQ_LLAMA_3_3_70B,
+            model=Model.GROQ_QWEN3_6_27B,
             enable_todo=False,
         )
 
         assert config.system_prompt == "Test prompt"
         assert config.tools == []
-        assert config.model == Model.GROQ_LLAMA_3_3_70B
+        assert config.model == Model.GROQ_QWEN3_6_27B
         assert config.enable_todo is False
 
 

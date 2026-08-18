@@ -384,11 +384,11 @@ class TestGroqClientReasoningEffort:
         with pytest.raises(UnsupportedParameterError) as exc_info:
             await client.complete(
                 messages=[Message(role=Role.USER, content="Hi")],
-                model=Model.GROQ_LLAMA_3_3_70B,
+                model=Model.GROQ_QWEN3_6_27B,
                 reasoning_effort=ReasoningEffort.HIGH,
             )
 
-        assert "llama-3.3-70b-versatile" in str(exc_info.value)
+        assert "qwen/qwen3.6-27b" in str(exc_info.value)
 
     @pytest.mark.asyncio
     async def test_reasoning_effort_none_passed_as_none(self) -> None:
@@ -462,7 +462,7 @@ class TestGroqClientReasoningEffort:
         with pytest.raises(UnsupportedParameterError):
             async for _ in client.stream(
                 messages=[Message(role=Role.USER, content="Hi")],
-                model=Model.GROQ_LLAMA_3_3_70B,
+                model=Model.GROQ_QWEN3_6_27B,
                 reasoning_effort=ReasoningEffort.LOW,
             ):
                 pass
@@ -615,7 +615,7 @@ class TestGroqClientReasoningContent:
 
         result = await client.complete(
             messages=[Message(role=Role.USER, content="Hi")],
-            model=Model.GROQ_LLAMA_3_3_70B,
+            model=Model.GROQ_QWEN3_6_27B,
         )
 
         assert result.message.content == "Hello"
@@ -726,7 +726,7 @@ class TestGroqClientReasoningContent:
         chunks = []
         async for c in client.stream(
             messages=[Message(role=Role.USER, content="Hi")],
-            model=Model.GROQ_LLAMA_3_3_70B,
+            model=Model.GROQ_QWEN3_6_27B,
         ):
             chunks.append(c)
 

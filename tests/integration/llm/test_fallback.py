@@ -85,7 +85,7 @@ class TestFallbackFirstProviderFails:
                     "You are a helpful assistant. Reply concisely."
                 ),
                 tools=[],
-                model=Model.GROQ_LLAMA_3_3_70B,  # Groq model
+                model=Model.GROQ_QWEN3_6_27B,  # Groq model
                 fallback=FallbackConfig(model=Model.GPT_5_NANO),  # OpenAI fallback
                 enable_todo=False,
             )
@@ -120,9 +120,7 @@ class TestFallbackFirstProviderFails:
                 ),
                 tools=[],
                 model=Model.GPT_5_MINI,  # OpenAI model
-                fallback=FallbackConfig(
-                    model=Model.GROQ_LLAMA_3_3_70B
-                ),  # Groq fallback
+                fallback=FallbackConfig(model=Model.GROQ_QWEN3_6_27B),  # Groq fallback
                 enable_todo=False,
             )
             agent = Agent(config=config)
@@ -158,7 +156,7 @@ class TestNoFallbackConfigured:
             config = AgentConfig(
                 system_prompt=SystemPrompt("You are a helpful assistant."),
                 tools=[],
-                model=Model.GROQ_LLAMA_3_3_70B,
+                model=Model.GROQ_QWEN3_6_27B,
                 # No fallback configured
                 enable_todo=False,
             )
@@ -172,7 +170,7 @@ class TestNoFallbackConfigured:
             # Verify the error indicates no fallback
             error = exc_info.value
             assert error.has_fallback is False
-            assert "llama-3.3-70b-versatile" in error.model
+            assert "qwen/qwen3.6-27b" in error.model
 
 
 @pytest.mark.integration
@@ -195,7 +193,7 @@ class TestFallbackExhausted:
             config = AgentConfig(
                 system_prompt=SystemPrompt("You are a helpful assistant."),
                 tools=[],
-                model=Model.GROQ_LLAMA_3_3_70B,  # Will fail
+                model=Model.GROQ_QWEN3_6_27B,  # Will fail
                 fallback=FallbackConfig(model=Model.GPT_5_NANO),  # Will also fail
                 enable_todo=False,
             )
@@ -208,7 +206,7 @@ class TestFallbackExhausted:
 
             # Verify the error contains both model information
             error = exc_info.value
-            assert "llama-3.3-70b-versatile" in error.main_model
+            assert "qwen/qwen3.6-27b" in error.main_model
             assert "gpt-5-nano" in error.fallback_model
 
 
@@ -234,7 +232,7 @@ class TestSingleProviderWorks:
                     "You are a helpful assistant. Reply concisely."
                 ),
                 tools=[],
-                model=Model.GROQ_LLAMA_3_3_70B,
+                model=Model.GROQ_QWEN3_6_27B,
                 enable_todo=False,
             )
             agent = Agent(config=config)
@@ -270,7 +268,7 @@ class TestFallbackStreaming:
                     "You are a helpful assistant. Reply concisely."
                 ),
                 tools=[],
-                model=Model.GROQ_LLAMA_3_3_70B,
+                model=Model.GROQ_QWEN3_6_27B,
                 fallback=FallbackConfig(model=Model.GPT_5_NANO),
                 enable_todo=False,
             )
@@ -307,7 +305,7 @@ class TestFallbackStreaming:
             config = AgentConfig(
                 system_prompt=SystemPrompt("You are a helpful assistant."),
                 tools=[],
-                model=Model.GROQ_LLAMA_3_3_70B,
+                model=Model.GROQ_QWEN3_6_27B,
                 fallback=FallbackConfig(model=Model.GPT_5_NANO),
                 enable_todo=False,
             )
@@ -337,7 +335,7 @@ class TestFallbackStreaming:
             config = AgentConfig(
                 system_prompt=SystemPrompt("You are a helpful assistant."),
                 tools=[],
-                model=Model.GROQ_LLAMA_3_3_70B,
+                model=Model.GROQ_QWEN3_6_27B,
                 # No fallback
                 enable_todo=False,
             )
@@ -378,7 +376,7 @@ class TestStickyFallbackWithSession:
                     "You are a helpful assistant. Reply concisely."
                 ),
                 tools=[],
-                model=Model.GROQ_LLAMA_3_3_70B,
+                model=Model.GROQ_QWEN3_6_27B,
                 fallback=FallbackConfig(
                     model=Model.GPT_5_NANO,
                     retry_main_after=0,  # Never retry main

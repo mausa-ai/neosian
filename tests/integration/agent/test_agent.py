@@ -11,6 +11,7 @@ import pytest
 
 from neosian._foundation.agent.base import Agent
 from neosian._foundation.llm.base import Message, Role
+from neosian._foundation.shared.exceptions import ModelFailedError
 from neosian._foundation.shared.types import (
     AgentConfig,
     Model,
@@ -342,12 +343,18 @@ class TestAgentReasoningEffort:
         does, skip rather than fail.
         """
 
+        # Record each tool's execution window; overlap proves parallelism
+        # independent of LLM round-trip latency.
+        windows: dict[str, tuple[float, float]] = {}
+
         @Tool(
             name="fetch_a",
             description="Fetch resource A. Always call together with fetch_b.",
         )
         async def fetch_a() -> ToolResult[str]:
+            t0 = time.monotonic()
             await asyncio.sleep(2.0)
+            windows["a"] = (t0, time.monotonic())
             return ToolResult.ok("A done")
 
         @Tool(
@@ -355,7 +362,9 @@ class TestAgentReasoningEffort:
             description="Fetch resource B. Always call together with fetch_a.",
         )
         async def fetch_b() -> ToolResult[str]:
+            t0 = time.monotonic()
             await asyncio.sleep(2.0)
+            windows["b"] = (t0, time.monotonic())
             return ToolResult.ok("B done")
 
         config = AgentConfig(
@@ -363,21 +372,30 @@ class TestAgentReasoningEffort:
                 "You must call BOTH fetch_a and fetch_b in a single response."
             ),
             tools=[fetch_a, fetch_b],
-            model=Model.GROQ_LLAMA_3_3_70B,
+            model=Model.GROQ_GPT_OSS_120B,
             enable_todo=False,
         )
-        agent = Agent(config=config)
+        # max_tool_iterations=1: if the model splits the calls across turns,
+        # only the first turn's calls run, the skip below triggers, and the
+        # overlap assertion only ever judges a genuine single-turn pair.
+        agent = Agent(config=config, max_tool_iterations=1)
         messages = [Message(role=Role.USER, content="Fetch both A and B.")]
 
-        start = time.monotonic()
-        response = await agent.run(messages, stream=False)
-        elapsed = time.monotonic() - start
+        try:
+            response = await agent.run(messages, stream=False)
+        except ModelFailedError:
+            # Model insisted on a second tool call in the tools=None final
+            # turn — it split the calls across turns; nothing to measure.
+            pytest.skip("Provider split tool calls across turns in this run.")
 
-        if len(response.tool_calls_made) < 2:
+        if len(response.tool_calls_made) < 2 or set(windows) != {"a", "b"}:
             pytest.skip(
                 "Provider did not emit parallel tool calls in this run "
                 f"(got {len(response.tool_calls_made)})."
             )
 
-        # Parallel: ~2s for both tools + LLM round trips. Sequential would be ~4s+.
-        assert elapsed < 4.0, f"tools likely ran sequentially: {elapsed:.2f}s"
+        # Parallel execution: the two 2s windows must overlap substantially.
+        overlap = min(windows["a"][1], windows["b"][1]) - max(
+            windows["a"][0], windows["b"][0]
+        )
+        assert overlap > 1.0, f"tools likely ran sequentially: overlap {overlap:.2f}s"

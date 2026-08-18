@@ -110,17 +110,11 @@ class Model(str, Enum):
     """Supported LLM models."""
 
     # Groq - Production
-    GROQ_LLAMA_3_3_70B = "llama-3.3-70b-versatile"
-    GROQ_LLAMA_3_1_8B = "llama-3.1-8b-instant"
     GROQ_GPT_OSS_120B = "openai/gpt-oss-120b"
     GROQ_GPT_OSS_20B = "openai/gpt-oss-20b"
 
     # Groq - Preview
-    GROQ_LLAMA_4_MAVERICK_17B = "meta-llama/llama-4-maverick-17b-128e-instruct"
-    GROQ_LLAMA_4_SCOUT_17B = "meta-llama/llama-4-scout-17b-16e-instruct"
-    GROQ_QWEN3_32B = "qwen/qwen3-32b"
-    GROQ_KIMI_K2 = "moonshotai/kimi-k2-instruct"
-    GROQ_KIMI_K2_0905 = "moonshotai/kimi-k2-instruct-0905"
+    GROQ_QWEN3_6_27B = "qwen/qwen3.6-27b"
 
     # Groq - Guardrails
     GROQ_GPT_OSS_SAFEGUARD_20B = "openai/gpt-oss-safeguard-20b"
@@ -139,11 +133,9 @@ class Model(str, Enum):
 
     # Cerebras - Production
     CEREBRAS_GPT_OSS_120B = "gpt-oss-120b"
-    CEREBRAS_LLAMA_3_1_8B = "llama3.1-8b"
 
     # Cerebras - Preview
-    CEREBRAS_QWEN3_235B = "qwen-3-235b-a22b-instruct-2507"
-    CEREBRAS_ZAI_GLM_4_7 = "zai-glm-4.7"
+    CEREBRAS_GEMMA_4_31B = "gemma-4-31b"
 
     @property
     def spec(self) -> ModelSpec:
@@ -192,18 +184,6 @@ class Model(str, Enum):
 
 
 # Groq - Production
-_MODEL_SPECS[Model.GROQ_LLAMA_3_3_70B.value] = ModelSpec(
-    provider=Provider.GROQ,
-    context_window=131_072,
-    max_output_tokens=32_768,
-    pricing=ModelPricing(input_per_mtok=0.59, output_per_mtok=0.79),
-)
-_MODEL_SPECS[Model.GROQ_LLAMA_3_1_8B.value] = ModelSpec(
-    provider=Provider.GROQ,
-    context_window=131_072,
-    max_output_tokens=131_072,
-    pricing=ModelPricing(input_per_mtok=0.05, output_per_mtok=0.08),
-)
 _MODEL_SPECS[Model.GROQ_GPT_OSS_120B.value] = ModelSpec(
     provider=Provider.GROQ,
     context_window=131_072,
@@ -220,35 +200,10 @@ _MODEL_SPECS[Model.GROQ_GPT_OSS_20B.value] = ModelSpec(
 )
 
 # Groq - Preview
-_MODEL_SPECS[Model.GROQ_LLAMA_4_MAVERICK_17B.value] = ModelSpec(
+_MODEL_SPECS[Model.GROQ_QWEN3_6_27B.value] = ModelSpec(
     provider=Provider.GROQ,
     context_window=131_072,
-    max_output_tokens=8_192,
-    pricing=ModelPricing(input_per_mtok=0.20, output_per_mtok=0.60),
-)
-_MODEL_SPECS[Model.GROQ_LLAMA_4_SCOUT_17B.value] = ModelSpec(
-    provider=Provider.GROQ,
-    context_window=131_072,
-    max_output_tokens=8_192,
-    pricing=ModelPricing(input_per_mtok=0.11, output_per_mtok=0.34),
-)
-_MODEL_SPECS[Model.GROQ_QWEN3_32B.value] = ModelSpec(
-    provider=Provider.GROQ,
-    context_window=131_072,
-    max_output_tokens=40_960,
-    pricing=ModelPricing(input_per_mtok=0.29, output_per_mtok=0.59),
-)
-_MODEL_SPECS[Model.GROQ_KIMI_K2.value] = ModelSpec(
-    provider=Provider.GROQ,
-    context_window=131_072,
-    max_output_tokens=16_384,
-    pricing=ModelPricing(input_per_mtok=1.00, output_per_mtok=3.00),
-)
-_MODEL_SPECS[Model.GROQ_KIMI_K2_0905.value] = ModelSpec(
-    provider=Provider.GROQ,
-    context_window=262_144,
-    max_output_tokens=16_384,
-    pricing=ModelPricing(input_per_mtok=1.00, output_per_mtok=3.00),
+    max_output_tokens=32_768,
 )
 
 # Groq - Guardrails
@@ -363,26 +318,13 @@ _MODEL_SPECS[Model.CEREBRAS_GPT_OSS_120B.value] = ModelSpec(
     supports_reasoning=True,
     pricing=ModelPricing(input_per_mtok=0.25, output_per_mtok=0.69),
 )
-_MODEL_SPECS[Model.CEREBRAS_LLAMA_3_1_8B.value] = ModelSpec(
-    provider=Provider.CEREBRAS,
-    context_window=32_768,
-    max_output_tokens=8_192,
-    pricing=ModelPricing(input_per_mtok=0.10, output_per_mtok=0.10),
-)
 
 # Cerebras - Preview
-_MODEL_SPECS[Model.CEREBRAS_QWEN3_235B.value] = ModelSpec(
+_MODEL_SPECS[Model.CEREBRAS_GEMMA_4_31B.value] = ModelSpec(
     provider=Provider.CEREBRAS,
     context_window=131_072,
-    max_output_tokens=40_960,
-    pricing=ModelPricing(input_per_mtok=0.60, output_per_mtok=1.20),
+    max_output_tokens=32_768,
 )
-_MODEL_SPECS[Model.CEREBRAS_ZAI_GLM_4_7.value] = ModelSpec(
-    provider=Provider.CEREBRAS,
-    context_window=131_072,
-    max_output_tokens=40_960,
-)
-
 
 # Default models per provider
 DEFAULT_MODELS: dict[Provider, Model] = {
@@ -562,7 +504,7 @@ class AgentConfig:
         configuration = AgentConfig(
             system_prompt="You are helpful.",
             tools=[greet],
-            model=Model.GROQ_LLAMA_3_3_70B,
+            model=Model.GROQ_GPT_OSS_120B,
             fallback=FallbackConfig(
                 model=Model.GROQ_GPT_OSS_20B,
                 retry_main_after=5,
