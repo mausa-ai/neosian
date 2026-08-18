@@ -696,6 +696,55 @@ class TestGroqClientReasoningContent:
         assert chunks[2].finish_reason == "stop"
 
     @pytest.mark.asyncio
+    async def test_stream_chunks_carry_api_model(self) -> None:
+        """Every chunk carries the API-reported model, usage-only included."""
+        client = GroqClient(api_key="test-key")
+
+        mock_create = AsyncMock()
+        _sdk(client).chat.completions.create = mock_create
+
+        class MockAsyncIterator:
+            def __init__(self, items: list[object]) -> None:
+                self.items = items
+                self.index = 0
+
+            def __aiter__(self) -> "MockAsyncIterator":
+                return self
+
+            async def __anext__(self) -> object:
+                if self.index >= len(self.items):
+                    raise StopAsyncIteration
+                item = self.items[self.index]
+                self.index += 1
+                return item
+
+        content_chunk = MagicMock()
+        content_chunk.model = "openai/gpt-oss-20b-live"
+        content_chunk.choices = [MagicMock()]
+        content_chunk.choices[0].delta.content = "Hi"
+        content_chunk.choices[0].delta.reasoning = None
+        content_chunk.choices[0].delta.tool_calls = None
+        content_chunk.choices[0].finish_reason = "stop"
+        content_chunk.usage = None
+
+        usage_chunk = MagicMock()
+        usage_chunk.model = "openai/gpt-oss-20b-live"
+        usage_chunk.choices = []
+        usage_chunk.usage = MagicMock(prompt_tokens=10, completion_tokens=5)
+
+        mock_create.return_value = MockAsyncIterator([content_chunk, usage_chunk])
+
+        chunks = []
+        async for chunk in client.stream(
+            messages=[Message(role=Role.USER, content="Hi")],
+            model=Model.GROQ_GPT_OSS_20B,
+        ):
+            chunks.append(chunk)
+
+        assert len(chunks) == 2
+        assert all(c.model == "openai/gpt-oss-20b-live" for c in chunks)
+
+    @pytest.mark.asyncio
     async def test_stream_handles_no_reasoning_attribute(self) -> None:
         """stream() should handle deltas without reasoning attribute."""
         client = GroqClient(api_key="test-key")

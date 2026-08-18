@@ -51,26 +51,48 @@ classifies them at the client boundary.
 ## §3 Agent core
 
 `Agent` is stateless: the caller owns history; nothing persists between calls.
-`AgentSession` reuses connections and fallback state — and shares Agent's
-validation guards through one extracted `_validate_run` (the session twin
-skipping guards was a defect class, not a variant; a parametrized test runs
-identical scenarios over both entry points and asserts identical raises and
-identical hook sequences). The N0 `client_factory` seam collapses the
-`*_with_session` method twins.
+`AgentSession` reuses connections and fallback state. Both entry points
+funnel through one `Agent._dispatch` (guards unskippable by construction; a
+parametrized test runs identical scenarios over both and asserts identical
+raises and identical hook sequences). The `*_with_session` method twins
+collapsed at N0 into a frozen per-run `RunContext` — `acquire` (the
+client_factory-honoring seam: fresh client per attempt for Agent, cached
+per provider for a session), sticky `fallback_state`, the hook dispatcher —
+threaded through free functions in sibling modules (`blocking`, `loop`,
+`stream_run`, `stream_loop`, `stream_final`, `guards`, `fallback`,
+`tool_exec`, `emit`); `agent/base.py` keeps only configuration + the funnel.
 
-Hook insertion points (N0): the `_execute_with_client` / `_stream_with_client`
-loops (`on_llm_call`), tool execution (`on_tool`), finalize/terminal-emission
-(`on_turn`), the fallback warning sites (`on_fallback`).
+Each attempt (one model + client try) owns an `Attempt`: a fresh message
+snapshot (register #5) plus a usage ledger keyed by API-reported model that
+outlives exceptions — terminal errors and `AgentResponse` read
+usage/usage_by_model/turn_messages off it. The ledger is inherited across
+fallback attempts (a failed attempt's tokens were billed); messages never
+are. `AgentResponse.turn_messages` is the turn-capture contract: tuple of
+provider-order messages, `turn_messages[-1] is response.message`, input +
+turn_messages replays as valid history; empty on blocked responses.
+
+Hook insertion points (landed N0): the blocking/streaming tool loops and
+the max-iterations final call (`on_llm_call`, success and failure), tool
+batches in submission order (`on_tool`), `_dispatch` for blocking and the
+streamed done/blocked terminals (`on_turn`, exactly once per run that
+yields a response), the fallback switch sites + sticky retry-main
+(`on_fallback`). Hooks await inline — sequences are deterministic; the
+eval runner's fallback detection rides `on_fallback` instead of scraping
+logs.
 
 Found-bug register (fixed in NS/N0, tests pin each):
 1. `AgentSession.run` skipped all three validation guards (NS).
 2. `_attach_input_guard_results` rebuilt `AgentResponse` field-by-field and
    dropped `model=`; the fix is `dataclasses.replace` — manual rebuilds are how
-   fields get lost (NS).
+   fields get lost (NS). `AgentResponse` is frozen+slots since N0.
 3. Fallback runs summed usage across models, making per-model pricing
    impossible → `usage_by_model` (N0).
 4. Usage rode on exceptions via a private attribute, streaming-only →
-   public `LLMError.usage` / `.usage_by_model` on both paths (N0).
+   public `LLMError.usage` / `.usage_by_model` on both paths (N0; the
+   blocking path previously raised with no usage at all).
+5. One shared message list was mutated by a failed main attempt and then
+   handed to the fallback attempt, leaking partial tool rounds into the
+   fallback's history → per-attempt snapshot in `Attempt` (N0).
 
 ## §4 Usage, pricing, cost **(NS)**
 
@@ -338,8 +360,8 @@ names only).
 
 File-size gate: warn 300 / fail 500 lines (`scripts/check_file_size.py`, kit
 idiom: allowlist entries carry a mandatory `# reason`; a stale entry fails).
-`agent/base.py` enters the allowlist with reason "split lands in N0
-(session-twin collapse)".
+`agent/base.py` entered the allowlist at NH ("split lands in N0"); the N0
+session-twin collapse + module split took it back out.
 
 ## §11 Tooling & release
 

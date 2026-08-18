@@ -11,10 +11,10 @@ import asyncio
 import json
 import logging
 import time
-from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from collections.abc import Callable
 
 from neosian._foundation.agent.base import Agent
+from neosian._foundation.agent.hooks import AgentHooks, FallbackEvent
 from neosian._foundation.agent.loader import load_agent_config
 from neosian._foundation.evaluation.mocker import mock_agent_tools
 from neosian._foundation.evaluation.prompt_config import load_prompt_config
@@ -49,38 +49,30 @@ logger = logging.getLogger(__name__)
 ProgressCallback = Callable[[int, int, int, str, float], None]
 
 
-class _FallbackDetector(logging.Handler):
-    """Log handler that detects fallback events during agent execution."""
+class _FallbackRecorder:
+    """on_fallback hook recording the first failure-driven model switch.
+
+    Replaces the pre-N0 log-substring scraper, which was silently coupled
+    to the agent module's path and log wording. Sticky retry-main
+    transitions are not failures and are ignored.
+    """
 
     def __init__(self) -> None:
-        super().__init__()
-        self.fallback_occurred = False
-        self.fallback_reason: str | None = None
+        self.event: FallbackEvent | None = None
 
-    def emit(self, record: logging.LogRecord) -> None:
-        """Check if this log record indicates a fallback."""
-        if "Falling back from" in record.getMessage():
-            self.fallback_occurred = True
-            self.fallback_reason = record.getMessage()
+    def __call__(self, event: FallbackEvent) -> None:
+        if not event.sticky and self.event is None:
+            self.event = event
 
-
-@contextmanager
-def _detect_fallback() -> Iterator[_FallbackDetector]:
-    """Context manager to detect fallback during agent execution.
-
-    Usage:
-        with _detect_fallback() as detector:
-            response = await agent.run(messages, stream=False)
-        if detector.fallback_occurred:
-            # Handle fallback case
-    """
-    detector = _FallbackDetector()
-    agent_logger = logging.getLogger("neosian._foundation.agent.base")
-    agent_logger.addHandler(detector)
-    try:
-        yield detector
-    finally:
-        agent_logger.removeHandler(detector)
+    @property
+    def reason(self) -> str | None:
+        """Human-readable failure summary for EvalResult.error."""
+        if self.event is None:
+            return None
+        return (
+            f"Falling back from {self.event.from_model} to "
+            f"{self.event.to_model}: {self.event.reason}"
+        )
 
 
 async def run_evaluation(
@@ -152,24 +144,29 @@ async def _run_single_case(
         # Parse model string to Model enum
         parsed_model = _parse_model(model)
 
+        # Fallback detection rides the typed hook seam (DESIGN §3)
+        recorder = _FallbackRecorder()
+        hooks = AgentHooks(on_fallback=recorder)
+
         # Create agent based on mode
         if agent_file is not None:
             # Variant mode: agent from Python, prompts from YAML
             agent = _create_agent_with_prompt_config(
-                agent_file, prompt_file, parsed_model
+                agent_file, prompt_file, parsed_model, hooks
             )
         else:
             # Legacy mode: prompt_file is a Python agent file
             agent_config, _ = load_agent_config(prompt_file)
             agent_config.model = parsed_model
+            agent_config.hooks = hooks
             agent = Agent(config=agent_config)
 
         # Run case
         if case.is_conversational:
             return await _run_conversational(
-                prompt_file, model, case, agent, stop_on_failure
+                prompt_file, model, case, agent, recorder, stop_on_failure
             )
-        return await _run_one_shot(prompt_file, model, case, agent)
+        return await _run_one_shot(prompt_file, model, case, agent, recorder)
 
     except Exception as e:
         logger.warning(
@@ -192,6 +189,7 @@ def _create_agent_with_prompt_config(
     agent_file: str,
     prompt_file: str,
     model: Model,
+    hooks: AgentHooks,
 ) -> Agent:
     """Create agent and apply prompt config overrides.
 
@@ -202,6 +200,7 @@ def _create_agent_with_prompt_config(
         agent_file: Path to Python agent file with tool implementations.
         prompt_file: Path to YAML prompt config file.
         model: Model to use.
+        hooks: The harness's observation hooks (fallback detection).
 
     Returns:
         Agent with overridden prompts and descriptions.
@@ -209,6 +208,7 @@ def _create_agent_with_prompt_config(
     # Load agent config from Python file
     agent_config, _ = load_agent_config(agent_file)
     agent_config.model = model
+    agent_config.hooks = hooks
 
     # Load prompt config from YAML
     prompt_config = load_prompt_config(prompt_file)
@@ -253,6 +253,7 @@ async def _run_one_shot(
     model: str,
     case: EvalCase,
     agent: Agent,
+    recorder: _FallbackRecorder,
 ) -> EvalResult:
     """Run a one-shot evaluation case.
 
@@ -261,6 +262,7 @@ async def _run_one_shot(
         model: Model identifier.
         case: The one-shot case.
         agent: Configured agent.
+        recorder: The on_fallback recorder wired into the agent's hooks.
 
     Returns:
         EvalResult with single turn result.
@@ -269,21 +271,20 @@ async def _run_one_shot(
     captures: list[ToolCallCapture] = []
     mock_agent_tools(agent, captures)
 
-    # Run agent with timing and fallback detection
+    # Run agent with timing
     messages = [Message(role=Role.USER, content=case.input or "")]
     start_time = time.perf_counter()
-    with _detect_fallback() as detector:
-        response = await agent.run(messages, stream=False)
+    response = await agent.run(messages, stream=False)
     latency_ms = (time.perf_counter() - start_time) * 1000
 
     # If fallback occurred, mark as failed
-    if detector.fallback_occurred:
+    if recorder.event is not None:
         return EvalResult(
             case_name=case.name,
             prompt_file=prompt_file,
             model=model,
             passed=False,
-            error=detector.fallback_reason,
+            error=recorder.reason,
             latency_ms=latency_ms,
         )
 
@@ -311,6 +312,7 @@ async def _run_conversational(
     model: str,
     case: EvalCase,
     agent: Agent,
+    recorder: _FallbackRecorder,
     stop_on_failure: bool = True,
 ) -> EvalResult:
     """Run a conversational evaluation case.
@@ -322,6 +324,7 @@ async def _run_conversational(
         model: Model identifier.
         case: The conversational case.
         agent: Configured agent.
+        recorder: The on_fallback recorder wired into the agent's hooks.
         stop_on_failure: If True, stop on first turn failure. If False, run all turns.
 
     Returns:
@@ -341,21 +344,20 @@ async def _run_conversational(
         # Add user message
         messages.append(Message(role=Role.USER, content=turn.user))
 
-        # Run agent with timing and fallback detection
+        # Run agent with timing
         start_time = time.perf_counter()
-        with _detect_fallback() as detector:
-            response = await agent.run(messages, stream=False)
+        response = await agent.run(messages, stream=False)
         total_latency_ms += (time.perf_counter() - start_time) * 1000
 
         # If fallback occurred, fail the entire case
-        if detector.fallback_occurred:
+        if recorder.event is not None:
             return EvalResult(
                 case_name=case.name,
                 prompt_file=prompt_file,
                 model=model,
                 passed=False,
                 turns=all_turns,
-                error=detector.fallback_reason,
+                error=recorder.reason,
                 latency_ms=total_latency_ms,
             )
 

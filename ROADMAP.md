@@ -1,6 +1,8 @@
 # Neosian Roadmap — Memory & Conversation
 
-> **▶ Current phase: N0 — Enablers**
+> **▶ Current phase: N0 — Enablers** *(slice A ✅ 2026-08-19 at v0.55.0;
+> slice B — event schema v2, ContextPolicy, eval keyless runs, CLI
+> persist/replay — remains; see the split note under N0)*
 >
 > *(2026-08-18: NS done — the seams are frozen in code: µ$ money + token
 > classes, machine error codes + SDK wrap, FakeProvider registry members +
@@ -222,6 +224,22 @@ depends on them. Required regardless of everything below.
 **Done when:** the CLI can faithfully persist and replay a full multi-turn
 session including intermediate tool messages.
 
+**Split (2026-08-19): slice A shipped at v0.55.0** — session-twin collapse
+via frozen `RunContext` + `agent/base.py` split into nine sibling modules
+(2467 → 329 lines, allowlist entry removed); `AgentResponse.turn_messages`
+per the §3 contract (with the found-bug #5 per-attempt snapshot fix);
+`AgentHooks` + the four frozen events wired at every insertion point,
+exported (+5 `__all__` names); `AgentResponse` frozen+slots, tuple fields,
+`usage_by_model`; usage smuggle retired → public
+`LLMError.usage`/`.usage_by_model` on both paths (blocking hole closed);
+`StreamChunk.model` in all five clients; eval runner's fallback detection
+moved onto `on_fallback` (the file split would have silently killed the
+log scraper). **Slice B carries forward:** event schema v2 (`run(stream=
+True) -> AsyncIterator[AgentEvent]`, `sse_stream`, `event_schemas()`, old
+SSE surface removed — wire payloads deliberately untouched in slice A),
+`ContextPolicy`, eval harness keyless FakeProvider runs, and the
+CLI-persist/replay done-when.
+
 ## N1 — Memory core (v0.57–0.59)
 
 DESIGN: §8, §7.
@@ -408,3 +426,25 @@ DESIGN: §2, §6, §10.
   longer dropped). Ledger #13 (Groq 413) and #14 (fakes visible in
   INVALID_MODEL) added. 935 unit tests, zero keys; v0.54.0 — the kit's
   first vendoring point.
+- 2026-08-19 | N0 (slice A) | **The agent core reshaped.** Twins collapsed:
+  one `Agent._dispatch` funnel + frozen `RunContext` (`acquire` =
+  client_factory seam, sticky state, hooks); base.py 2467 → 329 lines
+  across nine sibling modules (blocking, loop, stream_run, stream_loop,
+  stream_final, guards, fallback, tool_exec, emit); allowlist entry
+  removed. Turn capture: per-attempt `Attempt` (message snapshot + usage
+  ledger keyed by API-reported model, inherited across fallback attempts)
+  → `AgentResponse.turn_messages` (`[-1] is message`, replayable), fixing
+  found-bug #5 (fallback saw the failed main's mutated history — register
+  entry added). `AgentHooks` (on_turn/on_llm_call/on_tool/on_fallback,
+  frozen events, sync-or-async, swallow-unless-strict, awaited inline for
+  sequence determinism) wired at every site incl. streamed terminals;
+  +5 `__all__` names. `AgentResponse` frozen+slots+tuples+`usage_by_model`;
+  smuggle (`_neosian_stream_usage`) deleted → public `LLMError.usage`/
+  `.usage_by_model` on both paths (blocking previously raised usage-less);
+  blocked responses keep billed usage. `StreamChunk.model` populated by all
+  five clients (anthropic: hoisted from message_start). Eval runner's
+  `_FallbackDetector` log scraper → `on_fallback` recorder (+ runner's
+  first tests, keyless). SSE wire payloads deliberately byte-stable — the
+  v2 break stays batched in slice B. 975 unit tests, zero keys; v0.55.0.
+  Carried forward: slice B (events v2, ContextPolicy, keyless eval runs,
+  CLI persist/replay).

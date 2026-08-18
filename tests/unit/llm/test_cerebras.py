@@ -720,6 +720,48 @@ class TestCerebrasClientReasoningContent:
         assert chunks[2].finish_reason == "stop"
 
     @pytest.mark.asyncio
+    async def test_stream_chunks_carry_api_model(self) -> None:
+        """Every chunk carries the API-reported model, usage-only included."""
+        client = CerebrasClient(api_key="test-key")
+
+        mock_create = AsyncMock()
+        _sdk(client).chat.completions.create = mock_create
+
+        class MockAsyncIterator:
+            def __init__(self, items: list[object]) -> None:
+                self.items = items
+                self.index = 0
+
+            def __aiter__(self) -> "MockAsyncIterator":
+                return self
+
+            async def __anext__(self) -> object:
+                if self.index >= len(self.items):
+                    raise StopAsyncIteration
+                item = self.items[self.index]
+                self.index += 1
+                return item
+
+        # _make_stream_chunk stamps model="gpt-oss-120b" on every SDK chunk
+        content_chunk = _make_stream_chunk(content="Hi", finish_reason="stop")
+        usage_chunk = _make_stream_chunk(
+            with_choice=False,
+            usage=ChatChunkResponseUsage(prompt_tokens=10, completion_tokens=5),
+        )
+
+        mock_create.return_value = MockAsyncIterator([content_chunk, usage_chunk])
+
+        chunks = []
+        async for chunk in client.stream(
+            messages=[Message(role=Role.USER, content="Hi")],
+            model=Model.CEREBRAS_GPT_OSS_120B,
+        ):
+            chunks.append(chunk)
+
+        assert len(chunks) == 2
+        assert all(c.model == "gpt-oss-120b" for c in chunks)
+
+    @pytest.mark.asyncio
     async def test_stream_handles_no_reasoning_attribute(self) -> None:
         """stream() should handle deltas without reasoning attribute."""
         client = CerebrasClient(api_key="test-key")

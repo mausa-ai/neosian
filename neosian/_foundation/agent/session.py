@@ -13,7 +13,8 @@ from neosian._foundation.llm.base import BaseLLMClient, Message
 from neosian._foundation.shared.types import FallbackState, Provider, ResponseFormat
 
 if TYPE_CHECKING:
-    from neosian._foundation.agent.base import Agent, AgentResponse
+    from neosian._foundation.agent.base import Agent
+    from neosian._foundation.agent.response import AgentResponse
 
 
 class AgentSession:
@@ -106,13 +107,10 @@ class AgentSession:
         Returns:
             AgentResponse when stream=False, AsyncIterator[str] when stream=True.
         """
-        self._agent._validate_run(stream=stream, response_format=response_format)
-
-        # Delegate to agent's internal methods but provide our client getter
-        if stream:
-            return self._agent._run_streaming_with_session(messages, self)
-        return await self._agent._run_blocking_with_session(
-            messages, self, response_format=response_format
+        # One funnel with Agent.run — _dispatch validates and builds the
+        # RunContext carrying this session's client cache + sticky state.
+        return await self._agent._dispatch(
+            messages, stream=stream, response_format=response_format, session=self
         )
 
     async def close(self) -> None:

@@ -10,7 +10,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from neosian._foundation.agent.base import Agent, AgentResponse
+from neosian._foundation.agent.base import Agent
+from neosian._foundation.agent.blocking import execute_with_fallback_model
+from neosian._foundation.agent.context import RunContext
+from neosian._foundation.agent.guards import check_guard_and_block
+from neosian._foundation.agent.response import AgentResponse
 from neosian._foundation.llm.base import (
     BaseLLMClient,
     CompletionResponse,
@@ -356,9 +360,20 @@ class TestAgentResponse:
             message=Message(role=Role.ASSISTANT, content="Hello"),
         )
         assert response.message.content == "Hello"
-        assert response.tool_calls_made == []
-        assert response.tool_results == []
+        assert response.tool_calls_made == ()
+        assert response.tool_results == ()
         assert response.usage.total_tokens == 0
+        assert response.usage_by_model == ()
+        assert response.turn_messages == ()
+
+    def test_agent_response_is_frozen_with_slots(self) -> None:
+        """One immutable value object — rebuilds go through replace()."""
+        response = AgentResponse(
+            message=Message(role=Role.ASSISTANT, content="Hello"),
+        )
+        with pytest.raises(AttributeError):
+            response.model = "other"  # type: ignore[misc]
+        assert not hasattr(response, "__dict__")  # slots
 
 
 @pytest.mark.unit
@@ -769,8 +784,10 @@ class TestStreamingUsageReporting:
         guard_task = asyncio.ensure_future(guard())
         await guard_task
 
-        sse = agent._check_guard_and_block(
-            guard_task, usage=Usage(input_tokens=20, output_tokens=10)
+        sse = await check_guard_and_block(
+            agent._run_context(None),
+            guard_task,
+            usage=Usage(input_tokens=20, output_tokens=10),
         )
 
         assert sse is not None
@@ -879,7 +896,7 @@ class TestAgentHeartbeats:
                 return_value=_create_mock_router(mock_client),
             ),
             patch(
-                "neosian._foundation.agent.base.Streaming.HEARTBEAT_INTERVAL_SECONDS",
+                "neosian._foundation.agent.tool_exec.Streaming.HEARTBEAT_INTERVAL_SECONDS",
                 0.05,
             ),
         ):
@@ -945,7 +962,7 @@ class TestAgentHeartbeats:
                 return_value=_create_mock_router(mock_client),
             ),
             patch(
-                "neosian._foundation.agent.base.Streaming.HEARTBEAT_INTERVAL_SECONDS",
+                "neosian._foundation.agent.tool_exec.Streaming.HEARTBEAT_INTERVAL_SECONDS",
                 0.03,
             ),
         ):
@@ -1261,7 +1278,7 @@ class TestAgentParallelToolExecution:
                 return_value=_create_mock_router(mock_client),
             ),
             patch(
-                "neosian._foundation.agent.base.Streaming.HEARTBEAT_INTERVAL_SECONDS",
+                "neosian._foundation.agent.tool_exec.Streaming.HEARTBEAT_INTERVAL_SECONDS",
                 30.0,
             ),
         ):
@@ -1346,7 +1363,7 @@ class TestAgentParallelToolExecution:
                 return_value=_create_mock_router(mock_client),
             ),
             patch(
-                "neosian._foundation.agent.base.Streaming.HEARTBEAT_INTERVAL_SECONDS",
+                "neosian._foundation.agent.tool_exec.Streaming.HEARTBEAT_INTERVAL_SECONDS",
                 30.0,
             ),
         ):
@@ -1411,7 +1428,7 @@ class TestAgentParallelToolExecution:
                 return_value=_create_mock_router(mock_client),
             ),
             patch(
-                "neosian._foundation.agent.base.Streaming.HEARTBEAT_INTERVAL_SECONDS",
+                "neosian._foundation.agent.tool_exec.Streaming.HEARTBEAT_INTERVAL_SECONDS",
                 30.0,
             ),
         ):
@@ -1475,7 +1492,7 @@ class TestAgentParallelToolExecution:
                 return_value=_create_mock_router(mock_client),
             ),
             patch(
-                "neosian._foundation.agent.base.Streaming.HEARTBEAT_INTERVAL_SECONDS",
+                "neosian._foundation.agent.tool_exec.Streaming.HEARTBEAT_INTERVAL_SECONDS",
                 0.05,
             ),
         ):
@@ -1592,11 +1609,11 @@ class TestAgentParallelToolExecution:
                 return_value=_create_mock_router(mock_client),
             ),
             patch(
-                "neosian._foundation.agent.base.asyncio.create_task",
+                "neosian._foundation.agent.stream_loop.asyncio.create_task",
                 side_effect=tracking_create_task,
             ),
             patch(
-                "neosian._foundation.agent.base.Streaming.HEARTBEAT_INTERVAL_SECONDS",
+                "neosian._foundation.agent.tool_exec.Streaming.HEARTBEAT_INTERVAL_SECONDS",
                 30.0,
             ),
         ):
@@ -1978,9 +1995,13 @@ class TestCapabilityAwareFallback:
                 *self._doc_messages(),
             ]
 
-            response = await agent._execute_with_fallback_model(
-                full_messages, fallback_state
+            ctx = RunContext(
+                agent=agent,
+                acquire=agent._create_client,
+                hooks=agent._hooks,
+                fallback_state=fallback_state,
             )
+            response = await execute_with_fallback_model(ctx, full_messages)
 
             assert response.message.content == "# Transcription"
             fallback_client.complete.assert_not_called()

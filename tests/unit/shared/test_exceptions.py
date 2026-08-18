@@ -5,10 +5,12 @@ import re
 
 import pytest
 
+from neosian._foundation.llm.base import ModelUsage, Usage
 from neosian._foundation.shared.constants import ErrorMessages, LLMDefaults
 from neosian._foundation.shared.exceptions import (
     ERROR_CODES,
     ContextWindowExceededError,
+    FallbackExhaustedError,
     GuardrailError,
     GuardrailPolicyParseError,
     GuardrailStreamingError,
@@ -47,6 +49,51 @@ class TestLLMError:
         """LLMError should be catchable as NeosianError."""
         with pytest.raises(NeosianError):
             raise LLMError("llm error")
+
+    def test_usage_defaults(self) -> None:
+        """Every LLMError answers usage (None) and usage_by_model (empty)."""
+        error = LLMError("llm error")
+        assert error.usage is None
+        assert error.usage_by_model == ()
+
+    def test_usage_round_trip(self) -> None:
+        """usage and usage_by_model survive construction verbatim."""
+        usage = Usage(input_tokens=10, output_tokens=5)
+        split = (ModelUsage(model="m-1", usage=usage),)
+        error = LLMError("llm error", usage=usage, usage_by_model=split)
+        assert error.usage == usage
+        assert error.usage_by_model == split
+
+    def test_subclasses_default_usage(self) -> None:
+        """Subclasses that never pass usage still answer the public fields."""
+        error = ToolCallGenerationError(retries=3)
+        assert error.usage is None
+        assert error.usage_by_model == ()
+
+    def test_terminal_errors_forward_usage(self) -> None:
+        """The two terminal errors forward usage to the LLMError base."""
+        usage = Usage(input_tokens=10, output_tokens=5)
+        split = (ModelUsage(model="m-1", usage=usage),)
+        failed = ModelFailedError(
+            model="m-1",
+            error="boom",
+            has_fallback=False,
+            usage=usage,
+            usage_by_model=split,
+        )
+        assert failed.usage == usage
+        assert failed.usage_by_model == split
+
+        exhausted = FallbackExhaustedError(
+            main_model="m-1",
+            main_error="boom",
+            fallback_model="m-2",
+            fallback_error="also boom",
+            usage=usage,
+            usage_by_model=split,
+        )
+        assert exhausted.usage == usage
+        assert exhausted.usage_by_model == split
 
 
 @pytest.mark.unit

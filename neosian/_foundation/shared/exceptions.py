@@ -19,7 +19,7 @@ from neosian._foundation.shared.constants import ErrorMessages
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from neosian._foundation.llm.base import Usage
+    from neosian._foundation.llm.base import ModelUsage, Usage
 
 
 class NeosianError(Exception):
@@ -48,9 +48,27 @@ class NeosianError(Exception):
 
 
 class LLMError(NeosianError):
-    """Base exception for LLM-related errors."""
+    """Base exception for LLM-related errors.
+
+    Every LLM failure can carry the best-effort usage billed before it:
+    `usage` is the sum, `usage_by_model` the per-API-reported-model split
+    in first-appearance order (DESIGN §3).
+    """
 
     code = "llm_error"
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        details: dict[str, Any] | None = None,
+        retryable: bool | None = None,
+        usage: Usage | None = None,
+        usage_by_model: tuple[ModelUsage, ...] = (),
+    ) -> None:
+        super().__init__(message, details=details, retryable=retryable)
+        self.usage = usage
+        self.usage_by_model = usage_by_model
 
 
 class ToolCallGenerationError(LLMError):
@@ -398,6 +416,7 @@ class ModelFailedError(LLMError):
         *,
         has_fallback: bool,
         usage: Usage | None = None,
+        usage_by_model: tuple[ModelUsage, ...] = (),
         cause_code: str | None = None,
         provider_status: int | None = None,
     ) -> None:
@@ -408,8 +427,8 @@ class ModelFailedError(LLMError):
             error: Error description.
             has_fallback: True if a fallback is configured (failure is recoverable),
                 False if no fallback exists (this is the final error).
-            usage: Best-effort token usage billed before the failure
-                (populated on streaming paths; None otherwise).
+            usage: Best-effort token usage billed before the failure.
+            usage_by_model: Per-API-reported-model split of `usage`.
             cause_code: Machine code of the underlying failure, so terminal
                 frames carry structure, not formatted English.
             provider_status: HTTP status of the underlying failure, if any.
@@ -420,11 +439,10 @@ class ModelFailedError(LLMError):
             message = ErrorMessages.MODEL_FAILED_NO_FALLBACK.format(
                 model=model, error=error
             )
-        super().__init__(message)
+        super().__init__(message, usage=usage, usage_by_model=usage_by_model)
         self.model = model
         self.error = error
         self.has_fallback = has_fallback
-        self.usage = usage
         self.cause_code = cause_code
         self.provider_status = provider_status
 
@@ -442,6 +460,7 @@ class FallbackExhaustedError(LLMError):
         fallback_error: str,
         *,
         usage: Usage | None = None,
+        usage_by_model: tuple[ModelUsage, ...] = (),
         cause_code: str | None = None,
         provider_status: int | None = None,
     ) -> None:
@@ -453,7 +472,8 @@ class FallbackExhaustedError(LLMError):
             fallback_model: The fallback model that also failed.
             fallback_error: Error from the fallback model.
             usage: Best-effort combined token usage billed across both
-                failed attempts (populated on streaming paths; None otherwise).
+                failed attempts.
+            usage_by_model: Per-API-reported-model split of `usage`.
             cause_code: Machine code of the final underlying failure, so
                 terminal frames carry structure, not formatted English.
             provider_status: HTTP status of the final failure, if any.
@@ -464,13 +484,14 @@ class FallbackExhaustedError(LLMError):
                 main_error=main_error,
                 fallback_model=fallback_model,
                 fallback_error=fallback_error,
-            )
+            ),
+            usage=usage,
+            usage_by_model=usage_by_model,
         )
         self.main_model = main_model
         self.main_error = main_error
         self.fallback_model = fallback_model
         self.fallback_error = fallback_error
-        self.usage = usage
         self.cause_code = cause_code
         self.provider_status = provider_status
 

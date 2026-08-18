@@ -280,6 +280,7 @@ class GroqClient(BaseLLMClient):
                             input_tokens=chunk.usage.prompt_tokens,
                             output_tokens=chunk.usage.completion_tokens,
                         ),
+                        model=chunk.model,
                     )
                     continue
 
@@ -336,6 +337,7 @@ class GroqClient(BaseLLMClient):
                     reasoning=reasoning,
                     tool_calls=tool_calls,
                     finish_reason=finish_reason,
+                    model=chunk.model,
                 )
         except Exception as exc:
             raise wrap_provider_error("groq", exc, model=model) from exc

@@ -327,6 +327,7 @@ class CerebrasClient(BaseLLMClient):
                             output_tokens=chunk.usage.completion_tokens or 0,
                             cache_read_tokens=cache_read,
                         ),
+                        model=chunk.model,
                     )
                     continue
 
@@ -383,6 +384,7 @@ class CerebrasClient(BaseLLMClient):
                     reasoning=reasoning,
                     tool_calls=tool_calls,
                     finish_reason=finish_reason,
+                    model=chunk.model,
                 )
         except NeosianError:
             raise

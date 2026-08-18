@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any, Final, Literal, NewType
 from pydantic import BaseModel
 
 if TYPE_CHECKING:
+    from neosian._foundation.agent.hooks import AgentHooks
     from neosian._foundation.llm.base import BaseLLMClient
     from neosian._foundation.tools.base import ToolResult
 
@@ -639,6 +640,7 @@ class AgentConfig:
     playbook_dir: str | Path | None = None
     blackboard: Any = None  # BlackboardProvider | None (Any to avoid circular import)
     client_factory: "ClientFactory | None" = None
+    hooks: "AgentHooks | None" = None
 
     # Internal: loaded playbooks (set by __post_init__)
     _playbooks: list[Playbook] = field(default_factory=list, init=False, repr=False)

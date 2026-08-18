@@ -458,7 +458,7 @@ def _build_arena_result(
     Returns:
         ArenaModelResult with response data.
     """
-    from neosian._foundation.agent.base import AgentResponse
+    from neosian._foundation.agent.response import AgentResponse
 
     # Type assertion for mypy
     assert isinstance(response, AgentResponse)

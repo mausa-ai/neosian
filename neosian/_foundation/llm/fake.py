@@ -122,12 +122,16 @@ def _split(text: str | None, width: int) -> list[str]:
     return [text[i : i + width] for i in range(0, len(text), width)]
 
 
-def _chunks(turn: FakeTurn, script: FakeScript) -> list[StreamChunk]:
+def _chunks(turn: FakeTurn, script: FakeScript, model: Model) -> list[StreamChunk]:
     """The full deterministic chunk sequence for a turn."""
+    api_model = model.value
     parts = [
-        StreamChunk(reasoning=part)
+        StreamChunk(reasoning=part, model=api_model)
         for part in _split(turn.reasoning, script.chunk_chars)
-    ] + [StreamChunk(content=part) for part in _split(turn.content, script.chunk_chars)]
+    ] + [
+        StreamChunk(content=part, model=api_model)
+        for part in _split(turn.content, script.chunk_chars)
+    ]
     finish = _stop_reason(turn)
     if script.stream_shape is StreamShape.ANTHROPIC:
         lead = StreamChunk(
@@ -136,16 +140,20 @@ def _chunks(turn: FakeTurn, script: FakeScript) -> list[StreamChunk]:
                 output_tokens=0,
                 cache_read_tokens=turn.usage.cache_read_tokens,
                 cache_write_tokens=turn.usage.cache_write_tokens,
-            )
+            ),
+            model=api_model,
         )
         tail = StreamChunk(
             finish_reason=finish,
             usage=turn.usage,
             tool_calls=list(turn.tool_calls),
+            model=api_model,
         )
         return [lead, *parts, tail]
-    tail = StreamChunk(finish_reason=finish, tool_calls=list(turn.tool_calls))
-    return [*parts, tail, StreamChunk(usage=turn.usage)]
+    tail = StreamChunk(
+        finish_reason=finish, tool_calls=list(turn.tool_calls), model=api_model
+    )
+    return [*parts, tail, StreamChunk(usage=turn.usage, model=api_model)]
 
 
 class FakeClient(BaseLLMClient):
@@ -257,7 +265,7 @@ class FakeClient(BaseLLMClient):
             stream=True,
         )
         turn = self._next_turn()
-        chunks = _chunks(turn, self._script)
+        chunks = _chunks(turn, self._script, model)
         limit = turn.error_after_chunks if turn.error is not None else len(chunks)
         for chunk in chunks[:limit]:
             yield chunk

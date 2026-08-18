@@ -1,8 +1,9 @@
 """The shared run-entry guards (DESIGN §3 found-bug register #1 and #2).
 
 Identical scenarios over Agent.run AND AgentSession.run, asserting
-identical raises — the session skipping guards was a defect class, not a
-variant. Plus the model-preservation regression for the
+identical raises and identical hook sequences (empty — guards fire
+before any hook) — the session skipping guards was a defect class, not
+a variant. Plus the model-preservation regression for the
 dataclasses.replace fix.
 """
 
@@ -15,12 +16,14 @@ from pydantic import BaseModel
 from neosian import (
     Agent,
     AgentConfig,
+    AgentHooks,
     GuardrailMode,
     GuardrailsConfig,
     Model,
     PolicyBuilder,
     ResponseFormat,
 )
+from neosian._foundation.agent.hooks import HookRunner
 from neosian._foundation.llm.base import Message, Role
 from neosian._foundation.llm.fake import FakeClient
 from neosian._foundation.shared.exceptions import (
@@ -32,6 +35,16 @@ from neosian._foundation.shared.types import SystemPrompt, ToolName
 from neosian._foundation.tools.base import Tool, ToolResult
 
 _USER = [Message(role=Role.USER, content="Hi")]
+
+
+def _recording_hooks(events: list[object]) -> AgentHooks:
+    return AgentHooks(
+        on_turn=events.append,
+        on_llm_call=events.append,
+        on_tool=events.append,
+        on_fallback=events.append,
+        strict=True,
+    )
 
 
 class _Answer(BaseModel):
@@ -111,8 +124,11 @@ class TestGuardsOnBothEntryPoints:
         expected: type[Exception],
     ) -> None:
         agent = make_agent()  # type: ignore[operator]
+        events: list[object] = []
+        agent._hooks = HookRunner(_recording_hooks(events))
         with pytest.raises(expected):
             await agent.run(_USER, **kwargs)
+        assert events == []  # guards precede every hook site
 
     async def test_session_run_raises_identically(
         self,
@@ -121,9 +137,12 @@ class TestGuardsOnBothEntryPoints:
         expected: type[Exception],
     ) -> None:
         agent = make_agent()  # type: ignore[operator]
+        events: list[object] = []
+        agent._hooks = HookRunner(_recording_hooks(events))
         async with agent.session() as session:
             with pytest.raises(expected):
                 await session.run(_USER, **kwargs)
+        assert events == []  # identical (empty) hook sequence to Agent.run
 
 
 @pytest.mark.unit

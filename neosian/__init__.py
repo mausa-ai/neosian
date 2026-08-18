@@ -2,7 +2,15 @@
 
 from importlib.metadata import version as _pkg_version
 
-from neosian._foundation.agent.base import Agent, AgentResponse
+from neosian._foundation.agent.base import Agent
+from neosian._foundation.agent.hooks import (
+    AgentHooks,
+    FallbackEvent,
+    LlmCallEvent,
+    ToolEvent,
+    TurnEvent,
+)
+from neosian._foundation.agent.response import AgentResponse
 from neosian._foundation.agent.session import AgentSession
 from neosian._foundation.agent.streaming import (
     SSEEventType,
@@ -104,6 +112,12 @@ __all__ = [
     "AgentConfig",
     "AgentResponse",
     "AgentSession",
+    # Hooks
+    "AgentHooks",
+    "TurnEvent",
+    "LlmCallEvent",
+    "ToolEvent",
+    "FallbackEvent",
     # Messages
     "Message",
     "Role",

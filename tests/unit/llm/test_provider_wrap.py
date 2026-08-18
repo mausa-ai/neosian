@@ -49,6 +49,7 @@ class _ChunkIterator:
 
 def _content_chunk(text: str, spec: type | None = None) -> MagicMock:
     chunk = MagicMock(spec=spec) if spec is not None else MagicMock()
+    chunk.model = "stream-model"
     chunk.choices = [MagicMock()]
     chunk.choices[0].delta.content = text
     chunk.choices[0].delta.reasoning = None

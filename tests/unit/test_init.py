@@ -27,6 +27,7 @@ def test_public_api_exports() -> None:
     from neosian import (
         Agent,
         AgentConfig,
+        AgentHooks,
         AgentResponse,
         AgentSession,
         CommonPolicies,
@@ -36,10 +37,12 @@ def test_public_api_exports() -> None:
         EvalResult,
         EvalTurn,
         Expectation,
+        FallbackEvent,
         GuardrailErrorPolicy,
         GuardrailMode,
         GuardrailResult,
         GuardrailsConfig,
+        LlmCallEvent,
         Max,
         MaxLen,
         Message,
@@ -56,7 +59,9 @@ def test_public_api_exports() -> None:
         ToolCall,
         ToolCallCapture,
         ToolCallId,
+        ToolEvent,
         ToolResult,
+        TurnEvent,
         TurnResult,
         Usage,
         __version__,
@@ -70,6 +75,11 @@ def test_public_api_exports() -> None:
     assert AgentConfig is not None
     assert AgentResponse is not None
     assert AgentSession is not None
+    assert AgentHooks is not None
+    assert TurnEvent is not None
+    assert LlmCallEvent is not None
+    assert ToolEvent is not None
+    assert FallbackEvent is not None
     assert Tool is not None
     assert ToolCall is not None
     assert ToolCallId is not None
@@ -118,6 +128,12 @@ def test_all_list_matches_exports() -> None:
         "AgentConfig",
         "AgentResponse",
         "AgentSession",
+        # Hooks
+        "AgentHooks",
+        "TurnEvent",
+        "LlmCallEvent",
+        "ToolEvent",
+        "FallbackEvent",
         # Messages
         "Message",
         "Role",

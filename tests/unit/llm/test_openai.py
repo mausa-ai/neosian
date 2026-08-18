@@ -806,6 +806,54 @@ class TestOpenAIPromptCaching:
         assert chunks[0].usage.input_tokens == 500
         assert chunks[0].usage.cache_read_tokens == 0
 
+    @pytest.mark.asyncio
+    async def test_stream_chunks_carry_api_model(self) -> None:
+        """Every chunk carries the API-reported model, usage-only included."""
+        client = OpenAIClient(api_key="test-key")
+        mock_create = AsyncMock()
+        _sdk(client).chat.completions.create = mock_create
+
+        content_chunk = MagicMock()
+        content_chunk.model = "gpt-5-nano-2026-01-01"
+        content_chunk.choices = [MagicMock()]
+        content_chunk.choices[0].delta.content = "Hi"
+        content_chunk.choices[0].delta.tool_calls = None
+        content_chunk.choices[0].finish_reason = "stop"
+        content_chunk.usage = None
+
+        usage_chunk = MagicMock()
+        usage_chunk.model = "gpt-5-nano-2026-01-01"
+        usage_chunk.choices = []
+        usage_chunk.usage = MagicMock(prompt_tokens=10, completion_tokens=5)
+        usage_chunk.usage.prompt_tokens_details = None
+
+        class TwoChunkIter:
+            def __init__(self) -> None:
+                self._items = [content_chunk, usage_chunk]
+                self._index = 0
+
+            def __aiter__(self) -> "TwoChunkIter":
+                return self
+
+            async def __anext__(self) -> MagicMock:
+                if self._index >= len(self._items):
+                    raise StopAsyncIteration
+                item = self._items[self._index]
+                self._index += 1
+                return item
+
+        mock_create.return_value = TwoChunkIter()
+
+        chunks = []
+        async for chunk in client.stream(
+            messages=[Message(role=Role.USER, content="Hi")],
+            model=Model.GPT_5_NANO,
+        ):
+            chunks.append(chunk)
+
+        assert len(chunks) == 2
+        assert all(c.model == "gpt-5-nano-2026-01-01" for c in chunks)
+
 
 @pytest.mark.unit
 class TestOpenAIMultimodalRejected:

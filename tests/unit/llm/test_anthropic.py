@@ -1431,6 +1431,56 @@ class TestAnthropicPromptCaching:
         assert final.usage.cache_write_tokens == 2500
 
     @pytest.mark.asyncio
+    async def test_stream_chunks_carry_api_model(
+        self, client: AnthropicClient, sample_messages: list[Message]
+    ) -> None:
+        """The message_start model string rides every subsequent chunk."""
+        mock_msg_start = MagicMock()
+        mock_msg_start.type = "message_start"
+        mock_msg_start.message = MagicMock()
+        mock_msg_start.message.model = "claude-sonnet-5-20260101"
+        mock_msg_start.message.usage = MagicMock(
+            input_tokens=50,
+            cache_creation_input_tokens=0,
+            cache_read_input_tokens=0,
+        )
+
+        mock_reasoning = MagicMock()
+        mock_reasoning.type = "content_block_delta"
+        mock_reasoning.delta = MagicMock(type="thinking_delta", thinking="hmm")
+
+        mock_text = MagicMock()
+        mock_text.type = "content_block_delta"
+        mock_text.delta = MagicMock(type="text_delta", text="Hi")
+
+        mock_msg_stop = MagicMock()
+        mock_msg_stop.type = "message_stop"
+
+        async def mock_stream_events() -> AsyncIterator[Any]:
+            yield mock_msg_start
+            yield mock_reasoning
+            yield mock_text
+            yield mock_msg_stop
+
+        mock_stream = MagicMock()
+        mock_stream.__aenter__ = AsyncMock(return_value=mock_stream)
+        mock_stream.__aexit__ = AsyncMock(return_value=None)
+        mock_stream.__aiter__ = lambda _: mock_stream_events()
+
+        _sdk(client).messages.stream = MagicMock(return_value=mock_stream)
+
+        chunks = []
+        async for chunk in client.stream(
+            messages=sample_messages,
+            model=Model.CLAUDE_SONNET_5,
+        ):
+            chunks.append(chunk)
+
+        # partial-usage + reasoning + text + final = every construction site
+        assert len(chunks) == 4
+        assert all(c.model == "claude-sonnet-5-20260101" for c in chunks)
+
+    @pytest.mark.asyncio
     async def test_stream_tools_have_cache_control(
         self, client: AnthropicClient, sample_messages: list[Message]
     ) -> None:

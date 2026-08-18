@@ -153,6 +153,16 @@ class TestFakeClientStream:
         last_usage = [c.usage for c in chunks if c.usage is not None][-1]
         assert last_usage == usage
 
+    @pytest.mark.parametrize("shape", [StreamShape.OPENAI, StreamShape.ANTHROPIC])
+    async def test_stream_chunks_carry_api_model(self, shape: StreamShape) -> None:
+        """Every chunk under both shapes carries the API-reported model."""
+        script = FakeScript(
+            turns=(FakeTurn(content="hi", reasoning="why"),), stream_shape=shape
+        )
+        chunks = await _collect(FakeClient(script))
+        assert chunks
+        assert all(c.model == Model.FAKE.value for c in chunks)
+
     async def test_error_after_chunks(self) -> None:
         original = ConnectionError("mid-stream drop")
         script = FakeScript(

@@ -333,6 +333,7 @@ class OpenAIClient(BaseLLMClient):
                             output_tokens=chunk.usage.completion_tokens,
                             cache_read_tokens=cached_tokens,
                         ),
+                        model=chunk.model,
                     )
                     continue
 
@@ -385,6 +386,7 @@ class OpenAIClient(BaseLLMClient):
                     content=content,
                     tool_calls=tool_calls,
                     finish_reason=finish_reason,
+                    model=chunk.model,
                 )
         except Exception as exc:
             raise wrap_provider_error("openai", exc, model=model) from exc

@@ -140,13 +140,19 @@ class ToolDefinition:
 
 @dataclass
 class StreamChunk:
-    """A chunk of streamed response."""
+    """A chunk of streamed response.
+
+    `model` is the API-reported model string (may differ from the requested
+    enum value), populated by every client on every chunk it can — the
+    streaming counterpart of CompletionResponse.model.
+    """
 
     content: str | None = None
     reasoning: str | None = None
     tool_calls: list[ToolCall] = field(default_factory=list)
     finish_reason: str | None = None
     usage: "Usage | None" = None
+    model: str | None = None
 
 
 _MTOK: Final = 1_000_000  # tokens per MTok — the pricing-rate divisor

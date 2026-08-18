@@ -456,8 +456,13 @@ class AnthropicClient(BaseLLMClient):
                 # Real stop reason from the API (reported in message_delta)
                 stop_reason: str | None = None
 
+                # API-reported model string (reported in message_start)
+                api_model: str | None = None
+
                 async for event in stream:
                     if event.type == "message_start":
+                        if hasattr(event, "message"):
+                            api_model = getattr(event.message, "model", None)
                         # Input and cache tokens are reported in message_start
                         if hasattr(event, "message") and hasattr(
                             event.message, "usage"
@@ -482,7 +487,8 @@ class AnthropicClient(BaseLLMClient):
                                     output_tokens=0,
                                     cache_read_tokens=cache_read_tokens,
                                     cache_write_tokens=cache_creation_tokens,
-                                )
+                                ),
+                                model=api_model,
                             )
 
                     elif event.type == "content_block_start":
@@ -497,10 +503,12 @@ class AnthropicClient(BaseLLMClient):
                         if delta_type == "thinking_delta":
                             yield StreamChunk(
                                 reasoning=event.delta.thinking,  # type: ignore[union-attr]
+                                model=api_model,
                             )
                         elif delta_type == "text_delta":
                             yield StreamChunk(
                                 content=event.delta.text,  # type: ignore[union-attr]
+                                model=api_model,
                             )
                         elif delta_type == "input_json_delta":
                             current_tool_input += event.delta.partial_json  # type: ignore[union-attr]
@@ -549,6 +557,7 @@ class AnthropicClient(BaseLLMClient):
                                 cache_write_tokens=cache_creation_tokens,
                             ),
                             tool_calls=accumulated_tool_calls,
+                            model=api_model,
                         )
         except Exception as exc:
             raise wrap_provider_error("anthropic", exc, model=model) from exc

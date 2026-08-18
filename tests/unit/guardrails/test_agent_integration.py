@@ -4,7 +4,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from neosian._foundation.agent.base import Agent, AgentResponse
+from neosian._foundation.agent.base import Agent
+from neosian._foundation.agent.guards import extract_user_content
+from neosian._foundation.agent.response import AgentResponse
 from neosian._foundation.llm.base import (
     BaseLLMClient,
     CompletionResponse,
@@ -53,7 +55,7 @@ def _mock_guardrail_response(content: str) -> AsyncMock:
 class TestAgentGuardrailsInit:
     """Test Agent initialization with guardrails."""
 
-    @patch("neosian._foundation.agent.base._create_guardrail_client")
+    @patch("neosian._foundation.agent.base.create_guardrail_client")
     def test_agent_creates_guardrail_client_when_configured(
         self, mock_guardrail_client: AsyncMock
     ) -> None:
@@ -99,7 +101,7 @@ class TestAgentGuardrailsInit:
 class TestAgentStreamingWithOutputGuardrails:
     """Test streaming restriction with output guardrails."""
 
-    @patch("neosian._foundation.agent.base._create_guardrail_client")
+    @patch("neosian._foundation.agent.base.create_guardrail_client")
     def test_streaming_with_output_guardrails_raises_error(
         self, mock_guardrail_client: AsyncMock
     ) -> None:
@@ -129,7 +131,7 @@ class TestAgentStreamingWithOutputGuardrails:
                     agent.run([Message(role=Role.USER, content="Hi")], stream=True)
                 )
 
-    @patch("neosian._foundation.agent.base._create_guardrail_client")
+    @patch("neosian._foundation.agent.base.create_guardrail_client")
     def test_streaming_with_input_guardrails_allowed(
         self, mock_guardrail_client: AsyncMock
     ) -> None:
@@ -160,83 +162,35 @@ class TestAgentStreamingWithOutputGuardrails:
 
 @pytest.mark.unit
 class TestExtractUserContent:
-    """Test _extract_user_content method."""
+    """extract_user_content is a pure function since the N0 split."""
 
     def test_extracts_last_user_message(self) -> None:
         """Should extract content from last user message."""
-        with patch(
-            "neosian._foundation.agent.base.ProviderRouter",
-            return_value=_create_mock_router(),
-        ):
-            config = AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
-                tools=[],
-                enable_todo=False,
-            )
-            agent = Agent(config=config)
-
-            messages = [
-                Message(role=Role.USER, content="First message"),
-                Message(role=Role.ASSISTANT, content="Response"),
-                Message(role=Role.USER, content="Second message"),
-            ]
-            content = agent._extract_user_content(messages)
-            assert content == "Second message"
+        messages = [
+            Message(role=Role.USER, content="First message"),
+            Message(role=Role.ASSISTANT, content="Response"),
+            Message(role=Role.USER, content="Second message"),
+        ]
+        assert extract_user_content(messages) == "Second message"
 
     def test_returns_empty_when_no_user_messages(self) -> None:
         """Should return empty string when no user messages."""
-        with patch(
-            "neosian._foundation.agent.base.ProviderRouter",
-            return_value=_create_mock_router(),
-        ):
-            config = AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
-                tools=[],
-                enable_todo=False,
-            )
-            agent = Agent(config=config)
-
-            messages = [
-                Message(role=Role.ASSISTANT, content="Hello"),
-            ]
-            content = agent._extract_user_content(messages)
-            assert content == ""
+        messages = [
+            Message(role=Role.ASSISTANT, content="Hello"),
+        ]
+        assert extract_user_content(messages) == ""
 
     def test_returns_empty_for_empty_messages(self) -> None:
         """Should return empty string for empty message list."""
-        with patch(
-            "neosian._foundation.agent.base.ProviderRouter",
-            return_value=_create_mock_router(),
-        ):
-            config = AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
-                tools=[],
-                enable_todo=False,
-            )
-            agent = Agent(config=config)
-
-            content = agent._extract_user_content([])
-            assert content == ""
+        assert extract_user_content([]) == ""
 
     def test_skips_empty_user_content(self) -> None:
         """Should skip user messages with empty content."""
-        with patch(
-            "neosian._foundation.agent.base.ProviderRouter",
-            return_value=_create_mock_router(),
-        ):
-            config = AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
-                tools=[],
-                enable_todo=False,
-            )
-            agent = Agent(config=config)
-
-            messages = [
-                Message(role=Role.USER, content="First"),
-                Message(role=Role.USER, content=""),  # Empty
-            ]
-            content = agent._extract_user_content(messages)
-            assert content == "First"
+        messages = [
+            Message(role=Role.USER, content="First"),
+            Message(role=Role.USER, content=""),  # Empty
+        ]
+        assert extract_user_content(messages) == "First"
 
 
 @pytest.mark.unit
@@ -260,7 +214,7 @@ class TestAgentInputGuardrails:
                 return_value=_create_mock_router(mock_client),
             ),
             patch(
-                "neosian._foundation.agent.base._create_guardrail_client",
+                "neosian._foundation.agent.base.create_guardrail_client",
                 return_value=mock_guardrail_client,
             ),
         ):
@@ -311,7 +265,7 @@ class TestAgentInputGuardrails:
                 return_value=_create_mock_router(mock_client),
             ),
             patch(
-                "neosian._foundation.agent.base._create_guardrail_client",
+                "neosian._foundation.agent.base.create_guardrail_client",
                 return_value=mock_guardrail_client,
             ),
         ):
@@ -361,7 +315,7 @@ class TestAgentInputGuardrails:
                 return_value=_create_mock_router(mock_client),
             ),
             patch(
-                "neosian._foundation.agent.base._create_guardrail_client",
+                "neosian._foundation.agent.base.create_guardrail_client",
                 return_value=mock_guardrail_client,
             ),
         ):
@@ -411,7 +365,7 @@ class TestAgentOutputGuardrails:
                 return_value=_create_mock_router(mock_client),
             ),
             patch(
-                "neosian._foundation.agent.base._create_guardrail_client",
+                "neosian._foundation.agent.base.create_guardrail_client",
                 return_value=mock_guardrail_client,
             ),
         ):
@@ -458,7 +412,7 @@ class TestAgentOutputGuardrails:
                 return_value=_create_mock_router(mock_client),
             ),
             patch(
-                "neosian._foundation.agent.base._create_guardrail_client",
+                "neosian._foundation.agent.base.create_guardrail_client",
                 return_value=mock_guardrail_client,
             ),
         ):
@@ -557,7 +511,7 @@ class TestGuardrailErrorPolicy:
                 return_value=_create_mock_router(mock_client),
             ),
             patch(
-                "neosian._foundation.agent.base._create_guardrail_client",
+                "neosian._foundation.agent.base.create_guardrail_client",
                 return_value=mock_guardrail_client,
             ),
         ):
@@ -603,7 +557,7 @@ class TestGuardrailErrorPolicy:
                 return_value=_create_mock_router(mock_client),
             ),
             patch(
-                "neosian._foundation.agent.base._create_guardrail_client",
+                "neosian._foundation.agent.base.create_guardrail_client",
                 return_value=mock_guardrail_client,
             ),
         ):
