@@ -131,13 +131,17 @@ class AnthropicClient(BaseLLMClient):
     generation fails.
     """
 
-    def __init__(self, api_key: str) -> None:
+    def __init__(
+        self, api_key: str, max_retries: int = LLMDefaults.MAX_RETRIES
+    ) -> None:
         """Initialize the Anthropic client.
 
         Args:
             api_key: Anthropic API key. Required, no implicit env var reading.
+            max_retries: Transport-level retries handled by the SDK
+                (429/5xx/connection errors, exponential backoff).
         """
-        self._client = AsyncAnthropic(api_key=api_key)
+        self._client = AsyncAnthropic(api_key=api_key, max_retries=max_retries)
 
     def _validate_temperature_support(
         self, model: Model, temperature: float | None

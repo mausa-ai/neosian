@@ -110,6 +110,7 @@ class ErrorMessages:
         "max_output_tokens={requested} exceeds model '{model}' " "limit of {limit}"
     )
     MAX_OUTPUT_TOKENS_INVALID: str = "max_output_tokens must be >= 1, got {requested}"
+    MAX_RETRIES_INVALID: str = "max_retries must be >= 0, got {requested}"
 
     # Max parallel tools validation
     INVALID_MAX_PARALLEL_TOOLS: str = "max_parallel_tools must be >= 1, got {value}"
@@ -218,6 +219,9 @@ class LLMDefaults:
     TEMPERATURE: float = 0.7
     RETRY_TEMPERATURE: float = 0.3
     MAX_TOOL_CALL_RETRIES: int = 2
+    # Transport-level retries (429/5xx/connection errors) handled natively by
+    # each provider SDK with exponential backoff and Retry-After support.
+    MAX_RETRIES: int = 2
     MAX_OUTPUT_TOKENS: int = 8192
     # Safety-net cap on concurrent tool execution within one assistant turn.
     # Default tuned for normal LLM emission (1-5 calls); catches runaway

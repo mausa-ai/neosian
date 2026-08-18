@@ -44,6 +44,25 @@ class Provider(str, Enum):
     CEREBRAS = "cerebras"
 
 
+# Date the pricing table below was last verified against provider price lists.
+PRICES_AS_OF = "2026-08-18"
+
+
+@dataclass(frozen=True)
+class ModelPricing:
+    """List prices in USD per million tokens.
+
+    Approximate, for observability/cost-tracking — not a billing source.
+    cache_write/cache_read default to the input price when a provider
+    doesn't publish separate cache rates (conservative upper bound).
+    """
+
+    input_per_mtok: float
+    output_per_mtok: float
+    cache_write_per_mtok: float | None = None
+    cache_read_per_mtok: float | None = None
+
+
 @dataclass(frozen=True)
 class ModelSpec:
     """Immutable specification for a model's capabilities.
@@ -51,6 +70,9 @@ class ModelSpec:
     supports_images / supports_documents describe what neosian's converters
     implement, not the raw provider capability (e.g. GPT-5 has vision
     upstream, but neosian's OpenAI converter does not — so it stays False).
+
+    pricing is None for models without verified list prices; Usage.cost()
+    returns None for those.
     """
 
     provider: Provider
@@ -60,6 +82,7 @@ class ModelSpec:
     supports_images: bool = False
     supports_documents: bool = False
     supports_max_effort: bool = False
+    pricing: ModelPricing | None = None
 
 
 # Model specs registry (populated after Model enum is defined)
@@ -162,29 +185,38 @@ class Model(str, Enum):
         """Check if this model accepts reasoning_effort=MAX without downgrade."""
         return _MODEL_SPECS[self.value].supports_max_effort
 
+    @property
+    def pricing(self) -> "ModelPricing | None":
+        """Get list pricing for this model (None if not verified)."""
+        return _MODEL_SPECS[self.value].pricing
+
 
 # Groq - Production
 _MODEL_SPECS[Model.GROQ_LLAMA_3_3_70B.value] = ModelSpec(
     provider=Provider.GROQ,
     context_window=131_072,
     max_output_tokens=32_768,
+    pricing=ModelPricing(input_per_mtok=0.59, output_per_mtok=0.79),
 )
 _MODEL_SPECS[Model.GROQ_LLAMA_3_1_8B.value] = ModelSpec(
     provider=Provider.GROQ,
     context_window=131_072,
     max_output_tokens=131_072,
+    pricing=ModelPricing(input_per_mtok=0.05, output_per_mtok=0.08),
 )
 _MODEL_SPECS[Model.GROQ_GPT_OSS_120B.value] = ModelSpec(
     provider=Provider.GROQ,
     context_window=131_072,
     max_output_tokens=65_536,
     supports_reasoning=True,
+    pricing=ModelPricing(input_per_mtok=0.15, output_per_mtok=0.75),
 )
 _MODEL_SPECS[Model.GROQ_GPT_OSS_20B.value] = ModelSpec(
     provider=Provider.GROQ,
     context_window=131_072,
     max_output_tokens=65_536,
     supports_reasoning=True,
+    pricing=ModelPricing(input_per_mtok=0.10, output_per_mtok=0.50),
 )
 
 # Groq - Preview
@@ -192,26 +224,31 @@ _MODEL_SPECS[Model.GROQ_LLAMA_4_MAVERICK_17B.value] = ModelSpec(
     provider=Provider.GROQ,
     context_window=131_072,
     max_output_tokens=8_192,
+    pricing=ModelPricing(input_per_mtok=0.20, output_per_mtok=0.60),
 )
 _MODEL_SPECS[Model.GROQ_LLAMA_4_SCOUT_17B.value] = ModelSpec(
     provider=Provider.GROQ,
     context_window=131_072,
     max_output_tokens=8_192,
+    pricing=ModelPricing(input_per_mtok=0.11, output_per_mtok=0.34),
 )
 _MODEL_SPECS[Model.GROQ_QWEN3_32B.value] = ModelSpec(
     provider=Provider.GROQ,
     context_window=131_072,
     max_output_tokens=40_960,
+    pricing=ModelPricing(input_per_mtok=0.29, output_per_mtok=0.59),
 )
 _MODEL_SPECS[Model.GROQ_KIMI_K2.value] = ModelSpec(
     provider=Provider.GROQ,
     context_window=131_072,
     max_output_tokens=16_384,
+    pricing=ModelPricing(input_per_mtok=1.00, output_per_mtok=3.00),
 )
 _MODEL_SPECS[Model.GROQ_KIMI_K2_0905.value] = ModelSpec(
     provider=Provider.GROQ,
     context_window=262_144,
     max_output_tokens=16_384,
+    pricing=ModelPricing(input_per_mtok=1.00, output_per_mtok=3.00),
 )
 
 # Groq - Guardrails
@@ -219,6 +256,7 @@ _MODEL_SPECS[Model.GROQ_GPT_OSS_SAFEGUARD_20B.value] = ModelSpec(
     provider=Provider.GROQ,
     context_window=131_072,
     max_output_tokens=65_536,
+    pricing=ModelPricing(input_per_mtok=0.10, output_per_mtok=0.50),
 )
 
 # OpenAI
@@ -227,24 +265,34 @@ _MODEL_SPECS[Model.GPT_5_1.value] = ModelSpec(
     context_window=400_000,
     max_output_tokens=128_000,
     supports_reasoning=True,
+    pricing=ModelPricing(
+        input_per_mtok=1.25, output_per_mtok=10.00, cache_read_per_mtok=0.125
+    ),
 )
 _MODEL_SPECS[Model.GPT_5_MINI.value] = ModelSpec(
     provider=Provider.OPENAI,
     context_window=400_000,
     max_output_tokens=128_000,
     supports_reasoning=True,
+    pricing=ModelPricing(
+        input_per_mtok=0.25, output_per_mtok=2.00, cache_read_per_mtok=0.025
+    ),
 )
 _MODEL_SPECS[Model.GPT_5_NANO.value] = ModelSpec(
     provider=Provider.OPENAI,
     context_window=400_000,
     max_output_tokens=128_000,
     supports_reasoning=True,
+    pricing=ModelPricing(
+        input_per_mtok=0.05, output_per_mtok=0.40, cache_read_per_mtok=0.005
+    ),
 )
 _MODEL_SPECS[Model.GPT_5_PRO.value] = ModelSpec(
     provider=Provider.OPENAI,
     context_window=400_000,
     max_output_tokens=128_000,
     supports_reasoning=True,
+    pricing=ModelPricing(input_per_mtok=15.00, output_per_mtok=120.00),
 )
 
 # Anthropic
@@ -256,6 +304,12 @@ _MODEL_SPECS[Model.CLAUDE_OPUS_5.value] = ModelSpec(
     supports_images=True,
     supports_documents=True,
     supports_max_effort=True,
+    pricing=ModelPricing(
+        input_per_mtok=5.00,
+        output_per_mtok=25.00,
+        cache_write_per_mtok=6.25,
+        cache_read_per_mtok=0.50,
+    ),
 )
 _MODEL_SPECS[Model.CLAUDE_OPUS_4_6.value] = ModelSpec(
     provider=Provider.ANTHROPIC,
@@ -265,6 +319,12 @@ _MODEL_SPECS[Model.CLAUDE_OPUS_4_6.value] = ModelSpec(
     supports_images=True,
     supports_documents=True,
     supports_max_effort=True,
+    pricing=ModelPricing(
+        input_per_mtok=5.00,
+        output_per_mtok=25.00,
+        cache_write_per_mtok=6.25,
+        cache_read_per_mtok=0.50,
+    ),
 )
 _MODEL_SPECS[Model.CLAUDE_SONNET_5.value] = ModelSpec(
     provider=Provider.ANTHROPIC,
@@ -274,6 +334,12 @@ _MODEL_SPECS[Model.CLAUDE_SONNET_5.value] = ModelSpec(
     supports_images=True,
     supports_documents=True,
     supports_max_effort=True,
+    pricing=ModelPricing(
+        input_per_mtok=3.00,
+        output_per_mtok=15.00,
+        cache_write_per_mtok=3.75,
+        cache_read_per_mtok=0.30,
+    ),
 )
 _MODEL_SPECS[Model.CLAUDE_HAIKU_4_5.value] = ModelSpec(
     provider=Provider.ANTHROPIC,
@@ -281,6 +347,12 @@ _MODEL_SPECS[Model.CLAUDE_HAIKU_4_5.value] = ModelSpec(
     max_output_tokens=64_000,
     supports_images=True,
     supports_documents=True,
+    pricing=ModelPricing(
+        input_per_mtok=1.00,
+        output_per_mtok=5.00,
+        cache_write_per_mtok=1.25,
+        cache_read_per_mtok=0.10,
+    ),
 )
 
 # Cerebras - Production
@@ -289,11 +361,13 @@ _MODEL_SPECS[Model.CEREBRAS_GPT_OSS_120B.value] = ModelSpec(
     context_window=131_072,
     max_output_tokens=40_960,
     supports_reasoning=True,
+    pricing=ModelPricing(input_per_mtok=0.25, output_per_mtok=0.69),
 )
 _MODEL_SPECS[Model.CEREBRAS_LLAMA_3_1_8B.value] = ModelSpec(
     provider=Provider.CEREBRAS,
     context_window=32_768,
     max_output_tokens=8_192,
+    pricing=ModelPricing(input_per_mtok=0.10, output_per_mtok=0.10),
 )
 
 # Cerebras - Preview
@@ -301,6 +375,7 @@ _MODEL_SPECS[Model.CEREBRAS_QWEN3_235B.value] = ModelSpec(
     provider=Provider.CEREBRAS,
     context_window=131_072,
     max_output_tokens=40_960,
+    pricing=ModelPricing(input_per_mtok=0.60, output_per_mtok=1.20),
 )
 _MODEL_SPECS[Model.CEREBRAS_ZAI_GLM_4_7.value] = ModelSpec(
     provider=Provider.CEREBRAS,
@@ -504,6 +579,7 @@ class AgentConfig:
     reasoning_effort: ReasoningEffort | None = None
     max_output_tokens: int | None = None
     max_parallel_tools: int | None = None
+    max_retries: int | None = None
     cache_conversation: bool = True
     playbook_dir: str | Path | None = None
     blackboard: Any = None  # BlackboardProvider | None (Any to avoid circular import)
@@ -534,6 +610,10 @@ class AgentConfig:
             object.__setattr__(
                 self, "max_parallel_tools", LLMDefaults.MAX_PARALLEL_TOOLS
             )
+
+        # Apply default transport-level retries from config
+        if self.max_retries is None:
+            object.__setattr__(self, "max_retries", LLMDefaults.MAX_RETRIES)
 
         # Runtime validation - model could be anything if user bypasses type hints
         model: object = self.model  # Type erasure to enable isinstance check
@@ -572,6 +652,13 @@ class AgentConfig:
                     model=self.model.value,
                     limit=self.model.max_output_tokens,
                 )
+            )
+
+        # Validate max_retries
+        assert self.max_retries is not None  # Set above
+        if self.max_retries < 0:
+            raise UnsupportedParameterError(
+                ErrorMessages.MAX_RETRIES_INVALID.format(requested=self.max_retries)
             )
 
         # Validate max_parallel_tools

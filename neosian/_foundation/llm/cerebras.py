@@ -48,13 +48,17 @@ class CerebrasClient(BaseLLMClient):
     generation fails.
     """
 
-    def __init__(self, api_key: str) -> None:
+    def __init__(
+        self, api_key: str, max_retries: int = LLMDefaults.MAX_RETRIES
+    ) -> None:
         """Initialize the Cerebras client.
 
         Args:
             api_key: Cerebras API key. Required, no implicit env var reading.
+            max_retries: Transport-level retries handled by the SDK
+                (429/5xx/connection errors, exponential backoff).
         """
-        self._client = AsyncCerebras(api_key=api_key)
+        self._client = AsyncCerebras(api_key=api_key, max_retries=max_retries)
 
     async def complete(
         self,

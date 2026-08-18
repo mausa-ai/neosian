@@ -46,13 +46,17 @@ class GroqClient(BaseLLMClient):
     lower temperature when tool call generation fails.
     """
 
-    def __init__(self, api_key: str) -> None:
+    def __init__(
+        self, api_key: str, max_retries: int = LLMDefaults.MAX_RETRIES
+    ) -> None:
         """Initialize the Groq client.
 
         Args:
             api_key: Groq API key. Required, no implicit env var reading.
+            max_retries: Transport-level retries handled by the SDK
+                (429/5xx/connection errors, exponential backoff).
         """
-        self._client = AsyncGroq(api_key=api_key)
+        self._client = AsyncGroq(api_key=api_key, max_retries=max_retries)
 
     async def complete(
         self,

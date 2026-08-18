@@ -36,9 +36,11 @@ from neosian._foundation.llm.base import (
     BaseLLMClient,
     Message,
     Role,
+    StopReason,
     ToolCall,
     ToolDefinition,
     Usage,
+    normalize_stop_reason,
     required_content_types,
     text_of,
 )
@@ -167,6 +169,9 @@ class AgentResponse:
         stop_reason: Provider-native stop reason for the final completion —
             truncation is "max_tokens" on Anthropic and "length" on
             OpenAI-compatible providers. None on guardrail-blocked responses.
+        model: Model string reported by the API for the final completion
+            (fallback-aware — reflects the model that actually answered).
+            None on guardrail-blocked responses.
     """
 
     message: Message
@@ -177,6 +182,17 @@ class AgentResponse:
     guardrail_result: GuardrailResult | None = None
     parsed: BaseModel | None = None
     stop_reason: str | None = None
+    model: str | None = None
+
+    @property
+    def normalized_stop_reason(self) -> StopReason | None:
+        """Provider-agnostic view of stop_reason."""
+        return normalize_stop_reason(self.stop_reason)
+
+    @property
+    def truncated(self) -> bool:
+        """True when the final completion was cut off at the output-token cap."""
+        return self.normalized_stop_reason is StopReason.MAX_TOKENS
 
 
 class Agent:
@@ -215,7 +231,8 @@ class Agent:
             max_tool_iterations: Maximum tool call iterations to prevent infinite loops.
         """
         # Initialize router for provider management
-        self._router = ProviderRouter()
+        assert config.max_retries is not None  # Set by AgentConfig.__post_init__
+        self._router = ProviderRouter(max_retries=config.max_retries)
 
         # Model and fallback configuration
         self._model = config.model
@@ -758,6 +775,7 @@ class Agent:
                     usage=total_usage,
                     response_format=response_format,
                     stop_reason=response.stop_reason,
+                    model=response.model,
                 )
 
             # Add assistant message with tool calls to history
@@ -814,6 +832,7 @@ class Agent:
             usage=total_usage,
             response_format=response_format,
             stop_reason=final_response.stop_reason,
+            model=final_response.model,
         )
 
     def _attach_input_guard_results(
@@ -1172,6 +1191,7 @@ class Agent:
                 reasoning_parts: list[str] = []
                 accumulated_tool_calls: list[ToolCall] = []
                 final_usage = None
+                turn_finish_reason: str | None = None
 
                 stream = client.stream(
                     messages=full_messages,
@@ -1209,6 +1229,9 @@ class Agent:
                     if chunk.usage:
                         final_usage = chunk.usage
 
+                    if chunk.finish_reason:
+                        turn_finish_reason = chunk.finish_reason
+
                 # Turn complete — fold its usage into the running total and
                 # reset so guard checks / the except handler don't double count.
                 total_usage = _merge_usage(total_usage, final_usage)
@@ -1232,7 +1255,13 @@ class Agent:
                             )
                             return
 
-                    yield emitter.emit(done_event(total_usage))
+                    yield emitter.emit(
+                        done_event(
+                            total_usage,
+                            stop_reason=turn_finish_reason,
+                            model=model.value,
+                        )
+                    )
                     return
 
                 # Tool calls detected — add assistant message to history
@@ -1467,6 +1496,7 @@ class Agent:
         # Anthropic: usage comes with finish_reason chunk
         pending_done = False
         final_usage: Usage | None = None
+        final_finish_reason: str | None = None
 
         try:
             stream = client.stream(
@@ -1499,6 +1529,7 @@ class Agent:
                     yield emitter.emit(content_event(chunk.content))
 
                 if chunk.finish_reason:
+                    final_finish_reason = chunk.finish_reason
                     # Final guard check before done (with error handling)
                     if guard_task is not None:
                         is_safe, policy = await self._await_guard_result_safe(
@@ -1525,7 +1556,11 @@ class Agent:
                     if chunk.usage:
                         # Anthropic: usage comes with finish_reason
                         yield emitter.emit(
-                            done_event(_merge_usage(prior_usage, chunk.usage))
+                            done_event(
+                                _merge_usage(prior_usage, chunk.usage),
+                                stop_reason=final_finish_reason,
+                                model=model.value,
+                            )
                         )
                     else:
                         # OpenAI/Groq: usage may come in next chunk
@@ -1536,13 +1571,23 @@ class Agent:
                     final_usage = chunk.usage
                     if pending_done:
                         yield emitter.emit(
-                            done_event(_merge_usage(prior_usage, final_usage))
+                            done_event(
+                                _merge_usage(prior_usage, final_usage),
+                                stop_reason=final_finish_reason,
+                                model=model.value,
+                            )
                         )
                         pending_done = False
 
             # If we have a pending done without usage, emit it now
             if pending_done:
-                yield emitter.emit(done_event(_merge_usage(prior_usage, final_usage)))
+                yield emitter.emit(
+                    done_event(
+                        _merge_usage(prior_usage, final_usage),
+                        stop_reason=final_finish_reason,
+                        model=model.value,
+                    )
+                )
         except Exception as e:
             # First-write-wins in _attach_usage composes with the outer
             # handler in _stream_with_client (this frame is more complete).
@@ -1745,6 +1790,7 @@ class Agent:
         usage: Usage,
         response_format: ResponseFormat | None = None,
         stop_reason: str | None = None,
+        model: str | None = None,
     ) -> AgentResponse:
         """Finalize response with output guardrails check and structured output parsing.
 
@@ -1758,6 +1804,7 @@ class Agent:
             usage: Token usage statistics.
             response_format: Optional structured output configuration for parsing.
             stop_reason: Provider-native stop reason of the final completion.
+            model: Model string reported by the API for the final completion.
 
         Returns:
             AgentResponse with output guardrail results and parsed content (if any).
@@ -1801,6 +1848,7 @@ class Agent:
             guardrail_result=guardrail_result,
             parsed=parsed,
             stop_reason=stop_reason,
+            model=model,
         )
 
     # =========================================================================

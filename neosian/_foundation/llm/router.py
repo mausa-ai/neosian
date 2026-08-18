@@ -13,6 +13,7 @@ from neosian._foundation.llm.openai import OpenAIClient
 from neosian._foundation.shared.constants import (
     EnvVars,
     ErrorMessages,
+    LLMDefaults,
 )
 from neosian._foundation.shared.types import Provider
 
@@ -29,9 +30,15 @@ class ProviderRouter:
             client = router.create_client(Provider.GROQ)
     """
 
-    def __init__(self) -> None:
-        """Initialize the router and detect available API keys."""
+    def __init__(self, max_retries: int = LLMDefaults.MAX_RETRIES) -> None:
+        """Initialize the router and detect available API keys.
+
+        Args:
+            max_retries: Transport-level retries passed to each SDK client
+                (429/5xx/connection errors, with native backoff).
+        """
         self._available_providers = self._detect_available_providers()
+        self._max_retries = max_retries
 
     def _detect_available_providers(self) -> set[Provider]:
         """Detect which providers have API keys configured.
@@ -81,18 +88,18 @@ class ProviderRouter:
         """
         if provider == Provider.GROQ:
             key = api_key or os.environ.get(EnvVars.GROQ_API_KEY, "")
-            return GroqClient(api_key=key)
+            return GroqClient(api_key=key, max_retries=self._max_retries)
 
         if provider == Provider.OPENAI:
             key = api_key or os.environ.get(EnvVars.OPENAI_API_KEY, "")
-            return OpenAIClient(api_key=key)
+            return OpenAIClient(api_key=key, max_retries=self._max_retries)
 
         if provider == Provider.ANTHROPIC:
             key = api_key or os.environ.get(EnvVars.ANTHROPIC_API_KEY, "")
-            return AnthropicClient(api_key=key)
+            return AnthropicClient(api_key=key, max_retries=self._max_retries)
 
         if provider == Provider.CEREBRAS:
             key = api_key or os.environ.get(EnvVars.CEREBRAS_API_KEY, "")
-            return CerebrasClient(api_key=key)
+            return CerebrasClient(api_key=key, max_retries=self._max_retries)
 
         raise ValueError(ErrorMessages.UNSUPPORTED_PROVIDER.format(provider=provider))

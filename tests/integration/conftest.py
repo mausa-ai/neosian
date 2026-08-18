@@ -67,6 +67,15 @@ def anthropic_api_key() -> str:
 
 
 @pytest.fixture
+def openai_api_key() -> str:
+    """Fixture that provides OpenAI API key or skips test."""
+    key = os.environ.get("OPENAI_API_KEY")
+    if not key:
+        pytest.skip("OPENAI_API_KEY environment variable not set")
+    return key
+
+
+@pytest.fixture
 def anthropic_client(anthropic_api_key: str) -> AnthropicClient:
     """Fixture that provides a configured Anthropic client."""
     return AnthropicClient(api_key=anthropic_api_key)

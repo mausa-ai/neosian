@@ -189,6 +189,92 @@ class Usage:
             + other.cache_read_input_tokens,
         )
 
+    def cost(self, model: Model) -> float | None:
+        """Estimate the USD cost of this usage at the model's list prices.
+
+        Approximate, for observability — not a billing source (see
+        PRICES_AS_OF in shared.types for the verification date). Cache
+        token classes fall back to the input price when the provider
+        publishes no separate cache rate.
+
+        Args:
+            model: The model whose pricing to apply. For multi-model runs
+                (fallback), price each model's usage separately.
+
+        Returns:
+            Estimated cost in USD, or None if the model has no verified
+            pricing.
+        """
+        pricing = model.pricing
+        if pricing is None:
+            return None
+        cache_write = (
+            pricing.cache_write_per_mtok
+            if pricing.cache_write_per_mtok is not None
+            else pricing.input_per_mtok
+        )
+        cache_read = (
+            pricing.cache_read_per_mtok
+            if pricing.cache_read_per_mtok is not None
+            else pricing.input_per_mtok
+        )
+        return (
+            self.input_tokens * pricing.input_per_mtok
+            + self.output_tokens * pricing.output_per_mtok
+            + self.cache_creation_input_tokens * cache_write
+            + self.cache_read_input_tokens * cache_read
+        ) / 1_000_000
+
+
+class StopReason(str, Enum):
+    """Provider-agnostic stop reason.
+
+    Providers report the same condition under different names (truncation is
+    "max_tokens" on Anthropic, "length" on OpenAI-compatible providers).
+    This enum is the normalized view; the raw provider value is always kept
+    alongside it for debugging.
+    """
+
+    STOP = "stop"
+    MAX_TOKENS = "max_tokens"
+    TOOL_CALLS = "tool_calls"
+    CONTENT_FILTER = "content_filter"
+    OTHER = "other"
+
+
+_STOP_REASON_MAP: dict[str, StopReason] = {
+    # Natural completion
+    "end_turn": StopReason.STOP,
+    "stop": StopReason.STOP,
+    "stop_sequence": StopReason.STOP,
+    # Truncation at the output-token cap
+    "max_tokens": StopReason.MAX_TOKENS,
+    "length": StopReason.MAX_TOKENS,
+    # Model requested tool execution
+    "tool_use": StopReason.TOOL_CALLS,
+    "tool_calls": StopReason.TOOL_CALLS,
+    "function_call": StopReason.TOOL_CALLS,
+    # Provider-side content moderation
+    "content_filter": StopReason.CONTENT_FILTER,
+    "refusal": StopReason.CONTENT_FILTER,
+}
+
+
+def normalize_stop_reason(raw: str | None) -> StopReason | None:
+    """Normalize a provider-native stop/finish reason.
+
+    Args:
+        raw: Provider value (e.g. "end_turn", "length"), or None.
+
+    Returns:
+        The normalized StopReason, StopReason.OTHER for unrecognized values
+        (e.g. "pause_turn", "model_context_window_exceeded"), or None when
+        the provider reported none.
+    """
+    if raw is None:
+        return None
+    return _STOP_REASON_MAP.get(raw, StopReason.OTHER)
+
 
 @dataclass
 class CompletionResponse:
@@ -196,7 +282,8 @@ class CompletionResponse:
 
     stop_reason is the provider-native stop/finish reason passed through
     verbatim: truncation is "max_tokens" on Anthropic and "length" on
-    OpenAI-compatible providers.
+    OpenAI-compatible providers. Use normalize_stop_reason() for the
+    provider-agnostic view.
     """
 
     message: Message

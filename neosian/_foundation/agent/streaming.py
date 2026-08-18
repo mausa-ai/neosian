@@ -8,7 +8,12 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
-from neosian._foundation.llm.base import StreamChunk, ToolCall, Usage
+from neosian._foundation.llm.base import (
+    StreamChunk,
+    ToolCall,
+    Usage,
+    normalize_stop_reason,
+)
 from neosian._foundation.shared.serialization import safe_json_dumps
 from neosian._foundation.tools.base import ToolResult
 
@@ -102,18 +107,32 @@ def error_event(error: str, usage: Usage | None = None) -> SSEEvent:
     return SSEEvent(event=SSEEventType.ERROR, data=data)
 
 
-def done_event(usage: Usage | None = None) -> SSEEvent:
+def done_event(
+    usage: Usage | None = None,
+    stop_reason: str | None = None,
+    model: str | None = None,
+) -> SSEEvent:
     """Create a done SSE event.
 
     Args:
         usage: Optional token usage statistics.
+        stop_reason: Provider-native stop/finish reason of the final turn.
+        model: Model identifier that produced the final turn.
 
     Returns:
-        SSEEvent with done data, including usage if provided.
+        SSEEvent with done data, including usage/stop_reason/model if provided.
+        stop_reason is emitted alongside its normalized form so consumers can
+        detect truncation without a per-provider table.
     """
     data: dict[str, Any] = {}
     if usage:
         data["usage"] = _usage_payload(usage)
+    if stop_reason is not None:
+        normalized = normalize_stop_reason(stop_reason)
+        data["stop_reason"] = normalized.value if normalized else None
+        data["raw_stop_reason"] = stop_reason
+    if model is not None:
+        data["model"] = model
     return SSEEvent(event=SSEEventType.DONE, data=data)
 
 

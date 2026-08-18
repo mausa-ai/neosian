@@ -17,9 +17,11 @@ from neosian._foundation.llm.base import (
     ImageBlock,
     Message,
     Role,
+    StopReason,
     TextBlock,
     ToolCall,
     Usage,
+    normalize_stop_reason,
     text_of,
 )
 from neosian._foundation.shared.constraints import (
@@ -45,6 +47,7 @@ from neosian._foundation.shared.exceptions import (
 from neosian._foundation.shared.playbook import load_playbook, load_playbooks
 from neosian._foundation.shared.prompt import load_prompt
 from neosian._foundation.shared.types import (
+    PRICES_AS_OF,
     AgentConfig,
     BlackboardEntry,
     BlackboardName,
@@ -60,6 +63,7 @@ from neosian._foundation.shared.types import (
     GuardrailResult,
     GuardrailsConfig,
     Model,
+    ModelPricing,
     ModelSpec,
     Playbook,
     PlaybookName,
@@ -73,7 +77,7 @@ from neosian._foundation.shared.types import (
 )
 from neosian._foundation.tools.base import Tool, ToolResult
 
-__version__ = "0.50.0"
+__version__ = "0.51.0"
 
 __all__ = [
     # Agent
@@ -103,11 +107,15 @@ __all__ = [
     "Pattern",
     # LLM
     "Model",
+    "ModelPricing",
     "ModelSpec",
+    "PRICES_AS_OF",
     "Provider",
     "ReasoningEffort",
     "ResponseFormat",
+    "StopReason",
     "Usage",
+    "normalize_stop_reason",
     # Streaming
     "SSEEventType",
     "error_event",

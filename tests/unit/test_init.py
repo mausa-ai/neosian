@@ -128,7 +128,9 @@ def test_all_list_matches_exports() -> None:
         "text_of",
         # Models and Providers
         "Model",
+        "ModelPricing",
         "ModelSpec",
+        "PRICES_AS_OF",
         "Provider",
         # Tools
         "Tool",
@@ -145,7 +147,9 @@ def test_all_list_matches_exports() -> None:
         # LLM
         "ReasoningEffort",
         "ResponseFormat",
+        "StopReason",
         "Usage",
+        "normalize_stop_reason",
         # Streaming
         "SSEEventType",
         "error_event",

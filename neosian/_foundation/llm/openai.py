@@ -51,13 +51,17 @@ class OpenAIClient(BaseLLMClient):
     when tool call generation fails.
     """
 
-    def __init__(self, api_key: str) -> None:
+    def __init__(
+        self, api_key: str, max_retries: int = LLMDefaults.MAX_RETRIES
+    ) -> None:
         """Initialize the OpenAI client.
 
         Args:
             api_key: OpenAI API key. Required, no implicit env var reading.
+            max_retries: Transport-level retries handled by the SDK
+                (429/5xx/connection errors, exponential backoff).
         """
-        self._client = AsyncOpenAI(api_key=api_key)
+        self._client = AsyncOpenAI(api_key=api_key, max_retries=max_retries)
 
     async def complete(
         self,
