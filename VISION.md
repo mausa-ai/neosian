@@ -1,8 +1,9 @@
 # Vision
 
-> Status: **seed** (2026-08-18). This document records the direction and the open
-> questions — it is a starting point for discussion, not a committed design.
-> Decisions marked ✅ are settled; everything else is open.
+> Status: **decided** (2026-08-18). This document states the direction and the
+> principles behind it. The detail — decided constraints, phases, exit
+> criteria — lives in [ROADMAP.md](ROADMAP.md), which is the source of truth
+> for execution. When the two disagree, the roadmap wins.
 
 ## What neosian is for
 
@@ -12,112 +13,96 @@ guardrails, and structured output handled by the library. The core stays
 **stateless**: the caller owns conversation history, and the agent stores
 nothing between calls.
 
-The next frontier is **memory and context engineering** — making neosian agents
-capable of working across long horizons and across sessions without giving up
-the stateless core. Memory will be an **opt-in layer around the agent**, never
-state smuggled into it: *"stateless agentic core, with opt-in memory."*
+The next frontier is **memory and context engineering** — agents that work
+across long horizons and across sessions without giving up the stateless core.
+Memory is an **opt-in layer around the agent**, never state smuggled into it:
+*"stateless agentic core, with opt-in memory."*
 
-## Direction (seed): agent-managed memory, MemGPT-style
+## The destination
 
-The direction we are drawn to is the **context-window-as-OS** model
-(MemGPT/Letta): the bounded context window is RAM, external storage is disk,
-and the **agent itself** pages information between them using tools — reading,
-writing, and editing its own memory rather than having a retrieval pipeline
-push content at it. Built by us, in-house, with zero heavy dependencies.
+`uv add neosian` gives Claude-Code-grade, agent-curated memory on any of the
+four providers, against a plain file directory or your own Postgres — history
+persistence, cross-session memory, and compaction with configurable defaults:
 
-A concrete inspiration is **Claude Code's memory**: a directory of small
-markdown files (one fact per file, frontmatter metadata) plus a lightweight
-index file loaded each session, with the agent responsible for writing,
-updating, linking, and pruning its own notes. It is simple, transparent,
-debuggable with `cat` and `grep` — and it demonstrably works.
+```python
+store = PostgresStore(dsn)          # or FileStore(path)
+convo = Conversation(agent, store=store,
+                     conversation_id="thread-829",
+                     memory_scope="user:1234")
+resp = await convo.send("Where did we leave off?")
+```
 
-**✅ Decided: recall happens through tools, not prompt injection.**
-The agent calls `remember` / `recall` / `forget` (and possibly `edit`) when it
-decides to. This preserves the Anthropic prompt-cache prefix (injection would
-invalidate it every turn — a direct cost regression), spends tokens only when
-memory is actually consulted, gives an audit trail via `tool_calls_made`, and
-follows the proven Blackboard/Playbook pattern already in the library.
+`Agent` stays exactly what it is today; `Conversation` is the opt-in stateful
+shell that owns history, memory, and compaction.
 
-### Research track: Anthropic provider-native mechanisms
+## The school we chose
 
-Anthropic ships memory and context-lifecycle machinery worth investigating
-before we build parallel versions of it:
+Of the memory schools in the field — extraction pipelines over vector stores
+(Mem0), temporal knowledge graphs (Zep), self-editing context blocks (Letta) —
+we build the one Claude Code proves daily: **agent-managed, file-school
+memory**, MemGPT's context-as-RAM idea in its most transparent form.
 
-- **Memory tool** (`memory_20250818`) — the model operates on a client-hosted
-  `/memories` directory through a standardized tool; the storage backend is
-  ours to implement. This may be the shortest path to MemGPT-style behavior on
-  Claude models, and its command set (`view`, `create`, `str_replace`,
-  `insert`, `delete`, `rename`) could shape our own tool design.
-- **Server-side compaction** — summarize-and-continue past the context window,
-  handled by the API.
-- **Context editing** — clearing stale tool results instead of summarizing.
+- **The agent is the memory system.** It decides what to remember, writes and
+  edits its own small documents (markdown + frontmatter), maintains an index,
+  and prunes what proved wrong. Frontier models are now post-trained to do
+  exactly this; neosian provides the surface and rides the training.
+- **Anthropic's memory command vocabulary is the universal interface** —
+  `view`, `create`, `str_replace`, `insert`, `delete`, `rename` over a virtual
+  path space — implemented as plain function tools on every provider, with
+  native `memory_20250818` wiring on Anthropic as a later optimization.
+- **Recall happens through tools, not prompt injection.** A small index is
+  injected once per conversation (cache-safe, frozen for the session); bodies
+  stay behind tools until the agent asks. Tokens are spent only when memory is
+  consulted, and every access leaves an audit trail.
+- **Memory is layered like Claude Code's**: history keys off the conversation;
+  memory keys off **mounts** — user-level, project-level, shared read-only —
+  named by opaque scopes the application chooses. Every mutation is versioned
+  and redactable from day one.
 
-Open question: how much do we adopt natively for the Anthropic provider vs.
-build provider-agnostic equivalents (neosian serves four providers — a
-memory story that only works on Claude is not the library's story).
+## Compaction: paging, not deletion
 
-## Context-engineering principles we adopt
+History is an append-only log; compaction changes what is *in context*, never
+what is *stored*. Aged turns are projected to typed one-line log entries —
+a three-paragraph question becomes one line with a turn-ref — and a built-in
+tool re-hydrates any entry verbatim on demand. Recent turns stay hot and
+verbatim; aged turns cool into log lines; the oldest fold into epoch
+summaries. No blind transcript summarization, no irreversible loss, cost that
+scales with new turns rather than total history.
 
-From the current state of the art (Anthropic's context-engineering guidance,
-the write/select/compress/isolate framing):
+## Context-engineering principles
 
-1. **The context window is a budget.** Every token must earn its place;
-   `ModelSpec.context_window` (currently populated but unread) becomes live.
-2. **Structured note-taking over raw history.** Progress files, checkpoints,
-   and agent-curated notes beat replaying full transcripts. Blackboard and
-   Playbooks are already this pattern; memory extends it.
-3. **Just-in-time retrieval via tools** over pre-loading (✅ decided above).
-4. **Compaction with recall-first summaries** when a conversation approaches
-   the window, checkpointed so it runs once, not every turn.
-5. **Cache-aware layout.** Stable content first; nothing volatile ahead of the
-   cached prefix.
-
-## Infrastructure the code needs first (any direction)
-
-These enablers were identified against the actual code and are required
-regardless of which memory shape wins:
-
-| Enabler | Why |
-|---|---|
-| Turn capture (`AgentResponse.turn_messages`, `.model` is done) | Today the intermediate tool-call messages are not returned, so callers cannot faithfully persist a turn — the CLI already loses tool history between turns |
-| Observability hooks (`AgentHooks`: on_turn / on_llm_call / on_tool / on_fallback) | Memory persistence in streaming mode needs a turn hook; also replaces the eval runner's log-scraping fallback detector |
-| Session-twin refactor (`client_factory` collapsing the `_with_session` duplicates in `agent/base.py`) | Every insertion point is currently doubled; halves the diff of all memory work |
-| Context-window fitting (`ContextPolicy`, sliding window) | Long tool loops blow the window today with no recourse |
-
-## Open questions (to discuss before implementation)
-
-- **Storage**: markdown files à la Claude Code (transparent, grep-able) vs.
-  SQLite (indexed FTS5 recall, transactional) vs. both behind one ABC.
-  Research task: study Claude Code's memory format and Letta's memory-block
-  model side by side.
-- **Self-editing memory blocks** (always-in-context, agent-maintained — Letta
-  style) vs. **passive store + recall tools** — or a small always-loaded index
-  with bodies behind tools (Claude Code's MEMORY.md pattern).
-- **Conversation persistence**: does neosian ship a `Conversation` object
-  (resume-by-id, append-only store), or does history plumbing stay app-side?
-- **Compaction**: neosian-built (cheap model + checkpoint) vs. Anthropic
-  server-side where available; what triggers it and what survives it.
-- **v1 scope and ordering** — deliberately undecided until the vision firms up.
+1. **The context window is a budget.** Every token must earn its place.
+2. **Structured note-taking over raw history.** Curated notes, checkpoints,
+   and log projections beat replaying transcripts — Blackboard and Playbooks
+   already embody this; memory and compaction extend it.
+3. **Just-in-time retrieval via tools** over pre-loading.
+4. **Cache-aware layout.** Stable content first; nothing volatile ahead of the
+   cached prefix; the compaction boundary is the one free refresh moment.
+5. **Transparent substrates.** Memory you can read with `cat`, grep, diff in
+   git, and audit row by row — on files in development, on Postgres in
+   production, behind one storage interface.
 
 ## What we are not building
 
 - **RAG / embeddings / vector stores** — an application concern; agent memory
   does not need them, and shipping half a RAG stack is worse than none.
+- **Blind summarization compaction** — irreversible, monolithic,
+  unpredictable; log-projection replaces it.
 - **Batch APIs** — different latency contract from the interactive design.
 - **A sync wrapper** — `asyncio.run()` in library code deadlocks in notebooks
   and servers; async-only is a feature.
 - **Multi-agent graph runtime** — an `Agent` inside a `@Tool` already
   composes; a graph engine would double the surface for a userland pattern.
 - **Agent-editable conversation history** — audit nightmare; compaction covers
-  the legitimate case.
+  the legitimate case, and it never edits the store.
 
 ## Reference points
 
-- MemGPT / [Letta](https://www.letta.com/) — context-as-OS, self-editing
-  memory, paging via tools
+- Claude Code's file-based memory (markdown directory + index + prompt
+  discipline) — the proven reference implementation of the school we chose
+- MemGPT / [Letta](https://www.letta.com/) — context-as-OS, paging via tools
 - [Anthropic: Effective context engineering for AI agents](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents)
-- Anthropic memory tool, compaction, and context editing (platform docs)
-- Claude Code's file-based memory (markdown memory directory + index)
-- Mem0 (extraction-based personalization), Zep/Graphiti (temporal knowledge
-  graphs), Cognee (graph+vector hybrid) — the framework landscape we chose
-  not to depend on, kept here for comparison
+- Anthropic memory tool (`memory_20250818`), server-side compaction, context
+  editing, and Managed Agents memory stores (versioning/redaction precedent)
+- Mem0, Zep/Graphiti, Cognee — the extraction/graph schools we deliberately
+  did not adopt, kept here for comparison
