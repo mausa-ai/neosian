@@ -59,4 +59,5 @@ Thumbs.db
 .neosian/
 .ruff_cache/
 
-.claude
+# Procedures travel with the repo (.claude/commands/); only local settings stay out
+.claude/settings.local.json
