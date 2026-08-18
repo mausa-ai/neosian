@@ -284,6 +284,7 @@ def evaluate(
     Example:
         neosian eval eval_config.yaml
     """
+    from neosian._cli.playground import _load_credentials_from_config
     from neosian._foundation.evaluation import (
         EvalProgress,
         create_progress_callback,
@@ -292,6 +293,10 @@ def evaluate(
         run_evaluation,
         save_results,
     )
+
+    # The library reads keys from the environment only; loading them from the
+    # CLI config file is the CLI's job, done here before the run.
+    _load_credentials_from_config()
 
     console = Console()
 

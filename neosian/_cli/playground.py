@@ -19,9 +19,9 @@ from rich.text import Text
 from simple_term_menu import TerminalMenu  # type: ignore[import-untyped]
 
 from neosian._cli.config import get_api_key
-from neosian._cli.loader import load_agent_config
 from neosian._cli.session import ArenaModelResponse, ArenaSession, Session
 from neosian._foundation.agent.base import Agent
+from neosian._foundation.agent.loader import load_agent_config
 from neosian._foundation.agent.session import AgentSession
 from neosian._foundation.llm.base import Message, Role, text_of
 from neosian._foundation.shared.constants import ArenaUI, Assets, Config, PlaygroundUI

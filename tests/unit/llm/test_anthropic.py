@@ -1,6 +1,8 @@
 """Unit tests for the Anthropic LLM client."""
 
 import dataclasses
+from collections.abc import AsyncIterator
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -22,7 +24,17 @@ from neosian._foundation.shared.exceptions import (
     UnsupportedContentError,
     UnsupportedParameterError,
 )
-from neosian._foundation.shared.types import Model, ReasoningEffort
+from neosian._foundation.shared.types import (
+    Model,
+    ReasoningEffort,
+    ToolCallId,
+    ToolName,
+)
+
+
+def _sdk(client: AnthropicClient) -> Any:
+    """The underlying SDK client, untyped for mock wiring and inspection."""
+    return client._client
 
 
 def _mock_complete(client: AnthropicClient, mock_response: MagicMock) -> None:
@@ -30,14 +42,14 @@ def _mock_complete(client: AnthropicClient, mock_response: MagicMock) -> None:
 
     complete() uses messages.stream() + get_final_message() rather than
     messages.create(), so tests mock the stream context manager and inspect
-    client._client.messages.stream.call_args.
+    _sdk(client).messages.stream.call_args.
     """
     inner = MagicMock()
     inner.get_final_message = AsyncMock(return_value=mock_response)
     mock_stream = MagicMock()
     mock_stream.__aenter__ = AsyncMock(return_value=inner)
     mock_stream.__aexit__ = AsyncMock(return_value=False)
-    client._client.messages.stream = MagicMock(return_value=mock_stream)
+    _sdk(client).messages.stream = MagicMock(return_value=mock_stream)
 
 
 @pytest.fixture
@@ -59,7 +71,7 @@ def sample_messages() -> list[Message]:
 def sample_tool() -> ToolDefinition:
     """Sample tool definition."""
     return ToolDefinition(
-        name="get_weather",
+        name=ToolName("get_weather"),
         description="Get the weather for a location",
         parameters={
             "type": "object",
@@ -134,7 +146,7 @@ class TestAnthropicClient:
             Message(
                 role=Role.TOOL,
                 content='{"temperature": 22}',
-                tool_call_id="call_123",
+                tool_call_id=ToolCallId("call_123"),
             ),
         ]
 
@@ -210,7 +222,7 @@ class TestAnthropicClient:
             model=Model.CLAUDE_SONNET_5,
             tools=[
                 ToolDefinition(
-                    name="get_weather",
+                    name=ToolName("get_weather"),
                     description="Get weather",
                     parameters={"type": "object", "properties": {}},
                 )
@@ -242,7 +254,7 @@ class TestAnthropicClient:
         mock_event3.type = "message_stop"
 
         # Create async iterator for stream
-        async def mock_stream_events():
+        async def mock_stream_events() -> AsyncIterator[Any]:
             yield mock_event1
             yield mock_event2
             yield mock_event3
@@ -253,7 +265,7 @@ class TestAnthropicClient:
         mock_stream.__aexit__ = AsyncMock(return_value=None)
         mock_stream.__aiter__ = lambda _: mock_stream_events()
 
-        client._client.messages.stream = MagicMock(return_value=mock_stream)
+        _sdk(client).messages.stream = MagicMock(return_value=mock_stream)
 
         chunks = []
         async for chunk in client.stream(
@@ -315,8 +327,8 @@ class TestAnthropicReasoningEffort:
             reasoning_effort=ReasoningEffort.HIGH,
         )
 
-        client._client.messages.stream.assert_called_once()
-        call_kwargs = client._client.messages.stream.call_args.kwargs
+        _sdk(client).messages.stream.assert_called_once()
+        call_kwargs = _sdk(client).messages.stream.call_args.kwargs
         assert call_kwargs["thinking"] == {"type": "adaptive"}
         assert call_kwargs["output_config"] == {"effort": "high"}
         assert "temperature" not in call_kwargs
@@ -339,7 +351,7 @@ class TestAnthropicReasoningEffort:
             reasoning_effort=ReasoningEffort.MAX,
         )
 
-        call_kwargs = client._client.messages.stream.call_args.kwargs
+        call_kwargs = _sdk(client).messages.stream.call_args.kwargs
         assert call_kwargs["output_config"] == {"effort": "max"}
 
     @pytest.mark.asyncio
@@ -377,7 +389,7 @@ class TestAnthropicReasoningEffort:
             model=Model.CLAUDE_SONNET_5,
         )
 
-        call_kwargs = client._client.messages.stream.call_args.kwargs
+        call_kwargs = _sdk(client).messages.stream.call_args.kwargs
         assert "temperature" not in call_kwargs
         assert "thinking" not in call_kwargs
         assert "output_config" not in call_kwargs
@@ -400,7 +412,7 @@ class TestAnthropicReasoningEffort:
             temperature=0.3,
         )
 
-        call_kwargs = client._client.messages.stream.call_args.kwargs
+        call_kwargs = _sdk(client).messages.stream.call_args.kwargs
         assert call_kwargs["temperature"] == 0.3
 
     @pytest.mark.asyncio
@@ -411,7 +423,7 @@ class TestAnthropicReasoningEffort:
         mock_event = MagicMock()
         mock_event.type = "message_stop"
 
-        async def mock_stream_events():
+        async def mock_stream_events() -> AsyncIterator[Any]:
             yield mock_event
 
         mock_stream = MagicMock()
@@ -419,7 +431,7 @@ class TestAnthropicReasoningEffort:
         mock_stream.__aexit__ = AsyncMock(return_value=None)
         mock_stream.__aiter__ = lambda _: mock_stream_events()
 
-        client._client.messages.stream = MagicMock(return_value=mock_stream)
+        _sdk(client).messages.stream = MagicMock(return_value=mock_stream)
 
         chunks = []
         async for chunk in client.stream(
@@ -429,7 +441,7 @@ class TestAnthropicReasoningEffort:
         ):
             chunks.append(chunk)
 
-        call_kwargs = client._client.messages.stream.call_args.kwargs
+        call_kwargs = _sdk(client).messages.stream.call_args.kwargs
         assert call_kwargs["thinking"] == {"type": "adaptive"}
         assert call_kwargs["output_config"] == {"effort": "medium"}
         assert "temperature" not in call_kwargs
@@ -465,7 +477,7 @@ class TestAnthropicReasoningEffort:
             reasoning_effort=ReasoningEffort.HIGH,
         )
 
-        call_kwargs = client._client.messages.stream.call_args.kwargs
+        call_kwargs = _sdk(client).messages.stream.call_args.kwargs
         assert call_kwargs["thinking"] == {"type": "adaptive"}
         assert call_kwargs["output_config"] == {"effort": "high"}
         assert "temperature" not in call_kwargs
@@ -513,7 +525,7 @@ class TestAnthropicReasoningEffort:
             reasoning_effort=ReasoningEffort.MAX,
         )
 
-        call_kwargs = client._client.messages.stream.call_args.kwargs
+        call_kwargs = _sdk(client).messages.stream.call_args.kwargs
         assert call_kwargs["output_config"] == {"effort": "max"}
 
     @pytest.mark.asyncio
@@ -540,7 +552,7 @@ class TestAnthropicReasoningEffort:
                 reasoning_effort=ReasoningEffort.MAX,
             )
 
-        call_kwargs = client._client.messages.stream.call_args.kwargs
+        call_kwargs = _sdk(client).messages.stream.call_args.kwargs
         assert call_kwargs["output_config"] == {"effort": "high"}
 
     @pytest.mark.asyncio
@@ -561,7 +573,7 @@ class TestAnthropicReasoningEffort:
             reasoning_effort=ReasoningEffort.MAX,
         )
 
-        call_kwargs = client._client.messages.stream.call_args.kwargs
+        call_kwargs = _sdk(client).messages.stream.call_args.kwargs
         assert call_kwargs["output_config"] == {"effort": "max"}
 
     @pytest.mark.asyncio
@@ -572,7 +584,7 @@ class TestAnthropicReasoningEffort:
         mock_event = MagicMock()
         mock_event.type = "message_stop"
 
-        async def mock_stream_events():
+        async def mock_stream_events() -> AsyncIterator[Any]:
             yield mock_event
 
         mock_stream = MagicMock()
@@ -580,7 +592,7 @@ class TestAnthropicReasoningEffort:
         mock_stream.__aexit__ = AsyncMock(return_value=None)
         mock_stream.__aiter__ = lambda _: mock_stream_events()
 
-        client._client.messages.stream = MagicMock(return_value=mock_stream)
+        _sdk(client).messages.stream = MagicMock(return_value=mock_stream)
 
         async for _ in client.stream(
             messages=sample_messages,
@@ -589,7 +601,7 @@ class TestAnthropicReasoningEffort:
         ):
             pass
 
-        call_kwargs = client._client.messages.stream.call_args.kwargs
+        call_kwargs = _sdk(client).messages.stream.call_args.kwargs
         assert call_kwargs["output_config"] == {"effort": "max"}
 
 
@@ -695,7 +707,7 @@ class TestAnthropicReasoningContent:
         mock_stop = MagicMock()
         mock_stop.type = "message_stop"
 
-        async def mock_stream_events():
+        async def mock_stream_events() -> AsyncIterator[Any]:
             yield mock_thinking_event
             yield mock_text_event
             yield mock_stop
@@ -705,7 +717,7 @@ class TestAnthropicReasoningContent:
         mock_stream.__aexit__ = AsyncMock(return_value=None)
         mock_stream.__aiter__ = lambda _: mock_stream_events()
 
-        client._client.messages.stream = MagicMock(return_value=mock_stream)
+        _sdk(client).messages.stream = MagicMock(return_value=mock_stream)
 
         chunks = []
         async for chunk in client.stream(
@@ -766,7 +778,7 @@ class TestAnthropicStreamingToolCalls:
         mock_msg_stop = MagicMock()
         mock_msg_stop.type = "message_stop"
 
-        async def mock_stream_events():  # type: ignore[return]
+        async def mock_stream_events() -> AsyncIterator[Any]:
             yield mock_block_start
             yield mock_input_delta1
             yield mock_input_delta2
@@ -779,7 +791,7 @@ class TestAnthropicStreamingToolCalls:
         mock_stream.__aexit__ = AsyncMock(return_value=None)
         mock_stream.__aiter__ = lambda _: mock_stream_events()
 
-        client._client.messages.stream = MagicMock(return_value=mock_stream)
+        _sdk(client).messages.stream = MagicMock(return_value=mock_stream)
 
         chunks = []
         async for chunk in client.stream(
@@ -787,7 +799,7 @@ class TestAnthropicStreamingToolCalls:
             model=Model.CLAUDE_SONNET_5,
             tools=[
                 ToolDefinition(
-                    name="get_weather",
+                    name=ToolName("get_weather"),
                     description="Get weather",
                     parameters={"type": "object", "properties": {}},
                 )
@@ -832,7 +844,7 @@ class TestAnthropicStreamingToolCalls:
         mock_msg_stop = MagicMock()
         mock_msg_stop.type = "message_stop"
 
-        async def mock_stream_events():  # type: ignore[return]
+        async def mock_stream_events() -> AsyncIterator[Any]:
             yield mock_text_delta
             yield mock_block_start
             yield mock_input_delta
@@ -844,7 +856,7 @@ class TestAnthropicStreamingToolCalls:
         mock_stream.__aexit__ = AsyncMock(return_value=None)
         mock_stream.__aiter__ = lambda _: mock_stream_events()
 
-        client._client.messages.stream = MagicMock(return_value=mock_stream)
+        _sdk(client).messages.stream = MagicMock(return_value=mock_stream)
 
         chunks = []
         async for chunk in client.stream(
@@ -852,7 +864,7 @@ class TestAnthropicStreamingToolCalls:
             model=Model.CLAUDE_SONNET_5,
             tools=[
                 ToolDefinition(
-                    name="search",
+                    name=ToolName("search"),
                     description="Search",
                     parameters={"type": "object", "properties": {}},
                 )
@@ -879,7 +891,7 @@ class TestAnthropicStreamingToolCalls:
         mock_event = MagicMock()
         mock_event.type = "message_stop"
 
-        async def mock_stream_events():  # type: ignore[return]
+        async def mock_stream_events() -> AsyncIterator[Any]:
             yield mock_event
 
         mock_stream = MagicMock()
@@ -887,10 +899,10 @@ class TestAnthropicStreamingToolCalls:
         mock_stream.__aexit__ = AsyncMock(return_value=None)
         mock_stream.__aiter__ = lambda _: mock_stream_events()
 
-        client._client.messages.stream = MagicMock(return_value=mock_stream)
+        _sdk(client).messages.stream = MagicMock(return_value=mock_stream)
 
         tool_def = ToolDefinition(
-            name="calc",
+            name=ToolName("calc"),
             description="Calculate",
             parameters={"type": "object", "properties": {"x": {"type": "number"}}},
         )
@@ -902,7 +914,7 @@ class TestAnthropicStreamingToolCalls:
         ):
             pass
 
-        call_kwargs = client._client.messages.stream.call_args.kwargs
+        call_kwargs = _sdk(client).messages.stream.call_args.kwargs
         assert "tools" in call_kwargs
         assert call_kwargs["tools"][0]["name"] == "calc"
         assert call_kwargs["tools"][0]["input_schema"]["type"] == "object"
@@ -919,7 +931,7 @@ class TestAnthropicStreamingToolCalls:
         mock_stop = MagicMock()
         mock_stop.type = "message_stop"
 
-        async def mock_stream_events():  # type: ignore[return]
+        async def mock_stream_events() -> AsyncIterator[Any]:
             yield mock_text
             yield mock_stop
 
@@ -928,7 +940,7 @@ class TestAnthropicStreamingToolCalls:
         mock_stream.__aexit__ = AsyncMock(return_value=None)
         mock_stream.__aiter__ = lambda _: mock_stream_events()
 
-        client._client.messages.stream = MagicMock(return_value=mock_stream)
+        _sdk(client).messages.stream = MagicMock(return_value=mock_stream)
 
         chunks = []
         async for chunk in client.stream(
@@ -943,7 +955,7 @@ class TestAnthropicStreamingToolCalls:
         assert final.tool_calls == []
 
         # Verify tools not passed to API when None
-        call_kwargs = client._client.messages.stream.call_args.kwargs
+        call_kwargs = _sdk(client).messages.stream.call_args.kwargs
         assert "tools" not in call_kwargs
 
     @pytest.mark.asyncio
@@ -986,7 +998,7 @@ class TestAnthropicStreamingToolCalls:
         mock_msg_stop = MagicMock()
         mock_msg_stop.type = "message_stop"
 
-        async def mock_stream_events():  # type: ignore[return]
+        async def mock_stream_events() -> AsyncIterator[Any]:
             yield mock_start1
             yield mock_input1
             yield mock_stop1
@@ -1000,7 +1012,7 @@ class TestAnthropicStreamingToolCalls:
         mock_stream.__aexit__ = AsyncMock(return_value=None)
         mock_stream.__aiter__ = lambda _: mock_stream_events()
 
-        client._client.messages.stream = MagicMock(return_value=mock_stream)
+        _sdk(client).messages.stream = MagicMock(return_value=mock_stream)
 
         chunks = []
         async for chunk in client.stream(
@@ -1008,12 +1020,12 @@ class TestAnthropicStreamingToolCalls:
             model=Model.CLAUDE_SONNET_5,
             tools=[
                 ToolDefinition(
-                    name="search",
+                    name=ToolName("search"),
                     description="Search",
                     parameters={"type": "object", "properties": {}},
                 ),
                 ToolDefinition(
-                    name="fetch",
+                    name=ToolName("fetch"),
                     description="Fetch",
                     parameters={"type": "object", "properties": {}},
                 ),
@@ -1073,7 +1085,7 @@ class TestAnthropicPromptCaching:
         self, client: AnthropicClient
     ) -> None:
         """Last tool_result message (list content) should get cache_control on last block."""
-        messages = [
+        messages: list[dict[str, Any]] = [
             {"role": "user", "content": "Hello!"},
             {
                 "role": "user",
@@ -1136,12 +1148,12 @@ class TestAnthropicPromptCaching:
         """Only the last tool should have cache_control."""
         tools = [
             ToolDefinition(
-                name="tool_a",
+                name=ToolName("tool_a"),
                 description="Tool A",
                 parameters={"type": "object", "properties": {}},
             ),
             ToolDefinition(
-                name="tool_b",
+                name=ToolName("tool_b"),
                 description="Tool B",
                 parameters={"type": "object", "properties": {}},
             ),
@@ -1178,7 +1190,7 @@ class TestAnthropicPromptCaching:
             model=Model.CLAUDE_SONNET_5,
         )
 
-        call_kwargs = client._client.messages.stream.call_args.kwargs
+        call_kwargs = _sdk(client).messages.stream.call_args.kwargs
         # System should be structured list, not plain string
         system = call_kwargs["system"]
         assert isinstance(system, list)
@@ -1278,7 +1290,7 @@ class TestAnthropicPromptCaching:
         mock_event = MagicMock()
         mock_event.type = "message_stop"
 
-        async def mock_stream_events():
+        async def mock_stream_events() -> AsyncIterator[Any]:
             yield mock_event
 
         mock_stream = MagicMock()
@@ -1286,7 +1298,7 @@ class TestAnthropicPromptCaching:
         mock_stream.__aexit__ = AsyncMock(return_value=None)
         mock_stream.__aiter__ = lambda _: mock_stream_events()
 
-        client._client.messages.stream = MagicMock(return_value=mock_stream)
+        _sdk(client).messages.stream = MagicMock(return_value=mock_stream)
 
         async for _ in client.stream(
             messages=sample_messages,
@@ -1294,7 +1306,7 @@ class TestAnthropicPromptCaching:
         ):
             pass
 
-        call_kwargs = client._client.messages.stream.call_args.kwargs
+        call_kwargs = _sdk(client).messages.stream.call_args.kwargs
         system = call_kwargs["system"]
         assert isinstance(system, list)
         assert system[0]["cache_control"] == {"type": "ephemeral"}
@@ -1326,7 +1338,7 @@ class TestAnthropicPromptCaching:
         mock_msg_stop = MagicMock()
         mock_msg_stop.type = "message_stop"
 
-        async def mock_stream_events():
+        async def mock_stream_events() -> AsyncIterator[Any]:
             yield mock_msg_start
             yield mock_text
             yield mock_msg_delta
@@ -1337,7 +1349,7 @@ class TestAnthropicPromptCaching:
         mock_stream.__aexit__ = AsyncMock(return_value=None)
         mock_stream.__aiter__ = lambda _: mock_stream_events()
 
-        client._client.messages.stream = MagicMock(return_value=mock_stream)
+        _sdk(client).messages.stream = MagicMock(return_value=mock_stream)
 
         chunks = []
         async for chunk in client.stream(
@@ -1381,7 +1393,7 @@ class TestAnthropicPromptCaching:
         mock_msg_stop = MagicMock()
         mock_msg_stop.type = "message_stop"
 
-        async def mock_stream_events():
+        async def mock_stream_events() -> AsyncIterator[Any]:
             yield mock_msg_start
             yield mock_text
             yield mock_msg_delta
@@ -1392,7 +1404,7 @@ class TestAnthropicPromptCaching:
         mock_stream.__aexit__ = AsyncMock(return_value=None)
         mock_stream.__aiter__ = lambda _: mock_stream_events()
 
-        client._client.messages.stream = MagicMock(return_value=mock_stream)
+        _sdk(client).messages.stream = MagicMock(return_value=mock_stream)
 
         chunks = []
         async for chunk in client.stream(
@@ -1426,7 +1438,7 @@ class TestAnthropicPromptCaching:
         mock_event = MagicMock()
         mock_event.type = "message_stop"
 
-        async def mock_stream_events():
+        async def mock_stream_events() -> AsyncIterator[Any]:
             yield mock_event
 
         mock_stream = MagicMock()
@@ -1434,10 +1446,10 @@ class TestAnthropicPromptCaching:
         mock_stream.__aexit__ = AsyncMock(return_value=None)
         mock_stream.__aiter__ = lambda _: mock_stream_events()
 
-        client._client.messages.stream = MagicMock(return_value=mock_stream)
+        _sdk(client).messages.stream = MagicMock(return_value=mock_stream)
 
         tool_def = ToolDefinition(
-            name="calc",
+            name=ToolName("calc"),
             description="Calculate",
             parameters={"type": "object", "properties": {}},
         )
@@ -1449,7 +1461,7 @@ class TestAnthropicPromptCaching:
         ):
             pass
 
-        call_kwargs = client._client.messages.stream.call_args.kwargs
+        call_kwargs = _sdk(client).messages.stream.call_args.kwargs
         tools = call_kwargs["tools"]
         assert tools[-1]["cache_control"] == {"type": "ephemeral"}
 
@@ -1562,7 +1574,7 @@ class TestStripUnsupportedConstraints:
 
     def test_does_not_mutate_original(self) -> None:
         """Original schema dict should not be modified."""
-        schema = {
+        schema: dict[str, Any] = {
             "type": "object",
             "properties": {
                 "x": {"type": "integer", "minimum": 1, "maximum": 10},
@@ -1575,7 +1587,7 @@ class TestStripUnsupportedConstraints:
     def test_convert_tools_strips_constraints(self, client: AnthropicClient) -> None:
         """Strict tools get full strict-mode stripping via _convert_tools."""
         tool = ToolDefinition(
-            name="caption",
+            name=ToolName("caption"),
             description="Add captions",
             parameters={
                 "type": "object",
@@ -1718,7 +1730,7 @@ class TestAnthropicStrictToolUse:
     def test_strict_tool_emits_strict_flag(self, client: AnthropicClient) -> None:
         """A tool with strict=True declares strict: true on the wire."""
         tool = ToolDefinition(
-            name="get_weather",
+            name=ToolName("get_weather"),
             description="Get the weather",
             parameters={"type": "object", "properties": {}},
             strict=True,
@@ -1731,7 +1743,7 @@ class TestAnthropicStrictToolUse:
     ) -> None:
         """Strict tool's object input_schema gets additionalProperties: false set."""
         tool = ToolDefinition(
-            name="get_weather",
+            name=ToolName("get_weather"),
             description="Get the weather",
             parameters={"type": "object", "properties": {}},
             strict=True,
@@ -1744,7 +1756,7 @@ class TestAnthropicStrictToolUse:
     ) -> None:
         """A strict tool that already declares additionalProperties is not overwritten."""
         tool = ToolDefinition(
-            name="passthrough",
+            name=ToolName("passthrough"),
             description="Passthrough tool",
             parameters={
                 "type": "object",
@@ -1776,7 +1788,7 @@ class TestAnthropicStrictToolUse:
     ) -> None:
         """If a caller declared additionalProperties on a non-strict tool, keep it."""
         tool = ToolDefinition(
-            name="passthrough",
+            name=ToolName("passthrough"),
             description="Passthrough tool",
             parameters={
                 "type": "object",
@@ -1793,13 +1805,13 @@ class TestAnthropicStrictToolUse:
     ) -> None:
         """Each tool is treated independently when strict differs across the list."""
         strict_tool = ToolDefinition(
-            name="strict_one",
+            name=ToolName("strict_one"),
             description="Strict tool",
             parameters={"type": "object", "properties": {}},
             strict=True,
         )
         non_strict_tool = ToolDefinition(
-            name="lax_one",
+            name=ToolName("lax_one"),
             description="Non-strict tool",
             parameters={"type": "object", "properties": {}},
             strict=False,
@@ -1817,7 +1829,7 @@ class TestAnthropicStrictToolUse:
     ) -> None:
         """Non-strict tools keep minLength/maxLength (only strict mode strips them)."""
         tool = ToolDefinition(
-            name="caption",
+            name=ToolName("caption"),
             description="Add captions",
             parameters={
                 "type": "object",
@@ -1838,7 +1850,7 @@ class TestAnthropicStrictToolUse:
         """Non-strict tools still drop minimum/maximum (always rejected by Anthropic)
         but keep multipleOf (rejected only under strict mode)."""
         tool = ToolDefinition(
-            name="size",
+            name=ToolName("size"),
             description="Size in pixels",
             parameters={
                 "type": "object",
@@ -1889,8 +1901,8 @@ class TestAnthropicStructuredOutput:
             response_format=ResponseFormat(schema=Out),
         )
 
-        client._client.messages.stream.assert_called_once()
-        call_kwargs = client._client.messages.stream.call_args.kwargs
+        _sdk(client).messages.stream.assert_called_once()
+        call_kwargs = _sdk(client).messages.stream.call_args.kwargs
         # GA shape: format lives under output_config["format"]
         assert "output_config" in call_kwargs
         format_spec = call_kwargs["output_config"]["format"]
@@ -1926,7 +1938,7 @@ class TestAnthropicStructuredOutput:
             reasoning_effort=ReasoningEffort.HIGH,
         )
 
-        call_kwargs = client._client.messages.stream.call_args.kwargs
+        call_kwargs = _sdk(client).messages.stream.call_args.kwargs
         output_config = call_kwargs["output_config"]
         assert output_config["effort"] == "high"
         assert output_config["format"]["type"] == "json_schema"
@@ -2073,7 +2085,7 @@ class TestAnthropicMultimodal:
             Message(
                 role=Role.TOOL,
                 content=[TextBlock(text="result")],
-                tool_call_id="call_123",
+                tool_call_id=ToolCallId("call_123"),
             ),
         ]
         with pytest.raises(UnsupportedContentError):
@@ -2178,7 +2190,7 @@ class TestAnthropicMultimodal:
                 supports_documents=False,
             ),
         )
-        client._client.messages.stream = MagicMock()
+        _sdk(client).messages.stream = MagicMock()
 
         messages = [
             Message(
@@ -2190,7 +2202,7 @@ class TestAnthropicMultimodal:
         with pytest.raises(UnsupportedContentError, match="document"):
             await client.complete(messages=messages, model=Model.CLAUDE_HAIKU_4_5)
 
-        client._client.messages.stream.assert_not_called()
+        _sdk(client).messages.stream.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_complete_surfaces_stop_reason(
@@ -2223,12 +2235,12 @@ class TestAnthropicMultimodal:
         mock_response.model = "claude-sonnet-5"
 
         _mock_complete(client, mock_response)
-        client._client.messages.create = AsyncMock()
+        _sdk(client).messages.create = AsyncMock()
 
         await client.complete(messages=sample_messages, model=Model.CLAUDE_SONNET_5)
 
-        client._client.messages.create.assert_not_called()
-        client._client.messages.stream.assert_called_once()
+        _sdk(client).messages.create.assert_not_called()
+        _sdk(client).messages.stream.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_complete_passes_cache_conversation(
@@ -2248,7 +2260,7 @@ class TestAnthropicMultimodal:
             cache_conversation=False,
         )
 
-        call_kwargs = client._client.messages.stream.call_args.kwargs
+        call_kwargs = _sdk(client).messages.stream.call_args.kwargs
         # Last message keeps its plain-str content (no breakpoint applied)
         assert call_kwargs["messages"][-1]["content"] == "Hello!"
 
@@ -2269,7 +2281,7 @@ class TestAnthropicMultimodal:
         mock_msg_stop = MagicMock()
         mock_msg_stop.type = "message_stop"
 
-        async def mock_stream_events():  # type: ignore[return]
+        async def mock_stream_events() -> AsyncIterator[Any]:
             yield mock_text_delta
             yield mock_msg_delta
             yield mock_msg_stop
@@ -2279,7 +2291,7 @@ class TestAnthropicMultimodal:
         mock_stream.__aexit__ = AsyncMock(return_value=None)
         mock_stream.__aiter__ = lambda _: mock_stream_events()
 
-        client._client.messages.stream = MagicMock(return_value=mock_stream)
+        _sdk(client).messages.stream = MagicMock(return_value=mock_stream)
 
         chunks = []
         async for chunk in client.stream(

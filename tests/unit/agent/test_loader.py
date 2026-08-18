@@ -5,14 +5,14 @@ from pathlib import Path
 
 import pytest
 
-from neosian._cli.loader import _find_project_root, load_agent_config
+from neosian._foundation.agent.loader import _find_project_root, load_agent_config
 from neosian._foundation.shared.exceptions import (
     AgentFileNotFoundError,
     AgentInvalidConfigurationError,
     AgentInvalidDefinitionError,
     AgentMissingConfigurationError,
 )
-from neosian._foundation.shared.types import AgentConfig, Model
+from neosian._foundation.shared.types import AgentConfig, Model, SystemPrompt
 from neosian._foundation.tools.base import Tool, ToolResult
 
 
@@ -137,7 +137,7 @@ class TestAgentConfig:
             return ToolResult.ok("test")
 
         config = AgentConfig(
-            system_prompt="Test prompt",
+            system_prompt=SystemPrompt("Test prompt"),
             tools=[test_tool],
         )
 
@@ -149,7 +149,7 @@ class TestAgentConfig:
     def test_agent_config_with_all_fields(self) -> None:
         """Test AgentConfig with all optional fields."""
         config = AgentConfig(
-            system_prompt="Test prompt",
+            system_prompt=SystemPrompt("Test prompt"),
             tools=[],
             model=Model.GROQ_QWEN3_6_27B,
             enable_todo=False,

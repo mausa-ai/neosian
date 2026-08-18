@@ -1,5 +1,6 @@
 """Tests for Cerebras LLM client."""
 
+from typing import Any, Literal
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -26,7 +27,9 @@ def _make_stream_chunk(
     *,
     content: str | None = None,
     reasoning: str | None = None,
-    finish_reason: str | None = None,
+    finish_reason: (
+        Literal["stop", "length", "content_filter", "tool_calls"] | None
+    ) = None,
     usage: ChatChunkResponseUsage | None = None,
     with_choice: bool = True,
 ) -> ChatChunkResponse:
@@ -51,6 +54,11 @@ def _make_stream_chunk(
         choices=choices,
         usage=usage,
     )
+
+
+def _sdk(client: CerebrasClient) -> Any:
+    """The underlying SDK client, untyped for mock wiring and inspection."""
+    return client._client
 
 
 @pytest.mark.unit
@@ -226,7 +234,7 @@ class TestCerebrasClientRetry:
         client = CerebrasClient(api_key="test-key")
 
         mock_create = AsyncMock()
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         # First call fails, second succeeds
         tool_error = BadRequestError(
@@ -276,7 +284,7 @@ class TestCerebrasClientRetry:
         client = CerebrasClient(api_key="test-key")
 
         mock_create = AsyncMock()
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         tool_error = BadRequestError(
             message="Tool use failed",
@@ -311,7 +319,7 @@ class TestCerebrasClientRetry:
         client = CerebrasClient(api_key="test-key")
 
         mock_create = AsyncMock()
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         tool_error = BadRequestError(
             message="Tool use failed",
@@ -336,7 +344,7 @@ class TestCerebrasClientRetry:
         client = CerebrasClient(api_key="test-key")
 
         mock_create = AsyncMock()
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
@@ -363,7 +371,7 @@ class TestCerebrasClientRetry:
         client = CerebrasClient(api_key="test-key")
 
         mock_create = AsyncMock()
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         other_error = BadRequestError(
             message="Invalid request",
@@ -401,7 +409,7 @@ class TestCerebrasClientReasoningEffort:
         client = CerebrasClient(api_key="test-key")
 
         mock_create = AsyncMock()
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
@@ -442,7 +450,7 @@ class TestCerebrasClientReasoningEffort:
         client = CerebrasClient(api_key="test-key")
 
         mock_create = AsyncMock()
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
@@ -470,7 +478,7 @@ class TestCerebrasClientReasoningEffort:
         client = CerebrasClient(api_key="test-key")
 
         mock_create = AsyncMock()
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         class MockAsyncIterator:
             def __init__(self) -> None:
@@ -518,7 +526,7 @@ class TestCerebrasClientReasoningEffort:
         client = CerebrasClient(api_key="test-key")
 
         mock_create = AsyncMock()
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
@@ -549,7 +557,7 @@ class TestCerebrasClientReasoningEffort:
         client = CerebrasClient(api_key="test-key")
 
         mock_create = AsyncMock()
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
@@ -578,7 +586,7 @@ class TestCerebrasClientReasoningEffort:
         client = CerebrasClient(api_key="test-key")
 
         mock_create = AsyncMock()
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         class MockAsyncIterator:
             def __init__(self) -> None:
@@ -618,7 +626,7 @@ class TestCerebrasClientReasoningContent:
         client = CerebrasClient(api_key="test-key")
 
         mock_create = AsyncMock()
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
@@ -645,7 +653,7 @@ class TestCerebrasClientReasoningContent:
         client = CerebrasClient(api_key="test-key")
 
         mock_create = AsyncMock()
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
@@ -672,7 +680,7 @@ class TestCerebrasClientReasoningContent:
         client = CerebrasClient(api_key="test-key")
 
         mock_create = AsyncMock()
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         class MockAsyncIterator:
             def __init__(self, items: list[object]) -> None:
@@ -716,7 +724,7 @@ class TestCerebrasClientReasoningContent:
         client = CerebrasClient(api_key="test-key")
 
         mock_create = AsyncMock()
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         class MockAsyncIterator:
             def __init__(self, items: list[object]) -> None:
@@ -759,7 +767,7 @@ class TestCerebrasClientMaxCompletionTokens:
         client = CerebrasClient(api_key="test-key")
 
         mock_create = AsyncMock()
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
@@ -819,7 +827,7 @@ class TestCerebrasClientCaching:
                 prompt_tokens=1000, completion_tokens=50, cached_tokens=800
             )
         )
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         response = await client.complete(
             messages=[Message(role=Role.USER, content="Hi")],
@@ -841,7 +849,7 @@ class TestCerebrasClientCaching:
                 prompt_tokens=500, completion_tokens=20, cached_tokens=None
             )
         )
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         response = await client.complete(
             messages=[Message(role=Role.USER, content="Hi")],
@@ -859,7 +867,7 @@ class TestCerebrasClientCaching:
         mock_resp.usage.prompt_tokens_details = MagicMock()
         mock_resp.usage.prompt_tokens_details.cached_tokens = None
         mock_create = AsyncMock(return_value=mock_resp)
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         response = await client.complete(
             messages=[Message(role=Role.USER, content="Hi")],
@@ -878,7 +886,7 @@ class TestCerebrasClientCaching:
                 prompt_tokens=1000, completion_tokens=50, cached_tokens=600
             )
         )
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         response = await client.complete(
             messages=[Message(role=Role.USER, content="Hi")],
@@ -893,7 +901,7 @@ class TestCerebrasClientCaching:
         """Streaming should extract cached tokens from usage-only chunk."""
         client = CerebrasClient(api_key="test-key")
         mock_create = AsyncMock()
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         # Create a usage-only chunk (no choices, has usage)
         usage_chunk = _make_stream_chunk(

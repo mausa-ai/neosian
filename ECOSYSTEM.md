@@ -2,7 +2,8 @@
 
 > Status: **v1, frozen** (2026-08-18). This document is canonical HERE; hosts
 > (first among them: neosae-kit, via its `docs/DESIGN.md §5.7`) reference it.
-> ECOSYSTEM states **what** is frozen; [DESIGN.md](DESIGN.md) says why and how;
+> ECOSYSTEM states **what** is frozen; [DESIGN.md](DESIGN.md) says why and how
+> (working conventions: [CLAUDE.md](CLAUDE.md); env keys: [SERVICES.md](SERVICES.md));
 > if they disagree, that is a bug fixed the same session — and for hosts,
 > ECOSYSTEM wins. Changing anything below is governed by §12.
 

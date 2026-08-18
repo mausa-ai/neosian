@@ -5,8 +5,10 @@
 > [ROADMAP.md](ROADMAP.md) says *in what order* and holds cross-session state.
 > ROADMAP wins on order, DESIGN wins on mechanism.
 > [ECOSYSTEM.md](ECOSYSTEM.md) is the frozen, host-facing subset of this
-> document — for hosts, it wins. Contracts below marked **(NS)**, **(N0)**,
-> **(N1)** land in the named roadmap phase; until then they are spec, not code.
+> document — for hosts, it wins. [CLAUDE.md](CLAUDE.md) carries the working
+> conventions and [SERVICES.md](SERVICES.md) the env-key map. Contracts below
+> marked **(NS)**, **(N0)**, **(N1)** land in the named roadmap phase; until
+> then they are spec, not code.
 
 ## §0 Precedence and reading order
 

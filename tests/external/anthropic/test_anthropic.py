@@ -1,10 +1,10 @@
-"""Integration tests for the Anthropic client (multimodal input, structured output).
+"""External tests for the Anthropic client (multimodal input, structured output).
 
 Requires a real API key:
 - ANTHROPIC_API_KEY: Anthropic API key
 
 Run with:
-    ANTHROPIC_API_KEY=sk-ant-xxx uv run pytest tests/integration/llm/test_anthropic.py -m integration -v
+    ANTHROPIC_API_KEY=sk-ant-xxx uv run pytest -m external_anthropic -v
 """
 
 import base64
@@ -72,7 +72,6 @@ def _build_tiny_pdf(text: str) -> bytes:
     return bytes(out)
 
 
-@pytest.mark.integration
 class TestAnthropicMultimodal:
     """Real-API tests for document input."""
 
@@ -157,7 +156,6 @@ class _Quiz(BaseModel):
     questions: list[_QuizQuestion]
 
 
-@pytest.mark.integration
 class TestAnthropicStructuredOutputNested:
     """A nested BaseModel must round-trip through the real API.
 

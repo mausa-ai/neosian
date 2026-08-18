@@ -98,11 +98,11 @@ declared in `ModelSpec`.
 ## Development
 
 ```bash
-uv run ruff check .
-uv run black .
-uv run mypy --strict neosian/
-uv run pytest tests/unit/ -v
-GROQ_API_KEY=... uv run pytest tests/integration/ -v   # real API calls
+make install    # uv sync --locked --all-groups
+make lint       # ruff + black --check + import-linter
+make typecheck  # mypy --strict neosian tests
+make test       # unit tier — zero API keys
+make test-external provider=groq file=~/path/to/creds   # real API calls
 ```
 
 See [VISION.md](VISION.md) for where the library is headed (memory and context

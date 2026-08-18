@@ -1,7 +1,7 @@
-"""Integration tests for Agent with real LLM.
+"""External tests for Agent with real LLM (Groq).
 
 Requires GROQ_API_KEY environment variable.
-Run with: GROQ_API_KEY=gsk_xxx uv run pytest -m integration -v
+Run with: GROQ_API_KEY=gsk_xxx uv run pytest -m external_groq -v
 """
 
 import asyncio
@@ -10,7 +10,7 @@ import time
 import pytest
 
 from neosian._foundation.agent.base import Agent
-from neosian._foundation.llm.base import Message, Role
+from neosian._foundation.llm.base import Message, Role, text_of
 from neosian._foundation.shared.exceptions import ModelFailedError
 from neosian._foundation.shared.types import (
     AgentConfig,
@@ -21,7 +21,6 @@ from neosian._foundation.shared.types import (
 from neosian._foundation.tools.base import Tool, ToolResult
 
 
-@pytest.mark.integration
 class TestAgentWithGroq:
     """Test Agent with real Groq API."""
 
@@ -74,7 +73,7 @@ class TestAgentWithGroq:
         assert any(tc.name == "get_weather" for tc in response.tool_calls_made)
 
         # Response should mention Tokyo or the weather
-        content_lower = response.message.content.lower()
+        content_lower = text_of(response.message).lower()
         assert (
             "tokyo" in content_lower
             or "sunny" in content_lower
@@ -198,7 +197,6 @@ class TestAgentWithGroq:
         assert any("done" in e for e in events)
 
 
-@pytest.mark.integration
 class TestAgentReasoningEffort:
     """Test Agent with reasoning_effort enabled."""
 

@@ -1,6 +1,6 @@
 """Tests for structured output support."""
 
-from typing import Literal, Union
+from typing import Any, Literal, Union, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -18,6 +18,7 @@ from neosian import (
     ToolResult,
 )
 from neosian._foundation.llm.base import CompletionResponse, Usage
+from neosian._foundation.shared.types import SystemPrompt
 
 
 class WeatherResponse(BaseModel):
@@ -65,7 +66,7 @@ class TestStructuredOutputValidation:
     def agent_without_tools(self, mock_router: MagicMock) -> Agent:
         """Create an agent without tools (including todo disabled)."""
         config = AgentConfig(
-            system_prompt="You are a helpful assistant.",
+            system_prompt=SystemPrompt("You are a helpful assistant."),
             enable_todo=False,  # Disable todo to have no tools
         )
         agent = Agent(config=config)
@@ -81,7 +82,7 @@ class TestStructuredOutputValidation:
             return ToolResult(success=True, data="12:00 PM")
 
         config = AgentConfig(
-            system_prompt="You are a helpful assistant.",
+            system_prompt=SystemPrompt("You are a helpful assistant."),
             tools=[get_time],
             enable_todo=False,
         )
@@ -98,8 +99,8 @@ class TestStructuredOutputValidation:
         rf = ResponseFormat(schema=WeatherResponse)
 
         with pytest.raises(StructuredOutputStreamingError):
-            await agent_without_tools.run(
-                messages, stream=True, response_format=rf  # type: ignore[arg-type]
+            await agent_without_tools.run(  # type: ignore[call-overload]
+                messages, stream=True, response_format=rf
             )
 
     @pytest.mark.asyncio
@@ -252,7 +253,7 @@ class TestUnionTypeSupport:
     def agent_without_tools(self, mock_router: MagicMock) -> Agent:
         """Create an agent without tools (including todo disabled)."""
         config = AgentConfig(
-            system_prompt="You are a helpful assistant.",
+            system_prompt=SystemPrompt("You are a helpful assistant."),
             enable_todo=False,
         )
         agent = Agent(config=config)
@@ -261,13 +262,13 @@ class TestUnionTypeSupport:
 
     def test_response_format_with_union_type(self) -> None:
         """Test creating ResponseFormat with a Union type."""
-        rf = ResponseFormat(schema=OutputUnion)
+        rf = ResponseFormat(schema=cast(Any, OutputUnion))
         assert rf.strict is True
 
     def test_response_format_with_pipe_union(self) -> None:
         """Test creating ResponseFormat with pipe union syntax."""
         PipeUnion = TTSOutput | MusicOutput
-        rf = ResponseFormat(schema=PipeUnion)
+        rf = ResponseFormat(schema=cast(Any, PipeUnion))
         assert rf.strict is True
 
     @pytest.mark.asyncio
@@ -290,7 +291,7 @@ class TestUnionTypeSupport:
         mock_router.create_client.return_value = mock_client
 
         messages = [Message(role=Role.USER, content="Generate audio")]
-        rf = ResponseFormat(schema=OutputUnion)
+        rf = ResponseFormat(schema=cast(Any, OutputUnion))
 
         response = await agent_without_tools.run(
             messages, stream=False, response_format=rf
@@ -321,7 +322,7 @@ class TestUnionTypeSupport:
         mock_router.create_client.return_value = mock_client
 
         messages = [Message(role=Role.USER, content="Generate music")]
-        rf = ResponseFormat(schema=OutputUnion)
+        rf = ResponseFormat(schema=cast(Any, OutputUnion))
 
         response = await agent_without_tools.run(
             messages, stream=False, response_format=rf
@@ -354,7 +355,7 @@ class TestUnionTypeSupport:
         mock_router.create_client.return_value = mock_client
 
         messages = [Message(role=Role.USER, content="Generate audio")]
-        rf = ResponseFormat(schema=PipeUnion)
+        rf = ResponseFormat(schema=cast(Any, PipeUnion))
 
         response = await agent_without_tools.run(
             messages, stream=False, response_format=rf

@@ -1,5 +1,7 @@
 """neosian - Stateless agentic AI library."""
 
+from importlib.metadata import version as _pkg_version
+
 from neosian._foundation.agent.base import Agent, AgentResponse
 from neosian._foundation.agent.session import AgentSession
 from neosian._foundation.agent.streaming import (
@@ -77,7 +79,7 @@ from neosian._foundation.shared.types import (
 )
 from neosian._foundation.tools.base import Tool, ToolResult
 
-__version__ = "0.52.0"
+__version__ = _pkg_version("neosian")
 
 __all__ = [
     # Agent

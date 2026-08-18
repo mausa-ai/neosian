@@ -5,22 +5,64 @@ on:
     branches: [master]
   pull_request:
   workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1" # weekly external-provider run
 
+# Event-keyed so a master push cannot cancel the scheduled run (DESIGN §11).
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  check:
-    runs-on: ubuntu-latest
+  lint:
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
       - run: uv python install 3.12
-      - run: uv sync --locked --all-groups
-      - run: uv run ruff check .
-      - run: uv run black --check .
-      - run: uv run mypy --strict neosian/
-      - run: uv run pytest tests/unit/ -v
+      - run: make install
+      - run: make lint
+      - run: make typecheck
+      - run: make size
+
+  # No secrets here — that absence is the keyless-boot assertion (DESIGN §11).
+  test:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv python install ${{ matrix.python-version }}
+      - run: make install
+      - run: make test
+
+  # Schedule/dispatch only; an absent secret arrives as "" and the suite
+  # self-skips per test (falsiness checks), keeping the job green.
+  external:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        provider: [groq, openai, anthropic, cerebras]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv python install 3.12
+      - run: make install
+      - run: uv run pytest -m external_${{ matrix.provider }} -v
+        env:
+          GROQ_API_KEY: ${{ matrix.provider == 'groq' && secrets.GROQ_API_KEY || '' }}
+          OPENAI_API_KEY: ${{ matrix.provider == 'openai' && secrets.OPENAI_API_KEY || '' }}
+          ANTHROPIC_API_KEY: ${{ matrix.provider == 'anthropic' && secrets.ANTHROPIC_API_KEY || '' }}
+          CEREBRAS_API_KEY: ${{ matrix.provider == 'cerebras' && secrets.CEREBRAS_API_KEY || '' }}

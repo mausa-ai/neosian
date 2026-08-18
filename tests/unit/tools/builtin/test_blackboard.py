@@ -68,6 +68,7 @@ class TestListBlackboardTool:
         result = await list_bb()
 
         assert result.success
+        assert result.data is not None
         assert len(result.data) == 2
         names = {e["name"] for e in result.data}
         assert "workspace" in names
@@ -108,6 +109,7 @@ class TestReadBlackboardTool:
         result = await read_bb(name="workspace")
 
         assert result.success
+        assert result.data is not None
         assert "image1: url1" in result.data
 
     @pytest.mark.asyncio
@@ -149,11 +151,13 @@ class TestUpdateBlackboardTool:
 
         result = await update_bb(name="workspace", content="image3: url3")
         assert result.success
+        assert result.data is not None
         assert "workspace" in result.data
 
         # Verify the update
         read_result = await read_bb(name="workspace")
         assert read_result.success
+        assert read_result.data is not None
         assert "image3: url3" in read_result.data
 
     @pytest.mark.asyncio

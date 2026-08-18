@@ -3,6 +3,7 @@
 import json
 import tempfile
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -76,7 +77,7 @@ class TestSession:
         session.add_user_message("Hello")
         session.add_assistant_message("Hi!")
 
-        data = session.to_dict()
+        data: dict[str, Any] = session.to_dict()
 
         assert data["agent_name"] == "test_agent"
         assert "started_at" in data
@@ -133,8 +134,6 @@ class TestSessionMultimodalPersistence:
     """Sessions with block-list content must stay JSON-serializable."""
 
     def test_to_dict_with_block_content_is_json_serializable(self) -> None:
-        import json
-
         from neosian._foundation.llm.base import DocumentBlock, TextBlock
 
         session = Session(agent_name="test-agent")
@@ -149,7 +148,7 @@ class TestSessionMultimodalPersistence:
         )
         session.add_assistant_message("# Transcription")
 
-        data = session.to_dict()
+        data: dict[str, Any] = session.to_dict()
         encoded = json.dumps(data)  # Must not raise
 
         assert "Transcribe this." in encoded

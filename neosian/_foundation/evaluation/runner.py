@@ -14,9 +14,8 @@ import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 
-from neosian._cli.loader import load_agent_config
-from neosian._cli.playground import _load_credentials_from_config
 from neosian._foundation.agent.base import Agent
+from neosian._foundation.agent.loader import load_agent_config
 from neosian._foundation.evaluation.mocker import mock_agent_tools
 from neosian._foundation.evaluation.prompt_config import load_prompt_config
 from neosian._foundation.evaluation.scorer import score_turn
@@ -100,9 +99,6 @@ async def run_evaluation(
     Returns:
         List of EvalResult for each combination.
     """
-    # Load credentials from config file into environment
-    _load_credentials_from_config()
-
     results: list[EvalResult] = []
 
     first_case = True

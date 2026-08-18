@@ -1,8 +1,9 @@
 [project]
 name = "neosian"
-dynamic = ["version"]
+version = "0.53.0"
 description = "Stateless agentic AI library. LLM orchestration, tool execution, streaming."
 readme = "README.md"
+license = "Apache-2.0"
 requires-python = ">=3.12"
 dependencies = [
     "anthropic>=0.122.0",
@@ -21,6 +22,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "black>=26.5.1",
+    "import-linter>=2.13",
     "mypy>=2.3.1",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
@@ -31,9 +33,14 @@ dev = [
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+addopts = "-m 'not external' --strict-markers"
 markers = [
-    "unit: Fast tests with mocked dependencies",
-    "integration: Tests with real API calls",
+    "unit: Fast tests on fakes only — the default, fully keyless gate",
+    "external: Any test making real API calls (excluded by default)",
+    "external_groq: Real Groq API calls",
+    "external_openai: Real OpenAI API calls",
+    "external_anthropic: Real Anthropic API calls",
+    "external_cerebras: Real Cerebras API calls",
 ]
 testpaths = ["tests"]
 filterwarnings = [
@@ -82,12 +89,21 @@ ignore = [
               # serialization-heavy public enums (Model, Role, SSEEventType)
 ]
 
+# Layering (DESIGN §1) — forbidden contracts only. The memory/Conversation ↛
+# provider-internals contract lands with the memory module in N1 (import-linter
+# rejects contracts naming modules that do not exist yet).
+[tool.importlinter]
+root_packages = ["neosian"]
+
+[[tool.importlinter.contracts]]
+name = "the library never imports its CLI"
+type = "forbidden"
+source_modules = ["neosian._foundation"]
+forbidden_modules = ["neosian._cli"]
+
 [project.scripts]
 neosian = "neosian._cli.main:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
-
-[tool.hatch.version]
-path = "neosian/__init__.py"

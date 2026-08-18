@@ -1,5 +1,7 @@
 """Tests for type definitions."""
 
+from typing import cast
+
 import pytest
 
 from neosian._foundation.shared.exceptions import (
@@ -45,7 +47,7 @@ class TestProviderEnum:
     def test_provider_is_string_compatible(self) -> None:
         """Provider should be string-compatible."""
         # Direct comparison works due to str, Enum inheritance
-        assert Provider.GROQ == "groq"
+        assert cast(str, Provider.GROQ) == "groq"
         # Can be used in string operations
         assert f"provider: {Provider.GROQ.value}" == "provider: groq"
 
@@ -64,7 +66,7 @@ class TestModelEnum:
     def test_model_is_string_compatible(self) -> None:
         """Model should be string-compatible."""
         # Direct comparison works due to str, Enum inheritance
-        assert Model.GROQ_GPT_OSS_20B == "openai/gpt-oss-20b"
+        assert cast(str, Model.GROQ_GPT_OSS_20B) == "openai/gpt-oss-20b"
         # Can be used in string operations
         assert f"model: {Model.GROQ_GPT_OSS_20B.value}" == "model: openai/gpt-oss-20b"
 

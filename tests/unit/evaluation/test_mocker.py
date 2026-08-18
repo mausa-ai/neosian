@@ -66,8 +66,8 @@ class TestCreateMockTool:
         mock_tool = create_mock_tool(my_tool, captures)
 
         assert hasattr(mock_tool, "_tool_metadata")
-        assert mock_tool._tool_metadata.name == "my_tool"  # type: ignore[attr-defined]
-        assert mock_tool._tool_metadata.description == "A test tool for testing"  # type: ignore[attr-defined]
+        assert mock_tool._tool_metadata.name == "my_tool"
+        assert mock_tool._tool_metadata.description == "A test tool for testing"
 
     @pytest.mark.asyncio
     async def test_mock_tool_multiple_calls(self) -> None:

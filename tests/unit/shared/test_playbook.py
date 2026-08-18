@@ -13,6 +13,7 @@ from neosian._foundation.shared.exceptions import (
     PlaybookMissingKeyError,
 )
 from neosian._foundation.shared.playbook import load_playbook, load_playbooks
+from neosian._foundation.shared.types import PlaybookName
 
 VALID_PLAYBOOK = """\
 ---
@@ -132,7 +133,7 @@ class TestLoadPlaybook:
             playbook = load_playbook(f.name)
 
             with pytest.raises(AttributeError):
-                playbook.name = "modified"  # type: ignore[misc]
+                playbook.name = PlaybookName("modified")  # type: ignore[misc]
 
 
 @pytest.mark.unit

@@ -49,6 +49,7 @@ class TestListPlaybooksTool:
         result = await list_pb()
 
         assert result.success
+        assert result.data is not None
         assert len(result.data) == 2
         assert result.data[0] == {
             "name": "code-review",

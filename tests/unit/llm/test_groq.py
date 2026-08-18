@@ -1,5 +1,6 @@
 """Tests for Groq LLM client."""
 
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -13,6 +14,11 @@ from neosian._foundation.shared.exceptions import (
     UnsupportedParameterError,
 )
 from neosian._foundation.shared.types import Model, ReasoningEffort, ToolName
+
+
+def _sdk(client: GroqClient) -> Any:
+    """The underlying SDK client, untyped for mock wiring and inspection."""
+    return client._client
 
 
 @pytest.mark.unit
@@ -175,7 +181,7 @@ class TestGroqClientRetry:
 
         # Mock the internal client
         mock_create = AsyncMock()
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         # First call fails, second succeeds
         tool_error = BadRequestError(
@@ -225,7 +231,7 @@ class TestGroqClientRetry:
         client = GroqClient(api_key="test-key")
 
         mock_create = AsyncMock()
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         tool_error = BadRequestError(
             message="Tool use failed",
@@ -261,7 +267,7 @@ class TestGroqClientRetry:
         client = GroqClient(api_key="test-key")
 
         mock_create = AsyncMock()
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         tool_error = BadRequestError(
             message="Tool use failed",
@@ -287,7 +293,7 @@ class TestGroqClientRetry:
         client = GroqClient(api_key="test-key")
 
         mock_create = AsyncMock()
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
@@ -314,7 +320,7 @@ class TestGroqClientRetry:
         client = GroqClient(api_key="test-key")
 
         mock_create = AsyncMock()
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         # Different error code - not a tool call error
         other_error = BadRequestError(
@@ -355,7 +361,7 @@ class TestGroqClientReasoningEffort:
         client = GroqClient(api_key="test-key")
 
         mock_create = AsyncMock()
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
@@ -396,7 +402,7 @@ class TestGroqClientReasoningEffort:
         client = GroqClient(api_key="test-key")
 
         mock_create = AsyncMock()
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
@@ -423,7 +429,7 @@ class TestGroqClientReasoningEffort:
         client = GroqClient(api_key="test-key")
 
         mock_create = AsyncMock()
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         # Mock async iterator
         class MockAsyncIterator:
@@ -473,7 +479,7 @@ class TestGroqClientReasoningEffort:
         client = GroqClient(api_key="test-key")
 
         mock_create = AsyncMock()
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
@@ -504,7 +510,7 @@ class TestGroqClientReasoningEffort:
         client = GroqClient(api_key="test-key")
 
         mock_create = AsyncMock()
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
@@ -531,7 +537,7 @@ class TestGroqClientReasoningEffort:
         client = GroqClient(api_key="test-key")
 
         mock_create = AsyncMock()
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         # Mock async iterator
         class MockAsyncIterator:
@@ -572,7 +578,7 @@ class TestGroqClientReasoningContent:
         client = GroqClient(api_key="test-key")
 
         mock_create = AsyncMock()
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
@@ -599,7 +605,7 @@ class TestGroqClientReasoningContent:
         client = GroqClient(api_key="test-key")
 
         mock_create = AsyncMock()
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
@@ -627,7 +633,7 @@ class TestGroqClientReasoningContent:
         client = GroqClient(api_key="test-key")
 
         mock_create = AsyncMock()
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         class MockAsyncIterator:
             def __init__(self, items: list[object]) -> None:
@@ -694,7 +700,7 @@ class TestGroqClientReasoningContent:
         client = GroqClient(api_key="test-key")
 
         mock_create = AsyncMock()
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         class MockAsyncIterator:
             def __init__(self, items: list[object]) -> None:

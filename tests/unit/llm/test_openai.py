@@ -1,5 +1,6 @@
 """Tests for OpenAI LLM client."""
 
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -13,6 +14,11 @@ from neosian._foundation.shared.exceptions import (
     UnsupportedParameterError,
 )
 from neosian._foundation.shared.types import Model, ReasoningEffort, ToolName
+
+
+def _sdk(client: OpenAIClient) -> Any:
+    """The underlying SDK client, untyped for mock wiring and inspection."""
+    return client._client
 
 
 @pytest.mark.unit
@@ -199,7 +205,7 @@ class TestOpenAIClientRetry:
 
         # Mock the internal client
         mock_create = AsyncMock()
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         # First call fails, second succeeds
         tool_error = BadRequestError(
@@ -241,7 +247,7 @@ class TestOpenAIClientRetry:
         client = OpenAIClient(api_key="test-key")
 
         mock_create = AsyncMock()
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         tool_error = BadRequestError(
             message="Invalid tool call",
@@ -277,7 +283,7 @@ class TestOpenAIClientRetry:
         client = OpenAIClient(api_key="test-key")
 
         mock_create = AsyncMock()
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         tool_error = BadRequestError(
             message="Invalid tool call",
@@ -303,7 +309,7 @@ class TestOpenAIClientRetry:
         client = OpenAIClient(api_key="test-key")
 
         mock_create = AsyncMock()
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         # Different error code - not a tool call error
         other_error = BadRequestError(
@@ -358,7 +364,7 @@ class TestOpenAIClientTemperature:
         client = OpenAIClient(api_key="test-key")
 
         mock_create = AsyncMock()
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
@@ -399,7 +405,7 @@ class TestOpenAIClientReasoningEffort:
         """reasoning_effort HIGH should be passed to the API."""
         client = OpenAIClient(api_key="test-key")
         mock_create = AsyncMock(return_value=self._mock_response())
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         await client.complete(
             messages=[Message(role=Role.USER, content="Think carefully")],
@@ -415,7 +421,7 @@ class TestOpenAIClientReasoningEffort:
         """reasoning_effort LOW should be passed for GPT-5 models."""
         client = OpenAIClient(api_key="test-key")
         mock_create = AsyncMock(return_value=self._mock_response())
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         await client.complete(
             messages=[Message(role=Role.USER, content="Hi")],
@@ -432,7 +438,7 @@ class TestOpenAIClientReasoningEffort:
 
         client = OpenAIClient(api_key="test-key")
         mock_create = AsyncMock(return_value=self._mock_response())
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         await client.complete(
             messages=[Message(role=Role.USER, content="Hi")],
@@ -446,7 +452,7 @@ class TestOpenAIClientReasoningEffort:
         """reasoning_effort MAX should be downgraded to HIGH for OpenAI models."""
         client = OpenAIClient(api_key="test-key")
         mock_create = AsyncMock(return_value=self._mock_response())
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         await client.complete(
             messages=[Message(role=Role.USER, content="Think")],
@@ -465,7 +471,7 @@ class TestOpenAIClientReasoningEffort:
 
         client = OpenAIClient(api_key="test-key")
         mock_create = AsyncMock(return_value=self._mock_response())
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         with caplog.at_level(logging.WARNING, logger="neosian._foundation.llm.openai"):
             await client.complete(
@@ -483,7 +489,7 @@ class TestOpenAIClientReasoningEffort:
         mock_create = AsyncMock(
             return_value=self._mock_response("gpt-5-pro-2025-10-06")
         )
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         await client.complete(
             messages=[Message(role=Role.USER, content="Think")],
@@ -500,7 +506,7 @@ class TestOpenAIClientReasoningEffort:
         mock_create = AsyncMock(
             return_value=self._mock_response("gpt-5-pro-2025-10-06")
         )
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         await client.complete(
             messages=[Message(role=Role.USER, content="Think")],
@@ -517,7 +523,7 @@ class TestOpenAIClientReasoningEffort:
         mock_create = AsyncMock(
             return_value=self._mock_response("gpt-5-pro-2025-10-06")
         )
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         await client.complete(
             messages=[Message(role=Role.USER, content="Think")],
@@ -538,7 +544,7 @@ class TestOpenAIClientReasoningEffort:
         mock_create = AsyncMock(
             return_value=self._mock_response("gpt-5-pro-2025-10-06")
         )
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         with caplog.at_level(logging.WARNING, logger="neosian._foundation.llm.openai"):
             await client.complete(
@@ -554,7 +560,7 @@ class TestOpenAIClientReasoningEffort:
         """reasoning_effort should be passed in stream() method."""
         client = OpenAIClient(api_key="test-key")
         mock_create = AsyncMock()
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         async def empty_stream() -> None:
             return
@@ -587,7 +593,7 @@ class TestOpenAIClientReasoningEffort:
         """reasoning_effort MAX in stream() should be downgraded to HIGH."""
         client = OpenAIClient(api_key="test-key")
         mock_create = AsyncMock()
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         class EmptyAsyncIter:
             def __aiter__(self) -> "EmptyAsyncIter":
@@ -645,7 +651,7 @@ class TestOpenAIPromptCaching:
                 prompt_tokens=1000, completion_tokens=50, cached_tokens=800
             )
         )
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         response = await client.complete(
             messages=[Message(role=Role.USER, content="Hi")],
@@ -667,7 +673,7 @@ class TestOpenAIPromptCaching:
                 prompt_tokens=500, completion_tokens=20, cached_tokens=None
             )
         )
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         response = await client.complete(
             messages=[Message(role=Role.USER, content="Hi")],
@@ -685,7 +691,7 @@ class TestOpenAIPromptCaching:
         mock_resp.usage.prompt_tokens_details = MagicMock()
         mock_resp.usage.prompt_tokens_details.cached_tokens = None
         mock_create = AsyncMock(return_value=mock_resp)
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         response = await client.complete(
             messages=[Message(role=Role.USER, content="Hi")],
@@ -704,7 +710,7 @@ class TestOpenAIPromptCaching:
                 prompt_tokens=1000, completion_tokens=50, cached_tokens=600
             )
         )
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         response = await client.complete(
             messages=[Message(role=Role.USER, content="Hi")],
@@ -719,7 +725,7 @@ class TestOpenAIPromptCaching:
         """Streaming should extract cached tokens from usage-only chunk."""
         client = OpenAIClient(api_key="test-key")
         mock_create = AsyncMock()
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         # Create a usage-only chunk (no choices, has usage)
         usage_chunk = MagicMock()
@@ -763,7 +769,7 @@ class TestOpenAIPromptCaching:
         """Streaming should handle missing prompt_tokens_details gracefully."""
         client = OpenAIClient(api_key="test-key")
         mock_create = AsyncMock()
-        client._client.chat.completions.create = mock_create
+        _sdk(client).chat.completions.create = mock_create
 
         usage_chunk = MagicMock()
         usage_chunk.choices = []
@@ -841,7 +847,7 @@ class TestOpenAINestedSchema:
 
         client = OpenAIClient(api_key="test-key")
         payload = client._convert_response_format(ResponseFormat(schema=Quiz))
-        schema = payload["json_schema"]["schema"]  # type: ignore[index,typeddict-item]
+        schema = cast(Any, payload)["json_schema"]["schema"]
 
         assert schema["additionalProperties"] is False
         assert schema["$defs"]["Question"]["additionalProperties"] is False

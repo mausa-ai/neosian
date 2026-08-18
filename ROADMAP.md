@@ -1,12 +1,12 @@
 # Neosian Roadmap — Memory & Conversation
 
-> **▶ Current phase: NH — The house**
+> **▶ Current phase: NS — The seams freeze**
 >
-> *(2026-08-18: the ecosystem contract landed — [ECOSYSTEM.md](ECOSYSTEM.md) is
-> canonical here, referenced by neosae-kit's DESIGN §5.7; the constitution docs
-> (DESIGN, CLAUDE, SERVICES, LICENSE) exist. Standing ruling: neosian's phases
+> *(2026-08-18: NH done — Makefile + gates (incl. `mypy --strict` over tests),
+> `external_<provider>` tiering, version flip to 0.53.0, CI matrix 3.12–3.14;
+> matrix-green is confirmed at /ship. Standing ruling: neosian's phases
 > NH, NS, then N0–N4 run to completion before the kit's P10 vendors from a
-> `v<X.Y.Z>` release tag. Next: NH → NS → N0.)*
+> `v<X.Y.Z>` release tag. Next: NS → N0.)*
 >
 > The pointer above must equal the first phase heading without ✅ — if they
 > disagree, say so and trust the checkboxes. Companion to [VISION.md](VISION.md)
@@ -115,37 +115,43 @@ These are settled and shape every phase:
 
 ---
 
-## NH — The house (v0.53)
+## NH — The house (v0.53) ✅ 2026-08-18
 
 DESIGN: §10, §11, §12.
 
 The kit-grade development-to-ship systems, adopted wholesale. No public-API
 changes in this phase.
 
-- [ ] The four constitution docs cross-link and agree (ECOSYSTEM, DESIGN,
-      CLAUDE, SERVICES — written 2026-08-18; NH verifies and fixes drift)
-- [ ] `.claude/` tracked (only `settings.local.json` ignored); `/phase` and
-      `/ship` rewritten against this file's protocol *(done 2026-08-18 —
-      verify they match the Makefile once it exists)*
-- [ ] `Makefile` per DESIGN §11 (help idiom; lint / format / typecheck / test /
+- [x] The four constitution docs cross-link and agree (ECOSYSTEM, DESIGN,
+      CLAUDE, SERVICES — written 2026-08-18; NH verified and fixed drift:
+      Makefile paragraph, weekly cadence, `_key_or_skip` name, cross-links)
+- [x] `.claude/` tracked (only `settings.local.json` ignored); `/phase` and
+      `/ship` rewritten against this file's protocol *(done 2026-08-18;
+      verified against the Makefile — pre-Makefile fallback removed)*
+- [x] `Makefile` per DESIGN §11 (help idiom; lint / format / typecheck / test /
       test-external / size / release / phase-tag; dirty-tree + required-arg
       guards)
-- [ ] Version flip: `[project].version` literal, `__version__` via
+- [x] Version flip: `[project].version` literal, `__version__` via
       `importlib.metadata`, `[tool.hatch.version]` deleted,
-      `tests/unit/test_version.py` pins the derivation
-- [ ] Test-tier rename: real-API "integration" → `external_<provider>`
+      `tests/unit/test_version.py` pins the derivation *(SPDX `license`
+      field added alongside)*
+- [x] Test-tier rename: real-API "integration" → `external_<provider>`
       markers; addopts exclude external by default; auto-mark by path in the
       root conftest; per-test skip helpers (never module-level); falsiness
-      key checks
-- [ ] `scripts/external_env.py` (value-blind cred injection, per-suite key
+      key checks *(suites restructured by provider dir; the groq
+      agent/session suites gained the skip guard they were missing)*
+- [x] `scripts/external_env.py` (value-blind cred injection, per-suite key
       allowlist, prints names only) + `scripts/check_file_size.py` (warn 300 /
-      fail 500; allowlist `neosian/_foundation/agent/base.py` with reason
-      "split lands in N0")
-- [ ] import-linter contracts in pyproject (DESIGN §1) wired into `make lint`
-- [ ] CI reshape per DESIGN §11: lint job · test matrix 3.12/3.13/3.14 with
+      fail 500; the allowlist holds **five** files ≥ 500, each with a
+      reason — playground, types, anthropic, exceptions join `agent/base.py`)
+- [x] import-linter contracts in pyproject (DESIGN §1) wired into `make lint`
+      *(first run caught a real break: `evaluation/runner` imported `_cli` —
+      loader moved to `_foundation/agent/loader.py`, CLI-config credential
+      loading hoisted into the CLI eval command)*
+- [x] CI reshape per DESIGN §11: lint job · test matrix 3.12/3.13/3.14 with
       **no secrets** · external-provider jobs (schedule/dispatch,
       empty-string self-skip); event-keyed concurrency; pinned ubuntu-24.04
-- [ ] LICENSE = Apache-2.0 committed *(done 2026-08-18)*
+- [x] LICENSE = Apache-2.0 committed *(done 2026-08-18)*
 
 **Done when:** `make lint typecheck test` is green with zero API keys set; CI
 is green on 3.12, 3.13 and 3.14; the docs agree with the tree.
@@ -349,3 +355,19 @@ DESIGN: §2, §6, §10.
   (session guard skip; `model=` dropped when input guardrails pass; per-model
   usage impossible under fallback) — registered in DESIGN §3, scheduled NS/N0.
   Docs only; no code touched.
+- 2026-08-18 | NH | **The house.** Makefile (§11 targets + guards); version
+  flip (`[project].version` = 0.53.0, `__version__` via importlib.metadata,
+  pinned by `test_version.py`); tier rename to
+  `tests/external/{groq,cerebras,anthropic,cross}` with path auto-marking,
+  `-m "not external" --strict-markers` addopts, consolidated `_key_or_skip`
+  (the groq agent/session suites had **no** skip mechanism — fixed);
+  `scripts/{check_file_size,external_env}.py` (size allowlist: five files
+  ≥ 500, each with a reason); import-linter wired — its first run caught
+  `evaluation/runner → _cli` (loader moved to `_foundation/agent/loader.py`,
+  credential loading hoisted to the CLI eval command). `mypy --strict
+  neosian tests` fixed for real: 207 errors → 0 (Any-typed `_sdk()` mock
+  accessors, NewType wraps, `_python_type_to_json_schema` annotation widened
+  to its documented contract). CI: lint · keyless 3.12–3.14 matrix ·
+  external×4 with per-provider secret isolation; event-keyed concurrency;
+  ubuntu-24.04. Docs drift fixed (CLAUDE/SERVICES/README/commands).
+  Carried forward: matrix-green confirmation happens at /ship.

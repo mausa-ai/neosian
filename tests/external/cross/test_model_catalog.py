@@ -3,7 +3,7 @@
 Catches silent provider catalog churn (deprecated/renamed model IDs) that
 unit tests cannot see. Run per provider with the matching env var set:
 
-    GROQ_API_KEY=gsk_xxx uv run pytest tests/integration/llm/test_model_catalog.py -v
+    GROQ_API_KEY=gsk_xxx uv run pytest -m external_groq tests/external/cross -v
 """
 
 import pytest
@@ -20,7 +20,6 @@ _PROVIDER_FIXTURES: dict[Provider, str] = {
 }
 
 
-@pytest.mark.integration
 @pytest.mark.parametrize("model", list(Model), ids=lambda m: m.value)
 async def test_model_answers_minimal_completion(
     model: Model, request: pytest.FixtureRequest

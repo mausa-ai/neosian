@@ -1,18 +1,17 @@
-"""Integration tests for AgentSession with real LLM.
+"""External tests for AgentSession with real LLM (Groq).
 
 Requires GROQ_API_KEY environment variable.
-Run with: GROQ_API_KEY=gsk_xxx uv run pytest -m integration -v
+Run with: GROQ_API_KEY=gsk_xxx uv run pytest -m external_groq -v
 """
 
 import pytest
 
 from neosian._foundation.agent.base import Agent
-from neosian._foundation.llm.base import Message, Role
+from neosian._foundation.llm.base import Message, Role, text_of
 from neosian._foundation.shared.types import AgentConfig, Model, SystemPrompt
 from neosian._foundation.tools.base import Tool, ToolResult
 
 
-@pytest.mark.integration
 class TestAgentSessionWithGroq:
     """Test AgentSession with real Groq API."""
 
@@ -167,7 +166,7 @@ class TestAgentSessionWithGroq:
             # Model should remember the name from context
             assert response2.message.content is not None
             # The name should appear in the response
-            assert "alice" in response2.message.content.lower()
+            assert "alice" in text_of(response2.message).lower()
 
             # Only one client used throughout
             assert len(session._clients) == 1

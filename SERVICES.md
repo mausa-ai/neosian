@@ -1,5 +1,8 @@
 # Services & keys
 
+> Companion to [CLAUDE.md](CLAUDE.md) (conventions), [DESIGN.md](DESIGN.md)
+> §10–§11 (harness and CI), and [ECOSYSTEM.md](ECOSYSTEM.md) (frozen seams).
+
 **Keyless boot is the invariant**: `make lint`, `make typecheck` and
 `make test` need **zero third-party accounts**. FakeProvider
 (`Provider.FAKE`, `Model.FAKE*` — ships in phase NS) is the keyless path; the
@@ -28,10 +31,10 @@ FakeProvider), and passes its full default test tier.
 `make test-external provider=<groq|openai|anthropic|cerebras>` runs that
 provider's real-API suite (`-m external_<provider>`).
 
-- `file=<envfile>` routes through `scripts/external_env.py` (phase NH):
+- `file=<envfile>` routes through `scripts/external_env.py`:
   **value-blind** injection — a per-suite allowlist names exactly which keys
   the suite may see; stdout prints key *names* only, never values.
-- Suites skip **per test** via a `_client_or_skip()`-style helper — never a
+- Suites skip **per test** via the `_key_or_skip()` helper — never a
   module-level skip (an empty selection makes pytest exit 5).
 - The presence check tests **falsiness**, not `None`: an absent GitHub
   Actions secret arrives as the empty string.

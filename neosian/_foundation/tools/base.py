@@ -266,7 +266,7 @@ def _convert_basic_type(python_type: type[Any]) -> dict[str, Any]:
 
 
 def _python_type_to_json_schema(
-    python_type: type[Any],
+    python_type: Any,  # a type or typing special form (Union, Literal, Annotated…)
     default: Any = inspect.Parameter.empty,
 ) -> dict[str, Any]:
     """Convert a Python type hint to JSON Schema type.
