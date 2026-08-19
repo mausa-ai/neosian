@@ -12,6 +12,7 @@ from neosian._foundation.agent.context import Attempt
 from neosian._foundation.agent.emit import emit_fallback
 from neosian._foundation.agent.fallback import (
     ensure_fallback_viable,
+    reraise_caller_errors,
     unsupported_content_types,
 )
 from neosian._foundation.agent.guards import (
@@ -28,7 +29,6 @@ from neosian._foundation.shared.constants import ErrorMessages
 from neosian._foundation.shared.exceptions import (
     FallbackExhaustedError,
     ModelFailedError,
-    UnsupportedContentError,
 )
 from neosian._foundation.shared.types import (
     GuardrailMode,
@@ -210,8 +210,7 @@ async def execute_agent_core(
         main_error = str(e)
         # No fallback configured - raise immediately
         if agent._fallback is None:
-            if isinstance(e, UnsupportedContentError):
-                raise
+            reraise_caller_errors(e, attempt)
             raise ModelFailedError(
                 model=agent._model.value,
                 error=main_error,
@@ -318,8 +317,7 @@ async def execute_with_fallback_model(
             fallback_state.successful_fallback_calls = 0
             return response
         except Exception as e:
-            if isinstance(e, UnsupportedContentError):
-                raise
+            reraise_caller_errors(e, attempt)
             raise ModelFailedError(
                 model=agent._model.value,
                 error=str(e),

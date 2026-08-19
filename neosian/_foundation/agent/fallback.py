@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from neosian._foundation.llm.base import Message, required_content_types
 from neosian._foundation.shared.constants import ErrorMessages
 from neosian._foundation.shared.exceptions import (
+    ContextWindowExceededError,
     ModelFailedError,
     UnsupportedContentError,
 )
@@ -36,22 +37,58 @@ def unsupported_content_types(model: Model, messages: list[Message]) -> list[str
     return missing
 
 
+def reraise_caller_errors(error: Exception, attempt: Attempt) -> None:
+    """Re-raise caller-input errors as-is instead of wrapping them.
+
+    Unsupported content and context overflow are prompt problems, not
+    model failures — ModelFailedError would bury the structure hosts key
+    on. Billed usage is attached so the error path keeps the ledger
+    (DESIGN §3 register #4). Returns normally for every other error.
+    """
+    if not isinstance(error, (UnsupportedContentError, ContextWindowExceededError)):
+        return
+    if error.usage is None:
+        error.usage = attempt.usage
+        error.usage_by_model = attempt.usage_by_model
+    raise error
+
+
 def ensure_fallback_viable(
     agent: Agent,
     error: Exception,
     messages: list[Message],
     attempt: Attempt,
 ) -> None:
-    """Gate a fallback attempt on the fallback model's content capabilities.
+    """Gate a fallback attempt on the fallback model's capabilities.
 
     Called inside a main-model except block once a fallback is
     configured. Returns normally when the fallback model can handle the
-    conversation's content. Otherwise logs the skip and raises — the
-    original UnsupportedContentError as-is, anything else wrapped in
-    ModelFailedError carrying the failed attempt's billed usage — so
-    media is never downgraded onto a model that can't handle it.
+    conversation. Otherwise logs the skip and raises — the original
+    UnsupportedContentError/ContextWindowExceededError as-is, anything
+    else wrapped in ModelFailedError carrying the failed attempt's
+    billed usage. Two gates:
+
+    - Content: media is never downgraded onto a model that can't
+      handle it (DESIGN §2).
+    - Window: a context overflow falls back only onto a strictly
+      larger window — falling back smaller is a guaranteed second
+      failure and a doubled bill (DESIGN §5).
     """
     assert agent._fallback is not None  # Callers check before invoking
+    if isinstance(error, ContextWindowExceededError):
+        overflowed = error.context_window or agent._model.context_window
+        if agent._fallback.model.context_window <= overflowed:
+            logger.warning(
+                "Fallback to %s skipped: its context window (%d) is not "
+                "larger than the overflowed one (%d)",
+                agent._fallback.model.value,
+                agent._fallback.model.context_window,
+                overflowed,
+            )
+            if error.usage is None:  # keep billed usage on the error path
+                error.usage = attempt.usage
+                error.usage_by_model = attempt.usage_by_model
+            raise error
     missing = unsupported_content_types(agent._fallback.model, messages)
     if not missing:
         return

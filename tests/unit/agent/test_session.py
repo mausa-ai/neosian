@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from neosian._foundation.agent.base import Agent
+from neosian._foundation.agent.events import ContentEvent
 from neosian._foundation.agent.session import AgentSession
 from neosian._foundation.llm.base import (
     BaseLLMClient,
@@ -394,13 +395,12 @@ class TestAgentSessionRun:
                 # Result should be an async iterator
                 assert hasattr(result, "__anext__")
 
-                # Collect events
-                events = []
-                async for sse in result:
-                    events.append(sse)
+                events = [event async for event in result]
 
-                assert len(events) == 3
-                assert "Hello " in events[0]
+                # ready, two content deltas, done
+                assert len(events) == 4
+                assert isinstance(events[1], ContentEvent)
+                assert events[1].content == "Hello "
 
 
 @pytest.mark.unit

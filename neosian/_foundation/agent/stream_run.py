@@ -10,19 +10,19 @@ from typing import TYPE_CHECKING
 
 from neosian._foundation.agent.context import Attempt
 from neosian._foundation.agent.emit import emit_fallback
+from neosian._foundation.agent.events import AgentEvent, EventSequencer, ReadyEvent
 from neosian._foundation.agent.fallback import (
     ensure_fallback_viable,
+    reraise_caller_errors,
     unsupported_content_types,
 )
 from neosian._foundation.agent.guards import check_guardrails, extract_user_content
 from neosian._foundation.agent.stream_loop import stream_with_client
-from neosian._foundation.agent.streaming import SSEEventEmitter
 from neosian._foundation.llm.base import Message, Role
 from neosian._foundation.shared.constants import ErrorMessages
 from neosian._foundation.shared.exceptions import (
     FallbackExhaustedError,
     ModelFailedError,
-    UnsupportedContentError,
 )
 from neosian._foundation.shared.types import GuardrailMode, PolicyResult
 
@@ -32,18 +32,24 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-async def run_streaming(ctx: RunContext, messages: list[Message]) -> AsyncIterator[str]:
-    """Execute agent with streaming (SSE mode).
+async def run_streaming(
+    ctx: RunContext, messages: list[Message]
+) -> AsyncIterator[AgentEvent]:
+    """Execute agent with streaming: typed events (DESIGN §6).
 
     Input guardrails run in parallel with streaming. If guard flags and
-    block_on_input is True, emits BLOCKED event to interrupt the stream.
-    Safe users experience no guardrail overhead.
+    block_on_input is True, a BlockedEvent terminates the stream. Safe
+    users experience no guardrail overhead.
+
+    The one EventSequencer lives here: inner generators yield unstamped
+    events, this wrapper stamps every event exactly once — sequence
+    continuity across fallback attempts is automatic.
 
     Args:
         messages: Conversation history (without system message).
 
     Yields:
-        SSE-formatted strings for tool calls, tool results, content, blocked, and done.
+        AgentEvent values, ReadyEvent first, sequence starting at 1.
     """
     agent = ctx.agent
     # Determine if we need to run input guardrails
@@ -58,16 +64,22 @@ async def run_streaming(ctx: RunContext, messages: list[Message]) -> AsyncIterat
     if has_input_guard and user_content:
         guard_task = asyncio.create_task(check_guardrails(agent, user_content, "input"))
 
-    # Stream the agent response, checking guard status periodically
-    async for sse in stream_agent_with_guard(ctx, messages, guard_task):
-        yield sse
+    sequencer = EventSequencer()
+    yield sequencer.stamp(
+        ReadyEvent(
+            requested_model=agent._model.value,
+            provider=agent._model.provider.value,
+        )
+    )
+    async for event in stream_agent_with_guard(ctx, messages, guard_task):
+        yield sequencer.stamp(event)
 
 
 async def stream_agent_with_guard(
     ctx: RunContext,
     messages: list[Message],
     guard_task: asyncio.Task[tuple[bool, PolicyResult | None]] | None,
-) -> AsyncIterator[str]:
+) -> AsyncIterator[AgentEvent]:
     """Stream agent response while monitoring guard task.
 
     Args:
@@ -76,7 +88,7 @@ async def stream_agent_with_guard(
         guard_task: Background guard task to monitor (or None if no guard).
 
     Yields:
-        SSE-formatted strings with sequence and created_at metadata.
+        Unstamped AgentEvent values — run_streaming assigns sequence.
 
     Raises:
         ModelFailedError: If model fails and no fallback is configured.
@@ -88,9 +100,6 @@ async def stream_agent_with_guard(
         Message(role=Role.SYSTEM, content=agent._system_prompt),
         *messages,
     ]
-
-    # Create emitter once for the entire streaming session
-    emitter = SSEEventEmitter()
 
     # Determine which model to try first - check if we should retry main
     fallback_state = ctx.fallback_state
@@ -120,25 +129,22 @@ async def stream_agent_with_guard(
 
     # If using fallback (sticky), try fallback first
     if fallback_state is not None and fallback_state.using_fallback:
-        async for sse in stream_with_fallback_model(
-            ctx, base_messages, guard_task, emitter
-        ):
-            yield sse
+        async for event in stream_with_fallback_model(ctx, base_messages, guard_task):
+            yield event
         return
 
     # Try main model
     attempt = Attempt.start(agent._model, base_messages)
     try:
         client = ctx.acquire(agent._model.provider)
-        async for sse in stream_with_client(
+        async for event in stream_with_client(
             ctx,
             client=client,
             model=agent._model,
             attempt=attempt,
             guard_task=guard_task,
-            emitter=emitter,
         ):
-            yield sse
+            yield event
         # Success on main - reset fallback state if present
         if fallback_state is not None:
             fallback_state.using_fallback = False
@@ -148,8 +154,7 @@ async def stream_agent_with_guard(
         main_error = str(e)
         # No fallback configured - raise immediately
         if agent._fallback is None:
-            if isinstance(e, UnsupportedContentError):
-                raise
+            reraise_caller_errors(e, attempt)
             raise ModelFailedError(
                 model=agent._model.value,
                 error=main_error,
@@ -186,15 +191,14 @@ async def stream_agent_with_guard(
         )
         try:
             fallback_client = ctx.acquire(agent._fallback.model.provider)
-            async for sse in stream_with_client(
+            async for event in stream_with_client(
                 ctx,
                 client=fallback_client,
                 model=agent._fallback.model,
                 attempt=fallback_attempt,
                 guard_task=guard_task,
-                emitter=emitter,
             ):
-                yield sse
+                yield event
             # Success on fallback - update state
             if fallback_state is not None:
                 fallback_state.using_fallback = True
@@ -215,8 +219,7 @@ async def stream_with_fallback_model(
     ctx: RunContext,
     base_messages: list[Message],
     guard_task: asyncio.Task[tuple[bool, PolicyResult | None]] | None,
-    emitter: SSEEventEmitter,
-) -> AsyncIterator[str]:
+) -> AsyncIterator[AgentEvent]:
     """Stream with fallback model (sticky mode).
 
     Args:
@@ -224,10 +227,9 @@ async def stream_with_fallback_model(
             callers dispatch to this method only when sticky.
         base_messages: Full conversation with system message prepended.
         guard_task: Background guard task to monitor (or None).
-        emitter: SSE event emitter for metadata.
 
     Yields:
-        SSE-formatted strings.
+        Unstamped AgentEvent values — run_streaming assigns sequence.
 
     Raises:
         FallbackExhaustedError: If both models fail.
@@ -248,22 +250,20 @@ async def stream_with_fallback_model(
         attempt = Attempt.start(agent._model, base_messages)
         try:
             main_client = ctx.acquire(agent._model.provider)
-            async for sse in stream_with_client(
+            async for event in stream_with_client(
                 ctx,
                 client=main_client,
                 model=agent._model,
                 attempt=attempt,
                 guard_task=guard_task,
-                emitter=emitter,
             ):
-                yield sse
+                yield event
             # Main handled it - reset sticky state
             fallback_state.using_fallback = False
             fallback_state.successful_fallback_calls = 0
             return
         except Exception as e:
-            if isinstance(e, UnsupportedContentError):
-                raise
+            reraise_caller_errors(e, attempt)
             raise ModelFailedError(
                 model=agent._model.value,
                 error=str(e),
@@ -275,15 +275,14 @@ async def stream_with_fallback_model(
     attempt = Attempt.start(agent._fallback.model, base_messages)
     try:
         client = ctx.acquire(agent._fallback.model.provider)
-        async for sse in stream_with_client(
+        async for event in stream_with_client(
             ctx,
             client=client,
             model=agent._fallback.model,
             attempt=attempt,
             guard_task=guard_task,
-            emitter=emitter,
         ):
-            yield sse
+            yield event
         # Success - increment counter
         fallback_state.successful_fallback_calls += 1
         return
@@ -309,15 +308,14 @@ async def stream_with_fallback_model(
         main_attempt = Attempt.start(agent._model, base_messages, prior=attempt)
         try:
             main_client = ctx.acquire(agent._model.provider)
-            async for sse in stream_with_client(
+            async for event in stream_with_client(
                 ctx,
                 client=main_client,
                 model=agent._model,
                 attempt=main_attempt,
                 guard_task=guard_task,
-                emitter=emitter,
             ):
-                yield sse
+                yield event
             # Main recovered - reset state
             fallback_state.using_fallback = False
             fallback_state.successful_fallback_calls = 0

@@ -8,6 +8,7 @@ Supports two modes:
 """
 
 import asyncio
+import dataclasses
 import json
 import logging
 import time
@@ -22,21 +23,22 @@ from neosian._foundation.evaluation.scorer import score_turn
 from neosian._foundation.llm.base import (
     Message,
     Role,
-    ToolCall,
     ToolDefinition,
     text_of,
 )
+from neosian._foundation.llm.fake import FakeClient, FakeScript
 from neosian._foundation.shared.constants import Evaluation
 from neosian._foundation.shared.types import (
+    ClientFactory,
     EvalCase,
     EvalConfig,
     EvalResult,
     Expectation,
     Model,
     PromptConfig,
+    Provider,
     SystemPrompt,
     ToolCallCapture,
-    ToolCallId,
     ToolName,
     TurnResult,
 )
@@ -97,8 +99,9 @@ async def run_evaluation(
     for prompt_idx, prompt_file in enumerate(config.prompts):
         for model_idx, model in enumerate(config.models):
             for case_idx, case in enumerate(config.cases):
-                # Throttle to avoid rate limits (skip delay for first case)
-                if not first_case:
+                # Throttle to avoid rate limits (skip delay for the first
+                # case and for runs that never hit an API)
+                if not first_case and _needs_throttle(model, case):
                     await asyncio.sleep(Evaluation.THROTTLE_DELAY_MS / 1000)
                 first_case = False
 
@@ -147,18 +150,21 @@ async def _run_single_case(
         # Fallback detection rides the typed hook seam (DESIGN §3)
         recorder = _FallbackRecorder()
         hooks = AgentHooks(on_fallback=recorder)
+        client_factory = _scripted_client_factory(case)
 
         # Create agent based on mode
         if agent_file is not None:
             # Variant mode: agent from Python, prompts from YAML
             agent = _create_agent_with_prompt_config(
-                agent_file, prompt_file, parsed_model, hooks
+                agent_file, prompt_file, parsed_model, hooks, client_factory
             )
         else:
             # Legacy mode: prompt_file is a Python agent file
             agent_config, _ = load_agent_config(prompt_file)
             agent_config.model = parsed_model
             agent_config.hooks = hooks
+            if client_factory is not None:
+                agent_config.client_factory = client_factory
             agent = Agent(config=agent_config)
 
         # Run case
@@ -185,11 +191,38 @@ async def _run_single_case(
         )
 
 
+def _scripted_client_factory(case: EvalCase) -> "ClientFactory | None":
+    """Build a scripted-FakeClient factory for a `script:` case.
+
+    One FakeClient instance serves the whole case, so the script position
+    survives across the case's LLM calls. Works with any configured model
+    — the run is keyless and makes no API calls.
+    """
+    if case.script is None:
+        return None
+    logger.info(
+        "Case %s runs scripted via FakeClient — no API calls are made", case.name
+    )
+    fake = FakeClient(FakeScript(turns=case.script))
+    return lambda _provider: fake
+
+
+def _needs_throttle(model: str, case: EvalCase) -> bool:
+    """Rate-limit throttling applies only to runs that hit a real API."""
+    if case.script is not None:
+        return False
+    try:
+        return _parse_model(model).provider is not Provider.FAKE
+    except ValueError:
+        return False  # invalid model fails fast in _run_single_case anyway
+
+
 def _create_agent_with_prompt_config(
     agent_file: str,
     prompt_file: str,
     model: Model,
     hooks: AgentHooks,
+    client_factory: "ClientFactory | None" = None,
 ) -> Agent:
     """Create agent and apply prompt config overrides.
 
@@ -201,6 +234,7 @@ def _create_agent_with_prompt_config(
         prompt_file: Path to YAML prompt config file.
         model: Model to use.
         hooks: The harness's observation hooks (fallback detection).
+        client_factory: Scripted-client injection for `script:` cases.
 
     Returns:
         Agent with overridden prompts and descriptions.
@@ -209,6 +243,8 @@ def _create_agent_with_prompt_config(
     agent_config, _ = load_agent_config(agent_file)
     agent_config.model = model
     agent_config.hooks = hooks
+    if client_factory is not None:
+        agent_config.client_factory = client_factory
 
     # Load prompt config from YAML
     prompt_config = load_prompt_config(prompt_file)
@@ -385,52 +421,21 @@ async def _run_conversational(
                     latency_ms=total_latency_ms,
                 )
 
-        # Build proper message sequence for context
-        # LLM APIs require: ASSISTANT (with tool_calls) -> TOOL (with tool_call_id)
-        if response.tool_calls_made:
-            # Add assistant message WITH tool_calls
-            messages.append(
-                Message(
-                    role=Role.ASSISTANT,
-                    content=None,
-                    tool_calls=[
-                        ToolCall(
-                            id=ToolCallId(tc.id),
-                            name=ToolName(tc.name),
-                            arguments=tc.arguments,
-                        )
-                        for tc in response.tool_calls_made
-                    ],
+        # Extend context with the captured turn verbatim (DESIGN §3:
+        # input + turn_messages replays as valid history). mock_response
+        # overrides what the mocked tools "returned" for later turns.
+        if turn.mock_response:
+            mock_content = json.dumps({"success": True, "data": turn.mock_response})
+            messages.extend(
+                (
+                    dataclasses.replace(m, content=mock_content)
+                    if m.role is Role.TOOL
+                    else m
                 )
+                for m in response.turn_messages
             )
-
-            # Add tool results - use mock_response if provided, else default
-            # Real tool responses have structure: {"success": true, "data": ...}
-            mock_content = (
-                json.dumps({"success": True, "data": turn.mock_response})
-                if turn.mock_response
-                else '{"success": true}'
-            )
-            for tool_call in response.tool_calls_made:
-                messages.append(
-                    Message(
-                        role=Role.TOOL,
-                        content=mock_content,
-                        tool_call_id=ToolCallId(tool_call.id),
-                    )
-                )
-
-            # Add final assistant response if it has content
-            if response.message.content:
-                messages.append(
-                    Message(
-                        role=Role.ASSISTANT,
-                        content=response.message.content,
-                    )
-                )
         else:
-            # No tool calls - just add the response message
-            messages.append(response.message)
+            messages.extend(response.turn_messages)
 
     # Return result - passed only if no turns failed
     return EvalResult(

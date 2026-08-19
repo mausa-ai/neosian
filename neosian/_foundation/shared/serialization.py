@@ -80,7 +80,7 @@ def _find_non_serializable(data: Any, path: str = "") -> tuple[str | None, str]:
     return path or None, type(data).__name__
 
 
-def safe_json_dumps(data: Any, context: str) -> str:
+def safe_json_dumps(data: Any, context: str, *, compact: bool = False) -> str:
     """Serialize data to JSON with helpful error messages.
 
     Attempts JSON serialization and on failure, identifies the specific
@@ -89,6 +89,7 @@ def safe_json_dumps(data: Any, context: str) -> str:
     Args:
         data: The data to serialize.
         context: Description of what's being serialized (e.g., "tool_call.arguments").
+        compact: Emit the tightest separators (the SSE wire form).
 
     Returns:
         JSON string representation of the data.
@@ -98,7 +99,7 @@ def safe_json_dumps(data: Any, context: str) -> str:
             The error message includes the specific field path and type.
     """
     try:
-        return json.dumps(data)
+        return json.dumps(data, separators=(",", ":") if compact else None)
     except TypeError as e:
         # Find the problematic field
         field, value_type = _find_non_serializable(data)

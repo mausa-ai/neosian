@@ -14,6 +14,8 @@ from neosian import (
     Agent,
     AgentConfig,
     AgentHooks,
+    ContentEvent,
+    DoneEvent,
     FallbackConfig,
     FallbackEvent,
     LlmCallEvent,
@@ -71,7 +73,10 @@ class TestKeylessBoot:
             agent = Agent(_config())
             events = [event async for event in await agent.run(_USER, stream=True)]
         assert events
-        assert any("fake" in event for event in events)
+        assert any(
+            isinstance(event, ContentEvent) and "fake" in event.content
+            for event in events
+        )
 
 
 @pytest.mark.unit
@@ -636,11 +641,9 @@ class TestStreamingErrorUsage:
             Model.FAKE.value
         ]
 
-    async def test_streamed_done_frame_includes_failed_main_billing(self) -> None:
-        """After a billed-then-failed main attempt, the fallback's done frame
+    async def test_streamed_done_event_includes_failed_main_billing(self) -> None:
+        """After a billed-then-failed main attempt, the fallback's done event
         reports everything the run spent — main's partial included."""
-        import json
-
         from neosian._foundation.llm.fake import StreamShape
 
         script = FakeScript(
@@ -665,11 +668,17 @@ class TestStreamingErrorUsage:
                 client_factory=lambda _: fake,
             )
         )
-        frames = [frame async for frame in await agent.run(_USER, stream=True)]
-        done = next(f for f in frames if f.startswith("event: done"))
-        payload = json.loads(done.split("data: ")[1])
-        assert payload["usage"]["input_tokens"] == 109
-        assert payload["usage"]["output_tokens"] == 50
+        events = [event async for event in await agent.run(_USER, stream=True)]
+        done = next(e for e in events if isinstance(e, DoneEvent))
+        assert done.usage is not None
+        assert done.usage.input_tokens == 109
+        assert done.usage.output_tokens == 50
+        # The per-model split survives onto the wire payload too.
+        payload = done.to_dict()
+        assert [entry["model"] for entry in payload["usage_by_model"]] == [
+            Model.FAKE.value,
+            Model.FAKE_SMALL.value,
+        ]
 
 
 @pytest.mark.unit

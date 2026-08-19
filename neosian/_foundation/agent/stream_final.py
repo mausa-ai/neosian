@@ -14,24 +14,25 @@ from neosian._foundation.agent.emit import (
     emit_turn,
     stream_response,
 )
+from neosian._foundation.agent.events import (
+    AgentEvent,
+    BlockedEvent,
+    ContentEvent,
+    DoneEvent,
+    ReasoningEvent,
+)
 from neosian._foundation.agent.guards import (
     await_guard_result_safe,
     check_guard_and_block,
 )
 from neosian._foundation.agent.response import AgentResponse
-from neosian._foundation.agent.streaming import (
-    SSEEventEmitter,
-    blocked_event,
-    content_event,
-    done_event,
-    reasoning_event,
-)
 from neosian._foundation.llm.base import (
     BaseLLMClient,
     Message,
     Role,
     ToolCall,
     Usage,
+    normalize_stop_reason,
 )
 from neosian._foundation.shared.types import Model, PolicyResult, ReasoningEffort
 from neosian._foundation.tools.base import ToolResult
@@ -47,11 +48,10 @@ async def stream_final_with_client_and_guard(
     model: Model,
     attempt: Attempt,
     guard_task: asyncio.Task[tuple[bool, PolicyResult | None]] | None,
-    emitter: SSEEventEmitter,
     reasoning_effort: ReasoningEffort | None = None,
     run_tool_calls: list[ToolCall],
     run_tool_results: list[ToolResult[Any]],
-) -> AsyncIterator[str]:
+) -> AsyncIterator[AgentEvent]:
     """Stream final response with a specific client while monitoring guard task.
 
     Args:
@@ -61,14 +61,13 @@ async def stream_final_with_client_and_guard(
         attempt: The attempt whose messages feed the call and whose
             ledger already holds the exhausted tool iterations' usage.
         guard_task: Background guard task to monitor (or None).
-        emitter: SSE event emitter for metadata (required, passed from caller).
         reasoning_effort: Optional reasoning effort (pre-filtered for model support).
         run_tool_calls: Tool calls made across the exhausted iterations,
             for the terminal turn event's response.
         run_tool_results: Their results, submission order.
 
     Yields:
-        SSE-formatted strings for content chunks, blocked, and done event.
+        Unstamped AgentEvent values — run_streaming assigns sequence.
     """
     agent = ctx.agent
     # Track usage and pending done for different provider patterns
@@ -93,6 +92,19 @@ async def stream_final_with_client_and_guard(
             reasoning="".join(reasoning_parts) if reasoning_parts else None,
         )
 
+    def _done_event() -> DoneEvent:
+        # Reads the current final_finish_reason/final_api_model at call time.
+        normalized = (
+            normalize_stop_reason(final_finish_reason) if final_finish_reason else None
+        )
+        return DoneEvent(
+            model=final_api_model or model.value,
+            stop_reason=normalized.value if normalized else None,
+            raw_stop_reason=final_finish_reason,
+            usage=attempt.usage,
+            usage_by_model=attempt.usage_by_model,
+        )
+
     try:
         stream = client.stream(
             messages=attempt.messages,
@@ -109,26 +121,25 @@ async def stream_final_with_client_and_guard(
 
             # Check guard during streaming
             if guard_task is not None and guard_task.done():
-                blocked_event_sse = await check_guard_and_block(
+                blocked = await check_guard_and_block(
                     ctx,
                     guard_task,
-                    emitter,
                     usage=merge_usage(attempt.usage, final_usage),
                     usage_by_model=attempt.usage_by_model,
                 )
-                if blocked_event_sse:
-                    yield blocked_event_sse
+                if blocked:
+                    yield blocked
                     return
                 guard_task = None
 
             # Emit reasoning before content (for reasoning models)
             if chunk.reasoning:
                 reasoning_parts.append(chunk.reasoning)
-                yield emitter.emit(reasoning_event(chunk.reasoning))
+                yield ReasoningEvent(reasoning=chunk.reasoning)
 
             if chunk.content:
                 content_parts.append(chunk.content)
-                yield emitter.emit(content_event(chunk.content))
+                yield ContentEvent(content=chunk.content)
 
             if chunk.finish_reason:
                 final_finish_reason = chunk.finish_reason
@@ -146,11 +157,10 @@ async def stream_final_with_client_and_guard(
                         blocked_usage = merge_usage(
                             attempt.usage, chunk.usage or final_usage
                         )
-                        yield emitter.emit(
-                            blocked_event(
-                                rationale=rationale,
-                                usage=blocked_usage,
-                            )
+                        yield BlockedEvent(
+                            rationale=rationale,
+                            usage=blocked_usage,
+                            usage_by_model=attempt.usage_by_model,
                         )
                         await emit_turn(
                             ctx,
@@ -166,13 +176,7 @@ async def stream_final_with_client_and_guard(
                     attempt.record(final_api_model, chunk.usage)
                     call_usage = chunk.usage
                     final_usage = None
-                    yield emitter.emit(
-                        done_event(
-                            attempt.usage,
-                            stop_reason=final_finish_reason,
-                            model=model.value,
-                        )
-                    )
+                    yield _done_event()
                     turn_response = stream_response(
                         attempt,
                         _final_message(),
@@ -192,13 +196,7 @@ async def stream_final_with_client_and_guard(
                     attempt.record(final_api_model, final_usage)
                     call_usage = final_usage
                     final_usage = None
-                    yield emitter.emit(
-                        done_event(
-                            attempt.usage,
-                            stop_reason=final_finish_reason,
-                            model=model.value,
-                        )
-                    )
+                    yield _done_event()
                     turn_response = stream_response(
                         attempt,
                         _final_message(),
@@ -215,13 +213,7 @@ async def stream_final_with_client_and_guard(
                 attempt.record(final_api_model, final_usage)
                 call_usage = final_usage
                 final_usage = None
-            yield emitter.emit(
-                done_event(
-                    attempt.usage,
-                    stop_reason=final_finish_reason,
-                    model=model.value,
-                )
-            )
+            yield _done_event()
             turn_response = stream_response(
                 attempt,
                 _final_message(),

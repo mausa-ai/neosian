@@ -1,7 +1,6 @@
 """Tests for Agent core."""
 
 import asyncio
-import json
 import time
 import weakref
 from collections.abc import AsyncIterator
@@ -13,6 +12,15 @@ import pytest
 from neosian._foundation.agent.base import Agent
 from neosian._foundation.agent.blocking import execute_with_fallback_model
 from neosian._foundation.agent.context import RunContext
+from neosian._foundation.agent.events import (
+    BlockedEvent,
+    ContentEvent,
+    DoneEvent,
+    ReadyEvent,
+    ToolCallEvent,
+    ToolProgressEvent,
+    ToolResultEvent,
+)
 from neosian._foundation.agent.guards import check_guard_and_block
 from neosian._foundation.agent.response import AgentResponse
 from neosian._foundation.llm.base import (
@@ -36,14 +44,6 @@ from neosian._foundation.shared.types import (
     ToolName,
 )
 from neosian._foundation.tools.base import Tool, ToolResult
-
-
-def _parse_sse(sse: str) -> tuple[str, dict[str, Any]]:
-    """Parse one SSE string into (event_type, data_dict)."""
-    lines = sse.strip().split("\n")
-    event_type = lines[0].removeprefix("event: ")
-    data = json.loads(lines[1].removeprefix("data: "))
-    return event_type, data
 
 
 def _create_mock_router(mock_client: BaseLLMClient | None = None) -> MagicMock:
@@ -409,17 +409,17 @@ class TestAgentRunStreaming:
             messages = [Message(role=Role.USER, content="Hi")]
             result = await agent.run(messages, stream=True)
 
-            # Collect all SSE events
-            events = []
-            async for sse in result:
-                events.append(sse)
+            events = [event async for event in result]
 
-            # Should have content events and done event
-            assert len(events) == 3
-            assert "content" in events[0]
-            assert "Hello " in events[0]
-            assert "world!" in events[1]
-            assert "done" in events[2]
+            # Ready first, then content deltas, then done
+            assert len(events) == 4
+            assert isinstance(events[0], ReadyEvent)
+            assert isinstance(events[1], ContentEvent)
+            assert events[1].content == "Hello "
+            assert isinstance(events[2], ContentEvent)
+            assert events[2].content == "world!"
+            assert isinstance(events[3], DoneEvent)
+            assert [e.sequence for e in events] == [1, 2, 3, 4]
 
     @pytest.mark.asyncio
     async def test_streaming_with_tool_calls(self) -> None:
@@ -469,27 +469,22 @@ class TestAgentRunStreaming:
             messages = [Message(role=Role.USER, content="What is 2 + 3?")]
             result = await agent.run(messages, stream=True)
 
-            events = []
-            async for sse in result:
-                events.append(sse)
+            events = [event async for event in result]
 
-            # Should have: tool_call, tool_result, content, done
-            assert len(events) == 4
+            # Should have: ready, tool_call, tool_result, content, done
+            assert len(events) == 5
+            assert isinstance(events[0], ReadyEvent)
 
-            # First event should be tool call
-            assert "tool_call" in events[0]
-            assert "add" in events[0]
+            assert isinstance(events[1], ToolCallEvent)
+            assert events[1].name == "add"
 
-            # Second event should be tool result
-            assert "tool_result" in events[1]
-            assert "success" in events[1]
+            assert isinstance(events[2], ToolResultEvent)
+            assert events[2].success is True
 
-            # Third event should be content
-            assert "content" in events[2]
-            assert "The sum is 5." in events[2]
+            assert isinstance(events[3], ContentEvent)
+            assert events[3].content == "The sum is 5."
 
-            # Fourth event should be done
-            assert "done" in events[3]
+            assert isinstance(events[4], DoneEvent)
 
     @pytest.mark.asyncio
     async def test_streaming_returns_async_iterator(self) -> None:
@@ -578,15 +573,16 @@ class TestStreamingUsageReporting:
             messages = [Message(role=Role.USER, content="What is 2 + 3?")]
             result = await agent.run(messages, stream=True)
 
-            events = [sse async for sse in result]
+            events = [event async for event in result]
 
-        done_events = [e for e in events if e.startswith("event: done")]
+        done_events = [e for e in events if isinstance(e, DoneEvent)]
         assert len(done_events) == 1
-        _, data = _parse_sse(done_events[0])
+        usage = done_events[0].usage
         # 20+10 (tool iteration) + 30+15 (final iteration) = 75
-        assert data["usage"]["input_tokens"] == 50
-        assert data["usage"]["output_tokens"] == 25
-        assert data["usage"]["total_tokens"] == 75
+        assert usage is not None
+        assert usage.input_tokens == 50
+        assert usage.output_tokens == 25
+        assert usage.total_tokens == 75
 
     @pytest.mark.asyncio
     async def test_streaming_max_iterations_includes_prior_usage(self) -> None:
@@ -641,12 +637,12 @@ class TestStreamingUsageReporting:
             messages = [Message(role=Role.USER, content="What is 2 + 3?")]
             result = await agent.run(messages, stream=True)
 
-            events = [sse async for sse in result]
+            events = [event async for event in result]
 
-        done_events = [e for e in events if e.startswith("event: done")]
+        done_events = [e for e in events if isinstance(e, DoneEvent)]
         assert len(done_events) == 1
-        _, data = _parse_sse(done_events[0])
-        assert data["usage"]["total_tokens"] == 75
+        assert done_events[0].usage is not None
+        assert done_events[0].usage.total_tokens == 75
 
     @pytest.mark.asyncio
     async def test_model_failed_error_carries_usage(self) -> None:
@@ -763,7 +759,7 @@ class TestStreamingUsageReporting:
 
     @pytest.mark.asyncio
     async def test_check_guard_and_block_includes_usage(self) -> None:
-        """Blocked SSE frame should carry the usage passed in."""
+        """The BlockedEvent should carry the usage passed in."""
         from neosian._foundation.shared.types import GuardrailsConfig, PolicyResult
 
         with patch(
@@ -784,17 +780,17 @@ class TestStreamingUsageReporting:
         guard_task = asyncio.ensure_future(guard())
         await guard_task
 
-        sse = await check_guard_and_block(
+        blocked = await check_guard_and_block(
             agent._run_context(None),
             guard_task,
             usage=Usage(input_tokens=20, output_tokens=10),
         )
 
-        assert sse is not None
-        event_type, data = _parse_sse(sse)
-        assert event_type == "blocked"
-        assert data["rationale"] == "policy violation"
-        assert data["usage"]["total_tokens"] == 30
+        assert blocked is not None
+        assert isinstance(blocked, BlockedEvent)
+        assert blocked.rationale == "policy violation"
+        assert blocked.usage is not None
+        assert blocked.usage.total_tokens == 30
 
 
 @pytest.mark.unit
@@ -847,13 +843,12 @@ class TestAgentHeartbeats:
             messages = [Message(role=Role.USER, content="Run fast tool")]
             result = await agent.run(messages, stream=True)
 
-            events = []
-            async for sse in result:
-                events.append(sse)
+            events = [event async for event in result]
 
-            # Should have: tool_call, tool_result, content, done (no heartbeats)
-            heartbeat_events = [e for e in events if "heartbeat" in e]
-            assert len(heartbeat_events) == 0
+            # Should have: ready, tool_call, tool_result, content, done —
+            # and no tool_progress
+            progress = [e for e in events if isinstance(e, ToolProgressEvent)]
+            assert len(progress) == 0
 
     @pytest.mark.asyncio
     async def test_slow_tool_emits_heartbeats(self) -> None:
@@ -910,17 +905,16 @@ class TestAgentHeartbeats:
             messages = [Message(role=Role.USER, content="Run slow tool")]
             result = await agent.run(messages, stream=True)
 
-            events = []
-            async for sse in result:
-                events.append(sse)
+            events = [event async for event in result]
 
-            # Should have heartbeat events
-            heartbeat_events = [e for e in events if "heartbeat" in e]
-            assert len(heartbeat_events) >= 1
+            # Should have tool_progress events
+            progress = [e for e in events if isinstance(e, ToolProgressEvent)]
+            assert len(progress) >= 1
 
-            # Verify heartbeat contains tool_call_id and elapsed_seconds
-            assert "call_slow" in heartbeat_events[0]
-            assert "elapsed_seconds" in heartbeat_events[0]
+            # Verify progress carries the tool_call_id and integer elapsed_ms
+            assert progress[0].tool_call_id == "call_slow"
+            assert isinstance(progress[0].elapsed_ms, int)
+            assert progress[0].elapsed_ms > 0
 
     @pytest.mark.asyncio
     async def test_heartbeat_contains_correct_tool_call_id(self) -> None:
@@ -976,15 +970,13 @@ class TestAgentHeartbeats:
             messages = [Message(role=Role.USER, content="Run delayed tool")]
             result = await agent.run(messages, stream=True)
 
-            events = []
-            async for sse in result:
-                events.append(sse)
+            events = [event async for event in result]
 
-            heartbeat_events = [e for e in events if "heartbeat" in e]
-            assert len(heartbeat_events) >= 1
+            progress = [e for e in events if isinstance(e, ToolProgressEvent)]
+            assert len(progress) >= 1
 
-            # Verify the tool_call_id is in the heartbeat
-            assert "unique_id_123" in heartbeat_events[0]
+            # Verify the tool_call_id rides the progress event
+            assert progress[0].tool_call_id == "unique_id_123"
 
 
 @pytest.mark.unit
@@ -1290,7 +1282,7 @@ class TestAgentParallelToolExecution:
             agent = Agent(config=config)
             messages = [Message(role=Role.USER, content="go")]
             stream = await agent.run(messages, stream=True)
-            parsed = [_parse_sse(s) async for s in stream]
+            parsed = [(e.type.value, e.to_dict()) async for e in stream]
 
         call_events = [(et, d) for et, d in parsed if et == "tool_call"]
         result_events = [(et, d) for et, d in parsed if et == "tool_result"]
@@ -1441,7 +1433,7 @@ class TestAgentParallelToolExecution:
             stream = await agent.run(
                 [Message(role=Role.USER, content="go")], stream=True
             )
-            parsed = [_parse_sse(s) async for s in stream]
+            parsed = [(e.type.value, e.to_dict()) async for e in stream]
 
         results_by_id = {
             d["tool_call_id"]: d for et, d in parsed if et == "tool_result"
@@ -1505,9 +1497,9 @@ class TestAgentParallelToolExecution:
             stream = await agent.run(
                 [Message(role=Role.USER, content="go")], stream=True
             )
-            parsed = [_parse_sse(s) async for s in stream]
+            parsed = [(e.type.value, e.to_dict()) async for e in stream]
 
-        heartbeats = [(et, d) for et, d in parsed if et == "heartbeat"]
+        heartbeats = [(et, d) for et, d in parsed if et == "tool_progress"]
         assert len(heartbeats) >= 1
         # All heartbeats carry the slow tool's id (fast tool finished before any HB).
         assert all(d["tool_call_id"] == "id_slow" for _, d in heartbeats)
@@ -1562,7 +1554,7 @@ class TestAgentParallelToolExecution:
             stream = await agent.run(
                 [Message(role=Role.USER, content="go")], stream=True
             )
-            parsed = [_parse_sse(s) async for s in stream]
+            parsed = [(e.type.value, e.to_dict()) async for e in stream]
 
         kinds = [et for et, _ in parsed]
         assert kinds.count("tool_call") == 1
@@ -1628,10 +1620,11 @@ class TestAgentParallelToolExecution:
             )
 
             # Pull tool_call events for all 3 tools, then close mid-batch.
-            collected: list[str] = []
-            async for sse in stream:
-                collected.append(sse)
-                if sum(1 for s in collected if "tool_call\n" in s) >= 3:
+            tool_call_count = 0
+            async for event in stream:
+                if isinstance(event, ToolCallEvent):
+                    tool_call_count += 1
+                if tool_call_count >= 3:
                     break
             await stream.aclose()  # type: ignore[attr-defined]
 

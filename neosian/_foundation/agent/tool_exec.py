@@ -8,10 +8,10 @@ import time
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 
-from neosian._foundation.agent.streaming import (
-    SSEEventEmitter,
-    heartbeat_event,
-    tool_result_event,
+from neosian._foundation.agent.events import (
+    AgentEvent,
+    ToolProgressEvent,
+    ToolResultEvent,
 )
 from neosian._foundation.llm.base import ToolCall
 from neosian._foundation.shared.constants import ErrorMessages, Streaming
@@ -58,21 +58,19 @@ async def execute_tool(agent: Agent, tool_call: ToolCall) -> ToolResult[Any]:
 async def execute_tool_with_heartbeats(
     agent: Agent,
     tool_call: ToolCall,
-    emitter: SSEEventEmitter,
-) -> AsyncIterator[tuple[ToolResult[Any] | None, str | None]]:
-    """Execute a tool while emitting heartbeat events.
+) -> AsyncIterator[tuple[ToolResult[Any] | None, ToolProgressEvent | None]]:
+    """Execute a tool while emitting tool_progress events.
 
-    Runs the tool in a background task and emits heartbeat SSE events
-    at regular intervals to keep the connection alive during long-running
-    tool executions.
+    Runs the tool in a background task and emits ToolProgressEvent at
+    regular intervals — "this tool is still running", which no keepalive
+    means (DESIGN §6).
 
     Args:
         tool_call: The tool call to execute.
-        emitter: SSE event emitter for heartbeat events.
 
     Yields:
-        Tuples of (result, heartbeat_sse):
-        - (None, heartbeat_sse) for heartbeat events during execution
+        Tuples of (result, progress):
+        - (None, ToolProgressEvent) while the tool is still executing
         - (result, None) when tool execution completes
     """
     start_time = time.monotonic()
@@ -87,9 +85,12 @@ async def execute_tool_with_heartbeats(
                 timeout=interval,
             )
         except TimeoutError:
-            # Tool still running - emit heartbeat
-            elapsed = time.monotonic() - start_time
-            yield (None, emitter.emit(heartbeat_event(tool_call.id, elapsed)))
+            # Tool still running - emit progress
+            elapsed_ms = int((time.monotonic() - start_time) * 1000)
+            yield (
+                None,
+                ToolProgressEvent(tool_call_id=tool_call.id, elapsed_ms=elapsed_ms),
+            )
 
     # Tool completed - yield result
     yield (tool_task.result(), None)
@@ -98,17 +99,16 @@ async def execute_tool_with_heartbeats(
 async def run_tool_stream(
     agent: Agent,
     tool_call: ToolCall,
-    emitter: SSEEventEmitter,
-    queue: asyncio.Queue[str | None],
+    queue: asyncio.Queue[AgentEvent | None],
     results: dict[ToolCallId, ToolResult[Any]],
     durations: dict[ToolCallId, int],
     counter: list[int],
     semaphore: asyncio.Semaphore,
 ) -> None:
-    """Run one tool, push heartbeats and result SSE to the shared queue.
+    """Run one tool, push progress and result events to the shared queue.
 
     Used by _stream_with_client to fan out N tool executions and fan in
-    their SSE events in completion order. Caller appends Tool messages
+    their events in completion order. Caller appends Tool messages
     to the attempt's messages in submission order using `results` keyed
     by id, and fires on_tool with the wall time recorded in `durations`.
 
@@ -119,18 +119,23 @@ async def run_tool_stream(
     try:
         async with semaphore:
             tool_started = time.monotonic()
-            async for result, heartbeat_sse in execute_tool_with_heartbeats(
-                agent, tool_call, emitter
+            async for result, progress in execute_tool_with_heartbeats(
+                agent, tool_call
             ):
-                if heartbeat_sse is not None:
-                    await queue.put(heartbeat_sse)
+                if progress is not None:
+                    await queue.put(progress)
                 if result is not None:
                     results[tool_call.id] = result
                     durations[tool_call.id] = int(
                         (time.monotonic() - tool_started) * 1000
                     )
                     await queue.put(
-                        emitter.emit(tool_result_event(tool_call.id, result))
+                        ToolResultEvent(
+                            tool_call_id=tool_call.id,
+                            success=result.success,
+                            data=result.data if result.success else None,
+                            error=result.error if not result.success else None,
+                        )
                     )
     finally:
         counter[0] -= 1

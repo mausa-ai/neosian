@@ -62,6 +62,12 @@ async def execute_with_client(
     # Silently drop reasoning_effort if model doesn't support it (graceful fallback)
     effective_reasoning = agent._reasoning_effort if model.supports_reasoning else None
 
+    # Proactive window check, once per attempt before any spend; raised
+    # here (not inside the call try) so no on_llm_call fires for a call
+    # never made. Mid-run growth falls to the reactive wrap (DESIGN §5).
+    if agent._context_policy is not None:
+        agent._context_policy.ensure_fits(model, attempt.messages)
+
     for iteration in range(agent._max_tool_iterations):
         # Get completion from LLM
         call_started = time.monotonic()

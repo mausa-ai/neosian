@@ -1,6 +1,6 @@
 [project]
 name = "neosian"
-version = "0.55.0"
+version = "0.56.0"
 description = "Stateless agentic AI library. LLM orchestration, tool execution, streaming."
 readme = "README.md"
 license = "Apache-2.0"
@@ -86,7 +86,7 @@ select = [
 ignore = [
     "E501",   # line too long (handled by black)
     "UP042",  # keep (str, Enum) — StrEnum changes str()/format semantics on
-              # serialization-heavy public enums (Model, Role, SSEEventType)
+              # serialization-heavy public enums (Model, Role, AgentEventType)
 ]
 
 # Layering (DESIGN §1) — forbidden contracts only. The memory/Conversation ↛

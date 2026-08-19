@@ -14,20 +14,20 @@ from neosian._foundation.agent.emit import (
     emit_turn,
     stream_response,
 )
+from neosian._foundation.agent.events import (
+    AgentEvent,
+    BlockedEvent,
+    ContentEvent,
+    DoneEvent,
+    ReasoningEvent,
+    ToolCallEvent,
+)
 from neosian._foundation.agent.guards import (
     await_guard_result_safe,
     check_guard_and_block,
 )
 from neosian._foundation.agent.hooks import ToolEvent
 from neosian._foundation.agent.stream_final import stream_final_with_client_and_guard
-from neosian._foundation.agent.streaming import (
-    SSEEventEmitter,
-    blocked_event,
-    content_event,
-    done_event,
-    reasoning_event,
-    tool_call_event,
-)
 from neosian._foundation.agent.tool_exec import format_tool_result, run_tool_stream
 from neosian._foundation.llm.base import (
     BaseLLMClient,
@@ -35,6 +35,7 @@ from neosian._foundation.llm.base import (
     Role,
     ToolCall,
     Usage,
+    normalize_stop_reason,
 )
 from neosian._foundation.shared.types import Model, PolicyResult, ToolCallId
 from neosian._foundation.tools.base import ToolResult
@@ -49,8 +50,7 @@ async def stream_with_client(
     model: Model,
     attempt: Attempt,
     guard_task: asyncio.Task[tuple[bool, PolicyResult | None]] | None,
-    emitter: SSEEventEmitter | None = None,
-) -> AsyncIterator[str]:
+) -> AsyncIterator[AgentEvent]:
     """Stream agent response with a specific client while monitoring guard task.
 
     Args:
@@ -60,17 +60,20 @@ async def stream_with_client(
             ledger outlives an exception, so the caller reads billed
             usage off the attempt when this generator raises.
         guard_task: Background guard task to monitor (or None if no guard).
-        emitter: SSE event emitter for metadata. If None, creates a new one.
 
     Yields:
-        SSE-formatted strings with sequence and created_at metadata.
+        Unstamped AgentEvent values — run_streaming assigns sequence.
     """
     agent = ctx.agent
-    if emitter is None:
-        emitter = SSEEventEmitter()
 
     # Silently drop reasoning_effort if model doesn't support it (graceful fallback)
     effective_reasoning = agent._reasoning_effort if model.supports_reasoning else None
+
+    # Proactive window check, once per attempt before any spend; raised
+    # outside the loop's try so no on_llm_call fires for a call never
+    # made. Mid-run growth falls to the reactive wrap (DESIGN §5).
+    if agent._context_policy is not None:
+        agent._context_policy.ensure_fits(model, attempt.messages)
 
     # The attempt ledger sums completed iterations (mirrors the
     # non-streaming path); final_usage is last-wins within the current
@@ -89,15 +92,14 @@ async def stream_with_client(
         for iteration in range(agent._max_tool_iterations):
             # Check guard before each LLM call
             if guard_task is not None and guard_task.done():
-                blocked_event_sse = await check_guard_and_block(
+                blocked = await check_guard_and_block(
                     ctx,
                     guard_task,
-                    emitter,
                     usage=attempt.usage,
                     usage_by_model=attempt.usage_by_model,
                 )
-                if blocked_event_sse:
-                    yield blocked_event_sse
+                if blocked:
+                    yield blocked
                     return
                 guard_task = None  # Don't check again
 
@@ -122,15 +124,14 @@ async def stream_with_client(
             async for chunk in stream:
                 # Check guard during streaming
                 if guard_task is not None and guard_task.done():
-                    blocked_event_sse = await check_guard_and_block(
+                    blocked = await check_guard_and_block(
                         ctx,
                         guard_task,
-                        emitter,
                         usage=merge_usage(attempt.usage, final_usage),
                         usage_by_model=attempt.usage_by_model,
                     )
-                    if blocked_event_sse:
-                        yield blocked_event_sse
+                    if blocked:
+                        yield blocked
                         return
                     guard_task = None
 
@@ -139,11 +140,11 @@ async def stream_with_client(
 
                 if chunk.reasoning:
                     reasoning_parts.append(chunk.reasoning)
-                    yield emitter.emit(reasoning_event(chunk.reasoning))
+                    yield ReasoningEvent(reasoning=chunk.reasoning)
 
                 if chunk.content:
                     content_parts.append(chunk.content)
-                    yield emitter.emit(content_event(chunk.content))
+                    yield ContentEvent(content=chunk.content)
 
                 if chunk.tool_calls:
                     accumulated_tool_calls.extend(chunk.tool_calls)
@@ -182,8 +183,10 @@ async def stream_with_client(
                         and agent._guardrails.block_on_input
                     ):
                         rationale = policy.rationale if policy else None
-                        yield emitter.emit(
-                            blocked_event(rationale=rationale, usage=attempt.usage)
+                        yield BlockedEvent(
+                            rationale=rationale,
+                            usage=attempt.usage,
+                            usage_by_model=attempt.usage_by_model,
                         )
                         await emit_turn(
                             ctx,
@@ -194,12 +197,17 @@ async def stream_with_client(
                         )
                         return
 
-                yield emitter.emit(
-                    done_event(
-                        attempt.usage,
-                        stop_reason=turn_finish_reason,
-                        model=model.value,
-                    )
+                normalized = (
+                    normalize_stop_reason(turn_finish_reason)
+                    if turn_finish_reason
+                    else None
+                )
+                yield DoneEvent(
+                    model=turn_api_model or model.value,
+                    stop_reason=normalized.value if normalized else None,
+                    raw_stop_reason=turn_finish_reason,
+                    usage=attempt.usage,
+                    usage_by_model=attempt.usage_by_model,
                 )
                 final_message = Message(
                     role=Role.ASSISTANT,
@@ -235,29 +243,32 @@ async def stream_with_client(
             # cannot interrupt mid-batch; in-flight tools run to completion.
             # The post-batch check below blocks the next LLM call.
             if guard_task is not None and guard_task.done():
-                blocked_event_sse = await check_guard_and_block(
+                blocked = await check_guard_and_block(
                     ctx,
                     guard_task,
-                    emitter,
                     usage=attempt.usage,
                     usage_by_model=attempt.usage_by_model,
                 )
-                if blocked_event_sse:
-                    yield blocked_event_sse
+                if blocked:
+                    yield blocked
                     return
                 guard_task = None
 
             # 1. Emit all tool_call events first, in LLM submission order.
-            #    SSEEventEmitter.emit() has no awaits — sequence assignment
-            #    is atomic under cooperative async.
+            #    Sequence numbers are assigned by run_streaming's single
+            #    stamping pass, atomic under cooperative async.
             for tool_call in accumulated_tool_calls:
-                yield emitter.emit(tool_call_event(tool_call))
+                yield ToolCallEvent(
+                    id=tool_call.id,
+                    name=tool_call.name,
+                    arguments=tool_call.arguments,
+                )
 
             # 2. Spawn one wrapper task per tool; concurrency capped by
             #    semaphore. tool_result events arrive in completion order;
             #    each wrapper coalesces its completion into a single None
             #    sentinel via the shared counter (see _run_tool_stream).
-            queue: asyncio.Queue[str | None] = asyncio.Queue()
+            queue: asyncio.Queue[AgentEvent | None] = asyncio.Queue()
             results: dict[ToolCallId, ToolResult[Any]] = {}
             durations: dict[ToolCallId, int] = {}
             counter = [len(accumulated_tool_calls)]
@@ -267,7 +278,6 @@ async def stream_with_client(
                     run_tool_stream(
                         agent,
                         tc,
-                        emitter,
                         queue,
                         results,
                         durations,
@@ -294,15 +304,14 @@ async def stream_with_client(
 
             # 4. Post-batch guard check.
             if guard_task is not None and guard_task.done():
-                blocked_event_sse = await check_guard_and_block(
+                blocked = await check_guard_and_block(
                     ctx,
                     guard_task,
-                    emitter,
                     usage=attempt.usage,
                     usage_by_model=attempt.usage_by_model,
                 )
-                if blocked_event_sse:
-                    yield blocked_event_sse
+                if blocked:
+                    yield blocked
                     return
                 guard_task = None
 
@@ -334,18 +343,17 @@ async def stream_with_client(
 
         # Max iterations reached - stream final response without tools
         in_final = True
-        async for sse in stream_final_with_client_and_guard(
+        async for event in stream_final_with_client_and_guard(
             ctx,
             client=client,
             model=model,
             attempt=attempt,
             guard_task=guard_task,
-            emitter=emitter,
             reasoning_effort=effective_reasoning,
             run_tool_calls=run_tool_calls,
             run_tool_results=run_tool_results,
         ):
-            yield sse
+            yield event
     except Exception as exc:
         # Fold the mid-turn remainder into the ledger before the
         # exception escapes — the caller reads billed usage off the

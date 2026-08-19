@@ -658,13 +658,19 @@ async def _arena_chat_loop(
             await agent_session.close()
 
 
-def run_playground(agent_path: str, menu: bool = False, arena: bool = False) -> None:
+def run_playground(
+    agent_path: str,
+    menu: bool = False,
+    arena: bool = False,
+    resume: str | None = None,
+) -> None:
     """Run the playground with the given agent file.
 
     Args:
         agent_path: Path to the agent Python file.
         menu: Show interactive menu to select provider and model.
         arena: Run in arena mode with multiple models side-by-side.
+        resume: Path to a saved session JSON to continue from.
     """
     console = Console()
 
@@ -715,8 +721,19 @@ def run_playground(agent_path: str, menu: bool = False, arena: bool = False) -> 
     display_provider = config.model.provider.value
     display_model = config.model.value
 
-    # Create session
-    session = Session(agent_name=agent_name)
+    # Create session — or replay a saved one verbatim
+    if resume is not None:
+        try:
+            session = Session.load(resume)
+        except Exception as e:
+            console.print(f"[red]Error loading session: {e}[/red]")
+            raise SystemExit(1) from e
+        session.agent_name = agent_name
+        console.print(
+            f"[dim]Resumed {len(session.messages)} messages from {resume}[/dim]"
+        )
+    else:
+        session = Session(agent_name=agent_name)
 
     # Print header
     _print_header(console, agent_name)
@@ -846,15 +863,12 @@ async def _chat_loop(
 
             # Show thinking indicator
             with console.status(f"[dim]{PlaygroundUI.THINKING}[/dim]"):
-                # Build message history for agent (add current input)
+                # Session history is stored verbatim (turn_messages below),
+                # so it replays as-is — including intermediate tool rounds.
                 messages = [
-                    Message(
-                        role=Role.USER if m.role == Role.USER else Role.ASSISTANT,
-                        content=m.content or "",
-                    )
-                    for m in session.get_messages()
+                    *session.get_messages(),
+                    Message(role=Role.USER, content=user_input),
                 ]
-                messages.append(Message(role=Role.USER, content=user_input))
 
                 # Get response using cached client
                 try:
@@ -922,8 +936,12 @@ async def _chat_loop(
                 session.add_blocked_message(user_input, gr_result)
                 continue
 
-            # Add user message to session (only if not blocked)
+            # Persist the turn verbatim (only if not blocked): the user
+            # message plus turn_messages — intermediate ASSISTANT tool
+            # rounds and TOOL results included (DESIGN §3 contract).
             session.add_user_message(user_input)
+            for message in response.turn_messages:
+                session.add_message(message)
 
             # Display tool calls if any
             for i, tool_call in enumerate(response.tool_calls_made):
@@ -961,7 +979,6 @@ async def _chat_loop(
             # Display assistant response
             assistant_text = text_of(response.message)
             if assistant_text:
-                session.add_assistant_message(assistant_text)
                 title = Text()
                 title.append(provider, style="cyan")
                 title.append("/", style="dim")

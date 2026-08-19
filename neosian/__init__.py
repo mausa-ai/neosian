@@ -3,6 +3,23 @@
 from importlib.metadata import version as _pkg_version
 
 from neosian._foundation.agent.base import Agent
+from neosian._foundation.agent.events import (
+    EVENT_PROTOCOL_VERSION,
+    AgentEvent,
+    AgentEventType,
+    BlockedEvent,
+    ContentEvent,
+    DoneEvent,
+    ErrorEvent,
+    EventSequencer,
+    ReadyEvent,
+    ReasoningEvent,
+    ToolCallEvent,
+    ToolProgressEvent,
+    ToolResultEvent,
+    event_schemas,
+    sse_stream,
+)
 from neosian._foundation.agent.hooks import (
     AgentHooks,
     FallbackEvent,
@@ -12,12 +29,6 @@ from neosian._foundation.agent.hooks import (
 )
 from neosian._foundation.agent.response import AgentResponse
 from neosian._foundation.agent.session import AgentSession
-from neosian._foundation.agent.streaming import (
-    SSEEventType,
-    error_event,
-    heartbeat_event,
-    reasoning_event,
-)
 from neosian._foundation.blackboard.base import BlackboardProvider
 from neosian._foundation.blackboard.file import FileBlackboard
 from neosian._foundation.guardrails.policy import CommonPolicies, PolicyBuilder
@@ -43,6 +54,7 @@ from neosian._foundation.shared.constraints import (
     MinLen,
     Pattern,
 )
+from neosian._foundation.shared.context_policy import ContextPolicy
 from neosian._foundation.shared.exceptions import (
     ERROR_CODES,
     AgentLoadError,
@@ -112,6 +124,7 @@ __all__ = [
     "AgentConfig",
     "AgentResponse",
     "AgentSession",
+    "ContextPolicy",
     # Hooks
     "AgentHooks",
     "TurnEvent",
@@ -153,11 +166,22 @@ __all__ = [
     "Usage",
     "format_micro_usd",
     "normalize_stop_reason",
-    # Streaming
-    "SSEEventType",
-    "error_event",
-    "heartbeat_event",
-    "reasoning_event",
+    # Streaming events (v2 wire contract, DESIGN §6)
+    "AgentEvent",
+    "AgentEventType",
+    "EVENT_PROTOCOL_VERSION",
+    "EventSequencer",
+    "ReadyEvent",
+    "ContentEvent",
+    "ReasoningEvent",
+    "ToolCallEvent",
+    "ToolResultEvent",
+    "ToolProgressEvent",
+    "BlockedEvent",
+    "DoneEvent",
+    "ErrorEvent",
+    "sse_stream",
+    "event_schemas",
     # Guardrails
     "GuardrailsConfig",
     "GuardrailMode",

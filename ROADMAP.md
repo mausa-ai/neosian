@@ -1,15 +1,16 @@
 # Neosian Roadmap — Memory & Conversation
 
-> **▶ Current phase: N0 — Enablers** *(slice A ✅ 2026-08-19 at v0.55.0;
-> slice B — event schema v2, ContextPolicy, eval keyless runs, CLI
-> persist/replay — remains; see the split note under N0)*
+> **▶ Current phase: N1 — Memory core**
 >
-> *(2026-08-18: NS done — the seams are frozen in code: µ$ money + token
-> classes, machine error codes + SDK wrap, FakeProvider registry members +
-> `neosian.fake`, prompts-as-data, the two register bugs fixed; `v0.54.0`
-> cut — the kit's first vendoring point. Standing ruling: neosian's phases
-> run to completion before the kit's P10 vendors from a `v<X.Y.Z>` release
-> tag. Next: N0 → N1.)*
+> *(2026-08-19: N0 done in two slices — slice A reshaped the agent core
+> (twins collapsed, turn capture, hooks, frozen AgentResponse, v0.55.0);
+> slice B froze the wire: event schema v2 (`run(stream=True) →
+> AsyncIterator[AgentEvent]`, old SSE surface deleted), default-on
+> ContextPolicy + the no-smaller-window fallback rule, keyless scripted
+> eval runs, and the CLI persist/replay done-when; `v0.56.0` cut.
+> Standing ruling: neosian's phases run to completion before the kit's
+> P10 vendors from a `v<X.Y.Z>` release tag. Next: N1 opens with the
+> MemoryStore ABC per DESIGN §8.)*
 >
 > The pointer above must equal the first phase heading without ✅ — if they
 > disagree, say so and trust the checkboxes. Companion to [VISION.md](VISION.md)
@@ -204,7 +205,7 @@ order within the phase: §4 (vocabulary) → §5 (errors) → FakeProvider → �
 **Done when:** every vocabulary item frozen in ECOSYSTEM is exercised by a
 test; the annotated `v0.54.0` tag exists (the kit's first vendoring point).
 
-## N0 — Enablers (v0.55–0.56)
+## N0 — Enablers (v0.55–0.56) ✅ 2026-08-19
 
 DESIGN: §3, §6.
 
@@ -234,11 +235,13 @@ exported (+5 `__all__` names); `AgentResponse` frozen+slots, tuple fields,
 `LLMError.usage`/`.usage_by_model` on both paths (blocking hole closed);
 `StreamChunk.model` in all five clients; eval runner's fallback detection
 moved onto `on_fallback` (the file split would have silently killed the
-log scraper). **Slice B carries forward:** event schema v2 (`run(stream=
-True) -> AsyncIterator[AgentEvent]`, `sse_stream`, `event_schemas()`, old
-SSE surface removed — wire payloads deliberately untouched in slice A),
-`ContextPolicy`, eval harness keyless FakeProvider runs, and the
-CLI-persist/replay done-when.
+log scraper). **Slice B shipped at v0.56.0** (2026-08-19): event schema
+v2 per §6 (`run(stream=True) -> AsyncIterator[AgentEvent]`, `sse_stream`,
+`event_schemas()` + the schemas CLI, old SSE surface deleted); default-on
+`ContextPolicy` + the no-smaller-window rule (ledger #16/#17); eval
+`script:` cases run keylessly via injected FakeClient; the CLI persists
+and replays full sessions with tool messages via the new message codec —
+the phase done-when.
 
 ## N1 — Memory core (v0.57–0.59)
 
@@ -448,3 +451,29 @@ DESIGN: §2, §6, §10.
   v2 break stays batched in slice B. 975 unit tests, zero keys; v0.55.0.
   Carried forward: slice B (events v2, ContextPolicy, keyless eval runs,
   CLI persist/replay).
+- 2026-08-19 | N0 (slice B) | **The wire freezes; N0 closes.** Events v2
+  per §6: nine frozen+slots dataclasses in `agent/events.py` (payload
+  TypedDicts double as the `event_schemas()` export source — schema and
+  `to_dict()` cannot drift, pinned by a validate-against-schema test;
+  ledger #15: payload carries the `event` discriminator), one
+  `EventSequencer` stamping pass in `run_streaming` (ReadyEvent first,
+  sequence continuity across fallback for free — emitter param deleted
+  from five modules), `heartbeat` → `ToolProgressEvent(elapsed_ms: int)`,
+  terminals carry `usage_by_model`, `DoneEvent.model` = API-reported,
+  compact ASCII wire form, `ErrorEvent.from_exception` (code, no
+  message), `sse_stream`, `python -m neosian.schemas events [--out DIR]`;
+  `streaming.py` deleted, `__all__` −4/+16. ContextPolicy (ledger #16):
+  default-on, underestimating char heuristic in
+  `shared/context_policy.py`, checked once per attempt pre-call (no
+  spurious on_llm_call), keyless-tested against FAKE_SMALL's 8_192
+  window; `ensure_fallback_viable` gained the no-smaller-window gate and
+  the no-fallback branches re-raise caller-input errors unwrapped with
+  usage attached (ledger #17). Eval: per-case `script:` → FakeTurns →
+  injected FakeClient, keyless end-to-end incl. tool expectations;
+  throttle skipped for fake/scripted; `_run_conversational` rebuilds
+  context from `turn_messages` (fixing the multi-round lumping).
+  CLI done-when: `llm/codec.py` (`message_to_json`/`from_json`, content
+  inverse), Session full-fidelity save + `load`/`from_dict` +
+  `neosian_session: 1` marker, playground persists user msg +
+  `turn_messages` verbatim (lost-tool-history bug fixed), `--resume
+  PATH` replays. 1013 unit tests, zero keys; v0.56.0.

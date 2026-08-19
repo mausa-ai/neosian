@@ -7,9 +7,14 @@ import json
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
-from neosian._foundation.llm.base import Message, Role, content_to_json
+from neosian._foundation.llm.base import Message, Role
+from neosian._foundation.llm.codec import message_from_json, message_to_json
 from neosian._foundation.shared.types import GuardrailResult
+
+# Format marker written into every save; bump on incompatible schema change
+SESSION_FORMAT = 1
 
 
 @dataclass
@@ -66,19 +71,12 @@ class Session:
         return [m for m in self.messages if m.role != Role.SYSTEM]
 
     def to_dict(self) -> dict[str, object]:
-        """Convert session to a serializable dictionary."""
+        """Convert session to a serializable dictionary (full fidelity)."""
         return {
+            "neosian_session": SESSION_FORMAT,
             "agent_name": self.agent_name,
             "started_at": self.started_at,
-            "messages": [
-                {
-                    "role": m.role.value,
-                    "content": content_to_json(m.content),
-                    "tool_calls": [asdict(tc) for tc in m.tool_calls],
-                    "tool_call_id": m.tool_call_id,
-                }
-                for m in self.messages
-            ],
+            "messages": [message_to_json(m) for m in self.messages],
             "blocked_messages": [
                 {
                     "content": bm.content,
@@ -88,6 +86,27 @@ class Session:
                 for bm in self.blocked_messages
             ],
         }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "Session":
+        """Rebuild a session from `to_dict` output.
+
+        Messages decode with full fidelity (tool_calls, tool_call_id,
+        reasoning). Blocked messages are log records, never LLM history —
+        they are not restored.
+        """
+        session = cls(
+            agent_name=data.get("agent_name", ""),
+            started_at=data.get("started_at", datetime.now().isoformat()),
+        )
+        session.messages = [message_from_json(m) for m in data.get("messages") or []]
+        return session
+
+    @classmethod
+    def load(cls, path: str | Path) -> "Session":
+        """Load a previously saved session from a JSON file."""
+        with Path(path).open(encoding="utf-8") as f:
+            return cls.from_dict(json.load(f))
 
     def save(self, path: str | Path) -> Path:
         """Save session to a JSON file.

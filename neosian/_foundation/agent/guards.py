@@ -14,8 +14,8 @@ from typing import TYPE_CHECKING, Literal
 from groq import AsyncGroq
 
 from neosian._foundation.agent.emit import blocked_response, emit_turn
+from neosian._foundation.agent.events import BlockedEvent
 from neosian._foundation.agent.response import AgentResponse
-from neosian._foundation.agent.streaming import SSEEventEmitter, blocked_event
 from neosian._foundation.guardrails.checker import check_with_policy
 from neosian._foundation.llm.base import Message, ModelUsage, Role, Usage, text_of
 from neosian._foundation.shared.constants import EnvVars, ErrorMessages
@@ -223,12 +223,11 @@ def handle_guard_error(
 async def check_guard_and_block(
     ctx: RunContext,
     guard_task: asyncio.Task[tuple[bool, PolicyResult | None]],
-    emitter: SSEEventEmitter | None = None,
     *,
     usage: Usage | None = None,
     usage_by_model: tuple[ModelUsage, ...] = (),
-) -> str | None:
-    """Check completed guard task and return blocked event if needed.
+) -> BlockedEvent | None:
+    """Check completed guard task and return a BlockedEvent if needed.
 
     Handles guard task errors based on error_policy configuration.
     A block is a streamed run's terminal, so on_turn fires here with
@@ -237,28 +236,29 @@ async def check_guard_and_block(
     Args:
         ctx: Per-run context (hook dispatch).
         guard_task: Completed guard task.
-        emitter: Optional SSE event emitter for metadata.
         usage: Best-effort token usage billed before the block,
-            included in the blocked event data.
-        usage_by_model: Per-model split of `usage` for the turn event.
+            carried on the blocked event.
+        usage_by_model: Per-model split of `usage` for both events.
 
     Returns:
-        Blocked SSE string if guard flagged and block_on_input=True, else None.
+        Unstamped BlockedEvent if guard flagged and block_on_input=True,
+        else None.
     """
     agent = ctx.agent
     is_safe, policy = get_guard_result_safe(agent, guard_task)
 
     if not is_safe and agent._guardrails and agent._guardrails.block_on_input:
         rationale = policy.rationale if policy else None
-        event = blocked_event(rationale=rationale, usage=usage)
         await emit_turn(
             ctx,
             blocked_response(policy, usage, usage_by_model),
             streamed=True,
         )
-        if emitter is not None:
-            return emitter.emit(event)
-        return event.to_sse()
+        return BlockedEvent(
+            rationale=rationale,
+            usage=usage,
+            usage_by_model=usage_by_model,
+        )
 
     return None
 

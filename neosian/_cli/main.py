@@ -59,6 +59,10 @@ def playground(
             "--arena", help="Run in arena mode with multiple models side-by-side"
         ),
     ] = False,
+    resume: Annotated[
+        str | None,
+        typer.Option("--resume", help="Continue from a saved session JSON file"),
+    ] = None,
 ) -> None:
     """Start an interactive playground session with an agent.
 
@@ -70,8 +74,9 @@ def playground(
         neosian playground my_agent.py
         neosian playground my_agent.py --menu
         neosian playground my_agent.py --arena
+        neosian playground my_agent.py --resume .neosian/sessions/last.json
     """
-    run_playground(agent_file, menu=menu, arena=arena)
+    run_playground(agent_file, menu=menu, arena=arena, resume=resume)
 
 
 @app.command()

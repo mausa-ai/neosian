@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 from neosian._foundation.agent.blocking import run_blocking
 from neosian._foundation.agent.context import RunContext
 from neosian._foundation.agent.emit import emit_turn
+from neosian._foundation.agent.events import AgentEvent
 from neosian._foundation.agent.guards import create_guardrail_client
 from neosian._foundation.agent.hooks import HookRunner
 from neosian._foundation.agent.response import AgentResponse
@@ -101,6 +102,7 @@ class Agent:
         self._cache_conversation = config.cache_conversation
         assert config.max_parallel_tools is not None  # Set by AgentConfig.__post_init__
         self._max_parallel_tools = config.max_parallel_tools
+        self._context_policy = config.context_policy
 
         # Store guardrails config and create client if needed
         self._guardrails = config.guardrails
@@ -213,7 +215,7 @@ class Agent:
         stream: bool,
         response_format: ResponseFormat | None,
         session: AgentSession | None,
-    ) -> AgentResponse | AsyncIterator[str]:
+    ) -> AgentResponse | AsyncIterator[AgentEvent]:
         """The one entry funnel behind Agent.run and AgentSession.run.
 
         A single call site for the guards means neither entry point can
@@ -245,7 +247,7 @@ class Agent:
         *,
         stream: Literal[True],
         response_format: None = None,
-    ) -> AsyncIterator[str]: ...
+    ) -> AsyncIterator[AgentEvent]: ...
 
     async def run(
         self,
@@ -253,18 +255,23 @@ class Agent:
         *,
         stream: bool,
         response_format: ResponseFormat | None = None,
-    ) -> AgentResponse | AsyncIterator[str]:
+    ) -> AgentResponse | AsyncIterator[AgentEvent]:
         """Execute the agent with the given conversation history.
 
         Args:
             messages: Conversation history (without system message).
-            stream: If True, yields SSE strings. If False, returns AgentResponse.
+            stream: If True, yields typed AgentEvent values (DESIGN §6);
+                sse_stream() relays them as SSE. If False, returns
+                AgentResponse.
             response_format: Optional structured output configuration. When provided,
                 the agent returns a structured response matching the Pydantic schema.
                 Incompatible with stream=True and tool-enabled agents.
 
         Returns:
-            AgentResponse when stream=False, AsyncIterator[str] when stream=True.
+            AgentResponse when stream=False, AsyncIterator[AgentEvent]
+            when stream=True. The streaming iterator still raises on
+            failure — a relaying host converts exceptions with
+            ErrorEvent.from_exception.
 
         Raises:
             GuardrailStreamingError: If stream=True with output guardrails configured.

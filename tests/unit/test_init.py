@@ -27,11 +27,14 @@ def test_public_api_exports() -> None:
     from neosian import (
         Agent,
         AgentConfig,
+        AgentEventType,
         AgentHooks,
         AgentResponse,
         AgentSession,
         CommonPolicies,
         Desc,
+        DoneEvent,
+        ErrorEvent,
         EvalCase,
         EvalConfig,
         EvalResult,
@@ -54,7 +57,6 @@ def test_public_api_exports() -> None:
         PolicyResult,
         Provider,
         Role,
-        SSEEventType,
         Tool,
         ToolCall,
         ToolCallCapture,
@@ -65,9 +67,8 @@ def test_public_api_exports() -> None:
         TurnResult,
         Usage,
         __version__,
-        heartbeat_event,
         load_prompt,
-        reasoning_event,
+        sse_stream,
     )
 
     # Verify all imports are accessible
@@ -85,9 +86,10 @@ def test_public_api_exports() -> None:
     assert ToolCallId is not None
     assert ToolResult is not None
     assert Usage is not None
-    assert SSEEventType is not None
-    assert heartbeat_event is not None
-    assert reasoning_event is not None
+    assert AgentEventType is not None
+    assert DoneEvent is not None
+    assert ErrorEvent is not None
+    assert sse_stream is not None
     assert Message is not None
     assert Role is not None
     assert Model is not None
@@ -128,6 +130,7 @@ def test_all_list_matches_exports() -> None:
         "AgentConfig",
         "AgentResponse",
         "AgentSession",
+        "ContextPolicy",
         # Hooks
         "AgentHooks",
         "TurnEvent",
@@ -170,11 +173,22 @@ def test_all_list_matches_exports() -> None:
         "Usage",
         "format_micro_usd",
         "normalize_stop_reason",
-        # Streaming
-        "SSEEventType",
-        "error_event",
-        "heartbeat_event",
-        "reasoning_event",
+        # Streaming events (v2 wire contract, DESIGN §6)
+        "AgentEvent",
+        "AgentEventType",
+        "EVENT_PROTOCOL_VERSION",
+        "EventSequencer",
+        "ReadyEvent",
+        "ContentEvent",
+        "ReasoningEvent",
+        "ToolCallEvent",
+        "ToolResultEvent",
+        "ToolProgressEvent",
+        "BlockedEvent",
+        "DoneEvent",
+        "ErrorEvent",
+        "sse_stream",
+        "event_schemas",
         # Guardrails
         "GuardrailsConfig",
         "GuardrailMode",

@@ -130,6 +130,93 @@ class TestSession:
 
 
 @pytest.mark.unit
+class TestSessionPersistReplay:
+    """The N0 done-when: a full multi-turn session — intermediate tool
+    messages included — persists and replays faithfully, keylessly."""
+
+    async def test_tool_session_save_load_replay(self, tmp_path: Path) -> None:
+        from neosian import Agent, AgentConfig, Model, Tool, ToolResult
+        from neosian._foundation.llm.base import ToolCall
+        from neosian._foundation.llm.fake import FakeClient, FakeScript, FakeTurn
+        from neosian._foundation.shared.types import (
+            SystemPrompt,
+            ToolCallId,
+            ToolName,
+        )
+
+        @Tool(name="add", description="Add two numbers")
+        async def add(a: int, b: int) -> ToolResult[int]:
+            return ToolResult.ok(a + b)
+
+        script = FakeScript(
+            turns=(
+                FakeTurn(
+                    tool_calls=(
+                        ToolCall(
+                            id=ToolCallId("call_1"),
+                            name=ToolName("add"),
+                            arguments={"a": 2, "b": 3},
+                        ),
+                    )
+                ),
+                FakeTurn(content="The sum is 5.", reasoning="2+3"),
+                FakeTurn(content="You asked what 2 + 3 is."),
+            )
+        )
+        fake = FakeClient(script)
+        agent = Agent(
+            AgentConfig(
+                system_prompt=SystemPrompt("calc"),
+                tools=[add],
+                enable_todo=False,
+                model=Model.FAKE,
+                client_factory=lambda _: fake,
+            )
+        )
+
+        # Two turns, persisted exactly as the playground chat loop does:
+        # user message + turn_messages verbatim.
+        session = Session(agent_name="calc")
+        for user_input in ["What is 2 + 3?", "What did I ask?"]:
+            messages = [
+                *session.get_messages(),
+                Message(role=Role.USER, content=user_input),
+            ]
+            response = await agent.run(messages, stream=False)
+            session.add_user_message(user_input)
+            for message in response.turn_messages:
+                session.add_message(message)
+
+        # The intermediate tool round is in the session
+        roles = [m.role for m in session.messages]
+        assert Role.TOOL in roles
+        tool_round = next(m for m in session.messages if m.tool_calls)
+        assert tool_round.tool_calls[0].name == "add"
+
+        # Save → load: byte-faithful messages
+        path = session.save(tmp_path / "session.json")
+        loaded = Session.load(path)
+        assert loaded.messages == session.messages
+        assert loaded.agent_name == "calc"
+
+        # The loaded history replays as valid input for the next turn
+        replay = [*loaded.get_messages(), Message(role=Role.USER, content="again?")]
+        again = FakeClient(FakeScript(turns=(FakeTurn(content="ok"),)))
+        agent2 = Agent(
+            AgentConfig(
+                system_prompt=SystemPrompt("calc"),
+                tools=[add],
+                enable_todo=False,
+                model=Model.FAKE,
+                client_factory=lambda _: again,
+            )
+        )
+        await agent2.run(replay, stream=False)
+        sent = again.calls[0].messages
+        assert [m.role for m in sent].count(Role.TOOL) == 1  # tool history intact
+
+
+@pytest.mark.unit
 class TestSessionMultimodalPersistence:
     """Sessions with block-list content must stay JSON-serializable."""
 

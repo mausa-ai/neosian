@@ -14,6 +14,7 @@ from neosian._foundation.shared.types import FallbackState, Provider, ResponseFo
 
 if TYPE_CHECKING:
     from neosian._foundation.agent.base import Agent
+    from neosian._foundation.agent.events import AgentEvent
     from neosian._foundation.agent.response import AgentResponse
 
 
@@ -85,7 +86,7 @@ class AgentSession:
         *,
         stream: Literal[True],
         response_format: None = None,
-    ) -> AsyncIterator[str]: ...
+    ) -> AsyncIterator[AgentEvent]: ...
 
     async def run(
         self,
@@ -93,7 +94,7 @@ class AgentSession:
         *,
         stream: bool,
         response_format: ResponseFormat | None = None,
-    ) -> AgentResponse | AsyncIterator[str]:
+    ) -> AgentResponse | AsyncIterator[AgentEvent]:
         """Execute the agent with cached clients.
 
         This method mirrors Agent.run() but uses cached clients from the session
@@ -101,11 +102,13 @@ class AgentSession:
 
         Args:
             messages: Conversation history (without system message).
-            stream: If True, yields SSE strings. If False, returns AgentResponse.
+            stream: If True, yields typed AgentEvent values (DESIGN §6).
+                If False, returns AgentResponse.
             response_format: Optional structured output configuration.
 
         Returns:
-            AgentResponse when stream=False, AsyncIterator[str] when stream=True.
+            AgentResponse when stream=False, AsyncIterator[AgentEvent]
+            when stream=True.
         """
         # One funnel with Agent.run — _dispatch validates and builds the
         # RunContext carrying this session's client cache + sticky state.

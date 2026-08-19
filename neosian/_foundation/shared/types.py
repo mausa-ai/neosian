@@ -12,9 +12,12 @@ from typing import TYPE_CHECKING, Any, Final, Literal, NewType
 
 from pydantic import BaseModel
 
+from neosian._foundation.shared.context_policy import ContextPolicy
+
 if TYPE_CHECKING:
     from neosian._foundation.agent.hooks import AgentHooks
     from neosian._foundation.llm.base import BaseLLMClient
+    from neosian._foundation.llm.fake import FakeTurn
     from neosian._foundation.tools.base import ToolResult
 
 # Core identifiers
@@ -641,6 +644,9 @@ class AgentConfig:
     blackboard: Any = None  # BlackboardProvider | None (Any to avoid circular import)
     client_factory: "ClientFactory | None" = None
     hooks: "AgentHooks | None" = None
+    # Default-on, deliberately-underestimating pre-call window check
+    # (DESIGN §5, ledger #16); None disables the proactive check.
+    context_policy: ContextPolicy | None = ContextPolicy()
 
     # Internal: loaded playbooks (set by __post_init__)
     _playbooks: list[Playbook] = field(default_factory=list, init=False, repr=False)
@@ -914,12 +920,17 @@ class EvalCase:
         input: User input for one-shot cases.
         expect: Expected behavior for one-shot cases.
         conversation: List of turns for conversational cases.
+        script: Scripted model turns (`neosian.fake` FakeTurns). When set,
+            the runner injects a scripted FakeClient — the case runs
+            keylessly with no API calls, one script turn consumed per
+            LLM call (a tool round consumes two).
     """
 
     name: str
     input: str | None = None
     expect: Expectation | None = None
     conversation: list[EvalTurn] | None = None
+    script: "tuple[FakeTurn, ...] | None" = None
 
     @property
     def is_conversational(self) -> bool:

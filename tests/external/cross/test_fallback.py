@@ -18,6 +18,7 @@ from unittest.mock import patch
 import pytest
 
 from neosian._foundation.agent.base import Agent
+from neosian._foundation.agent.events import DoneEvent
 from neosian._foundation.llm.base import Message, Role
 from neosian._foundation.shared.exceptions import (
     FallbackExhaustedError,
@@ -247,15 +248,11 @@ class TestFallbackStreaming:
             ]
             result = await agent.run(messages, stream=True)
 
-            # Collect all SSE events
-            events = []
-            async for sse in result:
-                events.append(sse)
+            events = [event async for event in result]
 
-            # Should have content and done events
+            # Should have events; last event should be the done terminal
             assert len(events) > 0
-            # Last event should be done
-            assert "done" in events[-1]
+            assert isinstance(events[-1], DoneEvent)
 
     @pytest.mark.asyncio
     async def test_streaming_fallback_exhausted(self) -> None:

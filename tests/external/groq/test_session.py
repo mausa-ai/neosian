@@ -7,6 +7,7 @@ Run with: GROQ_API_KEY=gsk_xxx uv run pytest -m external_groq -v
 import pytest
 
 from neosian._foundation.agent.base import Agent
+from neosian._foundation.agent.events import ContentEvent, DoneEvent
 from neosian._foundation.llm.base import Message, Role, text_of
 from neosian._foundation.shared.types import AgentConfig, Model, SystemPrompt
 from neosian._foundation.tools.base import Tool, ToolResult
@@ -110,14 +111,12 @@ class TestAgentSessionWithGroq:
             messages = [Message(role=Role.USER, content="Say 'hi' in one word.")]
             result = await session.run(messages, stream=True)
 
-            events = []
-            async for sse in result:
-                events.append(sse)
+            events = [event async for event in result]
 
             # Should have at least content and done events
             assert len(events) >= 2
-            assert any("content" in e for e in events)
-            assert any("done" in e for e in events)
+            assert any(isinstance(e, ContentEvent) for e in events)
+            assert any(isinstance(e, DoneEvent) for e in events)
 
     @pytest.mark.asyncio
     async def test_session_context_manager_cleanup(self) -> None:

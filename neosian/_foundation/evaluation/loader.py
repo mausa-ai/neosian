@@ -8,6 +8,8 @@ from typing import Any
 
 import yaml
 
+from neosian._foundation.llm.base import ToolCall
+from neosian._foundation.llm.fake import FakeTurn
 from neosian._foundation.shared.constants import Evaluation
 from neosian._foundation.shared.exceptions import (
     EvalCaseInvalidError,
@@ -20,7 +22,17 @@ from neosian._foundation.shared.types import (
     EvalConfig,
     EvalTurn,
     Expectation,
+    ToolCallId,
+    ToolName,
 )
+
+# Scripted-run keys, module-local by convention (constants.py is frozen debt)
+_SCRIPT_KEY = "script"
+_SCRIPT_CONTENT_KEY = "content"
+_SCRIPT_REASONING_KEY = "reasoning"
+_SCRIPT_TOOL_CALLS_KEY = "tool_calls"
+_SCRIPT_TOOL_NAME_KEY = "name"
+_SCRIPT_TOOL_ARGUMENTS_KEY = "arguments"
 
 
 def load_eval_config(path: str | Path) -> EvalConfig:
@@ -100,6 +112,7 @@ def _parse_cases(cases_data: list[dict[str, Any]]) -> list[EvalCase]:
             raise EvalCaseInvalidError("unknown", "missing 'name' field")
 
         name = case_data["name"]
+        script = _parse_script(case_data.get(_SCRIPT_KEY), name)
 
         # Conversational case
         if Evaluation.CONVERSATION_KEY in case_data:
@@ -110,6 +123,7 @@ def _parse_cases(cases_data: list[dict[str, Any]]) -> list[EvalCase]:
                 EvalCase(
                     name=name,
                     conversation=conversation,
+                    script=script,
                 )
             )
         # One-shot case
@@ -120,12 +134,60 @@ def _parse_cases(cases_data: list[dict[str, Any]]) -> list[EvalCase]:
                     name=name,
                     input=case_data[Evaluation.INPUT_KEY],
                     expect=expect,
+                    script=script,
                 )
             )
         else:
             raise EvalCaseInvalidError(name, "must have 'input' or 'conversation'")
 
     return cases
+
+
+def _parse_script(script_data: Any, case_name: str) -> tuple[FakeTurn, ...] | None:
+    """Parse a case's scripted model turns into FakeTurns.
+
+    Raises:
+        EvalCaseInvalidError: If the script is malformed.
+    """
+    if script_data is None:
+        return None
+    if not isinstance(script_data, list) or not script_data:
+        raise EvalCaseInvalidError(case_name, "'script' must be a non-empty list")
+
+    turns: list[FakeTurn] = []
+    for turn_idx, turn_data in enumerate(script_data):
+        if not isinstance(turn_data, dict):
+            raise EvalCaseInvalidError(
+                case_name, f"script turn {turn_idx + 1} must be a mapping"
+            )
+        tool_calls: list[ToolCall] = []
+        for call_idx, call_data in enumerate(
+            turn_data.get(_SCRIPT_TOOL_CALLS_KEY) or []
+        ):
+            if (
+                not isinstance(call_data, dict)
+                or _SCRIPT_TOOL_NAME_KEY not in call_data
+            ):
+                raise EvalCaseInvalidError(
+                    case_name,
+                    f"script turn {turn_idx + 1} tool_call {call_idx + 1} "
+                    "must be a mapping with a 'name'",
+                )
+            tool_calls.append(
+                ToolCall(
+                    id=ToolCallId(f"script_{turn_idx}_{call_idx}"),
+                    name=ToolName(call_data[_SCRIPT_TOOL_NAME_KEY]),
+                    arguments=call_data.get(_SCRIPT_TOOL_ARGUMENTS_KEY) or {},
+                )
+            )
+        turns.append(
+            FakeTurn(
+                content=turn_data.get(_SCRIPT_CONTENT_KEY),
+                reasoning=turn_data.get(_SCRIPT_REASONING_KEY),
+                tool_calls=tuple(tool_calls),
+            )
+        )
+    return tuple(turns)
 
 
 def _parse_conversation(

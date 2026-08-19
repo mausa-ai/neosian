@@ -10,6 +10,11 @@ import time
 import pytest
 
 from neosian._foundation.agent.base import Agent
+from neosian._foundation.agent.events import (
+    ContentEvent,
+    DoneEvent,
+    ReasoningEvent,
+)
 from neosian._foundation.llm.base import Message, Role, text_of
 from neosian._foundation.shared.exceptions import ModelFailedError
 from neosian._foundation.shared.types import (
@@ -156,15 +161,12 @@ class TestAgentWithGroq:
         messages = [Message(role=Role.USER, content="Say hello in one word.")]
         result = await agent.run(messages, stream=True)
 
-        # Collect all SSE events
-        events = []
-        async for sse in result:
-            events.append(sse)
+        events = [event async for event in result]
 
         # Should have at least one content event and a done event
         assert len(events) >= 2
-        assert any("content" in e for e in events)
-        assert any("done" in e for e in events)
+        assert any(isinstance(e, ContentEvent) for e in events)
+        assert any(isinstance(e, DoneEvent) for e in events)
 
     @pytest.mark.asyncio
     async def test_streaming_with_tool_execution(self) -> None:
@@ -187,14 +189,12 @@ class TestAgentWithGroq:
         messages = [Message(role=Role.USER, content="Get me the number.")]
         result = await agent.run(messages, stream=True)
 
-        events = []
-        async for sse in result:
-            events.append(sse)
+        events = [event async for event in result]
 
         # Should have tool_call, tool_result, content, and done events
         assert len(events) >= 2
-        # At minimum we should have some content and done
-        assert any("done" in e for e in events)
+        # At minimum we should reach the done terminal
+        assert any(isinstance(e, DoneEvent) for e in events)
 
 
 class TestAgentReasoningEffort:
@@ -262,20 +262,16 @@ class TestAgentReasoningEffort:
         ]
         result = await agent.run(messages, stream=True)
 
-        events = []
-        async for sse in result:
-            events.append(sse)
+        events = [event async for event in result]
 
-        # Should have events and done
+        # Should have ready + at least a done terminal
         assert len(events) >= 2
-        assert any("done" in e for e in events)
+        assert any(isinstance(e, DoneEvent) for e in events)
 
-        # With reasoning, we may get reasoning events before content
-        # Check if we have reasoning events
-        reasoning_events = [e for e in events if "reasoning" in e]
-        content_events = [e for e in events if "content" in e]
-
-        # We should have some response (either reasoning or content)
+        # With reasoning, we may get reasoning events before content;
+        # we should have some response either way.
+        reasoning_events = [e for e in events if isinstance(e, ReasoningEvent)]
+        content_events = [e for e in events if isinstance(e, ContentEvent)]
         assert len(reasoning_events) > 0 or len(content_events) > 0
 
     @pytest.mark.asyncio
