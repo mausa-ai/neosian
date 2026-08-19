@@ -32,6 +32,8 @@ def test_public_api_exports() -> None:
         AgentResponse,
         AgentSession,
         CommonPolicies,
+        Conversation,
+        ConversationStore,
         Desc,
         DoneEvent,
         ErrorEvent,
@@ -68,6 +70,8 @@ def test_public_api_exports() -> None:
         Usage,
         __version__,
         load_prompt,
+        message_from_json,
+        message_to_json,
         sse_stream,
     )
 
@@ -92,6 +96,10 @@ def test_public_api_exports() -> None:
     assert sse_stream is not None
     assert Message is not None
     assert Role is not None
+    assert message_to_json is not None
+    assert message_from_json is not None
+    assert Conversation is not None
+    assert ConversationStore is not None
     assert Model is not None
     assert Provider is not None
     assert GuardrailsConfig is not None
@@ -145,6 +153,8 @@ def test_all_list_matches_exports() -> None:
         "ImageBlock",
         "DocumentBlock",
         "text_of",
+        "message_to_json",
+        "message_from_json",
         # Models and Providers
         "Model",
         "ModelPricing",
@@ -234,6 +244,13 @@ def test_all_list_matches_exports() -> None:
         "MemoryConfig",
         "create_memory_tool",
         "memory_system_section",
+        # Conversation (DESIGN §9)
+        "Conversation",
+        "ConversationStore",
+        "ConversationTurn",
+        "ConversationProjection",
+        "CONVERSATION_FORMAT_VERSION",
+        "parse_conversation_id",
         # Utilities
         "load_prompt",
         # Fallback
@@ -256,6 +273,7 @@ def test_all_list_matches_exports() -> None:
         "StructuredOutputToolsError",
         "UnsupportedContentError",
         "UnsupportedParameterError",
+        "ConversationStoreError",
         "GuardrailError",
         "AgentLoadError",
         "PromptLoadError",

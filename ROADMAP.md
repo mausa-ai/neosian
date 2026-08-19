@@ -2,17 +2,18 @@
 
 > **▶ Current phase: N2 — Conversation layer**
 >
-> *(2026-08-19: N1 closed at v0.58.0 — the memory layer speaks: one
-> `memory` tool carrying the six-command vocabulary (ledger #19), the
-> prompt pack in assets, Mount/MemoryConfig + AgentConfig auto-wiring,
-> index generation + `memory_system_section`, and the CLI done-when
-> pinned keylessly. Standing ruling: neosian's phases run to completion
-> before the kit's P10 vendors from a `v<X.Y.Z>` release tag. N2 opens
-> with the compaction **design discussion** — the log-projection sketch
-> under N2 is a direction, not a spec; it must land as DESIGN §9 before
-> any implementation. Also waiting in N2: `Conversation`, the
-> `memory_scope=` single-mount sugar, the CLI migration onto
-> Conversation + FileStore, and the llm/codec.py export decision.)*
+> *(2026-08-19: slice A shipped at v0.60.0 — the opening design
+> discussion landed as DESIGN §9 (whole phase, compaction spec
+> included), and `Conversation` is real: the `ConversationStore` ABC +
+> conformance kit, FileStore turn persistence, send/resume with
+> streaming parity, the `memory_scope=` sugar, and the codec exported
+> (ledger #21–#26). Standing ruling: neosian's phases run to completion
+> before the kit's P10 vendors from a `v<X.Y.Z>` release tag. Still in
+> N2: **slice B** — compaction v1 per §9.6 (log projection, recall_turn,
+> CompactionConfig) — and **slice C** — the CLI migration onto
+> Conversation + FileStore (also fixing the --menu rebuild drops),
+> `examples/conversation_*.py`, and optional session reuse/`aclose()`.
+> The ECOSYSTEM amendment for the new seam is deferred per §9.10.)*
 >
 > The pointer above must equal the first phase heading without ✅ — if they
 > disagree, say so and trust the checkboxes. Companion to [VISION.md](VISION.md)
@@ -343,6 +344,30 @@ in VISION.md), transport, auth.
 **Done when:** the three-line quickstart — construct store, construct
 conversation, `send()` — yields a stateful, memory-bearing agent.
 
+**Split (2026-08-19): slice A shipped at v0.60.0** — the design
+discussion opened the phase (options-first: separate `ConversationStore`
+ABC, projection surface in the ABC from day one, typed messages + public
+codec, `agent_conversation_*` codes, emit-before-terminal core fix) and
+landed as DESIGN §9 in full, compaction spec included. Implemented: the
+five-method `ConversationStore` ABC (CS1–CS7) + `ConversationTurn` /
+`ConversationProjection` + the id grammar; FileStore turn persistence
+(`conversations/<id>/turns.jsonl` + `projections.jsonl`, mixin keeps
+file.py under the size gate); `ConversationStoreContract` (~26 tests,
+`plant_raw_turn` hook) run green over FileStore; `Conversation` —
+send blocking/streaming with identical persistence via the on_turn
+capture (hook captures, send writes — ledger #25), resume, frozen
+index, `actor=conversation_id`, hook composition, caller config never
+mutated; the `memory_scope=` sugar mounting at `memories`; register #6
+fixed (streamed on_turn now fires before the terminal yield — a
+consumer that saw `done` holds a persisted turn); `message_to_json`/
+`message_from_json` public (ledger #22); root `__all__` +9,
+`neosian.conversation` (+`.testing`) facades; two import-linter
+contracts. The slice-A done-when pinned keylessly (resume with memory
+across two scripted sessions). 1389 unit tests, zero keys. Carried to
+slice B: compaction v1 per §9.6. Carried to slice C: the CLI migration
+(+ --menu rebuild drops), examples, optional session reuse/`aclose()`.
+Deferred per §9.10: the ECOSYSTEM amendment (two-repo move).
+
 ## N3 — PostgresStore (v0.63–0.64)
 
 DESIGN: §8.
@@ -571,3 +596,34 @@ DESIGN: §2, §6, §10.
   +5, root +4 (`Mount`, `MemoryConfig`, `create_memory_tool`,
   `memory_system_section`); memory.yaml verified in the wheel.
   1277 unit tests, zero keys; v0.58.0.
+- 2026-08-19 | N2 (slice A) | **Conversations persist, resume, and carry
+  memory.** The phase-opening design discussion ran options-first and
+  landed whole as DESIGN §9 (§9.1–§9.10, compaction spec included);
+  rulings: separate `ConversationStore` ABC (ledger #21), projections in
+  the ABC day-one (#23), typed seam + public codec (#22),
+  `agent_conversation_*` under the closed prefix set (#24), capture-in-
+  hook/write-in-send (#25), `allow_indirect_imports` + storage-seam ↛
+  agent contracts (#26). `_foundation/conversation/` born: id grammar
+  (`\A[A-Za-z0-9_.-]{1,128}\Z`), frozen `ConversationTurn`/
+  `ConversationProjection`, the five-method ABC (store-assigned gapless
+  turn numbers, `read_turns(after, limit)` doubling as the recall
+  lookup), `FileTurnStore` mixin (FileStore implements both seams; last
+  line is the numbering truth; malformed/newer/naive rows raise;
+  `conversations/` collision-free beside `%3A`-encoded scopes),
+  `ConversationStoreContract` (~26 tests, `plant_raw_turn`) green over
+  FileStore. `Conversation`: sync ctor/lazy start, send blocking +
+  streaming persisting identical turns through the on_turn capture,
+  resume = same id, frozen index injected once, memory tool rebound
+  with `actor=conversation_id` (`memory=None` on the derived config —
+  no duplicate tool), hooks composed, exclusive `memory=`/`mounts=`/
+  `memory_scope=` (sugar mounts at `memories`, the native-tool root).
+  Register #6 found and fixed: streamed on_turn fired after the
+  terminal yield — now before it at all three sites (stream_final
+  defers the done yield past emit_llm_call, hook order preserved), so
+  Conversation persists before relaying the terminal and a consumer
+  that saw `done` holds the turn. `Agent.config`/`.max_tool_iterations`
+  read-only properties. Codec public; root `__all__` +9 (130);
+  `neosian.conversation` + `.testing` facades pinned; +3 error codes.
+  1389 unit tests, zero keys; v0.60.0. Carried: slice B compaction
+  (§9.6), slice C CLI migration + examples; ECOSYSTEM amendment
+  deferred (§9.10).

@@ -183,17 +183,20 @@ async def stream_with_client(
                         and agent._guardrails.block_on_input
                     ):
                         rationale = policy.rationale if policy else None
-                        yield BlockedEvent(
-                            rationale=rationale,
-                            usage=attempt.usage,
-                            usage_by_model=attempt.usage_by_model,
-                        )
+                        # Hook before the terminal yield: a consumer that
+                        # saw the terminal event has had on_turn run
+                        # (register #6).
                         await emit_turn(
                             ctx,
                             blocked_response(
                                 policy, attempt.usage, attempt.usage_by_model
                             ),
                             streamed=True,
+                        )
+                        yield BlockedEvent(
+                            rationale=rationale,
+                            usage=attempt.usage,
+                            usage_by_model=attempt.usage_by_model,
                         )
                         return
 
@@ -202,18 +205,13 @@ async def stream_with_client(
                     if turn_finish_reason
                     else None
                 )
-                yield DoneEvent(
-                    model=turn_api_model or model.value,
-                    stop_reason=normalized.value if normalized else None,
-                    raw_stop_reason=turn_finish_reason,
-                    usage=attempt.usage,
-                    usage_by_model=attempt.usage_by_model,
-                )
                 final_message = Message(
                     role=Role.ASSISTANT,
                     content="".join(content_parts) if content_parts else None,
                     reasoning=("".join(reasoning_parts) if reasoning_parts else None),
                 )
+                # Hook before the terminal yield: a consumer that saw
+                # `done` has had on_turn run (register #6).
                 await emit_turn(
                     ctx,
                     stream_response(
@@ -225,6 +223,13 @@ async def stream_with_client(
                         model=turn_api_model or model.value,
                     ),
                     streamed=True,
+                )
+                yield DoneEvent(
+                    model=turn_api_model or model.value,
+                    stop_reason=normalized.value if normalized else None,
+                    raw_stop_reason=turn_finish_reason,
+                    usage=attempt.usage,
+                    usage_by_model=attempt.usage_by_model,
                 )
                 return
 

@@ -300,6 +300,9 @@ _CODE_TABLE = {
     "MemoryConflictError": "memory_conflict",
     "MemoryFormatUnsupportedError": "memory_format_unsupported",
     "MemoryReadOnlyMountError": "memory_read_only_mount",
+    "ConversationStoreError": "agent_conversation_error",
+    "ConversationIdInvalidError": "agent_conversation_id_invalid",
+    "ConversationFormatUnsupportedError": "agent_conversation_format_unsupported",
 }
 
 _CODE_PATTERN = re.compile(

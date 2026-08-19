@@ -2,11 +2,10 @@
 
 The inverse of `content_to_json` plus a full-fidelity Message round-trip:
 role, content (plain string or content blocks), reasoning, tool_calls,
-tool_call_id. Library-side so the CLI (and later the N1 FileStore turn
-log) share one codec instead of hand-rolling halves of it.
-
-Not exported from the package root yet — the public-surface decision
-belongs to N1/N2 when the storage layer lands.
+tool_call_id. One codec shared by the CLI, the FileStore turn log, and any
+host-implemented `ConversationStore` — `message_to_json`/`message_from_json`
+are public API since N2 (DESIGN §9.9, ledger #22): a store must encode
+messages with the same codec the library reads back (CS5).
 """
 
 from __future__ import annotations

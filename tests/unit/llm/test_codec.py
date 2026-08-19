@@ -81,3 +81,12 @@ class TestContentFromJson:
     def test_unknown_block_type_raises(self) -> None:
         with pytest.raises(ValueError, match="Unknown content block type"):
             content_from_json([{"type": "audio"}])
+
+
+@pytest.mark.unit
+def test_codec_is_the_root_export() -> None:
+    """The public codec (DESIGN §9.9, ledger #22) is this module's, not a copy."""
+    import neosian
+
+    assert neosian.message_to_json is message_to_json
+    assert neosian.message_from_json is message_from_json

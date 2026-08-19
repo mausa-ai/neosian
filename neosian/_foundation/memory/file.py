@@ -28,6 +28,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
+from neosian._foundation.conversation.file_turns import FileTurnStore
 from neosian._foundation.memory import journal
 from neosian._foundation.memory.base import MemoryStore
 from neosian._foundation.memory.envelope import Envelope, parse, render
@@ -53,8 +54,9 @@ _VERSIONS = "versions"
 _REDACTIONS = "redactions.jsonl"
 
 
-class FileStore(MemoryStore):
-    """Markdown + frontmatter memory store over a plain directory."""
+class FileStore(MemoryStore, FileTurnStore):
+    """Markdown + frontmatter memory store over a plain directory —
+    implementing both storage seams (§8 documents, §9 turns)."""
 
     def __init__(self, root: str | Path, *, clock: Clock | None = None) -> None:
         self._root = Path(root).resolve()

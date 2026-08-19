@@ -88,6 +88,7 @@ class Agent:
         """
         # Initialize router for provider management
         assert config.max_retries is not None  # Set by AgentConfig.__post_init__
+        self._config = config
         self._router = ProviderRouter(max_retries=config.max_retries)
         self._client_factory = config.client_factory
         self._hooks = HookRunner(config.hooks)
@@ -139,6 +140,18 @@ class Agent:
         # Register user-provided tools
         for tool_func in config.tools:
             self._register_tool(tool_func)
+
+    @property
+    def config(self) -> AgentConfig:
+        """The configuration this agent was built from — an Agent knows its
+        configuration, never its history (DESIGN §3). Mutating it afterwards
+        does not affect the agent; `Conversation` derives its own from it."""
+        return self._config
+
+    @property
+    def max_tool_iterations(self) -> int:
+        """The tool-loop bound this agent was constructed with."""
+        return self._max_tool_iterations
 
     def _register_tool(self, tool_func: ToolFunction) -> None:
         """Register a single tool function.

@@ -84,6 +84,23 @@ class TestAgentInit:
             assert agent._system_prompt == "You are helpful."
             assert len(agent._tools) == 0
 
+    def test_agent_exposes_its_configuration(self) -> None:
+        """Read-only config/max_tool_iterations (DESIGN §3) — the seam
+        Conversation derives from."""
+        with patch(
+            "neosian._foundation.agent.base.ProviderRouter",
+            return_value=_create_mock_router(),
+        ):
+            config = AgentConfig(
+                system_prompt=SystemPrompt("You are helpful."),
+                tools=[],
+                enable_todo=False,
+            )
+            agent = Agent(config=config, max_tool_iterations=7)
+
+            assert agent.config is config
+            assert agent.max_tool_iterations == 7
+
     def test_agent_init_with_todo_enabled_by_default(self) -> None:
         """Agent should include todo tool by default."""
         with patch(

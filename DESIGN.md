@@ -22,7 +22,8 @@ settled — they are never relitigated inside a phase.
 neosian/                  # the facade: __init__.py re-exports the public API
 ├── fake.py               # public FakeProvider surface (lazy, excludable) (NS)
 ├── _foundation/          # all real code: agent/ llm/ shared/ tools/
-│                         #   guardrails/ blackboard/ evaluation/ (+ memory/, N1)
+│                         #   guardrails/ blackboard/ evaluation/
+│                         #   (+ memory/, N1; + conversation/, N2)
 ├── _cli/                 # playground, eval CLI, config
 └── assets/               # data files: prompts (YAML), ascii art
 ```
@@ -31,8 +32,12 @@ Import-linter contracts (inline in pyproject, kit idiom — the matrix is spelle
 out, `forbidden` type only):
 
 - `_foundation ↛ _cli` — the library never imports its CLI.
-- `_foundation.memory` / the Conversation layer ↛ provider internals
-  (`_foundation.llm.<provider>` modules) — memory speaks only to ABCs.
+- `_foundation.memory` ↛ provider internals (`_foundation.llm.<provider>`
+  modules) — memory speaks only to ABCs.
+- `_foundation.conversation` ↛ provider internals, with
+  `allow_indirect_imports` (Conversation drives an `Agent`, which owns the
+  router — ledger #26); and the conversation *storage-seam* modules (`base`,
+  `types`, `ids`, `file_turns`, `testing`) ↛ `_foundation.agent`.
 - The facade (`neosian/__init__.py`, `neosian/fake.py`) only re-exports; no
   logic lives there.
 
@@ -75,10 +80,13 @@ Hook insertion points (landed N0): the blocking/streaming tool loops and
 the max-iterations final call (`on_llm_call`, success and failure), tool
 batches in submission order (`on_tool`), `_dispatch` for blocking and the
 streamed done/blocked terminals (`on_turn`, exactly once per run that
-yields a response), the fallback switch sites + sticky retry-main
-(`on_fallback`). Hooks await inline — sequences are deterministic; the
-eval runner's fallback detection rides `on_fallback` instead of scraping
-logs.
+yields a response — fired **before** the terminal event is yielded, so a
+consumer that saw `done`/`blocked` has had the hook run; register #6), the
+fallback switch sites + sticky retry-main (`on_fallback`). Hooks await
+inline — sequences are deterministic; the eval runner's fallback detection
+rides `on_fallback` instead of scraping logs. `Agent` exposes read-only
+`config` and `max_tool_iterations` — an Agent knows its configuration,
+never its history; `Conversation` (§9) derives its own config from either.
 
 Found-bug register (fixed in NS/N0, tests pin each):
 1. `AgentSession.run` skipped all three validation guards (NS).
@@ -93,6 +101,10 @@ Found-bug register (fixed in NS/N0, tests pin each):
 5. One shared message list was mutated by a failed main attempt and then
    handed to the fallback attempt, leaking partial tool rounds into the
    fallback's history → per-attempt snapshot in `Attempt` (N0).
+6. The streamed paths yielded the terminal event *before* firing `on_turn`,
+   so a consumer that stopped iterating at `done` silently skipped the hook
+   — and would have lost the persisted turn under §9 → `emit_turn` fires
+   before the terminal yield at every streamed site (N2).
 
 ## §4 Usage, pricing, cost **(NS)**
 
@@ -179,9 +191,12 @@ it as JSON for host i18n-coverage tests):
 | BlackboardError family | `blackboard_error`, `blackboard_entry_not_found`, `blackboard_read_failed`, `blackboard_update_failed`, `blackboard_directory_not_found` | no |
 | EvalError family | `eval_error`, `eval_config_not_found`, `eval_config_invalid_yaml`, `eval_config_missing_key`, `eval_prompt_not_found`, `eval_case_invalid`, `eval_run_failed` | no |
 | Memory family (N1) | `memory_error`, `memory_document_not_found`, `memory_scope_invalid`, `memory_path_invalid`, `memory_conflict`, `memory_format_unsupported`, `memory_read_only_mount` | no |
+| Conversation family (N2) | `agent_conversation_error`, `agent_conversation_id_invalid`, `agent_conversation_format_unsupported` | no |
 
 The memory base class is **`MemoryStoreError`** — never `MemoryError`, which
-shadows a Python builtin in `__all__`.
+shadows a Python builtin in `__all__`. The conversation base class is
+`ConversationStoreError`; the `agent_` prefix is forced by the closed family
+set (§9.10, ledger #24).
 
 **The SDK wrap.** `ProviderError(provider, message, *, status=None,
 retryable=False, request_id=None)`; new `llm/errors.py::wrap_provider_error
@@ -426,8 +441,209 @@ output is unavailable, as with any tool. The prompt pack ships in
 
 ## §9 Conversation & compaction **(N2)**
 
-The log-projection design is sketched under ROADMAP N2 and gets a dedicated
-design discussion before implementation; the decisions land here as §9 then.
+Decided in the N2 opening design discussion (2026-08-19); slice A implements
+§9.1–§9.5 and §9.7–§9.9, slice B implements §9.6, slice C migrates the CLI.
+
+**§9.1 The layer.** `Conversation` is the opt-in stateful shell around the
+stateless core: it owns history, memory wiring, and compaction; `Agent` is
+never mutated, never subclassed, never smuggles state. The two-key model:
+`conversation_id` keys history (per thread); memory keys off mounts. Out of
+scope — a commitment, not a suggestion: branching/forking, history editing
+(ruled out in VISION), transport, auth. `send()` has no `response_format`
+parameter: a memory-enabled agent is tool-enabled, so structured output is
+unavailable by construction, as with any tool.
+
+**§9.2 The `ConversationStore` contract — constraints CS1–CS7** (numbered
+independently of §8's C1–C7):
+
+- **CS1 — async signatures, zero I/O ownership.** §8 C1 verbatim: no
+  `__init__` in the ABC, no connect/close/migrate/DDL, never begins/commits/
+  rolls back a transaction; safe inside a caller-owned transaction; no
+  durability assumed on return.
+- **CS2 — read-your-writes within a task.** `append_turn` then `read_turns`
+  in the same task sees the appended turn — resume correctness demands it.
+- **CS3 — store-assigned turn numbers: per-conversation, monotonic, gapless,
+  from 1, never reused.** Callers never propose a number. `recall_turn`
+  addresses turns by number and projection coverage is arithmetic over a
+  dense range; Postgres implements `COALESCE(MAX(turn),0)+1` under
+  `UNIQUE(conversation_id, turn)` with retry.
+- **CS4 — UTC-aware datetimes, injectable `Clock`.** `created_at` is the
+  store's, never the caller's; naive is a contract violation the kit asserts
+  against.
+- **CS5 — verbatim messages.** What is appended is what is read back — role,
+  content (string or blocks), `reasoning`, `tool_calls`, `tool_call_id`. A
+  store may not summarize, reorder, drop, or re-key. This is why the message
+  codec is public (§9.9).
+- **CS6 — `CONVERSATION_FORMAT_VERSION = 1`** on every stored row; refuse to
+  read newer (`agent_conversation_format_unsupported`). Unlike §8 C6 there is
+  no unknown-key preservation: turn rows are library-owned, never
+  hand-edited; unknown keys are ignored on read.
+- **CS7 — no policy, no interpretation.** The store never validates message
+  shape, never checks that a projected turn exists, never trims, compacts, or
+  invents ids. Compaction, banding, recall, index injection, and actor
+  binding are Conversation-layer concerns.
+
+```python
+class ConversationStore(ABC):
+    async def append_turn(conversation_id, messages: Sequence[Message]) -> ConversationTurn
+    async def read_turns(conversation_id, *, after=0, limit=None) -> tuple[ConversationTurn, ...]
+    async def last_turn_number(conversation_id) -> int            # 0 for unknown
+    async def append_projections(conversation_id, entries) -> None
+    async def read_projections(conversation_id, *, after=0, limit=None) -> tuple[ConversationProjection, ...]
+```
+
+`read_turns` returns turns with number > `after`, ascending; `limit` takes
+the oldest N after the cursor (`limit=0` → `()`); negative `after`/`limit`
+and empty `messages` are programmer errors (`ValueError`).
+`read_turns(after=n-1, limit=1)` is the recall lookup — no sixth method.
+**Deliberately absent:** `list_conversations` (hosts list from their own
+tables), delete/redact (no roadmap requirement; retrofit is cheap while the
+seam is un-frozen — §9.10), per-turn usage/model/cost columns (§9.3), and any
+`supports_*` ClassVar (nothing varies by substrate; concurrency is answered
+normatively by CS3).
+
+**§9.3 Value types** (fields are contract, pinned by the kit).
+`ConversationTurn(conversation_id, turn, messages: tuple[Message, ...],
+created_at)`. `ConversationProjection(turn, kind, text, span=1)` — `turn` is
+the last turn the entry covers, `span` the count of consecutive turns ending
+there (`1 ≤ span ≤ turn`); `kind: ProjectionKind =
+Literal["log", "digest", "epoch"]`; no timestamp — a projection is derived
+data whose provenance is the turn range it names. Ruling: turn rows carry
+**no usage/model/cost** — hooks (`on_turn`/`on_llm_call`) are the metering
+seam; a storage seam demanding token columns taxes every host implementer
+for data they already have.
+
+**§9.4 `conversation_id` grammar.** `\A[A-Za-z0-9_.-]{1,128}\Z` — one flat
+segment, no `/` or `:`, bare `.`/`..` rejected, ≤ 128 chars; validated on
+every store method (`agent_conversation_id_invalid`), **never interpreted**
+(the ECOSYSTEM §2 discipline applied to the second key). A host with
+structure encodes it flat. Case-insensitive filesystems are a legal
+substrate, so ids differing only in case are not guaranteed distinct.
+
+**§9.5 Conversation semantics** — normative rulings, each pinned by a test:
+
+1. **Append-only.** One `send()` appends exactly one turn:
+   `(user_message, *response.turn_messages)` in provider order. History is
+   the concatenation of every turn's messages in turn order. System messages
+   are configuration, never stored.
+2. `turn.messages[0]` is always the USER message that opened the turn — the
+   invariant the slice-B projector builds on.
+3. **The persistence seam is `on_turn`** — the only point where blocking and
+   streaming agree (`run(stream=True)` never returns an `AgentResponse`;
+   `DoneEvent` carries usage, not messages).
+4. **The hook captures; `send()` writes.** `HookRunner` swallows hook
+   exceptions unless `strict` — a store write inside the hook would lose
+   turns silently, and forcing `strict=True` would hijack the user's own
+   hooks. Conversation's hook only stashes the response; the write happens in
+   `send()`'s control flow where errors propagate (ledger #25).
+5. **Blocked turns persist nothing** — `turn_messages` is empty on blocked
+   (§3), so the rule is mechanical: persist iff non-empty. `send()` still
+   returns the blocked response; history is unchanged. A host wanting a
+   blocked-input audit trail uses its own `on_turn`, which still fires.
+6. **A raising `send()` persists nothing** and leaves history untouched; the
+   user message is not retained — retry is calling `send()` again. No
+   half-turns, ever.
+7. **Streamed turns persist at the terminal event.** `emit_turn` fires
+   before the terminal yield (register #6), so Conversation persists the
+   captured turn *before relaying* the terminal event — a consumer that saw
+   `done`/`blocked` holds a persisted turn unconditionally, even if it stops
+   iterating there. A store failure surfaces in place of the terminal
+   event. Abandoning a stream before the terminal persists nothing — the
+   turn never completed.
+8. **One in-flight `send()` per Conversation** — an `asyncio.Lock`, held
+   across the blocking call and for the streaming generator's lifetime.
+9. **Lazy start.** Construction is sync and does no I/O; the first `send()`
+   (or explicit `await start()`, idempotent) loads turns and freezes the
+   memory index. **Resume = construct with the same `conversation_id`.**
+10. **Frozen index per conversation** — `memory_system_section` rendered
+    exactly once per Conversation instance, appended to the system prompt
+    (`f"{system_prompt}\n\n{section}"`, the N1 playground assembly). The
+    slice-B compaction boundary is the one legitimate refresh point.
+11. **The caller's `Agent`/`AgentConfig` is never mutated.** Conversation
+    derives its own config (`dataclasses.replace`): section appended, memory
+    tool rebuilt with `actor=conversation_id`, `memory=None` on the derived
+    config (or the agent would register a second, unbound tool), hooks
+    composed — capture first, the user's `on_turn` after, the other three and
+    `strict` passed through. It accepts `Agent | AgentConfig`; `Agent`
+    exposes read-only `config`/`max_tool_iterations` for exactly this (§3).
+12. **`actor = conversation_id`** on every memory mutation — the audit
+    trail §8 promised.
+13. **Memory arguments are exclusive.** At most one of `memory=` /
+    `mounts=` / `memory_scope=` (else `ConfigurationError`); `mounts`/
+    `memory_scope` require the store to also implement `MemoryStore`; none
+    given falls back to the config's own `memory` (re-wired with the actor);
+    otherwise no memory and no index section. `memory_scope="user:123"`
+    builds a one-mount list at mount path `memories` — the path Anthropic's
+    native `memory_20250818` roots at, so N4's native wiring stays a pure
+    transport swap.
+
+**§9.6 Compaction v1 — log-projection (spec; implemented in slice B).** The
+context window renders a *view* of the append-only history: recent turns
+verbatim (hot), aged turns as typed one-line log entries (warm), oldest
+spans folded into epoch summaries (cold). The view is a pure function over
+`(turns, projections)`. Entries are computed per turn, once, and
+checkpointed via `append_projections` — never re-summarize the transcript;
+the checkpoint head is derived (`max(turn)` over projections), never stored
+separately. Deterministic projection first: tool rounds have known shape
+(`TOOL <name>(<args digest>) → <result head/tail>`) — free, no model call.
+Model distillation only for long prose, batched at compaction boundaries via
+structured output (k turns in → k log lines out, one call), `kind="digest"`.
+Selection: for each turn the widest `span` covering it wins, ties to the
+last appended — a fold supersedes without mutation; entries are never
+deleted. The built-in `recall_turn(turn)` tool re-hydrates the verbatim turn
+via `read_turns(after=turn-1, limit=1)` — compaction is paging, not
+deletion. User turns are compacted least aggressively; stated constraints
+and decisions survive verbatim. Trigger: `ContextPolicy.estimate_tokens`
+over the rendered view against `Model.context_window` at a configurable
+high-water fraction (the deliberate underestimate stays the safe direction;
+the reactive 400 wrap stays the backstop). The memory index refreshes at the
+compaction boundary — the free cache moment. Distillation calls are ordinary
+LLM calls reporting through `cost_micro_usd`/`usage_by_model` — compaction
+spend is visible, never hidden. Role labels stay full words (`USER`, `TOOL`,
+`AGENT`). Surface: `CompactionConfig(enabled, model=None /* the agent's */,
+hot_turns, trigger_fraction, digest_chars, epoch_turns, recall_tool=True)`,
+arriving as `Conversation(..., compaction=…)` in slice B.
+
+**§9.7 The shipped conformance kit** —
+`neosian.conversation.testing::ConversationStoreContract`, the §8 mechanism
+applied to the second seam: subclass, provide a `store` fixture, inherit
+~26 tests (numbering, verbatim round-trip, UTC-awareness, ordering/cursor
+semantics, isolation, id rejection, projection semantics, format refusal).
+Substrate-planting tests ride one overridable `plant_raw_turn` hook,
+skipping where unimplemented.
+
+**§9.8 FileStore turn layout.** `root/conversations/<conversation_id>/
+turns.jsonl` + `projections.jsonl`, sibling of the percent-encoded scope
+directories — every scope directory component carries `%3A`, so
+`conversations/` can never collide with a scope. One compact
+`ensure_ascii=True` JSON object per line (no message content can break
+framing), `neosian_format` on every row, ISO-Z timestamps (naive refused,
+never coerced). Pure appends — no rewrite path in v1; mutations share the
+memory side's in-process `asyncio.Lock`, so a turn append and a memory
+write never interleave. `last_turn_number` reads the last line — the
+numbering's source of truth is the file, never a line count. A malformed or
+newer row raises, never skips (skipping would silently drop a turn and
+corrupt the numbering). A missing file is an empty history, never an error.
+
+**§9.9 Public surface & the codec ruling.** `message_to_json` /
+`message_from_json` become public API: a host implementing
+`ConversationStore` must encode messages with the same codec the library
+reads back — leaving it private forces every host to hand-roll half a codec,
+the exact drift CS5 forbids (ledger #22). Root `__all__` gains the
+conversation block + the two codec names; `neosian.conversation` (+
+`.testing`) mirrors `neosian.memory` (lazy, re-export only). `FileStore` is
+re-exported from both facades — it implements both seams; `ProjectionKind`
+and `ConversationId` stay facade-only, like `MemoryAction`.
+
+**§9.10 Deferred ECOSYSTEM amendment.** ECOSYSTEM §10 names only
+`MemoryStore` and §6's prefix set is closed — `ConversationStore` belongs in
+both, but that is a two-repo move (ECOSYSTEM §12) this session cannot make.
+Until the session-pair happens: **§9 is the contract of record, the seam is
+not frozen for hosts** (the ABC docstring says so), and conversation codes
+live under `agent_` (ledger #24). Amendment payload, recorded for that
+session: ECOSYSTEM §10 gains `ConversationStore` + `ConversationStoreContract`;
+§6 gains (or deliberately declines) a `conversation_` prefix; §12 log gains a
+row.
 
 ## §10 Test harness & gates
 
@@ -508,3 +724,9 @@ never a silent divergence. Numbering is monotonic, never reused.
 | 18 | import-linter counts `TYPE_CHECKING` imports (its default; N1's memory ↛ provider-internals contract tripped on `exceptions →(TC) llm.base` and `types →(TC) llm.fake`) | **`exclude_type_checking_imports = true`** for all contracts | The §1 contracts police runtime coupling; type-only imports create none, and per-edge `ignore_imports` whack-a-mole would rot |
 | 19 | Six function tools, one per command (the plain reading of ROADMAP/VISION "six-command tool set as plain function tools") | **One `memory` tool with a `command` enum**, flat all-optional schema, per-command checks in-tool with corrective failures | The name + shape frontier models are post-trained on (`memory_20250818`); one definition per request instead of six near-clones; the N4 native flag becomes a pure transport swap. The command vocabulary is preserved verbatim — only the packaging changed |
 | 20 | `create` refuses an existing path (Anthropic's reference local memory tool opens `O_EXCL`) | **`create` = `store.write`** (create-or-overwrite, version bumps), with a `system_reminder` naming the overwritten version and pointing at `str_replace` | Refusal would fork the tool's semantics from §8's write ruling; the reminder teaches the same discipline without a second code path, and every overwrite stays recoverable through the version rows |
+| 21 | Extend `MemoryStore` with turn methods (one store, one ABC) | **A separate `ConversationStore` ABC**; `FileStore` implements both | Different shapes (scope+path+versions vs conversation+turn+projections), different implementers (a host may keep turns in its own tables and memory in ours); growing a shipped ABC breaks every existing implementation and the conformance kit |
+| 22 | JSON dicts at the turn-storage seam (dumb stores, codec stays private) | **Typed `tuple[Message, ...]` at the seam; `message_to_json`/`message_from_json` go public** | A dict seam pushes encoding into every host and guarantees divergence exactly on `tool_call_id`/content blocks/reasoning — the fields the CLI's lost-tool-history bug was made of |
+| 23 | Projection surface deferred until compaction lands (slice B) | **`append_projections`/`read_projections` in the ABC from day one**, unused until slice B | An ABC gains methods only at the cost of every implementation; compaction's storage shape is already known — cheap now, painful to retrofit |
+| 24 | A `conversation_` error-code family | **`agent_conversation_*`** under the existing family prefix | ECOSYSTEM §6's prefix set is closed and frozen; opening it is a two-repo move this session cannot make, codes are append-only so the naming is permanent, and hosts key on full code strings — the taxonomy is cosmetic |
+| 25 | `on_turn` performs the store write (the obvious reading) | **The hook captures; `send()` writes** | Hook exceptions are swallowed unless `strict` — persistence inside a hook loses turns silently, and forcing `strict=True` would change the semantics of the user's own hooks |
+| 26 | Strict indirect-import checking for the conversation layering contract (the memory contract's setting) | **`allow_indirect_imports = true`** for conversation ↛ providers, plus a second contract: the storage-seam modules never import the agent | `Conversation` legitimately drives an `Agent`, which owns the router; policing only the direct edge is the honest version of the §1 promise, and the seam-modules contract catches the coupling that actually matters |

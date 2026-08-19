@@ -31,6 +31,14 @@ from neosian._foundation.agent.response import AgentResponse
 from neosian._foundation.agent.session import AgentSession
 from neosian._foundation.blackboard.base import BlackboardProvider
 from neosian._foundation.blackboard.file import FileBlackboard
+from neosian._foundation.conversation.base import ConversationStore
+from neosian._foundation.conversation.core import Conversation
+from neosian._foundation.conversation.ids import parse_conversation_id
+from neosian._foundation.conversation.types import (
+    CONVERSATION_FORMAT_VERSION,
+    ConversationProjection,
+    ConversationTurn,
+)
 from neosian._foundation.guardrails.policy import CommonPolicies, PolicyBuilder
 from neosian._foundation.llm.base import (
     ContentBlock,
@@ -46,6 +54,7 @@ from neosian._foundation.llm.base import (
     normalize_stop_reason,
     text_of,
 )
+from neosian._foundation.llm.codec import message_from_json, message_to_json
 from neosian._foundation.memory.base import MemoryStore
 from neosian._foundation.memory.file import FileStore
 from neosian._foundation.memory.index import memory_system_section
@@ -78,6 +87,7 @@ from neosian._foundation.shared.exceptions import (
     BlackboardError,
     ConfigurationError,
     ContextWindowExceededError,
+    ConversationStoreError,
     EvalError,
     FallbackExhaustedError,
     GuardrailError,
@@ -158,6 +168,8 @@ __all__ = [
     "ImageBlock",
     "DocumentBlock",
     "text_of",
+    "message_to_json",
+    "message_from_json",
     # Tools
     "Tool",
     "ToolCall",
@@ -246,6 +258,13 @@ __all__ = [
     "MemoryConfig",
     "create_memory_tool",
     "memory_system_section",
+    # Conversation (DESIGN §9)
+    "Conversation",
+    "ConversationStore",
+    "ConversationTurn",
+    "ConversationProjection",
+    "CONVERSATION_FORMAT_VERSION",
+    "parse_conversation_id",
     # Utilities
     "load_prompt",
     # Fallback
@@ -268,6 +287,7 @@ __all__ = [
     "StructuredOutputToolsError",
     "UnsupportedContentError",
     "UnsupportedParameterError",
+    "ConversationStoreError",
     "GuardrailError",
     "AgentLoadError",
     "PromptLoadError",

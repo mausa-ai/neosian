@@ -81,8 +81,11 @@ async def stream_final_with_client_and_guard(
     content_parts: list[str] = []
     reasoning_parts: list[str] = []
     # on_turn is deferred past the end-of-stream on_llm_call so the
-    # hook sequence matches the blocking path (llm_call, then turn).
+    # hook sequence matches the blocking path (llm_call, then turn) —
+    # and the done yield is deferred past both, so a consumer that saw
+    # `done` has had every hook run (register #6).
     turn_response: AgentResponse | None = None
+    done_event: DoneEvent | None = None
     call_started = time.monotonic()
 
     def _final_message() -> Message:
@@ -157,17 +160,20 @@ async def stream_final_with_client_and_guard(
                         blocked_usage = merge_usage(
                             attempt.usage, chunk.usage or final_usage
                         )
-                        yield BlockedEvent(
-                            rationale=rationale,
-                            usage=blocked_usage,
-                            usage_by_model=attempt.usage_by_model,
-                        )
+                        # Hook before the terminal yield: a consumer that
+                        # saw the terminal event has had on_turn run
+                        # (register #6).
                         await emit_turn(
                             ctx,
                             blocked_response(
                                 policy, blocked_usage, attempt.usage_by_model
                             ),
                             streamed=True,
+                        )
+                        yield BlockedEvent(
+                            rationale=rationale,
+                            usage=blocked_usage,
+                            usage_by_model=attempt.usage_by_model,
                         )
                         return
 
@@ -176,7 +182,7 @@ async def stream_final_with_client_and_guard(
                     attempt.record(final_api_model, chunk.usage)
                     call_usage = chunk.usage
                     final_usage = None
-                    yield _done_event()
+                    done_event = _done_event()
                     turn_response = stream_response(
                         attempt,
                         _final_message(),
@@ -196,7 +202,7 @@ async def stream_final_with_client_and_guard(
                     attempt.record(final_api_model, final_usage)
                     call_usage = final_usage
                     final_usage = None
-                    yield _done_event()
+                    done_event = _done_event()
                     turn_response = stream_response(
                         attempt,
                         _final_message(),
@@ -213,7 +219,7 @@ async def stream_final_with_client_and_guard(
                 attempt.record(final_api_model, final_usage)
                 call_usage = final_usage
                 final_usage = None
-            yield _done_event()
+            done_event = _done_event()
             turn_response = stream_response(
                 attempt,
                 _final_message(),
@@ -235,6 +241,8 @@ async def stream_final_with_client_and_guard(
         )
         if turn_response is not None:
             await emit_turn(ctx, turn_response, streamed=True)
+        if done_event is not None:
+            yield done_event
     except Exception as exc:
         # Fold the un-ledgered remainder so the caller's attempt read
         # sees everything billed before the failure.

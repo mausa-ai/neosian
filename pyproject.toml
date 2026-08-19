@@ -1,6 +1,6 @@
 [project]
 name = "neosian"
-version = "0.58.0"
+version = "0.60.0"
 description = "Stateless agentic AI library. LLM orchestration, tool execution, streaming."
 readme = "README.md"
 license = "Apache-2.0"
@@ -113,6 +113,33 @@ forbidden_modules = [
     "neosian._foundation.llm.cerebras",
     "neosian._foundation.llm.fake",
 ]
+
+# Conversation drives an Agent, which owns the router — the direct edge
+# is the honest one to police (ledger #26).
+[[tool.importlinter.contracts]]
+name = "the conversation layer never imports provider clients directly"
+type = "forbidden"
+source_modules = ["neosian._foundation.conversation"]
+forbidden_modules = [
+    "neosian._foundation.llm.groq",
+    "neosian._foundation.llm.openai",
+    "neosian._foundation.llm.anthropic",
+    "neosian._foundation.llm.cerebras",
+    "neosian._foundation.llm.fake",
+]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "the conversation storage seam never imports the agent"
+type = "forbidden"
+source_modules = [
+    "neosian._foundation.conversation.base",
+    "neosian._foundation.conversation.types",
+    "neosian._foundation.conversation.ids",
+    "neosian._foundation.conversation.file_turns",
+    "neosian._foundation.conversation.testing",
+]
+forbidden_modules = ["neosian._foundation.agent"]
 
 [project.scripts]
 neosian = "neosian._cli.main:main"
