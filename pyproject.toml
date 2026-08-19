@@ -1,6 +1,6 @@
 [project]
 name = "neosian"
-version = "0.56.0"
+version = "0.57.0"
 description = "Stateless agentic AI library. LLM orchestration, tool execution, streaming."
 readme = "README.md"
 license = "Apache-2.0"
@@ -89,17 +89,30 @@ ignore = [
               # serialization-heavy public enums (Model, Role, AgentEventType)
 ]
 
-# Layering (DESIGN §1) — forbidden contracts only. The memory/Conversation ↛
-# provider-internals contract lands with the memory module in N1 (import-linter
-# rejects contracts naming modules that do not exist yet).
+# Layering (DESIGN §1) — forbidden contracts only. Type-only imports are
+# excluded: the contracts police runtime coupling, and TYPE_CHECKING
+# blocks (e.g. shared.types -> llm.fake for FakeTurn) create none.
 [tool.importlinter]
 root_packages = ["neosian"]
+exclude_type_checking_imports = true
 
 [[tool.importlinter.contracts]]
 name = "the library never imports its CLI"
 type = "forbidden"
 source_modules = ["neosian._foundation"]
 forbidden_modules = ["neosian._cli"]
+
+[[tool.importlinter.contracts]]
+name = "memory speaks only to ABCs, never provider internals"
+type = "forbidden"
+source_modules = ["neosian._foundation.memory"]
+forbidden_modules = [
+    "neosian._foundation.llm.groq",
+    "neosian._foundation.llm.openai",
+    "neosian._foundation.llm.anthropic",
+    "neosian._foundation.llm.cerebras",
+    "neosian._foundation.llm.fake",
+]
 
 [project.scripts]
 neosian = "neosian._cli.main:main"

@@ -46,6 +46,20 @@ from neosian._foundation.llm.base import (
     normalize_stop_reason,
     text_of,
 )
+from neosian._foundation.memory.base import MemoryStore
+from neosian._foundation.memory.file import FileStore
+from neosian._foundation.memory.scope import (
+    SCOPE_MAX_LENGTH,
+    SCOPE_PATTERN,
+    Scope,
+    parse_scope,
+)
+from neosian._foundation.memory.types import (
+    MEMORY_FORMAT_VERSION,
+    MemoryDocument,
+    MemoryEntry,
+    MemoryVersion,
+)
 from neosian._foundation.shared.constraints import (
     Desc,
     Max,
@@ -66,6 +80,8 @@ from neosian._foundation.shared.exceptions import (
     GuardrailError,
     InvalidModelError,
     LLMError,
+    MemoryConflictError,
+    MemoryStoreError,
     MessageSerializationError,
     MissingAPIKeyError,
     ModelFailedError,
@@ -210,6 +226,19 @@ __all__ = [
     "BlackboardName",
     "FileBlackboard",
     "BlackboardError",
+    # Memory (DESIGN §8)
+    "MemoryStore",
+    "MemoryDocument",
+    "MemoryEntry",
+    "MemoryVersion",
+    "FileStore",
+    "Scope",
+    "parse_scope",
+    "SCOPE_PATTERN",
+    "SCOPE_MAX_LENGTH",
+    "MEMORY_FORMAT_VERSION",
+    "MemoryStoreError",
+    "MemoryConflictError",
     # Utilities
     "load_prompt",
     # Fallback

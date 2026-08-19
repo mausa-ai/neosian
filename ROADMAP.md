@@ -2,15 +2,16 @@
 
 > **▶ Current phase: N1 — Memory core**
 >
-> *(2026-08-19: N0 done in two slices — slice A reshaped the agent core
-> (twins collapsed, turn capture, hooks, frozen AgentResponse, v0.55.0);
-> slice B froze the wire: event schema v2 (`run(stream=True) →
-> AsyncIterator[AgentEvent]`, old SSE surface deleted), default-on
-> ContextPolicy + the no-smaller-window fallback rule, keyless scripted
-> eval runs, and the CLI persist/replay done-when; `v0.56.0` cut.
-> Standing ruling: neosian's phases run to completion before the kit's
-> P10 vendors from a `v<X.Y.Z>` release tag. Next: N1 opens with the
-> MemoryStore ABC per DESIGN §8.)*
+> *(2026-08-19: slice A shipped at v0.57.0 — the storage seam: MemoryStore
+> ABC per §8 with the semantic rulings written into DESIGN, scope + path
+> grammars, the seven `memory_*` error codes, FileStore (envelope codec,
+> JSONL sidecar, redaction trail), the MemoryStoreContract conformance
+> kit, `neosian.memory` public surface, Clock, and the memory ↛
+> provider-internals import contract (ledger #18). Standing ruling:
+> neosian's phases run to completion before the kit's P10 vendors from a
+> `v<X.Y.Z>` release tag. Next: slice B — the six-command tool set, the
+> prompt pack, mounts + AgentConfig wiring, index generation, and the
+> CLI dogfood done-when.)*
 >
 > The pointer above must equal the first phase heading without ✅ — if they
 > disagree, say so and trust the checkboxes. Companion to [VISION.md](VISION.md)
@@ -269,6 +270,27 @@ DESIGN: §8, §7.
 **Done when:** an agent in the CLI demonstrably accumulates memory in one
 session and uses it in the next.
 
+**Split (2026-08-19): slice A shipped at v0.57.0** — the storage seam:
+`MemoryStore` ABC exactly per §8 (the seven constraints; the semantic
+rulings — version numbering across delete/re-create, rename-conflict,
+newest-first `versions()`, per-state `redacted`, best-effort
+`expected_version` — written into DESIGN §8); scope grammar
+(`parse_scope`, `SCOPE_PATTERN` anchored `\A…\Z`, `scope_directory`
+storage encoding pinned to scope.py/file.py by a grep test) + document-path
+grammar; the seven `memory_*` error codes (table whole,
+`MemoryReadOnlyMountError` waits for the tool layer); `FileStore` —
+exact envelope codec (byte-exact round-trip incl. content that begins
+`---`), JSONL version sidecar as counter source of truth, atomic writes,
+symlink containment, `redactions.jsonl` erasure trail (user-decided);
+`MemoryStoreContract` (~30 tests incl. parametrized grammar/round-trip
+tables, `plant_raw_document` substrate hook) run green over FileStore;
+`Clock`/`SystemClock` (first UTC discipline); `neosian.memory` +
+`neosian.memory.testing` lazy public surface, root `__all__` +12; the
+memory ↛ provider-internals import contract (ledger #18:
+`exclude_type_checking_imports`). 1204 unit tests, zero keys. Carried
+forward to slice B: the six-command tool set, the prompt pack, mounts +
+AgentConfig wiring, index generation + injection, the CLI done-when.
+
 ## N2 — Conversation layer (v0.60–0.62)
 
 DESIGN: §9 (written by this phase's design discussion), §3.
@@ -477,3 +499,29 @@ DESIGN: §2, §6, §10.
   `neosian_session: 1` marker, playground persists user msg +
   `turn_messages` verbatim (lost-tool-history bug fixed), `--resume
   PATH` replays. 1013 unit tests, zero keys; v0.56.0.
+- 2026-08-19 | N1 (slice A) | **The storage seam.** `_foundation/memory/`
+  born: `MemoryStore` ABC verbatim from §8 (no `__init__`, seven abstract
+  async methods, `supports_optimistic_concurrency=False`), frozen
+  `MemoryDocument`/`MemoryEntry`/`MemoryVersion` (+`extra` — preserved
+  unknown keys, output-only), `MEMORY_FORMAT_VERSION = 1`. Scope grammar
+  per ECOSYSTEM §2 (`\A…\Z` anchoring — `$` accepts a trailing newline;
+  no normalization; `scope_directory` percent-encodes one dir per segment
+  so a 512-char scope survives NAME_MAX and `%3A` guarantees no reserved-
+  name collision; decomposition pinned to scope.py by grep test) + path
+  grammar (bare `.`/`..` only; `..foo` legal). Seven `memory_*` codes
+  appended (base `MemoryStoreError`; messages inline, constants.py not
+  grown). `FileStore`: exact envelope codec (first-fence-only, `newline=""`
+  everywhere, ISO-Z timestamps, naive refused never coerced), JSONL
+  sidecar = version-counter truth (delete consumes a number, re-create
+  continues, malformed lines raise), atomic same-dir-temp writes, symlink
+  containment, in-process `asyncio.Lock` (10 gathered writes → versions
+  1..10 gapless), best-effort `expected_version`, `redactions.jsonl`
+  erasure trail. `MemoryStoreContract` conformance kit (per-method
+  `@pytest.mark.asyncio`, kit-owned `scope` fixture, `plant_raw_document`
+  hook, mismatch test gated on the ClassVar) — FileStore inherits it
+  green. `Clock` Protocol + `SystemClock` in shared/. Public:
+  `neosian.memory` (+ `.testing`, pytest never a runtime dep — pinned by
+  subprocess test), root `__all__` +12. Ledger #18:
+  `exclude_type_checking_imports` for the new memory ↛ provider-internals
+  contract. 1204 unit tests, zero keys; v0.57.0. Carried forward:
+  slice B (tools, prompt pack, mounts, index, CLI done-when).

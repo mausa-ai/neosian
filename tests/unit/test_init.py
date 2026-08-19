@@ -217,6 +217,19 @@ def test_all_list_matches_exports() -> None:
         "BlackboardName",
         "FileBlackboard",
         "BlackboardError",
+        # Memory (DESIGN §8)
+        "MemoryStore",
+        "MemoryDocument",
+        "MemoryEntry",
+        "MemoryVersion",
+        "FileStore",
+        "Scope",
+        "parse_scope",
+        "SCOPE_PATTERN",
+        "SCOPE_MAX_LENGTH",
+        "MEMORY_FORMAT_VERSION",
+        "MemoryStoreError",
+        "MemoryConflictError",
         # Utilities
         "load_prompt",
         # Fallback

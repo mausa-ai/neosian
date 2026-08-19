@@ -687,6 +687,129 @@ class FileBlackboardDirectoryNotFoundError(BlackboardError):
         self.path = path
 
 
+# Memory Errors (DESIGN §5 table, §8). Base is MemoryStoreError — never
+# MemoryError, which shadows a Python builtin in __all__. Messages are
+# inline f-strings: constants.py is named debt and never grows.
+class MemoryStoreError(NeosianError):
+    """Base exception for memory-store errors."""
+
+    code = "memory_error"
+
+
+class MemoryDocumentNotFoundError(MemoryStoreError):
+    """Raised when an operation requires a document that does not exist."""
+
+    code = "memory_document_not_found"
+
+    def __init__(self, scope: str, path: str) -> None:
+        super().__init__(
+            f"Memory document not found: {path!r} in scope {scope!r}",
+            details={"scope": scope, "path": path},
+        )
+        self.scope = scope
+        self.path = path
+
+
+class MemoryScopeInvalidError(MemoryStoreError):
+    """Raised when a scope string violates the grammar (ECOSYSTEM §2)."""
+
+    code = "memory_scope_invalid"
+
+    def __init__(self, scope: str, reason: str) -> None:
+        super().__init__(
+            f"Invalid memory scope {scope!r}: {reason}",
+            details={"scope": scope, "reason": reason},
+        )
+        self.scope = scope
+        self.reason = reason
+
+
+class MemoryPathInvalidError(MemoryStoreError):
+    """Raised when a document path violates the grammar (DESIGN §8)."""
+
+    code = "memory_path_invalid"
+
+    def __init__(self, path: str, reason: str) -> None:
+        super().__init__(
+            f"Invalid memory document path {path!r}: {reason}",
+            details={"path": path, "reason": reason},
+        )
+        self.path = path
+        self.reason = reason
+
+
+class MemoryConflictError(MemoryStoreError):
+    """Raised when a write loses a version race or a rename target is taken.
+
+    `reason` is machine-checkable: "version_mismatch", "document_absent"
+    (an `expected_version` on a document that does not exist), or
+    "destination_exists" (rename onto an occupied path, src == dst included).
+    """
+
+    code = "memory_conflict"
+
+    def __init__(
+        self,
+        scope: str,
+        path: str,
+        reason: str,
+        *,
+        expected_version: int | None = None,
+        actual_version: int | None = None,
+    ) -> None:
+        super().__init__(
+            f"Memory conflict on {path!r} in scope {scope!r}: {reason}",
+            details={
+                "scope": scope,
+                "path": path,
+                "reason": reason,
+                "expected_version": expected_version,
+                "actual_version": actual_version,
+            },
+        )
+        self.scope = scope
+        self.path = path
+        self.reason = reason
+        self.expected_version = expected_version
+        self.actual_version = actual_version
+
+
+class MemoryFormatUnsupportedError(MemoryStoreError):
+    """Raised when stored data declares a newer format than this library reads.
+
+    Refusal, never coercion: a newer `neosian_format` (or a missing/broken
+    storage envelope, or a naive timestamp) is rejected at the boundary.
+    """
+
+    code = "memory_format_unsupported"
+
+    def __init__(self, scope: str, path: str, reason: str) -> None:
+        super().__init__(
+            f"Unsupported memory format for {path!r} in scope {scope!r}: {reason}",
+            details={"scope": scope, "path": path, "reason": reason},
+        )
+        self.scope = scope
+        self.path = path
+        self.reason = reason
+
+
+class MemoryReadOnlyMountError(MemoryStoreError):
+    """Raised by the tool layer when a write targets a read-only mount.
+
+    The store never raises this (C7: mounts are tool-layer policy); it lives
+    here so the DESIGN §5 code table ships whole. Wired in N1 slice B.
+    """
+
+    code = "memory_read_only_mount"
+
+    def __init__(self, mount_path: str) -> None:
+        super().__init__(
+            f"Memory mount {mount_path!r} is read-only",
+            details={"mount_path": mount_path},
+        )
+        self.mount_path = mount_path
+
+
 def _collect_error_codes() -> dict[str, type[NeosianError]]:
     registry: dict[str, type[NeosianError]] = {NeosianError.code: NeosianError}
     stack: list[type[NeosianError]] = [NeosianError]

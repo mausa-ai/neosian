@@ -338,7 +338,54 @@ MemoryStoreContract`: subclass, provide a `store` fixture, inherit ~25 tests
 (UTC-awareness, redact semantics, version monotonicity, read-your-writes,
 format refusal, unknown-key preservation, validation rejections,
 `expected_version`). It is the mechanism that keeps host-implemented stores
-honest across repos; the kit's adapter must subclass it.
+honest across repos; the kit's adapter must subclass it. Substrate-planting
+tests (format refusal, unknown-key survival) ride one overridable
+`plant_raw_document` hook, skipping where unimplemented; the
+`expected_version`-mismatch test is gated on the ClassVar.
+
+**Value types (fields are contract, pinned by the kit):**
+`MemoryDocument(scope, path, content, version, created_at, updated_at,
+actor, redacted, extra)` — `extra: Mapping[str, Any]` carries preserved
+unknown storage keys, output-only (`write()` accepts none; they enter only
+from the substrate). `MemoryEntry(path, version, created_at, updated_at,
+redacted)`. `MemoryVersion(path, version, action, content, actor,
+created_at, redacted)`; `MemoryAction = Literal["created", "modified",
+"deleted"]` — redaction is deliberately not an action: it appends nothing.
+
+**Semantic rulings (N1; each pinned by the kit):** `read` → `None` for
+never-written or deleted, while redacted documents read back
+`content=""`/`redacted=True`. Every mutation appends exactly one row per
+path touched; a delete consumes the next version number and a re-create
+continues from the maximum ever issued (resetting `created_at`); an
+identical-content write still bumps. `versions()` is newest-first,
+`limit` takes the most recent N (`limit=0` → `()`, unknown path → `()`),
+and the newest row mirrors the live document unless its action is
+`deleted`. `rename` = `deleted`@src + `created`@dst (dst continues its own
+history); missing src → `memory_document_not_found`; occupied dst — src ==
+dst included — → `memory_conflict` (`reason: "destination_exists"`), never
+a silent overwrite. `redact` returns the count of distinct paths matched
+(idempotent in effect and return value), never bumps `updated_at`;
+`redacted` is per-state, never sticky — a later write yields a fresh
+un-redacted document while history stays cleared. Validation is
+scope-then-path on every method, no normalization anywhere. `list_documents`
+excludes deleted, includes redacted, sorts by path; `prefix` is a plain
+string prefix, never validated, never a raiser. `expected_version`
+mismatch/absent-doc → `memory_conflict` where the ClassVar is declared; any
+store must accept a matching value. FileStore declares `False` (files
+cannot arbitrate between processes) yet honors the check best-effort under
+its in-process lock.
+
+**FileStore layout** — one directory per percent-encoded scope segment
+(every component carries `%3A`, so no collision with reserved names, and
+a 512-char scope never exceeds filesystem name limits):
+`<seg>/…/documents/<path>.md` (exact-codec envelope + verbatim body, byte-
+exact round-trip, content beginning with `---` included) ·
+`versions/<path>.jsonl` (the version counter's source of truth; malformed
+lines raise, never skip) · `redactions.jsonl` (append-only erasure trail:
+ts/actor/path/count — FileStore-local, invisible to the kit). Foreign
+files with ungrammatical names are skipped silently in listings; a valid
+name with a broken or newer envelope raises. Naive timestamps in stored
+data are refused, never coerced (`memory_format_unsupported`).
 
 ## §9 Conversation & compaction **(N2)**
 
@@ -421,3 +468,4 @@ never a silent divergence. Numbering is monotonic, never reused.
 | 15 | Event name only in the SSE `event:` line (§6 leaves the payload unstated) | **`to_dict()` carries the `event` discriminator key**; payload TypedDicts are the schema-export source | Hosts codegen validators from `event_schemas()` — schema and payload must be the same shape, and a self-describing JSON object survives outside SSE framing |
 | 16 | ContextPolicy opt-in, or exact per-provider tokenizers | **Default-on, char-heuristic, deliberately underestimating** (`AgentConfig.context_policy=ContextPolicy()`; `None` disables) | Makes `context_window` live for every user; underestimation means it only fires on clear overflow — false positives impossible in practice, the reactive 400 wrap stays the backstop |
 | 17 | Caller-input errors wrapped in `ModelFailedError` at no-fallback branches | **`ContextWindowExceededError`/`UnsupportedContentError` re-raise as-is** (billed usage attached), like the fallback-gate already did | "Your prompt doesn't fit" is not a model failure; wrapping buried the structured window/estimate fields hosts key on |
+| 18 | import-linter counts `TYPE_CHECKING` imports (its default; N1's memory ↛ provider-internals contract tripped on `exceptions →(TC) llm.base` and `types →(TC) llm.fake`) | **`exclude_type_checking_imports = true`** for all contracts | The §1 contracts police runtime coupling; type-only imports create none, and per-edge `ignore_imports` whack-a-mole would rot |

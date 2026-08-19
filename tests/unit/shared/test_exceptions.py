@@ -293,6 +293,13 @@ _CODE_TABLE = {
     "EvalPromptNotFoundError": "eval_prompt_not_found",
     "EvalCaseInvalidError": "eval_case_invalid",
     "EvalRunError": "eval_run_failed",
+    "MemoryStoreError": "memory_error",
+    "MemoryDocumentNotFoundError": "memory_document_not_found",
+    "MemoryScopeInvalidError": "memory_scope_invalid",
+    "MemoryPathInvalidError": "memory_path_invalid",
+    "MemoryConflictError": "memory_conflict",
+    "MemoryFormatUnsupportedError": "memory_format_unsupported",
+    "MemoryReadOnlyMountError": "memory_read_only_mount",
 }
 
 _CODE_PATTERN = re.compile(
