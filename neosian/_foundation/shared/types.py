@@ -642,6 +642,7 @@ class AgentConfig:
     cache_conversation: bool = True
     playbook_dir: str | Path | None = None
     blackboard: Any = None  # BlackboardProvider | None (Any to avoid circular import)
+    memory: Any = None  # MemoryConfig | None (Any to avoid circular import)
     client_factory: "ClientFactory | None" = None
     hooks: "AgentHooks | None" = None
     # Default-on, deliberately-underestimating pre-call window check

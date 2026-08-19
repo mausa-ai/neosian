@@ -19,7 +19,9 @@ from neosian._foundation.shared.exceptions import (
 _PACKAGE: Final = "neosian.assets"
 _GUARDRAILS_FILE: Final = "prompts/guardrails.yaml"
 _TOOLS_FILE: Final = "prompts/tools.yaml"
+_MEMORY_FILE: Final = "prompts/memory.yaml"
 _POLICY_KEYS: Final = ("name", "code", "description", "violates", "safe")
+_MEMORY_KEYS: Final = ("tool", "system_section")
 _TOOL_KEYS: Final = (
     "todo",
     "playbook_list",
@@ -65,6 +67,9 @@ def _load() -> tuple[dict[str, str], tuple[dict[str, Any], ...]]:
     }
     for key in _TOOL_KEYS:
         prompts[f"tools.{key}"] = str(_require(tools, key, _TOOLS_FILE))
+    memory = _load_yaml(_MEMORY_FILE)
+    for key in _MEMORY_KEYS:
+        prompts[f"memory.{key}"] = str(_require(memory, key, _MEMORY_FILE))
     policies = tuple(_require(guardrails, "policies", _GUARDRAILS_FILE))
     for entry in policies:
         if not isinstance(entry, dict):

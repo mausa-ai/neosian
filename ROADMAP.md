@@ -1,17 +1,18 @@
 # Neosian Roadmap — Memory & Conversation
 
-> **▶ Current phase: N1 — Memory core**
+> **▶ Current phase: N2 — Conversation layer**
 >
-> *(2026-08-19: slice A shipped at v0.57.0 — the storage seam: MemoryStore
-> ABC per §8 with the semantic rulings written into DESIGN, scope + path
-> grammars, the seven `memory_*` error codes, FileStore (envelope codec,
-> JSONL sidecar, redaction trail), the MemoryStoreContract conformance
-> kit, `neosian.memory` public surface, Clock, and the memory ↛
-> provider-internals import contract (ledger #18). Standing ruling:
-> neosian's phases run to completion before the kit's P10 vendors from a
-> `v<X.Y.Z>` release tag. Next: slice B — the six-command tool set, the
-> prompt pack, mounts + AgentConfig wiring, index generation, and the
-> CLI dogfood done-when.)*
+> *(2026-08-19: N1 closed at v0.58.0 — the memory layer speaks: one
+> `memory` tool carrying the six-command vocabulary (ledger #19), the
+> prompt pack in assets, Mount/MemoryConfig + AgentConfig auto-wiring,
+> index generation + `memory_system_section`, and the CLI done-when
+> pinned keylessly. Standing ruling: neosian's phases run to completion
+> before the kit's P10 vendors from a `v<X.Y.Z>` release tag. N2 opens
+> with the compaction **design discussion** — the log-projection sketch
+> under N2 is a direction, not a spec; it must land as DESIGN §9 before
+> any implementation. Also waiting in N2: `Conversation`, the
+> `memory_scope=` single-mount sugar, the CLI migration onto
+> Conversation + FileStore, and the llm/codec.py export decision.)*
 >
 > The pointer above must equal the first phase heading without ✅ — if they
 > disagree, say so and trust the checkboxes. Companion to [VISION.md](VISION.md)
@@ -244,7 +245,7 @@ v2 per §6 (`run(stream=True) -> AsyncIterator[AgentEvent]`, `sse_stream`,
 and replays full sessions with tool messages via the new message codec —
 the phase done-when.
 
-## N1 — Memory core (v0.57–0.59)
+## N1 — Memory core (v0.57–0.58) ✅ 2026-08-19
 
 DESIGN: §8, §7.
 
@@ -287,9 +288,19 @@ tables, `plant_raw_document` substrate hook) run green over FileStore;
 `Clock`/`SystemClock` (first UTC discipline); `neosian.memory` +
 `neosian.memory.testing` lazy public surface, root `__all__` +12; the
 memory ↛ provider-internals import contract (ledger #18:
-`exclude_type_checking_imports`). 1204 unit tests, zero keys. Carried
-forward to slice B: the six-command tool set, the prompt pack, mounts +
-AgentConfig wiring, index generation + injection, the CLI done-when.
+`exclude_type_checking_imports`). 1204 unit tests, zero keys.
+
+**Slice B shipped at v0.58.0 (2026-08-19), closing the phase** — the
+memory layer speaks: one `memory` function tool carrying the six-command
+vocabulary (ledger #19 — the packaging changed, never the vocabulary),
+`Mount`/`MemoryConfig` + the virtual path space (mounts as top-level
+directories), read-only enforcement wiring `MemoryReadOnlyMountError`,
+the prompt pack in `assets/prompts/memory.yaml`, index generation +
+`memory_system_section` (frozen per conversation, caller-injected),
+`AgentConfig.memory` auto-registration, the playground injecting the
+section in one event loop, `examples/memory_agent.py`, and the done-when
+pinned keylessly (two scripted sessions over one FileStore root). Ledger
+#20: `create` stays create-or-overwrite with an overwrite reminder.
 
 ## N2 — Conversation layer (v0.60–0.62)
 
@@ -525,3 +536,38 @@ DESIGN: §2, §6, §10.
   `exclude_type_checking_imports` for the new memory ↛ provider-internals
   contract. 1204 unit tests, zero keys; v0.57.0. Carried forward:
   slice B (tools, prompt pack, mounts, index, CLI done-when).
+- 2026-08-19 | N1 (slice B) | **The memory layer speaks; N1 closes.**
+  Options-first rulings: **one `memory` tool** with a `command` enum
+  (ledger #19 — mirrors `memory_20250818`, N4 native flag = transport
+  swap; flat all-optional schema, per-command `_require` checks and an
+  unknown-command guard fail correctively — Literal is schema steering,
+  never runtime enforcement) and **`AgentConfig.memory`** auto-registration (the
+  todo/playbook/blackboard idiom; `Any`-typed field like blackboard).
+  `memory/mounts.py`: frozen `Mount(scope, mount_path, read_only,
+  description)` + `MemoryConfig(store, mounts)` (≥ 1 mount, unique
+  mount paths — explicit scope made structural), `resolve` (first
+  segment picks the mount), `writable` — the only
+  `MemoryReadOnlyMountError` raise site (slice A's deferral wired).
+  `memory/commands.py`: view (`/` returns `generate_memory_index`
+  verbatim — one renderer; documents line-numbered; directory = plain
+  prefix + `/`; redacted labeled, never empty-looking), create
+  (create-or-overwrite + overwrite reminder, ledger #20), str_replace
+  (exactly-one; 0/N corrective with match lines) and insert (bounds
+  named) both passing `expected_version`, delete, rename (same-mount =
+  store.rename; cross-mount composed read+write+delete, documented
+  non-atomic). `memory/tools.py`: closure factory, every
+  `MemoryStoreError` → `ToolResult.fail("[code] message")` + per-code
+  hint, no PEP 563 (decorator resolves hints at decoration time).
+  `memory/index.py` + `assets/prompts/memory.yaml` (tool ≤ 1024 chars
+  for the OpenAI-compat cap; `system_section` carries discipline +
+  routing + `{{index}}`); prompt_assets loads it fail-fast. Playground:
+  section injection + Agent construction + chat loop in one event loop
+  (`_run_chat`; store locks bind per loop), `--menu` rebuild passes
+  `memory=` (its other drops carried to the N2 CLI migration), arena
+  deliberately memory-less; `examples/memory_agent.py`. Done-when pinned
+  keylessly: two scripted FakeClient sessions over one FileStore root —
+  create in session 1, fresh store + index + view in session 2.
+  DESIGN §8 gained the tool-layer contract paragraph. Facade `__all__`
+  +5, root +4 (`Mount`, `MemoryConfig`, `create_memory_tool`,
+  `memory_system_section`); memory.yaml verified in the wheel.
+  1277 unit tests, zero keys; v0.58.0.

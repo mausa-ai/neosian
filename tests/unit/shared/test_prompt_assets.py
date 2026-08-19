@@ -123,3 +123,8 @@ class TestPromptRegistry:
         definition = get_tool_definition(update_todo)
         assert definition is not None
         assert definition.description == get_prompt("tools.todo")
+
+    def test_memory_prompts_are_wired(self) -> None:
+        # OpenAI-compatible providers cap function descriptions at 1024.
+        assert len(get_prompt("memory.tool")) <= 1024
+        assert "{{index}}" in get_prompt("memory.system_section")

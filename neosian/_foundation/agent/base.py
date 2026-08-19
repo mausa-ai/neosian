@@ -27,6 +27,7 @@ from neosian._foundation.agent.response import AgentResponse
 from neosian._foundation.agent.stream_run import run_streaming
 from neosian._foundation.llm.base import BaseLLMClient, Message, ToolDefinition
 from neosian._foundation.llm.router import ProviderRouter
+from neosian._foundation.memory.tools import create_memory_tool
 from neosian._foundation.shared.constants import ErrorMessages
 from neosian._foundation.shared.exceptions import (
     GuardrailStreamingError,
@@ -130,6 +131,10 @@ class Agent:
             self._register_tool(list_bb)
             self._register_tool(read_bb)
             self._register_tool(update_bb)
+
+        # Register the memory tool if memory is configured
+        if config.memory is not None:
+            self._register_tool(create_memory_tool(config.memory))
 
         # Register user-provided tools
         for tool_func in config.tools:

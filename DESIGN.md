@@ -387,6 +387,43 @@ files with ungrammatical names are skipped silently in listings; a valid
 name with a broken or newer envelope raises. Naive timestamps in stored
 data are refused, never coerced (`memory_format_unsupported`).
 
+**The tool layer (N1 slice B; C7 made concrete).** `Mount(scope,
+mount_path, read_only, description)` + `MemoryConfig(store, mounts)` in
+`memory/mounts.py`; ≥ 1 mount, unique mount paths — "memory needs an
+explicit scope" is structural. One `memory` function tool (ledger #19),
+`create_memory_tool(config, *, actor=None)`: Anthropic's command
+vocabulary (`view/create/str_replace/insert/delete/rename`) over one
+virtual path space — leading `/` optional, first segment selects the
+mount, the rest is the store's document path. `view /` returns the same
+rendering as `generate_memory_index` (one renderer, no drift with the
+injected section); `view` of a document shows line-numbered content, of a
+directory a prefix listing (always queried with a trailing `/` — `prefix`
+is a plain string match). `create` is create-or-overwrite like
+`store.write`, with a `system_reminder` naming the overwritten version
+(ledger #20). `str_replace` requires exactly one occurrence (0 and N are
+corrective failures listing match lines); `insert` splices at
+`0 ≤ insert_line ≤ len(lines)`; both pass `expected_version` — free
+lost-update detection. `rename` cross-mount is composed read + write +
+delete and is **not atomic** (C1 forbids a cross-scope transaction).
+Read-only enforcement lives here, never the store: `writable()` is the
+library's only `MemoryReadOnlyMountError` raise site. Every
+`MemoryStoreError` is caught in the tool and returned as
+`ToolResult.fail("[<code>] <message>")` plus a per-code hint — the model
+self-corrects; nothing raises through the tool loop. The `command`
+`Literal` compiles to a JSON Schema enum but is steering, not a runtime
+guarantee (constrained decoding only under `strict=True`, Anthropic
+only), so the dispatcher guards it: an unknown command string fails
+correctively, naming the six valid commands — never a misleading
+missing-parameter error from a fallthrough branch. The index +
+`memory_system_section` (prompt pack rendered with `{{index}}`) are
+async, caller-injected once per conversation — the CLI in N1,
+`Conversation` in N2; `actor` is None until N2 threads `conversation_id`.
+`AgentConfig.memory` auto-registers the tool (like todo/playbook/
+blackboard), which makes a memory-enabled agent tool-enabled — structured
+output is unavailable, as with any tool. The prompt pack ships in
+`assets/prompts/memory.yaml` (§7); the tool description stays under the
+1024-char OpenAI-compatible cap.
+
 ## §9 Conversation & compaction **(N2)**
 
 The log-projection design is sketched under ROADMAP N2 and gets a dedicated
@@ -469,3 +506,5 @@ never a silent divergence. Numbering is monotonic, never reused.
 | 16 | ContextPolicy opt-in, or exact per-provider tokenizers | **Default-on, char-heuristic, deliberately underestimating** (`AgentConfig.context_policy=ContextPolicy()`; `None` disables) | Makes `context_window` live for every user; underestimation means it only fires on clear overflow — false positives impossible in practice, the reactive 400 wrap stays the backstop |
 | 17 | Caller-input errors wrapped in `ModelFailedError` at no-fallback branches | **`ContextWindowExceededError`/`UnsupportedContentError` re-raise as-is** (billed usage attached), like the fallback-gate already did | "Your prompt doesn't fit" is not a model failure; wrapping buried the structured window/estimate fields hosts key on |
 | 18 | import-linter counts `TYPE_CHECKING` imports (its default; N1's memory ↛ provider-internals contract tripped on `exceptions →(TC) llm.base` and `types →(TC) llm.fake`) | **`exclude_type_checking_imports = true`** for all contracts | The §1 contracts police runtime coupling; type-only imports create none, and per-edge `ignore_imports` whack-a-mole would rot |
+| 19 | Six function tools, one per command (the plain reading of ROADMAP/VISION "six-command tool set as plain function tools") | **One `memory` tool with a `command` enum**, flat all-optional schema, per-command checks in-tool with corrective failures | The name + shape frontier models are post-trained on (`memory_20250818`); one definition per request instead of six near-clones; the N4 native flag becomes a pure transport swap. The command vocabulary is preserved verbatim — only the packaging changed |
+| 20 | `create` refuses an existing path (Anthropic's reference local memory tool opens `O_EXCL`) | **`create` = `store.write`** (create-or-overwrite, version bumps), with a `system_reminder` naming the overwritten version and pointing at `str_replace` | Refusal would fork the tool's semantics from §8's write ruling; the reminder teaches the same discipline without a second code path, and every overwrite stays recoverable through the version rows |

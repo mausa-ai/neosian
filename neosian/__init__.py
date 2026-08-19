@@ -48,12 +48,15 @@ from neosian._foundation.llm.base import (
 )
 from neosian._foundation.memory.base import MemoryStore
 from neosian._foundation.memory.file import FileStore
+from neosian._foundation.memory.index import memory_system_section
+from neosian._foundation.memory.mounts import MemoryConfig, Mount
 from neosian._foundation.memory.scope import (
     SCOPE_MAX_LENGTH,
     SCOPE_PATTERN,
     Scope,
     parse_scope,
 )
+from neosian._foundation.memory.tools import create_memory_tool
 from neosian._foundation.memory.types import (
     MEMORY_FORMAT_VERSION,
     MemoryDocument,
@@ -239,6 +242,10 @@ __all__ = [
     "MEMORY_FORMAT_VERSION",
     "MemoryStoreError",
     "MemoryConflictError",
+    "Mount",
+    "MemoryConfig",
+    "create_memory_tool",
+    "memory_system_section",
     # Utilities
     "load_prompt",
     # Fallback

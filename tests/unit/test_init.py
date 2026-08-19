@@ -230,6 +230,10 @@ def test_all_list_matches_exports() -> None:
         "MEMORY_FORMAT_VERSION",
         "MemoryStoreError",
         "MemoryConflictError",
+        "Mount",
+        "MemoryConfig",
+        "create_memory_tool",
+        "memory_system_section",
         # Utilities
         "load_prompt",
         # Fallback

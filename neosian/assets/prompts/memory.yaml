@@ -1,0 +1,45 @@
+# The memory prompt pack (ECOSYSTEM §8, DESIGN §7, ROADMAP N1).
+# `tool` is the memory tool's model-facing description — keep it under
+# ~900 characters (OpenAI-compatible providers cap function descriptions
+# at 1024). `system_section` carries the write discipline, mount routing,
+# and the frozen index; {{index}} is interpolated by prompt_assets.render.
+
+tool: >-
+  Read and edit your persistent memory directory. It survives across
+  conversations: record what you will want later and consult it before
+  answering questions about earlier work. Commands: 'view' shows the full
+  index (path '/'), a directory listing ('/mount' or '/mount/dir'), or one
+  document with line numbers; 'create' writes a full document at a path
+  (overwrites an existing one); 'str_replace' replaces exactly one
+  occurrence of old_str with new_str; 'insert' adds insert_text after line
+  insert_line (0 = top); 'delete' removes a document; 'rename' moves
+  old_path to new_path. Paths look like /mount/topic-name and are listed
+  in the memory index. Check the index before creating anything new.
+
+system_section: |-
+  ## Memory
+
+  You have a persistent memory directory, reachable through the `memory`
+  tool. The index below is its table of contents, frozen for this
+  conversation — new writes appear in the next one. Document bodies are
+  never in context: read them with `view` when you need them, and only
+  then.
+
+  Write discipline:
+  - Check the index before creating; update the existing document instead
+    of writing a duplicate.
+  - Prefer `str_replace` edits over rewriting whole documents.
+  - Delete or correct anything that proved wrong — stale memory is worse
+    than none.
+  - Keep documents small and single-topic; split rather than grow.
+  - Never store secrets, credentials, or anything the user asked to
+    forget.
+
+  Mount routing: each top-level directory below is a separate mount.
+  Durable facts about the user belong in the user-level mount; facts tied
+  to one project belong in that project's mount; read-only mounts are
+  reference material.
+
+  ### Index
+
+  {{index}}

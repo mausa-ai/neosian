@@ -24,12 +24,14 @@ from neosian._foundation.agent.base import Agent
 from neosian._foundation.agent.loader import load_agent_config
 from neosian._foundation.agent.session import AgentSession
 from neosian._foundation.llm.base import Message, Role, text_of
+from neosian._foundation.memory.index import memory_system_section
 from neosian._foundation.shared.constants import ArenaUI, Assets, Config, PlaygroundUI
 from neosian._foundation.shared.types import (
     DEFAULT_MODELS,
     AgentConfig,
     Model,
     Provider,
+    SystemPrompt,
 )
 
 
@@ -708,18 +710,8 @@ def run_playground(
             guardrails=base_config.guardrails,
             reasoning_effort=base_config.reasoning_effort,
             max_output_tokens=base_config.max_output_tokens,
+            memory=base_config.memory,
         )
-
-    # Create agent from config
-    try:
-        agent = Agent(config=config)
-    except Exception as e:
-        console.print(f"[red]Error creating agent: {e}[/red]")
-        raise SystemExit(1) from e
-
-    # Determine provider and model for display
-    display_provider = config.model.provider.value
-    display_model = config.model.value
 
     # Create session — or replay a saved one verbatim
     if resume is not None:
@@ -735,19 +727,41 @@ def run_playground(
     else:
         session = Session(agent_name=agent_name)
 
-    # Print header
-    _print_header(console, agent_name)
-
     # Run chat loop
     try:
-        asyncio.run(
-            _chat_loop(console, agent, session, display_provider, display_model)
-        )
+        asyncio.run(_run_chat(console, config, agent_name, session))
     except KeyboardInterrupt:
         console.print()  # New line after ^C
 
     # Handle exit
     _handle_exit(console, session)
+
+
+async def _run_chat(
+    console: Console,
+    config: AgentConfig,
+    agent_name: str,
+    session: Session,
+) -> None:
+    """Memory-section injection, agent construction and the chat loop.
+
+    All three share one event loop: a store's internal lock binds to the
+    first loop that awaits it, so sequential asyncio.run() calls would
+    risk a cross-loop binding.
+    """
+    try:
+        if config.memory is not None:
+            section = await memory_system_section(config.memory)
+            config.system_prompt = SystemPrompt(f"{config.system_prompt}\n\n{section}")
+        agent = Agent(config=config)
+    except Exception as e:
+        console.print(f"[red]Error creating agent: {e}[/red]")
+        raise SystemExit(1) from e
+
+    _print_header(console, agent_name)
+    await _chat_loop(
+        console, agent, session, config.model.provider.value, config.model.value
+    )
 
 
 def _run_arena_mode(
@@ -775,6 +789,8 @@ def _run_arena_mode(
     models: list[str] = []
 
     for model in selected_models:
+        # Arena stays memory-less: N models writing one store is not a
+        # dogfood, it is a race.
         config = AgentConfig(
             system_prompt=base_config.system_prompt,
             tools=base_config.tools,

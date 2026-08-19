@@ -2,12 +2,18 @@
 
 Re-exports only — the implementation lives in _foundation.memory. The
 core names are also on the root package; this module adds the full error
-family, the grammar helpers and the Clock. It never imports `.testing`
-(the conformance kit needs pytest, which is not a runtime dependency).
+family, the grammar helpers, the Clock and the index generator. It never
+imports `.testing` (the conformance kit needs pytest, which is not a
+runtime dependency).
 """
 
 from neosian._foundation.memory.base import MemoryStore
 from neosian._foundation.memory.file import FileStore
+from neosian._foundation.memory.index import (
+    generate_memory_index,
+    memory_system_section,
+)
+from neosian._foundation.memory.mounts import MemoryConfig, Mount
 from neosian._foundation.memory.paths import (
     PATH_MAX_LENGTH,
     PATH_MAX_SEGMENTS,
@@ -19,6 +25,7 @@ from neosian._foundation.memory.scope import (
     Scope,
     parse_scope,
 )
+from neosian._foundation.memory.tools import create_memory_tool
 from neosian._foundation.memory.types import (
     MEMORY_FORMAT_VERSION,
     MemoryAction,
@@ -46,6 +53,7 @@ __all__ = [
     "Clock",
     "FileStore",
     "MemoryAction",
+    "MemoryConfig",
     "MemoryConflictError",
     "MemoryDocument",
     "MemoryDocumentNotFoundError",
@@ -57,8 +65,12 @@ __all__ = [
     "MemoryStore",
     "MemoryStoreError",
     "MemoryVersion",
+    "Mount",
     "Scope",
     "SystemClock",
+    "create_memory_tool",
+    "generate_memory_index",
+    "memory_system_section",
     "parse_scope",
     "validate_document_path",
 ]
