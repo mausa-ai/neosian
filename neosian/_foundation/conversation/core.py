@@ -313,6 +313,12 @@ class Conversation:
             return None
         return await self._run_boundary()
 
+    def _capture_pending(self) -> bool:
+        # A method, not an inline check: the on_turn hook mutates
+        # `_captured` across awaits, which mypy's attribute narrowing
+        # cannot see (an inline `is not None` is proven unreachable).
+        return self._captured is not None
+
     async def _persist(self, user: Message) -> None:
         captured = self._captured
         self._captured = None
@@ -352,9 +358,11 @@ class Conversation:
                 # relay — makes "consumer saw the terminal ⇒ turn
                 # persisted" unconditional, even for a consumer that
                 # stops iterating at `done`. A store failure surfaces in
-                # place of the terminal event. _persist no-ops until the
-                # capture lands, and clears it once written.
-                await self._persist(user)
+                # place of the terminal event. The guard keeps an awaited
+                # call off the per-delta hot path: _persist runs only
+                # once the capture lands, and clears it when written.
+                if self._capture_pending():
+                    await self._persist(user)
                 yield fold_event(event, compacted)
             await self._persist(user)
 

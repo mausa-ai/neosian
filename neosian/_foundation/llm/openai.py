@@ -3,11 +3,9 @@
 import json
 import logging
 from collections.abc import AsyncIterator
-from typing import cast
 
 from openai import AsyncOpenAI, BadRequestError, omit
 from openai.types.chat import (
-    ChatCompletionAssistantMessageParam,
     ChatCompletionMessageParam,
     ChatCompletionStreamOptionsParam,
     ChatCompletionToolParam,
@@ -27,13 +25,16 @@ from neosian._foundation.llm.base import (
     Usage,
 )
 from neosian._foundation.llm.errors import wrap_provider_error
+from neosian._foundation.llm.openai_convert import (
+    convert_messages,
+    convert_response_format,
+    convert_tools,
+)
 from neosian._foundation.shared.constants import ErrorMessages, LLMDefaults
 from neosian._foundation.shared.exceptions import (
     ToolCallGenerationError,
-    UnsupportedContentError,
     UnsupportedParameterError,
 )
-from neosian._foundation.shared.serialization import safe_json_dumps
 from neosian._foundation.shared.types import (
     Model,
     ReasoningEffort,
@@ -393,106 +394,22 @@ class OpenAIClient(BaseLLMClient):
         except Exception as exc:
             raise wrap_provider_error("openai", exc, model=model) from exc
 
+    # The converter bodies live in openai_convert.py (pure move, size-gate
+    # headroom); these delegates keep the client the single entry point.
     def _convert_messages(
         self, messages: list[Message]
     ) -> list[ChatCompletionMessageParam]:
-        """Convert internal messages to OpenAI format.
-
-        Raises:
-            UnsupportedContentError: On block-list content — neosian's
-                OpenAI converter is text-only; media is never silently
-                dropped.
-        """
-        result: list[ChatCompletionMessageParam] = []
-
-        for msg in messages:
-            if isinstance(msg.content, list):
-                raise UnsupportedContentError(
-                    ErrorMessages.CONTENT_BLOCKS_NOT_SUPPORTED.format(
-                        provider="openai", block_type="multimodal"
-                    )
-                )
-            if msg.role == Role.SYSTEM:
-                result.append({"role": "system", "content": msg.content or ""})
-            elif msg.role == Role.USER:
-                result.append({"role": "user", "content": msg.content or ""})
-            elif msg.role == Role.ASSISTANT:
-                if msg.tool_calls:
-                    assistant_msg: ChatCompletionAssistantMessageParam = {
-                        "role": "assistant",
-                        "content": msg.content,
-                        "tool_calls": [
-                            {
-                                "id": tc.id,
-                                "type": "function",
-                                "function": {
-                                    "name": tc.name,
-                                    "arguments": safe_json_dumps(
-                                        tc.arguments, "tool_call.arguments"
-                                    ),
-                                },
-                            }
-                            for tc in msg.tool_calls
-                        ],
-                    }
-                    result.append(assistant_msg)
-                else:
-                    result.append({"role": "assistant", "content": msg.content})
-            elif msg.role == Role.TOOL:
-                result.append(
-                    {
-                        "role": "tool",
-                        "content": msg.content or "",
-                        "tool_call_id": msg.tool_call_id or "",
-                    }
-                )
-
-        return result
+        return convert_messages(messages)
 
     def _convert_tools(
         self, tools: list[ToolDefinition]
     ) -> list[ChatCompletionToolParam]:
-        """Convert internal tool definitions to OpenAI format."""
-        return [
-            {
-                "type": "function",
-                "function": {
-                    "name": tool.name,
-                    "description": tool.description,
-                    "parameters": tool.parameters,
-                },
-            }
-            for tool in tools
-        ]
+        return convert_tools(tools)
 
     def _convert_response_format(
         self, response_format: ResponseFormat
     ) -> OpenAIResponseFormat:
-        """Convert internal ResponseFormat to OpenAI response_format.
-
-        Args:
-            response_format: Internal ResponseFormat configuration.
-
-        Returns:
-            OpenAI-compatible response_format TypedDict.
-        """
-        from neosian._foundation.shared.schema import get_json_schema, get_schema_name
-
-        # OpenAI strict mode requires additionalProperties: false on every
-        # object; get_json_schema guarantees it (root and $defs).
-        schema = get_json_schema(response_format.schema)
-        # Cast to OpenAI ResponseFormat TypedDict - SDK accepts this structure
-        return cast(
-            OpenAIResponseFormat,
-            {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": get_schema_name(response_format.schema),
-                    "strict": response_format.strict,
-                    "schema": schema,
-                },
-            },
-        )
+        return convert_response_format(response_format)
 
     async def close(self) -> None:
         """Close the underlying HTTP client and release resources."""

@@ -11,6 +11,7 @@ driver error propagates (ledger #39).
 from __future__ import annotations
 
 import asyncio
+import logging
 import random
 from typing import TYPE_CHECKING, Any
 
@@ -21,6 +22,8 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from psycopg_pool import AsyncConnectionPool
+
+logger = logging.getLogger(__name__)
 
 # Each lost race means another writer committed, so the system always
 # progresses; a single caller's losses are bounded by the writers in
@@ -102,7 +105,15 @@ class PostgresPool:
         for attempt in range(_MAX_ATTEMPTS - 1):
             try:
                 return await self.fetch_one(query, params)
-            except retryable:
+            except retryable as exc:
+                # Sustained contention must not present as silent latency:
+                # each lost race is visible at debug level.
+                logger.debug(
+                    "retrying contended statement after %s (attempt %d/%d)",
+                    type(exc).__name__,
+                    attempt + 1,
+                    _MAX_ATTEMPTS,
+                )
                 await asyncio.sleep(random.uniform(0, _BACKOFF_SECONDS * (attempt + 1)))
         return await self.fetch_one(query, params)
 

@@ -465,7 +465,12 @@ round-trips it. The DDL ships as `assets/sql/postgres.sql` (idempotent,
 `await store.apply_schema()` or `python -m neosian.schemas postgres` —
 never by a store method (C1); alembic was rejected: hosts run their own
 migration branch (ECOSYSTEM §10), and re-applying idempotent SQL is the
-whole standalone story. The `postgres` extra carries psycopg; the core
+whole standalone story. That story is **additive-only** — `IF NOT
+EXISTS` guards, no schema-version table: re-application converges, new
+columns and tables arrive by appending to the asset, but a rename or
+drop is outside the reference implementation's promise (stated here
+before 1.0 turns silence into commitment; hosts needing real migrations
+run their own branch). The `postgres` extra carries psycopg; the core
 import stays driver-free (pinned by a subprocess test).
 
 **The tool layer (N1 slice B; C7 made concrete).** `Mount(scope,
@@ -799,8 +804,15 @@ Until the session-pair happens: **§9 is the contract of record, the seam is
 not frozen for hosts** (the ABC docstring says so), and conversation codes
 live under `agent_` (ledger #24). Amendment payload, recorded for that
 session: ECOSYSTEM §10 gains `ConversationStore` + `ConversationStoreContract`;
-§6 gains (or deliberately declines) a `conversation_` prefix; §12 log gains a
-row.
+§6 **blesses the shipped `agent_conversation_*` codes and deliberately
+declines a `conversation_` prefix** (user ruling, 2026-08-20 audit — the
+codes shipped at v0.60.0 and the append-only rule forbids renaming them);
+the §12 changelog row also sweeps the two host-visible deltas the audit
+flagged as unrecorded — the public message codec
+(`message_to_json`/`message_from_json`, ledger #22) and `CompactionBlock`
+joining the content union (ledger #46). The kit's §15 bookkeeping is
+already done (its commit 345851e); the kit session adds its row when this
+executes.
 
 ## §10 Test harness & gates
 

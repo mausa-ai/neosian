@@ -1011,3 +1011,23 @@ harness, docs/1.0.
   -m neosian.mcp --root … --scope user:me`). 1641 unit tests, zero
   keys; v0.67.0. Remaining in N4: memory eval harness, docs/1.0
   (README MCP snippet lands there).
+- 2026-08-20 | N4 (audit sweep) | **The user's five audit findings, ruled
+  or fixed.** (1) §9.10's amendment payload now records the firm ruling:
+  ECOSYSTEM §6 blesses the shipped `agent_conversation_*` codes and
+  declines a `conversation_` prefix; the changelog row sweeps the two
+  unrecorded host-visible deltas (#22 public codec, #46 CompactionBlock)
+  — executes at the docs/1.0 slice (kit's §15 side already done,
+  its 345851e). (2) Size headroom: the wire-format converters moved
+  verbatim to `llm/openai_convert.py` and `llm/cerebras_convert.py`
+  (499→420, 491→414; delegate methods keep both test suites untouched —
+  the allowlist can't hold an under-500 file, so extraction was the only
+  honest move). (3) The streaming hot path no longer awaits `_persist`
+  per delta — guarded on `self._captured is not None`, semantics pinned
+  by the existing persist-before-terminal tests. (4) `fetch_one_retry`
+  logs each lost race at debug (contention presents as a signal, not
+  silent latency). (5) DESIGN §8 states the additive-only migration
+  story (IF NOT EXISTS, no version table) before 1.0 freezes silence
+  into commitment; `tests/unit/conversation/test_encapsulation.py` pins
+  the Conversation → AgentSession private reach (`_rebind`,
+  `_get_or_create_client`) to its sanctioned sites. 1643 unit tests,
+  zero keys.
