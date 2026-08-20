@@ -1,24 +1,7 @@
-"""Agent evaluation framework.
+"""Evaluation harness (DESIGN §13).
 
-Test prompt × model combinations with mocked tool execution.
+The public surface is `neosian.evaluation` — a plain re-export facade,
+never imported by the root package. Internal callers import the
+submodules directly; this package module deliberately re-exports
+nothing, so the facade stays the one public door.
 """
-
-from neosian._foundation.evaluation.loader import load_eval_config
-from neosian._foundation.evaluation.progress import (
-    EvalProgress,
-    create_progress_callback,
-)
-from neosian._foundation.evaluation.reporter import print_results, save_results
-from neosian._foundation.evaluation.runner import run_evaluation
-from neosian._foundation.evaluation.scorer import match_value, score_turn
-
-__all__ = [
-    "load_eval_config",
-    "run_evaluation",
-    "print_results",
-    "save_results",
-    "match_value",
-    "score_turn",
-    "EvalProgress",
-    "create_progress_callback",
-]

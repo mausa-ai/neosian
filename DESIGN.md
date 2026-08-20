@@ -26,6 +26,7 @@ neosian/                  # the facade: __init__.py re-exports the public API
 │                         #   (+ memory/, N1; + conversation/, N2;
 │                         #    + postgres/, N3; + mcp/, N4)
 ├── mcp/                  # public MCP facade + the stdio entry point (N4)
+├── evaluation/           # public eval facade (lazy, dev-time) (NE, §13)
 ├── _cli/                 # playground, eval CLI, config
 └── assets/               # data files: prompts (YAML), sql (DDL), ascii art
 ```
@@ -44,6 +45,11 @@ out, `forbidden` type only):
   router — ledger #26); and the conversation *storage-seam* modules (`base`,
   `types`, `ids`, `file_turns`, `testing`) plus `_foundation.postgres`
   ↛ `_foundation.agent`.
+- Every runtime `_foundation` package ↛ `_foundation.evaluation` — the
+  harness observes the library, never the reverse; and
+  `_foundation.evaluation` ↛ the four provider client modules with
+  `allow_indirect_imports` (it drives an `Agent` and scripts `llm.fake` —
+  its legitimate seams) (NE, §13.11).
 - The facade (`neosian/__init__.py`, `neosian/fake.py`) only re-exports; no
   logic lives there.
 
@@ -52,8 +58,8 @@ makes every `__all__` change a deliberate, reviewed diff.
 
 ## §2 Providers & the router
 
-Four adapters (groq, openai, anthropic, cerebras) + FakeProvider (§C5 below,
-NS) behind `BaseLLMClient`. Capabilities live in `ModelSpec` and describe
+Four adapters (groq, openai, anthropic, cerebras) + FakeProvider (guarantee
+in ECOSYSTEM §7; public surface `neosian.fake`, NS) behind `BaseLLMClient`. Capabilities live in `ModelSpec` and describe
 *neosian's converter*, not raw provider ability. Fallback is capability-aware
 and sticky within a session; SDK-native retries stay at the client layer.
 Provider SDK exceptions never escape neosian — `wrap_provider_error` (§5)
@@ -205,7 +211,7 @@ it as JSON for host i18n-coverage tests):
 | PromptLoadError family | `prompt_load_failed`, `prompt_file_not_found`, `prompt_invalid_yaml`, `prompt_missing_key` | no |
 | PlaybookLoadError family | `playbook_load_failed`, `playbook_file_not_found`, `playbook_invalid_frontmatter`, `playbook_missing_key`, `playbook_duplicate_name`, `playbook_directory_not_found` | no |
 | BlackboardError family | `blackboard_error`, `blackboard_entry_not_found`, `blackboard_read_failed`, `blackboard_update_failed`, `blackboard_directory_not_found` | no |
-| EvalError family | `eval_error`, `eval_config_not_found`, `eval_config_invalid_yaml`, `eval_config_missing_key`, `eval_prompt_not_found`, `eval_case_invalid`, `eval_run_failed` | no |
+| EvalError family | `eval_error`, `eval_config_not_found`, `eval_config_invalid_yaml`, `eval_config_missing_key`, `eval_prompt_not_found`, `eval_case_invalid`, `eval_run_failed`, `eval_config_unknown_key` (NE), `eval_model_unknown` (NE) | no |
 | Memory family (N1) | `memory_error`, `memory_document_not_found`, `memory_scope_invalid`, `memory_path_invalid`, `memory_conflict`, `memory_format_unsupported`, `memory_read_only_mount` | no |
 | Conversation family (N2) | `agent_conversation_error`, `agent_conversation_id_invalid`, `agent_conversation_format_unsupported` | no |
 
@@ -927,3 +933,174 @@ never a silent divergence. Numbering is monotonic, never reused.
 | 51 | MCP `instructions` as a static string chosen once per process | **`memory_system_section(config)` rendered at construction *and* refreshed per connection in the SDK lifespan** | The per-session analogue of the frozen-index rule. Honest limit: `InitializationOptions` is built before the lifespan runs, so handshake-era clients read the construction-time render and 2026-07-28-era clients read the per-connection one — under stdio (one session per process) they are the same instant. Streamable HTTP will need a real per-connection mechanism |
 | 52 | `CallToolResult` carrying `ToolResult.to_json()` — the same bytes the function tool hands the model | **Native mapping**: data/error as a text block, `system_reminder` as a second block, `is_error` on failure | MCP's spec puts tool errors in-band precisely so the model self-corrects — that *is* `ToolResult`, in MCP's vocabulary; a JSON envelope inside a protocol that already has success/error framing is double-wrapping every host would unwrap |
 | 53 | The library never reads a DSN from the environment (SERVICES.md, N3) | **`neosian.mcp`'s entry point reads `NEOSIAN_MCP_POSTGRES_DSN`; there is no `--dsn` flag** | An MCP server is a process a host spawns with argv, and argv is world-readable in `ps`. The library rule is unchanged — the reader is the entry point, the same tier as the FastAPI example's `NEOSIAN_EXAMPLE_POSTGRES_DSN` |
+| 54 | Eval types stay root-public at 1.0 (the v0.53 shape) | **Facade-only**: everything on lazy `neosian.evaluation`, root `__all__` −7, `EvalError` alone stays root | Evaluation is a dev-time harness — the `neosian.fake` precedent; 1.0 freezes what the root carries, and seven mutable types over a private runner was an accident about to become a promise |
+| 55 | Incremental reform of the v1 module | **Full rewrite, YAML schema v2 with a `kind:` discriminator** — v1 suites break at v0.68 | Reform would have carried the mutable types, the silent-drop loader, and the `str()` scorer into the 1.0 freeze; `kind:` gives the NE memory-eval slice a first-class slot instead of a bolt-on |
+| 56 | `prompts:` doubling as agent files (legacy) or variant YAMLs (variant mode) | **One `agent:` plus an explicit `variants:` axis**; the matrix is uniformly variants × models × cases | The overload made one key mean two file types and forced `is_variant_mode` branches everywhere; comparing prompt variants over one agent is the feature — comparing whole agents is a shell loop over suites |
+| 57 | Absent/empty `expect:` auto-passed; a conversational top-level `expect:` was silently dropped | **`expect:` required and non-empty; strict keys at every level** — retired v1 keys (`prompts:`, `mock_response:`) fail with migration hints | Silent drops were the audited footgun class: a case that asserts nothing measures nothing, loudly refusing beats quietly passing |
+| 58 | Blanket `str()` coercion in the scorer (`"None"` matched a missing param; literal `"_exists"` unmatchable) | **Typed equality + an explicit matcher vocabulary** (`equals`/`contains`/`regex`/`exists`) incl. response matchers; **no LLM judge** | Type confusion was where every false pass hid; failure messages now name types. Judge deferred by ruling — FakeProvider baselines must stay deterministic and keyless; if one ever lands, its prompt ships in `assets/` per §7 |
+| 59 | `mock_agent_tools` rewrote `agent._tools` per turn; `_apply_tool_overrides` rewrote `agent._tool_definitions[i]`; `mock_response` rewrote recorded history post-hoc | **Tools are built before the agent exists** (stub by default, `execute_tools` allowlist, variant descriptions on harness-owned wrappers via `attach_tool_metadata`); `on_tool` is the single capture path; a per-turn stub table sets payloads *before* the call | Construction beats mutation: the agent is never touched after `Agent(config=…)`, the recorded history is exactly what the model saw, and library builtins (todo/playbook/blackboard/memory) always execute — `ignore_tools:` hides them from matchers |
+| 60 | The runner assigned `model`/`hooks`/`client_factory`/`system_prompt` onto the loaded config, clobbering caller hooks; the agent module re-imported per cell | **`dataclasses.replace` derivation + hook composition (harness callback first, caller's after) with `strict=True`; the agent module loads once per suite** | The N2 `--menu` bug class, closed and pinned by a caller-config-untouched test; strict because a harness that swallows its own observer's failure measures nothing. Consequence stated honestly: module-level tool state is now shared across a suite's cells |
+| 61 | `neosian eval` exited 0 even when every case failed | **Exit 1 when any case fails** (load errors and crashed runs stay 1) | The command is a CI gate or it is theater |
+| 62 | Reusing `eval_case_invalid` for suite-level strictness and per-case `ValueError` for model typos | **Two codes appended**: `eval_config_unknown_key` (carries the v1→v2 migration hint) and `eval_model_unknown` (models validated at load) | Hosts must distinguish "you forgot a key" from "you typo'd one / you're on schema v1"; a model typo failing the suite instantly beats failing inside every cell. Append-only respected (§5, ECOSYSTEM §6) |
+| 63 | Insert evaluation as §12 and renumber the ledger | **Evaluation is §13, appended after the §12 ledger** | Every existing "DESIGN §12 ledger" reference in the four docs and the commit history stays true; monotonic file order preserved |
+
+## §13 Evaluation (NE)
+
+### §13.1 What an eval is
+
+One agent under test, measured over a **variants × models × cases** matrix.
+A *variant* is a prompting strategy (system prompt + tool-description
+overrides); a *case* is one or more user turns with typed expectations. The
+harness observes runs through `AgentHooks` — it never alters, wraps, or
+reaches into the agent it measures.
+
+### §13.2 Schema v2 and the `kind:` discriminator
+
+Suites are user-supplied YAML (§7 governs only prose the library *ships*).
+Top level: `kind` (optional, default `agent`), `name`, `agent` (path to a
+Python file exporting `configuration`), `models` (validated at load;
+`provider:model` or bare model value), `cases`, and optional `variants`
+(`[{name, prompt}]`), `execute_tools`, `ignore_tools`, `stop_on_failure`
+(default true), `throttle_ms` (default 500). A variant prompt file carries
+`system_prompt` + optional `tools: {name: {description}}`.
+
+**Strict keys at every level** — unknown keys raise, retired v1 keys
+(`prompts:`, `mock_response:`, `on_success:`) raise with migration hints
+(ledger #57). `kind:` discriminates config shapes; `agent` is the only kind
+today, `memory` is reserved for the NE memory-eval slice (§13.12).
+
+Cases: `input:` + `expect:` is sugar for a one-turn `conversation:`; both
+together is an error, and a top-level `expect:` beside `conversation:` is a
+loud `eval_case_invalid`. Every turn carries a required non-empty `expect:`
+and may carry `tool_results:` (per-turn stub payloads, §13.6). `script:`
+runs the case keylessly (§13.7). A case-level `execute_tools:` extends the
+suite's allowlist.
+
+### §13.3 Types and the module map
+
+Every config and result type is `@dataclass(frozen=True, slots=True)`,
+module-local under `_foundation/evaluation/` — nothing eval-shaped lives in
+`shared/types.py` (the v1 block there is deleted). `types.py` holds the
+config vocabulary (`AgentEvalConfig`, `EvalCase`, `EvalTurn`, `Expectation`,
+`ValueMatcher`, `SequenceStep`, `Variant`, `EvalKind`, `MatchMode`, the
+`type EvalConfig` union alias); `results.py` the result vocabulary
+(`EvalReport`, `CaseResult`, `TurnResult`, `ToolCallCapture`,
+`ProgressEvent`). The pipeline: `loader.py`/`cases.py`/`expectations.py`/
+`variants.py` parse; `matcher.py` scores; `stubs.py` builds tools;
+`runner.py` runs one cell; `matrix.py` runs the suite; `progress.py`/
+`reporter.py` present. `EvalReport` carries its own axes, so presentation
+never needs the config type — the seam later kinds reuse.
+
+### §13.4 Matching semantics
+
+Typed equality (ledger #58): bool compares only to bool (`True != 1`), str
+only to str (no coercion), int↔float compare numerically, containers
+compare elementwise/key-set-exact. Matcher modes: `equals` (typed),
+`contains` (substring, or list element by typed equality), `regex`
+(compiled at load — a bad pattern fails the config, never a run), `exists`
+(present and not None; `_exists` is sugar). A one-key mapping over the
+matcher vocabulary is a matcher; any other value is an `equals` literal
+(the documented escape for a literal one-key `{equals: …}` value is
+`{equals: {equals: …}}`).
+
+Tool rules: `tool:` requires the **first** non-ignored call to be the
+expected tool (params match on it; later calls are unconstrained — use
+`sequence:` to constrain them); `sequence:` is exact names, order, and
+length; `no_tool:` fails on any visible call. `response:` is an explicit
+one-key matcher mapping (never a bare string); `contains`/`regex` accept a
+list for all-of. One deliberate asymmetry: response `contains` is
+case-insensitive — prose casing is model noise — while param `contains`
+stays exact, because arguments are structured data. Failures accumulate;
+`TurnResult.failures` reports every unmet expectation with types named.
+
+### §13.5 The runner
+
+`run_case` derives the cell's config with `dataclasses.replace` — model,
+variant prompt, harness-built tools, composed hooks, scripted client — and
+constructs the agent once; the caller's config is never written and caller
+hooks are composed, never clobbered (harness callback first, caller's
+after), always `strict=True` (ledger #60). A non-sticky fallback fails the
+case: an eval measures the configured model. `run_evaluation` loads the
+agent module once per suite, throttles real-API cells only, and downgrades
+a cell's `EvalError` to a failed `CaseResult` — one bad case never kills
+the suite; an agent that cannot load does, since nothing could measure
+anything. Harness-level failures raise `eval_run_failed` with the cell's
+variant × model × case context.
+
+### §13.6 Tools under evaluation
+
+Stub by default, execute by allowlist (ledger #59). `stubs.build_tools`
+runs before the agent exists: a user tool becomes a wrapper returning a
+canned success — or the turn's `tool_results` payload, set *before* the
+model call, so the recorded `turn_messages` thread verbatim — unless named
+in `execute_tools`, in which case the original function passes through by
+identity. Variant description overrides ride the same construction:
+wrappers carry a `dataclasses.replace`d definition (name/parameters/strict/
+`native_type` survive) attached via `tools.base.attach_tool_metadata`, the
+`set_native_type` idiom (ledger #41). Library builtins registered from
+config fields (todo/playbook/blackboard/memory) always execute and are
+invisible to `execute_tools`; `ignore_tools:` hides any name from matchers
+while still capturing it. Unknown names in either list are errors — a typo
+would silently measure the wrong thing.
+
+### §13.7 Keyless runs
+
+A `script:` case parses into `FakeTurn`s and runs on one scripted
+`FakeClient` injected via `client_factory` — one instance per case, so the
+script cursor survives multi-call tool rounds; an explicit script wins over
+a caller-provided factory. Scripted and FAKE-model cells skip the
+throttle. The unit tier exercises the whole harness — loader to artifact —
+with zero keys.
+
+### §13.8 Results, report, artifact
+
+`run_evaluation` returns a frozen `EvalReport`; `print_report` renders
+per-model tables (rows = variants, columns = cases) plus summary and
+failure detail; `save_report` writes `.neosian/evals/<ts>.json` with
+`schema: 2`, the axes, a summary, and per-turn detail — the rendered
+expectation, accumulated failures, response text, and every capture with
+`executed`/`ok`/`duration_ms`.
+
+### §13.9 Public surface and the CLI contract
+
+The facade is `neosian/evaluation/__init__.py` — re-exports only, never
+imported by the root package (ledger #54); pinned by
+`tests/unit/test_evaluation_exports.py` incl. a subprocess laziness pin.
+`neosian eval <suite.yaml>` rides the facade, prints the report, writes the
+artifact, and **exits 1 when any case fails** (ledger #61) — a CI gate.
+Credential loading from the CLI config stays the CLI's job.
+
+### §13.10 Error codes
+
+The `eval_` family (§5, append-only): `eval_config_not_found`,
+`eval_config_invalid_yaml` (unparseable *or* structurally invalid),
+`eval_config_missing_key`, `eval_config_unknown_key` (NE; carries the v1→v2
+hint), `eval_model_unknown` (NE), `eval_prompt_not_found` (a variant's
+prompt file), `eval_case_invalid` (every case/turn/expect violation),
+`eval_run_failed` (harness-level cell failure), over the `eval_error` base.
+
+### §13.11 Encapsulation and layering pins
+
+`tests/unit/evaluation/test_encapsulation.py` pins that the private tool
+tokens (`._tools`, `._tool_definitions`, `._tool_metadata`) are touched
+only by the agent/tools modules that own them — `evaluation/` appears
+nowhere. Two import-linter contracts (§1): the runtime library never
+imports the harness, and the harness never imports provider client modules
+(`llm.fake` and the `Agent` are its seams).
+
+### §13.12 Reserved: `kind: memory` (the NE final slice)
+
+The memory eval harness lands as a `MemoryEvalConfig` widening the
+`EvalConfig` alias and one dispatch branch in `run_evaluation` — slice A's
+shapes do not move. What it rides: the `execute_tools`/builtins rule
+(§13.6 — the memory tool really writes its store), `on_tool` capture,
+store-truth scoring on write discipline / recall-in-next-session / dedup,
+a `transports:` axis (function tool vs `native_memory`, ledger #43), and
+scenario stores inspectable under `.neosian/evals/`. FakeProvider baselines
+first (keyless), then `external_<provider>` runs.
+
+### §13.13 No judge
+
+Ruled out for NE (ledger #58): scoring is deterministic — matchers here,
+store truth in the memory slice. If an LLM judge ever enters, it is opt-in,
+never in the keyless tier, and its prompt ships as `assets/` data per §7.

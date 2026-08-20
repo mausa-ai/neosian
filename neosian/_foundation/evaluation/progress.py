@@ -1,50 +1,54 @@
-"""Evaluation progress display.
+"""Live progress display (DESIGN §13).
 
-Tree-based live progress UI for evaluation runs.
+A Rich tree over the suite's axes:
 
-Display format:
-    Media Agent Prompt Comparison (12.3s)
-    ├── minimal.yaml
+    Media Agent Prompt Comparison
+    ├── minimal
     │   ├── gpt-5.1  ●●●●●●●●●✗  2.1s
-    │   ├── haiku    ●●●●●●●✗✗✗  1.8s
-    │   └── sonnet   ○○○○○○○○○○
-    ├── verbose.yaml
+    │   └── fake     ○○○○○○○○○○
+    ├── verbose
     │   └── ...
 
-Status indicators:
-    ○ = pending (dim)
-    ◐ = running (yellow)
-    ● = passed (green)
-    ✗ = failed (red)
+Indicators: ○ pending · ◐ running · ● passed · ✗ failed.
 """
 
-from collections.abc import Callable
 from dataclasses import dataclass, field
-from pathlib import Path
 
 from rich.console import Console
 from rich.live import Live
 from rich.text import Text
 from rich.tree import Tree
 
-from neosian._foundation.shared.types import EvalConfig
+from neosian._foundation.evaluation.results import (
+    CaseStatus,
+    ProgressCallback,
+    ProgressEvent,
+)
+from neosian._foundation.evaluation.types import EvalConfig
+
+_INDICATORS: dict[CaseStatus, tuple[str, str]] = {
+    CaseStatus.PENDING: ("○", "dim"),
+    CaseStatus.RUNNING: ("◐", "yellow bold"),
+    CaseStatus.PASSED: ("●", "green"),
+    CaseStatus.FAILED: ("✗", "red bold"),
+}
 
 
 @dataclass
-class CaseStatus:
-    """Status of a single test case."""
+class CaseState:
+    """Display state of one case cell."""
 
     name: str
-    status: str = "pending"  # pending, running, passed, failed
+    status: CaseStatus = CaseStatus.PENDING
     latency_ms: float = 0.0
 
 
 @dataclass
-class ModelStatus:
-    """Status of a model's test cases."""
+class ModelState:
+    """Display state of one model row."""
 
     model: str
-    cases: list[CaseStatus] = field(default_factory=list)
+    cases: list[CaseState] = field(default_factory=list)
 
     @property
     def total_latency_ms(self) -> float:
@@ -53,54 +57,40 @@ class ModelStatus:
 
     @property
     def is_complete(self) -> bool:
-        """Check if all cases are done."""
-        return all(c.status in ("passed", "failed") for c in self.cases)
+        """All cases finished."""
+        return all(
+            c.status in (CaseStatus.PASSED, CaseStatus.FAILED) for c in self.cases
+        )
 
 
 @dataclass
-class PromptStatus:
-    """Status of a prompt config's models."""
+class VariantState:
+    """Display state of one variant subtree."""
 
-    prompt: str
-    models: list[ModelStatus] = field(default_factory=list)
+    variant: str
+    models: list[ModelState] = field(default_factory=list)
 
 
 class EvalProgress:
-    """Manages tree-based progress display for evaluations.
-
-    Displays a hierarchical tree:
-    - Eval name (root)
-      - Prompt configs (with aggregate status)
-        - Models (with aggregate status)
-          - Test cases (leaf level with status)
-    """
-
-    # Status indicators
-    PENDING = "○"
-    RUNNING = "◐"
-    PASSED = "●"
-    FAILED = "✗"
+    """Tree-based live progress for a suite run."""
 
     def __init__(self, config: EvalConfig) -> None:
-        """Initialize progress tracker.
-
-        Args:
-            config: Evaluation configuration.
-        """
         self.config = config
         self.console = Console()
         self._live: Live | None = None
-
-        # Build status tree structure
-        self.prompts: list[PromptStatus] = []
-        for prompt in config.prompts:
-            prompt_status = PromptStatus(prompt=prompt)
-            for model in config.models:
-                model_status = ModelStatus(model=model)
-                for case in config.cases:
-                    model_status.cases.append(CaseStatus(name=case.name))
-                prompt_status.models.append(model_status)
-            self.prompts.append(prompt_status)
+        self.variants: list[VariantState] = [
+            VariantState(
+                variant=variant.name,
+                models=[
+                    ModelState(
+                        model=model.value,
+                        cases=[CaseState(name=case.name) for case in config.cases],
+                    )
+                    for model in config.models
+                ],
+            )
+            for variant in config.variants
+        ]
 
     def start(self) -> None:
         """Start the live display."""
@@ -108,138 +98,54 @@ class EvalProgress:
             self._build_tree(),
             console=self.console,
             refresh_per_second=4,
-            transient=True,  # Clear on each update
+            transient=True,
         )
         self._live.start()
 
     def stop(self) -> None:
-        """Stop the live display and print final tree."""
+        """Stop the live display and print the final tree."""
         if self._live:
             self._live.stop()
             self._live = None
-            # Print final tree state
             self.console.print(self._build_tree())
 
-    def update(
-        self,
-        prompt_idx: int,
-        model_idx: int,
-        case_idx: int,
-        status: str,
-        latency_ms: float = 0.0,
-    ) -> None:
-        """Update status of a specific case.
-
-        Args:
-            prompt_idx: Index of the prompt config.
-            model_idx: Index of the model.
-            case_idx: Index of the test case.
-            status: New status ("running", "passed", "failed").
-            latency_ms: Response time in milliseconds.
-        """
-        case = self.prompts[prompt_idx].models[model_idx].cases[case_idx]
-        case.status = status
-        case.latency_ms = latency_ms
-
+    def update(self, event: ProgressEvent) -> None:
+        """Apply one progress tick."""
+        case = (
+            self.variants[event.variant_index]
+            .models[event.model_index]
+            .cases[event.case_index]
+        )
+        case.status = event.status
+        case.latency_ms = event.latency_ms
         if self._live:
             self._live.update(self._build_tree())
 
     def _build_tree(self) -> Tree:
-        """Build the Rich tree for display.
-
-        Compact format with dots inline:
-            Media Agent Prompt Comparison
-            ├── minimal.yaml
-            │   ├── gpt-5.1  ●●●●●●●●●✗
-            │   ├── haiku    ●●●●●●●✗✗✗
-            │   └── sonnet   ●●●●●●●●✗✗
-            ├── verbose.yaml
-            │   └── ...
-        """
-        # Root node with eval name
-        tree = Tree(
-            Text(self.config.name, style="bold"),
-            guide_style="dim",
-        )
-
-        for prompt_status in self.prompts:
-            # Prompt node: "minimal.yaml"
-            prompt_name = Path(prompt_status.prompt).name
-            prompt_node = tree.add(Text(prompt_name, style="cyan"))
-
-            for model_status in prompt_status.models:
-                # Model node with inline dots: "gpt-5.1  ●●●○○○○○○○  1.2s"
-                model_name = self._short_model_name(model_status.model)
-
-                # Build dots string
+        tree = Tree(Text(self.config.name, style="bold"), guide_style="dim")
+        for variant_state in self.variants:
+            variant_node = tree.add(Text(variant_state.variant, style="cyan"))
+            for model_state in variant_state.models:
                 dots = Text()
-                for case_status in model_status.cases:
-                    dots.append_text(self._get_indicator(case_status.status))
-
-                # Add latency if model is complete
-                if model_status.is_complete:
-                    latency_str = self._format_latency(model_status.total_latency_ms)
-                    model_text = Text.assemble(
-                        (model_name, ""),
+                for case_state in model_state.cases:
+                    glyph, style = _INDICATORS[case_state.status]
+                    dots.append(glyph, style=style)
+                parts: list[Text | str] = [Text(model_state.model), "  ", dots]
+                if model_state.is_complete:
+                    parts += [
                         "  ",
-                        dots,
-                        "  ",
-                        (latency_str, "dim"),
-                    )
-                else:
-                    model_text = Text.assemble(
-                        (model_name, ""),
-                        "  ",
-                        dots,
-                    )
-                prompt_node.add(model_text)
-
+                        Text(_format_latency(model_state.total_latency_ms), "dim"),
+                    ]
+                variant_node.add(Text.assemble(*parts))
         return tree
 
-    def _short_model_name(self, model: str) -> str:
-        """Extract short model name from provider:model format."""
-        if ":" in model:
-            return model.split(":")[-1]
-        return model
 
-    def _get_indicator(self, status: str) -> Text:
-        """Get styled status indicator."""
-        if status == "pending":
-            return Text(self.PENDING, style="dim")
-        elif status == "running":
-            return Text(self.RUNNING, style="yellow bold")
-        elif status == "passed":
-            return Text(self.PASSED, style="green")
-        elif status == "failed":
-            return Text(self.FAILED, style="red bold")
-        return Text(self.PENDING, style="dim")
-
-    def _format_latency(self, latency_ms: float) -> str:
-        """Format latency for display."""
-        if latency_ms < 1000:
-            return f"{latency_ms:.0f}ms"
-        return f"{latency_ms / 1000:.1f}s"
+def create_progress_callback(progress: EvalProgress) -> ProgressCallback:
+    """Bind run_evaluation's progress stream to an EvalProgress."""
+    return progress.update
 
 
-def create_progress_callback(
-    progress: EvalProgress,
-) -> Callable[[int, int, int, str, float], None]:
-    """Create a progress callback bound to an EvalProgress instance.
-
-    Args:
-        progress: The EvalProgress instance to update.
-
-    Returns:
-        Callback function for run_evaluation.
-    """
-
-    def callback(
-        prompt_idx: int,
-        model_idx: int,
-        case_idx: int,
-        status: str,
-        latency_ms: float,
-    ) -> None:
-        progress.update(prompt_idx, model_idx, case_idx, status, latency_ms)
-
-    return callback
+def _format_latency(latency_ms: float) -> str:
+    if latency_ms < 1000:
+        return f"{latency_ms:.0f}ms"
+    return f"{latency_ms / 1000:.1f}s"

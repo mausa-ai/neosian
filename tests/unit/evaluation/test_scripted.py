@@ -1,7 +1,8 @@
-"""Scripted eval runs — the harness exercised keylessly (N0 slice B).
+"""Scripted eval runs — the harness exercised keylessly, end to end.
 
 A case carrying `script:` runs against a scripted FakeClient injected via
-client_factory: no API keys, no network, tool expectations still scored.
+client_factory: no API keys, no network, expectations still scored. The
+suite here goes through the real YAML surface, exactly as a user would.
 """
 
 import os
@@ -12,11 +13,11 @@ from unittest.mock import patch
 import pytest
 
 from neosian._foundation.evaluation.loader import load_eval_config
-from neosian._foundation.evaluation.runner import _needs_throttle, run_evaluation
+from neosian._foundation.evaluation.matrix import run_evaluation
 from neosian._foundation.llm.base import ToolCall
 from neosian._foundation.llm.fake import FakeTurn
 from neosian._foundation.shared.exceptions import EvalCaseInvalidError
-from neosian._foundation.shared.types import EvalCase, ToolCallId, ToolName
+from neosian._foundation.shared.types import ToolCallId, ToolName
 
 AGENT_FILE = """
 from neosian import AgentConfig, Tool, ToolResult
@@ -36,8 +37,7 @@ configuration = AgentConfig(
 
 EVAL_YAML = """
 name: scripted-suite
-prompts:
-  - {agent_path}
+agent: {agent_path}
 models:
   - fake
 cases:
@@ -55,20 +55,25 @@ cases:
       - content: "Found it."
   - name: text-case
     input: "Say hi"
+    expect:
+      response: {{contains: "hi"}}
     script:
       - content: "hi"
 """
 
 
+def _suite(tmp_path: Path) -> Path:
+    agent_path = tmp_path / "agent.py"
+    agent_path.write_text(textwrap.dedent(AGENT_FILE))
+    config_path = tmp_path / "eval.yaml"
+    config_path.write_text(EVAL_YAML.format(agent_path=agent_path))
+    return config_path
+
+
 @pytest.mark.unit
 class TestScriptParsing:
     def test_script_parses_into_fake_turns(self, tmp_path: Path) -> None:
-        agent_path = tmp_path / "agent.py"
-        agent_path.write_text(textwrap.dedent(AGENT_FILE))
-        config_path = tmp_path / "eval.yaml"
-        config_path.write_text(EVAL_YAML.format(agent_path=agent_path))
-
-        config = load_eval_config(config_path)
+        config = load_eval_config(_suite(tmp_path))
 
         assert config.cases[0].script == (
             FakeTurn(
@@ -96,8 +101,9 @@ class TestScriptParsing:
     def test_malformed_script_raises(self, tmp_path: Path, script_yaml: str) -> None:
         config_path = tmp_path / "eval.yaml"
         config_path.write_text(
-            "name: bad\nprompts: [a.py]\nmodels: [fake]\ncases:\n"
-            f"  - name: c\n    input: hi\n    {script_yaml}\n"
+            "name: bad\nagent: a.py\nmodels: [fake]\ncases:\n"
+            "  - name: c\n    input: hi\n    expect: {no_tool: true}\n"
+            f"    {script_yaml}\n"
         )
         with pytest.raises(EvalCaseInvalidError):
             load_eval_config(config_path)
@@ -108,26 +114,13 @@ class TestKeylessScriptedRun:
     async def test_run_evaluation_end_to_end_with_zero_keys(
         self, tmp_path: Path
     ) -> None:
-        agent_path = tmp_path / "agent.py"
-        agent_path.write_text(textwrap.dedent(AGENT_FILE))
-        config_path = tmp_path / "eval.yaml"
-        config_path.write_text(EVAL_YAML.format(agent_path=agent_path))
-
-        config = load_eval_config(config_path)
+        config = load_eval_config(_suite(tmp_path))
         with patch.dict(os.environ, {}, clear=True):
-            results = await run_evaluation(config)
+            report = await run_evaluation(config)
 
-        assert [r.passed for r in results] == [True, True]
-        assert results[0].tool_sequence == ["lookup"]
-        assert results[0].error is None
-
-
-@pytest.mark.unit
-class TestThrottleExemption:
-    def test_scripted_and_fake_runs_skip_the_throttle(self) -> None:
-        scripted = EvalCase(name="s", input="x", script=(FakeTurn(content="y"),))
-        plain = EvalCase(name="p", input="x")
-        assert _needs_throttle("fake", plain) is False
-        assert _needs_throttle("groq:openai/gpt-oss-20b", scripted) is False
-        assert _needs_throttle("not-a-model", plain) is False
-        assert _needs_throttle("openai/gpt-oss-20b", plain) is True
+        assert report.total == 2
+        assert report.passed == 2
+        tool_case = report.result_for("base", "fake", "tool-case")
+        assert tool_case is not None
+        assert tool_case.tool_sequence == ("lookup",)
+        assert tool_case.error is None

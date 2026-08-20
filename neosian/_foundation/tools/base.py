@@ -408,6 +408,25 @@ def get_tool_definition(func: Callable[..., Any]) -> ToolDefinition | None:
     return metadata.definition if metadata else None
 
 
+def attach_tool_metadata(
+    func: ToolFunction, definition: ToolDefinition
+) -> ToolFunction:
+    """Attach a ready-made definition to a function the library built.
+
+    Internal, reachable only through library factories — the eval
+    harness constructs stub/override wrappers and owns their metadata
+    (DESIGN §13.6); the same library-only-mutator idiom as
+    set_native_type below. Never reaches into an existing agent.
+    """
+    metadata = ToolMetadata(
+        name=definition.name,
+        description=definition.description,
+        definition=definition,
+    )
+    func._tool_metadata = metadata  # type: ignore[attr-defined]
+    return func
+
+
 def set_native_type(func: ToolFunction, native_type: str) -> ToolFunction:
     """Mark a decorated tool's definition with a provider-native type.
 

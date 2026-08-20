@@ -2,21 +2,22 @@
 
 > **▶ Current phase: NE — Evaluation quality**
 >
-> *(2026-08-20 governance session: the memory-harness planning session
-> found `evaluation/` to be the last pre-constitution subsystem, so NE
-> was inserted before N4's remainder — reform-or-rewrite, with the
-> memory eval harness moved in as NE's final slice (its ratified
-> implementation plan: `~/.claude/plans/fizzy-spinning-flask.md`).
-> N4 resumes with docs/1.0 after `ne-done`; its 1.0 promise now names
-> the reformed eval surface. N4 slices A+B+C stand shipped — v0.65.0
-> the native `memory_20250818` flag (#41–#44), v0.66.0 server-side
-> compaction pass-through (#45–#49), v0.67.0 the MCP memory server
-> (#50–#53). Standing rulings: neosian's phases run to completion
-> before the kit's P10 vendors from a `v<X.Y.Z>` release tag; still
-> deferred per §9.10, executing at the docs/1.0 slice: the ECOSYSTEM
-> amendment naming `ConversationStore`. CI is green: after the billing
-> fix (2026-08-20), run 32407460787 on the v0.67.0 head passed whole,
-> confirming v0.54.0 onward at once.)*
+> *(2026-08-21: slice A shipped at v0.68.0 — the full rewrite, ruled
+> options-first (facade-only surface, schema v2 + `kind:`, strict
+> matchers with no judge, stub-by-default tools; ledger #54–#63,
+> DESIGN §13). Remaining in NE: the memory eval harness as the final
+> slice, per its ratified plan
+> (`~/.claude/plans/fizzy-spinning-flask.md`) on the reformed ground —
+> note the harness now lands as `kind: memory` per §13.12, and
+> `mock_agent_tools` (which the plan works around) no longer exists.
+> N4 resumes with docs/1.0 after `ne-done`; its 1.0 promise names the
+> reformed eval surface. N4 slices A+B+C stand shipped — v0.65.0 the
+> native `memory_20250818` flag, v0.66.0 server-side compaction
+> pass-through, v0.67.0 the MCP memory server. Standing rulings:
+> neosian's phases run to completion before the kit's P10 vendors from
+> a `v<X.Y.Z>` release tag; still deferred per §9.10, executing at the
+> docs/1.0 slice: the ECOSYSTEM amendment naming `ConversationStore`.
+> CI last confirmed green on the v0.67.0 head, run 32407460787.)*
 >
 > The pointer above must equal the first phase heading without ✅ — if they
 > disagree, say so and trust the checkboxes. Companion to [VISION.md](VISION.md)
@@ -486,28 +487,29 @@ opening options-first design discussion decides how deep to cut; a full
 rewrite is sanctioned if that is the honest path to ecosystem-grade code.
 `eval_*` error codes stay append-only regardless.
 
-- A DESIGN section for evaluation, written options-first in-phase: case
+- [x] A DESIGN section for evaluation, written options-first in-phase: case
   schema, scoring model, the runner's seams. Kills §2's dangling "§C5"
-  cross-reference along the way.
-- A public facade — lazy `neosian.evaluation` with run/load entry points
+  cross-reference along the way. *(§13.1–§13.13; §C5 → ECOSYSTEM §7)*
+- [x] A public facade — lazy `neosian.evaluation` with run/load entry points
   (today the only runner path imports `_foundation.evaluation`, which
   the CLI does); the root `__all__` change lands as a deliberate,
-  pinned diff.
-- Frozen eval config types + a replace-not-mutate runner: the loaded
+  pinned diff. *(facade-only ruling, ledger #54: root −7, 33 facade names)*
+- [x] Frozen eval config types + a replace-not-mutate runner: the loaded
   `AgentConfig` is never mutated in place (model/hooks/client_factory —
   the N2 `--menu` bug class), pinned by a caller-config-untouched test.
-- Mock-seam redesign: `mock_agent_tools`' private reach (`agent._tools`
+- [x] Mock-seam redesign: `mock_agent_tools`' private reach (`agent._tools`
   rewrite, per-turn re-wrap, `_tool_definitions[i]` surgery) retired in
   favor of hook-based observation — the memory harness's no-mocking
   `AgentHooks` architecture is the reference — plus an encapsulation pin
-  like `tests/unit/conversation/test_encapsulation.py`.
-- Scoring semantics ruled options-first: response-text matching
+  like `tests/unit/conversation/test_encapsulation.py`. *(ledger #59/#60)*
+- [x] Scoring semantics ruled options-first: response-text matching
   (`actual_response` is recorded but unmatchable), the silently-ignored
   top-level `expect:` on conversational cases, `str()`-coercion rules,
   and whether an LLM judge ever enters (if yes, its prompt ships as
-  `assets/` data per §7).
-- runner.py headroom (482 lines, 18 under the fail-at-500 gate) —
+  `assets/` data per §7). *(strict matchers, no judge — ledger #57/#58)*
+- [x] runner.py headroom (482 lines, 18 under the fail-at-500 gate) —
   restructured out of the red zone by whatever shape the redesign takes.
+  *(13 modules, largest 264 lines)*
 - **Final slice: the memory eval harness**, per the ratified 2026-08-20
   plan (`~/.claude/plans/fizzy-spinning-flask.md`; its four design
   rulings are user-confirmed) — write discipline, recall-in-next-session,
@@ -522,6 +524,35 @@ rewrite is sanctioned if that is the honest path to ecosystem-grade code.
 code mutates a caller's config or reaches into Agent privates
 (encapsulation-pinned); every eval config type is frozen; evaluation has
 its DESIGN §; `make lint typecheck test size` green.
+
+**Split (2026-08-21): slice A shipped at v0.68.0** — the full rewrite.
+Rulings (options-first, user confirmed): full rewrite incl. schema v2
+with the `kind:` discriminator (v1 YAMLs break); facade-only public
+surface (root `__all__` −7, the fake.py precedent, `EvalError` stays);
+strict matchers, no LLM judge; stub-by-default tools with an
+`execute_tools` allowlist. Shipped: 13 fresh modules under
+`_foundation/evaluation/` (frozen types module-local; the shared/types.py
+eval block and constants' `Evaluation` class deleted); one `agent:` +
+explicit `variants:` axis replacing the overloaded `prompts:`; typed
+equality + matcher vocabulary (`equals`/`contains`/`regex`/`exists`,
+response matchers, accumulated failures naming types); `run_case` deriving
+via `dataclasses.replace` with composed strict hooks (caller config
+pinned untouched) and the agent module loaded once per suite;
+`stubs.build_tools` + `attach_tool_metadata` (tools built before
+construction — variant description overrides without private reach;
+builtins always execute; per-turn `tool_results` stub table replaces the
+post-hoc `mock_response` rewrite); `matrix.run_evaluation` → frozen
+`EvalReport`; schema-2 JSON artifact; `neosian eval` rides the facade and
+exits 1 on failure (a real CI gate); two codes appended
+(`eval_config_unknown_key` with the v1→v2 hint, `eval_model_unknown`);
+encapsulation pin (`._tools`/`._tool_definitions`/`._tool_metadata`
+owner-only) + two import-linter contracts (runtime ↛ evaluation;
+evaluation ↛ provider clients); examples rewritten to v2 (`ignore_tools:
+[update_todo]`; with_hints folds `on_success` into descriptions).
+DESIGN §13 (13 subsections, §13.12 reserves `kind: memory`), §C5 fixed,
+ledger #54–#63. 1698 unit tests, zero keys. Carried to the final slice:
+the memory eval harness (fizzy-spinning-flask plan, landing as
+`kind: memory` per §13.12 — its `mock_agent_tools` workaround is moot).
 
 ## N4 — Completeness (v0.65 → 1.0)
 
@@ -1110,3 +1141,29 @@ reformed module, as NE's final slice. Remaining in N4: docs/1.0 only.
   and the 1.0 promise now names the reformed eval surface so the five
   public types never freeze by silence. Pointer → NE. Docs only; no
   code touched.
+- 2026-08-21 | NE (slice A) | **The harness reforged.** Options-first
+  rulings: full rewrite + schema v2 (`kind:` from day one, v1 breaks);
+  facade-only surface; strict matchers, no judge; stub-by-default with
+  `execute_tools`. `_foundation/evaluation/` rewritten as 13 modules —
+  frozen module-local types (`AgentEvalConfig`/`EvalCase`/`EvalTurn`/
+  `Expectation`/`ValueMatcher`/`Variant` + `EvalReport`/`CaseResult`/
+  `TurnResult`/`ToolCallCapture`; shared/types.py:895-1120 and the
+  `Evaluation` constants class deleted); strict-keyed loader with
+  migration hints (`prompts:`/`mock_response:`/`on_success:`), models
+  validated at load; typed-equality matcher (bool≠1, no str coercion,
+  int↔float kept, `_exists` sugar, response equals/contains/regex —
+  response contains case-insensitive by design, first-call tool rule,
+  accumulated failures naming types); `run_case` = replace-derivation +
+  composed `strict=True` hooks + `on_tool` single capture path, caller
+  config pinned untouched; tools built before construction
+  (`stubs.build_tools` + `tools.base.attach_tool_metadata` — the
+  `set_native_type` idiom; builtins always execute, `ignore_tools`
+  hides them; per-turn `tool_results` set *before* the call so history
+  threads verbatim); agent module loads once per suite; `EvalReport`
+  carries its own axes; schema-2 artifact; CLI exits 1 on any failure.
+  `neosian.evaluation` facade (33 names) + root `__all__` −7
+  (`EvalError` stays); +2 codes (`eval_config_unknown_key`,
+  `eval_model_unknown`); encapsulation pin + 2 import contracts (7
+  kept); examples → v2. DESIGN §13, §C5 → ECOSYSTEM §7, §1/§5 amended,
+  ledger #54–#63. 1698 unit tests, zero keys; v0.68.0. Carried: the
+  memory harness lands as `kind: memory` (§13.12) — the final slice.

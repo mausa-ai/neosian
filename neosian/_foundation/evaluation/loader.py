@@ -1,6 +1,9 @@
-"""YAML config loader for evaluation.
+"""Eval suite loader — YAML schema v2 (DESIGN §13).
 
-Parses eval config files into typed EvalConfig objects.
+Strict keys at every level: an unknown key is an error, never silently
+carried. Retired v1 keys (`prompts:`, `mock_response:`) fail with a
+targeted migration hint. Models are validated here, so a typo fails the
+suite instantly instead of surfacing inside every case result.
 """
 
 from pathlib import Path
@@ -8,232 +11,161 @@ from typing import Any
 
 import yaml
 
-from neosian._foundation.llm.base import ToolCall
-from neosian._foundation.llm.fake import FakeTurn
-from neosian._foundation.shared.constants import Evaluation
+from neosian._foundation.evaluation.cases import parse_cases, parse_names
+from neosian._foundation.evaluation.types import (
+    BASE_VARIANT,
+    AgentEvalConfig,
+    EvalConfig,
+    EvalKind,
+    Variant,
+)
+from neosian._foundation.evaluation.variants import load_variant
 from neosian._foundation.shared.exceptions import (
-    EvalCaseInvalidError,
     EvalConfigInvalidYAMLError,
     EvalConfigMissingKeyError,
     EvalConfigNotFoundError,
+    EvalConfigUnknownKeyError,
+    EvalModelUnknownError,
 )
-from neosian._foundation.shared.types import (
-    EvalCase,
-    EvalConfig,
-    EvalTurn,
-    Expectation,
-    ToolCallId,
-    ToolName,
-)
+from neosian._foundation.shared.types import Model
 
-# Scripted-run keys, module-local by convention (constants.py is frozen debt)
-_SCRIPT_KEY = "script"
-_SCRIPT_CONTENT_KEY = "content"
-_SCRIPT_REASONING_KEY = "reasoning"
-_SCRIPT_TOOL_CALLS_KEY = "tool_calls"
-_SCRIPT_TOOL_NAME_KEY = "name"
-_SCRIPT_TOOL_ARGUMENTS_KEY = "arguments"
+_SUITE_KEYS = frozenset(
+    {
+        "kind",
+        "name",
+        "agent",
+        "models",
+        "cases",
+        "variants",
+        "stop_on_failure",
+        "throttle_ms",
+        "execute_tools",
+        "ignore_tools",
+    }
+)
+_REQUIRED_KEYS = ("name", "agent", "models", "cases")
+_VARIANT_ENTRY_KEYS = frozenset({"name", "prompt"})
+_V1_SUITE_HINTS = {
+    "prompts": "schema v2 replaced it with 'agent:' + 'variants:'",
+}
 
 
 def load_eval_config(path: str | Path) -> EvalConfig:
-    """Load evaluation config from YAML file.
-
-    Args:
-        path: Path to the eval config YAML file.
-
-    Returns:
-        Parsed EvalConfig object.
+    """Load an eval suite from a YAML file.
 
     Raises:
-        EvalConfigNotFoundError: If file doesn't exist.
-        EvalConfigInvalidYAMLError: If YAML is malformed.
-        EvalConfigMissingKeyError: If required key is missing.
+        EvalConfigNotFoundError: If the file doesn't exist.
+        EvalConfigInvalidYAMLError: If unparseable or structurally invalid.
+        EvalConfigMissingKeyError: If a required key is absent.
+        EvalConfigUnknownKeyError: If a key isn't in the schema.
+        EvalModelUnknownError: If the models axis names an unknown model.
         EvalCaseInvalidError: If a case definition is invalid.
+        EvalPromptNotFoundError: If a variant's prompt file is missing.
     """
     path = Path(path)
     path_str = str(path)
-
     if not path.exists():
         raise EvalConfigNotFoundError(path_str)
-
     try:
         with open(path, encoding="utf-8") as f:
             data = yaml.safe_load(f)
     except yaml.YAMLError as e:
         raise EvalConfigInvalidYAMLError(path_str) from e
-
     if not isinstance(data, dict):
-        raise EvalConfigInvalidYAMLError(path_str)
+        raise EvalConfigInvalidYAMLError(path_str, "root must be a mapping")
 
-    # Validate required keys
-    for key in [
-        Evaluation.NAME_KEY,
-        Evaluation.PROMPTS_KEY,
-        Evaluation.MODELS_KEY,
-        Evaluation.CASES_KEY,
-    ]:
+    for key in data:
+        if key not in _SUITE_KEYS:
+            raise EvalConfigUnknownKeyError(
+                str(key), path_str, _V1_SUITE_HINTS.get(str(key))
+            )
+    for key in _REQUIRED_KEYS:
         if key not in data:
             raise EvalConfigMissingKeyError(key, path_str)
 
-    # Parse cases
-    cases = _parse_cases(data[Evaluation.CASES_KEY])
+    kind = data.get("kind", EvalKind.AGENT.value)
+    if kind != EvalKind.AGENT.value:
+        raise EvalConfigInvalidYAMLError(
+            path_str, f"unknown kind '{kind}' — known kinds: agent"
+        )
+    name = data["name"]
+    agent = data["agent"]
+    if not isinstance(name, str) or not isinstance(agent, str):
+        raise EvalConfigInvalidYAMLError(path_str, "'name' and 'agent' must be strings")
 
-    # Optional agent key for variant mode
-    agent = data.get(Evaluation.AGENT_KEY)
+    cases = parse_cases(data["cases"], path_str)
+    stop_on_failure = data.get("stop_on_failure", True)
+    if not isinstance(stop_on_failure, bool):
+        raise EvalConfigInvalidYAMLError(path_str, "'stop_on_failure' must be a bool")
+    throttle_ms = data.get("throttle_ms", 500)
+    if not isinstance(throttle_ms, int) or isinstance(throttle_ms, bool):
+        raise EvalConfigInvalidYAMLError(path_str, "'throttle_ms' must be an integer")
+    if throttle_ms < 0:
+        raise EvalConfigInvalidYAMLError(path_str, "'throttle_ms' must be >= 0")
 
-    # Optional behavior configuration (defaults to True)
-    stop_on_failure = data.get(Evaluation.STOP_ON_FAILURE_KEY, True)
-
-    return EvalConfig(
-        name=data[Evaluation.NAME_KEY],
-        prompts=data[Evaluation.PROMPTS_KEY],
-        models=data[Evaluation.MODELS_KEY],
-        cases=cases,
+    variants = _parse_variants(data.get("variants"), path_str)
+    return AgentEvalConfig(
+        name=name,
         agent=agent,
+        models=_parse_models(data["models"], path_str),
+        cases=cases,
+        variants=variants if variants is not None else (BASE_VARIANT,),
+        execute_tools=parse_names(data.get("execute_tools"), "execute_tools", path_str),
+        ignore_tools=parse_names(data.get("ignore_tools"), "ignore_tools", path_str),
         stop_on_failure=stop_on_failure,
+        throttle_ms=throttle_ms,
     )
 
 
-def _parse_cases(cases_data: list[dict[str, Any]]) -> list[EvalCase]:
-    """Parse case definitions from YAML data.
-
-    Args:
-        cases_data: List of case dictionaries from YAML.
-
-    Returns:
-        List of EvalCase objects.
-
-    Raises:
-        EvalCaseInvalidError: If a case is malformed.
-    """
-    cases = []
-    for case_data in cases_data:
-        if "name" not in case_data:
-            raise EvalCaseInvalidError("unknown", "missing 'name' field")
-
-        name = case_data["name"]
-        script = _parse_script(case_data.get(_SCRIPT_KEY), name)
-
-        # Conversational case
-        if Evaluation.CONVERSATION_KEY in case_data:
-            conversation = _parse_conversation(
-                case_data[Evaluation.CONVERSATION_KEY], name
+def _parse_models(data: Any, path_str: str) -> tuple[Model, ...]:
+    if not isinstance(data, list) or not data:
+        raise EvalConfigInvalidYAMLError(path_str, "'models' must be a non-empty list")
+    models: list[Model] = []
+    for entry in data:
+        if not isinstance(entry, str):
+            raise EvalConfigInvalidYAMLError(
+                path_str, "'models' entries must be strings"
             )
-            cases.append(
-                EvalCase(
-                    name=name,
-                    conversation=conversation,
-                    script=script,
-                )
-            )
-        # One-shot case
-        elif Evaluation.INPUT_KEY in case_data:
-            expect = _parse_expectation(case_data.get(Evaluation.EXPECT_KEY, {}))
-            cases.append(
-                EvalCase(
-                    name=name,
-                    input=case_data[Evaluation.INPUT_KEY],
-                    expect=expect,
-                    script=script,
-                )
-            )
+        # Accept both "provider:model" and the bare model value
+        value = entry.split(":", 1)[1] if ":" in entry else entry
+        for m in Model:
+            if m.value == value:
+                models.append(m)
+                break
         else:
-            raise EvalCaseInvalidError(name, "must have 'input' or 'conversation'")
+            raise EvalModelUnknownError(entry, path_str)
+    return tuple(models)
 
-    return cases
 
-
-def _parse_script(script_data: Any, case_name: str) -> tuple[FakeTurn, ...] | None:
-    """Parse a case's scripted model turns into FakeTurns.
-
-    Raises:
-        EvalCaseInvalidError: If the script is malformed.
-    """
-    if script_data is None:
+def _parse_variants(data: Any, path_str: str) -> tuple[Variant, ...] | None:
+    if data is None:
         return None
-    if not isinstance(script_data, list) or not script_data:
-        raise EvalCaseInvalidError(case_name, "'script' must be a non-empty list")
-
-    turns: list[FakeTurn] = []
-    for turn_idx, turn_data in enumerate(script_data):
-        if not isinstance(turn_data, dict):
-            raise EvalCaseInvalidError(
-                case_name, f"script turn {turn_idx + 1} must be a mapping"
-            )
-        tool_calls: list[ToolCall] = []
-        for call_idx, call_data in enumerate(
-            turn_data.get(_SCRIPT_TOOL_CALLS_KEY) or []
-        ):
-            if (
-                not isinstance(call_data, dict)
-                or _SCRIPT_TOOL_NAME_KEY not in call_data
-            ):
-                raise EvalCaseInvalidError(
-                    case_name,
-                    f"script turn {turn_idx + 1} tool_call {call_idx + 1} "
-                    "must be a mapping with a 'name'",
-                )
-            tool_calls.append(
-                ToolCall(
-                    id=ToolCallId(f"script_{turn_idx}_{call_idx}"),
-                    name=ToolName(call_data[_SCRIPT_TOOL_NAME_KEY]),
-                    arguments=call_data.get(_SCRIPT_TOOL_ARGUMENTS_KEY) or {},
-                )
-            )
-        turns.append(
-            FakeTurn(
-                content=turn_data.get(_SCRIPT_CONTENT_KEY),
-                reasoning=turn_data.get(_SCRIPT_REASONING_KEY),
-                tool_calls=tuple(tool_calls),
-            )
+    if not isinstance(data, list) or not data:
+        raise EvalConfigInvalidYAMLError(
+            path_str, "'variants' must be a non-empty list"
         )
-    return tuple(turns)
-
-
-def _parse_conversation(
-    conv_data: list[dict[str, Any]], case_name: str
-) -> list[EvalTurn]:
-    """Parse conversation turns from YAML data.
-
-    Args:
-        conv_data: List of turn dictionaries.
-        case_name: Case name for error messages.
-
-    Returns:
-        List of EvalTurn objects.
-
-    Raises:
-        EvalCaseInvalidError: If a turn is malformed.
-    """
-    turns = []
-    for i, turn_data in enumerate(conv_data):
-        if Evaluation.USER_KEY not in turn_data:
-            raise EvalCaseInvalidError(case_name, f"turn {i + 1} missing 'user' field")
-
-        expect = _parse_expectation(turn_data.get(Evaluation.EXPECT_KEY, {}))
-        mock_response = turn_data.get(Evaluation.MOCK_RESPONSE_KEY)
-        turns.append(
-            EvalTurn(
-                user=turn_data[Evaluation.USER_KEY],
-                expect=expect,
-                mock_response=mock_response,
+    variants: list[Variant] = []
+    seen: set[str] = set()
+    for idx, entry in enumerate(data, start=1):
+        if not isinstance(entry, dict):
+            raise EvalConfigInvalidYAMLError(
+                path_str, f"variant {idx} must be a mapping"
             )
-        )
-    return turns
-
-
-def _parse_expectation(expect_data: dict[str, Any]) -> Expectation:
-    """Parse expectation from YAML data.
-
-    Args:
-        expect_data: Expectation dictionary.
-
-    Returns:
-        Expectation object.
-    """
-    return Expectation(
-        tool=expect_data.get(Evaluation.TOOL_KEY),
-        params=expect_data.get(Evaluation.PARAMS_KEY, {}),
-        no_tool=expect_data.get(Evaluation.NO_TOOL_KEY, False),
-        sequence=expect_data.get(Evaluation.SEQUENCE_KEY),
-    )
+        for key in entry:
+            if key not in _VARIANT_ENTRY_KEYS:
+                raise EvalConfigUnknownKeyError(f"variants[{idx}].{key}", path_str)
+        for key in ("name", "prompt"):
+            if key not in entry:
+                raise EvalConfigMissingKeyError(f"variants[{idx}].{key}", path_str)
+        variant_name = entry["name"]
+        if not isinstance(variant_name, str) or not variant_name:
+            raise EvalConfigInvalidYAMLError(
+                path_str, f"variant {idx} name must be a non-empty string"
+            )
+        if variant_name in seen:
+            raise EvalConfigInvalidYAMLError(
+                path_str, f"duplicate variant name '{variant_name}'"
+            )
+        seen.add(variant_name)
+        variants.append(load_variant(variant_name, entry["prompt"]))
+    return tuple(variants)

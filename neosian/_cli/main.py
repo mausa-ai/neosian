@@ -283,23 +283,22 @@ def evaluate(
         typer.Argument(help="Path to the evaluation config YAML file"),
     ],
 ) -> None:
-    """Run agent evaluation against prompt × model matrix.
+    """Run an eval suite: variants × models × cases over one agent.
 
-    Tests tool selection and parameter passing across different
-    prompt files and models. Results are displayed in terminal
-    and saved to JSON.
+    Results are displayed in the terminal and saved to JSON. Exits
+    nonzero when any case fails, so the command works as a CI gate.
 
     Example:
-        neosian eval eval_config.yaml
+        neosian eval eval_suite.yaml
     """
     from neosian._cli.playground import _load_credentials_from_config
-    from neosian._foundation.evaluation import (
+    from neosian.evaluation import (
         EvalProgress,
         create_progress_callback,
         load_eval_config,
-        print_results,
+        print_report,
         run_evaluation,
-        save_results,
+        save_report,
     )
 
     # The library reads keys from the environment only; loading them from the
@@ -308,7 +307,6 @@ def evaluate(
 
     console = Console()
 
-    # Load config
     try:
         config = load_eval_config(config_file)
     except Exception as e:
@@ -317,13 +315,10 @@ def evaluate(
 
     console.print()
 
-    # Create progress display
     progress = EvalProgress(config)
-
-    # Run evaluation with live progress
     try:
         progress.start()
-        results = asyncio.run(
+        report = asyncio.run(
             run_evaluation(config, on_progress=create_progress_callback(progress))
         )
         progress.stop()
@@ -333,14 +328,13 @@ def evaluate(
         raise typer.Exit(1) from None
 
     console.print()
+    print_report(report, console)
 
-    # Print results
-    print_results(config, results, console)
-
-    # Save results
-    output_path = save_results(config, results)
+    output_path = save_report(report)
     console.print()
     console.print(f"[dim]{output_path}[/dim]")
+    console.print(f"{report.passed}/{report.total} passed")
+    raise typer.Exit(1 if report.failed else 0)
 
 
 @app.command(

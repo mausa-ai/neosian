@@ -1,58 +1,64 @@
-# Evaluation config for basic_agent.py
-# Tests tool selection and parameter passing across models
+# Evaluation suite for basic_agent.py (schema v2)
+# Tests tool selection and parameter passing across models.
+#
+# Run: neosian eval examples/eval_basic_agent.yaml
 
 name: Basic Agent Evaluation
 
-prompts:
-  - examples/basic_agent.py
+agent: examples/basic_agent.py
 
 models:
   - groq:openai/gpt-oss-120b
   - groq:openai/gpt-oss-20b
 
+# The agent keeps its todo builtin; hide it from matchers rather than
+# changing the agent under test.
+ignore_tools: [update_todo]
+
 cases:
-  # Test 1: Should call get_current_datetime
+  # Should call get_current_datetime
   - name: datetime_query
     input: "What time is it right now?"
     expect:
       tool: get_current_datetime
 
-  # Test 2: Should call read_file with correct path
+  # Should call read_file with the exact path
   - name: read_file_query
     input: "Read the contents of /tmp/test.txt"
     expect:
       tool: read_file
       params:
-        path: /tmp/test.txt
+        path: {equals: /tmp/test.txt}
 
-  # Test 3: Should call list_directory
+  # Should call list_directory with some path
   - name: list_dir_query
     input: "Show me what files are in the examples folder"
     expect:
       tool: list_directory
       params:
-        path: "_exists"
+        path: _exists
 
-  # Test 4: Greeting should NOT call any tool
+  # A greeting should NOT call any tool
   - name: greeting_no_tool
     input: "Hello! How are you?"
     expect:
       no_tool: true
 
-  # Test 5: Conversational - multi-turn context understanding
+  # Conversational: multi-turn context understanding. The turn-1 stub
+  # returns the configured file list, so turn 2 can reference it.
   - name: conversational_file_ops
     conversation:
       - user: "List the files in the current directory"
         expect:
           tool: list_directory
-        # Mock response provides file list for the model to reference in next turn
-        mock_response:
-          files:
-            - "README.md"
-            - "setup.py"
-            - "requirements.txt"
+        tool_results:
+          list_directory:
+            files:
+              - "README.md"
+              - "setup.py"
+              - "requirements.txt"
       - user: "Now read the README.md file"
         expect:
           tool: read_file
           params:
-            path: "_exists"
+            path: _exists

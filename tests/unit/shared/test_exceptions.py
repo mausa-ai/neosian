@@ -293,6 +293,8 @@ _CODE_TABLE = {
     "EvalPromptNotFoundError": "eval_prompt_not_found",
     "EvalCaseInvalidError": "eval_case_invalid",
     "EvalRunError": "eval_run_failed",
+    "EvalConfigUnknownKeyError": "eval_config_unknown_key",
+    "EvalModelUnknownError": "eval_model_unknown",
     "MemoryStoreError": "memory_error",
     "MemoryDocumentNotFoundError": "memory_document_not_found",
     "MemoryScopeInvalidError": "memory_scope_invalid",

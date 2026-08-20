@@ -1,6 +1,6 @@
 [project]
 name = "neosian"
-version = "0.67.0"
+version = "0.68.0"
 description = "Stateless agentic AI library. LLM orchestration, tool execution, streaming."
 readme = "README.md"
 license = "Apache-2.0"
@@ -106,7 +106,7 @@ ignore = [
 
 # Layering (DESIGN §1) — forbidden contracts only. Type-only imports are
 # excluded: the contracts police runtime coupling, and TYPE_CHECKING
-# blocks (e.g. shared.types -> llm.fake for FakeTurn) create none.
+# blocks (e.g. shared.types -> agent.hooks for AgentHooks) create none.
 [tool.importlinter]
 root_packages = ["neosian"]
 exclude_type_checking_imports = true
@@ -176,6 +176,37 @@ source_modules = [
     "neosian._foundation.postgres",
 ]
 forbidden_modules = ["neosian._foundation.agent"]
+
+[[tool.importlinter.contracts]]
+name = "the runtime library never imports the eval harness"
+type = "forbidden"
+source_modules = [
+    "neosian._foundation.agent",
+    "neosian._foundation.blackboard",
+    "neosian._foundation.conversation",
+    "neosian._foundation.guardrails",
+    "neosian._foundation.llm",
+    "neosian._foundation.mcp",
+    "neosian._foundation.memory",
+    "neosian._foundation.postgres",
+    "neosian._foundation.shared",
+    "neosian._foundation.tools",
+]
+forbidden_modules = ["neosian._foundation.evaluation"]
+
+# The harness drives an Agent and scripts the fake — llm.fake is its
+# legitimate seam; the four real clients never are.
+[[tool.importlinter.contracts]]
+name = "the eval harness never imports provider clients directly"
+type = "forbidden"
+source_modules = ["neosian._foundation.evaluation"]
+forbidden_modules = [
+    "neosian._foundation.llm.groq",
+    "neosian._foundation.llm.openai",
+    "neosian._foundation.llm.anthropic",
+    "neosian._foundation.llm.cerebras",
+]
+allow_indirect_imports = true
 
 [project.scripts]
 neosian = "neosian._cli.main:main"

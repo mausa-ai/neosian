@@ -97,7 +97,10 @@ declared in `ModelSpec`.
 - Structured output (`ResponseFormat` with Pydantic models or unions) on all providers
 - Multimodal content blocks (images, documents) on Anthropic
 - Playbooks and a Blackboard for app-supplied procedures and shared state
-- Evaluation harness: YAML-defined eval matrices with mocked tools and Rich reports
+- Evaluation harness (`neosian.evaluation`): YAML suites over a
+  variants × models × cases matrix — typed matchers, stub-by-default
+  tools with an execute allowlist, Rich reports, and a nonzero exit
+  code on failure (`neosian eval suite.yaml` works as a CI gate)
 
 ## Development
 

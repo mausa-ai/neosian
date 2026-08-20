@@ -514,13 +514,18 @@ class EvalConfigNotFoundError(EvalError):
 
 
 class EvalConfigInvalidYAMLError(EvalError):
-    """Raised when an eval config file contains invalid YAML."""
+    """Raised when an eval config file is unparseable or structurally
+    invalid (non-mapping root, duplicate variant names, …)."""
 
     code = "eval_config_invalid_yaml"
 
-    def __init__(self, path: str) -> None:
-        super().__init__(ErrorMessages.EVAL_CONFIG_INVALID_YAML.format(path=path))
+    def __init__(self, path: str, detail: str | None = None) -> None:
+        message = ErrorMessages.EVAL_CONFIG_INVALID_YAML.format(path=path)
+        if detail is not None:
+            message = f"{message} — {detail}"
+        super().__init__(message)
         self.path = path
+        self.detail = detail
 
 
 class EvalConfigMissingKeyError(EvalError):
@@ -558,20 +563,47 @@ class EvalCaseInvalidError(EvalError):
 
 
 class EvalRunError(EvalError):
-    """Raised when an evaluation run fails."""
+    """Raised when a case fails at the harness level (agent load, script
+    exhaustion) rather than on an expectation."""
 
     code = "eval_run_failed"
 
-    def __init__(self, prompt: str, model: str, case: str, error: str) -> None:
+    def __init__(self, variant: str, model: str, case: str, error: str) -> None:
         super().__init__(
             ErrorMessages.EVAL_RUN_ERROR.format(
-                prompt=prompt, model=model, case=case, error=error
+                variant=variant, model=model, case=case, error=error
             )
         )
-        self.prompt = prompt
+        self.variant = variant
         self.model = model
         self.case = case
         self.error = error
+
+
+class EvalConfigUnknownKeyError(EvalError):
+    """Raised when an eval config carries a key the schema does not know."""
+
+    code = "eval_config_unknown_key"
+
+    def __init__(self, key: str, path: str, hint: str | None = None) -> None:
+        message = f"Unknown key '{key}' in eval config: {path}"
+        if hint is not None:
+            message = f"{message} — {hint}"
+        super().__init__(message)
+        self.key = key
+        self.path = path
+        self.hint = hint
+
+
+class EvalModelUnknownError(EvalError):
+    """Raised when an eval config's models axis names an unknown model."""
+
+    code = "eval_model_unknown"
+
+    def __init__(self, model: str, path: str) -> None:
+        super().__init__(f"Unknown model '{model}' in eval config: {path}")
+        self.model = model
+        self.path = path
 
 
 # Playbook Errors

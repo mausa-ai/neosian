@@ -1,288 +1,225 @@
-"""Evaluation result reporting.
+"""Result presentation (DESIGN §13.8).
 
-Rich terminal output and JSON file export.
+Rich tables to the terminal, a schema-2 JSON artifact to
+`.neosian/evals/<ts>.json`. Everything renders from EvalReport alone —
+presentation never needs the config type.
 """
 
 import json
-from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from neosian._foundation.shared.constants import Evaluation
-from neosian._foundation.shared.types import EvalConfig, EvalResult
+from neosian._foundation.evaluation.results import CaseResult, EvalReport
+from neosian._foundation.evaluation.types import Expectation, ValueMatcher
+
+ARTIFACT_SCHEMA = 2
+_OUTPUT_DIR = ".neosian/evals"
+_TITLE = "neosian eval"
 
 
-def _format_latency(latency_ms: float) -> str:
-    """Format latency for display."""
-    if latency_ms < 1000:
-        return f"{latency_ms:.0f}ms"
-    return f"{latency_ms / 1000:.1f}s"
-
-
-def print_results(
-    config: EvalConfig,
-    results: list[EvalResult],
-    console: Console,
-) -> None:
-    """Print evaluation results to terminal.
-
-    Args:
-        config: Evaluation configuration.
-        results: List of evaluation results.
-        console: Rich console for output.
-    """
-    # Header
+def print_report(report: EvalReport, console: Console) -> None:
+    """Print a full run to the terminal."""
     console.print()
     console.print(
-        Panel(
-            f"[bold]{Evaluation.UI.TITLE}[/bold]\n[dim]{config.name}[/dim]",
-            expand=False,
-        )
+        Panel(f"[bold]{_TITLE}[/bold]\n[dim]{report.suite}[/dim]", expand=False)
+    )
+    console.print()
+    console.print(
+        f"Variants: {len(report.variants)} │ "
+        f"Models: {len(report.models)} │ "
+        f"Cases: {len(report.cases)} │ "
+        f"Total: {report.total} runs │ "
+        f"Passed: {report.passed}"
     )
     console.print()
 
-    # Stats
-    total = len(results)
-    passed_count = sum(1 for r in results if r.passed)
-    console.print(
-        f"Prompts: {len(config.prompts)} │ "
-        f"Models: {len(config.models)} │ "
-        f"Cases: {len(config.cases)} │ "
-        f"Total: {total} runs │ "
-        f"Passed: {passed_count}"
-    )
-    console.print()
-
-    # Group results by model
-    by_model: dict[str, list[EvalResult]] = defaultdict(list)
-    for r in results:
-        by_model[r.model].append(r)
-
-    # Print table per model
-    for model, model_results in by_model.items():
-        _print_model_table(model, model_results, config, console)
+    for model in report.models:
+        _print_model_table(model, report, console)
         console.print()
 
-    # Summary
-    console.print(f"[bold]{Evaluation.UI.SUMMARY}[/bold]")
+    console.print("[bold]SUMMARY[/bold]")
     console.print()
-    _print_summary(config, results, console)
+    _print_summary(report, console)
     console.print()
 
-    # Failures
-    failures = [r for r in results if not r.passed]
+    failures = [r for r in report.results if not r.passed]
     if failures:
-        console.print(f"[bold red]{Evaluation.UI.FAILURES}[/bold red]")
+        console.print("[bold red]FAILURES[/bold red]")
         console.print()
         _print_failures(failures, console)
     else:
-        console.print(f"[green]{Evaluation.UI.NO_FAILURES}[/green]")
+        console.print("[green]All cases passed![/green]")
 
 
-def _print_model_table(
-    model: str,
-    results: list[EvalResult],
-    config: EvalConfig,
-    console: Console,
-) -> None:
-    """Print results table for a single model."""
-    # Extract short model name
-    model_short = model.split(":")[-1] if ":" in model else model
-
-    table = Table(title=f"[bold]{model_short}[/bold]", expand=True)
-
-    # Columns: Prompt, then one per case, then Score
-    table.add_column("Prompt", style="cyan")
-    for case in config.cases:
-        table.add_column(case.name, justify="center")
+def _print_model_table(model: str, report: EvalReport, console: Console) -> None:
+    table = Table(title=f"[bold]{model}[/bold]", expand=True)
+    table.add_column("Variant", style="cyan")
+    for case in report.cases:
+        table.add_column(case, justify="center")
     table.add_column("Score", justify="right")
 
-    # Group results by prompt
-    by_prompt: dict[str, dict[str, EvalResult]] = defaultdict(dict)
-    for r in results:
-        by_prompt[r.prompt_file][r.case_name] = r
-
-    # Add rows
-    for prompt_file in config.prompts:
-        prompt_short = Path(prompt_file).stem
-        row = [prompt_short]
-
-        prompt_results = by_prompt.get(prompt_file, {})
+    for variant in report.variants:
+        row = [variant]
         passed_count = 0
-        total_count = 0
-
-        for case in config.cases:
-            result = prompt_results.get(case.name)
-            if result:
-                total_count += 1
-                latency_str = _format_latency(result.latency_ms)
-                if result.passed:
-                    passed_count += 1
-                    # Show pass count for conversational
-                    if result.total_turns > 1:
-                        row.append(
-                            f"[green]✓[/green] {result.pass_count}/{result.total_turns}\n[dim]{latency_str}[/dim]"
-                        )
-                    else:
-                        row.append(f"[green]✓[/green]\n[dim]{latency_str}[/dim]")
-                else:
-                    if result.total_turns > 1:
-                        row.append(
-                            f"[red]✗[/red] {result.pass_count}/{result.total_turns}\n[dim]{latency_str}[/dim]"
-                        )
-                    else:
-                        row.append(f"[red]✗[/red]\n[dim]{latency_str}[/dim]")
-            else:
+        for case in report.cases:
+            result = report.result_for(variant, model, case)
+            if result is None:
                 row.append("-")
-
-        # Score column
-        if total_count > 0:
-            pct = int(passed_count / total_count * 100)
-            row.append(f"{passed_count}/{total_count} {pct}%")
-        else:
-            row.append("-")
-
+                continue
+            if result.passed:
+                passed_count += 1
+            row.append(_cell(result))
+        pct = int(passed_count / len(report.cases) * 100) if report.cases else 0
+        row.append(f"{passed_count}/{len(report.cases)} {pct}%")
         table.add_row(*row)
 
     console.print(table)
 
 
-def _print_summary(
-    config: EvalConfig,
-    results: list[EvalResult],
-    console: Console,
-) -> None:
-    """Print summary of best combinations."""
-    # Best per model
-    by_model: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
-    for r in results:
-        if r.passed:
-            by_model[r.model][r.prompt_file] += 1
+def _cell(result: CaseResult) -> str:
+    mark = "[green]✓[/green]" if result.passed else "[red]✗[/red]"
+    if result.total_turns > 1:
+        mark = f"{mark} {result.pass_count}/{result.total_turns}"
+    return f"{mark}\n[dim]{_format_latency(result.latency_ms)}[/dim]"
 
-    for model, prompt_scores in by_model.items():
-        if prompt_scores:
-            max_score = max(prompt_scores.values())
-            best_prompts = [p for p, s in prompt_scores.items() if s == max_score]
-            best_names = [Path(p).stem for p in best_prompts]
-            model_short = model.split(":")[-1] if ":" in model else model
-            console.print(
-                f"  {Evaluation.UI.BEST_ON.format(model=model_short)}: "
-                f"{', '.join(best_names)} ({max_score}/{len(config.cases)})"
+
+def _print_summary(report: EvalReport, console: Console) -> None:
+    for model in report.models:
+        scores = {
+            variant: sum(
+                1
+                for case in report.cases
+                if (r := report.result_for(variant, model, case)) and r.passed
             )
-
-    # Overall best
-    prompt_totals: dict[str, int] = defaultdict(int)
-    for r in results:
-        if r.passed:
-            prompt_totals[r.prompt_file] += 1
-
-    if prompt_totals:
-        max_total = max(prompt_totals.values())
-        best_overall = [p for p, s in prompt_totals.items() if s == max_total]
-        best_names = [Path(p).stem for p in best_overall]
-        total_possible = len(config.models) * len(config.cases)
-        console.print()
+            for variant in report.variants
+        }
+        best = max(scores.values(), default=0)
+        names = [v for v, s in scores.items() if s == best]
         console.print(
-            f"  [bold]{Evaluation.UI.BEST_OVERALL}[/bold]: "
-            f"{', '.join(best_names)} ({max_total}/{total_possible})"
+            f"  Best on {model}: {', '.join(names)} ({best}/{len(report.cases)})"
         )
 
+    totals = {
+        variant: sum(1 for r in report.results if r.variant == variant and r.passed)
+        for variant in report.variants
+    }
+    best = max(totals.values(), default=0)
+    names = [v for v, s in totals.items() if s == best]
+    possible = len(report.models) * len(report.cases)
+    console.print()
+    console.print(
+        f"  [bold]Best overall[/bold]: {', '.join(names)} ({best}/{possible})"
+    )
 
-def _print_failures(failures: list[EvalResult], console: Console) -> None:
-    """Print failure details."""
+
+def _print_failures(failures: list[CaseResult], console: Console) -> None:
     for f in failures:
-        prompt_short = Path(f.prompt_file).stem
-        model_short = f.model.split(":")[-1] if ":" in f.model else f.model
-
-        console.print(f"  [red]{prompt_short} × {model_short} × {f.case_name}[/red]")
-
+        console.print(f"  [red]{f.variant} × {f.model} × {f.case}[/red]")
         if f.error:
             console.print(f"    {f.error}")
-
         for turn in f.turns:
-            if not turn.passed and turn.error:
+            for failure in turn.failures:
                 if f.total_turns > 1:
-                    console.print(f"    [turn {turn.turn_index + 1}] {turn.error}")
+                    console.print(f"    [turn {turn.index + 1}] {failure}")
                 else:
-                    console.print(f"    {turn.error}")
-
+                    console.print(f"    {failure}")
         console.print()
 
 
-def save_results(
-    config: EvalConfig,
-    results: list[EvalResult],
-    output_dir: str | None = None,
-) -> Path:
-    """Save results to JSON file.
-
-    Args:
-        config: Evaluation configuration.
-        results: List of evaluation results.
-        output_dir: Output directory (default: .neosian/evals).
-
-    Returns:
-        Path to saved file.
-    """
-    if output_dir is None:
-        output_dir = Evaluation.OUTPUT_DIR
-
-    output_path = Path(output_dir)
+def save_report(report: EvalReport, output_dir: str | None = None) -> Path:
+    """Write the schema-2 JSON artifact; returns its path."""
+    output_path = Path(output_dir if output_dir is not None else _OUTPUT_DIR)
     output_path.mkdir(parents=True, exist_ok=True)
-
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    filename = f"{timestamp}.json"
-    filepath = output_path / filename
+    filepath = output_path / f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.json"
 
     data = {
+        "schema": ARTIFACT_SCHEMA,
         "timestamp": datetime.now().isoformat(),
-        "config": {
-            "name": config.name,
-            "agent": config.agent,
-            "prompts": config.prompts,
-            "models": config.models,
-            "cases": [c.name for c in config.cases],
+        "suite": report.suite,
+        "axes": {
+            "variants": list(report.variants),
+            "models": list(report.models),
+            "cases": list(report.cases),
         },
         "summary": {
-            "total": len(results),
-            "passed": sum(1 for r in results if r.passed),
-            "failed": sum(1 for r in results if not r.passed),
+            "total": report.total,
+            "passed": report.passed,
+            "failed": report.failed,
         },
-        "results": [_result_to_dict(r) for r in results],
+        "results": [_result_to_dict(r) for r in report.results],
     }
-
     with open(filepath, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, default=str)
-
     return filepath
 
 
-def _result_to_dict(result: EvalResult) -> dict[str, object]:
-    """Convert EvalResult to JSON-serializable dict."""
+def _result_to_dict(result: CaseResult) -> dict[str, Any]:
     return {
-        "case_name": result.case_name,
-        "prompt_file": result.prompt_file,
+        "case": result.case,
+        "variant": result.variant,
         "model": result.model,
         "passed": result.passed,
         "latency_ms": result.latency_ms,
-        "tool_sequence": result.tool_sequence,
+        "tool_sequence": [str(n) for n in result.tool_sequence],
         "error": result.error,
         "turns": [
             {
-                "turn_index": t.turn_index,
+                "index": t.index,
                 "passed": t.passed,
-                "expected_tool": t.expected_tool,
-                "actual_tool": t.actual_tool,
-                "expected_params": t.expected_params,
-                "actual_params": t.actual_params,
-                "param_failures": t.param_failures,
-                "actual_response": t.actual_response,
-                "error": t.error,
+                "expectation": _expectation_to_dict(t.expectation),
+                "response": t.response,
+                "failures": list(t.failures),
+                "tool_calls": [
+                    {
+                        "name": str(c.name),
+                        "arguments": dict(c.arguments),
+                        "executed": c.executed,
+                        "ok": c.ok,
+                        "duration_ms": c.duration_ms,
+                    }
+                    for c in t.tool_calls
+                ],
             }
             for t in result.turns
         ],
     }
+
+
+def _expectation_to_dict(expectation: Expectation) -> dict[str, Any]:
+    return {
+        "tool": expectation.tool,
+        "params": {name: _matcher_to_dict(m) for name, m in expectation.params.items()},
+        "sequence": (
+            None
+            if expectation.sequence is None
+            else [
+                {
+                    "tool": str(step.tool),
+                    "params": {
+                        name: _matcher_to_dict(m) for name, m in step.params.items()
+                    },
+                }
+                for step in expectation.sequence
+            ]
+        ),
+        "no_tool": expectation.no_tool,
+        "response": [_matcher_to_dict(m) for m in expectation.response],
+    }
+
+
+def _matcher_to_dict(matcher: ValueMatcher) -> dict[str, Any]:
+    value = matcher.value
+    if hasattr(value, "pattern"):  # compiled regex
+        value = value.pattern
+    return {"mode": matcher.mode.value, "value": value}
+
+
+def _format_latency(latency_ms: float) -> str:
+    if latency_ms < 1000:
+        return f"{latency_ms:.0f}ms"
+    return f"{latency_ms / 1000:.1f}s"
