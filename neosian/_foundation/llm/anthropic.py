@@ -10,6 +10,7 @@ from anthropic import AsyncAnthropic, BadRequestError
 
 from neosian._foundation.llm.base import (
     BaseLLMClient,
+    CompactionBlock,
     CompletionResponse,
     ContentBlock,
     DocumentBlock,
@@ -22,6 +23,7 @@ from neosian._foundation.llm.base import (
     ToolDefinition,
     Usage,
     required_content_types,
+    requires_compaction_support,
 )
 from neosian._foundation.llm.errors import wrap_provider_error
 from neosian._foundation.shared.constants import (
@@ -57,6 +59,33 @@ _STRICT_UNSUPPORTED_NUMERIC_KEYS = frozenset({"multipleOf"})
 _STRICT_UNSUPPORTED_STRING_KEYS = frozenset({"minLength", "maxLength"})
 # minItems/maxItems are allowed only when 0 or 1 under strict mode.
 _STRICT_BOUNDED_ARRAY_KEYS = frozenset({"minItems", "maxItems"})
+
+# Server-side compaction (N4): the beta flag and its context_management
+# edit type. The response's compaction blocks must be echoed back
+# verbatim — see CompactionBlock.
+_COMPACT_BETA = "compact-2026-01-12"
+_COMPACT_EDIT = "compact_20260112"
+
+
+def _compaction_usage(usage_obj: object) -> Usage:
+    """Compaction-iteration token spend on an API usage object.
+
+    The compact beta reports summarization tokens only under
+    usage.iterations — never in the top-level counts — so they are folded
+    into the Usage neosian reports; hidden spend would break the
+    cost-visibility promise (ledger #29's philosophy).
+    """
+    total = Usage(input_tokens=0, output_tokens=0)
+    for iteration in getattr(usage_obj, "iterations", None) or []:
+        if getattr(iteration, "type", None) == "compaction":
+            total = total + Usage(
+                input_tokens=getattr(iteration, "input_tokens", 0) or 0,
+                output_tokens=getattr(iteration, "output_tokens", 0) or 0,
+                cache_read_tokens=getattr(iteration, "cache_read_input_tokens", 0) or 0,
+                cache_write_tokens=getattr(iteration, "cache_creation_input_tokens", 0)
+                or 0,
+            )
+    return total
 
 
 def _strip_unsupported_recursive(schema: Any, *, strict: bool) -> None:
@@ -195,6 +224,7 @@ class AnthropicClient(BaseLLMClient):
         reasoning_effort: ReasoningEffort | None = None,
         max_tokens: int = LLMDefaults.MAX_OUTPUT_TOKENS,
         cache_conversation: bool = True,
+        server_compaction: bool = False,
     ) -> CompletionResponse:
         """Send a completion request to Anthropic.
 
@@ -215,6 +245,10 @@ class AnthropicClient(BaseLLMClient):
             max_tokens: Maximum output tokens for this request.
             cache_conversation: When False, skip the last-message cache
                 breakpoint (one-shot calls); system/tool caching unaffected.
+            server_compaction: Opt into Anthropic's server-side compaction
+                beta. Responses may carry a CompactionBlock the caller must
+                echo back verbatim; its summarization spend is folded into
+                the reported Usage.
 
         Returns:
             CompletionResponse with the model's response.
@@ -232,7 +266,9 @@ class AnthropicClient(BaseLLMClient):
             )
 
         self._validate_temperature_support(model, temperature)
-        self._validate_content_support(messages, model)
+        self._validate_content_support(
+            messages, model, server_compaction=server_compaction
+        )
 
         effective_effort = self._resolve_effort(model, reasoning_effort)
 
@@ -279,7 +315,9 @@ class AnthropicClient(BaseLLMClient):
                     )
                 # Stream internally: the SDK refuses non-streaming requests
                 # it estimates may exceed ~10 minutes (large max_tokens).
-                async with self._client.messages.stream(**kwargs) as stream:
+                async with self._stream_manager(
+                    kwargs, server_compaction=server_compaction
+                ) as stream:
                     response = await stream.get_final_message()
 
                 return self._parse_response(response)
@@ -316,6 +354,24 @@ class AnthropicClient(BaseLLMClient):
         error_message = str(error).lower()
         return "tool" in error_message or "function" in error_message
 
+    def _stream_manager(
+        self, kwargs: dict[str, Any], *, server_compaction: bool
+    ) -> Any:
+        """The messages.stream context manager — GA or compaction-beta namespace.
+
+        Returns Any: mypy joins the two namespaces' stream managers into an
+        unusable type, and the event handling is duck-typed regardless. The
+        beta stream accepts every GA kwarg, so nothing else changes.
+        """
+        if server_compaction:
+            kwargs = {
+                **kwargs,
+                "betas": [_COMPACT_BETA],
+                "context_management": {"edits": [{"type": _COMPACT_EDIT}]},
+            }
+            return self._client.beta.messages.stream(**kwargs)
+        return self._client.messages.stream(**kwargs)
+
     def _parse_response(self, response: object) -> CompletionResponse:
         """Parse Anthropic response into CompletionResponse.
 
@@ -325,10 +381,16 @@ class AnthropicClient(BaseLLMClient):
         Returns:
             Parsed CompletionResponse.
         """
-        # Build text content, reasoning, and tool calls from content blocks
+        # Build text content, reasoning, and tool calls from content blocks.
+        # Compaction blocks (server-side compaction beta) are collected in
+        # provider order; when any exist, content becomes an ordered block
+        # list the caller echoes back — otherwise the plain-string shape is
+        # byte-identical to the flag-off path.
         text_content = ""
         reasoning_content = ""
         tool_calls: list[ToolCall] = []
+        ordered_blocks: list[ContentBlock] = []
+        saw_compaction = False
 
         for block in response.content:  # type: ignore[attr-defined]
             if block.type == "thinking":
@@ -337,6 +399,15 @@ class AnthropicClient(BaseLLMClient):
                 pass  # Encrypted thinking block - cannot read content
             elif block.type == "text":
                 text_content += block.text
+                ordered_blocks.append(TextBlock(text=block.text))
+            elif block.type == "compaction":
+                saw_compaction = True
+                ordered_blocks.append(
+                    CompactionBlock(
+                        content=getattr(block, "content", None),
+                        encrypted_content=getattr(block, "encrypted_content", None),
+                    )
+                )
             elif block.type == "tool_use":
                 tool_calls.append(
                     ToolCall(
@@ -348,10 +419,16 @@ class AnthropicClient(BaseLLMClient):
                     )
                 )
 
+        content: str | list[ContentBlock] | None
+        if saw_compaction:
+            content = ordered_blocks
+        else:
+            content = text_content if text_content else None
+
         return CompletionResponse(
             message=Message(
                 role=Role.ASSISTANT,
-                content=text_content if text_content else None,
+                content=content,
                 reasoning=reasoning_content if reasoning_content else None,
                 tool_calls=tool_calls,
             ),
@@ -360,7 +437,8 @@ class AnthropicClient(BaseLLMClient):
                 output_tokens=response.usage.output_tokens,  # type: ignore[attr-defined]
                 cache_read_tokens=getattr(response.usage, "cache_read_input_tokens", 0) or 0,  # type: ignore[attr-defined]
                 cache_write_tokens=getattr(response.usage, "cache_creation_input_tokens", 0) or 0,  # type: ignore[attr-defined]
-            ),
+            )
+            + _compaction_usage(response.usage),  # type: ignore[attr-defined]
             model=response.model,  # type: ignore[attr-defined]
             stop_reason=getattr(response, "stop_reason", None),
         )
@@ -374,6 +452,7 @@ class AnthropicClient(BaseLLMClient):
         reasoning_effort: ReasoningEffort | None = None,
         max_tokens: int = LLMDefaults.MAX_OUTPUT_TOKENS,
         cache_conversation: bool = True,
+        server_compaction: bool = False,
     ) -> AsyncIterator[StreamChunk]:
         """Stream a completion request from Anthropic.
 
@@ -390,6 +469,9 @@ class AnthropicClient(BaseLLMClient):
             max_tokens: Maximum output tokens for this request.
             cache_conversation: When False, skip the last-message cache
                 breakpoint (one-shot calls); system/tool caching unaffected.
+            server_compaction: Opt into Anthropic's server-side compaction
+                beta; compaction blocks arrive on the terminal chunk's
+                `compaction` field and their spend folds into its usage.
 
         Yields:
             StreamChunk objects as they arrive.
@@ -406,7 +488,9 @@ class AnthropicClient(BaseLLMClient):
             )
 
         self._validate_temperature_support(model, temperature)
-        self._validate_content_support(messages, model)
+        self._validate_content_support(
+            messages, model, server_compaction=server_compaction
+        )
 
         effective_effort = self._resolve_effort(model, reasoning_effort)
 
@@ -440,18 +524,29 @@ class AnthropicClient(BaseLLMClient):
             kwargs["tools"] = anthropic_tools
 
         try:
-            async with self._client.messages.stream(**kwargs) as stream:
+            async with self._stream_manager(
+                kwargs, server_compaction=server_compaction
+            ) as stream:
                 # Usage tracking: input/cache from message_start, output from message_delta
                 input_tokens: int = 0
                 output_tokens: int = 0
                 cache_creation_tokens: int = 0
                 cache_read_tokens: int = 0
+                # Compaction spend rides usage.iterations; snapshots are
+                # cumulative, so each sighting replaces (never adds to)
+                # the previous one.
+                compaction_usage = Usage(input_tokens=0, output_tokens=0)
 
                 # Tool call accumulation state
                 accumulated_tool_calls: list[ToolCall] = []
                 current_tool_id: str | None = None
                 current_tool_name: str | None = None
                 current_tool_input: str = ""
+
+                # Compaction block accumulation (compaction_delta carries
+                # the FULL value — assignment, never concatenation)
+                compaction_blocks: list[CompactionBlock] = []
+                current_compaction: CompactionBlock | None = None
 
                 # Real stop reason from the API (reported in message_delta)
                 stop_reason: str | None = None
@@ -476,6 +571,9 @@ class AnthropicClient(BaseLLMClient):
                             cache_read_tokens = (
                                 getattr(msg_usage, "cache_read_input_tokens", 0) or 0
                             )
+                            found = _compaction_usage(msg_usage)
+                            if found.total_tokens:
+                                compaction_usage = found
                             # Surface the partial usage immediately so consumers
                             # interrupted mid-stream (guard block, error) can meter
                             # the input/cache tokens already billed. The complete
@@ -494,24 +592,41 @@ class AnthropicClient(BaseLLMClient):
                     elif event.type == "content_block_start":
                         block = event.content_block
                         if getattr(block, "type", None) == "tool_use":
-                            current_tool_id = block.id  # type: ignore[union-attr]
-                            current_tool_name = block.name  # type: ignore[union-attr]
+                            current_tool_id = block.id
+                            current_tool_name = block.name
                             current_tool_input = ""
+                        elif getattr(block, "type", None) == "compaction":
+                            current_compaction = CompactionBlock(
+                                content=getattr(block, "content", None),
+                                encrypted_content=getattr(
+                                    block, "encrypted_content", None
+                                ),
+                            )
 
                     elif event.type == "content_block_delta":
                         delta_type = getattr(event.delta, "type", None)
                         if delta_type == "thinking_delta":
                             yield StreamChunk(
-                                reasoning=event.delta.thinking,  # type: ignore[union-attr]
+                                reasoning=event.delta.thinking,
                                 model=api_model,
                             )
                         elif delta_type == "text_delta":
                             yield StreamChunk(
-                                content=event.delta.text,  # type: ignore[union-attr]
+                                content=event.delta.text,
                                 model=api_model,
                             )
                         elif delta_type == "input_json_delta":
-                            current_tool_input += event.delta.partial_json  # type: ignore[union-attr]
+                            current_tool_input += event.delta.partial_json
+                        elif (
+                            delta_type == "compaction_delta"
+                            and current_compaction is not None
+                        ):
+                            # The delta carries the FULL summary (the SDK
+                            # accumulator assigns, never appends) — += here
+                            # would duplicate content.
+                            current_compaction.content = getattr(
+                                event.delta, "content", None
+                            )
 
                     elif event.type == "content_block_stop":
                         if current_tool_id is not None:
@@ -530,11 +645,17 @@ class AnthropicClient(BaseLLMClient):
                             current_tool_id = None
                             current_tool_name = None
                             current_tool_input = ""
+                        elif current_compaction is not None:
+                            compaction_blocks.append(current_compaction)
+                            current_compaction = None
 
                     elif event.type == "message_delta":
                         # Output tokens are reported in message_delta
                         if hasattr(event, "usage") and event.usage:
                             output_tokens = event.usage.output_tokens
+                            found = _compaction_usage(event.usage)
+                            if found.total_tokens:
+                                compaction_usage = found
                         # The API's actual stop reason (e.g. "max_tokens",
                         # "end_turn", "tool_use") also arrives here.
                         delta = getattr(event, "delta", None)
@@ -555,9 +676,11 @@ class AnthropicClient(BaseLLMClient):
                                 output_tokens=output_tokens,
                                 cache_read_tokens=cache_read_tokens,
                                 cache_write_tokens=cache_creation_tokens,
-                            ),
+                            )
+                            + compaction_usage,
                             tool_calls=accumulated_tool_calls,
                             model=api_model,
+                            compaction=tuple(compaction_blocks),
                         )
         except Exception as exc:
             raise wrap_provider_error("anthropic", exc, model=model) from exc
@@ -602,14 +725,22 @@ class AnthropicClient(BaseLLMClient):
                     )
             elif msg.role == Role.ASSISTANT:
                 if isinstance(msg.content, list):
-                    raise UnsupportedContentError(
-                        ErrorMessages.CONTENT_BLOCKS_NOT_SUPPORTED.format(
-                            provider="anthropic (assistant role)",
-                            block_type="assistant-message",
+                    # Text + compaction blocks (server-compaction echo),
+                    # in provider order, with tool_use appended after —
+                    # media on the assistant role still raises.
+                    content = self._convert_assistant_blocks(msg.content)
+                    for tc in msg.tool_calls:
+                        content.append(
+                            {
+                                "type": "tool_use",
+                                "id": tc.id,
+                                "name": tc.name,
+                                "input": tc.arguments,
+                            }
                         )
-                    )
-                if msg.tool_calls:
-                    content: list[dict[str, Any]] = []
+                    anthropic_messages.append({"role": "assistant", "content": content})
+                elif msg.tool_calls:
+                    content = []
                     if msg.content:
                         content.append({"type": "text", "text": msg.content})
                     for tc in msg.tool_calls:
@@ -674,16 +805,65 @@ class AnthropicClient(BaseLLMClient):
                 else:
                     source = {"type": "url", "url": block.url}
                 result.append({"type": block_type, "source": source})
+            else:
+                # A CompactionBlock belongs to assistant content only —
+                # never silently dropped (the media-block rule).
+                raise UnsupportedContentError(
+                    ErrorMessages.CONTENT_BLOCKS_NOT_SUPPORTED.format(
+                        provider="anthropic (user role)",
+                        block_type="compaction",
+                    )
+                )
         return result
 
-    def _validate_content_support(self, messages: list[Message], model: Model) -> None:
+    def _convert_assistant_blocks(
+        self, blocks: list[ContentBlock]
+    ) -> list[dict[str, Any]]:
+        """Convert assistant content blocks — text and compaction only.
+
+        Compaction blocks are echoed verbatim in provider order; the API
+        replaces everything before the block with it. Media blocks on the
+        assistant role raise, as they always have.
+        """
+        result: list[dict[str, Any]] = []
+        for block in blocks:
+            if isinstance(block, TextBlock):
+                result.append({"type": "text", "text": block.text})
+            elif isinstance(block, CompactionBlock):
+                entry: dict[str, Any] = {
+                    "type": "compaction",
+                    "content": block.content,
+                }
+                if block.encrypted_content is not None:
+                    entry["encrypted_content"] = block.encrypted_content
+                result.append(entry)
+            else:
+                raise UnsupportedContentError(
+                    ErrorMessages.CONTENT_BLOCKS_NOT_SUPPORTED.format(
+                        provider="anthropic (assistant role)",
+                        block_type="assistant-message",
+                    )
+                )
+        return result
+
+    def _validate_content_support(
+        self,
+        messages: list[Message],
+        model: Model,
+        *,
+        server_compaction: bool = False,
+    ) -> None:
         """Raise if messages carry content blocks the model cannot handle.
 
         All currently registered Claude models support both images and
-        documents; this gate future-proofs against text-only entries.
+        documents; this gate future-proofs against text-only entries. The
+        compaction gates are live today: Haiku 4.5 is Anthropic and
+        outside the compact-2026-01-12 support set.
 
         Raises:
             UnsupportedContentError: If a required capability is missing.
+            UnsupportedParameterError: If server_compaction is requested
+                on a model outside the beta's support set.
         """
         needs_images, needs_documents = required_content_types(messages)
         if needs_images and not model.supports_images:
@@ -696,6 +876,19 @@ class AnthropicClient(BaseLLMClient):
             raise UnsupportedContentError(
                 ErrorMessages.CONTENT_TYPE_NOT_SUPPORTED_BY_MODEL.format(
                     model=model.value, block_type="document"
+                )
+            )
+        if server_compaction and not model.supports_compaction_blocks:
+            raise UnsupportedParameterError(
+                f"server_compaction is not supported by {model.value}"
+            )
+        if (
+            requires_compaction_support(messages)
+            and not model.supports_compaction_blocks
+        ):
+            raise UnsupportedContentError(
+                ErrorMessages.CONTENT_TYPE_NOT_SUPPORTED_BY_MODEL.format(
+                    model=model.value, block_type="compaction"
                 )
             )
 

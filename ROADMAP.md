@@ -2,18 +2,19 @@
 
 > **▶ Current phase: N4 — Completeness**
 >
-> *(2026-08-20: N4 slice A shipped at v0.65.0 — the native
-> `memory_20250818` flag as a pure transport swap: `AgentConfig.
-> native_memory` → internal `ToolDefinition.native_type` marker →
-> AnthropicClient's schema-less native declaration; every other provider
-> keeps the function schema, so fallback needs no gate (ledger #41–#44).
-> Slice B next: server-side compaction pass-through, opening with the
-> `llm/blocks.py` extraction. Standing ruling: neosian's phases run to
-> completion before the kit's P10 vendors from a `v<X.Y.Z>` release tag.
-> Still deferred per §9.10: the ECOSYSTEM amendment naming
-> `ConversationStore` — a two-repo move for a future session-pair.
-> Actions is still red on org billing (2026-08-18); CI confirmation for
-> v0.54.0 onward lands at /ship once fixed.)*
+> *(2026-08-20: N4 slices A+B shipped — v0.65.0 the native
+> `memory_20250818` flag (pure transport swap incl. the trained
+> `file_text`/`view_range` vocabulary; ledger #41–#44), v0.66.0
+> server-side compaction as an agent-level pass-through
+> (`CompactionBlock` in the content union, `server_compaction` per-call
+> kwarg, spend folded from `usage.iterations`, fallback gated; ledger
+> #45–#49; log-projection stays Conversation's foundation). Remaining in
+> N4: MCP packaging, the memory eval harness, docs/1.0. Standing ruling:
+> neosian's phases run to completion before the kit's P10 vendors from a
+> `v<X.Y.Z>` release tag. Still deferred per §9.10: the ECOSYSTEM
+> amendment naming `ConversationStore` — a two-repo move for a future
+> session-pair. Actions is still red on org billing (2026-08-18); CI
+> confirmation for v0.54.0 onward lands at /ship once fixed.)*
 >
 > The pointer above must equal the first phase heading without ✅ — if they
 > disagree, say so and trust the checkboxes. Companion to [VISION.md](VISION.md)
@@ -476,6 +477,7 @@ DESIGN: §2, §6, §10.
   store, provider-native surface; rides the trained behavior).
   *(✅ shipped v0.65.0, slice A)*
 - Anthropic server-side compaction as an opt-in where available.
+  *(✅ shipped v0.66.0, slice B — agent-level pass-through)*
 - **MCP memory server packaging** — neosian memory usable from Claude Code,
   Claude Desktop, Cursor, any MCP client, backed by the same stores.
   Ships as an optional extra — `uv add "neosian[mcp]"`, module
@@ -516,6 +518,32 @@ keys. Carried to slice B: server-side
 compaction pass-through (the `llm/blocks.py` extraction first — base.py
 is one line shy of the size gate otherwise); MCP, eval harness, docs/1.0
 in later slices.
+
+**Slice B shipped at v0.66.0 (2026-08-20)** — server-side compaction as
+an agent-level pass-through, exactly "opt-in optimization, never the
+foundation". Prep: `llm/blocks.py` extracted (pure move, base.py 453 →
+333). `CompactionBlock` joins the `ContentBlock` union (#46) with codec
+round-trip incl. `content=None`; `AgentConfig.server_compaction` threads
+per-call like `cache_conversation` (#45) to all four call sites +
+`FakeCall`; AnthropicClient switches to the beta namespace
+(`compact-2026-01-12` + `context_management`) only when on — flag-off
+requests byte-identical, pinned; compaction blocks parse into ordered
+assistant block lists, stream with assignment-semantics deltas onto
+`StreamChunk.compaction`, and `assemble_streamed_content` weaves them
+into the loops' messages. Spend: the beta reports summarization tokens
+only under `usage.iterations` — folded into `Usage` on both paths (#48;
+docs-verified). `ModelSpec.supports_compaction_blocks` (True Opus 5 /
+Opus 4.6 / Sonnet 5, False Haiku 4.5 — docs-verified, the reason a
+provider check would be wrong, #47) gates the pre-flight and the
+fallback of a compaction-bearing history ("compaction" joins
+`unsupported_content_types`); the other three converters reject the
+block (never silently dropped). Conversation warns when the flag is on
+under it — log-projection drops the blocks at the warm boundary and the
+server would re-bill (#49); §9.6 records the deferral. Assistant
+messages now legitimately carry text+compaction block lists (media
+still raises) — the one deliberate contract change, in `Message`'s
+docstring. Ledger #45–#49. 1551 unit tests, zero keys. Remaining in
+N4: MCP packaging, memory eval harness, docs/1.0.
 
 ---
 
@@ -888,3 +916,30 @@ in later slices.
   ledger #41–#44. 1519 unit tests, zero keys; v0.65.0. Slice B carried:
   server-side compaction pass-through behind the `llm/blocks.py`
   extraction (shipped as prep).
+- 2026-08-20 | N4 (slice B) | **Server compaction rides a flag; blocks
+  round-trip.** Prep commit: `llm/blocks.py` extracted (pure move,
+  base.py 453 → 333 — the additions would have landed it one line shy
+  of the 500 gate). The pass-through: `CompactionBlock(content,
+  encrypted_content)` in the `ContentBlock` union (#46), codec branches
+  incl. `content=None`; `AgentConfig.server_compaction` → per-call ABC
+  kwarg mirroring `cache_conversation` (#45; `FakeCall` records it;
+  distill pins False); AnthropicClient's `_stream_manager` picks the
+  beta namespace (`compact-2026-01-12`, `context_management` compact
+  edit) only when on — flag-off kwargs pinned byte-identical, incl. the
+  no-`betas` assertion; `_parse_response` emits ordered block lists
+  only when a compaction block exists; streaming handles
+  `compaction_delta` with assignment semantics (docs-verified: the
+  delta carries the full value) onto `StreamChunk.compaction`, and
+  `assemble_streamed_content` weaves blocks into all three streamed
+  message builds. Spend: compaction tokens live only in
+  `usage.iterations` (docs-verified) — `_compaction_usage` folds them
+  into `Usage` on both paths (#48, ledger #29's promise).
+  `ModelSpec.supports_compaction_blocks` (Haiku 4.5 False —
+  docs-verified; #47) gates pre-flight + fallback ("compaction" joins
+  `unsupported_content_types`); openai/groq/cerebras reject the block.
+  Conversation warns under the flag (#49 — projection would drop blocks
+  and double-pay); §9.6 deferral note, §2/§6 amended. Deliberate
+  contract change: assistant messages may carry text+compaction block
+  lists (media still raises) — the old raise-test re-pinned to media.
+  1551 unit tests, zero keys; v0.66.0. Remaining in N4: MCP packaging,
+  eval harness, docs/1.0.

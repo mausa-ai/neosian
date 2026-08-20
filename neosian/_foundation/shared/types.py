@@ -121,6 +121,9 @@ class ModelSpec:
     supports_images: bool = False
     supports_documents: bool = False
     supports_max_effort: bool = False
+    # Anthropic's compact-2026-01-12 beta — a provider check would be
+    # wrong: Haiku 4.5 is Anthropic and outside the support set (N4).
+    supports_compaction_blocks: bool = False
     pricing: ModelPricing | None = None
 
 
@@ -222,6 +225,11 @@ class Model(str, Enum):
         return _MODEL_SPECS[self.value].supports_max_effort
 
     @property
+    def supports_compaction_blocks(self) -> bool:
+        """Check if this model supports Anthropic server-side compaction."""
+        return _MODEL_SPECS[self.value].supports_compaction_blocks
+
+    @property
     def pricing(self) -> "ModelPricing | None":
         """Get list pricing for this model (None if not verified)."""
         return _MODEL_SPECS[self.value].pricing
@@ -309,6 +317,7 @@ _MODEL_SPECS[Model.CLAUDE_OPUS_5.value] = ModelSpec(
     supports_images=True,
     supports_documents=True,
     supports_max_effort=True,
+    supports_compaction_blocks=True,
     pricing=ModelPricing(
         input_per_mtok=5_000_000,
         output_per_mtok=25_000_000,
@@ -324,6 +333,7 @@ _MODEL_SPECS[Model.CLAUDE_OPUS_4_6.value] = ModelSpec(
     supports_images=True,
     supports_documents=True,
     supports_max_effort=True,
+    supports_compaction_blocks=True,
     pricing=ModelPricing(
         input_per_mtok=5_000_000,
         output_per_mtok=25_000_000,
@@ -339,6 +349,7 @@ _MODEL_SPECS[Model.CLAUDE_SONNET_5.value] = ModelSpec(
     supports_images=True,
     supports_documents=True,
     supports_max_effort=True,
+    supports_compaction_blocks=True,
     pricing=ModelPricing(
         input_per_mtok=3_000_000,
         output_per_mtok=15_000_000,
@@ -652,6 +663,11 @@ class AgentConfig:
     # tool's wire declaration goes schema-less and rides the trained
     # behavior; inert on every other provider, never raises (ledger #42).
     native_memory: bool = False
+    # Anthropic server-side compaction (compact beta), threaded per-call
+    # like cache_conversation; other providers ignore it. Validated at
+    # the client (Haiku 4.5 is Anthropic yet unsupported), not here —
+    # under fallback the answering model may not be `model`.
+    server_compaction: bool = False
 
     # Internal: loaded playbooks (set by __post_init__)
     _playbooks: list[Playbook] = field(default_factory=list, init=False, repr=False)

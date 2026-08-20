@@ -94,6 +94,7 @@ class FakeCall:
     reasoning_effort: ReasoningEffort | None
     max_tokens: int
     cache_conversation: bool
+    server_compaction: bool
     stream: bool
 
 
@@ -190,6 +191,7 @@ class FakeClient(BaseLLMClient):
         reasoning_effort: ReasoningEffort | None,
         max_tokens: int,
         cache_conversation: bool,
+        server_compaction: bool,
         stream: bool,
     ) -> None:
         self.calls.append(
@@ -202,6 +204,7 @@ class FakeClient(BaseLLMClient):
                 reasoning_effort=reasoning_effort,
                 max_tokens=max_tokens,
                 cache_conversation=cache_conversation,
+                server_compaction=server_compaction,
                 stream=stream,
             )
         )
@@ -216,6 +219,7 @@ class FakeClient(BaseLLMClient):
         reasoning_effort: ReasoningEffort | None = None,
         max_tokens: int = LLMDefaults.MAX_OUTPUT_TOKENS,
         cache_conversation: bool = True,
+        server_compaction: bool = False,
     ) -> CompletionResponse:
         self._record(
             model=model,
@@ -226,6 +230,7 @@ class FakeClient(BaseLLMClient):
             reasoning_effort=reasoning_effort,
             max_tokens=max_tokens,
             cache_conversation=cache_conversation,
+            server_compaction=server_compaction,
             stream=False,
         )
         turn = self._next_turn()
@@ -252,6 +257,7 @@ class FakeClient(BaseLLMClient):
         reasoning_effort: ReasoningEffort | None = None,
         max_tokens: int = LLMDefaults.MAX_OUTPUT_TOKENS,
         cache_conversation: bool = True,
+        server_compaction: bool = False,
     ) -> AsyncIterator[StreamChunk]:
         self._record(
             model=model,
@@ -262,6 +268,7 @@ class FakeClient(BaseLLMClient):
             reasoning_effort=reasoning_effort,
             max_tokens=max_tokens,
             cache_conversation=cache_conversation,
+            server_compaction=server_compaction,
             stream=True,
         )
         turn = self._next_turn()

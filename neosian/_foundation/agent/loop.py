@@ -80,6 +80,7 @@ async def execute_with_client(
                 reasoning_effort=effective_reasoning,
                 max_tokens=agent._max_output_tokens,
                 cache_conversation=agent._cache_conversation,
+                server_compaction=agent._server_compaction,
             )
         except Exception as exc:
             # A failed call is still a call (input tokens may have been
@@ -184,6 +185,7 @@ async def execute_with_client(
             reasoning_effort=effective_reasoning,
             max_tokens=agent._max_output_tokens,
             cache_conversation=agent._cache_conversation,
+            server_compaction=agent._server_compaction,
         )
     except Exception as exc:
         await emit_llm_call(

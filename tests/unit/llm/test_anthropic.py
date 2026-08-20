@@ -12,11 +12,13 @@ from neosian._foundation.llm.anthropic import (
     _strip_unsupported_constraints,
 )
 from neosian._foundation.llm.base import (
+    CompactionBlock,
     DocumentBlock,
     ImageBlock,
     Message,
     Role,
     TextBlock,
+    ToolCall,
     ToolDefinition,
 )
 from neosian._foundation.shared import types as types_module
@@ -2121,10 +2123,18 @@ class TestAnthropicMultimodal:
         with pytest.raises(UnsupportedContentError):
             client._convert_messages(messages)
 
-    def test_assistant_block_content_raises(self, client: AnthropicClient) -> None:
-        """ASSISTANT messages must stay plain-str content."""
+    def test_assistant_media_block_content_raises(
+        self, client: AnthropicClient
+    ) -> None:
+        """ASSISTANT block content admits text/compaction only (N4);
+        media on the assistant role still raises."""
         messages = [
-            Message(role=Role.ASSISTANT, content=[TextBlock(text="Hi.")]),
+            Message(
+                role=Role.ASSISTANT,
+                content=[
+                    ImageBlock(media_type="image/png", data="aWc="),
+                ],
+            ),
         ]
         with pytest.raises(UnsupportedContentError):
             client._convert_messages(messages)
@@ -2511,3 +2521,231 @@ class TestNativeToolType:
             "cache_control": {"type": "ephemeral"},
         }
         assert "betas" not in call_kwargs
+
+
+@pytest.mark.unit
+class TestServerCompaction:
+    """The compact beta opt-in: namespace switch, block round-trip, spend."""
+
+    def _response(self, content_blocks: list[Any], usage: Any = None) -> MagicMock:
+        mock_response = MagicMock()
+        mock_response.content = content_blocks
+        mock_response.usage = (
+            usage if usage is not None else MagicMock(input_tokens=10, output_tokens=5)
+        )
+        mock_response.model = "claude-sonnet-5"
+        return mock_response
+
+    def _mock_beta(
+        self, client: AnthropicClient, mock_response: MagicMock
+    ) -> MagicMock:
+        inner = MagicMock()
+        inner.get_final_message = AsyncMock(return_value=mock_response)
+        mock_stream = MagicMock()
+        mock_stream.__aenter__ = AsyncMock(return_value=inner)
+        mock_stream.__aexit__ = AsyncMock(return_value=False)
+        beta_stream = MagicMock(return_value=mock_stream)
+        _sdk(client).beta.messages.stream = beta_stream
+        return beta_stream
+
+    @pytest.mark.asyncio
+    async def test_flag_rides_the_beta_namespace(
+        self, client: AnthropicClient, sample_messages: list[Message]
+    ) -> None:
+        ga_stream = MagicMock()
+        _sdk(client).messages.stream = ga_stream
+        beta_stream = self._mock_beta(
+            client, self._response([MagicMock(type="text", text="ok")])
+        )
+        await client.complete(
+            messages=sample_messages,
+            model=Model.CLAUDE_SONNET_5,
+            server_compaction=True,
+        )
+        assert not ga_stream.called
+        call_kwargs = beta_stream.call_args.kwargs
+        assert call_kwargs["betas"] == ["compact-2026-01-12"]
+        assert call_kwargs["context_management"] == {
+            "edits": [{"type": "compact_20260112"}]
+        }
+
+    @pytest.mark.asyncio
+    async def test_flag_off_stays_on_the_ga_namespace(
+        self, client: AnthropicClient, sample_messages: list[Message]
+    ) -> None:
+        """Regression: default requests are byte-identical to before."""
+        mock_response = self._response([MagicMock(type="text", text="ok")])
+        _mock_complete(client, mock_response)
+        beta_stream = MagicMock()
+        _sdk(client).beta.messages.stream = beta_stream
+        await client.complete(messages=sample_messages, model=Model.CLAUDE_SONNET_5)
+        assert not beta_stream.called
+        call_kwargs = _sdk(client).messages.stream.call_args.kwargs
+        assert "betas" not in call_kwargs
+        assert "context_management" not in call_kwargs
+
+    def test_parse_with_compaction_block_is_an_ordered_list(
+        self, client: AnthropicClient
+    ) -> None:
+        comp = MagicMock()
+        comp.type = "compaction"
+        comp.content = "summary of earlier turns"
+        comp.encrypted_content = None
+        parsed = client._parse_response(
+            self._response([comp, MagicMock(type="text", text="hello")])
+        )
+        assert parsed.message.content == [
+            CompactionBlock(content="summary of earlier turns"),
+            TextBlock(text="hello"),
+        ]
+
+    def test_parse_without_compaction_stays_a_plain_string(
+        self, client: AnthropicClient
+    ) -> None:
+        parsed = client._parse_response(
+            self._response([MagicMock(type="text", text="hello")])
+        )
+        assert parsed.message.content == "hello"
+
+    def test_compaction_iteration_spend_folds_into_usage(
+        self, client: AnthropicClient
+    ) -> None:
+        """The beta reports summarization tokens only under
+        usage.iterations — hiding them would hide real spend."""
+        compaction_iter = MagicMock()
+        compaction_iter.type = "compaction"
+        compaction_iter.input_tokens = 100
+        compaction_iter.output_tokens = 50
+        compaction_iter.cache_read_input_tokens = 7
+        compaction_iter.cache_creation_input_tokens = 3
+        message_iter = MagicMock()
+        message_iter.type = "message"
+        message_iter.input_tokens = 10
+        message_iter.output_tokens = 5
+        usage = MagicMock(input_tokens=10, output_tokens=5)
+        usage.cache_read_input_tokens = 0
+        usage.cache_creation_input_tokens = 0
+        usage.iterations = [compaction_iter, message_iter]
+        parsed = client._parse_response(
+            self._response([MagicMock(type="text", text="ok")], usage=usage)
+        )
+        assert parsed.usage.input_tokens == 110
+        assert parsed.usage.output_tokens == 55
+        assert parsed.usage.cache_read_tokens == 7
+        assert parsed.usage.cache_write_tokens == 3
+
+    def test_assistant_block_list_round_trips_in_order(
+        self, client: AnthropicClient
+    ) -> None:
+        message = Message(
+            role=Role.ASSISTANT,
+            content=[
+                CompactionBlock(content="summary", encrypted_content="enc"),
+                TextBlock(text="continuing"),
+            ],
+            tool_calls=[
+                ToolCall(
+                    id=ToolCallId("c1"),
+                    name=ToolName("f"),
+                    arguments={},
+                )
+            ],
+        )
+        _, converted = client._convert_messages([message])
+        assert converted[0]["content"] == [
+            {"type": "compaction", "content": "summary", "encrypted_content": "enc"},
+            {"type": "text", "text": "continuing"},
+            {"type": "tool_use", "id": "c1", "name": "f", "input": {}},
+        ]
+
+    def test_encrypted_content_key_omitted_when_absent(
+        self, client: AnthropicClient
+    ) -> None:
+        message = Message(
+            role=Role.ASSISTANT, content=[CompactionBlock(content="summary")]
+        )
+        _, converted = client._convert_messages([message])
+        assert converted[0]["content"] == [{"type": "compaction", "content": "summary"}]
+
+    def test_compaction_block_in_user_content_raises(
+        self, client: AnthropicClient
+    ) -> None:
+        """Never silently dropped — the media-block rule."""
+        with pytest.raises(UnsupportedContentError):
+            client._convert_messages(
+                [Message(role=Role.USER, content=[CompactionBlock(content="x")])]
+            )
+
+    @pytest.mark.asyncio
+    async def test_stream_compaction_delta_is_assignment(
+        self, client: AnthropicClient, sample_messages: list[Message]
+    ) -> None:
+        """The delta carries the full value — the second delta wins whole,
+        never concatenates onto the first."""
+        start = MagicMock()
+        start.type = "content_block_start"
+        start.content_block = MagicMock()
+        start.content_block.type = "compaction"
+        start.content_block.content = None
+        start.content_block.encrypted_content = None
+        delta_one = MagicMock()
+        delta_one.type = "content_block_delta"
+        delta_one.delta = MagicMock()
+        delta_one.delta.type = "compaction_delta"
+        delta_one.delta.content = "partial"
+        delta_two = MagicMock()
+        delta_two.type = "content_block_delta"
+        delta_two.delta = MagicMock()
+        delta_two.delta.type = "compaction_delta"
+        delta_two.delta.content = "the full summary"
+        stop = MagicMock()
+        stop.type = "content_block_stop"
+        message_stop = MagicMock()
+        message_stop.type = "message_stop"
+
+        async def mock_stream_events() -> AsyncIterator[Any]:
+            yield start
+            yield delta_one
+            yield delta_two
+            yield stop
+            yield message_stop
+
+        mock_stream = MagicMock()
+        mock_stream.__aenter__ = AsyncMock(return_value=mock_stream)
+        mock_stream.__aexit__ = AsyncMock(return_value=None)
+        mock_stream.__aiter__ = lambda _: mock_stream_events()
+        beta_stream = MagicMock(return_value=mock_stream)
+        _sdk(client).beta.messages.stream = beta_stream
+
+        chunks = []
+        async for chunk in client.stream(
+            messages=sample_messages,
+            model=Model.CLAUDE_SONNET_5,
+            server_compaction=True,
+        ):
+            chunks.append(chunk)
+
+        assert beta_stream.call_args.kwargs["betas"] == ["compact-2026-01-12"]
+        assert chunks[-1].compaction == (CompactionBlock(content="the full summary"),)
+
+    @pytest.mark.asyncio
+    async def test_flag_on_haiku_raises(
+        self, client: AnthropicClient, sample_messages: list[Message]
+    ) -> None:
+        with pytest.raises(UnsupportedParameterError):
+            await client.complete(
+                messages=sample_messages,
+                model=Model.CLAUDE_HAIKU_4_5,
+                server_compaction=True,
+            )
+
+    @pytest.mark.asyncio
+    async def test_compaction_history_on_haiku_raises(
+        self, client: AnthropicClient
+    ) -> None:
+        messages = [
+            Message(role=Role.USER, content="hi"),
+            Message(role=Role.ASSISTANT, content=[CompactionBlock(content="summary")]),
+        ]
+        with pytest.raises(UnsupportedContentError):
+            await client.complete(messages=messages, model=Model.CLAUDE_HAIKU_4_5)

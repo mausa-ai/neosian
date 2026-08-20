@@ -5,6 +5,7 @@ import json
 import pytest
 
 from neosian._foundation.llm.base import (
+    CompactionBlock,
     DocumentBlock,
     ImageBlock,
     Message,
@@ -90,3 +91,20 @@ def test_codec_is_the_root_export() -> None:
 
     assert neosian.message_to_json is message_to_json
     assert neosian.message_from_json is message_from_json
+
+
+@pytest.mark.unit
+class TestCompactionRoundTrip:
+    def test_round_trips_through_the_codec(self) -> None:
+        message = Message(
+            role=Role.ASSISTANT,
+            content=[
+                CompactionBlock(content="summary", encrypted_content="enc"),
+                TextBlock(text="hi"),
+            ],
+        )
+        assert message_from_json(message_to_json(message)) == message
+
+    def test_failed_compaction_content_none_round_trips(self) -> None:
+        message = Message(role=Role.ASSISTANT, content=[CompactionBlock(content=None)])
+        assert message_from_json(message_to_json(message)) == message

@@ -69,6 +69,7 @@ class GroqClient(BaseLLMClient):
         reasoning_effort: ReasoningEffort | None = None,
         max_tokens: int = LLMDefaults.MAX_OUTPUT_TOKENS,
         cache_conversation: bool = True,  # noqa: ARG002 - no explicit cache breakpoints
+        server_compaction: bool = False,  # noqa: ARG002 - Anthropic-only compaction beta
     ) -> CompletionResponse:
         """Send a completion request to Groq.
 
@@ -219,6 +220,7 @@ class GroqClient(BaseLLMClient):
         reasoning_effort: ReasoningEffort | None = None,
         max_tokens: int = LLMDefaults.MAX_OUTPUT_TOKENS,
         cache_conversation: bool = True,  # noqa: ARG002 - no explicit cache breakpoints
+        server_compaction: bool = False,  # noqa: ARG002 - Anthropic-only compaction beta
     ) -> AsyncIterator[StreamChunk]:
         """Stream a completion request from Groq.
 

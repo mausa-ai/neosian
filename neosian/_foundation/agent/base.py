@@ -105,6 +105,7 @@ class Agent:
         assert config.max_output_tokens is not None  # Set by AgentConfig.__post_init__
         self._max_output_tokens = config.max_output_tokens
         self._cache_conversation = config.cache_conversation
+        self._server_compaction = config.server_compaction
         assert config.max_parallel_tools is not None  # Set by AgentConfig.__post_init__
         self._max_parallel_tools = config.max_parallel_tools
         self._context_policy = config.context_policy

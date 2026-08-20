@@ -4,6 +4,7 @@ Every scripted run rides FakeClient through `client_factory`; zero keys.
 """
 
 import asyncio
+import logging
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
@@ -38,6 +39,7 @@ from neosian._foundation.shared.types import (
 )
 
 _SYSTEM = SystemPrompt("You are a test agent.")
+_CORE_LOGGER = "neosian._foundation.conversation.core"
 
 
 @Tool(name="echo", description="Echo the text back")
@@ -677,3 +679,24 @@ class TestManualCompact:
         assert result.entries == ()
         assert result.usage is None
         assert await store.read_projections("t1") == ()
+
+
+@pytest.mark.unit
+class TestServerCompactionWarning:
+    def test_flag_under_a_conversation_warns(
+        self, store: FileStore, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Log-projection drops server compaction blocks at the warm
+        boundary — the server would re-compact and re-bill every send."""
+        config, _ = _config(_reply("ok"), server_compaction=True)
+        with caplog.at_level(logging.WARNING, logger=_CORE_LOGGER):
+            Conversation(config, store=store, conversation_id="t1")
+        assert any("server_compaction" in r.message for r in caplog.records)
+
+    def test_flag_off_stays_silent(
+        self, store: FileStore, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        config, _ = _config(_reply("ok"))
+        with caplog.at_level(logging.WARNING, logger=_CORE_LOGGER):
+            Conversation(config, store=store, conversation_id="t1")
+        assert not [r for r in caplog.records if r.name == _CORE_LOGGER]

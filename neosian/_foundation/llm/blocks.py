@@ -82,7 +82,23 @@ def _validate_media_source(
         raise ValueError(f"{block_name} requires media_type with base64 data")
 
 
-ContentBlock = TextBlock | ImageBlock | DocumentBlock
+@dataclass
+class CompactionBlock:
+    """A server-side compaction summary in assistant content (N4).
+
+    Emitted by Anthropic's `compact-2026-01-12` beta and echoed back
+    verbatim on later requests — the API replaces everything before the
+    block with it, so dropping or editing one silently loses the
+    compacted history. Round-trip it untouched, `encrypted_content`
+    included when present; `content=None` is a failed compaction the
+    server treats as a no-op.
+    """
+
+    content: str | None = None
+    encrypted_content: str | None = None
+
+
+ContentBlock = TextBlock | ImageBlock | DocumentBlock | CompactionBlock
 
 
 def text_of(message: Message) -> str:
@@ -124,6 +140,14 @@ def content_to_json(
                     "url": block.url,
                 }
             )
+        elif isinstance(block, CompactionBlock):
+            encoded.append(
+                {
+                    "type": "compaction",
+                    "content": block.content,
+                    "encrypted_content": block.encrypted_content,
+                }
+            )
         else:
             encoded.append(
                 {
@@ -154,3 +178,37 @@ def required_content_types(messages: list[Message]) -> tuple[bool, bool]:
                 elif isinstance(block, DocumentBlock):
                     needs_documents = True
     return needs_images, needs_documents
+
+
+def assemble_streamed_content(
+    text: str | None, compaction: tuple[CompactionBlock, ...]
+) -> str | list[ContentBlock] | None:
+    """Assistant message content from a stream's accumulated parts.
+
+    Without compaction blocks the plain-string shape is byte-identical to
+    before the opt-in existed; with them, content becomes an ordered block
+    list — compaction first, the documented provider position — so the
+    echo-back contract survives the streamed path too.
+    """
+    if not compaction:
+        return text
+    blocks: list[ContentBlock] = list(compaction)
+    if text:
+        blocks.append(TextBlock(text=text))
+    return blocks
+
+
+def requires_compaction_support(messages: list[Message]) -> bool:
+    """True when any message carries a server-side CompactionBlock.
+
+    A separate predicate rather than a third element on
+    `required_content_types` — that 2-tuple has five call sites keyed on
+    its documented shape. Used for the request pre-flight and the
+    capability-aware fallback gate.
+    """
+    return any(
+        isinstance(block, CompactionBlock)
+        for message in messages
+        if isinstance(message.content, list)
+        for block in message.content
+    )

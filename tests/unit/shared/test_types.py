@@ -399,3 +399,18 @@ class TestFakeModels:
 
         assert set(DEFAULT_MODELS) == set(Provider)
         assert DEFAULT_MODELS[Provider.FAKE] is Model.FAKE
+
+
+class TestCompactionCapability:
+    def test_support_set(self) -> None:
+        """The compact beta's support set — a provider check would be
+        wrong: Haiku 4.5 is Anthropic and explicitly outside it."""
+        assert Model.CLAUDE_OPUS_5.supports_compaction_blocks
+        assert Model.CLAUDE_OPUS_4_6.supports_compaction_blocks
+        assert Model.CLAUDE_SONNET_5.supports_compaction_blocks
+        assert not Model.CLAUDE_HAIKU_4_5.supports_compaction_blocks
+
+    def test_non_anthropic_models_are_unsupported(self) -> None:
+        assert not Model.FAKE.supports_compaction_blocks
+        assert not Model.GROQ_GPT_OSS_120B.supports_compaction_blocks
+        assert not Model.GPT_5_1.supports_compaction_blocks

@@ -16,6 +16,7 @@ response or terminal event; compaction never loses the send.
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import TYPE_CHECKING, Literal, Self, overload
 
 from neosian._foundation.agent.base import Agent
@@ -54,6 +55,8 @@ if TYPE_CHECKING:
     )
     from neosian._foundation.memory.mounts import MemoryConfig, Mount
     from neosian._foundation.shared.types import AgentConfig, ToolFunction
+
+logger = logging.getLogger(__name__)
 
 
 class Conversation:
@@ -110,6 +113,16 @@ class Conversation:
             memory_mount_path=memory_mount_path,
         )
         self._compaction = compaction if compaction is not None else CompactionConfig()
+        if self._base_config.server_compaction:
+            # Log-projection replaces aged turns with log lines, dropping
+            # any server compaction blocks they carried — the server would
+            # then re-compact (and re-bill) the same span every send.
+            logger.warning(
+                "server_compaction is on under a Conversation — the view's "
+                "log-projection drops server compaction blocks at the warm "
+                "boundary, paying for the same compaction repeatedly; "
+                "Conversation's own paging is the supported path (§9.6)"
+            )
         self._lock = asyncio.Lock()
         self._turns: list[ConversationTurn] = []
         self._projections: list[ConversationProjection] = []

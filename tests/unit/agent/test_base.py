@@ -23,10 +23,12 @@ from neosian._foundation.agent.events import (
     ToolProgressEvent,
     ToolResultEvent,
 )
+from neosian._foundation.agent.fallback import unsupported_content_types
 from neosian._foundation.agent.guards import check_guard_and_block
 from neosian._foundation.agent.response import AgentResponse
 from neosian._foundation.llm.base import (
     BaseLLMClient,
+    CompactionBlock,
     CompletionResponse,
     Message,
     Role,
@@ -34,6 +36,7 @@ from neosian._foundation.llm.base import (
     ToolCall,
     Usage,
 )
+from neosian._foundation.llm.fake import FakeClient, FakeScript, FakeTurn
 from neosian._foundation.memory.file import FileStore
 from neosian._foundation.memory.mounts import MemoryConfig, Mount
 from neosian._foundation.shared.exceptions import UnsupportedParameterError
@@ -2103,3 +2106,64 @@ class TestAgentNativeMemory:
                 )
             )
         assert not [r for r in caplog.records if r.name == _AGENT_LOGGER]
+
+
+@pytest.mark.unit
+class TestServerCompactionThreading:
+    """AgentConfig.server_compaction reaches every client call (N4)."""
+
+    @pytest.mark.asyncio
+    async def test_flag_reaches_the_client(self) -> None:
+        fake = FakeClient(FakeScript(turns=(FakeTurn(content="ok"),)))
+        agent = Agent(
+            AgentConfig(
+                system_prompt=SystemPrompt("test"),
+                model=Model.FAKE,
+                enable_todo=False,
+                client_factory=lambda _: fake,
+                server_compaction=True,
+            )
+        )
+        await agent.run([Message(role=Role.USER, content="hi")], stream=False)
+        assert fake.calls[-1].server_compaction is True
+
+    @pytest.mark.asyncio
+    async def test_flag_defaults_off(self) -> None:
+        fake = FakeClient(FakeScript(turns=(FakeTurn(content="ok"),)))
+        agent = Agent(
+            AgentConfig(
+                system_prompt=SystemPrompt("test"),
+                model=Model.FAKE,
+                enable_todo=False,
+                client_factory=lambda _: fake,
+            )
+        )
+        await agent.run([Message(role=Role.USER, content="hi")], stream=False)
+        assert fake.calls[-1].server_compaction is False
+
+
+@pytest.mark.unit
+class TestCompactionFallbackGate:
+    """A compaction-bearing history cannot move off the support set."""
+
+    def _bearing(self) -> list[Message]:
+        return [
+            Message(role=Role.USER, content="hi"),
+            Message(
+                role=Role.ASSISTANT,
+                content=[CompactionBlock(content="summary")],
+            ),
+        ]
+
+    def test_unsupported_target_reports_compaction(self) -> None:
+        assert unsupported_content_types(Model.FAKE, self._bearing()) == ["compaction"]
+        assert unsupported_content_types(Model.CLAUDE_HAIKU_4_5, self._bearing()) == [
+            "compaction"
+        ]
+
+    def test_supported_target_reports_nothing(self) -> None:
+        assert unsupported_content_types(Model.CLAUDE_SONNET_5, self._bearing()) == []
+
+    def test_plain_history_is_unaffected(self) -> None:
+        plain = [Message(role=Role.USER, content="hi")]
+        assert unsupported_content_types(Model.FAKE, plain) == []

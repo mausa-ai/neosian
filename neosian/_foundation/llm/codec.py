@@ -13,6 +13,7 @@ from __future__ import annotations
 from typing import Any
 
 from neosian._foundation.llm.base import (
+    CompactionBlock,
     ContentBlock,
     DocumentBlock,
     ImageBlock,
@@ -55,6 +56,13 @@ def content_from_json(
                     media_type=encoded.get("media_type"),
                     data=encoded.get("data"),
                     url=encoded.get("url"),
+                )
+            )
+        elif block_type == "compaction":
+            blocks.append(
+                CompactionBlock(
+                    content=encoded.get("content"),
+                    encrypted_content=encoded.get("encrypted_content"),
                 )
             )
         else:

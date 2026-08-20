@@ -9,15 +9,23 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Final
 
-# Re-exports: the block types and helpers moved to llm/blocks.py at N4
-# slice B; every existing `from ...llm.base import TextBlock` keeps working.
+from neosian._foundation.llm.blocks import CompactionBlock as CompactionBlock
 from neosian._foundation.llm.blocks import ContentBlock as ContentBlock
 from neosian._foundation.llm.blocks import DocumentBlock as DocumentBlock
 from neosian._foundation.llm.blocks import ImageBlock as ImageBlock
 from neosian._foundation.llm.blocks import TextBlock as TextBlock
+
+# Re-exports: the block types and helpers moved to llm/blocks.py at N4
+# slice B; every existing `from ...llm.base import TextBlock` keeps working.
+from neosian._foundation.llm.blocks import (
+    assemble_streamed_content as assemble_streamed_content,
+)
 from neosian._foundation.llm.blocks import content_to_json as content_to_json
 from neosian._foundation.llm.blocks import (
     required_content_types as required_content_types,
+)
+from neosian._foundation.llm.blocks import (
+    requires_compaction_support as requires_compaction_support,
 )
 from neosian._foundation.llm.blocks import text_of as text_of
 from neosian._foundation.shared.constants import LLMDefaults
@@ -52,9 +60,11 @@ class ToolCall:
 class Message:
     """A message in the conversation.
 
-    content is either a plain string (the fast path — unchanged behavior),
-    or a list of content blocks for multimodal input (USER messages only;
-    currently supported by the Anthropic provider).
+    content is either a plain string (the fast path — unchanged behavior)
+    or a list of content blocks: multimodal input on USER messages, and —
+    since N4's server-compaction opt-in — TextBlock/CompactionBlock lists
+    on ASSISTANT messages. Both shapes are Anthropic-only; the other
+    converters reject block content rather than silently dropping it.
     """
 
     role: Role
@@ -94,6 +104,10 @@ class StreamChunk:
     `model` is the API-reported model string (may differ from the requested
     enum value), populated by every client on every chunk it can — the
     streaming counterpart of CompletionResponse.model.
+
+    `compaction` carries server-side compaction blocks on the terminal
+    chunk (Anthropic's compact beta, opt-in); consumers weave them into
+    the assistant message they build so the echo-back contract holds.
     """
 
     content: str | None = None
@@ -102,6 +116,7 @@ class StreamChunk:
     finish_reason: str | None = None
     usage: "Usage | None" = None
     model: str | None = None
+    compaction: tuple[CompactionBlock, ...] = ()
 
 
 _MTOK: Final = 1_000_000  # tokens per MTok — the pricing-rate divisor
@@ -268,6 +283,7 @@ class BaseLLMClient(ABC):
         reasoning_effort: ReasoningEffort | None = None,
         max_tokens: int = LLMDefaults.MAX_OUTPUT_TOKENS,
         cache_conversation: bool = True,
+        server_compaction: bool = False,
     ) -> CompletionResponse:
         """Send a completion request to the LLM.
 
@@ -286,6 +302,10 @@ class BaseLLMClient(ABC):
                 one-shot calls whose conversation is never re-sent. System prompt
                 and tool caching are unaffected. Providers with automatic caching
                 ignore this.
+            server_compaction: Opt into provider-side history compaction
+                (Anthropic's compact beta today; other providers ignore it,
+                like cache_conversation). Responses may then carry a
+                CompactionBlock the caller must echo back verbatim.
 
         Returns:
             CompletionResponse with the model's response.
@@ -302,6 +322,7 @@ class BaseLLMClient(ABC):
         reasoning_effort: ReasoningEffort | None = None,
         max_tokens: int = LLMDefaults.MAX_OUTPUT_TOKENS,
         cache_conversation: bool = True,
+        server_compaction: bool = False,
     ) -> AsyncIterator[StreamChunk]:
         """Stream a completion request from the LLM.
 
@@ -315,6 +336,9 @@ class BaseLLMClient(ABC):
             cache_conversation: When False, providers with explicit prompt-cache
                 breakpoints (Anthropic) skip the last-message breakpoint. See
                 `complete`.
+            server_compaction: Opt into provider-side history compaction;
+                see `complete`. Compaction blocks arrive on the terminal
+                chunk's `compaction` field.
 
         Yields:
             StreamChunk objects as they arrive.

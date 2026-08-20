@@ -58,7 +58,13 @@ classifies them at the client boundary. Provider-native tool types ride the
 internal `ToolDefinition.native_type` marker (N4, ledger #41): the Anthropic
 converter emits the schema-less native declaration for a marked definition,
 every other converter ignores the marker and sends the ordinary function
-schema — so capability-aware fallback needs no new gate.
+schema — so capability-aware fallback needs no new gate. Anthropic's
+server-side compaction rides `server_compaction`, a per-call kwarg on the
+ABC exactly like `cache_conversation` (Anthropic-only; the other clients
+no-op it; ledger #45); support is the `ModelSpec.supports_compaction_blocks`
+capability, never a provider check — Haiku 4.5 is Anthropic and outside the
+beta's set (ledger #47) — gating both the request pre-flight and the
+fallback of a compaction-bearing history.
 
 ## §3 Agent core
 
@@ -294,6 +300,16 @@ it (the kit's OpenAPI deliberately excludes streaming shapes).
 Removed with v2: `SSEEventType`, `SSEEvent`, `SSEEventEmitter`,
 `stream_to_sse`, all eight `*_event()` builders — the dataclasses are the
 constructors.
+
+Server-compaction blocks (N4) are invisible to this vocabulary — context
+bookkeeping, not user-visible content, and the event set is frozen
+(ledger #48). Their spend reaches hosts through the terminal events'
+usage: the Anthropic client folds the beta's `usage.iterations`
+compaction entries into the `Usage` it reports (the API excludes them
+from its top-level counts — hidden spend would break the money-visibility
+promise). The blocks themselves ride `StreamChunk.compaction` into the
+assistant message the loops build, so persistence and the echo-back
+contract hold on both paths.
 
 ## §7 Prompts as data **(NS)**
 
@@ -698,6 +714,15 @@ Since slice C the `acquire` callable is a **lease** — the caller of
 `run_boundary` owns the client's lifetime (ledger #33); Conversation hands
 its session's cache, so distillation rides the send's pooled clients.
 
+*Server-side compaction stays out (N4).* Anthropic's compact beta is an
+**agent-level** opt-in (`AgentConfig.server_compaction`, §2), never a
+Conversation mode: the view's log-projection replaces aged turns with log
+lines, dropping any server compaction blocks they carried — the server
+would re-compact (and re-bill) the same span on every send. Conversation
+warns at construction when the flag is on (ledger #49); log-projection
+remains the foundation, per the ROADMAP ruling ("an opt-in optimization
+where available, never the foundation").
+
 **§9.7 The shipped conformance kit** —
 `neosian.conversation.testing::ConversationStoreContract`, the §8 mechanism
 applied to the second seam: subclass, provide a `store` fixture, inherit
@@ -848,3 +873,8 @@ never a silent divergence. Numbering is monotonic, never reused.
 | 42 | `native_memory=True` validates like `reasoning_effort` (raise on no-memory / non-Anthropic model) | **Inert, with one warning per condition** (non-Anthropic main model; no `memories` mount) | `derive_config` deliberately ships `memory=None` with the tool in `tools`, so a `__post_init__` raise makes Conversation + native memory structurally impossible; and under fallback the answering model may not be `config.model`. Unlike a dropped `reasoning_effort`, a dropped marker changes nothing observable — same schema, same execution |
 | 43 | Drop the memory prompt pack under native mode — the trained behavior replaces it | **The wire description goes (the native declaration has no field for one); `memory_system_section` stays verbatim** | The index and mount routing are data the model cannot have; keeping the section is what makes the flag a *transport* swap, and lets the N4 eval harness compare transports rather than prompts |
 | 44 | A `ModelSpec.supports_native_memory` capability field + a fallback gate | **No field, no gate** | The marker degrades by construction — every non-Anthropic converter reads only name/description/parameters and emits the function schema (pinned per client). A gate would guard a failure mode that does not exist, at the cost of a value on every registration |
+| 45 | `server_compaction` as a client-constructor flag or a config object | **A per-call `bool` on the ABC**, the `cache_conversation` precedent; other clients `# noqa: ARG002` it | `AgentSession` caches one client per provider — a per-client flag makes cached clients silently config-dependent; a `ServerCompactionConfig` type is a three-place `__all__` diff every provider must honor for one provider's beta knobs (`instructions`/`trigger`/`pause_after_compaction` wait for demand) |
+| 46 | A parallel `Message.provider_blocks` field for compaction blocks | **`CompactionBlock` joins the `ContentBlock` union** | The union already has a codec, a persistence path, and a capability gate — a parallel field rebuilds all three. Consequence stated honestly in `Message`'s docstring: assistant messages now legitimately carry block lists (text + compaction; media still raises) |
+| 47 | `provider is ANTHROPIC` as the compaction support check | **`ModelSpec.supports_compaction_blocks`**, True on Opus 5 / Opus 4.6 / Sonnet 5, False on Haiku 4.5 | Haiku 4.5 is Anthropic *and* outside the compact beta's support set — the provider check ships a guaranteed 400. One field serves both the request pre-flight and the history-side fallback gate (contrast #44, where no failure mode existed) |
+| 48 | A `compaction` AgentEvent so hosts see paging happen | **Invisible to the event vocabulary; spend folds into `Usage`** | ECOSYSTEM §5 is frozen (a new event is a two-repo move) and a compaction block is context bookkeeping, not user-visible content. The beta reports summarization tokens only under `usage.iterations` — the client folds compaction entries into the reported `Usage`, keeping ledger #29's money-visibility promise |
+| 49 | Server compaction as a `CompactionConfig` mode Conversation can ride | **Agent-level only; Conversation warns when the flag is on under it** | Log-projection drops replaced turns' messages at the warm boundary — server compaction blocks vanish with them and the server re-compacts (and re-bills) the same span every send. The two paging models do not compose; log-projection stays the foundation |

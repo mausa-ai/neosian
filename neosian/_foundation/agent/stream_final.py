@@ -28,10 +28,12 @@ from neosian._foundation.agent.guards import (
 from neosian._foundation.agent.response import AgentResponse
 from neosian._foundation.llm.base import (
     BaseLLMClient,
+    CompactionBlock,
     Message,
     Role,
     ToolCall,
     Usage,
+    assemble_streamed_content,
     normalize_stop_reason,
 )
 from neosian._foundation.shared.types import Model, PolicyResult, ReasoningEffort
@@ -80,6 +82,7 @@ async def stream_final_with_client_and_guard(
     final_finish_reason: str | None = None
     content_parts: list[str] = []
     reasoning_parts: list[str] = []
+    compaction_blocks: list[CompactionBlock] = []
     # on_turn is deferred past the end-of-stream on_llm_call so the
     # hook sequence matches the blocking path (llm_call, then turn) —
     # and the done yield is deferred past both, so a consumer that saw
@@ -91,7 +94,10 @@ async def stream_final_with_client_and_guard(
     def _final_message() -> Message:
         return Message(
             role=Role.ASSISTANT,
-            content="".join(content_parts) if content_parts else None,
+            content=assemble_streamed_content(
+                "".join(content_parts) if content_parts else None,
+                tuple(compaction_blocks),
+            ),
             reasoning="".join(reasoning_parts) if reasoning_parts else None,
         )
 
@@ -116,6 +122,7 @@ async def stream_final_with_client_and_guard(
             reasoning_effort=reasoning_effort,
             max_tokens=agent._max_output_tokens,
             cache_conversation=agent._cache_conversation,
+            server_compaction=agent._server_compaction,
         )
 
         async for chunk in stream:
@@ -143,6 +150,9 @@ async def stream_final_with_client_and_guard(
             if chunk.content:
                 content_parts.append(chunk.content)
                 yield ContentEvent(content=chunk.content)
+
+            if chunk.compaction:
+                compaction_blocks.extend(chunk.compaction)
 
             if chunk.finish_reason:
                 final_finish_reason = chunk.finish_reason

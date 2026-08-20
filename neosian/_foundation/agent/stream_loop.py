@@ -31,10 +31,12 @@ from neosian._foundation.agent.stream_final import stream_final_with_client_and_
 from neosian._foundation.agent.tool_exec import format_tool_result, run_tool_stream
 from neosian._foundation.llm.base import (
     BaseLLMClient,
+    CompactionBlock,
     Message,
     Role,
     ToolCall,
     Usage,
+    assemble_streamed_content,
     normalize_stop_reason,
 )
 from neosian._foundation.shared.types import Model, PolicyResult, ToolCallId
@@ -107,6 +109,7 @@ async def stream_with_client(
             content_parts: list[str] = []
             reasoning_parts: list[str] = []
             accumulated_tool_calls: list[ToolCall] = []
+            accumulated_compaction: list[CompactionBlock] = []
             final_usage = None
             turn_api_model = None
             turn_finish_reason: str | None = None
@@ -119,6 +122,7 @@ async def stream_with_client(
                 reasoning_effort=effective_reasoning,
                 max_tokens=agent._max_output_tokens,
                 cache_conversation=agent._cache_conversation,
+                server_compaction=agent._server_compaction,
             )
 
             async for chunk in stream:
@@ -148,6 +152,9 @@ async def stream_with_client(
 
                 if chunk.tool_calls:
                     accumulated_tool_calls.extend(chunk.tool_calls)
+
+                if chunk.compaction:
+                    accumulated_compaction.extend(chunk.compaction)
 
                 if chunk.usage:
                     final_usage = chunk.usage
@@ -207,7 +214,10 @@ async def stream_with_client(
                 )
                 final_message = Message(
                     role=Role.ASSISTANT,
-                    content="".join(content_parts) if content_parts else None,
+                    content=assemble_streamed_content(
+                        "".join(content_parts) if content_parts else None,
+                        tuple(accumulated_compaction),
+                    ),
                     reasoning=("".join(reasoning_parts) if reasoning_parts else None),
                 )
                 # Hook before the terminal yield: a consumer that saw
@@ -237,7 +247,10 @@ async def stream_with_client(
             attempt.messages.append(
                 Message(
                     role=Role.ASSISTANT,
-                    content="".join(content_parts) if content_parts else None,
+                    content=assemble_streamed_content(
+                        "".join(content_parts) if content_parts else None,
+                        tuple(accumulated_compaction),
+                    ),
                     reasoning=("".join(reasoning_parts) if reasoning_parts else None),
                     tool_calls=accumulated_tool_calls,
                 )

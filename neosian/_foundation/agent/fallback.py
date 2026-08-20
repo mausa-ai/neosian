@@ -5,7 +5,11 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from neosian._foundation.llm.base import Message, required_content_types
+from neosian._foundation.llm.base import (
+    Message,
+    required_content_types,
+    requires_compaction_support,
+)
 from neosian._foundation.shared.constants import ErrorMessages
 from neosian._foundation.shared.exceptions import (
     ContextWindowExceededError,
@@ -25,8 +29,12 @@ def unsupported_content_types(model: Model, messages: list[Message]) -> list[str
     """Content block types in messages that the model cannot handle.
 
     Returns:
-        Subset of ["image", "document"]; empty when the model supports
-        everything the conversation carries (including all-text).
+        Subset of ["image", "document", "compaction"]; empty when the
+        model supports everything the conversation carries (including
+        all-text). A compaction-bearing history cannot move to a model
+        outside Anthropic's compact support set — every other converter
+        rejects block content, so the gate turns a guaranteed 400 into a
+        logged skip.
     """
     needs_images, needs_documents = required_content_types(messages)
     missing: list[str] = []
@@ -34,6 +42,8 @@ def unsupported_content_types(model: Model, messages: list[Message]) -> list[str
         missing.append("image")
     if needs_documents and not model.supports_documents:
         missing.append("document")
+    if requires_compaction_support(messages) and not model.supports_compaction_blocks:
+        missing.append("compaction")
     return missing
 
 

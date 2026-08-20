@@ -128,6 +128,9 @@ async def _structured_call[T: BaseModel](
             model=model,
             response_format=ResponseFormat(schema=schema),
             cache_conversation=False,
+            # A one-shot distillation call never wants provider-side
+            # history compaction, whatever the sending agent opted into.
+            server_compaction=False,
         )
         parsed = validate_json(schema, text_of(response.message))
         assert isinstance(parsed, schema)

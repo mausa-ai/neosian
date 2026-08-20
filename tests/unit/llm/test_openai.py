@@ -6,12 +6,18 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from openai import BadRequestError
 
-from neosian._foundation.llm.base import Message, Role, ToolDefinition
+from neosian._foundation.llm.base import (
+    CompactionBlock,
+    Message,
+    Role,
+    ToolDefinition,
+)
 from neosian._foundation.llm.openai import OpenAIClient
 from neosian._foundation.shared.constants import LLMDefaults
 from neosian._foundation.shared.exceptions import (
     ProviderError,
     ToolCallGenerationError,
+    UnsupportedContentError,
     UnsupportedParameterError,
 )
 from neosian._foundation.shared.types import Model, ReasoningEffort, ToolName
@@ -925,3 +931,19 @@ class TestNativeTypeIgnored:
                 },
             }
         ]
+
+
+@pytest.mark.unit
+class TestCompactionRejected:
+    def test_compaction_bearing_message_raises(self) -> None:
+        """A server-compaction history cannot cross to this provider —
+        the fallback gate turns this guaranteed failure into a skip."""
+        client = OpenAIClient(api_key="test-api-key")
+        messages = [
+            Message(
+                role=Role.ASSISTANT,
+                content=[CompactionBlock(content="summary")],
+            )
+        ]
+        with pytest.raises(UnsupportedContentError):
+            client._convert_messages(messages)

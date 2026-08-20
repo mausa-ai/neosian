@@ -5,6 +5,7 @@ import json
 import pytest
 
 from neosian._foundation.llm.base import (
+    CompactionBlock,
     CompletionResponse,
     DocumentBlock,
     ImageBlock,
@@ -15,8 +16,10 @@ from neosian._foundation.llm.base import (
     ToolCall,
     ToolDefinition,
     Usage,
+    assemble_streamed_content,
     content_to_json,
     required_content_types,
+    requires_compaction_support,
     text_of,
 )
 from neosian._foundation.shared.types import ToolCallId, ToolName
@@ -335,3 +338,58 @@ class TestRequiredContentTypes:
             ),
         ]
         assert required_content_types(messages) == (False, True)
+
+
+@pytest.mark.unit
+class TestCompactionBlock:
+    def test_joins_the_content_union(self) -> None:
+        message = Message(
+            role=Role.ASSISTANT,
+            content=[CompactionBlock(content="summary"), TextBlock(text="hi")],
+        )
+        assert isinstance(message.content, list)
+
+    def test_content_to_json_encodes_it(self) -> None:
+        encoded = content_to_json(
+            [CompactionBlock(content="summary", encrypted_content="enc")]
+        )
+        assert encoded == [
+            {
+                "type": "compaction",
+                "content": "summary",
+                "encrypted_content": "enc",
+            }
+        ]
+
+    def test_requires_compaction_support(self) -> None:
+        plain = [Message(role=Role.USER, content="hi")]
+        bearing = plain + [
+            Message(role=Role.ASSISTANT, content=[CompactionBlock(content="s")])
+        ]
+        assert not requires_compaction_support(plain)
+        assert requires_compaction_support(bearing)
+
+    def test_text_of_skips_compaction_blocks(self) -> None:
+        message = Message(
+            role=Role.ASSISTANT,
+            content=[CompactionBlock(content="summary"), TextBlock(text="hi")],
+        )
+        assert text_of(message) == "hi"
+
+
+@pytest.mark.unit
+class TestAssembleStreamedContent:
+    def test_no_compaction_keeps_the_plain_string(self) -> None:
+        assert assemble_streamed_content("hello", ()) == "hello"
+        assert assemble_streamed_content(None, ()) is None
+
+    def test_compaction_first_then_text(self) -> None:
+        block = CompactionBlock(content="summary")
+        assert assemble_streamed_content("hello", (block,)) == [
+            block,
+            TextBlock(text="hello"),
+        ]
+
+    def test_compaction_without_text(self) -> None:
+        block = CompactionBlock(content="summary")
+        assert assemble_streamed_content(None, (block,)) == [block]
