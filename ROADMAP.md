@@ -1,20 +1,22 @@
 # Neosian Roadmap — Memory & Conversation
 
-> **▶ Current phase: N4 — Completeness**
+> **▶ Current phase: NE — Evaluation quality**
 >
-> *(2026-08-20: N4 slices A+B+C shipped — v0.65.0 the native
-> `memory_20250818` flag (ledger #41–#44), v0.66.0 server-side
-> compaction pass-through (ledger #45–#49), v0.67.0 the MCP memory
-> server (`neosian[mcp]` extra, `python -m neosian.mcp`, the one
-> `ToolDefinition` served verbatim over the shared `memory/dispatch.py`
-> ladder; ledger #50–#53). Remaining in N4: the memory eval harness,
-> docs/1.0. Standing ruling: neosian's phases run to completion before
-> the kit's P10 vendors from a `v<X.Y.Z>` release tag. Still deferred
-> per §9.10: the ECOSYSTEM amendment naming `ConversationStore` — a
-> two-repo move for a future session-pair. CI is green: after the
-> billing fix (2026-08-20), run 32407460787 on the v0.67.0 head passed
-> whole — lint, the 3.12–3.14 keyless matrix, and the postgres job's
-> first-ever execution — confirming v0.54.0 onward at once.)*
+> *(2026-08-20 governance session: the memory-harness planning session
+> found `evaluation/` to be the last pre-constitution subsystem, so NE
+> was inserted before N4's remainder — reform-or-rewrite, with the
+> memory eval harness moved in as NE's final slice (its ratified
+> implementation plan: `~/.claude/plans/fizzy-spinning-flask.md`).
+> N4 resumes with docs/1.0 after `ne-done`; its 1.0 promise now names
+> the reformed eval surface. N4 slices A+B+C stand shipped — v0.65.0
+> the native `memory_20250818` flag (#41–#44), v0.66.0 server-side
+> compaction pass-through (#45–#49), v0.67.0 the MCP memory server
+> (#50–#53). Standing rulings: neosian's phases run to completion
+> before the kit's P10 vendors from a `v<X.Y.Z>` release tag; still
+> deferred per §9.10, executing at the docs/1.0 slice: the ECOSYSTEM
+> amendment naming `ConversationStore`. CI is green: after the billing
+> fix (2026-08-20), run 32407460787 on the v0.67.0 head passed whole,
+> confirming v0.54.0 onward at once.)*
 >
 > The pointer above must equal the first phase heading without ✅ — if they
 > disagree, say so and trust the checkboxes. Companion to [VISION.md](VISION.md)
@@ -39,7 +41,7 @@
 
 ## Phase ids, tags, versions
 
-- Phase ids: `NH`, `NS`, `N0`–`N4`. Commit subjects `<ID>: <what became true>`
+- Phase ids: `NH`, `NS`, `NE`, `N0`–`N4`. Commit subjects `<ID>: <what became true>`
   (≤ 72 chars); `meta:` for repo housekeeping. The `v:X.Y.Z. …` subject style
   is retired (DESIGN §12 #7).
 - Progress axis: annotated **`<id>-done`** tags at each phase close.
@@ -469,6 +471,58 @@ worker pids served 3 gapless turns with tool messages persisted, and
 the agent unprompted wrote `deploy_day` into the per-user mount.
 1489 unit tests, zero keys; 105 postgres tests.
 
+## NE — Evaluation quality (v0.68 →)
+
+DESIGN: §2, §5, §7, §10 — plus the evaluation § this phase writes.
+
+`evaluation/` is the last pre-constitution subsystem — functional and
+tested (8 unit files; N0 moved it onto hooks + FakeProvider) but below
+the bar every phase since NH enforced, found by the 2026-08-20 harness
+planning session, which stopped rather than build on it. The 1.0 stake:
+`EvalCase`/`EvalConfig`/`EvalTurn`/`EvalResult`/`Expectation` are
+root-public while the runner is private — silence at v1.0.0 would freeze
+that asymmetry by accident. **Mandate: reform-or-rewrite** — the phase's
+opening options-first design discussion decides how deep to cut; a full
+rewrite is sanctioned if that is the honest path to ecosystem-grade code.
+`eval_*` error codes stay append-only regardless.
+
+- A DESIGN section for evaluation, written options-first in-phase: case
+  schema, scoring model, the runner's seams. Kills §2's dangling "§C5"
+  cross-reference along the way.
+- A public facade — lazy `neosian.evaluation` with run/load entry points
+  (today the only runner path imports `_foundation.evaluation`, which
+  the CLI does); the root `__all__` change lands as a deliberate,
+  pinned diff.
+- Frozen eval config types + a replace-not-mutate runner: the loaded
+  `AgentConfig` is never mutated in place (model/hooks/client_factory —
+  the N2 `--menu` bug class), pinned by a caller-config-untouched test.
+- Mock-seam redesign: `mock_agent_tools`' private reach (`agent._tools`
+  rewrite, per-turn re-wrap, `_tool_definitions[i]` surgery) retired in
+  favor of hook-based observation — the memory harness's no-mocking
+  `AgentHooks` architecture is the reference — plus an encapsulation pin
+  like `tests/unit/conversation/test_encapsulation.py`.
+- Scoring semantics ruled options-first: response-text matching
+  (`actual_response` is recorded but unmatchable), the silently-ignored
+  top-level `expect:` on conversational cases, `str()`-coercion rules,
+  and whether an LLM judge ever enters (if yes, its prompt ships as
+  `assets/` data per §7).
+- runner.py headroom (482 lines, 18 under the fail-at-500 gate) —
+  restructured out of the red zone by whatever shape the redesign takes.
+- **Final slice: the memory eval harness**, per the ratified 2026-08-20
+  plan (`~/.claude/plans/fizzy-spinning-flask.md`; its four design
+  rulings are user-confirmed) — write discipline, recall-in-next-session,
+  dedup behavior; there is no public benchmark for the agent-memory
+  regime (LoCoMo measures the personalization regime), so we measure
+  ourselves: FakeProvider baselines first (keyless), then per-provider
+  `external_<provider>` runs. The harness is the reformed module's first
+  consumer and its acceptance test.
+
+**Done when:** the harness reports per-provider memory baselines
+(FakeProvider first, zero keys) through the public facade; no evaluation
+code mutates a caller's config or reaches into Agent privates
+(encapsulation-pinned); every eval config type is frozen; evaluation has
+its DESIGN §; `make lint typecheck test size` green.
+
 ## N4 — Completeness (v0.65 → 1.0)
 
 DESIGN: §2, §6, §10.
@@ -483,19 +537,22 @@ DESIGN: §2, §6, §10.
   Ships as an optional extra — `uv add "neosian[mcp]"`, module
   `neosian.mcp` — one repo, one release train.
   *(✅ shipped v0.67.0, slice C)*
-- Memory eval harness built on the existing `evaluation/` module — there is
-  no public benchmark for the agent-memory regime (LoCoMo measures the
-  personalization regime), so we measure ourselves: write discipline,
-  recall-in-next-session, dedup behavior — per provider, FakeProvider
-  baselines first.
+- Memory eval harness — **moved to NE** (2026-08-20 governance session):
+  the module beneath it was the last pre-constitution subsystem, so the
+  harness lands as NE's final slice, on reformed ground. The measured
+  behaviors and the LoCoMo rationale moved with it into NE's section
+  above.
 - Docs and quickstarts. **1.0 = API stability promise** for `Agent`,
-  `Conversation`, `MemoryStore` — and the ECOSYSTEM seams move from
-  append-only-by-convention to SemVer-guaranteed.
+  `Conversation`, `MemoryStore`, and the reformed evaluation surface
+  (NE's facade — named deliberately, never frozen by silence) — and the
+  ECOSYSTEM seams move from append-only-by-convention to
+  SemVer-guaranteed.
 
 **Done when:** one store serves the same memory through the function tool,
-the native Anthropic flag, and an MCP client; the eval harness reports
-per-provider memory baselines (FakeProvider first); README and quickstarts
-match the tree; `v1.0.0` is tagged carrying the stability promise.
+the native Anthropic flag, and an MCP client (✅ v0.67.0); the per-provider
+memory baselines exist — delivered by NE's harness slice, not here; README
+and quickstarts match the tree (incl. the MCP snippet); `v1.0.0` is tagged
+carrying the stability promise, evaluation surface included.
 
 **Split (2026-08-20): slice A shipped at v0.65.0** — the native flag, the
 pure transport swap ledger #19 promised. Options-first rulings (user
@@ -576,13 +633,17 @@ streamable HTTP (embedders mount the factory's server); README MCP
 snippet waits for the docs/1.0 slice. Remaining in N4: memory eval
 harness, docs/1.0.
 
+**(2026-08-20, governance session):** the memory eval harness moved to
+NE (see the section above and the session log) — it lands on the
+reformed module, as NE's final slice. Remaining in N4: docs/1.0 only.
+
 ---
 
 ## Risks
 
 - **Trained-behavior asymmetry.** Anthropic models are post-trained on the
   memory command set; other providers' models less so. The prompt pack
-  carries more weight off-Anthropic — the N4 eval harness measures this per
+  carries more weight off-Anthropic — the NE harness measures this per
   provider instead of assuming.
 - **Conversation-layer scope creep.** `Conversation` is where frameworks
   bloat. The not-in-scope list in N2 is a commitment, not a suggestion;
@@ -1031,3 +1092,21 @@ harness, docs/1.0.
   the Conversation → AgentSession private reach (`_rebind`,
   `_get_or_create_client`) to its sanctioned sites. 1643 unit tests,
   zero keys.
+- 2026-08-20 | meta | **Evaluation gets its phase.** The harness planning
+  session (same day) audited `evaluation/` and stopped: the last
+  pre-constitution subsystem — no DESIGN § (plus §2's dangling "§C5"
+  reference), root-public types over a private runner (the CLI imports
+  `_foundation.evaluation` directly), in-place AgentConfig mutation (the
+  N2 `--menu` bug class), `mock_agent_tools`' unsanctioned
+  `_tools`/`_tool_definitions` reach with no encapsulation pin, silent
+  scoring footguns (`str()` coercion, unmatchable `actual_response`,
+  ignored conversational `expect:`), runner.py at 482/500. Ruled
+  options-first: **NE — Evaluation quality** inserted before N4's
+  remainder with a reform-or-rewrite mandate (a full rewrite is
+  sanctioned); the memory harness moves into NE as its final slice and
+  acceptance test — the ratified plan
+  (`~/.claude/plans/fizzy-spinning-flask.md`, four rulings
+  user-confirmed) stays its implementation source; N4 keeps docs/1.0,
+  and the 1.0 promise now names the reformed eval surface so the five
+  public types never freeze by silence. Pointer → NE. Docs only; no
+  code touched.
