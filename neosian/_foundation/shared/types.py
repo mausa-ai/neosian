@@ -648,6 +648,10 @@ class AgentConfig:
     # Default-on, deliberately-underestimating pre-call window check
     # (DESIGN §5, ledger #16); None disables the proactive check.
     context_policy: ContextPolicy | None = ContextPolicy()
+    # Anthropic-native memory transport (memory_20250818): the memory
+    # tool's wire declaration goes schema-less and rides the trained
+    # behavior; inert on every other provider, never raises (ledger #42).
+    native_memory: bool = False
 
     # Internal: loaded playbooks (set by __post_init__)
     _playbooks: list[Playbook] = field(default_factory=list, init=False, repr=False)

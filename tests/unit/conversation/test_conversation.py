@@ -314,6 +314,18 @@ class TestMemoryWiring:
         assert document is not None
         assert document.content == "Prefers espresso."
 
+    async def test_native_memory_survives_derivation(self, store: FileStore) -> None:
+        """The flag rides dataclasses.replace and marks the derived tool."""
+        config, _ = _config(_reply("ok"), native_memory=True)
+        convo = Conversation(
+            config, store=store, conversation_id="t1", memory_scope="user:demo"
+        )
+        await convo.start()
+        assert convo._agent is not None
+        assert convo._agent.config.native_memory is True
+        [definition] = [d for d in convo._agent._tool_definitions if d.name == "memory"]
+        assert definition.native_type == "memory_20250818"
+
     async def test_memory_tool_is_bound_to_the_conversation_id(
         self, store: FileStore
     ) -> None:

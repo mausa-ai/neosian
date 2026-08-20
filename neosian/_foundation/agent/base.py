@@ -7,6 +7,7 @@ off the per-run RunContext (DESIGN §3, N0 session-twin collapse).
 
 from __future__ import annotations
 
+import logging
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -49,6 +50,8 @@ from neosian._foundation.tools.base import (
 from neosian._foundation.tools.builtin.blackboard import create_blackboard_tools
 from neosian._foundation.tools.builtin.playbook import create_playbook_tools
 from neosian._foundation.tools.builtin.todo import update_todo
+
+logger = logging.getLogger(__name__)
 
 
 class Agent:
@@ -135,7 +138,16 @@ class Agent:
 
         # Register the memory tool if memory is configured
         if config.memory is not None:
-            self._register_tool(create_memory_tool(config.memory))
+            self._register_tool(
+                create_memory_tool(config.memory, native=config.native_memory)
+            )
+        if config.native_memory and config.model.provider is not Provider.ANTHROPIC:
+            logger.warning(
+                "native_memory=True is inert on %s — the memory_20250818 "
+                "declaration is Anthropic-only; other providers receive "
+                "the ordinary function schema",
+                config.model.provider.value,
+            )
 
         # Register user-provided tools
         for tool_func in config.tools:

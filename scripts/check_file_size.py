@@ -19,7 +19,8 @@ ALLOWLIST: dict[str, str] = {
         "the model registry + config types; NS grew it with µ$ pricing and FAKE"
     ),
     "neosian/_foundation/llm/anthropic.py": (
-        "grew with v0.49 multimodal; single-file adapter until a real seam appears"
+        "grew with v0.49 multimodal + N4 native tools; single-file adapter "
+        "until a real seam appears"
     ),
     "neosian/_foundation/shared/exceptions.py": (
         "one class per error code (DESIGN §5); size is the full registry, not debt"

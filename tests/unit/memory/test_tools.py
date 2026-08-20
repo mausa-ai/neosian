@@ -1,11 +1,16 @@
 """The `memory` tool: six commands over a real FileStore (DESIGN §8)."""
 
+import logging
+
 import pytest
 
 from neosian._foundation.memory.file import FileStore
 from neosian._foundation.memory.index import generate_memory_index
 from neosian._foundation.memory.mounts import MemoryConfig, Mount
-from neosian._foundation.memory.tools import create_memory_tool
+from neosian._foundation.memory.tools import (
+    NATIVE_MEMORY_TOOL_TYPE,
+    create_memory_tool,
+)
 from neosian._foundation.shared.prompt_assets import get_prompt
 from neosian._foundation.shared.types import ToolFunction
 from neosian._foundation.tools.base import get_tool_definition
@@ -13,6 +18,7 @@ from neosian._foundation.tools.base import get_tool_definition
 _USER = Mount(scope="user:123", mount_path="user", description="user facts")
 _PROJECT = Mount(scope="user:123/proj:erp", mount_path="project")
 _KB = Mount(scope="tenant:acme/kb:main", mount_path="kb", read_only=True)
+_TOOLS_LOGGER = "neosian._foundation.memory.tools"
 
 
 @pytest.fixture
@@ -360,3 +366,60 @@ class TestFailureShape:
         for command in ("view", "create", "str_replace", "insert", "delete", "rename"):
             assert command in result.system_reminder
         assert "old_path" not in str(result.error)
+
+
+class TestNativeFlag:
+    """native=True is a transport marker; execution is identical (N4)."""
+
+    def test_default_is_unmarked(self, tool: ToolFunction) -> None:
+        definition = get_tool_definition(tool)
+        assert definition is not None
+        assert definition.native_type is None
+
+    def test_native_marks_transport_only(self, config: MemoryConfig) -> None:
+        marked = get_tool_definition(create_memory_tool(config, native=True))
+        plain = get_tool_definition(create_memory_tool(config))
+        assert marked is not None and plain is not None
+        assert marked.native_type == NATIVE_MEMORY_TOOL_TYPE == "memory_20250818"
+        assert marked.description == plain.description
+        assert marked.parameters == plain.parameters
+
+    def test_factory_calls_are_independent(self, config: MemoryConfig) -> None:
+        """Marking one closure's definition never leaks into another's."""
+        create_memory_tool(config, native=True)
+        plain = get_tool_definition(create_memory_tool(config))
+        assert plain is not None
+        assert plain.native_type is None
+
+    def test_warns_without_a_memories_mount(
+        self, config: MemoryConfig, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        with caplog.at_level(logging.WARNING, logger=_TOOLS_LOGGER):
+            create_memory_tool(config, native=True)
+        assert any("memories" in r.message for r in caplog.records)
+
+    def test_no_warning_with_a_memories_mount(
+        self, store: FileStore, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        memories = MemoryConfig(
+            store=store, mounts=(Mount(scope="user:1", mount_path="memories"),)
+        )
+        with caplog.at_level(logging.WARNING, logger=_TOOLS_LOGGER):
+            create_memory_tool(memories, native=True)
+        assert not [r for r in caplog.records if r.name == _TOOLS_LOGGER]
+
+    async def test_native_execution_is_byte_identical(
+        self, config: MemoryConfig
+    ) -> None:
+        """The transport-swap pin: create/view round-trip matches exactly."""
+        native_tool = create_memory_tool(config, native=True)
+        plain_tool = create_memory_tool(config)
+        created = await native_tool(
+            command="create", path="/user/prefs", content="espresso"
+        )
+        assert created.success
+        seen_native = await native_tool(command="view", path="/user/prefs")
+        seen_plain = await plain_tool(command="view", path="/user/prefs")
+        assert seen_native.success
+        assert seen_native.data == seen_plain.data
+        assert seen_native.system_reminder == seen_plain.system_reminder

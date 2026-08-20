@@ -108,7 +108,11 @@ def derive_config(
         system_prompt = SystemPrompt(f"{base.system_prompt}\n\n{section}")
     tools = list(base.tools)
     if memory_config is not None:
-        tools.append(create_memory_tool(memory_config, actor=actor))
+        # native_memory itself survives the replace() below (a plain
+        # field); only the tool registration needs the flag threaded.
+        tools.append(
+            create_memory_tool(memory_config, actor=actor, native=base.native_memory)
+        )
     tools.extend(extra_tools)
     # replace() re-runs __post_init__ (re-reads playbook_dir, re-validates)
     # — once per conversation, at start().

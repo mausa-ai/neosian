@@ -712,6 +712,11 @@ class AnthropicClient(BaseLLMClient):
         everything up to and including the marked block, so marking the
         last tool caches all tool definitions.
 
+        Tools carrying `native_type` become the schema-less native
+        declaration ({"type", "name"} only) — no description or
+        input_schema; the model's trained behavior replaces both.
+        cache_control remains valid on native entries.
+
         Args:
             tools: Internal ToolDefinition objects.
 
@@ -720,6 +725,9 @@ class AnthropicClient(BaseLLMClient):
         """
         result: list[dict[str, Any]] = []
         for tool in tools:
+            if tool.native_type is not None:
+                result.append({"type": tool.native_type, "name": tool.name})
+                continue
             input_schema = _strip_unsupported_constraints(
                 tool.parameters, strict=tool.strict
             )

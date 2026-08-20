@@ -2,18 +2,18 @@
 
 > **▶ Current phase: N4 — Completeness**
 >
-> *(2026-08-20: N3 closed at v0.64.0 — slice B shipped the FastAPI
-> multi-tenant example (`examples/fastapi_chatbot.py`, the §6 relay's
-> reference implementation: host-owned keepalive via a persistent-task
-> `__anext__`, code-only error frames), the app-level two-worker
-> done-when pinned in `tests/external/postgres/test_fastapi_workers.py`
-> on the push/PR postgres CI job, and the pool-tuning kwargs
-> (`min_size`/`max_size`/`pool_timeout`, pure ctor validation). Standing
-> ruling: neosian's phases run to completion before the kit's P10
-> vendors from a `v<X.Y.Z>` release tag. Still deferred per §9.10: the
-> ECOSYSTEM amendment naming `ConversationStore` — a two-repo move for a
-> future session-pair. Actions is still red on org billing (2026-08-18);
-> CI confirmation for v0.54.0–v0.64.0 lands at /ship once fixed.)*
+> *(2026-08-20: N4 slice A shipped at v0.65.0 — the native
+> `memory_20250818` flag as a pure transport swap: `AgentConfig.
+> native_memory` → internal `ToolDefinition.native_type` marker →
+> AnthropicClient's schema-less native declaration; every other provider
+> keeps the function schema, so fallback needs no gate (ledger #41–#44).
+> Slice B next: server-side compaction pass-through, opening with the
+> `llm/blocks.py` extraction. Standing ruling: neosian's phases run to
+> completion before the kit's P10 vendors from a `v<X.Y.Z>` release tag.
+> Still deferred per §9.10: the ECOSYSTEM amendment naming
+> `ConversationStore` — a two-repo move for a future session-pair.
+> Actions is still red on org billing (2026-08-18); CI confirmation for
+> v0.54.0 onward lands at /ship once fixed.)*
 >
 > The pointer above must equal the first phase heading without ✅ — if they
 > disagree, say so and trust the checkboxes. Companion to [VISION.md](VISION.md)
@@ -474,6 +474,7 @@ DESIGN: §2, §6, §10.
 
 - Native `memory_20250818` tool type on Anthropic behind a flag (same
   store, provider-native surface; rides the trained behavior).
+  *(✅ shipped v0.65.0, slice A)*
 - Anthropic server-side compaction as an opt-in where available.
 - **MCP memory server packaging** — neosian memory usable from Claude Code,
   Claude Desktop, Cursor, any MCP client, backed by the same stores.
@@ -487,6 +488,29 @@ DESIGN: §2, §6, §10.
 - Docs and quickstarts. **1.0 = API stability promise** for `Agent`,
   `Conversation`, `MemoryStore` — and the ECOSYSTEM seams move from
   append-only-by-convention to SemVer-guaranteed.
+
+**Done when:** one store serves the same memory through the function tool,
+the native Anthropic flag, and an MCP client; the eval harness reports
+per-provider memory baselines (FakeProvider first); README and quickstarts
+match the tree; `v1.0.0` is tagged carrying the stability promise.
+
+**Split (2026-08-20): slice A shipped at v0.65.0** — the native flag, the
+pure transport swap ledger #19 promised. Options-first rulings (user
+confirmed): `AgentConfig.native_memory` (survives `derive_config`'s
+replace), the internal `ToolDefinition.native_type` marker +
+`set_native_type` — never a public `@Tool` param (#41);
+inert-never-raises, one warning per condition (#42); the wire description
+drops while `memory_system_section` stays verbatim (#43); no capability
+field, no fallback gate — the marker degrades by construction, pinned by
+one converter test per non-Anthropic client (#44). AnthropicClient emits
+`{"type": "memory_20250818", "name": "memory"}` — GA, no beta header,
+`cache_control` valid on the native entry (verified against the installed
+SDK). Execution, mounts, read-only enforcement and corrective failures
+are byte-identical either way, pinned by a native-vs-plain round-trip
+test. 1511 unit tests, zero keys. Carried to slice B: server-side
+compaction pass-through (the `llm/blocks.py` extraction first — base.py
+is one line shy of the size gate otherwise); MCP, eval harness, docs/1.0
+in later slices.
 
 ---
 
@@ -833,3 +857,25 @@ DESIGN: §2, §6, §10.
   SERVICES.md. 1489 unit tests, zero keys; 105 postgres tests; v0.64.0.
   Carried to N4: nothing new; §9.10 ECOSYSTEM amendment still deferred;
   CI billing note stands.
+- 2026-08-20 | N4 (slice A) | **Native memory rides the flag.** The
+  transport swap ledger #19 pre-shaped, shipped whole:
+  `ToolDefinition.native_type` (internal — never a public `@Tool` param,
+  #41) set by `create_memory_tool(native=True)` via `set_native_type`;
+  `AgentConfig.native_memory` threads it through both registration sites
+  (bare agent + `derive_config`, where it survives the replace);
+  `AnthropicClient._convert_tools` emits the schema-less
+  `{"type": "memory_20250818", "name": "memory"}` — GA endpoint, no beta
+  header, `cache_control` still valid on the native entry (both verified
+  against the installed SDK, anthropic 0.122.0). The flag never raises:
+  inert with one warning per condition (#42 — a `__post_init__` raise
+  would break Conversation's deliberate `memory=None` derivation); the
+  wire description drops, `memory_system_section` stays verbatim (#43 —
+  the index is data the model cannot have); no `ModelSpec` field, no
+  fallback gate — non-Anthropic converters ignore the marker and send
+  the function schema, pinned per client (#44). Tests: exact native wire
+  shape incl. `betas`-absent, mixed native+function lists, unmarked
+  byte-identical regression, factory-call independence, the
+  native-vs-plain create/view round-trip, agent/conversation wiring,
+  caplog warnings. DESIGN §2/§8 amended, ledger #41–#44. 1511 unit
+  tests, zero keys; v0.65.0. Slice B carried: server-side compaction
+  pass-through behind the `llm/blocks.py` extraction.

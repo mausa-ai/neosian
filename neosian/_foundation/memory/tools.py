@@ -10,6 +10,7 @@ This module deliberately has no `from __future__ import annotations`:
 the @Tool decorator resolves the signature's hints at decoration time.
 """
 
+import logging
 from typing import Final, Literal
 
 from neosian._foundation.memory import commands
@@ -17,10 +18,15 @@ from neosian._foundation.memory.mounts import MemoryConfig
 from neosian._foundation.shared.exceptions import MemoryStoreError
 from neosian._foundation.shared.prompt_assets import get_prompt
 from neosian._foundation.shared.types import ToolFunction
-from neosian._foundation.tools.base import Tool, ToolResult
+from neosian._foundation.tools.base import Tool, ToolResult, set_native_type
+
+logger = logging.getLogger(__name__)
 
 _TOOL_NAME: Final = "memory"
 _COMMANDS: Final = ("view", "create", "str_replace", "insert", "delete", "rename")
+NATIVE_MEMORY_TOOL_TYPE: Final = "memory_20250818"
+# The mount path Anthropic's trained memory behavior roots at (§9.5.13).
+_NATIVE_ROOT: Final = "memories"
 
 # Per-code guidance appended to store-error failures (system_reminder).
 _HINTS: Final[dict[str, str]] = {
@@ -56,13 +62,17 @@ def _require[T](value: T | None, command: str, name: str) -> T:
 
 
 def create_memory_tool(
-    config: MemoryConfig, *, actor: str | None = None
+    config: MemoryConfig, *, actor: str | None = None, native: bool = False
 ) -> ToolFunction:
     """Create the `memory` tool bound to a store and mounts.
 
     `actor` is recorded on every mutation's version row; N2's
     Conversation passes its conversation_id, the bare agent path passes
-    None.
+    None. `native` marks the definition with Anthropic's
+    `memory_20250818` type: the Anthropic client then sends the
+    schema-less native declaration (the trained behavior replaces the
+    wire description); every other provider — and the local execution
+    path here — is byte-identical either way (ledger #41–#44).
     """
 
     @Tool(name=_TOOL_NAME, description=get_prompt("memory.tool"))
@@ -132,4 +142,14 @@ def create_memory_tool(
                 system_reminder=_HINTS.get(exc.code),
             )
 
+    if native:
+        set_native_type(memory, NATIVE_MEMORY_TOOL_TYPE)
+        if not any(m.mount_path == _NATIVE_ROOT for m in config.mounts):
+            logger.warning(
+                "native memory is on but no mount is named %r — the model's "
+                "trained paths root at /%s, so expect one corrective "
+                "round-trip while it discovers your mounts",
+                _NATIVE_ROOT,
+                _NATIVE_ROOT,
+            )
     return memory

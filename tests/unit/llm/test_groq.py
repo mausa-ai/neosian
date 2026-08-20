@@ -833,3 +833,28 @@ class TestGroqNestedSchema:
 
         assert schema["additionalProperties"] is False
         assert schema["$defs"]["Question"]["additionalProperties"] is False
+
+
+@pytest.mark.unit
+class TestNativeTypeIgnored:
+    def test_marked_definition_keeps_the_function_schema(self) -> None:
+        """native_type degrades by construction — the reason fallback off
+        Anthropic needs no capability gate (ledger #44)."""
+        client = GroqClient(api_key="test-api-key")
+        tool = ToolDefinition(
+            name=ToolName("memory"),
+            description="The memory tool",
+            parameters={"type": "object", "properties": {}},
+            native_type="memory_20250818",
+        )
+        converted = client._convert_tools([tool])
+        assert converted == [
+            {
+                "type": "function",
+                "function": {
+                    "name": "memory",
+                    "description": "The memory tool",
+                    "parameters": {"type": "object", "properties": {}},
+                },
+            }
+        ]

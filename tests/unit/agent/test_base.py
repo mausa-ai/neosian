@@ -1,9 +1,11 @@
 """Tests for Agent core."""
 
 import asyncio
+import logging
 import time
 import weakref
 from collections.abc import AsyncIterator
+from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -32,6 +34,8 @@ from neosian._foundation.llm.base import (
     ToolCall,
     Usage,
 )
+from neosian._foundation.memory.file import FileStore
+from neosian._foundation.memory.mounts import MemoryConfig, Mount
 from neosian._foundation.shared.exceptions import UnsupportedParameterError
 from neosian._foundation.shared.types import (
     AgentConfig,
@@ -44,6 +48,8 @@ from neosian._foundation.shared.types import (
     ToolName,
 )
 from neosian._foundation.tools.base import Tool, ToolResult
+
+_AGENT_LOGGER = "neosian._foundation.agent.base"
 
 
 def _create_mock_router(mock_client: BaseLLMClient | None = None) -> MagicMock:
@@ -2017,3 +2023,83 @@ class TestCapabilityAwareFallback:
             fallback_client.complete.assert_not_called()
             # Main handled it - sticky state resets
             assert fallback_state.using_fallback is False
+
+
+@pytest.mark.unit
+class TestAgentNativeMemory:
+    """AgentConfig.native_memory marks the registered memory tool (N4)."""
+
+    def _memory(self, tmp_path: Path) -> MemoryConfig:
+        return MemoryConfig(
+            store=FileStore(tmp_path),
+            mounts=(Mount(scope="user:1", mount_path="memories"),),
+        )
+
+    def _memory_definition(self, agent: Agent) -> Any:
+        [definition] = [d for d in agent._tool_definitions if d.name == "memory"]
+        return definition
+
+    def test_flag_marks_the_registered_definition(self, tmp_path: Path) -> None:
+        agent = Agent(
+            AgentConfig(
+                system_prompt=SystemPrompt("test"),
+                model=Model.CLAUDE_SONNET_5,
+                memory=self._memory(tmp_path),
+                native_memory=True,
+                enable_todo=False,
+            )
+        )
+        assert self._memory_definition(agent).native_type == "memory_20250818"
+
+    def test_flag_off_leaves_the_definition_unmarked(self, tmp_path: Path) -> None:
+        agent = Agent(
+            AgentConfig(
+                system_prompt=SystemPrompt("test"),
+                model=Model.CLAUDE_SONNET_5,
+                memory=self._memory(tmp_path),
+                enable_todo=False,
+            )
+        )
+        assert self._memory_definition(agent).native_type is None
+
+    def test_flag_without_memory_constructs_cleanly(self) -> None:
+        """Ledger #42: the flag never raises — derive_config depends on it."""
+        agent = Agent(
+            AgentConfig(
+                system_prompt=SystemPrompt("test"),
+                model=Model.CLAUDE_SONNET_5,
+                native_memory=True,
+                enable_todo=False,
+            )
+        )
+        assert all(d.name != "memory" for d in agent._tool_definitions)
+
+    def test_warns_on_non_anthropic_model(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        with caplog.at_level(logging.WARNING, logger=_AGENT_LOGGER):
+            Agent(
+                AgentConfig(
+                    system_prompt=SystemPrompt("test"),
+                    model=Model.FAKE,
+                    memory=self._memory(tmp_path),
+                    native_memory=True,
+                    enable_todo=False,
+                )
+            )
+        assert any("inert" in r.message for r in caplog.records)
+
+    def test_no_warning_on_anthropic_model(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        with caplog.at_level(logging.WARNING, logger=_AGENT_LOGGER):
+            Agent(
+                AgentConfig(
+                    system_prompt=SystemPrompt("test"),
+                    model=Model.CLAUDE_SONNET_5,
+                    memory=self._memory(tmp_path),
+                    native_memory=True,
+                    enable_todo=False,
+                )
+            )
+        assert not [r for r in caplog.records if r.name == _AGENT_LOGGER]

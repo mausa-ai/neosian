@@ -21,6 +21,7 @@ from neosian._foundation.tools.base import (
     _python_type_to_json_schema,
     get_tool_definition,
     get_tool_metadata,
+    set_native_type,
 )
 
 
@@ -346,6 +347,24 @@ class TestGetToolHelpers:
             return "hello"
 
         assert get_tool_definition(regular_func) is None
+
+    def test_set_native_type_requires_decoration(self) -> None:
+        async def regular_func() -> ToolResult[str]:
+            return ToolResult.ok("hello")
+
+        with pytest.raises(ValueError, match="not decorated"):
+            set_native_type(regular_func, "memory_20250818")
+
+    def test_set_native_type_marks_the_definition(self) -> None:
+        @Tool(name="probe", description="A probe")
+        async def probe() -> ToolResult[str]:
+            return ToolResult.ok("ok")
+
+        returned = set_native_type(probe, "memory_20250818")
+        assert returned is probe
+        definition = get_tool_definition(probe)
+        assert definition is not None
+        assert definition.native_type == "memory_20250818"
 
 
 @pytest.mark.unit

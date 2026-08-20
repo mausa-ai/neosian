@@ -130,12 +130,20 @@ class ToolDefinition:
     `strict` opts into provider-enforced constrained decoding. Honored only by
     Anthropic today (counts against its per-request schema-complexity budget);
     other providers ignore the field. Default False = best-effort.
+
+    `native_type` names a provider-native tool type (Anthropic's
+    `memory_20250818`). A client that recognizes it sends the schema-less
+    native declaration — the model's trained behavior replaces the
+    description; every other client ignores the marker and sends the
+    ordinary function schema, so capability-aware fallback needs no new
+    gate. Set only by the library (ledger #41).
     """
 
     name: ToolName
     description: str
     parameters: dict[str, Any]
     strict: bool = False
+    native_type: str | None = None
 
 
 @dataclass

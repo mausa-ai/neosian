@@ -2397,3 +2397,117 @@ class TestAnthropicSchemaAdditionalProperties:
 
         assert schema["additionalProperties"] is False  # type: ignore[index]
         assert schema["$defs"]["Question"]["additionalProperties"] is False  # type: ignore[index]
+
+
+@pytest.mark.unit
+class TestNativeToolType:
+    """Tools marked native_type ride the schema-less native declaration."""
+
+    def _native(self) -> ToolDefinition:
+        return ToolDefinition(
+            name=ToolName("memory"),
+            description="ignored on the wire under native transport",
+            parameters={"type": "object", "properties": {}},
+            native_type="memory_20250818",
+        )
+
+    def test_native_wire_shape(self, client: AnthropicClient) -> None:
+        """A native entry is exactly {type, name} plus the cache breakpoint."""
+        converted = client._convert_tools([self._native()])
+        assert converted == [
+            {
+                "type": "memory_20250818",
+                "name": "memory",
+                "cache_control": {"type": "ephemeral"},
+            }
+        ]
+
+    def test_mixed_list_keeps_function_schema_beside_native(
+        self, client: AnthropicClient, sample_tool: ToolDefinition
+    ) -> None:
+        converted = client._convert_tools([sample_tool, self._native()])
+        assert converted[0]["name"] == "get_weather"
+        assert converted[0]["description"] == "Get the weather for a location"
+        assert "input_schema" in converted[0]
+        assert "cache_control" not in converted[0]
+        assert converted[1] == {
+            "type": "memory_20250818",
+            "name": "memory",
+            "cache_control": {"type": "ephemeral"},
+        }
+
+    def test_unmarked_definition_is_unchanged(
+        self, client: AnthropicClient, sample_tool: ToolDefinition
+    ) -> None:
+        """Regression: native_type=None produces today's exact shape."""
+        converted = client._convert_tools([sample_tool])
+        assert converted == [
+            {
+                "name": "get_weather",
+                "description": "Get the weather for a location",
+                "input_schema": sample_tool.parameters,
+                "cache_control": {"type": "ephemeral"},
+            }
+        ]
+
+    @pytest.mark.asyncio
+    async def test_complete_sends_native_entry_without_betas(
+        self, client: AnthropicClient, sample_messages: list[Message]
+    ) -> None:
+        """The native memory tool is GA — no beta header, no schema."""
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(type="text", text="ok")]
+        mock_response.usage = MagicMock(input_tokens=1, output_tokens=1)
+        mock_response.model = "claude-sonnet-5"
+        _mock_complete(client, mock_response)
+
+        await client.complete(
+            messages=sample_messages,
+            model=Model.CLAUDE_SONNET_5,
+            tools=[self._native()],
+        )
+
+        call_kwargs = _sdk(client).messages.stream.call_args.kwargs
+        assert call_kwargs["tools"] == [
+            {
+                "type": "memory_20250818",
+                "name": "memory",
+                "cache_control": {"type": "ephemeral"},
+            }
+        ]
+        assert "betas" not in call_kwargs
+
+    @pytest.mark.asyncio
+    async def test_stream_sends_the_same_native_entry(
+        self, client: AnthropicClient, sample_messages: list[Message]
+    ) -> None:
+        mock_delta = MagicMock()
+        mock_delta.type = "content_block_delta"
+        mock_delta.delta = MagicMock(type="text_delta", text="ok")
+        mock_stop = MagicMock()
+        mock_stop.type = "message_stop"
+
+        async def mock_stream_events() -> AsyncIterator[Any]:
+            yield mock_delta
+            yield mock_stop
+
+        mock_stream = MagicMock()
+        mock_stream.__aenter__ = AsyncMock(return_value=mock_stream)
+        mock_stream.__aexit__ = AsyncMock(return_value=None)
+        mock_stream.__aiter__ = lambda _: mock_stream_events()
+        _sdk(client).messages.stream = MagicMock(return_value=mock_stream)
+
+        async for _ in client.stream(
+            messages=sample_messages,
+            model=Model.CLAUDE_SONNET_5,
+            tools=[self._native()],
+        ):
+            pass
+
+        call_kwargs = _sdk(client).messages.stream.call_args.kwargs
+        assert call_kwargs["tools"][0] == {
+            "type": "memory_20250818",
+            "name": "memory",
+            "cache_control": {"type": "ephemeral"},
+        }
+        assert "betas" not in call_kwargs

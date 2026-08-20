@@ -54,7 +54,11 @@ NS) behind `BaseLLMClient`. Capabilities live in `ModelSpec` and describe
 *neosian's converter*, not raw provider ability. Fallback is capability-aware
 and sticky within a session; SDK-native retries stay at the client layer.
 Provider SDK exceptions never escape neosian — `wrap_provider_error` (§5)
-classifies them at the client boundary.
+classifies them at the client boundary. Provider-native tool types ride the
+internal `ToolDefinition.native_type` marker (N4, ledger #41): the Anthropic
+converter emits the schema-less native declaration for a marked definition,
+every other converter ignores the marker and sends the ordinary function
+schema — so capability-aware fallback needs no new gate.
 
 ## §3 Agent core
 
@@ -480,7 +484,16 @@ async, caller-injected once per conversation — the CLI in N1,
 blackboard), which makes a memory-enabled agent tool-enabled — structured
 output is unavailable, as with any tool. The prompt pack ships in
 `assets/prompts/memory.yaml` (§7); the tool description stays under the
-1024-char OpenAI-compatible cap.
+1024-char OpenAI-compatible cap. **Native transport (N4).**
+`AgentConfig.native_memory` / `create_memory_tool(native=True)` mark the
+definition with Anthropic's `memory_20250818`: the wire description is
+dropped (the native declaration has no field for one) while the injected
+`memory_system_section` stays verbatim — the index and mount routing are
+data the model cannot have (ledger #43). Local execution, mounts,
+read-only enforcement and corrective failures are byte-identical either
+way; the flag is inert off-Anthropic and never raises (ledger #42),
+warning instead when the model is non-Anthropic or no mount sits at the
+`memories` root §9.5.13 chose.
 
 ## §9 Conversation & compaction **(N2)**
 
@@ -827,3 +840,7 @@ never a silent divergence. Numbering is monotonic, never reused.
 | 38 | §8's byte-exact content round-trip, universally | **Postgres text/jsonb reject U+0000** — NUL-bearing content raises the driver error, documented in the class docstring | A substrate limitation, not a policy: the kit never plants NUL so conformance is unaffected, but the promise needed the recorded exception rather than a surprise traceback |
 | 39 | Retry exhaustion re-badged as a fourth `MemoryConflictError.reason` | **After the attempt cap the driver exception propagates** | The `reason` set is documented and machine-checkable; widening it for an effectively-unreachable state (losses are bounded by writers in flight) taxes every host matching on it |
 | 40 | Postgres CI mirrors the schedule-only provider jobs | **The `postgres` job runs on every push/PR** (service container, DSN via env) | It needs no secret and costs nothing, so gating the conformance suite to a weekly run would leave the phase's core unprotected; the keyless `test` job still receives nothing |
+| 41 | `native_type` as a public `@Tool(...)` parameter — any tool declarable as any provider-native type | **Internal marker only**: `ToolDefinition.native_type` + `set_native_type()`, reachable solely through `create_memory_tool(native=True)` | `ToolDefinition` is not public, so the field costs no surface; a user-settable native type is an unreviewed feature whose failure mode is a provider 400 on a tool that silently stopped carrying its schema |
+| 42 | `native_memory=True` validates like `reasoning_effort` (raise on no-memory / non-Anthropic model) | **Inert, with one warning per condition** (non-Anthropic main model; no `memories` mount) | `derive_config` deliberately ships `memory=None` with the tool in `tools`, so a `__post_init__` raise makes Conversation + native memory structurally impossible; and under fallback the answering model may not be `config.model`. Unlike a dropped `reasoning_effort`, a dropped marker changes nothing observable — same schema, same execution |
+| 43 | Drop the memory prompt pack under native mode — the trained behavior replaces it | **The wire description goes (the native declaration has no field for one); `memory_system_section` stays verbatim** | The index and mount routing are data the model cannot have; keeping the section is what makes the flag a *transport* swap, and lets the N4 eval harness compare transports rather than prompts |
+| 44 | A `ModelSpec.supports_native_memory` capability field + a fallback gate | **No field, no gate** | The marker degrades by construction — every non-Anthropic converter reads only name/description/parameters and emits the function schema (pinned per client). A gate would guard a failure mode that does not exist, at the cost of a value on every registration |

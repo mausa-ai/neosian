@@ -22,6 +22,7 @@ from typing import (
 )
 
 from neosian._foundation.llm.base import ToolDefinition
+from neosian._foundation.shared.constants import ErrorMessages
 from neosian._foundation.shared.constraints import (
     Constraint,
     Desc,
@@ -405,3 +406,22 @@ def get_tool_definition(func: Callable[..., Any]) -> ToolDefinition | None:
     """Get tool definition from a decorated function."""
     metadata = get_tool_metadata(func)
     return metadata.definition if metadata else None
+
+
+def set_native_type(func: ToolFunction, native_type: str) -> ToolFunction:
+    """Mark a decorated tool's definition with a provider-native type.
+
+    Internal, reachable only through library factories (ledger #41).
+    Mutation is safe: every closure factory decorates a fresh function
+    object, so the marked definition is never shared.
+
+    Raises:
+        ValueError: If function is not decorated with @Tool.
+    """
+    definition = get_tool_definition(func)
+    if definition is None:
+        raise ValueError(
+            ErrorMessages.FUNCTION_NOT_DECORATED.format(func_name=func.__name__)
+        )
+    definition.native_type = native_type
+    return func
