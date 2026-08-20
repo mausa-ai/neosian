@@ -8,7 +8,10 @@ across workers (`supports_optimistic_concurrency = True`).
 
 Construction is pure validation — no I/O, no driver import; the pool
 opens on first use and `aclose()` releases it (idempotent; a later call
-reopens). Timestamps come from the injected `Clock`, never SQL `now()`
+reopens). Pool sizing is ctor-level and equally pure: `min_size` /
+`max_size` / `pool_timeout` (seconds a checkout waits for a free
+connection) are validated at construction, default to psycopg's own
+values, and reach the driver only when the pool opens. Timestamps come from the injected `Clock`, never SQL `now()`
 (ledger #35). Substrate limitation (ledger #38): Postgres `text`/`jsonb`
 reject U+0000, so content containing a NUL raises a driver error where
 FileStore round-trips it.
@@ -51,9 +54,14 @@ class PostgresStore(PostgresMemoryStore, PostgresTurnStore):
         *,
         schema: str = "neosian",
         clock: Clock | None = None,
+        min_size: int = 4,
+        max_size: int | None = None,
+        pool_timeout: float = 30.0,
     ) -> None:
         self._schema = validate_schema_name(schema)
-        self._pool = PostgresPool(dsn)
+        self._pool = PostgresPool(
+            dsn, min_size=min_size, max_size=max_size, timeout=pool_timeout
+        )
         self._sql = build_statements(self._schema)
         self._clock = clock if clock is not None else SystemClock()
 

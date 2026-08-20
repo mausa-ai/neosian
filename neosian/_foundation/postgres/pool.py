@@ -15,6 +15,7 @@ import random
 from typing import TYPE_CHECKING, Any
 
 from neosian._foundation.postgres.driver import load_driver
+from neosian._foundation.shared.exceptions import ConfigurationError
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -23,10 +24,15 @@ if TYPE_CHECKING:
 
 # Each lost race means another writer committed, so the system always
 # progresses; a single caller's losses are bounded by the writers in
-# flight (pool-sized). 25 attempts with growing jitter outlasts any
-# realistic pool before the driver error propagates (ledger #39).
+# flight across all pools. The 25-attempt budget with growing jitter is
+# sized for default-sized pools; a caller tuning `max_size` past it can
+# exhaust it, in which case the driver error propagates (ledger #39).
 _MAX_ATTEMPTS = 25
 _BACKOFF_SECONDS = 0.01
+
+# psycopg_pool's own defaults, mirrored so passing nothing changes nothing.
+_DEFAULT_MIN_SIZE = 4
+_DEFAULT_TIMEOUT = 30.0
 
 Row = tuple[Any, ...]
 
@@ -34,8 +40,26 @@ Row = tuple[Any, ...]
 class PostgresPool:
     """One lazily-opened autocommit pool, owned by a PostgresStore."""
 
-    def __init__(self, dsn: str) -> None:
+    def __init__(
+        self,
+        dsn: str,
+        *,
+        min_size: int = _DEFAULT_MIN_SIZE,
+        max_size: int | None = None,
+        timeout: float = _DEFAULT_TIMEOUT,
+    ) -> None:
+        if min_size < 1:
+            raise ConfigurationError(f"min_size must be >= 1; got {min_size}")
+        if max_size is not None and max_size < min_size:
+            raise ConfigurationError(
+                f"max_size {max_size} is below min_size {min_size}"
+            )
+        if timeout <= 0:
+            raise ConfigurationError(f"pool_timeout must be > 0; got {timeout}")
         self._dsn = dsn
+        self._min_size = min_size
+        self._max_size = max_size
+        self._timeout = timeout
         self._pool: AsyncConnectionPool | None = None
         self._open_lock = asyncio.Lock()
 
@@ -43,7 +67,12 @@ class PostgresPool:
         async with self._open_lock:
             if self._pool is None:
                 pool = load_driver().pool_class(
-                    self._dsn, open=False, kwargs={"autocommit": True}
+                    self._dsn,
+                    open=False,
+                    kwargs={"autocommit": True},
+                    min_size=self._min_size,
+                    max_size=self._max_size,
+                    timeout=self._timeout,
                 )
                 await pool.open()
                 self._pool = pool

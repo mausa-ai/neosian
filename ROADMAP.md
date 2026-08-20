@@ -1,21 +1,19 @@
 # Neosian Roadmap — Memory & Conversation
 
-> **▶ Current phase: N3 — PostgresStore**
+> **▶ Current phase: N4 — Completeness**
 >
-> *(2026-08-20: slice A shipped at v0.63.0 — `PostgresStore` implements
-> both seams over psycopg 3 (single-statement CTE mutations on an
-> autocommit pool, `supports_optimistic_concurrency = True`, schema-per-
-> store isolation, the shipped-SQL migration story via `apply_schema()` /
-> `python -m neosian.schemas postgres`), both conformance kits + the CS3
-> two-pool concurrency test green against a real server under the new
-> `external_postgres` tier, the push/PR CI service-container job, ledger
-> #34–#40. Remaining for slice B: the FastAPI multi-tenant example with
-> the §6 relay pattern, the multi-worker demo (the phase done-when),
-> pool-tuning kwargs. N2 closed at v0.62.0 the same day. Standing
+> *(2026-08-20: N3 closed at v0.64.0 — slice B shipped the FastAPI
+> multi-tenant example (`examples/fastapi_chatbot.py`, the §6 relay's
+> reference implementation: host-owned keepalive via a persistent-task
+> `__anext__`, code-only error frames), the app-level two-worker
+> done-when pinned in `tests/external/postgres/test_fastapi_workers.py`
+> on the push/PR postgres CI job, and the pool-tuning kwargs
+> (`min_size`/`max_size`/`pool_timeout`, pure ctor validation). Standing
 > ruling: neosian's phases run to completion before the kit's P10
 > vendors from a `v<X.Y.Z>` release tag. Still deferred per §9.10: the
 > ECOSYSTEM amendment naming `ConversationStore` — a two-repo move for a
-> future session-pair.)*
+> future session-pair. Actions is still red on org billing (2026-08-18);
+> CI confirmation for v0.54.0–v0.64.0 lands at /ship once fixed.)*
 >
 > The pointer above must equal the first phase heading without ✅ — if they
 > disagree, say so and trust the checkboxes. Companion to [VISION.md](VISION.md)
@@ -400,7 +398,7 @@ deliberately); the monolith split into `playground`/`chat`/`arena`/
 `examples/conversation_example.py` (quickstart, resume, memory-scope
 sugar). 1471 unit tests, zero keys.
 
-## N3 — PostgresStore (v0.63–0.64)
+## N3 — PostgresStore (v0.63–0.64) ✅ 2026-08-20
 
 DESIGN: §8.
 
@@ -447,6 +445,28 @@ Surface: root/facade `__all__` +1 (`PostgresStore`), `external_postgres`
 marker, `make test-postgres`, SERVICES.md DSN section. 1483 unit tests,
 zero keys; 100 postgres tests. Carried to slice B: the FastAPI example +
 §6 relay + multi-worker demo (the done-when), pool-tuning kwargs.
+
+**Slice B shipped at v0.64.0 (2026-08-20), closing the phase** — the
+application-level done-when. Pool-tuning kwargs
+(`min_size`/`max_size`/`pool_timeout`) on the ctor: purely validated,
+psycopg's own defaults, passed at lazy pool open, arrival pinned by a
+recording-driver unit test. `examples/fastapi_chatbot.py` (new
+`examples` dependency group): app-factory FastAPI chatbot on
+PostgresStore — store per worker (lifespan-owned), Conversation per
+request, two mounts per tenant (rw `tenant:{t}/user:{u}` at `memories`,
+read-only `tenant:{t}/kb:shared` at `kb`), ids composed
+`{tenant}--{thread}`; its relay generator is §6's reference
+implementation — the pending `__anext__` lives in a persistent task
+across keepalive timeouts (`wait_for` would cancel into the agent's
+generator), error frames carry only the code, schema application stays
+the operator's explicit act. `test_fastapi_workers.py` (5 tests,
+FakeClient agents over real pools, every push/PR): gapless two-worker
+appends through the HTTP surface, cross-worker resume, the SSE wire
+form, keepalive under a running tool, the code-only error frame with
+nothing persisted. Dogfooded live under `uvicorn --workers 2`: two
+worker pids served 3 gapless turns with tool messages persisted, and
+the agent unprompted wrote `deploy_day` into the per-user mount.
+1489 unit tests, zero keys; 105 postgres tests.
 
 ## N4 — Completeness (v0.65 → 1.0)
 
@@ -775,3 +795,41 @@ DESIGN: §2, §6, §10.
   server, keyless. 1483 unit tests; 100 postgres tests; v0.63.0.
   Carried: slice B (FastAPI example, §6 relay, multi-worker demo,
   pool tuning).
+- 2026-08-20 | N3 (slice B) | **Two web workers on one conversation; N3
+  closes.** Pool kwargs: `PostgresStore(dsn, *, …, min_size=4,
+  max_size=None, pool_timeout=30.0)` — pure `ConfigurationError` guards,
+  psycopg's own defaults (passing nothing changes nothing), threaded to
+  `AsyncConnectionPool` at lazy open; a recording-driver test pins
+  arrival plus the unchanged `open=False`/`autocommit`; the
+  `_MAX_ATTEMPTS` comment now states honestly that a pool tuned past the
+  budget can exhaust it (#39 unchanged). `examples/fastapi_chatbot.py`
+  (deps via a new `examples` group — `make install` is `--all-groups`,
+  so every CI job gets them): `create_app(store=None, agent_config=None,
+  keepalive_seconds=15.0)` — injected store/config for tests, otherwise
+  a store per worker from `NEOSIAN_EXAMPLE_POSTGRES_DSN` built in the
+  factory (ASGITransport runs no lifespan; construction is pure) and
+  closed by lifespan; the schema stays the operator's explicit act (two
+  workers would race the DDL). Two routes — streaming POST + history GET
+  via `message_to_json` — path params pattern-constrained (hostile input
+  → 422); mounts rw `tenant:{t}/user:{u}` + ro `tenant:{t}/kb:shared`
+  (scope grammar: every segment is `type:id`); ids `{tenant}--{thread}`
+  (`:` illegal in ids). The relay generator is §6's reference
+  implementation: keepalive comments on the host's timer with the
+  pending `__anext__` held in a persistent task — `wait_for(anext(…))`
+  cancels into the agent's generator and kills the stream (sentence
+  added to §6) — `except NeosianError` → code-only `ErrorEvent`,
+  `finally: cancel()` as the disconnect path. `test_fastapi_workers.py`
+  (external_postgres, every push/PR): two app instances on two pools
+  drive one conversation concurrently through ASGITransport — gapless
+  [1, 2] with both user texts, cross-worker resume via GET (4 messages),
+  SSE wire form (event/data framing, sequences strictly increasing from
+  1), ≥ 1 keepalive while a 0.2 s tool runs and the stream still reaches
+  `done`, error frame `llm_model_failed` with no message and zero turns
+  persisted. Dogfood: docker postgres + `uvicorn --workers 2` + curl —
+  two worker pids served 3 gapless turns, TOOL messages in history, the
+  agent unprompted wrote `tenant:acme/user:ada | deploy_day`; an
+  aborted `head -c` stream demonstrated §9.5's
+  abandonment-persists-nothing along the way. Docs: DESIGN §6/§8,
+  SERVICES.md. 1489 unit tests, zero keys; 105 postgres tests; v0.64.0.
+  Carried to N4: nothing new; §9.10 ECOSYSTEM amendment still deferred;
+  CI billing note stands.

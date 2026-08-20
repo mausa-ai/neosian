@@ -4,12 +4,16 @@ driver-free (keyless boot)."""
 
 import subprocess
 import sys
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
 from neosian import PostgresStore
-from neosian._foundation.postgres.driver import load_driver
+from neosian._foundation.postgres.driver import Driver, load_driver
 from neosian._foundation.shared.exceptions import ConfigurationError
+
+if TYPE_CHECKING:
+    from psycopg_pool import AsyncConnectionPool
 
 _DSN = "postgresql://nobody@localhost:1/nowhere"
 
@@ -26,6 +30,54 @@ def test_invalid_schema_name_raises_configuration_error() -> None:
     for bad in ("a-b", "1x", 'x"y', "Neosian", "x" * 64):
         with pytest.raises(ConfigurationError):
             PostgresStore(_DSN, schema=bad)
+
+
+@pytest.mark.unit
+def test_pool_sizing_is_pure_construction() -> None:
+    store = PostgresStore(_DSN, min_size=1, max_size=8, pool_timeout=1.5)
+    assert isinstance(store, PostgresStore)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("min_size", "max_size", "pool_timeout"),
+    [(0, None, 30.0), (4, 2, 30.0), (4, None, 0.0), (4, None, -1.0)],
+)
+def test_invalid_pool_sizing_raises_configuration_error(
+    min_size: int, max_size: int | None, pool_timeout: float
+) -> None:
+    with pytest.raises(ConfigurationError):
+        PostgresStore(
+            _DSN, min_size=min_size, max_size=max_size, pool_timeout=pool_timeout
+        )
+
+
+@pytest.mark.unit
+async def test_pool_sizing_reaches_the_driver(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A mistyped psycopg kwarg would silently fall back to its defaults."""
+    captured: dict[str, Any] = {}
+
+    class _RecordingPool:
+        def __init__(self, dsn: str, **kwargs: Any) -> None:
+            captured["dsn"] = dsn
+            captured.update(kwargs)
+
+        async def open(self) -> None:
+            return None
+
+    fake = Driver(
+        pool_class=cast("type[AsyncConnectionPool]", _RecordingPool), retryable=()
+    )
+    monkeypatch.setattr("neosian._foundation.postgres.pool.load_driver", lambda: fake)
+    store = PostgresStore(_DSN, min_size=2, max_size=8, pool_timeout=1.5)
+    await store._pool._ensure_pool()  # noqa: SLF001 — the substrate hook idiom
+    assert captured["min_size"] == 2
+    assert captured["max_size"] == 8
+    assert captured["timeout"] == 1.5
+    assert captured["open"] is False
+    assert captured["kwargs"] == {"autocommit": True}
 
 
 @pytest.mark.unit

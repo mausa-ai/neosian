@@ -270,6 +270,13 @@ except NeosianError as exc:
     yield ErrorEvent.from_exception(exc, sequence=seq).to_sse()  # code → wire
 ```
 
+A keepalive-emitting host holds the pending `__anext__` in a persistent
+task (`asyncio.wait({task}, timeout=…)`) — `wait_for(anext(it), …)`
+cancels it on timeout, throwing CancelledError into the generator and
+killing the stream mid-turn. `examples/fastapi_chatbot.py` is the
+reference implementation of this relay, pinned by the `external_postgres`
+suite.
+
 Wire form: `event: <name>\ndata: <compact single-line JSON object>\n\n` with
 `ensure_ascii=True` (escaped newlines — no model output can break framing);
 byte-compatible with the kit's `_frame` and its `parseFrame`. No `id:` field —
@@ -407,8 +414,11 @@ data are refused, never coerced (`memory_format_unsupported`).
 
 **PostgresStore layout (N3).** The relational reference substrate for
 standalone deployments, implementing both seams as one class
-(`PostgresStore(dsn, *, schema="neosian", clock=None)` — the ctor is pure
-validation; the pool opens lazily, `aclose()`/`async with` release it).
+(`PostgresStore(dsn, *, schema="neosian", clock=None, min_size=4,
+max_size=None, pool_timeout=30.0)` — the ctor is pure validation,
+pool-sizing kwargs included: they default to psycopg's own values, are
+validated at construction, and reach the driver only when the pool opens
+lazily; `aclose()`/`async with` release it).
 Tables in one dedicated schema (`memories` + `memory_versions` +
 `memory_redactions` erasure trail; `conversations` + `turns` +
 `projections`), every row carrying its ownership key (scope /

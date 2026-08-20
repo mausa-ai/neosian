@@ -58,6 +58,11 @@ CI supplies the DSN from a service container — never a secret — so the
 provider jobs (DESIGN §12 ledger #40). Each test creates and drops its
 own uniquely-named schema; the server keeps no state between runs.
 
+`NEOSIAN_EXAMPLE_POSTGRES_DSN` is read only by
+`examples/fastapi_chatbot.py` — the library itself never reads a DSN
+from the environment. Unset, the example app still boots (construction
+is pure validation) and logs a warning; requests fail at first pool use.
+
 ## CI secrets
 
 One secret per provider, named exactly like the env key. The scheduled /
