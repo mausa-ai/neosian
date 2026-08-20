@@ -2,19 +2,18 @@
 
 > **▶ Current phase: N4 — Completeness**
 >
-> *(2026-08-20: N4 slices A+B shipped — v0.65.0 the native
-> `memory_20250818` flag (pure transport swap incl. the trained
-> `file_text`/`view_range` vocabulary; ledger #41–#44), v0.66.0
-> server-side compaction as an agent-level pass-through
-> (`CompactionBlock` in the content union, `server_compaction` per-call
-> kwarg, spend folded from `usage.iterations`, fallback gated; ledger
-> #45–#49; log-projection stays Conversation's foundation). Remaining in
-> N4: MCP packaging, the memory eval harness, docs/1.0. Standing ruling:
-> neosian's phases run to completion before the kit's P10 vendors from a
-> `v<X.Y.Z>` release tag. Still deferred per §9.10: the ECOSYSTEM
-> amendment naming `ConversationStore` — a two-repo move for a future
-> session-pair. Actions is still red on org billing (2026-08-18); CI
-> confirmation for v0.54.0 onward lands at /ship once fixed.)*
+> *(2026-08-20: N4 slices A+B+C shipped — v0.65.0 the native
+> `memory_20250818` flag (ledger #41–#44), v0.66.0 server-side
+> compaction pass-through (ledger #45–#49), v0.67.0 the MCP memory
+> server (`neosian[mcp]` extra, `python -m neosian.mcp`, the one
+> `ToolDefinition` served verbatim over the shared `memory/dispatch.py`
+> ladder; ledger #50–#53). Remaining in N4: the memory eval harness,
+> docs/1.0. Standing ruling: neosian's phases run to completion before
+> the kit's P10 vendors from a `v<X.Y.Z>` release tag. Still deferred
+> per §9.10: the ECOSYSTEM amendment naming `ConversationStore` — a
+> two-repo move for a future session-pair. Actions is still red on org
+> billing (2026-08-18); CI confirmation for v0.54.0 onward lands at
+> /ship once fixed.)*
 >
 > The pointer above must equal the first phase heading without ✅ — if they
 > disagree, say so and trust the checkboxes. Companion to [VISION.md](VISION.md)
@@ -482,6 +481,7 @@ DESIGN: §2, §6, §10.
   Claude Desktop, Cursor, any MCP client, backed by the same stores.
   Ships as an optional extra — `uv add "neosian[mcp]"`, module
   `neosian.mcp` — one repo, one release train.
+  *(✅ shipped v0.67.0, slice C)*
 - Memory eval harness built on the existing `evaluation/` module — there is
   no public benchmark for the agent-memory regime (LoCoMo measures the
   personalization regime), so we measure ourselves: write discipline,
@@ -544,6 +544,36 @@ messages now legitimately carry text+compaction block lists (media
 still raises) — the one deliberate contract change, in `Message`'s
 docstring. Ledger #45–#49. 1551 unit tests, zero keys. Remaining in
 N4: MCP packaging, memory eval harness, docs/1.0.
+
+**Slice C shipped at v0.67.0 (2026-08-20)** — memory serves MCP clients
+from the same store. Options-first rulings (user confirmed): one
+`memory` tool serving `create_memory_tool`'s `ToolDefinition` verbatim
+through the SDK's low-level `Server` (#50); flags + env-DSN config
+(`--root`/`--scope`/`--mount`/`--actor`/`--schema`,
+`NEOSIAN_MCP_POSTGRES_DSN`, no `--dsn` ever, #53); `instructions` =
+`memory_system_section` at construction + per-connection lifespan
+refresh (#51); stdio only + public `create_memory_server` for
+embedders. Prep: the tools.py command ladder extracted to
+`memory/dispatch.py` — function tool, native flag, and MCP now execute
+one dispatcher (test_tools.py passed untouched). `_foundation/mcp/`
+(sdk/server/settings, postgres-driver lazy-import pattern) +
+`neosian/mcp/` facade (`__all__ = ["create_memory_server"]`) +
+`python -m neosian.mcp` + `neosian mcp` pass-through; ToolResult maps
+to native MCP shape (`is_error` in-band, `system_reminder` as second
+block, #52); handler catches mirror tool_exec so mistyped values fail
+correctively on every transport; entry point owns the store lifetime
+(pool closed on exit). `mcp>=2,<3` extra + dev group; new import
+contract (mcp ↛ agent/providers); SDK verified against the installed
+2.0.0 wheel. Tests: dispatch dict-seam suite, in-process
+`Client(server)` sessions, a 16-case byte-equality parity table +
+mistyped-value parity, the tri-transport done-when over one FileStore,
+entry/settings/exports suites (root and facade imports stay SDK-free
+by subprocess pin). Dogfooded over the real stdio wire: scripted SDK
+client → create/str_replace/view + read-only corrective + version rows
+carrying `actor: mcp:dogfood`. 1641 unit tests, zero keys. Deferred:
+streamable HTTP (embedders mount the factory's server); README MCP
+snippet waits for the docs/1.0 slice. Remaining in N4: memory eval
+harness, docs/1.0.
 
 ---
 
@@ -943,3 +973,40 @@ N4: MCP packaging, memory eval harness, docs/1.0.
   lists (media still raises) — the old raise-test re-pinned to media.
   1551 unit tests, zero keys; v0.66.0. Remaining in N4: MCP packaging,
   eval harness, docs/1.0.
+- 2026-08-20 | N4 (slice C) | **Memory serves MCP clients from the same
+  store.** Rulings (options-first): one `memory` tool, the low-level
+  `Server` serving `create_memory_tool`'s definition verbatim (#50);
+  flags + `NEOSIAN_MCP_POSTGRES_DSN` (no `--dsn` — argv is world-readable;
+  #53); instructions = `memory_system_section` at construction +
+  per-connection lifespan refresh (#51); stdio + public
+  `create_memory_server`, streamable HTTP deferred. Prep: the tools.py
+  ladder extracted verbatim to `memory/dispatch.py` (`command: object`,
+  raw pass-through preserved — mistyped values keep their v0.66.0
+  failure modes; test_tools.py passed untouched). `_foundation/mcp/`:
+  `sdk.py` (lazy loader, postgres-driver twin, install-hint
+  ImportError), `server.py` (async factory — it renders instructions;
+  handler catches mirror tool_exec's TypeError/Exception split so every
+  transport fails correctively; ToolResult → native MCP shape, reminder
+  as second block, #52), `settings.py` (argparse, pure; `--scope` sugar
+  = one rw mount at `memories`; mount grammar
+  `scope=…,path=…[,ro]`; conflicts are errors, never precedence).
+  `neosian/mcp/`: facade (+1 public name), `serve.py` (the asyncio.run
+  tier; store built and closed here), `__main__.py`; `neosian mcp`
+  typer pass-through forwards argv verbatim (one grammar, argparse owns
+  --help). Packaging: `mcp = ["mcp>=2,<3"]` extra + dev group (SDK v2
+  verified against the installed 2.0.0 wheel: ctor-registered handlers,
+  `Client(server)` in-process, fd-claiming `stdio_server` never entered
+  by tests); sixth import contract (mcp ↛ agent + providers). Tests:
+  dispatch dict-seam suite (hints all reachable), server/client-session
+  suites, 16-case byte-equality parity + mistyped-value parity,
+  tri-transport done-when (function tool → native marker → MCP client
+  over one FileStore), settings/entry/exports (SDK-free imports by
+  subprocess pin), CLI forward test. Dogfood: scripted SDK client over
+  the real stdio wire — instructions with the prompt pack, create v1 →
+  str_replace v2, read-only corrective + hint, version rows
+  `actor: mcp:dogfood`; nested `claude -p` is broken in this env, so
+  the Claude-Code-as-host check is queued for a manual session
+  (`claude mcp add neosian-memory -- uv run --directory <repo> python
+  -m neosian.mcp --root … --scope user:me`). 1641 unit tests, zero
+  keys; v0.67.0. Remaining in N4: memory eval harness, docs/1.0
+  (README MCP snippet lands there).

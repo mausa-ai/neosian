@@ -60,8 +60,20 @@ own uniquely-named schema; the server keeps no state between runs.
 
 `NEOSIAN_EXAMPLE_POSTGRES_DSN` is read only by
 `examples/fastapi_chatbot.py` — the library itself never reads a DSN
-from the environment. Unset, the example app still boots (construction
-is pure validation) and logs a warning; requests fail at first pool use.
+from the environment; the MCP entry point does (below). Unset, the
+example app still boots (construction is pure validation) and logs a
+warning; requests fail at first pool use.
+
+## The MCP server — a DSN, not an API key
+
+`NEOSIAN_MCP_POSTGRES_DSN` is read only by `python -m neosian.mcp` (and
+the `neosian mcp` pass-through), never by the library: the MCP entry
+point is a host-spawned process configured through argv, and a DSN must
+not appear there — argv is world-readable in `ps` (DESIGN §12 ledger
+#53). Unset, the server requires `--root PATH` and serves a FileStore;
+set, it serves a `PostgresStore` and `--root` is refused (an explicit
+conflict, no precedence rule). The server never applies the DDL — run
+`python -m neosian.schemas postgres | psql` first (DESIGN §8 C1).
 
 ## CI secrets
 

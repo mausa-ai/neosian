@@ -24,7 +24,8 @@ neosian/                  # the facade: __init__.py re-exports the public API
 ├── _foundation/          # all real code: agent/ llm/ shared/ tools/
 │                         #   guardrails/ blackboard/ evaluation/
 │                         #   (+ memory/, N1; + conversation/, N2;
-│                         #    + postgres/, N3)
+│                         #    + postgres/, N3; + mcp/, N4)
+├── mcp/                  # public MCP facade + the stdio entry point (N4)
 ├── _cli/                 # playground, eval CLI, config
 └── assets/               # data files: prompts (YAML), sql (DDL), ascii art
 ```
@@ -36,6 +37,8 @@ out, `forbidden` type only):
 - `_foundation.memory` and `_foundation.postgres` ↛ provider internals
   (`_foundation.llm.<provider>` modules) — storage substrates speak only
   to ABCs.
+- `_foundation.mcp` ↛ `_foundation.agent` and ↛ provider internals — the
+  MCP server is store + tool layer only (N4).
 - `_foundation.conversation` ↛ provider internals, with
   `allow_indirect_imports` (Conversation drives an `Agent`, which owns the
   router — ledger #26); and the conversation *storage-seam* modules (`base`,
@@ -515,6 +518,36 @@ is accepted first-class alongside the schema names — `file_text` as
 and `view`'s optional `view_range` — so native transport never hits an
 unexpected-keyword failure.
 
+**MCP transport (N4 slice C).** `neosian.mcp` serves the same memory over
+the Model Context Protocol on stdio: `python -m neosian.mcp --root PATH
+--scope user:me` (or the pass-through `neosian mcp`), or
+`await create_memory_server(config, *, actor="mcp")` for hosts that embed.
+The MCP tool is *the* tool — `create_memory_tool`'s `ToolDefinition` is
+served verbatim through the SDK's low-level `Server` (explicit
+`input_schema`, never type-hint re-derivation), so the function tool, the
+native `memory_20250818` declaration and the MCP `tools/list` entry are
+three transports over one definition. Execution is shared too: the
+command ladder lives in `memory/dispatch.py`, so the unknown-command
+guard, the per-command argument checks, the `file_text` alias and the
+`MemoryStoreError → "[code] message"` + hint mapping run once for all
+three (ledger #50). `ToolResult` maps to MCP's native shape rather than
+the function tool's JSON envelope — data or error as a text block,
+`system_reminder` as a second block, `is_error` carrying the failure —
+which is exactly what MCP's in-band tool errors are for (ledger #52). The
+server's `instructions` are `memory_system_section(config)`, rendered at
+construction and again per connection in the SDK lifespan: the
+per-session analogue of the frozen-index-per-conversation rule (ledger
+#51). Configuration is flags plus one env var — mounts and the FileStore
+root in argv, Postgres only through `NEOSIAN_MCP_POSTGRES_DSN`, never a
+DSN on a command line (ledger #53); the `--scope` sugar mirrors
+`memory_scope=` (one rw mount at `memories`); mount descriptions are
+factory-only prose. The entry point owns the store's lifetime and closes
+the pool on exit — the factory and the per-connection lifespan never do.
+The `mcp` extra carries the SDK (`mcp>=2,<3`); `import neosian` and
+`import neosian.mcp` stay SDK-free (pinned by subprocess tests).
+Streamable HTTP is deferred — an embedding host mounts the factory's
+server on its own transport.
+
 ## §9 Conversation & compaction **(N2)**
 
 Decided in the N2 opening design discussion (2026-08-19); slice A implements
@@ -878,3 +911,7 @@ never a silent divergence. Numbering is monotonic, never reused.
 | 47 | `provider is ANTHROPIC` as the compaction support check | **`ModelSpec.supports_compaction_blocks`**, True on Opus 5 / Opus 4.6 / Sonnet 5, False on Haiku 4.5 | Haiku 4.5 is Anthropic *and* outside the compact beta's support set — the provider check ships a guaranteed 400. One field serves both the request pre-flight and the history-side fallback gate (contrast #44, where no failure mode existed) |
 | 48 | A `compaction` AgentEvent so hosts see paging happen | **Invisible to the event vocabulary; spend folds into `Usage`** | ECOSYSTEM §5 is frozen (a new event is a two-repo move) and a compaction block is context bookkeeping, not user-visible content. The beta reports summarization tokens only under `usage.iterations` — the client folds compaction entries into the reported `Usage`, keeping ledger #29's money-visibility promise |
 | 49 | Server compaction as a `CompactionConfig` mode Conversation can ride | **Agent-level only; Conversation warns when the flag is on under it** | Log-projection drops replaced turns' messages at the warm boundary — server compaction blocks vanish with them and the server re-compacts (and re-bills) the same span every send. The two paging models do not compose; log-projection stays the foundation |
+| 50 | The MCP SDK's blessed route — `MCPServer` + `@mcp.tool()` deriving the schema from type hints (or six MCP tools, one per command) | **The low-level `Server` with the hand-authored `ToolDefinition` served verbatim**: one `memory` tool with the `command` enum, executing through the extracted `memory/dispatch.py` ladder shared with the function tool | Re-derivation would fork the schema and description the models are post-trained on from ledger #19's single definition; three transports over one definition is the point, and the drift would be silent |
+| 51 | MCP `instructions` as a static string chosen once per process | **`memory_system_section(config)` rendered at construction *and* refreshed per connection in the SDK lifespan** | The per-session analogue of the frozen-index rule. Honest limit: `InitializationOptions` is built before the lifespan runs, so handshake-era clients read the construction-time render and 2026-07-28-era clients read the per-connection one — under stdio (one session per process) they are the same instant. Streamable HTTP will need a real per-connection mechanism |
+| 52 | `CallToolResult` carrying `ToolResult.to_json()` — the same bytes the function tool hands the model | **Native mapping**: data/error as a text block, `system_reminder` as a second block, `is_error` on failure | MCP's spec puts tool errors in-band precisely so the model self-corrects — that *is* `ToolResult`, in MCP's vocabulary; a JSON envelope inside a protocol that already has success/error framing is double-wrapping every host would unwrap |
+| 53 | The library never reads a DSN from the environment (SERVICES.md, N3) | **`neosian.mcp`'s entry point reads `NEOSIAN_MCP_POSTGRES_DSN`; there is no `--dsn` flag** | An MCP server is a process a host spawns with argv, and argv is world-readable in `ps`. The library rule is unchanged — the reader is the entry point, the same tier as the FastAPI example's `NEOSIAN_EXAMPLE_POSTGRES_DSN` |

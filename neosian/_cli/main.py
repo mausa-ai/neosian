@@ -343,6 +343,25 @@ def evaluate(
     console.print(f"[dim]{output_path}[/dim]")
 
 
+@app.command(
+    name="mcp",
+    context_settings={
+        "allow_extra_args": True,
+        "ignore_unknown_options": True,
+        "help_option_names": [],
+    },
+)
+def mcp(ctx: typer.Context) -> None:
+    """Serve neosian memory to MCP clients on stdio.
+
+    A thin pass-through: every argument goes verbatim to the one grammar
+    (`python -m neosian.mcp --help`). Needs the `mcp` extra.
+    """
+    from neosian.mcp.serve import main as mcp_main
+
+    raise typer.Exit(mcp_main(list(ctx.args)))
+
+
 def main() -> None:
     """Main entry point for the CLI."""
     app()

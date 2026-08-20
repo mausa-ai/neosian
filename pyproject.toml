@@ -1,6 +1,6 @@
 [project]
 name = "neosian"
-version = "0.66.0"
+version = "0.67.0"
 description = "Stateless agentic AI library. LLM orchestration, tool execution, streaming."
 readme = "README.md"
 license = "Apache-2.0"
@@ -20,14 +20,18 @@ dependencies = [
 ]
 
 # The reference PostgresStore rides the `postgres` extra; the core install
-# stays driver-free (keyless boot never needs a database).
+# stays driver-free (keyless boot never needs a database). The MCP memory
+# server rides the `mcp` extra the same way — `import neosian` and
+# `import neosian.mcp` stay SDK-free (pinned by subprocess tests).
 [project.optional-dependencies]
 postgres = ["psycopg[binary,pool]>=3.2"]
+mcp = ["mcp>=2,<3"]
 
 [dependency-groups]
 dev = [
     "black>=26.5.1",
     "import-linter>=2.13",
+    "mcp>=2,<3",
     "mypy>=2.3.1",
     "psycopg[binary,pool]>=3.2",
     "pytest>=9.1.1",
@@ -121,6 +125,19 @@ source_modules = [
     "neosian._foundation.postgres",
 ]
 forbidden_modules = [
+    "neosian._foundation.llm.groq",
+    "neosian._foundation.llm.openai",
+    "neosian._foundation.llm.anthropic",
+    "neosian._foundation.llm.cerebras",
+    "neosian._foundation.llm.fake",
+]
+
+[[tool.importlinter.contracts]]
+name = "the MCP server speaks only to the store and tool layers"
+type = "forbidden"
+source_modules = ["neosian._foundation.mcp"]
+forbidden_modules = [
+    "neosian._foundation.agent",
     "neosian._foundation.llm.groq",
     "neosian._foundation.llm.openai",
     "neosian._foundation.llm.anthropic",
