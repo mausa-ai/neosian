@@ -11,9 +11,10 @@
 > docs/1.0. Standing ruling: neosian's phases run to completion before
 > the kit's P10 vendors from a `v<X.Y.Z>` release tag. Still deferred
 > per §9.10: the ECOSYSTEM amendment naming `ConversationStore` — a
-> two-repo move for a future session-pair. Actions is still red on org
-> billing (2026-08-18); CI confirmation for v0.54.0 onward lands at
-> /ship once fixed.)*
+> two-repo move for a future session-pair. CI is green: after the
+> billing fix (2026-08-20), run 32407460787 on the v0.67.0 head passed
+> whole — lint, the 3.12–3.14 keyless matrix, and the postgres job's
+> first-ever execution — confirming v0.54.0 onward at once.)*
 >
 > The pointer above must equal the first phase heading without ✅ — if they
 > disagree, say so and trust the checkboxes. Companion to [VISION.md](VISION.md)
