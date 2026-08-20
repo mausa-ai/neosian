@@ -70,6 +70,14 @@ class AgentSession:
             self._clients[provider] = self._agent._create_client(provider)
         return self._clients[provider]
 
+    def _rebind(self, agent: Agent) -> None:
+        """Point the session at a freshly derived Agent, keeping the client
+        cache and sticky fallback state — Conversation rebuilds its agent
+        at every compaction boundary (DESIGN §9.5.10) and must not pay a
+        reconnect; `derive_config` carries `client_factory` unchanged, so
+        the cached clients stay valid."""
+        self._agent = agent
+
     @overload
     async def run(
         self,

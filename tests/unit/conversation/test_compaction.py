@@ -174,6 +174,28 @@ class TestRunBoundary:
         assert result.usage == _USAGE
         assert result.model == Model.FAKE.value
 
+    async def test_boundary_does_not_close_the_acquired_client(
+        self, store: FileStore
+    ) -> None:
+        """`acquire` is a lease (ledger #33): the caller owns the client's
+        lifetime — closing it here would kill a session-cached client."""
+        prose = "decision: we ship on Friday. " * 20
+        turns = [_exchange(1, agent=prose), _exchange(2), _exchange(3)]
+        batch = DigestBatch(lines=[DigestLine(turn=1, line="shipped on Friday")])
+        fake = FakeClient(
+            FakeScript(turns=(FakeTurn(content=batch.model_dump_json(), usage=_USAGE),))
+        )
+        await run_boundary(
+            store=store,
+            conversation_id=_CONVERSATION,
+            turns=turns,
+            projections=(),
+            config=CompactionConfig(hot_turns=2, digest_chars=100),
+            model=Model.FAKE,
+            acquire=_acquire(fake),
+        )
+        assert fake.closed is False
+
     async def test_partial_digest_falls_back_by_turn_number(
         self, store: FileStore
     ) -> None:

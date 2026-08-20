@@ -19,6 +19,7 @@ import asyncio
 from typing import TYPE_CHECKING, Literal, Self, overload
 
 from neosian._foundation.agent.base import Agent
+from neosian._foundation.agent.session import AgentSession
 from neosian._foundation.conversation.compaction import (
     CompactionConfig,
     CompactionResult,
@@ -41,6 +42,7 @@ from neosian._foundation.shared.context_policy import ContextPolicy
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Sequence
+    from types import TracebackType
 
     from neosian._foundation.agent.events import AgentEvent
     from neosian._foundation.agent.hooks import TurnEvent
@@ -70,6 +72,13 @@ class Conversation:
 
     Compaction is default-on (ledger #28); `CompactionConfig(enabled=
     False)` disables the automatic trigger, `compact()` always runs.
+
+    One internal `AgentSession` backs every send *and* compaction's
+    distillation calls — one cached client per provider, and sticky
+    fallback state across sends (§9.5.14). `aclose()` releases the pool;
+    `async with conversation:` is the sugar. Not closing is safe: the
+    pool lives as long as the process, exactly like an unclosed
+    `AgentSession`.
     """
 
     def __init__(
@@ -105,6 +114,7 @@ class Conversation:
         self._turns: list[ConversationTurn] = []
         self._projections: list[ConversationProjection] = []
         self._agent: Agent | None = None
+        self._session: AgentSession | None = None
         self._captured: AgentResponse | None = None
 
     @property
@@ -168,6 +178,32 @@ class Conversation:
                 )
             return await self._run_boundary()
 
+    async def aclose(self) -> None:
+        """Release the client pool; idempotent.
+
+        A release, not a destroy: a later `send()` opens a fresh pool.
+        Deliberately does not take the send lock — waiting on it would
+        deadlock on a stream the consumer abandoned (the generator holds
+        the lock until collected). Closing under a live stream fails
+        that stream; finish or abandon it first.
+        """
+        session, self._session = self._session, None
+        if session is not None:
+            await session.close()
+
+    async def __aenter__(self) -> Self:
+        # No I/O — lazy start (§9.5.9) stays literally true; call
+        # `start()` explicitly to surface store errors early.
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        await self.aclose()
+
     # Internal plumbing ----------------------------------------------------
 
     def _capture(self, event: TurnEvent) -> None:
@@ -211,6 +247,16 @@ class Conversation:
             self._agent = Agent(derived)
         else:
             self._agent = Agent(derived, self._max_tool_iterations)
+        if self._session is not None:
+            self._session._rebind(self._agent)
+
+    def _session_for_run(self) -> AgentSession:
+        """The one client pool: sends and distillation share it, and a
+        boundary rebuild rebinds it instead of reconnecting."""
+        assert self._agent is not None
+        if self._session is None:
+            self._session = AgentSession(self._agent)
+        return self._session
 
     def _view(self) -> list[Message]:
         return render_view(self._turns, self._projections)
@@ -224,7 +270,7 @@ class Conversation:
             projections=self._projections,
             config=self._compaction,
             model=self._base_config.model,
-            acquire=self._agent._create_client,
+            acquire=self._session_for_run()._get_or_create_client,
         )
         if result.entries:
             self._projections.extend(result.entries)
@@ -273,7 +319,7 @@ class Conversation:
                 view = self._view()
             assert self._agent is not None
             self._captured = None
-            response = await self._agent.run([*view, user], stream=False)
+            response = await self._session_for_run().run([*view, user], stream=False)
             await self._persist(user)
             return fold_response(response, compacted)
 
@@ -286,7 +332,7 @@ class Conversation:
                 view = self._view()
             assert self._agent is not None
             self._captured = None
-            events = await self._agent.run([*view, user], stream=True)
+            events = await self._session_for_run().run([*view, user], stream=True)
             async for event in events:
                 # The capture hook fires before the terminal event is
                 # yielded (register #6), so persisting here — before the

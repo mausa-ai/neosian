@@ -1,138 +1,14 @@
-"""Session management for playground.
+"""Arena session records for the playground.
 
-Handles in-memory conversation history and optional persistence.
+Single-agent chat persists through `Conversation` + `FileStore` since N2
+(see `_cli/chat.py`); arena mode — N models over one in-memory message
+list — keeps its own opt-in JSON save at exit.
 """
 
 import json
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any
-
-from neosian._foundation.llm.base import Message, Role
-from neosian._foundation.llm.codec import message_from_json, message_to_json
-from neosian._foundation.shared.types import GuardrailResult
-
-# Format marker written into every save; bump on incompatible schema change
-SESSION_FORMAT = 1
-
-
-@dataclass
-class BlockedMessage:
-    """A message that was blocked by guardrails."""
-
-    content: str
-    timestamp: str
-    guardrail_result: GuardrailResult
-
-
-@dataclass
-class Session:
-    """In-memory conversation session.
-
-    Stores messages during a playground session and can save to JSON.
-    Blocked messages are stored separately for logging but excluded from LLM history.
-    """
-
-    messages: list[Message] = field(default_factory=list)
-    blocked_messages: list[BlockedMessage] = field(default_factory=list)
-    agent_name: str = ""
-    started_at: str = field(default_factory=lambda: datetime.now().isoformat())
-
-    def add_message(self, message: Message) -> None:
-        """Add a message to the session."""
-        self.messages.append(message)
-
-    def add_user_message(self, content: str) -> None:
-        """Add a user message to the session."""
-        self.messages.append(Message(role=Role.USER, content=content))
-
-    def add_assistant_message(self, content: str) -> None:
-        """Add an assistant message to the session."""
-        self.messages.append(Message(role=Role.ASSISTANT, content=content))
-
-    def add_blocked_message(
-        self, content: str, guardrail_result: GuardrailResult
-    ) -> None:
-        """Add a blocked message to the session.
-
-        Blocked messages are stored separately and not included in LLM history.
-        """
-        self.blocked_messages.append(
-            BlockedMessage(
-                content=content,
-                timestamp=datetime.now().isoformat(),
-                guardrail_result=guardrail_result,
-            )
-        )
-
-    def get_messages(self) -> list[Message]:
-        """Get all messages (excluding system)."""
-        return [m for m in self.messages if m.role != Role.SYSTEM]
-
-    def to_dict(self) -> dict[str, object]:
-        """Convert session to a serializable dictionary (full fidelity)."""
-        return {
-            "neosian_session": SESSION_FORMAT,
-            "agent_name": self.agent_name,
-            "started_at": self.started_at,
-            "messages": [message_to_json(m) for m in self.messages],
-            "blocked_messages": [
-                {
-                    "content": bm.content,
-                    "timestamp": bm.timestamp,
-                    "guardrail_result": asdict(bm.guardrail_result),
-                }
-                for bm in self.blocked_messages
-            ],
-        }
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "Session":
-        """Rebuild a session from `to_dict` output.
-
-        Messages decode with full fidelity (tool_calls, tool_call_id,
-        reasoning). Blocked messages are log records, never LLM history —
-        they are not restored.
-        """
-        session = cls(
-            agent_name=data.get("agent_name", ""),
-            started_at=data.get("started_at", datetime.now().isoformat()),
-        )
-        session.messages = [message_from_json(m) for m in data.get("messages") or []]
-        return session
-
-    @classmethod
-    def load(cls, path: str | Path) -> "Session":
-        """Load a previously saved session from a JSON file."""
-        with Path(path).open(encoding="utf-8") as f:
-            return cls.from_dict(json.load(f))
-
-    def save(self, path: str | Path) -> Path:
-        """Save session to a JSON file.
-
-        Args:
-            path: Path to save the session.
-
-        Returns:
-            The path where the session was saved.
-        """
-        path = Path(path)
-        path.parent.mkdir(parents=True, exist_ok=True)
-
-        with path.open("w", encoding="utf-8") as f:
-            json.dump(self.to_dict(), f, indent=2, ensure_ascii=False)
-
-        return path
-
-    def generate_filename(self) -> str:
-        """Generate a filename for the session.
-
-        Returns:
-            A filename like '2024-12-06_14-32_my-agent.json'
-        """
-        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
-        return f"{timestamp}_{self.agent_name}.json"
 
 
 @dataclass

@@ -2,10 +2,10 @@
 
 import pytest
 
-from neosian._cli.playground import (
+from neosian._cli.models import (
     _HIDDEN_MODELS,
-    _display_name,
-    _get_models_for_provider,
+    display_name,
+    get_models_for_provider,
 )
 from neosian._foundation.shared.types import DEFAULT_MODELS, Model, Provider
 
@@ -19,20 +19,20 @@ class TestPlaygroundModelPicker:
         for model in Model:
             if model in _HIDDEN_MODELS:
                 continue
-            picker_models = [m for m, _ in _get_models_for_provider(model.provider)]
+            picker_models = [m for m, _ in get_models_for_provider(model.provider)]
             assert model in picker_models, f"{model} missing from picker"
 
     def test_hidden_models_excluded(self) -> None:
         """Hidden models never appear in any provider's picker."""
         for provider in Provider:
-            picker_models = [m for m, _ in _get_models_for_provider(provider)]
+            picker_models = [m for m, _ in get_models_for_provider(provider)]
             for hidden in _HIDDEN_MODELS:
                 assert hidden not in picker_models
 
     def test_default_model_listed_first_with_marker(self) -> None:
         """Each provider's default model is first and labeled (default...)."""
         for provider, default in DEFAULT_MODELS.items():
-            models = _get_models_for_provider(provider)
+            models = get_models_for_provider(provider)
             assert models, f"no picker models for {provider}"
             first_model, first_label = models[0]
             assert first_model is default
@@ -41,10 +41,10 @@ class TestPlaygroundModelPicker:
     def test_require_reasoning_filters(self) -> None:
         """require_reasoning=True only returns reasoning-capable models."""
         for provider in Provider:
-            for model, _ in _get_models_for_provider(provider, require_reasoning=True):
+            for model, _ in get_models_for_provider(provider, require_reasoning=True):
                 assert model.supports_reasoning
 
     def test_display_name_contains_model_id(self) -> None:
         """Labels always start with the exact model ID."""
         for model in Model:
-            assert _display_name(model).startswith(model.value)
+            assert display_name(model).startswith(model.value)

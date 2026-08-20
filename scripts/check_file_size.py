@@ -15,7 +15,6 @@ ROOT = Path(__file__).parents[1]
 
 ALLOWLIST: dict[str, str] = {
     # path (relative to repo root) -> reason (mandatory)
-    "neosian/_cli/playground.py": "CLI monolith; migrates onto Conversation in N2",
     "neosian/_foundation/shared/types.py": (
         "the model registry + config types; NS grew it with µ$ pricing and FAKE"
     ),

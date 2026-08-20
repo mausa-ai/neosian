@@ -67,6 +67,10 @@ Try agents interactively with the built-in playground:
 uv run neosian playground examples/basic_agent.py
 ```
 
+Playground chats persist per turn to `.neosian/conversations/<id>/` in the
+working directory (the id is printed at chat start); continue one later with
+`--resume <id>`.
+
 ## Providers
 
 API keys are read from environment variables; a provider is available when its

@@ -1,21 +1,20 @@
 # Neosian Roadmap — Memory & Conversation
 
-> **▶ Current phase: N2 — Conversation layer**
+> **▶ Current phase: N3 — PostgresStore**
 >
-> *(2026-08-20: slice B shipped at v0.61.0 — compaction v1 per §9.6 is
-> live: the log-projection view, the boundary (deterministic log lines,
-> batched digest distillation, model-written epoch folds), the
-> `recall_turn` tool, `CompactionConfig` default-on with lazy
-> registration, manual `Conversation.compact()`, spend folded into the
-> send's response/terminal event (ledger #27–#32). Slice A shipped
-> 2026-08-19 at v0.60.0 (DESIGN §9, `ConversationStore` + kit, FileStore
-> turns, send/resume, `memory_scope=` sugar, codec; ledger #21–#26).
-> Standing ruling: neosian's phases run to completion before the kit's
-> P10 vendors from a `v<X.Y.Z>` release tag. Still in N2: **slice C** —
-> the CLI migration onto Conversation + FileStore (also fixing the
-> --menu rebuild drops), `examples/conversation_*.py`, and optional
-> session reuse/`aclose()`. The ECOSYSTEM amendment for the new seam is
-> deferred per §9.10.)*
+> *(2026-08-20: N2 closed at v0.62.0 — slice C landed the CLI migration
+> onto `Conversation` + `FileStore` (persist-per-send under the cwd's
+> `.neosian/`, `--resume` by conversation id, the nine-field `--menu`
+> rebuild fix, legacy Session deleted), session reuse — one internal
+> `AgentSession` per Conversation with `aclose()`/`async with` and the
+> `acquire` lease (§9.5.14, ledger #33) — and
+> `examples/conversation_example.py`. Slice B shipped v0.61.0
+> (compaction v1, ledger #27–#32); slice A v0.60.0 (DESIGN §9, the
+> store seam, send/resume, ledger #21–#26). Standing ruling: neosian's
+> phases run to completion before the kit's P10 vendors from a
+> `v<X.Y.Z>` release tag. Still deferred per §9.10: the ECOSYSTEM
+> amendment naming `ConversationStore` — a two-repo move for a future
+> session-pair.)*
 >
 > The pointer above must equal the first phase heading without ✅ — if they
 > disagree, say so and trust the checkboxes. Companion to [VISION.md](VISION.md)
@@ -305,7 +304,7 @@ section in one event loop, `examples/memory_agent.py`, and the done-when
 pinned keylessly (two scripted sessions over one FileStore root). Ledger
 #20: `create` stays create-or-overwrite with an overwrite reminder.
 
-## N2 — Conversation layer (v0.60–0.62)
+## N2 — Conversation layer (v0.60–0.62) ✅ 2026-08-20
 
 DESIGN: §9 (written by this phase's design discussion), §3.
 
@@ -380,6 +379,25 @@ compaction spend folded into the send's response/terminal event
 to slice C: the CLI migration (+ --menu rebuild drops), examples,
 optional session reuse/`aclose()`; the §9.10 ECOSYSTEM amendment stays
 deferred.
+
+**Slice C shipped at v0.62.0 (2026-08-20), closing the phase** — the CLI
+dogfoods Conversation. Session reuse per §9.5.14: one internal
+`AgentSession` per Conversation (lazy, rebound at the compaction
+boundary — never a reconnect), shared by sends and distillation via the
+`acquire` lease (ledger #33 — the callee no longer closes what it
+acquired); public `aclose()` + `async with`, sticky fallback now spans a
+conversation's sends. The playground: chat rides `Conversation` +
+`FileStore(cwd/.neosian)` — persist-per-send (crash/^C loses nothing;
+compaction default-on means long chats now spend on distillation, the
+intended dogfood), generated timestamp+agent ids printed at start,
+`--resume <id>` (legacy JSON refused with a naming error), save-at-exit
+gone, the in-place system-prompt mutation gone; the nine-field `--menu`
+rebuild fix via `dataclasses.replace` (arena's twin keeps `memory=None`
+deliberately); the monolith split into `playground`/`chat`/`arena`/
+`models`/`ui`, retiring the size-gate allowlist entry; the single-agent
+`Session` deleted (Arena types stay — arena remains off Conversation).
+`examples/conversation_example.py` (quickstart, resume, memory-scope
+sugar). 1471 unit tests, zero keys.
 
 ## N3 — PostgresStore (v0.63–0.64)
 
@@ -670,3 +688,34 @@ DESIGN: §2, §6, §10.
   trigger end-to-end, streaming parity, abandonment, resume-compacted.
   1455+ unit tests, zero keys; v0.61.0. Carried to slice C: CLI
   migration (+ --menu drops), examples, session reuse/`aclose()`.
+- 2026-08-20 | N2 (slice C) | **The CLI dogfoods Conversation; N2
+  closes.** Session reuse: `Conversation` owns one lazy `AgentSession`
+  (`_session_for_run`), rebound — not rebuilt — at the compaction
+  boundary (`AgentSession._rebind`; `derive_config` carries
+  `client_factory`, so the cache stays valid); sends and distillation
+  share the pool, which forced the `acquire` lease (ledger #33: distill's
+  `finally: close()` would have left a dead handle in the cache); public
+  `aclose()` (idempotent release, no send-lock — abandoned streams hold
+  it) + `__aenter__`/`__aexit__` (enter does no I/O, §9.5.9 intact);
+  sticky fallback now spans sends — all written into §9.5.14. CLI:
+  `playground.py` (1104 → 130) split into `chat` (the migration:
+  `new_conversation_id` slugging into the §9.4 grammar,
+  `resolve_resume` refusing path forms *before* grammar-validating —
+  `last.json` is a legal id, `open_chat` building
+  `FileStore(cwd/.neosian)` inside the one event loop so
+  --help/arena/cancel never mkdir), `arena` (dead `_run_arena_model`
+  deleted; `arena_config` = replace + `memory=None`), `models`, `ui`;
+  `menu_config` = `dataclasses.replace(base, model=…)` fixing the nine
+  silent drops; `Session`/save-at-exit/the in-place system-prompt
+  mutation deleted (blocked inputs are display-only per §9.5.5);
+  allowlist entry retired. Tests: `test_client_reuse.py` (7, incl.
+  boundary-survival + distill-on-the-pool), the lease pin in
+  test_compaction, `test_chat.py` (hostile-name ids, path refusal,
+  store layout, caller-config-untouched), `test_config_rebuild.py`
+  (all nine fields asserted by name); `test_session.py` deleted — its
+  N0 done-when persist/replay coverage lives in
+  tests/unit/conversation (two-session dogfood + contract round-trips).
+  Dogfooded keylessly through the real CLI (scripted FakeClient agent:
+  chat, resume-by-id shows "Resumed 2 messages", `--resume old.json`
+  exits 1 with the naming error, --help leaves no `.neosian/`).
+  1471 unit tests, zero keys; v0.62.0.

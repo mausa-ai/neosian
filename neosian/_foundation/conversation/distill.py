@@ -1,7 +1,10 @@
 """Model distillation for compaction (DESIGN §9.6) — degrade-safe.
 
 Two batched structured-output calls, both through a raw client obtained
-from an injected ``acquire`` callable (ledger #32 — never a second Agent):
+from an injected ``acquire`` callable (ledger #32 — never a second Agent).
+``acquire`` is a lease: the caller of `run_boundary` owns the client's
+lifetime (ledger #33 — Conversation hands its session's cache; closing a
+cached client here would leave a dead handle in the pool):
 `distill` turns long assistant prose into one log line per turn
 (k turns in → k lines out, keyed by explicit turn number so a partial
 response can never misattribute), and `summarize_epochs` folds blocks of
@@ -117,18 +120,15 @@ async def _structured_call[T: BaseModel](
 ) -> tuple[T | None, Usage | None, str | None]:
     try:
         client = acquire(model.provider)
-        try:
-            response = await client.complete(
-                [
-                    Message(role=Role.SYSTEM, content=system),
-                    Message(role=Role.USER, content=payload),
-                ],
-                model=model,
-                response_format=ResponseFormat(schema=schema),
-                cache_conversation=False,
-            )
-        finally:
-            await client.close()
+        response = await client.complete(
+            [
+                Message(role=Role.SYSTEM, content=system),
+                Message(role=Role.USER, content=payload),
+            ],
+            model=model,
+            response_format=ResponseFormat(schema=schema),
+            cache_conversation=False,
+        )
         parsed = validate_json(schema, text_of(response.message))
         assert isinstance(parsed, schema)
         return parsed, response.usage, response.model

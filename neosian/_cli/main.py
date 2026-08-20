@@ -61,7 +61,10 @@ def playground(
     ] = False,
     resume: Annotated[
         str | None,
-        typer.Option("--resume", help="Continue from a saved session JSON file"),
+        typer.Option(
+            "--resume",
+            help="Resume a conversation by id (see .neosian/conversations/)",
+        ),
     ] = None,
 ) -> None:
     """Start an interactive playground session with an agent.
@@ -74,7 +77,7 @@ def playground(
         neosian playground my_agent.py
         neosian playground my_agent.py --menu
         neosian playground my_agent.py --arena
-        neosian playground my_agent.py --resume .neosian/sessions/last.json
+        neosian playground my_agent.py --resume 20260820-143207-my_agent
     """
     run_playground(agent_file, menu=menu, arena=arena, resume=resume)
 

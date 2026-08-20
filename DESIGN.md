@@ -576,6 +576,18 @@ substrate, so ids differing only in case are not guaranteed distinct.
     builds a one-mount list at mount path `memories` — the path Anthropic's
     native `memory_20250818` roots at, so N4's native wiring stays a pure
     transport swap.
+14. **One session per Conversation (slice C).** The layer opens an internal
+    `AgentSession` on first use and reuses it for every send *and* for
+    compaction's distillation calls — one cached client per provider
+    instead of a fresh one per attempt, and sticky fallback state across
+    sends (§3). The boundary rebuild *rebinds* that session to the newly
+    derived agent, so paging never costs a reconnect. `aclose()` releases
+    the pool and is idempotent; `async with conversation:` is the sugar
+    (entering does no I/O — lazy start is ruling 9). Not closing is safe:
+    the pool lives as long as the process, exactly as an unclosed
+    `AgentSession` does, and a send after `aclose()` opens a fresh pool.
+    `aclose()` never takes the send lock (an abandoned stream holds it
+    until collected) — finish or abandon a stream before closing.
 
 **§9.6 Compaction v1 — log-projection (spec; implemented in slice B).** The
 context window renders a *view* of the append-only history: recent turns
@@ -622,6 +634,9 @@ per-segment caps, no whole-line cap (epoch folding is the length
 discipline); tie-to-last-appended is realized as later-in-`(turn, span,
 insertion)` order, identical whenever the tie is real; overlapping
 hand-written projections render total and deterministic, not reconciled.
+Since slice C the `acquire` callable is a **lease** — the caller of
+`run_boundary` owns the client's lifetime (ledger #33); Conversation hands
+its session's cache, so distillation rides the send's pooled clients.
 
 **§9.7 The shipped conformance kit** —
 `neosian.conversation.testing::ConversationStoreContract`, the §8 mechanism
@@ -755,3 +770,4 @@ never a silent divergence. Numbering is monotonic, never reused.
 | 30 | `context_policy=None` disables compaction's trigger too | **Compaction falls back to a default `ContextPolicy()`** for its high-water check | Ledger #16's `None` disables the *pre-call raise*, not paging; a Conversation that silently stops compacting because the proactive guard was turned off is the footgun ContextPolicy exists to remove |
 | 31 | "Stated constraints survive verbatim" as unbounded verbatim USER text | **USER text is never distilled and is verbatim up to `4 × digest_chars`, then head-clipped with an inline `recall_turn(n)` pointer** | An unbounded USER line makes the view un-shrinkable — one pasted document defeats every boundary; the pointer keeps the full text one tool call away, which is what "paging, not deletion" promises |
 | 32 | Distillation through a second minimal `Agent` | **A raw client call through an injected `acquire(provider)` callable** (`Agent._create_client`, honoring `client_factory`), `cache_conversation=False`, closed after the call | A derived-config agent re-fires the capture hook and clobbers the captured turn; a base-config agent fires the user's `on_turn` twice per send; either way a tool-bearing agent rejects `response_format` (`_validate_run`). The callable also keeps all four compaction modules agent-free, so they join the ledger #26 storage-seam contract |
+| 33 | Distillation closes the client it acquired (#32: "closed after the call") | **`acquire` is a lease: the caller of `run_boundary` owns the client's lifetime**; Conversation hands its internal session's cache, and `aclose()` is where clients close | Closing a *cached* client leaves a dead handle in the session pool — every later send would ride a closed httpx client; the reuse §9.5.14 promises is impossible while the callee owns the close |
