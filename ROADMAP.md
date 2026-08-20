@@ -2,19 +2,20 @@
 
 > **▶ Current phase: N3 — PostgresStore**
 >
-> *(2026-08-20: N2 closed at v0.62.0 — slice C landed the CLI migration
-> onto `Conversation` + `FileStore` (persist-per-send under the cwd's
-> `.neosian/`, `--resume` by conversation id, the nine-field `--menu`
-> rebuild fix, legacy Session deleted), session reuse — one internal
-> `AgentSession` per Conversation with `aclose()`/`async with` and the
-> `acquire` lease (§9.5.14, ledger #33) — and
-> `examples/conversation_example.py`. Slice B shipped v0.61.0
-> (compaction v1, ledger #27–#32); slice A v0.60.0 (DESIGN §9, the
-> store seam, send/resume, ledger #21–#26). Standing ruling: neosian's
-> phases run to completion before the kit's P10 vendors from a
-> `v<X.Y.Z>` release tag. Still deferred per §9.10: the ECOSYSTEM
-> amendment naming `ConversationStore` — a two-repo move for a future
-> session-pair.)*
+> *(2026-08-20: slice A shipped at v0.63.0 — `PostgresStore` implements
+> both seams over psycopg 3 (single-statement CTE mutations on an
+> autocommit pool, `supports_optimistic_concurrency = True`, schema-per-
+> store isolation, the shipped-SQL migration story via `apply_schema()` /
+> `python -m neosian.schemas postgres`), both conformance kits + the CS3
+> two-pool concurrency test green against a real server under the new
+> `external_postgres` tier, the push/PR CI service-container job, ledger
+> #34–#40. Remaining for slice B: the FastAPI multi-tenant example with
+> the §6 relay pattern, the multi-worker demo (the phase done-when),
+> pool-tuning kwargs. N2 closed at v0.62.0 the same day. Standing
+> ruling: neosian's phases run to completion before the kit's P10
+> vendors from a `v<X.Y.Z>` release tag. Still deferred per §9.10: the
+> ECOSYSTEM amendment naming `ConversationStore` — a two-repo move for a
+> future session-pair.)*
 >
 > The pointer above must equal the first phase heading without ✅ — if they
 > disagree, say so and trust the checkboxes. Companion to [VISION.md](VISION.md)
@@ -420,6 +421,33 @@ correctly; an `examples/` FastAPI chatbot demonstrates the multi-tenant
 integration end to end — including the relay pattern of DESIGN §6 (typed
 events → SSE, host-owned keepalive and error frames).
 
+**Split (2026-08-20): slice A shipped at v0.63.0** — the store and its
+tier. Options-first rulings: psycopg 3 async (typed, mypy --strict clean)
+as the first `[postgres]` extra; shipped-SQL migration story (idempotent
+`assets/sql/postgres.sql`, `apply_schema()`, `python -m neosian.schemas
+postgres [--schema]` — no alembic); the `memory_redactions` erasure-trail
+table included; the postgres CI job on every push/PR (service container,
+no secret — ledger #40). `_foundation/postgres/` born: one
+`PostgresStore(dsn, *, schema="neosian", clock=None)` implementing both
+ABCs — pure-validation ctor, lazy autocommit pool, `aclose()`/`async
+with`; every mutation a single data-modifying-CTE statement with gate
+CTEs + diagnostics (never BEGIN/COMMIT — ledger #34), unique-violation/
+deadlock retry realizing CS3's `COALESCE(MAX(turn),0)+1`;
+`supports_optimistic_concurrency = True` (the expected_version race is
+PK-arbitrated); Clock-sourced timestamps (#35), `COLLATE "C"` listings
+(#37), `extra` jsonb round-trip (C6), dormant tsvector FTS hatch, NUL
+limitation documented (#38), retry exhaustion propagates the driver
+error (#39). Tests: both contract kits inherited green over a real
+server (incl. the optimistic-concurrency test FileStore skips) via
+per-test schema isolation + `plant_raw_*` adaptations (#36); the CS3
+two-pool 25-append gapless race and the one-winner expected_version race
+(the store-level half of the done-when); keyless unit tests pin the DDL
+asset, the schemas CLI, pure construction, and driver-free imports.
+Surface: root/facade `__all__` +1 (`PostgresStore`), `external_postgres`
+marker, `make test-postgres`, SERVICES.md DSN section. 1483 unit tests,
+zero keys; 100 postgres tests. Carried to slice B: the FastAPI example +
+§6 relay + multi-worker demo (the done-when), pool-tuning kwargs.
+
 ## N4 — Completeness (v0.65 → 1.0)
 
 DESIGN: §2, §6, §10.
@@ -719,3 +747,31 @@ DESIGN: §2, §6, §10.
   chat, resume-by-id shows "Resumed 2 messages", `--resume old.json`
   exits 1 with the naming error, --help leaves no `.neosian/`).
   1471 unit tests, zero keys; v0.62.0.
+- 2026-08-20 | N3 (slice A) | **The relational substrate.** Rulings
+  (options-first): psycopg 3 async, shipped-SQL migrations (no alembic),
+  `memory_redactions` included, postgres CI on every push/PR.
+  `_foundation/postgres/` (driver/pool/schema/statements/rows/
+  memory_store/turn_store/store): one `PostgresStore` on both ABCs;
+  single-statement CTE mutations on an autocommit pool — gate CTEs
+  suppress writes, the top-level SELECT returns written-row +
+  diagnostics, so one round trip decides mutate-or-raise and the store
+  never owns a transaction (ledger #34); PK-retry realizes CS3 and makes
+  `expected_version` race-safe (`supports_optimistic_concurrency=True`);
+  Clock timestamps (#35), `COLLATE "C"` (#37), NUL exception (#38),
+  driver-error propagation on retry exhaustion (#39). DDL:
+  `assets/sql/postgres.sql`, idempotent, `{{schema}}`-rendered;
+  `apply_schema()` + `python -m neosian.schemas postgres`; dormant
+  tsvector hatch + GIN index; RLS-friendly ownership keys on every row;
+  deferred FKs for the parent-upsert-in-CTE pattern. Conformance: both
+  kits inherited over a real server (unique schema per test, DROP
+  CASCADE teardown; `plant_raw_*` line→column adaptation, #36) — the
+  optimistic-concurrency kit test runs for the first time; two-pool
+  gapless 25-append + one-winner races pin the store-level done-when.
+  CI: `postgres` job with a service container on all triggers (#40);
+  `make test-postgres`; `NEOSIAN_TEST_POSTGRES_DSN` in SERVICES.md;
+  first `[project.optional-dependencies]` extra, core imports pinned
+  driver-free by subprocess test. Dogfooded: the three-line quickstart
+  (construct → apply_schema → send/resume with memory) against a docker
+  server, keyless. 1483 unit tests; 100 postgres tests; v0.63.0.
+  Carried: slice B (FastAPI example, §6 relay, multi-worker demo,
+  pool tuning).

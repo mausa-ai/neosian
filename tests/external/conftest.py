@@ -45,6 +45,12 @@ def cerebras_api_key() -> str:
 
 
 @pytest.fixture
+def postgres_dsn() -> str:
+    """A live PostgreSQL server — a DSN, not an API key (SERVICES.md)."""
+    return _key_or_skip("NEOSIAN_TEST_POSTGRES_DSN")
+
+
+@pytest.fixture
 def groq_client(groq_api_key: str) -> GroqClient:
     return GroqClient(api_key=groq_api_key)
 

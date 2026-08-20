@@ -27,6 +27,7 @@ def test_conversation_all_is_pinned() -> None:
         "ConversationStoreError",
         "ConversationTurn",
         "FileStore",
+        "PostgresStore",
         "ProjectionKind",
         "create_recall_turn_tool",
         "message_from_json",

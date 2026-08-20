@@ -1,7 +1,7 @@
 # neosian development targets — `make help` (DESIGN §11)
 
 .DEFAULT_GOAL := help
-.PHONY: help install lint format typecheck test test-external size release phase-tag
+.PHONY: help install lint format typecheck test test-external test-postgres size release phase-tag
 
 help: ## List targets
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z_-]+:.*?##/ {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2} /^##@/ {printf "\n%s\n", substr($$0, 5)}' $(MAKEFILE_LIST)
@@ -33,6 +33,9 @@ ifndef provider
 	$(error provider=<groq|openai|anthropic|cerebras> is required)
 endif
 	uv run python scripts/external_env.py --provider $(provider) $(if $(file),--file $(file))
+
+test-postgres: ## Postgres suite: needs NEOSIAN_TEST_POSTGRES_DSN (self-skips when unset)
+	uv run pytest -m external_postgres -v
 
 size: ## File-size gate (warn 300 / fail 500)
 	uv run python scripts/check_file_size.py

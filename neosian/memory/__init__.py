@@ -33,6 +33,7 @@ from neosian._foundation.memory.types import (
     MemoryEntry,
     MemoryVersion,
 )
+from neosian._foundation.postgres.store import PostgresStore
 from neosian._foundation.shared.clock import Clock, SystemClock
 from neosian._foundation.shared.exceptions import (
     MemoryConflictError,
@@ -66,6 +67,7 @@ __all__ = [
     "MemoryStoreError",
     "MemoryVersion",
     "Mount",
+    "PostgresStore",
     "Scope",
     "SystemClock",
     "create_memory_tool",

@@ -7,6 +7,11 @@ registry as JSON, for host i18n-coverage tests.
 wire schemas (one per event plus the `agent_event` oneOf root), or writes
 one `<name>.json` file each to DIR — hosts codegen their typed SSE seam
 from them.
+
+`python -m neosian.schemas postgres [--schema NAME]` prints the
+PostgresStore DDL (DESIGN §8, N3) rendered for one schema name — hand it
+to psql or your own migration tooling. Driver-free: printing needs no
+psycopg installed.
 """
 
 import json
@@ -16,7 +21,10 @@ from pathlib import Path
 from neosian._foundation.agent.events import event_schemas
 from neosian._foundation.shared.exceptions import ERROR_CODES
 
-_USAGE = "usage: python -m neosian.schemas {errors | events [--out DIR]}"
+_USAGE = (
+    "usage: python -m neosian.schemas "
+    "{errors | events [--out DIR] | postgres [--schema NAME]}"
+)
 
 
 def _errors() -> int:
@@ -40,6 +48,13 @@ def _events(out_dir: str | None) -> int:
     return 0
 
 
+def _postgres(schema: str) -> int:
+    from neosian._foundation.postgres.schema import schema_sql
+
+    print(schema_sql(schema), end="")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
     if args == ["errors"]:
@@ -48,6 +63,10 @@ def main(argv: list[str] | None = None) -> int:
         return _events(None)
     if len(args) == 3 and args[0] == "events" and args[1] == "--out":
         return _events(args[2])
+    if args == ["postgres"]:
+        return _postgres("neosian")
+    if len(args) == 3 and args[0] == "postgres" and args[1] == "--schema":
+        return _postgres(args[2])
     print(_USAGE, file=sys.stderr)
     return 2
 

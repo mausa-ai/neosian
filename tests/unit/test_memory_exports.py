@@ -32,6 +32,7 @@ def test_memory_all_is_pinned() -> None:
         "MemoryStoreError",
         "MemoryVersion",
         "Mount",
+        "PostgresStore",
         "Scope",
         "SystemClock",
         "create_memory_tool",

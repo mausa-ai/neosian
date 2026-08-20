@@ -39,6 +39,25 @@ provider's real-API suite (`-m external_<provider>`).
 - The presence check tests **falsiness**, not `None`: an absent GitHub
   Actions secret arrives as the empty string.
 
+## The Postgres suite — a server, not an API key
+
+`NEOSIAN_TEST_POSTGRES_DSN` points the `external_postgres` suite (the
+PostgresStore conformance + concurrency tests, N3) at a live PostgreSQL
+server. Unset means every test in the suite self-skips per test via the
+same falsiness idiom — `make test` and keyless boot never need a
+database. Locally:
+
+```bash
+docker run --rm -e POSTGRES_PASSWORD=postgres -p 5432:5432 postgres:17
+export NEOSIAN_TEST_POSTGRES_DSN=postgresql://postgres:postgres@localhost:5432/postgres
+make test-postgres
+```
+
+CI supplies the DSN from a service container — never a secret — so the
+`postgres` job runs on every push and PR, unlike the schedule-only
+provider jobs (DESIGN §12 ledger #40). Each test creates and drops its
+own uniquely-named schema; the server keeps no state between runs.
+
 ## CI secrets
 
 One secret per provider, named exactly like the env key. The scheduled /

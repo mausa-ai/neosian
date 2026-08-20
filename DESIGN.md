@@ -23,21 +23,24 @@ neosian/                  # the facade: __init__.py re-exports the public API
 ├── fake.py               # public FakeProvider surface (lazy, excludable) (NS)
 ├── _foundation/          # all real code: agent/ llm/ shared/ tools/
 │                         #   guardrails/ blackboard/ evaluation/
-│                         #   (+ memory/, N1; + conversation/, N2)
+│                         #   (+ memory/, N1; + conversation/, N2;
+│                         #    + postgres/, N3)
 ├── _cli/                 # playground, eval CLI, config
-└── assets/               # data files: prompts (YAML), ascii art
+└── assets/               # data files: prompts (YAML), sql (DDL), ascii art
 ```
 
 Import-linter contracts (inline in pyproject, kit idiom — the matrix is spelled
 out, `forbidden` type only):
 
 - `_foundation ↛ _cli` — the library never imports its CLI.
-- `_foundation.memory` ↛ provider internals (`_foundation.llm.<provider>`
-  modules) — memory speaks only to ABCs.
+- `_foundation.memory` and `_foundation.postgres` ↛ provider internals
+  (`_foundation.llm.<provider>` modules) — storage substrates speak only
+  to ABCs.
 - `_foundation.conversation` ↛ provider internals, with
   `allow_indirect_imports` (Conversation drives an `Agent`, which owns the
   router — ledger #26); and the conversation *storage-seam* modules (`base`,
-  `types`, `ids`, `file_turns`, `testing`) ↛ `_foundation.agent`.
+  `types`, `ids`, `file_turns`, `testing`) plus `_foundation.postgres`
+  ↛ `_foundation.agent`.
 - The facade (`neosian/__init__.py`, `neosian/fake.py`) only re-exports; no
   logic lives there.
 
@@ -402,6 +405,36 @@ files with ungrammatical names are skipped silently in listings; a valid
 name with a broken or newer envelope raises. Naive timestamps in stored
 data are refused, never coerced (`memory_format_unsupported`).
 
+**PostgresStore layout (N3).** The relational reference substrate for
+standalone deployments, implementing both seams as one class
+(`PostgresStore(dsn, *, schema="neosian", clock=None)` — the ctor is pure
+validation; the pool opens lazily, `aclose()`/`async with` release it).
+Tables in one dedicated schema (`memories` + `memory_versions` +
+`memory_redactions` erasure trail; `conversations` + `turns` +
+`projections`), every row carrying its ownership key (scope /
+conversation_id) — RLS-friendly by construction. Discipline (ledger #34):
+the pool runs `autocommit=True` and every mutation is **one
+data-modifying-CTE statement** — gate CTEs suppress the writes when a
+precondition fails and the top-level SELECT returns written row plus
+pre-state diagnostics, so the store never issues BEGIN/COMMIT and one
+round trip decides mutate-or-raise. Version and turn numbers race on
+their primary keys and retry with a fresh snapshot;
+`supports_optimistic_concurrency = True` because a losing
+`expected_version` writer aborts on the version-row PK and re-reads.
+Timestamps come from the injected Clock, never SQL `now()` (ledger #35);
+`list_documents` orders `COLLATE "C"` (ledger #37); unknown substrate
+keys ride an `extra` jsonb column (C6). The dormant FTS escape hatch is a
+generated `tsvector` column + GIN index — populated, queryable by raw
+SQL, no API surface. Substrate exception (ledger #38): Postgres
+text/jsonb reject U+0000, so NUL-bearing content raises where FileStore
+round-trips it. The DDL ships as `assets/sql/postgres.sql` (idempotent,
+`{{schema}}`-rendered), applied only by explicit act —
+`await store.apply_schema()` or `python -m neosian.schemas postgres` —
+never by a store method (C1); alembic was rejected: hosts run their own
+migration branch (ECOSYSTEM §10), and re-applying idempotent SQL is the
+whole standalone story. The `postgres` extra carries psycopg; the core
+import stays driver-free (pinned by a subprocess test).
+
 **The tool layer (N1 slice B; C7 made concrete).** `Mount(scope,
 mount_path, read_only, description)` + `MemoryConfig(store, mounts)` in
 `memory/mounts.py`; ≥ 1 mount, unique mount paths — "memory needs an
@@ -658,6 +691,11 @@ write never interleave. `last_turn_number` reads the last line — the
 numbering's source of truth is the file, never a line count. A malformed or
 newer row raises, never skips (skipping would silently drop a turn and
 corrupt the numbering). A missing file is an empty history, never an error.
+The Postgres sibling (N3, §8 layout paragraph): CS3 rides
+`COALESCE(MAX(turn),0)+1` under `UNIQUE(conversation_id, turn)` with
+retry, messages land in a jsonb column via the public codec, and an
+identity column on `projections` realizes the (turn, span, insertion)
+read order.
 
 **§9.9 Public surface & the codec ruling.** `message_to_json` /
 `message_from_json` become public API: a host implementing
@@ -711,6 +749,7 @@ comments, comment bands, one `.PHONY` line.
 | `typecheck` | `mypy --strict neosian tests` |
 | `test` | unit tier — the default gate, zero keys |
 | `test-external` | `provider=<groq\|openai\|anthropic\|cerebras>` required-arg guard; `file=…` routes through `scripts/external_env.py` |
+| `test-postgres` | the `external_postgres` suite; needs `NEOSIAN_TEST_POSTGRES_DSN`, self-skips per test when unset — a DSN is not an API key, so it never routes through the value-blind injector |
 | `size` | the 300/500 file-size gate |
 | `release` | refuses a dirty tree; requires `v=X.Y.Z` matching pyproject; cuts annotated `v$(v)` |
 | `phase-tag` | refuses a dirty tree; cuts annotated `<id>-done` |
@@ -771,3 +810,10 @@ never a silent divergence. Numbering is monotonic, never reused.
 | 31 | "Stated constraints survive verbatim" as unbounded verbatim USER text | **USER text is never distilled and is verbatim up to `4 × digest_chars`, then head-clipped with an inline `recall_turn(n)` pointer** | An unbounded USER line makes the view un-shrinkable — one pasted document defeats every boundary; the pointer keeps the full text one tool call away, which is what "paging, not deletion" promises |
 | 32 | Distillation through a second minimal `Agent` | **A raw client call through an injected `acquire(provider)` callable** (`Agent._create_client`, honoring `client_factory`), `cache_conversation=False`, closed after the call | A derived-config agent re-fires the capture hook and clobbers the captured turn; a base-config agent fires the user's `on_turn` twice per send; either way a tool-bearing agent rejects `response_format` (`_validate_run`). The callable also keeps all four compaction modules agent-free, so they join the ledger #26 storage-seam contract |
 | 33 | Distillation closes the client it acquired (#32: "closed after the call") | **`acquire` is a lease: the caller of `run_boundary` owns the client's lifetime**; Conversation hands its internal session's cache, and `aclose()` is where clients close | Closing a *cached* client leaves a dead handle in the session pool — every later send would ride a closed httpx client; the reuse §9.5.14 promises is impossible while the callee owns the close |
+| 34 | C1/CS1 "owns no connection" read as binding the reference impls too | **`PostgresStore(dsn)` owns a lazily-opened `autocommit=True` pool**; every mutation is one data-modifying-CTE statement, so the store never issues BEGIN/COMMIT/ROLLBACK and assumes no durability beyond a statement | C1 constrains the *ABC* so hosts can embed their own stores in their own transactions (ledger #3); the standalone reference impl must own connections to exist, and single-statement atomicity honors the constraint's spirit exactly |
+| 35 | `created_at` from SQL `now()` (server time) | **Timestamps come from the injected `Clock`, passed as parameters** | C4/CS4 demand the injectable clock (the kits' ManualClock proves it); consequence stated honestly: workers with skewed wall clocks can write out-of-order `created_at` while turn numbers stay gapless — numbering is the database's, time is the application's |
+| 36 | The kits' `plant_raw_*(line: str)` hooks assume a JSONL substrate | **Object-shaped lines map field→column; an unparseable line is planted as `neosian_format = 0`** | The relational equivalent of a row with no readable format marker — both planting tests stay meaningful (raise, never skip) without pretending a jsonb column can hold arbitrary bytes |
+| 37 | `ORDER BY path` under the server's default collation | **`ORDER BY path COLLATE "C"`** | "Sorted by path" means Python codepoint order in FileStore; without the pin the same store sorts differently per server locale |
+| 38 | §8's byte-exact content round-trip, universally | **Postgres text/jsonb reject U+0000** — NUL-bearing content raises the driver error, documented in the class docstring | A substrate limitation, not a policy: the kit never plants NUL so conformance is unaffected, but the promise needed the recorded exception rather than a surprise traceback |
+| 39 | Retry exhaustion re-badged as a fourth `MemoryConflictError.reason` | **After the attempt cap the driver exception propagates** | The `reason` set is documented and machine-checkable; widening it for an effectively-unreachable state (losses are bounded by writers in flight) taxes every host matching on it |
+| 40 | Postgres CI mirrors the schedule-only provider jobs | **The `postgres` job runs on every push/PR** (service container, DSN via env) | It needs no secret and costs nothing, so gating the conformance suite to a weekly run would leave the phase's core unprotected; the keyless `test` job still receives nothing |

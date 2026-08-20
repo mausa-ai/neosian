@@ -1,6 +1,6 @@
 [project]
 name = "neosian"
-version = "0.62.0"
+version = "0.63.0"
 description = "Stateless agentic AI library. LLM orchestration, tool execution, streaming."
 readme = "README.md"
 license = "Apache-2.0"
@@ -19,11 +19,17 @@ dependencies = [
     "typer>=0.27.1",
 ]
 
+# The reference PostgresStore rides the `postgres` extra; the core install
+# stays driver-free (keyless boot never needs a database).
+[project.optional-dependencies]
+postgres = ["psycopg[binary,pool]>=3.2"]
+
 [dependency-groups]
 dev = [
     "black>=26.5.1",
     "import-linter>=2.13",
     "mypy>=2.3.1",
+    "psycopg[binary,pool]>=3.2",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
     "ruff>=0.16.3",
@@ -41,6 +47,7 @@ markers = [
     "external_openai: Real OpenAI API calls",
     "external_anthropic: Real Anthropic API calls",
     "external_cerebras: Real Cerebras API calls",
+    "external_postgres: A real PostgreSQL server (DSN env var, not an API key)",
 ]
 testpaths = ["tests"]
 filterwarnings = [
@@ -103,9 +110,12 @@ source_modules = ["neosian._foundation"]
 forbidden_modules = ["neosian._cli"]
 
 [[tool.importlinter.contracts]]
-name = "memory speaks only to ABCs, never provider internals"
+name = "storage substrates speak only to ABCs, never provider internals"
 type = "forbidden"
-source_modules = ["neosian._foundation.memory"]
+source_modules = [
+    "neosian._foundation.memory",
+    "neosian._foundation.postgres",
+]
 forbidden_modules = [
     "neosian._foundation.llm.groq",
     "neosian._foundation.llm.openai",
@@ -142,6 +152,7 @@ source_modules = [
     "neosian._foundation.conversation.distill",
     "neosian._foundation.conversation.compaction",
     "neosian._foundation.conversation.recall",
+    "neosian._foundation.postgres",
 ]
 forbidden_modules = ["neosian._foundation.agent"]
 

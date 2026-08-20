@@ -233,6 +233,7 @@ def test_all_list_matches_exports() -> None:
         "MemoryEntry",
         "MemoryVersion",
         "FileStore",
+        "PostgresStore",
         "Scope",
         "parse_scope",
         "SCOPE_PATTERN",
