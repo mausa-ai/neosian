@@ -23,8 +23,21 @@ class TestFileStoreConversationContract(ConversationStoreContract):
         *,
         line: str,
     ) -> None:
-        root = store._root  # noqa: SLF001 — substrate hook, deliberately inside
-        file = root / "conversations" / conversation_id / "turns.jsonl"
-        file.parent.mkdir(parents=True, exist_ok=True)
-        with file.open("a", encoding="utf-8", newline="") as handle:
-            handle.write(line + "\n")
+        _plant(store, conversation_id, "turns.jsonl", line)
+
+    async def plant_raw_projection(
+        self,
+        store: FileStore,  # type: ignore[override]
+        conversation_id: str,
+        *,
+        line: str,
+    ) -> None:
+        _plant(store, conversation_id, "projections.jsonl", line)
+
+
+def _plant(store: FileStore, conversation_id: str, filename: str, line: str) -> None:
+    root = store._root  # noqa: SLF001 — substrate hook, deliberately inside
+    file = root / "conversations" / conversation_id / filename
+    file.parent.mkdir(parents=True, exist_ok=True)
+    with file.open("a", encoding="utf-8", newline="") as handle:
+        handle.write(line + "\n")

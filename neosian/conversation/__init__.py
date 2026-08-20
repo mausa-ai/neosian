@@ -8,6 +8,10 @@ pytest, which is not a runtime dependency).
 """
 
 from neosian._foundation.conversation.base import ConversationStore
+from neosian._foundation.conversation.compaction import (
+    CompactionConfig,
+    CompactionResult,
+)
 from neosian._foundation.conversation.core import Conversation
 from neosian._foundation.conversation.ids import (
     CONVERSATION_ID_MAX_LENGTH,
@@ -15,6 +19,7 @@ from neosian._foundation.conversation.ids import (
     ConversationId,
     parse_conversation_id,
 )
+from neosian._foundation.conversation.recall import create_recall_turn_tool
 from neosian._foundation.conversation.types import (
     CONVERSATION_FORMAT_VERSION,
     ConversationProjection,
@@ -35,6 +40,8 @@ __all__ = [
     "CONVERSATION_ID_MAX_LENGTH",
     "CONVERSATION_ID_PATTERN",
     "DEFAULT_MEMORY_MOUNT_PATH",
+    "CompactionConfig",
+    "CompactionResult",
     "Conversation",
     "ConversationFormatUnsupportedError",
     "ConversationId",
@@ -45,6 +52,7 @@ __all__ = [
     "ConversationTurn",
     "FileStore",
     "ProjectionKind",
+    "create_recall_turn_tool",
     "message_from_json",
     "message_to_json",
     "parse_conversation_id",

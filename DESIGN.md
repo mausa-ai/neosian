@@ -604,6 +604,25 @@ spend is visible, never hidden. Role labels stay full words (`USER`, `TOOL`,
 hot_turns, trigger_fraction, digest_chars, epoch_turns, recall_tool=True)`,
 arriving as `Conversation(..., compaction=…)` in slice B.
 
+*Implementation notes (slice B, 2026-08-20).* Default-on with lazy
+`recall_turn` registration (ledger #28); a public `Conversation.compact()`
+runs one boundary on demand — skips the high-water check and `enabled`,
+respects `hot_turns`, returns `CompactionResult(entries, usage, model)`.
+The view is keyed on coverage alone (ledger #27); the trigger runs in
+`send()` before the agent call, at most one boundary per send. Epoch
+folds are model-written summaries over fixed-aligned `epoch_turns` blocks
+wholly past the cutoff (a second structured-output call; a failed fold is
+skipped and retried at the next boundary — never a deterministic
+substitute). Digest failure degrades the affected turns to deterministic
+`kind="log"` lines; a store failure at the checkpoint fails the send with
+nothing persisted. Honesty bounds: "constraints survive verbatim" holds
+for USER text up to `4 × digest_chars` with a recall pointer beyond
+(ledger #31); a turn with many tool rounds yields one *long* line —
+per-segment caps, no whole-line cap (epoch folding is the length
+discipline); tie-to-last-appended is realized as later-in-`(turn, span,
+insertion)` order, identical whenever the tie is real; overlapping
+hand-written projections render total and deterministic, not reconciled.
+
 **§9.7 The shipped conformance kit** —
 `neosian.conversation.testing::ConversationStoreContract`, the §8 mechanism
 applied to the second seam: subclass, provide a `store` fixture, inherit
@@ -730,3 +749,9 @@ never a silent divergence. Numbering is monotonic, never reused.
 | 24 | A `conversation_` error-code family | **`agent_conversation_*`** under the existing family prefix | ECOSYSTEM §6's prefix set is closed and frozen; opening it is a two-repo move this session cannot make, codes are append-only so the naming is permanent, and hosts key on full code strings — the taxonomy is cosmetic |
 | 25 | `on_turn` performs the store write (the obvious reading) | **The hook captures; `send()` writes** | Hook exceptions are swallowed unless `strict` — persistence inside a hook loses turns silently, and forcing `strict=True` would change the semantics of the user's own hooks |
 | 26 | Strict indirect-import checking for the conversation layering contract (the memory contract's setting) | **`allow_indirect_imports = true`** for conversation ↛ providers, plus a second contract: the storage-seam modules never import the agent | `Conversation` legitimately drives an `Agent`, which owns the router; policing only the direct edge is the honest version of the §1 promise, and the seam-modules contract catches the coupling that actually matters |
+| 27 | View render keyed on `(turns, projections, hot_turns)` — compacted only when covered **and** outside the hot band | **Coverage alone decides the render**; `hot_turns` is a boundary-time writer invariant only | §9.6 defines the view as a pure function over `(turns, projections)`; a resumed conversation renders identically under config drift, and "computed once per turn" stays literally true |
+| 28 | Compaction opt-in (`compaction=None` → off) | **Default-on** (`CompactionConfig()`), with `recall_turn` registered lazily once projections exist; `enabled=False` gates only the automatic trigger — `Conversation.compact()` (the manual `/compact` idiom) always runs | Ledger #16's philosophy: `Conversation` is the one place history grows unboundedly, so opt-in ships the failure mode enabled; lazy registration keeps a never-compacted conversation byte-identical to v0.60.0 |
+| 29 | `AgentResponse.usage` is the agent run's usage only | **`send()` folds distillation/epoch usage into the returned `AgentResponse` and the streamed `DoneEvent`/`BlockedEvent`** via `dataclasses.replace`, merging a `usage_by_model` entry for the distillation model; `compact()` returns spend on `CompactionResult` | §9.6 requires compaction spend visible through `cost_micro_usd`/`usage_by_model`; the send's return value is the only object the caller holds, and the per-model split keeps the two spends separable |
+| 30 | `context_policy=None` disables compaction's trigger too | **Compaction falls back to a default `ContextPolicy()`** for its high-water check | Ledger #16's `None` disables the *pre-call raise*, not paging; a Conversation that silently stops compacting because the proactive guard was turned off is the footgun ContextPolicy exists to remove |
+| 31 | "Stated constraints survive verbatim" as unbounded verbatim USER text | **USER text is never distilled and is verbatim up to `4 × digest_chars`, then head-clipped with an inline `recall_turn(n)` pointer** | An unbounded USER line makes the view un-shrinkable — one pasted document defeats every boundary; the pointer keeps the full text one tool call away, which is what "paging, not deletion" promises |
+| 32 | Distillation through a second minimal `Agent` | **A raw client call through an injected `acquire(provider)` callable** (`Agent._create_client`, honoring `client_factory`), `cache_conversation=False`, closed after the call | A derived-config agent re-fires the capture hook and clobbers the captured turn; a base-config agent fires the user's `on_turn` twice per send; either way a tool-bearing agent rejects `response_format` (`_validate_run`). The callable also keeps all four compaction modules agent-free, so they join the ledger #26 storage-seam contract |

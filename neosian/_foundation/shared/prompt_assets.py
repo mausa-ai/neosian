@@ -20,8 +20,10 @@ _PACKAGE: Final = "neosian.assets"
 _GUARDRAILS_FILE: Final = "prompts/guardrails.yaml"
 _TOOLS_FILE: Final = "prompts/tools.yaml"
 _MEMORY_FILE: Final = "prompts/memory.yaml"
+_COMPACTION_FILE: Final = "prompts/compaction.yaml"
 _POLICY_KEYS: Final = ("name", "code", "description", "violates", "safe")
 _MEMORY_KEYS: Final = ("tool", "system_section")
+_COMPACTION_KEYS: Final = ("distill", "epoch", "log_header", "log_footer")
 _TOOL_KEYS: Final = (
     "todo",
     "playbook_list",
@@ -29,6 +31,7 @@ _TOOL_KEYS: Final = (
     "blackboard_list",
     "blackboard_read",
     "blackboard_update",
+    "recall_turn",
 )
 
 
@@ -70,6 +73,9 @@ def _load() -> tuple[dict[str, str], tuple[dict[str, Any], ...]]:
     memory = _load_yaml(_MEMORY_FILE)
     for key in _MEMORY_KEYS:
         prompts[f"memory.{key}"] = str(_require(memory, key, _MEMORY_FILE))
+    compaction = _load_yaml(_COMPACTION_FILE)
+    for key in _COMPACTION_KEYS:
+        prompts[f"compaction.{key}"] = str(_require(compaction, key, _COMPACTION_FILE))
     policies = tuple(_require(guardrails, "policies", _GUARDRAILS_FILE))
     for entry in policies:
         if not isinstance(entry, dict):

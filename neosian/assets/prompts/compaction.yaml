@@ -1,0 +1,37 @@
+# The compaction prompt pack (DESIGN §7, §9.6). `distill` and `epoch`
+# are system prompts for the two batched structured-output boundary
+# calls; {{digest_chars}} / {{epoch_chars}} are interpolated by
+# prompt_assets.render. `log_header` / `log_footer` frame the synthetic
+# USER message that carries the compacted log block in the view.
+
+distill: |-
+  You are compacting a conversation transcript. The user message contains
+  numbered turns, each introduced by its turn number in square brackets,
+  followed by the assistant prose from that turn.
+
+  For every turn given, write exactly one log line of at most
+  {{digest_chars}} characters that preserves what happened and, above
+  all, any decisions made, constraints stated, names, numbers, and file
+  or resource identifiers. Drop pleasantries and restatements. Write in
+  the same language as the prose. Return one entry per input turn,
+  carrying the same turn number.
+
+epoch: |-
+  You are folding a span of compacted conversation log lines into one
+  epoch summary. The user message contains one or more blocks, each
+  introduced by the turn number it ends at; a block's lines each start
+  with their turn reference in square brackets.
+
+  For every block given, write one flowing summary of at most
+  {{epoch_chars}} characters covering the whole block: what was worked
+  on, what was decided, and any constraints, names, numbers, or
+  identifiers that later turns may rely on. Do not enumerate the lines —
+  synthesize them. Return one entry per input block, carrying the same
+  ending turn number.
+
+log_header: >-
+  [conversation log — earlier turns of this conversation, compacted; the
+  numbers in square brackets are turn references]
+
+log_footer: >-
+  [end of log — call recall_turn(n) to re-read turn n verbatim]

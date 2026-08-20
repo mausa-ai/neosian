@@ -5,6 +5,12 @@ off mounts. One `send()` appends exactly one turn — the USER message plus
 every message the run produced; resume is constructing with the same
 `conversation_id`. The persistence seam is `on_turn` (the only point where
 blocking and streaming agree): the hook captures, `send()` writes.
+
+Compaction (§9.6) lives here: the prompt is a rendered *view* of the
+append-only history, the high-water trigger runs before the agent call,
+and the boundary — projection, index refresh, lazy `recall_turn`
+registration — rebuilds the derived agent. Spend folds into the returned
+response or terminal event; compaction never loses the send.
 """
 
 from __future__ import annotations
@@ -13,14 +19,25 @@ import asyncio
 from typing import TYPE_CHECKING, Literal, Self, overload
 
 from neosian._foundation.agent.base import Agent
+from neosian._foundation.conversation.compaction import (
+    CompactionConfig,
+    CompactionResult,
+    run_boundary,
+    should_compact,
+)
 from neosian._foundation.conversation.ids import parse_conversation_id
+from neosian._foundation.conversation.projection import render_view
+from neosian._foundation.conversation.recall import create_recall_turn_tool
 from neosian._foundation.conversation.wiring import (
     DEFAULT_MEMORY_MOUNT_PATH,
     derive_config,
+    fold_event,
+    fold_response,
     resolve_memory,
 )
 from neosian._foundation.llm.base import Message, Role
 from neosian._foundation.memory.index import memory_system_section
+from neosian._foundation.shared.context_policy import ContextPolicy
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Sequence
@@ -29,8 +46,12 @@ if TYPE_CHECKING:
     from neosian._foundation.agent.hooks import TurnEvent
     from neosian._foundation.agent.response import AgentResponse
     from neosian._foundation.conversation.base import ConversationStore
+    from neosian._foundation.conversation.types import (
+        ConversationProjection,
+        ConversationTurn,
+    )
     from neosian._foundation.memory.mounts import MemoryConfig, Mount
-    from neosian._foundation.shared.types import AgentConfig
+    from neosian._foundation.shared.types import AgentConfig, ToolFunction
 
 
 class Conversation:
@@ -46,6 +67,9 @@ class Conversation:
     explicit `await start()`) loads history and freezes the memory index.
     The caller's `Agent`/`AgentConfig` is never mutated. One send is in
     flight at a time; a raising or blocked send persists nothing.
+
+    Compaction is default-on (ledger #28); `CompactionConfig(enabled=
+    False)` disables the automatic trigger, `compact()` always runs.
     """
 
     def __init__(
@@ -58,6 +82,7 @@ class Conversation:
         mounts: Sequence[Mount] | None = None,
         memory_scope: str | None = None,
         memory_mount_path: str = DEFAULT_MEMORY_MOUNT_PATH,
+        compaction: CompactionConfig | None = None,
     ) -> None:
         self._conversation_id = str(parse_conversation_id(conversation_id))
         self._store = store
@@ -75,8 +100,10 @@ class Conversation:
             memory_scope=memory_scope,
             memory_mount_path=memory_mount_path,
         )
+        self._compaction = compaction if compaction is not None else CompactionConfig()
         self._lock = asyncio.Lock()
-        self._history: list[Message] = []
+        self._turns: list[ConversationTurn] = []
+        self._projections: list[ConversationProjection] = []
         self._agent: Agent | None = None
         self._captured: AgentResponse | None = None
 
@@ -87,7 +114,7 @@ class Conversation:
     @property
     def messages(self) -> tuple[Message, ...]:
         """The verbatim history — empty before the conversation starts."""
-        return tuple(self._history)
+        return tuple(m for turn in self._turns for m in turn.messages)
 
     async def start(self) -> Self:
         """Load history and freeze the memory index; idempotent.
@@ -112,7 +139,7 @@ class Conversation:
     async def send(
         self, message: str | Message, *, stream: bool = False
     ) -> AgentResponse | AsyncIterator[AgentEvent]:
-        """Run one turn against the full history and persist it.
+        """Run one turn against the rendered view and persist it.
 
         Blocking returns the AgentResponse; `stream=True` returns the
         typed event iterator (DESIGN §6) — the turn persists once the
@@ -125,6 +152,22 @@ class Conversation:
             return self._send_streaming(user)
         return await self._send_blocking(user)
 
+    async def compact(self) -> CompactionResult:
+        """Run one compaction boundary now (the manual `/compact` idiom).
+
+        Skips the high-water check and ignores `enabled` — an explicit
+        call is explicit intent — but still respects `hot_turns`. Returns
+        the checkpointed entries and the model spend; empty entries mean
+        there was nothing to project.
+        """
+        async with self._lock:
+            await self._ensure_started()
+            if not self._compaction.enabled and not self._projections:
+                self._projections = list(
+                    await self._store.read_projections(self._conversation_id)
+                )
+            return await self._run_boundary()
+
     # Internal plumbing ----------------------------------------------------
 
     def _capture(self, event: TurnEvent) -> None:
@@ -133,22 +176,83 @@ class Conversation:
     async def _ensure_started(self) -> None:
         if self._agent is not None:
             return
-        turns = await self._store.read_turns(self._conversation_id)
-        self._history = [message for turn in turns for message in turn.messages]
+        self._turns = list(await self._store.read_turns(self._conversation_id))
+        if self._compaction.enabled:
+            # A disabled config ignores projections left by an earlier
+            # enabled run — and keeps the non-compacting path at exactly
+            # one store read.
+            self._projections = list(
+                await self._store.read_projections(self._conversation_id)
+            )
+        await self._rebuild_agent()
+
+    async def _rebuild_agent(self) -> None:
+        """Derive the agent: at start, and again at each compaction
+        boundary — the one legitimate memory-index refresh (§9.5.10)."""
         section = None
         if self._memory_config is not None:
             section = await memory_system_section(self._memory_config)
+        extra_tools: list[ToolFunction] = []
+        if self._compaction.recall_tool and self._projections:
+            # Lazy registration (ledger #28): the tool appears in the
+            # same request as the first log block that references it.
+            extra_tools.append(
+                create_recall_turn_tool(self._store, self._conversation_id)
+            )
         derived = derive_config(
             self._base_config,
             section=section,
             memory_config=self._memory_config,
             actor=self._conversation_id,
             capture=self._capture,
+            extra_tools=extra_tools,
         )
         if self._max_tool_iterations is None:
             self._agent = Agent(derived)
         else:
             self._agent = Agent(derived, self._max_tool_iterations)
+
+    def _view(self) -> list[Message]:
+        return render_view(self._turns, self._projections)
+
+    async def _run_boundary(self) -> CompactionResult:
+        assert self._agent is not None
+        result = await run_boundary(
+            store=self._store,
+            conversation_id=self._conversation_id,
+            turns=self._turns,
+            projections=self._projections,
+            config=self._compaction,
+            model=self._base_config.model,
+            acquire=self._agent._create_client,
+        )
+        if result.entries:
+            self._projections.extend(result.entries)
+            await self._rebuild_agent()
+        return result
+
+    async def _maybe_compact(
+        self, view: list[Message], user: Message
+    ) -> CompactionResult | None:
+        if not self._compaction.enabled:
+            return None
+        assert self._agent is not None
+        # `context_policy=None` disables the pre-call raise, never paging
+        # (ledger #30); the estimate includes the derived system prompt.
+        policy = self._base_config.context_policy or ContextPolicy()
+        probe = [
+            Message(role=Role.SYSTEM, content=str(self._agent.config.system_prompt)),
+            *view,
+            user,
+        ]
+        if not should_compact(
+            probe,
+            policy=policy,
+            model=self._base_config.model,
+            fraction=self._compaction.trigger_fraction,
+        ):
+            return None
+        return await self._run_boundary()
 
     async def _persist(self, user: Message) -> None:
         captured = self._captured
@@ -158,23 +262,31 @@ class Conversation:
         turn = await self._store.append_turn(
             self._conversation_id, (user, *captured.turn_messages)
         )
-        self._history.extend(turn.messages)
+        self._turns.append(turn)
 
     async def _send_blocking(self, user: Message) -> AgentResponse:
         async with self._lock:
             await self._ensure_started()
+            view = self._view()
+            compacted = await self._maybe_compact(view, user)
+            if compacted is not None and compacted.entries:
+                view = self._view()
             assert self._agent is not None
             self._captured = None
-            response = await self._agent.run([*self._history, user], stream=False)
+            response = await self._agent.run([*view, user], stream=False)
             await self._persist(user)
-            return response
+            return fold_response(response, compacted)
 
     async def _send_streaming(self, user: Message) -> AsyncIterator[AgentEvent]:
         async with self._lock:
             await self._ensure_started()
+            view = self._view()
+            compacted = await self._maybe_compact(view, user)
+            if compacted is not None and compacted.entries:
+                view = self._view()
             assert self._agent is not None
             self._captured = None
-            events = await self._agent.run([*self._history, user], stream=True)
+            events = await self._agent.run([*view, user], stream=True)
             async for event in events:
                 # The capture hook fires before the terminal event is
                 # yielded (register #6), so persisting here — before the
@@ -184,7 +296,7 @@ class Conversation:
                 # place of the terminal event. _persist no-ops until the
                 # capture lands, and clears it once written.
                 await self._persist(user)
-                yield event
+                yield fold_event(event, compacted)
             await self._persist(user)
 
 

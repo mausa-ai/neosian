@@ -103,6 +103,14 @@ class ConversationStoreContract:
         del store, conversation_id, line
         pytest.skip("plant_raw_turn not implemented for this substrate")
 
+    async def plant_raw_projection(
+        self, store: ConversationStore, conversation_id: str, *, line: str
+    ) -> None:
+        """Write one raw row directly into the substrate's projection log,
+        bypassing the store. Override per substrate; the default skips."""
+        del store, conversation_id, line
+        pytest.skip("plant_raw_projection not implemented for this substrate")
+
     @staticmethod
     def _exchange(text: str) -> tuple[Message, ...]:
         return (
@@ -375,3 +383,23 @@ class ConversationStoreContract:
         await self.plant_raw_turn(store, conversation_id, line="not json")
         with pytest.raises(ConversationFormatUnsupportedError):
             await store.read_turns(conversation_id)
+
+    @_asyncio
+    async def test_newer_projection_format_is_refused(
+        self, store: ConversationStore, conversation_id: str
+    ) -> None:
+        await self.plant_raw_projection(
+            store,
+            conversation_id,
+            line='{"neosian_format":99,"turn":1,"span":1,"kind":"log","text":"x"}',
+        )
+        with pytest.raises(ConversationFormatUnsupportedError):
+            await store.read_projections(conversation_id)
+
+    @_asyncio
+    async def test_malformed_projection_row_raises_and_never_skips(
+        self, store: ConversationStore, conversation_id: str
+    ) -> None:
+        await self.plant_raw_projection(store, conversation_id, line="not json")
+        with pytest.raises(ConversationFormatUnsupportedError):
+            await store.read_projections(conversation_id)

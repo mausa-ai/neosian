@@ -128,3 +128,11 @@ class TestPromptRegistry:
         # OpenAI-compatible providers cap function descriptions at 1024.
         assert len(get_prompt("memory.tool")) <= 1024
         assert "{{index}}" in get_prompt("memory.system_section")
+
+    def test_compaction_prompts_are_wired(self) -> None:
+        # OpenAI-compatible providers cap function descriptions at 1024.
+        assert len(get_prompt("tools.recall_turn")) <= 1024
+        assert "{{digest_chars}}" in get_prompt("compaction.distill")
+        assert "{{epoch_chars}}" in get_prompt("compaction.epoch")
+        assert "recall_turn" in get_prompt("compaction.log_footer")
+        assert get_prompt("compaction.log_header").startswith("[conversation log")

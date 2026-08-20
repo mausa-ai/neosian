@@ -13,8 +13,10 @@ import pytest
 
 from neosian import AgentConfig, Model
 from neosian._foundation.agent.events import ContentEvent, DoneEvent
+from neosian._foundation.conversation.compaction import CompactionConfig
 from neosian._foundation.conversation.core import Conversation
-from neosian._foundation.llm.base import Role
+from neosian._foundation.conversation.distill import DigestBatch, DigestLine
+from neosian._foundation.llm.base import ModelUsage, Role, Usage
 from neosian._foundation.llm.fake import FakeClient, FakeScript, FakeTurn
 from neosian._foundation.memory.file import FileStore
 from neosian._foundation.shared.types import SystemPrompt
@@ -144,3 +146,104 @@ class TestStreamingPersistence:
         turns = await store.read_turns("t1")
         assert [t.turn for t in turns] == [1, 2]
         assert turns[1].messages[-1].content == "two"
+
+
+def _small_config(script: FakeScript, **kwargs: Any) -> tuple[AgentConfig, FakeClient]:
+    fake = FakeClient(script)
+    config = AgentConfig(
+        system_prompt=_SYSTEM,
+        model=Model.FAKE_SMALL,
+        enable_todo=False,
+        client_factory=lambda _: fake,
+        **kwargs,
+    )
+    return config, fake
+
+
+def _long(n: int) -> str:
+    return "x" * 900 + f" TAIL{n}"
+
+
+_TRIGGER = CompactionConfig(hot_turns=1, trigger_fraction=0.01)
+
+
+@pytest.mark.unit
+class TestStreamingCompaction:
+    async def test_streamed_send_compacts_like_blocking(self, store: FileStore) -> None:
+        script = FakeScript(turns=tuple(FakeTurn(content=f"r{i}") for i in range(3)))
+        config, fake = _small_config(script)
+        convo = Conversation(
+            config, store=store, conversation_id="t1", compaction=_TRIGGER
+        )
+        await convo.send(_long(1))
+        await convo.send(_long(2))
+        events = await convo.send(_long(3), stream=True)
+        async for _ in events:
+            pass
+        contents = [
+            m.content for m in fake.calls[-1].messages if isinstance(m.content, str)
+        ]
+        assert any("[conversation log" in c for c in contents)
+        assert not any("TAIL1" in c for c in contents)
+        assert [e.turn for e in await store.read_projections("t1")] == [1]
+        assert await store.last_turn_number("t1") == 3
+
+    async def test_done_event_carries_the_folded_usage(self, store: FileStore) -> None:
+        digest = DigestBatch(lines=[DigestLine(turn=1, line="the gist")])
+        script = FakeScript(
+            turns=(
+                FakeTurn(content="r" * 300, usage=Usage(10, 2)),
+                FakeTurn(content="r2", usage=Usage(10, 2)),
+                FakeTurn(content=digest.model_dump_json(), usage=Usage(7, 3)),
+                FakeTurn(content="r3", usage=Usage(50, 5)),
+            )
+        )
+        config, _ = _small_config(script)
+        convo = Conversation(
+            config,
+            store=store,
+            conversation_id="t1",
+            compaction=CompactionConfig(
+                hot_turns=1, trigger_fraction=0.01, digest_chars=100
+            ),
+        )
+        await convo.send(_long(1))
+        await convo.send(_long(2))
+        events = await convo.send(_long(3), stream=True)
+        done: DoneEvent | None = None
+        async for event in events:
+            if isinstance(event, DoneEvent):
+                done = event
+        assert done is not None
+        assert done.usage == Usage(57, 8)
+        assert done.usage_by_model == (
+            ModelUsage(model="fake-small", usage=Usage(57, 8)),
+        )
+        payload = done.to_dict()
+        assert set(payload) == {
+            "event",
+            "sequence",
+            "model",
+            "stop_reason",
+            "raw_stop_reason",
+            "usage",
+            "usage_by_model",
+        }
+
+    async def test_abandoning_after_the_boundary_keeps_the_checkpoint(
+        self, store: FileStore
+    ) -> None:
+        """Projections are written pre-run; the turn is not."""
+        script = FakeScript(turns=tuple(FakeTurn(content=f"r{i}") for i in range(3)))
+        config, _ = _small_config(script)
+        convo = Conversation(
+            config, store=store, conversation_id="t1", compaction=_TRIGGER
+        )
+        await convo.send(_long(1))
+        await convo.send(_long(2))
+        events = await convo.send(_long(3), stream=True)
+        async for _event in events:
+            break  # abandon immediately
+        await _close(events)
+        assert [e.turn for e in await store.read_projections("t1")] == [1]
+        assert await store.last_turn_number("t1") == 2

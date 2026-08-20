@@ -193,8 +193,7 @@ def _render_projection(entry: ConversationProjection) -> str:
     return json.dumps(data, ensure_ascii=True, separators=(",", ":")) + "\n"
 
 
-def _parse_object(line: str, number: int, conversation_id: str) -> dict[str, Any]:
-    where = f"turn-log line {number}"
+def _parse_object(line: str, where: str, conversation_id: str) -> dict[str, Any]:
     try:
         data: Any = json.loads(line)
     except json.JSONDecodeError as exc:
@@ -219,7 +218,7 @@ def _parse_object(line: str, number: int, conversation_id: str) -> dict[str, Any
 
 def _parse_turn(line: str, number: int, conversation_id: str) -> ConversationTurn:
     where = f"turn-log line {number}"
-    data = _parse_object(line, number, conversation_id)
+    data = _parse_object(line, where, conversation_id)
     turn = data.get("turn")
     created_raw = data.get("created_at")
     encoded = data.get("messages")
@@ -262,7 +261,7 @@ def _parse_projection(
     line: str, number: int, conversation_id: str
 ) -> ConversationProjection:
     where = f"projection line {number}"
-    data = _parse_object(line, number, conversation_id)
+    data = _parse_object(line, where, conversation_id)
     turn = data.get("turn")
     span = data.get("span")
     kind = data.get("kind")

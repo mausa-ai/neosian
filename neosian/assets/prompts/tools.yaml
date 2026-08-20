@@ -11,3 +11,5 @@ blackboard_list: "List available blackboard entries with their names and descrip
 blackboard_read: "Read the current content of a blackboard entry by name. Use list_blackboard first to see what's available."
 
 blackboard_update: "Update an existing blackboard entry with new content. Can only update entries that already exist, not create new ones."
+
+recall_turn: "Re-read one earlier turn of this conversation verbatim. Older turns appear compacted in the conversation log as one-line entries labeled with turn numbers in square brackets, e.g. [7] or [3-6]. Pass a turn number to get that turn's full original text, including complete tool calls and results. Use it whenever a log entry mentions something you need the details of."

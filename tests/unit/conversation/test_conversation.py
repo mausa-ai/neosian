@@ -14,6 +14,7 @@ import pytest
 from neosian import Agent, AgentConfig, Model, Tool, ToolResult
 from neosian._foundation.agent.hooks import AgentHooks, TurnEvent
 from neosian._foundation.conversation.base import ConversationStore
+from neosian._foundation.conversation.compaction import CompactionConfig
 from neosian._foundation.conversation.core import Conversation
 from neosian._foundation.conversation.types import (
     ConversationProjection,
@@ -65,7 +66,9 @@ class _ProbeStore(ConversationStore):
 
     def __init__(self) -> None:
         self.turns: list[ConversationTurn] = []
+        self.projections: list[ConversationProjection] = []
         self.read_calls = 0
+        self.read_projection_calls = 0
 
     async def append_turn(
         self, conversation_id: str, messages: Sequence[Message]
@@ -94,14 +97,17 @@ class _ProbeStore(ConversationStore):
     async def append_projections(
         self, conversation_id: str, entries: Sequence[ConversationProjection]
     ) -> None:
-        del conversation_id, entries
-        raise NotImplementedError
+        del conversation_id
+        self.projections.extend(entries)
+        self.projections.sort(key=lambda e: (e.turn, e.span))
 
     async def read_projections(
         self, conversation_id: str, *, after: int = 0, limit: int | None = None
     ) -> tuple[ConversationProjection, ...]:
-        del conversation_id, after, limit
-        return ()
+        del conversation_id
+        self.read_projection_calls += 1
+        selected = [e for e in self.projections if e.turn > after]
+        return tuple(selected if limit is None else selected[:limit])
 
 
 @pytest.mark.unit
@@ -403,3 +409,259 @@ class TestCallerIsolation:
         assert config.hooks is None
         assert config.system_prompt == _SYSTEM
         assert list(agent._tools) == before_tools
+
+
+def _small_config(script: FakeScript, **kwargs: Any) -> tuple[AgentConfig, FakeClient]:
+    """FAKE_SMALL's 8_192-token window is the trigger-test lever."""
+    fake = FakeClient(script)
+    config = AgentConfig(
+        system_prompt=_SYSTEM,
+        model=Model.FAKE_SMALL,
+        enable_todo=False,
+        client_factory=lambda _: fake,
+        **kwargs,
+    )
+    return config, fake
+
+
+class _FailingProjectionsStore(FileStore):
+    async def append_projections(self, conversation_id: str, entries: Any) -> None:
+        del conversation_id, entries
+        raise RuntimeError("projections append failed")
+
+
+# ~82-token threshold on FAKE_SMALL: any send past the first crosses it
+# with 600-char user messages, so the boundary timing is deterministic.
+_TRIGGER = CompactionConfig(hot_turns=1, trigger_fraction=0.01)
+
+
+def _long(n: int) -> str:
+    # Longer than the default user_chars cap (800), so the log line
+    # head-clips and the TAIL marker survives only in verbatim turns.
+    return "x" * 900 + f" TAIL{n}"
+
+
+@pytest.mark.unit
+class TestCompactionIntegration:
+    async def test_default_on_reads_projections_once(self) -> None:
+        probe = _ProbeStore()
+        config, _ = _config(_reply("x"))
+        convo = Conversation(config, store=probe, conversation_id="t1")
+        await convo.start()
+        assert probe.read_calls == 1
+        assert probe.read_projection_calls == 1
+
+    async def test_disabled_skips_the_projections_read(self) -> None:
+        probe = _ProbeStore()
+        config, _ = _config(_reply("x"))
+        convo = Conversation(
+            config,
+            store=probe,
+            conversation_id="t1",
+            compaction=CompactionConfig(enabled=False),
+        )
+        await convo.start()
+        assert probe.read_calls == 1
+        assert probe.read_projection_calls == 0
+
+    async def test_trigger_replaces_old_turns_with_the_log_block(
+        self, store: FileStore
+    ) -> None:
+        script = FakeScript(turns=tuple(FakeTurn(content=f"r{i}") for i in range(3)))
+        config, fake = _small_config(script)
+        convo = Conversation(
+            config, store=store, conversation_id="t1", compaction=_TRIGGER
+        )
+        await convo.send(_long(1))
+        await convo.send(_long(2))
+        await convo.send(_long(3))  # boundary fires here: turn 1 projected
+        contents = [
+            m.content for m in fake.calls[-1].messages if isinstance(m.content, str)
+        ]
+        assert any("[conversation log" in c for c in contents)
+        assert any("[recall_turn(1)]" in c for c in contents)
+        assert not any("TAIL1" in c for c in contents)  # clipped away
+        assert any("TAIL2" in c for c in contents)  # hot turn verbatim
+        stored = await store.read_projections("t1")
+        assert [e.turn for e in stored] == [1]
+
+    async def test_below_the_trigger_requests_are_unchanged(
+        self, store: FileStore
+    ) -> None:
+        script = FakeScript(turns=(FakeTurn(content="one"), FakeTurn(content="two")))
+        config, fake = _config(script)  # Model.FAKE: the window never triggers
+        convo = Conversation(config, store=store, conversation_id="t1")
+        await convo.send("first")
+        await convo.send("second")
+        replayed = [m for m in fake.calls[-1].messages if m.role is not Role.SYSTEM]
+        assert [m.content for m in replayed] == ["first", "one", "second"]
+        assert await store.read_projections("t1") == ()
+
+    async def test_compaction_spend_folds_into_the_response(
+        self, store: FileStore
+    ) -> None:
+        from neosian._foundation.conversation.distill import DigestBatch, DigestLine
+        from neosian._foundation.llm.base import ModelUsage, Usage
+
+        digest = DigestBatch(lines=[DigestLine(turn=1, line="the gist")])
+        script = FakeScript(
+            turns=(
+                FakeTurn(content="r" * 300, usage=Usage(10, 2)),
+                FakeTurn(content="r2", usage=Usage(10, 2)),
+                # send 3's boundary distills turn 1, then the agent runs:
+                FakeTurn(content=digest.model_dump_json(), usage=Usage(7, 3)),
+                FakeTurn(content="r3", usage=Usage(50, 5)),
+            )
+        )
+        config, _ = _small_config(script)
+        convo = Conversation(
+            config,
+            store=store,
+            conversation_id="t1",
+            compaction=CompactionConfig(
+                hot_turns=1, trigger_fraction=0.01, digest_chars=100
+            ),
+        )
+        await convo.send(_long(1))
+        await convo.send(_long(2))
+        response = await convo.send(_long(3))
+        assert response.usage == Usage(57, 8)
+        assert response.usage_by_model == (
+            ModelUsage(model="fake-small", usage=Usage(57, 8)),
+        )
+        stored = await store.read_projections("t1")
+        assert stored[0].kind == "digest"
+        assert "the gist" in stored[0].text
+
+    async def test_memory_index_refreshes_at_the_boundary(
+        self, store: FileStore
+    ) -> None:
+        """The §9.5.10 carve-out: the frozen index's one legitimate
+        refresh — the sibling of test_memory_index_is_frozen_per_conversation."""
+        await store.write("user:demo", "before", "existing fact")
+        config, _ = _config(FakeScript(turns=(FakeTurn(content="a"),) * 2))
+        convo = Conversation(
+            config,
+            store=store,
+            conversation_id="t1",
+            memory_scope="user:demo",
+            compaction=CompactionConfig(hot_turns=1),
+        )
+        await convo.send("one")
+        await convo.send("two")
+        assert convo._agent is not None
+        agent_ref = convo._agent
+        await store.write("user:demo", "later", "new fact")
+        result = await convo.compact()
+        assert result.entries
+        assert convo._agent is not agent_ref
+        assert "/memories/later" in convo._agent._system_prompt
+
+    async def test_resume_renders_compacted_from_the_first_send(
+        self, store: FileStore
+    ) -> None:
+        config, _ = _config(FakeScript(turns=(FakeTurn(content="a"),) * 2))
+        first = Conversation(
+            config,
+            store=store,
+            conversation_id="t1",
+            compaction=CompactionConfig(hot_turns=1),
+        )
+        await first.send("one")
+        await first.send("two")
+        await first.compact()
+
+        config2, fake2 = _config(_reply("b"))
+        resumed = Conversation(
+            config2,
+            store=store,
+            conversation_id="t1",
+            compaction=CompactionConfig(hot_turns=1),
+        )
+        await resumed.send("three")
+        contents = [
+            m.content for m in fake2.calls[-1].messages if isinstance(m.content, str)
+        ]
+        assert any("[conversation log" in c and "[1] USER: one" in c for c in contents)
+
+    async def test_projections_failure_fails_the_send_and_persists_nothing(
+        self, tmp_path: Any, manual_clock: Any
+    ) -> None:
+        store = _FailingProjectionsStore(tmp_path / "failing", clock=manual_clock)
+        script = FakeScript(turns=tuple(FakeTurn(content=f"r{i}") for i in range(3)))
+        config, fake = _small_config(script)
+        convo = Conversation(
+            config, store=store, conversation_id="t1", compaction=_TRIGGER
+        )
+        await convo.send(_long(1))
+        await convo.send(_long(2))
+        calls_before = len(fake.calls)
+        with pytest.raises(RuntimeError, match="projections append failed"):
+            await convo.send(_long(3))
+        assert await store.last_turn_number("t1") == 2
+        assert len(convo.messages) == 4  # two persisted turns, nothing half-done
+        assert len(fake.calls) == calls_before  # the agent never ran
+
+    async def test_caller_config_is_untouched_by_compaction(
+        self, store: FileStore
+    ) -> None:
+        config, _ = _config(FakeScript(turns=(FakeTurn(content="a"),) * 2))
+        convo = Conversation(
+            config,
+            store=store,
+            conversation_id="t1",
+            compaction=CompactionConfig(hot_turns=1),
+        )
+        await convo.send("one")
+        await convo.send("two")
+        await convo.compact()
+        assert config.tools == []
+        assert config.system_prompt == _SYSTEM
+
+
+@pytest.mark.unit
+class TestManualCompact:
+    async def test_projects_below_the_trigger(self, store: FileStore) -> None:
+        config, fake = _config(FakeScript(turns=(FakeTurn(content="a"),) * 3))
+        convo = Conversation(
+            config,
+            store=store,
+            conversation_id="t1",
+            compaction=CompactionConfig(hot_turns=1),
+        )
+        await convo.send("one")
+        await convo.send("two")
+        result = await convo.compact()
+        assert [e.turn for e in result.entries] == [1]
+        assert result.usage is None  # deterministic-only: no model call
+        await convo.send("three")
+        contents = [
+            m.content for m in fake.calls[-1].messages if isinstance(m.content, str)
+        ]
+        assert any("[conversation log" in c for c in contents)
+
+    async def test_runs_even_when_disabled(self, store: FileStore) -> None:
+        config, fake = _config(FakeScript(turns=(FakeTurn(content="a"),) * 3))
+        convo = Conversation(
+            config,
+            store=store,
+            conversation_id="t1",
+            compaction=CompactionConfig(enabled=False, hot_turns=1),
+        )
+        await convo.send("one")
+        await convo.send("two")
+        result = await convo.compact()
+        assert [e.turn for e in result.entries] == [1]
+        await convo.send("three")
+        contents = [
+            m.content for m in fake.calls[-1].messages if isinstance(m.content, str)
+        ]
+        assert any("[conversation log" in c for c in contents)
+
+    async def test_no_op_on_a_fresh_conversation(self, store: FileStore) -> None:
+        config, _ = _config(_reply("a"))
+        convo = Conversation(config, store=store, conversation_id="t1")
+        result = await convo.compact()
+        assert result.entries == ()
+        assert result.usage is None
+        assert await store.read_projections("t1") == ()

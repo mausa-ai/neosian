@@ -249,6 +249,8 @@ def test_all_list_matches_exports() -> None:
         "ConversationStore",
         "ConversationTurn",
         "ConversationProjection",
+        "CompactionConfig",
+        "CompactionResult",
         "CONVERSATION_FORMAT_VERSION",
         "parse_conversation_id",
         # Utilities

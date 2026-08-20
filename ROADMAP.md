@@ -2,18 +2,20 @@
 
 > **▶ Current phase: N2 — Conversation layer**
 >
-> *(2026-08-19: slice A shipped at v0.60.0 — the opening design
-> discussion landed as DESIGN §9 (whole phase, compaction spec
-> included), and `Conversation` is real: the `ConversationStore` ABC +
-> conformance kit, FileStore turn persistence, send/resume with
-> streaming parity, the `memory_scope=` sugar, and the codec exported
-> (ledger #21–#26). Standing ruling: neosian's phases run to completion
-> before the kit's P10 vendors from a `v<X.Y.Z>` release tag. Still in
-> N2: **slice B** — compaction v1 per §9.6 (log projection, recall_turn,
-> CompactionConfig) — and **slice C** — the CLI migration onto
-> Conversation + FileStore (also fixing the --menu rebuild drops),
-> `examples/conversation_*.py`, and optional session reuse/`aclose()`.
-> The ECOSYSTEM amendment for the new seam is deferred per §9.10.)*
+> *(2026-08-20: slice B shipped at v0.61.0 — compaction v1 per §9.6 is
+> live: the log-projection view, the boundary (deterministic log lines,
+> batched digest distillation, model-written epoch folds), the
+> `recall_turn` tool, `CompactionConfig` default-on with lazy
+> registration, manual `Conversation.compact()`, spend folded into the
+> send's response/terminal event (ledger #27–#32). Slice A shipped
+> 2026-08-19 at v0.60.0 (DESIGN §9, `ConversationStore` + kit, FileStore
+> turns, send/resume, `memory_scope=` sugar, codec; ledger #21–#26).
+> Standing ruling: neosian's phases run to completion before the kit's
+> P10 vendors from a `v<X.Y.Z>` release tag. Still in N2: **slice C** —
+> the CLI migration onto Conversation + FileStore (also fixing the
+> --menu rebuild drops), `examples/conversation_*.py`, and optional
+> session reuse/`aclose()`. The ECOSYSTEM amendment for the new seam is
+> deferred per §9.10.)*
 >
 > The pointer above must equal the first phase heading without ✅ — if they
 > disagree, say so and trust the checkboxes. Companion to [VISION.md](VISION.md)
@@ -368,6 +370,17 @@ slice B: compaction v1 per §9.6. Carried to slice C: the CLI migration
 (+ --menu rebuild drops), examples, optional session reuse/`aclose()`.
 Deferred per §9.10: the ECOSYSTEM amendment (two-repo move).
 
+**Slice B shipped at v0.61.0 (2026-08-20)** — compaction v1 per §9.6:
+the coverage-keyed view render (ledger #27), the pre-run high-water
+trigger, deterministic log lines + batched digest distillation +
+model-written epoch folds, the lazy `recall_turn` tool, default-on
+`CompactionConfig` (ledger #28), manual `Conversation.compact()`, and
+compaction spend folded into the send's response/terminal event
+(ledger #29). Ledger #27–#32; §9.6 implementation notes added. Carried
+to slice C: the CLI migration (+ --menu rebuild drops), examples,
+optional session reuse/`aclose()`; the §9.10 ECOSYSTEM amendment stays
+deferred.
+
 ## N3 — PostgresStore (v0.63–0.64)
 
 DESIGN: §8.
@@ -627,3 +640,33 @@ DESIGN: §2, §6, §10.
   1389 unit tests, zero keys; v0.60.0. Carried: slice B compaction
   (§9.6), slice C CLI migration + examples; ECOSYSTEM amendment
   deferred (§9.10).
+- 2026-08-20 | N2 (slice B) | **The view pages; compaction v1 lands.**
+  §9.6 implemented whole: `projection.py` (coverage-keyed `select` with
+  explicit (span, index) max — naive last-write-wins loses a fold to a
+  later narrow entry; `render_view` emitting whole turns or one
+  synthetic USER log block — never SYSTEM, which the Anthropic adapter
+  would swallow as the system prompt; deterministic `log_line` with
+  `TOOL name(args) → head/tail`, USER verbatim to 4×digest_chars then a
+  `[recall_turn(n)]` pointer), `distill.py` (DigestBatch/EpochBatch
+  structured-output calls through the injected `acquire` seam, turn
+  numbers explicit in and out so a partial response degrades instead of
+  misattributing, every failure → warn + degrade), `compaction.py`
+  (`CompactionConfig` default-on + validation, `CompactionResult`,
+  `run_boundary`: pending → digests → fixed-aligned epoch folds —
+  model-written summaries per the user ruling, a failed fold retried
+  next boundary — one `append_projections` batch), `recall.py` (lazy
+  tool, corrective failures, store errors → ToolResult.fail). Core:
+  `_turns`/`_projections` replace the flat history, pre-run trigger
+  (ContextPolicy fallback, ledger #30), boundary rebuilds the derived
+  agent = the §9.5.10 index refresh, public `compact()` (ignores
+  `enabled` — manual is explicit intent), usage folds via
+  `fold_response`/`fold_event` in wiring (ledger #29). All four new
+  modules join the storage-seam import contract (agent-free by
+  construction, ledger #32). Kit: `plant_raw_projection` + 2 tests;
+  file_turns `where` mislabel fixed ("projection line N"). Assets:
+  `compaction.yaml` (distill/epoch/log frame) + `tools.recall_turn`
+  (≤1024 pinned). Root `__all__` +2 (`CompactionConfig`,
+  `CompactionResult`), facade +3. ~70 new tests incl. FAKE_SMALL
+  trigger end-to-end, streaming parity, abandonment, resume-compacted.
+  1455+ unit tests, zero keys; v0.61.0. Carried to slice C: CLI
+  migration (+ --menu drops), examples, session reuse/`aclose()`.

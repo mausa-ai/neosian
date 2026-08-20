@@ -32,6 +32,10 @@ from neosian._foundation.agent.session import AgentSession
 from neosian._foundation.blackboard.base import BlackboardProvider
 from neosian._foundation.blackboard.file import FileBlackboard
 from neosian._foundation.conversation.base import ConversationStore
+from neosian._foundation.conversation.compaction import (
+    CompactionConfig,
+    CompactionResult,
+)
 from neosian._foundation.conversation.core import Conversation
 from neosian._foundation.conversation.ids import parse_conversation_id
 from neosian._foundation.conversation.types import (
@@ -263,6 +267,8 @@ __all__ = [
     "ConversationStore",
     "ConversationTurn",
     "ConversationProjection",
+    "CompactionConfig",
+    "CompactionResult",
     "CONVERSATION_FORMAT_VERSION",
     "parse_conversation_id",
     # Utilities
