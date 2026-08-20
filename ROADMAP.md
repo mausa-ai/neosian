@@ -507,7 +507,12 @@ one converter test per non-Anthropic client (#44). AnthropicClient emits
 `cache_control` valid on the native entry (verified against the installed
 SDK). Execution, mounts, read-only enforcement and corrective failures
 are byte-identical either way, pinned by a native-vs-plain round-trip
-test. 1511 unit tests, zero keys. Carried to slice B: server-side
+test. The reference argument vocabulary is accepted first-class —
+`file_text` as `create`'s trained alias for `content`, `view`'s
+`view_range` with real line numbers — so native emissions never hit an
+unexpected-keyword failure (found against the live tool docs; the raw
+`**arguments` dispatch would have TypeError'd). 1519 unit tests, zero
+keys. Carried to slice B: server-side
 compaction pass-through (the `llm/blocks.py` extraction first — base.py
 is one line shy of the size gate otherwise); MCP, eval harness, docs/1.0
 in later slices.
@@ -876,6 +881,10 @@ in later slices.
   shape incl. `betas`-absent, mixed native+function lists, unmarked
   byte-identical regression, factory-call independence, the
   native-vs-plain create/view round-trip, agent/conversation wiring,
-  caplog warnings. DESIGN §2/§8 amended, ledger #41–#44. 1511 unit
-  tests, zero keys; v0.65.0. Slice B carried: server-side compaction
-  pass-through behind the `llm/blocks.py` extraction.
+  caplog warnings. The reference argument names ship first-class
+  (`file_text` alias, `view_range` slicing with real line numbers) —
+  the tool-docs check caught that the raw `**arguments` dispatch would
+  TypeError on the trained `file_text` emission. DESIGN §2/§8 amended,
+  ledger #41–#44. 1519 unit tests, zero keys; v0.65.0. Slice B carried:
+  server-side compaction pass-through behind the `llm/blocks.py`
+  extraction (shipped as prep).

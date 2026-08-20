@@ -493,7 +493,11 @@ data the model cannot have (ledger #43). Local execution, mounts,
 read-only enforcement and corrective failures are byte-identical either
 way; the flag is inert off-Anthropic and never raises (ledger #42),
 warning instead when the model is non-Anthropic or no mount sits at the
-`memories` root §9.5.13 chose.
+`memories` root §9.5.13 chose. The reference tool's argument vocabulary
+is accepted first-class alongside the schema names — `file_text` as
+`create`'s text (the trained emission; `content` wins when both arrive)
+and `view`'s optional `view_range` — so native transport never hits an
+unexpected-keyword failure.
 
 ## §9 Conversation & compaction **(N2)**
 

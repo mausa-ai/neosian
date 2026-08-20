@@ -423,3 +423,75 @@ class TestNativeFlag:
         assert seen_native.success
         assert seen_native.data == seen_plain.data
         assert seen_native.system_reminder == seen_plain.system_reminder
+
+
+class TestNativeArgumentVocabulary:
+    """The reference memory_20250818 argument names work first-class —
+    under the native transport the trained model emits `file_text` and
+    `view_range`, and neither may hit an unexpected-keyword failure."""
+
+    async def test_create_accepts_file_text(
+        self, tool: ToolFunction, config: MemoryConfig
+    ) -> None:
+        result = await tool(command="create", path="/user/prefs", file_text="espresso")
+        assert result.success
+        document = await config.store.read(_USER.scope, "prefs")
+        assert document is not None
+        assert document.content == "espresso"
+
+    async def test_content_wins_over_file_text(
+        self, tool: ToolFunction, config: MemoryConfig
+    ) -> None:
+        result = await tool(
+            command="create", path="/user/prefs", content="a", file_text="b"
+        )
+        assert result.success
+        document = await config.store.read(_USER.scope, "prefs")
+        assert document is not None
+        assert document.content == "a"
+
+    async def test_create_without_text_is_corrective(self, tool: ToolFunction) -> None:
+        result = await tool(command="create", path="/user/prefs")
+        assert not result.success
+        assert "'content'" in str(result.error)
+
+    async def test_view_range_slices_with_real_line_numbers(
+        self, tool: ToolFunction
+    ) -> None:
+        await tool(command="create", path="/user/lines", content="a\nb\nc\nd")
+        result = await tool(command="view", path="/user/lines", view_range=[2, 3])
+        assert result.success
+        assert "2: b" in str(result.data)
+        assert "3: c" in str(result.data)
+        assert "1: a" not in str(result.data)
+        assert "4: d" not in str(result.data)
+
+    async def test_view_range_minus_one_reads_to_the_end(
+        self, tool: ToolFunction
+    ) -> None:
+        await tool(command="create", path="/user/lines", content="a\nb\nc\nd")
+        result = await tool(command="view", path="/user/lines", view_range=[3, -1])
+        assert result.success
+        assert "3: c" in str(result.data)
+        assert "4: d" in str(result.data)
+        assert "2: b" not in str(result.data)
+
+    async def test_view_range_invalid_is_corrective(self, tool: ToolFunction) -> None:
+        await tool(command="create", path="/user/lines", content="a\nb")
+        result = await tool(command="view", path="/user/lines", view_range=[0, 2])
+        assert not result.success
+        assert "view_range" in str(result.error)
+
+    async def test_view_range_is_ignored_on_the_index(
+        self, tool: ToolFunction, config: MemoryConfig
+    ) -> None:
+        result = await tool(command="view", path="/", view_range=[1, 1])
+        assert result.success
+        assert result.data == await generate_memory_index(config.store, config.mounts)
+
+    def test_schema_carries_the_reference_names(self, tool: ToolFunction) -> None:
+        definition = get_tool_definition(tool)
+        assert definition is not None
+        properties = definition.parameters["properties"]
+        assert "file_text" in properties
+        assert "view_range" in properties

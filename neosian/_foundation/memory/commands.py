@@ -48,13 +48,33 @@ async def _read_required(
     return document
 
 
-def _numbered(document: MemoryDocument, virtual: str) -> str:
+def _numbered(
+    document: MemoryDocument, virtual: str, span: tuple[int, int] | None = None
+) -> str:
     lines = document.content.split("\n")
     width = len(str(len(lines)))
+    start, end = span if span is not None else (1, len(lines))
     body = "\n".join(
-        f"{number:>{width}}: {line}" for number, line in enumerate(lines, 1)
+        f"{number:>{width}}: {line}"
+        for number, line in enumerate(lines, 1)
+        if start <= number <= end
     )
     return f"{virtual} (v{document.version}):\n{body}"
+
+
+def _resolve_view_range(
+    view_range: list[int], line_count: int
+) -> tuple[int, int] | str:
+    """Validated 1-indexed inclusive (start, end) from the reference
+    [start_line, end_line] form (end -1 = end of file), or an error string."""
+    if len(view_range) != 2:
+        return f"view_range must be [start_line, end_line], got {view_range}"
+    start, end = view_range
+    if start < 1 or start > line_count:
+        return f"view_range start {start} is outside [1, {line_count}]"
+    if end != -1 and end < start:
+        return f"view_range end {end} must be -1 or >= start {start}"
+    return start, (line_count if end == -1 else min(end, line_count))
 
 
 def _match_lines(content: str, needle: str) -> list[int]:
@@ -80,7 +100,11 @@ async def _render_listing(
     return ToolResult.ok("\n".join(shown))
 
 
-async def view(config: MemoryConfig, path: str) -> ToolResult[str]:
+async def view(
+    config: MemoryConfig, path: str, view_range: list[int] | None = None
+) -> ToolResult[str]:
+    # view_range applies to document views only; index and directory
+    # listings ignore it (the reference tool's semantics).
     if not path.strip("/"):
         return ToolResult.ok(await generate_memory_index(config.store, config.mounts))
     mount, doc_path = resolve(config, path)
@@ -90,7 +114,13 @@ async def view(config: MemoryConfig, path: str) -> ToolResult[str]:
     if document is not None:
         if document.redacted:
             return ToolResult.ok(f"{_virtual(mount, doc_path)}: {_REDACTED_NOTICE}")
-        return ToolResult.ok(_numbered(document, _virtual(mount, doc_path)))
+        span: tuple[int, int] | None = None
+        if view_range is not None:
+            resolved = _resolve_view_range(view_range, document.content.count("\n") + 1)
+            if isinstance(resolved, str):
+                return ToolResult.fail(resolved)
+            span = resolved
+        return ToolResult.ok(_numbered(document, _virtual(mount, doc_path), span))
     # `prefix` is a plain string match (§8) — the trailing slash makes it
     # a directory boundary rather than a name prefix.
     entries = await config.store.list_documents(mount.scope, prefix=doc_path + "/")

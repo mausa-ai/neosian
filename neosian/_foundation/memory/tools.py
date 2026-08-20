@@ -75,11 +75,16 @@ def create_memory_tool(
     path here — is byte-identical either way (ledger #41–#44).
     """
 
+    # `file_text` and `view_range` are the reference `memory_20250818`
+    # argument names — accepted first-class so the native transport's
+    # trained emissions never hit an unexpected-keyword failure.
     @Tool(name=_TOOL_NAME, description=get_prompt("memory.tool"))
     async def memory(
         command: Literal["view", "create", "str_replace", "insert", "delete", "rename"],
         path: str | None = None,
+        view_range: list[int] | None = None,
         content: str | None = None,
+        file_text: str | None = None,
         old_str: str | None = None,
         new_str: str | None = None,
         insert_line: int | None = None,
@@ -100,13 +105,16 @@ def create_memory_tool(
             )
         try:
             if command == "view":
-                return await commands.view(config, path if path is not None else "/")
+                return await commands.view(
+                    config, path if path is not None else "/", view_range
+                )
             if command == "create":
+                text = content if content is not None else file_text
                 return await commands.create(
                     config,
                     actor,
                     _require(path, command, "path"),
-                    _require(content, command, "content"),
+                    _require(text, command, "content"),
                 )
             if command == "str_replace":
                 return await commands.str_replace(
