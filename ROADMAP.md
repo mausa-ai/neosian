@@ -832,6 +832,39 @@ its sandbox loses to a worse one it knows from training.
 walkthrough; the baseline pack is green on
 `transports: [function, cli]`.
 
+**Split (2026-08-21): slice A landed (no release — v0.71.0 rides the
+phase close)** — the shell-is-a-transport core. The opening act: the
+one-writer ruling written into DESIGN §8 + ledger #74 (advisory locks
+declined; file.py points at the rule). The store grammar extracted to
+`_foundation/memory/settings.py` (#75, the #50 precedent one level up;
+`format_mount` is the parser's inverse) and the env key hard-renamed
+`NEOSIAN_MCP_POSTGRES_DSN` → `NEOSIAN_POSTGRES_DSN` for every argv
+entry point (#76, user ruling, no alias); new import contract — the
+foundation never imports the facades (8 kept). `neosian memory`
+shipped: the async stream-injected engine in
+`_foundation/memory/cli.py` (flags are the dispatcher's names
+kebab-cased, `view` defaults `/`, `-` reads stdin, deliberately no
+`file_text` alias), entry tier `neosian/memory/cli.py` + `python -m
+neosian.memory`, verbatim typer pass-through (the `mcp` shape);
+`--json` prints `ToolResult.to_json()` verbatim at exit 0/1, argv-tier
+2, interrupt 130 (#77; §14.1–§14.2 written). `build_memory_tool`
+splits the one wire definition from execution; the 16-case parity
+table runs the CLI (14 rows byte-equal, the 2 grammar-tier rows at
+exit 2 — the tiering, not drift); the tri-transport test becomes one
+store / **four** transports. `Transport.CLI` on the harness axis:
+`evaluation/memory_cli.py` runs the engine in-process (#78 —
+user-ruled; the fork layer is scenario-independent, the walkthrough
+will pin the real binary), the runner passes `memory_config=None` +
+`extra_tools` (exactly-one-tool pinned), and the shipped pack flips to
+`transports: [function, cli]` — all-green keylessly, 6/6 by hand
+through `neosian eval`; provider baselines inherit the cli cells.
+1804 unit tests, zero keys. Carried to slice B: `neosian docs` +
+`assets/docs/` (the topology page carrying the 2×2 + #74), `llms.txt`
+×2 byte-pinned, `neosian mcp install --client … [--write]`
+(refuse-missing-dir ruled), the widened walkthrough — all six
+commands through the real binary, the phase done-when — §14.4–§14.5,
+README rows, v0.71.0 + `na-done`.
+
 ## NV — Evidence (v0.72)
 
 DESIGN: §13, §3.
@@ -1717,3 +1750,35 @@ is asserted without evidence.
   stays deferred-but-first-in-line. NZ gains the conscious reach
   decision: public/PyPI or deliberately private, ruled before the
   declaration, never at it. Docs only; no code touched.
+- 2026-08-21 | NA (slice A) | **The shell is a transport.** Planning
+  rulings (options-first, user confirmed): the harness's cli transport
+  runs the engine in-process — the fork/exec layer is
+  scenario-independent, so the walkthrough pins the real binary once
+  per gate instead of taxing every `make test` (#78); the DSN env key
+  hard-renamed to `NEOSIAN_POSTGRES_DSN` for every argv entry point,
+  no alias (#76); slice B's `mcp install --write` will refuse a
+  missing default config dir. Opened with the one-writer ruling
+  written down (§8 paragraph + #74 + file.py docstring). The store
+  grammar extracted to `memory/settings.py` (#75) — `StoreSettings`,
+  `add_store_arguments(default_actor=)`, `resolve_store_settings`,
+  `format_mount`; mcp settings is a thin flavor (`ServerSettings`
+  aliased, tests pass bar the deliberate env-name edits); the
+  foundation-↛-facades import contract added (8 kept). `neosian
+  memory`: engine in `_foundation/memory/cli.py` — subparser per
+  command with the shared store flags, `_StreamParser` over injected
+  streams, typed `_Request` at the parse boundary, store built inside
+  the running loop, function-local postgres import — plus entry tier,
+  `python -m neosian.memory`, and the verbatim typer pass-through;
+  `--json` = the envelope verbatim (#77); DESIGN §14 opened
+  (§14.1/§14.2). `build_memory_tool` split (no transport can fork the
+  schema); CLI parity: 14 dispatcher rows byte-equal, 2 grammar-tier
+  rows at exit 2; tri-transport → four transports. `Transport.CLI` +
+  `evaluation/memory_cli.py` (argv from `ARGUMENT_KEYS`, `env={}`,
+  `file_text` alias resolved at the boundary, None omitted so the
+  grammar answers); runner: `memory_config=None` + `extra_tools` for
+  cli cells; pack → `[function, cli]`, `neosian eval` 6/6 exit 0 by
+  hand; real-CLI smoke incl. the DSN-conflict exit 2. §13.3/§13.12/
+  §14.3 amended, ledger #74–#78. 1804 unit tests, zero keys; no
+  release cut — v0.71.0 rides the phase close. Carried: docs +
+  llms.txt + `mcp install` + the widened walkthrough (slice B closes
+  NA).

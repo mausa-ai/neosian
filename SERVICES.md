@@ -67,13 +67,14 @@ warning; requests fail at first pool use.
 ## The MCP server — a DSN, not an API key
 
 `NEOSIAN_POSTGRES_DSN` (renamed from `NEOSIAN_MCP_POSTGRES_DSN` at NA,
-ledger #76) is read only by `python -m neosian.mcp` (and
-the `neosian mcp` pass-through), never by the library: the MCP entry
-point is a host-spawned process configured through argv, and a DSN must
-not appear there — argv is world-readable in `ps` (DESIGN §12 ledger
-#53). Unset, the server requires `--root PATH` and serves a FileStore;
-set, it serves a `PostgresStore` and `--root` is refused (an explicit
-conflict, no precedence rule). The server never applies the DDL — run
+ledger #76) is read only by the argv entry points — `python -m
+neosian.mcp` / the `neosian mcp` pass-through, and `neosian memory` /
+`python -m neosian.memory` — never by the library: both are processes
+configured through argv, and a DSN must not appear there — argv is
+world-readable in `ps` (DESIGN §12 ledger #53). Unset, the entry points
+require `--root PATH` and use a FileStore; set, they use a
+`PostgresStore` and `--root` is refused (an explicit conflict, no
+precedence rule). Neither ever applies the DDL — run
 `python -m neosian.schemas postgres | psql` first (DESIGN §8 C1).
 
 ## CI secrets
