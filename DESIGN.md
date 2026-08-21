@@ -554,7 +554,9 @@ The MCP tool is *the* tool — `create_memory_tool`'s `ToolDefinition` is
 served verbatim through the SDK's low-level `Server` (explicit
 `input_schema`, never type-hint re-derivation), so the function tool, the
 native `memory_20250818` declaration and the MCP `tools/list` entry are
-three transports over one definition. Execution is shared too: the
+three transports over one definition. NA's memory CLI (§14.2) makes it
+four: `build_memory_tool` owns the one wire definition, each transport
+supplies only its execution, and the shell rides the same ladder. Execution is shared too: the
 command ladder lives in `memory/dispatch.py`, so the unknown-command
 guard, the per-command argument checks, the `file_text` alias and the
 `MemoryStoreError → "[code] message"` + hint mapping run once for all

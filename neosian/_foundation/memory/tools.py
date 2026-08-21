@@ -12,7 +12,8 @@ the @Tool decorator resolves the signature's hints at decoration time.
 """
 
 import logging
-from typing import Final, Literal
+from collections.abc import Awaitable, Callable
+from typing import Any, Final, Literal
 
 from neosian._foundation.memory.dispatch import dispatch
 from neosian._foundation.memory.mounts import MemoryConfig
@@ -27,19 +28,17 @@ NATIVE_MEMORY_TOOL_TYPE: Final = "memory_20250818"
 # The mount path Anthropic's trained memory behavior roots at (§9.5.13).
 _NATIVE_ROOT: Final = "memories"
 
+# A transport: takes (command, arguments) and returns the dispatch result.
+MemoryExecute = Callable[[object, dict[str, Any]], Awaitable[ToolResult[str]]]
 
-def create_memory_tool(
-    config: MemoryConfig, *, actor: str | None = None, native: bool = False
-) -> ToolFunction:
-    """Create the `memory` tool bound to a store and mounts.
 
-    `actor` is recorded on every mutation's version row; N2's
-    Conversation passes its conversation_id, the bare agent path passes
-    None. `native` marks the definition with Anthropic's
-    `memory_20250818` type: the Anthropic client then sends the
-    schema-less native declaration (the trained behavior replaces the
-    wire description); every other provider — and the local execution
-    path here — is byte-identical either way (ledger #41–#44).
+def build_memory_tool(execute: MemoryExecute) -> ToolFunction:
+    """The one `memory` wire definition; `execute` is the transport.
+
+    Every transport — the dispatch closure below, the eval harness's
+    in-process CLI leg — serves this exact name and signature, so the
+    schema the model sees cannot fork per transport (the hazard #19/#50
+    exist to prevent).
     """
 
     # `file_text` and `view_range` are the reference `memory_20250818`
@@ -59,8 +58,7 @@ def create_memory_tool(
         old_path: str | None = None,
         new_path: str | None = None,
     ) -> ToolResult[str]:
-        return await dispatch(
-            config,
+        return await execute(
             command,
             {
                 "path": path,
@@ -74,8 +72,29 @@ def create_memory_tool(
                 "old_path": old_path,
                 "new_path": new_path,
             },
-            actor=actor,
         )
+
+    return memory
+
+
+def create_memory_tool(
+    config: MemoryConfig, *, actor: str | None = None, native: bool = False
+) -> ToolFunction:
+    """Create the `memory` tool bound to a store and mounts.
+
+    `actor` is recorded on every mutation's version row; N2's
+    Conversation passes its conversation_id, the bare agent path passes
+    None. `native` marks the definition with Anthropic's
+    `memory_20250818` type: the Anthropic client then sends the
+    schema-less native declaration (the trained behavior replaces the
+    wire description); every other provider — and the local execution
+    path here — is byte-identical either way (ledger #41–#44).
+    """
+
+    async def execute(command: object, arguments: dict[str, Any]) -> ToolResult[str]:
+        return await dispatch(config, command, arguments, actor=actor)
+
+    memory = build_memory_tool(execute)
 
     if native:
         set_native_type(memory, NATIVE_MEMORY_TOOL_TYPE)

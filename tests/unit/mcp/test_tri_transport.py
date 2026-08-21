@@ -1,10 +1,16 @@
-"""The N4 done-when, MCP's share: one store serves the same memory
-through the function tool, the native flag, and an MCP client."""
+"""The N4 done-when, grown at NA: one store serves the same memory
+through the function tool, the native flag, an MCP client, and the
+memory CLI's engine."""
+
+import io
+from pathlib import Path
 
 from mcp.client import Client
 
 from neosian._foundation.mcp.server import create_memory_server
+from neosian._foundation.memory.cli import run
 from neosian._foundation.memory.mounts import MemoryConfig
+from neosian._foundation.memory.settings import format_mount
 from neosian._foundation.memory.tools import (
     NATIVE_MEMORY_TOOL_TYPE,
     create_memory_tool,
@@ -12,7 +18,7 @@ from neosian._foundation.memory.tools import (
 from neosian._foundation.tools.base import get_tool_definition
 
 
-async def test_one_store_three_transports(config: MemoryConfig) -> None:
+async def test_one_store_four_transports(config: MemoryConfig, tmp_path: Path) -> None:
     # 1. The function tool writes.
     plain = create_memory_tool(config)
     created = await plain(command="create", path="/memories/prefs", content="dark mode")
@@ -44,8 +50,18 @@ async def test_one_store_three_transports(config: MemoryConfig) -> None:
         )
         assert mcp_create.is_error is False
 
-    # 4. The function tool sees the MCP client's write in the index.
+    # 4. The CLI engine (the shell transport) writes to the same root.
+    out, err = io.StringIO(), io.StringIO()
+    argv = ["create", "/memories/from-cli", "--content", "hi from the shell"]
+    argv += ["--root", str(tmp_path / "memory"), "--actor", "cli"]
+    for mount in config.mounts:
+        argv += ["--mount", format_mount(mount)]
+    code = await run(argv, {}, stdin=io.StringIO(), out=out, err=err)
+    assert code == 0
+
+    # 5. The function tool sees every transport's write in the index.
     index = await plain(command="view", path="/")
     assert index.success
     assert "prefs" in str(index.data)
     assert "from-mcp" in str(index.data)
+    assert "from-cli" in str(index.data)
