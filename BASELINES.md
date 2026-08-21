@@ -39,9 +39,8 @@ document), never the file name.
   construction.
 - One model per provider, the same set the library's external tier
   pins: `claude-sonnet-5`, `gpt-5-mini-2025-08-07`, `gpt-oss-120b`
-  (Cerebras). The 2026-08-21 tables also carry Groq
-  (`openai/gpt-oss-120b`) — measured before the provider's removal
-  (NW step 0); the row stands as the ruling's evidence.
+  (Cerebras). The 2026-08-21 tables also carry a fourth, since-removed
+  provider — see the historical note under the table.
 - Transports axis (ledger #64): `function` (the plain function tool)
   and `cli` (the `neosian memory` engine in-process) run for every
   provider; `native_memory` (Anthropic's `memory_20250818`) is
@@ -127,8 +126,8 @@ recovers in-turn (the library warns exactly this when no mount is named
   — three-scenario pack at v0.71.0, exact-path expectations. All four
   providers red, dominantly on exact-path pins the models were never
   told about; the finding became ledger #82 (`path_prefix`). Two real
-  signals underneath: Groq's model failed to emit a valid tool call in
-  one function-transport cell, and Anthropic's native transport first
+  signals underneath: the fourth provider's emission failures above,
+  and Anthropic's native transport first
   tried its trained `/memories/…` path prefix, hit the corrective
   failure, and recovered in-turn.
 - Standing schedule: the `external` CI jobs run weekly (Mondays 06:00

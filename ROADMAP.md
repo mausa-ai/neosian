@@ -161,7 +161,7 @@ changes in this phase.
 - [x] Test-tier rename: real-API "integration" → `external_<provider>`
       markers; addopts exclude external by default; auto-mark by path in the
       root conftest; per-test skip helpers (never module-level); falsiness
-      key checks *(suites restructured by provider dir; the groq
+      key checks *(suites restructured by provider dir; two provider
       agent/session suites gained the skip guard they were missing)*
 - [x] `scripts/external_env.py` (value-blind cred injection, per-suite key
       allowlist, prints names only) + `scripts/check_file_size.py` (warn 300 /
@@ -198,8 +198,8 @@ order within the phase: §4 (vocabulary) → §5 (errors) → FakeProvider → �
       (`raise … from exc`), `ContextWindowExceededError`,
       `ModelFailedError.cause_code`/`provider_status`, `ERROR_CODES` registry
       + `python -m neosian.schemas errors`; exports updated *(47 codes, all
-      pinned; wrap gained keyword-only `model=` — DESIGN §5; Groq-413 gap
-      recorded as ledger #13)*
+      pinned; wrap gained keyword-only `model=` — DESIGN §5; a 413
+      overflow-classification gap recorded as ledger #13)*
 - [x] FakeProvider per DESIGN §2: `Provider.FAKE`, `Model.FAKE` /
       `FAKE_SMALL` / `FAKE_REASONING` as real registry members;
       `neosian.fake` public module (lazy-imported, root `__all__` untouched);
@@ -947,10 +947,11 @@ ledger #82, user-ruled) plus four further run-informed calibrations
 → stems/regexes, the correction scenario's record turn made explicitly
 memory-worthy), each recorded in BASELINES.md with the fingerprint gate
 sealing the pack they produced. Final numbers: Anthropic 6/6 on all
-three transports, OpenAI 6/6 on both, Cerebras 6/6 on both, Groq 3/6
-(stochastic invalid tool-call emissions on the same weights Cerebras
-passes clean — an inference-stack difference; the trained-behavior
-asymmetry, measured), and the model registry's first catalog findings
+three transports, OpenAI 6/6 on both, Cerebras 6/6 on both, the
+since-removed fourth provider 3/6 (stochastic invalid tool-call
+emissions on the same weights Cerebras passes clean — an
+inference-stack difference; the trained-behavior asymmetry, measured;
+NW step 0), and the model registry's first catalog findings
 (gpt-5-pro is Responses-API-only; FAKE models now skip the catalog
 smoke test).
 Document-set write policy noted into NP; eval `seed:` into NG; NC6
@@ -1176,9 +1177,10 @@ is asserted without evidence.
 ## NW — The provider gate (the membership track)
 
 Provider membership is **baseline-gated** (user ruling 2026-08-21 —
-the Groq lesson): a provider row exists only while its memory
+the step-0 lesson): a provider row exists only while its memory
 baselines stay green, measured per serving stack, never per brand —
-the same weights scored 3/6 on Groq and 12/12 on Cerebras. A
+the same weights scored 3/6 on the since-removed provider and 12/12
+on Cerebras. A
 candidate is wired, the shipped pack runs scriptless against it, the
 row lands in BASELINES.md; what stays green stays, what does not
 exits. The weekly runs are the standing re-test. Sequenced at the
@@ -1188,23 +1190,17 @@ OpenAI-compatible `base_url` is the cheap door most candidates enter
 through — a first-party client is earned by a green row plus a
 feature the compat dialect cannot carry.
 
-- **Step 0 — Groq exits (ruled and ✅ executed 2026-08-21, same
-  session; v0.73.0).** The 3/6 stochastic-emission row plus the
-  membership rule retire the provider. The removal audit found the one
-  blocker: **guardrails were hard-wired to Groq** — and the safeguard
-  model has no other host (verified: OpenRouter forwards it to Groq) —
-  so the exit opened options-first on the guardrail engine (user
-  ruling: configurable `GuardrailsConfig.model`, default = the agent's
-  own model, via the `_create_client` seam — keyless on FakeProvider,
-  loud MissingAPIKeyError at construction, ledger #84). Removed whole:
-  client, `Provider.GROQ`, four `Model.GROQ_*` rows + pricing
-  (fingerprint re-pinned), CI lane + repo secret, external suites, the
-  `groq` dependency; `AgentConfig.model` default →
-  `CEREBRAS_GPT_OSS_120B`; the cross fallback suite re-anchored on
-  Cerebras; guardrail tests rewritten mock-free on scripted fakes.
-  ECOSYSTEM and the kit were verified groq-free — a one-repo move.
-  BASELINES.md keeps the Groq row as dated history — the ruling's
-  evidence.
+- **Step 0 — the fourth provider exited (ruled and ✅ executed
+  2026-08-21, same session; v0.73.0).** The membership rule's first
+  application: the 3/6 stochastic-emission row retired it, whole —
+  client, enum rows, pricing (fingerprint re-pinned), CI lane + repo
+  secret, external suites, dependency. The one blocker the audit
+  found — guardrails hard-wired to that provider's safeguard model,
+  which no other host serves — forced the re-platform ruled
+  options-first: configurable `GuardrailsConfig.model`, default = the
+  agent's own model, via the `_create_client` seam (keyless on
+  FakeProvider, loud at construction). The full record is ledger #84;
+  the measured row stands as dated history in BASELINES.md.
 - **The slate (user, 2026-08-21)** — a menu, not a queue; each
   candidate enters through the gate above:
   - *Model platforms, mostly OpenAI-compatible (NC2 territory):*
@@ -1218,7 +1214,7 @@ feature the compat dialect cannot carry.
   - *Open-weight families, not providers:* Gemma, Meta Llama (and
     Qwen/Kimi/GLM/DeepSeek above when third-party-hosted) — a
     family's row always names a provider+model pair; the
-    Groq-vs-Cerebras split is the proof a family alone measures
+    step-0 same-weights split is the proof a family alone measures
     nothing.
   - *On the menu when demand arrives:* Cohere, the aggregators
     (Together, Fireworks, OpenRouter), local serving (Ollama, vLLM),
@@ -1278,9 +1274,9 @@ membership is standing, not achieved.
 - 2026-08-18 | NH | **The house.** Makefile (§11 targets + guards); version
   flip (`[project].version` = 0.53.0, `__version__` via importlib.metadata,
   pinned by `test_version.py`); tier rename to
-  `tests/external/{groq,cerebras,anthropic,cross}` with path auto-marking,
+  per-provider `tests/external/<provider>` dirs with path auto-marking,
   `-m "not external" --strict-markers` addopts, consolidated `_key_or_skip`
-  (the groq agent/session suites had **no** skip mechanism — fixed);
+  (two agent/session suites had **no** skip mechanism — fixed);
   `scripts/{check_file_size,external_env}.py` (size allowlist: five files
   ≥ 500, each with a reason); import-linter wired — its first run caught
   `evaluation/runner → _cli` (loader moved to `_foundation/agent/loader.py`,
@@ -1314,7 +1310,7 @@ membership is standing, not achieved.
   import; golden tests pin byte-identical assembly. Bugs: `_validate_run`
   shared by both entry points (three guards; DESIGN §3 said four — wording
   fixed); `_attach_input_guard_results` → `dataclasses.replace` (model= no
-  longer dropped). Ledger #13 (Groq 413) and #14 (fakes visible in
+  longer dropped). Ledger #13 (a 413 overflow gap) and #14 (fakes visible in
   INVALID_MODEL) added. 935 unit tests, zero keys; v0.54.0 — the kit's
   first vendoring point.
 - 2026-08-19 | N0 (slice A) | **The agent core reshaped.** Twins collapsed:
@@ -1630,7 +1626,7 @@ membership is standing, not achieved.
   into `Usage` on both paths (#48, ledger #29's promise).
   `ModelSpec.supports_compaction_blocks` (Haiku 4.5 False —
   docs-verified; #47) gates pre-flight + fallback ("compaction" joins
-  `unsupported_content_types`); openai/groq/cerebras reject the block.
+  `unsupported_content_types`); the OpenAI-compatible converters reject the block.
   Conversation warns under the flag (#49 — projection would drop blocks
   and double-pay); §9.6 deferral note, §2/§6 amended. Deliberate
   contract change: assistant messages may carry text+compaction block
@@ -1969,10 +1965,10 @@ membership is standing, not achieved.
   sha256 fingerprints of memory.yaml + the pack gated by
   tests/unit/test_baselines.py (user-ruled both files), per-provider
   tables — Anthropic 6/6 × 3 transports, OpenAI 6/6 × 2, Cerebras
-  6/6 × 2 (14 min on the throttled free tier), Groq 3/6 (stochastic
-  invalid tool-call emissions on the same weights Cerebras passes
-  clean — an inference-stack difference; store-true where completed —
-  the trained-behavior asymmetry measured). OTel: `neosian.otel.otel_hooks()` → plain AgentHooks,
+  6/6 × 2 (14 min on the throttled free tier), the fourth provider
+  3/6 (stochastic invalid tool-call emissions on the same weights
+  Cerebras passes clean — an inference-stack difference; store-true
+  where completed — the asymmetry measured; it exited at NW step 0). OTel: `neosian.otel.otel_hooks()` → plain AgentHooks,
   flat post-hoc spans (gen_ai semconv; never message content,
   arguments, or results), `otel` extra = api-only, facade-only
   surface, 9th import contract, keyless InMemorySpanExporter suite
@@ -1981,35 +1977,37 @@ membership is standing, not achieved.
   yardstick (LongMemEval candidate), NP gains the document-set
   write-policy revisit, NG the eval `seed:` note. 1899 unit tests,
   zero keys; v0.72.0 + `nv-done`. Pointer → NR.
-- 2026-08-21 | meta | **The provider gate; Groq ruled out.** Post-NV
+- 2026-08-21 | meta | **The provider gate; the exit ruled.** Post-NV
   review rulings (user): provider membership becomes baseline-gated —
-  the NW track written at the roadmap's end (step 0: Groq exits;
-  the slate: xAI/DeepSeek/Moonshot/Zhipu/Alibaba/Mistral/MiniMax
-  platforms, Gemini, the three clouds, Gemma/Llama as families, the
+  the NW track written at the roadmap's end (step 0: the 3/6
+  provider exits; the slate:
+  xAI/DeepSeek/Moonshot/Zhipu/Alibaba/Mistral/MiniMax platforms,
+  Gemini, the three clouds, Gemma/Llama as families, the
   demand-driven menu; per-candidate done-when = two consecutive green
   weekly rows). The removal audit sized the exit (~66 files;
-  ECOSYSTEM + kit verified groq-free) and found the blocker: the
-  guardrail engine is hard-wired to Groq and its safeguard model has
-  no other host — the exit session opens options-first there. Docs
-  only; no code touched.
+  ECOSYSTEM + kit verified clean) and found the blocker: the
+  guardrail engine was hard-wired to the exiting provider's safeguard
+  model, which no other host serves — the exit session opens
+  options-first there. Docs only; no code touched.
 - 2026-08-21 | NW (step 0) | **Groq exits the registry; guardrails
-  re-platform.** Same-session execution of the ruling. Guardrail
-  engine ruled options-first (user): `GuardrailsConfig.model`,
-  default = the agent's own model — the classifier prompt runs
-  through a neosian client from the `_create_client` seam (#32),
-  honoring `client_factory` (guardrails now keylessly testable on
-  FakeProvider, mock-free tests); no explicit temperature (some
-  models reject non-defaults); missing guardrail-provider key raises
-  at construction, never a silent fail-open (#84). Removal, whole:
-  `llm/groq.py`, `Provider.GROQ`, four `Model.GROQ_*` rows + specs +
-  pricing (`PRICES_FINGERPRINT` re-pinned), the `groq` dependency,
-  router branch, CI matrix lane + `GROQ_API_KEY` repo secret,
-  `tests/external/groq/`, `test_groq.py`, the `external_groq` marker,
-  the CLI's Groq configure/status/picker rows, twelve examples'
-  models, `raw_groq_test.py` deleted. `AgentConfig.model` default →
-  `CEREBRAS_GPT_OSS_120B`; the cross fallback suite re-anchored on
-  Cerebras; catalog test provider map trimmed. Docs: README/SERVICES/
-  DESIGN provider prose to three adapters, BASELINES.md Groq row
-  annotated historical (‡), NW step 0 ✅, downstream version markers
-  +1 (NR v0.74 … NM v0.80). ECOSYSTEM untouched (verified groq-free;
-  one-repo move). 1869 unit tests, zero keys; v0.73.0.
+  re-platform.** Same-session execution of the ruling — this entry
+  and ledger #84 are the deliberate memory of the removed provider.
+  Guardrail engine ruled options-first (user):
+  `GuardrailsConfig.model`, default = the agent's own model — the
+  classifier prompt runs through a neosian client from the
+  `_create_client` seam (#32), honoring `client_factory` (guardrails
+  now keylessly testable on FakeProvider, mock-free tests); no
+  explicit temperature (some models reject non-defaults); a missing
+  guardrail-provider key raises at construction, never a silent
+  fail-open (#84). Removal, whole: client module, provider enum row,
+  four model rows + specs + pricing (`PRICES_FINGERPRINT` re-pinned),
+  the SDK dependency, router branch, CI matrix lane + repo secret,
+  the external suites and marker, the CLI's configure/status/picker
+  rows, twelve examples' models, one scratch example deleted.
+  `AgentConfig.model` default → `CEREBRAS_GPT_OSS_120B`; the cross
+  fallback suite re-anchored on Cerebras; catalog test provider map
+  trimmed. Docs: README/SERVICES/DESIGN provider prose to three
+  adapters, the measured row annotated historical in BASELINES.md,
+  NW step 0 ✅, downstream version markers +1 (NR v0.74 … NM v0.80).
+  ECOSYSTEM untouched (verified clean; one-repo move). 1869 unit
+  tests, zero keys; v0.73.0.
