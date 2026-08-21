@@ -1,23 +1,21 @@
-# Neosian Roadmap — Memory & Conversation
+# Neosian Roadmap
 
-> **▶ Roadmap complete at v0.70.0 — 1.0 postponed (2026-08-21)**
+> **▶ Current phase: NA — Agent-native surface**
 >
-> *(N4 closed with the docs slice: README rewritten to match the tree
-> (Conversation as the headline quickstart, memory, storage, the MCP
-> snippet, the events-v2 factual fix, the keyless story, evaluation incl.
-> `kind: memory`, the Stability section); the §9.10 ECOSYSTEM amendment
-> executed (§10 +`ConversationStore`/`ConversationStoreContract`, §6
-> blesses `agent_conversation_*`, §11 SemVer-guaranteed from the eventual
-> v1.0.0; the changelog row's kit cell stays owed at kit 345851e until
-> the paired kit session fills it); packaging PyPI-ready but deliberately
-> unpublished — the repo stays private, install is the pinned git URL
-> (user ruling). The release was first cut as `v1.0.0` and **withdrawn
-> the same day** (ledger #73): 1.0 waits for a stronger surface — the
-> continuation arc is to be designed options-first (candidates: open
-> model registry, MCP client-side tools, OTel on the hooks, published
-> per-provider memory baselines). The stability promise rides the
-> eventual v1.0.0. Every phase heading carries ✅ — no open phase; the
-> kit's P10 vendors from a `v<X.Y.Z>` release tag, `v0.70.0` current.)*
+> *(2026-08-21: the 1.0 arc opens — see "The 1.0 arc" below. The lane is
+> ruled: neosian is the **state layer for production agents** — durable
+> conversations, agent-curated memory, context lifecycle — on storage
+> the product owns. Sequencing (user ruling): NA+NV first (agent-native
+> surface, then evidence), NR→NG (the lane's core), NP→NT (product
+> surface; NP carries the write-events ECOSYSTEM amendment as the next
+> deliberate session-pair — the counterpart is ready), NC background
+> slices interleave, NZ declares 1.0. The 1.0 formula has **three
+> gates**: lane core + product surface complete, baselines published,
+> and a real host vendored and green. Arc 1 (NH→N4) stands ✅ whole at
+> v0.70.0; that release was first cut as v1.0.0 and withdrawn same day
+> (ledger #73) — the stability promise rides the eventual v1.0.0, cut
+> at NZ and nowhere else. The v0.70.0 amendment's session-pair
+> completed same day (kit ledger #206, its 73dcd39).)*
 >
 > The pointer above must equal the first phase heading without ✅ — if they
 > disagree, say so and trust the checkboxes. Companion to [VISION.md](VISION.md)
@@ -42,9 +40,10 @@
 
 ## Phase ids, tags, versions
 
-- Phase ids: `NH`, `NS`, `NE`, `N0`–`N4`. Commit subjects `<ID>: <what became true>`
-  (≤ 72 chars); `meta:` for repo housekeeping. The `v:X.Y.Z. …` subject style
-  is retired (DESIGN §12 #7).
+- Phase ids: `NH`, `NS`, `NE`, `N0`–`N4` (arc 1); `NA`, `NV`, `NR`, `NG`,
+  `NP`, `NT`, `NZ` + the `NC` background track (the 1.0 arc). Commit
+  subjects `<ID>: <what became true>` (≤ 72 chars); `meta:` for repo
+  housekeeping. The `v:X.Y.Z. …` subject style is retired (DESIGN §12 #7).
 - Progress axis: annotated **`<id>-done`** tags at each phase close.
 - Release axis: annotated **`v<X.Y.Z>`** tags — what hosts vendor
   (ECOSYSTEM §11). The version literal lives once in
@@ -66,6 +65,9 @@ convo = Conversation(agent, store=store,
                      memory_scope="user:1234")
 resp = await convo.send("Where did we leave off?")
 ```
+
+*(Shipped whole across N1–N3; the 1.0 arc below completes the lane
+around it.)*
 
 ---
 
@@ -734,6 +736,228 @@ import name root- or facade-pinned.
 
 ---
 
+## The 1.0 arc — the state layer completed
+
+**The lane (ruled 2026-08-21):** neosian is the **state layer for
+production agents** — durable conversations, agent-curated memory, and
+context lifecycle — on storage the product owns. Not orchestration, not
+RAG, not provider breadth as a goal. The moat is threefold: **the
+school** (agent-curated, file-shaped, cache-safe memory as an embeddable
+library — the only one), **the receipts** (version rows with actors,
+redaction preserving the audit skeleton, integer-µ$ spend — structural,
+not bolt-on), and **the measurement** (the store-truth harness — the
+seed of the agent-memory benchmark nobody else has).
+
+**The 1.0 formula — three gates, all required** (this supersedes any
+earlier two-gate phrasing):
+
+1. The lane's core and product surface complete — NR, NG, NP, NT
+   shipped whole.
+2. Per-provider memory baselines published and standing — NV.
+3. **A real host vendored a `v<X.Y.Z>` tag and is green against it** —
+   the kit's P10 plus its CI.
+
+`v1.0.0` is cut at NZ and nowhere else; its annotation carries ledger
+#72's promise text.
+
+### Decided constraints (the arc)
+
+- **Agent-native principle.** An agent can discover, learn, configure,
+  operate, and debug neosian with no human in the loop: docs travel in
+  the wheel and are version-true; every CLI command has a
+  non-interactive path and `--json` output; every failure names its
+  fix. Machine-shaped, never agent-flavored — subcommands, not a chat
+  REPL.
+- **The shell is a transport.** The memory CLI is the fourth transport
+  over the same `memory/dispatch.py` dispatcher, measured on the
+  harness's transports axis like the other three.
+- **Seam changes stay deliberate.** NP's write-events amendment (§5
+  event vocabulary) is the next ECOSYSTEM session-pair; the counterpart
+  is ready — either repo may still refuse. No seam moves outside §12.
+- **Background never blocks the lane.** NC slices land inside whichever
+  phase session has headroom (or a mini-session of their own), each
+  with its own done-when; a lane phase never waits on one.
+- **Options-first holds.** NR, NG, NP, and NT each open with a design
+  discussion; the FileStore cross-process ruling opens NA.
+- **Measured, not asserted.** Prompt-pack and memory-behavior changes
+  re-run the baselines; scale claims come from harness scenarios, never
+  prose.
+
+## NA — Agent-native surface (v0.71)
+
+DESIGN: §7, §8 — plus the agent-surface § this phase writes.
+
+The two doors an agent walks through first — the shell and the docs —
+built to the standard of the three runtime transports. Agents are
+becoming the package-choosers: a library an agent cannot learn inside
+its sandbox loses to a worse one it knows from training.
+
+- Opens with the **FileStore cross-process ruling** (options-first): a
+  CLI writer beside a long-running server on one root — advisory file
+  lock vs a documented one-writer rule. Postgres is already arbitrated.
+- **Memory CLI** — the six commands as `neosian memory <command>` over
+  the shared dispatcher; flag grammar reuses the MCP settings module
+  (`--root`/`--scope`/`--mount`/`--actor`/`--schema`, env DSN, no
+  `--dsn` ever); `--json` on every command; corrective failures with
+  hints; version rows carry `actor: cli:<...>`.
+- **In-package docs** — `neosian docs [topic]` reads curated pages from
+  the wheel (prose as data, `assets/docs/`); `llms.txt` at the repo
+  root and in the package; version-true by construction.
+- **Self-setup** — `neosian mcp install --client
+  claude-code|claude-desktop|cursor`: prints the exact registration by
+  default, applies only with `--write`; every command gains a fully
+  non-interactive path.
+- The harness gains the `cli` transport on the transports axis.
+
+**Done when:** a coding agent with shell access alone can discover
+(`llms.txt`), learn (`neosian docs`), operate memory (`neosian memory`,
+`--json`), and offer the MCP upgrade — pinned by a scripted keyless
+walkthrough; the baseline pack is green on
+`transports: [function, cli]`.
+
+## NV — Evidence (v0.72)
+
+DESIGN: §13, §3.
+
+The harness starts earning its keep as the benchmark.
+
+- **First real baseline runs** —
+  `tests/external/cross/test_memory_baselines.py` dispatched per
+  provider (they have never run: zero schedule/dispatch CI runs exist),
+  then standing weekly.
+- **Published numbers** — `BASELINES.md`: per-provider, per-transport
+  results with run dates and methodology; self-measured benchmarks
+  invite motivated reasoning, so the derivation from the shipped pack
+  is stated, not implied.
+- **Harness-gated prompt pack** — no `memory.yaml` change without a
+  recorded baseline re-run.
+- **Scenario growth** — contradiction handling, long-horizon recall,
+  correcting a wrong memory; discriminating negatives stay in unit
+  tests (the #67 idiom).
+- **OTel exporter** — one optional module (`otel` extra) emitting spans
+  from the four `AgentHooks`; demonstrated keylessly against an
+  in-memory exporter.
+
+**Done when:** BASELINES.md exists with real per-provider numbers and
+dates; the weekly runs stand; the OTel extra emits spans keylessly.
+
+## NR — Reflection (v0.73)
+
+DESIGN: §9 — plus the reflection § this phase writes.
+
+Session-boundary auto-memory: the missing link between the history
+layer and the memory layer.
+
+- Opens with the options-first discussion: trigger (`aclose()` vs the
+  compaction boundary vs explicit), default-on vs opt-in, the
+  consent/review surface, composition with the frozen-index rule, spend
+  visibility.
+- End-of-conversation distillation — "what from this session is worth
+  keeping" — as deliberate writes through the shared dispatcher:
+  audited (`actor = conversation_id`), dedup-disciplined (check before
+  create), batched structured output (the distill.py idiom), µ$ folded
+  into the close's accounting.
+- Harness scenarios: boundary writes happen, dedup respected, nothing
+  secret stored.
+
+**Done when:** a Conversation that never explicitly wrote memory ends
+its session and the store holds the right facts — scripted keylessly;
+baselines re-run with reflection on.
+
+## NG — The gardener & scale (v0.74–0.75)
+
+DESIGN: §8, §9.6 (the idiom).
+
+Memory that ages instead of rotting — tractable in the file school,
+hopeless in embedding stores.
+
+- Opens options-first: trigger and authority (explicit
+  `neosian memory maintain` / a boundary rider / both), the
+  deterministic-vs-model split, protection rules (what is never
+  pruned).
+- **Consolidation pass** — merge duplicates, prune stale, promote
+  project→user, confirm-or-decay; deterministic-first, model-batched
+  distillation for the rest; every action a version row; spend
+  visible.
+- **Scale** — index tiering/budgets (log-projection applied to the
+  index itself), FTS-hatch activation criteria, measured behavior at
+  500+ documents per scope.
+
+**Done when:** a deliberately polluted store (dupes, stale, misfiled)
+is measurably improved by one maintenance pass, keylessly scripted; the
+index holds its budget at 500 docs; baselines re-run.
+
+## NP — Product surface: governance & write-events (v0.76–0.77)
+
+DESIGN: §8, §6 + ECOSYSTEM §5/§12.
+
+The receipts, exposed — and the arc's deliberate seam change.
+
+- Opens options-first: the governance API shape.
+- **Governance API** — provenance (turn-ref per fact), point-in-time
+  reads exposed, a find-and-redact workflow, the no-secrets write
+  guardrail (guardrail layer wired to memory writes — the eval's
+  `forbidden` check made preventive).
+- **Memory-write events + undo** — write events on the stream so hosts
+  render "remembered X" with revert (version rows make undo cheap).
+- **The write-events ECOSYSTEM amendment** — §5's event vocabulary
+  gains the memory-write event(s): the payload written before the
+  session-pair, both ledgers, same pair; the counterpart is ready;
+  either repo may refuse.
+
+**Done when:** a host shows a memory write with working undo through
+the event stream; redaction runs end-to-end; the amendment stands in
+both ledgers.
+
+## NT — The tool-approval gate (v0.78)
+
+DESIGN: §3 — plus the § the design discussion writes.
+
+- The seam design IS the phase: hooks observe and stay observers; the
+  gate is its own interception seam (guardrail-style), with
+  blocking/streaming parity, timeout and default-deny semantics, and an
+  event representation. Options-first before a line of code.
+
+**Done when:** a dangerous tool call pauses for approval and
+resumes/denies correctly on both paths, keylessly pinned.
+
+## NC — the background track (interleaves; never blocks)
+
+Slices, not a phase: each lands inside a phase session with headroom or
+as its own mini-session, `NC:` commit subjects, its own done-when.
+
+- **NC1 — MCP client-side.** `tools=[McpServer(...)]` — the agent
+  consumes MCP servers as tools. Done when a neosian agent calls a real
+  MCP server's tool keylessly (in-process server).
+- **NC2 — open model surface.** `register_model(spec)` — custom ids,
+  capabilities, pricing, OpenAI-compatible `base_url`; additive to the
+  registry. Done when a registered custom model runs the quickstart and
+  prices in µ$.
+- **NC3 — interop packaging.** "Neosian memory under your
+  PydanticAI/OpenAI-SDK agent" example + the data-ownership story
+  stated (memory is a directory you can grep, git, and leave with).
+  Done when the example runs keylessly against the exported tool
+  definition.
+
+## NZ — The declaration (v1.0.0)
+
+The three gates, checked, then the promise:
+
+- [ ] Gate 1: NR, NG, NP, NT shipped whole (✅ headings).
+- [ ] Gate 2: BASELINES.md standing with real per-provider numbers
+      (NV, kept current).
+- [ ] Gate 3: **a real host vendored a `v<X.Y.Z>` tag and is green
+      against it** — the kit's P10 plus its CI.
+- [ ] The re-declaration: README Stability flips to present tense, the
+      classifier returns to Production/Stable,
+      `make release v=1.0.0` with ledger #72's promise text in the
+      annotation.
+
+**Done when:** `v1.0.0` exists, carries the promise, and nothing in it
+is asserted without evidence.
+
+---
+
 ## Risks
 
 - **Trained-behavior asymmetry.** Anthropic models are post-trained on the
@@ -747,6 +971,16 @@ import name root- or facade-pinned.
 - **Solo-maintainer bandwidth.** Defense: every phase is small, shippable,
   and independently useful — the library is already better off if the
   roadmap stops after any phase.
+- **Cross-process FileStore.** The memory CLI makes multi-process access
+  easy; the file substrate's in-process lock does not arbitrate it. The
+  NA opening ruling decides (advisory lock vs one-writer rule) before
+  the CLI ships — never silently.
+- **Benchmark honesty.** Self-measured baselines invite motivated
+  reasoning; NV publishes methodology beside numbers, and the
+  discriminating negatives stay adversarial in unit tests.
+- **Amendment scope creep.** NP's session-pair adds event(s) to a frozen
+  vocabulary; the payload is written before the pair and either repo
+  may refuse — the §9.10 discipline, repeated.
 
 ---
 
@@ -1299,3 +1533,21 @@ import name root- or facade-pinned.
   arc; everything else N4 shipped stands at v0.70.0. `n4-done` stays —
   the phase's substance closed. Verified: gates green zero keys,
   `uv build` 0.70.0.
+- 2026-08-21 | meta | **The 1.0 arc opens.** Strategy sessions (same
+  day) ruled the lane — the state layer for production agents on
+  storage the product owns — and named the moat (the school, the
+  receipts, the measurement). The candidate slate (A lifecycle / B
+  product surface / C reach / D evidence / E agent-native) became
+  seven phases + a background track: NA agent-native surface (memory
+  CLI as fourth transport, in-package docs/llms.txt, self-setup), NV
+  evidence (first-ever baseline runs, BASELINES.md, OTel on the
+  hooks), NR reflection, NG gardener & scale, NP governance &
+  write-events (the next ECOSYSTEM session-pair — counterpart ready),
+  NT tool-approval gate, NC1–3 background (MCP client, open models,
+  interop), NZ the declaration. Sequencing user-ruled: E+D → A → B,
+  C interleaving. The 1.0 formula gains its third gate — **a real
+  host vendored and green** — correcting the two-gate phrasing. Also
+  today: the v0.70.0 amendment's session-pair completed (kit #206,
+  its 73dcd39; the kit-side commit 6aeb7b2 filled the §12 cell) —
+  DESIGN §9.10/#71 synced to match. Pointer → NA. Docs only; no code
+  touched.
