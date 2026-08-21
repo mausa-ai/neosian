@@ -5,17 +5,21 @@
 > *(2026-08-21: the 1.0 arc opens — see "The 1.0 arc" below. The lane is
 > ruled: neosian is the **state layer for production agents** — durable
 > conversations, agent-curated memory, context lifecycle — on storage
-> the product owns. Sequencing (user ruling): NA→NM→NV first
-> (agent-native surface, the memory process, then evidence measuring
-> all five transports), NR→NG (the lane's core), NP→NT (product
-> surface; NP carries the write-events ECOSYSTEM amendment as the next
-> deliberate session-pair — the counterpart is ready), NC background
-> slices interleave, NZ declares 1.0. The 1.0 formula has **three
-> gates**: lane core + product surface + the process complete,
-> baselines published, and a real host vendored and green. NM is the
-> Redis-shaped ruling (2026-08-21): the library ships the standalone
-> memory process (container, HTTP MCP); neosian.com is a separate
-> project — a future host, never library scope. Arc 1 (NH→N4) stands ✅ whole at
+> the product owns. Sequencing (user ruling, revised same day after
+> cross-session review): NA→NV first (agent-native surface, then
+> evidence), NR→NG (the lane's core), NP→NT (product surface; NP
+> carries the write-events ECOSYSTEM amendment as the next deliberate
+> session-pair — the counterpart is ready), then **NM as the
+> capstone** — the state process, wire-frozen last so one promise at
+> NZ covers library, seams, and wire — NC background slices
+> interleave, NZ declares 1.0. The 1.0 formula has **three gates**:
+> lane core + product surface + the process complete, baselines
+> published, and a real host vendored and green (the kit vendors the
+> already-frozen library seams early — it never waits for the server).
+> NM is the Redis-shaped ruling (2026-08-21): the library ships the
+> standalone state process (container, streamable-HTTP MCP,
+> `RemoteStore`); neosian.com is a separate project — a future host
+> that operates the container, never library scope. Arc 1 (NH→N4) stands ✅ whole at
 > v0.70.0; that release was first cut as v1.0.0 and withdrawn same day
 > (ledger #73) — the stability promise rides the eventual v1.0.0, cut
 > at NZ and nowhere else. The v0.70.0 amendment's session-pair
@@ -44,8 +48,8 @@
 
 ## Phase ids, tags, versions
 
-- Phase ids: `NH`, `NS`, `NE`, `N0`–`N4` (arc 1); `NA`, `NM`, `NV`, `NR`,
-  `NG`, `NP`, `NT`, `NZ` + the `NC` background track (the 1.0 arc). Commit
+- Phase ids: `NH`, `NS`, `NE`, `N0`–`N4` (arc 1); `NA`, `NV`, `NR`, `NG`,
+  `NP`, `NT`, `NM`, `NZ` + the `NC` background track (the 1.0 arc). Commit
   subjects `<ID>: <what became true>` (≤ 72 chars); `meta:` for repo
   housekeeping. The `v:X.Y.Z. …` subject style is retired (DESIGN §12 #7).
 - Progress axis: annotated **`<id>-done`** tags at each phase close.
@@ -756,7 +760,7 @@ seed of the agent-memory benchmark nobody else has).
 earlier two-gate phrasing):
 
 1. The lane's core, the product surface, and **the process** complete —
-   NM, NR, NG, NP, NT shipped whole.
+   NR, NG, NP, NT, and NM (the capstone) shipped whole.
 2. Per-provider memory baselines published and standing — NV.
 3. **A real host vendored a `v<X.Y.Z>` tag and is green against it** —
    the kit's P10 plus its CI.
@@ -796,9 +800,10 @@ built to the standard of the three runtime transports. Agents are
 becoming the package-choosers: a library an agent cannot learn inside
 its sandbox loses to a worse one it knows from training.
 
-- Opens with the **FileStore cross-process ruling** (options-first): a
-  CLI writer beside a long-running server on one root — advisory file
-  lock vs a documented one-writer rule. Postgres is already arbitrated.
+- Opens by writing down the **FileStore cross-process ruling**
+  (pre-decided 2026-08-21): documented one-writer per root — no
+  advisory-lock engineering; multi-writer needs route to Postgres or to
+  NM's daemon, the arc's capstone. Postgres is already arbitrated.
 - **Memory CLI** — the six commands as `neosian memory <command>` over
   the shared dispatcher; flag grammar reuses the MCP settings module
   (`--root`/`--scope`/`--mount`/`--actor`/`--schema`, env DSN, no
@@ -819,38 +824,7 @@ its sandbox loses to a worse one it knows from training.
 walkthrough; the baseline pack is green on
 `transports: [function, cli]`.
 
-## NM — The memory process (v0.72)
-
-DESIGN: §8 — plus the § the exposure ruling writes.
-
-The state layer as a standalone process: `docker run` serves memory to
-any MCP client over the network — the testable form of "the state layer
-is complete", and the artifact arc 3 (neosian.com, a **separate
-project**) would one day host. The library's half only: no user
-management, no quotas, no billing — host territory, forever.
-
-- Opens options-first with the **exposure ruling**: how much protection
-  the reference server ships — localhost-only default + documentation,
-  or additionally one env bearer-token check. Full auth is out, always.
-- **Streamable HTTP** on the MCP server (deferred at N4 slice C; the
-  installed SDK supports it; `create_memory_server`'s Server mounts) —
-  stdio stays for local clients.
-- **`neosian serve`** — the long-running entrypoint: store flags per the
-  MCP settings grammar (`--root`/mounts/env DSN, never `--dsn`), bind
-  address, a health endpoint; the lifespan owns the store (serve.py's
-  pool-close discipline).
-- **The container** — a shipped Dockerfile/OCI image: volume-mounted
-  FileStore or `NEOSIAN_MCP_POSTGRES_DSN`, health check wired,
-  localhost-vs-bound behavior documented.
-- The harness's transports axis gains `http` — the server measured like
-  every other transport.
-
-**Done when:** `docker run` + an MCP client over HTTP round-trips
-memory against both substrates (volume FileStore, Postgres DSN); one
-store demonstrably serves five transports — function tool, native,
-stdio MCP, HTTP, CLI — through the one dispatcher.
-
-## NV — Evidence (v0.73)
+## NV — Evidence (v0.72)
 
 DESIGN: §13, §3.
 
@@ -876,7 +850,7 @@ The harness starts earning its keep as the benchmark.
 **Done when:** BASELINES.md exists with real per-provider numbers and
 dates; the weekly runs stand; the OTel extra emits spans keylessly.
 
-## NR — Reflection (v0.74)
+## NR — Reflection (v0.73)
 
 DESIGN: §9 — plus the reflection § this phase writes.
 
@@ -899,7 +873,7 @@ layer and the memory layer.
 its session and the store holds the right facts — scripted keylessly;
 baselines re-run with reflection on.
 
-## NG — The gardener & scale (v0.75–0.76)
+## NG — The gardener & scale (v0.74–0.75)
 
 DESIGN: §8, §9.6 (the idiom).
 
@@ -922,7 +896,7 @@ hopeless in embedding stores.
 is measurably improved by one maintenance pass, keylessly scripted; the
 index holds its budget at 500 docs; baselines re-run.
 
-## NP — Product surface: governance & write-events (v0.77–0.78)
+## NP — Product surface: governance & write-events (v0.76–0.77)
 
 DESIGN: §8, §6 + ECOSYSTEM §5/§12.
 
@@ -944,7 +918,7 @@ The receipts, exposed — and the arc's deliberate seam change.
 the event stream; redaction runs end-to-end; the amendment stands in
 both ledgers.
 
-## NT — The tool-approval gate (v0.79)
+## NT — The tool-approval gate (v0.78)
 
 DESIGN: §3 — plus the § the design discussion writes.
 
@@ -955,6 +929,55 @@ DESIGN: §3 — plus the § the design discussion writes.
 
 **Done when:** a dangerous tool call pauses for approval and
 resumes/denies correctly on both paths, keylessly pinned.
+
+## NM — The state process (v0.79) — the capstone
+
+DESIGN: §8, §9 — plus the § the wire ruling writes.
+
+The state layer as a standalone process: `docker run` serves memory
+**and conversations** to any client over the network — the mature
+statement of the lane, and the artifact arc 3 (neosian.com, a
+**separate project**) will one day operate, never change. Deliberately
+last: the wire mirrors the ABCs, so it freezes once, after NP stops
+moving them — shipping it post-1.0 would have made the wire a second
+stability event; as the capstone, one promise at NZ covers library,
+seams, and wire.
+
+**In scope (the ruthless cut):** `neosian serve` (`[server]` extra) +
+one published container; MCP over streamable HTTP for agents plus a
+store-shaped HTTP API for `RemoteStore` clients; bearer-token auth
+only; FileStore and Postgres backends; a health endpoint; graceful
+shutdown.
+
+**Explicitly out (v1):** OAuth (the hosted future's swamp),
+clustering/multi-node, TLS (a reverse proxy's job), dashboards and org
+management (neosian.com). The hosted service later operates this
+container; it does not change it.
+
+- Opens options-first with the two rulings the scope cut leaves open:
+  **capability mirroring** —
+  `RemoteStore.supports_optimistic_concurrency` reflects the backend
+  (True over Postgres, False over FileStore); the wire transmits
+  capability honestly, never claims it — and **is the wire a seam** —
+  an ECOSYSTEM entry (a session-pair) or "the process's API, versioned
+  with the library, until a host needs it frozen": ruled deliberately,
+  never by silence.
+- `RemoteStore` implements both ABCs over httpx (already a core dep);
+  the daemon is the multi-writer FileStore answer NA's one-writer
+  ruling routes to.
+- **The in-process-default discipline, written into the docs:** the
+  process is for the stacks the library cannot reach — a Python host's
+  best deployment remains the in-process library; the daemon is never
+  the recommended default.
+- The harness's transports axis gains `http`; the baseline pack re-runs
+  over it.
+
+**Done when:** `RemoteStore` pointed at the running container passes
+**both contract kits — the same ~58 conformance tests, over the
+network** — on both backends (volume FileStore, Postgres DSN), with
+the bearer token enforced; one store demonstrably serves five
+transports — function tool, native, stdio MCP, HTTP, CLI — through the
+one dispatcher.
 
 ## NC — the background track (interleaves; never blocks)
 
@@ -978,7 +1001,7 @@ as its own mini-session, `NC:` commit subjects, its own done-when.
 
 The three gates, checked, then the promise:
 
-- [ ] Gate 1: NM, NR, NG, NP, NT shipped whole (✅ headings).
+- [ ] Gate 1: NR, NG, NP, NT, NM shipped whole (✅ headings).
 - [ ] Gate 2: BASELINES.md standing with real per-provider numbers
       (NV, kept current).
 - [ ] Gate 3: **a real host vendored a `v<X.Y.Z>` tag and is green
@@ -1007,9 +1030,10 @@ is asserted without evidence.
   and independently useful — the library is already better off if the
   roadmap stops after any phase.
 - **Cross-process FileStore.** The memory CLI makes multi-process access
-  easy; the file substrate's in-process lock does not arbitrate it. The
-  NA opening ruling decides (advisory lock vs one-writer rule) before
-  the CLI ships — never silently.
+  easy; the file substrate's in-process lock does not arbitrate it.
+  Ruled (2026-08-21): documented one-writer per root — multi-writer
+  needs route to Postgres or NM's daemon; NA writes it into the docs,
+  never silently.
 - **Benchmark honesty.** Self-measured baselines invite motivated
   reasoning; NV publishes methodology beside numbers, and the
   discriminating negatives stay adversarial in unit tests.
@@ -1598,3 +1622,25 @@ is asserted without evidence.
   v0.79). The 1.0 formula's gate 1 now reads: lane core + product
   surface + **the process** — "the state layer is complete" must be
   testable from outside Python. Docs only; no code touched.
+- 2026-08-21 | meta | **NM becomes the capstone — the state process.**
+  Cross-session review (brought over from the kit side) adopted whole:
+  the wire mirrors the ABCs, so it freezes once, after NP stops moving
+  them — placement flips from NA→NM→NV to the capstone slot (NV..NT
+  back to v0.72..v0.78, NM takes v0.79); shipping the wire post-1.0
+  would have made it a second stability event, muddying the one
+  promise. Scope ruthlessly cut in: `neosian serve` (`[server]`
+  extra) + one container, MCP over streamable HTTP + a store-shaped
+  HTTP API for `RemoteStore`, bearer-token only, health + graceful
+  shutdown; out: OAuth, clustering, TLS (reverse proxy), dashboards
+  (neosian.com operates the container, never changes it). The
+  done-when hardens: `RemoteStore` passes BOTH contract kits (~58
+  tests) over the network, both backends — and both kits means
+  conversations too, hence "the state process". NA's cross-process
+  ruling collapses to documented one-writer (the daemon is the
+  multi-writer answer — no advisory-lock engineering); the
+  in-process-default discipline written into NM. Two flags for NM's
+  opening: capability mirroring (`supports_optimistic_concurrency`
+  reflects the backend) and whether the wire is an ECOSYSTEM seam —
+  ruled deliberately, never by silence. Kit sequencing unchanged: P10
+  vendors the frozen library seams early, never waits for the server.
+  Docs only; no code touched.
