@@ -5,10 +5,10 @@ on:
     branches: [master]
   pull_request:
   workflow_dispatch:
-  schedule:
-    - cron: "0 6 * * 1" # weekly external-provider run
+  # No schedule: real-API runs are deliberate, dispatched acts (user
+  # ruling 2026-08-21, DESIGN §12 ledger #89) — never a standing cost.
 
-# Event-keyed so a master push cannot cancel the scheduled run (DESIGN §11).
+# Event-keyed so a master push cannot cancel a dispatched run (DESIGN §11).
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
@@ -72,10 +72,10 @@ jobs:
         env:
           NEOSIAN_TEST_POSTGRES_DSN: postgresql://postgres:postgres@localhost:5432/postgres
 
-  # Schedule/dispatch only; an absent secret arrives as "" and the suite
+  # Dispatch only; an absent secret arrives as "" and the suite
   # self-skips per test (falsiness checks), keeping the job green.
   external:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:

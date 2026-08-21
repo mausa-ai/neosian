@@ -1214,7 +1214,8 @@ the same weights scored 3/6 on the since-removed provider and 12/12
 on Cerebras. A
 candidate is wired, the shipped pack runs scriptless against it, the
 row lands in BASELINES.md; what stays green stays, what does not
-exits. The weekly runs are the standing re-test. Sequenced at the
+exits. The re-test is a dispatched external run — dispatch-only since
+ledger #89, no standing schedule. Sequenced at the
 very end deliberately: the slate opens **after NZ** (provider breadth
 is not a goal — the lane ruling), and NC2's `register_model` +
 OpenAI-compatible `base_url` is the cheap door most candidates enter
@@ -1252,7 +1253,8 @@ feature the compat dialect cannot carry.
     NVIDIA NIM.
 
 **Done when (per candidate):** the row stands green in BASELINES.md
-over two consecutive weekly runs. **Done when (track):** never —
+over two consecutive dispatched external runs (ledger #89 — no
+schedule; cadence is the operator's). **Done when (track):** never —
 membership is standing, not achieved.
 
 ---
@@ -2076,3 +2078,12 @@ membership is standing, not achieved.
   dispatch of the grown pack (recorded in BASELINES.md — the keyless
   14/14 stands meanwhile). 1893 unit tests, zero keys; v0.74.0 +
   `nr-done`. Pointer → NG.
+- 2026-08-21 | meta | **The weekly schedule ends; external runs are
+  dispatch-only.** User ruling at /ship (ledger #89): a standing weekly
+  real-API bill is not automated — the `schedule:` trigger leaves
+  ci.yml, the external jobs gate on `workflow_dispatch` alone, and
+  re-runs are deliberate acts owed at every pack/prompt change (the
+  BASELINES fingerprint gate already forces the recording). NW's
+  per-candidate done-when now reads two consecutive *dispatched* runs;
+  DESIGN §11/§13.12, CLAUDE.md, SERVICES.md, BASELINES.md swept. The
+  NV/NE-era "weekly" wording in closed sections stands as history.

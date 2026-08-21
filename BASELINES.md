@@ -144,6 +144,9 @@ recovers in-turn (the library warns exactly this when no mount is named
   and Anthropic's native transport first
   tried its trained `/memories/…` path prefix, hit the corrective
   failure, and recovered in-turn.
-- Standing schedule: the `external` CI jobs run weekly (Mondays 06:00
-  UTC, `.github/workflows/ci.yml`) per provider with repo-secret keys
-  (set 2026-08-21); an absent secret self-skips.
+- Cadence: **dispatch-only** since 2026-08-21 (ledger #89 — the weekly
+  schedule that stood from NV to NR was removed by user ruling; a
+  standing real-API bill is not automated). Re-runs are deliberate
+  `workflow_dispatch` acts, owed at every pack or prompt change (the
+  fingerprint gate above enforces the recording); repo-secret keys, an
+  absent secret self-skips.

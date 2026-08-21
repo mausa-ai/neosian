@@ -53,8 +53,8 @@ make test-postgres
 ```
 
 CI supplies the DSN from a service container — never a secret — so the
-`postgres` job runs on every push and PR, unlike the schedule-only
-provider jobs (DESIGN §12 ledger #40). Each test creates and drops its
+`postgres` job runs on every push and PR, unlike the dispatch-only
+provider jobs (DESIGN §12 ledger #40, #89). Each test creates and drops its
 own uniquely-named schema; the server keeps no state between runs.
 
 `NEOSIAN_EXAMPLE_POSTGRES_DSN` is read only by
@@ -78,7 +78,8 @@ precedence rule). Neither ever applies the DDL — run
 
 ## CI secrets
 
-One secret per provider, named exactly like the env key. The scheduled /
-dispatch `external-<provider>` jobs inject them as env; until a secret exists
-its job passes vacuously via the empty-string self-skip. The lint and
-unit-test jobs must never receive a secret.
+One secret per provider, named exactly like the env key. The dispatch-only
+`external-<provider>` jobs inject them as env (no schedule — real-API runs
+are deliberate acts, ledger #89); until a secret exists its job passes
+vacuously via the empty-string self-skip. The lint and unit-test jobs must
+never receive a secret.

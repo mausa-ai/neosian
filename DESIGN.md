@@ -890,12 +890,14 @@ comments, comment bands, one `.PHONY` line.
 | `phase-tag` | refuses a dirty tree; cuts annotated `<id>-done` |
 
 **CI** (`.github/workflows/ci.yml`, reshaped in NH): triggers push-master /
-PR / dispatch / weekly schedule; **event-keyed concurrency group** (a master
-push must not cancel the scheduled run); runners pinned `ubuntu-24.04`;
-`setup-uv` with cache. Jobs: `lint` (lint + typecheck + size) · `test`
-(matrix **3.12 / 3.13 / 3.14**, fail-fast false, **no secrets** — that absence
-is the keyless-boot assertion) · `external-<provider>` × 4 (schedule/dispatch
-only; secret as env; suites self-skip on empty string).
+PR / dispatch — no schedule since ledger #89 (real-API runs are deliberate,
+dispatched acts, never a standing cost); **event-keyed concurrency group**
+(a master push must not cancel a dispatched run); runners pinned
+`ubuntu-24.04`; `setup-uv` with cache. Jobs: `lint` (lint + typecheck +
+size) · `test` (matrix **3.12 / 3.13 / 3.14**, fail-fast false, **no
+secrets** — that absence is the keyless-boot assertion) ·
+`external-<provider>` × 3 (dispatch only; secret as env; suites self-skip
+on empty string).
 
 **Versioning** (flipped in NH): the number lives once in
 `pyproject [project].version`; `__version__` derives via
@@ -1000,6 +1002,7 @@ never a silent divergence. Numbering is monotonic, never reused.
 | 86 | A prefixed reflection actor (`reflect:<id>`), or a pre-write approval callback | **Receipts, no gate**: `ReflectionResult` lists every landed write (command, path, live version); `actor = conversation_id`, identical to in-session writes; version rows are the undo substrate | The phase text's own audit wording; a reflection-specific approval seam would pre-empt NT's gate design, and host-visible write events + undo are NP's deliverable — nothing here may freeze their shape early |
 | 87 | Reflection as a second legitimate memory-index refresh point | **No new refresh point** — §9.5.10's boundary stays the only one; reflection writes surface in the *next* conversation's frozen index, and spend rides the returned `ReflectionResult` (`aclose()` now returns `ReflectionResult \| None`) instead of folding into any send | Refreshing at close buys nothing (the instance is ending) and mid-session `reflect()` refreshes would invalidate the prompt cache without a compaction boundary's justification; the frozen-index rule already defines writes-surface-next-conversation as correct |
 | 88 | Harness sessions become Conversations so reflection fires through the real `aclose()` | **Runner-level reflection** (#65 stands): `MemorySession.reflect` runs the same `run_reflection` engine over the session transcript after the turn loop, actor = the eval actor, acquire = `Agent._create_client` (the #32/#84 seam, honoring `client_factory` — scripted cells consume the script's next turn as the reflection response); the encapsulation pin gains the `._create_client` token with its sanctioned callers | Sessions-as-bare-Agents is what makes cells cheap and store truth the arbiter; the engine — not the trigger plumbing — is the measured behavior, and the trigger is pinned separately in the unit tier |
+| 89 | The weekly external-provider CI schedule (Mondays 06:00 UTC, standing since NV) | **External runs are dispatch-only** (user ruling, 2026-08-21): the `schedule:` trigger is removed; baseline re-runs and the NW membership re-tests happen as deliberate `workflow_dispatch` acts — NW's per-candidate done-when reads "two consecutive external runs", cadence chosen by the operator | A standing weekly real-API bill is a cost commitment the project does not want automated; every run of the pack is meaningful only when someone reads it, and the fingerprint gate already forces a recorded run at every pack change — the re-test happens when it is owed, not on a timer |
 
 ## §13 Evaluation (NE)
 
@@ -1226,7 +1229,8 @@ kinds.
 `examples/eval_memory_baseline.yaml` is the shipped pack: all-scripted,
 keyless, all-green by construction — a regression gate (#67); the
 discriminating negatives live in unit tests. The external baselines
-(`tests/external/cross/test_memory_baselines.py`, weekly per provider)
+(`tests/external/cross/test_memory_baselines.py`, per provider,
+dispatched on demand — ledger #89)
 derive scriptless copies of the same pack in code (#68) — one source of
 scenario truth. Honest limits: the transport axis differs only on
 Anthropic, and FileStore is the only substrate this harness measures.
