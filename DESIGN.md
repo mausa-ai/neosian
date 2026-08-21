@@ -973,6 +973,7 @@ never a silent divergence. Numbering is monotonic, never reused.
 | 74 | Advisory-lock the FileStore root (`flock`, lock files, leases) so several processes can share one directory | **Documented one writer per root** (NA): the in-process lock is the only arbiter; concurrent writers route to `PostgresStore` or to NM's state daemon | `supports_optimistic_concurrency = False` already says files cannot arbitrate — a lock file half-promises what it cannot keep across NFS/Windows/containers and adds stale-lock recovery to the substrate whose value is that you can `cat` it. The NA shell makes the collision reachable (an agent's CLI writing while an MCP server runs), so the constraint is stated where users meet it instead of implied by a ClassVar |
 | 75 | `neosian memory` imports `_foundation/mcp/settings.py` for the store flags (crosses no contract) | **The store grammar extracted to `_foundation/memory/settings.py`** (`StoreSettings`, `add_store_arguments`, `resolve_store_settings`, `parse_mount`/`format_mount`); the MCP module keeps its prog/epilog and `ServerSettings` as an alias | The memory layer importing the MCP layer inverts §1's stack for a parser. #50's precedent is exact: when a second transport needed the command ladder, the ladder moved to a neutral module — the same move for the second argv entry point, and `format_mount` (the parser's inverse) gains a home the harness and `mcp install` reuse |
 | 76 | Keep `NEOSIAN_MCP_POSTGRES_DSN` for the MCP server and mint a second key for `neosian memory` (or alias the two) | **Hard rename to `NEOSIAN_POSTGRES_DSN`** — one key for every argv entry point; the old name removed same-commit, no alias (user ruling, 2026-08-21) | The key stopped being MCP-specific the moment a second entry point read it; two names for one DSN is a second host-visible contract to keep true forever, and an alias needs a conflict rule. Pre-1.0, private repo, no consumer has vendored the MCP server — the deliberate-batched-break precedent (#54's schema v2). #53's substance (no `--dsn`, entry-point-tier reader) is unchanged |
+| 77 | `neosian memory --json` maps `ToolResult` to a CLI-native shape, as the MCP transport did (#52) | **`--json` prints `ToolResult.to_json()` verbatim** — one line on stdout, exit 0/1 by `success`; human mode prints `data` on stdout, `error:`/`hint:` on stderr; argv-tier errors stay argparse text at exit 2 | #52 held because MCP has in-band success/error framing; a shell has only an exit code, so the function tool's envelope IS the machine surface — a second wrapper would be a shape to document and drift. Printing it verbatim is also what lets the harness's cli transport parse a real `ToolResult` back out, measuring shipped bytes instead of re-deriving them |
 
 ## §13 Evaluation (NE)
 
@@ -1197,3 +1198,69 @@ Anthropic, and FileStore is the only substrate this harness measures.
 Ruled out for NE (ledger #58): scoring is deterministic — matchers here,
 store truth in the memory slice. If an LLM judge ever enters, it is opt-in,
 never in the keyless tier, and its prompt ships as `assets/` data per §7.
+
+## §14 The agent surface (NA)
+
+Agents are becoming the package-choosers: a library an agent cannot
+discover, learn, and operate from inside a shell sandbox loses to a
+worse one it knows from training. NA builds the two doors an agent walks
+through first — the shell and the docs — to the standard of the runtime
+transports. Machine-shaped, never agent-flavored: subcommands, not a
+chat REPL.
+
+### §14.1 The shell contract
+
+Every `neosian` command is fully non-interactive, and every data-bearing
+command takes `--json`. **stdout carries the artifact; stderr carries
+guidance** — `error: …` and `hint: …` lines, so redirecting stdout
+always captures something well-formed. Exit tiers, everywhere:
+
+- **0** — success.
+- **1** — the command ran and failed: a corrective dispatch failure
+  (rendered with its existing `[code]`), a missing extra, an
+  environment error.
+- **2** — the invocation was wrong: grammar, an unknown name, an
+  invalid scope or mount. Nothing is constructed on this tier.
+- **130** — interrupt (the entry tier's `KeyboardInterrupt`).
+
+`--json` governs the executed tiers (0/1): exactly one JSON object on
+stdout, nothing else. Argv-tier errors (exit 2) stay argparse text on
+stderr — a shell answers grammar before any envelope exists, and that
+asymmetry is the tiering, not an inconsistency. CLI usage failures mint
+**no new error codes** (§5's registry is a host contract, closed to
+plumbing); when a store error is the cause, its existing code rides the
+error text.
+
+### §14.2 The memory CLI
+
+The shell is the fourth transport over `memory/dispatch.py` — after the
+function tool, the native `memory_20250818` declaration, and the MCP
+server — so an agent with nothing but shell access operates the same
+memory the runtime transports serve. `neosian memory <command>` is a
+verbatim typer pass-through (the `mcp` shape) to the entry tier
+`neosian/memory/cli.py`, which owns `asyncio.run`, the real streams and
+the store's lifetime (#33's rule); `python -m neosian.memory` is the
+sandbox-safe twin for a venv whose bin is not on PATH. The engine —
+grammar, store construction, dispatch, rendering — is
+`_foundation/memory/cli.py`, async and stream-injected, which is what
+lets the eval harness call it in-process from a running loop.
+
+The grammar: `view [PATH] [--view-range START END]` (PATH defaults to
+`/`, so the first command an agent tries works with store flags alone) ·
+`create PATH --content TEXT` · `str_replace PATH --old-str T --new-str
+T` · `insert PATH --insert-line N --insert-text T` · `delete PATH` ·
+`rename OLD NEW`. Flags are the dispatcher's argument names,
+kebab-cased — the argv→arguments mapping is a key list, not a
+translation table. `-` as the value of `--content`/`--new-str`/
+`--insert-text` reads stdin (the heredoc idiom; exactly one payload
+flag per command). There is deliberately **no `--file-text` alias**: it
+exists in the dispatcher to absorb the native tool's *trained* emission,
+and there is no trained shell emission to absorb. The store flags are
+the shared grammar of `memory/settings.py` (#75) with
+`default_actor="cli"` — `--actor` passes verbatim (opaque, like `mcp:*`
+and `eval:*`; `cli:<host>` is the documented convention) — and Postgres
+arrives only through `NEOSIAN_POSTGRES_DSN` (#53/#76). `--json` prints
+`ToolResult.to_json()` verbatim (#77). The CLI is the transport §8's
+one-writer rule (#74) exists for: an agent's shell writing a root while
+an MCP server serves it is exactly the collision the rule routes to
+Postgres or the daemon.

@@ -338,6 +338,26 @@ def evaluate(
 
 
 @app.command(
+    name="memory",
+    context_settings={
+        "allow_extra_args": True,
+        "ignore_unknown_options": True,
+        "help_option_names": [],
+    },
+)
+def memory(ctx: typer.Context) -> None:
+    """Read and write agent memory from the shell.
+
+    A thin pass-through: every argument goes verbatim to the one grammar
+    (`neosian memory --help`). The six commands ride the shared memory
+    dispatcher; --json prints the memory tool's envelope.
+    """
+    from neosian.memory.cli import main as memory_main
+
+    raise typer.Exit(memory_main(list(ctx.args)))
+
+
+@app.command(
     name="mcp",
     context_settings={
         "allow_extra_args": True,
