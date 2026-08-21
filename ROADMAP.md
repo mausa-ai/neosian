@@ -1,21 +1,23 @@
 # Neosian Roadmap — Memory & Conversation
 
-> **▶ Roadmap complete — v1.0.0 (2026-08-21)**
+> **▶ Roadmap complete at v0.70.0 — 1.0 postponed (2026-08-21)**
 >
-> *(N4 closed with the docs/1.0 slice: README rewritten to match the tree
+> *(N4 closed with the docs slice: README rewritten to match the tree
 > (Conversation as the headline quickstart, memory, storage, the MCP
 > snippet, the events-v2 factual fix, the keyless story, evaluation incl.
 > `kind: memory`, the Stability section); the §9.10 ECOSYSTEM amendment
 > executed (§10 +`ConversationStore`/`ConversationStoreContract`, §6
-> blesses `agent_conversation_*`, §11 SemVer-guaranteed from v1.0.0; the
-> changelog row's kit cell stays owed at kit 345851e until the paired kit
-> session fills it); packaging PyPI-ready but deliberately unpublished —
-> the repo stays private, install is the pinned git URL (user ruling);
-> `v1.0.0` tagged carrying the stability promise naming `Agent`,
-> `Conversation`, `MemoryStore`, `neosian.evaluation` (ledger #71–#72).
-> Every phase heading carries ✅ — there is no open phase; new work opens
-> a new roadmap arc, options-first. Standing ruling: the kit's P10
-> vendors from the `v1.0.0` release tag.)*
+> blesses `agent_conversation_*`, §11 SemVer-guaranteed from the eventual
+> v1.0.0; the changelog row's kit cell stays owed at kit 345851e until
+> the paired kit session fills it); packaging PyPI-ready but deliberately
+> unpublished — the repo stays private, install is the pinned git URL
+> (user ruling). The release was first cut as `v1.0.0` and **withdrawn
+> the same day** (ledger #73): 1.0 waits for a stronger surface — the
+> continuation arc is to be designed options-first (candidates: open
+> model registry, MCP client-side tools, OTel on the hooks, published
+> per-provider memory baselines). The stability promise rides the
+> eventual v1.0.0. Every phase heading carries ✅ — no open phase; the
+> kit's P10 vendors from a `v<X.Y.Z>` release tag, `v0.70.0` current.)*
 >
 > The pointer above must equal the first phase heading without ✅ — if they
 > disagree, say so and trust the checkboxes. Companion to [VISION.md](VISION.md)
@@ -609,7 +611,9 @@ DESIGN: §2, §6, §10.
   `Conversation`, `MemoryStore`, and the reformed evaluation surface
   (NE's facade — named deliberately, never frozen by silence) — and the
   ECOSYSTEM seams move from append-only-by-convention to
-  SemVer-guaranteed. *(✅ shipped v1.0.0, final slice)*
+  SemVer-guaranteed. *(✅ docs shipped v0.70.0, final slice; the 1.0
+  declaration itself withdrawn same day and carried to the continuation
+  arc — ledger #73)*
 
 **Done when:** one store serves the same memory through the function tool,
 the native Anthropic flag, and an MCP client (✅ v0.67.0); the per-provider
@@ -700,9 +704,10 @@ harness, docs/1.0.
 NE (see the section above and the session log) — it lands on the
 reformed module, as NE's final slice. Remaining in N4: docs/1.0 only.
 
-**Final slice shipped at v1.0.0 (2026-08-21), closing the phase and the
-roadmap** — docs/1.0. Rulings (options-first, user confirmed): the eval
-surface's promise lives in the v1.0.0 tag + README, **not** as an
+**Final slice shipped at v0.70.0 (2026-08-21; first cut as v1.0.0,
+withdrawn same day — ledger #73), closing the phase and the roadmap** —
+the docs slice. Rulings (options-first, user confirmed): the eval
+surface's promise lives in the eventual v1.0.0 tag + README, **not** as an
 ECOSYSTEM seam (ledger #72 — the recorded §9.10 payload is what the
 kit's counterpart signed up for); packaging made PyPI-ready but
 deliberately unpublished — the repo stays private, install notes are the
@@ -710,7 +715,8 @@ pinned git URL with extras riding it. The §9.10 amendment executed
 (ledger #71): ECOSYSTEM §10 gains `ConversationStore` +
 `ConversationStoreContract` (FileStore's both-seams role stated), §6
 blesses `agent_conversation_*` and declines a `conversation_` prefix,
-§11 flips to SemVer-guaranteed from v1.0.0, the §12 changelog row sweeps
+§11 flips to SemVer-guaranteed from the eventual v1.0.0, the §12
+changelog row sweeps
 the public codec (#22) and `CompactionBlock` (#46) — its kit cell owed
 at kit 345851e; DESIGN §9.10 rewritten to executed, the ABC docstring's
 contract-of-record caveat retracted. README rewritten (116 → 287 lines,
@@ -719,7 +725,7 @@ headline quickstart, memory/storage/MCP sections (the deferred slice-C
 snippet lands), the events-v2 factual fix (the old text claimed
 SSE-formatted events with pre-v2 names), a FAKE provider row + the
 keyless section, hooks, evaluation incl. `kind: memory`, the Stability
-section naming the four promised surfaces. pyproject: 1.0.0,
+section naming the four promised surfaces. pyproject: 0.70.0 (re-cut),
 description/keywords/classifiers/urls; the stale "Stateless agentic"
 tagline corrected at its three code sites; CLAUDE.md/SERVICES.md present
 tense. Verified: 1747 unit tests zero keys, mypy --strict, 7 import
@@ -1278,3 +1284,18 @@ import name root- or facade-pinned.
   `uv build` clean with assets, README greps pinned. Tags `n4-done` +
   `v1.0.0` (the stability promise in the annotation). The roadmap
   closes; the kit's P10 vendors from v1.0.0.
+- 2026-08-21 | meta | **1.0 postponed; the release re-cut as v0.70.0.**
+  User ruling, same day (ledger #73): a version number is a promise —
+  1.0 waits for a stronger surface, its continuation arc to be designed
+  options-first (candidates: open model registry, MCP client-side
+  tools, OTel exporter on the hooks, published per-provider memory
+  baselines — the external baselines have never run; no
+  schedule/dispatch CI run exists). The `v1.0.0` tag deleted from local
+  and origin before any consumer vendored it (the kit's P10 has not
+  run); pyproject → 0.70.0, classifier back to Beta, README install
+  pins → v0.70.0, the Stability section and §9.10 / ledger #71–#72 /
+  ECOSYSTEM §12 row moved to "the eventual v1.0.0". N4's
+  1.0-declaration done-when is explicitly carried into the continuation
+  arc; everything else N4 shipped stands at v0.70.0. `n4-done` stays —
+  the phase's substance closed. Verified: gates green zero keys,
+  `uv build` 0.70.0.

@@ -127,4 +127,4 @@ session-pair; either repo may refuse. Log:
 | date | change | neosian tag | kit ledger # |
 |---|---|---|---|
 | 2026-08-18 | Contract v1 written | — (pre-NH) | #205 |
-| 2026-08-21 | 1.0 amendment: §10 gains `ConversationStore` + `ConversationStoreContract`; §6 blesses `agent_conversation_*` (declines a `conversation_` prefix); §11 SemVer-guaranteed from v1.0.0; sweeps the public message codec (neosian #22) and `CompactionBlock` in the content union (neosian #46) | v1.0.0 | owed — recorded at kit 345851e; the paired kit session fills this cell |
+| 2026-08-21 | 1.0 amendment: §10 gains `ConversationStore` + `ConversationStoreContract`; §6 blesses `agent_conversation_*` (declines a `conversation_` prefix); §11 SemVer-guaranteed from the eventual v1.0.0; sweeps the public message codec (neosian #22) and `CompactionBlock` in the content union (neosian #46) | v0.70.0 | owed — recorded at kit 345851e; the paired kit session fills this cell |

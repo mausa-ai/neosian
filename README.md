@@ -25,9 +25,9 @@ The repository is private; as a dependency of another uv project, install
 from the git URL, pinned to a release tag (extras ride the same URL):
 
 ```bash
-uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v1.0.0"
-uv add "neosian[postgres] @ git+ssh://git@github.com/neosae/neosian@v1.0.0"   # + PostgresStore
-uv add "neosian[mcp] @ git+ssh://git@github.com/neosae/neosian@v1.0.0"        # + MCP memory server
+uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.70.0"
+uv add "neosian[postgres] @ git+ssh://git@github.com/neosae/neosian@v0.70.0"   # + PostgresStore
+uv add "neosian[mcp] @ git+ssh://git@github.com/neosae/neosian@v0.70.0"        # + MCP memory server
 ```
 
 The core install is database-driver-free and MCP-free; the four provider
@@ -256,12 +256,14 @@ regression.
 
 ## Stability
 
-From `v1.0.0`, `Agent`, `Conversation`, `MemoryStore`, and the
-`neosian.evaluation` facade are stable under SemVer, and the
+`v1.0.0` is deliberately not yet cut. When it is, it will carry the API
+stability promise: `Agent`, `Conversation`, `MemoryStore`, and the
+`neosian.evaluation` facade stable under SemVer, and the
 [ECOSYSTEM.md](ECOSYSTEM.md) seams (scope grammar, token classes, integer
-micro-USD, event vocabulary, error codes) are SemVer-guaranteed: a seam
-break lands only at a major. Consumers pin an annotated `v<X.Y.Z>` tag,
-never master.
+micro-USD, event vocabulary, error codes) SemVer-guaranteed — a seam break
+only at a major. Until then the seams are append-only by convention, and
+error codes are already append-only forever. Consumers pin an annotated
+`v<X.Y.Z>` tag, never master.
 
 ## Development
 

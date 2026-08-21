@@ -28,7 +28,7 @@ Cross-implementation invariants (pinned by
 
 Deliberately absent: `list_conversations` (hosts list from their own
 tables), delete/redact, per-turn usage/model/cost, capability ClassVars.
-Frozen for hosts since the v1.0.0 amendment (ECOSYSTEM §10); DESIGN §9
+Frozen for hosts since the 2026-08-21 amendment (ECOSYSTEM §10); DESIGN §9
 carries the rationale and the CS1-CS7 rulings.
 """
 
