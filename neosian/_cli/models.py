@@ -6,13 +6,12 @@ from simple_term_menu import TerminalMenu  # type: ignore[import-untyped]
 from neosian._foundation.shared.constants import ArenaUI
 from neosian._foundation.shared.types import DEFAULT_MODELS, Model, Provider
 
-# Models hidden from the interactive picker (special-purpose, e.g. guardrails).
-_HIDDEN_MODELS: frozenset[Model] = frozenset({Model.GROQ_GPT_OSS_SAFEGUARD_20B})
+# Models hidden from the interactive picker (special-purpose).
+_HIDDEN_MODELS: frozenset[Model] = frozenset()
 
 # Optional flavor text appended to a model's display name. The "(default)"
 # marker is derived from DEFAULT_MODELS, not baked in here.
 _MODEL_NOTES: dict[Model, str] = {
-    Model.GROQ_QWEN3_6_27B: "preview",
     Model.GPT_5_NANO: "fastest",
     Model.GPT_5_MINI: "balanced",
     Model.GPT_5_1: "best for coding",
@@ -61,7 +60,6 @@ def get_models_for_provider(
 
 
 _ALL_PROVIDERS: list[tuple[Provider, str]] = [
-    (Provider.GROQ, "Groq (fastest inference)"),
     (Provider.OPENAI, "OpenAI"),
     (Provider.ANTHROPIC, "Anthropic (Claude)"),
     (Provider.CEREBRAS, "Cerebras (fast open models)"),

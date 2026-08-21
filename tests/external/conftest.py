@@ -4,7 +4,7 @@ Each provider suite reads its key from the environment and self-skips when it
 is absent. Checks test falsiness, not None — an absent CI secret arrives as
 the empty string. Inject credentials value-blind via scripts/external_env.py:
 
-    make test-external provider=groq file=~/path/to/creds
+    make test-external provider=anthropic file=~/path/to/creds
 """
 
 import os
@@ -13,7 +13,6 @@ import pytest
 
 from neosian._foundation.llm.anthropic import AnthropicClient
 from neosian._foundation.llm.cerebras import CerebrasClient
-from neosian._foundation.llm.groq import GroqClient
 
 
 def _key_or_skip(name: str) -> str:
@@ -22,11 +21,6 @@ def _key_or_skip(name: str) -> str:
     if not key:
         pytest.skip(f"{name} not set")
     return key
-
-
-@pytest.fixture
-def groq_api_key() -> str:
-    return _key_or_skip("GROQ_API_KEY")
 
 
 @pytest.fixture
@@ -48,11 +42,6 @@ def cerebras_api_key() -> str:
 def postgres_dsn() -> str:
     """A live PostgreSQL server — a DSN, not an API key (SERVICES.md)."""
     return _key_or_skip("NEOSIAN_TEST_POSTGRES_DSN")
-
-
-@pytest.fixture
-def groq_client(groq_api_key: str) -> GroqClient:
-    return GroqClient(api_key=groq_api_key)
 
 
 @pytest.fixture

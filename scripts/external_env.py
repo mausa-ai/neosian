@@ -3,7 +3,7 @@
 Reads a credentials file, injects only the keys on the provider's allowlist,
 prints key *names* only — never values — and runs that provider's suite:
 
-    uv run python scripts/external_env.py --provider groq --file ~/keys/groq.txt
+    uv run python scripts/external_env.py --provider anthropic --file ~/keys/anthropic.txt
 
 The file holds either env-style NAME=value lines or a single raw value (taken
 as the provider's primary key). Without --file, keys already in the
@@ -17,7 +17,6 @@ import sys
 from pathlib import Path
 
 KEY_ALLOWLIST: dict[str, tuple[str, ...]] = {
-    "groq": ("GROQ_API_KEY",),
     "openai": ("OPENAI_API_KEY",),
     "anthropic": ("ANTHROPIC_API_KEY",),
     "cerebras": ("CEREBRAS_API_KEY",),

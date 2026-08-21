@@ -48,7 +48,7 @@ out, `forbidden` type only):
   ↛ `_foundation.agent`.
 - Every runtime `_foundation` package ↛ `_foundation.evaluation` — the
   harness observes the library, never the reverse; and
-  `_foundation.evaluation` ↛ the four provider client modules with
+  `_foundation.evaluation` ↛ the provider client modules with
   `allow_indirect_imports` (it drives an `Agent` and scripts `llm.fake` —
   its legitimate seams) (NE, §13.11).
 - `_foundation.otel` ↛ provider internals and every layer beyond the hook
@@ -63,7 +63,7 @@ makes every `__all__` change a deliberate, reviewed diff.
 
 ## §2 Providers & the router
 
-Four adapters (groq, openai, anthropic, cerebras) + FakeProvider (guarantee
+Three adapters (openai, anthropic, cerebras) + FakeProvider (guarantee
 in ECOSYSTEM §7; public surface `neosian.fake`, NS) behind `BaseLLMClient`. Capabilities live in `ModelSpec` and describe
 *neosian's converter*, not raw provider ability. Fallback is capability-aware
 and sticky within a session; SDK-native retries stay at the client layer.
@@ -280,7 +280,7 @@ AgentEventType: ready | content | reasoning | tool_call | tool_result
   (sum) + `usage_by_model: tuple[ModelUsage, ...]`.
 - `DoneEvent.model` is the **API-reported** string of the final completion —
   unified with `AgentResponse.model` (enabler: `StreamChunk.model`, populated
-  by all four clients from their first chunk / `message_start`).
+  by every client from its first chunk / `message_start`).
 - `ErrorEvent(code, retryable, usage, usage_by_model)` has **no message
   field** — it cannot leak text by construction.
   `ErrorEvent.from_exception(exc, *, sequence)` reads the public `.code`,
@@ -880,7 +880,7 @@ comments, comment bands, one `.PHONY` line.
 | `format` | `black .` + `ruff check --fix .` |
 | `typecheck` | `mypy --strict neosian tests` |
 | `test` | unit tier — the default gate, zero keys |
-| `test-external` | `provider=<groq\|openai\|anthropic\|cerebras>` required-arg guard; `file=…` routes through `scripts/external_env.py` |
+| `test-external` | `provider=<openai\|anthropic\|cerebras>` required-arg guard; `file=…` routes through `scripts/external_env.py` |
 | `test-postgres` | the `external_postgres` suite; needs `NEOSIAN_TEST_POSTGRES_DSN`, self-skips per test when unset — a DSN is not an API key, so it never routes through the value-blind injector |
 | `size` | the 300/500 file-size gate |
 | `release` | refuses a dirty tree; requires `v=X.Y.Z` matching pyproject; cuts annotated `v$(v)` |
@@ -992,6 +992,7 @@ never a silent divergence. Numbering is monotonic, never reused.
 | 81 | `claude-code` registers at `~/.claude.json` (user scope); the entry's `command` is the `neosian` console script found on PATH | **Project `./.mcp.json`** with `~/.claude` as the installed-client evidence; **`command` = the current interpreter's absolute path** (`sys.executable`) + `-m neosian.mcp` (user rulings, 2026-08-21) | A memory root is usually project-shaped and `.mcp.json` travels with the repo the agent works in (Claude Code approval-prompts it natively); GUI-launched clients do not inherit a shell's PATH, so an absolute interpreter is the only registration that works from Claude Desktop, and `-m` keeps the entry independent of console-script naming. Both choices live in one table row / one parameter, so a reversal is one-line cheap |
 | 82 | The shipped pack pins exact document paths (`/user/preferences`); the first real runs (NV, 2026-08-21) went red on all four providers while the models filed facts correctly under their own names (`/user/preferences.md`, `/user/drink.txt`) | **`path_prefix` document expectations** (user ruling): exactly one live document under the prefix satisfies `content` — zero is the fact unrecorded, two is the duplicate; `versions`/`actions` apply to the matched document. The pack reshapes onto it; history pins stay only where the disciplined path is unambiguous (first writes, recall's no-new-writes); exact `path:` keeps its strictness in the unit-tier negatives | Nothing in the prompt pack names documents, so exact paths measured an unspecified convention — publishing those reds as "failed write discipline" would be the motivated-reasoning mode ROADMAP's benchmark-honesty risk names, inverted. The pins that were communicated (mount routing, no secrets, update-not-duplicate, delete-what-proved-wrong) all survive, and the negatives prove the scoring still bites on each |
 | 83 | OTel via a wrapper/middleware layer, or spans nested by buffering events per run until `on_turn` | **`neosian.otel.otel_hooks()` → a plain `AgentHooks`** (facade-only surface, root `__all__` untouched); flat post-hoc spans, one per hook event, `start = end − duration_ms`; gen_ai semconv names + `neosian.*`; names/models/token-counts/outcomes only — never message content, tool arguments, or results; extra = `opentelemetry-api` only (SDK in the dev group solely for the in-memory exporter tests) | Hooks fire after the observed work with its wall time — flat spans state exactly what the seam knows, while parenting would require correlating events that carry no run identity and holding state in the observer; payload-free spans keep telemetry from becoming a second store of user data; api-only keeps the extra dependency-light since the host owns the SDK/exporter choice |
+| 84 | Guardrails hard-wired to Groq: `create_guardrail_client()` returned a raw `AsyncGroq`, the policy model was the constant `GROQ_GPT_OSS_SAFEGUARD_20B` (a model only Groq hosts), guardrail spend was invisible, and the checker was unreachable from FakeProvider | **Groq exits the registry (NW step 0, user ruling — membership is baseline-gated, BASELINES.md is the evidence) and guardrails re-platform**: `GuardrailsConfig.model: Model \| None` runs the classifier prompt through a neosian client from `Agent._create_client` (the #32 seam, honoring `client_factory`), `None` = the agent's own model; no explicit temperature (some models reject non-defaults); a missing key for the guardrail provider raises at construction, never a silent fail-open at check time. `AgentConfig.model` default → `CEREBRAS_GPT_OSS_120B`. Guardrail usage folding into run accounting stays deferred | The safeguard model had no other host, so the exit forced the re-platform the design owed anyway: guardrails carried a hidden second-provider key dependency (the exact coupling that made the exit painful) and could not be tested keylessly; via `_create_client` they ride the fakes like every other seam. Deleting a provider is honest only whole — client, enum rows, pricing, CI lane, suites — never a half-maintained stub |
 
 ## §13 Evaluation (NE)
 

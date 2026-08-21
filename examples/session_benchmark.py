@@ -8,7 +8,7 @@ Usage:
     python examples/session_benchmark.py
 
     Or with explicit API key:
-    GROQ_API_KEY=gsk_xxx python examples/session_benchmark.py
+    CEREBRAS_API_KEY=gsk_xxx python examples/session_benchmark.py
 """
 
 import asyncio
@@ -33,10 +33,10 @@ def _load_credentials_from_config() -> None:
 
     credentials = config.get("credentials", {})
 
-    if not os.environ.get("GROQ_API_KEY") and (
-        groq_key := credentials.get("groq_api_key")
+    if not os.environ.get("CEREBRAS_API_KEY") and (
+        cerebras_key := credentials.get("cerebras_api_key")
     ):
-        os.environ["GROQ_API_KEY"] = groq_key
+        os.environ["CEREBRAS_API_KEY"] = cerebras_key
 
     if not os.environ.get("OPENAI_API_KEY") and (
         openai_key := credentials.get("openai_api_key")
@@ -185,14 +185,14 @@ async def main() -> None:
     config = AgentConfig(
         system_prompt="You are a helpful assistant. Be extremely concise.",
         tools=[],
-        model=Model.GROQ_GPT_OSS_20B,
+        model=Model.CEREBRAS_GPT_OSS_120B,
         enable_todo=False,
     )
     agent = Agent(config=config)
 
     num_requests = 5
     print(f"\nRunning {num_requests} requests in each mode...")
-    print("(Using Groq API with minimal prompts)\n")
+    print("(Using Cerebras API with minimal prompts)\n")
 
     # Warm up - make one request to ensure API is responsive
     print("Warming up API...")

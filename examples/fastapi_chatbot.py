@@ -73,10 +73,10 @@ def _load_credentials_from_config() -> None:
 
     credentials = config.get("credentials", {})
 
-    if not os.environ.get("GROQ_API_KEY") and (
-        groq_key := credentials.get("groq_api_key")
+    if not os.environ.get("CEREBRAS_API_KEY") and (
+        cerebras_key := credentials.get("cerebras_api_key")
     ):
-        os.environ["GROQ_API_KEY"] = groq_key
+        os.environ["CEREBRAS_API_KEY"] = cerebras_key
 
 
 def _default_configuration() -> AgentConfig:
@@ -86,7 +86,7 @@ def _default_configuration() -> AgentConfig:
             "You are a concise assistant for this tenant's workspace. "
             "Answer in one or two sentences."
         ),
-        model=Model.GROQ_GPT_OSS_120B,
+        model=Model.CEREBRAS_GPT_OSS_120B,
         enable_todo=False,
     )
 
@@ -181,8 +181,8 @@ def create_app(
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         if owned and not os.environ.get(_DSN_ENV):
             _log.warning("%s not set — see the Usage block.", _DSN_ENV)
-        if agent_config is None and not os.environ.get("GROQ_API_KEY"):
-            _log.warning("GROQ_API_KEY not set — run `neosian configure` first.")
+        if agent_config is None and not os.environ.get("CEREBRAS_API_KEY"):
+            _log.warning("CEREBRAS_API_KEY not set — run `neosian configure` first.")
         yield
         if owned:
             await active.aclose()

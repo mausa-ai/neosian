@@ -1,27 +1,30 @@
-"""Policy checker module for GPT-OSS-Safeguard policy enforcement.
+"""Policy checker module for guardrail policy enforcement.
 
-Handles parsing and evaluation of GPT-OSS-Safeguard responses.
+Handles parsing and evaluation of policy-classifier responses. The
+classifier prompt (assets/prompts/guardrails.yaml) runs through a
+neosian client on a configurable model — `GuardrailsConfig.model`,
+defaulting to the agent's own configured model (ledger #84) — so
+guardrails carry no hidden provider dependency and run keylessly on
+FakeProvider.
 """
 
 import json
 
-from groq import AsyncGroq
-
 from neosian._foundation.guardrails.policy import evaluate_test_policy, is_test_policy
-from neosian._foundation.shared.constants import Guardrails
+from neosian._foundation.llm.base import BaseLLMClient, Message, Role, text_of
 from neosian._foundation.shared.exceptions import GuardrailPolicyParseError
 from neosian._foundation.shared.prompt_assets import get_prompt, render
-from neosian._foundation.shared.types import PolicyResult
+from neosian._foundation.shared.types import Model, PolicyResult
 
 
 def parse_policy_response(response: str) -> PolicyResult:
-    """Parse GPT-OSS-Safeguard JSON response into PolicyResult.
+    """Parse the classifier's JSON response into PolicyResult.
 
     Expected format:
     {"violation": 0|1, "category": "P1"|null, "rationale": "..."}
 
     Args:
-        response: Raw JSON response from GPT-OSS-Safeguard.
+        response: Raw JSON response from the policy classifier.
 
     Returns:
         PolicyResult with safe status, category, and rationale.
@@ -57,16 +60,20 @@ def parse_policy_response(response: str) -> PolicyResult:
 async def check_with_policy(
     content: str,
     policy: str,
-    client: AsyncGroq,
-    model: str | None = None,
+    client: BaseLLMClient,
+    model: Model,
 ) -> PolicyResult:
-    """Check content against a custom policy using GPT-OSS-Safeguard.
+    """Check content against a custom policy via the classifier prompt.
+
+    No explicit temperature is sent — provider defaults are the only
+    portable choice (some models reject a non-default temperature), and
+    the classifier's JSON contract does not depend on it.
 
     Args:
         content: Content to evaluate.
         policy: Policy prompt (from PolicyBuilder.build()).
-        client: Groq async client.
-        model: Model to use (defaults to Guardrails.POLICY_MODEL).
+        client: The guardrail model's neosian client.
+        model: The policy model (GuardrailsConfig.model or the agent's).
 
     Returns:
         PolicyResult with evaluation result.
@@ -79,8 +86,6 @@ async def check_with_policy(
         safe, category, rationale = evaluate_test_policy()
         return PolicyResult(safe=safe, category=category, rationale=rationale)
 
-    model = model or Guardrails.POLICY_MODEL
-
     # Build the full prompt with policy and content
     full_prompt = render(
         get_prompt("guardrails.classifier"),
@@ -88,11 +93,8 @@ async def check_with_policy(
         content=content,
     )
 
-    response = await client.chat.completions.create(
+    response = await client.complete(
+        messages=[Message(role=Role.USER, content=full_prompt)],
         model=model,
-        messages=[{"role": "user", "content": full_prompt}],
-        temperature=Guardrails.TEMPERATURE,
     )
-
-    response_text = response.choices[0].message.content or ""
-    return parse_policy_response(response_text)
+    return parse_policy_response(text_of(response.message))

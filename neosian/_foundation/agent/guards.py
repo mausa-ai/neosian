@@ -1,7 +1,4 @@
-"""Guardrail plumbing shared by the blocking and streaming paths.
-
-Also home to the API-key lookups the guardrail client needs.
-"""
+"""Guardrail plumbing shared by the blocking and streaming paths."""
 
 from __future__ import annotations
 
@@ -11,20 +8,19 @@ import logging
 import os
 from typing import TYPE_CHECKING, Literal
 
-from groq import AsyncGroq
-
 from neosian._foundation.agent.emit import blocked_response, emit_turn
 from neosian._foundation.agent.events import BlockedEvent
 from neosian._foundation.agent.response import AgentResponse
 from neosian._foundation.guardrails.checker import check_with_policy
 from neosian._foundation.llm.base import Message, ModelUsage, Role, Usage, text_of
-from neosian._foundation.shared.constants import EnvVars, ErrorMessages
+from neosian._foundation.shared.constants import EnvVars
 from neosian._foundation.shared.exceptions import MissingAPIKeyError
 from neosian._foundation.shared.types import (
     GuardrailErrorPolicy,
     GuardrailMode,
     GuardrailResult,
     PolicyResult,
+    Provider,
 )
 
 if TYPE_CHECKING:
@@ -33,46 +29,25 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+_PROVIDER_ENV: dict[Provider, str] = {
+    Provider.OPENAI: EnvVars.OPENAI_API_KEY,
+    Provider.ANTHROPIC: EnvVars.ANTHROPIC_API_KEY,
+    Provider.CEREBRAS: EnvVars.CEREBRAS_API_KEY,
+}
 
-def get_api_key(env_var: str) -> str:
-    """Get API key from environment variable.
 
-    Args:
-        env_var: Environment variable name.
+def require_provider_key(provider: Provider) -> None:
+    """Raise loudly at construction when the guardrail model's provider
+    has no key — a guardrail that silently fail-opens because its key
+    is absent would be a security footgun, so absence is an error the
+    moment guardrails are configured, never at check time.
 
-    Returns:
-        API key value.
-
-    Raises:
-        MissingAPIKeyError: If environment variable is not set.
+    FAKE needs no key; a caller-supplied client_factory bypasses this
+    (the factory owns credentials).
     """
-    api_key = os.environ.get(env_var)
-    if not api_key:
-        match env_var:
-            case EnvVars.GROQ_API_KEY:
-                raise MissingAPIKeyError(ErrorMessages.GROQ_API_KEY_MISSING)
-            case EnvVars.OPENAI_API_KEY:
-                raise MissingAPIKeyError(ErrorMessages.OPENAI_API_KEY_MISSING)
-            case EnvVars.ANTHROPIC_API_KEY:
-                raise MissingAPIKeyError(ErrorMessages.ANTHROPIC_API_KEY_MISSING)
-            case _:
-                raise MissingAPIKeyError(f"{env_var} environment variable not set")
-    return api_key
-
-
-def create_guardrail_client() -> AsyncGroq:
-    """Create Groq client for guardrail models.
-
-    Guardrails use Groq provider for GPT-OSS-Safeguard policy checks.
-
-    Returns:
-        AsyncGroq client for guardrail calls.
-
-    Raises:
-        MissingAPIKeyError: If GROQ_API_KEY is not set.
-    """
-    api_key = get_api_key(EnvVars.GROQ_API_KEY)
-    return AsyncGroq(api_key=api_key)
+    env_var = _PROVIDER_ENV.get(provider)
+    if env_var is not None and not os.environ.get(env_var):
+        raise MissingAPIKeyError(f"{env_var} environment variable not set")
 
 
 async def check_guardrails(
@@ -89,7 +64,11 @@ async def check_guardrails(
     Returns:
         Tuple of (is_safe, policy_result).
     """
-    if agent._guardrails is None or agent._guardrail_client is None:
+    if (
+        agent._guardrails is None
+        or agent._guardrail_client is None
+        or agent._guardrail_model is None
+    ):
         return (True, None)
 
     # Select config fields based on checkpoint
@@ -114,6 +93,7 @@ async def check_guardrails(
             content=content,
             policy=policy,
             client=agent._guardrail_client,
+            model=agent._guardrail_model,
         )
         return (policy_result.safe, policy_result)
 

@@ -179,7 +179,7 @@ def _objects_missing_additional_properties(
 class TestAdditionalPropertiesInvariant:
     """get_json_schema must set additionalProperties: false on EVERY object.
 
-    Anthropic (and OpenAI/Groq strict mode) reject any object schema without
+    Anthropic (and OpenAI/Cerebras strict mode) reject any object schema without
     it, including nested models Pydantic emits under $defs. Anthropic rejects
     them regardless of strict mode, so adapters cannot be relied on to patch
     the root — the invariant lives here.

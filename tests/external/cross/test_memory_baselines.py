@@ -30,7 +30,6 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 _PACK = _REPO_ROOT / "examples" / "eval_memory_baseline.yaml"
 
 _PROVIDER_CASES = [
-    pytest.param(Model.GROQ_GPT_OSS_120B, "groq_api_key", "GROQ_API_KEY", id="groq"),
     pytest.param(Model.GPT_5_MINI, "openai_api_key", "OPENAI_API_KEY", id="openai"),
     pytest.param(
         Model.CLAUDE_SONNET_5,

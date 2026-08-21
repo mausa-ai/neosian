@@ -40,7 +40,7 @@ Anthropic's native declaration, an MCP stdio server, and the shell.
 
 ## Install
 
-- `uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.72.0"`
+- `uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.73.0"`
   (private repository, no PyPI; pin an annotated release tag, never
   master; extras `[postgres]`, `[mcp]`, and `[otel]` ride the same URL).
 

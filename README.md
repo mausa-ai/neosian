@@ -25,15 +25,15 @@ The repository is private; as a dependency of another uv project, install
 from the git URL, pinned to a release tag (extras ride the same URL):
 
 ```bash
-uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.72.0"
-uv add "neosian[postgres] @ git+ssh://git@github.com/neosae/neosian@v0.72.0"   # + PostgresStore
-uv add "neosian[mcp] @ git+ssh://git@github.com/neosae/neosian@v0.72.0"        # + MCP memory server
-uv add "neosian[otel] @ git+ssh://git@github.com/neosae/neosian@v0.72.0"       # + OpenTelemetry spans
+uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.73.0"
+uv add "neosian[postgres] @ git+ssh://git@github.com/neosae/neosian@v0.73.0"   # + PostgresStore
+uv add "neosian[mcp] @ git+ssh://git@github.com/neosae/neosian@v0.73.0"        # + MCP memory server
+uv add "neosian[otel] @ git+ssh://git@github.com/neosae/neosian@v0.73.0"       # + OpenTelemetry spans
 ```
 
-The core install is database-driver-free and MCP-free; the four provider
-SDKs (groq, openai, anthropic, cerebras) come unconditionally — a provider
-is *available* when its API key is set.
+The core install is database-driver-free and MCP-free; the three provider
+SDKs (openai, anthropic, cerebras) come unconditionally — a provider is
+*available* when its API key is set.
 
 ## Quickstart
 
@@ -52,7 +52,7 @@ async def get_current_datetime() -> ToolResult[str]:
 configuration = AgentConfig(
     system_prompt="You are a helpful assistant. Be concise.",
     tools=[get_current_datetime],
-    model=Model.GROQ_GPT_OSS_20B,
+    model=Model.CEREBRAS_GPT_OSS_120B,
 )
 
 
@@ -228,10 +228,9 @@ its key is set (asking for an unavailable model raises
 
 | Provider | Env var | Notes |
 |---|---|---|
-| Groq | `GROQ_API_KEY` | Default provider; also powers guardrail policy checks |
 | OpenAI | `OPENAI_API_KEY` | GPT-5 family (reasoning models) |
 | Anthropic | `ANTHROPIC_API_KEY` | Claude; vision/PDF input, prompt caching, adaptive thinking |
-| Cerebras | `CEREBRAS_API_KEY` | |
+| Cerebras | `CEREBRAS_API_KEY` | Default provider (gpt-oss-120b) |
 | Fake | — | Keyless, deterministic, always available (`Model.FAKE`) |
 
 The full model registry lives in the `Model` enum, with per-model
@@ -294,7 +293,8 @@ so a prompt-pack change without a recorded re-run fails `make test`.
   (`Literal`, `TypedDict`, `Annotated` constraints, enums)
 - Parallel tool execution with per-agent concurrency caps
 - Model fallback: capability-aware, sticky within a session
-- Guardrails: policy-based input/output checks running concurrently with the agent
+- Guardrails: policy-based input/output checks running concurrently with
+  the agent (policy model configurable; defaults to the agent's own)
 - Structured output (`ResponseFormat` with Pydantic models or unions) on all providers
 - Multimodal content blocks (images, documents) on Anthropic; native
   `memory_20250818` and server-side compaction behind flags
@@ -322,7 +322,7 @@ make lint       # ruff + black --check + import-linter
 make typecheck  # mypy --strict neosian tests
 make test       # unit tier — the default gate, zero API keys
 make size       # file-size gate (warn 300 / fail 500)
-make test-external provider=groq file=~/path/to/creds   # real API calls
+make test-external provider=anthropic file=~/path/to/creds  # real API calls
 make test-postgres                                      # needs NEOSIAN_TEST_POSTGRES_DSN
 ```
 

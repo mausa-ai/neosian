@@ -47,6 +47,6 @@ configuration = AgentConfig(
         "at a time across turns. Then summarize what you did."
     ),
     tools=[sleep],
-    model=Model.GROQ_GPT_OSS_20B,
+    model=Model.CEREBRAS_GPT_OSS_120B,
     enable_todo=False,
 )

@@ -27,10 +27,10 @@ def _load_credentials_from_config() -> None:
 
     credentials = config.get("credentials", {})
 
-    if not os.environ.get("GROQ_API_KEY") and (
-        groq_key := credentials.get("groq_api_key")
+    if not os.environ.get("CEREBRAS_API_KEY") and (
+        cerebras_key := credentials.get("cerebras_api_key")
     ):
-        os.environ["GROQ_API_KEY"] = groq_key
+        os.environ["CEREBRAS_API_KEY"] = cerebras_key
 
 
 async def example_stateless() -> None:
@@ -45,7 +45,7 @@ async def example_stateless() -> None:
     config = AgentConfig(
         system_prompt="You are a helpful assistant. Be concise.",
         tools=[],
-        model=Model.GROQ_GPT_OSS_20B,
+        model=Model.CEREBRAS_GPT_OSS_120B,
         enable_todo=False,
     )
     agent = Agent(config=config)
@@ -72,7 +72,7 @@ async def example_session() -> None:
     config = AgentConfig(
         system_prompt="You are a helpful assistant. Be concise.",
         tools=[],
-        model=Model.GROQ_GPT_OSS_20B,
+        model=Model.CEREBRAS_GPT_OSS_120B,
         enable_todo=False,
     )
     agent = Agent(config=config)
@@ -104,7 +104,7 @@ async def example_chat_loop() -> None:
     config = AgentConfig(
         system_prompt="You are a helpful assistant. Keep track of the conversation.",
         tools=[],
-        model=Model.GROQ_GPT_OSS_20B,
+        model=Model.CEREBRAS_GPT_OSS_120B,
         enable_todo=False,
     )
     agent = Agent(config=config)

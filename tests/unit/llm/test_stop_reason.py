@@ -63,14 +63,14 @@ class TestUsageCostMicroUsd:
             output_tokens=0,
             cache_read_tokens=1_000_000,
         )
-        # Groq gpt-oss-20b has no cache pricing; falls back to 100_000 µ$ input
-        assert usage.cost_micro_usd(Model.GROQ_GPT_OSS_20B) == 100_000
+        # Cerebras gpt-oss-120b has no cache pricing; falls back to 250_000 µ$ input
+        assert usage.cost_micro_usd(Model.CEREBRAS_GPT_OSS_120B) == 250_000
 
     def test_cost_rounds_up_never_down(self) -> None:
         """Ceiling division: any fractional micro-USD bills a whole one."""
-        # 1 input token on Groq 20B = 100_000 / 1_000_000 = 0.1 µ$ → 1 µ$
+        # 1 input token on Cerebras 20B = 100_000 / 1_000_000 = 0.1 µ$ → 1 µ$
         usage = Usage(input_tokens=1, output_tokens=0)
-        assert usage.cost_micro_usd(Model.GROQ_GPT_OSS_20B) == 1
+        assert usage.cost_micro_usd(Model.CEREBRAS_GPT_OSS_120B) == 1
 
     def test_cost_unpriced_model_returns_none(self) -> None:
         """Models without verified pricing return None, never 0."""

@@ -9,7 +9,6 @@ from neosian._foundation.llm.anthropic import AnthropicClient
 from neosian._foundation.llm.base import BaseLLMClient
 from neosian._foundation.llm.cerebras import CerebrasClient
 from neosian._foundation.llm.fake import FakeClient
-from neosian._foundation.llm.groq import GroqClient
 from neosian._foundation.llm.openai import OpenAIClient
 from neosian._foundation.shared.constants import (
     EnvVars,
@@ -27,8 +26,8 @@ class ProviderRouter:
 
     Usage:
         router = ProviderRouter()
-        if router.has_provider(Provider.GROQ):
-            client = router.create_client(Provider.GROQ)
+        if router.has_provider(Provider.ANTHROPIC):
+            client = router.create_client(Provider.ANTHROPIC)
     """
 
     def __init__(self, max_retries: int = LLMDefaults.MAX_RETRIES) -> None:
@@ -49,8 +48,6 @@ class ProviderRouter:
         """
         available: set[Provider] = set()
 
-        if os.environ.get(EnvVars.GROQ_API_KEY):
-            available.add(Provider.GROQ)
         if os.environ.get(EnvVars.OPENAI_API_KEY):
             available.add(Provider.OPENAI)
         if os.environ.get(EnvVars.ANTHROPIC_API_KEY):
@@ -90,10 +87,6 @@ class ProviderRouter:
             ValueError: If provider is not supported.
             MissingAPIKeyError: If no API key available.
         """
-        if provider == Provider.GROQ:
-            key = api_key or os.environ.get(EnvVars.GROQ_API_KEY, "")
-            return GroqClient(api_key=key, max_retries=self._max_retries)
-
         if provider == Provider.OPENAI:
             key = api_key or os.environ.get(EnvVars.OPENAI_API_KEY, "")
             return OpenAIClient(api_key=key, max_retries=self._max_retries)

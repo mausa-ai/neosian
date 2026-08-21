@@ -24,12 +24,6 @@ from neosian._foundation.shared.types import AgentConfig, Model
 
 def _load_credentials_from_config() -> None:
     """Load API keys from config file into environment if not already set."""
-    # Groq
-    if not os.environ.get("GROQ_API_KEY"):
-        groq_key = get_api_key(Config.GROQ_API_KEY)
-        if groq_key:
-            os.environ["GROQ_API_KEY"] = groq_key
-
     # OpenAI
     if not os.environ.get("OPENAI_API_KEY"):
         openai_key = get_api_key(Config.OPENAI_API_KEY)

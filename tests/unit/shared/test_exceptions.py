@@ -364,13 +364,13 @@ class TestNeosianErrorContract:
 
     def test_provider_error_carries_structure(self) -> None:
         error = ProviderError(
-            "groq", "rate limited", status=429, retryable=True, request_id="req_9"
+            "cerebras", "rate limited", status=429, retryable=True, request_id="req_9"
         )
-        assert error.provider == "groq"
+        assert error.provider == "cerebras"
         assert error.status == 429
         assert error.retryable is True
         assert error.request_id == "req_9"
-        assert "groq" in error.message
+        assert "cerebras" in error.message
 
     def test_context_window_exceeded_fields(self) -> None:
         error = ContextWindowExceededError(

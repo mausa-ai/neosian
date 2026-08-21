@@ -259,7 +259,7 @@ class UnsupportedContentError(LLMError):
     that cannot handle them.
 
     Content is never silently dropped: providers without a content-block
-    converter (OpenAI, Groq, Cerebras) raise this on any block-list message,
+    converter (OpenAI, Cerebras) raise this on any block-list message,
     and the Anthropic client raises it when the target model's ModelSpec
     lacks the required capability.
     """
@@ -341,7 +341,7 @@ class ProviderError(LLMError):
         """Initialize with provider and error details.
 
         Args:
-            provider: Provider identifier (e.g., "groq", "openai").
+            provider: Provider identifier (e.g., "openai", "anthropic").
             message: Error description from the provider SDK.
             status: HTTP status code, when the failure carried one.
             retryable: Whether the failure class is worth retrying

@@ -46,7 +46,7 @@ def get_api_key(key_name: str) -> str | None:
     """Get an API key from the config file.
 
     Args:
-        key_name: The key name (e.g., Config.GROQ_API_KEY).
+        key_name: The key name (e.g., Config.OPENAI_API_KEY).
 
     Returns:
         The API key or None if not found.
@@ -60,7 +60,7 @@ def set_api_key(key_name: str, value: str) -> None:
     """Set an API key in the config file.
 
     Args:
-        key_name: The key name (e.g., Config.GROQ_API_KEY).
+        key_name: The key name (e.g., Config.OPENAI_API_KEY).
         value: The API key value.
     """
     config = _read_config()

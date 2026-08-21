@@ -40,16 +40,15 @@ class TestProviderEnum:
 
     def test_provider_values(self) -> None:
         """Provider enum should have expected values."""
-        assert Provider.GROQ.value == "groq"
         assert Provider.OPENAI.value == "openai"
         assert Provider.ANTHROPIC.value == "anthropic"
 
     def test_provider_is_string_compatible(self) -> None:
         """Provider should be string-compatible."""
         # Direct comparison works due to str, Enum inheritance
-        assert cast(str, Provider.GROQ) == "groq"
+        assert cast(str, Provider.CEREBRAS) == "cerebras"
         # Can be used in string operations
-        assert f"provider: {Provider.GROQ.value}" == "provider: groq"
+        assert f"provider: {Provider.CEREBRAS.value}" == "provider: cerebras"
 
 
 @pytest.mark.unit
@@ -58,31 +57,30 @@ class TestModelEnum:
 
     def test_model_values(self) -> None:
         """Model enum should have expected values."""
-        assert Model.GROQ_GPT_OSS_20B.value == "openai/gpt-oss-20b"
-        assert Model.GROQ_QWEN3_6_27B.value == "qwen/qwen3.6-27b"
+        assert Model.CEREBRAS_GPT_OSS_120B.value == "gpt-oss-120b"
+        assert Model.CEREBRAS_GEMMA_4_31B.value == "gemma-4-31b"
         assert Model.GPT_5_NANO.value == "gpt-5-nano-2025-08-07"
         assert Model.CLAUDE_SONNET_5.value == "claude-sonnet-5"
 
     def test_model_is_string_compatible(self) -> None:
         """Model should be string-compatible."""
         # Direct comparison works due to str, Enum inheritance
-        assert cast(str, Model.GROQ_GPT_OSS_20B) == "openai/gpt-oss-20b"
+        assert cast(str, Model.CEREBRAS_GPT_OSS_120B) == "gpt-oss-120b"
         # Can be used in string operations
-        assert f"model: {Model.GROQ_GPT_OSS_20B.value}" == "model: openai/gpt-oss-20b"
+        assert f"model: {Model.CEREBRAS_GPT_OSS_120B.value}" == "model: gpt-oss-120b"
 
     def test_model_provider_property(self) -> None:
         """Model should have provider property."""
-        assert Model.GROQ_GPT_OSS_20B.provider == Provider.GROQ
-        assert Model.GROQ_QWEN3_6_27B.provider == Provider.GROQ
+        assert Model.CEREBRAS_GPT_OSS_120B.provider == Provider.CEREBRAS
+        assert Model.CEREBRAS_GEMMA_4_31B.provider == Provider.CEREBRAS
         assert Model.GPT_5_NANO.provider == Provider.OPENAI
         assert Model.CLAUDE_SONNET_5.provider == Provider.ANTHROPIC
 
     def test_model_max_output_tokens_property(self) -> None:
         """Model should have max_output_tokens property matching API ceilings."""
-        # Groq
-        assert Model.GROQ_GPT_OSS_20B.max_output_tokens == 65_536
-        assert Model.GROQ_GPT_OSS_120B.max_output_tokens == 65_536
-        assert Model.GROQ_QWEN3_6_27B.max_output_tokens == 32_768
+        # Cerebras
+        assert Model.CEREBRAS_GPT_OSS_120B.max_output_tokens == 40_960
+        assert Model.CEREBRAS_GEMMA_4_31B.max_output_tokens == 32_768
 
         # OpenAI
         assert Model.GPT_5_NANO.max_output_tokens == 128_000
@@ -96,24 +94,24 @@ class TestModelEnum:
 
     def test_model_spec_property(self) -> None:
         """Model.spec should return the ModelSpec for that model."""
-        spec = Model.GROQ_GPT_OSS_20B.spec
+        spec = Model.CEREBRAS_GPT_OSS_120B.spec
         assert isinstance(spec, ModelSpec)
-        assert spec.provider == Provider.GROQ
+        assert spec.provider == Provider.CEREBRAS
         assert spec.context_window == 131_072
-        assert spec.max_output_tokens == 65_536
+        assert spec.max_output_tokens == 40_960
         assert spec.supports_reasoning is True
 
     def test_model_spec_is_frozen(self) -> None:
         """ModelSpec should be immutable."""
-        spec = Model.GROQ_GPT_OSS_20B.spec
+        spec = Model.CEREBRAS_GPT_OSS_120B.spec
         with pytest.raises(AttributeError):
             spec.max_output_tokens = 999  # type: ignore[misc]
 
     def test_model_context_window_property(self) -> None:
         """Model should have context_window property."""
-        # Groq: 131,072
-        assert Model.GROQ_GPT_OSS_20B.context_window == 131_072
-        assert Model.GROQ_QWEN3_6_27B.context_window == 131_072
+        # Cerebras: 131,072
+        assert Model.CEREBRAS_GPT_OSS_120B.context_window == 131_072
+        assert Model.CEREBRAS_GEMMA_4_31B.context_window == 131_072
 
         # OpenAI: 400k
         assert Model.GPT_5_NANO.context_window == 400_000
@@ -134,16 +132,16 @@ class TestAgentConfigValidation:
         """AgentConfig should accept valid Model enum values."""
         config = AgentConfig(
             system_prompt=SystemPrompt("You are helpful."),
-            model=Model.GROQ_GPT_OSS_20B,
+            model=Model.CEREBRAS_GPT_OSS_120B,
         )
-        assert config.model == Model.GROQ_GPT_OSS_20B
+        assert config.model == Model.CEREBRAS_GPT_OSS_120B
 
     def test_default_model(self) -> None:
         """AgentConfig should use default model when not specified."""
         config = AgentConfig(
             system_prompt=SystemPrompt("You are helpful."),
         )
-        assert config.model == Model.GROQ_GPT_OSS_20B
+        assert config.model == Model.CEREBRAS_GPT_OSS_120B
 
     def test_invalid_model_string_raises_error(self) -> None:
         """AgentConfig should raise InvalidModelError for string models."""
@@ -155,7 +153,7 @@ class TestAgentConfigValidation:
 
         assert exc_info.value.model_value == "gpt-4o"
         assert "str" in str(exc_info.value)
-        assert "Model.GROQ_GPT_OSS_20B" in str(exc_info.value)
+        assert "Model.CEREBRAS_GPT_OSS_120B" in str(exc_info.value)
 
     def test_invalid_model_int_raises_error(self) -> None:
         """AgentConfig should raise InvalidModelError for non-string types."""
@@ -190,7 +188,7 @@ class TestAgentConfigReasoningEffort:
         """AgentConfig should accept reasoning_effort with GPT-OSS models."""
         config = AgentConfig(
             system_prompt=SystemPrompt("You are helpful."),
-            model=Model.GROQ_GPT_OSS_20B,
+            model=Model.CEREBRAS_GPT_OSS_120B,
             reasoning_effort=ReasoningEffort.HIGH,
         )
         assert config.reasoning_effort == ReasoningEffort.HIGH
@@ -199,7 +197,7 @@ class TestAgentConfigReasoningEffort:
         """AgentConfig should accept reasoning_effort with GPT-OSS-120B."""
         config = AgentConfig(
             system_prompt=SystemPrompt("You are helpful."),
-            model=Model.GROQ_GPT_OSS_120B,
+            model=Model.CEREBRAS_GPT_OSS_120B,
             reasoning_effort=ReasoningEffort.MEDIUM,
         )
         assert config.reasoning_effort == ReasoningEffort.MEDIUM
@@ -208,7 +206,7 @@ class TestAgentConfigReasoningEffort:
         """AgentConfig should accept reasoning_effort=None with any model."""
         config = AgentConfig(
             system_prompt=SystemPrompt("You are helpful."),
-            model=Model.GROQ_QWEN3_6_27B,
+            model=Model.CEREBRAS_GEMMA_4_31B,
             reasoning_effort=None,
         )
         assert config.reasoning_effort is None
@@ -225,12 +223,12 @@ class TestAgentConfigReasoningEffort:
         with pytest.raises(UnsupportedParameterError) as exc_info:
             AgentConfig(
                 system_prompt=SystemPrompt("You are helpful."),
-                model=Model.GROQ_QWEN3_6_27B,
+                model=Model.CEREBRAS_GEMMA_4_31B,
                 reasoning_effort=ReasoningEffort.HIGH,
             )
 
         error_msg = str(exc_info.value)
-        assert "qwen/qwen3.6-27b" in error_msg
+        assert "gemma-4-31b" in error_msg
 
     def test_reasoning_effort_with_openai_model_accepted(self) -> None:
         """AgentConfig should accept reasoning_effort with OpenAI GPT-5 models."""
@@ -278,13 +276,13 @@ class TestAgentConfigReasoningEffort:
         with pytest.raises(UnsupportedParameterError) as exc_info:
             AgentConfig(
                 system_prompt=SystemPrompt("You are helpful."),
-                model=Model.GROQ_QWEN3_6_27B,
+                model=Model.CEREBRAS_GEMMA_4_31B,
                 reasoning_effort=ReasoningEffort.HIGH,
             )
 
         error_msg = str(exc_info.value)
-        assert "Model.GROQ_GPT_OSS_20B" in error_msg
-        assert "Model.GROQ_GPT_OSS_120B" in error_msg
+        assert "Model.CEREBRAS_GPT_OSS_120B" in error_msg
+        assert "Model.CEREBRAS_GPT_OSS_120B" in error_msg
         assert "Model.CLAUDE_OPUS_4_6" in error_msg
         assert "Model.GPT_5_1" in error_msg
         assert "Model.GPT_5_MINI" in error_msg
@@ -309,7 +307,7 @@ class TestAgentConfigMaxOutputTokens:
         """AgentConfig should accept custom max_output_tokens within model limit."""
         config = AgentConfig(
             system_prompt=SystemPrompt("You are helpful."),
-            model=Model.GROQ_GPT_OSS_20B,
+            model=Model.CEREBRAS_GPT_OSS_120B,
             max_output_tokens=4096,
         )
         assert config.max_output_tokens == 4096
@@ -318,23 +316,23 @@ class TestAgentConfigMaxOutputTokens:
         """AgentConfig should accept max_output_tokens equal to model limit."""
         config = AgentConfig(
             system_prompt=SystemPrompt("You are helpful."),
-            model=Model.GROQ_GPT_OSS_20B,
-            max_output_tokens=Model.GROQ_GPT_OSS_20B.max_output_tokens,
+            model=Model.CEREBRAS_GPT_OSS_120B,
+            max_output_tokens=Model.CEREBRAS_GPT_OSS_120B.max_output_tokens,
         )
-        assert config.max_output_tokens == 65_536
+        assert config.max_output_tokens == 40_960
 
     def test_max_output_tokens_exceeds_limit_raises_error(self) -> None:
         """AgentConfig should raise error when max_output_tokens exceeds model limit."""
         with pytest.raises(UnsupportedParameterError) as exc_info:
             AgentConfig(
                 system_prompt=SystemPrompt("You are helpful."),
-                model=Model.GROQ_GPT_OSS_20B,
+                model=Model.CEREBRAS_GPT_OSS_120B,
                 max_output_tokens=100_000,
             )
 
         error_msg = str(exc_info.value)
         assert "100000" in error_msg
-        assert "65536" in error_msg
+        assert "40960" in error_msg
 
     def test_max_output_tokens_zero_raises_error(self) -> None:
         """AgentConfig should raise error when max_output_tokens is 0."""
@@ -412,5 +410,5 @@ class TestCompactionCapability:
 
     def test_non_anthropic_models_are_unsupported(self) -> None:
         assert not Model.FAKE.supports_compaction_blocks
-        assert not Model.GROQ_GPT_OSS_120B.supports_compaction_blocks
+        assert not Model.CEREBRAS_GPT_OSS_120B.supports_compaction_blocks
         assert not Model.GPT_5_1.supports_compaction_blocks

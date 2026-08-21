@@ -106,11 +106,11 @@ class TestAgentSessionClientCaching:
             agent = Agent(config=config)
             session = AgentSession(agent)
 
-            client = session._get_or_create_client(Provider.GROQ)
+            client = session._get_or_create_client(Provider.CEREBRAS)
 
             assert client is mock_client
-            assert Provider.GROQ in session._clients
-            mock_router.create_client.assert_called_once_with(Provider.GROQ)
+            assert Provider.CEREBRAS in session._clients
+            mock_router.create_client.assert_called_once_with(Provider.CEREBRAS)
 
     def test_get_or_create_reuses_on_second_call(self) -> None:
         """Session should reuse cached client on subsequent calls."""
@@ -130,9 +130,9 @@ class TestAgentSessionClientCaching:
             session = AgentSession(agent)
 
             # First call creates
-            client1 = session._get_or_create_client(Provider.GROQ)
+            client1 = session._get_or_create_client(Provider.CEREBRAS)
             # Second call reuses
-            client2 = session._get_or_create_client(Provider.GROQ)
+            client2 = session._get_or_create_client(Provider.CEREBRAS)
 
             assert client1 is client2
             # Router should only be called once
@@ -140,12 +140,15 @@ class TestAgentSessionClientCaching:
 
     def test_different_providers_cached_separately(self) -> None:
         """Session should cache different providers separately."""
-        mock_client_groq = _create_mock_client()
+        mock_client_cerebras = _create_mock_client()
         mock_client_openai = _create_mock_client()
 
         mock_router = MagicMock()
         mock_router.has_provider.return_value = True
-        mock_router.create_client.side_effect = [mock_client_groq, mock_client_openai]
+        mock_router.create_client.side_effect = [
+            mock_client_cerebras,
+            mock_client_openai,
+        ]
 
         with patch(
             "neosian._foundation.agent.base.ProviderRouter",
@@ -159,10 +162,10 @@ class TestAgentSessionClientCaching:
             agent = Agent(config=config)
             session = AgentSession(agent)
 
-            groq_client = session._get_or_create_client(Provider.GROQ)
+            cerebras_client = session._get_or_create_client(Provider.CEREBRAS)
             openai_client = session._get_or_create_client(Provider.OPENAI)
 
-            assert groq_client is mock_client_groq
+            assert cerebras_client is mock_client_cerebras
             assert openai_client is mock_client_openai
             assert len(session._clients) == 2
 
@@ -190,7 +193,7 @@ class TestAgentSessionClose:
             session = AgentSession(agent)
 
             # Create a cached client
-            session._get_or_create_client(Provider.GROQ)
+            session._get_or_create_client(Provider.CEREBRAS)
 
             # Close session
             await session.close()
@@ -216,7 +219,7 @@ class TestAgentSessionClose:
             agent = Agent(config=config)
             session = AgentSession(agent)
 
-            session._get_or_create_client(Provider.GROQ)
+            session._get_or_create_client(Provider.CEREBRAS)
             assert len(session._clients) == 1
 
             await session.close()
@@ -268,7 +271,7 @@ class TestAgentSessionContextManager:
 
             async with agent.session() as session:
                 # Create a cached client
-                session._get_or_create_client(Provider.GROQ)
+                session._get_or_create_client(Provider.CEREBRAS)
 
             # After exit, client should be closed
             mock_client.close.assert_called_once()
@@ -292,7 +295,7 @@ class TestAgentSessionContextManager:
 
             with pytest.raises(RuntimeError):
                 async with agent.session() as session:
-                    session._get_or_create_client(Provider.GROQ)
+                    session._get_or_create_client(Provider.CEREBRAS)
                     raise RuntimeError("Test error")
 
             # Client should still be closed
@@ -410,11 +413,11 @@ class TestAgentSessionMultipleClients:
     @pytest.mark.asyncio
     async def test_fallback_caches_both_providers(self) -> None:
         """Session should cache clients for both primary and fallback providers."""
-        mock_client_groq = _create_mock_client()
+        mock_client_cerebras = _create_mock_client()
         mock_client_openai = _create_mock_client()
 
-        # Groq client fails, OpenAI succeeds
-        mock_client_groq.complete.side_effect = Exception("Groq unavailable")
+        # Cerebras client fails, OpenAI succeeds
+        mock_client_cerebras.complete.side_effect = Exception("Cerebras unavailable")
         mock_client_openai.complete.return_value = CompletionResponse(
             message=Message(role=Role.ASSISTANT, content="Hello from OpenAI!"),
             usage=Usage(input_tokens=10, output_tokens=5),
@@ -425,8 +428,8 @@ class TestAgentSessionMultipleClients:
         mock_router.has_provider.return_value = True
 
         def create_client_side_effect(provider: Provider) -> AsyncMock:
-            if provider == Provider.GROQ:
-                return mock_client_groq
+            if provider == Provider.CEREBRAS:
+                return mock_client_cerebras
             return mock_client_openai
 
         mock_router.create_client.side_effect = create_client_side_effect
@@ -437,7 +440,7 @@ class TestAgentSessionMultipleClients:
         ):
             config = AgentConfig(
                 system_prompt=SystemPrompt("You are helpful."),
-                model=Model.GROQ_GPT_OSS_20B,  # Groq model
+                model=Model.CEREBRAS_GPT_OSS_120B,  # Cerebras model
                 fallback=FallbackConfig(model=Model.GPT_5_NANO),  # OpenAI fallback
                 tools=[],
                 enable_todo=False,
@@ -448,10 +451,10 @@ class TestAgentSessionMultipleClients:
                 messages = [Message(role=Role.USER, content="Hi")]
                 response = await session.run(messages, stream=False)
 
-                # Should get response from OpenAI after Groq fails
+                # Should get response from OpenAI after Cerebras fails
                 assert response.message.content == "Hello from OpenAI!"
 
                 # Both clients should be cached
                 assert len(session._clients) == 2
-                assert Provider.GROQ in session._clients
+                assert Provider.CEREBRAS in session._clients
                 assert Provider.OPENAI in session._clients

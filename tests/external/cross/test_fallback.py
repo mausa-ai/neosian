@@ -5,11 +5,11 @@ Invalid API keys are used to trigger authentication errors (401), exercising
 the complete fallback path in agent execution.
 
 API keys are read from environment variables (fixtures in tests/external/conftest.py):
-- GROQ_API_KEY
+- CEREBRAS_API_KEY
 - OPENAI_API_KEY
 - ANTHROPIC_API_KEY
 
-Run with: uv run pytest -m external_groq tests/external/cross -v
+Run with: uv run pytest -m external_cerebras tests/external/cross -v
 """
 
 import os
@@ -32,7 +32,7 @@ from neosian._foundation.shared.types import (
 )
 
 # Invalid API keys that will trigger authentication errors
-INVALID_GROQ_KEY = "gsk_invalid_test_key_12345"
+INVALID_CEREBRAS_KEY = "csk-invalid_test_key_12345"
 INVALID_OPENAI_KEY = "sk-invalid_test_key_12345"
 INVALID_ANTHROPIC_KEY = "sk-ant-invalid_test_key_12345"
 
@@ -41,13 +41,13 @@ class TestFallbackFirstProviderFails:
     """Test fallback when first provider fails with invalid API key."""
 
     @pytest.mark.asyncio
-    async def test_groq_fails_openai_succeeds(self, openai_api_key: str) -> None:
-        """Test fallback from Groq (invalid key) to OpenAI (valid key).
+    async def test_cerebras_fails_openai_succeeds(self, openai_api_key: str) -> None:
+        """Test fallback from Cerebras (invalid key) to OpenAI (valid key).
 
-        Scenario: Primary provider Groq fails with 401, should fall back to OpenAI.
+        Scenario: Primary provider Cerebras fails with 401, should fall back to OpenAI.
         """
         env = {
-            "GROQ_API_KEY": INVALID_GROQ_KEY,  # Will fail with 401
+            "CEREBRAS_API_KEY": INVALID_CEREBRAS_KEY,  # Will fail with 401
             "OPENAI_API_KEY": openai_api_key,  # Will succeed
             "ANTHROPIC_API_KEY": "",  # Not available
         }
@@ -58,7 +58,7 @@ class TestFallbackFirstProviderFails:
                     "You are a helpful assistant. Reply concisely."
                 ),
                 tools=[],
-                model=Model.GROQ_QWEN3_6_27B,  # Groq model
+                model=Model.CEREBRAS_GPT_OSS_120B,  # Cerebras model
                 fallback=FallbackConfig(model=Model.GPT_5_NANO),  # OpenAI fallback
                 enable_todo=False,
             )
@@ -75,13 +75,13 @@ class TestFallbackFirstProviderFails:
             assert response.message.role == Role.ASSISTANT
 
     @pytest.mark.asyncio
-    async def test_openai_fails_groq_succeeds(self, groq_api_key: str) -> None:
-        """Test fallback from OpenAI (invalid key) to Groq (valid key).
+    async def test_openai_fails_cerebras_succeeds(self, cerebras_api_key: str) -> None:
+        """Test fallback from OpenAI (invalid key) to Cerebras (valid key).
 
-        Scenario: Primary provider OpenAI fails with 401, should fall back to Groq.
+        Scenario: Primary provider OpenAI fails with 401, should fall back to Cerebras.
         """
         env = {
-            "GROQ_API_KEY": groq_api_key,  # Will succeed
+            "CEREBRAS_API_KEY": cerebras_api_key,  # Will succeed
             "OPENAI_API_KEY": INVALID_OPENAI_KEY,  # Will fail with 401
             "ANTHROPIC_API_KEY": "",  # Not available
         }
@@ -93,7 +93,9 @@ class TestFallbackFirstProviderFails:
                 ),
                 tools=[],
                 model=Model.GPT_5_MINI,  # OpenAI model
-                fallback=FallbackConfig(model=Model.GROQ_QWEN3_6_27B),  # Groq fallback
+                fallback=FallbackConfig(
+                    model=Model.CEREBRAS_GPT_OSS_120B
+                ),  # Cerebras fallback
                 enable_todo=False,
             )
             agent = Agent(config=config)
@@ -103,7 +105,7 @@ class TestFallbackFirstProviderFails:
             ]
             response = await agent.run(messages, stream=False)
 
-            # Should have succeeded with Groq fallback
+            # Should have succeeded with Cerebras fallback
             assert response.message.content is not None
             assert len(response.message.content) > 0
             assert response.message.role == Role.ASSISTANT
@@ -119,7 +121,7 @@ class TestNoFallbackConfigured:
         Scenario: Model fails and no fallback is configured.
         """
         env = {
-            "GROQ_API_KEY": INVALID_GROQ_KEY,  # Will fail
+            "CEREBRAS_API_KEY": INVALID_CEREBRAS_KEY,  # Will fail
             "OPENAI_API_KEY": "",
             "ANTHROPIC_API_KEY": "",
         }
@@ -128,7 +130,7 @@ class TestNoFallbackConfigured:
             config = AgentConfig(
                 system_prompt=SystemPrompt("You are a helpful assistant."),
                 tools=[],
-                model=Model.GROQ_QWEN3_6_27B,
+                model=Model.CEREBRAS_GPT_OSS_120B,
                 # No fallback configured
                 enable_todo=False,
             )
@@ -142,7 +144,7 @@ class TestNoFallbackConfigured:
             # Verify the error indicates no fallback
             error = exc_info.value
             assert error.has_fallback is False
-            assert "qwen/qwen3.6-27b" in error.model
+            assert "gpt-oss-120b" in error.model
 
 
 class TestFallbackExhausted:
@@ -155,7 +157,7 @@ class TestFallbackExhausted:
         Scenario: Both main and fallback models have invalid API keys.
         """
         env = {
-            "GROQ_API_KEY": INVALID_GROQ_KEY,
+            "CEREBRAS_API_KEY": INVALID_CEREBRAS_KEY,
             "OPENAI_API_KEY": INVALID_OPENAI_KEY,
             "ANTHROPIC_API_KEY": "",
         }
@@ -164,7 +166,7 @@ class TestFallbackExhausted:
             config = AgentConfig(
                 system_prompt=SystemPrompt("You are a helpful assistant."),
                 tools=[],
-                model=Model.GROQ_QWEN3_6_27B,  # Will fail
+                model=Model.CEREBRAS_GPT_OSS_120B,  # Will fail
                 fallback=FallbackConfig(model=Model.GPT_5_NANO),  # Will also fail
                 enable_todo=False,
             )
@@ -177,7 +179,7 @@ class TestFallbackExhausted:
 
             # Verify the error contains both model information
             error = exc_info.value
-            assert "qwen/qwen3.6-27b" in error.main_model
+            assert "gpt-oss-120b" in error.main_model
             assert "gpt-5-nano" in error.fallback_model
 
 
@@ -185,13 +187,13 @@ class TestSingleProviderWorks:
     """Test behavior when only one provider is available and works."""
 
     @pytest.mark.asyncio
-    async def test_single_provider_succeeds(self, groq_api_key: str) -> None:
+    async def test_single_provider_succeeds(self, cerebras_api_key: str) -> None:
         """Test that single available provider works correctly.
 
-        Scenario: Only Groq has API key, it should succeed directly.
+        Scenario: Only Cerebras has API key, it should succeed directly.
         """
         env = {
-            "GROQ_API_KEY": groq_api_key,
+            "CEREBRAS_API_KEY": cerebras_api_key,
             "OPENAI_API_KEY": "",
             "ANTHROPIC_API_KEY": "",
         }
@@ -202,7 +204,7 @@ class TestSingleProviderWorks:
                     "You are a helpful assistant. Reply concisely."
                 ),
                 tools=[],
-                model=Model.GROQ_QWEN3_6_27B,
+                model=Model.CEREBRAS_GPT_OSS_120B,
                 enable_todo=False,
             )
             agent = Agent(config=config)
@@ -223,10 +225,10 @@ class TestFallbackStreaming:
     async def test_streaming_fallback(self, openai_api_key: str) -> None:
         """Test that fallback works in streaming mode.
 
-        Scenario: Groq fails (invalid key), falls back to OpenAI, streams response.
+        Scenario: Cerebras fails (invalid key), falls back to OpenAI, streams response.
         """
         env = {
-            "GROQ_API_KEY": INVALID_GROQ_KEY,  # Will fail
+            "CEREBRAS_API_KEY": INVALID_CEREBRAS_KEY,  # Will fail
             "OPENAI_API_KEY": openai_api_key,  # Will succeed
             "ANTHROPIC_API_KEY": "",
         }
@@ -237,7 +239,7 @@ class TestFallbackStreaming:
                     "You are a helpful assistant. Reply concisely."
                 ),
                 tools=[],
-                model=Model.GROQ_QWEN3_6_27B,
+                model=Model.CEREBRAS_GPT_OSS_120B,
                 fallback=FallbackConfig(model=Model.GPT_5_NANO),
                 enable_todo=False,
             )
@@ -261,7 +263,7 @@ class TestFallbackStreaming:
         Scenario: Both providers fail, should raise when consuming stream.
         """
         env = {
-            "GROQ_API_KEY": INVALID_GROQ_KEY,
+            "CEREBRAS_API_KEY": INVALID_CEREBRAS_KEY,
             "OPENAI_API_KEY": INVALID_OPENAI_KEY,
             "ANTHROPIC_API_KEY": "",
         }
@@ -270,7 +272,7 @@ class TestFallbackStreaming:
             config = AgentConfig(
                 system_prompt=SystemPrompt("You are a helpful assistant."),
                 tools=[],
-                model=Model.GROQ_QWEN3_6_27B,
+                model=Model.CEREBRAS_GPT_OSS_120B,
                 fallback=FallbackConfig(model=Model.GPT_5_NANO),
                 enable_todo=False,
             )
@@ -291,7 +293,7 @@ class TestFallbackStreaming:
         Scenario: Model fails and no fallback configured, error during stream.
         """
         env = {
-            "GROQ_API_KEY": INVALID_GROQ_KEY,
+            "CEREBRAS_API_KEY": INVALID_CEREBRAS_KEY,
             "OPENAI_API_KEY": "",
             "ANTHROPIC_API_KEY": "",
         }
@@ -300,7 +302,7 @@ class TestFallbackStreaming:
             config = AgentConfig(
                 system_prompt=SystemPrompt("You are a helpful assistant."),
                 tools=[],
-                model=Model.GROQ_QWEN3_6_27B,
+                model=Model.CEREBRAS_GPT_OSS_120B,
                 # No fallback
                 enable_todo=False,
             )
@@ -327,7 +329,7 @@ class TestStickyFallbackWithSession:
         Scenario: Main fails, fallback succeeds, subsequent calls use fallback.
         """
         env = {
-            "GROQ_API_KEY": INVALID_GROQ_KEY,  # Will always fail
+            "CEREBRAS_API_KEY": INVALID_CEREBRAS_KEY,  # Will always fail
             "OPENAI_API_KEY": openai_api_key,  # Will succeed
             "ANTHROPIC_API_KEY": "",
         }
@@ -338,7 +340,7 @@ class TestStickyFallbackWithSession:
                     "You are a helpful assistant. Reply concisely."
                 ),
                 tools=[],
-                model=Model.GROQ_QWEN3_6_27B,
+                model=Model.CEREBRAS_GPT_OSS_120B,
                 fallback=FallbackConfig(
                     model=Model.GPT_5_NANO,
                     retry_main_after=0,  # Never retry main

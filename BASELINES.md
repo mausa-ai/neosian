@@ -37,9 +37,11 @@ document), never the file name.
   — one source of scenario truth. The same pack, fully scripted, is the
   keyless FakeProvider regression gate (`make test`), all-green by
   construction.
-- One model per provider, the same four the library's external tier
-  pins: `claude-sonnet-5`, `gpt-5-mini-2025-08-07`,
-  `openai/gpt-oss-120b` (Groq), `gpt-oss-120b` (Cerebras).
+- One model per provider, the same set the library's external tier
+  pins: `claude-sonnet-5`, `gpt-5-mini-2025-08-07`, `gpt-oss-120b`
+  (Cerebras). The 2026-08-21 tables also carry Groq
+  (`openai/gpt-oss-120b`) — measured before the provider's removal
+  (NW step 0); the row stands as the ruling's evidence.
 - Transports axis (ledger #64): `function` (the plain function tool)
   and `cli` (the `neosian memory` engine in-process) run for every
   provider; `native_memory` (Anthropic's `memory_20250818`) is
@@ -79,7 +81,7 @@ construction off Anthropic (ledger #44), so only Anthropic runs it.
 |---|---|---|---|---|
 | Anthropic | claude-sonnet-5 | 6/6 | 6/6 | 6/6 |
 | OpenAI | gpt-5-mini-2025-08-07 | 6/6 | 6/6 | n/a |
-| Groq | openai/gpt-oss-120b | 3/6 † | 3/6 † | n/a |
+| Groq ‡ | openai/gpt-oss-120b | 3/6 † | 3/6 † | n/a |
 | Cerebras | gpt-oss-120b | 6/6 | 6/6 | n/a |
 
 † Groq's failures are **harness-level, not store-level**: gpt-oss-120b

@@ -8,11 +8,10 @@ import logging
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
-from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from neosian import Agent, AgentConfig, Model, Tool, ToolResult
+from neosian import Agent, AgentConfig, Model, Provider, Tool, ToolResult
 from neosian._foundation.agent.hooks import AgentHooks, TurnEvent
 from neosian._foundation.conversation.base import ConversationStore
 from neosian._foundation.conversation.compaction import CompactionConfig
@@ -185,31 +184,35 @@ class TestSendPersistence:
         assert convo.messages == ()
 
     async def test_blocked_send_persists_nothing(self, store: FileStore) -> None:
-        guardrail_client = AsyncMock()
-        guardrail_client.chat.completions.create.return_value = AsyncMock(
-            choices=[
-                AsyncMock(
-                    message=AsyncMock(
+        # The guardrail model rides its own provider so its scripted
+        # verdict never races the agent's script (ledger #84).
+        agent_fake = FakeClient(_reply("never"))
+        guard_fake = FakeClient(
+            FakeScript(
+                turns=(
+                    FakeTurn(
                         content='{"violation": 1, "category": "P1",'
                         ' "rationale": "flagged"}'
-                    )
+                    ),
                 )
-            ]
+            )
         )
-        config, _ = _config(
-            _reply("never"),
+        config = AgentConfig(
+            system_prompt=_SYSTEM,
+            model=Model.FAKE,
+            enable_todo=False,
+            client_factory=lambda p: (
+                guard_fake if p is Provider.ANTHROPIC else agent_fake
+            ),
             guardrails=GuardrailsConfig(
                 input_mode=GuardrailMode.POLICY_ONLY,
                 input_policy="no bad content",
                 block_on_input=True,
+                model=Model.CLAUDE_HAIKU_4_5,
             ),
         )
-        with patch(
-            "neosian._foundation.agent.base.create_guardrail_client",
-            return_value=guardrail_client,
-        ):
-            convo = Conversation(config, store=store, conversation_id="t1")
-            response = await convo.send("bad content")
+        convo = Conversation(config, store=store, conversation_id="t1")
+        response = await convo.send("bad content")
         assert response.blocked is True
         assert response.turn_messages == ()
         assert await store.read_turns("t1") == ()

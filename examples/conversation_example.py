@@ -20,7 +20,7 @@ _ROOT = Path(__file__).resolve().parent.parent / ".neosian" / "example"
 
 configuration = AgentConfig(
     system_prompt=("You are a concise assistant. Answer in one or two sentences."),
-    model=Model.GROQ_GPT_OSS_120B,
+    model=Model.CEREBRAS_GPT_OSS_120B,
     enable_todo=False,
 )
 
@@ -38,10 +38,10 @@ def _load_credentials_from_config() -> None:
 
     credentials = config.get("credentials", {})
 
-    if not os.environ.get("GROQ_API_KEY") and (
-        groq_key := credentials.get("groq_api_key")
+    if not os.environ.get("CEREBRAS_API_KEY") and (
+        cerebras_key := credentials.get("cerebras_api_key")
     ):
-        os.environ["GROQ_API_KEY"] = groq_key
+        os.environ["CEREBRAS_API_KEY"] = cerebras_key
 
 
 async def example_quickstart(conversation_id: str) -> None:
@@ -99,8 +99,8 @@ async def example_memory_scope(stamp: str) -> None:
 
 async def main() -> None:
     _load_credentials_from_config()
-    if not os.environ.get("GROQ_API_KEY"):
-        print("GROQ_API_KEY not set — run `neosian configure` first.")
+    if not os.environ.get("CEREBRAS_API_KEY"):
+        print("CEREBRAS_API_KEY not set — run `neosian configure` first.")
         return
 
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")

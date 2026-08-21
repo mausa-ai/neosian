@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-_PROVIDERS = ("groq", "openai", "anthropic", "cerebras")
+_PROVIDERS = ("openai", "anthropic", "cerebras")
 _TESTS_DIR = Path(__file__).parent
 
 

@@ -81,7 +81,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        provider: [groq, openai, anthropic, cerebras]
+        provider: [openai, anthropic, cerebras]
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v7
@@ -91,7 +91,6 @@ jobs:
       - run: make install
       - run: uv run pytest -m external_${{ matrix.provider }} -v
         env:
-          GROQ_API_KEY: ${{ matrix.provider == 'groq' && secrets.GROQ_API_KEY || '' }}
           OPENAI_API_KEY: ${{ matrix.provider == 'openai' && secrets.OPENAI_API_KEY || '' }}
           ANTHROPIC_API_KEY: ${{ matrix.provider == 'anthropic' && secrets.ANTHROPIC_API_KEY || '' }}
           CEREBRAS_API_KEY: ${{ matrix.provider == 'cerebras' && secrets.CEREBRAS_API_KEY || '' }}

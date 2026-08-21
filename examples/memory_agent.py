@@ -21,7 +21,7 @@ configuration = AgentConfig(
         "worth keeping and consult your memory before answering questions "
         "about earlier conversations."
     ),
-    model=Model.GROQ_GPT_OSS_120B,
+    model=Model.CEREBRAS_GPT_OSS_120B,
     enable_todo=False,
     memory=MemoryConfig(
         store=FileStore(_STORE_ROOT),

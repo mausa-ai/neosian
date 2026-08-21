@@ -136,12 +136,12 @@ class TestModelsAxis:
     def test_provider_prefixed_and_bare_forms(self, tmp_path: Path) -> None:
         body = MINIMAL.replace(
             "models: [fake]",
-            "models: [groq:openai/gpt-oss-20b, openai/gpt-oss-120b, fake-small]",
+            "models: [cerebras:gpt-oss-120b, gpt-oss-120b, fake-small]",
         )
         config = load_eval_config(_write(tmp_path, body))
         assert config.models == (
-            Model.GROQ_GPT_OSS_20B,
-            Model.GROQ_GPT_OSS_120B,
+            Model.CEREBRAS_GPT_OSS_120B,
+            Model.CEREBRAS_GPT_OSS_120B,
             Model.FAKE_SMALL,
         )
 

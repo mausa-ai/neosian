@@ -78,7 +78,7 @@ def _tool_agent() -> Agent:
 
 
 def _output_guarded_agent() -> Agent:
-    with patch.dict(os.environ, {"GROQ_API_KEY": "test-key"}):
+    with patch.dict(os.environ, {"CEREBRAS_API_KEY": "test-key"}):
         return Agent(
             AgentConfig(
                 system_prompt=SystemPrompt("test"),
@@ -149,7 +149,7 @@ class TestGuardsOnBothEntryPoints:
 class TestInputGuardModelPreservation:
     async def test_model_survives_input_guard_attachment(self) -> None:
         """The manual rebuild dropped model=; dataclasses.replace keeps it."""
-        with patch.dict(os.environ, {"GROQ_API_KEY": "test-key"}):
+        with patch.dict(os.environ, {"CEREBRAS_API_KEY": "test-key"}):
             agent = Agent(
                 AgentConfig(
                     system_prompt=SystemPrompt("test"),

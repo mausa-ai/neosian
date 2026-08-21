@@ -55,7 +55,7 @@ class TestGetApiKey:
         """Should return None when config file doesn't exist."""
         with patch("neosian._cli.config._get_config_path") as mock_path:
             mock_path.return_value = tmp_path / "nonexistent" / "config.toml"
-            assert get_api_key(Config.GROQ_API_KEY) is None
+            assert get_api_key(Config.CEREBRAS_API_KEY) is None
 
     def test_returns_none_when_key_not_set(self, tmp_path: Path) -> None:
         """Should return None when key is not in config."""
@@ -64,16 +64,16 @@ class TestGetApiKey:
 
         with patch("neosian._cli.config._get_config_path") as mock_path:
             mock_path.return_value = config_file
-            assert get_api_key(Config.GROQ_API_KEY) is None
+            assert get_api_key(Config.CEREBRAS_API_KEY) is None
 
     def test_returns_key_value(self, tmp_path: Path) -> None:
         """Should return the stored key value."""
         config_file = tmp_path / "config.toml"
-        config_file.write_text('[credentials]\ngroq_api_key = "gsk_testkey123"')
+        config_file.write_text('[credentials]\ncerebras_api_key = "gsk_testkey123"')
 
         with patch("neosian._cli.config._get_config_path") as mock_path:
             mock_path.return_value = config_file
-            assert get_api_key(Config.GROQ_API_KEY) == "gsk_testkey123"
+            assert get_api_key(Config.CEREBRAS_API_KEY) == "gsk_testkey123"
 
 
 class TestSetApiKey:
@@ -86,7 +86,7 @@ class TestSetApiKey:
 
         with patch("neosian._cli.config._get_config_path") as mock_path:
             mock_path.return_value = config_file
-            set_api_key(Config.GROQ_API_KEY, "gsk_newkey")
+            set_api_key(Config.CEREBRAS_API_KEY, "gsk_newkey")
 
         assert config_file.exists()
 
@@ -97,8 +97,8 @@ class TestSetApiKey:
 
         with patch("neosian._cli.config._get_config_path") as mock_path:
             mock_path.return_value = config_file
-            set_api_key(Config.GROQ_API_KEY, "gsk_testkey")
-            assert get_api_key(Config.GROQ_API_KEY) == "gsk_testkey"
+            set_api_key(Config.CEREBRAS_API_KEY, "gsk_testkey")
+            assert get_api_key(Config.CEREBRAS_API_KEY) == "gsk_testkey"
 
     def test_updates_existing_key(self, tmp_path: Path) -> None:
         """Should update existing key value."""
@@ -107,9 +107,9 @@ class TestSetApiKey:
 
         with patch("neosian._cli.config._get_config_path") as mock_path:
             mock_path.return_value = config_file
-            set_api_key(Config.GROQ_API_KEY, "old_key")
-            set_api_key(Config.GROQ_API_KEY, "new_key")
-            assert get_api_key(Config.GROQ_API_KEY) == "new_key"
+            set_api_key(Config.CEREBRAS_API_KEY, "old_key")
+            set_api_key(Config.CEREBRAS_API_KEY, "new_key")
+            assert get_api_key(Config.CEREBRAS_API_KEY) == "new_key"
 
     def test_preserves_other_keys(self, tmp_path: Path) -> None:
         """Should preserve other keys when updating one."""
@@ -118,10 +118,10 @@ class TestSetApiKey:
 
         with patch("neosian._cli.config._get_config_path") as mock_path:
             mock_path.return_value = config_file
-            set_api_key(Config.GROQ_API_KEY, "groq_key")
+            set_api_key(Config.CEREBRAS_API_KEY, "cerebras_key")
             set_api_key(Config.OPENAI_API_KEY, "openai_key")
 
-            assert get_api_key(Config.GROQ_API_KEY) == "groq_key"
+            assert get_api_key(Config.CEREBRAS_API_KEY) == "cerebras_key"
             assert get_api_key(Config.OPENAI_API_KEY) == "openai_key"
 
 
@@ -138,7 +138,7 @@ class TestGetAllCredentials:
         """Should return all stored credentials."""
         config_file = tmp_path / "config.toml"
         config_file.write_text(
-            '[credentials]\ngroq_api_key = "gsk_test"\nopenai_api_key = "sk_test"'
+            '[credentials]\ncerebras_api_key = "gsk_test"\nopenai_api_key = "sk_test"'
         )
 
         with patch("neosian._cli.config._get_config_path") as mock_path:
@@ -146,7 +146,7 @@ class TestGetAllCredentials:
             credentials = get_all_credentials()
 
         assert credentials == {
-            "groq_api_key": "gsk_test",
+            "cerebras_api_key": "gsk_test",
             "openai_api_key": "sk_test",
         }
 
@@ -163,7 +163,7 @@ class TestDeleteConfig:
     def test_deletes_config_file(self, tmp_path: Path) -> None:
         """Should delete the config file."""
         config_file = tmp_path / "config.toml"
-        config_file.write_text('[credentials]\ngroq_api_key = "test"')
+        config_file.write_text('[credentials]\ncerebras_api_key = "test"')
 
         with patch("neosian._cli.config._get_config_path") as mock_path:
             mock_path.return_value = config_file

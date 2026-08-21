@@ -753,7 +753,7 @@ class TestStreamingUsageReporting:
 
         clients = {
             Provider.ANTHROPIC: main_client,
-            Provider.GROQ: fallback_client,
+            Provider.CEREBRAS: fallback_client,
         }
         mock_router = MagicMock()
         mock_router.has_provider.return_value = True
@@ -768,7 +768,7 @@ class TestStreamingUsageReporting:
                 tools=[],
                 enable_todo=False,
                 model=Model.CLAUDE_SONNET_5,
-                fallback=FallbackConfig(model=Model.GROQ_QWEN3_6_27B),
+                fallback=FallbackConfig(model=Model.CEREBRAS_GEMMA_4_31B),
             )
             agent = Agent(config=config)
 
@@ -1018,7 +1018,7 @@ class TestAgentReasoningEffort:
         ):
             config = AgentConfig(
                 system_prompt=SystemPrompt("You are helpful."),
-                model=Model.GROQ_GPT_OSS_20B,
+                model=Model.CEREBRAS_GPT_OSS_120B,
                 reasoning_effort=ReasoningEffort.HIGH,
                 enable_todo=False,
             )
@@ -1033,7 +1033,7 @@ class TestAgentReasoningEffort:
         mock_client.complete.return_value = CompletionResponse(
             message=Message(role=Role.ASSISTANT, content="Hello!"),
             usage=Usage(input_tokens=10, output_tokens=5),
-            model="openai/gpt-oss-20b",
+            model="gpt-oss-120b",
         )
 
         mock_router = _create_mock_router(mock_client)
@@ -1044,7 +1044,7 @@ class TestAgentReasoningEffort:
         ):
             config = AgentConfig(
                 system_prompt=SystemPrompt("You are helpful."),
-                model=Model.GROQ_GPT_OSS_20B,
+                model=Model.CEREBRAS_GPT_OSS_120B,
                 reasoning_effort=ReasoningEffort.HIGH,
                 enable_todo=False,
             )
@@ -1065,7 +1065,7 @@ class TestAgentReasoningEffort:
         mock_client.complete.return_value = CompletionResponse(
             message=Message(role=Role.ASSISTANT, content="Hello!"),
             usage=Usage(input_tokens=10, output_tokens=5),
-            model="openai/gpt-oss-20b",
+            model="gpt-oss-120b",
         )
 
         mock_router = _create_mock_router(mock_client)
@@ -1076,7 +1076,7 @@ class TestAgentReasoningEffort:
         ):
             config = AgentConfig(
                 system_prompt=SystemPrompt("You are helpful."),
-                model=Model.GROQ_GPT_OSS_20B,
+                model=Model.CEREBRAS_GPT_OSS_120B,
                 reasoning_effort=None,  # Explicitly None
                 enable_todo=False,
             )
@@ -1110,8 +1110,8 @@ class TestAgentReasoningEffort:
         mock_router.has_provider.return_value = True
 
         def create_client(provider: Provider) -> AsyncMock:
-            if provider == Provider.GROQ:
-                # Both are Groq, but we need to distinguish by model
+            if provider == Provider.CEREBRAS:
+                # Both are Cerebras, but we need to distinguish by model
                 # The first call is for main model, subsequent for fallback
                 if mock_router.create_client.call_count <= 1:
                     return mock_main_client
@@ -1126,9 +1126,11 @@ class TestAgentReasoningEffort:
         ):
             config = AgentConfig(
                 system_prompt=SystemPrompt("You are helpful."),
-                model=Model.GROQ_GPT_OSS_20B,  # Supports reasoning
+                model=Model.CEREBRAS_GPT_OSS_120B,  # Supports reasoning
                 reasoning_effort=ReasoningEffort.HIGH,
-                fallback=FallbackConfig(model=Model.GROQ_QWEN3_6_27B),  # No reasoning
+                fallback=FallbackConfig(
+                    model=Model.CEREBRAS_GEMMA_4_31B
+                ),  # No reasoning
                 enable_todo=False,
             )
             agent = Agent(config=config)
@@ -1158,7 +1160,7 @@ class TestAgentReasoningEffort:
                 reasoning="I thought about this...",
             ),
             usage=Usage(input_tokens=10, output_tokens=5),
-            model="openai/gpt-oss-20b",
+            model="gpt-oss-120b",
         )
 
         mock_router = _create_mock_router(mock_client)
@@ -1169,7 +1171,7 @@ class TestAgentReasoningEffort:
         ):
             config = AgentConfig(
                 system_prompt=SystemPrompt("You are helpful."),
-                model=Model.GROQ_GPT_OSS_20B,
+                model=Model.CEREBRAS_GPT_OSS_120B,
                 reasoning_effort=ReasoningEffort.MEDIUM,
                 enable_todo=False,
             )
@@ -1868,7 +1870,7 @@ class TestCapabilityAwareFallback:
 
     @pytest.mark.asyncio
     async def test_fallback_skipped_when_model_lacks_support(self) -> None:
-        """Transient main failure + doc message + Groq fallback -> no fallback try."""
+        """Transient main failure + doc message + Cerebras fallback -> no fallback try."""
         from neosian._foundation.shared.exceptions import ModelFailedError
 
         main_client = AsyncMock(spec=BaseLLMClient)
@@ -1877,7 +1879,7 @@ class TestCapabilityAwareFallback:
 
         clients = {
             Provider.ANTHROPIC: main_client,
-            Provider.GROQ: fallback_client,
+            Provider.CEREBRAS: fallback_client,
         }
         mock_router = MagicMock()
         mock_router.has_provider.return_value = True
@@ -1892,7 +1894,7 @@ class TestCapabilityAwareFallback:
                 tools=[],
                 enable_todo=False,
                 model=Model.CLAUDE_SONNET_5,
-                fallback=FallbackConfig(model=Model.GROQ_QWEN3_6_27B),
+                fallback=FallbackConfig(model=Model.CEREBRAS_GEMMA_4_31B),
             )
             agent = Agent(config=config)
 
@@ -1974,7 +1976,7 @@ class TestCapabilityAwareFallback:
 
     @pytest.mark.asyncio
     async def test_sticky_fallback_routes_media_to_main(self) -> None:
-        """Sticky-on-Groq session + doc message -> straight to the Claude main."""
+        """Sticky-on-Cerebras session + doc message -> straight to the Claude main."""
         from neosian._foundation.shared.types import FallbackState
 
         main_client = AsyncMock(spec=BaseLLMClient)
@@ -1987,7 +1989,7 @@ class TestCapabilityAwareFallback:
 
         clients = {
             Provider.ANTHROPIC: main_client,
-            Provider.GROQ: fallback_client,
+            Provider.CEREBRAS: fallback_client,
         }
         mock_router = MagicMock()
         mock_router.has_provider.return_value = True
@@ -2002,7 +2004,7 @@ class TestCapabilityAwareFallback:
                 tools=[],
                 enable_todo=False,
                 model=Model.CLAUDE_SONNET_5,
-                fallback=FallbackConfig(model=Model.GROQ_QWEN3_6_27B),
+                fallback=FallbackConfig(model=Model.CEREBRAS_GEMMA_4_31B),
             )
             agent = Agent(config=config)
 

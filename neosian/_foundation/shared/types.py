@@ -43,7 +43,6 @@ ToolFunction = Callable[..., Awaitable["ToolResult[Any]"]]
 class Provider(str, Enum):
     """LLM Provider identifiers."""
 
-    GROQ = "groq"
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
     CEREBRAS = "cerebras"
@@ -134,10 +133,11 @@ class ReasoningEffort(str, Enum):
     """Reasoning effort level for supported models.
 
     Controls how many reasoning tokens the model uses.
-    Supported by GPT-OSS models (Groq), GPT-5 models (OpenAI),
+    Supported by GPT-OSS models (Cerebras), GPT-5 models (OpenAI),
     and reasoning-capable Claude models (Anthropic).
     Note: MAX is only passed through for models whose spec sets
-    supports_max_effort; Groq and OpenAI downgrade MAX to HIGH with a warning.
+    supports_max_effort; OpenAI-compatible providers downgrade MAX to
+    HIGH with a warning.
     Note: GPT-5-Pro only supports HIGH; other values are forced to HIGH with a warning.
     """
 
@@ -149,16 +149,6 @@ class ReasoningEffort(str, Enum):
 
 class Model(str, Enum):
     """Supported LLM models."""
-
-    # Groq - Production
-    GROQ_GPT_OSS_120B = "openai/gpt-oss-120b"
-    GROQ_GPT_OSS_20B = "openai/gpt-oss-20b"
-
-    # Groq - Preview
-    GROQ_QWEN3_6_27B = "qwen/qwen3.6-27b"
-
-    # Groq - Guardrails
-    GROQ_GPT_OSS_SAFEGUARD_20B = "openai/gpt-oss-safeguard-20b"
 
     # OpenAI
     GPT_5_1 = "gpt-5.1-2025-11-13"
@@ -233,37 +223,6 @@ class Model(str, Enum):
         """Get list pricing for this model (None if not verified)."""
         return _MODEL_SPECS[self.value].pricing
 
-
-# Groq - Production
-_MODEL_SPECS[Model.GROQ_GPT_OSS_120B.value] = ModelSpec(
-    provider=Provider.GROQ,
-    context_window=131_072,
-    max_output_tokens=65_536,
-    supports_reasoning=True,
-    pricing=ModelPricing(input_per_mtok=150_000, output_per_mtok=750_000),
-)
-_MODEL_SPECS[Model.GROQ_GPT_OSS_20B.value] = ModelSpec(
-    provider=Provider.GROQ,
-    context_window=131_072,
-    max_output_tokens=65_536,
-    supports_reasoning=True,
-    pricing=ModelPricing(input_per_mtok=100_000, output_per_mtok=500_000),
-)
-
-# Groq - Preview
-_MODEL_SPECS[Model.GROQ_QWEN3_6_27B.value] = ModelSpec(
-    provider=Provider.GROQ,
-    context_window=131_072,
-    max_output_tokens=32_768,
-)
-
-# Groq - Guardrails
-_MODEL_SPECS[Model.GROQ_GPT_OSS_SAFEGUARD_20B.value] = ModelSpec(
-    provider=Provider.GROQ,
-    context_window=131_072,
-    max_output_tokens=65_536,
-    pricing=ModelPricing(input_per_mtok=100_000, output_per_mtok=500_000),
-)
 
 # OpenAI
 _MODEL_SPECS[Model.GPT_5_1.value] = ModelSpec(
@@ -430,7 +389,6 @@ _MODEL_SPECS[Model.FAKE_REASONING.value] = ModelSpec(
 
 # Default models per provider
 DEFAULT_MODELS: dict[Provider, Model] = {
-    Provider.GROQ: Model.GROQ_GPT_OSS_20B,
     Provider.OPENAI: Model.GPT_5_NANO,
     Provider.ANTHROPIC: Model.CLAUDE_SONNET_5,
     Provider.CEREBRAS: Model.CEREBRAS_GPT_OSS_120B,
@@ -459,7 +417,7 @@ def _prices_fingerprint() -> str:
     return hashlib.sha256("\n".join(lines).encode("ascii")).hexdigest()
 
 
-PRICES_FINGERPRINT = "338de9420b8bfc345d22ff37ad7c5770c3272038b9c960555e823770f6cce5dc"
+PRICES_FINGERPRINT = "3e59b9463e7aee2a3fe28798c13cd97aad3bea2ec1e6a198fa613e4dcb40c025"
 
 
 # =============================================================================
@@ -631,9 +589,9 @@ class AgentConfig:
         configuration = AgentConfig(
             system_prompt="You are helpful.",
             tools=[greet],
-            model=Model.GROQ_GPT_OSS_120B,
+            model=Model.CLAUDE_SONNET_5,
             fallback=FallbackConfig(
-                model=Model.GROQ_GPT_OSS_20B,
+                model=Model.CEREBRAS_GPT_OSS_120B,
                 retry_main_after=5,
             ),
         )
@@ -641,7 +599,7 @@ class AgentConfig:
 
     system_prompt: SystemPrompt
     tools: list[ToolFunction] = field(default_factory=list)
-    model: Model = Model.GROQ_GPT_OSS_20B
+    model: Model = Model.CEREBRAS_GPT_OSS_120B
     fallback: FallbackConfig | None = None
     enable_todo: bool = True
     guardrails: "GuardrailsConfig | None" = None
@@ -789,7 +747,10 @@ class GuardrailErrorPolicy(str, Enum):
 class GuardrailsConfig:
     """Configuration for input and output guardrails.
 
-    Uses GPT-OSS-Safeguard for custom policy-based content moderation.
+    Policy-based content moderation via the shipped classifier prompt,
+    run on `model` — or, when `model` is None (the default), on the
+    agent's own configured model: no hidden second provider, no second
+    API key, keyless on FakeProvider (ledger #84).
 
     Modes:
     - NONE: No guardrails
@@ -830,6 +791,9 @@ class GuardrailsConfig:
 
     # Error handling policy
     error_policy: GuardrailErrorPolicy = GuardrailErrorPolicy.FAIL_OPEN
+
+    # Policy model; None = the agent's own configured model
+    model: Model | None = None
 
     def __post_init__(self) -> None:
         """Validate configuration."""

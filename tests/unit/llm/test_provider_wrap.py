@@ -13,7 +13,6 @@ from cerebras.cloud.sdk.types.chat.chat_completion import ChatChunkResponse
 from neosian._foundation.llm.anthropic import AnthropicClient
 from neosian._foundation.llm.base import BaseLLMClient, Message, Role
 from neosian._foundation.llm.cerebras import CerebrasClient
-from neosian._foundation.llm.groq import GroqClient
 from neosian._foundation.llm.openai import OpenAIClient
 from neosian._foundation.shared.exceptions import (
     ContextWindowExceededError,
@@ -61,7 +60,7 @@ def _content_chunk(text: str, spec: type | None = None) -> MagicMock:
 
 # (client factory, provider name, model) for the OpenAI-compatible trio.
 _OPENAI_COMPAT = [
-    (GroqClient, "groq", Model.GROQ_GPT_OSS_20B),
+    (CerebrasClient, "cerebras", Model.CEREBRAS_GPT_OSS_120B),
     (OpenAIClient, "openai", Model.GPT_5_NANO),
     (CerebrasClient, "cerebras", Model.CEREBRAS_GPT_OSS_120B),
 ]
@@ -148,9 +147,9 @@ class TestOpenAICompatWrap:
 
 @pytest.mark.unit
 class TestContextWindowClassification:
-    async def test_groq_400_overflow_becomes_context_window_error(self) -> None:
-        client = GroqClient(api_key="test-key")
-        from groq import BadRequestError
+    async def test_cerebras_400_overflow_becomes_context_window_error(self) -> None:
+        client = CerebrasClient(api_key="test-key")
+        from cerebras.cloud.sdk import BadRequestError
 
         original = BadRequestError(
             message="prompt is too long: 200000 tokens",
@@ -162,10 +161,12 @@ class TestContextWindowClassification:
         with pytest.raises(ContextWindowExceededError) as exc_info:
             await client.complete(
                 messages=[Message(role=Role.USER, content="Hi")],
-                model=Model.GROQ_GPT_OSS_20B,
+                model=Model.CEREBRAS_GPT_OSS_120B,
             )
-        assert exc_info.value.model == Model.GROQ_GPT_OSS_20B.value
-        assert exc_info.value.context_window == Model.GROQ_GPT_OSS_20B.context_window
+        assert exc_info.value.model == Model.CEREBRAS_GPT_OSS_120B.value
+        assert (
+            exc_info.value.context_window == Model.CEREBRAS_GPT_OSS_120B.context_window
+        )
         assert exc_info.value.__cause__ is original
 
 

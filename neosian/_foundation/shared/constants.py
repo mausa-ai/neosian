@@ -4,8 +4,6 @@ All magic numbers and hardcoded strings are centralized here.
 Add constants as needed, not speculatively.
 """
 
-from neosian._foundation.shared.types import Model
-
 
 class App:
     """Application metadata."""
@@ -46,7 +44,6 @@ class ErrorMessages:
     )
 
     # Playground errors
-    GROQ_API_KEY_MISSING: str = "GROQ_API_KEY environment variable not set"
     OPENAI_API_KEY_MISSING: str = "OPENAI_API_KEY environment variable not set"
     ANTHROPIC_API_KEY_MISSING: str = "ANTHROPIC_API_KEY environment variable not set"
     CEREBRAS_API_KEY_MISSING: str = "CEREBRAS_API_KEY environment variable not set"
@@ -73,12 +70,6 @@ class ErrorMessages:
         "reasoning_effort is only supported for models with reasoning capability. "
         "Model '{model}' does not support reasoning_effort. "
         "Supported models: {supported_models}"
-    )
-
-    # Groq MAX-to-HIGH downgrade
-    REASONING_EFFORT_MAX_DOWNGRADED: str = (
-        "reasoning_effort=MAX is not supported by Groq models. "
-        "Downgrading to HIGH for model '{model}'."
     )
 
     # OpenAI MAX-to-HIGH downgrade
@@ -315,7 +306,6 @@ class Config:
 
     DIR_NAME: str = ".neosian"
     FILE_NAME: str = "config.toml"
-    GROQ_API_KEY: str = "groq_api_key"
     OPENAI_API_KEY: str = "openai_api_key"
     ANTHROPIC_API_KEY: str = "anthropic_api_key"
     CEREBRAS_API_KEY: str = "cerebras_api_key"
@@ -324,7 +314,6 @@ class Config:
 class EnvVars:
     """Environment variable names."""
 
-    GROQ_API_KEY: str = "GROQ_API_KEY"
     OPENAI_API_KEY: str = "OPENAI_API_KEY"
     ANTHROPIC_API_KEY: str = "ANTHROPIC_API_KEY"
     CEREBRAS_API_KEY: str = "CEREBRAS_API_KEY"
@@ -343,13 +332,9 @@ class ArenaUI:
 
 
 class Guardrails:
-    """Constants for GPT-OSS-Safeguard guardrail system."""
-
-    # Default models
-    POLICY_MODEL: Model = Model.GROQ_GPT_OSS_SAFEGUARD_20B
-
-    # Temperature for guardrail calls (deterministic)
-    TEMPERATURE: float = 0.0
+    """Constants for the guardrail policy system. The policy model is
+    configuration, not a constant: GuardrailsConfig.model, defaulting
+    to the agent's own model (ledger #84)."""
 
     class TestPolicy:
         """Test policy constants."""

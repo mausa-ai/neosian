@@ -20,7 +20,7 @@ variants:
     prompt: examples/prompts/with_hints.yaml
 
 models:
-  - groq:openai/gpt-oss-20b
+  - cerebras:gpt-oss-120b
 
 ignore_tools: [update_todo]
 

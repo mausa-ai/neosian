@@ -16,15 +16,15 @@ class TestProviderRouter:
     def all_keys_available(self) -> dict[str, str]:
         """Return environment with all API keys set."""
         return {
-            "GROQ_API_KEY": "test-groq-key",
+            "CEREBRAS_API_KEY": "test-cerebras-key",
             "OPENAI_API_KEY": "test-openai-key",
             "ANTHROPIC_API_KEY": "test-anthropic-key",
         }
 
     @pytest.fixture
-    def groq_only(self) -> dict[str, str]:
-        """Return environment with only Groq key."""
-        return {"GROQ_API_KEY": "test-groq-key"}
+    def cerebras_only(self) -> dict[str, str]:
+        """Return environment with only Cerebras key."""
+        return {"CEREBRAS_API_KEY": "test-cerebras-key"}
 
     def test_detect_available_providers_all(
         self, all_keys_available: dict[str, str]
@@ -32,17 +32,17 @@ class TestProviderRouter:
         """Test detecting all providers when all keys are set."""
         with patch.dict(os.environ, all_keys_available, clear=True):
             router = ProviderRouter()
-            assert router.has_provider(Provider.GROQ)
+            assert router.has_provider(Provider.CEREBRAS)
             assert router.has_provider(Provider.OPENAI)
             assert router.has_provider(Provider.ANTHROPIC)
 
     def test_detect_available_providers_partial(
-        self, groq_only: dict[str, str]
+        self, cerebras_only: dict[str, str]
     ) -> None:
         """Test detecting providers when only some keys are set."""
-        with patch.dict(os.environ, groq_only, clear=True):
+        with patch.dict(os.environ, cerebras_only, clear=True):
             router = ProviderRouter()
-            assert router.has_provider(Provider.GROQ)
+            assert router.has_provider(Provider.CEREBRAS)
             assert not router.has_provider(Provider.OPENAI)
             assert not router.has_provider(Provider.ANTHROPIC)
 
@@ -50,7 +50,7 @@ class TestProviderRouter:
         """Test detecting no providers when no keys are set."""
         with patch.dict(os.environ, {}, clear=True):
             router = ProviderRouter()
-            assert not router.has_provider(Provider.GROQ)
+            assert not router.has_provider(Provider.CEREBRAS)
             assert not router.has_provider(Provider.OPENAI)
             assert not router.has_provider(Provider.ANTHROPIC)
 
@@ -68,11 +68,11 @@ class TestProviderRouter:
             router = ProviderRouter()
             assert isinstance(router.create_client(Provider.FAKE), FakeClient)
 
-    def test_create_client_groq(self, groq_only: dict[str, str]) -> None:
-        """Test creating Groq client."""
-        with patch.dict(os.environ, groq_only, clear=True):
+    def test_create_client_cerebras(self, cerebras_only: dict[str, str]) -> None:
+        """Test creating Cerebras client."""
+        with patch.dict(os.environ, cerebras_only, clear=True):
             router = ProviderRouter()
-            client = router.create_client(Provider.GROQ)
+            client = router.create_client(Provider.CEREBRAS)
             assert client is not None
 
     def test_create_client_openai(self, all_keys_available: dict[str, str]) -> None:

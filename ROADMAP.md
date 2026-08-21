@@ -957,7 +957,7 @@ Document-set write policy noted into NP; eval `seed:` into NG; NC6
 (external yardstick, LongMemEval candidate) joins the background
 track.
 
-## NR — Reflection (v0.73)
+## NR — Reflection (v0.74)
 
 DESIGN: §9 — plus the reflection § this phase writes.
 
@@ -980,7 +980,7 @@ layer and the memory layer.
 its session and the store holds the right facts — scripted keylessly;
 baselines re-run with reflection on.
 
-## NG — The gardener & scale (v0.74–0.75)
+## NG — The gardener & scale (v0.75–0.76)
 
 DESIGN: §8, §9.6 (the idiom).
 
@@ -1006,7 +1006,7 @@ hopeless in embedding stores.
 is measurably improved by one maintenance pass, keylessly scripted; the
 index holds its budget at 500 docs; baselines re-run.
 
-## NP — Product surface: governance & write-events (v0.76–0.77)
+## NP — Product surface: governance & write-events (v0.77–0.78)
 
 DESIGN: §8, §6 + ECOSYSTEM §5/§12.
 
@@ -1035,7 +1035,7 @@ The receipts, exposed — and the arc's deliberate seam change.
 the event stream; redaction runs end-to-end; the amendment stands in
 both ledgers.
 
-## NT — The tool-approval gate (v0.78)
+## NT — The tool-approval gate (v0.79)
 
 DESIGN: §3 — plus the § the design discussion writes.
 
@@ -1047,7 +1047,7 @@ DESIGN: §3 — plus the § the design discussion writes.
 **Done when:** a dangerous tool call pauses for approval and
 resumes/denies correctly on both paths, keylessly pinned.
 
-## NM — The state process (v0.79) — the capstone
+## NM — The state process (v0.80) — the capstone
 
 DESIGN: §8, §9 — plus the § the wire ruling writes.
 
@@ -1188,17 +1188,23 @@ OpenAI-compatible `base_url` is the cheap door most candidates enter
 through — a first-party client is earned by a green row plus a
 feature the compat dialect cannot carry.
 
-- **Step 0 — Groq exits (ruled 2026-08-21; the next session, not
-  post-NZ).** The 3/6 stochastic-emission row plus the membership
-  rule retire the provider. The removal audit found the one blocker:
-  **guardrails are hard-wired to Groq** —
-  `create_guardrail_client()` returns `AsyncGroq` and
-  `GuardrailDefaults.POLICY_MODEL` is `GROQ_GPT_OSS_SAFEGUARD_20B`,
-  a model no other host serves (verified 2026-08-21: OpenRouter
-  forwards it to Groq) — so the exit session opens options-first on
-  the guardrail engine before a line of removal. ECOSYSTEM and the
-  kit are groq-free (verified); ~66 in-repo files. BASELINES.md
-  keeps the Groq row as dated history — it is the ruling's evidence.
+- **Step 0 — Groq exits (ruled and ✅ executed 2026-08-21, same
+  session; v0.73.0).** The 3/6 stochastic-emission row plus the
+  membership rule retire the provider. The removal audit found the one
+  blocker: **guardrails were hard-wired to Groq** — and the safeguard
+  model has no other host (verified: OpenRouter forwards it to Groq) —
+  so the exit opened options-first on the guardrail engine (user
+  ruling: configurable `GuardrailsConfig.model`, default = the agent's
+  own model, via the `_create_client` seam — keyless on FakeProvider,
+  loud MissingAPIKeyError at construction, ledger #84). Removed whole:
+  client, `Provider.GROQ`, four `Model.GROQ_*` rows + pricing
+  (fingerprint re-pinned), CI lane + repo secret, external suites, the
+  `groq` dependency; `AgentConfig.model` default →
+  `CEREBRAS_GPT_OSS_120B`; the cross fallback suite re-anchored on
+  Cerebras; guardrail tests rewritten mock-free on scripted fakes.
+  ECOSYSTEM and the kit were verified groq-free — a one-repo move.
+  BASELINES.md keeps the Groq row as dated history — the ruling's
+  evidence.
 - **The slate (user, 2026-08-21)** — a menu, not a queue; each
   candidate enters through the gate above:
   - *Model platforms, mostly OpenAI-compatible (NC2 territory):*
@@ -1986,3 +1992,24 @@ membership is standing, not achieved.
   guardrail engine is hard-wired to Groq and its safeguard model has
   no other host — the exit session opens options-first there. Docs
   only; no code touched.
+- 2026-08-21 | NW (step 0) | **Groq exits the registry; guardrails
+  re-platform.** Same-session execution of the ruling. Guardrail
+  engine ruled options-first (user): `GuardrailsConfig.model`,
+  default = the agent's own model — the classifier prompt runs
+  through a neosian client from the `_create_client` seam (#32),
+  honoring `client_factory` (guardrails now keylessly testable on
+  FakeProvider, mock-free tests); no explicit temperature (some
+  models reject non-defaults); missing guardrail-provider key raises
+  at construction, never a silent fail-open (#84). Removal, whole:
+  `llm/groq.py`, `Provider.GROQ`, four `Model.GROQ_*` rows + specs +
+  pricing (`PRICES_FINGERPRINT` re-pinned), the `groq` dependency,
+  router branch, CI matrix lane + `GROQ_API_KEY` repo secret,
+  `tests/external/groq/`, `test_groq.py`, the `external_groq` marker,
+  the CLI's Groq configure/status/picker rows, twelve examples'
+  models, `raw_groq_test.py` deleted. `AgentConfig.model` default →
+  `CEREBRAS_GPT_OSS_120B`; the cross fallback suite re-anchored on
+  Cerebras; catalog test provider map trimmed. Docs: README/SERVICES/
+  DESIGN provider prose to three adapters, BASELINES.md Groq row
+  annotated historical (‡), NW step 0 ✅, downstream version markers
+  +1 (NR v0.74 … NM v0.80). ECOSYSTEM untouched (verified groq-free;
+  one-repo move). 1869 unit tests, zero keys; v0.73.0.

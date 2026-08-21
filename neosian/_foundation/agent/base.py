@@ -13,8 +13,6 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Literal, overload
 
-from groq import AsyncGroq
-
 if TYPE_CHECKING:
     from neosian._foundation.agent.session import AgentSession
 
@@ -22,7 +20,7 @@ from neosian._foundation.agent.blocking import run_blocking
 from neosian._foundation.agent.context import RunContext
 from neosian._foundation.agent.emit import emit_turn
 from neosian._foundation.agent.events import AgentEvent
-from neosian._foundation.agent.guards import create_guardrail_client
+from neosian._foundation.agent.guards import require_provider_key
 from neosian._foundation.agent.hooks import HookRunner
 from neosian._foundation.agent.response import AgentResponse
 from neosian._foundation.agent.stream_run import run_streaming
@@ -38,6 +36,7 @@ from neosian._foundation.shared.exceptions import (
 from neosian._foundation.shared.types import (
     AgentConfig,
     FallbackState,
+    Model,
     Provider,
     ResponseFormat,
     ToolFunction,
@@ -110,11 +109,19 @@ class Agent:
         self._max_parallel_tools = config.max_parallel_tools
         self._context_policy = config.context_policy
 
-        # Store guardrails config and create client if needed
+        # Store guardrails config and create the policy client if needed.
+        # The policy model defaults to the agent's own (ledger #84); its
+        # client rides _create_client, so client_factory injection makes
+        # guardrails keylessly testable on FakeProvider. Key absence is
+        # loud here, never a silent fail-open at check time.
         self._guardrails = config.guardrails
-        self._guardrail_client: AsyncGroq | None = None
+        self._guardrail_client: BaseLLMClient | None = None
+        self._guardrail_model: Model | None = None
         if self._guardrails is not None:
-            self._guardrail_client = create_guardrail_client()
+            self._guardrail_model = self._guardrails.model or config.model
+            if self._client_factory is None:
+                require_provider_key(self._guardrail_model.provider)
+            self._guardrail_client = self._create_client(self._guardrail_model.provider)
 
         # Build tool registry from decorated functions
         self._tools: dict[ToolName, ToolFunction] = {}

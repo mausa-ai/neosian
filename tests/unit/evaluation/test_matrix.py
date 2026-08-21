@@ -186,5 +186,5 @@ class TestThrottleExemption:
             name="p", turns=(EvalTurn(user="x", expect=Expectation(no_tool=True)),)
         )
         assert _needs_throttle(Model.FAKE, plain) is False
-        assert _needs_throttle(Model.GROQ_GPT_OSS_20B, scripted) is False
-        assert _needs_throttle(Model.GROQ_GPT_OSS_20B, plain) is True
+        assert _needs_throttle(Model.CEREBRAS_GPT_OSS_120B, scripted) is False
+        assert _needs_throttle(Model.CEREBRAS_GPT_OSS_120B, plain) is True

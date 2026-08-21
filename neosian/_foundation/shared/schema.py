@@ -4,7 +4,7 @@ Provides unified handling for both BaseModel subclasses and Union types
 using Pydantic's TypeAdapter.
 
 Union types are automatically wrapped in an object schema because LLM APIs
-(OpenAI, Groq, Anthropic) require root-level schemas to be objects, not anyOf.
+(OpenAI, Anthropic, Cerebras) require root-level schemas to be objects, not anyOf.
 The wrapper is: {"result": <union_value>}
 """
 
@@ -66,7 +66,7 @@ def get_schema_name(schema: SchemaType) -> str:
 def _add_additional_properties_false(schema: Any) -> None:
     """Recursively add additionalProperties: false to all object schemas.
 
-    LLM APIs (Groq, OpenAI, Anthropic) require additionalProperties: false on
+    LLM APIs (OpenAI, Anthropic, Cerebras) require additionalProperties: false on
     every object, including those in $defs.
 
     Args:
@@ -109,7 +109,7 @@ def get_json_schema(schema: SchemaType) -> dict[str, Any]:
 
     Invariant: every object schema in the result carries
     additionalProperties: false — including nested models under $defs. LLM
-    APIs (Anthropic, OpenAI, Groq, Cerebras) reject object schemas without
+    APIs (Anthropic, OpenAI, Cerebras) reject object schemas without
     it, and Anthropic does so regardless of strict mode. Owning the
     invariant here keeps it provider-independent; adapters must not need to
     patch the schema themselves.

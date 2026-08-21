@@ -138,13 +138,6 @@ def _show_credentials_table(console: Console) -> None:
     table.add_column("Status")
     table.add_column("Key")
 
-    # Groq
-    groq_key = credentials.get(Config.GROQ_API_KEY)
-    if groq_key:
-        table.add_row("Groq", "[green]●[/green]", _mask_key(groq_key))
-    else:
-        table.add_row("Groq", "[red]●[/red]", "[dim]Not configured[/dim]")
-
     # OpenAI
     openai_key = credentials.get(Config.OPENAI_API_KEY)
     if openai_key:
@@ -176,19 +169,6 @@ def _configure_credentials(console: Console) -> None:
     credentials = get_all_credentials()
 
     console.print("\n[dim]Press Enter to keep existing values.[/dim]\n")
-
-    # Groq
-    existing_groq = credentials.get(Config.GROQ_API_KEY, "")
-    groq_prompt = "Groq API key"
-    if existing_groq:
-        groq_prompt += f" [dim]({_mask_key(existing_groq)})[/dim]"
-
-    groq_key = Prompt.ask(groq_prompt, password=True, default="")
-    if groq_key:
-        set_api_key(Config.GROQ_API_KEY, groq_key)
-        console.print("[green]Groq API key saved.[/green]")
-    elif existing_groq:
-        console.print("[dim]Groq API key unchanged.[/dim]")
 
     # OpenAI
     existing_openai = credentials.get(Config.OPENAI_API_KEY, "")

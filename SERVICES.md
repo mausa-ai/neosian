@@ -20,15 +20,14 @@ raises `MissingAPIKeyError` (`agent_missing_api_key`).
 |---|---|---|
 | `ANTHROPIC_API_KEY` | Anthropic (Claude; vision/PDF, prompt caching, adaptive thinking) | Claude models leave the router; `external_anthropic` self-skips; playground hides the Anthropic menu |
 | `OPENAI_API_KEY` | OpenAI (GPT-5 family, reasoning) | GPT models leave the router; `external_openai` self-skips; playground hides the OpenAI menu |
-| `GROQ_API_KEY` | Groq (default provider; also powers guardrail policy checks) | Groq models leave the router; guardrails need another provider; `external_groq` self-skips |
-| `CEREBRAS_API_KEY` | Cerebras | Cerebras models leave the router; `external_cerebras` self-skips |
+| `CEREBRAS_API_KEY` | Cerebras (default provider, gpt-oss models) | Cerebras models leave the router; `external_cerebras` self-skips |
 
 With **no** keys set, the library still imports, constructs, runs (on
 FakeProvider), and passes its full default test tier.
 
 ## The external suites
 
-`make test-external provider=<groq|openai|anthropic|cerebras>` runs that
+`make test-external provider=<openai|anthropic|cerebras>` runs that
 provider's real-API suite (`-m external_<provider>`).
 
 - `file=<envfile>` routes through `scripts/external_env.py`:

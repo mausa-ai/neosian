@@ -91,7 +91,7 @@ class TestShippedPack:
     async def test_store_layout_is_one_slugged_dir_per_cell(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """`openai/gpt-oss-120b` must not nest — one segment per axis."""
+        """`gpt-oss-120b` must not nest — one segment per axis."""
         monkeypatch.chdir(_REPO_ROOT)
         scenarios = """\
           - name: layout
@@ -105,12 +105,12 @@ class TestShippedPack:
         """
         suite_path = _suite(tmp_path, scenarios)
         text = suite_path.read_text().replace(
-            "models: [fake]", "models: [groq:openai/gpt-oss-120b]"
+            "models: [fake]", "models: [cerebras:gpt-oss-120b]"
         )
         suite_path.write_text(text)
         report = await _run(suite_path, tmp_path / "stores")
         assert report.failed == 0
-        cell = tmp_path / "stores" / "function" / "openai-gpt-oss-120b" / "layout"
+        cell = tmp_path / "stores" / "function" / "gpt-oss-120b" / "layout"
         assert cell.is_dir()
         assert not (tmp_path / "stores" / "function" / "openai").exists()
 

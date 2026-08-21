@@ -10,7 +10,7 @@ from neosian import AgentConfig, Model
 configuration = AgentConfig(
     system_prompt="You are a helpful assistant. Be concise.",
     tools=[],
-    model=Model.GROQ_GPT_OSS_20B,
+    model=Model.CEREBRAS_GPT_OSS_120B,
     enable_todo=False,  # Disable built-in todo tool
     # No guardrails
 )

@@ -32,10 +32,10 @@ def _load_credentials_from_config() -> None:
 
     credentials = config.get("credentials", {})
 
-    if not os.environ.get("GROQ_API_KEY") and (
-        groq_key := credentials.get("groq_api_key")
+    if not os.environ.get("CEREBRAS_API_KEY") and (
+        cerebras_key := credentials.get("cerebras_api_key")
     ):
-        os.environ["GROQ_API_KEY"] = groq_key
+        os.environ["CEREBRAS_API_KEY"] = cerebras_key
 
 
 async def main() -> None:

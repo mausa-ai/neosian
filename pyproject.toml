@@ -1,6 +1,6 @@
 [project]
 name = "neosian"
-version = "0.72.0"
+version = "0.73.0"
 description = "Async-only library for LLM agents: tools, orchestration, streaming, guardrails — with opt-in conversation, memory, and compaction layers over a stateless core."
 readme = "README.md"
 license = "Apache-2.0"
@@ -19,7 +19,6 @@ classifiers = [
 dependencies = [
     "anthropic>=0.122.0",
     "cerebras-cloud-sdk>=1.91.0",
-    "groq>=1.6.0",
     "httpx>=0.28.1",
     "openai>=3.2.0",
     "pydantic>=2.13.4",
@@ -70,7 +69,6 @@ addopts = "-m 'not external' --strict-markers"
 markers = [
     "unit: Fast tests on fakes only — the default, fully keyless gate",
     "external: Any test making real API calls (excluded by default)",
-    "external_groq: Real Groq API calls",
     "external_openai: Real OpenAI API calls",
     "external_anthropic: Real Anthropic API calls",
     "external_cerebras: Real Cerebras API calls",
@@ -159,7 +157,6 @@ source_modules = [
     "neosian._foundation.postgres",
 ]
 forbidden_modules = [
-    "neosian._foundation.llm.groq",
     "neosian._foundation.llm.openai",
     "neosian._foundation.llm.anthropic",
     "neosian._foundation.llm.cerebras",
@@ -172,7 +169,6 @@ type = "forbidden"
 source_modules = ["neosian._foundation.mcp"]
 forbidden_modules = [
     "neosian._foundation.agent",
-    "neosian._foundation.llm.groq",
     "neosian._foundation.llm.openai",
     "neosian._foundation.llm.anthropic",
     "neosian._foundation.llm.cerebras",
@@ -186,7 +182,6 @@ name = "the conversation layer never imports provider clients directly"
 type = "forbidden"
 source_modules = ["neosian._foundation.conversation"]
 forbidden_modules = [
-    "neosian._foundation.llm.groq",
     "neosian._foundation.llm.openai",
     "neosian._foundation.llm.anthropic",
     "neosian._foundation.llm.cerebras",
@@ -235,7 +230,6 @@ name = "the eval harness never imports provider clients directly"
 type = "forbidden"
 source_modules = ["neosian._foundation.evaluation"]
 forbidden_modules = [
-    "neosian._foundation.llm.groq",
     "neosian._foundation.llm.openai",
     "neosian._foundation.llm.anthropic",
     "neosian._foundation.llm.cerebras",
@@ -249,7 +243,6 @@ name = "the OTel exporter speaks only to the hook seam"
 type = "forbidden"
 source_modules = ["neosian._foundation.otel"]
 forbidden_modules = [
-    "neosian._foundation.llm.groq",
     "neosian._foundation.llm.openai",
     "neosian._foundation.llm.anthropic",
     "neosian._foundation.llm.cerebras",

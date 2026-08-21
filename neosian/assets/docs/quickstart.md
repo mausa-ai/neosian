@@ -19,6 +19,7 @@ annotated release tag (never master — extras ride the same URL):
 uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v<X.Y.Z>"
 uv add "neosian[postgres] @ git+ssh://git@github.com/neosae/neosian@v<X.Y.Z>"
 uv add "neosian[mcp] @ git+ssh://git@github.com/neosae/neosian@v<X.Y.Z>"
+uv add "neosian[otel] @ git+ssh://git@github.com/neosae/neosian@v<X.Y.Z>"
 ```
 
 Substitute the current release tag (the `llms.txt` beside this wheel
@@ -26,8 +27,8 @@ names it). The core install is database-driver-free and MCP-free.
 
 ## Keyless boot
 
-A provider is available when its API key env var is set (`GROQ_API_KEY`,
-`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `CEREBRAS_API_KEY`). `Model.FAKE`
+A provider is available when its API key env var is set
+(`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `CEREBRAS_API_KEY`). `Model.FAKE`
 is always available — deterministic, scripted, zero accounts — so you
 can verify an install with nothing set:
 

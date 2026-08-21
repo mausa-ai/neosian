@@ -48,35 +48,35 @@ class APITimeoutError(APIConnectionError):
 class TestWrapProviderError:
     def test_neosian_error_passes_through_unchanged(self) -> None:
         original = UnsupportedContentError("images not supported")
-        assert wrap_provider_error("groq", original) is original
+        assert wrap_provider_error("cerebras", original) is original
 
     def test_status_code_extraction(self) -> None:
-        wrapped = wrap_provider_error("groq", _StatusError("boom", status_code=404))
+        wrapped = wrap_provider_error("cerebras", _StatusError("boom", status_code=404))
         assert isinstance(wrapped, ProviderError)
         assert wrapped.status == 404
 
     def test_status_falls_back_to_response(self) -> None:
         exc = _ResponseError("boom", response=_Response(503))
-        wrapped = wrap_provider_error("groq", exc)
+        wrapped = wrap_provider_error("cerebras", exc)
         assert isinstance(wrapped, ProviderError)
         assert wrapped.status == 503
         assert wrapped.retryable is True
 
     def test_non_int_status_is_none(self) -> None:
         exc = _ResponseError("boom", response=_Response("teapot"))
-        wrapped = wrap_provider_error("groq", exc)
+        wrapped = wrap_provider_error("cerebras", exc)
         assert isinstance(wrapped, ProviderError)
         assert wrapped.status is None
         assert wrapped.retryable is False
 
     @pytest.mark.parametrize("status", [408, 429, 500, 503, 529])
     def test_retryable_statuses(self, status: int) -> None:
-        wrapped = wrap_provider_error("groq", _StatusError("x", status_code=status))
+        wrapped = wrap_provider_error("cerebras", _StatusError("x", status_code=status))
         assert wrapped.retryable is True
 
     @pytest.mark.parametrize("status", [400, 401, 403, 404, 422])
     def test_non_retryable_statuses(self, status: int) -> None:
-        wrapped = wrap_provider_error("groq", _StatusError("x", status_code=status))
+        wrapped = wrap_provider_error("cerebras", _StatusError("x", status_code=status))
         assert wrapped.retryable is False
 
     @pytest.mark.parametrize(

@@ -8,8 +8,8 @@ name: Basic Agent Evaluation
 agent: examples/basic_agent.py
 
 models:
-  - groq:openai/gpt-oss-120b
-  - groq:openai/gpt-oss-20b
+  - cerebras:gpt-oss-120b
+  - cerebras:gpt-oss-120b
 
 # The agent keeps its todo builtin; hide it from matchers rather than
 # changing the agent under test.

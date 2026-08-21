@@ -3,7 +3,7 @@
 Catches silent provider catalog churn (deprecated/renamed model IDs) that
 unit tests cannot see. Run per provider with the matching env var set:
 
-    GROQ_API_KEY=gsk_xxx uv run pytest -m external_groq tests/external/cross -v
+    ANTHROPIC_API_KEY=sk-ant-xxx uv run pytest -m external_anthropic tests/external/cross -v
 """
 
 import pytest
@@ -13,7 +13,6 @@ from neosian._foundation.llm.router import ProviderRouter
 from neosian._foundation.shared.types import Model, Provider
 
 _PROVIDER_FIXTURES: dict[Provider, str] = {
-    Provider.GROQ: "groq_api_key",
     Provider.OPENAI: "openai_api_key",
     Provider.ANTHROPIC: "anthropic_api_key",
     Provider.CEREBRAS: "cerebras_api_key",

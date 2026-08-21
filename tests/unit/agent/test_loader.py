@@ -143,7 +143,7 @@ class TestAgentConfig:
 
         assert config.system_prompt == "Test prompt"
         assert len(config.tools) == 1
-        assert config.model == Model.GROQ_GPT_OSS_20B  # Default model
+        assert config.model == Model.CEREBRAS_GPT_OSS_120B  # Default model
         assert config.enable_todo is True
 
     def test_agent_config_with_all_fields(self) -> None:
@@ -151,13 +151,13 @@ class TestAgentConfig:
         config = AgentConfig(
             system_prompt=SystemPrompt("Test prompt"),
             tools=[],
-            model=Model.GROQ_QWEN3_6_27B,
+            model=Model.CEREBRAS_GEMMA_4_31B,
             enable_todo=False,
         )
 
         assert config.system_prompt == "Test prompt"
         assert config.tools == []
-        assert config.model == Model.GROQ_QWEN3_6_27B
+        assert config.model == Model.CEREBRAS_GEMMA_4_31B
         assert config.enable_todo is False
 
 

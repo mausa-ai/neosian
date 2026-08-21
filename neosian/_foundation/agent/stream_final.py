@@ -73,7 +73,7 @@ async def stream_final_with_client_and_guard(
     """
     agent = ctx.agent
     # Track usage and pending done for different provider patterns
-    # OpenAI/Groq: usage comes in separate chunk after finish_reason
+    # OpenAI-compatible: usage comes in separate chunk after finish_reason
     # Anthropic: usage comes with finish_reason chunk
     pending_done = False
     final_usage: Usage | None = None
@@ -202,10 +202,10 @@ async def stream_final_with_client_and_guard(
                         model=final_api_model or model.value,
                     )
                 else:
-                    # OpenAI/Groq: usage may come in next chunk
+                    # OpenAI-compatible: usage may come in next chunk
                     pending_done = True
 
-            # Handle usage-only chunk (OpenAI/Groq pattern)
+            # Handle usage-only chunk (OpenAI-compatible pattern)
             if chunk.usage and not chunk.finish_reason and not chunk.content:
                 final_usage = chunk.usage
                 if pending_done:

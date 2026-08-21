@@ -131,7 +131,6 @@ class Usage:
     - Anthropic: cache_write_tokens + cache_read_tokens
     - OpenAI: cache_read_tokens only (automatic caching, no write concept)
     - Cerebras: cache_read_tokens only (automatic caching, like OpenAI)
-    - Groq: defaults to 0
 
     total_tokens = input + output + cache_read + cache_write.
     """

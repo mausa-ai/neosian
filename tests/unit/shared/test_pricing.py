@@ -21,9 +21,6 @@ from neosian._foundation.shared.types import _prices_fingerprint
 # no-rounding gate: every shipped int µ$ rate must equal its decimal USD
 # price exactly. Order: (input, output, cache_read, cache_write).
 _USD_RATE_CARD: dict[Model, tuple[str, str, str | None, str | None]] = {
-    Model.GROQ_GPT_OSS_120B: ("0.15", "0.75", None, None),
-    Model.GROQ_GPT_OSS_20B: ("0.10", "0.50", None, None),
-    Model.GROQ_GPT_OSS_SAFEGUARD_20B: ("0.10", "0.50", None, None),
     Model.GPT_5_1: ("1.25", "10.00", "0.125", None),
     Model.GPT_5_MINI: ("0.25", "2.00", "0.025", None),
     Model.GPT_5_NANO: ("0.05", "0.40", "0.005", None),
@@ -88,9 +85,9 @@ class TestCostGoldenVectors:
         assert usage.cost_micro_usd(Model.CLAUDE_SONNET_5) == 75_000
 
     def test_fractional_rounds_up(self) -> None:
-        # 1234*100_000 + 567*500_000 = 406_900_000 → 406.9 µ$ → 407
+        # 1234*250_000 + 567*690_000 = 699_730_000 → 699.73 µ$ → 700
         usage = Usage(input_tokens=1_234, output_tokens=567)
-        assert usage.cost_micro_usd(Model.GROQ_GPT_OSS_20B) == 407
+        assert usage.cost_micro_usd(Model.CEREBRAS_GPT_OSS_120B) == 700
 
     def test_sub_micro_usd_bills_one(self) -> None:
         # 1 in + 1 out on Cerebras 120B = 940_000 / 1e6 = 0.94 µ$ → 1
