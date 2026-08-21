@@ -981,10 +981,11 @@ layer and the memory layer.
 
 **Done when:** a Conversation that never explicitly wrote memory ends
 its session and the store holds the right facts — scripted keylessly
-*(✅ pinned)*; baselines re-run with reflection on *(✅ two dispatched
-runs 2026-08-21, recorded in BASELINES.md — Anthropic 7/7 × 3 twice;
-the two run-informed reds recorded as found, calibrations screened and
-deliberately unruled)*.
+*(✅ pinned)*; baselines re-run with reflection on *(✅ three dispatched
+runs 2026-08-21, recorded in BASELINES.md — Anthropic 7/7 on all three
+transports in all three runs; two pin calibrations ruled and landed;
+run 3's two reds are genuine behavior findings — a stored refused
+token on Cerebras, an unfiled fact on OpenAI — recorded as found)*.
 
 **Shipped v0.74.0 (2026-08-21), one session.** Rulings (options-first,
 user confirmed): public `reflect()` mirroring `compact()` + a
@@ -2120,3 +2121,16 @@ membership is standing, not achieved.
   **content-matcher judge** (external tier only, §13.13's reserved
   shape) joins NC6/NG's options-first agenda; the keyless tier stays
   deterministic forever.
+- 2026-08-21 | meta | **Run 3: the pins hold; the pack catches real
+  behavior.** The post-calibration dispatch (32524270383): neither
+  phrasing red recurred, and the two remaining reds are the harness's
+  first genuine catches, recorded as found and never calibration
+  candidates — Cerebras (cli, reflection-close) **stored the refused
+  token** in `/user/security` (the `forbidden` pin's first real fire;
+  a prompt-pack/NG finding for the standing row), and OpenAI
+  (function, long-horizon-recall) never filed the branch fact at all
+  (stochastic memory-worthiness miss; it passed runs 1–2). Three-run
+  table stands in BASELINES.md: Anthropic 21/21 cells, OpenAI and
+  Cerebras one stochastic cell short — the trained-behavior asymmetry
+  measured. No re-roll: chasing green by re-dispatch is selection
+  bias.
