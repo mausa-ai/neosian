@@ -790,6 +790,14 @@ earlier two-gate phrasing):
 - **Measured, not asserted.** Prompt-pack and memory-behavior changes
   re-run the baselines; scale claims come from harness scenarios, never
   prose.
+- **Two first-party stores, forever-custody priced.** FileStore and
+  PostgresStore are the only shipped substrates (SQLite stays
+  deferred-but-first-in-line, demand-triggered); no first-party
+  Mongo/Dynamo/MySQL store and no generic SQLStore, ever — a store's
+  correctness lives in the parts SQL doesn't standardize (ledger
+  #34/#37/#38 are the argument), and a half-maintained store is a
+  compliance bug in the moat. Breadth = the daemon (the appliance for
+  every other stack) + NC5-certified community stores.
 
 ## NA — Agent-native surface (v0.71)
 
@@ -978,6 +986,13 @@ container; it does not change it.
   daemon adds no capability the library lacks, only reach.
 - The harness's transports axis gains `http`; the baseline pack re-runs
   over it.
+- **Front-door DX, capstone timing:** for every non-Python or
+  non-Postgres stack the appliance IS the first impression — the
+  `docker run` → working-memory path is polished like a front door
+  (sane defaults, one token, one health check) *within* the frozen
+  scope, and NA's topology page gains its co-equal appliance
+  quickstart when this phase lands. Placement is untouched — the wire
+  still freezes last.
 
 **Done when:** `RemoteStore` pointed at the running container passes
 **both contract kits — the same ~58 conformance tests, over the
@@ -1010,6 +1025,14 @@ as its own mini-session, `NC:` commit subjects, its own done-when.
   beside NA's CLI verbs or inside NM (onboarding needs it). Done when
   an exported-then-imported store is contract-kit-indistinguishable
   from the original, history included.
+- **NC5 — the certification story.** Certify, don't ship: the public
+  conformance kits (`neosian.memory.testing` /
+  `neosian.conversation.testing`) named as the certification standard,
+  an "author a store" guide, and a certified-stores docs page —
+  "passes both kits v1" as a machine-checkable badge in the author's
+  own CI. Community substrates (Mongo, Dynamo, MySQL…), community
+  custody; the contract stays ours. Done when a worked third-substrate
+  example in the docs passes both kits.
 
 ## NZ — The declaration (v1.0.0)
 
@@ -1020,6 +1043,10 @@ The three gates, checked, then the promise:
       (NV, kept current).
 - [ ] Gate 3: **a real host vendored a `v<X.Y.Z>` tag and is green
       against it** — the kit's P10 plus its CI.
+- [ ] The reach decision taken consciously: public repo / PyPI, or
+      deliberately private (the v0.70.0 ruling) — re-affirmed or
+      flipped **before** the declaration, never discovered at it; the
+      daemon-as-front-door weighting only binds if the flip happens.
 - [ ] The re-declaration: README Stability flips to present tense, the
       classifier returns to Production/Stable,
       `make release v=1.0.0` with ledger #72's promise text in the
@@ -1674,3 +1701,19 @@ is asserted without evidence.
   moat made true in every direction; done-when =
   contract-kit-indistinguishable after the round-trip. Docs only; no
   code touched.
+- 2026-08-21 | meta | **Certify don't ship; the appliance is a front
+  door.** The kit-side review's carryables adopted, verified against
+  our own ledger: NM gains the front-door-DX bullet (the `docker run`
+  → working-memory path polished as a first impression *within* the
+  frozen scope; the co-equal appliance quickstart lands with NM;
+  capstone timing untouched — the wire still freezes last). NC5
+  joins the track: the public conformance kits as the certification
+  standard + an "author a store" guide + a certified-stores page —
+  community substrates under community custody, the contract ours.
+  The two-first-party-stores constraint written into the arc: no
+  Mongo/Dynamo/MySQL first-party, no generic SQLStore (a store's
+  correctness lives where SQL diverges — #34/#37/#38; a
+  half-maintained store is a compliance bug in the moat); SQLite
+  stays deferred-but-first-in-line. NZ gains the conscious reach
+  decision: public/PyPI or deliberately private, ruled before the
+  declaration, never at it. Docs only; no code touched.
