@@ -1,6 +1,7 @@
 # The Ecosystem Contract
 
-> Status: **v1, frozen** (2026-08-18). This document is canonical HERE; hosts
+> Status: **v1, frozen** (2026-08-18; last amended 2026-08-21 — §12 log).
+> This document is canonical HERE; hosts
 > (first among them: neosae-kit, via its `docs/DESIGN.md §5.7`) reference it.
 > ECOSYSTEM states **what** is frozen; [DESIGN.md](DESIGN.md) says why and how
 > (working conventions: [CLAUDE.md](CLAUDE.md); env keys: [SERVICES.md](SERVICES.md));
@@ -72,7 +73,10 @@ text** — it cannot leak internals by construction. Keepalive is host territory
 stable snake_case machine code under a closed family prefix
 (`neosian_|agent_|llm_|tool_|guardrail_|memory_|prompt_|playbook_|blackboard_|eval_`)
 — plus `retryable: bool`. Codes are **append-only**: deprecate, never repurpose
-or rename. Provider identity and HTTP status are preserved structurally, never
+or rename. The conversation layer's codes ship under `agent_`
+(`agent_conversation_*`, since v0.60.0); a `conversation_` prefix is
+**deliberately declined** — the codes were live before the seam froze and the
+append-only rule forbids renaming them (amended 2026-08-21). Provider identity and HTTP status are preserved structurally, never
 stringified away. The host maps codes 1:1 into its envelope and owns 100% of
 user-facing text; a new code means a new row in the host's i18n (kit:
 `errors.json` + ROUTED_CODES).
@@ -98,19 +102,21 @@ any seam is a contract violation, rejected at the boundary.
 
 ## §10 The ABC is the contract
 
-`MemoryStore` is async, owns no connection, commits no transaction, issues no
-DDL, and exposes scope-wide `redact()`. `FileStore` and `PostgresStore` are
+`MemoryStore` and `ConversationStore` are async, own no connection, commit no
+transaction, issue no DDL; `MemoryStore` additionally exposes scope-wide
+`redact()`. `FileStore` and `PostgresStore` implement both seams as
 **reference implementations for standalone users**; a host may implement its
 own — the kit does, over its synchronous sessions and its own
 `alembic/versions/neosian/` branch, and never uses neosian's PostgresStore.
-The shipped `MemoryStoreContract` conformance test-kit is what keeps host
-implementations honest.
+The shipped `MemoryStoreContract` and `ConversationStoreContract` conformance
+test-kits are what keep host implementations honest.
 
 ## §11 Vendoring discipline
 
 Hosts vendor only from **annotated release tags** `v<X.Y.Z>` — never master.
 The vendored snapshot records its tag; the host keeps a version-match test.
-Seam-breaking changes land only at a minor bump.
+From `v1.0.0` the seams in this document are **SemVer-guaranteed**: a seam
+break lands only at a major bump; additions land at a minor.
 
 ## §12 Governance
 
@@ -121,3 +127,4 @@ session-pair; either repo may refuse. Log:
 | date | change | neosian tag | kit ledger # |
 |---|---|---|---|
 | 2026-08-18 | Contract v1 written | — (pre-NH) | #205 |
+| 2026-08-21 | 1.0 amendment: §10 gains `ConversationStore` + `ConversationStoreContract`; §6 blesses `agent_conversation_*` (declines a `conversation_` prefix); §11 SemVer-guaranteed from v1.0.0; sweeps the public message codec (neosian #22) and `CompactionBlock` in the content union (neosian #46) | v1.0.0 | owed — recorded at kit 345851e; the paired kit session fills this cell |

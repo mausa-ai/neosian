@@ -1,4 +1,4 @@
-"""neosian - Stateless agentic AI library."""
+"""neosian - Async-only library for LLM agents."""
 
 from importlib.metadata import version as _pkg_version
 

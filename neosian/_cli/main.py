@@ -25,7 +25,7 @@ from neosian._foundation.shared.constants import App, Assets, Config
 
 app = typer.Typer(
     name="neosian",
-    help="Stateless agentic AI library. LLM orchestration, tool execution, streaming.",
+    help="Async-only library for LLM agents: tools, orchestration, streaming, memory.",
     no_args_is_help=True,
     add_completion=False,
 )

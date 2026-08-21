@@ -617,8 +617,9 @@ the oldest N after the cursor (`limit=0` → `()`); negative `after`/`limit`
 and empty `messages` are programmer errors (`ValueError`).
 `read_turns(after=n-1, limit=1)` is the recall lookup — no sixth method.
 **Deliberately absent:** `list_conversations` (hosts list from their own
-tables), delete/redact (no roadmap requirement; retrofit is cheap while the
-seam is un-frozen — §9.10), per-turn usage/model/cost columns (§9.3), and any
+tables), delete/redact (no roadmap requirement; a retrofit is an additive
+method landing at a minor bump per ECOSYSTEM §11 — §9.10), per-turn
+usage/model/cost columns (§9.3), and any
 `supports_*` ClassVar (nothing varies by substrate; concurrency is answered
 normatively by CS3).
 
@@ -803,22 +804,19 @@ conversation block + the two codec names; `neosian.conversation` (+
 re-exported from both facades — it implements both seams; `ProjectionKind`
 and `ConversationId` stay facade-only, like `MemoryAction`.
 
-**§9.10 Deferred ECOSYSTEM amendment.** ECOSYSTEM §10 names only
-`MemoryStore` and §6's prefix set is closed — `ConversationStore` belongs in
-both, but that is a two-repo move (ECOSYSTEM §12) this session cannot make.
-Until the session-pair happens: **§9 is the contract of record, the seam is
-not frozen for hosts** (the ABC docstring says so), and conversation codes
-live under `agent_` (ledger #24). Amendment payload, recorded for that
-session: ECOSYSTEM §10 gains `ConversationStore` + `ConversationStoreContract`;
-§6 **blesses the shipped `agent_conversation_*` codes and deliberately
-declines a `conversation_` prefix** (user ruling, 2026-08-20 audit — the
-codes shipped at v0.60.0 and the append-only rule forbids renaming them);
-the §12 changelog row also sweeps the two host-visible deltas the audit
-flagged as unrecorded — the public message codec
-(`message_to_json`/`message_from_json`, ledger #22) and `CompactionBlock`
-joining the content union (ledger #46). The kit's §15 bookkeeping is
-already done (its commit 345851e); the kit session adds its row when this
-executes.
+**§9.10 The ECOSYSTEM amendment (executed 2026-08-21, N4 docs/1.0).** The
+amendment deferred here since N2 landed with v1.0.0: ECOSYSTEM §10 names
+`ConversationStore` + `ConversationStoreContract` (the seam is frozen for
+hosts; the ABC docstring's contract-of-record caveat is retracted); §6
+**blesses the shipped `agent_conversation_*` codes and deliberately declines
+a `conversation_` prefix** (user ruling, 2026-08-20 audit — the codes
+shipped at v0.60.0 and the append-only rule forbids renaming them, ledger
+#24); §11 states the SemVer guarantee from v1.0.0; the §12 changelog row
+sweeps the two host-visible deltas the audit flagged as unrecorded — the
+public message codec (`message_to_json`/`message_from_json`, ledger #22)
+and `CompactionBlock` joining the content union (ledger #46). The kit's
+side: its 345851e records the owed pair; the paired kit session adds its
+§15 row + §5.7 seam-list clause and fills the changelog cell (ledger #71).
 
 ## §10 Test harness & gates
 
@@ -950,6 +948,8 @@ never a silent divergence. Numbering is monotonic, never reused.
 | 68 | A second scriptless YAML for external runs, or `script:` applied only to FAKE models | **One pack; the external tests derive scriptless configs with `dataclasses.replace`** | Model-conditional `script:` makes one key mean "sometimes silently ignored" — the class #57 closed; a second YAML forks the scenario content the fake-vs-real comparison depends on |
 | 69 | Scenario stores in a discarded tmp dir | **`.neosian/evals/<ts>-memory/<transport>/<model>/<scenario>` (gitignored), the path on every red result** | A memory eval you cannot `cat` afterwards cannot be debugged; the `store root:` failure line makes the artifact self-locating |
 | 70 | An `eval_store_expectation_failed` code (or an `eval_memory_*` family) | **No new codes** — scenario violations are `eval_case_invalid`, suite shape `eval_config_*`, cell-level harness failures `eval_run_failed`; store errors from mount construction re-raise in the eval family | Codes are append-only and hosts key on them the day they exist; these are new instances of four existing classes, not a new class — and a store-truth miss is a failed case, never an error |
+| 71 | Keep deferring the §9.10 amendment past 1.0, or amend without the §11 SemVer flip | **Executed whole at v1.0.0**: §10 +`ConversationStore`/`ConversationStoreContract`, §6 blesses `agent_conversation_*`, §11 SemVer-guaranteed from v1.0.0; the changelog row's kit cell stays "owed — kit 345851e" until the paired kit session fills it | 1.0 is the moment silence becomes commitment — an un-frozen ConversationStore seam and a "minor bump" break rule would both freeze as accidents; the kit's counterpart was recorded waiting for exactly this payload, and either repo may still refuse the pair |
+| 72 | The evaluation facade recorded as an ECOSYSTEM seam at 1.0 | **Named in the v1.0.0 tag annotation + README only** (user ruling, 2026-08-21): `Agent`, `Conversation`, `MemoryStore`, and `neosian.evaluation` are the promised-stable surface; ECOSYSTEM gains no evaluation section | The recorded §9.10 payload is what the kit's counterpart signed up for — extending it unilaterally breaks session-pair symmetry; evaluation is a dev-time harness (the `neosian.fake` §7 precedent covers the keyless guarantee), and a future session-pair may still seam it properly |
 
 ## §13 Evaluation (NE)
 

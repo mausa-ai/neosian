@@ -5,7 +5,7 @@
 
 **Keyless boot is the invariant**: `make lint`, `make typecheck` and
 `make test` need **zero third-party accounts**. FakeProvider
-(`Provider.FAKE`, `Model.FAKE*` — ships in phase NS) is the keyless path; the
+(`Provider.FAKE`, `Model.FAKE*` — `neosian.fake`) is the keyless path; the
 CI test matrix carries no secrets at all, and that absence is the assertion.
 
 Keys are read from the process environment at client construction (never at

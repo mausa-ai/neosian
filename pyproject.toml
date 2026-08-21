@@ -1,10 +1,21 @@
 [project]
 name = "neosian"
-version = "0.69.0"
-description = "Stateless agentic AI library. LLM orchestration, tool execution, streaming."
+version = "1.0.0"
+description = "Async-only library for LLM agents: tools, orchestration, streaming, guardrails — with opt-in conversation, memory, and compaction layers over a stateless core."
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.12"
+keywords = ["llm", "agents", "memory", "conversation", "streaming", "mcp"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Framework :: AsyncIO",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Typing :: Typed",
+]
 dependencies = [
     "anthropic>=0.122.0",
     "cerebras-cloud-sdk>=1.91.0",
@@ -26,6 +37,10 @@ dependencies = [
 [project.optional-dependencies]
 postgres = ["psycopg[binary,pool]>=3.2"]
 mcp = ["mcp>=2,<3"]
+
+[project.urls]
+Homepage = "https://github.com/neosae/neosian"
+Repository = "https://github.com/neosae/neosian"
 
 [dependency-groups]
 dev = [

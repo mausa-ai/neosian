@@ -11,7 +11,7 @@ class App:
     """Application metadata."""
 
     NAME: str = "neosian"
-    DESCRIPTION: str = "Stateless agentic AI library"
+    DESCRIPTION: str = "Async-only library for LLM agents"
     PYTHON_VERSION: str = ">=3.12"
 
 

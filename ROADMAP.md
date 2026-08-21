@@ -1,21 +1,21 @@
 # Neosian Roadmap — Memory & Conversation
 
-> **▶ Current phase: N4 — Completeness (docs/1.0 only)**
+> **▶ Roadmap complete — v1.0.0 (2026-08-21)**
 >
-> *(2026-08-21: NE closed at v0.69.0 — the memory eval harness landed
-> as `kind: memory` per §13.12 (ledger #64–#70): store-truth scoring on
-> the three behaviors, transports axis on the variants slot, the
-> all-green shipped pack `examples/eval_memory_baseline.yaml` as the
-> keyless regression gate, per-provider external baselines in
-> tests/external/cross/. Remaining in N4: **docs/1.0 only** — README +
-> quickstarts (incl. the MCP snippet), the §9.10 ECOSYSTEM amendment
-> (payload recorded in §9.10; kit's side done at its 345851e), and the
-> `v1.0.0` tag carrying the stability promise incl. the reformed eval
-> surface. N4 slices A+B+C stand shipped — v0.65.0 the native
-> `memory_20250818` flag, v0.66.0 server-side compaction pass-through,
-> v0.67.0 the MCP memory server. Standing rulings: neosian's phases run
-> to completion before the kit's P10 vendors from a `v<X.Y.Z>` release
-> tag. CI last confirmed green on the v0.67.0 head, run 32407460787.)*
+> *(N4 closed with the docs/1.0 slice: README rewritten to match the tree
+> (Conversation as the headline quickstart, memory, storage, the MCP
+> snippet, the events-v2 factual fix, the keyless story, evaluation incl.
+> `kind: memory`, the Stability section); the §9.10 ECOSYSTEM amendment
+> executed (§10 +`ConversationStore`/`ConversationStoreContract`, §6
+> blesses `agent_conversation_*`, §11 SemVer-guaranteed from v1.0.0; the
+> changelog row's kit cell stays owed at kit 345851e until the paired kit
+> session fills it); packaging PyPI-ready but deliberately unpublished —
+> the repo stays private, install is the pinned git URL (user ruling);
+> `v1.0.0` tagged carrying the stability promise naming `Agent`,
+> `Conversation`, `MemoryStore`, `neosian.evaluation` (ledger #71–#72).
+> Every phase heading carries ✅ — there is no open phase; new work opens
+> a new roadmap arc, options-first. Standing ruling: the kit's P10
+> vendors from the `v1.0.0` release tag.)*
 >
 > The pointer above must equal the first phase heading without ✅ — if they
 > disagree, say so and trust the checkboxes. Companion to [VISION.md](VISION.md)
@@ -586,7 +586,7 @@ derived scriptless pack per provider weekly, Anthropic additionally on
 (#43/#44). DESIGN §13.12 rewritten in place, §13.2/3/5/9/11 amended,
 ledger #64–#70. 1747 unit tests, zero keys.
 
-## N4 — Completeness (v0.65 → 1.0)
+## N4 — Completeness (v0.65 → 1.0) ✅ 2026-08-21
 
 DESIGN: §2, §6, §10.
 
@@ -609,7 +609,7 @@ DESIGN: §2, §6, §10.
   `Conversation`, `MemoryStore`, and the reformed evaluation surface
   (NE's facade — named deliberately, never frozen by silence) — and the
   ECOSYSTEM seams move from append-only-by-convention to
-  SemVer-guaranteed.
+  SemVer-guaranteed. *(✅ shipped v1.0.0, final slice)*
 
 **Done when:** one store serves the same memory through the function tool,
 the native Anthropic flag, and an MCP client (✅ v0.67.0); the per-provider
@@ -699,6 +699,32 @@ harness, docs/1.0.
 **(2026-08-20, governance session):** the memory eval harness moved to
 NE (see the section above and the session log) — it lands on the
 reformed module, as NE's final slice. Remaining in N4: docs/1.0 only.
+
+**Final slice shipped at v1.0.0 (2026-08-21), closing the phase and the
+roadmap** — docs/1.0. Rulings (options-first, user confirmed): the eval
+surface's promise lives in the v1.0.0 tag + README, **not** as an
+ECOSYSTEM seam (ledger #72 — the recorded §9.10 payload is what the
+kit's counterpart signed up for); packaging made PyPI-ready but
+deliberately unpublished — the repo stays private, install notes are the
+pinned git URL with extras riding it. The §9.10 amendment executed
+(ledger #71): ECOSYSTEM §10 gains `ConversationStore` +
+`ConversationStoreContract` (FileStore's both-seams role stated), §6
+blesses `agent_conversation_*` and declines a `conversation_` prefix,
+§11 flips to SemVer-guaranteed from v1.0.0, the §12 changelog row sweeps
+the public codec (#22) and `CompactionBlock` (#46) — its kit cell owed
+at kit 345851e; DESIGN §9.10 rewritten to executed, the ABC docstring's
+contract-of-record caveat retracted. README rewritten (116 → 287 lines,
+16 sections): the opt-in stack in the intro, Conversation as the
+headline quickstart, memory/storage/MCP sections (the deferred slice-C
+snippet lands), the events-v2 factual fix (the old text claimed
+SSE-formatted events with pre-v2 names), a FAKE provider row + the
+keyless section, hooks, evaluation incl. `kind: memory`, the Stability
+section naming the four promised surfaces. pyproject: 1.0.0,
+description/keywords/classifiers/urls; the stale "Stateless agentic"
+tagline corrected at its three code sites; CLAUDE.md/SERVICES.md present
+tense. Verified: 1747 unit tests zero keys, mypy --strict, 7 import
+contracts, size gate, `uv build` (assets in the wheel), every README
+import name root- or facade-pinned.
 
 ---
 
@@ -1231,3 +1257,24 @@ reformed module, as NE's final slice. Remaining in N4: docs/1.0 only.
   `variants: [function]`, stores cat-able, token nowhere in the run
   root. DESIGN §13.12 rewritten, §13.2/3/5/9/11 amended, #64–#70.
   1747 unit tests, zero keys; v0.69.0.
+- 2026-08-21 | N4 (final slice) | **The library documents itself; 1.0.**
+  Rulings (options-first): eval promise in tag + README, no ECOSYSTEM
+  seam (#72); PyPI-ready, never published — private repo, pinned git-URL
+  install. The §9.10 amendment executed whole (#71): ECOSYSTEM §10
+  +`ConversationStore`/`ConversationStoreContract`, §6 blesses
+  `agent_conversation_*` (declines `conversation_`), §11
+  SemVer-guaranteed from v1.0.0, §12 row sweeps codec #22 +
+  CompactionBlock #46 (kit cell owed at its 345851e), header stamped
+  last-amended; DESIGN §9.10 → executed, base.py docstring caveat
+  retracted, §9.2's retrofit note now cites §11. README 116 → 287 lines,
+  16 sections: opt-in stack in the intro, Conversation headline
+  quickstart, memory/storage/MCP (slice-C's deferred snippet), events-v2
+  fix (old text claimed SSE-formatted events, pre-v2 names), FAKE row +
+  keyless section with the `client_factory` injection, hooks, eval incl.
+  `kind: memory`, Stability naming the four surfaces, Documents list.
+  pyproject 1.0.0 + description/keywords/classifiers/urls; tagline
+  corrected at __init__/constants/CLI; CLAUDE.md + SERVICES.md present
+  tense. Verified: make lint/typecheck/test/size green zero keys (1747),
+  `uv build` clean with assets, README greps pinned. Tags `n4-done` +
+  `v1.0.0` (the stability promise in the annotation). The roadmap
+  closes; the kit's P10 vendors from v1.0.0.

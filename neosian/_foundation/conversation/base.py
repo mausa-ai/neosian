@@ -28,8 +28,8 @@ Cross-implementation invariants (pinned by
 
 Deliberately absent: `list_conversations` (hosts list from their own
 tables), delete/redact, per-turn usage/model/cost, capability ClassVars.
-This seam is not yet in ECOSYSTEM — until the §12 amendment session-pair,
-DESIGN §9 is the contract of record and the seam is not frozen for hosts.
+Frozen for hosts since the v1.0.0 amendment (ECOSYSTEM §10); DESIGN §9
+carries the rationale and the CS1-CS7 rulings.
 """
 
 from __future__ import annotations
