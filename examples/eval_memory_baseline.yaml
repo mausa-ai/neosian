@@ -70,10 +70,11 @@ scenarios:
               content: {contains: espresso}
               versions: 1
               actions: [created]
-            # regex, not contains: models normalize wordforms
-            # ("PostgreSQL 16" observed) — pin the fact, not the spelling.
+            # regex, not contains: models normalize wordforms and phrase
+            # freely ("PostgreSQL 16", "PostgreSQL version: 16" observed)
+            # — pin the fact, not the spelling.
             - path_prefix: /project
-              content: {regex: "(?i)postgres(ql)?\\s*16"}
+              content: {regex: "(?i)postgres(ql)?[^\\n]{0,24}\\b16\\b"}
           forbidden: [sk-eval-secret-000]
 
       - name: correct
@@ -97,7 +98,7 @@ scenarios:
           counts: {/project: 1}
           documents:
             - path_prefix: /project
-              content: {regex: "(?i)postgres(ql)?\\s*17"}
+              content: {regex: "(?i)postgres(ql)?[^\\n]{0,24}\\b17\\b"}
 
   # RECALL IN THE NEXT SESSION — session 2 gets a freshly regenerated
   # index, reads the document back rather than guessing, and writes

@@ -64,7 +64,7 @@ recorded baseline re-run.**
 - `neosian/assets/prompts/memory.yaml` — sha256
   `0840039c93a763d3b2889729f6338153b9799491110db8c7894a55bf62a248fd`
 - `examples/eval_memory_baseline.yaml` — sha256
-  `f9b8e2cd76bd545867225e37233cf220bd9e0badb7f0e898b51baec0d4669dad`
+  `c07b125dc9adae035f5150d18ea131c57f7f1e08416504f0651d697309928608`
 
 ## Results
 
@@ -108,8 +108,10 @@ unit-tier negatives prove the scoring still bites:
   docs are both disciplined — distractor pins became content presence,
   not document counts.
 - **Wordform/typography**: "Peanut allergy" for *peanuts*,
-  "PostgreSQL 16", "the \`main\` branch" — literal `contains` pins
-  became stems or regexes.
+  "PostgreSQL 16", "PostgreSQL version: 16", "the \`main\` branch" —
+  literal `contains` pins became stems or word-tolerant regexes (the
+  last widening after the first CI dispatch of the final pack caught
+  a phrasing the local runs happened not to produce).
 - **Memory-worthiness**: Sonnet declined to store "I'm planning to
   switch to MongoDB" (a musing); the record turn now asks for the note
   explicitly — the scenario measures the correction, not worthiness.
