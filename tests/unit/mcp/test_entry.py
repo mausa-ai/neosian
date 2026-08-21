@@ -131,3 +131,59 @@ class TestStoreSelection:
         assert not hasattr(FileStore, "aclose")
         code = main(["--root", str(tmp_path / "m"), "--scope", "user:demo"])
         assert code == 0
+
+
+class TestInstallRouting:
+    """`install` is one literal first token, routed before the server grammar."""
+
+    def test_install_routes_before_parse_args(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import neosian._foundation.mcp.install as install_module
+
+        seen: list[list[str]] = []
+
+        def fake_run_install(
+            argv: object,
+            env: object,  # noqa: ARG001 - fake
+            **kwargs: object,  # noqa: ARG001 - fake
+        ) -> int:
+            assert isinstance(argv, list)
+            seen.append(argv)
+            return 0
+
+        def exploding_parse_args(
+            *args: object,  # noqa: ARG001 - fake
+            **kwargs: object,  # noqa: ARG001 - fake
+        ) -> object:
+            raise AssertionError("the server grammar must not see install argv")
+
+        monkeypatch.setattr(install_module, "run_install", fake_run_install)
+        monkeypatch.setattr(serve_module, "parse_args", exploding_parse_args)
+        code = main(["install", "--client", "cursor"])
+        assert code == 0
+        assert seen == [["--client", "cursor"]]
+
+    def test_install_help_comes_from_installs_own_grammar(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        # The typer pass-through strips no --help (help_option_names=[]);
+        # install's own argparse must answer it at exit 0.
+        code = main(["install", "--help"])
+        assert code == 0
+        out = capsys.readouterr().out
+        assert "--client" in out
+        assert "--write" in out
+        assert "neosian mcp install" in out  # the threaded prog
+
+    def test_a_flag_valued_install_is_not_intercepted(
+        self,
+        tmp_path: Path,
+        captured: _Captured,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # Only argv[0] routes: "install" elsewhere still serves.
+        monkeypatch.delenv("NEOSIAN_POSTGRES_DSN", raising=False)
+        code = main(["--root", str(tmp_path / "install"), "--scope", "user:demo"])
+        assert code == 0
+        assert captured.server is not None

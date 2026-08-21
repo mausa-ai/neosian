@@ -28,7 +28,8 @@ neosian/                  # the facade: __init__.py re-exports the public API
 ├── mcp/                  # public MCP facade + the stdio entry point (N4)
 ├── evaluation/           # public eval facade (lazy, dev-time) (NE, §13)
 ├── _cli/                 # playground, eval CLI, config
-└── assets/               # data files: prompts (YAML), sql (DDL), ascii art
+└── assets/               # data files: prompts (YAML), sql (DDL),
+                          #   docs (markdown+frontmatter), llms.txt, ascii art
 ```
 
 Import-linter contracts (inline in pyproject, kit idiom — the matrix is spelled
@@ -977,6 +978,9 @@ never a silent divergence. Numbering is monotonic, never reused.
 | 76 | Keep `NEOSIAN_MCP_POSTGRES_DSN` for the MCP server and mint a second key for `neosian memory` (or alias the two) | **Hard rename to `NEOSIAN_POSTGRES_DSN`** — one key for every argv entry point; the old name removed same-commit, no alias (user ruling, 2026-08-21) | The key stopped being MCP-specific the moment a second entry point read it; two names for one DSN is a second host-visible contract to keep true forever, and an alias needs a conflict rule. Pre-1.0, private repo, no consumer has vendored the MCP server — the deliberate-batched-break precedent (#54's schema v2). #53's substance (no `--dsn`, entry-point-tier reader) is unchanged |
 | 77 | `neosian memory --json` maps `ToolResult` to a CLI-native shape, as the MCP transport did (#52) | **`--json` prints `ToolResult.to_json()` verbatim** — one line on stdout, exit 0/1 by `success`; human mode prints `data` on stdout, `error:`/`hint:` on stderr; argv-tier errors stay argparse text at exit 2 | #52 held because MCP has in-band success/error framing; a shell has only an exit code, so the function tool's envelope IS the machine surface — a second wrapper would be a shape to document and drift. Printing it verbatim is also what lets the harness's cli transport parse a real `ToolResult` back out, measuring shipped bytes instead of re-deriving them |
 | 78 | The harness's `cli` transport spawns the real `neosian memory` binary per memory call (the literal reading of "the shell is a transport") | **The engine runs in-process** — argv built per call, a fresh store from `--root` per invocation, the `--json` envelope decoded back; the process boundary is pinned once per gate by the keyless walkthrough driving all six commands through the literal binary (user ruling, 2026-08-21) | What can drift is the grammar, the envelope, and the exit tiering — all crossed in-process; the fork/exec layer is scenario-independent, so re-crossing it per cell buys no coverage the walkthrough lacks while taxing every `make test` ~10 interpreter starts, blinding coverage, and trading tracebacks for exit codes. Measurement precision is the user-facing asset here (§13.12 is the benchmark seed) |
+| 79 | `[tool.hatch.build.force-include]` mapping the repo-root `llms.txt` into the wheel | **Two byte-identical files** — the repo root and `assets/llms.txt` — pinned by one unit test; no build config. A second test pins the install-pin tag to `__version__`, so a release bumps `llms.txt` same-commit or the gate goes red | The repo has no hatch build section, and the first force-include opens "what else needs one" for every future root artifact, making wheel contents build-config-dependent and invisible in the tree; two files and one assertion are greppable and cost nothing. The version coupling is the stale-README-pin failure mode (found at NA: the v0.70.0 pins survived a release), closed structurally |
+| 80 | `mcp install --write` creates a missing client config directory (`mkdir -p`, the friendly move) | **Refuse at exit 1**, naming the path; never `mkdir`. Same discipline one level down: an unparseable config file, or an `mcpServers` that is not a JSON object, is refused — never rewritten | A missing config home means the client is not installed here — an environment fact, not a grammar mistake (§14.1's tier 1). Creating another program's config directory guesses at a layout neosian does not own and leaves debris when the guess is wrong; "preserve every unknown key" is only true if what cannot be parsed is also never touched |
+| 81 | `claude-code` registers at `~/.claude.json` (user scope); the entry's `command` is the `neosian` console script found on PATH | **Project `./.mcp.json`** with `~/.claude` as the installed-client evidence; **`command` = the current interpreter's absolute path** (`sys.executable`) + `-m neosian.mcp` (user rulings, 2026-08-21) | A memory root is usually project-shaped and `.mcp.json` travels with the repo the agent works in (Claude Code approval-prompts it natively); GUI-launched clients do not inherit a shell's PATH, so an absolute interpreter is the only registration that works from Claude Desktop, and `-m` keeps the entry independent of console-script naming. Both choices live in one table row / one parameter, so a reversal is one-line cheap |
 
 ## §13 Evaluation (NE)
 
@@ -1300,3 +1304,89 @@ honest limit: the process boundary itself (console-script wiring,
 `sys.argv` slicing, real pipes) is out of scope here and pinned once
 per gate by the scripted keyless walkthrough, which drives all six
 commands through the literal `neosian` binary.
+
+### §14.4 The docs door
+
+An agent in a sandbox has the wheel, not a website. Docs that travel in
+the package are version-true by construction — the stale-doc-site
+failure mode is closed by shipping the prose, not by publishing it
+faster.
+
+`neosian docs [topic]`: no topic prints the curated listing (topic +
+one-line summary) on stdout with the `neosian docs <topic>` hint on
+stderr; a known topic prints the page body verbatim — no rich, no
+wrapping, no colour: the bytes are markdown a model reads, and stdout
+must survive a pipe; an unknown topic exits 2 with the topic list as
+the hint. `--json` governs the executed tiers as everywhere else
+(§14.1), so an unknown topic stays text on stderr even under `--json`.
+
+The pages are §7 extended from prompts to documents — ECOSYSTEM §8's
+"markdown + frontmatter" clause made real: five curated pages under
+`assets/docs/` (`quickstart`, `memory`, `cli`, `mcp`, `topology`),
+loaded by `shared/docs_assets.py` with the shared frontmatter parser.
+`title` and `summary` are required keys; a module-local topic tuple is
+simultaneously the curated reading order and the manifest, so a page
+added without registering it — or registered without shipping — fails
+at import instead of becoming invisible. Validation is fail-fast at
+module import, as the prompt pack's is; because the CLI imports the
+loader lazily, a unit test loads every page so a broken wheel is
+caught by the gate, never by a user's `neosian docs` call.
+
+The mandatory page is `topology`: NM's two axes — who runs neosian
+code × where the bytes live — the four shapes, and §8's
+one-writer-per-root rule (#74). It ships before the daemon exists
+because the wrong mental model forms at first contact, not at
+deployment; the page marks the daemon unshipped, and NM adds its
+appliance quickstart there when it lands.
+
+`llms.txt` is the outer door: the repo-root copy is what an agent
+finds at the git URL, `assets/llms.txt` is what travels in the wheel,
+and the two are byte-identical — pinned by a unit test rather than a
+build-config force-include, with the install pin tied to
+`__version__` (#79).
+
+### §14.5 Self-setup, and the process boundary closed
+
+`neosian mcp install --client <c> [--write]` prints the exact
+registration by default and applies it only with `--write`. Print mode
+puts the paste-able `mcpServers` JSON fragment — nothing else — on
+stdout and the target path plus the `--write` hint on stderr, so
+`> snippet.json` always yields a valid document (§14.1's split paying
+rent). Routing is one literal first token: `install` is intercepted as
+`argv[0]` before the server grammar parses, because that grammar stays
+flat — subparsers would rename the documented
+`python -m neosian.mcp --root … --scope …` invocation for no gain.
+
+The registration is the *resolved* settings re-rendered, never a
+transcription: the same `add_store_arguments(default_actor="mcp")`
+parses the store flags and `format_mount` (#75) prints them back, so
+`--scope` reaches the client's config as its canonical `--mount` token
+and `--root` arrives absolute (a client spawns the server from an
+arbitrary cwd). The `command` is the current interpreter's absolute
+path + `-m neosian.mcp` (#81 — GUI clients inherit no shell PATH). A
+DSN is never written into a client config — Postgres arrives through
+the client's own environment, and the plan says so in a hint: #53's
+rule one tier further out, where the file is *more* readable than
+argv, not less.
+
+Refuse, never create (#80): a missing client config directory is an
+environment error (exit 1) naming the path — neosian does not `mkdir`
+another program's config home, and an uninstalled client is not a
+grammar mistake. An existing file is merged key-preserving (only the
+`neosian-memory` entry is replaced); an unparseable one, or an
+`mcpServers` that is not a JSON object, is refused rather than
+rewritten. The per-client mapping is one table — config path, evidence
+directory, servers key — three rows today (#81 fixes the claude-code
+row); a client whose registration is a shell one-liner rather than a
+JSON file would be a second render mode, not a row, and that cost is
+stated so it is chosen deliberately.
+
+The process boundary: §14.3's honest limit closes here. One keyless
+walkthrough per gate drives the literal `neosian` binary through the
+four doors — discover (`llms.txt`), learn (`neosian docs`), operate
+(all six memory commands, a payload through a real stdin pipe, a
+`--json` envelope parsed back, the exit-2 tiers, the DSN conflict)
+and upgrade (`mcp install`, print mode writing nothing; the
+missing-client refusal creating nothing) — at the interpreter-start
+tax #78 sanctioned, with no skip path: if the console script stops
+installing, the gate goes red.

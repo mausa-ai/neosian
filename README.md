@@ -25,9 +25,9 @@ The repository is private; as a dependency of another uv project, install
 from the git URL, pinned to a release tag (extras ride the same URL):
 
 ```bash
-uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.70.0"
-uv add "neosian[postgres] @ git+ssh://git@github.com/neosae/neosian@v0.70.0"   # + PostgresStore
-uv add "neosian[mcp] @ git+ssh://git@github.com/neosae/neosian@v0.70.0"        # + MCP memory server
+uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.71.0"
+uv add "neosian[postgres] @ git+ssh://git@github.com/neosae/neosian@v0.71.0"   # + PostgresStore
+uv add "neosian[mcp] @ git+ssh://git@github.com/neosae/neosian@v0.71.0"        # + MCP memory server
 ```
 
 The core install is database-driver-free and MCP-free; the four provider
@@ -126,6 +126,36 @@ full surface (scope grammar, index generation, version history) lives on
 `neosian.memory`; dogfood it with
 [examples/memory_agent.py](examples/memory_agent.py).
 
+## Memory from the shell
+
+The same six commands, no Python in the loop — the fourth transport over
+the same dispatcher:
+
+```bash
+neosian memory view / --root .neosian/memory --scope user:me
+neosian memory create /memories/prefs.md --content - <<'EOF'
+User prefers concise answers.
+EOF
+```
+
+Store flags on every command: `--root` / `--scope` / `--mount
+scope=...,path=...[,ro]` / `--actor` (recorded on version rows;
+convention `cli:<host>`). `--json` prints the memory tool's result
+envelope verbatim. Exit tiers everywhere: 0 success · 1 ran-and-failed ·
+2 bad invocation · 130 interrupt; stdout carries the artifact, stderr
+the `error:`/`hint:` guidance. Postgres arrives only via
+`NEOSIAN_POSTGRES_DSN` (never an argv flag); `python -m neosian.memory`
+is the PATH-free twin. One writer per FileStore root — see
+`neosian docs topology`.
+
+## Docs for agents
+
+The docs travel in the wheel, version-true by construction:
+`neosian docs` lists the shipped topics (quickstart, memory, cli, mcp,
+topology) and `neosian docs <topic>` prints one, pipe-safe. `llms.txt`
+at the repo root (and in the package, byte-identical) is the discovery
+door for a coding agent with shell access alone.
+
 ## Storage
 
 `MemoryStore` and `ConversationStore` are the contracts: async ABCs that
@@ -159,6 +189,12 @@ python -m neosian.mcp --root ~/.my-agent/memory --scope user:me
 The server's instructions carry the same memory index and prompt pack the
 function tool uses. Hosts that embed the server in their own transport use
 `create_memory_server` from `neosian.mcp`.
+
+Registering a client is one command:
+`neosian mcp install --client claude-code|claude-desktop|cursor` prints
+the exact `mcpServers` entry (paste-able JSON on stdout); `--write`
+merges it into the client's config, preserving every other key, and
+refuses a client whose config directory does not exist.
 
 ## Streaming and events
 
@@ -233,7 +269,9 @@ usage, duration, and `error_code` — it maps 1:1 onto a host's metering.
 over a variants × models × cases matrix (typed matchers, stub-by-default
 tools behind an execute allowlist), and `kind: memory`, which scores store
 truth across scripted sessions — write discipline, recall in the next
-session, dedup — with a function-vs-native transports axis. Shipped packs:
+session, dedup — with a transports axis (the shipped pack runs
+`transports: [function, cli]`; Anthropic externally adds
+`native_memory` — one definition, four transports). Shipped packs:
 [examples/eval_basic_agent.yaml](examples/eval_basic_agent.yaml) and
 [examples/eval_memory_baseline.yaml](examples/eval_memory_baseline.yaml) —
 the memory baseline is all-green on `models: [fake]`, so a red run is a
@@ -287,3 +325,5 @@ value-blind.
 - [DESIGN.md](DESIGN.md) — how; contracts; the decisions ledger.
 - [ECOSYSTEM.md](ECOSYSTEM.md) — the frozen host-facing seams.
 - [SERVICES.md](SERVICES.md) — every env key and what turning it off means.
+- [llms.txt](llms.txt) — the machine-readable front door (byte-identical
+  twin ships in the wheel).

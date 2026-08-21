@@ -337,6 +337,28 @@ def evaluate(
     raise typer.Exit(1 if report.failed else 0)
 
 
+@app.command()
+def docs(
+    topic: Annotated[
+        str | None,
+        typer.Argument(help="Topic to print (omit to list the topics)"),
+    ] = None,
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Print one JSON object on stdout"),
+    ] = False,
+) -> None:
+    """Read the docs that ship in the wheel — version-true by construction.
+
+    Example:
+        neosian docs
+        neosian docs topology
+    """
+    from neosian._cli.docs import run_docs
+
+    raise typer.Exit(run_docs(topic, json_output=json_output))
+
+
 @app.command(
     name="memory",
     context_settings={

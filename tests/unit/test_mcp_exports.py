@@ -38,3 +38,13 @@ def test_entry_point_module_does_not_load_the_sdk() -> None:
     """`--help` and grammar errors must work without the extra installed."""
     code = "import neosian.mcp.serve, sys; assert 'mcp' not in sys.modules"
     subprocess.run([sys.executable, "-c", code], check=True)
+
+
+@pytest.mark.unit
+def test_install_module_does_not_load_the_sdk() -> None:
+    """`mcp install` works without the extra — it never serves (its import
+    is function-local in serve.main, so the serve pin does not cover it)."""
+    code = (
+        "import neosian._foundation.mcp.install, sys; assert 'mcp' not in sys.modules"
+    )
+    subprocess.run([sys.executable, "-c", code], check=True)

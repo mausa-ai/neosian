@@ -1,6 +1,6 @@
 # Neosian Roadmap
 
-> **▶ Current phase: NA — Agent-native surface**
+> **▶ Current phase: NV — Evidence**
 >
 > *(2026-08-21: the 1.0 arc opens — see "The 1.0 arc" below. The lane is
 > ruled: neosian is the **state layer for production agents** — durable
@@ -799,7 +799,7 @@ earlier two-gate phrasing):
   compliance bug in the moat. Breadth = the daemon (the appliance for
   every other stack) + NC5-certified community stores.
 
-## NA — Agent-native surface (v0.71)
+## NA — Agent-native surface (v0.71) ✅ 2026-08-21
 
 DESIGN: §7, §8 — plus the agent-surface § this phase writes.
 
@@ -812,19 +812,22 @@ its sandbox loses to a worse one it knows from training.
   (pre-decided 2026-08-21): documented one-writer per root — no
   advisory-lock engineering; multi-writer needs route to Postgres or to
   NM's daemon, the arc's capstone. Postgres is already arbitrated.
+  *(✅ slice A — §8 + ledger #74)*
 - **Memory CLI** — the six commands as `neosian memory <command>` over
   the shared dispatcher; flag grammar reuses the MCP settings module
   (`--root`/`--scope`/`--mount`/`--actor`/`--schema`, env DSN, no
   `--dsn` ever); `--json` on every command; corrective failures with
-  hints; version rows carry `actor: cli:<...>`.
+  hints; version rows carry `actor: cli:<...>`. *(✅ slice A)*
 - **In-package docs** — `neosian docs [topic]` reads curated pages from
   the wheel (prose as data, `assets/docs/`); `llms.txt` at the repo
   root and in the package; version-true by construction.
+  *(✅ shipped v0.71.0, slice B — five pages, §14.4)*
 - **Self-setup** — `neosian mcp install --client
   claude-code|claude-desktop|cursor`: prints the exact registration by
   default, applies only with `--write`; every command gains a fully
-  non-interactive path.
+  non-interactive path. *(✅ shipped v0.71.0, slice B — §14.5)*
 - The harness gains the `cli` transport on the transports axis.
+  *(✅ slice A)*
 
 **Done when:** a coding agent with shell access alone can discover
 (`llms.txt`), learn (`neosian docs`), operate memory (`neosian memory`,
@@ -864,6 +867,40 @@ through `neosian eval`; provider baselines inherit the cli cells.
 (refuse-missing-dir ruled), the widened walkthrough — all six
 commands through the real binary, the phase done-when — §14.4–§14.5,
 README rows, v0.71.0 + `na-done`.
+
+**Slice B shipped at v0.71.0 (2026-08-21), closing the phase** — the
+docs door and self-setup. Rulings (options-first, user confirmed):
+**five** docs pages (`quickstart`/`memory`/`cli`/`mcp`/`topology`);
+claude-code's `--write` targets the project `./.mcp.json` (evidence
+`~/.claude`); the registration `command` is `sys.executable` + `-m
+neosian.mcp` (ledger #81). Shipped: `shared/docs_assets.py` (markdown +
+frontmatter under `assets/docs/`, ECOSYSTEM §8's document clause; the
+topic tuple is both reading order and manifest, fail-fast at import,
+made honest under lazy CLI import by the load-every-page test) +
+`neosian docs [topic]` (`_cli/docs.py`, no rich — bodies pipe byte-
+exact; unknown topic exit 2 as text even under `--json`, §14.1's
+asymmetry); the topology page carries NM's 2×2 + the #74 one-writer
+rule, daemon marked unshipped. `llms.txt` ×2 byte-pinned with the
+install pin tied to `__version__` (#79 — the stale-README-pin mode
+closed; the v0.70.0 pins had survived a release). `neosian mcp
+install`: `_foundation/mcp/install.py` over an injected `Environment`
+(first `sys.platform` branch; SDK-free, subprocess-pinned), routed as
+`argv[0] == "install"` before the flat server grammar, `prog` threaded
+so `--help` names the real spelling; the entry re-renders resolved
+settings via `format_mount` (#75's promised consumer), absolute root,
+never the DSN (env hint instead); key-preserving merge that refuses —
+never rewrites — unparseable configs, and refuses a missing client dir
+at exit 1, never mkdir (#80). `StreamParser` promoted to
+`memory/settings.py` (the shared argv home). The walkthrough
+(`tests/unit/cli/test_walkthrough.py`, no skip path) drives the
+literal binary through discover → learn → operate (all six commands, a
+stdin pipe, `--json` parsed, exit-2 tiers, the DSN conflict) → upgrade
+(print writes nothing; refusal creates nothing), with store truth
+(actor `cli:walkthrough`) read back across the process boundary — the
+phase done-when. DESIGN §14.4–§14.5, ledger #79–#81; README (shell +
+docs sections, install rows, stale transports-axis text fixed) +
+CLAUDE.md rows. 1873 unit tests, zero keys; v0.71.0 + `na-done`.
+Nothing carried — NA closes.
 
 ## NV — Evidence (v0.72)
 
@@ -1782,3 +1819,31 @@ is asserted without evidence.
   release cut — v0.71.0 rides the phase close. Carried: docs +
   llms.txt + `mcp install` + the widened walkthrough (slice B closes
   NA).
+- 2026-08-21 | NA (slice B) | **The docs door, self-setup, and the
+  boundary closed; NA closes.** Rulings (options-first, user
+  confirmed): five docs pages (quickstart/memory/cli/mcp/topology);
+  claude-code `--write` → project `.mcp.json` (evidence `~/.claude`);
+  registration `command` = `sys.executable` + `-m neosian.mcp` (#81).
+  `neosian docs`: `shared/docs_assets.py` reads markdown+frontmatter
+  from `assets/docs/` (ECOSYSTEM §8's document clause; the topic tuple
+  = order + manifest, fail-fast at import, the load-every-page test
+  makes the lazy CLI import honest), `_cli/docs.py` prints bodies
+  byte-exact (no rich), unknown topic exit 2 as text even under
+  `--json` (§14.1). The topology page lands NM's 2×2 verbatim + the
+  #74 one-writer rule, daemon marked unshipped. `llms.txt` ×2
+  byte-pinned, install pin tied to `__version__` (#79 — the v0.70.0
+  README pins had gone stale; now structural). `neosian mcp install`:
+  pure `_foundation/mcp/install.py` over injected `Environment`
+  (SDK-free by subprocess pin), routed `argv[0] == "install"` before
+  the flat server grammar (`prog` threaded — `--help` names the real
+  spelling); resolved settings re-rendered via `format_mount` (#75's
+  consumer), absolute root, DSN never written (env hint);
+  key-preserving merge refusing unparseable configs, missing client
+  dir refused exit 1 never mkdir (#80). `StreamParser` promoted to
+  `memory/settings.py`. The walkthrough drives the literal binary
+  through all four doors (six commands, real stdin pipe, `--json`
+  parsed, exit tiers, DSN conflict; install print-mode writes
+  nothing) with the actor read back from version rows — the phase
+  done-when, no skip path. §14.4–§14.5 written, ledger #79–#81;
+  README/CLAUDE.md rows; pyproject 0.71.0. 1873 unit tests, zero
+  keys; v0.71.0 + `na-done`. Pointer → NV.

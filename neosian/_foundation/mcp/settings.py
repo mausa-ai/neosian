@@ -34,15 +34,21 @@ _EPILOG = (
 )
 
 
-def parse_args(argv: Sequence[str], env: Mapping[str, str]) -> ServerSettings:
+def parse_args(
+    argv: Sequence[str],
+    env: Mapping[str, str],
+    *,
+    prog: str = "python -m neosian.mcp",
+) -> ServerSettings:
     """Parse the entry point's argv against `env`; construct no store.
 
     Grammar errors exit 2 via argparse; scope and mount-path validation is
     structural (`Mount` raises `MemoryScopeInvalidError` /
-    `MemoryPathInvalidError`, which the entry point renders).
+    `MemoryPathInvalidError`, which the entry point renders). `prog` names
+    the spelling actually invoked, so --help matches it.
     """
     parser = argparse.ArgumentParser(
-        prog="python -m neosian.mcp",
+        prog=prog,
         description="Serve neosian memory to MCP clients on stdio.",
         epilog=_EPILOG,
     )

@@ -1,0 +1,52 @@
+# neosian
+
+> Async-only Python state layer for LLM agents: durable conversations,
+> agent-curated file-shaped memory, and context lifecycle — on storage the
+> product owns. Keyless to boot; Python >= 3.12.
+
+A stateless `Agent` core (tools, orchestration, streaming, fallback,
+guardrails, structured output) with opt-in `Conversation` and memory
+layers. One memory dispatcher serves four transports: the function tool,
+Anthropic's native declaration, an MCP stdio server, and the shell.
+
+## Learn from the shell
+
+- `neosian docs` — list the shipped topics (they travel in the wheel, so
+  they always describe the installed version).
+- `neosian docs quickstart | memory | cli | mcp | topology` — one page,
+  markdown on stdout, pipe-safe.
+- `neosian docs topology` — who runs neosian code x where the bytes live;
+  one writer per FileStore root.
+
+## Operate memory from the shell
+
+- `neosian memory view / --root DIR --scope user:me` — the first command
+  to try; renders the memory index.
+- Six commands: view, create, str_replace, insert, delete, rename.
+  `--json` prints the memory tool's result envelope verbatim.
+- Exit tiers: 0 success, 1 ran-and-failed, 2 bad invocation, 130
+  interrupt. stdout carries the artifact; stderr carries guidance.
+- Postgres arrives only via the NEOSIAN_POSTGRES_DSN environment
+  variable (never an argv flag). `python -m neosian.memory` is the
+  PATH-free twin.
+
+## Upgrade to MCP
+
+- `neosian mcp install --client claude-code|claude-desktop|cursor`
+  prints the exact registration; `--write` applies it (refused when the
+  client is not installed).
+- `python -m neosian.mcp --root DIR --scope user:me` serves the same
+  store over stdio (`mcp` extra).
+
+## Install
+
+- `uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.71.0"`
+  (private repository, no PyPI; pin an annotated release tag, never
+  master; extras `[postgres]` and `[mcp]` ride the same URL).
+
+## Docs
+
+- README.md: install and quickstart.
+- DESIGN.md: contracts and the decisions ledger.
+- ECOSYSTEM.md: the frozen host-facing seams.
+- SERVICES.md: every environment key and what turning it off means.

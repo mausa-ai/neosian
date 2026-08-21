@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
+from pathlib import Path
 
 from neosian._foundation.mcp.server import create_memory_server, serve_stdio
 from neosian._foundation.mcp.settings import ServerSettings, parse_args
@@ -41,9 +42,33 @@ async def _run(settings: ServerSettings) -> None:
             await store.aclose()
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None, *, prog: str = "neosian mcp") -> int:
+    args = sys.argv[1:] if argv is None else argv
+    if args and args[0] == "install":
+        # One literal first token, routed before the server grammar: it
+        # stays flat (subparsers would rename the documented
+        # `python -m neosian.mcp --root ...` invocation for no gain).
+        from neosian._foundation.mcp.install import Environment, run_install
+
+        try:
+            return run_install(
+                args[1:],
+                os.environ,
+                context=Environment(
+                    home=Path.home(),
+                    cwd=Path.cwd(),
+                    platform=sys.platform,
+                    env=os.environ,
+                    executable=sys.executable,
+                ),
+                out=sys.stdout,
+                err=sys.stderr,
+                prog=f"{prog} install",
+            )
+        except KeyboardInterrupt:
+            return 130
     try:
-        settings = parse_args(sys.argv[1:] if argv is None else argv, os.environ)
+        settings = parse_args(args, os.environ, prog=prog)
     except MemoryStoreError as exc:
         print(f"error: [{exc.code}] {exc.message}", file=sys.stderr)
         return 2

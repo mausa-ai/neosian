@@ -12,10 +12,14 @@ arrives only through `NEOSIAN_POSTGRES_DSN` — argv is world-readable in
 from __future__ import annotations
 
 import argparse
+import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final
+from typing import TYPE_CHECKING, Any, Final, TextIO
+
+if TYPE_CHECKING:
+    from _typeshed import SupportsWrite
 
 from neosian._foundation.memory.mounts import Mount
 
@@ -24,6 +28,31 @@ DEFAULT_SCHEMA: Final = "neosian"
 # The mount path Anthropic's trained memory behavior roots at (§9.5.13);
 # the --scope sugar mounts there, like Conversation's memory_scope=.
 SUGAR_MOUNT_PATH: Final = "memories"
+
+
+class StreamParser(argparse.ArgumentParser):
+    """argparse over injected streams.
+
+    The argv engines run in-process (the eval harness, unit suites), so
+    they must not write to — or swap — the process's real stdio; help
+    and errors go to the streams `bind` sets.
+    """
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.out: TextIO = sys.stdout
+        self.err: TextIO = sys.stderr
+
+    def bind(self, out: TextIO, err: TextIO) -> None:
+        self.out = out
+        self.err = err
+
+    def _print_message(
+        self, message: str, file: SupportsWrite[str] | None = None
+    ) -> None:
+        if message:
+            target = self.err if file is sys.stderr else self.out
+            target.write(message)
 
 
 @dataclass(frozen=True, slots=True)
