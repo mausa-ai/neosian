@@ -16,10 +16,13 @@ import pytest
 from neosian import AgentConfig, Model
 from neosian._foundation.conversation.core import Conversation
 from neosian._foundation.conversation.reflection import (
+    CreateOp,
+    DeleteOp,
     ReflectionBatch,
     ReflectionConfig,
     ReflectionOp,
     ReflectionResult,
+    ReplaceOp,
     run_reflection,
 )
 from neosian._foundation.conversation.types import ConversationTurn
@@ -56,8 +59,8 @@ def _batch(*ops: ReflectionOp) -> str:
     return ReflectionBatch(ops=list(ops)).model_dump_json()
 
 
-def _create_op(path: str = "/memories/preferences") -> ReflectionOp:
-    return ReflectionOp(command="create", path=path, content="Prefers espresso.")
+def _create_op(path: str = "/memories/preferences") -> CreateOp:
+    return CreateOp(command="create", path=path, content="Prefers espresso.")
 
 
 def _scripted(*turns: FakeTurn) -> FakeClient:
@@ -71,6 +74,28 @@ def _config(fake: FakeClient) -> AgentConfig:
         enable_todo=False,
         client_factory=lambda _: fake,
     )
+
+
+@pytest.mark.unit
+class TestReflectionWireSchema:
+    def test_the_wire_schema_is_strict_compatible(self) -> None:
+        """OpenAI's strict mode requires every property in `required` and
+        rejects `oneOf` — the 400 the first external dispatch of the
+        reflection engine surfaced, pinned keylessly."""
+        from neosian._foundation.shared.schema import get_json_schema
+
+        def check(node: object) -> None:
+            if isinstance(node, dict):
+                if node.get("type") == "object" and "properties" in node:
+                    assert set(node["properties"]) == set(node.get("required", ()))
+                assert "oneOf" not in node
+                for value in node.values():
+                    check(value)
+            elif isinstance(node, list):
+                for item in node:
+                    check(item)
+
+        check(get_json_schema(ReflectionBatch))
 
 
 @pytest.mark.unit
@@ -128,7 +153,7 @@ class TestRunReflection:
     async def test_update_not_duplicate(self, tmp_path: Path) -> None:
         memory = _memory(tmp_path)
         await memory.store.write("user:1", "preferences", "Prefers espresso.")
-        op = ReflectionOp(
+        op = ReplaceOp(
             command="str_replace",
             path="/memories/preferences",
             old_str="espresso",
@@ -150,7 +175,7 @@ class TestRunReflection:
     async def test_delete_receipt_has_no_live_version(self, tmp_path: Path) -> None:
         memory = _memory(tmp_path)
         await memory.store.write("user:1", "stale", "Wrong fact.")
-        op = ReflectionOp(command="delete", path="/memories/stale")
+        op = DeleteOp(command="delete", path="/memories/stale")
         fake = _scripted(FakeTurn(content=_batch(op)))
         result = await run_reflection(
             memory_config=memory,
@@ -185,7 +210,7 @@ class TestRunReflection:
         memory = _memory(
             tmp_path, Mount(scope="user:1/kb:shared", mount_path="kb", read_only=True)
         )
-        bad = ReflectionOp(command="create", path="/kb/note", content="nope")
+        bad = CreateOp(command="create", path="/kb/note", content="nope")
         fake = _scripted(FakeTurn(content=_batch(bad, _create_op())))
         with caplog.at_level(logging.WARNING):
             result = await run_reflection(

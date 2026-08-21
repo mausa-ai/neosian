@@ -75,16 +75,34 @@ class ReflectionResult:
     model: str | None = None
 
 
-class ReflectionOp(BaseModel):
-    command: Literal["create", "str_replace", "delete"]
+# Per-command shapes with every field required: OpenAI's strict mode
+# rejects any schema whose `required` omits a property, and a flat
+# all-optional op would either 400 there or force explicit nulls from
+# providers that don't validate. A plain (non-discriminated) union keeps
+# the wire schema on `anyOf`, which strict mode accepts; `oneOf` is not.
+class CreateOp(BaseModel):
+    command: Literal["create"]
     path: str
-    content: str | None = None
-    old_str: str | None = None
-    new_str: str | None = None
+    content: str
+
+
+class ReplaceOp(BaseModel):
+    command: Literal["str_replace"]
+    path: str
+    old_str: str
+    new_str: str
+
+
+class DeleteOp(BaseModel):
+    command: Literal["delete"]
+    path: str
+
+
+ReflectionOp = CreateOp | ReplaceOp | DeleteOp
 
 
 class ReflectionBatch(BaseModel):
-    ops: list[ReflectionOp]
+    ops: list[CreateOp | ReplaceOp | DeleteOp]
 
 
 async def run_reflection(
@@ -154,16 +172,7 @@ async def _render_memory(config: MemoryConfig) -> str:
 async def _execute(
     config: MemoryConfig, op: ReflectionOp, actor: str | None
 ) -> ReflectionWrite | None:
-    arguments = {
-        key: value
-        for key, value in (
-            ("path", op.path),
-            ("content", op.content),
-            ("old_str", op.old_str),
-            ("new_str", op.new_str),
-        )
-        if value is not None
-    }
+    arguments = {k: v for k, v in op.model_dump().items() if k != "command"}
     result = await dispatch(config, op.command, arguments, actor=actor)
     if not result.success:
         logger.warning(
