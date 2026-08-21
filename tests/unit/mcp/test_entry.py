@@ -29,7 +29,7 @@ class TestHappyPath:
     def test_filestore_serving(
         self, tmp_path: Path, captured: _Captured, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.delenv("NEOSIAN_MCP_POSTGRES_DSN", raising=False)
+        monkeypatch.delenv("NEOSIAN_POSTGRES_DSN", raising=False)
         root = tmp_path / "mem"
         code = main(["--root", str(root), "--scope", "user:demo"])
         assert code == 0
@@ -41,7 +41,7 @@ class TestHappyPath:
 
 class TestErrorPaths:
     def test_grammar_error_exits_2(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.delenv("NEOSIAN_MCP_POSTGRES_DSN", raising=False)
+        monkeypatch.delenv("NEOSIAN_POSTGRES_DSN", raising=False)
         with pytest.raises(SystemExit) as excinfo:
             main(["--scope", "user:demo"])  # no store
         assert excinfo.value.code == 2
@@ -52,7 +52,7 @@ class TestErrorPaths:
         capsys: pytest.CaptureFixture[str],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        monkeypatch.delenv("NEOSIAN_MCP_POSTGRES_DSN", raising=False)
+        monkeypatch.delenv("NEOSIAN_POSTGRES_DSN", raising=False)
         code = main(["--root", str(tmp_path / "m"), "--scope", "not a scope"])
         assert code == 2
         assert "[memory_scope_invalid]" in capsys.readouterr().err
@@ -60,7 +60,7 @@ class TestErrorPaths:
     def test_keyboard_interrupt_exits_130(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.delenv("NEOSIAN_MCP_POSTGRES_DSN", raising=False)
+        monkeypatch.delenv("NEOSIAN_POSTGRES_DSN", raising=False)
 
         async def interrupted(server: object) -> None:  # noqa: ARG001 - fake
             raise KeyboardInterrupt
@@ -75,7 +75,7 @@ class TestErrorPaths:
         capsys: pytest.CaptureFixture[str],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        monkeypatch.delenv("NEOSIAN_MCP_POSTGRES_DSN", raising=False)
+        monkeypatch.delenv("NEOSIAN_POSTGRES_DSN", raising=False)
 
         async def no_sdk(
             config: object,  # noqa: ARG001 - fake
@@ -115,7 +115,7 @@ class TestStoreSelection:
 
         monkeypatch.setattr(serve_module, "PostgresStore", FakePostgres)
         monkeypatch.setattr(serve_module, "create_memory_server", fake_create)
-        monkeypatch.setenv("NEOSIAN_MCP_POSTGRES_DSN", "postgresql://localhost/x")
+        monkeypatch.setenv("NEOSIAN_POSTGRES_DSN", "postgresql://localhost/x")
         code = main(["--scope", "user:demo", "--schema", "acme"])
         assert code == 0
         assert closed == [True]
@@ -127,7 +127,7 @@ class TestStoreSelection:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         # FileStore has no aclose; the finally branch must not touch it.
-        monkeypatch.delenv("NEOSIAN_MCP_POSTGRES_DSN", raising=False)
+        monkeypatch.delenv("NEOSIAN_POSTGRES_DSN", raising=False)
         assert not hasattr(FileStore, "aclose")
         code = main(["--root", str(tmp_path / "m"), "--scope", "user:demo"])
         assert code == 0

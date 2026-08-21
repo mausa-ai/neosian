@@ -66,7 +66,8 @@ warning; requests fail at first pool use.
 
 ## The MCP server — a DSN, not an API key
 
-`NEOSIAN_MCP_POSTGRES_DSN` is read only by `python -m neosian.mcp` (and
+`NEOSIAN_POSTGRES_DSN` (renamed from `NEOSIAN_MCP_POSTGRES_DSN` at NA,
+ledger #76) is read only by `python -m neosian.mcp` (and
 the `neosian mcp` pass-through), never by the library: the MCP entry
 point is a host-spawned process configured through argv, and a DSN must
 not appear there — argv is world-readable in `ps` (DESIGN §12 ledger

@@ -155,7 +155,7 @@ python -m neosian.mcp --root ~/.my-agent/memory --scope user:me
 ```
 
 `--mount` adds scopes (read-only supported); Postgres comes from
-`NEOSIAN_MCP_POSTGRES_DSN` (never an argv flag — argv is world-readable).
+`NEOSIAN_POSTGRES_DSN` (never an argv flag — argv is world-readable).
 The server's instructions carry the same memory index and prompt pack the
 function tool uses. Hosts that embed the server in their own transport use
 `create_memory_server` from `neosian.mcp`.

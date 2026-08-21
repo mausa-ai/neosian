@@ -132,6 +132,21 @@ type = "forbidden"
 source_modules = ["neosian._foundation"]
 forbidden_modules = ["neosian._cli"]
 
+# The facades re-export the foundation, never the reverse — an inversion
+# would drag a facade's whole public surface into a foundation import.
+[[tool.importlinter.contracts]]
+name = "the foundation never imports the facades"
+type = "forbidden"
+source_modules = ["neosian._foundation"]
+forbidden_modules = [
+    "neosian.mcp",
+    "neosian.memory",
+    "neosian.evaluation",
+    "neosian.conversation",
+    "neosian.fake",
+    "neosian.schemas",
+]
+
 [[tool.importlinter.contracts]]
 name = "storage substrates speak only to ABCs, never provider internals"
 type = "forbidden"
