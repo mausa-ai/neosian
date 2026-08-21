@@ -25,10 +25,10 @@ The repository is private; as a dependency of another uv project, install
 from the git URL, pinned to a release tag (extras ride the same URL):
 
 ```bash
-uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.73.0"
-uv add "neosian[postgres] @ git+ssh://git@github.com/neosae/neosian@v0.73.0"   # + PostgresStore
-uv add "neosian[mcp] @ git+ssh://git@github.com/neosae/neosian@v0.73.0"        # + MCP memory server
-uv add "neosian[otel] @ git+ssh://git@github.com/neosae/neosian@v0.73.0"       # + OpenTelemetry spans
+uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.74.0"
+uv add "neosian[postgres] @ git+ssh://git@github.com/neosae/neosian@v0.74.0"   # + PostgresStore
+uv add "neosian[mcp] @ git+ssh://git@github.com/neosae/neosian@v0.74.0"        # + MCP memory server
+uv add "neosian[otel] @ git+ssh://git@github.com/neosae/neosian@v0.74.0"       # + OpenTelemetry spans
 ```
 
 The core install is database-driver-free and MCP-free; the three provider
@@ -91,8 +91,17 @@ async with convo:
 compaction is default-on (`CompactionConfig`: 8 hot turns, trigger at 0.75
 of the model's context window): aged turns are projected to one-line log
 entries and a built-in `recall_turn` tool re-hydrates any of them verbatim —
-compaction is paging, not deletion, and never changes what is stored. Full
-tour (resume, memory scope) in
+compaction is paging, not deletion, and never changes what is stored.
+
+Reflection is default-on the same way: a memory-bearing `aclose()` (the
+`async with` exit above) distills what the session's turns are worth
+keeping into deliberate memory writes — dedup-disciplined, audited under
+the conversation id, secrets kept out — and returns a `ReflectionResult`
+listing every write with the model spend. `Conversation.reflect()` is the
+explicit form; `ReflectionConfig(enabled=False)` turns the close rider off
+(do this in hosts that build a Conversation per request, and call
+`reflect()` at the real session boundary instead). Full tour (resume,
+memory scope) in
 [examples/conversation_example.py](examples/conversation_example.py).
 
 ## Memory

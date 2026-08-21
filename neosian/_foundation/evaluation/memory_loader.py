@@ -61,7 +61,7 @@ _SCENARIO_HINTS = {
     "input": "a memory scenario's turns live under 'sessions[].turns'",
     "conversation": "a memory scenario's turns live under 'sessions[].turns'",
 }
-_SESSION_KEYS = frozenset({"name", "turns", "script", "expect_store"})
+_SESSION_KEYS = frozenset({"name", "turns", "script", "expect_store", "reflect"})
 
 
 def parse_memory_suite(data: Mapping[str, Any], path_str: str) -> MemoryEvalConfig:
@@ -225,6 +225,9 @@ def _parse_session(
             raise EvalCaseInvalidError(label, f"session: unknown key '{key}'")
     if "turns" not in data:
         raise EvalCaseInvalidError(label, "session missing 'turns'")
+    reflect = data.get("reflect", False)
+    if not isinstance(reflect, bool):
+        raise EvalCaseInvalidError(label, "'reflect' must be a boolean")
     return MemorySession(
         name=data["name"],
         turns=parse_turns(data["turns"], label, key="turns"),
@@ -232,4 +235,5 @@ def _parse_session(
         expect_store=parse_store_expectation(
             data.get("expect_store"), label, mount_paths
         ),
+        reflect=reflect,
     )

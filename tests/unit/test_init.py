@@ -230,6 +230,9 @@ def test_all_list_matches_exports() -> None:
         "ConversationProjection",
         "CompactionConfig",
         "CompactionResult",
+        "ReflectionConfig",
+        "ReflectionResult",
+        "ReflectionWrite",
         "CONVERSATION_FORMAT_VERSION",
         "parse_conversation_id",
         # Utilities

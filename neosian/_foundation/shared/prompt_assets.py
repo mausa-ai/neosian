@@ -21,9 +21,11 @@ _GUARDRAILS_FILE: Final = "prompts/guardrails.yaml"
 _TOOLS_FILE: Final = "prompts/tools.yaml"
 _MEMORY_FILE: Final = "prompts/memory.yaml"
 _COMPACTION_FILE: Final = "prompts/compaction.yaml"
+_REFLECTION_FILE: Final = "prompts/reflection.yaml"
 _POLICY_KEYS: Final = ("name", "code", "description", "violates", "safe")
 _MEMORY_KEYS: Final = ("tool", "system_section")
 _COMPACTION_KEYS: Final = ("distill", "epoch", "log_header", "log_footer")
+_REFLECTION_KEYS: Final = ("system",)
 _TOOL_KEYS: Final = (
     "todo",
     "playbook_list",
@@ -76,6 +78,9 @@ def _load() -> tuple[dict[str, str], tuple[dict[str, Any], ...]]:
     compaction = _load_yaml(_COMPACTION_FILE)
     for key in _COMPACTION_KEYS:
         prompts[f"compaction.{key}"] = str(_require(compaction, key, _COMPACTION_FILE))
+    reflection = _load_yaml(_REFLECTION_FILE)
+    for key in _REFLECTION_KEYS:
+        prompts[f"reflection.{key}"] = str(_require(reflection, key, _REFLECTION_FILE))
     policies = tuple(_require(guardrails, "policies", _GUARDRAILS_FILE))
     for entry in policies:
         if not isinstance(entry, dict):

@@ -1,6 +1,6 @@
 [project]
 name = "neosian"
-version = "0.73.0"
+version = "0.74.0"
 description = "Async-only library for LLM agents: tools, orchestration, streaming, guardrails — with opt-in conversation, memory, and compaction layers over a stateless core."
 readme = "README.md"
 license = "Apache-2.0"
@@ -201,6 +201,7 @@ source_modules = [
     "neosian._foundation.conversation.projection",
     "neosian._foundation.conversation.distill",
     "neosian._foundation.conversation.compaction",
+    "neosian._foundation.conversation.reflection",
     "neosian._foundation.conversation.recall",
     "neosian._foundation.postgres",
 ]

@@ -11,7 +11,7 @@ yardstick (candidate: LongMemEval) is roadmapped as NC6.
 
 ## What is measured
 
-The shipped pack `examples/eval_memory_baseline.yaml` — six scenarios,
+The shipped pack `examples/eval_memory_baseline.yaml` — seven scenarios,
 one per behavior:
 
 | Scenario | Behavior |
@@ -22,6 +22,7 @@ one per behavior:
 | contradiction | A reversed fact is updated and the stale value survives in no live text |
 | long-horizon-recall | The session-1 fact survives two unrelated writing sessions and is recalled in session 4 |
 | correct-wrong-memory | A disavowed note is deleted — the claim gone from every live document |
+| reflection-close | Facts stated in passing reach the store through the session close (§15 reflection): dedup-disciplined, the refused token kept out — counts and content pinned, never version histories (in-session and boundary writes both legitimate) |
 
 Scoring is **store truth** (DESIGN §13.12): after each session the
 harness re-reads the actual files through a freshly constructed store.
@@ -56,17 +57,28 @@ document), never the file name.
 
 ## Fingerprints
 
-The results below were measured against exactly these files. A unit
-test (`tests/unit/test_baselines.py`) fails when either file changes
-without this section being updated — **no prompt-pack change without a
-recorded baseline re-run.**
+The current gated files; each dated results block names the pack
+fingerprint it measured. A unit test (`tests/unit/test_baselines.py`)
+fails when any gated file changes without this section being updated —
+**no prompt-pack change without a recorded baseline re-run.**
 
 - `neosian/assets/prompts/memory.yaml` — sha256
   `0840039c93a763d3b2889729f6338153b9799491110db8c7894a55bf62a248fd`
+- `neosian/assets/prompts/reflection.yaml` — sha256
+  `792964adeceed998409570b531b9ad8c519d470a86feec304e5f37ac629e38d7`
 - `examples/eval_memory_baseline.yaml` — sha256
-  `c07b125dc9adae035f5150d18ea131c57f7f1e08416504f0651d697309928608`
+  `9c7621a7dbdd79f5aedb2b91cec519c6152100be4bd9d39ad88020699ec9c7b2`
 
 ## Results
+
+### 2026-08-21 — seven-scenario pack (NR: reflection joins)
+
+The NR phase added the `reflection-close` scenario, the
+`reflection.yaml` prompt asset (both fingerprinted above), and the
+harness's `reflect:` session key. The per-provider re-run over the
+grown pack is owed at the next external dispatch (the /ship step) and
+will be recorded here; the tables below were measured against the
+six-scenario pack (`c07b125d…28608`) with the same `memory.yaml`.
 
 ### 2026-08-21 — six-scenario pack (local runs)
 

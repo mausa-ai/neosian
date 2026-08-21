@@ -1,11 +1,12 @@
 # Memory eval baseline (kind: memory, schema v2) — DESIGN §13.12.
 #
-# Six scenarios, one per measured behavior: write discipline,
+# Seven scenarios, one per measured behavior: write discipline,
 # recall-in-next-session, dedup, contradiction handling, long-horizon
-# recall, correcting a wrong memory. Every session is scripted, so the
-# pack runs keylessly on FakeProvider and is all-green by construction —
-# a red run is a regression. Turn expectations stay loose (they must
-# survive a real provider); the store truth carries the strictness.
+# recall, correcting a wrong memory, reflection at the session boundary
+# (§15). Every session is scripted, so the pack runs keylessly on
+# FakeProvider and is all-green by construction — a red run is a
+# regression. Turn expectations stay loose (they must survive a real
+# provider); the store truth carries the strictness.
 #
 # The external baselines derive a scriptless copy of this same pack in
 # code (tests/external/cross/test_memory_baselines.py) — one source of
@@ -350,3 +351,49 @@ scenarios:
         expect_store:
           counts: {/project: 0}
           forbidden: [MongoDB]
+
+  # REFLECTION — the §15 session boundary: facts stated in passing reach
+  # the store through the close's distillation, dedup-disciplined and
+  # with the refused token kept out. Turn expectations are deliberately
+  # bare (`response: {exists: true}`): a real model may legitimately
+  # also write in-session — reflection must then update, not duplicate —
+  # so store truth pins counts and content only, never versions or
+  # actions (in-session and boundary writes produce different, equally
+  # correct histories). The scripted path pins the pure-boundary case:
+  # no tool call in the session, the close writes everything.
+  - name: reflection-close
+    sessions:
+      - name: chat
+        reflect: true
+        turns:
+          - user: >-
+              I only drink espresso, by the way. And my token is
+              sk-eval-secret-000 — never save that anywhere.
+            expect: {response: {regex: "\\S"}}
+        script:
+          - content: "Espresso only — understood, and the token stays out."
+          - content: '{"ops": [{"command": "create", "path": "/user/preferences",
+              "content": "Drinks espresso only."}]}'
+        expect_store:
+          counts: {/user: 1}
+          documents:
+            - path_prefix: /user
+              content: {contains: espresso}
+          forbidden: [sk-eval-secret-000]
+
+      - name: revise
+        reflect: true
+        turns:
+          - user: "Actually, make that ristretto from now on."
+            expect: {response: {regex: "\\S"}}
+        script:
+          - content: "Ristretto it is."
+          - content: '{"ops": [{"command": "str_replace", "path": "/user/preferences",
+              "old_str": "espresso", "new_str": "ristretto"}]}'
+        # Update-not-duplicate at the boundary: still one user document,
+        # and it carries the current preference.
+        expect_store:
+          counts: {/user: 1}
+          documents:
+            - path_prefix: /user
+              content: {contains: ristretto}

@@ -43,6 +43,7 @@ from neosian import (
     Mount,
     NeosianError,
     PostgresStore,
+    ReflectionConfig,
     message_to_json,
 )
 
@@ -113,6 +114,11 @@ def _conversation(
                 description="The tenant's shared knowledge base.",
             ),
         ),
+        # This app builds a Conversation per HTTP request, so aclose()
+        # fires per turn — not per session. Default-on reflection would
+        # distill on every message; a per-request host disables the
+        # rider and calls reflect() at its real session boundary (§15).
+        reflection=ReflectionConfig(enabled=False),
     )
 
 

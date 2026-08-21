@@ -70,6 +70,20 @@ class TestSuiteLevel:
         assert config.case_names == ("s",)
         assert config.variant_names == ("function",)
 
+    def test_session_reflect_parses_and_defaults_off(self, tmp_path: Path) -> None:
+        config = _load(tmp_path, MINIMAL)
+        assert config.scenarios[0].sessions[0].reflect is False
+        body = MINIMAL.replace("- name: one\n", "- name: one\n        reflect: true\n")
+        config = _load(tmp_path, body)
+        assert config.scenarios[0].sessions[0].reflect is True
+
+    def test_session_reflect_must_be_a_boolean(self, tmp_path: Path) -> None:
+        body = MINIMAL.replace(
+            "- name: one\n", "- name: one\n        reflect: always\n"
+        )
+        with pytest.raises(EvalCaseInvalidError, match="'reflect' must be a boolean"):
+            load_eval_config(_write(tmp_path, body))
+
     def test_kind_is_read_before_the_key_check(self, tmp_path: Path) -> None:
         # `cases:` is an agent-kind key — the memory branch must own the
         # rejection, with its migration hint.

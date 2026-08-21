@@ -30,6 +30,11 @@ from neosian._foundation.conversation.compaction import (
 from neosian._foundation.conversation.ids import parse_conversation_id
 from neosian._foundation.conversation.projection import render_view
 from neosian._foundation.conversation.recall import create_recall_turn_tool
+from neosian._foundation.conversation.reflection import (
+    ReflectionConfig,
+    ReflectionResult,
+    run_reflection,
+)
 from neosian._foundation.conversation.wiring import (
     DEFAULT_MEMORY_MOUNT_PATH,
     derive_config,
@@ -76,6 +81,11 @@ class Conversation:
     Compaction is default-on (ledger #28); `CompactionConfig(enabled=
     False)` disables the automatic trigger, `compact()` always runs.
 
+    Reflection (§15) is default-on the same way: a memory-bearing
+    `aclose()` distills what this instance's sends are worth keeping
+    into deliberate memory writes, and `reflect()` is the explicit
+    form. `ReflectionConfig(enabled=False)` disables the close rider.
+
     One internal `AgentSession` backs every send *and* compaction's
     distillation calls — one cached client per provider, and sticky
     fallback state across sends (§9.5.14). `aclose()` releases the pool;
@@ -95,6 +105,7 @@ class Conversation:
         memory_scope: str | None = None,
         memory_mount_path: str = DEFAULT_MEMORY_MOUNT_PATH,
         compaction: CompactionConfig | None = None,
+        reflection: ReflectionConfig | None = None,
     ) -> None:
         self._conversation_id = str(parse_conversation_id(conversation_id))
         self._store = store
@@ -113,6 +124,7 @@ class Conversation:
             memory_mount_path=memory_mount_path,
         )
         self._compaction = compaction if compaction is not None else CompactionConfig()
+        self._reflection = reflection if reflection is not None else ReflectionConfig()
         if self._base_config.server_compaction:
             # Log-projection replaces aged turns with log lines, dropping
             # any server compaction blocks they carried — the server would
@@ -125,6 +137,7 @@ class Conversation:
             )
         self._lock = asyncio.Lock()
         self._turns: list[ConversationTurn] = []
+        self._reflect_pending: list[ConversationTurn] = []
         self._projections: list[ConversationProjection] = []
         self._agent: Agent | None = None
         self._session: AgentSession | None = None
@@ -191,18 +204,52 @@ class Conversation:
                 )
             return await self._run_boundary()
 
-    async def aclose(self) -> None:
-        """Release the client pool; idempotent.
+    async def reflect(self) -> ReflectionResult:
+        """Distill this instance's sends into memory writes now (§15).
+
+        Ignores `enabled` — an explicit call is explicit intent. No-ops
+        to an empty result without memory mounts or when every send is
+        already reflected; a successful pass clears the pending turns
+        (a failed model call leaves them, so a later call retries).
+        Writes surface in the next conversation's frozen index —
+        reflection never refreshes this instance's (§9.5.10).
+        """
+        async with self._lock:
+            await self._ensure_started()
+            return await self._run_reflection()
+
+    async def aclose(self) -> ReflectionResult | None:
+        """Reflect if due (§15), then release the client pool; idempotent.
 
         A release, not a destroy: a later `send()` opens a fresh pool.
-        Deliberately does not take the send lock — waiting on it would
-        deadlock on a stream the consumer abandoned (the generator holds
-        the lock until collected). Closing under a live stream fails
-        that stream; finish or abandon it first.
+        Deliberately never *waits* on the send lock — that would deadlock
+        on a stream the consumer abandoned (the generator holds the lock
+        until collected) — so under a held lock reflection is skipped
+        with a warning and the pool still closes. Closing under a live
+        stream fails that stream; finish or abandon it first. Reflection
+        errors are logged, never raised: a close always closes.
         """
+        result: ReflectionResult | None = None
+        if (
+            self._reflection.enabled
+            and self._memory_config is not None
+            and self._reflect_pending
+        ):
+            if self._lock.locked():
+                logger.warning("aclose() under a held send lock — skipping reflection")
+            else:
+                async with self._lock:
+                    try:
+                        result = await self._run_reflection()
+                    except Exception:
+                        logger.warning(
+                            "Reflection at close failed; closing anyway",
+                            exc_info=True,
+                        )
         session, self._session = self._session, None
         if session is not None:
             await session.close()
+        return result
 
     async def __aenter__(self) -> Self:
         # No I/O — lazy start (§9.5.9) stays literally true; call
@@ -274,6 +321,24 @@ class Conversation:
     def _view(self) -> list[Message]:
         return render_view(self._turns, self._projections)
 
+    async def _run_reflection(self) -> ReflectionResult:
+        """Reflect this instance's unreflected turns; caller holds the lock."""
+        if self._memory_config is None or not self._reflect_pending:
+            return ReflectionResult()
+        assert self._agent is not None
+        result = await run_reflection(
+            memory_config=self._memory_config,
+            turns=self._reflect_pending,
+            acquire=self._session_for_run()._get_or_create_client,
+            model=self._reflection.model or self._base_config.model,
+            actor=self._conversation_id,
+        )
+        if result.model is not None:
+            # The distillation call landed (even with zero writes) — a
+            # None model means it degraded, leaving the turns for a retry.
+            self._reflect_pending = []
+        return result
+
     async def _run_boundary(self) -> CompactionResult:
         assert self._agent is not None
         result = await run_boundary(
@@ -328,6 +393,7 @@ class Conversation:
             self._conversation_id, (user, *captured.turn_messages)
         )
         self._turns.append(turn)
+        self._reflect_pending.append(turn)
 
     async def _send_blocking(self, user: Message) -> AgentResponse:
         async with self._lock:

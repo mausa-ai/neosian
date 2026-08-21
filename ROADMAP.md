@@ -1,6 +1,6 @@
 # Neosian Roadmap
 
-> **▶ Current phase: NR — Reflection**
+> **▶ Current phase: NG — The gardener & scale**
 >
 > *(2026-08-21: the 1.0 arc opens — see "The 1.0 arc" below. The lane is
 > ruled: neosian is the **state layer for production agents** — durable
@@ -958,9 +958,9 @@ Document-set write policy noted into NP; eval `seed:` into NG; NC6
 (external yardstick, LongMemEval candidate) joins the background
 track.
 
-## NR — Reflection (v0.74)
+## NR — Reflection (v0.74) ✅ 2026-08-21
 
-DESIGN: §9 — plus the reflection § this phase writes.
+DESIGN: §9 — plus §15, the reflection § this phase wrote.
 
 Session-boundary auto-memory: the missing link between the history
 layer and the memory layer.
@@ -968,18 +968,49 @@ layer and the memory layer.
 - Opens with the options-first discussion: trigger (`aclose()` vs the
   compaction boundary vs explicit), default-on vs opt-in, the
   consent/review surface, composition with the frozen-index rule, spend
-  visibility.
+  visibility. *(✅ ruled — ledger #85–#88)*
 - End-of-conversation distillation — "what from this session is worth
   keeping" — as deliberate writes through the shared dispatcher:
   audited (`actor = conversation_id`), dedup-disciplined (check before
   create), batched structured output (the distill.py idiom), µ$ folded
-  into the close's accounting.
+  into the close's accounting. *(✅ `reflection.py` + `reflect()` +
+  the aclose rider; spend rides `ReflectionResult` — ledger #87)*
 - Harness scenarios: boundary writes happen, dedup respected, nothing
-  secret stored.
+  secret stored. *(✅ `reflect:` session key + the pack's
+  `reflection-close`; negatives in the unit tier)*
 
 **Done when:** a Conversation that never explicitly wrote memory ends
-its session and the store holds the right facts — scripted keylessly;
-baselines re-run with reflection on.
+its session and the store holds the right facts — scripted keylessly
+*(✅ pinned)*; baselines re-run with reflection on *(keyless pack green
+14/14; the per-provider external dispatch is carried to /ship and lands
+in BASELINES.md per the NV discipline)*.
+
+**Shipped v0.74.0 (2026-08-21), one session.** Rulings (options-first,
+user confirmed): public `reflect()` mirroring `compact()` + a
+**default-on** `aclose()` rider (skip-sendless; a held send lock skips
+with a warning, the pool always closes; per-request hosts — the FastAPI
+example, which closes per turn — set `enabled=False` and call
+`reflect()` at their real boundary); receipts-no-gate with
+`actor = conversation_id` (approval is NT's seam, write events NP's);
+the frozen index untouched (§9.5.10 keeps its one refresh point; writes
+surface next conversation; spend on `ReflectionResult`, `aclose() ->
+ReflectionResult | None`); harness = runner-level reflection (#65
+stands). Shipped: `conversation/reflection.py` — `ReflectionConfig` /
+`ReflectionWrite` / `ReflectionResult`, one structured-output call (the
+promoted `structured_call` shared with distill) whose payload shows
+every writable mount's live raw bodies + the `render_turn` transcript,
+ops (`create`/`str_replace`/`delete` only) executed through
+`memory/dispatch.py`, degrade-only failure; pending-turn tracking in
+core (a landed call clears, a degraded one retries); `assets/prompts/
+reflection.yaml` joins the registry AND the BASELINES fingerprint gate;
+root/facade `__all__` +3; the encapsulation pin gains `._create_client`
+(the runner's acquire — scripted cells consume the script's next turn
+as the reflection response); pack 6 → 7 scenarios (`reflection-close`:
+bare turn expects, counts+content+forbidden only — in-session and
+boundary writes are both legitimate histories), two reflection
+negatives; README/docs-page/example updated. DESIGN §15, §9.5.14
+amended, ledger #85–#88. 1893 unit tests, zero keys; `neosian eval`
+14/14 by hand with the version rows carrying the boundary actors.
 
 ## NG — The gardener & scale (v0.75–0.76)
 
@@ -2011,3 +2042,37 @@ membership is standing, not achieved.
   NW step 0 ✅, downstream version markers +1 (NR v0.74 … NM v0.80).
   ECOSYSTEM untouched (verified clean; one-repo move). 1869 unit
   tests, zero keys; v0.73.0.
+- 2026-08-21 | NR | **Conversations reflect at close; NR closes.**
+  Rulings (options-first, user confirmed, ledger #85–#88): `reflect()`
+  (the `compact()` shape) + a default-on `aclose()` rider —
+  `ReflectionConfig(enabled=True, model=None)` resolved like
+  CompactionConfig, `enabled` gates the rider only, skip-sendless, a
+  held send lock skips with a warning (the pool always closes), a
+  degraded call leaves the pending turns for a retry; receipts, no
+  gate — `ReflectionResult(writes, usage, model)`,
+  `actor = conversation_id`, version rows the undo substrate (approval
+  = NT, write events + undo = NP); the frozen index untouched (§9.5.10
+  keeps its one refresh point — writes surface next conversation;
+  spend rides the result, `aclose() -> ReflectionResult | None`);
+  harness = runner-level reflection, #65 stands. The engine
+  (`conversation/reflection.py`, agent-free, in the storage-seam
+  contract): one structured-output call — `structured_call` promoted
+  from distill.py and shared — over a payload of every writable
+  mount's live raw bodies (dedup as evidence: update what you can
+  see) + the `render_turn` transcript; ops restricted to
+  create/str_replace/delete; every op through `memory/dispatch.py`;
+  degrade-only. `assets/prompts/reflection.yaml` (+ registry) joins
+  the BASELINES fingerprint gate as its third file. Harness:
+  `MemorySession.reflect` runs the same engine post-loop via
+  `Agent._create_client` (encapsulation pin extended deliberately);
+  pack 6 → 7 (`reflection-close` — bare turn expects,
+  counts+content+forbidden only, since in-session and boundary writes
+  are both legitimate); dup/token negatives in the unit tier. The
+  done-when pinned in `test_reflection.py` (chat-only session 1 →
+  aclose → store truth with `actor == conversation_id` → session 2
+  index + view). Root/facade `__all__` +3; README/memory docs page/
+  FastAPI example (`enabled=False` + why) updated; DESIGN §15 +
+  §9.5.14 amendment. Carried to /ship: the per-provider external
+  dispatch of the grown pack (recorded in BASELINES.md — the keyless
+  14/14 stands meanwhile). 1893 unit tests, zero keys; v0.74.0 +
+  `nr-done`. Pointer → NG.

@@ -10,10 +10,13 @@ after each session through a freshly constructed store.
 
 import dataclasses
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 
 from neosian._foundation.agent.base import Agent
 from neosian._foundation.agent.hooks import TurnEvent
+from neosian._foundation.conversation.reflection import run_reflection
+from neosian._foundation.conversation.types import ConversationTurn
 from neosian._foundation.conversation.wiring import derive_config
 from neosian._foundation.evaluation.capture import (
     FallbackRecorder,
@@ -166,13 +169,23 @@ async def _run(
 
         aborted = False
         messages: list[Message] = []
+        session_turns: list[ConversationTurn] = []
         for turn in session.turns:
             stub_results.enter_turn(turn.tool_results)
             capture.enter_turn()
-            messages.append(Message(role=Role.USER, content=turn.user))
+            user = Message(role=Role.USER, content=turn.user)
+            messages.append(user)
             start = time.perf_counter()
             response = await agent.run(messages, stream=False)
             latency_ms += (time.perf_counter() - start) * 1000
+            session_turns.append(
+                ConversationTurn(
+                    conversation_id=scenario.name,
+                    turn=len(session_turns) + 1,
+                    messages=(user, *response.turn_messages),
+                    created_at=datetime.now(UTC),
+                )
+            )
 
             if recorder.event is not None:
                 return CaseResult(
@@ -207,6 +220,20 @@ async def _run(
 
         if aborted:
             break
+        if session.reflect:
+            # The §15 boundary pass, exactly as a Conversation close runs
+            # it: the same engine over the session transcript, the writes
+            # audited under the eval actor. `agent._create_client` is the
+            # acquire seam — scripted cells reuse the session FakeClient
+            # (the reflection response is the script's next turn),
+            # external cells build a real client.
+            await run_reflection(
+                memory_config=memory_config,
+                turns=session_turns,
+                acquire=agent._create_client,
+                model=model,
+                actor=actor,
+            )
         clean = await _score_session(session, mounts, store_root, turn_results)
         if not clean and stop_on_failure:
             break

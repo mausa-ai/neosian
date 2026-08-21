@@ -38,6 +38,11 @@ from neosian._foundation.conversation.compaction import (
 )
 from neosian._foundation.conversation.core import Conversation
 from neosian._foundation.conversation.ids import parse_conversation_id
+from neosian._foundation.conversation.reflection import (
+    ReflectionConfig,
+    ReflectionResult,
+    ReflectionWrite,
+)
 from neosian._foundation.conversation.types import (
     CONVERSATION_FORMAT_VERSION,
     ConversationProjection,
@@ -256,6 +261,9 @@ __all__ = [
     "ConversationProjection",
     "CompactionConfig",
     "CompactionResult",
+    "ReflectionConfig",
+    "ReflectionResult",
+    "ReflectionWrite",
     "CONVERSATION_FORMAT_VERSION",
     "parse_conversation_id",
     # Utilities

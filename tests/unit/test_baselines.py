@@ -20,6 +20,7 @@ _BASELINES = _REPO_ROOT / "BASELINES.md"
 # section in the same change.
 _GATED = (
     "neosian/assets/prompts/memory.yaml",
+    "neosian/assets/prompts/reflection.yaml",
     "examples/eval_memory_baseline.yaml",
 )
 

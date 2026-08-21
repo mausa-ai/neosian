@@ -737,8 +737,11 @@ substrate, so ids differing only in case are not guaranteed distinct.
     (entering does no I/O — lazy start is ruling 9). Not closing is safe:
     the pool lives as long as the process, exactly as an unclosed
     `AgentSession` does, and a send after `aclose()` opens a fresh pool.
-    `aclose()` never takes the send lock (an abandoned stream holds it
-    until collected) — finish or abandon a stream before closing.
+    `aclose()` never *waits* on the send lock (an abandoned stream holds
+    it until collected) — finish or abandon a stream before closing.
+    Since NR, a memory-bearing close first runs the §15 reflection pass
+    and returns its `ReflectionResult | None` (a lock still held skips
+    reflection with a warning; the pool always closes).
 
 **§9.6 Compaction v1 — log-projection (spec; implemented in slice B).** The
 context window renders a *view* of the append-only history: recent turns
@@ -993,6 +996,10 @@ never a silent divergence. Numbering is monotonic, never reused.
 | 82 | The shipped pack pins exact document paths (`/user/preferences`); the first real runs (NV, 2026-08-21) went red on all four providers while the models filed facts correctly under their own names (`/user/preferences.md`, `/user/drink.txt`) | **`path_prefix` document expectations** (user ruling): exactly one live document under the prefix satisfies `content` — zero is the fact unrecorded, two is the duplicate; `versions`/`actions` apply to the matched document. The pack reshapes onto it; history pins stay only where the disciplined path is unambiguous (first writes, recall's no-new-writes); exact `path:` keeps its strictness in the unit-tier negatives | Nothing in the prompt pack names documents, so exact paths measured an unspecified convention — publishing those reds as "failed write discipline" would be the motivated-reasoning mode ROADMAP's benchmark-honesty risk names, inverted. The pins that were communicated (mount routing, no secrets, update-not-duplicate, delete-what-proved-wrong) all survive, and the negatives prove the scoring still bites on each |
 | 83 | OTel via a wrapper/middleware layer, or spans nested by buffering events per run until `on_turn` | **`neosian.otel.otel_hooks()` → a plain `AgentHooks`** (facade-only surface, root `__all__` untouched); flat post-hoc spans, one per hook event, `start = end − duration_ms`; gen_ai semconv names + `neosian.*`; names/models/token-counts/outcomes only — never message content, tool arguments, or results; extra = `opentelemetry-api` only (SDK in the dev group solely for the in-memory exporter tests) | Hooks fire after the observed work with its wall time — flat spans state exactly what the seam knows, while parenting would require correlating events that carry no run identity and holding state in the observer; payload-free spans keep telemetry from becoming a second store of user data; api-only keeps the extra dependency-light since the host owns the SDK/exporter choice |
 | 84 | A fourth provider (Groq) in the registry, with guardrails hard-wired to it: a raw SDK client, the policy model a constant only that provider hosts, guardrail spend invisible, the checker unreachable from FakeProvider | **The provider exits the registry (NW step 0, user ruling — membership is baseline-gated, BASELINES.md holds the measured evidence) and guardrails re-platform**: `GuardrailsConfig.model: Model \| None` runs the classifier prompt through a neosian client from `Agent._create_client` (the #32 seam, honoring `client_factory`), `None` = the agent's own model; no explicit temperature (some models reject non-defaults); a missing key for the guardrail provider raises at construction, never a silent fail-open at check time. `AgentConfig.model` default → `CEREBRAS_GPT_OSS_120B`. Guardrail usage folding into run accounting stays deferred | The safeguard model had no other host, so the exit forced the re-platform the design owed anyway: guardrails carried a hidden second-provider key dependency (the exact coupling that made the exit painful) and could not be tested keylessly; via `_create_client` they ride the fakes like every other seam. Deleting a provider is honest only whole — client, enum rows, pricing, CI lane, suites — never a half-maintained stub |
+| 85 | Reflection triggered by `aclose()` alone, by the compaction boundary, or only by an explicit call; opt-in default | **Public `Conversation.reflect()` (the `compact()` shape) plus a default-on `aclose()` rider** (NR, user ruling): `ReflectionConfig(enabled=True, model=None)` resolves like CompactionConfig, `enabled` gates the rider only, explicit `reflect()` always runs; the pass covers this instance's unreflected sends and is skipped when there are none; a degraded model call leaves them pending for a retry | `aclose()` alone is unreliable — crash paths never reach it, §9.5.14 blesses never closing, and a per-request host (the FastAPI example) closes per *turn*; the compaction boundary is mid-session paging, not a session boundary. Default-on completes the behavior a memory-bearing conversation already opted into; per-request hosts set `enabled=False` and call `reflect()` at their real boundary |
+| 86 | A prefixed reflection actor (`reflect:<id>`), or a pre-write approval callback | **Receipts, no gate**: `ReflectionResult` lists every landed write (command, path, live version); `actor = conversation_id`, identical to in-session writes; version rows are the undo substrate | The phase text's own audit wording; a reflection-specific approval seam would pre-empt NT's gate design, and host-visible write events + undo are NP's deliverable — nothing here may freeze their shape early |
+| 87 | Reflection as a second legitimate memory-index refresh point | **No new refresh point** — §9.5.10's boundary stays the only one; reflection writes surface in the *next* conversation's frozen index, and spend rides the returned `ReflectionResult` (`aclose()` now returns `ReflectionResult \| None`) instead of folding into any send | Refreshing at close buys nothing (the instance is ending) and mid-session `reflect()` refreshes would invalidate the prompt cache without a compaction boundary's justification; the frozen-index rule already defines writes-surface-next-conversation as correct |
+| 88 | Harness sessions become Conversations so reflection fires through the real `aclose()` | **Runner-level reflection** (#65 stands): `MemorySession.reflect` runs the same `run_reflection` engine over the session transcript after the turn loop, actor = the eval actor, acquire = `Agent._create_client` (the #32/#84 seam, honoring `client_factory` — scripted cells consume the script's next turn as the reflection response); the encapsulation pin gains the `._create_client` token with its sanctioned callers | Sessions-as-bare-Agents is what makes cells cheap and store truth the arbiter; the engine — not the trigger plumbing — is the measured behavior, and the trigger is pinned separately in the unit tier |
 
 ## §13 Evaluation (NE)
 
@@ -1409,3 +1416,78 @@ and upgrade (`mcp install`, print mode writing nothing; the
 missing-client refusal creating nothing) — at the interpreter-start
 tax #78 sanctioned, with no skip path: if the console script stops
 installing, the gate goes red.
+
+## §15 Reflection (NR)
+
+Session-boundary auto-memory — the missing link between the history
+layer and the memory layer: a Conversation that never explicitly wrote
+memory ends its session and the store holds the right facts. Appended
+after §14 for the #63 reason. Rulings: ledger #85–#88.
+
+**The engine** (`_foundation/conversation/reflection.py`, agent-free —
+it joins the storage-seam import contract). One batched structured-output
+call through the injected `acquire` lease (the distill idiom; the two
+share `structured_call`): the system prompt is the shipped
+`reflection.system` asset, the payload is the current memory — every
+*writable* mount with its live document bodies, raw so an emitted
+`old_str` matches stored content exactly; read-only mounts take no
+operations and are not shown — followed by the session transcript
+(`render_turn`, verbatim). The model returns `ReflectionBatch`: a list
+of operations over the deliberately tight command subset
+`create`/`str_replace`/`delete` (`insert` and `rename` add nothing at a
+boundary; the schema, not runtime enforcement, is the steer). Each
+operation executes through the shared dispatcher
+(`memory/dispatch.py`) — the same ladder as the four transports — with
+`actor = conversation_id`, so every write lands as an audited version
+row indistinguishable in mechanism from an in-session tool write.
+
+**Dedup is evidence-based, not exhorted**: the payload *shows* the live
+documents, and the prompt's rule is update-what-you-can-see. The
+no-secrets rule rides the same prompt and is measured, not trusted (the
+pack's `forbidden` pins and the unit-tier negatives).
+
+**Failure is degrade-only.** A failed model call warns and returns an
+empty result — the affected turns stay pending for a later retry; a
+failed operation warns and is skipped while the rest land; reflection
+never raises into a close (`aclose()` catches everything). A close
+always closes.
+
+**Trigger and default (ledger #85).** `Conversation.reflect()` mirrors
+`compact()`: takes the send lock, always runs regardless of `enabled`,
+covers exactly this instance's unreflected sends (tracked as pending
+turns, cleared when a call lands — even with zero writes), and returns
+`ReflectionResult(writes, usage, model)`. The `aclose()` rider is
+default-on (`ReflectionConfig(enabled=True)`, resolved like
+CompactionConfig; `model=None` = the agent's own model): a
+memory-bearing close with pending sends reflects first, then releases
+the pool, and returns the result — `aclose() -> ReflectionResult |
+None`. The rider never *waits* on the send lock: held (an abandoned
+stream) means reflection is skipped with a warning and the pool still
+closes. A sendless instance closes silently. Per-request hosts — one
+Conversation per HTTP request, the FastAPI example — set
+`enabled=False` and call `reflect()` at their real session boundary.
+
+**Receipts, no gate (ledger #86).** `ReflectionWrite(command, path,
+version)` per landed write; the version rows behind them are the durable
+audit trail and the undo substrate. No approval callback (NT owns the
+interception seam) and no stream events (NP owns write events + undo).
+
+**The frozen index is untouched (ledger #87).** Reflection writes
+surface in the next conversation's frozen index — the rule's own
+design — and §9.5.10's compaction boundary remains the only legitimate
+refresh point. Spend is visible on the result object only; nothing
+folds into a send.
+
+**Measured (ledger #88).** `MemorySession.reflect` on the harness runs
+the same engine over the session transcript after the turn loop
+(actor = the eval actor; acquire = `Agent._create_client`, so scripted
+cells consume the script's next turn as the reflection response and
+external cells make one real call). The shipped pack's
+`reflection-close` scenario keeps turn expectations deliberately bare
+and pins counts + content + forbidden only — a real model may
+legitimately also write in-session, and in-session and boundary writes
+produce different, equally correct version histories. The
+discriminating negatives (a reflection duplicate, a reflected token)
+live in the unit tier per the #67 idiom. `reflection.yaml` joins
+`memory.yaml` and the pack behind the BASELINES.md fingerprint gate:
+no reflection-prompt change without a recorded baseline re-run.

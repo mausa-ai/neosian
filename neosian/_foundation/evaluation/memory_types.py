@@ -90,13 +90,18 @@ class MemorySession:
 
     The memory index regenerates between sessions (the frozen-index
     rule), so recall is honestly measurable only in a later session.
-    `script` runs the session keylessly on its own scripted FakeClient.
+    `script` runs the session keylessly on its own scripted FakeClient
+    — with `reflect`, the reflection call consumes the script's next
+    turn after the last agent turn. `reflect` runs the §15 reflection
+    engine over the session's transcript at session end, before the
+    store check — the boundary-write behavior NR measures.
     """
 
     name: str
     turns: tuple[EvalTurn, ...]
     script: tuple[FakeTurn, ...] | None = None
     expect_store: StoreExpectation = field(default_factory=StoreExpectation)
+    reflect: bool = False
 
 
 @dataclass(frozen=True, slots=True)

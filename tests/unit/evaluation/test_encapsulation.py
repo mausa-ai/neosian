@@ -27,6 +27,14 @@ _ALLOWED_CALLERS = {
     "._tool_metadata": {
         Path("_foundation/tools/base.py"),  # the attribute's owner
     },
+    # The acquire seam (DESIGN §3): Agent passes it to RunContext, the
+    # session caches through it, and the memory runner's reflection step
+    # borrows it — the one sanctioned reach, honoring client_factory.
+    "._create_client": {
+        Path("_foundation/agent/base.py"),  # the owner (+ guardrails)
+        Path("_foundation/agent/session.py"),  # the session cache
+        Path("_foundation/evaluation/memory_runner.py"),  # reflection acquire
+    },
 }
 
 
@@ -47,3 +55,6 @@ class TestAgentPrivatesStayAgentOwned:
 
     def test_tool_metadata_stays_inside_its_owning_module(self) -> None:
         assert _callers("._tool_metadata") == _ALLOWED_CALLERS["._tool_metadata"]
+
+    def test_the_acquire_seam_is_reached_only_where_sanctioned(self) -> None:
+        assert _callers("._create_client") == _ALLOWED_CALLERS["._create_client"]

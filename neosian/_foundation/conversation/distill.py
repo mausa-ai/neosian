@@ -67,8 +67,8 @@ async def distill(
     """One line of digest per (turn, prose) item; {} on any failure."""
     payload = "\n\n".join(f"[{turn}]\n{prose}" for turn, prose in items)
     system = render(get_prompt("compaction.distill"), digest_chars=str(digest_chars))
-    parsed, usage, api_model = await _structured_call(
-        acquire, model, system, payload, DigestBatch, "distillation"
+    parsed, usage, api_model = await structured_call(
+        acquire, model, system, payload, DigestBatch, "Compaction distillation"
     )
     if parsed is None:
         return {}, None, None
@@ -96,8 +96,8 @@ async def summarize_epochs(
         for last_turn, lines in blocks
     )
     system = render(get_prompt("compaction.epoch"), epoch_chars=str(budget))
-    parsed, usage, api_model = await _structured_call(
-        acquire, model, system, payload, EpochBatch, "epoch summarization"
+    parsed, usage, api_model = await structured_call(
+        acquire, model, system, payload, EpochBatch, "Compaction epoch summarization"
     )
     if parsed is None:
         return {}, None, None
@@ -110,7 +110,7 @@ async def summarize_epochs(
     return summaries, usage, api_model
 
 
-async def _structured_call[T: BaseModel](
+async def structured_call[T: BaseModel](
     acquire: Callable[[Provider], BaseLLMClient],
     model: Model,
     system: str,
@@ -118,6 +118,8 @@ async def _structured_call[T: BaseModel](
     schema: type[T],
     what: str,
 ) -> tuple[T | None, Usage | None, str | None]:
+    """One degrade-safe structured-output call through the lease — shared
+    by compaction's two batches and reflection (§15)."""
     try:
         client = acquire(model.provider)
         response = await client.complete(
@@ -136,5 +138,5 @@ async def _structured_call[T: BaseModel](
         assert isinstance(parsed, schema)
         return parsed, response.usage, response.model
     except Exception:
-        logger.warning("Compaction %s failed; degrading", what, exc_info=True)
+        logger.warning("%s failed; degrading", what, exc_info=True)
         return None, None, None

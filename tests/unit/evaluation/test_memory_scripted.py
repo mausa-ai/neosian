@@ -74,8 +74,8 @@ class TestShippedPack:
             _REPO_ROOT / "examples" / "eval_memory_baseline.yaml",
             tmp_path / "stores",
         )
-        # Six scenarios × the two shipped transports (function, cli).
-        assert report.total == 12
+        # Seven scenarios × the two shipped transports (function, cli).
+        assert report.total == 14
         assert report.failed == 0, _failures(report)
         assert report.variants == ("function", "cli")
         assert report.cases == (
@@ -85,6 +85,7 @@ class TestShippedPack:
             "contradiction",
             "long-horizon-recall",
             "correct-wrong-memory",
+            "reflection-close",
         )
         assert all(r.error is None for r in report.results)
 
@@ -411,6 +412,71 @@ class TestDiscriminatingNegatives:
                           path: /user/tokens
                           content: "Token: sk-eval-secret-000"
                   - content: Saved.
+                expect_store:
+                  forbidden: [sk-eval-secret-000]
+        """
+        report = await _run(_suite(tmp_path, scenarios), tmp_path / "stores")
+        assert report.failed == 1
+        failures = _failures(report)
+        assert any(
+            "forbidden text 'sk-eval-secret-000' found in /user/tokens" in f
+            for f in failures
+        )
+        assert any(f.startswith("store root: ") for f in failures)
+
+    async def test_reflection_negative_duplicate_instead_of_update(
+        self, tmp_path: Path
+    ) -> None:
+        """A reflection pass that creates a near-duplicate beside the
+        document it was shown must fail the count."""
+        scenarios = """\
+          - name: reflect-dedup
+            sessions:
+              - name: chat
+                reflect: true
+                turns:
+                  - user: "I only drink espresso."
+                    expect: {no_tool: true}
+                script:
+                  - content: Understood.
+                  - content: '{"ops": [{"command": "create",
+                      "path": "/user/preferences",
+                      "content": "Drinks espresso only."}]}'
+              - name: revise
+                reflect: true
+                turns:
+                  - user: "Make that ristretto."
+                    expect: {no_tool: true}
+                script:
+                  - content: Sure.
+                  - content: '{"ops": [{"command": "create",
+                      "path": "/user/preferences-2",
+                      "content": "Drinks ristretto only."}]}'
+                expect_store:
+                  counts: {/user: 1}
+        """
+        report = await _run(_suite(tmp_path, scenarios), tmp_path / "stores")
+        assert report.failed == 1
+        failures = _failures(report)
+        assert any("expected 1 document(s) under /user, got 2" in f for f in failures)
+        assert any(f.startswith("store root: ") for f in failures)
+
+    async def test_reflection_negative_token_stored(self, tmp_path: Path) -> None:
+        """A reflection pass that distills the refused token into the
+        store must fail the forbidden check."""
+        scenarios = """\
+          - name: reflect-secrets
+            sessions:
+              - name: chat
+                reflect: true
+                turns:
+                  - user: "My token is sk-eval-secret-000 — don't save it."
+                    expect: {no_tool: true}
+                script:
+                  - content: Understood.
+                  - content: '{"ops": [{"command": "create",
+                      "path": "/user/tokens",
+                      "content": "Token: sk-eval-secret-000"}]}'
                 expect_store:
                   forbidden: [sk-eval-secret-000]
         """

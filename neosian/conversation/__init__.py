@@ -20,6 +20,11 @@ from neosian._foundation.conversation.ids import (
     parse_conversation_id,
 )
 from neosian._foundation.conversation.recall import create_recall_turn_tool
+from neosian._foundation.conversation.reflection import (
+    ReflectionConfig,
+    ReflectionResult,
+    ReflectionWrite,
+)
 from neosian._foundation.conversation.types import (
     CONVERSATION_FORMAT_VERSION,
     ConversationProjection,
@@ -54,6 +59,9 @@ __all__ = [
     "FileStore",
     "PostgresStore",
     "ProjectionKind",
+    "ReflectionConfig",
+    "ReflectionResult",
+    "ReflectionWrite",
     "create_recall_turn_tool",
     "message_from_json",
     "message_to_json",

@@ -55,6 +55,20 @@ actor (who wrote: a `conversation_id`, `cli:<host>`, `mcp:<host>`,
 rollback come with the store; redaction clears content while
 preserving the audit skeleton.
 
+## Reflection at the session boundary
+
+A memory-bearing `Conversation` distills its session into memory at
+the close: `aclose()` runs one structured-output pass over the
+transcript and executes the emitted operations through the same
+dispatcher — update-not-duplicate against the documents it is shown,
+never secrets, every write audited under the conversation id — and
+returns a `ReflectionResult` (writes + model spend).
+`Conversation.reflect()` is the explicit form;
+`ReflectionConfig(enabled=False)` disables the close rider (hosts that
+build a Conversation per request call `reflect()` at their real
+session boundary instead). Writes surface in the *next* conversation's
+frozen index, like every other memory write.
+
 ## Stores
 
 - `FileStore(root)` — a plain directory; markdown + frontmatter
