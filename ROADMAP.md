@@ -49,7 +49,9 @@
 ## Phase ids, tags, versions
 
 - Phase ids: `NH`, `NS`, `NE`, `N0`–`N4` (arc 1); `NA`, `NV`, `NR`, `NG`,
-  `NP`, `NT`, `NM`, `NZ` + the `NC` background track (the 1.0 arc). Commit
+  `NP`, `NT`, `NM`, `NZ` + the `NC` background track (the 1.0 arc);
+  `NW` — the provider-gate track (step 0 immediate, the slate
+  post-NZ). Commit
   subjects `<ID>: <what became true>` (≤ 72 chars); `meta:` for repo
   housekeeping. The `v:X.Y.Z. …` subject style is retired (DESIGN §12 #7).
 - Progress axis: annotated **`<id>-done`** tags at each phase close.
@@ -1171,6 +1173,55 @@ The three gates, checked, then the promise:
 **Done when:** `v1.0.0` exists, carries the promise, and nothing in it
 is asserted without evidence.
 
+## NW — The provider gate (the membership track)
+
+Provider membership is **baseline-gated** (user ruling 2026-08-21 —
+the Groq lesson): a provider row exists only while its memory
+baselines stay green, measured per serving stack, never per brand —
+the same weights scored 3/6 on Groq and 12/12 on Cerebras. A
+candidate is wired, the shipped pack runs scriptless against it, the
+row lands in BASELINES.md; what stays green stays, what does not
+exits. The weekly runs are the standing re-test. Sequenced at the
+very end deliberately: the slate opens **after NZ** (provider breadth
+is not a goal — the lane ruling), and NC2's `register_model` +
+OpenAI-compatible `base_url` is the cheap door most candidates enter
+through — a first-party client is earned by a green row plus a
+feature the compat dialect cannot carry.
+
+- **Step 0 — Groq exits (ruled 2026-08-21; the next session, not
+  post-NZ).** The 3/6 stochastic-emission row plus the membership
+  rule retire the provider. The removal audit found the one blocker:
+  **guardrails are hard-wired to Groq** —
+  `create_guardrail_client()` returns `AsyncGroq` and
+  `GuardrailDefaults.POLICY_MODEL` is `GROQ_GPT_OSS_SAFEGUARD_20B`,
+  a model no other host serves (verified 2026-08-21: OpenRouter
+  forwards it to Groq) — so the exit session opens options-first on
+  the guardrail engine before a line of removal. ECOSYSTEM and the
+  kit are groq-free (verified); ~66 in-repo files. BASELINES.md
+  keeps the Groq row as dated history — it is the ruling's evidence.
+- **The slate (user, 2026-08-21)** — a menu, not a queue; each
+  candidate enters through the gate above:
+  - *Model platforms, mostly OpenAI-compatible (NC2 territory):*
+    xAI (Grok), DeepSeek, Moonshot (Kimi), Zhipu (GLM), Alibaba
+    (Qwen), Mistral, MiniMax.
+  - *Google:* Gemini — native API for full features; the compat
+    endpoint is the cheap first pass.
+  - *Clouds (a different integration class — auth is the work:
+    SigV4 / Entra ID / OAuth):* AWS Bedrock, Azure AI Foundry,
+    GCP Vertex.
+  - *Open-weight families, not providers:* Gemma, Meta Llama (and
+    Qwen/Kimi/GLM/DeepSeek above when third-party-hosted) — a
+    family's row always names a provider+model pair; the
+    Groq-vs-Cerebras split is the proof a family alone measures
+    nothing.
+  - *On the menu when demand arrives:* Cohere, the aggregators
+    (Together, Fireworks, OpenRouter), local serving (Ollama, vLLM),
+    NVIDIA NIM.
+
+**Done when (per candidate):** the row stands green in BASELINES.md
+over two consecutive weekly runs. **Done when (track):** never —
+membership is standing, not achieved.
+
 ---
 
 ## Risks
@@ -1924,3 +1975,14 @@ is asserted without evidence.
   yardstick (LongMemEval candidate), NP gains the document-set
   write-policy revisit, NG the eval `seed:` note. 1899 unit tests,
   zero keys; v0.72.0 + `nv-done`. Pointer → NR.
+- 2026-08-21 | meta | **The provider gate; Groq ruled out.** Post-NV
+  review rulings (user): provider membership becomes baseline-gated —
+  the NW track written at the roadmap's end (step 0: Groq exits;
+  the slate: xAI/DeepSeek/Moonshot/Zhipu/Alibaba/Mistral/MiniMax
+  platforms, Gemini, the three clouds, Gemma/Llama as families, the
+  demand-driven menu; per-candidate done-when = two consecutive green
+  weekly rows). The removal audit sized the exit (~66 files;
+  ECOSYSTEM + kit verified groq-free) and found the blocker: the
+  guardrail engine is hard-wired to Groq and its safeguard model has
+  no other host — the exit session opens options-first there. Docs
+  only; no code touched.
