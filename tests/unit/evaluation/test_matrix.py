@@ -6,6 +6,11 @@ from pathlib import Path
 import pytest
 
 from neosian._foundation.evaluation.matrix import _needs_throttle, run_evaluation
+from neosian._foundation.evaluation.memory_types import (
+    MemoryEvalConfig,
+    MemoryScenario,
+    MemorySession,
+)
 from neosian._foundation.evaluation.results import CaseStatus, ProgressEvent
 from neosian._foundation.evaluation.types import (
     AgentEvalConfig,
@@ -15,6 +20,7 @@ from neosian._foundation.evaluation.types import (
     Variant,
 )
 from neosian._foundation.llm.fake import FakeTurn
+from neosian._foundation.memory.mounts import Mount
 from neosian._foundation.shared.types import Model, SystemPrompt, ToolName
 
 AGENT_FILE = """
@@ -126,6 +132,50 @@ class TestMatrix:
         assert failed.error is not None and "unknown tool" in failed.error
         good = report.result_for("base", "fake", "good")
         assert good is not None and good.passed is True
+
+
+@pytest.mark.unit
+class TestKindDispatch:
+    async def test_memory_config_routes_to_the_memory_matrix(
+        self, tmp_path: Path
+    ) -> None:
+        """The one dispatch branch (§13.12): a memory suite runs its
+        scenarios and reports transports on the variants axis."""
+        config = MemoryEvalConfig(
+            name="mem",
+            agent=_agent(tmp_path),
+            models=(Model.FAKE,),
+            mounts=(Mount(scope="user:eval", mount_path="user"),),
+            scenarios=(
+                MemoryScenario(
+                    name="s",
+                    sessions=(
+                        MemorySession(
+                            name="one",
+                            turns=(
+                                EvalTurn(user="hi", expect=Expectation(no_tool=True)),
+                            ),
+                            script=(FakeTurn(content="quiet"),),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        events: list[ProgressEvent] = []
+        report = await run_evaluation(
+            config, on_progress=events.append, store_root=tmp_path / "stores"
+        )
+
+        assert report.suite == "mem"
+        assert report.variants == ("function",)
+        assert report.models == ("fake",)
+        assert report.cases == ("s",)
+        assert report.total == 1 and report.passed == 1
+        assert [e.status for e in events] == [
+            CaseStatus.RUNNING,
+            CaseStatus.PASSED,
+        ]
+        assert (tmp_path / "stores" / "function" / "fake" / "s").is_dir()
 
 
 @pytest.mark.unit

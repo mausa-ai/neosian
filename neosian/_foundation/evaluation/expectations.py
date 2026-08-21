@@ -62,7 +62,7 @@ def parse_expectation(data: Any, case_name: str, where: str) -> Expectation:
         params=_parse_params(data.get("params"), case_name, where),
         sequence=_parse_sequence(data.get("sequence"), case_name, where),
         no_tool="no_tool" in data,
-        response=_parse_response(data.get("response"), case_name, where),
+        response=parse_response(data.get("response"), case_name, where),
     )
 
 
@@ -143,15 +143,19 @@ def _parse_sequence(
     return tuple(steps)
 
 
-def _parse_response(data: Any, case_name: str, where: str) -> tuple[ValueMatcher, ...]:
-    """`response:` is an explicit one-key matcher mapping — never a bare
-    string, so equals-vs-contains is always the author's stated intent.
-    `contains`/`regex` accept a list for all-of matching."""
+def parse_response(
+    data: Any, case_name: str, where: str, *, key_name: str = "response"
+) -> tuple[ValueMatcher, ...]:
+    """A text-matcher block is an explicit one-key matcher mapping —
+    never a bare string, so equals-vs-contains is always the author's
+    stated intent. `contains`/`regex` accept a list for all-of matching.
+    The memory kind parses document `content:` with `key_name`.
+    """
     if data is None:
         return ()
     err = (
-        f"{where}: 'response' must be a one-key mapping of "
-        'equals/contains/regex (e.g. response: {contains: "hello"})'
+        f"{where}: '{key_name}' must be a one-key mapping of "
+        f'equals/contains/regex (e.g. {key_name}: {{contains: "hello"}})'
     )
     if not (isinstance(data, dict) and len(data) == 1):
         raise EvalCaseInvalidError(case_name, err)
@@ -162,14 +166,14 @@ def _parse_response(data: Any, case_name: str, where: str) -> tuple[ValueMatcher
     values = inner if isinstance(inner, list) else [inner]
     if mode is MatchMode.EQUALS and len(values) != 1:
         raise EvalCaseInvalidError(
-            case_name, f"{where}: response 'equals' takes a single string"
+            case_name, f"{where}: {key_name} 'equals' takes a single string"
         )
     matchers: list[ValueMatcher] = []
     for value in values:
         if not isinstance(value, str):
             raise EvalCaseInvalidError(
                 case_name,
-                f"{where}: response '{key}' takes strings, "
+                f"{where}: {key_name} '{key}' takes strings, "
                 f"got {type(value).__name__}",
             )
         if mode is MatchMode.REGEX:

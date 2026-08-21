@@ -60,7 +60,11 @@ def match_turn(
         failures.extend(_match_sequence(expectation.sequence, visible))
 
     for matcher in expectation.response:
-        reason = _match_response(matcher, response_text)
+        reason = (
+            "response: no text in the assistant turn"
+            if not response_text
+            else match_text(matcher, response_text, label="response")
+        )
         if reason is not None:
             failures.append(reason)
 
@@ -137,20 +141,23 @@ def _match_sequence(
     return failures
 
 
-def _match_response(matcher: ValueMatcher, text: str | None) -> str | None:
-    if not text:
-        return "response: no text in the assistant turn"
+def match_text(matcher: ValueMatcher, text: str, *, label: str) -> str | None:
+    """Match model-authored prose: `contains` is case-insensitive (§13.4).
+
+    `label` locates the text in failure messages ("response", a document
+    path) — the memory kind scores document content with the same rules.
+    """
     if matcher.mode is MatchMode.EQUALS:
         if text == matcher.value:
             return None
-        return f"response: expected equals {matcher.value!r}, got {_clip(text)!r}"
+        return f"{label}: expected equals {matcher.value!r}, got {_clip(text)!r}"
     if matcher.mode is MatchMode.CONTAINS:
         if matcher.value.lower() in text.lower():
             return None
-        return f"response: expected to contain {matcher.value!r}, got {_clip(text)!r}"
+        return f"{label}: expected to contain {matcher.value!r}, got {_clip(text)!r}"
     # REGEX
     if matcher.value.search(text) is None:
-        return f"response: expected {matcher.describe()} to match, got {_clip(text)!r}"
+        return f"{label}: expected {matcher.describe()} to match, got {_clip(text)!r}"
     return None
 
 

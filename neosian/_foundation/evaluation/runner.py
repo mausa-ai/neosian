@@ -9,84 +9,26 @@ swallows its own observer's failure measures nothing.
 """
 
 import dataclasses
-import inspect
-import logging
 import time
-from collections.abc import Awaitable, Callable
 
 from neosian._foundation.agent.base import Agent
-from neosian._foundation.agent.hooks import AgentHooks, FallbackEvent, ToolEvent
-from neosian._foundation.evaluation.matcher import match_turn
-from neosian._foundation.evaluation.results import (
-    CaseResult,
-    ToolCallCapture,
-    TurnResult,
+from neosian._foundation.evaluation.capture import (
+    FallbackRecorder,
+    ToolCapture,
+    compose_hooks,
+    scripted_factory,
 )
+from neosian._foundation.evaluation.matcher import match_turn
+from neosian._foundation.evaluation.results import CaseResult, TurnResult
 from neosian._foundation.evaluation.stubs import StubResults, build_tools
 from neosian._foundation.evaluation.types import EvalCase, Variant
 from neosian._foundation.llm.base import Message, Role, text_of
-from neosian._foundation.llm.fake import FakeClient, FakeScript
 from neosian._foundation.shared.exceptions import (
     EvalCaseInvalidError,
     EvalError,
     EvalRunError,
 )
-from neosian._foundation.shared.types import (
-    AgentConfig,
-    ClientFactory,
-    Model,
-    ToolName,
-)
-
-logger = logging.getLogger(__name__)
-
-
-class _FallbackRecorder:
-    """on_fallback hook recording the first failure-driven model switch.
-
-    An eval measures the configured model; a case answered by its
-    fallback is a failure, not a pass. Sticky retry-main transitions are
-    not failures and are ignored.
-    """
-
-    def __init__(self) -> None:
-        self.event: FallbackEvent | None = None
-
-    def __call__(self, event: FallbackEvent) -> None:
-        if not event.sticky and self.event is None:
-            self.event = event
-
-    @property
-    def reason(self) -> str | None:
-        """Human-readable failure summary for CaseResult.error."""
-        if self.event is None:
-            return None
-        return (
-            f"Falling back from {self.event.from_model} to "
-            f"{self.event.to_model}: {self.event.reason}"
-        )
-
-
-class _ToolCapture:
-    """on_tool sink — one capture path for stubbed and real tools."""
-
-    def __init__(self, stubbed: frozenset[ToolName]) -> None:
-        self._stubbed = stubbed
-        self.calls: list[ToolCallCapture] = []
-
-    def enter_turn(self) -> None:
-        self.calls = []
-
-    def __call__(self, event: ToolEvent) -> None:
-        self.calls.append(
-            ToolCallCapture(
-                name=event.name,
-                arguments=dict(event.arguments),
-                executed=event.name not in self._stubbed,
-                ok=event.result.success,
-                duration_ms=event.duration_ms,
-            )
-        )
+from neosian._foundation.shared.types import AgentConfig, Model, ToolName
 
 
 async def run_case(
@@ -135,7 +77,7 @@ async def _run(
     ignore: frozenset[ToolName],
     stop_on_failure: bool,
 ) -> CaseResult:
-    recorder = _FallbackRecorder()
+    recorder = FallbackRecorder()
     stub_results = StubResults()
     try:
         tools, stubbed = build_tools(
@@ -146,7 +88,7 @@ async def _run(
         )
     except ValueError as e:
         raise EvalCaseInvalidError(case.name, str(e)) from e
-    capture = _ToolCapture(stubbed)
+    capture = ToolCapture(stubbed)
 
     derived = dataclasses.replace(
         base,
@@ -157,9 +99,10 @@ async def _run(
             else base.system_prompt
         ),
         tools=tools,
-        hooks=_compose_hooks(base.hooks, capture, recorder),
+        hooks=compose_hooks(base.hooks, capture, recorder),
         # An explicit script wins over a caller-provided factory.
-        client_factory=_scripted_client_factory(case) or base.client_factory,
+        client_factory=scripted_factory(case.script, f"Case {case.name}")
+        or base.client_factory,
     )
     agent = Agent(config=derived)
 
@@ -211,54 +154,3 @@ async def _run(
         turns=tuple(turn_results),
         latency_ms=latency_ms,
     )
-
-
-def _compose_hooks(
-    user: AgentHooks | None, capture: _ToolCapture, recorder: _FallbackRecorder
-) -> AgentHooks:
-    """Compose — never clobber — the caller's hooks with the harness's.
-
-    The harness's callback runs first (it cannot fail), then the
-    caller's. Always strict: a raising caller hook fails the case
-    instead of being silently swallowed mid-measurement (§13.5).
-    """
-    if user is None:
-        return AgentHooks(on_tool=capture, on_fallback=recorder, strict=True)
-    return dataclasses.replace(
-        user,
-        on_tool=_compose(capture, user.on_tool),
-        on_fallback=_compose(recorder, user.on_fallback),
-        strict=True,
-    )
-
-
-def _compose[E](
-    first: Callable[[E], None],
-    second: Callable[[E], Awaitable[None] | None] | None,
-) -> Callable[[E], Awaitable[None] | None]:
-    if second is None:
-        return first
-
-    async def composed(event: E) -> None:
-        first(event)
-        result = second(event)
-        if inspect.isawaitable(result):
-            await result
-
-    return composed
-
-
-def _scripted_client_factory(case: EvalCase) -> ClientFactory | None:
-    """Build a scripted-FakeClient factory for a `script:` case.
-
-    One FakeClient instance serves the whole case, so the script position
-    survives across the case's LLM calls. Works with any configured model
-    — the run is keyless and makes no API calls.
-    """
-    if case.script is None:
-        return None
-    logger.info(
-        "Case %s runs scripted via FakeClient — no API calls are made", case.name
-    )
-    fake = FakeClient(FakeScript(turns=case.script))
-    return lambda _provider: fake

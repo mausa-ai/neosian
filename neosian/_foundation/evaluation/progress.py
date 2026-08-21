@@ -78,18 +78,20 @@ class EvalProgress:
         self.config = config
         self.console = Console()
         self._live: Live | None = None
+        # The axis-name properties — every config kind carries them, so
+        # the tree never needs the concrete type.
         self.variants: list[VariantState] = [
             VariantState(
-                variant=variant.name,
+                variant=variant_name,
                 models=[
                     ModelState(
-                        model=model.value,
-                        cases=[CaseState(name=case.name) for case in config.cases],
+                        model=model_name,
+                        cases=[CaseState(name=name) for name in config.case_names],
                     )
-                    for model in config.models
+                    for model_name in config.model_names
                 ],
             )
-            for variant in config.variants
+            for variant_name in config.variant_names
         ]
 
     def start(self) -> None:

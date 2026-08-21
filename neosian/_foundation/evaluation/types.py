@@ -8,16 +8,20 @@ them once and nothing downstream mutates them.
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, ClassVar, Final
+from typing import TYPE_CHECKING, Any, ClassVar, Final
 
 from neosian._foundation.llm.fake import FakeTurn
 from neosian._foundation.shared.types import Model, SystemPrompt, ToolName
+
+if TYPE_CHECKING:
+    from neosian._foundation.evaluation.memory_types import MemoryEvalConfig
 
 
 class EvalKind(str, Enum):
     """Discriminator for eval config shapes (`kind:` in YAML)."""
 
     AGENT = "agent"
+    MEMORY = "memory"
 
 
 class MatchMode(str, Enum):
@@ -153,6 +157,20 @@ class AgentEvalConfig:
 
     kind: ClassVar[EvalKind] = EvalKind.AGENT
 
+    @property
+    def variant_names(self) -> tuple[str, ...]:
+        return tuple(v.name for v in self.variants)
 
-# The discriminated union the runner dispatches on; later kinds widen it.
-type EvalConfig = AgentEvalConfig
+    @property
+    def model_names(self) -> tuple[str, ...]:
+        return tuple(m.value for m in self.models)
+
+    @property
+    def case_names(self) -> tuple[str, ...]:
+        return tuple(c.name for c in self.cases)
+
+
+# The discriminated union the runner dispatches on. Every member carries
+# the three axis-name properties — the config-side twin of EvalReport's
+# own axes, so presentation never needs the concrete type.
+type EvalConfig = AgentEvalConfig | MemoryEvalConfig

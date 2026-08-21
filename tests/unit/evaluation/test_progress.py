@@ -3,6 +3,12 @@
 import pytest
 from rich.tree import Tree
 
+from neosian._foundation.evaluation.memory_types import (
+    MemoryEvalConfig,
+    MemoryScenario,
+    MemorySession,
+    Transport,
+)
 from neosian._foundation.evaluation.progress import (
     EvalProgress,
     _format_latency,
@@ -16,6 +22,7 @@ from neosian._foundation.evaluation.types import (
     Expectation,
     Variant,
 )
+from neosian._foundation.memory.mounts import Mount
 from neosian._foundation.shared.types import Model, SystemPrompt
 
 
@@ -36,6 +43,34 @@ def _config() -> AgentEvalConfig:
             Variant(name="b", system_prompt=SystemPrompt("B.")),
         ),
     )
+
+
+@pytest.mark.unit
+class TestMemoryAxes:
+    def test_memory_config_builds_a_transport_keyed_tree(self) -> None:
+        """The axis-name property seam: presentation never needs the
+        concrete config type."""
+        turn = EvalTurn(user="hi", expect=Expectation(no_tool=True))
+        config = MemoryEvalConfig(
+            name="mem",
+            agent="agent.py",
+            models=(Model.FAKE,),
+            mounts=(Mount(scope="user:eval", mount_path="user"),),
+            scenarios=(
+                MemoryScenario(
+                    name="dedup",
+                    sessions=(MemorySession(name="one", turns=(turn,)),),
+                ),
+            ),
+            transports=(Transport.FUNCTION, Transport.NATIVE),
+        )
+        progress = EvalProgress(config)
+        assert [v.variant for v in progress.variants] == [
+            "function",
+            "native_memory",
+        ]
+        assert [m.model for m in progress.variants[0].models] == ["fake"]
+        assert [c.name for c in progress.variants[1].models[0].cases] == ["dedup"]
 
 
 @pytest.mark.unit

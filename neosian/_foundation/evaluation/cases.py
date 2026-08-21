@@ -1,12 +1,13 @@
 """Case parsing for eval suites (DESIGN §13).
 
 Split from loader.py so each stays under the size gate; the strict-key
-discipline is identical. `parse_names` is shared with the suite level.
+discipline is identical.
 """
 
 from typing import Any
 
 from neosian._foundation.evaluation.expectations import parse_expectation
+from neosian._foundation.evaluation.schema import parse_names
 from neosian._foundation.evaluation.types import EvalCase, EvalTurn
 from neosian._foundation.llm.base import ToolCall
 from neosian._foundation.llm.fake import FakeTurn
@@ -23,16 +24,6 @@ _TURN_KEYS = frozenset({"user", "expect", "tool_results"})
 _V1_TURN_HINTS = {
     "mock_response": "schema v2 replaced it with 'tool_results'",
 }
-
-
-def parse_names(data: Any, key: str, path_str: str) -> frozenset[ToolName]:
-    if data is None:
-        return frozenset()
-    if not isinstance(data, list) or not all(isinstance(n, str) for n in data):
-        raise EvalConfigInvalidYAMLError(
-            path_str, f"'{key}' must be a list of tool names"
-        )
-    return frozenset(ToolName(n) for n in data)
 
 
 def parse_cases(data: Any, path_str: str) -> tuple[EvalCase, ...]:
@@ -81,21 +72,23 @@ def parse_case(data: Any) -> EvalCase:
                 "top-level 'expect' is invalid on a conversational case — "
                 "put it on the turn",
             )
-        turns = _parse_turns(data["conversation"], name)
+        turns = parse_turns(data["conversation"], name)
     else:
         raise EvalCaseInvalidError(name, "must have 'input' or 'conversation'")
 
     return EvalCase(
         name=name,
         turns=turns,
-        script=_parse_script(data.get("script"), name),
+        script=parse_script(data.get("script"), name),
         execute_tools=parse_names(data.get("execute_tools"), "execute_tools", name),
     )
 
 
-def _parse_turns(data: Any, case_name: str) -> tuple[EvalTurn, ...]:
+def parse_turns(
+    data: Any, case_name: str, *, key: str = "conversation"
+) -> tuple[EvalTurn, ...]:
     if not isinstance(data, list) or not data:
-        raise EvalCaseInvalidError(case_name, "'conversation' must be a non-empty list")
+        raise EvalCaseInvalidError(case_name, f"'{key}' must be a non-empty list")
     turns: list[EvalTurn] = []
     for idx, turn_data in enumerate(data, start=1):
         if not isinstance(turn_data, dict):
@@ -137,7 +130,7 @@ def _parse_tool_results(
     return {ToolName(str(tool)): payload for tool, payload in data.items()}
 
 
-def _parse_script(data: Any, case_name: str) -> tuple[FakeTurn, ...] | None:
+def parse_script(data: Any, case_name: str) -> tuple[FakeTurn, ...] | None:
     """Parse a case's scripted model turns into FakeTurns."""
     if data is None:
         return None

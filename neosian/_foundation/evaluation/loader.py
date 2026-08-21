@@ -11,7 +11,15 @@ from typing import Any
 
 import yaml
 
-from neosian._foundation.evaluation.cases import parse_cases, parse_names
+from neosian._foundation.evaluation.cases import parse_cases
+from neosian._foundation.evaluation.memory_loader import parse_memory_suite
+from neosian._foundation.evaluation.schema import (
+    check_keys,
+    parse_models,
+    parse_names,
+    parse_stop_on_failure,
+    parse_throttle_ms,
+)
 from neosian._foundation.evaluation.types import (
     BASE_VARIANT,
     AgentEvalConfig,
@@ -25,9 +33,7 @@ from neosian._foundation.shared.exceptions import (
     EvalConfigMissingKeyError,
     EvalConfigNotFoundError,
     EvalConfigUnknownKeyError,
-    EvalModelUnknownError,
 )
-from neosian._foundation.shared.types import Model
 
 _SUITE_KEYS = frozenset(
     {
@@ -74,67 +80,40 @@ def load_eval_config(path: str | Path) -> EvalConfig:
     if not isinstance(data, dict):
         raise EvalConfigInvalidYAMLError(path_str, "root must be a mapping")
 
-    for key in data:
-        if key not in _SUITE_KEYS:
-            raise EvalConfigUnknownKeyError(
-                str(key), path_str, _V1_SUITE_HINTS.get(str(key))
-            )
-    for key in _REQUIRED_KEYS:
-        if key not in data:
-            raise EvalConfigMissingKeyError(key, path_str)
-
+    # The kind reads first — every other key is kind-shaped (§13.2).
     kind = data.get("kind", EvalKind.AGENT.value)
+    if kind == EvalKind.MEMORY.value:
+        return parse_memory_suite(data, path_str)
     if kind != EvalKind.AGENT.value:
+        known = ", ".join(k.value for k in EvalKind)
         raise EvalConfigInvalidYAMLError(
-            path_str, f"unknown kind '{kind}' — known kinds: agent"
+            path_str, f"unknown kind '{kind}' — known kinds: {known}"
         )
+
+    check_keys(
+        data,
+        allowed=_SUITE_KEYS,
+        required=_REQUIRED_KEYS,
+        path_str=path_str,
+        hints=_V1_SUITE_HINTS,
+    )
     name = data["name"]
     agent = data["agent"]
     if not isinstance(name, str) or not isinstance(agent, str):
         raise EvalConfigInvalidYAMLError(path_str, "'name' and 'agent' must be strings")
 
-    cases = parse_cases(data["cases"], path_str)
-    stop_on_failure = data.get("stop_on_failure", True)
-    if not isinstance(stop_on_failure, bool):
-        raise EvalConfigInvalidYAMLError(path_str, "'stop_on_failure' must be a bool")
-    throttle_ms = data.get("throttle_ms", 500)
-    if not isinstance(throttle_ms, int) or isinstance(throttle_ms, bool):
-        raise EvalConfigInvalidYAMLError(path_str, "'throttle_ms' must be an integer")
-    if throttle_ms < 0:
-        raise EvalConfigInvalidYAMLError(path_str, "'throttle_ms' must be >= 0")
-
     variants = _parse_variants(data.get("variants"), path_str)
     return AgentEvalConfig(
         name=name,
         agent=agent,
-        models=_parse_models(data["models"], path_str),
-        cases=cases,
+        models=parse_models(data["models"], path_str),
+        cases=parse_cases(data["cases"], path_str),
         variants=variants if variants is not None else (BASE_VARIANT,),
         execute_tools=parse_names(data.get("execute_tools"), "execute_tools", path_str),
         ignore_tools=parse_names(data.get("ignore_tools"), "ignore_tools", path_str),
-        stop_on_failure=stop_on_failure,
-        throttle_ms=throttle_ms,
+        stop_on_failure=parse_stop_on_failure(data, path_str),
+        throttle_ms=parse_throttle_ms(data, path_str),
     )
-
-
-def _parse_models(data: Any, path_str: str) -> tuple[Model, ...]:
-    if not isinstance(data, list) or not data:
-        raise EvalConfigInvalidYAMLError(path_str, "'models' must be a non-empty list")
-    models: list[Model] = []
-    for entry in data:
-        if not isinstance(entry, str):
-            raise EvalConfigInvalidYAMLError(
-                path_str, "'models' entries must be strings"
-            )
-        # Accept both "provider:model" and the bare model value
-        value = entry.split(":", 1)[1] if ":" in entry else entry
-        for m in Model:
-            if m.value == value:
-                models.append(m)
-                break
-        else:
-            raise EvalModelUnknownError(entry, path_str)
-    return tuple(models)
 
 
 def _parse_variants(data: Any, path_str: str) -> tuple[Variant, ...] | None:

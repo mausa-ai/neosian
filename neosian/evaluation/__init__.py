@@ -9,6 +9,14 @@ with the rest of the exception family here.
 
 from neosian._foundation.evaluation.loader import load_eval_config
 from neosian._foundation.evaluation.matrix import run_evaluation
+from neosian._foundation.evaluation.memory_types import (
+    DocumentExpectation,
+    MemoryEvalConfig,
+    MemoryScenario,
+    MemorySession,
+    StoreExpectation,
+    Transport,
+)
 from neosian._foundation.evaluation.progress import (
     EvalProgress,
     create_progress_callback,
@@ -53,6 +61,7 @@ __all__ = [
     "BASE_VARIANT",
     "CaseResult",
     "CaseStatus",
+    "DocumentExpectation",
     "EvalCase",
     "EvalCaseInvalidError",
     "EvalConfig",
@@ -70,10 +79,15 @@ __all__ = [
     "EvalTurn",
     "Expectation",
     "MatchMode",
+    "MemoryEvalConfig",
+    "MemoryScenario",
+    "MemorySession",
     "ProgressCallback",
     "ProgressEvent",
     "SequenceStep",
+    "StoreExpectation",
     "ToolCallCapture",
+    "Transport",
     "TurnResult",
     "ValueMatcher",
     "Variant",

@@ -1,0 +1,227 @@
+"""`kind: memory` suite loading — strict keys, loud failures (DESIGN §13.12)."""
+
+import textwrap
+from pathlib import Path
+
+import pytest
+
+from neosian._foundation.evaluation.loader import load_eval_config
+from neosian._foundation.evaluation.memory_types import (
+    MemoryEvalConfig,
+    Transport,
+)
+from neosian._foundation.evaluation.types import EvalKind, MatchMode
+from neosian._foundation.memory.mounts import Mount
+from neosian._foundation.shared.exceptions import (
+    EvalCaseInvalidError,
+    EvalConfigInvalidYAMLError,
+    EvalConfigMissingKeyError,
+    EvalConfigUnknownKeyError,
+    MemoryStoreError,
+)
+
+MINIMAL = """
+kind: memory
+name: suite
+agent: agent.py
+models: [fake]
+mounts:
+  - scope: user:eval
+    mount_path: user
+scenarios:
+  - name: s
+    sessions:
+      - name: one
+        turns:
+          - user: hi
+            expect: {tool: memory}
+        script:
+          - tool_calls:
+              - name: memory
+                arguments: {command: view, path: /user}
+          - content: done
+        expect_store:
+          counts: {/user: 0}
+"""
+
+
+def _write(tmp_path: Path, body: str, filename: str = "suite.yaml") -> Path:
+    path = tmp_path / filename
+    path.write_text(textwrap.dedent(body))
+    return path
+
+
+def _load(tmp_path: Path, body: str) -> MemoryEvalConfig:
+    config = load_eval_config(_write(tmp_path, body))
+    assert isinstance(config, MemoryEvalConfig)
+    return config
+
+
+@pytest.mark.unit
+class TestSuiteLevel:
+    def test_minimal_memory_suite_parses(self, tmp_path: Path) -> None:
+        config = _load(tmp_path, MINIMAL)
+        assert config.kind is EvalKind.MEMORY
+        assert config.name == "suite"
+        assert config.mounts == (Mount(scope="user:eval", mount_path="user"),)
+        assert config.transports == (Transport.FUNCTION,)
+        assert config.stop_on_failure is True
+        assert config.throttle_ms == 500
+        assert config.case_names == ("s",)
+        assert config.variant_names == ("function",)
+
+    def test_kind_is_read_before_the_key_check(self, tmp_path: Path) -> None:
+        # `cases:` is an agent-kind key — the memory branch must own the
+        # rejection, with its migration hint.
+        body = MINIMAL + "cases: []\n"
+        with pytest.raises(
+            EvalConfigUnknownKeyError, match="memory suites use 'scenarios:'"
+        ):
+            load_eval_config(_write(tmp_path, body))
+
+    def test_variants_hint(self, tmp_path: Path) -> None:
+        with pytest.raises(EvalConfigUnknownKeyError, match="compare 'transports:'"):
+            load_eval_config(_write(tmp_path, MINIMAL + "variants: []\n"))
+
+    def test_mounts_and_scenarios_are_required(self, tmp_path: Path) -> None:
+        body = "kind: memory\nname: n\nagent: a.py\nmodels: [fake]\n"
+        with pytest.raises(EvalConfigMissingKeyError):
+            load_eval_config(_write(tmp_path, body))
+
+    def test_transports_parse(self, tmp_path: Path) -> None:
+        config = _load(tmp_path, MINIMAL + "transports: [function, native_memory]\n")
+        assert config.transports == (Transport.FUNCTION, Transport.NATIVE)
+
+    def test_unknown_transport(self, tmp_path: Path) -> None:
+        with pytest.raises(EvalConfigInvalidYAMLError, match="unknown transport 'sse'"):
+            load_eval_config(_write(tmp_path, MINIMAL + "transports: [sse]\n"))
+
+    def test_duplicate_transport(self, tmp_path: Path) -> None:
+        with pytest.raises(EvalConfigInvalidYAMLError, match="duplicate transport"):
+            load_eval_config(
+                _write(tmp_path, MINIMAL + "transports: [function, function]\n")
+            )
+
+
+@pytest.mark.unit
+class TestMounts:
+    def test_bad_scope_surfaces_in_the_eval_family(self, tmp_path: Path) -> None:
+        body = MINIMAL.replace("scope: user:eval", "scope: 'not a scope!'")
+        with pytest.raises(EvalConfigInvalidYAMLError, match="mount 1") as excinfo:
+            load_eval_config(_write(tmp_path, body))
+        # The store error is the cause, never the raised type (§13.12).
+        assert isinstance(excinfo.value.__cause__, MemoryStoreError)
+
+    def test_multi_segment_mount_path_refused(self, tmp_path: Path) -> None:
+        body = MINIMAL.replace("mount_path: user", "mount_path: user/sub")
+        with pytest.raises(EvalConfigInvalidYAMLError, match="mount 1"):
+            load_eval_config(_write(tmp_path, body))
+
+    def test_unknown_mount_key(self, tmp_path: Path) -> None:
+        body = MINIMAL.replace("mount_path: user", "mount_path: user\n    ro: true")
+        with pytest.raises(EvalConfigUnknownKeyError):
+            load_eval_config(_write(tmp_path, body))
+
+    def test_duplicate_mount_paths(self, tmp_path: Path) -> None:
+        extra = "  - scope: user:other\n    mount_path: user\n"
+        body = MINIMAL.replace("scenarios:", extra + "scenarios:")
+        with pytest.raises(
+            EvalConfigInvalidYAMLError, match="mount paths must be unique"
+        ):
+            load_eval_config(_write(tmp_path, body))
+
+
+@pytest.mark.unit
+class TestScenarios:
+    def test_duplicate_scenario_names(self, tmp_path: Path) -> None:
+        scenario = MINIMAL[MINIMAL.index("  - name: s") :]
+        with pytest.raises(
+            EvalConfigInvalidYAMLError, match="duplicate scenario name 's'"
+        ):
+            load_eval_config(_write(tmp_path, MINIMAL + scenario))
+
+    def test_duplicate_session_names(self, tmp_path: Path) -> None:
+        session = MINIMAL[MINIMAL.index("      - name: one") :]
+        with pytest.raises(EvalCaseInvalidError, match="duplicate session name"):
+            load_eval_config(_write(tmp_path, MINIMAL + session))
+
+    def test_scenario_level_input_gets_the_sessions_hint(self, tmp_path: Path) -> None:
+        body = MINIMAL.replace("    sessions:", "    input: hi\n    sessions:")
+        with pytest.raises(EvalCaseInvalidError, match=r"sessions\[\].turns"):
+            load_eval_config(_write(tmp_path, body))
+
+    def test_half_scripted_scenario_refused(self, tmp_path: Path) -> None:
+        extra = """\
+      - name: two
+        turns:
+          - user: again
+            expect: {tool: memory}
+"""
+        with pytest.raises(EvalCaseInvalidError, match="every session or none"):
+            load_eval_config(_write(tmp_path, MINIMAL + extra))
+
+    def test_script_turns_parse_to_fake_turns(self, tmp_path: Path) -> None:
+        config = _load(tmp_path, MINIMAL)
+        script = config.scenarios[0].sessions[0].script
+        assert script is not None
+        assert str(script[0].tool_calls[0].id) == "script_0_0"
+        assert config.scenarios[0].is_scripted
+
+
+@pytest.mark.unit
+class TestStoreExpectations:
+    def test_full_expectation_parses(self, tmp_path: Path) -> None:
+        body = MINIMAL.replace(
+            "          counts: {/user: 0}",
+            """\
+          counts: {/user: 1}
+          absent: [/user/gone]
+          forbidden: [sk-secret]
+          documents:
+            - path: /user/prefs
+              content: {contains: espresso}
+              versions: 2
+              actions: [created, modified]""",
+        )
+        expect = _load(tmp_path, body).scenarios[0].sessions[0].expect_store
+        assert expect.counts == {"/user": 1}
+        assert expect.absent == ("/user/gone",)
+        assert expect.forbidden == ("sk-secret",)
+        document = expect.documents[0]
+        assert document.path == "/user/prefs"
+        assert document.content[0].mode is MatchMode.CONTAINS
+        assert document.versions == 2
+        assert document.actions == ("created", "modified")
+
+    def test_unmounted_path_refused(self, tmp_path: Path) -> None:
+        body = MINIMAL.replace("counts: {/user: 0}", "counts: {/nowhere: 0}")
+        with pytest.raises(EvalCaseInvalidError, match="names no declared mount"):
+            load_eval_config(_write(tmp_path, body))
+
+    def test_document_path_must_reach_inside_the_mount(self, tmp_path: Path) -> None:
+        body = MINIMAL.replace("counts: {/user: 0}", "documents: [{path: /user}]")
+        with pytest.raises(EvalCaseInvalidError, match="must name a document inside"):
+            load_eval_config(_write(tmp_path, body))
+
+    def test_versions_actions_disagreement(self, tmp_path: Path) -> None:
+        body = MINIMAL.replace(
+            "counts: {/user: 0}",
+            "documents: [{path: /user/x, versions: 2, actions: [created]}]",
+        )
+        with pytest.raises(EvalCaseInvalidError, match="disagree"):
+            load_eval_config(_write(tmp_path, body))
+
+    def test_unknown_action(self, tmp_path: Path) -> None:
+        body = MINIMAL.replace(
+            "counts: {/user: 0}",
+            "documents: [{path: /user/x, actions: [redacted]}]",
+        )
+        with pytest.raises(EvalCaseInvalidError, match="unknown action"):
+            load_eval_config(_write(tmp_path, body))
+
+    def test_unknown_store_key(self, tmp_path: Path) -> None:
+        body = MINIMAL.replace("counts:", "totals:")
+        with pytest.raises(
+            EvalCaseInvalidError, match="expect_store: unknown key 'totals'"
+        ):
+            load_eval_config(_write(tmp_path, body))

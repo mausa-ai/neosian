@@ -1,0 +1,173 @@
+# Memory eval baseline (kind: memory, schema v2) — DESIGN §13.12.
+#
+# Three scenarios, one per measured behavior: write discipline,
+# recall-in-next-session, dedup. Every session is scripted, so the pack
+# runs keylessly on FakeProvider and is all-green by construction — a
+# red run is a regression. Turn expectations stay loose (they must
+# survive a real provider); the store truth carries the strictness.
+#
+# The external baselines derive a scriptless copy of this same pack in
+# code (tests/external/cross/test_memory_baselines.py) — one source of
+# scenario truth for the fake-vs-real comparison.
+#
+# Run: neosian eval examples/eval_memory_baseline.yaml
+# Scenario stores land under .neosian/evals/<ts>-memory/ — cat them.
+
+kind: memory
+name: Memory Baseline
+
+# An AgentConfig WITHOUT memory= — this suite owns the store and mounts.
+agent: examples/eval_memory_agent.py
+
+models: [fake]
+
+# The transport axis (function tool vs Anthropic's native memory
+# declaration). native_memory is inert off Anthropic, so the keyless
+# baseline stays on the default [function].
+transports: [function]
+
+mounts:
+  - scope: user:eval
+    mount_path: user
+    description: durable facts about the user
+  - scope: user:eval/proj:demo
+    mount_path: project
+    description: facts about this project
+
+scenarios:
+  # WRITE DISCIPLINE — right mount, one document per topic, corrections
+  # edit in place, and nothing the user refused ever lands in the store.
+  - name: write-discipline
+    sessions:
+      - name: record
+        turns:
+          - user: >-
+              I only drink espresso. This project runs on Postgres 16.
+              My token is sk-eval-secret-000 — don't save that.
+            expect: {tool: memory}
+        script:
+          - tool_calls:
+              - name: memory
+                arguments:
+                  command: create
+                  path: /user/preferences
+                  content: "Drinks espresso only."
+              - name: memory
+                arguments:
+                  command: create
+                  path: /project/stack
+                  content: "Runs on Postgres 16."
+          - content: "Noted — the token is not stored."
+        expect_store:
+          counts: {/user: 1, /project: 1}
+          documents:
+            - path: /user/preferences
+              content: {contains: espresso}
+              versions: 1
+              actions: [created]
+            - path: /project/stack
+              content: {contains: "Postgres 16"}
+          forbidden: [sk-eval-secret-000]
+
+      - name: correct
+        turns:
+          - user: "Correction: the project moved to Postgres 17."
+            expect: {tool: memory}
+        script:
+          - tool_calls:
+              - name: memory
+                arguments:
+                  command: str_replace
+                  path: /project/stack
+                  old_str: "Postgres 16"
+                  new_str: "Postgres 17"
+          - content: "Updated."
+        expect_store:
+          counts: {/project: 1}
+          documents:
+            - path: /project/stack
+              content: {contains: "Postgres 17"}
+              versions: 2
+              actions: [created, modified]
+
+  # RECALL IN THE NEXT SESSION — session 2 gets a freshly regenerated
+  # index, reads the document back rather than guessing, and writes
+  # nothing to answer.
+  - name: recall-next-session
+    sessions:
+      - name: record
+        turns:
+          - user: "Remember that my daughter's name is Mira."
+            expect: {tool: memory}
+        script:
+          - tool_calls:
+              - name: memory
+                arguments:
+                  command: create
+                  path: /user/family
+                  content: "Daughter: Mira."
+          - content: "Saved."
+        expect_store:
+          documents:
+            - path: /user/family
+              versions: 1
+      - name: recall
+        turns:
+          - user: "What is my daughter's name?"
+            expect:
+              tool: memory
+              params: {command: view}
+              response: {contains: Mira}
+        script:
+          - tool_calls:
+              - name: memory
+                arguments: {command: view, path: /user/family}
+          - content: "Your daughter is Mira."
+        expect_store:
+          counts: {/user: 1}
+          documents:
+            - path: /user/family
+              versions: 1
+
+  # DEDUP — a second fact on the same topic updates the existing
+  # document; a near-duplicate at a new path is the failure.
+  - name: dedup
+    sessions:
+      - name: first-fact
+        turns:
+          - user: "I'm allergic to peanuts."
+            expect: {tool: memory}
+        script:
+          - tool_calls:
+              - name: memory
+                arguments:
+                  command: create
+                  path: /user/health
+                  content: "Allergic to peanuts."
+          - content: "Noted."
+        expect_store:
+          counts: {/user: 1}
+      - name: second-fact
+        turns:
+          - user: "Also allergic to shellfish."
+            expect: {tool: memory}
+        script:
+          - tool_calls:
+              - name: memory
+                arguments: {command: view, path: /user/health}
+              - name: memory
+                arguments:
+                  command: str_replace
+                  path: /user/health
+                  old_str: "Allergic to peanuts."
+                  new_str: "Allergic to peanuts and shellfish."
+          - content: "Updated your health notes."
+        expect_store:
+          counts: {/user: 1}
+          absent: [/user/health-2]
+          documents:
+            - path: /user/health
+              content:
+                contains: [peanuts, shellfish]
+              versions: 2
+              actions: [created, modified]

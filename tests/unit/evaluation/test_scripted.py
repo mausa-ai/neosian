@@ -14,6 +14,7 @@ import pytest
 
 from neosian._foundation.evaluation.loader import load_eval_config
 from neosian._foundation.evaluation.matrix import run_evaluation
+from neosian._foundation.evaluation.types import AgentEvalConfig
 from neosian._foundation.llm.base import ToolCall
 from neosian._foundation.llm.fake import FakeTurn
 from neosian._foundation.shared.exceptions import EvalCaseInvalidError
@@ -74,6 +75,7 @@ def _suite(tmp_path: Path) -> Path:
 class TestScriptParsing:
     def test_script_parses_into_fake_turns(self, tmp_path: Path) -> None:
         config = load_eval_config(_suite(tmp_path))
+        assert isinstance(config, AgentEvalConfig)
 
         assert config.cases[0].script == (
             FakeTurn(

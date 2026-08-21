@@ -1,23 +1,21 @@
 # Neosian Roadmap — Memory & Conversation
 
-> **▶ Current phase: NE — Evaluation quality**
+> **▶ Current phase: N4 — Completeness (docs/1.0 only)**
 >
-> *(2026-08-21: slice A shipped at v0.68.0 — the full rewrite, ruled
-> options-first (facade-only surface, schema v2 + `kind:`, strict
-> matchers with no judge, stub-by-default tools; ledger #54–#63,
-> DESIGN §13). Remaining in NE: the memory eval harness as the final
-> slice, per its ratified plan
-> (`~/.claude/plans/fizzy-spinning-flask.md`) on the reformed ground —
-> note the harness now lands as `kind: memory` per §13.12, and
-> `mock_agent_tools` (which the plan works around) no longer exists.
-> N4 resumes with docs/1.0 after `ne-done`; its 1.0 promise names the
-> reformed eval surface. N4 slices A+B+C stand shipped — v0.65.0 the
-> native `memory_20250818` flag, v0.66.0 server-side compaction
-> pass-through, v0.67.0 the MCP memory server. Standing rulings:
-> neosian's phases run to completion before the kit's P10 vendors from
-> a `v<X.Y.Z>` release tag; still deferred per §9.10, executing at the
-> docs/1.0 slice: the ECOSYSTEM amendment naming `ConversationStore`.
-> CI last confirmed green on the v0.67.0 head, run 32407460787.)*
+> *(2026-08-21: NE closed at v0.69.0 — the memory eval harness landed
+> as `kind: memory` per §13.12 (ledger #64–#70): store-truth scoring on
+> the three behaviors, transports axis on the variants slot, the
+> all-green shipped pack `examples/eval_memory_baseline.yaml` as the
+> keyless regression gate, per-provider external baselines in
+> tests/external/cross/. Remaining in N4: **docs/1.0 only** — README +
+> quickstarts (incl. the MCP snippet), the §9.10 ECOSYSTEM amendment
+> (payload recorded in §9.10; kit's side done at its 345851e), and the
+> `v1.0.0` tag carrying the stability promise incl. the reformed eval
+> surface. N4 slices A+B+C stand shipped — v0.65.0 the native
+> `memory_20250818` flag, v0.66.0 server-side compaction pass-through,
+> v0.67.0 the MCP memory server. Standing rulings: neosian's phases run
+> to completion before the kit's P10 vendors from a `v<X.Y.Z>` release
+> tag. CI last confirmed green on the v0.67.0 head, run 32407460787.)*
 >
 > The pointer above must equal the first phase heading without ✅ — if they
 > disagree, say so and trust the checkboxes. Companion to [VISION.md](VISION.md)
@@ -472,7 +470,7 @@ worker pids served 3 gapless turns with tool messages persisted, and
 the agent unprompted wrote `deploy_day` into the per-user mount.
 1489 unit tests, zero keys; 105 postgres tests.
 
-## NE — Evaluation quality (v0.68 →)
+## NE — Evaluation quality (v0.68–0.69) ✅ 2026-08-21
 
 DESIGN: §2, §5, §7, §10 — plus the evaluation § this phase writes.
 
@@ -510,14 +508,15 @@ rewrite is sanctioned if that is the honest path to ecosystem-grade code.
 - [x] runner.py headroom (482 lines, 18 under the fail-at-500 gate) —
   restructured out of the red zone by whatever shape the redesign takes.
   *(13 modules, largest 264 lines)*
-- **Final slice: the memory eval harness**, per the ratified 2026-08-20
-  plan (`~/.claude/plans/fizzy-spinning-flask.md`; its four design
-  rulings are user-confirmed) — write discipline, recall-in-next-session,
-  dedup behavior; there is no public benchmark for the agent-memory
-  regime (LoCoMo measures the personalization regime), so we measure
-  ourselves: FakeProvider baselines first (keyless), then per-provider
-  `external_<provider>` runs. The harness is the reformed module's first
-  consumer and its acceptance test.
+- [x] **Final slice: the memory eval harness**, per the ratified
+  2026-08-20 plan (`~/.claude/plans/fizzy-spinning-flask.md`; its four
+  design rulings user-confirmed) — write discipline,
+  recall-in-next-session, dedup behavior; there is no public benchmark
+  for the agent-memory regime (LoCoMo measures the personalization
+  regime), so we measure ourselves: FakeProvider baselines first
+  (keyless), then per-provider `external_<provider>` runs. The harness
+  is the reformed module's first consumer and its acceptance test.
+  *(shipped v0.69.0 — see the split block)*
 
 **Done when:** the harness reports per-provider memory baselines
 (FakeProvider first, zero keys) through the public facade; no evaluation
@@ -553,6 +552,39 @@ DESIGN §13 (13 subsections, §13.12 reserves `kind: memory`), §C5 fixed,
 ledger #54–#63. 1698 unit tests, zero keys. Carried to the final slice:
 the memory eval harness (fizzy-spinning-flask plan, landing as
 `kind: memory` per §13.12 — its `mock_agent_tools` workaround is moot).
+
+**Final slice shipped at v0.69.0 (2026-08-21), closing the phase** — the
+memory harness lands. Rulings (options-first, user confirmed): transports
+occupy the report's variants axis (ledger #64 — reporter/progress/
+artifact untouched, schema stays 2); one shipped pack, external tests
+derive scriptless copies in code (#68); a `memory=`-bearing base config
+is refused as a red cell naming `mounts:` (#66); facade +6 names
+(33 → 39, the "everything reachable from an exported config type is
+exported" rule stated in §13.9). Shipped: `MemoryEvalConfig` widening
+the `EvalConfig` alias + one `isinstance` dispatch in `run_evaluation` —
+§13.12's reserved shape exactly; five new modules (`memory_types`/
+`memory_loader`/`memory_expectations`/`memory_score`/`memory_runner`)
+plus two extractions
+slice A's modules now share (`schema.py` kind-neutral parsing,
+`capture.py` observation seams); sessions as bare Agents via
+`derive_config` (#65) with per-session index regeneration (the
+frozen-index rule making recall honest), per-session FakeClients, and
+`actor=eval:<scenario>:<session>` on every version row; store-truth
+scoring — `documents` (content matchers with response semantics,
+version counts, oldest-first actions), `counts` (the dedup signal),
+`absent`, `forbidden` (the no-secrets rule) — re-read through a fresh
+FileStore; scenario stores at
+`.neosian/evals/<ts>-memory/<transport>/<model>/<scenario>` with the
+`store root:` line on every red result (#69) and
+`run_evaluation(store_root=)` for tests; no new error codes (#70).
+`examples/eval_memory_baseline.yaml` (+ its memory-less agent) is the
+all-green keyless regression gate (#67); the discriminating negatives —
+duplicate doc, wrong mount, answer-without-view, token stored — live in
+unit tests; `tests/external/cross/test_memory_baselines.py` runs the
+derived scriptless pack per provider weekly, Anthropic additionally on
+`transports: [function, native_memory]` — the one informative axis run
+(#43/#44). DESIGN §13.12 rewritten in place, §13.2/3/5/9/11 amended,
+ledger #64–#70. 1747 unit tests, zero keys.
 
 ## N4 — Completeness (v0.65 → 1.0)
 
@@ -1167,3 +1199,35 @@ reformed module, as NE's final slice. Remaining in N4: docs/1.0 only.
   kept); examples → v2. DESIGN §13, §C5 → ECOSYSTEM §7, §1/§5 amended,
   ledger #54–#63. 1698 unit tests, zero keys; v0.68.0. Carried: the
   memory harness lands as `kind: memory` (§13.12) — the final slice.
+- 2026-08-21 | NE (final slice) | **The library measures its own memory;
+  NE closes.** Rulings (options-first, user confirmed): transports on
+  the variants axis (#64), one pack + code-derived scriptless external
+  configs (#68), `memory=`-bearing base refused red (#66), facade +6
+  (39 names, the reachable-types-export rule in §13.9). `kind: memory`
+  lands as §13.12 reserved it: `MemoryEvalConfig` widens the alias, one
+  `isinstance` branch in `run_evaluation`. Prep extractions shared with
+  the agent kind: `schema.py` (check_keys/parse_models/parse_names +
+  option parsers), `capture.py` (ToolCapture/FallbackRecorder/
+  compose_hooks/scripted_factory), `parse_turns`/`parse_script`/
+  `parse_response`/`match_text` made kind-neutral — runner.py 264→176,
+  loader reads `kind` before any key. New: `memory_types` (Transport/
+  Document-/StoreExpectation/MemorySession/MemoryScenario/
+  MemoryEvalConfig + the axis-name property seam progress now reads),
+  `memory_loader` (strict keys + agent-kind hints; mount errors
+  re-raised in the eval family — no `memory_*` code escapes
+  `load_eval_config`), `memory_expectations` (the `expect_store:`
+  block, split as expectations.py is from loader.py),
+  `memory_score` (four predicates, offenders
+  named, fresh-store re-read), `memory_runner` (sessions = bare Agents
+  via `derive_config` (#65), per-session index render + FakeClient,
+  eval actors on version rows, store failures folded into the last
+  turn + `store root:` on every red (#69)); matrix owns the memory
+  loop + slugged per-cell roots + `store_root=`. Shipped pack
+  `examples/eval_memory_baseline.yaml` all-green keylessly (#67);
+  negatives (dup doc, wrong mount, no-view answer, stored token) in
+  unit tests; `tests/external/cross/test_memory_baselines.py` weekly
+  per provider, Anthropic also native (#43). No new codes (#70).
+  Dogfooded: `neosian eval` 3/3 exit 0, artifact schema 2
+  `variants: [function]`, stores cat-able, token nowhere in the run
+  root. DESIGN §13.12 rewritten, §13.2/3/5/9/11 amended, #64–#70.
+  1747 unit tests, zero keys; v0.69.0.

@@ -6,7 +6,12 @@ from pathlib import Path
 import pytest
 
 from neosian._foundation.evaluation.loader import load_eval_config
-from neosian._foundation.evaluation.types import BASE_VARIANT, EvalKind, MatchMode
+from neosian._foundation.evaluation.types import (
+    BASE_VARIANT,
+    AgentEvalConfig,
+    EvalKind,
+    MatchMode,
+)
 from neosian._foundation.shared.exceptions import (
     EvalCaseInvalidError,
     EvalConfigInvalidYAMLError,
@@ -34,10 +39,16 @@ def _write(tmp_path: Path, body: str, filename: str = "suite.yaml") -> Path:
     return path
 
 
+def _load_agent(tmp_path: Path, body: str) -> AgentEvalConfig:
+    config = load_eval_config(_write(tmp_path, body))
+    assert isinstance(config, AgentEvalConfig)
+    return config
+
+
 @pytest.mark.unit
 class TestSuiteLevel:
     def test_minimal_suite_parses_with_defaults(self, tmp_path: Path) -> None:
-        config = load_eval_config(_write(tmp_path, MINIMAL))
+        config = _load_agent(tmp_path, MINIMAL)
         assert config.kind is EvalKind.AGENT
         assert config.name == "suite"
         assert config.agent == "agent.py"
@@ -54,8 +65,11 @@ class TestSuiteLevel:
         assert config.kind is EvalKind.AGENT
 
     def test_unknown_kind_fails(self, tmp_path: Path) -> None:
-        with pytest.raises(EvalConfigInvalidYAMLError, match="unknown kind 'memory'"):
-            load_eval_config(_write(tmp_path, "kind: memory" + MINIMAL))
+        with pytest.raises(
+            EvalConfigInvalidYAMLError,
+            match="unknown kind 'judge' — known kinds: agent, memory",
+        ):
+            load_eval_config(_write(tmp_path, "kind: judge" + MINIMAL))
 
     def test_missing_file(self, tmp_path: Path) -> None:
         with pytest.raises(EvalConfigNotFoundError):
@@ -155,7 +169,7 @@ class TestVariantsAxis:
             MINIMAL
             + f"variants:\n  - {{name: a, prompt: {a}}}\n  - {{name: b, prompt: {b}}}\n"
         )
-        config = load_eval_config(_write(tmp_path, body))
+        config = _load_agent(tmp_path, body)
         assert [v.name for v in config.variants] == ["a", "b"]
         assert config.variants[0].system_prompt == "You are a."
         assert config.variants[0].source == str(a)
@@ -225,7 +239,7 @@ CASE_TABLE = [
 @pytest.mark.unit
 class TestCases:
     def test_one_shot_is_a_single_turn(self, tmp_path: Path) -> None:
-        config = load_eval_config(_write(tmp_path, MINIMAL))
+        config = _load_agent(tmp_path, MINIMAL)
         case = config.cases[0]
         assert case.is_conversational is False
         assert case.total_turns == 1
@@ -252,7 +266,7 @@ class TestCases:
                   tool: animate
                   params: {url: {equals: "https://x/y.png"}}
         """
-        case = load_eval_config(_write(tmp_path, body)).cases[0]
+        case = _load_agent(tmp_path, body).cases[0]
         assert case.is_conversational is True
         assert case.execute_tools == frozenset({"write"})
         assert case.turns[0].tool_results == {"draw": {"url": "https://x/y.png"}}

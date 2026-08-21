@@ -943,6 +943,13 @@ never a silent divergence. Numbering is monotonic, never reused.
 | 61 | `neosian eval` exited 0 even when every case failed | **Exit 1 when any case fails** (load errors and crashed runs stay 1) | The command is a CI gate or it is theater |
 | 62 | Reusing `eval_case_invalid` for suite-level strictness and per-case `ValueError` for model typos | **Two codes appended**: `eval_config_unknown_key` (carries the v1→v2 migration hint) and `eval_model_unknown` (models validated at load) | Hosts must distinguish "you forgot a key" from "you typo'd one / you're on schema v1"; a model typo failing the suite instantly beats failing inside every cell. Append-only respected (§5, ECOSYSTEM §6) |
 | 63 | Insert evaluation as §12 and renumber the ledger | **Evaluation is §13, appended after the §12 ledger** | Every existing "DESIGN §12 ledger" reference in the four docs and the commit history stays true; monotonic file order preserved |
+| 64 | Kind-aware report axes for the memory eval (artifact schema 3) | **Transports occupy the `variants` axis slot**; `EvalReport`, reporter, progress, and the schema-2 artifact are untouched | `EvalReport` was built as "the seam later kinds reuse" — using it as designed costs zero, while a schema bump for a cosmetic axis label breaks a pinned host-facing shape for nothing |
+| 65 | Memory-eval sessions as `Conversation`s (persistence + compaction for free) | **Bare Agents via `derive_config`**, one per session | The harness must measure the memory loop, not compaction or turn persistence; `derive_config` is the shipped wiring, so a session is wired exactly as a real one — and the edge is sanctioned in §13.11 rather than replicated |
+| 66 | A base config carrying `memory=` silently overridden (`derive_config` sets `memory=None` anyway) | **Refused, as a red cell naming `mounts:`** | Per-cell store isolation is the harness's reason to exist; silently measuring against the agent's own store would be unreproducible — the silent-drop class #57 closed |
+| 67 | A shipped pack containing red scenarios to prove the scoring bites | **All-green pack; discriminating negatives live in unit tests** | A shipped suite is a regression gate — green on FakeProvider by construction, so red always means a real regression; the negatives still pin that every axis of the scoring discriminates |
+| 68 | A second scriptless YAML for external runs, or `script:` applied only to FAKE models | **One pack; the external tests derive scriptless configs with `dataclasses.replace`** | Model-conditional `script:` makes one key mean "sometimes silently ignored" — the class #57 closed; a second YAML forks the scenario content the fake-vs-real comparison depends on |
+| 69 | Scenario stores in a discarded tmp dir | **`.neosian/evals/<ts>-memory/<transport>/<model>/<scenario>` (gitignored), the path on every red result** | A memory eval you cannot `cat` afterwards cannot be debugged; the `store root:` failure line makes the artifact self-locating |
+| 70 | An `eval_store_expectation_failed` code (or an `eval_memory_*` family) | **No new codes** — scenario violations are `eval_case_invalid`, suite shape `eval_config_*`, cell-level harness failures `eval_run_failed`; store errors from mount construction re-raise in the eval family | Codes are append-only and hosts key on them the day they exist; these are new instances of four existing classes, not a new class — and a store-truth miss is a failed case, never an error |
 
 ## §13 Evaluation (NE)
 
@@ -966,8 +973,10 @@ Python file exporting `configuration`), `models` (validated at load;
 
 **Strict keys at every level** — unknown keys raise, retired v1 keys
 (`prompts:`, `mock_response:`, `on_success:`) raise with migration hints
-(ledger #57). `kind:` discriminates config shapes; `agent` is the only kind
-today, `memory` is reserved for the NE memory-eval slice (§13.12).
+(ledger #57). `kind:` discriminates config shapes and is read before any
+other key — every other key is kind-shaped. Two kinds exist: `agent`
+(this section) and `memory` (§13.12); an agent-kind key on a memory
+suite fails with a targeted hint, and vice versa.
 
 Cases: `input:` + `expect:` is sugar for a one-turn `conversation:`; both
 together is an error, and a top-level `expect:` beside `conversation:` is a
@@ -988,8 +997,15 @@ config vocabulary (`AgentEvalConfig`, `EvalCase`, `EvalTurn`, `Expectation`,
 `ProgressEvent`). The pipeline: `loader.py`/`cases.py`/`expectations.py`/
 `variants.py` parse; `matcher.py` scores; `stubs.py` builds tools;
 `runner.py` runs one cell; `matrix.py` runs the suite; `progress.py`/
-`reporter.py` present. `EvalReport` carries its own axes, so presentation
-never needs the config type — the seam later kinds reuse.
+`reporter.py` present. `schema.py` holds the kind-neutral parsing
+primitives and `capture.py` the shared observation seams (hook
+composition, tool capture, scripted factories); the memory kind adds
+`memory_types.py`/`memory_loader.py`/`memory_expectations.py`/
+`memory_score.py`/`memory_runner.py` (§13.12). `EvalReport` carries its own axes, so
+presentation never needs the config type — the seam later kinds reuse;
+its config-side twin is the three axis-name properties
+(`variant_names`/`model_names`/`case_names`) every config type carries,
+which are all `progress.py` reads.
 
 ### §13.4 Matching semantics
 
@@ -1021,11 +1037,12 @@ constructs the agent once; the caller's config is never written and caller
 hooks are composed, never clobbered (harness callback first, caller's
 after), always `strict=True` (ledger #60). A non-sticky fallback fails the
 case: an eval measures the configured model. `run_evaluation` loads the
-agent module once per suite, throttles real-API cells only, and downgrades
-a cell's `EvalError` to a failed `CaseResult` — one bad case never kills
-the suite; an agent that cannot load does, since nothing could measure
-anything. Harness-level failures raise `eval_run_failed` with the cell's
-variant × model × case context.
+agent module once per suite, dispatches on the config's kind (a memory
+suite's cell is a scenario, §13.12), throttles real-API cells only, and
+downgrades a cell's `EvalError` to a failed `CaseResult` — one bad case
+never kills the suite; an agent that cannot load does, since nothing
+could measure anything. Harness-level failures raise `eval_run_failed`
+with the cell's variant × model × case context.
 
 ### §13.6 Tools under evaluation
 
@@ -1066,6 +1083,11 @@ expectation, accumulated failures, response text, and every capture with
 The facade is `neosian/evaluation/__init__.py` — re-exports only, never
 imported by the root package (ledger #54); pinned by
 `tests/unit/test_evaluation_exports.py` incl. a subprocess laziness pin.
+The export rule: **everything reachable from an exported config type is
+itself exported** — an exported field typed by a private class would
+freeze asymmetry by silence, the accident NE exists to kill. The memory
+kind added six names (39 total): `MemoryEvalConfig`, `MemoryScenario`,
+`MemorySession`, `StoreExpectation`, `DocumentExpectation`, `Transport`.
 `neosian eval <suite.yaml>` rides the facade, prints the report, writes the
 artifact, and **exits 1 when any case fails** (ledger #61) — a CI gate.
 Credential loading from the CLI config stays the CLI's job.
@@ -1085,19 +1107,67 @@ prompt file), `eval_case_invalid` (every case/turn/expect violation),
 tokens (`._tools`, `._tool_definitions`, `._tool_metadata`) are touched
 only by the agent/tools modules that own them — `evaluation/` appears
 nowhere. Two import-linter contracts (§1): the runtime library never
-imports the harness, and the harness never imports provider client modules
-(`llm.fake` and the `Agent` are its seams).
+imports the harness, and the harness never imports provider client
+modules. The harness's sanctioned runtime seams are `llm.fake`, the
+`Agent`, and — for the memory kind — `conversation.wiring.derive_config`
+plus the memory layer (§13.12): the harness measures the shipped wiring,
+never a replica of it.
 
-### §13.12 Reserved: `kind: memory` (the NE final slice)
+### §13.12 `kind: memory` — the memory eval harness
 
-The memory eval harness lands as a `MemoryEvalConfig` widening the
-`EvalConfig` alias and one dispatch branch in `run_evaluation` — slice A's
-shapes do not move. What it rides: the `execute_tools`/builtins rule
-(§13.6 — the memory tool really writes its store), `on_tool` capture,
-store-truth scoring on write discipline / recall-in-next-session / dedup,
-a `transports:` axis (function tool vs `native_memory`, ledger #43), and
-scenario stores inspectable under `.neosian/evals/`. FakeProvider baselines
-first (keyless), then `external_<provider>` runs.
+The library measuring its own memory layer: **write discipline /
+recall-in-next-session / dedup**, as a **transports × models ×
+scenarios** matrix. `MemoryEvalConfig` widens the `EvalConfig` alias and
+one dispatch branch in `run_evaluation` routes it — slice A's shapes did
+not move. There is no public benchmark for this regime (LoCoMo measures
+personalization), so the shipped pack is the yardstick.
+
+Suite shape (strict keys per §13.2): `agent` names an AgentConfig
+**without `memory=`** — the suite owns the store and the `mounts:` list,
+one fresh FileStore root per cell; a base config carrying `memory=` is
+refused as a red cell naming `mounts:`, never silently overridden
+(ledger #66). `transports:` (default `[function]`) is `function` vs
+`native_memory` — ledger #43's promised comparison; the marker degrades
+by construction off Anthropic (#44), so the axis is informative only on
+Anthropic runs. A `scenario` is ordered `sessions`; a session is
+`{name, turns, script?, expect_store?}` with turns reusing §13.2's turn
+shape, `script:` per session (all-or-none per scenario), and
+`expect_store:` evaluated after the session's last turn.
+
+**Sessions are bare Agents built via `conversation.wiring.derive_config`**
+(ledger #65) — the shipped wiring, so a session gets the actor-bound
+tool (`actor = eval:<scenario>:<session>`, visible on every version
+row), the prompt-pack section, and a freshly rendered index per session:
+the frozen-index rule is what makes recall honestly measurable only in
+session 2. The memory builtin really writes its store (§13.6); each
+session gets its own scripted FakeClient (the §13.7 cursor rule, per
+session instead of per case).
+
+**Turn expectations stay loose; store truth carries the strictness** —
+the design's thesis. Four predicates: `documents` (existence, `content:`
+matchers with response semantics — model-authored prose, §13.4 —,
+`versions` exact count, `actions` oldest-first), `counts` (exact live
+documents under a prefix — the dedup signal), `absent`, and `forbidden`
+(no live document anywhere contains the text — the no-secrets rule).
+Failures are `store: `-prefixed and name the offenders; scoring re-reads
+through a freshly constructed store, so a pass is an on-disk truth.
+
+Scenario stores land under
+`.neosian/evals/<ts>-memory/<transport>/<model>/<scenario>` (segments
+slugged; `run_evaluation(store_root=)` overrides, the `save_report`
+precedent) and every red result carries a `store root:` failure line —
+a memory eval you cannot `cat` afterwards cannot be debugged (#69).
+The report is unchanged: transports occupy the `variants` axis (#64),
+so reporter, progress, and the schema-2 artifact never learn about
+kinds.
+
+`examples/eval_memory_baseline.yaml` is the shipped pack: all-scripted,
+keyless, all-green by construction — a regression gate (#67); the
+discriminating negatives live in unit tests. The external baselines
+(`tests/external/cross/test_memory_baselines.py`, weekly per provider)
+derive scriptless copies of the same pack in code (#68) — one source of
+scenario truth. Honest limits: the transport axis differs only on
+Anthropic, and FileStore is the only substrate this harness measures.
 
 ### §13.13 No judge
 

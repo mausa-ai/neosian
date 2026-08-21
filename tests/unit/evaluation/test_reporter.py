@@ -118,6 +118,22 @@ class TestArtifact:
         path = save_report(_report(), output_dir=str(target))
         assert path.parent == target
 
+    def test_memory_report_stays_schema_two(self, tmp_path: Path) -> None:
+        """Transports occupy the variants axis (ledger #64) — the
+        artifact shape never learns about kinds."""
+        result = CaseResult(case="dedup", variant="function", model="fake", passed=True)
+        report = EvalReport(
+            suite="mem",
+            variants=("function",),
+            models=("fake",),
+            cases=("dedup",),
+            results=(result,),
+        )
+        data = json.loads(save_report(report, output_dir=str(tmp_path)).read_text())
+        assert data["schema"] == 2
+        assert data["axes"]["variants"] == ["function"]
+        assert data["results"][0]["variant"] == "function"
+
 
 @pytest.mark.unit
 class TestTerminal:
