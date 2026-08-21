@@ -75,10 +75,41 @@ fails when any gated file changes without this section being updated —
 
 The NR phase added the `reflection-close` scenario, the
 `reflection.yaml` prompt asset (both fingerprinted above), and the
-harness's `reflect:` session key. The per-provider re-run over the
-grown pack is owed at the next external dispatch (the /ship step) and
-will be recorded here; the tables below were measured against the
-six-scenario pack (`c07b125d…28608`) with the same `memory.yaml`.
+harness's `reflect:` session key. Measured by two dispatched runs the
+same day —
+[32518636050](https://github.com/neosae/neosian/actions/runs/32518636050)
+(at 56d6f80) and
+[32520488461](https://github.com/neosae/neosian/actions/runs/32520488461)
+(at 3e9cda9, after the strict-schema fix below) — against the
+fingerprinted pack above. Cells are scenarios passed per transport.
+
+| Provider | Model | function | cli | native_memory |
+|---|---|---|---|---|
+| Anthropic | claude-sonnet-5 | 7/7 · 7/7 | 7/7 · 7/7 | 7/7 · 7/7 |
+| OpenAI | gpt-5-mini-2025-08-07 | 6/7 · 6/7 | 7/7 · 7/7 | n/a |
+| Cerebras | gpt-oss-120b | 7/7 · 6/7 | 7/7 · 6/7 | n/a |
+
+Findings, recorded as found (screened for calibration, deliberately
+unruled — tuning a scenario to make a provider pass is never silent):
+
+- **ReflectionBatch strict-mode 400 (run 1, fixed).** OpenAI's strict
+  structured output requires every property in `required`; the flat
+  all-optional op schema 400'd every reflection call there (the
+  `reflection-close` cells still passed — the model legitimately wrote
+  in-session instead). Fixed at 3e9cda9: per-command all-required op
+  variants in a plain `anyOf` union; a keyless wire-schema pin guards
+  the class. Run 2 shows the engine clean on OpenAI.
+- **OpenAI `write-discipline` (red both runs, function).** gpt-5-mini
+  files the preference correctly and never stores the token — but also
+  writes a second `/user` document recording the privacy instruction
+  itself (`privacy` / `secrets`), failing `counts: {/user: 1}`. A
+  privacy-preference note is arguably memory-worthy; the count pin
+  does not allow for it. Candidate calibration, unruled.
+- **Cerebras `long-horizon-recall` (green run 1, red run 2, both
+  transports).** The model filed "Deployment branch: main" while the
+  pack's regex `(?i)\bmain\b.{0,6}branch` pins the "main … branch"
+  word order — the NV wordform class again, stochastic across runs.
+  Candidate calibration (order-tolerant regex), unruled.
 
 ### 2026-08-21 — six-scenario pack (local runs)
 

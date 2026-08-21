@@ -981,9 +981,10 @@ layer and the memory layer.
 
 **Done when:** a Conversation that never explicitly wrote memory ends
 its session and the store holds the right facts — scripted keylessly
-*(✅ pinned)*; baselines re-run with reflection on *(keyless pack green
-14/14; the per-provider external dispatch is carried to /ship and lands
-in BASELINES.md per the NV discipline)*.
+*(✅ pinned)*; baselines re-run with reflection on *(✅ two dispatched
+runs 2026-08-21, recorded in BASELINES.md — Anthropic 7/7 × 3 twice;
+the two run-informed reds recorded as found, calibrations screened and
+deliberately unruled)*.
 
 **Shipped v0.74.0 (2026-08-21), one session.** Rulings (options-first,
 user confirmed): public `reflect()` mirroring `compact()` + a
@@ -2087,3 +2088,17 @@ membership is standing, not achieved.
   per-candidate done-when now reads two consecutive *dispatched* runs;
   DESIGN §11/§13.12, CLAUDE.md, SERVICES.md, BASELINES.md swept. The
   NV/NE-era "weekly" wording in closed sections stands as history.
+- 2026-08-21 | meta | **The grown pack measured; NR's carry lands.**
+  Two dispatches (32518636050 at 56d6f80, 32520488461 at 3e9cda9):
+  run 1 found a real NR bug — OpenAI's strict mode 400'd the flat
+  all-optional ReflectionBatch schema (every reflection call degraded
+  there; the cells passed via legitimate in-session writes) — fixed
+  same session as per-command all-required op variants in a plain
+  anyOf union + a keyless wire-schema pin (3e9cda9, `NR:` subject).
+  Results recorded as found in BASELINES.md: Anthropic 7/7 on all
+  three transports, both runs; OpenAI 6/7 function (a second /user
+  doc recording the privacy instruction — memory-worthy vs the count
+  pin, calibration screened, unruled), 7/7 cli; Cerebras 7/7 then
+  6/7 (the "branch: main" word-order phrasing vs the order-sensitive
+  regex — the NV wordform class, stochastic). No release cut —
+  v0.74.0 predates 3e9cda9; the fix rides the next phase-close tag.
