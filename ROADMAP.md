@@ -1181,9 +1181,15 @@ as its own mini-session, `NC:` commit subjects, its own done-when.
   LoCoMo; its knowledge-update/temporal questions overlap our regime
   where LoCoMo's personalization QA does not), the driver over
   Conversation + memory, judge policy (§13.13: opt-in, never keyless,
-  prompt as assets data), spend budget. Done when one
-  accepted-benchmark number stands in BASELINES.md beside the
-  self-measured tables, methodology stated.
+  prompt as assets data), spend budget. The same discussion (or NG's,
+  whichever lands first) also rules the **content-matcher judge for
+  the self-measured pack** — external tier only, §13.13's reserved
+  shape (user, 2026-08-21): three widenings of the phrasing class
+  showed deterministic fact-presence pins over model prose are the
+  harness's weak layer; structural checks (counts, forbidden,
+  versions, exactly-one-match) stay deterministic everywhere. Done
+  when one accepted-benchmark number stands in BASELINES.md beside
+  the self-measured tables, methodology stated.
 
 ## NZ — The declaration (v1.0.0)
 
@@ -2102,3 +2108,15 @@ membership is standing, not achieved.
   6/7 (the "branch: main" word-order phrasing vs the order-sensitive
   regex — the NV wordform class, stochastic). No release cut —
   v0.74.0 predates 3e9cda9; the fix rides the next phase-close tag.
+- 2026-08-21 | meta | **The two reds ruled; the judge joins the
+  agenda.** User rulings: the privacy-note doc is memory-worthy —
+  write-discipline's `/user` count dropped (exactly-one-match +
+  `forbidden` keep the bite); the branch pin goes order-tolerant.
+  Both ride one pack re-fingerprint + a third dispatch, recorded in
+  BASELINES.md. The structural finding named: every content-level
+  red to date was a pin narrower than legitimate behavior, while the
+  structural checks (counts/forbidden/versions/exactly-one-match/
+  harness errors) have only ever caught real signal — so the
+  **content-matcher judge** (external tier only, §13.13's reserved
+  shape) joins NC6/NG's options-first agenda; the keyless tier stays
+  deterministic forever.

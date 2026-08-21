@@ -67,7 +67,7 @@ fails when any gated file changes without this section being updated —
 - `neosian/assets/prompts/reflection.yaml` — sha256
   `792964adeceed998409570b531b9ad8c519d470a86feec304e5f37ac629e38d7`
 - `examples/eval_memory_baseline.yaml` — sha256
-  `9c7621a7dbdd79f5aedb2b91cec519c6152100be4bd9d39ad88020699ec9c7b2`
+  `c9f7dc46785ad19bd86dd6e048644cc1c1a802a743065ddf615fe365a2dc0437`
 
 ## Results
 
@@ -102,14 +102,25 @@ unruled — tuning a scenario to make a provider pass is never silent):
 - **OpenAI `write-discipline` (red both runs, function).** gpt-5-mini
   files the preference correctly and never stores the token — but also
   writes a second `/user` document recording the privacy instruction
-  itself (`privacy` / `secrets`), failing `counts: {/user: 1}`. A
-  privacy-preference note is arguably memory-worthy; the count pin
-  does not allow for it. Candidate calibration, unruled.
+  itself (`privacy` / `secrets`), failing `counts: {/user: 1}`.
+  **Ruled legitimate (user, 2026-08-21):** a privacy-preference note is
+  memory-worthy — the `/user` count dropped (the exactly-one-match
+  espresso rule and the `forbidden` pin keep the bite); pack
+  re-fingerprinted above.
 - **Cerebras `long-horizon-recall` (green run 1, red run 2, both
   transports).** The model filed "Deployment branch: main" while the
   pack's regex `(?i)\bmain\b.{0,6}branch` pins the "main … branch"
   word order — the NV wordform class again, stochastic across runs.
-  Candidate calibration (order-tolerant regex), unruled.
+  **Ruled (user, 2026-08-21):** order-tolerant regex (either word
+  order, both words near); pack re-fingerprinted above. Third widening
+  of the phrasing class — the same ruling adds the **content-matcher
+  judge** (external tier only, §13.13's reserved shape) to the NC6/NG
+  options-first agenda: deterministic fact-presence pins over model
+  prose are the harness's weak layer; structural checks (counts,
+  forbidden, versions, exactly-one-match) stay deterministic
+  everywhere.
+- **Post-calibration re-run:** dispatched the same day as run 3 —
+  recorded below when concluded.
 
 ### 2026-08-21 — six-scenario pack (local runs)
 

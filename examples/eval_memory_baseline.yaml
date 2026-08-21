@@ -63,9 +63,14 @@ scenarios:
           - content: "Noted — the token is not stored."
         # Document naming is the model's choice — store truth pins the
         # region and the fact (path_prefix: exactly one live document
-        # under the prefix matches), never the file name.
+        # under the prefix matches), never the file name. /user is
+        # deliberately uncounted: recording the privacy instruction as
+        # its own note beside the preference is memory-worthy, ruled
+        # legitimate (2026-08-21 — gpt-5-mini did exactly that on both
+        # first dispatches); the exactly-one-espresso-match rule keeps
+        # the dedup bite and `forbidden` keeps the no-secrets bite.
         expect_store:
-          counts: {/user: 1, /project: 1}
+          counts: {/project: 1}
           documents:
             - path_prefix: /user
               content: {contains: espresso}
@@ -286,12 +291,14 @@ scenarios:
                   path: /project/deploy
                   content: "Deploys from the main branch only."
           - content: "Noted."
-        # regex: models decorate ("the `main` branch" observed) — pin
-        # the fact, not the typography.
+        # regex: models decorate and reorder ("the `main` branch",
+        # "Deployment branch: main" — both observed) — pin the fact in
+        # either word order, never the phrasing.
         expect_store:
           documents:
             - path_prefix: /project
-              content: {regex: "(?i)\\bmain\\b.{0,6}branch"}
+              content:
+                regex: "(?i)\\bmain\\b[^\\n]{0,24}\\bbranch\\b|\\bbranch\\b[^\\n]{0,24}\\bmain\\b"
       - name: recall
         turns:
           - user: "What is my cat's name?"
