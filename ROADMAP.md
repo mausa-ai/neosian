@@ -5,13 +5,17 @@
 > *(2026-08-21: the 1.0 arc opens — see "The 1.0 arc" below. The lane is
 > ruled: neosian is the **state layer for production agents** — durable
 > conversations, agent-curated memory, context lifecycle — on storage
-> the product owns. Sequencing (user ruling): NA+NV first (agent-native
-> surface, then evidence), NR→NG (the lane's core), NP→NT (product
+> the product owns. Sequencing (user ruling): NA→NM→NV first
+> (agent-native surface, the memory process, then evidence measuring
+> all five transports), NR→NG (the lane's core), NP→NT (product
 > surface; NP carries the write-events ECOSYSTEM amendment as the next
 > deliberate session-pair — the counterpart is ready), NC background
 > slices interleave, NZ declares 1.0. The 1.0 formula has **three
-> gates**: lane core + product surface complete, baselines published,
-> and a real host vendored and green. Arc 1 (NH→N4) stands ✅ whole at
+> gates**: lane core + product surface + the process complete,
+> baselines published, and a real host vendored and green. NM is the
+> Redis-shaped ruling (2026-08-21): the library ships the standalone
+> memory process (container, HTTP MCP); neosian.com is a separate
+> project — a future host, never library scope. Arc 1 (NH→N4) stands ✅ whole at
 > v0.70.0; that release was first cut as v1.0.0 and withdrawn same day
 > (ledger #73) — the stability promise rides the eventual v1.0.0, cut
 > at NZ and nowhere else. The v0.70.0 amendment's session-pair
@@ -40,8 +44,8 @@
 
 ## Phase ids, tags, versions
 
-- Phase ids: `NH`, `NS`, `NE`, `N0`–`N4` (arc 1); `NA`, `NV`, `NR`, `NG`,
-  `NP`, `NT`, `NZ` + the `NC` background track (the 1.0 arc). Commit
+- Phase ids: `NH`, `NS`, `NE`, `N0`–`N4` (arc 1); `NA`, `NM`, `NV`, `NR`,
+  `NG`, `NP`, `NT`, `NZ` + the `NC` background track (the 1.0 arc). Commit
   subjects `<ID>: <what became true>` (≤ 72 chars); `meta:` for repo
   housekeeping. The `v:X.Y.Z. …` subject style is retired (DESIGN §12 #7).
 - Progress axis: annotated **`<id>-done`** tags at each phase close.
@@ -751,8 +755,8 @@ seed of the agent-memory benchmark nobody else has).
 **The 1.0 formula — three gates, all required** (this supersedes any
 earlier two-gate phrasing):
 
-1. The lane's core and product surface complete — NR, NG, NP, NT
-   shipped whole.
+1. The lane's core, the product surface, and **the process** complete —
+   NM, NR, NG, NP, NT shipped whole.
 2. Per-provider memory baselines published and standing — NV.
 3. **A real host vendored a `v<X.Y.Z>` tag and is green against it** —
    the kit's P10 plus its CI.
@@ -815,7 +819,38 @@ its sandbox loses to a worse one it knows from training.
 walkthrough; the baseline pack is green on
 `transports: [function, cli]`.
 
-## NV — Evidence (v0.72)
+## NM — The memory process (v0.72)
+
+DESIGN: §8 — plus the § the exposure ruling writes.
+
+The state layer as a standalone process: `docker run` serves memory to
+any MCP client over the network — the testable form of "the state layer
+is complete", and the artifact arc 3 (neosian.com, a **separate
+project**) would one day host. The library's half only: no user
+management, no quotas, no billing — host territory, forever.
+
+- Opens options-first with the **exposure ruling**: how much protection
+  the reference server ships — localhost-only default + documentation,
+  or additionally one env bearer-token check. Full auth is out, always.
+- **Streamable HTTP** on the MCP server (deferred at N4 slice C; the
+  installed SDK supports it; `create_memory_server`'s Server mounts) —
+  stdio stays for local clients.
+- **`neosian serve`** — the long-running entrypoint: store flags per the
+  MCP settings grammar (`--root`/mounts/env DSN, never `--dsn`), bind
+  address, a health endpoint; the lifespan owns the store (serve.py's
+  pool-close discipline).
+- **The container** — a shipped Dockerfile/OCI image: volume-mounted
+  FileStore or `NEOSIAN_MCP_POSTGRES_DSN`, health check wired,
+  localhost-vs-bound behavior documented.
+- The harness's transports axis gains `http` — the server measured like
+  every other transport.
+
+**Done when:** `docker run` + an MCP client over HTTP round-trips
+memory against both substrates (volume FileStore, Postgres DSN); one
+store demonstrably serves five transports — function tool, native,
+stdio MCP, HTTP, CLI — through the one dispatcher.
+
+## NV — Evidence (v0.73)
 
 DESIGN: §13, §3.
 
@@ -841,7 +876,7 @@ The harness starts earning its keep as the benchmark.
 **Done when:** BASELINES.md exists with real per-provider numbers and
 dates; the weekly runs stand; the OTel extra emits spans keylessly.
 
-## NR — Reflection (v0.73)
+## NR — Reflection (v0.74)
 
 DESIGN: §9 — plus the reflection § this phase writes.
 
@@ -864,7 +899,7 @@ layer and the memory layer.
 its session and the store holds the right facts — scripted keylessly;
 baselines re-run with reflection on.
 
-## NG — The gardener & scale (v0.74–0.75)
+## NG — The gardener & scale (v0.75–0.76)
 
 DESIGN: §8, §9.6 (the idiom).
 
@@ -887,7 +922,7 @@ hopeless in embedding stores.
 is measurably improved by one maintenance pass, keylessly scripted; the
 index holds its budget at 500 docs; baselines re-run.
 
-## NP — Product surface: governance & write-events (v0.76–0.77)
+## NP — Product surface: governance & write-events (v0.77–0.78)
 
 DESIGN: §8, §6 + ECOSYSTEM §5/§12.
 
@@ -909,7 +944,7 @@ The receipts, exposed — and the arc's deliberate seam change.
 the event stream; redaction runs end-to-end; the amendment stands in
 both ledgers.
 
-## NT — The tool-approval gate (v0.78)
+## NT — The tool-approval gate (v0.79)
 
 DESIGN: §3 — plus the § the design discussion writes.
 
@@ -943,7 +978,7 @@ as its own mini-session, `NC:` commit subjects, its own done-when.
 
 The three gates, checked, then the promise:
 
-- [ ] Gate 1: NR, NG, NP, NT shipped whole (✅ headings).
+- [ ] Gate 1: NM, NR, NG, NP, NT shipped whole (✅ headings).
 - [ ] Gate 2: BASELINES.md standing with real per-provider numbers
       (NV, kept current).
 - [ ] Gate 3: **a real host vendored a `v<X.Y.Z>` tag and is green
@@ -1551,3 +1586,15 @@ is asserted without evidence.
   its 73dcd39; the kit-side commit 6aeb7b2 filled the §12 cell) —
   DESIGN §9.10/#71 synced to match. Pointer → NA. Docs only; no code
   touched.
+- 2026-08-21 | meta | **NM joins the arc; gate 1 widens.** The
+  Redis-shaped ruling: the library ships the standalone memory
+  process — streamable HTTP on the MCP server (slice C's deferral),
+  `neosian serve`, a shipped container, the `http` transport on the
+  harness axis — while neosian.com stays a separate project, a future
+  host on the frozen seams (auth/quotas/billing never enter the
+  library; the exposure ruling opens the phase). Placed NA→NM→NV so
+  NA's cross-process ruling precedes it and NV measures all five
+  transports; downstream version markers shifted (NV v0.73 … NT
+  v0.79). The 1.0 formula's gate 1 now reads: lane core + product
+  surface + **the process** — "the state layer is complete" must be
+  testable from outside Python. Docs only; no code touched.
