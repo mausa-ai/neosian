@@ -49,7 +49,7 @@ _EPILOG: Final = (
 # argv flag -> dispatcher argument, per command; `vars(args)` filtered —
 # there is no translation table to drift (flags are the dispatcher's
 # argument names, kebab-cased).
-_ARGUMENT_KEYS: Final[dict[str, tuple[str, ...]]] = {
+ARGUMENT_KEYS: Final[dict[str, tuple[str, ...]]] = {
     "view": ("path", "view_range"),
     "create": ("path", "content"),
     "str_replace": ("path", "old_str", "new_str"),
@@ -176,7 +176,7 @@ def _parse(
     args = parser.parse_args(list(argv))
     command: str = args.command
     settings = resolve_store_settings(subs[command], args, env)
-    arguments = {key: getattr(args, key) for key in _ARGUMENT_KEYS[command]}
+    arguments = {key: getattr(args, key) for key in ARGUMENT_KEYS[command]}
     for key in _STDIN_KEYS:
         if arguments.get(key) == "-":
             arguments[key] = stdin.read()

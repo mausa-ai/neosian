@@ -144,11 +144,16 @@ class TestSessions:
         assert "- /user/preferences" not in str(first.content)
         assert "- /user/preferences" in str(second.content)
 
-    async def test_version_rows_carry_the_session_actor(self, tmp_path: Path) -> None:
+    @pytest.mark.parametrize("transport", [Transport.FUNCTION, Transport.CLI])
+    async def test_version_rows_carry_the_session_actor(
+        self, tmp_path: Path, transport: Transport
+    ) -> None:
+        """The eval actor survives both transports — on cli it rides
+        `--actor` verbatim through the argv boundary."""
         root = tmp_path / "store"
         await run_scenario(
             _base(),
-            Transport.FUNCTION,
+            transport,
             Model.FAKE,
             _two_session_scenario(),
             mounts=(_MOUNT,),
@@ -180,10 +185,13 @@ class TestDerivation:
         self, tmp_path: Path
     ) -> None:
         """The wire-visible half of the transport axis: the memory
-        ToolDefinition reaches the client with (or without) the marker."""
+        ToolDefinition reaches the client with (or without) the marker —
+        and the tuple unpack pins that exactly ONE `memory` tool is on
+        the wire (a cli cell must not also register the function tool)."""
         for transport, expected in (
             (Transport.NATIVE, "memory_20250818"),
             (Transport.FUNCTION, None),
+            (Transport.CLI, None),
         ):
             clients: list[FakeClient] = []
 

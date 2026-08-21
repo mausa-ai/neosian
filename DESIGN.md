@@ -976,6 +976,7 @@ never a silent divergence. Numbering is monotonic, never reused.
 | 75 | `neosian memory` imports `_foundation/mcp/settings.py` for the store flags (crosses no contract) | **The store grammar extracted to `_foundation/memory/settings.py`** (`StoreSettings`, `add_store_arguments`, `resolve_store_settings`, `parse_mount`/`format_mount`); the MCP module keeps its prog/epilog and `ServerSettings` as an alias | The memory layer importing the MCP layer inverts §1's stack for a parser. #50's precedent is exact: when a second transport needed the command ladder, the ladder moved to a neutral module — the same move for the second argv entry point, and `format_mount` (the parser's inverse) gains a home the harness and `mcp install` reuse |
 | 76 | Keep `NEOSIAN_MCP_POSTGRES_DSN` for the MCP server and mint a second key for `neosian memory` (or alias the two) | **Hard rename to `NEOSIAN_POSTGRES_DSN`** — one key for every argv entry point; the old name removed same-commit, no alias (user ruling, 2026-08-21) | The key stopped being MCP-specific the moment a second entry point read it; two names for one DSN is a second host-visible contract to keep true forever, and an alias needs a conflict rule. Pre-1.0, private repo, no consumer has vendored the MCP server — the deliberate-batched-break precedent (#54's schema v2). #53's substance (no `--dsn`, entry-point-tier reader) is unchanged |
 | 77 | `neosian memory --json` maps `ToolResult` to a CLI-native shape, as the MCP transport did (#52) | **`--json` prints `ToolResult.to_json()` verbatim** — one line on stdout, exit 0/1 by `success`; human mode prints `data` on stdout, `error:`/`hint:` on stderr; argv-tier errors stay argparse text at exit 2 | #52 held because MCP has in-band success/error framing; a shell has only an exit code, so the function tool's envelope IS the machine surface — a second wrapper would be a shape to document and drift. Printing it verbatim is also what lets the harness's cli transport parse a real `ToolResult` back out, measuring shipped bytes instead of re-deriving them |
+| 78 | The harness's `cli` transport spawns the real `neosian memory` binary per memory call (the literal reading of "the shell is a transport") | **The engine runs in-process** — argv built per call, a fresh store from `--root` per invocation, the `--json` envelope decoded back; the process boundary is pinned once per gate by the keyless walkthrough driving all six commands through the literal binary (user ruling, 2026-08-21) | What can drift is the grammar, the envelope, and the exit tiering — all crossed in-process; the fork/exec layer is scenario-independent, so re-crossing it per cell buys no coverage the walkthrough lacks while taxing every `make test` ~10 interpreter starts, blinding coverage, and trading tracebacks for exit codes. Measurement precision is the user-facing asset here (§13.12 is the benchmark seed) |
 
 ## §13 Evaluation (NE)
 
@@ -1027,7 +1028,8 @@ config vocabulary (`AgentEvalConfig`, `EvalCase`, `EvalTurn`, `Expectation`,
 primitives and `capture.py` the shared observation seams (hook
 composition, tool capture, scripted factories); the memory kind adds
 `memory_types.py`/`memory_loader.py`/`memory_expectations.py`/
-`memory_score.py`/`memory_runner.py` (§13.12). `EvalReport` carries its own axes, so
+`memory_score.py`/`memory_runner.py`/`memory_cli.py` (§13.12; the last
+is the cli transport's tool, §14.3). `EvalReport` carries its own axes, so
 presentation never needs the config type — the seam later kinds reuse;
 its config-side twin is the three axis-name properties
 (`variant_names`/`model_names`/`case_names`) every config type carries,
@@ -1152,10 +1154,14 @@ Suite shape (strict keys per §13.2): `agent` names an AgentConfig
 **without `memory=`** — the suite owns the store and the `mounts:` list,
 one fresh FileStore root per cell; a base config carrying `memory=` is
 refused as a red cell naming `mounts:`, never silently overridden
-(ledger #66). `transports:` (default `[function]`) is `function` vs
-`native_memory` — ledger #43's promised comparison; the marker degrades
-by construction off Anthropic (#44), so the axis is informative only on
-Anthropic runs. A `scenario` is ordered `sessions`; a session is
+(ledger #66). `transports:` (default `[function]`) is `function`,
+`native_memory`, or `cli` (NA, §14.3): the native marker is ledger #43's
+promised comparison and degrades by construction off Anthropic (#44), so
+that axis is informative only on Anthropic runs; `cli` executes every
+memory call through the `neosian memory` engine in-process
+(`memory_cli.py`, ledger #78) and is provider-independent — the shipped
+pack runs `[function, cli]` keylessly. A `scenario` is ordered
+`sessions`; a session is
 `{name, turns, script?, expect_store?}` with turns reusing §13.2's turn
 shape, `script:` per session (all-or-none per scenario), and
 `expect_store:` evaluated after the session's last turn.
@@ -1266,3 +1272,31 @@ arrives only through `NEOSIAN_POSTGRES_DSN` (#53/#76). `--json` prints
 one-writer rule (#74) exists for: an agent's shell writing a root while
 an MCP server serves it is exactly the collision the rule routes to
 Postgres or the daemon.
+
+### §14.3 The `cli` transport on the harness axis
+
+`Transport.CLI` joins §13.12's axis: a cli cell's memory tool
+(`evaluation/memory_cli.py`) converts each call's arguments to argv —
+mirroring the engine's own `ARGUMENT_KEYS`, omitting `None` values so a
+missing argument gets the grammar's exit-2 answer, resolving the
+`file_text` alias at the boundary because the grammar has no alias
+flag — and runs the real engine in-process: grammar, a fresh store
+built from `--root` on every call (a real process's cold-store
+property), dispatch, the `--json` envelope parsed back into a
+`ToolResult`. `env={}` always: an ambient `NEOSIAN_POSTGRES_DSN` must
+not reach a cell. The runner passes `memory_config=None` and the cli
+tool via `extra_tools` — exactly one `memory` tool on the wire, the
+same `build_memory_tool` definition, so the schema the model sees is
+transport-invariant and the axis measures transports, never prompts
+(#43's logic). The actor stays `eval:<scenario>:<session>`, riding
+`--actor` verbatim through the argv boundary.
+
+**Executed in-process, deliberately (#78).** What can drift between the
+function tool and the shell — flag spelling, the argv mapping, the
+envelope, the exit tiering — is crossed on every call; an OS fork adds
+no memory semantics, costs ~10 interpreter starts per pack run in the
+keyless gate, and turns tracebacks into exit-code archaeology. The
+honest limit: the process boundary itself (console-script wiring,
+`sys.argv` slicing, real pipes) is out of scope here and pinned once
+per gate by the scripted keyless walkthrough, which drives all six
+commands through the literal `neosian` binary.

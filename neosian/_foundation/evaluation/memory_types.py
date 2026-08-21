@@ -24,14 +24,16 @@ from neosian._foundation.shared.types import Model, ToolName
 
 
 class Transport(str, Enum):
-    """How the memory tool reaches the wire (ledger #43): the plain
-    function tool, or Anthropic's native `memory_20250818` declaration.
-    Off Anthropic the native marker degrades to the function schema, so
-    the axis is informative only on Anthropic runs.
+    """How the memory tool reaches the wire: the plain function tool;
+    Anthropic's native `memory_20250818` declaration (ledger #43 — the
+    marker degrades to the function schema off Anthropic, so that axis
+    is informative only on Anthropic runs); or the shell surface —
+    `neosian memory`'s engine executed in-process (ledger #78).
     """
 
     FUNCTION = "function"
     NATIVE = "native_memory"
+    CLI = "cli"
 
 
 @dataclass(frozen=True, slots=True)

@@ -21,10 +21,11 @@ agent: examples/eval_memory_agent.py
 
 models: [fake]
 
-# The transport axis (function tool vs Anthropic's native memory
-# declaration). native_memory is inert off Anthropic, so the keyless
-# baseline stays on the default [function].
-transports: [function]
+# The transport axis. The cli transport (the `neosian memory` engine,
+# run in-process — DESIGN §14.3) is provider-independent, so it belongs
+# in the keyless gate beside the function tool; native_memory stays off
+# the pack because it is inert off Anthropic.
+transports: [function, cli]
 
 mounts:
   - scope: user:eval

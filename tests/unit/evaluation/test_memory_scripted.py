@@ -74,9 +74,10 @@ class TestShippedPack:
             _REPO_ROOT / "examples" / "eval_memory_baseline.yaml",
             tmp_path / "stores",
         )
-        assert report.total == 3
+        # Three scenarios × the two shipped transports (function, cli).
+        assert report.total == 6
         assert report.failed == 0, _failures(report)
-        assert report.variants == ("function",)
+        assert report.variants == ("function", "cli")
         assert report.cases == (
             "write-discipline",
             "recall-next-session",

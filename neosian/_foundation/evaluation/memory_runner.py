@@ -22,6 +22,7 @@ from neosian._foundation.evaluation.capture import (
     scripted_factory,
 )
 from neosian._foundation.evaluation.matcher import match_turn
+from neosian._foundation.evaluation.memory_cli import create_cli_memory_tool
 from neosian._foundation.evaluation.memory_score import check_store
 from neosian._foundation.evaluation.memory_types import (
     MemoryScenario,
@@ -131,12 +132,26 @@ async def _run(
         )
         capture = ToolCapture(stubbed)
         recorder = FallbackRecorder()
+        actor = f"eval:{scenario.name}:{session.name}"
+        via_cli = transport is Transport.CLI
         derived = derive_config(
             staged,
             section=section,
-            memory_config=memory_config,
-            actor=f"eval:{scenario.name}:{session.name}",
+            # A cli cell registers the shell-executed tool via extra_tools
+            # instead — passing memory_config too would put two `memory`
+            # tools on the wire.
+            memory_config=None if via_cli else memory_config,
+            actor=actor,
             capture=_noop,
+            extra_tools=(
+                (
+                    create_cli_memory_tool(
+                        store_root=store_root, mounts=mounts, actor=actor
+                    ),
+                )
+                if via_cli
+                else ()
+            ),
         )
         derived = dataclasses.replace(
             derived,

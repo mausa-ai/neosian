@@ -2,9 +2,12 @@
 
 The same scenarios that gate the keyless FakeProvider tier run here
 scriptless against each real provider — one source of scenario truth.
-A red run IS the baseline doing its job: it means the provider's model
-broke the write discipline, the recall, or the dedup behavior the pack
-pins. Store roots land under the test's tmp dir for inspection.
+Since NA the pack carries `transports: [function, cli]`, so every
+provider baseline also measures the model driving the shell grammar
+(§14.3); the Anthropic axis test adds `native_memory`. A red run IS the
+baseline doing its job: it means the provider's model broke the write
+discipline, the recall, or the dedup behavior the pack pins. Store
+roots land under the test's tmp dir for inspection.
 """
 
 import dataclasses
