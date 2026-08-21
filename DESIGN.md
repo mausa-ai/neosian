@@ -441,6 +441,23 @@ files with ungrammatical names are skipped silently in listings; a valid
 name with a broken or newer envelope raises. Naive timestamps in stored
 data are refused, never coerced (`memory_format_unsupported`).
 
+**One writer per root (NA ruling).** FileStore's `asyncio.Lock`
+serializes mutations inside one process; across processes files cannot
+arbitrate — which is why `supports_optimistic_concurrency` stays
+`False` — and two writers on one root can interleave a read-modify-write
+and lose an edit. Neosian documents the constraint instead of
+engineering around it: no lock files, no `flock`, no leases. **A root is
+owned by one writer at a time** — an agent's shell (`neosian memory`),
+one MCP server process, or one embedding application — while any number
+of readers may run beside it; the sidecar-before-document write order
+bounds a concurrent reader to a stale read, never a reused version
+number. Multi-writer needs route to `PostgresStore`, which arbitrates on
+the version-row primary key, or to NM's state daemon, where one process
+owns the files and every client speaks to it. Advisory locking would
+half-promise arbitration at the price of a portability matrix (NFS,
+Windows, containers) and a new failure mode — stale locks — on the
+substrate whose entire value is that you can `cat` it (ledger #74).
+
 **PostgresStore layout (N3).** The relational reference substrate for
 standalone deployments, implementing both seams as one class
 (`PostgresStore(dsn, *, schema="neosian", clock=None, min_size=4,
@@ -952,6 +969,7 @@ never a silent divergence. Numbering is monotonic, never reused.
 | 71 | Keep deferring the §9.10 amendment past 1.0, or amend without the §11 SemVer flip | **Executed whole at v0.70.0**: §10 +`ConversationStore`/`ConversationStoreContract`, §6 blesses `agent_conversation_*`, §11 SemVer-guaranteed from the eventual v1.0.0; the changelog row's kit cell filled same-day by the paired kit session (kit #206, its 73dcd39) | 1.0 is the moment silence becomes commitment — an un-frozen ConversationStore seam and a "minor bump" break rule would both freeze as accidents; the kit's counterpart was recorded waiting for exactly this payload, and either repo may still refuse the pair |
 | 72 | The evaluation facade recorded as an ECOSYSTEM seam at 1.0 | **Named in the eventual v1.0.0 tag annotation + README only** (user ruling, 2026-08-21): `Agent`, `Conversation`, `MemoryStore`, and `neosian.evaluation` are the promised-stable surface; ECOSYSTEM gains no evaluation section | The recorded §9.10 payload is what the kit's counterpart signed up for — extending it unilaterally breaks session-pair symmetry; evaluation is a dev-time harness (the `neosian.fake` §7 precedent covers the keyless guarantee), and a future session-pair may still seam it properly |
 | 73 | Let the same-day v1.0.0 tag stand | **1.0 postponed** (user ruling, 2026-08-21): the v1.0.0 tag was withdrawn before any consumer vendored it and the release re-cut as v0.70.0; the stability promise rides the eventual v1.0.0, which waits for a stronger surface (roadmap continuation to be designed options-first — candidates: an open model registry, MCP client-side tools, an OTel exporter on the hooks, published per-provider memory baselines) | A version number is a promise, not a milestone sticker — 1.0 claimed "this is it" while the external baselines had never run and no host had vendored a tag; withdrawing same-day costs nothing, while an under-evidenced 1.0 devalues every guarantee attached to it |
+| 74 | Advisory-lock the FileStore root (`flock`, lock files, leases) so several processes can share one directory | **Documented one writer per root** (NA): the in-process lock is the only arbiter; concurrent writers route to `PostgresStore` or to NM's state daemon | `supports_optimistic_concurrency = False` already says files cannot arbitrate — a lock file half-promises what it cannot keep across NFS/Windows/containers and adds stale-lock recovery to the substrate whose value is that you can `cat` it. The NA shell makes the collision reachable (an agent's CLI writing while an MCP server runs), so the constraint is stated where users meet it instead of implied by a ClassVar |
 
 ## §13 Evaluation (NE)
 

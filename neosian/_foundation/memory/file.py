@@ -13,7 +13,9 @@ Sync I/O inside async methods (KB-scale files; the FileBlackboard
 precedent); an asyncio.Lock serializes mutations, so read-your-writes
 holds within a process. Across processes files cannot arbitrate — last
 writer wins, which is why `supports_optimistic_concurrency` stays False
-even though `expected_version` is honored best-effort in-process.
+even though `expected_version` is honored best-effort in-process — and
+why §8 rules one writer per root (multi-writer needs route to
+PostgresStore or the state daemon).
 Durability between the sidecar append and the document write is not
 transactional (C1 permits); the sidecar is written first so a crash can
 never make a version number get reused.
