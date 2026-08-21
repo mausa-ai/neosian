@@ -51,6 +51,10 @@ out, `forbidden` type only):
   `_foundation.evaluation` ↛ the four provider client modules with
   `allow_indirect_imports` (it drives an `Agent` and scripts `llm.fake` —
   its legitimate seams) (NE, §13.11).
+- `_foundation.otel` ↛ provider internals and every layer beyond the hook
+  seam (conversation, memory, postgres, mcp, evaluation, guardrails) —
+  the exporter consumes `agent/hooks.py` events and nothing else
+  (NV, ledger #83).
 - The facade (`neosian/__init__.py`, `neosian/fake.py`) only re-exports; no
   logic lives there.
 
@@ -107,7 +111,12 @@ yields a response — fired **before** the terminal event is yielded, so a
 consumer that saw `done`/`blocked` has had the hook run; register #6), the
 fallback switch sites + sticky retry-main (`on_fallback`). Hooks await
 inline — sequences are deterministic; the eval runner's fallback detection
-rides `on_fallback` instead of scraping logs. `Agent` exposes read-only
+rides `on_fallback` instead of scraping logs. The shipped OTel exporter
+(NV) is a hooks consumer, not a fifth insertion point:
+`neosian.otel.otel_hooks()` returns a plain `AgentHooks` emitting one
+flat post-hoc span per event (`otel` extra = `opentelemetry-api` only;
+span content excludes messages, tool arguments, and results — ledger
+#83). `Agent` exposes read-only
 `config` and `max_tool_iterations` — an Agent knows its configuration,
 never its history; `Conversation` (§9) derives its own config from either.
 
@@ -981,6 +990,8 @@ never a silent divergence. Numbering is monotonic, never reused.
 | 79 | `[tool.hatch.build.force-include]` mapping the repo-root `llms.txt` into the wheel | **Two byte-identical files** — the repo root and `assets/llms.txt` — pinned by one unit test; no build config. A second test pins the install-pin tag to `__version__`, so a release bumps `llms.txt` same-commit or the gate goes red | The repo has no hatch build section, and the first force-include opens "what else needs one" for every future root artifact, making wheel contents build-config-dependent and invisible in the tree; two files and one assertion are greppable and cost nothing. The version coupling is the stale-README-pin failure mode (found at NA: the v0.70.0 pins survived a release), closed structurally |
 | 80 | `mcp install --write` creates a missing client config directory (`mkdir -p`, the friendly move) | **Refuse at exit 1**, naming the path; never `mkdir`. Same discipline one level down: an unparseable config file, or an `mcpServers` that is not a JSON object, is refused — never rewritten | A missing config home means the client is not installed here — an environment fact, not a grammar mistake (§14.1's tier 1). Creating another program's config directory guesses at a layout neosian does not own and leaves debris when the guess is wrong; "preserve every unknown key" is only true if what cannot be parsed is also never touched |
 | 81 | `claude-code` registers at `~/.claude.json` (user scope); the entry's `command` is the `neosian` console script found on PATH | **Project `./.mcp.json`** with `~/.claude` as the installed-client evidence; **`command` = the current interpreter's absolute path** (`sys.executable`) + `-m neosian.mcp` (user rulings, 2026-08-21) | A memory root is usually project-shaped and `.mcp.json` travels with the repo the agent works in (Claude Code approval-prompts it natively); GUI-launched clients do not inherit a shell's PATH, so an absolute interpreter is the only registration that works from Claude Desktop, and `-m` keeps the entry independent of console-script naming. Both choices live in one table row / one parameter, so a reversal is one-line cheap |
+| 82 | The shipped pack pins exact document paths (`/user/preferences`); the first real runs (NV, 2026-08-21) went red on all four providers while the models filed facts correctly under their own names (`/user/preferences.md`, `/user/drink.txt`) | **`path_prefix` document expectations** (user ruling): exactly one live document under the prefix satisfies `content` — zero is the fact unrecorded, two is the duplicate; `versions`/`actions` apply to the matched document. The pack reshapes onto it; history pins stay only where the disciplined path is unambiguous (first writes, recall's no-new-writes); exact `path:` keeps its strictness in the unit-tier negatives | Nothing in the prompt pack names documents, so exact paths measured an unspecified convention — publishing those reds as "failed write discipline" would be the motivated-reasoning mode ROADMAP's benchmark-honesty risk names, inverted. The pins that were communicated (mount routing, no secrets, update-not-duplicate, delete-what-proved-wrong) all survive, and the negatives prove the scoring still bites on each |
+| 83 | OTel via a wrapper/middleware layer, or spans nested by buffering events per run until `on_turn` | **`neosian.otel.otel_hooks()` → a plain `AgentHooks`** (facade-only surface, root `__all__` untouched); flat post-hoc spans, one per hook event, `start = end − duration_ms`; gen_ai semconv names + `neosian.*`; names/models/token-counts/outcomes only — never message content, tool arguments, or results; extra = `opentelemetry-api` only (SDK in the dev group solely for the in-memory exporter tests) | Hooks fire after the observed work with its wall time — flat spans state exactly what the seam knows, while parenting would require correlating events that carry no run identity and holding state in the observer; payload-free spans keep telemetry from becoming a second store of user data; api-only keeps the extra dependency-light since the host owns the SDK/exporter choice |
 
 ## §13 Evaluation (NE)
 
@@ -1185,8 +1196,15 @@ matchers with response semantics — model-authored prose, §13.4 —,
 `versions` exact count, `actions` oldest-first), `counts` (exact live
 documents under a prefix — the dedup signal), `absent`, and `forbidden`
 (no live document anywhere contains the text — the no-secrets rule).
-Failures are `store: `-prefixed and name the offenders; scoring re-reads
-through a freshly constructed store, so a pass is an on-disk truth.
+A `documents` entry names its target by exactly one of `path` (this
+exact document) or `path_prefix` (exactly one live document under the
+prefix satisfies `content` — zero is the fact unrecorded, two is the
+duplicate; `versions`/`actions` apply to the matched document). Document
+*naming* is legitimately the model's, so model-driven scenarios pin the
+prefix — the first real runs went red on names alone (ledger #82) —
+while scripted suites keep exact-path strictness. Failures are
+`store: `-prefixed and name the offenders; scoring re-reads through a
+freshly constructed store, so a pass is an on-disk truth.
 
 Scenario stores land under
 `.neosian/evals/<ts>-memory/<transport>/<model>/<scenario>` (segments

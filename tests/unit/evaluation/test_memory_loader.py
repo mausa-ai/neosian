@@ -225,3 +225,42 @@ class TestStoreExpectations:
             EvalCaseInvalidError, match="expect_store: unknown key 'totals'"
         ):
             load_eval_config(_write(tmp_path, body))
+
+    def test_path_prefix_parses_and_may_be_the_bare_mount(self, tmp_path: Path) -> None:
+        body = MINIMAL.replace(
+            "counts: {/user: 0}",
+            "documents: [{path_prefix: /user, content: {contains: espresso}}]",
+        )
+        document = (
+            _load(tmp_path, body).scenarios[0].sessions[0].expect_store.documents[0]
+        )
+        assert document.path is None
+        assert document.path_prefix == "/user"
+        assert document.content[0].mode is MatchMode.CONTAINS
+
+    def test_path_and_path_prefix_are_exclusive(self, tmp_path: Path) -> None:
+        body = MINIMAL.replace(
+            "counts: {/user: 0}",
+            "documents: [{path: /user/x, path_prefix: /user}]",
+        )
+        with pytest.raises(
+            EvalCaseInvalidError, match="exactly one of 'path' or 'path_prefix'"
+        ):
+            load_eval_config(_write(tmp_path, body))
+
+    def test_document_without_either_key_refused(self, tmp_path: Path) -> None:
+        body = MINIMAL.replace(
+            "counts: {/user: 0}",
+            "documents: [{content: {contains: espresso}}]",
+        )
+        with pytest.raises(
+            EvalCaseInvalidError, match="exactly one of 'path' or 'path_prefix'"
+        ):
+            load_eval_config(_write(tmp_path, body))
+
+    def test_path_prefix_must_name_a_mount(self, tmp_path: Path) -> None:
+        body = MINIMAL.replace(
+            "counts: {/user: 0}", "documents: [{path_prefix: /nowhere}]"
+        )
+        with pytest.raises(EvalCaseInvalidError, match="names no declared mount"):
+            load_eval_config(_write(tmp_path, body))

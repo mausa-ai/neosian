@@ -26,6 +26,98 @@ def config(tmp_path: Path) -> MemoryConfig:
 
 
 @pytest.mark.unit
+class TestPrefixDocuments:
+    """`path_prefix`: exactly one live document under the prefix matches
+    `content` — naming is the model's choice, the region and the fact
+    are the pins."""
+
+    async def test_one_matching_document_passes_wherever_named(
+        self, config: MemoryConfig
+    ) -> None:
+        await config.store.write(_USER.scope, "coffee-notes.md", "Drinks espresso.")
+        expect = StoreExpectation(
+            documents=(
+                DocumentExpectation(
+                    path_prefix="/user",
+                    content=(ValueMatcher(mode=MatchMode.CONTAINS, value="espresso"),),
+                    versions=1,
+                    actions=("created",),
+                ),
+            )
+        )
+        assert await check_store(config, expect) == ()
+
+    async def test_history_pins_apply_to_the_matched_document(
+        self, config: MemoryConfig
+    ) -> None:
+        await config.store.write(_USER.scope, "prefs.md", "Drinks tea.")
+        await config.store.write(_USER.scope, "prefs.md", "Drinks espresso.")
+        expect = StoreExpectation(
+            documents=(
+                DocumentExpectation(
+                    path_prefix="/user",
+                    content=(ValueMatcher(mode=MatchMode.CONTAINS, value="espresso"),),
+                    versions=1,
+                ),
+            )
+        )
+        (failure,) = await check_store(config, expect)
+        assert "/user/prefs.md: expected 1 version rows, got 2" in failure
+
+    async def test_zero_matches_names_the_live_listing(
+        self, config: MemoryConfig
+    ) -> None:
+        await config.store.write(_USER.scope, "drinks.txt", "Drinks tea.")
+        expect = StoreExpectation(
+            documents=(
+                DocumentExpectation(
+                    path_prefix="/user",
+                    content=(ValueMatcher(mode=MatchMode.CONTAINS, value="espresso"),),
+                ),
+            )
+        )
+        (failure,) = await check_store(config, expect)
+        assert failure == (
+            "store: no document under /user matching contains 'espresso' "
+            "(live: /user/drinks.txt)"
+        )
+
+    async def test_two_matches_is_the_duplicate_failure(
+        self, config: MemoryConfig
+    ) -> None:
+        await config.store.write(_USER.scope, "health", "Allergic to peanuts.")
+        await config.store.write(_USER.scope, "allergies.md", "peanuts too")
+        expect = StoreExpectation(
+            documents=(
+                DocumentExpectation(
+                    path_prefix="/user",
+                    content=(ValueMatcher(mode=MatchMode.CONTAINS, value="peanuts"),),
+                ),
+            )
+        )
+        (failure,) = await check_store(config, expect)
+        assert "2 documents under /user match contains 'peanuts'" in failure
+        assert "/user/health" in failure
+        assert "/user/allergies.md" in failure
+        assert "expected exactly one" in failure
+
+    async def test_matcher_free_prefix_means_exactly_one_document(
+        self, config: MemoryConfig
+    ) -> None:
+        await config.store.write(_USER.scope, "a", "x")
+        await config.store.write(_USER.scope, "b", "y")
+        expect = StoreExpectation(documents=(DocumentExpectation(path_prefix="/user"),))
+        (failure,) = await check_store(config, expect)
+        assert "2 documents under /user match any content" in failure
+
+    async def test_exactly_one_of_path_and_prefix_enforced(self) -> None:
+        with pytest.raises(ValueError, match="exactly one of 'path'"):
+            DocumentExpectation(path="/user/x", path_prefix="/user")
+        with pytest.raises(ValueError, match="exactly one of 'path'"):
+            DocumentExpectation()
+
+
+@pytest.mark.unit
 class TestDocuments:
     async def test_existing_document_passes(self, config: MemoryConfig) -> None:
         await config.store.write(_USER.scope, "prefs", "Drinks espresso.")

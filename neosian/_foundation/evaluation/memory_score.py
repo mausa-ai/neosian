@@ -41,6 +41,9 @@ async def check_store(
 async def _check_document(
     config: MemoryConfig, expected: DocumentExpectation
 ) -> list[str]:
+    if expected.path_prefix is not None:
+        return await _check_prefix(config, expected)
+    assert expected.path is not None  # __post_init__ guarantees exactly one
     mount, rest = resolve(config, expected.path)
     document = await config.store.read(mount.scope, rest)
     if document is None:
@@ -55,19 +58,62 @@ async def _check_document(
         )
         is not None
     ]
-    if expected.versions is None and expected.actions is None:
-        return failures
+    return failures + await _check_history(config, expected, expected.path)
 
+
+async def _check_prefix(
+    config: MemoryConfig, expected: DocumentExpectation
+) -> list[str]:
+    """Exactly one live document under the prefix satisfies `content` —
+    naming is the model's choice, so the pin is region + fact, and two
+    matching documents is the duplicate the dedup discipline forbids."""
+    prefix = expected.path_prefix
+    assert prefix is not None
+    described = " and ".join(m.describe() for m in expected.content) or "any content"
+    mount, rest = resolve(config, prefix)
+    entries = await config.store.list_documents(mount.scope, prefix=rest)
+    matches: list[str] = []
+    for entry in entries:
+        document = await config.store.read(mount.scope, entry.path)
+        if document is None:
+            continue
+        if all(
+            match_text(matcher, document.content, label="") is None
+            for matcher in expected.content
+        ):
+            matches.append(f"/{mount.mount_path}/{entry.path}")
+    if not matches:
+        listing = ", ".join(f"/{mount.mount_path}/{e.path}" for e in entries) or "none"
+        return [
+            f"store: no document under {prefix} matching {described} "
+            f"(live: {listing})"
+        ]
+    if len(matches) > 1:
+        return [
+            f"store: {len(matches)} documents under {prefix} match {described} "
+            f"({', '.join(matches)}) — expected exactly one"
+        ]
+    return await _check_history(config, expected, matches[0])
+
+
+async def _check_history(
+    config: MemoryConfig, expected: DocumentExpectation, path: str
+) -> list[str]:
+    """Apply the `versions`/`actions` pins to one resolved document."""
+    if expected.versions is None and expected.actions is None:
+        return []
+    mount, rest = resolve(config, path)
+    failures: list[str] = []
     rows = await config.store.versions(mount.scope, rest, limit=_VERSION_LIMIT)
     actions = tuple(row.action for row in reversed(rows))  # oldest-first
     if expected.versions is not None and len(rows) != expected.versions:
         failures.append(
-            f"store: {expected.path}: expected {expected.versions} version "
+            f"store: {path}: expected {expected.versions} version "
             f"rows, got {len(rows)} (actions: {', '.join(actions)})"
         )
     if expected.actions is not None and actions != expected.actions:
         failures.append(
-            f"store: {expected.path}: expected actions "
+            f"store: {path}: expected actions "
             f"{', '.join(expected.actions)}, got {', '.join(actions)}"
         )
     return failures

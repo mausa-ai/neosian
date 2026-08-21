@@ -1,6 +1,6 @@
 [project]
 name = "neosian"
-version = "0.71.0"
+version = "0.72.0"
 description = "Async-only library for LLM agents: tools, orchestration, streaming, guardrails — with opt-in conversation, memory, and compaction layers over a stateless core."
 readme = "README.md"
 license = "Apache-2.0"
@@ -33,10 +33,13 @@ dependencies = [
 # The reference PostgresStore rides the `postgres` extra; the core install
 # stays driver-free (keyless boot never needs a database). The MCP memory
 # server rides the `mcp` extra the same way — `import neosian` and
-# `import neosian.mcp` stay SDK-free (pinned by subprocess tests).
+# `import neosian.mcp` stay SDK-free (pinned by subprocess tests) — and
+# the OTel span exporter rides `otel` (api only; the SDK is the host's
+# choice, dev-group here solely for the in-memory exporter tests).
 [project.optional-dependencies]
 postgres = ["psycopg[binary,pool]>=3.2"]
 mcp = ["mcp>=2,<3"]
+otel = ["opentelemetry-api>=1.30"]
 
 [project.urls]
 Homepage = "https://github.com/neosae/neosian"
@@ -48,6 +51,7 @@ dev = [
     "import-linter>=2.13",
     "mcp>=2,<3",
     "mypy>=2.3.1",
+    "opentelemetry-sdk>=1.30",
     "psycopg[binary,pool]>=3.2",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
@@ -237,6 +241,25 @@ forbidden_modules = [
     "neosian._foundation.llm.cerebras",
 ]
 allow_indirect_imports = true
+
+# The OTel exporter observes through the hook seam only (ledger #83) —
+# never the orchestration it observes, the providers, or the layers.
+[[tool.importlinter.contracts]]
+name = "the OTel exporter speaks only to the hook seam"
+type = "forbidden"
+source_modules = ["neosian._foundation.otel"]
+forbidden_modules = [
+    "neosian._foundation.llm.groq",
+    "neosian._foundation.llm.openai",
+    "neosian._foundation.llm.anthropic",
+    "neosian._foundation.llm.cerebras",
+    "neosian._foundation.conversation",
+    "neosian._foundation.memory",
+    "neosian._foundation.postgres",
+    "neosian._foundation.mcp",
+    "neosian._foundation.evaluation",
+    "neosian._foundation.guardrails",
+]
 
 [project.scripts]
 neosian = "neosian._cli.main:main"

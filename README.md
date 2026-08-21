@@ -25,9 +25,10 @@ The repository is private; as a dependency of another uv project, install
 from the git URL, pinned to a release tag (extras ride the same URL):
 
 ```bash
-uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.71.0"
-uv add "neosian[postgres] @ git+ssh://git@github.com/neosae/neosian@v0.71.0"   # + PostgresStore
-uv add "neosian[mcp] @ git+ssh://git@github.com/neosae/neosian@v0.71.0"        # + MCP memory server
+uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.72.0"
+uv add "neosian[postgres] @ git+ssh://git@github.com/neosae/neosian@v0.72.0"   # + PostgresStore
+uv add "neosian[mcp] @ git+ssh://git@github.com/neosae/neosian@v0.72.0"        # + MCP memory server
+uv add "neosian[otel] @ git+ssh://git@github.com/neosae/neosian@v0.72.0"       # + OpenTelemetry spans
 ```
 
 The core install is database-driver-free and MCP-free; the four provider
@@ -262,6 +263,13 @@ altering the run (exceptions are swallowed unless `strict=True`).
 `LlmCallEvent` fires after every provider call, success or failure, with
 usage, duration, and `error_code` — it maps 1:1 onto a host's metering.
 
+With the `otel` extra, `neosian.otel.otel_hooks()` returns an
+`AgentHooks` that records one OpenTelemetry span per event (gen_ai
+semantic-convention attributes; models, token counts, and outcomes —
+never message content or tool arguments) through your tracer provider:
+`AgentConfig(hooks=otel_hooks())`. The extra is `opentelemetry-api`
+only; the SDK and exporter stay your choice.
+
 ## Evaluation
 
 `neosian.evaluation` runs YAML suites and exits nonzero on failure, so
@@ -269,13 +277,16 @@ usage, duration, and `error_code` — it maps 1:1 onto a host's metering.
 over a variants × models × cases matrix (typed matchers, stub-by-default
 tools behind an execute allowlist), and `kind: memory`, which scores store
 truth across scripted sessions — write discipline, recall in the next
-session, dedup — with a transports axis (the shipped pack runs
+session, dedup, contradiction handling, long-horizon recall, correcting a
+wrong memory — with a transports axis (the shipped pack runs
 `transports: [function, cli]`; Anthropic externally adds
 `native_memory` — one definition, four transports). Shipped packs:
 [examples/eval_basic_agent.yaml](examples/eval_basic_agent.yaml) and
 [examples/eval_memory_baseline.yaml](examples/eval_memory_baseline.yaml) —
 the memory baseline is all-green on `models: [fake]`, so a red run is a
-regression.
+regression. The same pack, scriptless against the real providers, produces
+the published numbers in [BASELINES.md](BASELINES.md) — fingerprint-gated,
+so a prompt-pack change without a recorded re-run fails `make test`.
 
 ## Also in the box
 
@@ -324,6 +335,8 @@ value-blind.
 - [ROADMAP.md](ROADMAP.md) — in what order; the session log.
 - [DESIGN.md](DESIGN.md) — how; contracts; the decisions ledger.
 - [ECOSYSTEM.md](ECOSYSTEM.md) — the frozen host-facing seams.
+- [BASELINES.md](BASELINES.md) — the published per-provider memory
+  baselines: methodology, fingerprints, results.
 - [SERVICES.md](SERVICES.md) — every env key and what turning it off means.
 - [llms.txt](llms.txt) — the machine-readable front door (byte-identical
   twin ships in the wheel).

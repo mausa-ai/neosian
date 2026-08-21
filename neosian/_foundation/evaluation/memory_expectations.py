@@ -17,7 +17,7 @@ from neosian._foundation.memory.types import MemoryAction
 from neosian._foundation.shared.exceptions import EvalCaseInvalidError
 
 _STORE_KEYS = frozenset({"documents", "counts", "absent", "forbidden"})
-_DOCUMENT_KEYS = frozenset({"path", "content", "versions", "actions"})
+_DOCUMENT_KEYS = frozenset({"path", "path_prefix", "content", "versions", "actions"})
 _ACTIONS: tuple[MemoryAction, ...] = ("created", "modified", "deleted")
 
 
@@ -106,17 +106,28 @@ def _parse_document(
             raise EvalCaseInvalidError(
                 label, f"expect_store document: unknown key '{key}'"
             )
-    if "path" not in data or not isinstance(data["path"], str):
-        raise EvalCaseInvalidError(label, "expect_store document missing 'path'")
-    path = data["path"]
-    _require_mounted(path, label, mount_paths, allow_root=False)
+    path = data.get("path")
+    path_prefix = data.get("path_prefix")
+    if (path is None) == (path_prefix is None):
+        raise EvalCaseInvalidError(
+            label,
+            "expect_store document needs exactly one of 'path' or 'path_prefix'",
+        )
+    where = path if path is not None else path_prefix
+    if not isinstance(where, str):
+        raise EvalCaseInvalidError(
+            label, "expect_store document 'path'/'path_prefix' must be a string"
+        )
+    # An exact path names a document inside a mount; a prefix may be the
+    # bare mount itself — naming is the model's, the region is ours.
+    _require_mounted(where, label, mount_paths, allow_root=path is None)
 
     versions = data.get("versions")
     if versions is not None and (
         not isinstance(versions, int) or isinstance(versions, bool) or versions < 1
     ):
         raise EvalCaseInvalidError(
-            label, f"document '{path}': 'versions' must be a positive integer"
+            label, f"document '{where}': 'versions' must be a positive integer"
         )
 
     actions: tuple[MemoryAction, ...] | None = None
@@ -124,27 +135,28 @@ def _parse_document(
     if actions_data is not None:
         if not isinstance(actions_data, list) or not actions_data:
             raise EvalCaseInvalidError(
-                label, f"document '{path}': 'actions' must be a non-empty list"
+                label, f"document '{where}': 'actions' must be a non-empty list"
             )
         for action in actions_data:
             if action not in _ACTIONS:
                 raise EvalCaseInvalidError(
                     label,
-                    f"document '{path}': unknown action {action!r} — one of "
+                    f"document '{where}': unknown action {action!r} — one of "
                     "created, modified, deleted",
                 )
         actions = tuple(actions_data)
         if versions is not None and len(actions) != versions:
             raise EvalCaseInvalidError(
                 label,
-                f"document '{path}': 'versions' ({versions}) and 'actions' "
+                f"document '{where}': 'versions' ({versions}) and 'actions' "
                 f"(length {len(actions)}) disagree",
             )
 
     return DocumentExpectation(
         path=path,
+        path_prefix=path_prefix,
         content=parse_response(
-            data.get("content"), label, f"document '{path}'", key_name="content"
+            data.get("content"), label, f"document '{where}'", key_name="content"
         ),
         versions=versions,
         actions=actions,

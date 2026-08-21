@@ -74,14 +74,17 @@ class TestShippedPack:
             _REPO_ROOT / "examples" / "eval_memory_baseline.yaml",
             tmp_path / "stores",
         )
-        # Three scenarios × the two shipped transports (function, cli).
-        assert report.total == 6
+        # Six scenarios × the two shipped transports (function, cli).
+        assert report.total == 12
         assert report.failed == 0, _failures(report)
         assert report.variants == ("function", "cli")
         assert report.cases == (
             "write-discipline",
             "recall-next-session",
             "dedup",
+            "contradiction",
+            "long-horizon-recall",
+            "correct-wrong-memory",
         )
         assert all(r.error is None for r in report.results)
 
@@ -245,6 +248,151 @@ class TestDiscriminatingNegatives:
         failures = _failures(report)
         assert any("expected tool 'memory', no tool called" in f for f in failures)
         assert any("expected to contain 'Mira'" in f for f in failures)
+        assert any(f.startswith("store root: ") for f in failures)
+
+    async def test_contradiction_negative_stale_fact_survives(
+        self, tmp_path: Path
+    ) -> None:
+        """A second document beside the stale one: the reversal must
+        erase Paris from every live document, not merely outnumber it."""
+        scenarios = """\
+          - name: contradiction
+            sessions:
+              - name: record
+                turns:
+                  - user: "I live in Paris."
+                    expect: {tool: memory}
+                script:
+                  - tool_calls:
+                      - name: memory
+                        arguments:
+                          command: create
+                          path: /user/location
+                          content: "Lives in Paris."
+                  - content: Noted.
+              - name: contradict
+                turns:
+                  - user: "Actually I've moved — Lisbon now."
+                    expect: {tool: memory}
+                script:
+                  - tool_calls:
+                      - name: memory
+                        arguments:
+                          command: create
+                          path: /user/location-new
+                          content: "Lives in Lisbon."
+                  - content: Updated.
+                expect_store:
+                  counts: {/user: 1}
+                  forbidden: [Paris]
+        """
+        report = await _run(_suite(tmp_path, scenarios), tmp_path / "stores")
+        assert report.failed == 1
+        failures = _failures(report)
+        assert any("expected 1 document(s) under /user, got 2" in f for f in failures)
+        assert any(
+            "forbidden text 'Paris' found in /user/location" in f for f in failures
+        )
+        assert any(f.startswith("store root: ") for f in failures)
+
+    async def test_long_horizon_negative_rewrites_instead_of_recalling(
+        self, tmp_path: Path
+    ) -> None:
+        """The final session re-creates the fact instead of viewing it —
+        the untouched-store pin (versions) must go red. The turn
+        expectation stays loose: a failed turn stops the session before
+        store scoring, and the view-vs-write turn catch already lives in
+        test_recall_negative_answers_without_viewing."""
+        scenarios = """\
+          - name: long-horizon
+            sessions:
+              - name: record
+                turns:
+                  - user: "My cat is called Biscuit."
+                    expect: {tool: memory}
+                script:
+                  - tool_calls:
+                      - name: memory
+                        arguments:
+                          command: create
+                          path: /user/pets
+                          content: "Cat: Biscuit."
+                  - content: Saved.
+              - name: recall
+                turns:
+                  - user: "What is my cat's name?"
+                    expect: {tool: memory}
+                script:
+                  - tool_calls:
+                      - name: memory
+                        arguments:
+                          command: create
+                          path: /user/pets
+                          content: "Cat: Biscuit."
+                  - content: "Your cat is Biscuit."
+                expect_store:
+                  counts: {/user: 1}
+                  documents:
+                    - path: /user/pets
+                      versions: 1
+        """
+        report = await _run(_suite(tmp_path, scenarios), tmp_path / "stores")
+        assert report.failed == 1
+        failures = _failures(report)
+        assert any(
+            "expected 1 version rows, got 2 (actions: created, modified)" in f
+            for f in failures
+        )
+        assert any(f.startswith("store root: ") for f in failures)
+
+    async def test_correction_negative_softened_edit_keeps_the_claim(
+        self, tmp_path: Path
+    ) -> None:
+        """Disavowal answered with a softened edit instead of delete —
+        the document survives and the claim stays in live text."""
+        scenarios = """\
+          - name: correction
+            sessions:
+              - name: record
+                turns:
+                  - user: "I'm planning to switch this project to MongoDB."
+                    expect: {tool: memory}
+                script:
+                  - tool_calls:
+                      - name: memory
+                        arguments:
+                          command: create
+                          path: /project/database-plan
+                          content: "Plans to switch to MongoDB."
+                  - content: Noted.
+              - name: disavow
+                turns:
+                  - user: "That MongoDB note is wrong — remove it."
+                    expect: {tool: memory}
+                script:
+                  - tool_calls:
+                      - name: memory
+                        arguments:
+                          command: str_replace
+                          path: /project/database-plan
+                          old_str: "Plans to switch to MongoDB."
+                          new_str: "(withdrawn) Plans to switch to MongoDB."
+                  - content: Softened.
+                expect_store:
+                  counts: {/project: 0}
+                  absent: [/project/database-plan]
+                  forbidden: [MongoDB]
+        """
+        report = await _run(_suite(tmp_path, scenarios), tmp_path / "stores")
+        assert report.failed == 1
+        failures = _failures(report)
+        assert any(
+            "expected no document at /project/database-plan" in f for f in failures
+        )
+        assert any(
+            "forbidden text 'MongoDB' found in /project/database-plan" in f
+            for f in failures
+        )
         assert any(f.startswith("store root: ") for f in failures)
 
     async def test_no_secrets_negative_token_stored(self, tmp_path: Path) -> None:

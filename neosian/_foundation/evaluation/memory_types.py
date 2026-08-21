@@ -40,15 +40,29 @@ class Transport(str, Enum):
 class DocumentExpectation:
     """Store truth for one document, checked after a session.
 
-    `content` matchers use response semantics (§13.4 — model-authored
-    prose, case-insensitive `contains`); `versions` is the exact version
-    count; `actions` pins the version history oldest-first.
+    Exactly one of `path` (this exact document must exist) or
+    `path_prefix` (exactly one live document under the prefix must
+    satisfy `content` — zero is the fact unrecorded, two is a
+    duplicate) names the document: document *naming* is legitimately
+    the model's choice, so model-driven scenarios pin the prefix while
+    scripted suites may pin the exact path. `content` matchers use
+    response semantics (§13.4 — model-authored prose, case-insensitive
+    `contains`); `versions` is the exact version count and `actions`
+    pins the version history oldest-first, applied to the matched
+    document under either key.
     """
 
-    path: str
+    path: str | None = None
+    path_prefix: str | None = None
     content: tuple[ValueMatcher, ...] = ()
     versions: int | None = None
     actions: tuple[MemoryAction, ...] | None = None
+
+    def __post_init__(self) -> None:
+        if (self.path is None) == (self.path_prefix is None):
+            raise ValueError(
+                "DocumentExpectation needs exactly one of 'path' or 'path_prefix'"
+            )
 
 
 @dataclass(frozen=True, slots=True)

@@ -1,9 +1,10 @@
 # Memory eval baseline (kind: memory, schema v2) — DESIGN §13.12.
 #
-# Three scenarios, one per measured behavior: write discipline,
-# recall-in-next-session, dedup. Every session is scripted, so the pack
-# runs keylessly on FakeProvider and is all-green by construction — a
-# red run is a regression. Turn expectations stay loose (they must
+# Six scenarios, one per measured behavior: write discipline,
+# recall-in-next-session, dedup, contradiction handling, long-horizon
+# recall, correcting a wrong memory. Every session is scripted, so the
+# pack runs keylessly on FakeProvider and is all-green by construction —
+# a red run is a regression. Turn expectations stay loose (they must
 # survive a real provider); the store truth carries the strictness.
 #
 # The external baselines derive a scriptless copy of this same pack in
@@ -59,15 +60,20 @@ scenarios:
                   path: /project/stack
                   content: "Runs on Postgres 16."
           - content: "Noted — the token is not stored."
+        # Document naming is the model's choice — store truth pins the
+        # region and the fact (path_prefix: exactly one live document
+        # under the prefix matches), never the file name.
         expect_store:
           counts: {/user: 1, /project: 1}
           documents:
-            - path: /user/preferences
+            - path_prefix: /user
               content: {contains: espresso}
               versions: 1
               actions: [created]
-            - path: /project/stack
-              content: {contains: "Postgres 16"}
+            # regex, not contains: models normalize wordforms
+            # ("PostgreSQL 16" observed) — pin the fact, not the spelling.
+            - path_prefix: /project
+              content: {regex: "(?i)postgres(ql)?\\s*16"}
           forbidden: [sk-eval-secret-000]
 
       - name: correct
@@ -83,13 +89,15 @@ scenarios:
                   old_str: "Postgres 16"
                   new_str: "Postgres 17"
           - content: "Updated."
+        # End-state truth only: still one project document and it now
+        # says 17. How many edits that took is churn, and "17 (upgraded
+        # from 16)" is provenance, not a failure — the first real runs
+        # showed models annotating transitions (ledger #82's spirit).
         expect_store:
           counts: {/project: 1}
           documents:
-            - path: /project/stack
-              content: {contains: "Postgres 17"}
-              versions: 2
-              actions: [created, modified]
+            - path_prefix: /project
+              content: {regex: "(?i)postgres(ql)?\\s*17"}
 
   # RECALL IN THE NEXT SESSION — session 2 gets a freshly regenerated
   # index, reads the document back rather than guessing, and writes
@@ -110,7 +118,8 @@ scenarios:
           - content: "Saved."
         expect_store:
           documents:
-            - path: /user/family
+            - path_prefix: /user
+              content: {contains: Mira}
               versions: 1
       - name: recall
         turns:
@@ -124,10 +133,13 @@ scenarios:
               - name: memory
                 arguments: {command: view, path: /user/family}
           - content: "Your daughter is Mira."
+        # versions stays 1: answering must read the fact back, never
+        # rewrite it.
         expect_store:
           counts: {/user: 1}
           documents:
-            - path: /user/family
+            - path_prefix: /user
+              content: {contains: Mira}
               versions: 1
 
   # DEDUP — a second fact on the same topic updates the existing
@@ -163,12 +175,177 @@ scenarios:
                   old_str: "Allergic to peanuts."
                   new_str: "Allergic to peanuts and shellfish."
           - content: "Updated your health notes."
+        # The dedup signal is structural: one live document under /user
+        # holds both facts — a near-duplicate at any second path fails
+        # the count and the exactly-one-match rule.
+        # "peanut" not "peanuts": models normalize wordforms ("Peanut
+        # allergy" observed) — substring matching pins the fact.
         expect_store:
           counts: {/user: 1}
-          absent: [/user/health-2]
           documents:
-            - path: /user/health
+            - path_prefix: /user
               content:
-                contains: [peanuts, shellfish]
-              versions: 2
-              actions: [created, modified]
+                contains: [peanut, shellfish]
+
+  # CONTRADICTION HANDLING — a stated fact reverses; the single user
+  # document carries the current fact. "Lisbon (moved from Paris)" is
+  # a good update — annotated provenance is not a failure, so no
+  # forbidden pin on the old value; the duplicate-document failure is
+  # what the count and exactly-one-match rules catch.
+  - name: contradiction
+    sessions:
+      - name: record
+        turns:
+          - user: "I live in Paris."
+            expect: {tool: memory}
+        script:
+          - tool_calls:
+              - name: memory
+                arguments:
+                  command: create
+                  path: /user/location
+                  content: "Lives in Paris."
+          - content: "Noted."
+        expect_store:
+          counts: {/user: 1}
+          documents:
+            - path_prefix: /user
+              content: {contains: Paris}
+              versions: 1
+      - name: contradict
+        turns:
+          - user: "Actually I've moved — I live in Lisbon now."
+            expect: {tool: memory}
+        script:
+          - tool_calls:
+              - name: memory
+                arguments:
+                  command: str_replace
+                  path: /user/location
+                  old_str: "Lives in Paris."
+                  new_str: "Lives in Lisbon."
+          - content: "Updated — Lisbon it is."
+        expect_store:
+          counts: {/user: 1}
+          documents:
+            - path_prefix: /user
+              content: {contains: Lisbon}
+
+  # LONG-HORIZON RECALL — the fact from session 1 survives two
+  # intervening sessions of unrelated writes; the final session views
+  # the right document and answers without writing. Filing granularity
+  # is the model's (one consolidated project doc or two separate ones
+  # are both disciplined — observed both ways in the first real runs),
+  # so the distractor pins are content presence, not document counts.
+  - name: long-horizon-recall
+    sessions:
+      - name: record
+        turns:
+          - user: "My cat is called Biscuit."
+            expect: {tool: memory}
+        script:
+          - tool_calls:
+              - name: memory
+                arguments:
+                  command: create
+                  path: /user/pets
+                  content: "Cat: Biscuit."
+          - content: "Saved."
+        expect_store:
+          documents:
+            - path_prefix: /user
+              content: {contains: Biscuit}
+              versions: 1
+      - name: distractor-one
+        turns:
+          - user: "Note that this project's API rate limit is 60 requests per minute."
+            expect: {tool: memory}
+        script:
+          - tool_calls:
+              - name: memory
+                arguments:
+                  command: create
+                  path: /project/limits
+                  content: "API rate limit: 60 requests/minute."
+          - content: "Noted."
+        expect_store:
+          documents:
+            - path_prefix: /project
+              content: {contains: "60 requests"}
+      - name: distractor-two
+        turns:
+          - user: "Also note we deploy from the main branch only."
+            expect: {tool: memory}
+        script:
+          - tool_calls:
+              - name: memory
+                arguments:
+                  command: create
+                  path: /project/deploy
+                  content: "Deploys from the main branch only."
+          - content: "Noted."
+        # regex: models decorate ("the `main` branch" observed) — pin
+        # the fact, not the typography.
+        expect_store:
+          documents:
+            - path_prefix: /project
+              content: {regex: "(?i)\\bmain\\b.{0,6}branch"}
+      - name: recall
+        turns:
+          - user: "What is my cat's name?"
+            expect:
+              tool: memory
+              params: {command: view}
+              response: {contains: Biscuit}
+        script:
+          - tool_calls:
+              - name: memory
+                arguments: {command: view, path: /user/pets}
+          - content: "Your cat is Biscuit."
+        # The user fact is exactly as session 1 left it — recall
+        # reads, it never rewrites.
+        expect_store:
+          counts: {/user: 1}
+          documents:
+            - path_prefix: /user
+              content: {contains: Biscuit}
+              versions: 1
+
+  # CORRECTING A WRONG MEMORY — the user disavows a stored note; the
+  # discipline is delete-what-proved-wrong, not a softened edit. The
+  # record turn asks for the note explicitly — the first real runs
+  # showed a model reasonably declining to store a mere musing, and
+  # this scenario measures the correction, not memory-worthiness.
+  - name: correct-wrong-memory
+    sessions:
+      - name: record
+        turns:
+          - user: "Note down that this project is migrating to MongoDB."
+            expect: {tool: memory}
+        script:
+          - tool_calls:
+              - name: memory
+                arguments:
+                  command: create
+                  path: /project/database-plan
+                  content: "Migrating to MongoDB."
+          - content: "Noted."
+        expect_store:
+          documents:
+            - path_prefix: /project
+              content: {contains: MongoDB}
+              versions: 1
+      - name: disavow
+        turns:
+          - user: "That MongoDB note is wrong — we're not migrating. Delete it completely."
+            expect: {tool: memory}
+        script:
+          - tool_calls:
+              - name: memory
+                arguments: {command: delete, path: /project/database-plan}
+          - content: "Removed."
+        # Delete-what-proved-wrong: no live project document remains
+        # and the claim survives in no live text.
+        expect_store:
+          counts: {/project: 0}
+          forbidden: [MongoDB]

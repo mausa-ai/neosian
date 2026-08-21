@@ -1,6 +1,6 @@
 # Neosian Roadmap
 
-> **▶ Current phase: NV — Evidence**
+> **▶ Current phase: NR — Reflection**
 >
 > *(2026-08-21: the 1.0 arc opens — see "The 1.0 arc" below. The lane is
 > ruled: neosian is the **state layer for production agents** — durable
@@ -902,7 +902,7 @@ docs sections, install rows, stale transports-axis text fixed) +
 CLAUDE.md rows. 1873 unit tests, zero keys; v0.71.0 + `na-done`.
 Nothing carried — NA closes.
 
-## NV — Evidence (v0.72)
+## NV — Evidence (v0.72) ✅ 2026-08-21
 
 DESIGN: §13, §3.
 
@@ -911,22 +911,49 @@ The harness starts earning its keep as the benchmark.
 - **First real baseline runs** —
   `tests/external/cross/test_memory_baselines.py` dispatched per
   provider (they have never run: zero schedule/dispatch CI runs exist),
-  then standing weekly.
+  then standing weekly. *(✅ secrets set value-blind after per-key
+  smoke tests; CI dispatch run 32496965995 — the first ever — plus
+  local per-provider sweeps of the grown pack)*
 - **Published numbers** — `BASELINES.md`: per-provider, per-transport
   results with run dates and methodology; self-measured benchmarks
   invite motivated reasoning, so the derivation from the shipped pack
-  is stated, not implied.
+  is stated, not implied. *(✅ methodology, fingerprints, per-provider
+  tables, and the run-informed calibrations recorded beside them)*
 - **Harness-gated prompt pack** — no `memory.yaml` change without a
-  recorded baseline re-run.
+  recorded baseline re-run. *(✅ tests/unit/test_baselines.py: sha256
+  fingerprints of memory.yaml AND the shipped pack recorded in
+  BASELINES.md, compared on every `make test` — user-ruled both files)*
 - **Scenario growth** — contradiction handling, long-horizon recall,
   correcting a wrong memory; discriminating negatives stay in unit
-  tests (the #67 idiom).
+  tests (the #67 idiom). *(✅ pack 3 → 6 scenarios; three new negatives
+  in test_memory_scripted.py)*
 - **OTel exporter** — one optional module (`otel` extra) emitting spans
   from the four `AgentHooks`; demonstrated keylessly against an
-  in-memory exporter.
+  in-memory exporter. *(✅ `neosian.otel.otel_hooks()`, flat post-hoc
+  spans, api-only extra, facade-only surface — ledger #83)*
 
 **Done when:** BASELINES.md exists with real per-provider numbers and
 dates; the weekly runs stand; the OTel extra emits spans keylessly.
+
+**Shipped v0.72.0 (2026-08-21), one session.** The first real runs were
+the phase's own best evidence: all four providers went red on the
+v0.71.0 pack while behaving well — the pack pinned document *names* the
+models were never told about. The finding became `path_prefix`
+expectations (exactly one matching live document under the region —
+ledger #82, user-ruled) plus four further run-informed calibrations
+(provenance annotations kept, filing granularity freed, wordform pins
+→ stems/regexes, the correction scenario's record turn made explicitly
+memory-worthy), each recorded in BASELINES.md with the fingerprint gate
+sealing the pack they produced. Final numbers: Anthropic 6/6 on all
+three transports, OpenAI 6/6 on both, Cerebras 6/6 on both, Groq 3/6
+(stochastic invalid tool-call emissions on the same weights Cerebras
+passes clean — an inference-stack difference; the trained-behavior
+asymmetry, measured), and the model registry's first catalog findings
+(gpt-5-pro is Responses-API-only; FAKE models now skip the catalog
+smoke test).
+Document-set write policy noted into NP; eval `seed:` into NG; NC6
+(external yardstick, LongMemEval candidate) joins the background
+track.
 
 ## NR — Reflection (v0.73)
 
@@ -968,7 +995,10 @@ hopeless in embedding stores.
   visible.
 - **Scale** — index tiering/budgets (log-projection applied to the
   index itself), FTS-hatch activation criteria, measured behavior at
-  500+ documents per scope.
+  500+ documents per scope. The harness gains a `seed:` block for
+  memory scenarios (documents that exist before session 1, actor
+  `eval:seed`) — populating a 500-document store one scripted create
+  at a time is not a scenario (noted at NV, 2026-08-21).
 
 **Done when:** a deliberately polluted store (dupes, stale, misfiled)
 is measurably improved by one maintenance pass, keylessly scripted; the
@@ -980,7 +1010,14 @@ DESIGN: §8, §6 + ECOSYSTEM §5/§12.
 
 The receipts, exposed — and the arc's deliberate seam change.
 
-- Opens options-first: the governance API shape.
+- Opens options-first: the governance API shape. The same discussion
+  **evaluates a document-set write policy** — "work only within these
+  documents / no new doc creation", pre-created layouts the agent may
+  edit but not extend (noted for revisit, user ruling 2026-08-21, NV;
+  today the only write control is per-mount `read_only`). Screen for
+  real use-cases ("only remember these"-style strict deployments)
+  first — adopt into the governance surface or decline deliberately,
+  never by silence.
 - **Governance API** — provenance (turn-ref per fact), point-in-time
   reads exposed, a find-and-redact workflow, the no-secrets write
   guardrail (guardrail layer wired to memory writes — the eval's
@@ -1103,6 +1140,15 @@ as its own mini-session, `NC:` commit subjects, its own done-when.
   own CI. Community substrates (Mongo, Dynamo, MySQL…), community
   custody; the contract stays ours. Done when a worked third-substrate
   example in the docs passes both kits.
+- **NC6 — the external yardstick.** One accepted public benchmark run
+  beside the self-measured baselines (user ruling, 2026-08-21, NV):
+  opens options-first — dataset (candidate: **LongMemEval** over
+  LoCoMo; its knowledge-update/temporal questions overlap our regime
+  where LoCoMo's personalization QA does not), the driver over
+  Conversation + memory, judge policy (§13.13: opt-in, never keyless,
+  prompt as assets data), spend budget. Done when one
+  accepted-benchmark number stands in BASELINES.md beside the
+  self-measured tables, methodology stated.
 
 ## NZ — The declaration (v1.0.0)
 
@@ -1847,3 +1893,34 @@ is asserted without evidence.
   done-when, no skip path. §14.4–§14.5 written, ledger #79–#81;
   README/CLAUDE.md rows; pyproject 0.71.0. 1873 unit tests, zero
   keys; v0.71.0 + `na-done`. Pointer → NV.
+- 2026-08-21 | NV | **The harness measures real models; NV closes.**
+  Key pre-flight one by one (user-ruled; two quota top-ups verified
+  live), four repo secrets set value-blind, and the first-ever external
+  CI dispatch (run 32496965995) — where all four providers went red on
+  the v0.71.0 pack while filing facts *correctly under their own
+  document names*: the pack pinned an unspecified naming convention.
+  Ruled (options-first): `path_prefix` document expectations — exactly
+  one live document under the region satisfies `content`, two is the
+  duplicate, `versions`/`actions` apply to the match (ledger #82);
+  exact `path:` keeps unit-tier strictness. Four further run-informed
+  calibrations (provenance annotations kept, filing granularity freed,
+  wordform pins → stems/regexes, correct-wrong-memory's record turn
+  made explicitly memory-worthy) — each evidence-driven from cat-able
+  stores (#69 paying off), recorded in BASELINES.md. Pack 3 → 6
+  scenarios (contradiction, long-horizon-recall, correct-wrong-memory)
+  + three negatives. BASELINES.md born: methodology before numbers,
+  sha256 fingerprints of memory.yaml + the pack gated by
+  tests/unit/test_baselines.py (user-ruled both files), per-provider
+  tables — Anthropic 6/6 × 3 transports, OpenAI 6/6 × 2, Cerebras
+  6/6 × 2 (14 min on the throttled free tier), Groq 3/6 (stochastic
+  invalid tool-call emissions on the same weights Cerebras passes
+  clean — an inference-stack difference; store-true where completed —
+  the trained-behavior asymmetry measured). OTel: `neosian.otel.otel_hooks()` → plain AgentHooks,
+  flat post-hoc spans (gen_ai semconv; never message content,
+  arguments, or results), `otel` extra = api-only, facade-only
+  surface, 9th import contract, keyless InMemorySpanExporter suite
+  (#83). Catalog findings fixed: FAKE models skip the smoke test,
+  gpt-5-pro recorded Responses-API-only. Roadmap: NC6 external
+  yardstick (LongMemEval candidate), NP gains the document-set
+  write-policy revisit, NG the eval `seed:` note. 1899 unit tests,
+  zero keys; v0.72.0 + `nv-done`. Pointer → NR.
