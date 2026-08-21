@@ -965,10 +965,17 @@ container; it does not change it.
 - `RemoteStore` implements both ABCs over httpx (already a core dep);
   the daemon is the multi-writer FileStore answer NA's one-writer
   ruling routes to.
-- **The in-process-default discipline, written into the docs:** the
-  process is for the stacks the library cannot reach — a Python host's
-  best deployment remains the in-process library; the daemon is never
-  the recommended default.
+- **Topology, not hierarchy — written into the docs:** two axes (who
+  runs neosian code × where the bytes live), four shapes. A single app
+  embeds the library and talks to its store directly (files for
+  dev/local, Postgres for production — `PostgresStore` is a driver, not
+  a process; the DB is existing infra, the SQLAlchemy shape). The
+  daemon is the first-class answer when state is **shared across
+  processes, apps, or languages** — incl. one container in a dev
+  compose beside redis/minio — or when a FileStore needs more than one
+  writer; never a proxy an embedded app doesn't need. The quickstart
+  still begins embedded — `docker run` is never step one — and the
+  daemon adds no capability the library lacks, only reach.
 - The harness's transports axis gains `http`; the baseline pack re-runs
   over it.
 
@@ -996,6 +1003,13 @@ as its own mini-session, `NC:` commit subjects, its own done-when.
   stated (memory is a directory you can grep, git, and leave with).
   Done when the example runs keylessly against the exported tool
   definition.
+- **NC4 — store mobility.** `neosian memory export` / `import` (+ the
+  conversation twin): any substrate to any other — FileStore,
+  Postgres, the daemon — version history carried, so "leave with your
+  data" is true in every direction, not only on files. Natural landing:
+  beside NA's CLI verbs or inside NM (onboarding needs it). Done when
+  an exported-then-imported store is contract-kit-indistinguishable
+  from the original, history included.
 
 ## NZ — The declaration (v1.0.0)
 
@@ -1644,3 +1658,19 @@ is asserted without evidence.
   ruled deliberately, never by silence. Kit sequencing unchanged: P10
   vendors the frozen library seams early, never waits for the server.
   Docs only; no code touched.
+- 2026-08-21 | meta | **Topology not hierarchy; NC4 store mobility.**
+  The daemon discussion resolved into the two-axis rule (who runs
+  neosian code × where the bytes live, four shapes): embed when one
+  app owns the state — `PostgresStore` is a driver, the SQLAlchemy
+  shape, not a third process — and run the daemon, first-class, when
+  state is shared across processes/apps/languages (incl. one
+  container in a dev compose beside redis/minio) or a FileStore needs
+  more than one writer; never a proxy an embedded app doesn't need.
+  NM's discipline bullet rewritten from "never the recommended
+  default" to this topology rule; the quickstart still begins
+  embedded. The 2×2 lands verbatim in NA's `neosian docs` topology
+  page. NC4 joins the background track: `export`/`import` across any
+  substrate pair with version history carried — the data-ownership
+  moat made true in every direction; done-when =
+  contract-kit-indistinguishable after the round-trip. Docs only; no
+  code touched.
