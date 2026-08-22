@@ -67,6 +67,11 @@ from neosian._foundation.llm.codec import message_from_json, message_to_json
 from neosian._foundation.memory.base import MemoryStore
 from neosian._foundation.memory.file import FileStore
 from neosian._foundation.memory.index import memory_system_section
+from neosian._foundation.memory.maintenance import (
+    MaintenanceResult,
+    MaintenanceWrite,
+    run_maintenance,
+)
 from neosian._foundation.memory.mounts import MemoryConfig, Mount
 from neosian._foundation.memory.scope import (
     SCOPE_MAX_LENGTH,
@@ -254,6 +259,9 @@ __all__ = [
     "MemoryConfig",
     "create_memory_tool",
     "memory_system_section",
+    "MaintenanceResult",
+    "MaintenanceWrite",
+    "run_maintenance",
     # Conversation (DESIGN §9)
     "Conversation",
     "ConversationStore",

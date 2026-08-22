@@ -1016,7 +1016,8 @@ amended, ledger #85–#88. 1893 unit tests, zero keys; `neosian eval`
 
 ## NG — The gardener & scale (v0.75–0.76)
 
-DESIGN: §8, §9.6 (the idiom).
+DESIGN: §8, §9.6 (the idiom) — plus §16, the maintenance § this phase
+wrote.
 
 Memory that ages instead of rotting — tractable in the file school,
 hopeless in embedding stores.
@@ -1024,11 +1025,13 @@ hopeless in embedding stores.
 - Opens options-first: trigger and authority (explicit
   `neosian memory maintain` / a boundary rider / both), the
   deterministic-vs-model split, protection rules (what is never
-  pruned).
+  pruned). *(✅ ruled — ledger #90–#93, the §13.13 judge ruling
+  included: shape affirmed, implementation NC6)*
 - **Consolidation pass** — merge duplicates, prune stale, promote
   project→user, confirm-or-decay; deterministic-first, model-batched
   distillation for the rest; every action a version row; spend
-  visible.
+  visible. *(✅ slice A — `run_maintenance` + the `maintain` CLI verb,
+  v0.75.0)*
 - **Scale** — index tiering/budgets (log-projection applied to the
   index itself), FTS-hatch activation criteria, measured behavior at
   500+ documents per scope. The harness gains a `seed:` block for
@@ -1037,8 +1040,45 @@ hopeless in embedding stores.
   at a time is not a scenario (noted at NV, 2026-08-21).
 
 **Done when:** a deliberately polluted store (dupes, stale, misfiled)
-is measurably improved by one maintenance pass, keylessly scripted; the
-index holds its budget at 500 docs; baselines re-run.
+is measurably improved by one maintenance pass, keylessly scripted
+*(✅ slice A — pinned in the unit tier)*; the index holds its budget at
+500 docs; baselines re-run.
+
+**Split (2026-08-22): slice A shipped at v0.75.0 — the gardener.**
+Rulings (options-first, user confirmed, ledger #90–#93): **explicit
+only** — public `run_maintenance` + `neosian memory maintain`, no
+Conversation rider of any kind (#90 — scope-wide work at operator
+cadence; reflection owns the boundary); **the deterministic stage
+executes the byte-safe ops itself** (#91 — byte-identical dup merge
+keeping the earliest `created_at`, empty-doc prune; the CLI keeps a
+working keyless mode, `--model` adds the semantic pass); **age floor +
+redacted skip, enforced in code** (#92 — deletion gated on `min_age`
+default 7 days, redacted documents take no operation, read-only mounts
+structural; pinned prefixes declined toward NP); the **content-matcher
+judge ruled** (#93 — §13.13's shape affirmed, implementation owed at
+NC6, the keyless tier deterministic forever). Shipped:
+`memory/maintenance.py` (evidence-annotated payload, four-op anyOf
+batch incl. `rename` — promotion is the §8 cross-mount move — with the
+NR strict-mode wire pin; degrade-only; spend on the result);
+`structured_call` promoted to `shared/structured.py` (pure move —
+compaction, reflection, maintenance share it);
+`assets/prompts/maintenance.yaml` joins the registry AND the BASELINES
+fingerprint gate (fourth file; first measured cells arrive with slice
+B); the `maintain` CLI verb — not a seventh dispatch command — with
+the injected client-factory seam (the storage contract denies memory
+the router; entries supply a lazy `require_provider_key`-guarded
+factory, missing key loud at exit 2, degraded model stage exit 1
+naming it); root/facade `__all__` +3. 1921 unit tests, zero keys;
+26 new (engine incl. the polluted-store done-when + redacted-trap and
+protection negatives; CLI grammar/json/factory tiers; one
+real-binary maintain smoke). DESIGN §16 + §13.12→§13.13/§14.2
+amendments; README/docs pages/CLAUDE.md/llms.txt ×2. Carried to
+slice B (closes NG): index tiering/budgets + the 500-doc measured
+test, FTS-hatch activation criteria into §8, the harness `seed:`
+block + the seeded maintenance scenario (+ `maintain:` step) in the
+pack, the run-3 memory.yaml no-secrets strengthening — all
+fingerprint-gated changes batched into one re-fingerprint + one
+dispatched baseline re-run recorded in BASELINES.md.
 
 ## NP — Product surface: governance & write-events (v0.77–0.78)
 
@@ -1182,13 +1222,14 @@ as its own mini-session, `NC:` commit subjects, its own done-when.
   LoCoMo; its knowledge-update/temporal questions overlap our regime
   where LoCoMo's personalization QA does not), the driver over
   Conversation + memory, judge policy (§13.13: opt-in, never keyless,
-  prompt as assets data), spend budget. The same discussion (or NG's,
-  whichever lands first) also rules the **content-matcher judge for
-  the self-measured pack** — external tier only, §13.13's reserved
-  shape (user, 2026-08-21): three widenings of the phrasing class
-  showed deterministic fact-presence pins over model prose are the
-  harness's weak layer; structural checks (counts, forbidden,
-  versions, exactly-one-match) stay deterministic everywhere. Done
+  prompt as assets data), spend budget. The **content-matcher judge
+  for the self-measured pack** was ruled at NG's opening discussion
+  (2026-08-22, ledger #93 — NG landed first, as anticipated here):
+  §13.13's reserved shape affirmed — opt-in, external tier only,
+  never keyless, prompt as assets data — with the **implementation
+  owed in this slice**, where the driver and spend policy are shared;
+  structural checks (counts, forbidden, versions, exactly-one-match)
+  stay deterministic everywhere. Done
   when one accepted-benchmark number stands in BASELINES.md beside
   the self-measured tables, methodology stated.
 
@@ -2134,3 +2175,35 @@ membership is standing, not achieved.
   Cerebras one stochastic cell short — the trained-behavior asymmetry
   measured. No re-roll: chasing green by re-dispatch is selection
   bias.
+- 2026-08-22 | NG (slice A) | **Memory learns to garden.** Rulings
+  (options-first, user confirmed, ledger #90–#93): explicit only —
+  `run_maintenance` + `neosian memory maintain`, no Conversation
+  rider (#90); deterministic stage executes the byte-safe ops
+  (byte-identical dup merge keeping the earliest created_at,
+  empty-doc prune) so the CLI keeps a keyless mode, `--model` adds
+  the semantic pass (#91); age floor + redacted skip enforced in
+  code — deletion gated on `min_age` (default 7 days), redacted docs
+  take no operation (the empty-prune-eats-redacted trap closed),
+  read-only mounts structural, pinned prefixes declined (#92); the
+  content-matcher judge's shape affirmed, implementation owed at NC6
+  (#93). Shipped: `memory/maintenance.py` — two-stage engine, every
+  mutation through `memory/dispatch.py` (no new MemoryAction; the
+  actor is provenance), evidence-annotated payload (version,
+  created/updated dates, `[fresh]`/redacted markers), four-op anyOf
+  batch incl. rename (promotion = the §8 cross-mount move) with the
+  NR strict-mode wire pin, degrade-only, spend on
+  `MaintenanceResult`; `structured_call` promoted to
+  `shared/structured.py` (pure move, three consumers);
+  `maintenance.yaml` in the registry and the BASELINES fingerprint
+  gate (fourth file — no re-run owed: nothing measured changed; slice
+  B's scenario measures it first); the `maintain` verb beside the six
+  commands — injected client-factory seam (storage contract), lazy
+  `require_provider_key`-guarded entry factory (missing key loud at
+  exit 2, the #84 parity), degraded model stage exit 1 naming it,
+  its own `--json` envelope (§14.2); root/facade `__all__` +3.
+  DESIGN §16 written, §13.13/§14.2 amended, NC6 bullet updated.
+  Dogfooded keylessly over the real binary (create dupes → maintain
+  → `--json` → idempotent re-run). 1921 unit tests, zero keys;
+  v0.75.0. Carried to slice B: scale (index tiering/budget, 500-doc
+  test, FTS criteria), harness `seed:` + the maintenance scenario,
+  the memory.yaml no-secrets strengthening, one batched re-run.

@@ -18,6 +18,8 @@ def test_memory_all_is_pinned() -> None:
         "SCOPE_PATTERN",
         "Clock",
         "FileStore",
+        "MaintenanceResult",
+        "MaintenanceWrite",
         "MemoryAction",
         "MemoryConfig",
         "MemoryConflictError",
@@ -39,6 +41,7 @@ def test_memory_all_is_pinned() -> None:
         "generate_memory_index",
         "memory_system_section",
         "parse_scope",
+        "run_maintenance",
         "validate_document_path",
     ]
     for name in neosian.memory.__all__:

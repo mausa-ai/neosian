@@ -66,6 +66,11 @@ fails when any gated file changes without this section being updated —
   `0840039c93a763d3b2889729f6338153b9799491110db8c7894a55bf62a248fd`
 - `neosian/assets/prompts/reflection.yaml` — sha256
   `792964adeceed998409570b531b9ad8c519d470a86feec304e5f37ac629e38d7`
+- `neosian/assets/prompts/maintenance.yaml` — sha256
+  `68ba9c6f42b291ac81b35d8deccc4bf4c194fc8df9f41072f6ccbc7a9929a2c3`
+  *(added at NG slice A, 2026-08-22 — the gardener's model-stage prompt.
+  No measured behavior changes with its addition; its first measured
+  cells arrive with slice B's maintenance scenario and that re-run.)*
 - `examples/eval_memory_baseline.yaml` — sha256
   `c9f7dc46785ad19bd86dd6e048644cc1c1a802a743065ddf615fe365a2dc0437`
 

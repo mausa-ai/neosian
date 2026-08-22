@@ -15,24 +15,20 @@ loses the send. Spend is returned to the caller, never hidden.
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
 
 from neosian._foundation.conversation.projection import one_line
-from neosian._foundation.llm.base import Message, Role, text_of
 from neosian._foundation.shared.prompt_assets import get_prompt, render
-from neosian._foundation.shared.schema import validate_json
-from neosian._foundation.shared.types import Model, ResponseFormat
+from neosian._foundation.shared.structured import structured_call
+from neosian._foundation.shared.types import Model
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
     from neosian._foundation.llm.base import BaseLLMClient, Usage
     from neosian._foundation.shared.types import Provider
-
-logger = logging.getLogger(__name__)
 
 # Epoch summaries carry a whole block, so they get twice the per-turn
 # digest budget (§9.6: length discipline comes from folding, not labels).
@@ -108,35 +104,3 @@ async def summarize_epochs(
         if epoch.last_turn in wanted and epoch.summary.strip()
     }
     return summaries, usage, api_model
-
-
-async def structured_call[T: BaseModel](
-    acquire: Callable[[Provider], BaseLLMClient],
-    model: Model,
-    system: str,
-    payload: str,
-    schema: type[T],
-    what: str,
-) -> tuple[T | None, Usage | None, str | None]:
-    """One degrade-safe structured-output call through the lease — shared
-    by compaction's two batches and reflection (§15)."""
-    try:
-        client = acquire(model.provider)
-        response = await client.complete(
-            [
-                Message(role=Role.SYSTEM, content=system),
-                Message(role=Role.USER, content=payload),
-            ],
-            model=model,
-            response_format=ResponseFormat(schema=schema),
-            cache_conversation=False,
-            # A one-shot distillation call never wants provider-side
-            # history compaction, whatever the sending agent opted into.
-            server_compaction=False,
-        )
-        parsed = validate_json(schema, text_of(response.message))
-        assert isinstance(parsed, schema)
-        return parsed, response.usage, response.model
-    except Exception:
-        logger.warning("%s failed; degrading", what, exc_info=True)
-        return None, None, None

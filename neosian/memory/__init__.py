@@ -13,6 +13,11 @@ from neosian._foundation.memory.index import (
     generate_memory_index,
     memory_system_section,
 )
+from neosian._foundation.memory.maintenance import (
+    MaintenanceResult,
+    MaintenanceWrite,
+    run_maintenance,
+)
 from neosian._foundation.memory.mounts import MemoryConfig, Mount
 from neosian._foundation.memory.paths import (
     PATH_MAX_LENGTH,
@@ -53,6 +58,8 @@ __all__ = [
     "SCOPE_PATTERN",
     "Clock",
     "FileStore",
+    "MaintenanceResult",
+    "MaintenanceWrite",
     "MemoryAction",
     "MemoryConfig",
     "MemoryConflictError",
@@ -74,5 +81,6 @@ __all__ = [
     "generate_memory_index",
     "memory_system_section",
     "parse_scope",
+    "run_maintenance",
     "validate_document_path",
 ]

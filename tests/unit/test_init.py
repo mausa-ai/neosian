@@ -223,6 +223,9 @@ def test_all_list_matches_exports() -> None:
         "MemoryConfig",
         "create_memory_tool",
         "memory_system_section",
+        "MaintenanceResult",
+        "MaintenanceWrite",
+        "run_maintenance",
         # Conversation (DESIGN §9)
         "Conversation",
         "ConversationStore",

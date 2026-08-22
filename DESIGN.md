@@ -1003,6 +1003,10 @@ never a silent divergence. Numbering is monotonic, never reused.
 | 87 | Reflection as a second legitimate memory-index refresh point | **No new refresh point** — §9.5.10's boundary stays the only one; reflection writes surface in the *next* conversation's frozen index, and spend rides the returned `ReflectionResult` (`aclose()` now returns `ReflectionResult \| None`) instead of folding into any send | Refreshing at close buys nothing (the instance is ending) and mid-session `reflect()` refreshes would invalidate the prompt cache without a compaction boundary's justification; the frozen-index rule already defines writes-surface-next-conversation as correct |
 | 88 | Harness sessions become Conversations so reflection fires through the real `aclose()` | **Runner-level reflection** (#65 stands): `MemorySession.reflect` runs the same `run_reflection` engine over the session transcript after the turn loop, actor = the eval actor, acquire = `Agent._create_client` (the #32/#84 seam, honoring `client_factory` — scripted cells consume the script's next turn as the reflection response); the encapsulation pin gains the `._create_client` token with its sanctioned callers | Sessions-as-bare-Agents is what makes cells cheap and store truth the arbiter; the engine — not the trigger plumbing — is the measured behavior, and the trigger is pinned separately in the unit tier |
 | 89 | The weekly external-provider CI schedule (Mondays 06:00 UTC, standing since NV) | **External runs are dispatch-only** (user ruling, 2026-08-21): the `schedule:` trigger is removed; baseline re-runs and the NW membership re-tests happen as deliberate `workflow_dispatch` acts — NW's per-candidate done-when reads "two consecutive external runs", cadence chosen by the operator | A standing weekly real-API bill is a cost commitment the project does not want automated; every run of the pack is meaningful only when someone reads it, and the fingerprint gate already forces a recorded run at every pack change — the re-test happens when it is owed, not on a timer |
+| 90 | Maintenance triggered by a Conversation boundary rider beside reflection (opt-in or default-on) | **Explicit only** (NG, user ruling 2026-08-22): the public `run_maintenance` + the `neosian memory maintain` verb; no Conversation rider of any kind | Maintenance is scope-wide work at operator cadence, not session-scoped: a close-time rider would re-judge the whole store every close (churn plus a second, store-sized model call), reflection already owns the session boundary, #89's spirit applies — recurring spend is a deliberate act — and #87 means mid-session writes only surface next conversation anyway |
+| 91 | One authority: the model rules every mutation, the deterministic layer only proposes (or: deterministic + a mandatory model stage) | **The deterministic stage executes the byte-safe ops itself** (NG, user ruling 2026-08-22): byte-identical duplicate merge (keep the earliest `created_at`, ties to the first path) and empty-document prune — `neosian memory maintain` has a working keyless mode; the model stage (semantic merge, stale pruning, promotion, confirm-or-decay) runs only when a model is given | "Deterministic-first" made literal: exact-content equality needs no judgment, the memory CLI is keyless everywhere else, and the model pass stays an opt-in spend the operator chooses |
+| 92 | Protection by prompt alone (only the structural read-only exclusion), or adding a protected-prefix config | **Age floor + redacted skip, enforced in code** (NG, user ruling 2026-08-22): documents updated inside `min_age` (default 7 days, Clock-injectable) are never *deleted* by either stage — `create`/`str_replace`/`rename` stay legal — and redacted documents take no operation at all; read-only mounts are structurally excluded (the §15 precedent); pinned prefixes declined | Fresh facts haven't had time to prove wrong; a redacted document reads back empty, so an unguarded empty-prune would eat exactly what C3 promised to preserve; a protected-prefix list is a config surface with no demonstrated need — NP's governance discussion is its natural home if one arrives |
+| 93 | The content-matcher judge built inside NG (its re-run would exercise it), or declined outright | **Shape affirmed now, implementation at NC6** (NG, user ruling 2026-08-22): §13.13's reserved shape is the ruling — opt-in, external tier only, never keyless, prompt as assets data; NG's baseline re-run stays deterministic | Runs 1–3's pattern (every content-level red was a pin narrower than legitimate behavior; the structural checks only ever caught real signal) says the judge is owed, but NC6's external-yardstick session shares its driver and spend policy — one build, two consumers, and the keyless tier stays deterministic forever |
 
 ## §13 Evaluation (NE)
 
@@ -1241,6 +1245,15 @@ Ruled out for NE (ledger #58): scoring is deterministic — matchers here,
 store truth in the memory slice. If an LLM judge ever enters, it is opt-in,
 never in the keyless tier, and its prompt ships as `assets/` data per §7.
 
+**NG ruled the reserved shape (2026-08-22, ledger #93):** the
+content-matcher judge for the *external* tier is affirmed — every
+content-level red across runs 1–3 was a pin narrower than legitimate
+behavior, while the structural checks (counts, forbidden, versions,
+exactly-one-match) only ever caught real signal. It stays opt-in, never
+keyless, prompt as assets data; the implementation lands with NC6's
+external-yardstick session, which shares its driver and spend policy.
+The keyless tier stays deterministic forever.
+
 ## §14 The agent surface (NA)
 
 Agents are becoming the package-choosers: a library an agent cannot
@@ -1306,6 +1319,22 @@ arrives only through `NEOSIAN_POSTGRES_DSN` (#53/#76). `--json` prints
 one-writer rule (#74) exists for: an agent's shell writing a root while
 an MCP server serves it is exactly the collision the rule routes to
 Postgres or the daemon.
+
+**The `maintain` verb (NG, §16)** is deliberately *not* a seventh
+dispatch command — the six-command vocabulary is the frozen
+agent-facing interface, while gardening is an operator act. `neosian
+memory maintain [store flags] [--model MODEL] [--min-age-days N]` runs
+the maintenance engine over the writable mounts: keyless by default
+(the deterministic stage), `--model` adds the semantic pass. Its
+`--json` prints the engine's own envelope —
+`{"writes": [...], "model", "usage", "cost_micro_usd"}` — never the
+six-command `ToolResult` shape. Exit tiers hold: an unknown model or
+negative `--min-age-days` is grammar (2, nothing constructed); a
+missing provider key is caught eagerly at client construction (2, the
+#84 rule — never a silent degrade); a requested model stage that
+degrades exits 1 *and says so* on stderr while the deterministic
+actions stand — the explicit shell tells the operator what the
+library's close paths only log.
 
 ### §14.3 The `cli` transport on the harness axis
 
@@ -1495,3 +1524,88 @@ discriminating negatives (a reflection duplicate, a reflected token)
 live in the unit tier per the #67 idiom. `reflection.yaml` joins
 `memory.yaml` and the pack behind the BASELINES.md fingerprint gate:
 no reflection-prompt change without a recorded baseline re-run.
+
+## §16 Maintenance (NG)
+
+The gardener — memory that ages instead of rotting: an explicit,
+operator-cadence consolidation pass over a store's writable mounts —
+merge duplicates, prune stale, promote project→user, confirm-or-decay —
+tractable in the file school precisely because memory is small
+documents you can list and read whole. Rulings: ledger #90–#93.
+
+**The engine** (`_foundation/memory/maintenance.py` — the memory layer,
+inside the storage import contract, so provider clients arrive only
+through the injected `acquire` lease). `run_maintenance(config, *,
+acquire=None, model=None, actor=None, clock=None, min_age=7 days)` →
+`MaintenanceResult(writes, usage, model)`, with
+`MaintenanceWrite(command, path, version)` receipts (`path` is the
+virtual tool path — a rename's destination; `version` the live version
+after, None once deleted). `acquire` and `model` come together or not
+at all (`ConfigurationError` otherwise); a negative `min_age` is
+refused.
+
+**Stage 1 — deterministic, always, keyless (ledger #91).** Per writable
+mount: redacted entries are skipped before anything else, then
+documents whose content strips to empty are pruned and byte-identical
+duplicate groups are merged — the keeper is the earliest `created_at`,
+ties to the lexicographically first path; the rest are deleted. Exact
+content equality needs no judgment, which is what makes this stage safe
+to run without a model.
+
+**Stage 2 — the model pass, only when a model is given.** The payload
+is every writable mount's live raw bodies (the §15 shape — raw so an
+emitted `old_str` matches stored content exactly; read-only mounts take
+no operations and are not shown; redacted documents are named, never
+read) annotated with the aging evidence the model rules on: version,
+created/updated dates, and a `[fresh — protected from deletion]`
+marker. One structured-output call (the shared `structured_call`,
+promoted at NG from distill.py to `shared/structured.py` — compaction,
+reflection and maintenance now share it) returns `MaintenanceBatch`:
+ops over `create`/`str_replace`/`delete`/`rename` — `rename` joins the
+§15 subset because promotion *is* a cross-mount rename (the composed,
+non-atomic §8 move) — as per-command all-required shapes in a plain
+anyOf union (the OpenAI strict-mode rule reflection.py pinned; a
+keyless wire-schema test guards the gardener's union too).
+Confirm-or-decay is realized as model judgment over that evidence — no
+pass counters, no extra state; age alone is not decay, and the prompt's
+bias is conservative: unsure means leave it.
+
+**Protection is enforced in code, never exhorted (ledger #92).** The
+age floor gates *deletion* in both stages — the deterministic deletes,
+the model's `delete` — while `create`, `str_replace` and `rename` on
+fresh documents stay legal (a merge's survivor may be fresh; a rename
+preserves content). Redacted documents take no operation at all: a
+redacted document reads back empty, so an unguarded empty-prune would
+eat exactly the audit skeleton C3 promised to preserve. A path the
+protection check cannot resolve falls through to the dispatcher's
+corrective failure. Every mutation — both stages — runs through
+`memory/dispatch.py` with the caller's actor, so each lands as an
+audited version row (no new `MemoryAction`: the actor carries
+provenance, the vocabulary stays closed).
+
+**Failure is degrade-only; spend is visible.** A failed model call
+warns and returns the deterministic result; a failed operation warns
+and is skipped while the rest land. Usage and the API-reported model
+ride the result — through `cost_micro_usd` at the shell — never folded
+into anything else.
+
+**Trigger — explicit only (ledger #90).** The public `run_maintenance`
+and the `neosian memory maintain` verb (§14.2) are the only triggers:
+no Conversation rider, opt-in or otherwise. Maintenance is scope-wide
+work at operator cadence — a close-time rider would re-judge the whole
+store on every close (churn and a second, store-sized model call),
+reflection already owns the session boundary, and #87 means mid-session
+writes only surface next conversation anyway. The CLI's model stage
+rides an injected client factory (the storage contract denies this
+package the router); the entry tiers supply a lazy router-backed one
+that checks the provider key eagerly (`require_provider_key`, the #84
+parity) so a missing key is loud at construction, and keyless commands
+stay provider-SDK-free.
+
+**Measured.** `maintenance.yaml` (the `system` prompt) joins the
+BASELINES fingerprint gate as its fourth file; its first measured cells
+arrive with NG slice B's seeded maintenance scenario. Meanwhile the NG
+done-when's first half is pinned keylessly in the unit tier: a
+deliberately polluted store — dupes, stale, misfiled, empty — is
+measurably improved by one scripted pass, with the protected documents
+(fresh, redacted, read-only) intact.

@@ -1,6 +1,6 @@
 ---
 title: The shell — operate memory with no Python in the loop
-summary: The six commands as neosian memory, --json envelopes, exit tiers 0/1/2/130
+summary: Six commands + maintain as neosian memory, --json envelopes, exit tiers 0/1/2/130
 ---
 
 # Memory from the shell
@@ -21,6 +21,7 @@ neosian memory str_replace PATH --old-str TEXT --new-str TEXT
 neosian memory insert PATH --insert-line N --insert-text TEXT
 neosian memory delete PATH
 neosian memory rename OLD_PATH NEW_PATH
+neosian memory maintain [--model MODEL] [--min-age-days N]
 ```
 
 `view /` renders the memory index — the first command to try. `-` as
@@ -72,6 +73,20 @@ neosian memory view / --root .neosian/memory --scope user:me --json
 
 Argv-tier errors (exit 2) stay argparse text on stderr — a shell
 answers grammar before any envelope exists.
+
+## maintain — the gardener
+
+`maintain` is not one of the six dispatch commands: it runs the
+maintenance pass over the writable mounts (`neosian docs memory`).
+Keyless by default — prune empty documents, merge byte-identical
+duplicates keeping the oldest — and `--model MODEL` adds the semantic
+pass (merge overlapping, prune stale, promote), which needs that
+provider's API key: a missing key is refused at construction, never a
+silent half-pass. `--min-age-days N` (default 7) protects recently
+updated documents from deletion. Its `--json` envelope is its own —
+`{"writes": [...], "model", "usage", "cost_micro_usd"}` — and a
+requested model stage that fails exits 1 and says so on stderr while
+the deterministic actions stand.
 
 ## One writer per root
 

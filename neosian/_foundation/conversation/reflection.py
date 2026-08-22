@@ -19,12 +19,12 @@ from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel
 
-from neosian._foundation.conversation.distill import structured_call
 from neosian._foundation.conversation.projection import render_turn
 from neosian._foundation.memory.dispatch import dispatch
 from neosian._foundation.memory.mounts import resolve
 from neosian._foundation.shared.exceptions import MemoryStoreError
 from neosian._foundation.shared.prompt_assets import get_prompt
+from neosian._foundation.shared.structured import structured_call
 from neosian._foundation.shared.types import Model
 
 if TYPE_CHECKING:

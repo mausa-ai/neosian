@@ -25,10 +25,10 @@ The repository is private; as a dependency of another uv project, install
 from the git URL, pinned to a release tag (extras ride the same URL):
 
 ```bash
-uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.74.0"
-uv add "neosian[postgres] @ git+ssh://git@github.com/neosae/neosian@v0.74.0"   # + PostgresStore
-uv add "neosian[mcp] @ git+ssh://git@github.com/neosae/neosian@v0.74.0"        # + MCP memory server
-uv add "neosian[otel] @ git+ssh://git@github.com/neosae/neosian@v0.74.0"       # + OpenTelemetry spans
+uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.75.0"
+uv add "neosian[postgres] @ git+ssh://git@github.com/neosae/neosian@v0.75.0"   # + PostgresStore
+uv add "neosian[mcp] @ git+ssh://git@github.com/neosae/neosian@v0.75.0"        # + MCP memory server
+uv add "neosian[otel] @ git+ssh://git@github.com/neosae/neosian@v0.75.0"       # + OpenTelemetry spans
 ```
 
 The core install is database-driver-free and MCP-free; the three provider
@@ -157,6 +157,16 @@ the `error:`/`hint:` guidance. Postgres arrives only via
 `NEOSIAN_POSTGRES_DSN` (never an argv flag); `python -m neosian.memory`
 is the PATH-free twin. One writer per FileStore root — see
 `neosian docs topology`.
+
+`neosian memory maintain` is the gardener: an explicit consolidation
+pass over the writable mounts — keyless by default (prune empty
+documents, merge byte-identical duplicates keeping the oldest),
+`--model MODEL` adds the semantic pass (merge overlapping, prune stale,
+promote durable user facts out of project mounts). Recently updated
+documents (`--min-age-days`, default 7) are never deleted, redacted
+documents are never touched, and every action is an audited version
+row; model spend rides the result. The library form is
+`run_maintenance(config, ...) -> MaintenanceResult`.
 
 ## Docs for agents
 

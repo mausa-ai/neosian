@@ -69,6 +69,21 @@ build a Conversation per request call `reflect()` at their real
 session boundary instead). Writes surface in the *next* conversation's
 frozen index, like every other memory write.
 
+## Maintenance — the gardener
+
+Memory ages instead of rotting: `neosian memory maintain` (or the
+library's `run_maintenance`) consolidates a store's writable mounts,
+explicitly and on the operator's cadence — there is no automatic
+trigger. The deterministic stage runs keylessly: prune empty documents,
+merge byte-identical duplicates keeping the oldest. `--model MODEL`
+adds the semantic pass: merge overlapping documents, prune what
+decayed, promote durable user facts out of project mounts. Protection
+is enforced in code, not prompt: documents updated inside the age floor
+(default 7 days, `--min-age-days`) are never deleted, redacted
+documents are never touched, read-only mounts take no operations. Every
+action lands as an audited version row under your `--actor`; model
+spend rides the result.
+
 ## Stores
 
 - `FileStore(root)` — a plain directory; markdown + frontmatter

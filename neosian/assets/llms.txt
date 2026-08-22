@@ -24,6 +24,8 @@ Anthropic's native declaration, an MCP stdio server, and the shell.
   to try; renders the memory index.
 - Six commands: view, create, str_replace, insert, delete, rename.
   `--json` prints the memory tool's result envelope verbatim.
+- `neosian memory maintain` — the gardener: keyless dedup + empty-prune;
+  `--model MODEL` adds the semantic pass (merge, prune stale, promote).
 - Exit tiers: 0 success, 1 ran-and-failed, 2 bad invocation, 130
   interrupt. stdout carries the artifact; stderr carries guidance.
 - Postgres arrives only via the NEOSIAN_POSTGRES_DSN environment
@@ -40,7 +42,7 @@ Anthropic's native declaration, an MCP stdio server, and the shell.
 
 ## Install
 
-- `uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.74.0"`
+- `uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.75.0"`
   (private repository, no PyPI; pin an annotated release tag, never
   master; extras `[postgres]`, `[mcp]`, and `[otel]` ride the same URL).
 
