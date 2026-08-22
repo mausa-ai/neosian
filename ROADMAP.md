@@ -2270,3 +2270,15 @@ membership is standing, not achieved.
   1949 unit tests, zero keys; `neosian eval` 16/16 by hand; a
   500-doc root's `view /` folded at 8183 chars through the real
   binary. Pointer → NP.
+- 2026-08-22 | meta | **The eight-scenario pack measured; NG's carry
+  lands.** One dispatch at /ship (32559735287 at 2854e03): Anthropic
+  8/8 on all three transports, Cerebras 8/8 on both (the run-3
+  stored-token red not recurring under the strengthened prompts — one
+  run, a data point), OpenAI 7/8 function / 8/8 cli. The one red is
+  the ruled-memory-worthy privacy-note class, now firing at the
+  reflection boundary against `reflection-close`'s `/user` count pin
+  — screened, deliberately unruled (extending the write-discipline
+  ruling is the user's call). The maintenance scenario's first six
+  cells all green: real models performed the promotion, the
+  deterministic stages and the fresh-document protection held.
+  Recorded in BASELINES.md; fingerprints unchanged.

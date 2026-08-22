@@ -93,11 +93,38 @@ One batched fingerprint change (the four annotations above): the run-3
 no-secrets strengthening across all three prompt assets, the index
 fold-lines sentence, and the seeded `maintenance` scenario —
 maintenance.yaml's first measured cells. The keyless gate stands at
-16/16 (eight scenarios × function/cli); **the dispatched re-run of this
-batch is owed at the next /ship** (ledger #89 — dispatch-only, the NR
-precedent) and its per-provider table lands here when it completes. The
-2026-08-21 table below measured the seven-scenario pack and stands as
-history.
+16/16 (eight scenarios × function/cli). Measured by one dispatched run
+the same day —
+[32559735287](https://github.com/neosae/neosian/actions/runs/32559735287)
+(at 2854e03, the pack fingerprinted above); the 2026-08-21 table below
+measured the seven-scenario pack and stands as history. Cells are
+scenarios passed per transport.
+
+| Provider | Model | function | cli | native_memory |
+|---|---|---|---|---|
+| Anthropic | claude-sonnet-5 | 8/8 | 8/8 | 8/8 |
+| OpenAI | gpt-5-mini-2025-08-07 | 7/8 | 8/8 | n/a |
+| Cerebras | gpt-oss-120b | 8/8 | 8/8 | n/a |
+
+Findings, recorded as found:
+
+- **The maintenance scenario's first cells are green on all six.**
+  Every provider ran the gardener over the seeded polluted store and
+  emitted the cross-mount promotion; the deterministic dedup/prune and
+  the fresh document's survival held everywhere — the §16 engine
+  measured on real models on its first outing.
+- **The run-3 Cerebras stored-token red did not recur** under the
+  strengthened prompts (one run — a data point, never a trend claim).
+- **OpenAI `reflection-close` (function): a second `/user` document,
+  `privacy_preference`.** The reflection pass recorded the user's
+  privacy instruction as its own document — without the token
+  (`forbidden` held). This is the class the 2026-08-21 ruling already
+  named memory-worthy when it fired on write-discipline (that `/user`
+  count was dropped); `reflection-close` still pins
+  `counts: {/user: 1}`, so the same legitimate behavior reads as a
+  dedup miss there. **Calibration candidate, screened and deliberately
+  unruled** — whether reflection-close's count pin follows
+  write-discipline's is a user ruling, never a silent tune.
 
 ### 2026-08-21 — seven-scenario pack (NR: reflection joins)
 
