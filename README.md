@@ -108,7 +108,10 @@ memory scope) in
 
 Agent-curated, file-school memory: small markdown documents with
 frontmatter plus an index injected once per conversation — no embeddings,
-no vector store. The agent reads and writes through one `memory` tool
+no vector store. At scale the index pages instead of growing: past its
+budget the least recently updated documents fold into per-directory
+count lines the agent re-hydrates with `view`. The agent reads and
+writes through one `memory` tool
 carrying six commands (`view`, `create`, `str_replace`, `insert`, `delete`,
 `rename`) over mounted scopes:
 
@@ -296,7 +299,8 @@ over a variants × models × cases matrix (typed matchers, stub-by-default
 tools behind an execute allowlist), and `kind: memory`, which scores store
 truth across scripted sessions — write discipline, recall in the next
 session, dedup, contradiction handling, long-horizon recall, correcting a
-wrong memory — with a transports axis (the shipped pack runs
+wrong memory, reflection at the close, and maintenance over a seeded
+store — with a transports axis (the shipped pack runs
 `transports: [function, cli]`; Anthropic externally adds
 `native_memory` — one definition, four transports). Shipped packs:
 [examples/eval_basic_agent.yaml](examples/eval_basic_agent.yaml) and

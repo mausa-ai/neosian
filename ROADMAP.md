@@ -1,6 +1,6 @@
 # Neosian Roadmap
 
-> **▶ Current phase: NG — The gardener & scale**
+> **▶ Current phase: NP — Product surface: governance & write-events**
 >
 > *(2026-08-21: the 1.0 arc opens — see "The 1.0 arc" below. The lane is
 > ruled: neosian is the **state layer for production agents** — durable
@@ -1014,7 +1014,7 @@ negatives; README/docs-page/example updated. DESIGN §15, §9.5.14
 amended, ledger #85–#88. 1893 unit tests, zero keys; `neosian eval`
 14/14 by hand with the version rows carrying the boundary actors.
 
-## NG — The gardener & scale (v0.75–0.76)
+## NG — The gardener & scale (v0.75–0.76) ✅ 2026-08-22
 
 DESIGN: §8, §9.6 (the idiom) — plus §16, the maintenance § this phase
 wrote.
@@ -1037,12 +1037,15 @@ hopeless in embedding stores.
   500+ documents per scope. The harness gains a `seed:` block for
   memory scenarios (documents that exist before session 1, actor
   `eval:seed`) — populating a 500-document store one scripted create
-  at a time is not a scenario (noted at NV, 2026-08-21).
+  at a time is not a scenario (noted at NV, 2026-08-21). *(✅ slice B —
+  the budgeted renderer + `seed:`/`maintain:`; ledger #94–#96)*
 
 **Done when:** a deliberately polluted store (dupes, stale, misfiled)
 is measurably improved by one maintenance pass, keylessly scripted
 *(✅ slice A — pinned in the unit tier)*; the index holds its budget at
-500 docs; baselines re-run.
+500 docs *(✅ slice B — pinned keylessly)*; baselines re-run *(the
+batched re-fingerprint stands; the dispatch is owed at /ship — ledger
+#89, the NR precedent — and lands in BASELINES.md)*.
 
 **Split (2026-08-22): slice A shipped at v0.75.0 — the gardener.**
 Rulings (options-first, user confirmed, ledger #90–#93): **explicit
@@ -1079,6 +1082,26 @@ block + the seeded maintenance scenario (+ `maintain:` step) in the
 pack, the run-3 memory.yaml no-secrets strengthening — all
 fingerprint-gated changes batched into one re-fingerprint + one
 dispatched baseline re-run recorded in BASELINES.md.
+
+**Slice B shipped at v0.76.0 (2026-08-22), closing the phase — scale
+and the seeded measurement.** Rulings (options-first, user confirmed,
+ledger #94–#97): index budget as a `budget_chars` keyword with
+module-local `INDEX_BUDGET_CHARS = 8192`, no MemoryConfig field;
+`seed:` = `{path, content, age_days?=30}` through the dispatcher,
+actor `eval:seed`, backdated clock; `maintain:` mirrors `reflect:`
+with `turns:` optional only there; the no-secrets strengthening
+covers all three prompt assets (run 3's stored token was a
+reflection-boundary write — memory.yaml alone would have missed the
+failure's prompt path). Shipped: the tiered renderer (§9.6 applied to
+the index — hot/fold/floor, byte-identical under budget, `view /`
+identical by construction) with the 500-doc done-when pinned
+keylessly; §8's index-at-scale paragraph + FTS activation criteria;
+the harness `seed:`/`maintain:` keys (facade +1 `SeedDocument`); the
+pack's seeded `maintenance` scenario (7 → 8, 16/16 keyless, two new
+negatives); one batched re-fingerprint in BASELINES.md, the dispatch
+owed at /ship (#89). 1949 unit tests, zero keys; real-binary smokes
+(`neosian eval` 16/16; a 500-doc `view /` folded at 8183 chars).
+Nothing carried — NG closes.
 
 ## NP — Product surface: governance & write-events (v0.77–0.78)
 
@@ -2207,3 +2230,43 @@ membership is standing, not achieved.
   v0.75.0. Carried to slice B: scale (index tiering/budget, 500-doc
   test, FTS criteria), harness `seed:` + the maintenance scenario,
   the memory.yaml no-secrets strengthening, one batched re-run.
+- 2026-08-22 | NG (slice B) | **The index pages; the gardener
+  measured; NG closes.** Rulings (options-first, user confirmed,
+  ledger #94–#97): index budget = a `budget_chars` keyword +
+  module-local `INDEX_BUDGET_CHARS = 8192`, no MemoryConfig field
+  (#94, the #92 discipline); `seed:` entries `{path, content,
+  age_days?=30}` written through the dispatcher under actor
+  `eval:seed` on a backdated clock — `age_days: 0` plants the
+  fresh-protection case (#95); `maintain:` as a session key mirroring
+  `reflect:`, `turns:` optional only there, a turn-less step carries
+  one synthetic passed turn (#96); the no-secrets strengthening
+  covers all three prompt assets — run 3's stored token was a
+  *reflection-boundary* write, so the roadmap's "memory.yaml" alone
+  would have polished the prompt the failure never read (#97).
+  Shipped: the tiered renderer — §9.6 applied to the index (hot doc
+  lines newest-`updated_at`-first, per-directory fold lines, a
+  mount-total floor; byte-identical under budget; exact delta
+  accounting over the shared line helpers, so a promotion that
+  shrinks the render lands even from over budget; `view /` identical
+  by construction) — pinned by `test_index_budget.py` incl. the
+  500-doc budget hold, the every-doc-named-or-covered invariant, and
+  determinism across store instances; DESIGN §8 gains the
+  index-at-scale paragraph and the FTS-hatch activation criteria
+  (content-search need, harness-measured; activation = new ABC
+  surface = an ECOSYSTEM §12 session-pair). Harness: `SeedDocument`
+  (facade +1) + `MemorySession.maintain`, loader strict at every new
+  key (unmounted/duplicate/negative-age seeds refused; `reflect:`
+  without turns refused), runner plants seeds via dispatch and runs
+  `run_maintenance` on the sanctioned `._create_client` seam. Pack
+  7 → 8: the seeded `maintenance` scenario (byte-dupes + whitespace
+  doc fall deterministically, the misfiled fact promoted by the
+  scripted batch, the fresh note inside the floor; counts/prefix/
+  absent pinned, never the promoted name — #82), two maintenance
+  negatives in the unit tier. One batched re-fingerprint of all four
+  gated files in BASELINES.md (the eight-scenario block records the
+  dispatch owed at /ship — #89, the NR precedent). memory.yaml also
+  teaches the fold lines. pyproject 0.76.0 (facade +1, renderer
+  keyword, eval schema keys); README/memory docs page swept.
+  1949 unit tests, zero keys; `neosian eval` 16/16 by hand; a
+  500-doc root's `view /` folded at 8183 chars through the real
+  binary. Pointer → NP.

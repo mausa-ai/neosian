@@ -278,3 +278,132 @@ class TestStoreExpectations:
         )
         with pytest.raises(EvalCaseInvalidError, match="names no declared mount"):
             load_eval_config(_write(tmp_path, body))
+
+
+_SEED = """\
+    seed:
+      - path: /user/coffee
+        content: espresso
+      - path: /user/fresh
+        content: new
+        age_days: 0
+"""
+
+
+@pytest.mark.unit
+class TestSeed:
+    def test_seed_parses_with_the_default_age(self, tmp_path: Path) -> None:
+        body = MINIMAL.replace("    sessions:", _SEED + "    sessions:")
+        seed = _load(tmp_path, body).scenarios[0].seed
+        assert seed[0].path == "/user/coffee"
+        assert seed[0].content == "espresso"
+        assert seed[0].age_days == 30
+        assert seed[1].age_days == 0
+
+    def test_no_seed_is_an_empty_tuple(self, tmp_path: Path) -> None:
+        assert _load(tmp_path, MINIMAL).scenarios[0].seed == ()
+
+    def test_empty_seed_list_refused(self, tmp_path: Path) -> None:
+        body = MINIMAL.replace("    sessions:", "    seed: []\n    sessions:")
+        with pytest.raises(EvalCaseInvalidError, match="'seed' must be a non-empty"):
+            load_eval_config(_write(tmp_path, body))
+
+    def test_unknown_seed_key(self, tmp_path: Path) -> None:
+        body = MINIMAL.replace(
+            "    sessions:",
+            "    seed: [{path: /user/x, content: c, actor: me}]\n    sessions:",
+        )
+        with pytest.raises(EvalCaseInvalidError, match="seed 1: unknown key 'actor'"):
+            load_eval_config(_write(tmp_path, body))
+
+    def test_seed_requires_path_and_content(self, tmp_path: Path) -> None:
+        body = MINIMAL.replace(
+            "    sessions:", "    seed: [{path: /user/x}]\n    sessions:"
+        )
+        with pytest.raises(EvalCaseInvalidError, match="seed 1 missing 'content'"):
+            load_eval_config(_write(tmp_path, body))
+
+    def test_seed_path_must_reach_inside_a_declared_mount(self, tmp_path: Path) -> None:
+        for path in ("/nowhere/x", "/user"):
+            body = MINIMAL.replace(
+                "    sessions:",
+                f"    seed: [{{path: {path}, content: c}}]\n    sessions:",
+            )
+            with pytest.raises(EvalCaseInvalidError, match="declared\n?\\s*mount"):
+                load_eval_config(_write(tmp_path, body))
+
+    def test_negative_or_boolean_age_refused(self, tmp_path: Path) -> None:
+        for age in ("-1", "true"):
+            body = MINIMAL.replace(
+                "    sessions:",
+                f"    seed: [{{path: /user/x, content: c, age_days: {age}}}]"
+                "\n    sessions:",
+            )
+            with pytest.raises(EvalCaseInvalidError, match="'age_days' must be"):
+                load_eval_config(_write(tmp_path, body))
+
+    def test_duplicate_seed_path_refused(self, tmp_path: Path) -> None:
+        body = MINIMAL.replace(
+            "    sessions:",
+            "    seed: [{path: /user/x, content: a}, {path: /user/x, content: b}]"
+            "\n    sessions:",
+        )
+        with pytest.raises(EvalCaseInvalidError, match="duplicate seed path"):
+            load_eval_config(_write(tmp_path, body))
+
+
+@pytest.mark.unit
+class TestMaintain:
+    def test_maintain_parses_and_defaults_off(self, tmp_path: Path) -> None:
+        assert _load(tmp_path, MINIMAL).scenarios[0].sessions[0].maintain is False
+        body = MINIMAL.replace("- name: one\n", "- name: one\n        maintain: true\n")
+        assert _load(tmp_path, body).scenarios[0].sessions[0].maintain is True
+
+    def test_maintain_must_be_a_boolean(self, tmp_path: Path) -> None:
+        body = MINIMAL.replace(
+            "- name: one\n", "- name: one\n        maintain: weekly\n"
+        )
+        with pytest.raises(EvalCaseInvalidError, match="'maintain' must be a boolean"):
+            load_eval_config(_write(tmp_path, body))
+
+    def test_a_maintain_session_needs_no_turns(self, tmp_path: Path) -> None:
+        body = MINIMAL.replace(
+            "      - name: one",
+            """\
+      - name: garden
+        maintain: true
+        script:
+          - content: '{"ops": []}'
+        expect_store:
+          counts: {/user: 0}
+      - name: one""",
+        )
+        session = _load(tmp_path, body).scenarios[0].sessions[0]
+        assert session.maintain is True
+        assert session.turns == ()
+
+    def test_turns_stay_required_without_maintain(self, tmp_path: Path) -> None:
+        body = MINIMAL.replace(
+            "      - name: one",
+            """\
+      - name: bare
+        script:
+          - content: done
+      - name: one""",
+        )
+        with pytest.raises(EvalCaseInvalidError, match="session missing 'turns'"):
+            load_eval_config(_write(tmp_path, body))
+
+    def test_reflect_without_turns_refused(self, tmp_path: Path) -> None:
+        body = MINIMAL.replace(
+            "      - name: one",
+            """\
+      - name: garden
+        maintain: true
+        reflect: true
+        script:
+          - content: '{"ops": []}'
+      - name: one""",
+        )
+        with pytest.raises(EvalCaseInvalidError, match="reflects nothing"):
+            load_eval_config(_write(tmp_path, body))

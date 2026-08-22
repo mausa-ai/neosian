@@ -38,6 +38,7 @@ def test_evaluation_all_is_pinned() -> None:
         "MemorySession",
         "ProgressCallback",
         "ProgressEvent",
+        "SeedDocument",
         "SequenceStep",
         "StoreExpectation",
         "ToolCallCapture",

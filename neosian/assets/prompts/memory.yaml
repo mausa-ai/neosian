@@ -32,8 +32,9 @@ system_section: |-
   - Delete or correct anything that proved wrong — stale memory is worse
     than none.
   - Keep documents small and single-topic; split rather than grow.
-  - Never store secrets, credentials, or anything the user asked to
-    forget.
+  - Never store secrets, credentials, API keys, or tokens — not even to
+    note that one exists — nor anything the user asked to forget. When a
+    message contains one, keep it out of every document you write.
 
   Mount routing: each top-level directory below is a separate mount.
   Durable facts about the user belong in the user-level mount; facts tied
@@ -41,5 +42,8 @@ system_section: |-
   reference material.
 
   ### Index
+
+  Large mounts fold: a line ending in a count names a directory (or a
+  mount) whose documents are elided — `view` it to list them.
 
   {{index}}

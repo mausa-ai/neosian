@@ -491,7 +491,15 @@ Timestamps come from the injected Clock, never SQL `now()` (ledger #35);
 `list_documents` orders `COLLATE "C"` (ledger #37); unknown substrate
 keys ride an `extra` jsonb column (C6). The dormant FTS escape hatch is a
 generated `tsvector` column + GIN index — populated, queryable by raw
-SQL, no API surface. Substrate exception (ledger #38): Postgres
+SQL, no API surface. **Activation criteria (NG):** the hatch stays
+dormant until recall demonstrably needs *content* search — a scope where
+the budgeted index plus `view` paging (name and directory navigation)
+misses facts the store holds, shown by harness scenarios at scale, never
+asserted from intuition — and a real deployment asks for it. Activation
+means new ABC surface (a recall/search method every host must
+implement), so it is an ECOSYSTEM §12 session-pair, never a quiet method
+on the reference store; until then the column remains an operator's raw-
+SQL escape hatch. Substrate exception (ledger #38): Postgres
 text/jsonb reject U+0000, so NUL-bearing content raises where FileStore
 round-trips it. The DDL ships as `assets/sql/postgres.sql` (idempotent,
 `{{schema}}`-rendered), applied only by explicit act —
@@ -556,7 +564,27 @@ is accepted first-class alongside the schema names — `file_text` as
 and `view`'s optional `view_range` — so native transport never hits an
 unexpected-keyword failure.
 
-**MCP transport (N4 slice C).** `neosian.mcp` serves the same memory over
+**The index at scale (NG).** The one renderer takes a
+`budget_chars` keyword (default `INDEX_BUDGET_CHARS = 8192`, ~2k tokens
+under §6's char heuristic; module-local, no `MemoryConfig` field — the
+#92 no-unneeded-config discipline) and applies §9.6's log-projection to
+the index itself. Under budget the rendering is byte-identical to the
+one-line-per-document form. Over it, three tiers: hot — documents keep
+their lines, promoted newest-`updated_at`-first (ties by path; the
+promotion stops at the first document that no longer fits — a recency
+cutoff, never a knapsack); warm — the rest fold into per-directory count
+lines (`- /notes/projects/ (12 documents)`, loose documents as
+`- /notes/ (7 more)`); cold — a mount that cannot hold even its folds
+collapses to its total. The selection is a pure deterministic function
+of the listings — no model call, no state — and length accounting runs
+over the same line helpers the renderer uses, so a promotion that
+*shrinks* the render (a fold line can be longer than the document line
+it covers) still lands. A folded region is re-hydrated with `view` of
+the directory: paging, never deletion — the prompt pack says so beside
+the index. Honest bound: the floor is returned even when it exceeds the
+budget (pathologically many mounts or top-level directories); the
+500-document test pins the realistic case. `view /` serves the same
+budgeted rendering — one renderer, no drift. `neosian.mcp` serves the same memory over
 the Model Context Protocol on stdio: `python -m neosian.mcp --root PATH
 --scope user:me` (or the pass-through `neosian mcp`), or
 `await create_memory_server(config, *, actor="mcp")` for hosts that embed.
@@ -1007,6 +1035,10 @@ never a silent divergence. Numbering is monotonic, never reused.
 | 91 | One authority: the model rules every mutation, the deterministic layer only proposes (or: deterministic + a mandatory model stage) | **The deterministic stage executes the byte-safe ops itself** (NG, user ruling 2026-08-22): byte-identical duplicate merge (keep the earliest `created_at`, ties to the first path) and empty-document prune — `neosian memory maintain` has a working keyless mode; the model stage (semantic merge, stale pruning, promotion, confirm-or-decay) runs only when a model is given | "Deterministic-first" made literal: exact-content equality needs no judgment, the memory CLI is keyless everywhere else, and the model pass stays an opt-in spend the operator chooses |
 | 92 | Protection by prompt alone (only the structural read-only exclusion), or adding a protected-prefix config | **Age floor + redacted skip, enforced in code** (NG, user ruling 2026-08-22): documents updated inside `min_age` (default 7 days, Clock-injectable) are never *deleted* by either stage — `create`/`str_replace`/`rename` stay legal — and redacted documents take no operation at all; read-only mounts are structurally excluded (the §15 precedent); pinned prefixes declined | Fresh facts haven't had time to prove wrong; a redacted document reads back empty, so an unguarded empty-prune would eat exactly what C3 promised to preserve; a protected-prefix list is a config surface with no demonstrated need — NP's governance discussion is its natural home if one arrives |
 | 93 | The content-matcher judge built inside NG (its re-run would exercise it), or declined outright | **Shape affirmed now, implementation at NC6** (NG, user ruling 2026-08-22): §13.13's reserved shape is the ruling — opt-in, external tier only, never keyless, prompt as assets data; NG's baseline re-run stays deterministic | Runs 1–3's pattern (every content-level red was a pin narrower than legitimate behavior; the structural checks only ever caught real signal) says the judge is owed, but NC6's external-yardstick session shares its driver and spend policy — one build, two consumers, and the keyless tier stays deterministic forever |
+| 94 | The index budget as a `MemoryConfig` field (per-agent tuning everywhere), or a bare unconfigurable constant | **A `budget_chars` keyword on the one renderer, default module-local `INDEX_BUDGET_CHARS = 8192`** (NG slice B, user ruling 2026-08-22): §9.6's tiers applied to the index — hot doc lines newest-first, per-directory fold lines, a mount total as the floor; byte-identical under budget; `view` of a folded directory is the re-hydration | The #92 discipline: no config surface without a demonstrated need — every shipped consumer rides the default, a host calling the renderer directly can tune, and a `MemoryConfig` field is one-line cheap the day a real deployment asks. Promotion is a recency cutoff, never a knapsack, and the accounting shares the renderer's line helpers so a promotion that shrinks the render (a fold line can outweigh a doc line) still lands |
+| 95 | Seeds as raw `store.write` fixtures, or a fixed backdating with no knob | **`seed:` entries `{path, content, age_days?=30}` written through the shipped dispatcher, actor `eval:seed`, on a clock set `age_days` back** (NG slice B, user ruling 2026-08-22) | Dispatcher writes keep seeds audited and mount-validated like every other transport's; real backdated timestamps make the maintenance floor measurable instead of mocked, and `age_days: 0` plants the fresh-document protection case in external runs too — the NV note ("populating a 500-doc store one scripted create at a time is not a scenario") resolved as data, not code |
+| 96 | Every session keeps a mandatory turn list (a maintenance step carries a throwaway turn) | **`maintain:` as a session key mirroring `reflect:`, with `turns:` optional only there** (NG slice B, user ruling 2026-08-22): order turns → reflect → maintain → store truth; a turn-less step gets one synthetic passed turn; `reflect:` without turns is refused | The gardener is the measured behavior — a filler turn would put an unmeasured model exchange inside the cell; the synthetic turn is bookkeeping (store truth needs a turn to land on), and the engines share the `._create_client` acquire seam #88 already sanctioned for this file |
+| 97 | Strengthen memory.yaml alone (the roadmap carry's letter) | **All three prompt assets in one fingerprint batch** (NG slice B, user ruling 2026-08-22): the shared no-secrets vocabulary (secrets, credentials, API keys, tokens — "not even to note that one exists", the asked-to-forget clause), reflection.yaml's rule stands alone naming transcript secrets, maintenance.yaml aligned; the preventive guardrail stays NP's | Run 3's stored token was a *reflection-boundary* write — the offending call's only prompt input was reflection.yaml, where the rule sat mid-paragraph; strengthening only memory.yaml would have polished the prompt the failure never read. Three files, one gate, one re-run |
 
 ## §13 Evaluation (NE)
 
@@ -1191,10 +1223,29 @@ that axis is informative only on Anthropic runs; `cli` executes every
 memory call through the `neosian memory` engine in-process
 (`memory_cli.py`, ledger #78) and is provider-independent — the shipped
 pack runs `[function, cli]` keylessly. A `scenario` is ordered
-`sessions`; a session is
-`{name, turns, script?, expect_store?}` with turns reusing §13.2's turn
-shape, `script:` per session (all-or-none per scenario), and
-`expect_store:` evaluated after the session's last turn.
+`sessions` plus an optional `seed:`; a session is
+`{name, turns?, script?, expect_store?, reflect?, maintain?}` with turns
+reusing §13.2's turn shape, `script:` per session (all-or-none per
+scenario), and `expect_store:` evaluated after the session's last turn.
+`reflect:` runs the §15 engine over the session transcript after the
+turn loop; `maintain:` runs the §16 gardener after it — `turns:` is
+optional only on a maintain session (a pure gardening step, which gets
+one synthetic passed turn so store truth has a place to land), and
+`reflect:` without turns is refused (an empty transcript reflects
+nothing). Each engine call consumes the script's next turn in scripted
+cells and rides `Agent._create_client` with the cell's model otherwise
+(§13.11's sanctioned reach).
+
+**`seed:` — documents that exist before session 1 (NG).** A scenario
+lists `{path, content, age_days?: int ≥ 0, default 30}` entries, each
+written through the shipped dispatcher under actor `eval:seed` on a
+store whose clock sits `age_days` in the past — seeded documents carry
+real aging evidence (old enough for maintenance's deletion floor by
+default; `age_days: 0` plants a deliberately fresh, protected one).
+Paths must name a document inside a declared mount, duplicates are
+refused, and a refused write is a harness error, never a scenario miss.
+Populating a 500-document store one scripted `create` at a time is not
+a scenario — that was the NV note this key resolves.
 
 **Sessions are bare Agents built via `conversation.wiring.derive_config`**
 (ledger #65) — the shipped wiring, so a session gets the actor-bound
@@ -1602,10 +1653,13 @@ that checks the provider key eagerly (`require_provider_key`, the #84
 parity) so a missing key is loud at construction, and keyless commands
 stay provider-SDK-free.
 
-**Measured.** `maintenance.yaml` (the `system` prompt) joins the
-BASELINES fingerprint gate as its fourth file; its first measured cells
-arrive with NG slice B's seeded maintenance scenario. Meanwhile the NG
-done-when's first half is pinned keylessly in the unit tier: a
-deliberately polluted store — dupes, stale, misfiled, empty — is
-measurably improved by one scripted pass, with the protected documents
-(fresh, redacted, read-only) intact.
+**Measured.** `maintenance.yaml` (the `system` prompt) sits in the
+BASELINES fingerprint gate as its fourth file; slice B landed its first
+measured cells — the shipped pack's seeded `maintenance` scenario
+(§13.12: the `seed:` block plants the polluted store, the `maintain:`
+step runs this engine, store truth pins the dedup, the prune, the
+promotion, and the fresh document's survival). The NG done-when's first
+half stays pinned keylessly in the unit tier: a deliberately polluted
+store — dupes, stale, misfiled, empty — is measurably improved by one
+scripted pass, with the protected documents (fresh, redacted,
+read-only) intact.

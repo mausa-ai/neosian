@@ -17,6 +17,7 @@ from neosian._foundation.evaluation.memory_types import (
     MemoryEvalConfig,
     MemoryScenario,
     MemorySession,
+    SeedDocument,
     Transport,
 )
 from neosian._foundation.evaluation.schema import (
@@ -26,6 +27,7 @@ from neosian._foundation.evaluation.schema import (
     parse_stop_on_failure,
     parse_throttle_ms,
 )
+from neosian._foundation.evaluation.types import EvalTurn
 from neosian._foundation.memory.mounts import Mount
 from neosian._foundation.shared.exceptions import (
     EvalCaseInvalidError,
@@ -56,12 +58,15 @@ _SUITE_HINTS = {
     "variants": "memory suites compare 'transports:', not prompt variants",
 }
 _MOUNT_KEYS = frozenset({"scope", "mount_path", "read_only", "description"})
-_SCENARIO_KEYS = frozenset({"name", "sessions"})
+_SCENARIO_KEYS = frozenset({"name", "sessions", "seed"})
 _SCENARIO_HINTS = {
     "input": "a memory scenario's turns live under 'sessions[].turns'",
     "conversation": "a memory scenario's turns live under 'sessions[].turns'",
 }
-_SESSION_KEYS = frozenset({"name", "turns", "script", "expect_store", "reflect"})
+_SESSION_KEYS = frozenset(
+    {"name", "turns", "script", "expect_store", "reflect", "maintain"}
+)
+_SEED_KEYS = frozenset({"path", "content", "age_days"})
 
 
 def parse_memory_suite(data: Mapping[str, Any], path_str: str) -> MemoryEvalConfig:
@@ -209,7 +214,53 @@ def _parse_scenario(data: Any, mount_paths: frozenset[str]) -> MemoryScenario:
             "'script' must appear on every session or none — a half-scripted "
             "scenario would mix keyless and real-API sessions in one cell",
         )
-    return MemoryScenario(name=name, sessions=tuple(sessions))
+    return MemoryScenario(
+        name=name,
+        sessions=tuple(sessions),
+        seed=_parse_seed(data.get("seed"), name, mount_paths),
+    )
+
+
+def _parse_seed(
+    data: Any, scenario_name: str, mount_paths: frozenset[str]
+) -> tuple[SeedDocument, ...]:
+    if data is None:
+        return ()
+    if not isinstance(data, list) or not data:
+        raise EvalCaseInvalidError(scenario_name, "'seed' must be a non-empty list")
+    seeds: list[SeedDocument] = []
+    seen: set[str] = set()
+    for idx, entry in enumerate(data, start=1):
+        if not isinstance(entry, dict):
+            raise EvalCaseInvalidError(scenario_name, f"seed {idx} must be a mapping")
+        for key in entry:
+            if key not in _SEED_KEYS:
+                raise EvalCaseInvalidError(
+                    scenario_name, f"seed {idx}: unknown key '{key}'"
+                )
+        path, content = entry.get("path"), entry.get("content")
+        if not isinstance(path, str) or not path:
+            raise EvalCaseInvalidError(scenario_name, f"seed {idx} missing 'path'")
+        if not isinstance(content, str):
+            raise EvalCaseInvalidError(scenario_name, f"seed {idx} missing 'content'")
+        first, _, rest = path.strip("/").partition("/")
+        if first not in mount_paths or not rest:
+            known = ", ".join(f"/{p}" for p in sorted(mount_paths))
+            raise EvalCaseInvalidError(
+                scenario_name,
+                f"seed path '{path}' must name a document inside a declared "
+                f"mount (available: {known})",
+            )
+        age_days = entry.get("age_days", 30)
+        if isinstance(age_days, bool) or not isinstance(age_days, int) or age_days < 0:
+            raise EvalCaseInvalidError(
+                scenario_name, f"seed {idx}: 'age_days' must be an integer >= 0"
+            )
+        if path in seen:
+            raise EvalCaseInvalidError(scenario_name, f"duplicate seed path '{path}'")
+        seen.add(path)
+        seeds.append(SeedDocument(path=path, content=content, age_days=age_days))
+    return tuple(seeds)
 
 
 def _parse_session(
@@ -223,17 +274,30 @@ def _parse_session(
     for key in data:
         if key not in _SESSION_KEYS:
             raise EvalCaseInvalidError(label, f"session: unknown key '{key}'")
-    if "turns" not in data:
-        raise EvalCaseInvalidError(label, "session missing 'turns'")
     reflect = data.get("reflect", False)
     if not isinstance(reflect, bool):
         raise EvalCaseInvalidError(label, "'reflect' must be a boolean")
+    maintain = data.get("maintain", False)
+    if not isinstance(maintain, bool):
+        raise EvalCaseInvalidError(label, "'maintain' must be a boolean")
+    if "turns" not in data:
+        # A pure gardening step needs no agent turns; everything else does.
+        if not maintain:
+            raise EvalCaseInvalidError(label, "session missing 'turns'")
+        if reflect:
+            raise EvalCaseInvalidError(
+                label, "'reflect' needs 'turns' — an empty transcript reflects nothing"
+            )
+        turns: tuple[EvalTurn, ...] = ()
+    else:
+        turns = parse_turns(data["turns"], label, key="turns")
     return MemorySession(
         name=data["name"],
-        turns=parse_turns(data["turns"], label, key="turns"),
+        turns=turns,
         script=parse_script(data.get("script"), label),
         expect_store=parse_store_expectation(
             data.get("expect_store"), label, mount_paths
         ),
         reflect=reflect,
+        maintain=maintain,
     )

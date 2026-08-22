@@ -14,6 +14,7 @@ from neosian._foundation.evaluation.memory_types import (
     MemoryEvalConfig,
     MemoryScenario,
     MemorySession,
+    SeedDocument,
     StoreExpectation,
     Transport,
 )
@@ -84,6 +85,7 @@ __all__ = [
     "MemorySession",
     "ProgressCallback",
     "ProgressEvent",
+    "SeedDocument",
     "SequenceStep",
     "StoreExpectation",
     "ToolCallCapture",

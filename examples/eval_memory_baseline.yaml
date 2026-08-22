@@ -1,12 +1,13 @@
 # Memory eval baseline (kind: memory, schema v2) — DESIGN §13.12.
 #
-# Seven scenarios, one per measured behavior: write discipline,
+# Eight scenarios, one per measured behavior: write discipline,
 # recall-in-next-session, dedup, contradiction handling, long-horizon
 # recall, correcting a wrong memory, reflection at the session boundary
-# (§15). Every session is scripted, so the pack runs keylessly on
-# FakeProvider and is all-green by construction — a red run is a
-# regression. Turn expectations stay loose (they must survive a real
-# provider); the store truth carries the strictness.
+# (§15), and maintenance over a seeded store (§16). Every session is
+# scripted, so the pack runs keylessly on FakeProvider and is all-green
+# by construction — a red run is a regression. Turn expectations stay
+# loose (they must survive a real provider); the store truth carries
+# the strictness.
 #
 # The external baselines derive a scriptless copy of this same pack in
 # code (tests/external/cross/test_memory_baselines.py) — one source of
@@ -404,3 +405,42 @@ scenarios:
           documents:
             - path_prefix: /user
               content: {contains: ristretto}
+
+  # MAINTENANCE — the §16 gardener over a seeded, deliberately polluted
+  # store. Seeds are planted before session 1 (actor eval:seed), 30 days
+  # old unless said otherwise. The byte-identical duplicate and the
+  # whitespace-only document fall to the deterministic stage — keyless,
+  # model-independent; the misfiled user-durable fact is the model
+  # stage's promotion (a cross-mount rename); the fresh document sits
+  # inside the deletion floor, so protection is measured, never
+  # asserted. Store truth pins counts, the promoted content under its
+  # prefix, and the pollution's absence — never the promoted document's
+  # name (naming is legitimately the model's, ledger #82).
+  - name: maintenance
+    seed:
+      - path: /user/coffee
+        content: "Drinks espresso only."
+      - path: /user/coffee-copy
+        content: "Drinks espresso only."
+      - path: /user/scratch
+        content: " "
+      - path: /project/timezone
+        content: "The user's timezone is Europe/Paris."
+      - path: /user/fresh-note
+        content: "Reviewing the Q3 report this week."
+        age_days: 0
+    sessions:
+      - name: garden
+        maintain: true
+        script:
+          - content: '{"ops": [{"command": "rename", "old_path": "/project/timezone",
+              "new_path": "/user/timezone"}]}'
+        # Three survivors: the kept duplicate, the promoted fact, the
+        # protected fresh note. Two would mean protection failed; the
+        # absences pin the dedup, the prune, and the promotion's source.
+        expect_store:
+          counts: {/user: 3, /project: 0}
+          documents:
+            - path_prefix: /user
+              content: {contains: Europe/Paris}
+          absent: [/user/coffee-copy, /user/scratch, /project/timezone]

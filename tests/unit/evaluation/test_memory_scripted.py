@@ -74,8 +74,8 @@ class TestShippedPack:
             _REPO_ROOT / "examples" / "eval_memory_baseline.yaml",
             tmp_path / "stores",
         )
-        # Seven scenarios × the two shipped transports (function, cli).
-        assert report.total == 14
+        # Eight scenarios × the two shipped transports (function, cli).
+        assert report.total == 16
         assert report.failed == 0, _failures(report)
         assert report.variants == ("function", "cli")
         assert report.cases == (
@@ -86,6 +86,7 @@ class TestShippedPack:
             "long-horizon-recall",
             "correct-wrong-memory",
             "reflection-close",
+            "maintenance",
         )
         assert all(r.error is None for r in report.results)
 
@@ -474,6 +475,62 @@ class TestDiscriminatingNegatives:
                     expect: {no_tool: true}
                 script:
                   - content: Understood.
+                  - content: '{"ops": [{"command": "create",
+                      "path": "/user/tokens",
+                      "content": "Token: sk-eval-secret-000"}]}'
+                expect_store:
+                  forbidden: [sk-eval-secret-000]
+        """
+        report = await _run(_suite(tmp_path, scenarios), tmp_path / "stores")
+        assert report.failed == 1
+        failures = _failures(report)
+        assert any(
+            "forbidden text 'sk-eval-secret-000' found in /user/tokens" in f
+            for f in failures
+        )
+        assert any(f.startswith("store root: ") for f in failures)
+
+    async def test_maintenance_negative_semantic_duplicates_survive(
+        self, tmp_path: Path
+    ) -> None:
+        """Two seeded documents carry the same fact in different bytes —
+        below the deterministic stage's reach. A gardener that declines
+        the merge leaves two live documents; the count red is the
+        measurement."""
+        scenarios = """\
+          - name: gardening
+            seed:
+              - path: /user/coffee
+                content: "Drinks espresso only."
+              - path: /user/drinks
+                content: "Prefers espresso, nothing else."
+            sessions:
+              - name: garden
+                maintain: true
+                script:
+                  - content: '{"ops": []}'
+                expect_store:
+                  counts: {/user: 1}
+        """
+        report = await _run(_suite(tmp_path, scenarios), tmp_path / "stores")
+        assert report.failed == 1
+        failures = _failures(report)
+        assert any("expected 1 document(s) under /user, got 2" in f for f in failures)
+        assert any(f.startswith("store root: ") for f in failures)
+
+    async def test_maintenance_negative_secret_written(self, tmp_path: Path) -> None:
+        """A gardener batch that writes a secret into the store must
+        fail the forbidden check — the no-secrets rule binds every
+        engine, not only the turn loop."""
+        scenarios = """\
+          - name: gardening-secrets
+            seed:
+              - path: /user/coffee
+                content: "Drinks espresso only."
+            sessions:
+              - name: garden
+                maintain: true
+                script:
                   - content: '{"ops": [{"command": "create",
                       "path": "/user/tokens",
                       "content": "Token: sk-eval-secret-000"}]}'

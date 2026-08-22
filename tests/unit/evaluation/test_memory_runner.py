@@ -2,6 +2,7 @@
 (DESIGN §13.12)."""
 
 import copy
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -12,6 +13,7 @@ from neosian._foundation.evaluation.memory_types import (
     DocumentExpectation,
     MemoryScenario,
     MemorySession,
+    SeedDocument,
     StoreExpectation,
     Transport,
 )
@@ -161,6 +163,101 @@ class TestSessions:
         )
         rows = await FileStore(root).versions(_MOUNT.scope, "preferences")
         assert [row.actor for row in rows] == ["eval:recall:record"]
+
+
+@pytest.mark.unit
+class TestSeedAndMaintain:
+    async def test_seeds_exist_before_session_one_backdated_and_audited(
+        self, tmp_path: Path
+    ) -> None:
+        """Seeded documents are in session 1's frozen index, carry
+        `actor: eval:seed`, and their timestamps sit `age_days` back."""
+        root = tmp_path / "store"
+        scenario = MemoryScenario(
+            name="seeded",
+            seed=(
+                SeedDocument(path="/user/coffee", content="Espresso only."),
+                SeedDocument(path="/user/fresh", content="New note.", age_days=0),
+            ),
+            sessions=(
+                MemorySession(
+                    name="look",
+                    turns=(_turn("What do I drink?"),),
+                    script=(_VIEW, FakeTurn(content="Espresso.")),
+                    expect_store=StoreExpectation(counts={"/user": 2}),
+                ),
+            ),
+        )
+        result = await run_scenario(
+            _base(),
+            Transport.FUNCTION,
+            Model.FAKE,
+            scenario,
+            mounts=(_MOUNT,),
+            store_root=root,
+        )
+        assert result.passed, [f for t in result.turns for f in t.failures]
+        store = FileStore(root)
+        rows = await store.versions(_MOUNT.scope, "coffee")
+        assert [row.actor for row in rows] == ["eval:seed"]
+        coffee = await store.read(_MOUNT.scope, "coffee")
+        fresh = await store.read(_MOUNT.scope, "fresh")
+        assert coffee is not None and fresh is not None
+        now = datetime.now(UTC)
+        assert coffee.updated_at < now - timedelta(days=29)
+        assert fresh.updated_at > now - timedelta(days=1)
+
+    async def test_maintain_runs_both_stages_under_the_session_actor(
+        self, tmp_path: Path
+    ) -> None:
+        """A turn-less maintain session: the deterministic stage merges
+        the byte-identical seeds (keeper = first path on the created_at
+        tie), the scripted batch's delete lands, and every mutation is
+        audited under the session actor."""
+        root = tmp_path / "store"
+        scenario = MemoryScenario(
+            name="garden",
+            seed=(
+                SeedDocument(path="/user/coffee", content="Espresso only."),
+                SeedDocument(path="/user/coffee-copy", content="Espresso only."),
+                SeedDocument(path="/user/stale", content="Uses the old API."),
+            ),
+            sessions=(
+                MemorySession(
+                    name="pass",
+                    turns=(),
+                    script=(
+                        FakeTurn(
+                            content='{"ops": [{"command": "delete", '
+                            '"path": "/user/stale"}]}'
+                        ),
+                    ),
+                    maintain=True,
+                    expect_store=StoreExpectation(
+                        counts={"/user": 1},
+                        absent=("/user/coffee-copy", "/user/stale"),
+                    ),
+                ),
+            ),
+        )
+        result = await run_scenario(
+            _base(),
+            Transport.FUNCTION,
+            Model.FAKE,
+            scenario,
+            mounts=(_MOUNT,),
+            store_root=root,
+        )
+        assert result.passed, [f for t in result.turns for f in t.failures]
+        assert len(result.turns) == 1  # the synthetic maintenance step
+        store = FileStore(root)
+        assert await store.read(_MOUNT.scope, "coffee") is not None
+        copy_rows = await store.versions(_MOUNT.scope, "coffee-copy")
+        assert copy_rows[0].action == "deleted"
+        assert copy_rows[0].actor == "eval:garden:pass"
+        stale_rows = await store.versions(_MOUNT.scope, "stale")
+        assert stale_rows[0].action == "deleted"
+        assert stale_rows[0].actor == "eval:garden:pass"
 
 
 @pytest.mark.unit

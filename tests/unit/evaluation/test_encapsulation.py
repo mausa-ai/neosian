@@ -33,7 +33,7 @@ _ALLOWED_CALLERS = {
     "._create_client": {
         Path("_foundation/agent/base.py"),  # the owner (+ guardrails)
         Path("_foundation/agent/session.py"),  # the session cache
-        Path("_foundation/evaluation/memory_runner.py"),  # reflection acquire
+        Path("_foundation/evaluation/memory_runner.py"),  # reflect/maintain acquire
     },
 }
 

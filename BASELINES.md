@@ -11,7 +11,7 @@ yardstick (candidate: LongMemEval) is roadmapped as NC6.
 
 ## What is measured
 
-The shipped pack `examples/eval_memory_baseline.yaml` — seven scenarios,
+The shipped pack `examples/eval_memory_baseline.yaml` — eight scenarios,
 one per behavior:
 
 | Scenario | Behavior |
@@ -23,6 +23,7 @@ one per behavior:
 | long-horizon-recall | The session-1 fact survives two unrelated writing sessions and is recalled in session 4 |
 | correct-wrong-memory | A disavowed note is deleted — the claim gone from every live document |
 | reflection-close | Facts stated in passing reach the store through the session close (§15 reflection): dedup-disciplined, the refused token kept out — counts and content pinned, never version histories (in-session and boundary writes both legitimate) |
+| maintenance | The §16 gardener over a seeded, polluted store (`seed:`, NG): byte-dupes and empty docs fall deterministically, the misfiled user-durable fact is promoted cross-mount, the fresh document survives the deletion floor — counts, promoted content by prefix, and the pollution's absence pinned, never the promoted name |
 
 Scoring is **store truth** (DESIGN §13.12): after each session the
 harness re-reads the actual files through a freshly constructed store.
@@ -63,18 +64,40 @@ fails when any gated file changes without this section being updated —
 **no prompt-pack change without a recorded baseline re-run.**
 
 - `neosian/assets/prompts/memory.yaml` — sha256
-  `0840039c93a763d3b2889729f6338153b9799491110db8c7894a55bf62a248fd`
+  `a809ebed90f192aa4f0a7d6a5b6be9eff4134439f62fae0fe0ea7da794d7accd`
+  *(NG slice B, 2026-08-22 — the run-3 no-secrets strengthening: the
+  bullet now names API keys/tokens, "not even to note that one exists";
+  plus one sentence introducing the index's fold lines.)*
 - `neosian/assets/prompts/reflection.yaml` — sha256
-  `792964adeceed998409570b531b9ad8c519d470a86feec304e5f37ac629e38d7`
+  `f38775115119fbc1d4d88329dd7bc8c8349e912b92169b466dcf3d8d1eb2c966`
+  *(NG slice B, 2026-08-22 — the run-3 red's actual prompt path: the
+  stored-token write was a reflection-boundary op, so the no-secrets
+  rule leaves the closing paragraph and stands alone, transcript-secrets
+  named explicitly.)*
 - `neosian/assets/prompts/maintenance.yaml` — sha256
-  `68ba9c6f42b291ac81b35d8deccc4bf4c194fc8df9f41072f6ccbc7a9929a2c3`
-  *(added at NG slice A, 2026-08-22 — the gardener's model-stage prompt.
-  No measured behavior changes with its addition; its first measured
-  cells arrive with slice B's maintenance scenario and that re-run.)*
+  `0870e36710858919007619f43886193fe1b31dd156b9b581811ea8f619214854`
+  *(NG slice B, 2026-08-22 — the no-secrets rule aligned to the same
+  vocabulary as memory/reflection; first measured cells arrive with the
+  maintenance scenario in this same batch.)*
 - `examples/eval_memory_baseline.yaml` — sha256
-  `c9f7dc46785ad19bd86dd6e048644cc1c1a802a743065ddf615fe365a2dc0437`
+  `2cb19619a3ed4934d979fcce691033941d3a57dfc8da1357f71a3ebe188ab3a0`
+  *(NG slice B, 2026-08-22 — the pack grows 7 → 8: the seeded
+  `maintenance` scenario, riding the new `seed:` block and `maintain:`
+  session step.)*
 
 ## Results
+
+### 2026-08-22 — eight-scenario pack (NG slice B: the gardener measured)
+
+One batched fingerprint change (the four annotations above): the run-3
+no-secrets strengthening across all three prompt assets, the index
+fold-lines sentence, and the seeded `maintenance` scenario —
+maintenance.yaml's first measured cells. The keyless gate stands at
+16/16 (eight scenarios × function/cli); **the dispatched re-run of this
+batch is owed at the next /ship** (ledger #89 — dispatch-only, the NR
+precedent) and its per-provider table lands here when it completes. The
+2026-08-21 table below measured the seven-scenario pack and stands as
+history.
 
 ### 2026-08-21 — seven-scenario pack (NR: reflection joins)
 

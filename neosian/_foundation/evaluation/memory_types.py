@@ -85,16 +85,33 @@ class StoreExpectation:
 
 
 @dataclass(frozen=True, slots=True)
+class SeedDocument:
+    """A document that exists before session 1 (DESIGN §13.12, NG).
+
+    Written through the shipped dispatcher with actor `eval:seed` on a
+    clock set `age_days` into the past, so seeded documents carry real
+    aging evidence — old enough for maintenance's deletion floor by
+    default, `age_days: 0` for a deliberately fresh, protected one.
+    """
+
+    path: str
+    content: str
+    age_days: int = 30
+
+
+@dataclass(frozen=True, slots=True)
 class MemorySession:
     """One session: a fresh bare Agent over the scenario's store root.
 
     The memory index regenerates between sessions (the frozen-index
     rule), so recall is honestly measurable only in a later session.
     `script` runs the session keylessly on its own scripted FakeClient
-    — with `reflect`, the reflection call consumes the script's next
-    turn after the last agent turn. `reflect` runs the §15 reflection
-    engine over the session's transcript at session end, before the
-    store check — the boundary-write behavior NR measures.
+    — with `reflect` or `maintain`, each engine call consumes the
+    script's next turn after the last agent turn. `reflect` runs the
+    §15 reflection engine over the session's transcript at session end;
+    `maintain` runs the §16 maintenance engine after it (turns are
+    optional on a maintain session — a pure gardening step); both run
+    before the store check.
     """
 
     name: str
@@ -102,6 +119,7 @@ class MemorySession:
     script: tuple[FakeTurn, ...] | None = None
     expect_store: StoreExpectation = field(default_factory=StoreExpectation)
     reflect: bool = False
+    maintain: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,10 +128,12 @@ class MemoryScenario:
 
     The loader enforces all-or-no-`script:` across a scenario's sessions
     — a half-keyless cell would make the throttle rule undefined.
+    `seed` documents are planted before session 1.
     """
 
     name: str
     sessions: tuple[MemorySession, ...]
+    seed: tuple[SeedDocument, ...] = ()
 
     @property
     def is_scripted(self) -> bool:

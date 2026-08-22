@@ -10,7 +10,7 @@ after each session through a freshly constructed store.
 
 import dataclasses
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from neosian._foundation.agent.base import Agent
@@ -34,9 +34,12 @@ from neosian._foundation.evaluation.memory_types import (
 )
 from neosian._foundation.evaluation.results import CaseResult, TurnResult
 from neosian._foundation.evaluation.stubs import StubResults, build_tools
+from neosian._foundation.evaluation.types import Expectation
 from neosian._foundation.llm.base import Message, Role, text_of
+from neosian._foundation.memory.dispatch import dispatch
 from neosian._foundation.memory.file import FileStore
 from neosian._foundation.memory.index import memory_system_section
+from neosian._foundation.memory.maintenance import run_maintenance
 from neosian._foundation.memory.mounts import MemoryConfig, Mount
 from neosian._foundation.shared.exceptions import (
     EvalCaseInvalidError,
@@ -116,6 +119,9 @@ async def _run(
         )
     except ValueError as e:
         raise EvalCaseInvalidError(scenario.name, str(e)) from e
+
+    if scenario.seed:
+        await _plant_seed(scenario, mounts, store_root)
 
     turn_results: list[TurnResult] = []
     latency_ms = 0.0
@@ -234,6 +240,27 @@ async def _run(
                 model=model,
                 actor=actor,
             )
+        if session.maintain:
+            # The §16 gardener over the same acquire seam; a turn-less
+            # maintain session gets a synthetic result so store truth has
+            # a turn to land on and a green cell counts as measured.
+            await run_maintenance(
+                memory_config,
+                acquire=agent._create_client,
+                model=model,
+                actor=actor,
+            )
+            if not session.turns:
+                turn_results.append(
+                    TurnResult(
+                        index=turn_index,
+                        passed=True,
+                        expectation=Expectation(),
+                        tool_calls=(),
+                        response=None,
+                    )
+                )
+                turn_index += 1
         clean = await _score_session(session, mounts, store_root, turn_results)
         if not clean and stop_on_failure:
             break
@@ -253,6 +280,40 @@ async def _run(
         turns=tuple(turn_results),
         latency_ms=latency_ms,
     )
+
+
+class _SeedClock:
+    """A settable clock: each seed writes at its own backdated instant."""
+
+    def __init__(self) -> None:
+        self.value = datetime.now(UTC)
+
+    def now(self) -> datetime:
+        return self.value
+
+
+async def _plant_seed(
+    scenario: MemoryScenario, mounts: tuple[Mount, ...], store_root: Path
+) -> None:
+    """Plant the scenario's pre-existing documents (actor `eval:seed`).
+
+    Each write goes through the shipped dispatcher on a store whose clock
+    sits `age_days` in the past, so seeded documents carry real aging
+    evidence. A refused write is a harness error, never a scenario miss.
+    """
+    clock = _SeedClock()
+    config = MemoryConfig(store=FileStore(store_root, clock=clock), mounts=mounts)
+    now = datetime.now(UTC)
+    for seed in scenario.seed:
+        clock.value = now - timedelta(days=seed.age_days)
+        result = await dispatch(
+            config,
+            "create",
+            {"path": seed.path, "content": seed.content},
+            actor="eval:seed",
+        )
+        if not result.success:
+            raise RuntimeError(f"seeding '{seed.path}' failed: {result.error}")
 
 
 async def _score_session(

@@ -11,6 +11,11 @@ conversation. No embeddings, no vector store — the wrong regime for
 agent working memory. You can `cat` it, grep it, git it, and leave
 with it.
 
+At scale the index pages instead of growing: past its budget (~8k
+chars), the least recently updated documents fold into per-directory
+count lines — `view` the directory to list them. Under the budget the
+rendering never changes.
+
 ## Scopes and mounts
 
 Memory is keyed by **mounts** — `(scope, mount_path, read_only,
