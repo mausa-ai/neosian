@@ -365,10 +365,15 @@ scenarios:
   # with the refused token kept out. Turn expectations are deliberately
   # bare (`response: {exists: true}`): a real model may legitimately
   # also write in-session — reflection must then update, not duplicate —
-  # so store truth pins counts and content only, never versions or
-  # actions (in-session and boundary writes produce different, equally
-  # correct histories). The scripted path pins the pure-boundary case:
-  # no tool call in the session, the close writes everything.
+  # so store truth pins content and the forbidden rule only: no counts
+  # (a token-free note recording the privacy instruction is
+  # memory-worthy — the 2026-08-21 write-discipline ruling, extended
+  # here by user ruling 2026-08-22), no versions or actions
+  # (in-session and boundary writes produce different, equally correct
+  # histories). Dedup keeps its bite through exactly-one-match: a
+  # duplicated drink document is two matches under /user. The scripted
+  # path pins the pure-boundary case: no tool call in the session, the
+  # close writes everything.
   - name: reflection-close
     sessions:
       - name: chat
@@ -383,7 +388,6 @@ scenarios:
           - content: '{"ops": [{"command": "create", "path": "/user/preferences",
               "content": "Drinks espresso only."}]}'
         expect_store:
-          counts: {/user: 1}
           documents:
             - path_prefix: /user
               content: {contains: espresso}
@@ -398,10 +402,9 @@ scenarios:
           - content: "Ristretto it is."
           - content: '{"ops": [{"command": "str_replace", "path": "/user/preferences",
               "old_str": "espresso", "new_str": "ristretto"}]}'
-        # Update-not-duplicate at the boundary: still one user document,
-        # and it carries the current preference.
+        # Update-not-duplicate at the boundary: exactly one user
+        # document carries the current preference.
         expect_store:
-          counts: {/user: 1}
           documents:
             - path_prefix: /user
               content: {contains: ristretto}

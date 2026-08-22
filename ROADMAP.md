@@ -2282,3 +2282,14 @@ membership is standing, not achieved.
   cells all green: real models performed the promotion, the
   deterministic stages and the fresh-document protection held.
   Recorded in BASELINES.md; fingerprints unchanged.
+- 2026-08-22 | meta | **The privacy-note ruling extends; OpenAI's row
+  goes flagship.** User rulings: (1) the 2026-08-21 write-discipline
+  ruling extends to the reflection boundary — reflection-close's
+  `/user` count pins dropped in both sessions (a token-free note
+  recording the privacy instruction is memory-worthy; dedup keeps its
+  bite through exactly-one-match, the no-secrets rule untouched), one
+  pack re-fingerprint; (2) OpenAI's baseline row moves
+  `gpt-5-mini-2025-08-07` → `gpt-5.1-2025-11-13` — the flagship chat
+  model ("gpt-5, not mini"; `gpt-5-pro` is Responses-API-only, the NV
+  catalog finding), methodology updated. One dispatch re-measures the
+  calibrated pack on the new row; results recorded as found.

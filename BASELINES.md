@@ -40,9 +40,13 @@ document), never the file name.
   keyless FakeProvider regression gate (`make test`), all-green by
   construction.
 - One model per provider, the same set the library's external tier
-  pins: `claude-sonnet-5`, `gpt-5-mini-2025-08-07`, `gpt-oss-120b`
-  (Cerebras). The 2026-08-21 tables also carry a fourth, since-removed
-  provider — see the historical note under the table.
+  pins: `claude-sonnet-5`, `gpt-5.1-2025-11-13`, `gpt-oss-120b`
+  (Cerebras). OpenAI's row moved `gpt-5-mini-2025-08-07` → `gpt-5.1`
+  (user ruling, 2026-08-22 — the flagship chat model; `gpt-5-pro` is
+  Responses-API-only and cannot ride this harness); earlier tables
+  name the model they measured. The 2026-08-21 tables also carry a
+  fourth, since-removed provider — see the historical note under the
+  table.
 - Transports axis (ledger #64): `function` (the plain function tool)
   and `cli` (the `neosian memory` engine in-process) run for every
   provider; `native_memory` (Anthropic's `memory_20250818`) is
@@ -80,10 +84,12 @@ fails when any gated file changes without this section being updated —
   vocabulary as memory/reflection; first measured cells arrive with the
   maintenance scenario in this same batch.)*
 - `examples/eval_memory_baseline.yaml` — sha256
-  `2cb19619a3ed4934d979fcce691033941d3a57dfc8da1357f71a3ebe188ab3a0`
+  `70dce55c6995ed432dd96a62a4ade4017f2589f55d16499125e4e28af1dafbb2`
   *(NG slice B, 2026-08-22 — the pack grows 7 → 8: the seeded
   `maintenance` scenario, riding the new `seed:` block and `maintain:`
-  session step.)*
+  session step. Re-fingerprinted same day: reflection-close's `/user`
+  count pins dropped — the privacy-note ruling below, extended by
+  user ruling; exactly-one-match and `forbidden` keep the bite.)*
 
 ## Results
 
@@ -120,11 +126,15 @@ Findings, recorded as found:
   privacy instruction as its own document — without the token
   (`forbidden` held). This is the class the 2026-08-21 ruling already
   named memory-worthy when it fired on write-discipline (that `/user`
-  count was dropped); `reflection-close` still pins
-  `counts: {/user: 1}`, so the same legitimate behavior reads as a
-  dedup miss there. **Calibration candidate, screened and deliberately
-  unruled** — whether reflection-close's count pin follows
-  write-discipline's is a user ruling, never a silent tune.
+  count was dropped); `reflection-close` still pinned
+  `counts: {/user: 1}`, so the same legitimate behavior read as a
+  dedup miss there. **Ruled legitimate (user, 2026-08-22):** the
+  write-discipline ruling extends to the reflection boundary —
+  reflection-close's count pins dropped in both sessions, dedup kept
+  by exactly-one-match (a duplicated drink document is two matches),
+  the no-secrets rule untouched; pack re-fingerprinted above. The
+  same ruling moved OpenAI's row to the flagship model — see
+  Methodology.
 
 ### 2026-08-21 — seven-scenario pack (NR: reflection joins)
 

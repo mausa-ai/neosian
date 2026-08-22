@@ -30,7 +30,9 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 _PACK = _REPO_ROOT / "examples" / "eval_memory_baseline.yaml"
 
 _PROVIDER_CASES = [
-    pytest.param(Model.GPT_5_MINI, "openai_api_key", "OPENAI_API_KEY", id="openai"),
+    # OpenAI's row moved gpt-5-mini -> gpt-5.1 (user ruling, 2026-08-22):
+    # the flagship chat model, measured per serving stack like every row.
+    pytest.param(Model.GPT_5_1, "openai_api_key", "OPENAI_API_KEY", id="openai"),
     pytest.param(
         Model.CLAUDE_SONNET_5,
         "anthropic_api_key",
