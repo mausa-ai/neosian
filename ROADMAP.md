@@ -2291,5 +2291,12 @@ membership is standing, not achieved.
   pack re-fingerprint; (2) OpenAI's baseline row moves
   `gpt-5-mini-2025-08-07` → `gpt-5.1-2025-11-13` — the flagship chat
   model ("gpt-5, not mini"; `gpt-5-pro` is Responses-API-only, the NV
-  catalog finding), methodology updated. One dispatch re-measures the
-  calibrated pack on the new row; results recorded as found.
+  catalog finding), methodology updated. The dispatch (32563464178 at
+  97c8ad7): the calibration held — reflection-close green everywhere
+  incl. gpt-5.1 both transports, maintenance green on all six cells;
+  Anthropic 24/24. The two reds are one cell class: long-horizon-
+  recall's distractor-two branch-fact pin found zero matching
+  `/project` docs on OpenAI cli (gpt-5.1's only miss, 15/16) and
+  Cerebras function — the cell's third stochastic red across three
+  runs and three providers, recorded as found (no re-roll; the NC6
+  judge is the instrument for this class). Recorded in BASELINES.md.

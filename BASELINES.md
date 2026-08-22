@@ -93,6 +93,43 @@ fails when any gated file changes without this section being updated —
 
 ## Results
 
+### 2026-08-22 — the calibrated pack; OpenAI's flagship row
+
+The privacy-note ruling landed (reflection-close's count pins dropped —
+the fingerprint annotations above) and OpenAI's row moved to
+`gpt-5.1-2025-11-13`. Measured by one dispatched run —
+[32563464178](https://github.com/neosae/neosian/actions/runs/32563464178)
+(at 97c8ad7, the pack fingerprinted above). Cells are scenarios passed
+per transport.
+
+| Provider | Model | function | cli | native_memory |
+|---|---|---|---|---|
+| Anthropic | claude-sonnet-5 | 8/8 | 8/8 | 8/8 |
+| OpenAI | gpt-5.1-2025-11-13 | 8/8 | 7/8 | n/a |
+| Cerebras | gpt-oss-120b | 7/8 | 8/8 | n/a |
+
+Findings, recorded as found:
+
+- **The calibration held.** `reflection-close` is green everywhere it
+  ran — including gpt-5.1 on both transports — with the refused token
+  stored nowhere; the privacy-note class no longer reads as a dedup
+  miss, and the maintenance scenario stayed green on all six cells.
+- **gpt-5.1's first row: 15/16.** The flagship's one miss is the same
+  cell Cerebras missed (below), not the reflection class that moved
+  the row here.
+- **The branch-fact cell misfired on two providers** —
+  `long-horizon-recall`, session `distractor-two`: zero live `/project`
+  documents matched the order-tolerant main/branch regex on OpenAI
+  (cli) and Cerebras (function). The turn expectation passed (a
+  `memory` call was made), so the fact was either not filed or filed in
+  words outside even the tolerant pin — this cell's third stochastic
+  red across three runs and three providers (run 2 Cerebras word-order,
+  run 3 OpenAI unfiled, now both). Recorded as found, no re-roll;
+  the stored bytes cannot be inspected post-hoc — CI runners discard
+  the store roots, an honest limit of dispatched runs versus local
+  ones. This recurring class is exactly what the §13.13
+  content-matcher judge (NC6) is for.
+
 ### 2026-08-22 — eight-scenario pack (NG slice B: the gardener measured)
 
 One batched fingerprint change (the four annotations above): the run-3
