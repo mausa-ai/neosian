@@ -845,6 +845,25 @@ class MemoryReadOnlyMountError(MemoryStoreError):
         self.mount_path = mount_path
 
 
+class MemoryEditOnlyMountError(MemoryStoreError):
+    """Raised by the tool layer when an edit-only mount's document set would change.
+
+    Edit-only fixes the *set* of documents, never their contents: creating a
+    new path, deleting, or renaming is refused; overwrites and in-place edits
+    pass. The store never raises this (C7: mounts are tool-layer policy).
+    Wired in NP slice B.
+    """
+
+    code = "memory_edit_only_mount"
+
+    def __init__(self, mount_path: str) -> None:
+        super().__init__(
+            f"Memory mount {mount_path!r} is edit-only: its document set is fixed",
+            details={"mount_path": mount_path},
+        )
+        self.mount_path = mount_path
+
+
 # Conversation Errors (DESIGN §5 table, §9). Codes live under agent_ — the
 # family-prefix set is closed and frozen (ECOSYSTEM §6; ledger #24).
 class ConversationStoreError(NeosianError):

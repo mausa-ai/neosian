@@ -85,6 +85,14 @@ class TestMounts:
         assert [m.mount_path for m in settings.mounts] == ["memories", "kb"]
         assert [m.read_only for m in settings.mounts] == [False, True]
 
+    def test_eo_token_parses_edit_only(self) -> None:
+        settings = parse_args(
+            ["--root", "m", "--mount", "scope=user:me/layout:erp,path=fixed,eo"],
+            _ENV,
+        )
+        assert settings.mounts[0].edit_only is True
+        assert settings.mounts[0].read_only is False
+
     def test_scope_and_mount_conflict(self) -> None:
         with pytest.raises(SystemExit) as excinfo:
             parse_args(
@@ -105,6 +113,8 @@ class TestMounts:
             "path=memories",  # missing scope
             "scope=user:me,path=m,rw",  # unknown flag
             "scope=user:me,scope=twice,path=m",  # duplicate key
+            "scope=user:me,path=m,ro,eo",  # ro and eo are exclusive
+            "scope=user:me,path=m,eo,ro",  # in either order
         ],
     )
     def test_malformed_mount_exits_2(self, token: str) -> None:

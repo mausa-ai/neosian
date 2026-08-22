@@ -17,8 +17,9 @@ python -m neosian.mcp --root ~/.my-agent/memory --scope user:me
 ```
 
 The store flags are the same grammar as `neosian memory`: `--scope`
-is the single-mount sugar, `--mount scope=...,path=...[,ro]` is
-repeatable (read-only supported), `--actor` defaults to `mcp`
+is the single-mount sugar, `--mount scope=...,path=...` is repeatable
+(append `,ro` for read-only or `,eo` for edit-only), `--actor`
+defaults to `mcp`
 (convention `mcp:<host>`), and Postgres arrives only through
 `NEOSIAN_POSTGRES_DSN` — never an argv flag. The server's
 instructions carry the same memory index and prompt pack the function

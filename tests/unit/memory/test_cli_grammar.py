@@ -13,7 +13,8 @@ from typing import Any
 
 import pytest
 
-from neosian._foundation.memory.cli import _parse, run
+from neosian._foundation.memory.cli import run
+from neosian._foundation.memory.cli_grammar import parse_request as _parse
 from neosian._foundation.memory.settings import POSTGRES_DSN_ENV
 from neosian._foundation.shared.exceptions import (
     MemoryPathInvalidError,
@@ -137,6 +138,18 @@ class TestStoreFlags:
             ]
         )
         assert [m.read_only for m in request.settings.mounts] == [False, True]
+
+    def test_eo_token_parses_edit_only(self) -> None:
+        request = _parsed(
+            ["view", "--root", "m", "--mount", "scope=user:me/layout:erp,path=fixed,eo"]
+        )
+        assert request.settings.mounts[0].edit_only is True
+        assert request.settings.mounts[0].read_only is False
+
+    def test_ro_and_eo_are_exclusive(self) -> None:
+        with pytest.raises(SystemExit) as excinfo:
+            _parsed(["view", "--root", "m", "--mount", "scope=user:me,path=m,ro,eo"])
+        assert excinfo.value.code == 2
 
     def test_env_dsn_builds_postgres_settings(self) -> None:
         request = _parsed(["view", "--scope", "user:me"], _DSN_ENV)

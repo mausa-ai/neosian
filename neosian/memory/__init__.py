@@ -45,6 +45,7 @@ from neosian._foundation.shared.clock import Clock, SystemClock
 from neosian._foundation.shared.exceptions import (
     MemoryConflictError,
     MemoryDocumentNotFoundError,
+    MemoryEditOnlyMountError,
     MemoryFormatUnsupportedError,
     MemoryPathInvalidError,
     MemoryReadOnlyMountError,
@@ -67,6 +68,7 @@ __all__ = [
     "MemoryConflictError",
     "MemoryDocument",
     "MemoryDocumentNotFoundError",
+    "MemoryEditOnlyMountError",
     "MemoryEntry",
     "MemoryFormatUnsupportedError",
     "MemoryPathInvalidError",

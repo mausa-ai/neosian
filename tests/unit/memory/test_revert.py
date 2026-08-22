@@ -15,11 +15,12 @@ from neosian._foundation.memory.revert import revert_memory
 
 _USER = Mount(scope="user:123", mount_path="user")
 _KB = Mount(scope="tenant:acme/kb:main", mount_path="kb", read_only=True)
+_FIXED = Mount(scope="user:123/layout:erp", mount_path="fixed", edit_only=True)
 
 
 @pytest.fixture
 def config(store: FileStore) -> MemoryConfig:
-    return MemoryConfig(store=store, mounts=(_USER, _KB))
+    return MemoryConfig(store=store, mounts=(_USER, _KB, _FIXED))
 
 
 async def _create(config: MemoryConfig, path: str, content: str) -> int:
@@ -125,6 +126,38 @@ class TestGuards:
         result = await revert_memory(config, "/user/secret", version=version)
         assert not result.success
         assert "redacted" in str(result.error)
+
+    async def test_edit_only_mount_allows_edit_undo(self, config: MemoryConfig) -> None:
+        """The common undo — an edit's inverse dispatches `create` onto a
+        live document, which is itself an edit and legal on an edit-only
+        mount."""
+        await config.store.write(_FIXED.scope, "notes", "original", actor="operator")
+        edited = await dispatch(
+            config,
+            "str_replace",
+            {"path": "/fixed/notes", "old_str": "original", "new_str": "changed"},
+        )
+        assert edited.receipt is not None
+        result = await revert_memory(
+            config, "/fixed/notes", version=edited.receipt.version
+        )
+        assert result.success
+        document = await config.store.read(_FIXED.scope, "notes")
+        assert document is not None and document.content == "original"
+
+    async def test_edit_only_mount_refuses_create_undo(
+        self, config: MemoryConfig
+    ) -> None:
+        """Undoing a create means deleting — a set change the mount
+        refuses. Only pre-edit-only history can hit this (create-new is
+        refused now); the escape is re-mounting without `eo`."""
+        document = await config.store.write(
+            _FIXED.scope, "planted", "pre-eo create", actor="operator"
+        )
+        result = await revert_memory(config, "/fixed/planted", version=document.version)
+        assert not result.success
+        assert "[memory_edit_only_mount]" in str(result.error)
+        assert await config.store.read(_FIXED.scope, "planted") is not None
 
     async def test_redacted_prior_refuses_restore(self, config: MemoryConfig) -> None:
         """A fresh write over a redacted history cannot be undone into the

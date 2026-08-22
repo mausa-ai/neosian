@@ -9,9 +9,11 @@ from neosian._foundation.memory.mounts import (
     MemoryConfig,
     Mount,
     resolve,
+    structural,
     writable,
 )
 from neosian._foundation.shared.exceptions import (
+    MemoryEditOnlyMountError,
     MemoryPathInvalidError,
     MemoryReadOnlyMountError,
     MemoryScopeInvalidError,
@@ -22,6 +24,11 @@ class TestMount:
     def test_valid_mount(self) -> None:
         mount = Mount(scope="user:123", mount_path="user", description="facts")
         assert not mount.read_only
+        assert not mount.edit_only
+
+    def test_read_only_and_edit_only_are_exclusive(self) -> None:
+        with pytest.raises(ValueError, match="both read-only and edit-only"):
+            Mount(scope="user:123", mount_path="user", read_only=True, edit_only=True)
 
     @pytest.mark.parametrize("scope", ["", "User:1", "user", "user:", "u:1//p:2"])
     def test_invalid_scope_rejected(self, scope: str) -> None:
@@ -116,3 +123,23 @@ class TestWritable:
 
     def test_writable_mount_passes(self) -> None:
         writable(Mount(scope="user:123", mount_path="user"))
+
+    def test_edit_only_mount_passes_writable(self) -> None:
+        """Edit-only refuses set changes, never writes — `structural` gates those."""
+        writable(Mount(scope="user:123", mount_path="fixed", edit_only=True))
+
+
+class TestStructural:
+    def test_edit_only_mount_raises(self) -> None:
+        mount = Mount(scope="user:123", mount_path="fixed", edit_only=True)
+        with pytest.raises(MemoryEditOnlyMountError) as excinfo:
+            structural(mount)
+        assert excinfo.value.code == "memory_edit_only_mount"
+        assert excinfo.value.mount_path == "fixed"
+
+    def test_plain_mount_passes(self) -> None:
+        structural(Mount(scope="user:123", mount_path="user"))
+
+    def test_read_only_mount_passes_structural(self) -> None:
+        """`writable` is the read-only gate; `structural` only speaks edit-only."""
+        structural(Mount(scope="user:123", mount_path="kb", read_only=True))

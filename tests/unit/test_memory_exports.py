@@ -25,6 +25,7 @@ def test_memory_all_is_pinned() -> None:
         "MemoryConflictError",
         "MemoryDocument",
         "MemoryDocumentNotFoundError",
+        "MemoryEditOnlyMountError",
         "MemoryEntry",
         "MemoryFormatUnsupportedError",
         "MemoryPathInvalidError",

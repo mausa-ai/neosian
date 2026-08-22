@@ -9,6 +9,7 @@ from neosian._foundation.memory.mounts import MemoryConfig, Mount
 
 _USER = Mount(scope="user:123", mount_path="user", description="user facts")
 _KB = Mount(scope="tenant:acme/kb:main", mount_path="kb", read_only=True)
+_FIXED = Mount(scope="user:123/layout:erp", mount_path="fixed", edit_only=True)
 
 
 class TestGenerateMemoryIndex:
@@ -17,6 +18,10 @@ class TestGenerateMemoryIndex:
         assert "## /user — user facts" in index
         assert "## /kb (read-only)" in index
         assert index.count("(empty)") == 2
+
+    async def test_edit_only_mounts_are_marked(self, store: FileStore) -> None:
+        index = await generate_memory_index(store, (_FIXED,))
+        assert "## /fixed (edit-only)" in index
 
     async def test_documents_listed_by_virtual_path(self, store: FileStore) -> None:
         await store.write(_USER.scope, "prefs", "espresso")

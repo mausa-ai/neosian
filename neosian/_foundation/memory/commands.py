@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from neosian._foundation.memory.index import generate_memory_index
-from neosian._foundation.memory.mounts import resolve, writable
+from neosian._foundation.memory.mounts import resolve, structural, writable
 from neosian._foundation.memory.receipt import MemoryWriteReceipt
 from neosian._foundation.shared.exceptions import (
     MemoryConflictError,
@@ -155,6 +155,9 @@ async def create(
     mount, doc_path = _resolve_document(config, path)
     writable(mount)
     existing = await config.store.read(mount.scope, doc_path)
+    if existing is None:
+        # Overwriting is an edit; only a brand-new path grows the set.
+        structural(mount)
     document = await config.store.write(mount.scope, doc_path, content, actor=actor)
     receipt = _receipt("create", mount, doc_path, document.version)
     if existing is not None:
@@ -252,6 +255,7 @@ async def insert(
 async def delete(config: MemoryConfig, actor: str | None, path: str) -> ToolResult[str]:
     mount, doc_path = _resolve_document(config, path)
     writable(mount)
+    structural(mount)
     removed = await config.store.delete(mount.scope, doc_path, actor=actor)
     if not removed:
         return ToolResult.fail(
@@ -276,6 +280,8 @@ async def rename(
     dst_mount, dst = _resolve_document(config, new_path)
     writable(src_mount)
     writable(dst_mount)
+    structural(src_mount)
+    structural(dst_mount)
     if src_mount.mount_path == dst_mount.mount_path:
         document = await config.store.rename(src_mount.scope, src, dst, actor=actor)
         return ToolResult.ok(

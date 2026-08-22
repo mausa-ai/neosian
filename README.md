@@ -25,10 +25,10 @@ The repository is private; as a dependency of another uv project, install
 from the git URL, pinned to a release tag (extras ride the same URL):
 
 ```bash
-uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.75.0"
-uv add "neosian[postgres] @ git+ssh://git@github.com/neosae/neosian@v0.75.0"   # + PostgresStore
-uv add "neosian[mcp] @ git+ssh://git@github.com/neosae/neosian@v0.75.0"        # + MCP memory server
-uv add "neosian[otel] @ git+ssh://git@github.com/neosae/neosian@v0.75.0"       # + OpenTelemetry spans
+uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.78.0"
+uv add "neosian[postgres] @ git+ssh://git@github.com/neosae/neosian@v0.78.0"   # + PostgresStore
+uv add "neosian[mcp] @ git+ssh://git@github.com/neosae/neosian@v0.78.0"        # + MCP memory server
+uv add "neosian[otel] @ git+ssh://git@github.com/neosae/neosian@v0.78.0"       # + OpenTelemetry spans
 ```
 
 The core install is database-driver-free and MCP-free; the three provider
@@ -133,7 +133,12 @@ configuration = AgentConfig(
 ```
 
 `memory_scope="user:1234"` on `Conversation` is the one-mount sugar for
-exactly this. Every mutation appends a full-content version row (actor,
+exactly this. Two write controls, enforced in code: `read_only=True`
+makes a mount reference material, and `edit_only=True` fixes its
+document set — existing documents stay editable, nothing may be
+created, deleted, or renamed (pre-created layouts the agent works
+within; argv token `eo`). Every mutation appends a full-content
+version row (actor,
 timestamp) — point-in-time reads and redaction come with the store, and
 a Conversation's in-run writes stamp `<conversation_id>#<turn>` so every
 fact carries the turn that wrote it. The
@@ -172,7 +177,7 @@ EOF
 ```
 
 Store flags on every command: `--root` / `--scope` / `--mount
-scope=...,path=...[,ro]` / `--actor` (recorded on version rows;
+scope=...,path=...[,ro|,eo]` / `--actor` (recorded on version rows;
 convention `cli:<host>`). `--json` prints the memory tool's result
 envelope verbatim. Exit tiers everywhere: 0 success · 1 ran-and-failed ·
 2 bad invocation · 130 interrupt; stdout carries the artifact, stderr
@@ -190,6 +195,14 @@ documents (`--min-age-days`, default 7) are never deleted, redacted
 documents are never touched, and every action is an audited version
 row; model spend rides the result. The library form is
 `run_maintenance(config, ...) -> MaintenanceResult`.
+
+The operator verbs complete the governance loop, keylessly:
+`neosian memory versions PATH` reads a document's audit trail
+(`--json` carries full historical content — the point-in-time read);
+`redact PATH` clears content everywhere while keeping the audit
+skeleton (a mount root needs the explicit `--all`; redaction is the
+one irreversible act); `revert PATH --version N` undoes the newest
+write by appending its inverse — the shell face of `revert_memory`.
 
 ## Docs for agents
 
@@ -227,7 +240,7 @@ Cursor — over stdio (`mcp` extra):
 python -m neosian.mcp --root ~/.my-agent/memory --scope user:me
 ```
 
-`--mount` adds scopes (read-only supported); Postgres comes from
+`--mount` adds scopes (read-only and edit-only supported); Postgres comes from
 `NEOSIAN_POSTGRES_DSN` (never an argv flag — argv is world-readable).
 The server's instructions carry the same memory index and prompt pack the
 function tool uses. Hosts that embed the server in their own transport use

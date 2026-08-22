@@ -224,6 +224,51 @@ class TestRunReflection:
         assert "memory_read_only_mount" in caplog.text
         assert await memory.store.read("user:1/kb:shared", "note") is None
 
+    async def test_edit_only_mount_is_shown_annotated(self, tmp_path: Path) -> None:
+        memory = _memory(
+            tmp_path,
+            Mount(scope="user:1/layout:erp", mount_path="fixed", edit_only=True),
+        )
+        await memory.store.write("user:1/layout:erp", "notes", "Template body.")
+        fake = _scripted(FakeTurn(content=_batch()))
+        await run_reflection(
+            memory_config=memory,
+            turns=[_turn(1, "hello", "hi")],
+            acquire=lambda _: fake,
+            model=Model.FAKE,
+            actor="t1",
+        )
+        text = str(fake.calls[0].messages[1].content)
+        assert "## /fixed (edit-only — update existing documents" in text
+        assert "Template body." in text  # the documents stay editable evidence
+
+    async def test_edit_only_create_skipped_edit_lands(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        memory = _memory(
+            tmp_path,
+            Mount(scope="user:1/layout:erp", mount_path="fixed", edit_only=True),
+        )
+        await memory.store.write("user:1/layout:erp", "notes", "old body")
+        bad = CreateOp(command="create", path="/fixed/extra", content="nope")
+        edit = ReplaceOp(
+            command="str_replace", path="/fixed/notes", old_str="old", new_str="new"
+        )
+        fake = _scripted(FakeTurn(content=_batch(bad, edit)))
+        with caplog.at_level(logging.WARNING):
+            result = await run_reflection(
+                memory_config=memory,
+                turns=[_turn(1, "hello", "hi")],
+                acquire=lambda _: fake,
+                model=Model.FAKE,
+                actor="t1",
+            )
+        assert [w.path for w in result.writes] == ["/fixed/notes"]
+        assert "memory_edit_only_mount" in caplog.text
+        assert await memory.store.read("user:1/layout:erp", "extra") is None
+        edited = await memory.store.read("user:1/layout:erp", "notes")
+        assert edited is not None and edited.content == "new body"
+
     async def test_no_turns_makes_no_call(self, tmp_path: Path) -> None:
         fake = _scripted()
         result = await run_reflection(

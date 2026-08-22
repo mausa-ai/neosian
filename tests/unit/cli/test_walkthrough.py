@@ -1,11 +1,11 @@
 """The scripted keyless walkthrough — NA's done-when (DESIGN §14.5).
 
 A coding agent with shell access alone can discover (llms.txt), learn
-(`neosian docs`), operate memory (all six commands, `--json`), and
-offer the MCP upgrade — driven through the LITERAL `neosian` binary,
-closing §14.3's honest limit (the process boundary the in-process cli
-transport deliberately skips, ledger #78). ~10 interpreter starts,
-once per gate.
+(`neosian docs`), operate memory (all six commands, `--json`, and the
+NP redaction leg over the operator verbs), and offer the MCP upgrade —
+driven through the LITERAL `neosian` binary, closing §14.3's honest
+limit (the process boundary the in-process cli transport deliberately
+skips, ledger #78). ~16 interpreter starts, once per gate.
 
 No skip: if the console script ever stops being installed, this must
 go red, not green-by-skip.
@@ -189,6 +189,57 @@ class TestOperate:
         assert keep.returncode == 0
         (row,) = await FileStore(root).versions("user:walkthrough", "keep")
         assert row.actor == "cli:walkthrough"
+
+    def test_redaction_runs_end_to_end(self, tmp_path: Path) -> None:
+        """The NP done-when's second leg: find (versions) → erase
+        (redact) → the store shows the skeleton and refuses the undo —
+        through the literal binary."""
+        env = _env(tmp_path)
+        flags = _store_flags(tmp_path / "mem")
+
+        created = _run(
+            ["memory", "create", "/memories/leak", "--content", "sensitive", *flags],
+            cwd=tmp_path,
+            env=env,
+        )
+        assert created.returncode == 0, created.stderr
+
+        rows = _run(
+            ["memory", "versions", "/memories/leak", *flags], cwd=tmp_path, env=env
+        )
+        assert rows.returncode == 0
+        assert rows.stdout.startswith("v1  created  cli:walkthrough")
+        assert "sensitive" not in rows.stdout  # text output carries no content
+
+        redacted = _run(
+            ["memory", "redact", "/memories/leak", *flags], cwd=tmp_path, env=env
+        )
+        assert redacted.returncode == 0, redacted.stderr
+        assert "redacted 1 document" in redacted.stdout
+
+        viewed = _run(
+            ["memory", "view", "/memories/leak", *flags], cwd=tmp_path, env=env
+        )
+        assert viewed.returncode == 0
+        assert "redacted" in viewed.stdout and "sensitive" not in viewed.stdout
+
+        history = _run(
+            ["memory", "versions", "/memories/leak", "--json", *flags],
+            cwd=tmp_path,
+            env=env,
+        )
+        assert history.returncode == 0
+        payload = json.loads(history.stdout)
+        assert payload["versions"][0]["redacted"] is True
+        assert payload["versions"][0]["content"] == ""  # skeleton, no bytes
+
+        undo = _run(
+            ["memory", "revert", "/memories/leak", "--version", "1", *flags],
+            cwd=tmp_path,
+            env=env,
+        )
+        assert undo.returncode == 1  # redaction is not restorable (C3)
+        assert "redacted" in undo.stderr
 
     def test_the_json_envelope_parses(self, tmp_path: Path) -> None:
         env = _env(tmp_path)

@@ -19,8 +19,9 @@ rendering never changes.
 ## Scopes and mounts
 
 Memory is keyed by **mounts** — `(scope, mount_path, read_only,
-description)` tuples that appear as top-level directories in one
-virtual path space. Scopes are opaque strings of `type:id` segments:
+description, edit_only)` tuples that appear as top-level directories in
+one virtual path space. Scopes are opaque strings of `type:id`
+segments:
 
 ```
 user:1234
@@ -33,6 +34,13 @@ inheritance logic in the storage layer. The canonical configuration
 mirrors Claude Code: a user mount (durable facts about the user) plus
 a project mount (facts local to the work). Memory always requires an
 explicit scope — there are no silent isolation decisions.
+
+Two write controls, both enforced in code: `read_only` makes a mount
+reference material (marked `(read-only)` in the index), and
+`edit_only` fixes its **document set** — existing documents stay
+editable, but nothing may be created, deleted, or renamed (marked
+`(edit-only)`; pre-created layouts the agent works within). Redaction
+stays legal on an edit-only mount: clearing content is a content act.
 
 ## The six commands
 
@@ -58,7 +66,10 @@ Every mutation appends a full-content version row — path, content,
 actor (who wrote: a `conversation_id`, `cli:<host>`, `mcp:<host>`,
 `eval:<scenario>`), tz-aware UTC timestamp. Point-in-time reads and
 rollback come with the store; redaction clears content while
-preserving the audit skeleton.
+preserving the audit skeleton. From the shell, `neosian memory
+versions` reads the trail (`--json` carries full historical content),
+`revert` undoes the newest write, and `redact` is the one eraser —
+the find-and-redact remedy (`neosian docs cli`).
 
 ## Reflection at the session boundary
 
@@ -85,7 +96,9 @@ adds the semantic pass: merge overlapping documents, prune what
 decayed, promote durable user facts out of project mounts. Protection
 is enforced in code, not prompt: documents updated inside the age floor
 (default 7 days, `--min-age-days`) are never deleted, redacted
-documents are never touched, read-only mounts take no operations. Every
+documents are never touched, read-only mounts take no operations, and
+edit-only mounts keep their document set (edits only — the
+deterministic stage skips them). Every
 action lands as an audited version row under your `--actor`; model
 spend rides the result.
 
@@ -106,5 +119,6 @@ own, kept honest by the shipped `MemoryStoreContract` conformance kit.
 The same memory is served through the provider-agnostic function
 tool, Anthropic's native `memory_20250818` declaration (a flag, same
 execution), the MCP server (`neosian docs mcp`), and the shell
-(`neosian docs cli`). The command vocabulary, mounts, read-only
-enforcement, and corrective failures are identical on all four.
+(`neosian docs cli`). The command vocabulary, mounts, the read-only
+and edit-only enforcement, and corrective failures are identical on
+all four.

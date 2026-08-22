@@ -38,6 +38,10 @@ _HINTS: Final[dict[str, str]] = {
     "memory_read_only_mount": (
         "This mount is reference-only; write to a writable mount instead."
     ),
+    "memory_edit_only_mount": (
+        "This mount's document set is fixed; update its existing documents "
+        "instead of creating, deleting, or renaming."
+    ),
     "memory_conflict": (
         "The document changed underneath you — view it again before editing."
     ),

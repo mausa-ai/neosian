@@ -59,6 +59,19 @@ def _memory(tmp_path: Path, clock: _Clock) -> MemoryConfig:
     )
 
 
+def _fixed_memory(tmp_path: Path, clock: _Clock) -> MemoryConfig:
+    """The `_memory` mounts plus an edit-only mount (kept out of the
+    shared helper — its exclusion assertions count mounts)."""
+    base = _memory(tmp_path, clock)
+    return MemoryConfig(
+        store=base.store,
+        mounts=(
+            *base.mounts,
+            Mount(scope="user:1/layout:erp", mount_path="fixed", edit_only=True),
+        ),
+    )
+
+
 def _batch(*ops: MaintainOp) -> str:
     return MaintenanceBatch(ops=list(ops)).model_dump_json()
 
@@ -158,6 +171,19 @@ class TestDeterministicStage:
         result = await run_maintenance(memory, clock=clock)
         assert result.writes == ()
         assert await _paths(memory, "tenant:kb") == ["dup-a", "dup-b", "empty"]
+
+    async def test_edit_only_mounts_are_skipped_whole(self, tmp_path: Path) -> None:
+        """Every deterministic action is a delete, and an edit-only
+        mount's document set is fixed — dupes and empties survive."""
+        clock = _Clock(_OLD)
+        memory = _fixed_memory(tmp_path, clock)
+        await memory.store.write("user:1/layout:erp", "dup-a", "same")
+        await memory.store.write("user:1/layout:erp", "dup-b", "same")
+        await memory.store.write("user:1/layout:erp", "empty", "")
+        clock.at = _NOW
+        result = await run_maintenance(memory, clock=clock)
+        assert result.writes == ()
+        assert await _paths(memory, "user:1/layout:erp") == ["dup-a", "dup-b", "empty"]
 
     async def test_version_rows_carry_the_actor(self, tmp_path: Path) -> None:
         clock = _Clock(_OLD)
@@ -289,6 +315,55 @@ class TestModelStage:
         fresh = await memory.store.read("user:1", "fresh")
         assert fresh is not None and fresh.content == "written today"
 
+    async def test_edit_only_blocks_set_changes_and_allows_edits(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """The fixed-set rule (NP): delete and rename touching an
+        edit-only mount — either side — are refused with a named reason;
+        an in-place edit lands."""
+        clock = _Clock(_OLD)
+        memory = _fixed_memory(tmp_path, clock)
+        await memory.store.write("user:1/layout:erp", "notes", "old body")
+        await memory.store.write("user:1/layout:erp", "stale", "unused")
+        await memory.store.write("user:1", "incoming", "promote me")
+        clock.at = _NOW
+        fake = _scripted(
+            FakeTurn(
+                content=_batch(
+                    MaintainDeleteOp(command="delete", path="/fixed/stale"),
+                    MaintainRenameOp(
+                        command="rename",
+                        old_path="/fixed/notes",
+                        new_path="/user/notes",
+                    ),
+                    MaintainRenameOp(
+                        command="rename",
+                        old_path="/user/incoming",
+                        new_path="/fixed/incoming",
+                    ),
+                    MaintainReplaceOp(
+                        command="str_replace",
+                        path="/fixed/notes",
+                        old_str="old",
+                        new_str="new",
+                    ),
+                ),
+                usage=_USAGE,
+            )
+        )
+        with caplog.at_level(logging.WARNING):
+            result = await run_maintenance(
+                memory, acquire=lambda _: fake, model=Model.FAKE, clock=clock
+            )
+        assert [(w.command, w.path) for w in result.writes] == [
+            ("str_replace", "/fixed/notes")
+        ]
+        assert caplog.text.count("edit-only: its document set is fixed") == 3
+        assert await _paths(memory, "user:1/layout:erp") == ["notes", "stale"]
+        assert await _paths(memory, "user:1") == ["incoming"]
+        edited = await memory.store.read("user:1/layout:erp", "notes")
+        assert edited is not None and edited.content == "new body"
+
     async def test_a_failed_model_call_degrades_to_the_deterministic_result(
         self, tmp_path: Path, caplog: pytest.LogCaptureFixture
     ) -> None:
@@ -367,6 +442,17 @@ class TestEvidencePayload:
         assert "### /user/erased (redacted — protected, take no action)" in payload
         assert "secret" not in payload
         assert "/kb" not in payload and "reference" not in payload
+
+    async def test_edit_only_mounts_are_shown_annotated(self, tmp_path: Path) -> None:
+        from neosian._foundation.memory.maintenance import _render_evidence
+
+        clock = _Clock(_OLD)
+        memory = _fixed_memory(tmp_path, clock)
+        await memory.store.write("user:1/layout:erp", "notes", "Template body.")
+        clock.at = _NOW
+        payload = await _render_evidence(memory, _NOW - timedelta(days=7))
+        assert "## /fixed (edit-only — update existing documents" in payload
+        assert "Template body." in payload  # the documents stay editable evidence
 
 
 class TestDoneWhen:

@@ -17,11 +17,12 @@ from neosian._foundation.memory.mounts import MemoryConfig, Mount
 
 _USER = Mount(scope="user:123", mount_path="user", description="user facts")
 _KB = Mount(scope="tenant:acme/kb:main", mount_path="kb", read_only=True)
+_FIXED = Mount(scope="user:123/layout:erp", mount_path="fixed", edit_only=True)
 
 
 @pytest.fixture
 def config(store: FileStore) -> MemoryConfig:
-    return MemoryConfig(store=store, mounts=(_USER, _KB))
+    return MemoryConfig(store=store, mounts=(_USER, _KB, _FIXED))
 
 
 class TestCommandGuard:
@@ -126,6 +127,13 @@ class TestHints:
         result = await dispatch(config, "create", {"path": "/kb/doc", "content": "x"})
         assert "[memory_read_only_mount]" in str(result.error)
         assert result.system_reminder == _HINTS["memory_read_only_mount"]
+
+    async def test_edit_only_mount(self, config: MemoryConfig) -> None:
+        result = await dispatch(
+            config, "create", {"path": "/fixed/doc", "content": "x"}
+        )
+        assert "[memory_edit_only_mount]" in str(result.error)
+        assert result.system_reminder == _HINTS["memory_edit_only_mount"]
 
     async def test_conflict(self, config: MemoryConfig) -> None:
         await config.store.write(_USER.scope, "a", "1")

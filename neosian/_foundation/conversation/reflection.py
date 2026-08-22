@@ -143,7 +143,9 @@ async def _render_memory(config: MemoryConfig) -> str:
     """Every writable mount with its live document bodies — the dedup
     evidence. Bodies are raw (no line numbers), so an emitted `old_str`
     matches stored content exactly. Read-only mounts are not shown: no
-    operation may target them."""
+    operation may target them. Edit-only mounts are shown — their
+    documents stay editable — annotated so the model never proposes a
+    create or delete there (the dispatcher refuses one anyway)."""
     blocks = ["# Current memory"]
     for mount in config.mounts:
         if mount.read_only:
@@ -151,6 +153,10 @@ async def _render_memory(config: MemoryConfig) -> str:
         header = f"## /{mount.mount_path}"
         if mount.description:
             header += f" — {mount.description}"
+        if mount.edit_only:
+            header += (
+                " (edit-only — update existing documents; never add or remove one)"
+            )
         lines = [header]
         entries = await config.store.list_documents(mount.scope)
         if not entries:

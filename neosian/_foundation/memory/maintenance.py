@@ -11,8 +11,11 @@ merges, stale pruning, project→user promotion via rename,
 confirm-or-decay — through one batched structured-output call (the
 reflection idiom). Protection is enforced in code, never exhorted
 (ledger #92): documents updated inside the age floor are never deleted,
-redacted documents take no operation at all, and read-only mounts are
-excluded structurally. Every mutation runs through the shared dispatcher
+redacted documents take no operation at all, read-only mounts are
+excluded structurally, and edit-only mounts keep their document set —
+edits only, so the deterministic stage (all deletes) skips them and the
+model stage may not delete or rename there (NP). Every mutation runs
+through the shared dispatcher
 with the caller's actor, so each lands as an audited version row; spend
 rides the result, never hidden.
 """
@@ -162,10 +165,12 @@ async def _deterministic_stage(
     """The byte-safe operations, per writable mount: prune empty
     documents and merge byte-identical duplicates keeping the earliest
     `created_at` (ties to the lexicographically first path). Deletion is
-    gated on the age floor; redacted documents never enter."""
+    gated on the age floor; redacted documents never enter. Edit-only
+    mounts are skipped whole — every deterministic action is a delete,
+    and their document set is fixed (NP)."""
     writes: list[MaintenanceWrite] = []
     for mount in config.mounts:
-        if mount.read_only:
+        if mount.read_only or mount.edit_only:
             continue
         by_content: dict[str, list[MemoryEntry]] = {}
         for entry in await config.store.list_documents(mount.scope):
@@ -206,7 +211,9 @@ async def _render_evidence(config: MemoryConfig, cutoff: datetime) -> str:
     evidence the model rules on (version, created/updated, protection
     markers). Bodies are raw so an emitted `old_str` matches stored
     content exactly; read-only mounts take no operations and are not
-    shown; redacted documents are named but never read."""
+    shown; redacted documents are named but never read; edit-only mounts
+    are shown annotated — their documents stay editable, their set does
+    not change."""
     blocks = ["# Current memory"]
     for mount in config.mounts:
         if mount.read_only:
@@ -214,6 +221,11 @@ async def _render_evidence(config: MemoryConfig, cutoff: datetime) -> str:
         header = f"## /{mount.mount_path}"
         if mount.description:
             header += f" — {mount.description}"
+        if mount.edit_only:
+            header += (
+                " (edit-only — update existing documents;"
+                " never create, delete, or rename one)"
+            )
         lines = [header]
         entries = await config.store.list_documents(mount.scope)
         if not entries:
@@ -250,6 +262,8 @@ async def _execute(
     reason = await _protected(
         config, source, cutoff, deletion=isinstance(op, MaintainDeleteOp)
     )
+    if reason is None:
+        reason = _fixed_set(config, op)
     if reason is not None:
         logger.warning("Maintenance %s on %s skipped: %s", op.command, source, reason)
         return None
@@ -289,4 +303,27 @@ async def _protected(
         return "the document is redacted"
     if deletion and document.updated_at > cutoff:
         return "the document is inside the age floor"
+    return None
+
+
+def _fixed_set(config: MemoryConfig, op: MaintainOp) -> str | None:
+    """The edit-only rule (NP): a delete, or a rename touching an
+    edit-only mount on either side, would change its fixed document set —
+    refused with a named reason. Creates are left to the dispatcher: an
+    overwrite is a legal edit there, and only the store knows whether the
+    path already exists. An unresolvable path returns None so the
+    dispatcher produces its corrective failure."""
+    if isinstance(op, MaintainDeleteOp):
+        paths: tuple[str, ...] = (op.path,)
+    elif isinstance(op, MaintainRenameOp):
+        paths = (op.old_path, op.new_path)
+    else:
+        return None
+    for path in paths:
+        try:
+            mount, _ = resolve(config, path)
+        except MemoryStoreError:
+            continue
+        if mount.edit_only:
+            return f"/{mount.mount_path} is edit-only: its document set is fixed"
     return None

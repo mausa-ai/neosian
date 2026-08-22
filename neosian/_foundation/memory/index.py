@@ -72,6 +72,8 @@ def _header(mount: Mount) -> str:
         header += f" — {mount.description}"
     if mount.read_only:
         header += " (read-only)"
+    if mount.edit_only:
+        header += " (edit-only)"
     return header
 
 

@@ -70,23 +70,26 @@ def parse_mount(parser: argparse.ArgumentParser, token: str) -> Mount:
     scope: str | None = None
     path: str | None = None
     read_only = False
+    edit_only = False
     for part in token.split(","):
         key, sep, value = part.partition("=")
-        if key == "ro" and not sep:
+        if key == "ro" and not sep and not edit_only:
             read_only = True
+        elif key == "eo" and not sep and not read_only:
+            edit_only = True
         elif key == "scope" and sep and scope is None:
             scope = value
         elif key == "path" and sep and path is None:
             path = value
         else:
             parser.error(
-                f"malformed --mount {token!r}: expected scope=...,path=...[,ro] "
+                f"malformed --mount {token!r}: expected scope=...,path=...[,ro|,eo] "
                 f"(offending part: {part!r})"
             )
     if scope is None or path is None:
         parser.error(f"--mount {token!r} needs both scope= and path=")
         raise AssertionError  # pragma: no cover - parser.error exits
-    return Mount(scope=scope, mount_path=path, read_only=read_only)
+    return Mount(scope=scope, mount_path=path, read_only=read_only, edit_only=edit_only)
 
 
 def format_mount(mount: Mount) -> str:
@@ -96,7 +99,11 @@ def format_mount(mount: Mount) -> str:
     (deliberately — they are model-facing prose) and are dropped.
     """
     token = f"scope={mount.scope},path={mount.mount_path}"
-    return f"{token},ro" if mount.read_only else token
+    if mount.read_only:
+        return f"{token},ro"
+    if mount.edit_only:
+        return f"{token},eo"
+    return token
 
 
 def add_store_arguments(parser: argparse.ArgumentParser, *, default_actor: str) -> None:
@@ -113,8 +120,9 @@ def add_store_arguments(parser: argparse.ArgumentParser, *, default_actor: str) 
         "--mount",
         action="append",
         default=[],
-        metavar="scope=...,path=...[,ro]",
-        help="explicit mount; repeatable for multi-mount setups",
+        metavar="scope=...,path=...[,ro|,eo]",
+        help="explicit mount; repeatable for multi-mount setups "
+        "(ro = read-only, eo = edit-only: existing documents only)",
     )
     parser.add_argument(
         "--actor",

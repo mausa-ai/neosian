@@ -222,7 +222,7 @@ it as JSON for host i18n-coverage tests):
 | PlaybookLoadError family | `playbook_load_failed`, `playbook_file_not_found`, `playbook_invalid_frontmatter`, `playbook_missing_key`, `playbook_duplicate_name`, `playbook_directory_not_found` | no |
 | BlackboardError family | `blackboard_error`, `blackboard_entry_not_found`, `blackboard_read_failed`, `blackboard_update_failed`, `blackboard_directory_not_found` | no |
 | EvalError family | `eval_error`, `eval_config_not_found`, `eval_config_invalid_yaml`, `eval_config_missing_key`, `eval_prompt_not_found`, `eval_case_invalid`, `eval_run_failed`, `eval_config_unknown_key` (NE), `eval_model_unknown` (NE) | no |
-| Memory family (N1) | `memory_error`, `memory_document_not_found`, `memory_scope_invalid`, `memory_path_invalid`, `memory_conflict`, `memory_format_unsupported`, `memory_read_only_mount` | no |
+| Memory family (N1) | `memory_error`, `memory_document_not_found`, `memory_scope_invalid`, `memory_path_invalid`, `memory_conflict`, `memory_format_unsupported`, `memory_read_only_mount`, `memory_edit_only_mount` (NP) | no |
 | Conversation family (N2) | `agent_conversation_error`, `agent_conversation_id_invalid`, `agent_conversation_format_unsupported` | no |
 
 The memory base class is **`MemoryStoreError`** — never `MemoryError`, which
@@ -528,9 +528,10 @@ run their own branch). The `postgres` extra carries psycopg; the core
 import stays driver-free (pinned by a subprocess test).
 
 **The tool layer (N1 slice B; C7 made concrete).** `Mount(scope,
-mount_path, read_only, description)` + `MemoryConfig(store, mounts)` in
-`memory/mounts.py`; ≥ 1 mount, unique mount paths — "memory needs an
-explicit scope" is structural. One `memory` function tool (ledger #19),
+mount_path, read_only, description, edit_only)` + `MemoryConfig(store,
+mounts)` in `memory/mounts.py`; ≥ 1 mount, unique mount paths — "memory
+needs an explicit scope" is structural; `read_only` and `edit_only` are
+mutually exclusive (a plain `ValueError`, the MemoryConfig precedent). One `memory` function tool (ledger #19),
 `create_memory_tool(config, *, actor=None)`: Anthropic's command
 vocabulary (`view/create/str_replace/insert/delete/rename`) over one
 virtual path space — leading `/` optional, first segment selects the
@@ -545,8 +546,10 @@ corrective failures listing match lines); `insert` splices at
 `0 ≤ insert_line ≤ len(lines)`; both pass `expected_version` — free
 lost-update detection. `rename` cross-mount is composed read + write +
 delete and is **not atomic** (C1 forbids a cross-scope transaction).
-Read-only enforcement lives here, never the store: `writable()` is the
-library's only `MemoryReadOnlyMountError` raise site. Every
+Write enforcement lives here, never the store — two predicates:
+`writable()` is the library's only `MemoryReadOnlyMountError` raise site,
+`structural()` its only `MemoryEditOnlyMountError` one (see the
+edit-only paragraph below). Every
 `MemoryStoreError` is caught in the tool and returned as
 `ToolResult.fail("[<code>] <message>")` plus a per-code hint — the model
 self-corrects; nothing raises through the tool loop. The `command`
@@ -577,6 +580,26 @@ is accepted first-class alongside the schema names — `file_text` as
 and `view`'s optional `view_range` — so native transport never hits an
 unexpected-keyword failure.
 
+**Edit-only mounts (NP slice B; ledger #103).** The document-set write
+policy screened at NV and adopted at NP's opening discussion: an
+edit-only mount (`edit_only=True`, argv token `eo`) fixes the *set* of
+documents, never their contents — pre-created layouts the agent may
+edit but not extend. `structural(mount)` raises
+`memory_edit_only_mount` for anything that would change the set:
+`create` of a path with no live document (an overwrite is an edit and
+stays legal — the existence read `create` already does decides),
+`delete`, and `rename` touching the mount on either side;
+`str_replace`/`insert`/overwrite-`create` pass `writable()` alone.
+Enforcement is per-command in `commands.py`, so all transports and
+every internal dispatch consumer inherit it: `revert_memory` restoring
+prior content works (its `create` lands on a live document), while
+undoing a pre-`eo` `created` row refuses — the escape is re-mounting
+without `eo`. Redaction on an edit-only mount is **allowed**: clearing
+content is a content act, the document survives in listings. The index
+header carries an `(edit-only)` marker beside `(read-only)`; §15/§16
+state the reflection and maintenance treatment. `Mount` is tool-layer
+policy, not an ECOSYSTEM seam — no session-pair.
+
 **Write receipts & undo (NP).** Every successful mutating command
 attaches a `MemoryWriteReceipt(command, mount_path, path, version,
 previous_path)` to its `ToolResult` — built in `commands.py`, the one
@@ -595,7 +618,8 @@ for free), appending a new version row, never rewriting history. Redacted
 history refuses (C3's skeleton is deliberately not restorable). Undoing a
 rename is two reverts — per-document by design; C1 forbids the cross-scope
 transaction. `revert_memory` is host/operator surface: never a seventh
-dispatch command, never registered on an agent, never MCP.
+dispatch command, never registered on an agent, never MCP; its shell
+face is the `neosian memory revert` operator verb (§14.2, NP slice B).
 
 **The index at scale (NG).** The one renderer takes a
 `budget_chars` keyword (default `INDEX_BUDGET_CHARS = 8192`, ~2k tokens
@@ -1077,6 +1101,8 @@ never a silent divergence. Numbering is monotonic, never reused.
 | 100 | Per-send `_rebuild_agent` + `_rebind` to stamp a per-turn actor | **Late-bound actor: `create_memory_tool(actor=)` accepts `str \| Callable[[], str]`** (NP, user ruling 2026-08-22): Conversation passes `_turn_actor` — `<conversation_id>#<turn>`, read under the send lock (`#` is illegal in conversation ids); reflection keeps the bare id (#86); CLI/MCP/eval actors unchanged; a failed send persists nothing, so its number is reused | A per-send rebuild would construct (and leak) a guardrail client per send, re-run `AgentConfig.__post_init__`'s `playbook_dir` disk read per send, and violate §9.5.10's one-index-refresh-point rule — the closure delivers durable per-fact turn-refs for the price of a lambda, and the store still receives one opaque string |
 | 101 | A seventh dispatch command (`undo`), a Conversation-only method, or raw store restores | **`revert_memory(config, path, version=, actor=)` — a public function executing inverse ops through the shared dispatcher** (NP, user ruling 2026-08-22): version names the row to *undo* and must be the newest (`memory_conflict`, reason `revert_stale`, otherwise); one inverse rule — no live document before row N → delete, else row N-1's content back; redacted history refuses; the success receipt is re-badged `command="revert"`; a `neosian memory revert` operator verb follows in slice B; never registered on an agent, never MCP | Undo is host/operator territory — hosts render the button, models do not erase their own trail (the maintain precedent, §14.2); dispatch execution keeps read-only enforcement, corrective mapping and the audit row; append-only reverts keep C3/C5's receipts intact, and refusing a stale target beats silently destroying later writes |
 | 102 | The no-secrets write guardrail: a deterministic pattern gate at dispatch (structure-anchored rules), or a model-based pre-write classifier | **Prevention declined — remedy-first** (NP, user ruling 2026-08-22): no preventive gate ships; the governance story is prompts discourage (#97), the eval detects (`forbidden`), and NP makes the remedy first-class — `memory_write` receipts, find-and-redact (slice B), undo; a model-based guard stays available to a future phase if evidence demands it | Deterministic secret detection was ruled error-prone as a class (user); a model check cannot run at the client-free dispatch chokepoint without threading a client through every transport, and version rows + scope-wide `redact()` mean the failure mode is recoverable — the phase bullet closes by deliberate declination, never by silence |
+| 103 | Edit-only as create-new-blocked only (delete/rename stay legal), a mode enum replacing `read_only`, or prompt-level discipline without enforcement | **Fixed document set** (NP slice B, user ruling 2026-08-22): `Mount.edit_only` (second bool, exclusive with `read_only` — plain ValueError) refuses create-of-a-new-path, `delete`, and `rename` touching the mount on either side via `structural()` — the second tool-layer predicate beside `writable()`, raising the appended `memory_edit_only_mount`; overwrite-create, `str_replace`, `insert` and `redact` stay legal (content acts). Argv token `eo`; `(edit-only)` index marker; reflection shows the mount annotated, maintenance's deterministic stage skips it and `_fixed_set` names refusals; prompt YAMLs untouched (no fingerprint trip); the eval mount schema deliberately unextended (unit-tier negatives, the #67 idiom) | "Pre-created layouts the agent may edit but not extend" is a *set* guarantee — delete or rename-away breaks a layout as surely as create grows it, and the half-rule would leak documents out of curated mounts. Existence-gating `create` (the read it already does) is what keeps every dispatch consumer — revert's restore, reflection and maintenance edits — working unchanged; the one bite (undoing a pre-`eo` created row) is pre-`eo` history only, escaped by re-mounting without `eo` |
+| 104 | Operator verbs as dispatch commands, a separate `neosian audit` binary, or `redact` document-only / unguarded scope-wide | **`versions`/`redact`/`revert` join `maintain` on the verb side** (NP slice B, user ruling 2026-08-22): keyless, never in `ARGUMENT_KEYS`, own `--json` envelopes; `versions --json` carries full row content (point-in-time reads exposed) while text output never does; empty history exits 0; `redact PATH` for a document, mount root + explicit `--all` for the whole scope (grammar-tier string check, exit 2 without it; output names the scope — mounts can share one); tier-1 failures under `--json` print one minimal `{"error", "hint"}` object so §14.1's promise stays literal; `--limit`/`--version` < 1 refused at the grammar (the stores raise bare ValueError past `run()`'s catch). cli.py split into grammar/maintain/operate/store-lifetime modules (the size gate) | The six-command vocabulary is the frozen agent-facing interface; audit and erasure are operator acts (#101's maintain precedent) — and keeping them out of the dispatch table is what keeps an eval-cell model from performing a real redaction. `--all` is the two-token deliberate act the one irreversible verb deserves, while staying fully non-interactive (agent-native: the refusal names the flag) |
 
 ## §13 Evaluation (NE)
 
@@ -1384,10 +1410,13 @@ memory the runtime transports serve. `neosian memory <command>` is a
 verbatim typer pass-through (the `mcp` shape) to the entry tier
 `neosian/memory/cli.py`, which owns `asyncio.run`, the real streams and
 the store's lifetime (#33's rule); `python -m neosian.memory` is the
-sandbox-safe twin for a venv whose bin is not on PATH. The engine —
-grammar, store construction, dispatch, rendering — is
-`_foundation/memory/cli.py`, async and stream-injected, which is what
-lets the eval harness call it in-process from a running loop.
+sandbox-safe twin for a venv whose bin is not on PATH. The engine is
+`_foundation/memory/cli.py` — async and stream-injected, which is what
+lets the eval harness call it in-process from a running loop — split
+(NP slice B, the size gate) into `cli_grammar.py` (pure parsing; exit 2
+constructs nothing), `cli_maintain.py` / `cli_operate.py` (the verb
+execution tiers) and `store_lifetime.py` (the one DSN-vs-root branch as
+an async context manager).
 
 The grammar: `view [PATH] [--view-range START END]` (PATH defaults to
 `/`, so the first command an agent tries works with store flags alone) ·
@@ -1402,8 +1431,10 @@ exists in the dispatcher to absorb the native tool's *trained* emission,
 and there is no trained shell emission to absorb. The store flags are
 the shared grammar of `memory/settings.py` (#75) with
 `default_actor="cli"` — `--actor` passes verbatim (opaque, like `mcp:*`
-and `eval:*`; `cli:<host>` is the documented convention) — and Postgres
-arrives only through `NEOSIAN_POSTGRES_DSN` (#53/#76). `--json` prints
+and `eval:*`; `cli:<host>` is the documented convention), the mount
+token is `scope=...,path=...[,ro|,eo]` (`ro` read-only, `eo` edit-only;
+mutually exclusive at the grammar tier) — and Postgres arrives only
+through `NEOSIAN_POSTGRES_DSN` (#53/#76). `--json` prints
 `ToolResult.to_json()` verbatim (#77). The CLI is the transport §8's
 one-writer rule (#74) exists for: an agent's shell writing a root while
 an MCP server serves it is exactly the collision the rule routes to
@@ -1424,6 +1455,36 @@ missing provider key is caught eagerly at client construction (2, the
 degrades exits 1 *and says so* on stderr while the deterministic
 actions stand — the explicit shell tells the operator what the
 library's close paths only log.
+
+**The operator verbs (NP slice B, ledger #104)** — `versions`, `redact`,
+`revert` — join `maintain` on the operator side of the line: keyless
+audit and remedy acts, never dispatch commands, never in
+`ARGUMENT_KEYS` (a model emitting `command="redact"` through any
+dispatch surface gets the corrective unknown-command answer, never a
+real redaction). `versions PATH [--limit N]` lists a document's version
+rows newest first — text output is the audit trail without content;
+`--json` carries every row's full content, which is how point-in-time
+reads are exposed (history reveals everything; `redact` is the only
+eraser). Empty history is an answer (exit 0), not an error — it is a
+query over history, while an unknown mount still fails correctively.
+`redact PATH [--all]` clears one document's content everywhere; a mount
+root redacts the whole scope only with the explicit `--all` — without
+it, or with `--all` on a document path, the grammar refuses at exit 2
+(a pure string check; nothing constructed). Scope-wide output names the
+scope, because two mounts on one scope share the erasure. A read-only
+mount refuses (`writable`); an edit-only mount allows it (a content
+act, §8). `revert PATH --version N` is `revert_memory`'s shell face
+(#101); its success envelope is the receipt's fields. Every verb's
+`--json` prints its own envelope, never the six-command `ToolResult`
+shape; a tier-1 failure under `--json` prints one minimal
+`{"error", "hint"}` object on stdout — §14.1's one-JSON-object promise
+stays literal — with the `error:`/`hint:` lines on stderr either way.
+Grammar-tier guards are mandatory where a store method would raise a
+bare `ValueError` (`--limit`/`--version` < 1): `run()` catches only
+`MemoryStoreError`, so the guard is what keeps the CLI traceback-free.
+None of the verbs emits a `memory_write` event (#99 — off-stream writes
+stay silent). All three are keyless forever: no client factory, no
+provider SDK.
 
 ### §14.3 The `cli` transport on the harness axis
 
@@ -1451,7 +1512,8 @@ keyless gate, and turns tracebacks into exit-code archaeology. The
 honest limit: the process boundary itself (console-script wiring,
 `sys.argv` slicing, real pipes) is out of scope here and pinned once
 per gate by the scripted keyless walkthrough, which drives all six
-commands through the literal `neosian` binary.
+commands — and NP's redaction leg over the operator verbs — through
+the literal `neosian` binary.
 
 ### §14.4 The docs door
 
@@ -1553,7 +1615,11 @@ share `structured_call`): the system prompt is the shipped
 `reflection.system` asset, the payload is the current memory — every
 *writable* mount with its live document bodies, raw so an emitted
 `old_str` matches stored content exactly; read-only mounts take no
-operations and are not shown — followed by the session transcript
+operations and are not shown; edit-only mounts (NP slice B) *are*
+shown, their headers annotated "update existing documents; never add
+or remove one" — their documents stay editable, and a create or delete
+the model proposes anyway fails correctively at the dispatcher and is
+skipped — followed by the session transcript
 (`render_turn`, verbatim). The model returns `ReflectionBatch`: a list
 of operations over the deliberately tight command subset
 `create`/`str_replace`/`delete` (`insert` and `rename` add nothing at a
@@ -1645,12 +1711,16 @@ documents whose content strips to empty are pruned and byte-identical
 duplicate groups are merged — the keeper is the earliest `created_at`,
 ties to the lexicographically first path; the rest are deleted. Exact
 content equality needs no judgment, which is what makes this stage safe
-to run without a model.
+to run without a model. Edit-only mounts are skipped whole (NP slice
+B): every deterministic action is a delete, and their document set is
+fixed.
 
 **Stage 2 — the model pass, only when a model is given.** The payload
 is every writable mount's live raw bodies (the §15 shape — raw so an
 emitted `old_str` matches stored content exactly; read-only mounts take
-no operations and are not shown; redacted documents are named, never
+no operations and are not shown; edit-only mounts are shown annotated
+"update existing documents; never create, delete, or rename one";
+redacted documents are named, never
 read) annotated with the aging evidence the model rules on: version,
 created/updated dates, and a `[fresh — protected from deletion]`
 marker. One structured-output call (the shared `structured_call`,
@@ -1671,7 +1741,13 @@ the model's `delete` — while `create`, `str_replace` and `rename` on
 fresh documents stay legal (a merge's survivor may be fresh; a rename
 preserves content). Redacted documents take no operation at all: a
 redacted document reads back empty, so an unguarded empty-prune would
-eat exactly the audit skeleton C3 promised to preserve. A path the
+eat exactly the audit skeleton C3 promised to preserve. The edit-only
+rule (NP slice B) is a third code-enforced protection: `_fixed_set`
+refuses a model `delete` or a `rename` touching an edit-only mount on
+*either side* with a named reason — the dispatcher would refuse anyway,
+but the operator deserves the #92-style reason line, and the rename
+destination is a check the single-path protection helper cannot see. A
+path the
 protection check cannot resolve falls through to the dispatcher's
 corrective failure. Every mutation — both stages — runs through
 `memory/dispatch.py` with the caller's actor, so each lands as an
@@ -1706,4 +1782,4 @@ promotion, and the fresh document's survival). The NG done-when's first
 half stays pinned keylessly in the unit tier: a deliberately polluted
 store — dupes, stale, misfiled, empty — is measurably improved by one
 scripted pass, with the protected documents (fresh, redacted,
-read-only) intact.
+read-only, edit-only) intact.

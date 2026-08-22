@@ -1,6 +1,6 @@
 # Neosian Roadmap
 
-> **▶ Current phase: NP — Product surface: governance & write-events**
+> **▶ Current phase: NT — The tool-approval gate**
 >
 > *(2026-08-21: the 1.0 arc opens — see "The 1.0 arc" below. The lane is
 > ruled: neosian is the **state layer for production agents** — durable
@@ -1103,7 +1103,7 @@ owed at /ship (#89). 1949 unit tests, zero keys; real-binary smokes
 (`neosian eval` 16/16; a 500-doc `view /` folded at 8183 chars).
 Nothing carried — NG closes.
 
-## NP — Product surface: governance & write-events (v0.77–0.78)
+## NP — Product surface: governance & write-events (v0.77–0.78) ✅ 2026-08-22
 
 DESIGN: §8, §6 + ECOSYSTEM §5/§12.
 
@@ -1117,7 +1117,8 @@ The receipts, exposed — and the arc's deliberate seam change.
   real use-cases ("only remember these"-style strict deployments)
   first — adopt into the governance surface or decline deliberately,
   never by silence. *(✅ ruled 2026-08-22, ledger #98–#102: the policy
-  **adopted** as edit-only mounts — lands slice B; the no-secrets write
+  **adopted** as edit-only mounts — ✅ landed slice B as the fixed
+  document set, ledger #103; the no-secrets write
   guard **declined, remedy-first** — #102, deterministic rejected as
   error-prone by user ruling, model-based deferred)*
 - **Governance API** — provenance (turn-ref per fact), point-in-time
@@ -1125,8 +1126,8 @@ The receipts, exposed — and the arc's deliberate seam change.
   guardrail (guardrail layer wired to memory writes — the eval's
   `forbidden` check made preventive). *(provenance ✅ slice A —
   `<conversation_id>#<turn>` actors, ledger #100; point-in-time reads +
-  find-and-redact are slice B's operator verbs; the guardrail declined
-  — #102)*
+  find-and-redact ✅ slice B — the `versions`/`redact`/`revert`
+  operator verbs, ledger #104; the guardrail declined — #102)*
 - **Memory-write events + undo** — write events on the stream so hosts
   render "remembered X" with revert (version rows make undo cheap).
   *(✅ slice A — `memory_write` + `revert_memory` + the FastAPI undo
@@ -1138,8 +1139,10 @@ The receipts, exposed — and the arc's deliberate seam change.
   ECOSYSTEM §5/§12; the kit cell owed at its next session)*
 
 **Done when:** a host shows a memory write with working undo through
-the event stream *(✅ slice A)*; redaction runs end-to-end *(slice B)*;
-the amendment stands in both ledgers *(neosian side ✅; kit owed)*.
+the event stream *(✅ slice A)*; redaction runs end-to-end *(✅ slice
+B — the walkthrough's redaction leg over the real binary)*; the
+amendment stands in both ledgers *(neosian side ✅; kit owed at its
+next session — the v0.70.0 precedent)*.
 
 **Split (2026-08-22): slice A shipped at v0.77.0 — the receipt, the
 event, undo, the amendment.** Rulings (options-first, user confirmed,
@@ -1170,6 +1173,37 @@ grammar token, index marker, reflection/maintenance treatment), the
 operator verbs `versions`/`redact`/`revert` on the maintain template
 (redaction end-to-end — the done-when's second leg), DESIGN §5
 table/§14.2, docs pages + README + llms.txt sweep, v0.78.0 + np-done.
+
+**Slice B shipped at v0.78.0 (2026-08-22), closing the phase —
+edit-only mounts and the operator verbs; redaction end-to-end.**
+Rulings (options-first, user confirmed, ledger #103–#104): edit-only =
+**fixed document set** (#103 — create-of-a-new-path, delete, and
+rename touching the mount on either side refused via `structural()`,
+the second tool-layer predicate; overwrite-create, str_replace, insert
+and redact stay legal as content acts; `Mount.edit_only` exclusive
+with `read_only`, argv token `eo`, `(edit-only)` index marker;
+reflection shows the mount annotated, maintenance's deterministic
+stage skips it and `_fixed_set` names refusals; prompt YAMLs untouched
+— no fingerprint trip, no re-run owed; the eval mount schema
+deliberately unextended); the operator verbs on the maintain template
+(#104 — keyless, never in `ARGUMENT_KEYS`, own `--json` envelopes;
+`versions --json` carries full row content = point-in-time reads,
+empty history exits 0; `redact PATH` / mount root + explicit `--all`
+scope-wide, output naming the shared scope; `revert` =
+`revert_memory`'s shell face; tier-1 `--json` prints one minimal
+error object; `--limit`/`--version` < 1 grammar-refused — the stores'
+bare ValueError never escapes). Shipped: `memory_edit_only_mount`
+appended (§5 table + `_HINTS`); the cli.py split (411 lines →
+grammar/maintain/operate/store-lifetime modules, all under 300);
+facade +1 (`MemoryEditOnlyMountError`); the walkthrough's redaction
+leg — create → versions → redact → view shows the skeleton →
+versions --json content empty → revert refuses — through the literal
+binary, the done-when's second leg; the revert carve-out pinned
+(edit-undo works on eo, pre-eo create-undo refuses). DESIGN
+§5/§8/§14.2/§14.3/§15/§16 amended, ledger #103–#104; docs pages
+(cli/memory/mcp) + README + llms.txt ×2 + CLAUDE.md swept.
+2041 unit tests, zero keys. Nothing carried — NP closes; the kit's
+§12 cell stays owed at its next session.
 
 ## NT — The tool-approval gate (v0.79)
 
@@ -2374,3 +2408,46 @@ membership is standing, not achieved.
   postgres tests green locally; v0.77.0. Carried to slice B: edit-only
   mounts, `versions`/`redact`/`revert` operator verbs, redaction
   end-to-end, docs sweep, np-done.
+- 2026-08-22 | NP (slice B) | **Edit-only mounts; the operator verbs;
+  redaction end-to-end; NP closes.** Rulings (options-first, user
+  confirmed, ledger #103–#104): edit-only = **fixed document set**
+  (#103) — `Mount.edit_only` (exclusive with `read_only`, plain
+  ValueError; argv token `eo`, exclusive with `ro` at the grammar
+  tier), `structural()` beside `writable()` as the second and only
+  `memory_edit_only_mount` raise site, enforcement per-command in
+  commands.py: create gates on the existence read it already does
+  (overwrite = an edit — exactly what keeps revert's restore and the
+  reflection/maintenance edits working unchanged), delete and both
+  rename sides structural; redact on eo allowed (a content act);
+  `(edit-only)` index marker via the one `_header`; reflection shows
+  eo mounts annotated (a proposed create-new degrades at the
+  dispatcher), maintenance's deterministic stage skips them whole
+  (all its actions are deletes) and `_fixed_set` names model-stage
+  refusals incl. the rename destination `_protected` cannot see;
+  prompt YAMLs untouched (no fingerprint trip, no re-run owed), the
+  eval mount schema deliberately unextended (unit-tier negatives, the
+  #67 idiom). The operator verbs (#104): `versions PATH [--limit]`
+  (text = the audit trail without content, `--json` = full rows incl.
+  content — point-in-time reads exposed; empty history exits 0),
+  `redact PATH [--all]` (mount root scope-wide only with the explicit
+  `--all`, grammar-refused without it; output names the scope —
+  mounts can share one), `revert PATH --version N` (#101's committed
+  shell face; the receipt as its envelope); all keyless, never
+  dispatch commands, never in `ARGUMENT_KEYS` (an eval-cell model
+  emitting `redact` gets the corrective answer, never a real
+  redaction); tier-1 `--json` = one minimal `{"error", "hint"}`
+  object (§14.1 literal); `--limit`/`--version` < 1 grammar-refused —
+  both stores raise bare ValueError past `run()`'s catch. Mechanics:
+  cli.py (411/500) split into `cli_grammar`/`cli_maintain`/
+  `cli_operate`/`store_lifetime` (every file < 300); facade +1
+  (`MemoryEditOnlyMountError`); the revert carve-out pinned
+  (edit-undo works on eo; undoing a pre-eo `created` row refuses —
+  re-mounting without `eo` is the escape). The walkthrough gains the
+  redaction leg — create → versions → redact → view shows the
+  skeleton → `versions --json` content empty → revert refuses —
+  through the literal binary: the done-when's second leg. DESIGN
+  §5/§8/§14.2/§14.3/§15/§16 amended, ledger #103–#104; docs pages
+  (cli/memory/mcp) + README + llms.txt ×2 (+ the v0.78.0 pin) +
+  CLAUDE.md swept. BASELINES.md untouched — nothing measured changed.
+  2041 unit tests, zero keys; v0.78.0 + `np-done`. Pointer → NT; the
+  kit's §12 cell stays owed at its next session.
