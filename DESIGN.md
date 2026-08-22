@@ -268,7 +268,7 @@ schema-export time (`TypeAdapter(...).json_schema()` — zero hot-path cost).
 ```python
 EVENT_PROTOCOL_VERSION: Final = 2
 AgentEventType: ready | content | reasoning | tool_call | tool_result
-              | tool_progress | blocked | done | error
+              | tool_progress | memory_write | blocked | done | error
 ```
 
 - `ReadyEvent(protocol, requested_model, provider)`.
@@ -276,6 +276,12 @@ AgentEventType: ready | content | reasoning | tool_call | tool_result
   `heartbeat`: it means "this tool is still running", which no keepalive
   means. Keepalive is the host's SSE comment on the host's timer (only the
   host knows its proxy's idle timeout); neosian emits none.
+- `MemoryWriteEvent(tool_call_id, command, path, version, previous_path)` —
+  NP's amendment (ledger #99; ECOSYSTEM §5 carries the seam text): one frame
+  per successful mutating memory command, pushed in `tool_exec` immediately
+  after that call's `tool_result`, built from the `MemoryWriteReceipt` the
+  command attached (#98). Never content; `view`, failures and off-stream
+  writes stay silent. `version` is the undo argument (`revert_memory`, §8).
 - Terminal events (`DoneEvent`, `ErrorEvent`, `BlockedEvent`) carry `usage`
   (sum) + `usage_by_model: tuple[ModelUsage, ...]`.
 - `DoneEvent.model` is the **API-reported** string of the final completion —
@@ -314,7 +320,10 @@ resume is host territory. `sse_stream(events)` is the verbatim-relay adapter.
 starting at 1 (the frontend owns 0). Schema export: `event_schemas()` +
 `python -m neosian.schemas events [--out DIR]` — one schema per event plus a
 `oneOf` root discriminated on `event`; hosts codegen their typed SSE seam from
-it (the kit's OpenAPI deliberately excludes streaming shapes).
+it (the kit's OpenAPI deliberately excludes streaming shapes). The payload
+TypedDicts and `event_schemas()` live in `agent/event_schemas.py` (NP — the
+size gate; one contract, two modules, and the import edge stays one-way:
+`event_schemas` reads `events`, never the reverse).
 
 Removed with v2: `SSEEventType`, `SSEEvent`, `SSEEventEmitter`,
 `stream_to_sse`, all eight `*_event()` builders — the dataclasses are the
@@ -387,7 +396,11 @@ class MemoryStore(ABC):
 ```
 
 Frozen value types `MemoryDocument` / `MemoryEntry` / `MemoryVersion`;
-`actor` is the writing `conversation_id`, opaque. `expected_version=` raises
+`actor` is the writing `conversation_id`, opaque — since NP, Conversation's
+in-run tool writes stamp `<conversation_id>#<turn>` (the turn-ref, resolved
+per command by a late-bound actor closure; ledger #100), while reflection
+stays the bare id (#86) and CLI/MCP/eval actors keep their own spellings;
+the store never parses any of them. `expected_version=` raises
 `MemoryConflictError` where `supports_optimistic_concurrency` is declared.
 
 **Scope grammar** — ECOSYSTEM §2 verbatim; `Scope` NewType, `parse_scope`,
@@ -563,6 +576,26 @@ is accepted first-class alongside the schema names — `file_text` as
 `create`'s text (the trained emission; `content` wins when both arrive)
 and `view`'s optional `view_range` — so native transport never hits an
 unexpected-keyword failure.
+
+**Write receipts & undo (NP).** Every successful mutating command
+attaches a `MemoryWriteReceipt(command, mount_path, path, version,
+previous_path)` to its `ToolResult` — built in `commands.py`, the one
+place that holds mount, virtual path and store-assigned version together
+(the delete receipt's version comes from `versions(limit=1)`; the ABC's
+`delete` returns `bool`). The receipt is in-process only: `to_json()`
+ignores it, so the wire envelope every transport prints is byte-identical
+(#77), and its consumers are the `memory_write` event (§6),
+reflection/maintenance result rows, and `revert_memory(config, path,
+version=, actor=) -> ToolResult[str]` — the undo. `version` names the row
+to *undo* and must be the newest (`memory_conflict`, reason
+`revert_stale`); one rule covers every case: no live document before row
+N → delete, otherwise row N-1's content comes back — executed through the
+dispatcher (read-only enforcement, corrective mapping and the audit row
+for free), appending a new version row, never rewriting history. Redacted
+history refuses (C3's skeleton is deliberately not restorable). Undoing a
+rename is two reverts — per-document by design; C1 forbids the cross-scope
+transaction. `revert_memory` is host/operator surface: never a seventh
+dispatch command, never registered on an agent, never MCP.
 
 **The index at scale (NG).** The one renderer takes a
 `budget_chars` keyword (default `INDEX_BUDGET_CHARS = 8192`, ~2k tokens
@@ -1039,6 +1072,11 @@ never a silent divergence. Numbering is monotonic, never reused.
 | 95 | Seeds as raw `store.write` fixtures, or a fixed backdating with no knob | **`seed:` entries `{path, content, age_days?=30}` written through the shipped dispatcher, actor `eval:seed`, on a clock set `age_days` back** (NG slice B, user ruling 2026-08-22) | Dispatcher writes keep seeds audited and mount-validated like every other transport's; real backdated timestamps make the maintenance floor measurable instead of mocked, and `age_days: 0` plants the fresh-document protection case in external runs too — the NV note ("populating a 500-doc store one scripted create at a time is not a scenario") resolved as data, not code |
 | 96 | Every session keeps a mandatory turn list (a maintenance step carries a throwaway turn) | **`maintain:` as a session key mirroring `reflect:`, with `turns:` optional only there** (NG slice B, user ruling 2026-08-22): order turns → reflect → maintain → store truth; a turn-less step gets one synthetic passed turn; `reflect:` without turns is refused | The gardener is the measured behavior — a filler turn would put an unmeasured model exchange inside the cell; the synthetic turn is bookkeeping (store truth needs a turn to land on), and the engines share the `._create_client` acquire seam #88 already sanctioned for this file |
 | 97 | Strengthen memory.yaml alone (the roadmap carry's letter) | **All three prompt assets in one fingerprint batch** (NG slice B, user ruling 2026-08-22): the shared no-secrets vocabulary (secrets, credentials, API keys, tokens — "not even to note that one exists", the asked-to-forget clause), reflection.yaml's rule stands alone naming transcript secrets, maintenance.yaml aligned; the preventive guardrail stays NP's | Run 3's stored token was a *reflection-boundary* write — the offending call's only prompt input was reflection.yaml, where the rule sat mid-paragraph; strengthening only memory.yaml would have polished the prompt the failure never read. Three files, one gate, one re-run |
+| 98 | Receipts stringified only (`"Created /x (v3)"`), a widened dispatch return type, or a receipt every transport serializes | **`MemoryWriteReceipt` rides `ToolResult.receipt`, a field `to_json()` ignores** (NP, 2026-08-22): `commands.py` — the one place that holds mount, virtual path, command and store-assigned version together — attaches it on every successful mutation; `dispatch` stays `-> ToolResult[str]`; the delete receipt's version comes from `versions(limit=1)` (the ABC returns `bool` and `read` is None after a delete); rename = one receipt, `path`=dst, `previous_path`=src, both compositions | The wire envelope is frozen across transports (#77's byte-parity) and the receipt's consumers are all in-process — the event emission, reflection/maintenance result rows (their `_live_version` re-reads deleted), and `revert_memory`'s prose; out-of-process transports drop it by construction, which is correct: events exist only on `run(stream=True)` |
+| 99 | Five per-command events, per-version-row events, or enriching `tool_result`'s frozen payload | **One `memory_write` frame per successful mutating command** (NP, user ruling 2026-08-22): emitted in `tool_exec` immediately after that call's `tool_result`, payload `{command, path, version, tool_call_id, previous_path}` — never content; `view`, failed calls and off-stream writes (reflection, maintenance, redaction) stay silent; the ECOSYSTEM §5 vocabulary grows nine → ten as this arc's one deliberate seam change | Hosts want the command-level act ("remembered X", one undo argument), not storage mechanics; a content-free frame cannot leak what was written by construction; redaction never happens inside a run, so a redact event would be a dead letter in a frozen vocabulary |
+| 100 | Per-send `_rebuild_agent` + `_rebind` to stamp a per-turn actor | **Late-bound actor: `create_memory_tool(actor=)` accepts `str \| Callable[[], str]`** (NP, user ruling 2026-08-22): Conversation passes `_turn_actor` — `<conversation_id>#<turn>`, read under the send lock (`#` is illegal in conversation ids); reflection keeps the bare id (#86); CLI/MCP/eval actors unchanged; a failed send persists nothing, so its number is reused | A per-send rebuild would construct (and leak) a guardrail client per send, re-run `AgentConfig.__post_init__`'s `playbook_dir` disk read per send, and violate §9.5.10's one-index-refresh-point rule — the closure delivers durable per-fact turn-refs for the price of a lambda, and the store still receives one opaque string |
+| 101 | A seventh dispatch command (`undo`), a Conversation-only method, or raw store restores | **`revert_memory(config, path, version=, actor=)` — a public function executing inverse ops through the shared dispatcher** (NP, user ruling 2026-08-22): version names the row to *undo* and must be the newest (`memory_conflict`, reason `revert_stale`, otherwise); one inverse rule — no live document before row N → delete, else row N-1's content back; redacted history refuses; the success receipt is re-badged `command="revert"`; a `neosian memory revert` operator verb follows in slice B; never registered on an agent, never MCP | Undo is host/operator territory — hosts render the button, models do not erase their own trail (the maintain precedent, §14.2); dispatch execution keeps read-only enforcement, corrective mapping and the audit row; append-only reverts keep C3/C5's receipts intact, and refusing a stale target beats silently destroying later writes |
+| 102 | The no-secrets write guardrail: a deterministic pattern gate at dispatch (structure-anchored rules), or a model-based pre-write classifier | **Prevention declined — remedy-first** (NP, user ruling 2026-08-22): no preventive gate ships; the governance story is prompts discourage (#97), the eval detects (`forbidden`), and NP makes the remedy first-class — `memory_write` receipts, find-and-redact (slice B), undo; a model-based guard stays available to a future phase if evidence demands it | Deterministic secret detection was ruled error-prone as a class (user); a model check cannot run at the client-free dispatch chokepoint without threading a client through every transport, and version rows + scope-wide `redact()` mean the failure mode is recoverable — the phase bullet closes by deliberate declination, never by silence |
 
 ## §13 Evaluation (NE)
 
@@ -1553,8 +1591,13 @@ Conversation per HTTP request, the FastAPI example — set
 
 **Receipts, no gate (ledger #86).** `ReflectionWrite(command, path,
 version)` per landed write; the version rows behind them are the durable
-audit trail and the undo substrate. No approval callback (NT owns the
-interception seam) and no stream events (NP owns write events + undo).
+audit trail and the undo substrate. Since NP, `version` comes from the
+dispatcher's `MemoryWriteReceipt` (#98) — the post-hoc `_live_version`
+re-read is gone; the field keeps its documented meaning (the live
+version after; None once deleted) and `path` keeps the op's own
+spelling. No approval callback (NT owns the interception seam); write
+events stay off-stream here — a boundary write is not part of a turn
+(§6, #99).
 
 **The frozen index is untouched (ledger #87).** Reflection writes
 surface in the next conversation's frozen index — the rule's own
@@ -1591,8 +1634,9 @@ acquire=None, model=None, actor=None, clock=None, min_age=7 days)` →
 `MaintenanceResult(writes, usage, model)`, with
 `MaintenanceWrite(command, path, version)` receipts (`path` is the
 virtual tool path — a rename's destination; `version` the live version
-after, None once deleted). `acquire` and `model` come together or not
-at all (`ConfigurationError` otherwise); a negative `min_age` is
+after, None once deleted — populated from the dispatcher's
+`MemoryWriteReceipt` since NP, #98). `acquire` and `model` come together
+or not at all (`ConfigurationError` otherwise); a negative `min_age` is
 refused.
 
 **Stage 1 — deterministic, always, keyless (ledger #91).** Per writable

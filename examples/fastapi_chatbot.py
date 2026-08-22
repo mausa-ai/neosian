@@ -39,12 +39,14 @@ from neosian import (
     AgentConfig,
     Conversation,
     ErrorEvent,
+    MemoryConfig,
     Model,
     Mount,
     NeosianError,
     PostgresStore,
     ReflectionConfig,
     message_to_json,
+    revert_memory,
 )
 
 _DSN_ENV = "NEOSIAN_EXAMPLE_POSTGRES_DSN"
@@ -59,6 +61,13 @@ _log = logging.getLogger(__name__)
 
 class SendBody(BaseModel):
     message: str
+
+
+class UndoBody(BaseModel):
+    """A `memory_write` frame's `{path, version}`, passed straight back."""
+
+    path: str
+    version: int
 
 
 def _load_credentials_from_config() -> None:
@@ -92,6 +101,22 @@ def _default_configuration() -> AgentConfig:
     )
 
 
+def _mounts(tenant: str, user: str) -> tuple[Mount, ...]:
+    return (
+        Mount(
+            scope=f"tenant:{tenant}/user:{user}",
+            mount_path="memories",
+            description="Durable facts about this user.",
+        ),
+        Mount(
+            scope=f"tenant:{tenant}/kb:shared",
+            mount_path="kb",
+            read_only=True,
+            description="The tenant's shared knowledge base.",
+        ),
+    )
+
+
 def _conversation(
     store: PostgresStore, config: AgentConfig, tenant: str, user: str, thread: str
 ) -> Conversation:
@@ -101,19 +126,7 @@ def _conversation(
         config,
         store=store,
         conversation_id=f"{tenant}--{thread}",
-        mounts=(
-            Mount(
-                scope=f"tenant:{tenant}/user:{user}",
-                mount_path="memories",
-                description="Durable facts about this user.",
-            ),
-            Mount(
-                scope=f"tenant:{tenant}/kb:shared",
-                mount_path="kb",
-                read_only=True,
-                description="The tenant's shared knowledge base.",
-            ),
-        ),
+        mounts=_mounts(tenant, user),
         # This app builds a Conversation per HTTP request, so aclose()
         # fires per turn — not per session. Default-on reflection would
         # distill on every message; a per-request host disables the
@@ -204,6 +217,27 @@ def create_app(
             _sse_turn(convo, body.message, keepalive=keepalive_seconds),
             media_type="text/event-stream",
         )
+
+    @application.post("/tenants/{tenant}/users/{user}/threads/{thread}/memories/undo")
+    async def undo_memory_write(
+        tenant: Name, user: Name, thread: Name, body: UndoBody
+    ) -> dict[str, Any]:
+        """The undo button behind a `memory_write` frame (NP): the frame's
+        `{path, version}` comes straight back, the revert appends its own
+        version row (audit intact), and a document that has moved past the
+        target refuses (`revert_stale`) instead of blind-restoring."""
+        memory = MemoryConfig(store=active, mounts=_mounts(tenant, user))
+        result = await revert_memory(
+            memory,
+            body.path,
+            version=body.version,
+            actor=f"{tenant}--{thread}#undo",
+        )
+        return {
+            "success": result.success,
+            "detail": result.data if result.success else result.error,
+            "version": result.receipt.version if result.receipt else None,
+        }
 
     @application.get("/tenants/{tenant}/users/{user}/threads/{thread}")
     async def read_thread(tenant: Name, user: Name, thread: Name) -> dict[str, Any]:

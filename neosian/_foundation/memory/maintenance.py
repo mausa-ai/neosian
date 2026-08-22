@@ -261,11 +261,14 @@ async def _execute(
         )
         return None
     live = op.new_path if isinstance(op, MaintainRenameOp) else op.path
-    return MaintenanceWrite(
-        command=op.command,
-        path=live,
-        version=await _live_version(config, live),
-    )
+    # The receipt (NP) replaces the post-hoc re-read: for create,
+    # str_replace and rename its version IS the live version; a delete
+    # keeps the documented None (the receipt's int is the consumed row).
+    # `path` stays the op's own spelling, never the receipt's canonical form.
+    version = None
+    if op.command != "delete" and result.receipt is not None:
+        version = result.receipt.version
+    return MaintenanceWrite(command=op.command, path=live, version=version)
 
 
 async def _protected(
@@ -287,12 +290,3 @@ async def _protected(
     if deletion and document.updated_at > cutoff:
         return "the document is inside the age floor"
     return None
-
-
-async def _live_version(config: MemoryConfig, path: str) -> int | None:
-    try:
-        mount, doc_path = resolve(config, path)
-        document = await config.store.read(mount.scope, doc_path)
-    except MemoryStoreError:
-        return None
-    return None if document is None else document.version

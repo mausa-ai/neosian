@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 from neosian._foundation.memory.index import generate_memory_index
 from neosian._foundation.memory.mounts import resolve, writable
+from neosian._foundation.memory.receipt import MemoryWriteReceipt
 from neosian._foundation.shared.exceptions import (
     MemoryConflictError,
     MemoryDocumentNotFoundError,
@@ -29,6 +30,22 @@ _INDEX_HINT = "Run the memory tool with command 'view' and path '/' first."
 
 def _virtual(mount: Mount, doc_path: str) -> str:
     return f"/{mount.mount_path}/{doc_path}"
+
+
+def _receipt(
+    command: str,
+    mount: Mount,
+    doc_path: str,
+    version: int,
+    previous: str | None = None,
+) -> MemoryWriteReceipt:
+    return MemoryWriteReceipt(
+        command=command,
+        mount_path=mount.mount_path,
+        path=_virtual(mount, doc_path),
+        version=version,
+        previous_path=previous,
+    )
 
 
 def _resolve_document(config: MemoryConfig, path: str) -> tuple[Mount, str]:
@@ -139,6 +156,7 @@ async def create(
     writable(mount)
     existing = await config.store.read(mount.scope, doc_path)
     document = await config.store.write(mount.scope, doc_path, content, actor=actor)
+    receipt = _receipt("create", mount, doc_path, document.version)
     if existing is not None:
         return ToolResult.ok(
             f"Created {_virtual(mount, doc_path)} (v{document.version})",
@@ -146,8 +164,11 @@ async def create(
                 f"Overwrote an existing document (was v{existing.version}); "
                 "prefer str_replace for edits."
             ),
+            receipt=receipt,
         )
-    return ToolResult.ok(f"Created {_virtual(mount, doc_path)} (v{document.version})")
+    return ToolResult.ok(
+        f"Created {_virtual(mount, doc_path)} (v{document.version})", receipt=receipt
+    )
 
 
 async def str_replace(
@@ -187,7 +208,10 @@ async def str_replace(
         actor=actor,
         expected_version=document.version,
     )
-    return ToolResult.ok(f"Edited {_virtual(mount, doc_path)} (v{updated.version})")
+    return ToolResult.ok(
+        f"Edited {_virtual(mount, doc_path)} (v{updated.version})",
+        receipt=_receipt("str_replace", mount, doc_path, updated.version),
+    )
 
 
 async def insert(
@@ -219,7 +243,10 @@ async def insert(
         actor=actor,
         expected_version=document.version,
     )
-    return ToolResult.ok(f"Edited {_virtual(mount, doc_path)} (v{updated.version})")
+    return ToolResult.ok(
+        f"Edited {_virtual(mount, doc_path)} (v{updated.version})",
+        receipt=_receipt("insert", mount, doc_path, updated.version),
+    )
 
 
 async def delete(config: MemoryConfig, actor: str | None, path: str) -> ToolResult[str]:
@@ -231,7 +258,15 @@ async def delete(config: MemoryConfig, actor: str | None, path: str) -> ToolResu
             f"No document at {_virtual(mount, doc_path)}",
             system_reminder=_INDEX_HINT,
         )
-    return ToolResult.ok(f"Deleted {_virtual(mount, doc_path)}")
+    # The delete's consumed version number is not in the ABC's return
+    # (`bool`), and `read` is None after a delete — the newest version row
+    # is the one place that knows it. One row read (full content, C5) is
+    # the price of a receipt an undo can trust.
+    rows = await config.store.versions(mount.scope, doc_path, limit=1)
+    return ToolResult.ok(
+        f"Deleted {_virtual(mount, doc_path)}",
+        receipt=_receipt("delete", mount, doc_path, rows[0].version) if rows else None,
+    )
 
 
 async def rename(
@@ -245,7 +280,10 @@ async def rename(
         document = await config.store.rename(src_mount.scope, src, dst, actor=actor)
         return ToolResult.ok(
             f"Renamed {_virtual(src_mount, src)} to "
-            f"{_virtual(dst_mount, dst)} (v{document.version})"
+            f"{_virtual(dst_mount, dst)} (v{document.version})",
+            receipt=_receipt(
+                "rename", dst_mount, dst, document.version, _virtual(src_mount, src)
+            ),
         )
     # Cross-mount: composed as read + write + delete. Not atomic — no
     # cross-scope transaction exists (C1); a crash between the write and
@@ -257,5 +295,8 @@ async def rename(
     await config.store.delete(src_mount.scope, src, actor=actor)
     return ToolResult.ok(
         f"Moved {_virtual(src_mount, src)} to "
-        f"{_virtual(dst_mount, dst)} (v{moved.version})"
+        f"{_virtual(dst_mount, dst)} (v{moved.version})",
+        receipt=_receipt(
+            "rename", dst_mount, dst, moved.version, _virtual(src_mount, src)
+        ),
     )

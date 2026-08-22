@@ -50,6 +50,19 @@ class TestToolResult:
         assert result.success is True
         assert result.data == data
 
+    def test_to_json_ignores_the_receipt(self) -> None:
+        """The receipt (NP) is in-process only: the wire envelope every
+        transport prints is byte-identical with or without one."""
+        from neosian._foundation.memory.receipt import MemoryWriteReceipt
+
+        receipt = MemoryWriteReceipt(
+            command="create", mount_path="user", path="/user/a", version=1
+        )
+        with_receipt = ToolResult.ok("Created /user/a (v1)", receipt=receipt)
+        without = ToolResult.ok("Created /user/a (v1)")
+        assert with_receipt.to_json() == without.to_json()
+        assert "receipt" not in with_receipt.to_json()
+
 
 @pytest.mark.unit
 class TestToolDecorator:

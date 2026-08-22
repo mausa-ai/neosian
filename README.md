@@ -134,10 +134,30 @@ configuration = AgentConfig(
 
 `memory_scope="user:1234"` on `Conversation` is the one-mount sugar for
 exactly this. Every mutation appends a full-content version row (actor,
-timestamp) — point-in-time reads and redaction come with the store. The
+timestamp) — point-in-time reads and redaction come with the store, and
+a Conversation's in-run writes stamp `<conversation_id>#<turn>` so every
+fact carries the turn that wrote it. The
 full surface (scope grammar, index generation, version history) lives on
 `neosian.memory`; dogfood it with
 [examples/memory_agent.py](examples/memory_agent.py).
+
+**Writes are host-visible with undo.** On a streamed run every
+successful mutation emits a `memory_write` frame right after its
+`tool_result` — `{command, path, version, tool_call_id}`, never the
+content — so a host can render "remembered X" with a working revert:
+
+```python
+from neosian import revert_memory
+
+result = await revert_memory(memory_config, "/user/prefs", version=3,
+                             actor="host:undo")
+```
+
+The revert executes the inverse through the same dispatcher and appends
+its own version row (audit intact); if the document has already moved
+past the target it refuses instead of blind-restoring. The undo route in
+[examples/fastapi_chatbot.py](examples/fastapi_chatbot.py) is the
+reference wiring.
 
 ## Memory from the shell
 
@@ -221,10 +241,11 @@ refuses a client whose config directory does not exist.
 
 ## Streaming and events
 
-`run(stream=True)` returns an `AsyncIterator[AgentEvent]` — nine frozen,
+`run(stream=True)` returns an `AsyncIterator[AgentEvent]` — ten frozen,
 `match`-able dataclasses (`ReadyEvent`, `ContentEvent`, `ReasoningEvent`,
-`ToolCallEvent`, `ToolResultEvent`, `ToolProgressEvent`, `BlockedEvent`,
-`DoneEvent`, `ErrorEvent`), sequence-stamped from 1, terminals carrying
+`ToolCallEvent`, `ToolResultEvent`, `ToolProgressEvent`,
+`MemoryWriteEvent`, `BlockedEvent`, `DoneEvent`, `ErrorEvent`),
+sequence-stamped from 1, terminals carrying
 summed usage plus per-model splits:
 
 ```python

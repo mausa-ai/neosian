@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 from neosian._foundation.agent.events import (
     AgentEvent,
+    MemoryWriteEvent,
     ToolProgressEvent,
     ToolResultEvent,
 )
@@ -137,6 +138,20 @@ async def run_tool_stream(
                             error=result.error if not result.success else None,
                         )
                     )
+                    # A memory mutation carries its receipt (NP): the typed
+                    # frame follows its tool_result so hosts can render
+                    # "remembered X" with undo — never the content.
+                    if result.receipt is not None:
+                        receipt = result.receipt
+                        await queue.put(
+                            MemoryWriteEvent(
+                                tool_call_id=tool_call.id,
+                                command=receipt.command,
+                                path=receipt.path,
+                                version=receipt.version,
+                                previous_path=receipt.previous_path,
+                            )
+                        )
     finally:
         counter[0] -= 1
         if counter[0] == 0:

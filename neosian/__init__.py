@@ -3,6 +3,7 @@
 from importlib.metadata import version as _pkg_version
 
 from neosian._foundation.agent.base import Agent
+from neosian._foundation.agent.event_schemas import event_schemas
 from neosian._foundation.agent.events import (
     EVENT_PROTOCOL_VERSION,
     AgentEvent,
@@ -12,12 +13,12 @@ from neosian._foundation.agent.events import (
     DoneEvent,
     ErrorEvent,
     EventSequencer,
+    MemoryWriteEvent,
     ReadyEvent,
     ReasoningEvent,
     ToolCallEvent,
     ToolProgressEvent,
     ToolResultEvent,
-    event_schemas,
     sse_stream,
 )
 from neosian._foundation.agent.hooks import (
@@ -73,6 +74,8 @@ from neosian._foundation.memory.maintenance import (
     run_maintenance,
 )
 from neosian._foundation.memory.mounts import MemoryConfig, Mount
+from neosian._foundation.memory.receipt import MemoryWriteReceipt
+from neosian._foundation.memory.revert import revert_memory
 from neosian._foundation.memory.scope import (
     SCOPE_MAX_LENGTH,
     SCOPE_PATTERN,
@@ -216,6 +219,7 @@ __all__ = [
     "ToolCallEvent",
     "ToolResultEvent",
     "ToolProgressEvent",
+    "MemoryWriteEvent",
     "BlockedEvent",
     "DoneEvent",
     "ErrorEvent",
@@ -259,6 +263,8 @@ __all__ = [
     "MemoryConfig",
     "create_memory_tool",
     "memory_system_section",
+    "MemoryWriteReceipt",
+    "revert_memory",
     "MaintenanceResult",
     "MaintenanceWrite",
     "run_maintenance",

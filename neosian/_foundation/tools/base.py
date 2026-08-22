@@ -9,6 +9,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 from typing import (
+    TYPE_CHECKING,
     Annotated,
     Any,
     Literal,
@@ -20,6 +21,9 @@ from typing import (
     get_type_hints,
     is_typeddict,
 )
+
+if TYPE_CHECKING:
+    from neosian._foundation.memory.receipt import MemoryWriteReceipt
 
 from neosian._foundation.llm.base import ToolDefinition
 from neosian._foundation.shared.constants import ErrorMessages
@@ -49,22 +53,35 @@ class ToolResult[T]:
         data: The result data on success.
         error: Error message on failure.
         system_reminder: Optional guidance for the agent (hints, caveats, follow-ups).
+        receipt: Structured record of a successful memory mutation (NP).
+            In-process only — `to_json()` never carries it, so the wire
+            envelope is byte-identical with or without one.
     """
 
     success: bool
     data: T | None = None
     error: str | None = None
     system_reminder: str | None = None
+    receipt: "MemoryWriteReceipt | None" = None
 
     @classmethod
-    def ok(cls, data: T, system_reminder: str | None = None) -> "ToolResult[T]":
+    def ok(
+        cls,
+        data: T,
+        system_reminder: str | None = None,
+        *,
+        receipt: "MemoryWriteReceipt | None" = None,
+    ) -> "ToolResult[T]":
         """Create a successful result.
 
         Args:
             data: The result data.
             system_reminder: Optional guidance for the agent.
+            receipt: Structured memory-write record (in-process seam).
         """
-        return cls(success=True, data=data, system_reminder=system_reminder)
+        return cls(
+            success=True, data=data, system_reminder=system_reminder, receipt=receipt
+        )
 
     @classmethod
     def fail(cls, error: str, system_reminder: str | None = None) -> "ToolResult[T]":
@@ -78,6 +95,10 @@ class ToolResult[T]:
 
     def to_json(self) -> str:
         """Serialize to JSON string for LLM consumption.
+
+        Deliberately excludes `receipt` — the wire envelope is frozen
+        across transports (the CLI prints this verbatim, ledger #77) and
+        the receipt is an in-process seam.
 
         Returns:
             JSON string with success/data/error and optional system_reminder.

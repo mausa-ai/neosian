@@ -7,9 +7,12 @@ from collections.abc import AsyncIterator
 import pytest
 from pydantic import TypeAdapter
 
-from neosian._foundation.agent.events import (
+from neosian._foundation.agent.event_schemas import (
     _PAYLOAD_TYPES,
     AGENT_EVENT_SCHEMA_KEY,
+    event_schemas,
+)
+from neosian._foundation.agent.events import (
     EVENT_PROTOCOL_VERSION,
     AgentEvent,
     AgentEventType,
@@ -18,12 +21,12 @@ from neosian._foundation.agent.events import (
     DoneEvent,
     ErrorEvent,
     EventSequencer,
+    MemoryWriteEvent,
     ReadyEvent,
     ReasoningEvent,
     ToolCallEvent,
     ToolProgressEvent,
     ToolResultEvent,
-    event_schemas,
     sse_stream,
 )
 from neosian._foundation.llm.base import ModelUsage, Usage
@@ -50,6 +53,9 @@ def _one_of_each() -> list[AgentEvent]:
         ToolCallEvent(id="call_1", name="lookup", arguments={"q": "x"}),
         ToolResultEvent(tool_call_id="call_1", success=True, data={"n": 1}),
         ToolProgressEvent(tool_call_id="call_1", elapsed_ms=15000),
+        MemoryWriteEvent(
+            tool_call_id="call_1", command="create", path="/memories/x", version=1
+        ),
         BlockedEvent(rationale="policy", usage=USAGE, usage_by_model=BY_MODEL),
         DoneEvent(
             model="fake-1",
@@ -78,6 +84,7 @@ class TestProtocol:
             "tool_call",
             "tool_result",
             "tool_progress",
+            "memory_write",
             "blocked",
             "done",
             "error",
@@ -145,6 +152,28 @@ class TestPayloads:
             "elapsed_ms": 15000,
         }
         assert isinstance(payload["elapsed_ms"], int)
+
+    def test_memory_write_never_carries_content(self) -> None:
+        event = MemoryWriteEvent(
+            tool_call_id="c1",
+            command="rename",
+            path="/memories/preferences",
+            version=4,
+            previous_path="/memories/prefs",
+        )
+        payload = event.to_dict()
+        assert payload == {
+            "event": "memory_write",
+            "sequence": 0,
+            "tool_call_id": "c1",
+            "command": "rename",
+            "path": "/memories/preferences",
+            "version": 4,
+            "previous_path": "/memories/prefs",
+        }
+        # The frame says a write happened and names the version to undo —
+        # never what was written (ECOSYSTEM §5, NP amendment).
+        assert "content" not in payload
 
     def test_blocked(self) -> None:
         event = BlockedEvent(rationale="policy", usage=USAGE, usage_by_model=BY_MODEL)
@@ -287,7 +316,7 @@ class TestEventSchemas:
             AGENT_EVENT_SCHEMA_KEY
         }
         root = schemas[AGENT_EVENT_SCHEMA_KEY]
-        assert root["title"] == "AgentEvent" and len(root["oneOf"]) == 9
+        assert root["title"] == "AgentEvent" and len(root["oneOf"]) == 10
 
     def test_schemas_discriminate_on_event(self) -> None:
         for name, schema in event_schemas().items():

@@ -21,8 +21,6 @@ from pydantic import BaseModel
 
 from neosian._foundation.conversation.projection import render_turn
 from neosian._foundation.memory.dispatch import dispatch
-from neosian._foundation.memory.mounts import resolve
-from neosian._foundation.shared.exceptions import MemoryStoreError
 from neosian._foundation.shared.prompt_assets import get_prompt
 from neosian._foundation.shared.structured import structured_call
 from neosian._foundation.shared.types import Model
@@ -179,17 +177,11 @@ async def _execute(
             "Reflection %s on %s failed: %s", op.command, op.path, result.error
         )
         return None
-    return ReflectionWrite(
-        command=op.command,
-        path=op.path,
-        version=await _live_version(config, op.path),
-    )
-
-
-async def _live_version(config: MemoryConfig, path: str) -> int | None:
-    try:
-        mount, doc_path = resolve(config, path)
-        document = await config.store.read(mount.scope, doc_path)
-    except MemoryStoreError:
-        return None
-    return None if document is None else document.version
+    # The receipt (NP) replaces the post-hoc re-read: for create and
+    # str_replace its version IS the live version; a delete keeps the
+    # documented None. `path` stays the op's own spelling, never the
+    # receipt's canonical form.
+    version = None
+    if op.command != "delete" and result.receipt is not None:
+        version = result.receipt.version
+    return ReflectionWrite(command=op.command, path=op.path, version=version)

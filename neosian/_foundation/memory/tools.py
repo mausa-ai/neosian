@@ -78,21 +78,28 @@ def build_memory_tool(execute: MemoryExecute) -> ToolFunction:
 
 
 def create_memory_tool(
-    config: MemoryConfig, *, actor: str | None = None, native: bool = False
+    config: MemoryConfig,
+    *,
+    actor: str | None | Callable[[], str] = None,
+    native: bool = False,
 ) -> ToolFunction:
     """Create the `memory` tool bound to a store and mounts.
 
     `actor` is recorded on every mutation's version row; N2's
     Conversation passes its conversation_id, the bare agent path passes
-    None. `native` marks the definition with Anthropic's
-    `memory_20250818` type: the Anthropic client then sends the
-    schema-less native declaration (the trained behavior replaces the
+    None. A callable is resolved per command (NP): Conversation binds a
+    closure yielding `<conversation_id>#<turn>`, so version rows carry a
+    turn-ref without rebuilding the agent per send — the store still
+    receives a plain opaque string. `native` marks the definition with
+    Anthropic's `memory_20250818` type: the Anthropic client then sends
+    the schema-less native declaration (the trained behavior replaces the
     wire description); every other provider — and the local execution
     path here — is byte-identical either way (ledger #41–#44).
     """
 
     async def execute(command: object, arguments: dict[str, Any]) -> ToolResult[str]:
-        return await dispatch(config, command, arguments, actor=actor)
+        resolved = actor() if callable(actor) else actor
+        return await dispatch(config, command, arguments, actor=resolved)
 
     memory = build_memory_tool(execute)
 

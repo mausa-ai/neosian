@@ -169,6 +169,55 @@ async def test_keepalive_comments_appear_while_a_tool_runs(
     assert "event: done" in body
 
 
+async def test_memory_write_frame_and_working_undo(store: PostgresStore) -> None:
+    """The NP done-when: the host sees a memory write as a typed frame on
+    the stream — after its tool_result, content-free — and the frame's
+    `{path, version}` drives a working undo through the revert route."""
+    script = FakeScript(
+        turns=(
+            FakeTurn(
+                tool_calls=(
+                    ToolCall(
+                        id=ToolCallId("c1"),
+                        name=ToolName("memory"),
+                        arguments={
+                            "command": "create",
+                            "path": "/memories/prefs",
+                            "content": "ada likes tea",
+                        },
+                    ),
+                )
+            ),
+            FakeTurn(content="remembered"),
+        )
+    )
+    app = create_app(store=store, agent_config=_agent_config(script))
+    async with _client(app) as client:
+        body = await _send(client, "remember: I like tea")
+        frames = _frames(body)
+        names = [name for name, _ in frames]
+        write_at = names.index("memory_write")
+        assert names[write_at - 1] == "tool_result"
+        write = frames[write_at][1]
+        assert write["command"] == "create"
+        assert write["path"] == "/memories/prefs"
+        assert write["version"] == 1
+        assert "ada likes tea" not in json.dumps(write)  # never the content
+
+        undo = await client.post(
+            f"{_THREAD_URL}/memories/undo",
+            json={"path": write["path"], "version": write["version"]},
+        )
+    assert undo.status_code == 200
+    payload = undo.json()
+    assert payload["success"] is True
+    assert payload["version"] == 2  # the revert appended its own row
+    assert await store.read("tenant:acme/user:ada", "prefs") is None
+    rows = await store.versions("tenant:acme/user:ada", "prefs")
+    assert [row.action for row in rows] == ["deleted", "created"]
+    assert rows[0].actor == "acme--general#undo"
+
+
 async def test_error_frame_carries_a_code_and_no_message(
     store: PostgresStore,
 ) -> None:

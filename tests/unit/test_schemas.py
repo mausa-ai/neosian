@@ -5,7 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from neosian._foundation.agent.events import AGENT_EVENT_SCHEMA_KEY, AgentEventType
+from neosian._foundation.agent.event_schemas import AGENT_EVENT_SCHEMA_KEY
+from neosian._foundation.agent.events import AgentEventType
 from neosian.schemas import main
 
 
@@ -32,7 +33,7 @@ def test_events_command_prints_all_schemas(
     assert main(["events"]) == 0
     payload = json.loads(capsys.readouterr().out)
     assert set(payload) == {t.value for t in AgentEventType} | {AGENT_EVENT_SCHEMA_KEY}
-    assert len(payload[AGENT_EVENT_SCHEMA_KEY]["oneOf"]) == 9
+    assert len(payload[AGENT_EVENT_SCHEMA_KEY]["oneOf"]) == 10
 
 
 @pytest.mark.unit

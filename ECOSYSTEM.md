@@ -1,6 +1,6 @@
 # The Ecosystem Contract
 
-> Status: **v1, frozen** (2026-08-18; last amended 2026-08-21 — §12 log).
+> Status: **v1, frozen** (2026-08-18; last amended 2026-08-22 — §12 log).
 > This document is canonical HERE; hosts
 > (first among them: neosae-kit, via its `docs/DESIGN.md §5.7`) reference it.
 > ECOSYSTEM states **what** is frozen; [DESIGN.md](DESIGN.md) says why and how
@@ -56,7 +56,8 @@ truth.
 ## §5 Event vocabulary
 
 Streaming yields typed events — `ready, content, reasoning, tool_call,
-tool_result, tool_progress, blocked, done, error` — with frozen payload models
+tool_result, tool_progress, memory_write, blocked, done, error` — with frozen
+payload models
 and an exported JSON Schema (`python -m neosian.schemas events`). Wire form is
 SSE-compatible: `event: <name>` + one compact single-line JSON object,
 ASCII-escaped so no model output can break framing. Sequence numbers start
@@ -66,6 +67,20 @@ text** — it cannot leak internals by construction. Keepalive is host territory
 (SSE comments on the host's timer); `tool_progress` is neosian's and means
 "this tool is still running", not liveness. The kit consumes this through
 `packages/api-client`'s `postSSE`.
+
+`memory_write` (added 2026-08-22) is emitted **once per successful mutating
+memory command** — `create`, `str_replace`, `insert`, `delete`, `rename` —
+executed during a streamed run, immediately after that call's `tool_result`
+frame: `{command, path, version, tool_call_id, previous_path}`. `path` is the
+virtual tool path; `version` is the version row the command appended (for
+`delete`, the row the deletion consumed) — the argument an undo passes back;
+`previous_path` is set on `rename` only. **The frame never carries content**:
+it says that a write happened and names the version to undo, never what was
+written. `view` and failed calls emit nothing, and off-stream writes —
+reflection, maintenance, redaction — are deliberately silent: they are not
+part of a turn. Hosts render "remembered X" with an undo affordance from this
+frame; the undo itself is a call to `revert_memory` (or
+`neosian memory revert`), never a wire action — the stream stays one-way.
 
 ## §6 Error-code idiom
 
@@ -128,3 +143,4 @@ session-pair; either repo may refuse. Log:
 |---|---|---|---|
 | 2026-08-18 | Contract v1 written | — (pre-NH) | #205 |
 | 2026-08-21 | 1.0 amendment: §10 gains `ConversationStore` + `ConversationStoreContract`; §6 blesses `agent_conversation_*` (declines a `conversation_` prefix); §11 SemVer-guaranteed from the eventual v1.0.0; sweeps the public message codec (neosian #22) and `CompactionBlock` in the content union (neosian #46) | v0.70.0 | #206 (kit 73dcd39) |
+| 2026-08-22 | NP amendment: §5's event vocabulary gains `memory_write` (nine → ten) — one frame per successful mutating memory command, emitted after its `tool_result`, carrying `{command, path, version, tool_call_id, previous_path}` and never content; `view`, failed calls and off-stream writes (reflection, maintenance, redaction) stay silent; undo is a host call to `revert_memory`, never a wire action | v0.77.0 | *(kit cell owed — its next session; either repo may still refuse)* |

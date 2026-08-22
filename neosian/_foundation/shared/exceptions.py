@@ -774,8 +774,11 @@ class MemoryConflictError(MemoryStoreError):
     """Raised when a write loses a version race or a rename target is taken.
 
     `reason` is machine-checkable: "version_mismatch", "document_absent"
-    (an `expected_version` on a document that does not exist), or
-    "destination_exists" (rename onto an occupied path, src == dst included).
+    (an `expected_version` on a document that does not exist),
+    "destination_exists" (rename onto an occupied path, src == dst
+    included), or "revert_stale" (`revert_memory` targeting a version the
+    document has already moved past — NP; reasons are documented here and
+    in DESIGN §8, appended together).
     """
 
     code = "memory_conflict"

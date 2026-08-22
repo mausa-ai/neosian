@@ -1116,21 +1116,60 @@ The receipts, exposed — and the arc's deliberate seam change.
   today the only write control is per-mount `read_only`). Screen for
   real use-cases ("only remember these"-style strict deployments)
   first — adopt into the governance surface or decline deliberately,
-  never by silence.
+  never by silence. *(✅ ruled 2026-08-22, ledger #98–#102: the policy
+  **adopted** as edit-only mounts — lands slice B; the no-secrets write
+  guard **declined, remedy-first** — #102, deterministic rejected as
+  error-prone by user ruling, model-based deferred)*
 - **Governance API** — provenance (turn-ref per fact), point-in-time
   reads exposed, a find-and-redact workflow, the no-secrets write
   guardrail (guardrail layer wired to memory writes — the eval's
-  `forbidden` check made preventive).
+  `forbidden` check made preventive). *(provenance ✅ slice A —
+  `<conversation_id>#<turn>` actors, ledger #100; point-in-time reads +
+  find-and-redact are slice B's operator verbs; the guardrail declined
+  — #102)*
 - **Memory-write events + undo** — write events on the stream so hosts
   render "remembered X" with revert (version rows make undo cheap).
+  *(✅ slice A — `memory_write` + `revert_memory` + the FastAPI undo
+  route, pinned over real postgres)*
 - **The write-events ECOSYSTEM amendment** — §5's event vocabulary
   gains the memory-write event(s): the payload written before the
   session-pair, both ledgers, same pair; the counterpart is ready;
-  either repo may refuse.
+  either repo may refuse. *(✅ slice A — the neosian side stands in
+  ECOSYSTEM §5/§12; the kit cell owed at its next session)*
 
 **Done when:** a host shows a memory write with working undo through
-the event stream; redaction runs end-to-end; the amendment stands in
-both ledgers.
+the event stream *(✅ slice A)*; redaction runs end-to-end *(slice B)*;
+the amendment stands in both ledgers *(neosian side ✅; kit owed)*.
+
+**Split (2026-08-22): slice A shipped at v0.77.0 — the receipt, the
+event, undo, the amendment.** Rulings (options-first, user confirmed,
+ledger #98–#102): one `memory_write` frame per successful mutating
+command, after its `tool_result`, never content (9 → 10 — the arc's one
+deliberate seam change, #99); receipts ride `ToolResult` out-of-band —
+`to_json()` ignores them, the 16-case parity stays byte-green untouched
+(#98); turn-refs land as a late-bound actor closure
+(`<conversation_id>#<turn>`; per-send rebuild rejected — it would leak
+a guardrail client per send and violate §9.5.10's one-refresh rule,
+#100); undo = `revert_memory` through the shared dispatcher — version
+names the row to undo and must be the newest (`revert_stale`),
+redacted history refuses, reverts append (#101); the no-secrets write
+guard declined remedy-first (#102); edit-only mounts adopted, landing
+slice B. Shipped: `memory/receipt.py` + receipts on all five mutating
+commands (delete's consumed version via `versions(limit=1)`);
+`agent/event_schemas.py` split out (one-way edge, size-gate headroom
+for NT) + `MemoryWriteEvent` emitted in tool_exec; reflection and
+maintenance drop their `_live_version` re-reads for receipts (public
+fields byte-stable); `memory/revert.py`; root `__all__` +3, facade +2;
+the FastAPI undo route — the done-when pinned through the real app
+over real postgres (memory_write frame after tool_result, content-free,
+undo appends `#undo`-actored rows); ECOSYSTEM §5 amendment + §12 row
+(kit cell owed), DESIGN §6/§8/§15/§16 amended. 1984 unit tests, zero
+keys; 106 postgres tests locally. Carried to slice B (closes NP):
+edit-only mounts (`structural()`, `memory_edit_only_mount`, the `eo`
+grammar token, index marker, reflection/maintenance treatment), the
+operator verbs `versions`/`redact`/`revert` on the maintain template
+(redaction end-to-end — the done-when's second leg), DESIGN §5
+table/§14.2, docs pages + README + llms.txt sweep, v0.78.0 + np-done.
 
 ## NT — The tool-approval gate (v0.79)
 
@@ -2300,3 +2339,38 @@ membership is standing, not achieved.
   Cerebras function — the cell's third stochastic red across three
   runs and three providers, recorded as found (no re-roll; the NC6
   judge is the instrument for this class). Recorded in BASELINES.md.
+- 2026-08-22 | NP (slice A) | **Memory writes hit the stream; undo
+  lands; the seam amendment stands.** Rulings (options-first, user
+  confirmed, ledger #98–#102): one content-free `memory_write` frame
+  per successful mutating command, emitted after its `tool_result` —
+  ECOSYSTEM §5's vocabulary grows nine → ten, the arc's one deliberate
+  seam change, neosian side landed with the kit cell owed (#99);
+  receipts as `MemoryWriteReceipt` riding a `ToolResult` field
+  `to_json()` ignores — dispatch signature and all four transports'
+  wire envelopes byte-identical, delete's consumed version recovered
+  via `versions(limit=1)` (#98); turn-ref provenance as a late-bound
+  actor closure `<conversation_id>#<turn>` resolved per command under
+  the send lock — per-send rebuild rejected (guardrail-client leak,
+  per-send `playbook_dir` I/O, §9.5.10), reflection stays bare per #86
+  (#100); `revert_memory(config, path, version=, actor=)` executing
+  the one-rule inverse (no live doc before row N → delete, else row
+  N-1's content) through the shared dispatcher — newest-row-only
+  (`memory_conflict`/`revert_stale`), redacted history refused,
+  reverts append, never a dispatch command or MCP tool (#101); the
+  no-secrets write guard declined remedy-first — deterministic ruled
+  error-prone by the user, model-based deferred, the remedy is
+  events + find-and-redact + undo (#102); edit-only mounts adopted,
+  implementation in slice B. Mechanics: `agent/event_schemas.py`
+  split from events.py (one-way edge; headroom for NT's event);
+  reflection/maintenance `_live_version` re-reads deleted in favor of
+  receipts (public fields byte-stable); root `__all__` +3
+  (`MemoryWriteEvent`, `MemoryWriteReceipt`, `revert_memory`), facade
+  +2; the FastAPI example gains the undo route and the external suite
+  pins the phase done-when's first leg over real postgres — the
+  memory_write frame after its tool_result carrying no content, then
+  the frame's `{path, version}` driving a working revert with an
+  `#undo`-actored audit row. Four new unit files (receipts, revert,
+  stream events, turn actors). 1984 unit tests, zero keys; 106
+  postgres tests green locally; v0.77.0. Carried to slice B: edit-only
+  mounts, `versions`/`redact`/`revert` operator verbs, redaction
+  end-to-end, docs sweep, np-done.

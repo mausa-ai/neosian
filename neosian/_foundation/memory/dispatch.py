@@ -47,6 +47,18 @@ _HINTS: Final[dict[str, str]] = {
 }
 
 
+def corrective(exc: MemoryStoreError) -> ToolResult[str]:
+    """The store-error → corrective-failure mapping every transport shows.
+
+    One hint table for the dispatcher and `revert_memory` — the model (or
+    operator) sees `[code] message` plus per-code guidance, never a raise.
+    """
+    return ToolResult.fail(
+        f"[{exc.code}] {exc.message}",
+        system_reminder=_HINTS.get(exc.code),
+    )
+
+
 class _ArgumentError(Exception):
     """A required parameter for a command was missing (never escapes)."""
 
@@ -125,7 +137,4 @@ async def dispatch(
     except _ArgumentError as exc:
         return ToolResult.fail(str(exc))
     except MemoryStoreError as exc:
-        return ToolResult.fail(
-            f"[{exc.code}] {exc.message}",
-            system_reminder=_HINTS.get(exc.code),
-        )
+        return corrective(exc)

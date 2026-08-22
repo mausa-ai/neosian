@@ -2,9 +2,10 @@
 
 The caller's `Agent`/`AgentConfig` is never mutated — Conversation derives
 its own config: the frozen index section appended to the system prompt,
-the memory tool rebuilt with `actor=conversation_id`, `memory=None` on the
-derived config (or the agent would register a second, unbound tool), and
-hooks composed with the capture hook first. The usage folds live here too:
+the memory tool rebuilt with the turn-ref actor closure
+(`<conversation_id>#<turn>`, NP), `memory=None` on the derived config (or
+the agent would register a second, unbound tool), and hooks composed with
+the capture hook first. The usage folds live here too:
 compaction spend rides the triggering send's response or terminal event
 (ledger #29) — this module may import the agent, the compaction modules
 may not (the storage-seam contract).
@@ -94,14 +95,17 @@ def derive_config(
     *,
     section: str | None,
     memory_config: MemoryConfig | None,
-    actor: str,
+    actor: str | Callable[[], str],
     capture: Callable[[TurnEvent], None],
     extra_tools: Sequence[ToolFunction] = (),
 ) -> AgentConfig:
     """Build the Conversation's own AgentConfig from the caller's.
 
-    `extra_tools` carries conversation-owned tools beyond memory — the
-    lazily-registered `recall_turn` (§9.6); wiring stays dumb about them.
+    `actor` may be a callable resolved per command (NP): Conversation
+    passes its `_turn_actor` closure so version rows carry
+    `<conversation_id>#<turn>` without a per-send rebuild. `extra_tools`
+    carries conversation-owned tools beyond memory — the lazily-registered
+    `recall_turn` (§9.6); wiring stays dumb about them.
     """
     system_prompt = base.system_prompt
     if section is not None:

@@ -124,6 +124,20 @@ class TestCreate:
         assert document.content == "espresso"
         assert document.actor == "conv-1"
 
+    async def test_callable_actor_resolves_per_command(
+        self, config: MemoryConfig
+    ) -> None:
+        """NP: a callable actor is resolved at each command — the turn-ref
+        mechanism — while the store still receives a plain string."""
+        counter = iter(range(1, 10))
+        tool = create_memory_tool(config, actor=lambda: f"t1#{next(counter)}")
+        await tool(command="create", path="/user/a", content="x")
+        await tool(command="create", path="/user/b", content="y")
+        first = await config.store.read(_USER.scope, "a")
+        second = await config.store.read(_USER.scope, "b")
+        assert first is not None and first.actor == "t1#1"
+        assert second is not None and second.actor == "t1#2"
+
     async def test_overwrite_warns(self, tool: ToolFunction) -> None:
         await tool(command="create", path="/user/prefs", content="v1")
         result = await tool(command="create", path="/user/prefs", content="v2")

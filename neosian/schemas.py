@@ -18,7 +18,7 @@ import json
 import sys
 from pathlib import Path
 
-from neosian._foundation.agent.events import event_schemas
+from neosian._foundation.agent.event_schemas import event_schemas
 from neosian._foundation.shared.exceptions import ERROR_CODES
 
 _USAGE = (

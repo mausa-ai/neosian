@@ -24,6 +24,8 @@ from neosian._foundation.memory.paths import (
     PATH_MAX_SEGMENTS,
     validate_document_path,
 )
+from neosian._foundation.memory.receipt import MemoryWriteReceipt
+from neosian._foundation.memory.revert import revert_memory
 from neosian._foundation.memory.scope import (
     SCOPE_MAX_LENGTH,
     SCOPE_PATTERN,
@@ -73,6 +75,7 @@ __all__ = [
     "MemoryStore",
     "MemoryStoreError",
     "MemoryVersion",
+    "MemoryWriteReceipt",
     "Mount",
     "PostgresStore",
     "Scope",
@@ -81,6 +84,7 @@ __all__ = [
     "generate_memory_index",
     "memory_system_section",
     "parse_scope",
+    "revert_memory",
     "run_maintenance",
     "validate_document_path",
 ]

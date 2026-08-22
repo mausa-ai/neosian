@@ -33,6 +33,7 @@ def test_memory_all_is_pinned() -> None:
         "MemoryStore",
         "MemoryStoreError",
         "MemoryVersion",
+        "MemoryWriteReceipt",
         "Mount",
         "PostgresStore",
         "Scope",
@@ -41,6 +42,7 @@ def test_memory_all_is_pinned() -> None:
         "generate_memory_index",
         "memory_system_section",
         "parse_scope",
+        "revert_memory",
         "run_maintenance",
         "validate_document_path",
     ]

@@ -7,10 +7,10 @@ a relaying host converts in its own generator (``ErrorEvent.from_exception``)
 or relays verbatim with ``sse_stream()``. The error frame carries a machine
 code and no message text — it cannot leak internals by construction.
 
-The ``_*Payload`` TypedDicts are the wire shapes: ``to_dict()`` returns them
-and ``event_schemas()`` exports them, so payload and schema cannot drift
-(a unit test validates one against the other). pydantic touches this module
-only at schema-export time.
+The ``_*Payload`` TypedDicts in ``event_schemas.py`` are the wire shapes:
+``to_dict()`` returns them and ``event_schemas()`` exports them, so payload
+and schema cannot drift (a unit test validates one against the other) —
+split modules, one contract, one-way import edge (NP, size gate).
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ import dataclasses
 from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, ClassVar, Final, Literal, TypedDict
+from typing import Any, ClassVar, Final, TypedDict
 
 from neosian._foundation.llm.base import ModelUsage, Usage
 from neosian._foundation.shared.exceptions import NeosianError
@@ -37,6 +37,7 @@ class AgentEventType(str, Enum):
     TOOL_CALL = "tool_call"
     TOOL_RESULT = "tool_result"
     TOOL_PROGRESS = "tool_progress"
+    MEMORY_WRITE = "memory_write"
     BLOCKED = "blocked"
     DONE = "done"
     ERROR = "error"
@@ -214,6 +215,40 @@ class ToolProgressEvent(_EventBehavior):
 
 
 @dataclass(frozen=True, slots=True)
+class MemoryWriteEvent(_EventBehavior):
+    """A memory mutation landed (NP): the receipt frame, never the content.
+
+    One frame per successful mutating memory command (``create``,
+    ``str_replace``, ``insert``, ``delete``, ``rename``), emitted
+    immediately after that call's ``tool_result``. ``version`` is the
+    version row the command appended (for ``delete``, the row the deletion
+    consumed) — the argument an undo passes to ``revert_memory``.
+    ``view``, failed calls and off-stream writes (reflection, maintenance,
+    redaction) emit nothing.
+    """
+
+    type: ClassVar[AgentEventType] = AgentEventType.MEMORY_WRITE
+
+    tool_call_id: str
+    command: str
+    path: str
+    version: int
+    previous_path: str | None = None
+    sequence: int = 0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "event": self.type.value,
+            "sequence": self.sequence,
+            "tool_call_id": self.tool_call_id,
+            "command": self.command,
+            "path": self.path,
+            "version": self.version,
+            "previous_path": self.previous_path,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class BlockedEvent(_EventBehavior):
     """Terminal: a guardrail blocked the turn; carries billed usage."""
 
@@ -310,6 +345,7 @@ AgentEvent = (
     | ToolCallEvent
     | ToolResultEvent
     | ToolProgressEvent
+    | MemoryWriteEvent
     | BlockedEvent
     | DoneEvent
     | ErrorEvent
@@ -339,109 +375,3 @@ async def sse_stream(events: AsyncIterator[AgentEvent]) -> AsyncIterator[str]:
     """Verbatim-relay adapter: typed events → SSE wire strings."""
     async for event in events:
         yield event.to_sse()
-
-
-class _ReadyPayload(TypedDict):
-    event: Literal["ready"]
-    sequence: int
-    protocol: int
-    requested_model: str
-    provider: str
-
-
-class _ContentPayload(TypedDict):
-    event: Literal["content"]
-    sequence: int
-    content: str
-
-
-class _ReasoningPayload(TypedDict):
-    event: Literal["reasoning"]
-    sequence: int
-    reasoning: str
-
-
-class _ToolCallPayload(TypedDict):
-    event: Literal["tool_call"]
-    sequence: int
-    id: str
-    name: str
-    arguments: dict[str, Any]
-
-
-class _ToolResultPayload(TypedDict):
-    event: Literal["tool_result"]
-    sequence: int
-    tool_call_id: str
-    success: bool
-    data: Any
-    error: str | None
-
-
-class _ToolProgressPayload(TypedDict):
-    event: Literal["tool_progress"]
-    sequence: int
-    tool_call_id: str
-    elapsed_ms: int
-
-
-class _BlockedPayload(TypedDict):
-    event: Literal["blocked"]
-    sequence: int
-    rationale: str | None
-    usage: _UsagePayload | None
-    usage_by_model: list[_ModelUsagePayload]
-
-
-class _DonePayload(TypedDict):
-    event: Literal["done"]
-    sequence: int
-    model: str | None
-    stop_reason: str | None
-    raw_stop_reason: str | None
-    usage: _UsagePayload | None
-    usage_by_model: list[_ModelUsagePayload]
-
-
-class _ErrorPayload(TypedDict):
-    event: Literal["error"]
-    sequence: int
-    code: str
-    retryable: bool
-    usage: _UsagePayload | None
-    usage_by_model: list[_ModelUsagePayload]
-
-
-_PAYLOAD_TYPES: Final[dict[str, Any]] = {
-    AgentEventType.READY.value: _ReadyPayload,
-    AgentEventType.CONTENT.value: _ContentPayload,
-    AgentEventType.REASONING.value: _ReasoningPayload,
-    AgentEventType.TOOL_CALL.value: _ToolCallPayload,
-    AgentEventType.TOOL_RESULT.value: _ToolResultPayload,
-    AgentEventType.TOOL_PROGRESS.value: _ToolProgressPayload,
-    AgentEventType.BLOCKED.value: _BlockedPayload,
-    AgentEventType.DONE.value: _DonePayload,
-    AgentEventType.ERROR.value: _ErrorPayload,
-}
-
-AGENT_EVENT_SCHEMA_KEY: Final = "agent_event"
-
-
-def event_schemas() -> dict[str, Any]:
-    """JSON Schemas of the wire payloads — hosts codegen their SSE seam.
-
-    One schema per event name, plus an ``agent_event`` root: a ``oneOf``
-    over all nine, discriminated on the ``event`` key. pydantic runs here
-    only — zero hot-path cost.
-    """
-    from pydantic import TypeAdapter  # schema-export time only
-
-    schemas: dict[str, Any] = {
-        name: TypeAdapter(payload).json_schema()
-        for name, payload in _PAYLOAD_TYPES.items()
-    }
-    schemas[AGENT_EVENT_SCHEMA_KEY] = {
-        "title": "AgentEvent",
-        "oneOf": [schemas[name] for name in _PAYLOAD_TYPES],
-    }
-    return schemas

@@ -299,7 +299,7 @@ class Conversation:
             self._base_config,
             section=section,
             memory_config=self._memory_config,
-            actor=self._conversation_id,
+            actor=self._turn_actor,
             capture=self._capture,
             extra_tools=extra_tools,
         )
@@ -309,6 +309,18 @@ class Conversation:
             self._agent = Agent(derived, self._max_tool_iterations)
         if self._session is not None:
             self._session._rebind(self._agent)
+
+    def _turn_actor(self) -> str:
+        """The in-flight turn's audit actor (NP): `<conversation_id>#<turn>`.
+
+        Resolved per memory command under the send lock, so the number is
+        the turn the write belongs to (`#` is illegal in conversation ids —
+        the suffix is unambiguous). A failed or blocked send persists no
+        turn, so its number is reused by the next send: a turn that never
+        happened leaves no rows. Reflection deliberately stays the bare
+        conversation_id (ledger #86).
+        """
+        return f"{self._conversation_id}#{len(self._turns) + 1}"
 
     def _session_for_run(self) -> AgentSession:
         """The one client pool: sends and distillation share it, and a
@@ -331,6 +343,8 @@ class Conversation:
             turns=self._reflect_pending,
             acquire=self._session_for_run()._get_or_create_client,
             model=self._reflection.model or self._base_config.model,
+            # Deliberately bare — no turn-ref: a boundary write belongs to
+            # the whole session, not a turn (ledger #86; NP kept it).
             actor=self._conversation_id,
         )
         if result.model is not None:
