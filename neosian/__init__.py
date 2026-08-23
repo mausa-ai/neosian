@@ -123,9 +123,9 @@ from neosian._foundation.shared.exceptions import (
     MissingAPIKeyError,
     ModelFailedError,
     NeosianError,
-    PlaybookLoadError,
     PromptLoadError,
     ProviderError,
+    SkillLoadError,
     StructuredOutputError,
     StructuredOutputStreamingError,
     StructuredOutputToolsError,
@@ -133,8 +133,8 @@ from neosian._foundation.shared.exceptions import (
     UnsupportedContentError,
     UnsupportedParameterError,
 )
-from neosian._foundation.shared.playbook import load_playbook, load_playbooks
 from neosian._foundation.shared.prompt import load_prompt
+from neosian._foundation.shared.skill import load_skill, load_skills
 from neosian._foundation.shared.types import (
     MICRO_PER_USD,
     PRICES_AS_OF,
@@ -151,12 +151,12 @@ from neosian._foundation.shared.types import (
     Model,
     ModelPricing,
     ModelSpec,
-    Playbook,
-    PlaybookName,
     PolicyResult,
     Provider,
     ReasoningEffort,
     ResponseFormat,
+    Skill,
+    SkillName,
     ToolCallId,
     format_micro_usd,
 )
@@ -243,12 +243,12 @@ __all__ = [
     "ToolGateConfig",
     "ToolApprovalRequest",
     "ToolDecision",
-    # Playbooks
-    "Playbook",
-    "PlaybookName",
-    "PlaybookLoadError",
-    "load_playbook",
-    "load_playbooks",
+    # Skills
+    "Skill",
+    "SkillName",
+    "SkillLoadError",
+    "load_skill",
+    "load_skills",
     # Blackboard
     "BlackboardProvider",
     "BlackboardEntry",

@@ -169,19 +169,17 @@ class ErrorMessages:
         "Convert to a JSON-compatible type before passing to neosian."
     )
 
-    # Playbook loading errors
-    PLAYBOOK_FILE_NOT_FOUND: str = "Playbook file not found: {path}"
-    PLAYBOOK_INVALID_FRONTMATTER: str = (
-        "Invalid or missing frontmatter in playbook file: {path}"
+    # Skill loading errors
+    SKILL_FILE_NOT_FOUND: str = "Skill file not found: {path}"
+    SKILL_INVALID_FRONTMATTER: str = (
+        "Invalid or missing frontmatter in skill file: {path}"
     )
-    PLAYBOOK_MISSING_KEY: str = (
-        "Missing required key '{key}' in playbook frontmatter: {path}"
+    SKILL_MISSING_KEY: str = "Missing required key '{key}' in skill frontmatter: {path}"
+    SKILL_DUPLICATE_NAME: str = (
+        "Duplicate skill name '{name}' - skills must have unique names"
     )
-    PLAYBOOK_DUPLICATE_NAME: str = (
-        "Duplicate playbook name '{name}' - playbooks must have unique names"
-    )
-    PLAYBOOK_DIRECTORY_NOT_FOUND: str = "Playbooks directory not found: {path}"
-    PLAYBOOK_NOT_FOUND: str = "Playbook '{name}' not found"
+    SKILL_DIRECTORY_NOT_FOUND: str = "Skills directory not found: {path}"
+    SKILL_NOT_FOUND: str = "Skill '{name}' not found"
 
     # Blackboard errors
     BLACKBOARD_ENTRY_NOT_FOUND: str = "Blackboard entry '{name}' not found"
@@ -232,11 +230,11 @@ class BuiltinTools:
 
         NAME: str = "update_todo"
 
-    class Playbook:
-        """Playbook tool constants."""
+    class Skill:
+        """Skill tool constants."""
 
-        LIST_NAME: str = "list_playbooks"
-        LOAD_NAME: str = "load_playbook"
+        LIST_NAME: str = "list_skills"
+        LOAD_NAME: str = "load_skill"
 
     class Blackboard:
         """Blackboard tool constants."""
@@ -246,8 +244,8 @@ class BuiltinTools:
         UPDATE_NAME: str = "update_blackboard"
 
 
-class PlaybookLoader:
-    """Constants for playbook file loading."""
+class SkillLoader:
+    """Constants for skill file loading."""
 
     NAME_KEY: str = "name"
     DESCRIPTION_KEY: str = "description"

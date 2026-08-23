@@ -1,7 +1,7 @@
 """Shared YAML frontmatter parser.
 
 Parses markdown files with YAML frontmatter delimited by --- markers.
-Used by both playbook loader and blackboard file provider.
+Used by both skill loader and blackboard file provider.
 """
 
 import yaml

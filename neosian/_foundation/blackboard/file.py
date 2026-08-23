@@ -7,7 +7,7 @@ and markdown body as content. Reads from disk on every call (always fresh).
 from pathlib import Path
 
 from neosian._foundation.blackboard.base import BlackboardProvider
-from neosian._foundation.shared.constants import PlaybookLoader
+from neosian._foundation.shared.constants import SkillLoader
 from neosian._foundation.shared.exceptions import FileBlackboardDirectoryNotFoundError
 from neosian._foundation.shared.frontmatter import FrontmatterError, parse_frontmatter
 from neosian._foundation.shared.types import BlackboardEntry, BlackboardName
@@ -20,7 +20,7 @@ class FileBlackboard(BlackboardProvider):
     and markdown body as content. Reads from disk on every call,
     so the agent always sees the latest content.
 
-    File format (same as playbooks):
+    File format (same as skills):
         ---
         name: workspace
         description: Generated media aliases
@@ -52,8 +52,8 @@ class FileBlackboard(BlackboardProvider):
             try:
                 content = md_file.read_text(encoding="utf-8")
                 frontmatter, body = parse_frontmatter(content, str(md_file))
-                name = frontmatter.get(PlaybookLoader.NAME_KEY)
-                desc = frontmatter.get(PlaybookLoader.DESCRIPTION_KEY)
+                name = frontmatter.get(SkillLoader.NAME_KEY)
+                desc = frontmatter.get(SkillLoader.DESCRIPTION_KEY)
                 if isinstance(name, str) and isinstance(desc, str):
                     results.append((md_file, frontmatter, body))
             except (FrontmatterError, OSError):
@@ -71,7 +71,7 @@ class FileBlackboard(BlackboardProvider):
             Tuple of (path, frontmatter, body) or None if not found.
         """
         for path, frontmatter, body in self._scan_files():
-            if frontmatter.get(PlaybookLoader.NAME_KEY) == name:
+            if frontmatter.get(SkillLoader.NAME_KEY) == name:
                 return path, frontmatter, body
         return None
 
@@ -79,8 +79,8 @@ class FileBlackboard(BlackboardProvider):
         """List all .md files in directory as blackboard entries."""
         entries: list[BlackboardEntry] = []
         for _, frontmatter, _ in self._scan_files():
-            name = frontmatter[PlaybookLoader.NAME_KEY]
-            description = frontmatter[PlaybookLoader.DESCRIPTION_KEY]
+            name = frontmatter[SkillLoader.NAME_KEY]
+            description = frontmatter[SkillLoader.DESCRIPTION_KEY]
             entries.append(
                 BlackboardEntry(
                     name=BlackboardName(name),

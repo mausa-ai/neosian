@@ -382,7 +382,7 @@ so a prompt-pack change without a recorded re-run fails `make test`.
 - Structured output (`ResponseFormat` with Pydantic models or unions) on all providers
 - Multimodal content blocks (images, documents) on Anthropic; native
   `memory_20250818` and server-side compaction behind flags
-- Playbooks and a Blackboard for app-supplied procedures and shared state
+- Skills and a Blackboard for app-supplied procedures and shared state
 - Playground: `uv run neosian playground examples/basic_agent.py` — chats
   persist per turn to `.neosian/conversations/<id>/`, `--resume <id>`
   continues one

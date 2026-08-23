@@ -38,13 +38,13 @@ _LEGACY_TOOL_DESCRIPTIONS = {
         "this replaces all existing tasks. Use status: 'pending' for not started, "
         "'in_progress' for current work (keep to one at a time), 'completed' when done."
     ),
-    "tools.playbook_list": (
-        "List available playbooks with their names and descriptions. "
-        "Use this to discover what playbooks are available before loading one."
+    "tools.skill_list": (
+        "List available skills with their names and descriptions. "
+        "Use this to discover what skills are available before loading one."
     ),
-    "tools.playbook_load": (
-        "Load a playbook by name. Returns the full instructions. "
-        "Use list_playbooks first to see what's available."
+    "tools.skill_load": (
+        "Load a skill by name. Returns the full instructions. "
+        "Use list_skills first to see what's available."
     ),
     "tools.blackboard_list": (
         "List available blackboard entries with their names and descriptions. "

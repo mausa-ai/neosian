@@ -30,8 +30,8 @@ _REFLECTION_KEYS: Final = ("system",)
 _MAINTENANCE_KEYS: Final = ("system",)
 _TOOL_KEYS: Final = (
     "todo",
-    "playbook_list",
-    "playbook_load",
+    "skill_list",
+    "skill_load",
     "blackboard_list",
     "blackboard_read",
     "blackboard_update",

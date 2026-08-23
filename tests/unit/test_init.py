@@ -198,12 +198,12 @@ def test_all_list_matches_exports() -> None:
         "ToolGateConfig",
         "ToolApprovalRequest",
         "ToolDecision",
-        # Playbooks
-        "Playbook",
-        "PlaybookName",
-        "PlaybookLoadError",
-        "load_playbook",
-        "load_playbooks",
+        # Skills
+        "Skill",
+        "SkillName",
+        "SkillLoadError",
+        "load_skill",
+        "load_skills",
         # Blackboard
         "BlackboardProvider",
         "BlackboardEntry",

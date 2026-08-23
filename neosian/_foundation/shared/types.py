@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 AgentName = NewType("AgentName", str)
 ToolName = NewType("ToolName", str)
 ToolCallId = NewType("ToolCallId", str)
-PlaybookName = NewType("PlaybookName", str)
+SkillName = NewType("SkillName", str)
 BlackboardName = NewType("BlackboardName", str)
 
 # Content types
@@ -556,19 +556,19 @@ class BlackboardEntry:
 
 
 @dataclass(frozen=True)
-class Playbook:
-    """A playbook loaded from a markdown file.
+class Skill:
+    """A skill loaded from a markdown file.
 
-    Playbooks are markdown instructions that the agent can discover and load
+    Skills are markdown instructions that the agent can discover and load
     on-demand via built-in tools. They are NOT injected into the system prompt.
 
     Attributes:
-        name: Unique identifier for the playbook.
-        description: Human-readable description shown when listing playbooks.
+        name: Unique identifier for the skill.
+        description: Human-readable description shown when listing skills.
         content: The markdown body (without frontmatter).
     """
 
-    name: PlaybookName
+    name: SkillName
     description: str
     content: str
 
@@ -609,7 +609,7 @@ class AgentConfig:
     max_parallel_tools: int | None = None
     max_retries: int | None = None
     cache_conversation: bool = True
-    playbook_dir: str | Path | None = None
+    skill_dir: str | Path | None = None
     blackboard: Any = None  # BlackboardProvider | None (Any to avoid circular import)
     memory: Any = None  # MemoryConfig | None (Any to avoid circular import)
     client_factory: "ClientFactory | None" = None
@@ -630,13 +630,13 @@ class AgentConfig:
     # the approver before executing; no decision denies (default-deny).
     tool_gate: "ToolGateConfig | None" = None
 
-    # Internal: loaded playbooks (set by __post_init__)
-    _playbooks: list[Playbook] = field(default_factory=list, init=False, repr=False)
+    # Internal: loaded skills (set by __post_init__)
+    _skills: list[Skill] = field(default_factory=list, init=False, repr=False)
 
     @property
-    def playbooks(self) -> list[Playbook]:
-        """Get loaded playbooks from playbook_dir."""
-        return self._playbooks
+    def skills(self) -> list[Skill]:
+        """Get loaded skills from skill_dir."""
+        return self._skills
 
     def __post_init__(self) -> None:
         """Validate configuration after initialization."""
@@ -716,12 +716,12 @@ class AgentConfig:
                 )
             )
 
-        # Load playbooks from directory if configured
-        if self.playbook_dir is not None:
-            from neosian._foundation.shared.playbook import load_playbooks
+        # Load skills from directory if configured
+        if self.skill_dir is not None:
+            from neosian._foundation.shared.skill import load_skills
 
-            loaded = load_playbooks(self.playbook_dir)
-            object.__setattr__(self, "_playbooks", loaded)
+            loaded = load_skills(self.skill_dir)
+            object.__setattr__(self, "_skills", loaded)
 
 
 # Guardrail types

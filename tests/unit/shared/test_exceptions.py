@@ -275,12 +275,12 @@ _CODE_TABLE = {
     "PromptFileNotFoundError": "prompt_file_not_found",
     "PromptInvalidYAMLError": "prompt_invalid_yaml",
     "PromptMissingKeyError": "prompt_missing_key",
-    "PlaybookLoadError": "playbook_load_failed",
-    "PlaybookFileNotFoundError": "playbook_file_not_found",
-    "PlaybookInvalidFrontmatterError": "playbook_invalid_frontmatter",
-    "PlaybookMissingKeyError": "playbook_missing_key",
-    "PlaybookDuplicateNameError": "playbook_duplicate_name",
-    "PlaybookDirectoryNotFoundError": "playbook_directory_not_found",
+    "SkillLoadError": "skill_load_failed",
+    "SkillFileNotFoundError": "skill_file_not_found",
+    "SkillInvalidFrontmatterError": "skill_invalid_frontmatter",
+    "SkillMissingKeyError": "skill_missing_key",
+    "SkillDuplicateNameError": "skill_duplicate_name",
+    "SkillDirectoryNotFoundError": "skill_directory_not_found",
     "BlackboardError": "blackboard_error",
     "BlackboardEntryNotFoundError": "blackboard_entry_not_found",
     "BlackboardReadError": "blackboard_read_failed",
@@ -309,7 +309,7 @@ _CODE_TABLE = {
 }
 
 _CODE_PATTERN = re.compile(
-    r"^(neosian|agent|llm|tool|guardrail|memory|prompt|playbook|blackboard|eval)"
+    r"^(neosian|agent|llm|tool|guardrail|memory|prompt|skill|blackboard|eval)"
     r"_[a-z0-9_]+$"
 )
 

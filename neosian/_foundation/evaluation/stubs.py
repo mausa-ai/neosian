@@ -7,7 +7,7 @@ names on the execute allowlist pass the original function through.
 Variant description overrides ride the same construction: the harness
 owns the wrappers it makes, so their metadata is legitimately its own.
 
-Library builtins (todo / playbook / blackboard / memory) are registered
+Library builtins (todo / skill / blackboard / memory) are registered
 by Agent from config fields, not `config.tools` — they always execute
 and never appear here.
 """
@@ -98,7 +98,7 @@ def build_tools(
     if unknown_execute:
         raise ValueError(
             f"execute_tools names unknown tool(s): {unknown_execute} — builtin "
-            "tools (todo/playbook/blackboard/memory) always execute and need "
+            "tools (todo/skill/blackboard/memory) always execute and need "
             "not be listed"
         )
     unknown_override = sorted(str(n) for n in set(descriptions) - known)

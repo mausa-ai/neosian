@@ -118,7 +118,7 @@ def derive_config(
             create_memory_tool(memory_config, actor=actor, native=base.native_memory)
         )
     tools.extend(extra_tools)
-    # replace() re-runs __post_init__ (re-reads playbook_dir, re-validates)
+    # replace() re-runs __post_init__ (re-reads skill_dir, re-validates)
     # — once per conversation, at start().
     return dataclasses.replace(
         base,

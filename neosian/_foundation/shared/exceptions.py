@@ -606,61 +606,61 @@ class EvalModelUnknownError(EvalError):
         self.path = path
 
 
-# Playbook Errors
-class PlaybookLoadError(NeosianError):
-    """Base exception for playbook loading errors."""
+# Skill Errors
+class SkillLoadError(NeosianError):
+    """Base exception for skill loading errors."""
 
-    code = "playbook_load_failed"
+    code = "skill_load_failed"
 
 
-class PlaybookFileNotFoundError(PlaybookLoadError):
-    """Raised when a playbook file is not found."""
+class SkillFileNotFoundError(SkillLoadError):
+    """Raised when a skill file is not found."""
 
-    code = "playbook_file_not_found"
+    code = "skill_file_not_found"
 
     def __init__(self, path: str) -> None:
-        super().__init__(ErrorMessages.PLAYBOOK_FILE_NOT_FOUND.format(path=path))
+        super().__init__(ErrorMessages.SKILL_FILE_NOT_FOUND.format(path=path))
         self.path = path
 
 
-class PlaybookInvalidFrontmatterError(PlaybookLoadError):
-    """Raised when a playbook file has invalid or missing frontmatter."""
+class SkillInvalidFrontmatterError(SkillLoadError):
+    """Raised when a skill file has invalid or missing frontmatter."""
 
-    code = "playbook_invalid_frontmatter"
+    code = "skill_invalid_frontmatter"
 
     def __init__(self, path: str) -> None:
-        super().__init__(ErrorMessages.PLAYBOOK_INVALID_FRONTMATTER.format(path=path))
+        super().__init__(ErrorMessages.SKILL_INVALID_FRONTMATTER.format(path=path))
         self.path = path
 
 
-class PlaybookMissingKeyError(PlaybookLoadError):
-    """Raised when a required key is missing from playbook frontmatter."""
+class SkillMissingKeyError(SkillLoadError):
+    """Raised when a required key is missing from skill frontmatter."""
 
-    code = "playbook_missing_key"
+    code = "skill_missing_key"
 
     def __init__(self, key: str, path: str) -> None:
-        super().__init__(ErrorMessages.PLAYBOOK_MISSING_KEY.format(key=key, path=path))
+        super().__init__(ErrorMessages.SKILL_MISSING_KEY.format(key=key, path=path))
         self.key = key
         self.path = path
 
 
-class PlaybookDuplicateNameError(PlaybookLoadError):
-    """Raised when multiple playbooks share the same name."""
+class SkillDuplicateNameError(SkillLoadError):
+    """Raised when multiple skills share the same name."""
 
-    code = "playbook_duplicate_name"
+    code = "skill_duplicate_name"
 
     def __init__(self, name: str) -> None:
-        super().__init__(ErrorMessages.PLAYBOOK_DUPLICATE_NAME.format(name=name))
+        super().__init__(ErrorMessages.SKILL_DUPLICATE_NAME.format(name=name))
         self.name = name
 
 
-class PlaybookDirectoryNotFoundError(PlaybookLoadError):
-    """Raised when the playbook directory does not exist."""
+class SkillDirectoryNotFoundError(SkillLoadError):
+    """Raised when the skill directory does not exist."""
 
-    code = "playbook_directory_not_found"
+    code = "skill_directory_not_found"
 
     def __init__(self, path: str) -> None:
-        super().__init__(ErrorMessages.PLAYBOOK_DIRECTORY_NOT_FOUND.format(path=path))
+        super().__init__(ErrorMessages.SKILL_DIRECTORY_NOT_FOUND.format(path=path))
         self.path = path
 
 
