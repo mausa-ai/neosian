@@ -34,11 +34,15 @@ dependencies = [
 # server rides the `mcp` extra the same way — `import neosian` and
 # `import neosian.mcp` stay SDK-free (pinned by subprocess tests) — and
 # the OTel span exporter rides `otel` (api only; the SDK is the host's
-# choice, dev-group here solely for the in-memory exporter tests).
+# choice, dev-group here solely for the in-memory exporter tests). The
+# state process rides `server` (DESIGN §18): starlette/uvicorn pinned
+# explicitly, never leaned on as the MCP SDK's transitive deps;
+# `RemoteStore` needs none of it — httpx is core.
 [project.optional-dependencies]
 postgres = ["psycopg[binary,pool]>=3.2"]
 mcp = ["mcp>=2,<3"]
 otel = ["opentelemetry-api>=1.30"]
+server = ["mcp>=2,<3", "starlette>=1.6", "uvicorn>=0.52.4"]
 
 [project.urls]
 Homepage = "https://github.com/neosae/neosian"
@@ -55,7 +59,9 @@ dev = [
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
     "ruff>=0.16.3",
+    "starlette>=1.6",
     "types-pyyaml>=6.0.12.20250915",
+    "uvicorn>=0.52.4",
 ]
 examples = [
     "fastapi>=0.141.1",
@@ -147,6 +153,7 @@ forbidden_modules = [
     "neosian.conversation",
     "neosian.fake",
     "neosian.schemas",
+    "neosian.server",
 ]
 
 [[tool.importlinter.contracts]]
@@ -167,6 +174,20 @@ forbidden_modules = [
 name = "the MCP server speaks only to the store and tool layers"
 type = "forbidden"
 source_modules = ["neosian._foundation.mcp"]
+forbidden_modules = [
+    "neosian._foundation.agent",
+    "neosian._foundation.llm.openai",
+    "neosian._foundation.llm.anthropic",
+    "neosian._foundation.llm.cerebras",
+    "neosian._foundation.llm.fake",
+]
+
+# The state process is a storage surface: the wire mirrors the ABCs and
+# every MCP call rides the shared dispatcher — never the agent (§18).
+[[tool.importlinter.contracts]]
+name = "the state process speaks only to the store and tool layers"
+type = "forbidden"
+source_modules = ["neosian._foundation.server"]
 forbidden_modules = [
     "neosian._foundation.agent",
     "neosian._foundation.llm.openai",
@@ -219,6 +240,7 @@ source_modules = [
     "neosian._foundation.mcp",
     "neosian._foundation.memory",
     "neosian._foundation.postgres",
+    "neosian._foundation.server",
     "neosian._foundation.shared",
     "neosian._foundation.tools",
 ]

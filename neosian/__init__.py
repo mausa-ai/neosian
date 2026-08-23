@@ -95,6 +95,7 @@ from neosian._foundation.memory.types import (
     MemoryVersion,
 )
 from neosian._foundation.postgres.store import PostgresStore
+from neosian._foundation.server.remote import RemoteStore
 from neosian._foundation.shared.constraints import (
     Desc,
     Max,
@@ -261,6 +262,7 @@ __all__ = [
     "MemoryVersion",
     "FileStore",
     "PostgresStore",
+    "RemoteStore",
     "Scope",
     "parse_scope",
     "SCOPE_PATTERN",

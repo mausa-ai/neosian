@@ -37,6 +37,7 @@ def test_memory_all_is_pinned() -> None:
         "MemoryWriteReceipt",
         "Mount",
         "PostgresStore",
+        "RemoteStore",
         "Scope",
         "SystemClock",
         "create_memory_tool",

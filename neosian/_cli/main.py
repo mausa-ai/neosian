@@ -378,6 +378,26 @@ def mcp(ctx: typer.Context) -> None:
     raise typer.Exit(mcp_main(list(ctx.args)))
 
 
+@app.command(
+    name="serve",
+    context_settings={
+        "allow_extra_args": True,
+        "ignore_unknown_options": True,
+        "help_option_names": [],
+    },
+)
+def serve(ctx: typer.Context) -> None:
+    """Serve memory and conversations over HTTP — the state process.
+
+    A thin pass-through: every argument goes verbatim to the one grammar
+    (`neosian serve --help`). Needs the `server` extra and
+    NEOSIAN_SERVE_TOKEN.
+    """
+    from neosian.server.serve import main as serve_main
+
+    raise typer.Exit(serve_main(list(ctx.args)))
+
+
 def main() -> None:
     """Main entry point for the CLI."""
     app()

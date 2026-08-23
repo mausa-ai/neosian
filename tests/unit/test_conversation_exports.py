@@ -32,6 +32,7 @@ def test_conversation_all_is_pinned() -> None:
         "ReflectionConfig",
         "ReflectionResult",
         "ReflectionWrite",
+        "RemoteStore",
         "create_recall_turn_tool",
         "message_from_json",
         "message_to_json",

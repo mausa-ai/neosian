@@ -35,6 +35,7 @@ from neosian._foundation.conversation.wiring import DEFAULT_MEMORY_MOUNT_PATH
 from neosian._foundation.llm.codec import message_from_json, message_to_json
 from neosian._foundation.memory.file import FileStore
 from neosian._foundation.postgres.store import PostgresStore
+from neosian._foundation.server.remote import RemoteStore
 from neosian._foundation.shared.exceptions import (
     ConversationFormatUnsupportedError,
     ConversationIdInvalidError,
@@ -62,6 +63,7 @@ __all__ = [
     "ReflectionConfig",
     "ReflectionResult",
     "ReflectionWrite",
+    "RemoteStore",
     "create_recall_turn_tool",
     "message_from_json",
     "message_to_json",

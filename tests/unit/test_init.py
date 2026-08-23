@@ -217,6 +217,7 @@ def test_all_list_matches_exports() -> None:
         "MemoryVersion",
         "FileStore",
         "PostgresStore",
+        "RemoteStore",
         "Scope",
         "parse_scope",
         "SCOPE_PATTERN",

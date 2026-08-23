@@ -137,6 +137,47 @@ def add_store_arguments(parser: argparse.ArgumentParser, *, default_actor: str) 
     )
 
 
+def resolve_store_selection(
+    parser: argparse.ArgumentParser,
+    args: argparse.Namespace,
+    env: Mapping[str, str],
+) -> tuple[Path | None, str | None, str]:
+    """Resolve the root-vs-DSN half of the grammar: (root, dsn, schema)."""
+    dsn = env.get(POSTGRES_DSN_ENV) or None
+    if args.root is not None and dsn is not None:
+        parser.error(f"--root and {POSTGRES_DSN_ENV} are mutually exclusive")
+    if args.root is None and dsn is None:
+        parser.error(f"a store is required: pass --root or set {POSTGRES_DSN_ENV}")
+    if args.schema is not None and args.root is not None:
+        parser.error("--schema applies only to Postgres (unset --root)")
+    root: Path | None = args.root
+    schema: str = args.schema if args.schema is not None else DEFAULT_SCHEMA
+    return root, dsn, schema
+
+
+def resolve_mounts(
+    parser: argparse.ArgumentParser,
+    args: argparse.Namespace,
+    *,
+    required: bool = True,
+) -> tuple[Mount, ...]:
+    """Resolve the mount half of the grammar.
+
+    `required=False` is the state process's relaxation (DESIGN §18): its
+    store-shaped API needs no mounts — only the MCP surface does.
+    """
+    if args.scope is not None and args.mount:
+        parser.error("--scope is the single-mount sugar; use --mount for multi-mount")
+    if args.scope is not None:
+        return (Mount(scope=args.scope, mount_path=SUGAR_MOUNT_PATH),)
+    if args.mount:
+        return tuple(parse_mount(parser, token) for token in args.mount)
+    if required:
+        parser.error("memory needs an explicit scope: pass --scope or --mount")
+        raise AssertionError  # pragma: no cover - parser.error exits
+    return ()
+
+
 def resolve_store_settings(
     parser: argparse.ArgumentParser,
     args: argparse.Namespace,
@@ -148,29 +189,12 @@ def resolve_store_settings(
     validation is structural (`Mount` raises `MemoryScopeInvalidError` /
     `MemoryPathInvalidError`, which the entry point renders).
     """
-    dsn = env.get(POSTGRES_DSN_ENV) or None
-    if args.root is not None and dsn is not None:
-        parser.error(f"--root and {POSTGRES_DSN_ENV} are mutually exclusive")
-    if args.root is None and dsn is None:
-        parser.error(f"a store is required: pass --root or set {POSTGRES_DSN_ENV}")
-    if args.schema is not None and args.root is not None:
-        parser.error("--schema applies only to Postgres (unset --root)")
-
-    mounts: tuple[Mount, ...]
-    if args.scope is not None and args.mount:
-        parser.error("--scope is the single-mount sugar; use --mount for multi-mount")
-    if args.scope is not None:
-        mounts = (Mount(scope=args.scope, mount_path=SUGAR_MOUNT_PATH),)
-    elif args.mount:
-        mounts = tuple(parse_mount(parser, token) for token in args.mount)
-    else:
-        parser.error("memory needs an explicit scope: pass --scope or --mount")
-        raise AssertionError  # pragma: no cover - parser.error exits
-
+    root, dsn, schema = resolve_store_selection(parser, args, env)
+    mounts = resolve_mounts(parser, args)
     return StoreSettings(
         mounts=mounts,
-        root=args.root,
+        root=root,
         dsn=dsn,
-        schema=args.schema if args.schema is not None else DEFAULT_SCHEMA,
+        schema=schema,
         actor=args.actor,
     )
