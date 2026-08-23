@@ -52,6 +52,6 @@ Anthropic's native declaration, an MCP stdio server, and the shell.
 ## Docs
 
 - README.md: install and quickstart.
-- DESIGN.md: contracts and the decisions ledger.
-- ECOSYSTEM.md: the frozen host-facing seams.
-- SERVICES.md: every environment key and what turning it off means.
+- docs/DESIGN.md: contracts and the decisions ledger.
+- docs/ECOSYSTEM.md: the frozen host-facing seams.
+- docs/SERVICES.md: every environment key and what turning it off means.

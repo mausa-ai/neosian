@@ -341,7 +341,7 @@ store — with a transports axis (the shipped pack runs
 [examples/eval_memory_baseline.yaml](examples/eval_memory_baseline.yaml) —
 the memory baseline is all-green on `models: [fake]`, so a red run is a
 regression. The same pack, scriptless against the real providers, produces
-the published numbers in [BASELINES.md](BASELINES.md) — fingerprint-gated,
+the published numbers in [BASELINES.md](docs/BASELINES.md) — fingerprint-gated,
 so a prompt-pack change without a recorded re-run fails `make test`.
 
 ## Also in the box
@@ -365,7 +365,7 @@ so a prompt-pack change without a recorded re-run fails `make test`.
 `v1.0.0` is deliberately not yet cut. When it is, it will carry the API
 stability promise: `Agent`, `Conversation`, `MemoryStore`, and the
 `neosian.evaluation` facade stable under SemVer, and the
-[ECOSYSTEM.md](ECOSYSTEM.md) seams (scope grammar, token classes, integer
+[ECOSYSTEM.md](docs/ECOSYSTEM.md) seams (scope grammar, token classes, integer
 micro-USD, event vocabulary, error codes) SemVer-guaranteed — a seam break
 only at a major. Until then the seams are append-only by convention, and
 error codes are already append-only forever. Consumers pin an annotated
@@ -388,12 +388,12 @@ value-blind.
 
 ## Documents
 
-- [VISION.md](VISION.md) — why and what; the school we chose.
-- [ROADMAP.md](ROADMAP.md) — in what order; the session log.
-- [DESIGN.md](DESIGN.md) — how; contracts; the decisions ledger.
-- [ECOSYSTEM.md](ECOSYSTEM.md) — the frozen host-facing seams.
-- [BASELINES.md](BASELINES.md) — the published per-provider memory
+- [VISION.md](docs/VISION.md) — why and what; the school we chose.
+- [ROADMAP.md](docs/ROADMAP.md) — in what order; the session log.
+- [DESIGN.md](docs/DESIGN.md) — how; contracts; the decisions ledger.
+- [ECOSYSTEM.md](docs/ECOSYSTEM.md) — the frozen host-facing seams.
+- [BASELINES.md](docs/BASELINES.md) — the published per-provider memory
   baselines: methodology, fingerprints, results.
-- [SERVICES.md](SERVICES.md) — every env key and what turning it off means.
+- [SERVICES.md](docs/SERVICES.md) — every env key and what turning it off means.
 - [llms.txt](llms.txt) — the machine-readable front door (byte-identical
   twin ships in the wheel).

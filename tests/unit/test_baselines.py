@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-_BASELINES = _REPO_ROOT / "BASELINES.md"
+_BASELINES = _REPO_ROOT / "docs" / "BASELINES.md"
 
 # Every file the baselines' meaning depends on. Adding a gated file
 # means adding its fingerprint line to BASELINES.md's Fingerprints
