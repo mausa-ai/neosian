@@ -194,6 +194,10 @@ def test_all_list_matches_exports() -> None:
         "PolicyResult",
         "PolicyBuilder",
         "CommonPolicies",
+        # Tool approval gate (DESIGN §17)
+        "ToolGateConfig",
+        "ToolApprovalRequest",
+        "ToolDecision",
         # Playbooks
         "Playbook",
         "PlaybookName",

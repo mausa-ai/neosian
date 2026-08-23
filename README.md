@@ -325,6 +325,33 @@ never message content or tool arguments) through your tracer provider:
 `AgentConfig(hooks=otel_hooks())`. The extra is `opentelemetry-api`
 only; the SDK and exporter stay your choice.
 
+## Tool approval gate
+
+Hooks observe; the gate intercepts. `AgentConfig(tool_gate=
+ToolGateConfig(approver=...))` routes every tool call — builtins
+included — through one sync-or-async approver before it executes:
+
+```python
+from neosian import ToolApprovalRequest, ToolDecision, ToolGateConfig
+
+async def approver(request: ToolApprovalRequest) -> ToolDecision:
+    if request.name == "delete_records":
+        approved = await ask_a_human(request)   # your channel
+        return ToolDecision(approved=approved, reason="operator ruling")
+    return ToolDecision(approved=True)
+
+config = AgentConfig(..., tool_gate=ToolGateConfig(approver=approver))
+```
+
+An instant approve is no pause. A denial comes back to the model as an
+ordinary failed tool result (the reason included), so the run continues
+and adapts; on the streaming path a pending approval keeps emitting
+`tool_progress`, and the outcome rides `tool_result` — no new wire
+events. No decision is a denial, always: a timeout (default 60 s,
+`timeout_seconds=None` waits indefinitely), an approver exception, or a
+malformed return all deny, naming the cause. There is deliberately no
+fail-open option.
+
 ## Evaluation
 
 `neosian.evaluation` runs YAML suites and exits nonzero on failure, so

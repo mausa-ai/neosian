@@ -108,6 +108,9 @@ class Agent:
         assert config.max_parallel_tools is not None  # Set by AgentConfig.__post_init__
         self._max_parallel_tools = config.max_parallel_tools
         self._context_policy = config.context_policy
+        # The tool-approval gate (DESIGN §17): checked in execute_tool,
+        # the leaf both paths share — parity by construction.
+        self._tool_gate = config.tool_gate
 
         # Store guardrails config and create the policy client if needed.
         # The policy model defaults to the agent's own (ledger #84); its

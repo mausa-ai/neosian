@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from neosian._foundation.shared.context_policy import ContextPolicy
 
 if TYPE_CHECKING:
+    from neosian._foundation.agent.approval import ToolGateConfig
     from neosian._foundation.agent.hooks import AgentHooks
     from neosian._foundation.llm.base import BaseLLMClient
     from neosian._foundation.tools.base import ToolResult
@@ -625,6 +626,9 @@ class AgentConfig:
     # the client (Haiku 4.5 is Anthropic yet unsupported), not here —
     # under fallback the answering model may not be `model`.
     server_compaction: bool = False
+    # The tool-approval gate (DESIGN §17): every tool call passes through
+    # the approver before executing; no decision denies (default-deny).
+    tool_gate: "ToolGateConfig | None" = None
 
     # Internal: loaded playbooks (set by __post_init__)
     _playbooks: list[Playbook] = field(default_factory=list, init=False, repr=False)

@@ -8,6 +8,7 @@ import time
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 
+from neosian._foundation.agent.approval import ToolApprovalRequest, gate_tool_call
 from neosian._foundation.agent.events import (
     AgentEvent,
     MemoryWriteEvent,
@@ -38,6 +39,22 @@ async def execute_tool(agent: Agent, tool_call: ToolCall) -> ToolResult[Any]:
         return ToolResult.fail(
             ErrorMessages.TOOL_NOT_FOUND.format(tool_name=tool_call.name)
         )
+
+    # The approval gate (DESIGN §17) sits after the lookup — an unknown
+    # tool never reaches the approver — and before execution on both
+    # paths. On the streaming path this runs inside the heartbeat task,
+    # so tool_progress frames keep the pause wire-visible for free.
+    if agent._tool_gate is not None:
+        denial = await gate_tool_call(
+            agent._tool_gate,
+            ToolApprovalRequest(
+                call_id=tool_call.id,
+                name=tool_call.name,
+                arguments=tool_call.arguments,
+            ),
+        )
+        if denial is not None:
+            return denial
 
     try:
         result = await tool_func(**tool_call.arguments)

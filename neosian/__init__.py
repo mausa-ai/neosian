@@ -2,6 +2,11 @@
 
 from importlib.metadata import version as _pkg_version
 
+from neosian._foundation.agent.approval import (
+    ToolApprovalRequest,
+    ToolDecision,
+    ToolGateConfig,
+)
 from neosian._foundation.agent.base import Agent
 from neosian._foundation.agent.event_schemas import event_schemas
 from neosian._foundation.agent.events import (
@@ -233,6 +238,10 @@ __all__ = [
     "PolicyResult",
     "PolicyBuilder",
     "CommonPolicies",
+    # Tool approval gate (DESIGN §17)
+    "ToolGateConfig",
+    "ToolApprovalRequest",
+    "ToolDecision",
     # Playbooks
     "Playbook",
     "PlaybookName",
