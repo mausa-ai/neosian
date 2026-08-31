@@ -8,7 +8,9 @@ summary: Serve over stdio, register with neosian mcp install, one writer per roo
 The same stores, served to any MCP client — Claude Code, Claude
 Desktop, Cursor — over stdio. Requires the `mcp` extra
 (`neosian[mcp]`); the core install refuses with an install hint, never
-a traceback.
+a traceback. For MCP over the network, the state process mounts this
+same factory's server at `/mcp`: `neosian serve` with mounts
+(`server` extra, `neosian docs topology`).
 
 ## Serve
 
@@ -61,4 +63,6 @@ An MCP server serving a FileStore root **owns** that root while it
 runs. Do not write to the same root with `neosian memory` or an
 embedding application at the same time — reads are fine, concurrent
 writers are not arbitrated on files. Multi-writer needs route to
-`PostgresStore`. The full rule: `neosian docs topology`.
+`PostgresStore` or to the state process (`neosian serve`), where one
+process owns the root for every client. The full rule:
+`neosian docs topology`.

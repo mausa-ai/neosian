@@ -27,13 +27,17 @@ class Transport(str, Enum):
     """How the memory tool reaches the wire: the plain function tool;
     Anthropic's native `memory_20250818` declaration (ledger #43 — the
     marker degrades to the function schema off Anthropic, so that axis
-    is informative only on Anthropic runs); or the shell surface —
-    `neosian memory`'s engine executed in-process (ledger #78).
+    is informative only on Anthropic runs); the shell surface —
+    `neosian memory`'s engine executed in-process (ledger #78); or the
+    state process's store wire — the same function tool over a
+    `RemoteStore`, every command's store I/O crossing the twelve-route
+    HTTP API against an in-process server (ledger #113).
     """
 
     FUNCTION = "function"
     NATIVE = "native_memory"
     CLI = "cli"
+    HTTP = "http"
 
 
 @dataclass(frozen=True, slots=True)

@@ -6,8 +6,9 @@
 
 A stateless `Agent` core (tools, orchestration, streaming, fallback,
 guardrails, structured output) with opt-in `Conversation` and memory
-layers. One memory dispatcher serves four transports: the function tool,
-Anthropic's native declaration, an MCP stdio server, and the shell.
+layers. One memory dispatcher serves five transports: the function tool,
+Anthropic's native declaration, an MCP stdio server, the shell, and the
+state process's HTTP wire.
 
 ## Learn from the shell
 
@@ -43,11 +44,24 @@ Anthropic's native declaration, an MCP stdio server, and the shell.
 - `python -m neosian.mcp --root DIR --scope user:me` serves the same
   store over stdio (`mcp` extra).
 
+## Reach it over the network
+
+- `NEOSIAN_SERVE_TOKEN=... neosian serve --root DIR` — the state
+  process (`server` extra): memory and conversations on a port, MCP
+  over streamable HTTP at /mcp when started with mounts. Token is
+  env-only; unset refuses to start; /health is unauthenticated.
+- The shipped Dockerfile is the appliance: `docker run -e
+  NEOSIAN_SERVE_TOKEN=... -p 6367:6367 -v state:/data neosian`.
+- Python clients: `await RemoteStore.connect(url, token=...)` — both
+  storage ABCs over the wire, core install, drops in where FileStore
+  does. `neosian docs topology` carries the full shape.
+
 ## Install
 
-- `uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.79.0"`
+- `uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.80.0"`
   (private repository, no PyPI; pin an annotated release tag, never
-  master; extras `[postgres]`, `[mcp]`, and `[otel]` ride the same URL).
+  master; extras `[postgres]`, `[mcp]`, `[otel]`, and `[server]` ride
+  the same URL).
 
 ## Docs
 

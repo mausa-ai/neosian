@@ -1,15 +1,18 @@
 """One memory scenario, one cell (DESIGN §13.12).
 
 A session is a fresh bare Agent wired through `derive_config` — the
-shipped wiring, not a harness replica — over a fresh FileStore on the
-cell's one store root. The index section regenerates per session (the
-frozen-index rule), so a fact written in session 1 surfaces in session
-2's prefix exactly as it would in production. Store truth is checked
-after each session through a freshly constructed store.
+shipped wiring, not a harness replica — over a fresh store handle on
+the cell's one store root: a FileStore, or on the http transport a
+`RemoteStore` whose I/O crosses the state process's wire (#113). The
+index section regenerates per session (the frozen-index rule), so a
+fact written in session 1 surfaces in session 2's prefix exactly as it
+would in production. Store truth is checked after each session through
+a freshly constructed local store.
 """
 
 import dataclasses
 import time
+from contextlib import AsyncExitStack
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -26,6 +29,7 @@ from neosian._foundation.evaluation.capture import (
 )
 from neosian._foundation.evaluation.matcher import match_turn
 from neosian._foundation.evaluation.memory_cli import create_cli_memory_tool
+from neosian._foundation.evaluation.memory_http import open_http_memory
 from neosian._foundation.evaluation.memory_score import check_store
 from neosian._foundation.evaluation.memory_types import (
     MemoryScenario,
@@ -103,6 +107,51 @@ async def _run(
     ignore: frozenset[ToolName],
     stop_on_failure: bool,
 ) -> CaseResult:
+    # The stack owns the http sessions' remote clients (and their
+    # in-process apps) for the cell's lifetime — every early return and
+    # break above still closes them.
+    async with AsyncExitStack() as stack:
+        return await _run_cell(
+            base,
+            transport,
+            model,
+            scenario,
+            mounts=mounts,
+            store_root=store_root,
+            suite_execute=suite_execute,
+            ignore=ignore,
+            stop_on_failure=stop_on_failure,
+            stack=stack,
+        )
+
+
+async def _session_memory(
+    transport: Transport,
+    store_root: Path,
+    mounts: tuple[Mount, ...],
+    stack: AsyncExitStack,
+) -> MemoryConfig:
+    """The session's store handle: local files, or the wire (#113)."""
+    if transport is Transport.HTTP:
+        return await stack.enter_async_context(
+            open_http_memory(store_root=store_root, mounts=mounts)
+        )
+    return MemoryConfig(store=FileStore(store_root), mounts=mounts)
+
+
+async def _run_cell(
+    base: AgentConfig,
+    transport: Transport,
+    model: Model,
+    scenario: MemoryScenario,
+    *,
+    mounts: tuple[Mount, ...],
+    store_root: Path,
+    suite_execute: frozenset[ToolName],
+    ignore: frozenset[ToolName],
+    stop_on_failure: bool,
+    stack: AsyncExitStack,
+) -> CaseResult:
     if base.memory is not None:
         raise EvalRunError(
             transport.value,
@@ -129,7 +178,7 @@ async def _run(
     for session in scenario.sessions:
         # A fresh store handle and a freshly rendered index per session —
         # the cross-session seam the scenario measures.
-        memory_config = MemoryConfig(store=FileStore(store_root), mounts=mounts)
+        memory_config = await _session_memory(transport, store_root, mounts, stack)
         section = await memory_system_section(memory_config)
         # native_memory is read by derive_config when it builds the tool,
         # so the transport lands on the base *before* derivation.

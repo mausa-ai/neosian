@@ -114,11 +114,13 @@ spend rides the result.
 Both implement the same `MemoryStore` ABC; a host may implement its
 own, kept honest by the shipped `MemoryStoreContract` conformance kit.
 
-## Four transports, one dispatcher
+## Five transports, one dispatcher
 
 The same memory is served through the provider-agnostic function
 tool, Anthropic's native `memory_20250818` declaration (a flag, same
-execution), the MCP server (`neosian docs mcp`), and the shell
-(`neosian docs cli`). The command vocabulary, mounts, the read-only
-and edit-only enforcement, and corrective failures are identical on
-all four.
+execution), the MCP server (`neosian docs mcp`), the shell
+(`neosian docs cli`), and the state process's HTTP wire
+(`neosian serve` — MCP over streamable HTTP for agents, `RemoteStore`
+for Python clients; `neosian docs topology`). The command vocabulary,
+mounts, the read-only and edit-only enforcement, and corrective
+failures are identical on all five.

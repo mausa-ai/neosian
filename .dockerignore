@@ -1,0 +1,8 @@
+# Whitelist: the image builds from exactly what the wheel would carry.
+*
+!pyproject.toml
+!uv.lock
+!README.md
+!LICENSE
+!neosian/
+neosian/**/__pycache__/

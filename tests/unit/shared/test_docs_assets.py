@@ -73,7 +73,12 @@ class TestTopologyContent:
         assert page is not None
         assert "one writer at a time" in page.body
 
-    def test_the_daemon_is_marked_unshipped(self) -> None:
+    def test_the_appliance_quickstart_is_present(self) -> None:
+        # NM shipped the state process: the unshipped marker is gone and
+        # the page carries the appliance quickstart (§18.9).
         page = load_page("topology")
         assert page is not None
-        assert "not yet\nshipped" in page.body or "not yet shipped" in page.body
+        assert "not yet shipped" not in page.body.replace("\n", " ")
+        assert "neosian serve" in page.body
+        assert "NEOSIAN_SERVE_TOKEN" in page.body
+        assert "RemoteStore.connect" in page.body

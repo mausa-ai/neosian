@@ -12,7 +12,7 @@ and the quickstart always begins embedded.
 |  | bytes on local files | bytes in a database |
 |---|---|---|
 | **your app runs neosian** | embed + `FileStore` — dev, local tools, single-writer agents | embed + `PostgresStore` — production, multi-worker |
-| **a separate process runs neosian** | the state daemon owning a FileStore root | the state daemon over Postgres |
+| **a separate process runs neosian** | the state process (`neosian serve`) owning a FileStore root | the state process over Postgres |
 
 ## Embed first
 
@@ -24,13 +24,47 @@ store.
 
 ## The daemon is reach, not capability
 
-The state daemon (planned as the arc's capstone phase, **not yet
-shipped**) is the first-class answer when state is **shared across
-processes, apps, or languages** — including one container in a dev
-compose beside redis and minio — or when a FileStore root needs more
-than one writer: one process owns the files and every client speaks
-to it. It adds no capability the library lacks, only reach.
-`docker run` is never step one.
+The state process — `neosian serve`, the `server` extra — is the
+first-class answer when state is **shared across processes, apps, or
+languages** — including one container in a dev compose beside redis
+and minio — or when a FileStore root needs more than one writer: one
+process owns the files and every client speaks to it. It adds no
+capability the library lacks, only reach. `docker run` is never step
+one.
+
+## The appliance quickstart
+
+One token, one volume, one health check:
+
+```bash
+docker build -t neosian .          # the shipped Dockerfile
+docker run -d \
+  -e NEOSIAN_SERVE_TOKEN=change-me \
+  -p 6367:6367 -v neosian-state:/data \
+  neosian
+curl -fsS http://localhost:6367/health
+```
+
+The default command serves a FileStore on the `/data` volume; set
+`NEOSIAN_POSTGRES_DSN` (and override the command, e.g. `--schema
+neosian`) for the Postgres backend. Without the container it is one
+command: `NEOSIAN_SERVE_TOKEN=… neosian serve --root DIR`. The token
+is env-only and an unset token refuses to start; TLS terminates at a
+reverse proxy.
+
+Python clients speak the store wire:
+
+```python
+from neosian import RemoteStore
+
+store = await RemoteStore.connect("http://localhost:6367", token="change-me")
+```
+
+`RemoteStore` implements both storage ABCs over the core install (no
+extra needed), so it drops into `Conversation` and `MemoryConfig`
+exactly where `FileStore` does. Agents speak MCP over streamable HTTP
+at `/mcp` when the server is started with mounts (`--scope` or
+`--mount`).
 
 ## One writer per root
 
@@ -48,12 +82,13 @@ you can `cat` it).
 application — while any number of readers may run beside it; a
 concurrent reader is bounded to a stale read, never a corrupted
 store. Multi-writer needs route to `PostgresStore`, which arbitrates
-on the version-row primary key, or to the state daemon once it ships.
+on the version-row primary key, or to the state process, where one
+`neosian serve` owns the files and every client speaks to it over
+`RemoteStore`.
 
 ## Choosing
 
 - One app, one machine, inspectable state → embed + `FileStore`.
 - One app, many workers or many machines → embed + `PostgresStore`.
 - Many apps or languages sharing one memory, or a FileStore root that
-  needs more than one writer → the daemon shape (until it ships:
-  Postgres).
+  needs more than one writer → the state process (`neosian serve`).

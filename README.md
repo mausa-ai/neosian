@@ -25,15 +25,17 @@ The repository is private; as a dependency of another uv project, install
 from the git URL, pinned to a release tag (extras ride the same URL):
 
 ```bash
-uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.78.0"
-uv add "neosian[postgres] @ git+ssh://git@github.com/neosae/neosian@v0.78.0"   # + PostgresStore
-uv add "neosian[mcp] @ git+ssh://git@github.com/neosae/neosian@v0.78.0"        # + MCP memory server
-uv add "neosian[otel] @ git+ssh://git@github.com/neosae/neosian@v0.78.0"       # + OpenTelemetry spans
+uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.80.0"
+uv add "neosian[postgres] @ git+ssh://git@github.com/neosae/neosian@v0.80.0"   # + PostgresStore
+uv add "neosian[mcp] @ git+ssh://git@github.com/neosae/neosian@v0.80.0"        # + MCP memory server
+uv add "neosian[otel] @ git+ssh://git@github.com/neosae/neosian@v0.80.0"       # + OpenTelemetry spans
+uv add "neosian[server] @ git+ssh://git@github.com/neosae/neosian@v0.80.0"     # + the state process
 ```
 
-The core install is database-driver-free and MCP-free; the three provider
-SDKs (openai, anthropic, cerebras) come unconditionally — a provider is
-*available* when its API key is set.
+The core install is database-driver-free, MCP-free, and server-free
+(`RemoteStore`, the state process's client, rides the core install); the
+three provider SDKs (openai, anthropic, cerebras) come unconditionally —
+a provider is *available* when its API key is set.
 
 ## Quickstart
 
@@ -166,8 +168,8 @@ reference wiring.
 
 ## Memory from the shell
 
-The same six commands, no Python in the loop — the fourth transport over
-the same dispatcher:
+The same six commands, no Python in the loop — the shell transport over
+the same dispatcher the four runtime transports execute:
 
 ```bash
 neosian memory view / --root .neosian/memory --scope user:me
@@ -216,9 +218,11 @@ door for a coding agent with shell access alone.
 
 `MemoryStore` and `ConversationStore` are the contracts: async ABCs that
 own no connection, commit no transaction, issue no DDL. `FileStore` (a
-plain directory) and `PostgresStore` (the `postgres` extra) implement both;
-a host may implement its own, kept honest by the shipped
-`MemoryStoreContract` / `ConversationStoreContract` conformance kits.
+plain directory) and `PostgresStore` (the `postgres` extra) implement both,
+and `RemoteStore` implements both over the state process's HTTP wire (see
+the next section — core install, no extra); a host may implement its own,
+kept honest by the shipped `MemoryStoreContract` /
+`ConversationStoreContract` conformance kits.
 
 Postgres schema application is the operator's explicit act:
 
@@ -251,6 +255,44 @@ Registering a client is one command:
 the exact `mcpServers` entry (paste-able JSON on stdout); `--write`
 merges it into the client's config, preserving every other key, and
 refuses a client whose config directory does not exist.
+
+## The state process
+
+`neosian serve` (the `server` extra) puts memory **and** conversations on
+a network port, so state is reachable from another process, another app,
+or another language — the multi-writer answer for a FileStore root, and
+one container in a dev compose. It adds no capability the library lacks,
+only reach; the quickstart above stays embedded.
+
+```bash
+NEOSIAN_SERVE_TOKEN=change-me neosian serve --root ~/.my-agent/state
+```
+
+Or as the appliance — one token, one volume, one health check
+(`docker build -t neosian .` with the shipped Dockerfile):
+
+```bash
+docker run -d -e NEOSIAN_SERVE_TOKEN=change-me \
+  -p 6367:6367 -v neosian-state:/data neosian
+```
+
+Python clients connect with `RemoteStore` (core install — no extra),
+which implements both storage ABCs over the wire and drops in wherever
+`FileStore` does; the capabilities handshake transmits the backend's
+concurrency honestly:
+
+```python
+from neosian import RemoteStore
+
+store = await RemoteStore.connect("http://localhost:6367", token="change-me")
+```
+
+Agents speak MCP over streamable HTTP at `/mcp` when the server is
+started with mounts. Auth is one bearer token, env-only (an unset token
+refuses to start); `/health` is the one unauthenticated route; TLS
+terminates at a reverse proxy. FileStore and Postgres backends; both
+conformance kits run against the served wire in CI — including against
+the container, on both backends.
 
 ## Streaming and events
 
@@ -362,8 +404,8 @@ truth across scripted sessions — write discipline, recall in the next
 session, dedup, contradiction handling, long-horizon recall, correcting a
 wrong memory, reflection at the close, and maintenance over a seeded
 store — with a transports axis (the shipped pack runs
-`transports: [function, cli]`; Anthropic externally adds
-`native_memory` — one definition, four transports). Shipped packs:
+`transports: [function, cli, http]`; Anthropic externally adds
+`native_memory` — one definition, five transports). Shipped packs:
 [examples/eval_basic_agent.yaml](examples/eval_basic_agent.yaml) and
 [examples/eval_memory_baseline.yaml](examples/eval_memory_baseline.yaml) —
 the memory baseline is all-green on `models: [fake]`, so a red run is a
@@ -391,11 +433,14 @@ so a prompt-pack change without a recorded re-run fails `make test`.
 
 `v1.0.0` is deliberately not yet cut. When it is, it will carry the API
 stability promise: `Agent`, `Conversation`, `MemoryStore`, and the
-`neosian.evaluation` facade stable under SemVer, and the
+`neosian.evaluation` facade stable under SemVer, the
 [ECOSYSTEM.md](docs/ECOSYSTEM.md) seams (scope grammar, token classes, integer
 micro-USD, event vocabulary, error codes) SemVer-guaranteed — a seam break
-only at a major. Until then the seams are append-only by convention, and
-error codes are already append-only forever. Consumers pin an annotated
+only at a major — and the state process's wire (the twelve `/v1/` store
+routes and their envelope, versioned by `WIRE_VERSION`) stable under the
+same promise: one promise covering library, seams, and wire (DESIGN
+§18.1). Until then the seams are append-only by convention, and error
+codes are already append-only forever. Consumers pin an annotated
 `v<X.Y.Z>` tag, never master.
 
 ## Development
@@ -408,6 +453,7 @@ make test       # unit tier — the default gate, zero API keys
 make size       # file-size gate (warn 300 / fail 500)
 make test-external provider=anthropic file=~/path/to/creds  # real API calls
 make test-postgres                                      # needs NEOSIAN_TEST_POSTGRES_DSN
+make test-container                                     # both kits vs the container (docker)
 ```
 
 The default gate needs no accounts; external tiers inject credentials

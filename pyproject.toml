@@ -1,6 +1,6 @@
 [project]
 name = "neosian"
-version = "0.79.0"
+version = "0.80.0"
 description = "Async-only library for LLM agents: tools, orchestration, streaming, guardrails — with opt-in conversation, memory, and compaction layers over a stateless core."
 readme = "README.md"
 license = "Apache-2.0"
@@ -79,6 +79,7 @@ markers = [
     "external_anthropic: Real Anthropic API calls",
     "external_cerebras: Real Cerebras API calls",
     "external_postgres: A real PostgreSQL server (DSN env var, not an API key)",
+    "external_server: A running state-process container (URL env var, not an API key)",
 ]
 testpaths = ["tests"]
 filterwarnings = [

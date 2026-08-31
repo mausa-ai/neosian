@@ -103,8 +103,14 @@ class TestSuiteLevel:
             load_eval_config(_write(tmp_path, body))
 
     def test_transports_parse(self, tmp_path: Path) -> None:
-        config = _load(tmp_path, MINIMAL + "transports: [function, native_memory]\n")
-        assert config.transports == (Transport.FUNCTION, Transport.NATIVE)
+        config = _load(
+            tmp_path, MINIMAL + "transports: [function, native_memory, http]\n"
+        )
+        assert config.transports == (
+            Transport.FUNCTION,
+            Transport.NATIVE,
+            Transport.HTTP,
+        )
 
     def test_unknown_transport(self, tmp_path: Path) -> None:
         with pytest.raises(EvalConfigInvalidYAMLError, match="unknown transport 'sse'"):

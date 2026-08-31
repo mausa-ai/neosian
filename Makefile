@@ -1,7 +1,7 @@
 # neosian development targets — `make help` (DESIGN §11)
 
 .DEFAULT_GOAL := help
-.PHONY: help install lint format typecheck test test-external test-postgres size release phase-tag
+.PHONY: help install lint format typecheck test test-external test-postgres test-container size release phase-tag
 
 help: ## List targets
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z_-]+:.*?##/ {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2} /^##@/ {printf "\n%s\n", substr($$0, 5)}' $(MAKEFILE_LIST)
@@ -36,6 +36,9 @@ endif
 
 test-postgres: ## Postgres suite: needs NEOSIAN_TEST_POSTGRES_DSN (self-skips when unset)
 	uv run pytest -m external_postgres -v
+
+test-container: ## Build the state-process image; both kits against it (needs docker)
+	./scripts/container_test.sh
 
 size: ## File-size gate (warn 300 / fail 500)
 	uv run python scripts/check_file_size.py

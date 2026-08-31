@@ -5,9 +5,9 @@ summary: Six commands + the operator verbs as neosian memory, --json, exit tiers
 
 # Memory from the shell
 
-`neosian memory <command>` is the fourth transport over the same
-dispatcher the function tool, the native Anthropic declaration, and
-the MCP server execute. An agent with nothing but shell access
+`neosian memory <command>` is the shell transport over the same
+dispatcher the function tool, the native Anthropic declaration, the
+MCP server, and the state process's HTTP wire execute. An agent with nothing but shell access
 operates the same memory the runtime transports serve.
 `python -m neosian.memory` is the sandbox-safe twin for a venv whose
 bin is not on PATH.
@@ -126,6 +126,7 @@ fields (`command`, `path`, `version`, `previous_path`).
 ## One writer per root
 
 A FileStore root is owned by one writer at a time. Do not run
-`neosian memory` writes against a root an MCP server (or an embedding
-application) is serving — route multi-writer needs to Postgres. The
+`neosian memory` writes against a root an MCP server, a `neosian
+serve` process, or an embedding application is serving — route
+multi-writer needs to Postgres or to the state process itself. The
 full rule: `neosian docs topology`.

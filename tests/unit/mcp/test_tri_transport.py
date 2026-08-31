@@ -1,24 +1,70 @@
-"""The N4 done-when, grown at NA: one store serves the same memory
-through the function tool, the native flag, an MCP client, and the
-memory CLI's engine."""
+"""The N4 done-when, grown at NA and NM: one store serves the same
+memory through the function tool, the native flag, an MCP client, the
+memory CLI's engine, and the state process's streamable-HTTP door —
+five transports, one dispatcher (DESIGN §18.6)."""
 
 import io
+import json
 from pathlib import Path
+from typing import Any
 
+import httpx
 from mcp.client import Client
 
 from neosian._foundation.mcp.server import create_memory_server
 from neosian._foundation.memory.cli import run
+from neosian._foundation.memory.file import FileStore
 from neosian._foundation.memory.mounts import MemoryConfig
 from neosian._foundation.memory.settings import format_mount
 from neosian._foundation.memory.tools import (
     NATIVE_MEMORY_TOOL_TYPE,
     create_memory_tool,
 )
+from neosian._foundation.server.app import build_app
 from neosian._foundation.tools.base import get_tool_definition
 
+_TOKEN = "five-transports"
+_HEADERS = {
+    "Authorization": f"Bearer {_TOKEN}",
+    "Accept": "application/json, text/event-stream",
+    "Content-Type": "application/json",
+}
+_INITIALIZE = {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "initialize",
+    "params": {
+        "protocolVersion": "2025-06-18",
+        "capabilities": {},
+        "clientInfo": {"name": "neosian-tests", "version": "0"},
+    },
+}
+_INITIALIZED = {"jsonrpc": "2.0", "method": "notifications/initialized"}
+_CALL = {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "tools/call",
+    "params": {
+        "name": "memory",
+        "arguments": {
+            "command": "create",
+            "path": "/memories/from-http",
+            "content": "hi over http",
+        },
+    },
+}
 
-async def test_one_store_four_transports(config: MemoryConfig, tmp_path: Path) -> None:
+
+def _sse_payload(body: str) -> dict[str, Any]:
+    """The one JSON-RPC message out of a streamable-HTTP SSE response."""
+    for line in body.splitlines():
+        if line.startswith("data: "):
+            decoded: dict[str, Any] = json.loads(line[len("data: ") :])
+            return decoded
+    raise AssertionError(f"no SSE data frame in {body!r}")
+
+
+async def test_one_store_five_transports(config: MemoryConfig, tmp_path: Path) -> None:
     # 1. The function tool writes.
     plain = create_memory_tool(config)
     created = await plain(command="create", path="/memories/prefs", content="dark mode")
@@ -59,9 +105,37 @@ async def test_one_store_four_transports(config: MemoryConfig, tmp_path: Path) -
     code = await run(argv, {}, stdin=io.StringIO(), out=out, err=err)
     assert code == 0
 
-    # 5. The function tool sees every transport's write in the index.
+    # 5. MCP over streamable HTTP — the state process's agent door
+    #    (§18.6): the same factory's server at /mcp, driven with raw
+    #    JSON-RPC over the ASGI transport (the SDK's client needs a real
+    #    socket). The lifespan is entered in this task deliberately —
+    #    the session manager's task group refuses to exit anywhere else.
+    app = await build_app(
+        FileStore(tmp_path / "memory"),
+        token=_TOKEN,
+        mounts=config.mounts,
+        actor="serve:test",
+    )
+    async with (
+        app.router.lifespan_context(app),
+        httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://state-process"
+        ) as http,
+    ):
+        init = await http.post("/mcp", json=_INITIALIZE, headers=_HEADERS)
+        assert init.status_code == 200
+        session = {"mcp-session-id": init.headers["mcp-session-id"]}
+        note = await http.post("/mcp", json=_INITIALIZED, headers=_HEADERS | session)
+        assert note.status_code in (200, 202)
+        called = await http.post("/mcp", json=_CALL, headers=_HEADERS | session)
+        assert called.status_code == 200
+        result = _sse_payload(called.text)["result"]
+        assert result.get("isError") is not True
+
+    # 6. The function tool sees every transport's write in the index.
     index = await plain(command="view", path="/")
     assert index.success
     assert "prefs" in str(index.data)
     assert "from-mcp" in str(index.data)
     assert "from-cli" in str(index.data)
+    assert "from-http" in str(index.data)
