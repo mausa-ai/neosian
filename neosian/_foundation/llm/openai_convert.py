@@ -7,22 +7,39 @@ adapters: converters live per adapter until a real seam appears (the
 anthropic allowlist reason, applied in reverse).
 """
 
-from typing import cast
+from typing import Any, cast
 
 from openai.types.chat import (
     ChatCompletionAssistantMessageParam,
     ChatCompletionMessageParam,
+    ChatCompletionMessageToolCallParam,
     ChatCompletionToolParam,
 )
 from openai.types.chat.completion_create_params import (
     ResponseFormat as OpenAIResponseFormat,
 )
 
-from neosian._foundation.llm.base import Message, Role, ToolDefinition
+from neosian._foundation.llm.base import Message, Role, ToolCall, ToolDefinition
 from neosian._foundation.shared.constants import ErrorMessages
 from neosian._foundation.shared.exceptions import UnsupportedContentError
 from neosian._foundation.shared.serialization import safe_json_dumps
 from neosian._foundation.shared.types import ResponseFormat
+
+
+def _tool_call_param(tc: ToolCall) -> ChatCompletionMessageToolCallParam:
+    """The wire shape, plus the provider's own fields echoed back verbatim
+    (Gemini 3's `extra_content.google.thought_signature`, DESIGN §19.7)."""
+    param: dict[str, Any] = {
+        "id": tc.id,
+        "type": "function",
+        "function": {
+            "name": tc.name,
+            "arguments": safe_json_dumps(tc.arguments, "tool_call.arguments"),
+        },
+    }
+    if tc.extra:
+        param.update(tc.extra)
+    return cast(ChatCompletionMessageToolCallParam, param)
 
 
 def convert_messages(messages: list[Message]) -> list[ChatCompletionMessageParam]:
@@ -51,19 +68,7 @@ def convert_messages(messages: list[Message]) -> list[ChatCompletionMessageParam
                 assistant_msg: ChatCompletionAssistantMessageParam = {
                     "role": "assistant",
                     "content": msg.content,
-                    "tool_calls": [
-                        {
-                            "id": tc.id,
-                            "type": "function",
-                            "function": {
-                                "name": tc.name,
-                                "arguments": safe_json_dumps(
-                                    tc.arguments, "tool_call.arguments"
-                                ),
-                            },
-                        }
-                        for tc in msg.tool_calls
-                    ],
+                    "tool_calls": [_tool_call_param(tc) for tc in msg.tool_calls],
                 }
                 result.append(assistant_msg)
             else:

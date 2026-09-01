@@ -44,11 +44,18 @@ class Role(str, Enum):
 
 @dataclass
 class ToolCall:
-    """A tool call requested by the model."""
+    """A tool call requested by the model.
+
+    `extra` holds the provider's own fields on the call beyond
+    id/name/arguments — the OpenAI wire echoes them back verbatim (Gemini
+    3's `extra_content.google.thought_signature`, DESIGN §19.7); every
+    other wire ignores them, and `None` is the common case.
+    """
 
     id: ToolCallId
     name: ToolName
     arguments: dict[str, Any]
+    extra: dict[str, Any] | None = None
 
 
 @dataclass

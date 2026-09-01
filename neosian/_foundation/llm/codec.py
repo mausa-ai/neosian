@@ -70,16 +70,22 @@ def content_from_json(
     return blocks
 
 
+def _tool_call_to_json(tc: ToolCall) -> dict[str, Any]:
+    """`extra` appears only when the provider set it — older lines and
+    every other wire's calls encode exactly as before."""
+    encoded: dict[str, Any] = {"id": tc.id, "name": tc.name, "arguments": tc.arguments}
+    if tc.extra:
+        encoded["extra"] = tc.extra
+    return encoded
+
+
 def message_to_json(message: Message) -> dict[str, Any]:
     """Full-fidelity JSON-safe encoding of one message."""
     return {
         "role": message.role.value,
         "content": content_to_json(message.content),
         "reasoning": message.reasoning,
-        "tool_calls": [
-            {"id": tc.id, "name": tc.name, "arguments": tc.arguments}
-            for tc in message.tool_calls
-        ],
+        "tool_calls": [_tool_call_to_json(tc) for tc in message.tool_calls],
         "tool_call_id": message.tool_call_id,
     }
 
@@ -96,6 +102,7 @@ def message_from_json(data: dict[str, Any]) -> Message:
                 id=ToolCallId(tc["id"]),
                 name=ToolName(tc["name"]),
                 arguments=tc.get("arguments") or {},
+                extra=tc.get("extra"),
             )
             for tc in data.get("tool_calls") or []
         ],

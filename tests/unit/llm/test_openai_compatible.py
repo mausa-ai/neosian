@@ -5,7 +5,8 @@ own suite (test_openai.py) is the byte-identical regression pin."""
 import logging
 import os
 from collections.abc import AsyncIterator
-from typing import Any
+from dataclasses import replace
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -19,17 +20,18 @@ from neosian import (
     RegisteredModel,
     register_model,
 )
-from neosian._foundation.llm.base import Message, Role
+from neosian._foundation.llm.base import Message, Role, ToolCall
 from neosian._foundation.llm.openai import (
     OPENAI_DOOR,
     OpenAIClient,
     OpenAICompatibleClient,
 )
+from neosian._foundation.llm.openai_convert import convert_messages
 from neosian._foundation.shared.exceptions import (
     ProviderError,
     UnsupportedParameterError,
 )
-from neosian._foundation.shared.types import ResponseFormat
+from neosian._foundation.shared.types import ResponseFormat, ToolCallId, ToolName
 
 XAI = OpenAICompatible(
     name="xai",
@@ -220,3 +222,75 @@ class TestSchemasAndErrors:
         with pytest.raises(ProviderError) as exc_info:
             await client.complete(_USER, model=_grok())
         assert exc_info.value.provider == "xai"
+
+
+_SIGNATURE = {"extra_content": {"google": {"thought_signature": "sig-1"}}}
+_ASK = [Message(role=Role.USER, content="?")]
+
+
+def _tool_call_mock(extra: object, *, index: int | None = None) -> MagicMock:
+    call = MagicMock()
+    call.id = "call_1"
+    call.function.name = "oracle"
+    call.function.arguments = '{"q": "door"}'
+    call.model_extra = extra
+    if index is not None:
+        call.index = index
+    return call
+
+
+@pytest.mark.unit
+class TestToolCallExtras:
+    """The provider's own fields on a tool call round-trip opaquely —
+    Gemini 3's thought signature (DESIGN §19.3, §19.7)."""
+
+    async def test_complete_keeps_the_providers_fields(self) -> None:
+        client = _client()
+        response = _response(content=None)
+        response.choices[0].message.tool_calls = [_tool_call_mock(_SIGNATURE)]
+        _mock_complete(client, response)
+        result = await client.complete(_ASK, model=_grok())
+        (call,) = result.message.tool_calls
+        assert call.extra == _SIGNATURE
+        assert call.arguments == {"q": "door"}
+
+    async def test_a_plain_call_carries_none(self) -> None:
+        client = _client()
+        response = _response(content=None)
+        response.choices[0].message.tool_calls = [_tool_call_mock({})]
+        _mock_complete(client, response)
+        result = await client.complete(_ASK, model=_grok())
+        assert result.message.tool_calls[0].extra is None
+
+    async def test_streamed_deltas_accumulate_them(self) -> None:
+        client = _client()
+        opening = _chunk("", tool_calls=[_tool_call_mock(_SIGNATURE, index=0)])
+        closing = _chunk("")
+        closing.choices[0].finish_reason = "tool_calls"
+        _mock_stream(client, [opening, closing])
+        chunks = [chunk async for chunk in client.stream(_ASK, model=_grok())]
+        (call,) = [call for chunk in chunks for call in chunk.tool_calls]
+        assert call.extra == _SIGNATURE
+        assert call.name == "oracle"
+
+    def test_the_wire_echoes_them_back(self) -> None:
+        call = ToolCall(
+            id=ToolCallId("call_1"),
+            name=ToolName("oracle"),
+            arguments={"q": "door"},
+            extra=_SIGNATURE,
+        )
+        message = Message(role=Role.ASSISTANT, content=None, tool_calls=[call])
+        (wire,) = convert_messages([message])
+        sent = cast(dict[str, Any], wire)["tool_calls"][0]
+        assert sent["extra_content"] == _SIGNATURE["extra_content"]
+        assert sent["function"] == {"name": "oracle", "arguments": '{"q": "door"}'}
+
+        (plain,) = convert_messages(
+            [replace(message, tool_calls=[replace(call, extra=None)])]
+        )
+        assert set(cast(dict[str, Any], plain)["tool_calls"][0]) == {
+            "id",
+            "type",
+            "function",
+        }

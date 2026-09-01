@@ -108,3 +108,35 @@ class TestCompactionRoundTrip:
     def test_failed_compaction_content_none_round_trips(self) -> None:
         message = Message(role=Role.ASSISTANT, content=[CompactionBlock(content=None)])
         assert message_from_json(message_to_json(message)) == message
+
+
+@pytest.mark.unit
+class TestToolCallExtra:
+    """`ToolCall.extra` persists with the turn and stays absent otherwise."""
+
+    def test_extra_round_trips(self) -> None:
+        message = Message(
+            role=Role.ASSISTANT,
+            content=None,
+            tool_calls=[
+                ToolCall(
+                    id=ToolCallId("call_1"),
+                    name=ToolName("lookup"),
+                    arguments={},
+                    extra={"extra_content": {"google": {"thought_signature": "s"}}},
+                )
+            ],
+        )
+        assert _round_trip(message) == message
+
+    def test_no_extra_means_no_key(self) -> None:
+        message = Message(
+            role=Role.ASSISTANT,
+            content=None,
+            tool_calls=[
+                ToolCall(id=ToolCallId("call_1"), name=ToolName("lookup"), arguments={})
+            ],
+        )
+        (encoded,) = message_to_json(message)["tool_calls"]
+        assert set(encoded) == {"id", "name", "arguments"}
+        assert _round_trip(message).tool_calls[0].extra is None

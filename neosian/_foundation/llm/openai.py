@@ -4,7 +4,7 @@ import json
 import logging
 from collections.abc import AsyncIterator
 from dataclasses import replace
-from typing import Final
+from typing import Any, Final
 
 from openai import AsyncOpenAI, BadRequestError, omit
 from openai.types.chat import (
@@ -51,6 +51,13 @@ logger = logging.getLogger(__name__)
 
 # OpenAI's own door: the SDK's endpoint (or OPENAI_BASE_URL), OpenAI's dialect.
 OPENAI_DOOR: Final = OpenAICompatible(name="openai", api_key_env="OPENAI_API_KEY")
+
+
+def _extra_of(part: object) -> dict[str, Any] | None:
+    """The provider's own fields on a tool call or delta (the SDK keeps them
+    in `model_extra`) — carried on `ToolCall.extra`, never interpreted."""
+    extra = getattr(part, "model_extra", None)
+    return dict(extra) if isinstance(extra, dict) and extra else None
 
 
 class OpenAICompatibleClient(BaseLLMClient):
@@ -282,6 +289,7 @@ class OpenAICompatibleClient(BaseLLMClient):
                         id=ToolCallId(tc.id),
                         name=ToolName(tc.function.name),
                         arguments=json.loads(args_str),
+                        extra=_extra_of(tc),
                     )
                 )
 
@@ -360,6 +368,7 @@ class OpenAICompatibleClient(BaseLLMClient):
 
             # Track tool calls being built across chunks
             tool_call_builders: dict[int, dict[str, str]] = {}
+            tool_call_extras: dict[int, dict[str, Any]] = {}
 
             async for chunk in stream:
                 # Handle usage-only chunk (comes after finish_reason)
@@ -401,6 +410,8 @@ class OpenAICompatibleClient(BaseLLMClient):
 
                         if tc.id:
                             tool_call_builders[idx]["id"] = tc.id
+                        if extra := _extra_of(tc):
+                            tool_call_extras.setdefault(idx, {}).update(extra)
                         if tc.function:
                             if tc.function.name:
                                 tool_call_builders[idx]["name"] = tc.function.name
@@ -412,7 +423,7 @@ class OpenAICompatibleClient(BaseLLMClient):
                 # On finish, yield completed tool calls
                 finish_reason = choice.finish_reason
                 if finish_reason == "tool_calls" and tool_call_builders:
-                    for builder in tool_call_builders.values():
+                    for idx, builder in tool_call_builders.items():
                         # Normalize empty arguments to {}
                         args_str = builder["arguments"] or "{}"
                         tool_calls.append(
@@ -420,6 +431,7 @@ class OpenAICompatibleClient(BaseLLMClient):
                                 id=ToolCallId(builder["id"]),
                                 name=ToolName(builder["name"]),
                                 arguments=json.loads(args_str),
+                                extra=tool_call_extras.get(idx),
                             )
                         )
 
