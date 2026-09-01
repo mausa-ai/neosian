@@ -78,6 +78,11 @@ def _scriptless(
 
 
 def _assert_baseline(report: EvalReport) -> None:
+    # The whole board, one line per cell: pytest truncates the assertion's
+    # repr, and BASELINES.md transcribes every cell from the CI log.
+    for result in report.results:
+        verdict = "ok" if result.passed else "RED"
+        print(f"cell {result.variant} x {result.case}: {verdict}")
     harness_errors = [r.error for r in report.results if r.error is not None]
     assert not harness_errors, harness_errors
     failures = [
