@@ -35,7 +35,7 @@ from neosian._foundation.shared.exceptions import (
     UnsupportedParameterError,
 )
 from neosian._foundation.shared.types import (
-    Model,
+    AnyModel,
     ReasoningEffort,
     ResponseFormat,
     ToolCallId,
@@ -68,7 +68,7 @@ class CerebrasClient(BaseLLMClient):
     async def complete(
         self,
         messages: list[Message],
-        model: Model,
+        model: AnyModel,
         tools: list[ToolDefinition] | None = None,
         temperature: float | None = None,
         response_format: ResponseFormat | None = None,
@@ -241,7 +241,7 @@ class CerebrasClient(BaseLLMClient):
     async def stream(
         self,
         messages: list[Message],
-        model: Model,
+        model: AnyModel,
         tools: list[ToolDefinition] | None = None,
         temperature: float | None = None,
         reasoning_effort: ReasoningEffort | None = None,

@@ -38,14 +38,13 @@ from neosian._foundation.shared.exceptions import (
 )
 from neosian._foundation.shared.prompt_assets import get_prompt
 from neosian._foundation.shared.structured import structured_call
-from neosian._foundation.shared.types import Model
+from neosian._foundation.shared.types import AnyModel
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
     from neosian._foundation.llm.base import BaseLLMClient, Usage
     from neosian._foundation.memory.types import MemoryEntry
-    from neosian._foundation.shared.types import Provider
 
 logger = logging.getLogger(__name__)
 
@@ -117,8 +116,8 @@ class MaintenanceBatch(BaseModel):
 async def run_maintenance(
     config: MemoryConfig,
     *,
-    acquire: Callable[[Provider], BaseLLMClient] | None = None,
-    model: Model | None = None,
+    acquire: Callable[[AnyModel], BaseLLMClient] | None = None,
+    model: AnyModel | None = None,
     actor: str | None = None,
     clock: Clock | None = None,
     min_age: timedelta = timedelta(days=MAINTENANCE_MIN_AGE_DAYS),

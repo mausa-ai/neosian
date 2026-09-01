@@ -28,13 +28,13 @@ from neosian._foundation.shared.exceptions import (
     EvalError,
     EvalRunError,
 )
-from neosian._foundation.shared.types import AgentConfig, Model, ToolName
+from neosian._foundation.shared.types import AgentConfig, AnyModel, ToolName
 
 
 async def run_case(
     base: AgentConfig,
     variant: Variant,
-    model: Model,
+    model: AnyModel,
     case: EvalCase,
     *,
     suite_execute: frozenset[ToolName] = frozenset(),
@@ -70,7 +70,7 @@ async def run_case(
 async def _run(
     base: AgentConfig,
     variant: Variant,
-    model: Model,
+    model: AnyModel,
     case: EvalCase,
     *,
     suite_execute: frozenset[ToolName],

@@ -19,20 +19,19 @@ from pydantic import BaseModel
 
 from neosian._foundation.llm.base import Message, Role, text_of
 from neosian._foundation.shared.schema import validate_json
-from neosian._foundation.shared.types import Model, ResponseFormat
+from neosian._foundation.shared.types import AnyModel, ResponseFormat
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
     from neosian._foundation.llm.base import BaseLLMClient, Usage
-    from neosian._foundation.shared.types import Provider
 
 logger = logging.getLogger(__name__)
 
 
 async def structured_call[T: BaseModel](
-    acquire: Callable[[Provider], BaseLLMClient],
-    model: Model,
+    acquire: Callable[[AnyModel], BaseLLMClient],
+    model: AnyModel,
     system: str,
     payload: str,
     schema: type[T],
@@ -40,7 +39,7 @@ async def structured_call[T: BaseModel](
 ) -> tuple[T | None, Usage | None, str | None]:
     """One degrade-safe structured-output call through the lease."""
     try:
-        client = acquire(model.provider)
+        client = acquire(model)
         response = await client.complete(
             [
                 Message(role=Role.SYSTEM, content=system),

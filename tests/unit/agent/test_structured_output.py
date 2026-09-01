@@ -131,7 +131,7 @@ class TestStructuredOutputValidation:
                 model="gpt-5-nano",
             )
         )
-        mock_router.create_client.return_value = mock_client
+        mock_router.create_client_for.return_value = mock_client
 
         messages = [Message(role=Role.USER, content="What's the weather?")]
         rf = ResponseFormat(schema=WeatherResponse)
@@ -160,7 +160,7 @@ class TestStructuredOutputValidation:
                 model="gpt-5-nano",
             )
         )
-        mock_router.create_client.return_value = mock_client
+        mock_router.create_client_for.return_value = mock_client
 
         messages = [Message(role=Role.USER, content="What's the weather?")]
         rf = ResponseFormat(schema=WeatherResponse)
@@ -193,7 +193,7 @@ class TestStructuredOutputValidation:
                 model="gpt-5-nano",
             )
         )
-        mock_router.create_client.return_value = mock_client
+        mock_router.create_client_for.return_value = mock_client
 
         messages = [Message(role=Role.USER, content="What's the weather?")]
 
@@ -288,7 +288,7 @@ class TestUnionTypeSupport:
                 model="gpt-5-nano",
             )
         )
-        mock_router.create_client.return_value = mock_client
+        mock_router.create_client_for.return_value = mock_client
 
         messages = [Message(role=Role.USER, content="Generate audio")]
         rf = ResponseFormat(schema=cast(Any, OutputUnion))
@@ -319,7 +319,7 @@ class TestUnionTypeSupport:
                 model="gpt-5-nano",
             )
         )
-        mock_router.create_client.return_value = mock_client
+        mock_router.create_client_for.return_value = mock_client
 
         messages = [Message(role=Role.USER, content="Generate music")]
         rf = ResponseFormat(schema=cast(Any, OutputUnion))
@@ -352,7 +352,7 @@ class TestUnionTypeSupport:
                 model="gpt-5-nano",
             )
         )
-        mock_router.create_client.return_value = mock_client
+        mock_router.create_client_for.return_value = mock_client
 
         messages = [Message(role=Role.USER, content="Generate audio")]
         rf = ResponseFormat(schema=cast(Any, PipeUnion))

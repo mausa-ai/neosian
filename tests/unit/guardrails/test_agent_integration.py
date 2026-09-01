@@ -48,7 +48,7 @@ def _create_mock_router(mock_client: BaseLLMClient | None = None) -> MagicMock:
 
     mock_router = MagicMock()
     mock_router.has_provider.return_value = True
-    mock_router.create_client.return_value = mock_client
+    mock_router.create_client_for.return_value = mock_client
     return mock_router
 
 

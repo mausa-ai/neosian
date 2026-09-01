@@ -16,11 +16,13 @@ from neosian._foundation.llm.base import Message, ModelUsage, Role, Usage, text_
 from neosian._foundation.shared.constants import EnvVars
 from neosian._foundation.shared.exceptions import MissingAPIKeyError
 from neosian._foundation.shared.types import (
+    AnyModel,
     GuardrailErrorPolicy,
     GuardrailMode,
     GuardrailResult,
     PolicyResult,
     Provider,
+    RegisteredModel,
 )
 
 if TYPE_CHECKING:
@@ -45,7 +47,19 @@ def require_provider_key(provider: Provider) -> None:
     FAKE needs no key; a caller-supplied client_factory bypasses this
     (the factory owns credentials).
     """
-    env_var = _PROVIDER_ENV.get(provider)
+    _require_env(_PROVIDER_ENV.get(provider))
+
+
+def require_model_key(model: AnyModel) -> None:
+    """The model-keyed form: a registered model's door names its own env
+    var (DESIGN §19); shipped models defer to `require_provider_key`."""
+    if isinstance(model, RegisteredModel):
+        _require_env(model.door.api_key_env)
+    else:
+        require_provider_key(model.provider)
+
+
+def _require_env(env_var: str | None) -> None:
     if env_var is not None and not os.environ.get(env_var):
         raise MissingAPIKeyError(f"{env_var} environment variable not set")
 

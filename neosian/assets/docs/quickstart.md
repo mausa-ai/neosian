@@ -79,6 +79,28 @@ log-projection compaction (default-on) pages aged turns out of context
 and a built-in `recall_turn` tool re-hydrates any of them verbatim —
 what is stored never changes.
 
+## Bring an OpenAI-compatible model
+
+Models the `Model` enum lacks — xAI, DeepSeek, a fine-tune — register
+once at import through a door: the endpoint, the env var that signs
+requests, and the dialect quirks the wire has.
+
+```python
+from neosian import AgentConfig, ModelPricing, OpenAICompatible, register_model
+
+xai = OpenAICompatible(name="xai", api_key_env="XAI_API_KEY",
+                       base_url="https://api.x.ai/v1", temperature=True)
+GROK_4 = register_model("grok-4", provider=xai, context_window=131_072,
+                        max_output_tokens=16_384,
+                        pricing=ModelPricing(input_per_mtok=3_000_000,
+                                             output_per_mtok=15_000_000))
+config = AgentConfig(system_prompt="Be concise.", model=GROK_4)
+```
+
+Cost in µ$, the context policy, capability-aware fallback and the
+playground picker treat it like a shipped model; a missing `XAI_API_KEY`
+fails naming it.
+
 ## Where to go next
 
 - `neosian docs memory` — how the memory layer thinks.

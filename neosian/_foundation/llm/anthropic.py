@@ -36,6 +36,7 @@ from neosian._foundation.shared.exceptions import (
     UnsupportedParameterError,
 )
 from neosian._foundation.shared.types import (
+    AnyModel,
     Model,
     ReasoningEffort,
     ResponseFormat,
@@ -174,7 +175,7 @@ class AnthropicClient(BaseLLMClient):
         self._client = AsyncAnthropic(api_key=api_key, max_retries=max_retries)
 
     def _validate_temperature_support(
-        self, model: Model, temperature: float | None
+        self, model: AnyModel, temperature: float | None
     ) -> None:
         """Reject explicit temperature on models that removed sampling params.
 
@@ -194,7 +195,7 @@ class AnthropicClient(BaseLLMClient):
             )
 
     def _resolve_effort(
-        self, model: Model, reasoning_effort: ReasoningEffort | None
+        self, model: AnyModel, reasoning_effort: ReasoningEffort | None
     ) -> ReasoningEffort | None:
         """Downgrade MAX effort on models whose spec doesn't allow it.
 
@@ -217,7 +218,7 @@ class AnthropicClient(BaseLLMClient):
     async def complete(
         self,
         messages: list[Message],
-        model: Model,
+        model: AnyModel,
         tools: list[ToolDefinition] | None = None,
         temperature: float | None = None,
         response_format: ResponseFormat | None = None,
@@ -446,7 +447,7 @@ class AnthropicClient(BaseLLMClient):
     async def stream(
         self,
         messages: list[Message],
-        model: Model,
+        model: AnyModel,
         tools: list[ToolDefinition] | None = None,
         temperature: float | None = None,
         reasoning_effort: ReasoningEffort | None = None,
@@ -849,7 +850,7 @@ class AnthropicClient(BaseLLMClient):
     def _validate_content_support(
         self,
         messages: list[Message],
-        model: Model,
+        model: AnyModel,
         *,
         server_compaction: bool = False,
     ) -> None:

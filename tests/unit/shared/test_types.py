@@ -395,7 +395,8 @@ class TestFakeModels:
     def test_default_models_total_over_providers(self) -> None:
         from neosian._foundation.shared.types import DEFAULT_MODELS
 
-        assert set(DEFAULT_MODELS) == set(Provider)
+        # Registered doors ship no default model (DESIGN §19).
+        assert set(DEFAULT_MODELS) == set(Provider) - {Provider.OPENAI_COMPATIBLE}
         assert DEFAULT_MODELS[Provider.FAKE] is Model.FAKE
 
 

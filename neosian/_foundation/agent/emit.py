@@ -12,7 +12,11 @@ from typing import TYPE_CHECKING, Any
 from neosian._foundation.agent.hooks import FallbackEvent, LlmCallEvent, TurnEvent
 from neosian._foundation.agent.response import AgentResponse
 from neosian._foundation.llm.base import Message, ModelUsage, Role, ToolCall, Usage
-from neosian._foundation.shared.types import GuardrailResult, Model, PolicyResult
+from neosian._foundation.shared.types import (
+    AnyModel,
+    GuardrailResult,
+    PolicyResult,
+)
 from neosian._foundation.tools.base import ToolResult
 
 if TYPE_CHECKING:
@@ -35,7 +39,7 @@ async def emit_turn(
 async def emit_llm_call(
     ctx: RunContext,
     *,
-    model: Model,
+    model: AnyModel,
     iteration: int,
     streamed: bool,
     started: float,

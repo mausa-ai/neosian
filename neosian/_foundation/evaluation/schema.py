@@ -14,7 +14,8 @@ from neosian._foundation.shared.exceptions import (
     EvalConfigUnknownKeyError,
     EvalModelUnknownError,
 )
-from neosian._foundation.shared.types import Model, ToolName
+from neosian._foundation.shared.registry import lookup_model
+from neosian._foundation.shared.types import AnyModel, ToolName
 
 
 def check_keys(
@@ -63,10 +64,10 @@ def parse_names(data: Any, key: str, path_str: str) -> frozenset[ToolName]:
     return frozenset(ToolName(n) for n in data)
 
 
-def parse_models(data: Any, path_str: str) -> tuple[Model, ...]:
+def parse_models(data: Any, path_str: str) -> tuple[AnyModel, ...]:
     if not isinstance(data, list) or not data:
         raise EvalConfigInvalidYAMLError(path_str, "'models' must be a non-empty list")
-    models: list[Model] = []
+    models: list[AnyModel] = []
     for entry in data:
         if not isinstance(entry, str):
             raise EvalConfigInvalidYAMLError(
@@ -74,10 +75,8 @@ def parse_models(data: Any, path_str: str) -> tuple[Model, ...]:
             )
         # Accept both "provider:model" and the bare model value
         value = entry.split(":", 1)[1] if ":" in entry else entry
-        for m in Model:
-            if m.value == value:
-                models.append(m)
-                break
-        else:
+        model = lookup_model(value)
+        if model is None:
             raise EvalModelUnknownError(entry, path_str)
+        models.append(model)
     return tuple(models)

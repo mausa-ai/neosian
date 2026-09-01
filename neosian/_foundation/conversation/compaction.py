@@ -28,7 +28,7 @@ from neosian._foundation.conversation.projection import (
 from neosian._foundation.conversation.types import ConversationProjection
 from neosian._foundation.llm.base import ModelUsage, Usage
 from neosian._foundation.shared.exceptions import ConfigurationError
-from neosian._foundation.shared.types import Model
+from neosian._foundation.shared.types import AnyModel
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -37,7 +37,6 @@ if TYPE_CHECKING:
     from neosian._foundation.conversation.types import ConversationTurn
     from neosian._foundation.llm.base import BaseLLMClient, Message
     from neosian._foundation.shared.context_policy import ContextPolicy
-    from neosian._foundation.shared.types import Provider
 
 # USER text is compacted least aggressively (§9.6): verbatim up to this
 # multiple of digest_chars, then head-clipped with a recall pointer
@@ -56,7 +55,7 @@ class CompactionConfig:
     """
 
     enabled: bool = True
-    model: Model | None = None
+    model: AnyModel | None = None
     hot_turns: int = 8
     trigger_fraction: float = 0.75
     digest_chars: int = 200
@@ -99,7 +98,7 @@ def should_compact(
     messages: Sequence[Message],
     *,
     policy: ContextPolicy,
-    model: Model,
+    model: AnyModel,
     fraction: float,
 ) -> bool:
     """High-water check: the deliberate underestimate stays the safe
@@ -127,8 +126,8 @@ async def run_boundary(
     turns: Sequence[ConversationTurn],
     projections: Sequence[ConversationProjection],
     config: CompactionConfig,
-    model: Model,
-    acquire: Callable[[Provider], BaseLLMClient],
+    model: AnyModel,
+    acquire: Callable[[AnyModel], BaseLLMClient],
 ) -> CompactionResult:
     """Run one compaction boundary; never more than one per send.
 

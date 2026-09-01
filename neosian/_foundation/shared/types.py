@@ -25,6 +25,13 @@ from neosian._foundation.shared.models import (
     ReasoningEffort as ReasoningEffort,
     format_micro_usd as format_micro_usd,
 )
+from neosian._foundation.shared.registry import (
+    AnyModel as AnyModel,
+    OpenAICompatible as OpenAICompatible,
+    RegisteredModel as RegisteredModel,
+    register_model as register_model,
+    registered_models,
+)
 
 if TYPE_CHECKING:
     from neosian._foundation.agent.approval import ToolGateConfig
@@ -78,7 +85,7 @@ class FallbackConfig:
         )
     """
 
-    model: Model
+    model: AnyModel
     retry_main_after: int = 0
 
 
@@ -226,7 +233,7 @@ class AgentConfig:
 
     system_prompt: SystemPrompt
     tools: list[ToolFunction] = field(default_factory=list)
-    model: Model = Model.CEREBRAS_GPT_OSS_120B
+    model: AnyModel = Model.CEREBRAS_GPT_OSS_120B
     fallback: FallbackConfig | None = None
     enable_todo: bool = True
     guardrails: "GuardrailsConfig | None" = None
@@ -289,8 +296,11 @@ class AgentConfig:
 
         # Runtime validation - model could be anything if user bypasses type hints
         model: object = self.model  # Type erasure to enable isinstance check
-        if not isinstance(model, Model):
-            supported = ", ".join(f"Model.{m.name}" for m in Model)
+        if not isinstance(model, (Model, RegisteredModel)):
+            supported = ", ".join(
+                [f"Model.{m.name}" for m in Model]
+                + [repr(m.value) for m in registered_models()]
+            )
             message = ErrorMessages.INVALID_MODEL.format(
                 model_type=type(model).__name__,
                 model_value=model,
@@ -300,8 +310,10 @@ class AgentConfig:
 
         # Validate reasoning_effort is only used with models that support it
         if self.reasoning_effort is not None and not self.model.supports_reasoning:
-            reasoning_models = [m for m in Model if m.supports_reasoning]
-            supported_models = ", ".join(f"Model.{m.name}" for m in reasoning_models)
+            supported_models = ", ".join(
+                [f"Model.{m.name}" for m in Model if m.supports_reasoning]
+                + [repr(m.value) for m in registered_models() if m.supports_reasoning]
+            )
             raise UnsupportedParameterError(
                 ErrorMessages.REASONING_EFFORT_MODEL_MISMATCH.format(
                     model=self.model.value,
@@ -423,7 +435,7 @@ class GuardrailsConfig:
     error_policy: GuardrailErrorPolicy = GuardrailErrorPolicy.FAIL_OPEN
 
     # Policy model; None = the agent's own configured model
-    model: Model | None = None
+    model: AnyModel | None = None
 
     def __post_init__(self) -> None:
         """Validate configuration."""

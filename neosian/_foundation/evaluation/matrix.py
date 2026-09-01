@@ -26,7 +26,7 @@ from neosian._foundation.evaluation.results import (
 from neosian._foundation.evaluation.runner import run_case
 from neosian._foundation.evaluation.types import EvalCase, EvalConfig
 from neosian._foundation.shared.exceptions import EvalError
-from neosian._foundation.shared.types import AgentConfig, Model, Provider
+from neosian._foundation.shared.types import AgentConfig, AnyModel, Provider
 
 logger = logging.getLogger(__name__)
 
@@ -194,6 +194,6 @@ def _slug(value: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "-", value)
 
 
-def _needs_throttle(model: Model, case: EvalCase) -> bool:
+def _needs_throttle(model: AnyModel, case: EvalCase) -> bool:
     """Rate-limit throttling applies only to runs that hit a real API."""
     return case.script is None and model.provider is not Provider.FAKE

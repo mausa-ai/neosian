@@ -193,7 +193,7 @@ async def execute_agent_core(
     # Try main model
     attempt = Attempt.start(agent._model, base_messages)
     try:
-        client = ctx.acquire(agent._model.provider)
+        client = ctx.acquire(agent._model)
         response = await execute_with_client(
             ctx,
             client=client,
@@ -246,7 +246,7 @@ async def execute_agent_core(
             agent._fallback.model, base_messages, prior=attempt
         )
         try:
-            fallback_client = ctx.acquire(agent._fallback.model.provider)
+            fallback_client = ctx.acquire(agent._fallback.model)
             response = await execute_with_client(
                 ctx,
                 client=fallback_client,
@@ -304,7 +304,7 @@ async def execute_with_fallback_model(
     if unsupported_content_types(agent._fallback.model, base_messages):
         attempt = Attempt.start(agent._model, base_messages)
         try:
-            main_client = ctx.acquire(agent._model.provider)
+            main_client = ctx.acquire(agent._model)
             response = await execute_with_client(
                 ctx,
                 client=main_client,
@@ -328,7 +328,7 @@ async def execute_with_fallback_model(
 
     attempt = Attempt.start(agent._fallback.model, base_messages)
     try:
-        client = ctx.acquire(agent._fallback.model.provider)
+        client = ctx.acquire(agent._fallback.model)
         response = await execute_with_client(
             ctx,
             client=client,
@@ -360,7 +360,7 @@ async def execute_with_fallback_model(
         fallback_error = str(e)
         main_attempt = Attempt.start(agent._model, base_messages, prior=attempt)
         try:
-            main_client = ctx.acquire(agent._model.provider)
+            main_client = ctx.acquire(agent._model)
             response = await execute_with_client(
                 ctx,
                 client=main_client,

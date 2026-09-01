@@ -23,7 +23,8 @@ from neosian._foundation.memory.settings import (
     add_store_arguments,
     resolve_store_settings,
 )
-from neosian._foundation.shared.types import Model
+from neosian._foundation.shared.registry import lookup_model, registered_models
+from neosian._foundation.shared.types import AnyModel, Model
 
 _DESCRIPTION: Final = "Read and write neosian agent memory from the shell."
 _EPILOG: Final = (
@@ -65,7 +66,7 @@ class Request:
     command: str
     arguments: dict[str, Any]
     json_output: bool
-    model: Model | None = None
+    model: AnyModel | None = None
     min_age_days: int = MAINTENANCE_MIN_AGE_DAYS
     limit: int = 50
     scope_wide: bool = False
@@ -268,15 +269,15 @@ def _parse_operator(sub: StreamParser, args: Any, settings: StoreSettings) -> Re
     return replace(request, version=args.version)
 
 
-def parse_model(sub: StreamParser, value: str | None) -> Model | None:
+def parse_model(sub: StreamParser, value: str | None) -> AnyModel | None:
     """A model id from argv, `provider:model` accepted (the eval spelling);
     unknown ids are grammar-tier errors — nothing is constructed."""
     if value is None:
         return None
     bare = value.split(":", 1)[1] if ":" in value else value
-    for model in Model:
-        if model.value == bare:
-            return model
-    known = ", ".join(m.value for m in Model)
+    model = lookup_model(bare)
+    if model is not None:
+        return model
+    known = ", ".join([m.value for m in Model] + [m.value for m in registered_models()])
     sub.error(f"unknown model {value!r} (known: {known})")
     raise AssertionError("unreachable")  # error() raises SystemExit

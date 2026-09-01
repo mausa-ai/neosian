@@ -56,9 +56,16 @@ state process's HTTP wire.
   storage ABCs over the wire, core install, drops in where FileStore
   does. `neosian docs topology` carries the full shape.
 
+## Bring an OpenAI-compatible model
+
+- `register_model("grok-4", provider=OpenAICompatible(name="xai",
+  api_key_env="XAI_API_KEY", base_url="https://api.x.ai/v1"), ...)` —
+  once at import; the model prices in µ$ and passes every gate like a
+  shipped one. `neosian docs quickstart` carries the snippet.
+
 ## Install
 
-- `uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.80.0"`
+- `uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.81.0"`
   (private repository, no PyPI; pin an annotated release tag, never
   master; extras `[postgres]`, `[mcp]`, `[otel]`, and `[server]` ride
   the same URL).

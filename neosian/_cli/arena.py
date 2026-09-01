@@ -26,10 +26,10 @@ from neosian._foundation.agent.base import Agent
 from neosian._foundation.agent.session import AgentSession
 from neosian._foundation.llm.base import Message, Role, text_of
 from neosian._foundation.shared.constants import ArenaUI, PlaygroundUI
-from neosian._foundation.shared.types import AgentConfig, Model
+from neosian._foundation.shared.types import AgentConfig, AnyModel
 
 
-def arena_config(base: AgentConfig, model: Model) -> AgentConfig:
+def arena_config(base: AgentConfig, model: AnyModel) -> AgentConfig:
     """Per-model arena config: everything rides `replace()` so no field
     can be silently dropped (the --menu bug's twin); `memory=None` is the
     one deliberate difference — arena stays memory-less."""

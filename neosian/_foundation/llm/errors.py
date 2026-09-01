@@ -15,7 +15,7 @@ from neosian._foundation.shared.exceptions import (
     NeosianError,
     ProviderError,
 )
-from neosian._foundation.shared.types import Model
+from neosian._foundation.shared.types import AnyModel
 
 _CONTEXT_SIGNATURES: Final = (
     "context_length_exceeded",
@@ -49,7 +49,7 @@ def _is_transient(exc: Exception) -> bool:
 
 
 def wrap_provider_error(
-    provider: str, exc: Exception, *, model: Model | None = None
+    provider: str, exc: Exception, *, model: AnyModel | None = None
 ) -> NeosianError:
     """Classify an exception escaping a provider SDK call.
 

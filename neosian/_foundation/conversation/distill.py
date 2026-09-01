@@ -22,13 +22,12 @@ from pydantic import BaseModel
 from neosian._foundation.conversation.projection import one_line
 from neosian._foundation.shared.prompt_assets import get_prompt, render
 from neosian._foundation.shared.structured import structured_call
-from neosian._foundation.shared.types import Model
+from neosian._foundation.shared.types import AnyModel
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
     from neosian._foundation.llm.base import BaseLLMClient, Usage
-    from neosian._foundation.shared.types import Provider
 
 # Epoch summaries carry a whole block, so they get twice the per-turn
 # digest budget (§9.6: length discipline comes from folding, not labels).
@@ -56,8 +55,8 @@ class EpochBatch(BaseModel):
 async def distill(
     items: Sequence[tuple[int, str]],
     *,
-    acquire: Callable[[Provider], BaseLLMClient],
-    model: Model,
+    acquire: Callable[[AnyModel], BaseLLMClient],
+    model: AnyModel,
     digest_chars: int,
 ) -> tuple[dict[int, str], Usage | None, str | None]:
     """One line of digest per (turn, prose) item; {} on any failure."""
@@ -80,8 +79,8 @@ async def distill(
 async def summarize_epochs(
     blocks: Sequence[tuple[int, Sequence[str]]],
     *,
-    acquire: Callable[[Provider], BaseLLMClient],
-    model: Model,
+    acquire: Callable[[AnyModel], BaseLLMClient],
+    model: AnyModel,
     digest_chars: int,
 ) -> tuple[dict[int, str], Usage | None, str | None]:
     """One narrative summary per (last_turn, lines) block; {} on failure —

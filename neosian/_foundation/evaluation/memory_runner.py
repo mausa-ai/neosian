@@ -50,13 +50,13 @@ from neosian._foundation.shared.exceptions import (
     EvalError,
     EvalRunError,
 )
-from neosian._foundation.shared.types import AgentConfig, Model, ToolName
+from neosian._foundation.shared.types import AgentConfig, AnyModel, ToolName
 
 
 async def run_scenario(
     base: AgentConfig,
     transport: Transport,
-    model: Model,
+    model: AnyModel,
     scenario: MemoryScenario,
     *,
     mounts: tuple[Mount, ...],
@@ -98,7 +98,7 @@ async def run_scenario(
 async def _run(
     base: AgentConfig,
     transport: Transport,
-    model: Model,
+    model: AnyModel,
     scenario: MemoryScenario,
     *,
     mounts: tuple[Mount, ...],
@@ -142,7 +142,7 @@ async def _session_memory(
 async def _run_cell(
     base: AgentConfig,
     transport: Transport,
-    model: Model,
+    model: AnyModel,
     scenario: MemoryScenario,
     *,
     mounts: tuple[Mount, ...],

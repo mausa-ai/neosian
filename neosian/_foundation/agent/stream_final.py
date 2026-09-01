@@ -36,7 +36,11 @@ from neosian._foundation.llm.base import (
     assemble_streamed_content,
     normalize_stop_reason,
 )
-from neosian._foundation.shared.types import Model, PolicyResult, ReasoningEffort
+from neosian._foundation.shared.types import (
+    AnyModel,
+    PolicyResult,
+    ReasoningEffort,
+)
 from neosian._foundation.tools.base import ToolResult
 
 if TYPE_CHECKING:
@@ -47,7 +51,7 @@ async def stream_final_with_client_and_guard(
     ctx: RunContext,
     *,
     client: BaseLLMClient,
-    model: Model,
+    model: AnyModel,
     attempt: Attempt,
     guard_task: asyncio.Task[tuple[bool, PolicyResult | None]] | None,
     reasoning_effort: ReasoningEffort | None = None,

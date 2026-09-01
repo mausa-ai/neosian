@@ -39,7 +39,7 @@ from neosian._foundation.llm.base import (
     assemble_streamed_content,
     normalize_stop_reason,
 )
-from neosian._foundation.shared.types import Model, PolicyResult, ToolCallId
+from neosian._foundation.shared.types import AnyModel, PolicyResult, ToolCallId
 from neosian._foundation.tools.base import ToolResult
 
 if TYPE_CHECKING:
@@ -49,7 +49,7 @@ if TYPE_CHECKING:
 async def stream_with_client(
     ctx: RunContext,
     client: BaseLLMClient,
-    model: Model,
+    model: AnyModel,
     attempt: Attempt,
     guard_task: asyncio.Task[tuple[bool, PolicyResult | None]] | None,
 ) -> AsyncIterator[AgentEvent]:

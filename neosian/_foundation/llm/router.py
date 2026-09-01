@@ -9,13 +9,14 @@ from neosian._foundation.llm.anthropic import AnthropicClient
 from neosian._foundation.llm.base import BaseLLMClient
 from neosian._foundation.llm.cerebras import CerebrasClient
 from neosian._foundation.llm.fake import FakeClient
-from neosian._foundation.llm.openai import OpenAIClient
+from neosian._foundation.llm.openai import OpenAIClient, OpenAICompatibleClient
 from neosian._foundation.shared.constants import (
     EnvVars,
     ErrorMessages,
     LLMDefaults,
 )
-from neosian._foundation.shared.types import Provider
+from neosian._foundation.shared.exceptions import MissingAPIKeyError
+from neosian._foundation.shared.types import AnyModel, Provider, RegisteredModel
 
 
 class ProviderRouter:
@@ -104,4 +105,32 @@ class ProviderRouter:
             # AgentConfig.client_factory, never through the router.
             return FakeClient()
 
+        if provider == Provider.OPENAI_COMPATIBLE:
+            raise ValueError(
+                "Provider.OPENAI_COMPATIBLE has no client of its own: the client "
+                "is built from a registered model's door — use create_client_for"
+            )
+
         raise ValueError(ErrorMessages.UNSUPPORTED_PROVIDER.format(provider=provider))
+
+    def create_client_for(
+        self, model: AnyModel, api_key: str | None = None
+    ) -> BaseLLMClient:
+        """Create the client that serves `model` (DESIGN §19).
+
+        Shipped models route by provider exactly as `create_client`; a
+        registered model's door names the endpoint and the env var that
+        signs requests to it — absence is loud, naming the variable.
+        """
+        if not isinstance(model, RegisteredModel):
+            return self.create_client(model.provider, api_key)
+        door = model.door
+        key = api_key or os.environ.get(door.api_key_env, "")
+        if not key:
+            raise MissingAPIKeyError(
+                f"{door.api_key_env} environment variable not set "
+                f"(the key for the {door.name!r} door)"
+            )
+        return OpenAICompatibleClient(
+            api_key=key, door=door, max_retries=self._max_retries
+        )

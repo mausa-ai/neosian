@@ -42,6 +42,7 @@ from neosian._foundation.memory.mounts import MemoryConfig, Mount
 from neosian._foundation.shared.exceptions import UnsupportedParameterError
 from neosian._foundation.shared.types import (
     AgentConfig,
+    AnyModel,
     FallbackConfig,
     Model,
     Provider,
@@ -69,7 +70,7 @@ def _create_mock_router(mock_client: BaseLLMClient | None = None) -> MagicMock:
 
     mock_router = MagicMock()
     mock_router.has_provider.return_value = True
-    mock_router.create_client.return_value = mock_client
+    mock_router.create_client_for.return_value = mock_client
     return mock_router
 
 
@@ -757,7 +758,9 @@ class TestStreamingUsageReporting:
         }
         mock_router = MagicMock()
         mock_router.has_provider.return_value = True
-        mock_router.create_client.side_effect = lambda provider: clients[provider]
+        mock_router.create_client_for.side_effect = lambda model: clients[
+            model.provider
+        ]
 
         with patch(
             "neosian._foundation.agent.base.ProviderRouter",
@@ -1109,16 +1112,16 @@ class TestAgentReasoningEffort:
         mock_router = MagicMock()
         mock_router.has_provider.return_value = True
 
-        def create_client(provider: Provider) -> AsyncMock:
-            if provider == Provider.CEREBRAS:
+        def create_client(model: AnyModel) -> AsyncMock:
+            if model.provider == Provider.CEREBRAS:
                 # Both are Cerebras, but we need to distinguish by model
                 # The first call is for main model, subsequent for fallback
-                if mock_router.create_client.call_count <= 1:
+                if mock_router.create_client_for.call_count <= 1:
                     return mock_main_client
                 return mock_fallback_client
             return mock_fallback_client
 
-        mock_router.create_client.side_effect = create_client
+        mock_router.create_client_for.side_effect = create_client
 
         with patch(
             "neosian._foundation.agent.base.ProviderRouter",
@@ -1883,7 +1886,9 @@ class TestCapabilityAwareFallback:
         }
         mock_router = MagicMock()
         mock_router.has_provider.return_value = True
-        mock_router.create_client.side_effect = lambda provider: clients[provider]
+        mock_router.create_client_for.side_effect = lambda model: clients[
+            model.provider
+        ]
 
         with patch(
             "neosian._foundation.agent.base.ProviderRouter",
@@ -1953,7 +1958,9 @@ class TestCapabilityAwareFallback:
         }
         mock_router = MagicMock()
         mock_router.has_provider.return_value = True
-        mock_router.create_client.side_effect = lambda provider: clients[provider]
+        mock_router.create_client_for.side_effect = lambda model: clients[
+            model.provider
+        ]
 
         with patch(
             "neosian._foundation.agent.base.ProviderRouter",
@@ -1993,7 +2000,9 @@ class TestCapabilityAwareFallback:
         }
         mock_router = MagicMock()
         mock_router.has_provider.return_value = True
-        mock_router.create_client.side_effect = lambda provider: clients[provider]
+        mock_router.create_client_for.side_effect = lambda model: clients[
+            model.provider
+        ]
 
         with patch(
             "neosian._foundation.agent.base.ProviderRouter",

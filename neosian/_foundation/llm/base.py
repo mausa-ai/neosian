@@ -25,7 +25,7 @@ from neosian._foundation.llm.blocks import (
 )
 from neosian._foundation.shared.constants import LLMDefaults
 from neosian._foundation.shared.types import (
-    Model,
+    AnyModel,
     ReasoningEffort,
     ResponseFormat,
     ToolCallId,
@@ -154,7 +154,7 @@ class Usage:
             cache_write_tokens=self.cache_write_tokens + other.cache_write_tokens,
         )
 
-    def cost_micro_usd(self, model: Model) -> int | None:
+    def cost_micro_usd(self, model: AnyModel) -> int | None:
         """Cost of this usage in integer micro-USD at the model's list prices.
 
         Ceiling division — never undercount (ECOSYSTEM §4). Approximate, for
@@ -270,7 +270,7 @@ class BaseLLMClient(ABC):
     async def complete(
         self,
         messages: list[Message],
-        model: Model,
+        model: AnyModel,
         tools: list[ToolDefinition] | None = None,
         temperature: float | None = None,
         response_format: ResponseFormat | None = None,
@@ -310,7 +310,7 @@ class BaseLLMClient(ABC):
     def stream(
         self,
         messages: list[Message],
-        model: Model,
+        model: AnyModel,
         tools: list[ToolDefinition] | None = None,
         temperature: float | None = None,
         reasoning_effort: ReasoningEffort | None = None,

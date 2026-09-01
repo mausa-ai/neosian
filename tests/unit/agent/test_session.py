@@ -18,6 +18,7 @@ from neosian._foundation.llm.base import (
 )
 from neosian._foundation.shared.types import (
     AgentConfig,
+    AnyModel,
     FallbackConfig,
     Model,
     Provider,
@@ -43,7 +44,7 @@ def _create_mock_router(mock_client: BaseLLMClient | None = None) -> MagicMock:
         mock_client = _create_mock_client()
 
     mock_router = MagicMock()
-    mock_router.create_client.return_value = mock_client
+    mock_router.create_client_for.return_value = mock_client
     mock_router.has_provider.return_value = True
     return mock_router
 
@@ -106,11 +107,13 @@ class TestAgentSessionClientCaching:
             agent = Agent(config=config)
             session = AgentSession(agent)
 
-            client = session._get_or_create_client(Provider.CEREBRAS)
+            client = session._get_or_create_client(Model.CEREBRAS_GPT_OSS_120B)
 
             assert client is mock_client
             assert Provider.CEREBRAS in session._clients
-            mock_router.create_client.assert_called_once_with(Provider.CEREBRAS)
+            mock_router.create_client_for.assert_called_once_with(
+                Model.CEREBRAS_GPT_OSS_120B
+            )
 
     def test_get_or_create_reuses_on_second_call(self) -> None:
         """Session should reuse cached client on subsequent calls."""
@@ -130,13 +133,13 @@ class TestAgentSessionClientCaching:
             session = AgentSession(agent)
 
             # First call creates
-            client1 = session._get_or_create_client(Provider.CEREBRAS)
+            client1 = session._get_or_create_client(Model.CEREBRAS_GPT_OSS_120B)
             # Second call reuses
-            client2 = session._get_or_create_client(Provider.CEREBRAS)
+            client2 = session._get_or_create_client(Model.CEREBRAS_GPT_OSS_120B)
 
             assert client1 is client2
             # Router should only be called once
-            mock_router.create_client.assert_called_once()
+            mock_router.create_client_for.assert_called_once()
 
     def test_different_providers_cached_separately(self) -> None:
         """Session should cache different providers separately."""
@@ -145,7 +148,7 @@ class TestAgentSessionClientCaching:
 
         mock_router = MagicMock()
         mock_router.has_provider.return_value = True
-        mock_router.create_client.side_effect = [
+        mock_router.create_client_for.side_effect = [
             mock_client_cerebras,
             mock_client_openai,
         ]
@@ -162,8 +165,8 @@ class TestAgentSessionClientCaching:
             agent = Agent(config=config)
             session = AgentSession(agent)
 
-            cerebras_client = session._get_or_create_client(Provider.CEREBRAS)
-            openai_client = session._get_or_create_client(Provider.OPENAI)
+            cerebras_client = session._get_or_create_client(Model.CEREBRAS_GPT_OSS_120B)
+            openai_client = session._get_or_create_client(Model.GPT_5_NANO)
 
             assert cerebras_client is mock_client_cerebras
             assert openai_client is mock_client_openai
@@ -193,7 +196,7 @@ class TestAgentSessionClose:
             session = AgentSession(agent)
 
             # Create a cached client
-            session._get_or_create_client(Provider.CEREBRAS)
+            session._get_or_create_client(Model.CEREBRAS_GPT_OSS_120B)
 
             # Close session
             await session.close()
@@ -219,7 +222,7 @@ class TestAgentSessionClose:
             agent = Agent(config=config)
             session = AgentSession(agent)
 
-            session._get_or_create_client(Provider.CEREBRAS)
+            session._get_or_create_client(Model.CEREBRAS_GPT_OSS_120B)
             assert len(session._clients) == 1
 
             await session.close()
@@ -271,7 +274,7 @@ class TestAgentSessionContextManager:
 
             async with agent.session() as session:
                 # Create a cached client
-                session._get_or_create_client(Provider.CEREBRAS)
+                session._get_or_create_client(Model.CEREBRAS_GPT_OSS_120B)
 
             # After exit, client should be closed
             mock_client.close.assert_called_once()
@@ -295,7 +298,7 @@ class TestAgentSessionContextManager:
 
             with pytest.raises(RuntimeError):
                 async with agent.session() as session:
-                    session._get_or_create_client(Provider.CEREBRAS)
+                    session._get_or_create_client(Model.CEREBRAS_GPT_OSS_120B)
                     raise RuntimeError("Test error")
 
             # Client should still be closed
@@ -335,7 +338,7 @@ class TestAgentSessionRun:
                 assert response2.message.content == "Hello!"
 
                 # Router should only create client once
-                mock_router.create_client.assert_called_once()
+                mock_router.create_client_for.assert_called_once()
                 # Client.complete should be called twice
                 assert mock_client.complete.call_count == 2
 
@@ -427,12 +430,12 @@ class TestAgentSessionMultipleClients:
         mock_router = MagicMock()
         mock_router.has_provider.return_value = True
 
-        def create_client_side_effect(provider: Provider) -> AsyncMock:
-            if provider == Provider.CEREBRAS:
+        def create_client_side_effect(model: AnyModel) -> AsyncMock:
+            if model.provider == Provider.CEREBRAS:
                 return mock_client_cerebras
             return mock_client_openai
 
-        mock_router.create_client.side_effect = create_client_side_effect
+        mock_router.create_client_for.side_effect = create_client_side_effect
 
         with patch(
             "neosian._foundation.agent.base.ProviderRouter",

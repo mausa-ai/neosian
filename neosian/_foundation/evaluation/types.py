@@ -11,7 +11,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any, ClassVar, Final
 
 from neosian._foundation.llm.fake import FakeTurn
-from neosian._foundation.shared.types import Model, SystemPrompt, ToolName
+from neosian._foundation.shared.types import AnyModel, SystemPrompt, ToolName
 
 if TYPE_CHECKING:
     from neosian._foundation.evaluation.memory_types import MemoryEvalConfig
@@ -147,7 +147,7 @@ class AgentEvalConfig:
 
     name: str
     agent: str
-    models: tuple[Model, ...]
+    models: tuple[AnyModel, ...]
     cases: tuple[EvalCase, ...]
     variants: tuple[Variant, ...] = (BASE_VARIANT,)
     execute_tools: frozenset[ToolName] = frozenset()

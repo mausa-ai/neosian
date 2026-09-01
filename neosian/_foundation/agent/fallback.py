@@ -16,7 +16,7 @@ from neosian._foundation.shared.exceptions import (
     ModelFailedError,
     UnsupportedContentError,
 )
-from neosian._foundation.shared.types import Model
+from neosian._foundation.shared.types import AnyModel
 
 if TYPE_CHECKING:
     from neosian._foundation.agent.base import Agent
@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def unsupported_content_types(model: Model, messages: list[Message]) -> list[str]:
+def unsupported_content_types(model: AnyModel, messages: list[Message]) -> list[str]:
     """Content block types in messages that the model cannot handle.
 
     Returns:

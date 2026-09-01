@@ -19,7 +19,7 @@ from neosian._cli.models import select_provider_and_model
 from neosian._foundation.agent.loader import load_agent_config
 from neosian._foundation.shared.constants import Config, PlaygroundUI
 from neosian._foundation.shared.exceptions import ConversationIdInvalidError
-from neosian._foundation.shared.types import AgentConfig, Model
+from neosian._foundation.shared.types import AgentConfig, AnyModel
 
 
 def _load_credentials_from_config() -> None:
@@ -43,7 +43,7 @@ def _load_credentials_from_config() -> None:
             os.environ["CEREBRAS_API_KEY"] = cerebras_key
 
 
-def menu_config(base: AgentConfig, model: Model) -> AgentConfig:
+def menu_config(base: AgentConfig, model: AnyModel) -> AgentConfig:
     """Model override only. `replace()` re-runs `__post_init__` and
     carries every other field — the hand-rolled rebuild this replaces
     dropped nine (fallback, max_parallel_tools, max_retries,

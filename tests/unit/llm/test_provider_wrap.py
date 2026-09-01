@@ -13,12 +13,12 @@ from cerebras.cloud.sdk.types.chat.chat_completion import ChatChunkResponse
 from neosian._foundation.llm.anthropic import AnthropicClient
 from neosian._foundation.llm.base import BaseLLMClient, Message, Role
 from neosian._foundation.llm.cerebras import CerebrasClient
-from neosian._foundation.llm.openai import OpenAIClient
+from neosian._foundation.llm.openai import OpenAIClient, OpenAICompatibleClient
 from neosian._foundation.shared.exceptions import (
     ContextWindowExceededError,
     ProviderError,
 )
-from neosian._foundation.shared.types import Model
+from neosian._foundation.shared.types import Model, OpenAICompatible
 
 
 class _ServerError(Exception):
@@ -58,11 +58,19 @@ def _content_chunk(text: str, spec: type | None = None) -> MagicMock:
     return chunk
 
 
-# (client factory, provider name, model) for the OpenAI-compatible trio.
+_XAI = OpenAICompatible(name="xai", api_key_env="XAI_API_KEY")
+
+
+def _xai_client(api_key: str) -> OpenAICompatibleClient:
+    return OpenAICompatibleClient(api_key, door=_XAI)
+
+
+# (client factory, provider name, model) for the OpenAI-compatible wire:
+# Cerebras on its own SDK, OpenAI on its door, a registered door.
 _OPENAI_COMPAT = [
     (CerebrasClient, "cerebras", Model.CEREBRAS_GPT_OSS_120B),
     (OpenAIClient, "openai", Model.GPT_5_NANO),
-    (CerebrasClient, "cerebras", Model.CEREBRAS_GPT_OSS_120B),
+    (_xai_client, "xai", Model.GPT_5_NANO),
 ]
 
 

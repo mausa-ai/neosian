@@ -14,13 +14,13 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from neosian._foundation.llm.base import BaseLLMClient, Message, ModelUsage, Usage
-from neosian._foundation.shared.types import FallbackState, Model, Provider
+from neosian._foundation.shared.types import AnyModel, FallbackState
 
 if TYPE_CHECKING:
     from neosian._foundation.agent.base import Agent
     from neosian._foundation.agent.hooks import HookRunner
 
-ClientAcquire = Callable[[Provider], BaseLLMClient]
+ClientAcquire = Callable[[AnyModel], BaseLLMClient]
 
 
 def merge_usage(a: Usage | None, b: Usage | None) -> Usage | None:
@@ -62,7 +62,7 @@ class Attempt:
     everything the run spent, split per API-reported model.
     """
 
-    model: Model
+    model: AnyModel
     messages: list[Message]
     base_len: int
     _by_model: dict[str, Usage] = field(default_factory=dict)
@@ -70,7 +70,7 @@ class Attempt:
     @classmethod
     def start(
         cls,
-        model: Model,
+        model: AnyModel,
         base_messages: list[Message],
         prior: Attempt | None = None,
     ) -> Attempt:

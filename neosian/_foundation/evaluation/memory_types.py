@@ -20,7 +20,7 @@ from neosian._foundation.evaluation.types import (
 from neosian._foundation.llm.fake import FakeTurn
 from neosian._foundation.memory.mounts import Mount
 from neosian._foundation.memory.types import MemoryAction
-from neosian._foundation.shared.types import Model, ToolName
+from neosian._foundation.shared.types import AnyModel, ToolName
 
 
 class Transport(str, Enum):
@@ -155,7 +155,7 @@ class MemoryEvalConfig:
 
     name: str
     agent: str
-    models: tuple[Model, ...]
+    models: tuple[AnyModel, ...]
     mounts: tuple[Mount, ...]
     scenarios: tuple[MemoryScenario, ...]
     transports: tuple[Transport, ...] = (Transport.FUNCTION,)

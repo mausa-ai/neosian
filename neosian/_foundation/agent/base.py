@@ -20,7 +20,7 @@ from neosian._foundation.agent.blocking import run_blocking
 from neosian._foundation.agent.context import RunContext
 from neosian._foundation.agent.emit import emit_turn
 from neosian._foundation.agent.events import AgentEvent
-from neosian._foundation.agent.guards import require_provider_key
+from neosian._foundation.agent.guards import require_model_key
 from neosian._foundation.agent.hooks import HookRunner
 from neosian._foundation.agent.response import AgentResponse
 from neosian._foundation.agent.stream_run import run_streaming
@@ -35,8 +35,8 @@ from neosian._foundation.shared.exceptions import (
 )
 from neosian._foundation.shared.types import (
     AgentConfig,
+    AnyModel,
     FallbackState,
-    Model,
     Provider,
     ResponseFormat,
     ToolFunction,
@@ -119,12 +119,12 @@ class Agent:
         # loud here, never a silent fail-open at check time.
         self._guardrails = config.guardrails
         self._guardrail_client: BaseLLMClient | None = None
-        self._guardrail_model: Model | None = None
+        self._guardrail_model: AnyModel | None = None
         if self._guardrails is not None:
             self._guardrail_model = self._guardrails.model or config.model
             if self._client_factory is None:
-                require_provider_key(self._guardrail_model.provider)
-            self._guardrail_client = self._create_client(self._guardrail_model.provider)
+                require_model_key(self._guardrail_model)
+            self._guardrail_client = self._create_client(self._guardrail_model)
 
         # Build tool registry from decorated functions
         self._tools: dict[ToolName, ToolFunction] = {}
@@ -202,11 +202,15 @@ class Agent:
         self._tools[metadata.name] = tool_func
         self._tool_definitions.append(definition)
 
-    def _create_client(self, provider: Provider) -> BaseLLMClient:
-        """Create a client for provider, honoring the configured factory."""
+    def _create_client(self, model: AnyModel) -> BaseLLMClient:
+        """Create a client for model, honoring the configured factory.
+
+        A factory sees the model's provider — `Provider.OPENAI_COMPATIBLE`
+        for every registered door (DESIGN §19).
+        """
         if self._client_factory is not None:
-            return self._client_factory(provider)
-        return self._router.create_client(provider)
+            return self._client_factory(model.provider)
+        return self._router.create_client_for(model)
 
     def _validate_run(
         self, *, stream: bool, response_format: ResponseFormat | None

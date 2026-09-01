@@ -18,9 +18,11 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 
+from neosian._foundation.shared.registry import provider_label
+
 if TYPE_CHECKING:
     from neosian._foundation.llm.base import Message
-    from neosian._foundation.shared.types import Model
+    from neosian._foundation.shared.types import AnyModel
 
 # Underestimating constants: real prompts run ~4 chars/token in English and
 # fewer in code; media blocks cost far more than this on every provider.
@@ -70,7 +72,7 @@ class ContextPolicy:
             + media_blocks * _TOKENS_PER_MEDIA_BLOCK
         )
 
-    def ensure_fits(self, model: Model, messages: Sequence[Message]) -> None:
+    def ensure_fits(self, model: AnyModel, messages: Sequence[Message]) -> None:
         """Raise ContextWindowExceededError when the prompt clearly overflows.
 
         Raises:
@@ -87,5 +89,5 @@ class ContextPolicy:
                 model.value,
                 context_window=model.context_window,
                 estimated_tokens=estimated,
-                provider=model.provider.value,
+                provider=provider_label(model),
             )

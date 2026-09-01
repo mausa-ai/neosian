@@ -24,6 +24,7 @@ from neosian._foundation.shared.exceptions import (
     FallbackExhaustedError,
     ModelFailedError,
 )
+from neosian._foundation.shared.registry import provider_label
 from neosian._foundation.shared.types import GuardrailMode, PolicyResult
 
 if TYPE_CHECKING:
@@ -68,7 +69,7 @@ async def run_streaming(
     yield sequencer.stamp(
         ReadyEvent(
             requested_model=agent._model.value,
-            provider=agent._model.provider.value,
+            provider=provider_label(agent._model),
         )
     )
     async for event in stream_agent_with_guard(ctx, messages, guard_task):
@@ -136,7 +137,7 @@ async def stream_agent_with_guard(
     # Try main model
     attempt = Attempt.start(agent._model, base_messages)
     try:
-        client = ctx.acquire(agent._model.provider)
+        client = ctx.acquire(agent._model)
         async for event in stream_with_client(
             ctx,
             client=client,
@@ -190,7 +191,7 @@ async def stream_agent_with_guard(
             agent._fallback.model, base_messages, prior=attempt
         )
         try:
-            fallback_client = ctx.acquire(agent._fallback.model.provider)
+            fallback_client = ctx.acquire(agent._fallback.model)
             async for event in stream_with_client(
                 ctx,
                 client=fallback_client,
@@ -249,7 +250,7 @@ async def stream_with_fallback_model(
     if unsupported_content_types(agent._fallback.model, base_messages):
         attempt = Attempt.start(agent._model, base_messages)
         try:
-            main_client = ctx.acquire(agent._model.provider)
+            main_client = ctx.acquire(agent._model)
             async for event in stream_with_client(
                 ctx,
                 client=main_client,
@@ -274,7 +275,7 @@ async def stream_with_fallback_model(
 
     attempt = Attempt.start(agent._fallback.model, base_messages)
     try:
-        client = ctx.acquire(agent._fallback.model.provider)
+        client = ctx.acquire(agent._fallback.model)
         async for event in stream_with_client(
             ctx,
             client=client,
@@ -307,7 +308,7 @@ async def stream_with_fallback_model(
         fallback_error = str(e)
         main_attempt = Attempt.start(agent._model, base_messages, prior=attempt)
         try:
-            main_client = ctx.acquire(agent._model.provider)
+            main_client = ctx.acquire(agent._model)
             async for event in stream_with_client(
                 ctx,
                 client=main_client,

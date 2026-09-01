@@ -25,11 +25,11 @@ The repository is private; as a dependency of another uv project, install
 from the git URL, pinned to a release tag (extras ride the same URL):
 
 ```bash
-uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.80.0"
-uv add "neosian[postgres] @ git+ssh://git@github.com/neosae/neosian@v0.80.0"   # + PostgresStore
-uv add "neosian[mcp] @ git+ssh://git@github.com/neosae/neosian@v0.80.0"        # + MCP memory server
-uv add "neosian[otel] @ git+ssh://git@github.com/neosae/neosian@v0.80.0"       # + OpenTelemetry spans
-uv add "neosian[server] @ git+ssh://git@github.com/neosae/neosian@v0.80.0"     # + the state process
+uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.81.0"
+uv add "neosian[postgres] @ git+ssh://git@github.com/neosae/neosian@v0.81.0"   # + PostgresStore
+uv add "neosian[mcp] @ git+ssh://git@github.com/neosae/neosian@v0.81.0"        # + MCP memory server
+uv add "neosian[otel] @ git+ssh://git@github.com/neosae/neosian@v0.81.0"       # + OpenTelemetry spans
+uv add "neosian[server] @ git+ssh://git@github.com/neosae/neosian@v0.81.0"     # + the state process
 ```
 
 The core install is database-driver-free, MCP-free, and server-free
@@ -330,10 +330,33 @@ its key is set (asking for an unavailable model raises
 | Anthropic | `ANTHROPIC_API_KEY` | Claude; vision/PDF input, prompt caching, adaptive thinking |
 | Cerebras | `CEREBRAS_API_KEY` | Default provider (gpt-oss-120b) |
 | Fake | — | Keyless, deterministic, always available (`Model.FAKE`) |
+| A registered door | the door's `api_key_env` | Any OpenAI-compatible endpoint (xAI, DeepSeek, a fine-tune…) via `register_model` |
 
-The full model registry lives in the `Model` enum, with per-model
+The shipped registry lives in the `Model` enum, with per-model
 capabilities (`context_window`, `max_output_tokens`, reasoning/vision/
-document support) declared in `ModelSpec`.
+document support) declared in `ModelSpec`. Models the enum lacks enter
+through the OpenAI-compatible door — a frozen `OpenAICompatible`
+(endpoint, key env var, dialect quirks) and one `register_model` call at
+import:
+
+```python
+from neosian import AgentConfig, ModelPricing, OpenAICompatible, register_model
+
+xai = OpenAICompatible(name="xai", api_key_env="XAI_API_KEY",
+                       base_url="https://api.x.ai/v1", temperature=True)
+GROK_4 = register_model("grok-4", provider=xai, context_window=131_072,
+                        max_output_tokens=16_384,
+                        pricing=ModelPricing(input_per_mtok=3_000_000,
+                                             output_per_mtok=15_000_000))
+config = AgentConfig(system_prompt="Be concise.", model=GROK_4)
+```
+
+A registered model is `Model`'s structural twin (`AnyModel = Model |
+RegisteredModel`): cost in µ$, the context policy, capability-aware
+fallback and the session's client cache treat it like a shipped one, and
+every error names the door, never the shared row. Registered pricing never
+enters `PRICES_FINGERPRINT`. `examples/custom_model_agent.py` is the
+runnable form; the v1 bar's candidate providers enter this way (DESIGN §19).
 
 ## Running without keys
 

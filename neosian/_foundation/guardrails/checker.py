@@ -14,7 +14,7 @@ from neosian._foundation.guardrails.policy import evaluate_test_policy, is_test_
 from neosian._foundation.llm.base import BaseLLMClient, Message, Role, text_of
 from neosian._foundation.shared.exceptions import GuardrailPolicyParseError
 from neosian._foundation.shared.prompt_assets import get_prompt, render
-from neosian._foundation.shared.types import Model, PolicyResult
+from neosian._foundation.shared.types import AnyModel, PolicyResult
 
 
 def parse_policy_response(response: str) -> PolicyResult:
@@ -61,7 +61,7 @@ async def check_with_policy(
     content: str,
     policy: str,
     client: BaseLLMClient,
-    model: Model,
+    model: AnyModel,
 ) -> PolicyResult:
     """Check content against a custom policy via the classifier prompt.
 

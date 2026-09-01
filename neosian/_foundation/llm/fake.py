@@ -26,7 +26,11 @@ from neosian._foundation.llm.base import (
 from neosian._foundation.llm.errors import wrap_provider_error
 from neosian._foundation.shared.constants import LLMDefaults
 from neosian._foundation.shared.exceptions import FakeScriptExhaustedError
-from neosian._foundation.shared.types import Model, ReasoningEffort, ResponseFormat
+from neosian._foundation.shared.types import (
+    AnyModel,
+    ReasoningEffort,
+    ResponseFormat,
+)
 
 
 class StreamShape(str, Enum):
@@ -86,7 +90,7 @@ class FakeCall:
     would show the final conversation on every recorded call.
     """
 
-    model: Model
+    model: AnyModel
     messages: tuple[Message, ...]
     tools: tuple[ToolDefinition, ...]
     temperature: float | None
@@ -123,7 +127,7 @@ def _split(text: str | None, width: int) -> list[str]:
     return [text[i : i + width] for i in range(0, len(text), width)]
 
 
-def _chunks(turn: FakeTurn, script: FakeScript, model: Model) -> list[StreamChunk]:
+def _chunks(turn: FakeTurn, script: FakeScript, model: AnyModel) -> list[StreamChunk]:
     """The full deterministic chunk sequence for a turn."""
     api_model = model.value
     parts = [
@@ -183,7 +187,7 @@ class FakeClient(BaseLLMClient):
     def _record(
         self,
         *,
-        model: Model,
+        model: AnyModel,
         messages: list[Message],
         tools: list[ToolDefinition] | None,
         temperature: float | None,
@@ -212,7 +216,7 @@ class FakeClient(BaseLLMClient):
     async def complete(
         self,
         messages: list[Message],
-        model: Model,
+        model: AnyModel,
         tools: list[ToolDefinition] | None = None,
         temperature: float | None = None,
         response_format: ResponseFormat | None = None,
@@ -251,7 +255,7 @@ class FakeClient(BaseLLMClient):
     async def stream(
         self,
         messages: list[Message],
-        model: Model,
+        model: AnyModel,
         tools: list[ToolDefinition] | None = None,
         temperature: float | None = None,
         reasoning_effort: ReasoningEffort | None = None,

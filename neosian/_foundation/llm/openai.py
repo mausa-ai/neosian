@@ -1,8 +1,10 @@
-"""OpenAI LLM client implementation."""
+"""The OpenAI-compatible client, and OpenAI's own instance of it (DESIGN §19)."""
 
 import json
 import logging
 from collections.abc import AsyncIterator
+from dataclasses import replace
+from typing import Final
 
 from openai import AsyncOpenAI, BadRequestError, omit
 from openai.types.chat import (
@@ -36,7 +38,9 @@ from neosian._foundation.shared.exceptions import (
     UnsupportedParameterError,
 )
 from neosian._foundation.shared.types import (
+    AnyModel,
     Model,
+    OpenAICompatible,
     ReasoningEffort,
     ResponseFormat,
     ToolCallId,
@@ -45,30 +49,41 @@ from neosian._foundation.shared.types import (
 
 logger = logging.getLogger(__name__)
 
+# OpenAI's own door: the SDK's endpoint (or OPENAI_BASE_URL), OpenAI's dialect.
+OPENAI_DOOR: Final = OpenAICompatible(name="openai", api_key_env="OPENAI_API_KEY")
 
-class OpenAIClient(BaseLLMClient):
-    """OpenAI LLM client.
 
-    Uses the OpenAI SDK. Includes automatic retry with lower temperature
-    when tool call generation fails.
+class OpenAICompatibleClient(BaseLLMClient):
+    """A client for any OpenAI-compatible endpoint; quirks read off its door.
+
+    Retries tool-call generation failures before raising
+    ToolCallGenerationError.
     """
 
     def __init__(
-        self, api_key: str, max_retries: int = LLMDefaults.MAX_RETRIES
+        self,
+        api_key: str,
+        *,
+        door: OpenAICompatible,
+        max_retries: int = LLMDefaults.MAX_RETRIES,
     ) -> None:
-        """Initialize the OpenAI client.
+        """Initialize the client.
 
         Args:
-            api_key: OpenAI API key. Required, no implicit env var reading.
+            api_key: The door's API key. Required, no implicit env var reading.
+            door: Where requests go and which dialect the wire speaks.
             max_retries: Transport-level retries handled by the SDK
                 (429/5xx/connection errors, exponential backoff).
         """
-        self._client = AsyncOpenAI(api_key=api_key, max_retries=max_retries)
+        self._door = door
+        self._client = AsyncOpenAI(
+            api_key=api_key, base_url=door.base_url, max_retries=max_retries
+        )
 
     async def complete(
         self,
         messages: list[Message],
-        model: Model,
+        model: AnyModel,
         tools: list[ToolDefinition] | None = None,
         temperature: float | None = None,
         response_format: ResponseFormat | None = None,
@@ -77,16 +92,16 @@ class OpenAIClient(BaseLLMClient):
         cache_conversation: bool = True,  # noqa: ARG002 - no explicit cache breakpoints
         server_compaction: bool = False,  # noqa: ARG002 - Anthropic-only compaction beta
     ) -> CompletionResponse:
-        """Send a completion request to OpenAI.
+        """Send a completion request.
 
-        Automatically retries with lower temperature if tool call generation
-        fails. After max retries, raises ToolCallGenerationError.
+        Automatically retries if tool call generation fails. After max
+        retries, raises ToolCallGenerationError.
 
         Args:
             messages: Conversation history.
             model: Model identifier.
             tools: Optional list of tools the model can call.
-            temperature: Not supported for GPT-5 models. Raises error if provided.
+            temperature: Refused unless the door accepts the parameter.
             response_format: Optional structured output configuration.
             reasoning_effort: Optional reasoning effort level for supported models.
             max_tokens: Maximum output tokens for this request.
@@ -95,15 +110,11 @@ class OpenAIClient(BaseLLMClient):
             CompletionResponse with the model's response.
 
         Raises:
-            UnsupportedParameterError: If temperature is provided or reasoning_effort
-                used with unsupported model.
+            UnsupportedParameterError: If temperature is provided on a door
+                without it, or reasoning_effort used with an unsupported model.
             ToolCallGenerationError: If tool call generation fails after retries.
         """
-        if temperature is not None:
-            raise UnsupportedParameterError(
-                ErrorMessages.OPENAI_TEMPERATURE_NOT_SUPPORTED
-            )
-
+        self._check_temperature(temperature)
         effective_effort = self._resolve_reasoning_effort(model, reasoning_effort)
 
         openai_messages = self._convert_messages(messages)
@@ -119,6 +130,7 @@ class OpenAIClient(BaseLLMClient):
                     messages=openai_messages,
                     tools=openai_tools if openai_tools else omit,
                     max_completion_tokens=max_tokens,
+                    temperature=temperature if temperature is not None else omit,
                     response_format=(
                         openai_response_format if openai_response_format else omit
                     ),
@@ -138,12 +150,24 @@ class OpenAIClient(BaseLLMClient):
                     raise ToolCallGenerationError(
                         retries=LLMDefaults.MAX_TOOL_CALL_RETRIES
                     ) from e
-                raise wrap_provider_error("openai", e, model=model) from e
+                raise wrap_provider_error(self._door.name, e, model=model) from e
             except Exception as exc:
-                raise wrap_provider_error("openai", exc, model=model) from exc
+                raise wrap_provider_error(self._door.name, exc, model=model) from exc
 
         # Should not reach here, but satisfy type checker
         raise ToolCallGenerationError(retries=LLMDefaults.MAX_TOOL_CALL_RETRIES)
+
+    def _check_temperature(self, temperature: float | None) -> None:
+        if temperature is None or self._door.temperature:
+            return
+        if self._door is OPENAI_DOOR:
+            raise UnsupportedParameterError(
+                ErrorMessages.OPENAI_TEMPERATURE_NOT_SUPPORTED
+            )
+        raise UnsupportedParameterError(
+            f"temperature is not supported on the {self._door.name!r} door; "
+            "declare OpenAICompatible(temperature=True) if the endpoint accepts it"
+        )
 
     def _is_tool_call_error(self, error: BadRequestError) -> bool:
         """Check if the error is a tool call generation failure.
@@ -169,13 +193,14 @@ class OpenAIClient(BaseLLMClient):
         return False
 
     def _resolve_reasoning_effort(
-        self, model: Model, reasoning_effort: ReasoningEffort | None
+        self, model: AnyModel, reasoning_effort: ReasoningEffort | None
     ) -> ReasoningEffort | None:
-        """Validate and normalize reasoning_effort for OpenAI models.
+        """Validate and normalize reasoning_effort for the door's dialect.
 
         Handles:
         - Validation: raises UnsupportedParameterError for non-reasoning models.
-        - MAX downgrade: OpenAI does not support MAX, downgrade to HIGH.
+        - A door without the parameter: dropped with a warning.
+        - MAX downgrade: the dialect has no MAX, downgrade to HIGH.
         - GPT-5-Pro constraint: only supports HIGH, force other values to HIGH.
 
         Args:
@@ -196,9 +221,17 @@ class OpenAIClient(BaseLLMClient):
                 ErrorMessages.REASONING_EFFORT_NOT_SUPPORTED.format(model=model.value)
             )
 
+        if not self._door.reasoning_effort:
+            logger.warning(
+                "reasoning_effort=%s dropped: the %r door has no such parameter",
+                reasoning_effort.value,
+                self._door.name,
+            )
+            return None
+
         effective_effort = reasoning_effort
 
-        # OpenAI does not support MAX - downgrade to HIGH with warning
+        # The dialect has no MAX - downgrade to HIGH with warning
         if reasoning_effort == ReasoningEffort.MAX:
             logger.warning(
                 ErrorMessages.REASONING_EFFORT_MAX_DOWNGRADED_OPENAI.format(
@@ -218,11 +251,18 @@ class OpenAIClient(BaseLLMClient):
 
         return effective_effort
 
+    def _reasoning_of(self, part: object) -> str | None:
+        """The door's reasoning field off a message or delta, if it carries one."""
+        if self._door.reasoning_field is None:
+            return None
+        value = getattr(part, self._door.reasoning_field, None)
+        return value if isinstance(value, str) and value else None
+
     def _parse_response(self, response: object) -> CompletionResponse:
-        """Parse OpenAI response into CompletionResponse.
+        """Parse the response into CompletionResponse.
 
         Args:
-            response: Raw response from OpenAI API.
+            response: Raw response from the API.
 
         Returns:
             Parsed CompletionResponse.
@@ -260,6 +300,7 @@ class OpenAIClient(BaseLLMClient):
                 role=Role.ASSISTANT,
                 content=response_message.content,
                 tool_calls=tool_calls,
+                reasoning=self._reasoning_of(response_message),
             ),
             usage=Usage(
                 input_tokens=prompt_tokens - cached_tokens,
@@ -273,7 +314,7 @@ class OpenAIClient(BaseLLMClient):
     async def stream(
         self,
         messages: list[Message],
-        model: Model,
+        model: AnyModel,
         tools: list[ToolDefinition] | None = None,
         temperature: float | None = None,
         reasoning_effort: ReasoningEffort | None = None,
@@ -281,13 +322,13 @@ class OpenAIClient(BaseLLMClient):
         cache_conversation: bool = True,  # noqa: ARG002 - no explicit cache breakpoints
         server_compaction: bool = False,  # noqa: ARG002 - Anthropic-only compaction beta
     ) -> AsyncIterator[StreamChunk]:
-        """Stream a completion request from OpenAI.
+        """Stream a completion request.
 
         Args:
             messages: Conversation history.
             model: Model identifier.
             tools: Optional list of tools the model can call.
-            temperature: Not supported for GPT-5 models. Raises error if provided.
+            temperature: Refused unless the door accepts the parameter.
             reasoning_effort: Optional reasoning effort level for supported models.
             max_tokens: Maximum output tokens for this request.
 
@@ -295,14 +336,10 @@ class OpenAIClient(BaseLLMClient):
             StreamChunk objects as they arrive.
 
         Raises:
-            UnsupportedParameterError: If temperature is provided or reasoning_effort
-                used with unsupported model.
+            UnsupportedParameterError: If temperature is provided on a door
+                without it, or reasoning_effort used with an unsupported model.
         """
-        if temperature is not None:
-            raise UnsupportedParameterError(
-                ErrorMessages.OPENAI_TEMPERATURE_NOT_SUPPORTED
-            )
-
+        self._check_temperature(temperature)
         effective_effort = self._resolve_reasoning_effort(model, reasoning_effort)
 
         openai_messages = self._convert_messages(messages)
@@ -315,6 +352,7 @@ class OpenAIClient(BaseLLMClient):
                 messages=openai_messages,
                 tools=openai_tools if openai_tools else omit,
                 max_completion_tokens=max_tokens,
+                temperature=temperature if temperature is not None else omit,
                 stream=True,
                 stream_options=stream_opts,
                 reasoning_effort=effective_effort.value if effective_effort else omit,
@@ -387,12 +425,13 @@ class OpenAIClient(BaseLLMClient):
 
                 yield StreamChunk(
                     content=content,
+                    reasoning=self._reasoning_of(delta),
                     tool_calls=tool_calls,
                     finish_reason=finish_reason,
                     model=chunk.model,
                 )
         except Exception as exc:
-            raise wrap_provider_error("openai", exc, model=model) from exc
+            raise wrap_provider_error(self._door.name, exc, model=model) from exc
 
     # The converter bodies live in openai_convert.py (pure move, size-gate
     # headroom); these delegates keep the client the single entry point.
@@ -409,8 +448,19 @@ class OpenAIClient(BaseLLMClient):
     def _convert_response_format(
         self, response_format: ResponseFormat
     ) -> OpenAIResponseFormat:
+        if not self._door.strict_schemas:
+            response_format = replace(response_format, strict=False)
         return convert_response_format(response_format)
 
     async def close(self) -> None:
         """Close the underlying HTTP client and release resources."""
         await self._client.close()
+
+
+class OpenAIClient(OpenAICompatibleClient):
+    """OpenAI's own client: the generic wire on OpenAI's door."""
+
+    def __init__(
+        self, api_key: str, max_retries: int = LLMDefaults.MAX_RETRIES
+    ) -> None:
+        super().__init__(api_key, door=OPENAI_DOOR, max_retries=max_retries)

@@ -140,6 +140,7 @@ from neosian._foundation.shared.types import (
     PRICES_AS_OF,
     PRICES_FINGERPRINT,
     AgentConfig,
+    AnyModel,
     BlackboardEntry,
     BlackboardName,
     FallbackConfig,
@@ -151,14 +152,17 @@ from neosian._foundation.shared.types import (
     Model,
     ModelPricing,
     ModelSpec,
+    OpenAICompatible,
     PolicyResult,
     Provider,
     ReasoningEffort,
+    RegisteredModel,
     ResponseFormat,
     Skill,
     SkillName,
     ToolCallId,
     format_micro_usd,
+    register_model,
 )
 from neosian._foundation.tools.base import Tool, ToolResult
 
@@ -200,9 +204,12 @@ __all__ = [
     "MaxLen",
     "Pattern",
     # LLM
+    "AnyModel",
     "Model",
     "ModelPricing",
     "ModelSpec",
+    "OpenAICompatible",
+    "RegisteredModel",
     "ModelUsage",
     "MICRO_PER_USD",
     "PRICES_AS_OF",
@@ -213,6 +220,7 @@ __all__ = [
     "StopReason",
     "Usage",
     "format_micro_usd",
+    "register_model",
     "normalize_stop_reason",
     # Streaming events (v2 wire contract, DESIGN §6)
     "AgentEvent",

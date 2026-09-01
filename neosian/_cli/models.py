@@ -4,7 +4,14 @@ from rich.console import Console
 from simple_term_menu import TerminalMenu  # type: ignore[import-untyped]
 
 from neosian._foundation.shared.constants import ArenaUI
-from neosian._foundation.shared.types import DEFAULT_MODELS, Model, Provider
+from neosian._foundation.shared.registry import registered_models
+from neosian._foundation.shared.types import (
+    DEFAULT_MODELS,
+    AnyModel,
+    Model,
+    Provider,
+    RegisteredModel,
+)
 
 # Models hidden from the interactive picker (special-purpose).
 _HIDDEN_MODELS: frozenset[Model] = frozenset()
@@ -24,8 +31,10 @@ _MODEL_NOTES: dict[Model, str] = {
 }
 
 
-def display_name(model: Model) -> str:
+def display_name(model: AnyModel) -> str:
     """Build the picker label for a model from the registry."""
+    if isinstance(model, RegisteredModel):
+        return f"{model.door.name}/{model.value}"
     notes: list[str] = []
     if DEFAULT_MODELS.get(model.provider) is model:
         notes.append("default")
@@ -37,23 +46,32 @@ def display_name(model: Model) -> str:
 
 def get_models_for_provider(
     provider: Provider, *, require_reasoning: bool = False
-) -> list[tuple[Model, str]]:
+) -> list[tuple[AnyModel, str]]:
     """Get available models for a provider, derived from the Model registry.
+
+    Registered models (DESIGN §19) sit under `Provider.OPENAI_COMPATIBLE`,
+    labeled by their door, in registration order.
 
     Args:
         provider: The LLM provider.
         require_reasoning: If True, only return models that support reasoning.
 
     Returns:
-        List of (Model, display_name) tuples, default model first.
+        List of (model, display_name) tuples, default model first.
     """
-    models = [
+    models: list[AnyModel] = [
         m
         for m in Model
         if m.provider is provider
         and m not in _HIDDEN_MODELS
         and (not require_reasoning or m.supports_reasoning)
     ]
+    if provider is Provider.OPENAI_COMPATIBLE:
+        models = [
+            m
+            for m in registered_models()
+            if not require_reasoning or m.supports_reasoning
+        ]
     default = DEFAULT_MODELS.get(provider)
     models.sort(key=lambda m: m is not default)  # stable: default first
     return [(m, display_name(m)) for m in models]
@@ -63,6 +81,7 @@ _ALL_PROVIDERS: list[tuple[Provider, str]] = [
     (Provider.OPENAI, "OpenAI"),
     (Provider.ANTHROPIC, "Anthropic (Claude)"),
     (Provider.CEREBRAS, "Cerebras (fast open models)"),
+    (Provider.OPENAI_COMPATIBLE, "Registered (OpenAI-compatible doors)"),
 ]
 
 
@@ -87,7 +106,7 @@ def get_available_providers(
 
 def select_provider_and_model(
     console: Console, *, require_reasoning: bool = False
-) -> Model | None:
+) -> AnyModel | None:
     """Show interactive menu to select provider and model.
 
     Args:
@@ -130,13 +149,13 @@ def select_provider_and_model(
             # Back to provider selection
             continue
 
-        selected_model: Model = models[model_choice][0]
+        selected_model: AnyModel = models[model_choice][0]
         return selected_model
 
 
 def select_provider_and_model_labeled(
     console: Console, label: str, *, require_reasoning: bool = False
-) -> Model | None:
+) -> AnyModel | None:
     """Show interactive menu to select provider and model with a label.
 
     Args:
@@ -178,13 +197,13 @@ def select_provider_and_model_labeled(
             # Back to provider selection
             continue
 
-        labeled_model: Model = models[model_choice][0]
+        labeled_model: AnyModel = models[model_choice][0]
         return labeled_model
 
 
 def select_arena_models(
     console: Console, *, require_reasoning: bool = False
-) -> list[Model] | None:
+) -> list[AnyModel] | None:
     """Select models for arena mode.
 
     Args:
@@ -205,7 +224,7 @@ def select_arena_models(
     model_count = int(ArenaUI.COUNT_OPTIONS[count_choice])
 
     # Select each model
-    selections: list[Model] = []
+    selections: list[AnyModel] = []
     for i in range(model_count):
         label = ArenaUI.MODEL_LABEL.format(n=i + 1)
         selection = select_provider_and_model_labeled(

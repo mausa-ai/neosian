@@ -22,8 +22,8 @@ from neosian._foundation.llm.base import (
     text_of,
 )
 from neosian._foundation.shared.types import (
+    AnyModel,
     GuardrailResult,
-    Model,
     PolicyResult,
     ResponseFormat,
 )
@@ -37,7 +37,7 @@ if TYPE_CHECKING:
 async def execute_with_client(
     ctx: RunContext,
     client: BaseLLMClient,
-    model: Model,
+    model: AnyModel,
     attempt: Attempt,
     response_format: ResponseFormat | None = None,
 ) -> AgentResponse:

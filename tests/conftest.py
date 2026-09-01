@@ -6,6 +6,7 @@ tests/external/cross/** needs several providers' keys and carries all four.
 Selection is by marker — addopts exclude `external` by default.
 """
 
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -30,3 +31,15 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
 def sample_system_prompt() -> str:
     """Sample system prompt for testing."""
     return "You are a helpful assistant."
+
+
+@pytest.fixture(autouse=True)
+def _isolated_model_registry() -> Iterator[None]:
+    """Registrations are process-global configuration (DESIGN §19); each
+    test starts from the registry it found and leaves it as found."""
+    from neosian._foundation.shared.registry import _REGISTRY
+
+    before = dict(_REGISTRY)
+    yield
+    _REGISTRY.clear()
+    _REGISTRY.update(before)

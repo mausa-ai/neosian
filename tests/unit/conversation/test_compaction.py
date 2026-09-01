@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from neosian import Model, Provider
+from neosian import Model
 from neosian._foundation.conversation.compaction import (
     CompactionConfig,
     merge_usage,
@@ -29,6 +29,7 @@ from neosian._foundation.llm.fake import FakeClient, FakeScript, FakeTurn
 from neosian._foundation.memory.file import FileStore
 from neosian._foundation.shared.context_policy import ContextPolicy
 from neosian._foundation.shared.exceptions import ConfigurationError
+from neosian._foundation.shared.types import AnyModel
 
 _CONVERSATION = "compaction-test"
 _USAGE = Usage(input_tokens=100, output_tokens=10)
@@ -46,7 +47,7 @@ def _exchange(number: int, user: str = "hi", agent: str = "ok") -> ConversationT
     )
 
 
-def _acquire(fake: FakeClient) -> Callable[[Provider], FakeClient]:
+def _acquire(fake: FakeClient) -> Callable[[AnyModel], FakeClient]:
     return lambda _provider: fake
 
 

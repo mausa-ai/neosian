@@ -18,7 +18,7 @@ from neosian._foundation.memory.maintenance import MaintenanceResult, run_mainte
 from neosian._foundation.memory.mounts import MemoryConfig
 from neosian._foundation.memory.store_lifetime import open_store
 from neosian._foundation.shared.exceptions import NeosianError
-from neosian._foundation.shared.types import format_micro_usd
+from neosian._foundation.shared.types import AnyModel, format_micro_usd
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -37,7 +37,7 @@ async def execute_maintain(
     err: TextIO,
 ) -> int:
     client: BaseLLMClient | None = None
-    acquire: Callable[[Provider], BaseLLMClient] | None = None
+    acquire: Callable[[AnyModel], BaseLLMClient] | None = None
     if request.model is not None:
         if client_factory is None:
             err.write("error: --model is not available from this entry point\n")
@@ -59,11 +59,11 @@ async def execute_maintain(
     return _render_maintenance(result, request, out=out, err=err)
 
 
-def _lease(client: BaseLLMClient) -> Callable[[Provider], BaseLLMClient]:
+def _lease(client: BaseLLMClient) -> Callable[[AnyModel], BaseLLMClient]:
     """The one constructed client as an acquire lease — the caller
     (`execute_maintain`) owns its lifetime and closes it."""
 
-    def acquire(_: Provider) -> BaseLLMClient:
+    def acquire(_: AnyModel) -> BaseLLMClient:
         return client
 
     return acquire
@@ -72,7 +72,7 @@ def _lease(client: BaseLLMClient) -> Callable[[Provider], BaseLLMClient]:
 async def _maintain_on(
     store: MemoryStore,
     request: Request,
-    acquire: Callable[[Provider], BaseLLMClient] | None,
+    acquire: Callable[[AnyModel], BaseLLMClient] | None,
 ) -> MaintenanceResult:
     config = MemoryConfig(store=store, mounts=request.settings.mounts)
     return await run_maintenance(

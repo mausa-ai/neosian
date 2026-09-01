@@ -23,7 +23,7 @@ from neosian._foundation.conversation.projection import render_turn
 from neosian._foundation.memory.dispatch import dispatch
 from neosian._foundation.shared.prompt_assets import get_prompt
 from neosian._foundation.shared.structured import structured_call
-from neosian._foundation.shared.types import Model
+from neosian._foundation.shared.types import AnyModel
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -31,7 +31,6 @@ if TYPE_CHECKING:
     from neosian._foundation.conversation.types import ConversationTurn
     from neosian._foundation.llm.base import BaseLLMClient, Usage
     from neosian._foundation.memory.mounts import MemoryConfig
-    from neosian._foundation.shared.types import Provider
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +46,7 @@ class ReflectionConfig:
     """
 
     enabled: bool = True
-    model: Model | None = None
+    model: AnyModel | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,8 +106,8 @@ async def run_reflection(
     *,
     memory_config: MemoryConfig,
     turns: Sequence[ConversationTurn],
-    acquire: Callable[[Provider], BaseLLMClient],
-    model: Model,
+    acquire: Callable[[AnyModel], BaseLLMClient],
+    model: AnyModel,
     actor: str | None,
 ) -> ReflectionResult:
     """One reflection pass over the given turns; degrade-safe."""

@@ -26,6 +26,9 @@ class Provider(str, Enum):
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
     CEREBRAS = "cerebras"
+    # Registered models' shared row (DESIGN §19): a client is built from
+    # the model's door, never from this row alone.
+    OPENAI_COMPATIBLE = "openai_compatible"
     FAKE = "fake"
 
 

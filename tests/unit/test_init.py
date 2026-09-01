@@ -142,9 +142,12 @@ def test_all_list_matches_exports() -> None:
         "message_to_json",
         "message_from_json",
         # Models and Providers
+        "AnyModel",
         "Model",
         "ModelPricing",
         "ModelSpec",
+        "OpenAICompatible",
+        "RegisteredModel",
         "ModelUsage",
         "MICRO_PER_USD",
         "PRICES_AS_OF",
@@ -168,6 +171,7 @@ def test_all_list_matches_exports() -> None:
         "StopReason",
         "Usage",
         "format_micro_usd",
+        "register_model",
         "normalize_stop_reason",
         # Streaming events (v2 wire contract, DESIGN §6)
         "AgentEvent",

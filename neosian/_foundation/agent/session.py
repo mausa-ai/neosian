@@ -10,7 +10,14 @@ from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any, Literal, overload
 
 from neosian._foundation.llm.base import BaseLLMClient, Message
-from neosian._foundation.shared.types import FallbackState, Provider, ResponseFormat
+from neosian._foundation.shared.types import (
+    AnyModel,
+    FallbackState,
+    OpenAICompatible,
+    Provider,
+    RegisteredModel,
+    ResponseFormat,
+)
 
 if TYPE_CHECKING:
     from neosian._foundation.agent.base import Agent
@@ -54,21 +61,19 @@ class AgentSession:
             agent: The parent Agent instance.
         """
         self._agent = agent
-        self._clients: dict[Provider, BaseLLMClient] = {}
+        self._clients: dict[Provider | OpenAICompatible, BaseLLMClient] = {}
         self._fallback_state = FallbackState()
 
-    def _get_or_create_client(self, provider: Provider) -> BaseLLMClient:
+    def _get_or_create_client(self, model: AnyModel) -> BaseLLMClient:
         """Get a cached client or create and cache a new one.
 
-        Args:
-            provider: The provider enum.
-
-        Returns:
-            The cached or newly created LLM client.
+        Shipped models share one client per provider; registered models
+        share one per door (DESIGN §19).
         """
-        if provider not in self._clients:
-            self._clients[provider] = self._agent._create_client(provider)
-        return self._clients[provider]
+        key = model.door if isinstance(model, RegisteredModel) else model.provider
+        if key not in self._clients:
+            self._clients[key] = self._agent._create_client(model)
+        return self._clients[key]
 
     def _rebind(self, agent: Agent) -> None:
         """Point the session at a freshly derived Agent, keeping the client
