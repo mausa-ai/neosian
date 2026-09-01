@@ -2,8 +2,9 @@
 
 Tiers are marked by path (DESIGN §10): tests/unit/** is `unit`;
 tests/external/<provider>/** is `external` + `external_<provider>`;
-tests/external/cross/** needs several providers' keys and carries all four.
-Selection is by marker — addopts exclude `external` by default.
+tests/external/cross/** is parametrized per provider and self-skips per
+key, so it carries every suite's marker. Selection is by marker —
+addopts exclude `external` by default.
 """
 
 from collections.abc import Iterator
@@ -11,7 +12,17 @@ from pathlib import Path
 
 import pytest
 
-_PROVIDERS = ("openai", "anthropic", "cerebras")
+# The three shipped adapters, then the candidate doors of NC2 slice B.
+_PROVIDERS = (
+    "openai",
+    "anthropic",
+    "cerebras",
+    "xai",
+    "gemini",
+    "deepseek",
+    "qwen",
+    "kimi",
+)
 _TESTS_DIR = Path(__file__).parent
 
 

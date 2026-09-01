@@ -38,6 +38,37 @@ def cerebras_api_key() -> str:
     return _key_or_skip("CEREBRAS_API_KEY")
 
 
+# The candidate doors (tests/external/candidates.py) — keys only; the
+# door client is built from the candidate where it is probed.
+
+
+@pytest.fixture
+def xai_api_key() -> str:
+    return _key_or_skip("XAI_API_KEY")
+
+
+@pytest.fixture
+def gemini_api_key() -> str:
+    return _key_or_skip("GEMINI_API_KEY")
+
+
+@pytest.fixture
+def deepseek_api_key() -> str:
+    return _key_or_skip("DEEPSEEK_API_KEY")
+
+
+@pytest.fixture
+def qwen_api_key() -> str:
+    """Model Studio's host is workspace-scoped: the key alone reaches nothing."""
+    _key_or_skip("DASHSCOPE_WORKSPACE_ID")
+    return _key_or_skip("DASHSCOPE_API_KEY")
+
+
+@pytest.fixture
+def kimi_api_key() -> str:
+    return _key_or_skip("MOONSHOT_API_KEY")
+
+
 @pytest.fixture
 def postgres_dsn() -> str:
     """A live PostgreSQL server — a DSN, not an API key (SERVICES.md)."""

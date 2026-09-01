@@ -17,7 +17,7 @@ from unittest.mock import patch
 
 import pytest
 
-from neosian import Model
+from neosian import AnyModel, Model
 from neosian.evaluation import (
     EvalReport,
     MemoryEvalConfig,
@@ -25,6 +25,7 @@ from neosian.evaluation import (
     load_eval_config,
     run_evaluation,
 )
+from tests.external.candidates import CANDIDATES, Candidate, register
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _PACK = _REPO_ROOT / "examples" / "eval_memory_baseline.yaml"
@@ -49,7 +50,7 @@ _PROVIDER_CASES = [
 
 
 def _scriptless(
-    model: Model, transports: tuple[Transport, ...] | None = None
+    model: AnyModel, transports: tuple[Transport, ...] | None = None
 ) -> MemoryEvalConfig:
     """The shipped pack with scripts stripped and one real model on the
     axis — derived in code so the scenario content never forks
@@ -100,6 +101,19 @@ class TestMemoryBaselines:
         key = request.getfixturevalue(fixture)  # skips when the env var is unset
         config = _scriptless(model)
         with patch.dict(os.environ, {env_name: key}, clear=True):
+            report = await run_evaluation(config, store_root=tmp_path / "stores")
+        _assert_baseline(report)
+
+    @pytest.mark.parametrize("candidate", CANDIDATES, ids=lambda c: c.name)
+    async def test_candidate_baseline(
+        self, candidate: Candidate, request: pytest.FixtureRequest, tmp_path: Path
+    ) -> None:
+        """A door awaiting NW's gate: these are the cells membership reads
+        — green over two dispatched runs ships the row, red exits."""
+        request.getfixturevalue(candidate.key_fixture)  # skips when unset
+        config = _scriptless(register(candidate))
+        env = {name: os.environ.get(name, "") for name in candidate.env}
+        with patch.dict(os.environ, env, clear=True):
             report = await run_evaluation(config, store_root=tmp_path / "stores")
         _assert_baseline(report)
 

@@ -1,4 +1,5 @@
-"""Model-catalog smoke test: every registered model answers a 1-token request.
+"""Model-catalog smoke test: every shipped model, and every candidate door,
+answers a 1-token request.
 
 Catches silent provider catalog churn (deprecated/renamed model IDs) that
 unit tests cannot see. Run per provider with the matching env var set:
@@ -8,9 +9,11 @@ unit tests cannot see. Run per provider with the matching env var set:
 
 import pytest
 
-from neosian._foundation.llm.base import Message, Role
+from neosian import AnyModel
+from neosian._foundation.llm.base import BaseLLMClient, Message, Role
 from neosian._foundation.llm.router import ProviderRouter
 from neosian._foundation.shared.types import Model, Provider
+from tests.external.candidates import CANDIDATES, Candidate, register
 
 _PROVIDER_FIXTURES: dict[Provider, str] = {
     Provider.OPENAI: "openai_api_key",
@@ -28,24 +31,9 @@ _UNREACHABLE: dict[Model, str] = {
 }
 
 
-@pytest.mark.parametrize("model", list(Model), ids=lambda m: m.value)
-async def test_model_answers_minimal_completion(
-    model: Model, request: pytest.FixtureRequest
-) -> None:
-    """Each registry model must accept a minimal completion request.
-
-    A 404 / "model not found" failure here means the provider retired or
-    renamed the ID and the registry entry is stale.
-    """
-    if model.provider is Provider.FAKE:
-        pytest.skip("FAKE models are keyless registry members (DESIGN §2)")
-    if model in _UNREACHABLE:
-        pytest.skip(_UNREACHABLE[model])
-    fixture_name = _PROVIDER_FIXTURES[model.provider]
-    request.getfixturevalue(fixture_name)  # skips when the env var is unset
-
-    router = ProviderRouter()
-    client = router.create_client(model.provider)
+async def _answers(client: BaseLLMClient, model: AnyModel) -> None:
+    """A 404 / "model not found" here means the provider retired or renamed
+    the id and the entry is stale."""
     try:
         response = await client.complete(
             messages=[Message(role=Role.USER, content="Reply with OK.")],
@@ -56,3 +44,28 @@ async def test_model_answers_minimal_completion(
         assert response.usage.output_tokens >= 0
     finally:
         await client.close()
+
+
+@pytest.mark.parametrize("model", list(Model), ids=lambda m: m.value)
+async def test_model_answers_minimal_completion(
+    model: Model, request: pytest.FixtureRequest
+) -> None:
+    """Each registry model must accept a minimal completion request."""
+    if model.provider is Provider.FAKE:
+        pytest.skip("FAKE models are keyless registry members (DESIGN §2)")
+    if model in _UNREACHABLE:
+        pytest.skip(_UNREACHABLE[model])
+    fixture_name = _PROVIDER_FIXTURES[model.provider]
+    request.getfixturevalue(fixture_name)  # skips when the env var is unset
+    await _answers(ProviderRouter().create_client(model.provider), model)
+
+
+@pytest.mark.parametrize("candidate", CANDIDATES, ids=lambda c: c.name)
+async def test_candidate_answers_minimal_completion(
+    candidate: Candidate, request: pytest.FixtureRequest
+) -> None:
+    """A candidate's id resolves live, through the door path a registered
+    model takes (`create_client_for`, DESIGN §19.2)."""
+    request.getfixturevalue(candidate.key_fixture)  # skips when unset
+    model = register(candidate)
+    await _answers(ProviderRouter().create_client_for(model), model)

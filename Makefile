@@ -28,9 +28,9 @@ typecheck: ## mypy --strict over library and tests
 test: ## Unit tier — the default gate, zero API keys
 	uv run pytest
 
-test-external: ## Real-API suite: provider=<openai|anthropic|cerebras> [file=creds]
+test-external: ## Real-API suite: provider=<openai|anthropic|cerebras|xai|gemini|deepseek|qwen|kimi> [file=creds]
 ifndef provider
-	$(error provider=<openai|anthropic|cerebras> is required)
+	$(error provider=<openai|anthropic|cerebras|xai|gemini|deepseek|qwen|kimi> is required)
 endif
 	uv run python scripts/external_env.py --provider $(provider) $(if $(file),--file $(file))
 

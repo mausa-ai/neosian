@@ -20,6 +20,12 @@ KEY_ALLOWLIST: dict[str, tuple[str, ...]] = {
     "openai": ("OPENAI_API_KEY",),
     "anthropic": ("ANTHROPIC_API_KEY",),
     "cerebras": ("CEREBRAS_API_KEY",),
+    # The candidate doors (tests/external/candidates.py); first = primary.
+    "xai": ("XAI_API_KEY",),
+    "gemini": ("GEMINI_API_KEY",),
+    "deepseek": ("DEEPSEEK_API_KEY",),
+    "qwen": ("DASHSCOPE_API_KEY", "DASHSCOPE_WORKSPACE_ID"),
+    "kimi": ("MOONSHOT_API_KEY",),
 }
 
 

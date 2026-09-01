@@ -103,14 +103,16 @@ jobs:
 
   # Dispatch only; an absent secret arrives as "" and the suite
   # self-skips per test (falsiness checks), keeping the job green.
+  # A lane is the 24-cell pack plus the door probes on a flagship at its
+  # default effort; a keyless lane still finishes in seconds.
   external:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
-        provider: [openai, anthropic, cerebras]
+        provider: [openai, anthropic, cerebras, xai, gemini, deepseek, qwen, kimi]
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v7
@@ -123,3 +125,9 @@ jobs:
           OPENAI_API_KEY: ${{ matrix.provider == 'openai' && secrets.OPENAI_API_KEY || '' }}
           ANTHROPIC_API_KEY: ${{ matrix.provider == 'anthropic' && secrets.ANTHROPIC_API_KEY || '' }}
           CEREBRAS_API_KEY: ${{ matrix.provider == 'cerebras' && secrets.CEREBRAS_API_KEY || '' }}
+          XAI_API_KEY: ${{ matrix.provider == 'xai' && secrets.XAI_API_KEY || '' }}
+          GEMINI_API_KEY: ${{ matrix.provider == 'gemini' && secrets.GEMINI_API_KEY || '' }}
+          DEEPSEEK_API_KEY: ${{ matrix.provider == 'deepseek' && secrets.DEEPSEEK_API_KEY || '' }}
+          DASHSCOPE_API_KEY: ${{ matrix.provider == 'qwen' && secrets.DASHSCOPE_API_KEY || '' }}
+          DASHSCOPE_WORKSPACE_ID: ${{ matrix.provider == 'qwen' && secrets.DASHSCOPE_WORKSPACE_ID || '' }}
+          MOONSHOT_API_KEY: ${{ matrix.provider == 'kimi' && secrets.MOONSHOT_API_KEY || '' }}
