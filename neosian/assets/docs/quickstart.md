@@ -20,10 +20,12 @@ uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v<X.Y.Z>"
 uv add "neosian[postgres] @ git+ssh://git@github.com/neosae/neosian@v<X.Y.Z>"
 uv add "neosian[mcp] @ git+ssh://git@github.com/neosae/neosian@v<X.Y.Z>"
 uv add "neosian[otel] @ git+ssh://git@github.com/neosae/neosian@v<X.Y.Z>"
+uv add "neosian[server] @ git+ssh://git@github.com/neosae/neosian@v<X.Y.Z>"
 ```
 
 Substitute the current release tag (the `llms.txt` beside this wheel
-names it). The core install is database-driver-free and MCP-free.
+names it). The core install is database-driver-free, MCP-free, and
+server-free.
 
 ## Keyless boot
 

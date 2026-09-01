@@ -45,13 +45,18 @@ size: ## File-size gate (warn 300 / fail 500)
 
 ##@ Release
 
-release: ## Cut annotated release tag: v=X.Y.Z (must match pyproject; clean tree)
+release: ## Cut annotated release tag: v=X.Y.Z [notes=FILE] (must match pyproject; clean tree)
 ifndef v
 	$(error v=X.Y.Z is required)
 endif
 	@git diff --quiet && git diff --cached --quiet || { echo "refusing: dirty tree"; exit 1; }
 	@grep -q '^version = "$(v)"$$' pyproject.toml || { echo "refusing: v$(v) is not pyproject [project].version"; exit 1; }
+ifdef notes
+	@test -s "$(notes)" || { echo "refusing: notes=$(notes) is missing or empty"; exit 1; }
+	git tag -a "v$(v)" --cleanup=whitespace -F "$(notes)"
+else
 	git tag -a "v$(v)" -m "release v$(v)"
+endif
 
 phase-tag: ## Cut annotated phase tag: id=<phase id> (clean tree)
 ifndef id
