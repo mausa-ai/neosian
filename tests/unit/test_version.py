@@ -18,6 +18,7 @@ import neosian
 PYPROJECT = Path(__file__).parents[2] / "pyproject.toml"
 _README = PYPROJECT.parent / "README.md"
 _PIN = re.compile(r"github\.com/neosae/neosian@(v\d+\.\d+\.\d+)")
+_FINAL = re.compile(r"\d+\.\d+\.\d+")
 _UNDECLARED = "deliberately not yet cut"
 _STABLE = "Development Status :: 5 - Production/Stable"
 _BETA = "Development Status :: 4 - Beta"
@@ -45,9 +46,11 @@ def test_every_readme_install_pin_is_the_current_release() -> None:
 
 
 def test_the_declaration_is_all_or_nothing() -> None:
-    # A 1.0 bump flips the classifier and README's Stability tense in the
-    # same commit, or this goes red — neither flip is gated otherwise.
-    declared = int(neosian.__version__.split(".")[0]) >= 1
+    # A final 1.x release flips the classifier and README's Stability tense
+    # in the same commit, or this goes red — neither flip is gated otherwise.
+    # A pre-release (1.0.0rc1) is the kit's test vehicle, not the declaration.
+    version = neosian.__version__
+    declared = bool(_FINAL.fullmatch(version)) and int(version.split(".")[0]) >= 1
     classifiers = _pyproject()["project"]["classifiers"]
     assert (_STABLE in classifiers) == declared
     assert (_BETA in classifiers) == (not declared)
