@@ -20,8 +20,6 @@ from typing import TYPE_CHECKING, Final
 
 from neosian._foundation.memory.settings import (
     POSTGRES_DSN_ENV as POSTGRES_DSN_ENV,
-)
-from neosian._foundation.memory.settings import (
     StoreSettings,
     add_store_arguments,
     resolve_mounts,

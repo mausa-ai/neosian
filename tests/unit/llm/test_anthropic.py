@@ -21,7 +21,7 @@ from neosian._foundation.llm.base import (
     ToolCall,
     ToolDefinition,
 )
-from neosian._foundation.shared import types as types_module
+from neosian._foundation.shared import models as models_module
 from neosian._foundation.shared.exceptions import (
     UnsupportedContentError,
     UnsupportedParameterError,
@@ -535,7 +535,7 @@ class TestAnthropicReasoningEffort:
         self, client: AnthropicClient, sample_messages: list[Message]
     ) -> None:
         """Verify MAX effort is downgraded when the spec disallows it."""
-        spec = types_module._MODEL_SPECS[Model.CLAUDE_SONNET_5.value]
+        spec = models_module._MODEL_SPECS[Model.CLAUDE_SONNET_5.value]
         patched = dataclasses.replace(spec, supports_max_effort=False)
 
         mock_response = MagicMock()
@@ -546,7 +546,7 @@ class TestAnthropicReasoningEffort:
         _mock_complete(client, mock_response)
 
         with patch.dict(
-            types_module._MODEL_SPECS, {Model.CLAUDE_SONNET_5.value: patched}
+            models_module._MODEL_SPECS, {Model.CLAUDE_SONNET_5.value: patched}
         ):
             await client.complete(
                 messages=sample_messages,
@@ -2237,7 +2237,7 @@ class TestAnthropicMultimodal:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """complete() raises before any API call when the model lacks support."""
-        from neosian._foundation.shared.types import _MODEL_SPECS, ModelSpec, Provider
+        from neosian._foundation.shared.models import _MODEL_SPECS, ModelSpec, Provider
 
         monkeypatch.setitem(
             _MODEL_SPECS,

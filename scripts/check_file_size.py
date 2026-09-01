@@ -15,9 +15,6 @@ ROOT = Path(__file__).parents[1]
 
 ALLOWLIST: dict[str, str] = {
     # path (relative to repo root) -> reason (mandatory)
-    "neosian/_foundation/shared/types.py": (
-        "the model registry + config types; NS grew it with µ$ pricing and FAKE"
-    ),
     "neosian/_foundation/llm/anthropic.py": (
         "grew with v0.49 multimodal + N4 native tools/server compaction; "
         "single-file adapter until a real seam appears"

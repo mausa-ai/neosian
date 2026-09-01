@@ -9,25 +9,20 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Final
 
-from neosian._foundation.llm.blocks import CompactionBlock as CompactionBlock
-from neosian._foundation.llm.blocks import ContentBlock as ContentBlock
-from neosian._foundation.llm.blocks import DocumentBlock as DocumentBlock
-from neosian._foundation.llm.blocks import ImageBlock as ImageBlock
-from neosian._foundation.llm.blocks import TextBlock as TextBlock
-
 # Re-exports: the block types and helpers moved to llm/blocks.py at N4
 # slice B; every existing `from ...llm.base import TextBlock` keeps working.
 from neosian._foundation.llm.blocks import (
+    CompactionBlock as CompactionBlock,
+    ContentBlock as ContentBlock,
+    DocumentBlock as DocumentBlock,
+    ImageBlock as ImageBlock,
+    TextBlock as TextBlock,
     assemble_streamed_content as assemble_streamed_content,
-)
-from neosian._foundation.llm.blocks import content_to_json as content_to_json
-from neosian._foundation.llm.blocks import (
+    content_to_json as content_to_json,
     required_content_types as required_content_types,
-)
-from neosian._foundation.llm.blocks import (
     requires_compaction_support as requires_compaction_support,
+    text_of as text_of,
 )
-from neosian._foundation.llm.blocks import text_of as text_of
 from neosian._foundation.shared.constants import LLMDefaults
 from neosian._foundation.shared.types import (
     Model,

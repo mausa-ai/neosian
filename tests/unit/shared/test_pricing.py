@@ -15,7 +15,7 @@ from neosian import (
     format_micro_usd,
 )
 from neosian._foundation.llm.base import ModelUsage
-from neosian._foundation.shared.types import _prices_fingerprint
+from neosian._foundation.shared.models import _prices_fingerprint
 
 # The published USD/MTok rate card, as verified on PRICES_AS_OF — the
 # no-rounding gate: every shipped int µ$ rate must equal its decimal USD

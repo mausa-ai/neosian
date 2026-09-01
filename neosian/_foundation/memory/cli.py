@@ -27,8 +27,6 @@ from typing import TYPE_CHECKING, TextIO
 # re-export idiom); the grammar itself lives in cli_grammar.py.
 from neosian._foundation.memory.cli_grammar import (
     ARGUMENT_KEYS as ARGUMENT_KEYS,
-)
-from neosian._foundation.memory.cli_grammar import (
     OPERATOR_VERBS,
     Request,
     parse_request,

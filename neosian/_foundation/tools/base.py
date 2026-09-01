@@ -37,8 +37,7 @@ from neosian._foundation.shared.constraints import (
     Pattern,
 )
 from neosian._foundation.shared.serialization import safe_json_dumps
-from neosian._foundation.shared.types import ToolFunction as ToolFunction
-from neosian._foundation.shared.types import ToolName
+from neosian._foundation.shared.types import ToolFunction as ToolFunction, ToolName
 
 
 @dataclass

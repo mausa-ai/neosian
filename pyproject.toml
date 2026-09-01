@@ -128,6 +128,10 @@ ignore = [
               # serialization-heavy public enums (Model, Role, AgentEventType)
 ]
 
+[tool.ruff.lint.isort]
+# `from m import X as X` re-exports stay one statement (shared/types.py)
+combine-as-imports = true
+
 # Layering (DESIGN §1) — forbidden contracts only. Type-only imports are
 # excluded: the contracts police runtime coupling, and TYPE_CHECKING
 # blocks (e.g. shared.types -> agent.hooks for AgentHooks) create none.

@@ -30,8 +30,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated, Any
 
-from fastapi import FastAPI
-from fastapi import Path as PathParam
+from fastapi import FastAPI, Path as PathParam
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 

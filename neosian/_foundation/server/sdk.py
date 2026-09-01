@@ -19,16 +19,12 @@ try:
     import uvicorn as uvicorn
     from mcp.server.streamable_http_manager import (
         StreamableHTTPASGIApp as StreamableHTTPASGIApp,
-    )
-    from mcp.server.streamable_http_manager import (
         StreamableHTTPSessionManager as StreamableHTTPSessionManager,
     )
     from starlette.applications import Starlette as Starlette
     from starlette.middleware import Middleware as Middleware
     from starlette.requests import Request as Request
-    from starlette.responses import JSONResponse as JSONResponse
-    from starlette.responses import Response as Response
-    from starlette.routing import BaseRoute as BaseRoute
-    from starlette.routing import Route as Route
+    from starlette.responses import JSONResponse as JSONResponse, Response as Response
+    from starlette.routing import BaseRoute as BaseRoute, Route as Route
 except ImportError as exc:  # pragma: no cover - exercised by subprocess test
     raise ImportError(_INSTALL_HINT) from exc
