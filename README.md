@@ -491,5 +491,7 @@ value-blind.
 - [BASELINES.md](docs/BASELINES.md) — the published per-provider memory
   baselines: methodology, fingerprints, results.
 - [SERVICES.md](docs/SERVICES.md) — every env key and what turning it off means.
+- [docs/tour/](docs/tour/README.md) — the demo tour: real-key transcripts of
+  every beat above, one page each, verbatim.
 - [llms.txt](llms.txt) — the machine-readable front door (byte-identical
   twin ships in the wheel).
