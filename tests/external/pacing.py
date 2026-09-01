@@ -1,0 +1,128 @@
+"""Pacing for the candidate lanes: a door's rate limit, respected on our side.
+
+A rate limit is an account property, not a dialect, so it never becomes an
+`OpenAICompatible` knob (DESIGN §19.3): the external tier paces the door's
+client instead. One `Pacer` per lane spaces request starts
+`60 / requests_per_minute` seconds apart across every client built on it
+(the agent creates a client per attempt), and a 429 that still arrives
+waits one more interval and retries — the SDK's own backoff runs
+underneath. Injected through the `client_factory` seam the harness honors
+for scriptless cells, so every model call a cell makes — turns, reflection,
+maintenance — is paced.
+"""
+
+import asyncio
+import time
+from collections.abc import AsyncIterator
+
+from neosian._foundation.llm.base import (
+    BaseLLMClient,
+    CompletionResponse,
+    Message,
+    StreamChunk,
+    ToolDefinition,
+)
+from neosian._foundation.llm.openai import OpenAICompatibleClient
+from neosian._foundation.shared.constants import LLMDefaults
+from neosian._foundation.shared.exceptions import ProviderError
+from neosian._foundation.shared.types import AnyModel, ReasoningEffort, ResponseFormat
+from tests.external.candidates import Candidate
+
+_ATTEMPTS = 3
+
+
+class Pacer:
+    """The shared clock: one per lane, however many clients ride it."""
+
+    def __init__(self, requests_per_minute: int) -> None:
+        self.interval = 60.0 / requests_per_minute
+        self._lock = asyncio.Lock()
+        self._next_at = 0.0
+
+    @classmethod
+    def of(cls, candidate: Candidate) -> "Pacer | None":
+        rpm = candidate.requests_per_minute
+        return None if rpm is None else cls(rpm)
+
+    async def slot(self) -> None:
+        async with self._lock:
+            wait = self._next_at - time.monotonic()
+            if wait > 0:
+                await asyncio.sleep(wait)
+            self._next_at = time.monotonic() + self.interval
+
+
+class PacedClient(BaseLLMClient):
+    """A client whose requests start on the pacer's slots."""
+
+    def __init__(self, inner: BaseLLMClient, pacer: Pacer) -> None:
+        self._inner = inner
+        self._pacer = pacer
+
+    async def complete(
+        self,
+        messages: list[Message],
+        model: AnyModel,
+        tools: list[ToolDefinition] | None = None,
+        temperature: float | None = None,
+        response_format: ResponseFormat | None = None,
+        reasoning_effort: ReasoningEffort | None = None,
+        max_tokens: int = LLMDefaults.MAX_OUTPUT_TOKENS,
+        cache_conversation: bool = True,
+        server_compaction: bool = False,
+    ) -> CompletionResponse:
+        attempt = 0
+        while True:
+            await self._pacer.slot()
+            try:
+                return await self._inner.complete(
+                    messages,
+                    model,
+                    tools=tools,
+                    temperature=temperature,
+                    response_format=response_format,
+                    reasoning_effort=reasoning_effort,
+                    max_tokens=max_tokens,
+                    cache_conversation=cache_conversation,
+                    server_compaction=server_compaction,
+                )
+            except ProviderError as exc:
+                attempt += 1
+                if exc.status != 429 or attempt == _ATTEMPTS:
+                    raise
+                await asyncio.sleep(self._pacer.interval)
+
+    async def stream(
+        self,
+        messages: list[Message],
+        model: AnyModel,
+        tools: list[ToolDefinition] | None = None,
+        temperature: float | None = None,
+        reasoning_effort: ReasoningEffort | None = None,
+        max_tokens: int = LLMDefaults.MAX_OUTPUT_TOKENS,
+        cache_conversation: bool = True,
+        server_compaction: bool = False,
+    ) -> AsyncIterator[StreamChunk]:
+        await self._pacer.slot()
+        async for chunk in self._inner.stream(
+            messages,
+            model,
+            tools=tools,
+            temperature=temperature,
+            reasoning_effort=reasoning_effort,
+            max_tokens=max_tokens,
+            cache_conversation=cache_conversation,
+            server_compaction=server_compaction,
+        ):
+            yield chunk
+
+    async def close(self) -> None:
+        await self._inner.close()
+
+
+def door_client(
+    candidate: Candidate, api_key: str, pacer: Pacer | None
+) -> BaseLLMClient:
+    """The candidate's client, paced when its account states a limit."""
+    client = OpenAICompatibleClient(api_key=api_key, door=candidate.door)
+    return client if pacer is None else PacedClient(client, pacer)

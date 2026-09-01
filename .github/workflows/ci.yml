@@ -104,11 +104,13 @@ jobs:
   # Dispatch only; an absent secret arrives as "" and the suite
   # self-skips per test (falsiness checks), keeping the job green.
   # A lane is the 24-cell pack plus the door probes on a flagship at its
-  # default effort; a keyless lane still finishes in seconds.
+  # default effort; a keyless lane still finishes in seconds. Candidate
+  # lanes are paced to the account's rate limit (tests/external/pacing.py),
+  # so a 3-requests-per-minute tier needs most of this budget.
   external:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 180
     strategy:
       fail-fast: false
       matrix:
@@ -129,5 +131,4 @@ jobs:
           GEMINI_API_KEY: ${{ matrix.provider == 'gemini' && secrets.GEMINI_API_KEY || '' }}
           DEEPSEEK_API_KEY: ${{ matrix.provider == 'deepseek' && secrets.DEEPSEEK_API_KEY || '' }}
           DASHSCOPE_API_KEY: ${{ matrix.provider == 'qwen' && secrets.DASHSCOPE_API_KEY || '' }}
-          DASHSCOPE_WORKSPACE_ID: ${{ matrix.provider == 'qwen' && secrets.DASHSCOPE_WORKSPACE_ID || '' }}
           MOONSHOT_API_KEY: ${{ matrix.provider == 'kimi' && secrets.MOONSHOT_API_KEY || '' }}

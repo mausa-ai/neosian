@@ -7,10 +7,12 @@ idempotent, so every test may call it. A candidate becomes a shipped
 catalog row only once green over two dispatched runs (ledger #122); its
 ids, limits and knobs come from the provider docs as read 2026-09-01 and
 are corrected by what the live probes find — never pricing, which enters
-at promotion where the fingerprint seals it.
+at promotion where the fingerprint seals it. `requests_per_minute` is the
+lane's account tier, found by the first probes; it is paced in
+`pacing.py`, never a door knob (a limit is an account property, not a
+dialect).
 """
 
-import os
 from dataclasses import dataclass
 
 from neosian import OpenAICompatible, RegisteredModel, register_model
@@ -23,7 +25,7 @@ class Candidate:
     context_window: int
     max_output_tokens: int
     supports_reasoning: bool = False
-    extra_env: tuple[str, ...] = ()  # beyond the door's key (qwen's workspace)
+    requests_per_minute: int | None = None  # the account's tier; see pacing.py
 
     @property
     def name(self) -> str:
@@ -33,11 +35,6 @@ class Candidate:
     @property
     def key_fixture(self) -> str:
         return f"{self.name}_api_key"
-
-    @property
-    def env(self) -> tuple[str, ...]:
-        """Every env name the lane injects."""
-        return (self.door.api_key_env, *self.extra_env)
 
 
 XAI = Candidate(
@@ -67,6 +64,7 @@ GEMINI = Candidate(
     context_window=1_048_576,
     max_output_tokens=65_536,
     supports_reasoning=True,
+    requests_per_minute=5,  # the free tier, per model (probed 2026-09-01)
 )
 
 DEEPSEEK = Candidate(
@@ -85,18 +83,15 @@ DEEPSEEK = Candidate(
     supports_reasoning=True,
 )
 
-# Model Studio's host is workspace-scoped; without the id the lane skips
-# and this placeholder host is never contacted.
-_WORKSPACE = os.environ.get("DASHSCOPE_WORKSPACE_ID", "unset")
-
 QWEN = Candidate(
-    # Thinking rides `enable_thinking` in extra_body, not reasoning_effort.
+    # Model Studio's token plan (Singapore): a fixed host, unlike the
+    # pay-as-you-go path whose host is workspace-scoped (§19.7). Thinking
+    # rides `enable_thinking` in extra_body, not reasoning_effort.
     door=OpenAICompatible(
         name="qwen",
         api_key_env="DASHSCOPE_API_KEY",
         base_url=(
-            f"https://{_WORKSPACE}.ap-southeast-1.maas.aliyuncs.com"
-            "/compatible-mode/v1"
+            "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1"
         ),
         temperature=True,
         reasoning_effort=False,
@@ -105,7 +100,6 @@ QWEN = Candidate(
     model="qwen3.8-max",
     context_window=1_000_000,
     max_output_tokens=131_072,
-    extra_env=("DASHSCOPE_WORKSPACE_ID",),
 )
 
 KIMI = Candidate(
@@ -120,6 +114,7 @@ KIMI = Candidate(
     context_window=1_048_576,
     max_output_tokens=131_072,  # unpublished — a conservative ceiling
     supports_reasoning=True,
+    requests_per_minute=3,  # the organisation's tier (probed 2026-09-01)
 )
 
 CANDIDATES: tuple[Candidate, ...] = (XAI, GEMINI, DEEPSEEK, QWEN, KIMI)

@@ -26,6 +26,7 @@ from neosian.evaluation import (
     run_evaluation,
 )
 from tests.external.candidates import CANDIDATES, Candidate, register
+from tests.external.pacing import Pacer, door_client
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _PACK = _REPO_ROOT / "examples" / "eval_memory_baseline.yaml"
@@ -109,12 +110,18 @@ class TestMemoryBaselines:
         self, candidate: Candidate, request: pytest.FixtureRequest, tmp_path: Path
     ) -> None:
         """A door awaiting NW's gate: these are the cells membership reads
-        — green over two dispatched runs ships the row, red exits."""
-        request.getfixturevalue(candidate.key_fixture)  # skips when unset
+        — green over two dispatched runs ships the row, red exits. Every
+        model call rides one paced clock (pacing.py) so an account tier
+        never masquerades as model behavior."""
+        key = request.getfixturevalue(candidate.key_fixture)  # skips when unset
         config = _scriptless(register(candidate))
-        env = {name: os.environ.get(name, "") for name in candidate.env}
-        with patch.dict(os.environ, env, clear=True):
-            report = await run_evaluation(config, store_root=tmp_path / "stores")
+        pacer = Pacer.of(candidate)
+        with patch.dict(os.environ, {candidate.door.api_key_env: key}, clear=True):
+            report = await run_evaluation(
+                config,
+                store_root=tmp_path / "stores",
+                client_factory=lambda _provider: door_client(candidate, key, pacer),
+            )
         _assert_baseline(report)
 
     async def test_anthropic_transport_axis(

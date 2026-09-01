@@ -14,13 +14,19 @@ import pytest
 from pydantic import BaseModel
 
 from neosian import RegisteredModel
-from neosian._foundation.llm.base import Message, Role, ToolDefinition, text_of
-from neosian._foundation.llm.openai import OpenAICompatibleClient
+from neosian._foundation.llm.base import (
+    BaseLLMClient,
+    Message,
+    Role,
+    ToolDefinition,
+    text_of,
+)
 from neosian._foundation.shared.schema import validate_json
 from neosian._foundation.shared.types import ReasoningEffort, ResponseFormat, ToolName
 from tests.external.candidates import CANDIDATES, Candidate, register
+from tests.external.pacing import Pacer, door_client
 
-type Door = tuple[RegisteredModel, OpenAICompatibleClient]
+type Door = tuple[RegisteredModel, BaseLLMClient]
 
 _ORACLE = ToolDefinition(
     name=ToolName("oracle"),
@@ -55,7 +61,7 @@ class _Capital(BaseModel):
 async def door(request: pytest.FixtureRequest) -> AsyncIterator[Door]:
     candidate: Candidate = request.param
     key = request.getfixturevalue(candidate.key_fixture)  # skips when unset
-    client = OpenAICompatibleClient(api_key=key, door=candidate.door)
+    client = door_client(candidate, key, Pacer.of(candidate))
     try:
         yield register(candidate), client
     finally:

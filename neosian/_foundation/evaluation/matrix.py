@@ -8,6 +8,7 @@ could measure anything.
 """
 
 import asyncio
+import dataclasses
 import logging
 import re
 from datetime import datetime
@@ -26,7 +27,12 @@ from neosian._foundation.evaluation.results import (
 from neosian._foundation.evaluation.runner import run_case
 from neosian._foundation.evaluation.types import EvalCase, EvalConfig
 from neosian._foundation.shared.exceptions import EvalError
-from neosian._foundation.shared.types import AgentConfig, AnyModel, Provider
+from neosian._foundation.shared.types import (
+    AgentConfig,
+    AnyModel,
+    ClientFactory,
+    Provider,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +44,7 @@ async def run_evaluation(
     *,
     on_progress: ProgressCallback | None = None,
     store_root: str | Path | None = None,
+    client_factory: ClientFactory | None = None,
 ) -> EvalReport:
     """Run the suite's matrix and report every cell.
 
@@ -45,9 +52,13 @@ async def run_evaluation(
     (with latency) after it. `store_root` overrides where a memory
     suite lands its per-cell scenario stores (default
     `.neosian/evals/<ts>-memory/`, cwd-relative like `save_report`);
-    agent suites ignore it.
+    agent suites ignore it. `client_factory` replaces the loaded agent's
+    factory for the scriptless cells (a rate-paced real client, a
+    recorder); scripted cells keep their FakeClient.
     """
     base, _ = load_agent_config(config.agent)
+    if client_factory is not None:
+        base = dataclasses.replace(base, client_factory=client_factory)
     if isinstance(config, MemoryEvalConfig):
         return await _run_memory_matrix(
             config, base, on_progress=on_progress, store_root=store_root

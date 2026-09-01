@@ -59,8 +59,6 @@ def deepseek_api_key() -> str:
 
 @pytest.fixture
 def qwen_api_key() -> str:
-    """Model Studio's host is workspace-scoped: the key alone reaches nothing."""
-    _key_or_skip("DASHSCOPE_WORKSPACE_ID")
     return _key_or_skip("DASHSCOPE_API_KEY")
 
 
