@@ -14,6 +14,8 @@ _METHODS = (
     "list_documents",
     "versions",
     "redact",
+    "history",
+    "redactions",
 )
 
 
@@ -22,7 +24,7 @@ class TestMemoryStoreABC:
         with pytest.raises(TypeError):
             MemoryStore()  # type: ignore[abstract]
 
-    def test_declares_exactly_the_seven_methods(self) -> None:
+    def test_declares_exactly_the_nine_methods(self) -> None:
         assert set(MemoryStore.__abstractmethods__) == set(_METHODS)
 
     def test_every_method_is_an_async_def(self) -> None:

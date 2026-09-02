@@ -3,6 +3,7 @@ timing-safely; `/health` alone is unauthenticated (a container healthcheck
 carries no token); an auth miss is a plain 401, never a §18 envelope."""
 
 from collections.abc import AsyncIterator
+from datetime import datetime
 from pathlib import Path
 
 import httpx
@@ -76,6 +77,7 @@ class TestBuildAppRefusals:
         from neosian._foundation.memory.types import (
             MemoryDocument,
             MemoryEntry,
+            MemoryRedaction,
             MemoryVersion,
         )
 
@@ -119,6 +121,24 @@ class TestBuildAppRefusals:
             async def redact(
                 self, scope: str, *, path: str | None = None, actor: str | None = None
             ) -> int:
+                raise NotImplementedError
+
+            async def history(
+                self,
+                scope: str,
+                *,
+                since: datetime | None = None,
+                limit: int | None = None,
+            ) -> tuple[MemoryVersion, ...]:
+                raise NotImplementedError
+
+            async def redactions(
+                self,
+                scope: str,
+                *,
+                since: datetime | None = None,
+                limit: int | None = None,
+            ) -> tuple[MemoryRedaction, ...]:
                 raise NotImplementedError
 
         with pytest.raises(ConfigurationError, match="ConversationStore"):

@@ -75,3 +75,18 @@ class MemoryVersion:
     actor: str | None
     created_at: datetime
     redacted: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class MemoryRedaction:
+    """One erasure act (NL, DESIGN §20): who redacted what, when.
+
+    `path` is None for a scope-wide redaction; `count` is the number of
+    distinct paths the act cleared. The trail existed on every substrate
+    since N1/N3 as a store-local file or table; NL made it readable.
+    """
+
+    path: str | None
+    actor: str | None
+    created_at: datetime
+    count: int

@@ -46,9 +46,12 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, ClassVar
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from neosian._foundation.memory.types import (
         MemoryDocument,
         MemoryEntry,
+        MemoryRedaction,
         MemoryVersion,
     )
 
@@ -109,3 +112,30 @@ class MemoryStore(ABC):
     ) -> int:
         """Clear content everywhere for one path — or the whole scope
         when `path=None` — preserving the audit skeleton (C3)."""
+
+    # The ledger's reads (NL, DESIGN §20) — additive since v0.83.
+
+    @abstractmethod
+    async def history(
+        self,
+        scope: str,
+        *,
+        since: datetime | None = None,
+        limit: int | None = None,
+    ) -> tuple[MemoryVersion, ...]:
+        """Every version row in the scope across every path ever written,
+        deleted paths included, newest first (`created_at` desc, then
+        path, then version desc). `since` is inclusive and must be
+        tz-aware (C4; naive is a `ValueError`); `limit=None` is all."""
+
+    @abstractmethod
+    async def redactions(
+        self,
+        scope: str,
+        *,
+        since: datetime | None = None,
+        limit: int | None = None,
+    ) -> tuple[MemoryRedaction, ...]:
+        """The scope's erasure trail, newest first; `since`/`limit` as
+        `history`. Redaction appends no version row (C3) — this is the
+        only place an erasure is visible as an act."""

@@ -26,7 +26,6 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
-import json
 from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING
@@ -40,6 +39,7 @@ from neosian._foundation.memory.scope import parse_scope, scope_directory
 from neosian._foundation.memory.types import (
     MemoryDocument,
     MemoryEntry,
+    MemoryRedaction,
     MemoryVersion,
 )
 from neosian._foundation.shared.clock import Clock, SystemClock
@@ -48,7 +48,7 @@ from neosian._foundation.shared.exceptions import (
     MemoryDocumentNotFoundError,
     MemoryPathInvalidError,
 )
-from neosian._foundation.shared.fileio import append_line, private_mkdir
+from neosian._foundation.shared.fileio import private_mkdir
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -291,8 +291,51 @@ class FileStore(MemoryStore, FileTurnStore):
                     )
                     journal.atomic_write(doc_file, render(envelope, ""))
             if targets:
-                self._record_redaction(scope, path, actor, len(targets))
+                journal.append_redaction(
+                    self._scope_dir(scope) / _REDACTIONS,
+                    MemoryRedaction(
+                        path=path,
+                        actor=actor,
+                        created_at=self._now(),
+                        count=len(targets),
+                    ),
+                )
             return len(targets)
+
+    async def history(
+        self,
+        scope: str,
+        *,
+        since: datetime | None = None,
+        limit: int | None = None,
+    ) -> tuple[MemoryVersion, ...]:
+        scope = parse_scope(scope)
+        journal.since_window(since, limit)
+        rows: list[MemoryVersion] = []
+        for logical in journal.logical_paths(self._scope_dir(scope) / _VERSIONS):
+            rows.extend(
+                row
+                for row in self._rows(scope, logical)
+                if since is None or row.created_at >= since
+            )
+        return tuple(journal.newest_first(rows))[:limit]
+
+    async def redactions(
+        self,
+        scope: str,
+        *,
+        since: datetime | None = None,
+        limit: int | None = None,
+    ) -> tuple[MemoryRedaction, ...]:
+        scope = parse_scope(scope)
+        journal.since_window(since, limit)
+        acts = journal.read_redactions(
+            self._scope_dir(scope) / _REDACTIONS, scope=scope
+        )
+        recent = [
+            act for act in reversed(acts) if since is None or act.created_at >= since
+        ]
+        return tuple(recent)[:limit]
 
     # Internal plumbing ----------------------------------------------------
 
@@ -363,18 +406,7 @@ class FileStore(MemoryStore, FileTurnStore):
             has_history = self._journal_file(scope, path).is_file()
             has_document = self._doc_file(scope, path).is_file()
             return [path] if has_history or has_document else []
-        matched: set[str] = set()
-        versions_dir = scope_dir / _VERSIONS
-        if versions_dir.is_dir():
-            for journal_file in versions_dir.rglob("*.jsonl"):
-                relative = journal_file.relative_to(versions_dir)
-                name = relative.name[: -len(".jsonl")]
-                logical = "/".join((*relative.parts[:-1], name))
-                try:
-                    validate_document_path(logical)
-                except MemoryPathInvalidError:
-                    continue
-                matched.add(logical)
+        matched = set(journal.logical_paths(scope_dir / _VERSIONS))
         docs_dir = scope_dir / _DOCUMENTS
         if docs_dir.is_dir():
             for doc_file in docs_dir.rglob("*.md"):
@@ -382,20 +414,3 @@ class FileStore(MemoryStore, FileTurnStore):
                 if doc_logical is not None:
                     matched.add(doc_logical)
         return sorted(matched)
-
-    def _record_redaction(
-        self, scope: str, path: str | None, actor: str | None, count: int
-    ) -> None:
-        line = json.dumps(
-            {
-                "ts": self._now().isoformat().replace("+00:00", "Z"),
-                "actor": actor,
-                "path": path,
-                "count": count,
-            },
-            ensure_ascii=True,
-            separators=(",", ":"),
-        )
-        trail = self._scope_dir(scope) / _REDACTIONS
-        private_mkdir(trail.parent)
-        append_line(trail, line + "\n")

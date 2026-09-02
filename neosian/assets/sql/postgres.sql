@@ -85,6 +85,14 @@ CREATE TABLE IF NOT EXISTS {{schema}}.memory_redactions (
     created_at timestamptz NOT NULL
 );
 
+-- Generation 2 (NL, DESIGN §20): the ledger reads a scope's history and
+-- erasure trail newest first — the indexes those two reads walk.
+CREATE INDEX IF NOT EXISTS memory_versions_scope_time
+    ON {{schema}}.memory_versions (scope, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS memory_redactions_scope_time
+    ON {{schema}}.memory_redactions (scope, created_at DESC);
+
 -- Conversation (DESIGN §9.2) -------------------------------------------
 
 CREATE TABLE IF NOT EXISTS {{schema}}.conversations (

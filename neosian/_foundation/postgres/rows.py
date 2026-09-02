@@ -24,6 +24,7 @@ from neosian._foundation.memory.types import (
     MemoryAction,
     MemoryDocument,
     MemoryEntry,
+    MemoryRedaction,
     MemoryVersion,
 )
 from neosian._foundation.shared.exceptions import (
@@ -95,6 +96,13 @@ def memory_version(scope: str, row: Row) -> MemoryVersion:
         actor=actor,
         created_at=_utc(created_at),
         redacted=redacted,
+    )
+
+
+def memory_redaction(row: Row) -> MemoryRedaction:
+    path, actor, created_at, count = row
+    return MemoryRedaction(
+        path=path, actor=actor, created_at=_utc(created_at), count=int(count)
     )
 
 

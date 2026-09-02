@@ -31,6 +31,7 @@ from neosian._foundation.llm.codec import message_from_json, message_to_json
 from neosian._foundation.memory.types import (
     MemoryDocument,
     MemoryEntry,
+    MemoryRedaction,
     MemoryVersion,
 )
 from neosian._foundation.shared.exceptions import (
@@ -49,7 +50,7 @@ if TYPE_CHECKING:
 
     from neosian._foundation.memory.types import MemoryAction
 
-WIRE_VERSION: Final = 1
+WIRE_VERSION: Final = 2  # NL: the ledger's reads and the turn author
 
 # The envelope code for the ABCs' bare ValueError (programmer errors:
 # negative cursors, empty message lists). Deliberately not a neosian
@@ -108,6 +109,11 @@ def require_int(payload: Mapping[str, Any], name: str) -> int:
 
 def optional_int(payload: Mapping[str, Any], name: str) -> int | None:
     return cast("int | None", _param(payload, name, int, "an integer", required=False))
+
+
+def optional_timestamp(payload: Mapping[str, Any], name: str) -> datetime | None:
+    raw = optional_str(payload, name)
+    return None if raw is None else decode_timestamp(raw)
 
 
 def require_objects(payload: Mapping[str, Any], name: str) -> list[dict[str, Any]]:
@@ -189,6 +195,24 @@ def decode_version(data: Mapping[str, Any]) -> MemoryVersion:
         actor=data["actor"],
         created_at=decode_timestamp(data["created_at"]),
         redacted=bool(data["redacted"]),
+    )
+
+
+def encode_redaction(act: MemoryRedaction) -> dict[str, Any]:
+    return {
+        "path": act.path,
+        "actor": act.actor,
+        "created_at": encode_timestamp(act.created_at),
+        "count": act.count,
+    }
+
+
+def decode_redaction(data: Mapping[str, Any]) -> MemoryRedaction:
+    return MemoryRedaction(
+        path=data["path"],
+        actor=data["actor"],
+        created_at=decode_timestamp(data["created_at"]),
+        count=int(data["count"]),
     )
 
 

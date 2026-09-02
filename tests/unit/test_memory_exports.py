@@ -34,6 +34,7 @@ def test_memory_all_is_pinned() -> None:
         "MemoryFormatUnsupportedError",
         "MemoryPathInvalidError",
         "MemoryReadOnlyMountError",
+        "MemoryRedaction",
         "MemoryScopeInvalidError",
         "MemoryStore",
         "MemoryStoreError",

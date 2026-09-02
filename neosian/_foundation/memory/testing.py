@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Any
 import pytest
 
 from neosian._foundation.memory.scope import Scope, parse_scope
+from neosian._foundation.memory.testing_audit import LedgerContract
 from neosian._foundation.shared.exceptions import (
     MemoryConflictError,
     MemoryDocumentNotFoundError,
@@ -44,7 +45,7 @@ _BAD_PATHS = ("", "/a", "a/", "a//b", ".", "..", "a/../b", "a\\b", "a b")
 _ROUND_TRIP = ("", "x", "x\n", "\n", "a\r\nb", "---\ntitle: t\n---\nbody", "café ✓")
 
 
-class MemoryStoreContract:
+class MemoryStoreContract(LedgerContract):
     """Inherit ~25 conformance tests; provide a `store` fixture."""
 
     @pytest.fixture

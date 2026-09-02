@@ -219,6 +219,7 @@ def test_all_list_matches_exports() -> None:
         "MemoryDocument",
         "MemoryEntry",
         "MemoryVersion",
+        "MemoryRedaction",
         "FileStore",
         "PostgresStore",
         "RemoteStore",

@@ -31,20 +31,24 @@ import httpx
 from neosian._foundation.conversation.base import ConversationStore
 from neosian._foundation.llm.codec import message_to_json
 from neosian._foundation.memory.base import MemoryStore
+from neosian._foundation.memory.journal import since_window
 from neosian._foundation.server.wire import (
     WIRE_VERSION,
     decode_document,
     decode_entry,
     decode_error,
     decode_projection,
+    decode_redaction,
     decode_turn,
     decode_version,
     encode_projection,
+    encode_timestamp,
 )
 from neosian._foundation.shared.exceptions import ConfigurationError
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+    from datetime import datetime
     from types import TracebackType
 
     from neosian._foundation.conversation.types import (
@@ -55,6 +59,7 @@ if TYPE_CHECKING:
     from neosian._foundation.memory.types import (
         MemoryDocument,
         MemoryEntry,
+        MemoryRedaction,
         MemoryVersion,
     )
 
@@ -263,6 +268,42 @@ class RemoteStore(MemoryStore, ConversationStore):
             "memory/redact", {"scope": scope, "path": path, "actor": actor}
         )
         return int(data["count"])
+
+    async def history(
+        self,
+        scope: str,
+        *,
+        since: datetime | None = None,
+        limit: int | None = None,
+    ) -> tuple[MemoryVersion, ...]:
+        since_window(since, limit)  # naive `since` never crosses (C4)
+        data = await self._call(
+            "memory/history",
+            {
+                "scope": scope,
+                "since": None if since is None else encode_timestamp(since),
+                "limit": limit,
+            },
+        )
+        return tuple(decode_version(row) for row in data["versions"])
+
+    async def redactions(
+        self,
+        scope: str,
+        *,
+        since: datetime | None = None,
+        limit: int | None = None,
+    ) -> tuple[MemoryRedaction, ...]:
+        since_window(since, limit)
+        data = await self._call(
+            "memory/redactions",
+            {
+                "scope": scope,
+                "since": None if since is None else encode_timestamp(since),
+                "limit": limit,
+            },
+        )
+        return tuple(decode_redaction(act) for act in data["redactions"])
 
     # ConversationStore -----------------------------------------------------
 

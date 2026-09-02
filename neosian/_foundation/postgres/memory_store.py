@@ -13,6 +13,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, ClassVar
 
 from neosian._foundation.memory.base import MemoryStore
+from neosian._foundation.memory.journal import since_window
 from neosian._foundation.memory.paths import validate_document_path
 from neosian._foundation.memory.scope import parse_scope
 from neosian._foundation.memory.types import MEMORY_FORMAT_VERSION
@@ -20,6 +21,7 @@ from neosian._foundation.postgres.rows import (
     aware_now,
     memory_document,
     memory_entry,
+    memory_redaction,
     memory_version,
 )
 from neosian._foundation.shared.exceptions import (
@@ -29,9 +31,12 @@ from neosian._foundation.shared.exceptions import (
 )
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from neosian._foundation.memory.types import (
         MemoryDocument,
         MemoryEntry,
+        MemoryRedaction,
         MemoryVersion,
     )
     from neosian._foundation.postgres.pool import PostgresPool
@@ -226,3 +231,31 @@ class PostgresMemoryStore(MemoryStore):
             },
         )
         return int(row[0])
+
+    async def history(
+        self,
+        scope: str,
+        *,
+        since: datetime | None = None,
+        limit: int | None = None,
+    ) -> tuple[MemoryVersion, ...]:
+        scope = parse_scope(scope)
+        since_window(since, limit)
+        rows = await self._pool.fetch(
+            self._sql.read_history, {"scope": scope, "since": since, "limit": limit}
+        )
+        return tuple(memory_version(scope, row) for row in rows)
+
+    async def redactions(
+        self,
+        scope: str,
+        *,
+        since: datetime | None = None,
+        limit: int | None = None,
+    ) -> tuple[MemoryRedaction, ...]:
+        scope = parse_scope(scope)
+        since_window(since, limit)
+        rows = await self._pool.fetch(
+            self._sql.read_redactions, {"scope": scope, "since": since, "limit": limit}
+        )
+        return tuple(memory_redaction(row) for row in rows)

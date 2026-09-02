@@ -45,6 +45,7 @@ from neosian._foundation.memory.types import (
     MemoryAction,
     MemoryDocument,
     MemoryEntry,
+    MemoryRedaction,
     MemoryVersion,
 )
 from neosian._foundation.postgres.store import PostgresStore
@@ -86,6 +87,7 @@ __all__ = [
     "MemoryFormatUnsupportedError",
     "MemoryPathInvalidError",
     "MemoryReadOnlyMountError",
+    "MemoryRedaction",
     "MemoryScopeInvalidError",
     "MemoryStore",
     "MemoryStoreError",

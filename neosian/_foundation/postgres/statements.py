@@ -25,6 +25,8 @@ class Statements:
     rename_document: str
     list_documents: str
     read_versions: str
+    read_history: str
+    read_redactions: str
     redact: str
     append_turn: str
     read_turns: str
@@ -222,6 +224,27 @@ def build_statements(schema: str) -> Statements:
         LIMIT %(limit)s
     """
 
+    # The ledger's reads (DESIGN §20): every row in the scope, newest
+    # first, ties by path then version — the FileStore order, verbatim.
+    read_history = f"""
+        SELECT path, version, action, content, actor, created_at, redacted,
+               neosian_format
+        FROM {s}.memory_versions
+        WHERE scope = %(scope)s
+          AND (%(since)s::timestamptz IS NULL OR created_at >= %(since)s)
+        ORDER BY created_at DESC, path COLLATE "C", version DESC
+        LIMIT %(limit)s
+    """
+
+    read_redactions = f"""
+        SELECT path, actor, created_at, count
+        FROM {s}.memory_redactions
+        WHERE scope = %(scope)s
+          AND (%(since)s::timestamptz IS NULL OR created_at >= %(since)s)
+        ORDER BY created_at DESC, id DESC
+        LIMIT %(limit)s
+    """
+
     # Targets = every path with a current row or history; both updates
     # clear content in place (updated_at untouched, C3); the erasure
     # trail records the act when anything matched.
@@ -324,6 +347,8 @@ def build_statements(schema: str) -> Statements:
         rename_document=rename_document,
         list_documents=list_documents,
         read_versions=read_versions,
+        read_history=read_history,
+        read_redactions=read_redactions,
         redact=redact,
         append_turn=append_turn,
         read_turns=read_turns,

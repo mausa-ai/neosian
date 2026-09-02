@@ -100,6 +100,7 @@ from neosian._foundation.memory.types import (
     MEMORY_FORMAT_VERSION,
     MemoryDocument,
     MemoryEntry,
+    MemoryRedaction,
     MemoryVersion,
 )
 from neosian._foundation.postgres.store import PostgresStore
@@ -276,6 +277,7 @@ __all__ = [
     "MemoryDocument",
     "MemoryEntry",
     "MemoryVersion",
+    "MemoryRedaction",
     "FileStore",
     "PostgresStore",
     "RemoteStore",

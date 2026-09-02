@@ -27,10 +27,12 @@ from neosian._foundation.server.wire import (
     encode_entry,
     encode_error,
     encode_projection,
+    encode_redaction,
     encode_turn,
     encode_version,
     optional_int,
     optional_str,
+    optional_timestamp,
     require_objects,
     require_str,
 )
@@ -76,7 +78,7 @@ def _endpoint(
 
 
 def store_routes(memory: MemoryStore, conversation: ConversationStore) -> list[Route]:
-    """The twelve wire endpoints over one both-seams store."""
+    """The fourteen wire endpoints over one both-seams store (§18.2; NL added two)."""
 
     async def read(payload: dict[str, Any]) -> dict[str, Any]:
         document = await memory.read(
@@ -134,6 +136,22 @@ def store_routes(memory: MemoryStore, conversation: ConversationStore) -> list[R
         )
         return {"count": count}
 
+    async def history(payload: dict[str, Any]) -> dict[str, Any]:
+        rows = await memory.history(
+            require_str(payload, "scope"),
+            since=optional_timestamp(payload, "since"),
+            limit=optional_int(payload, "limit"),
+        )
+        return {"versions": [encode_version(row) for row in rows]}
+
+    async def redactions(payload: dict[str, Any]) -> dict[str, Any]:
+        acts = await memory.redactions(
+            require_str(payload, "scope"),
+            since=optional_timestamp(payload, "since"),
+            limit=optional_int(payload, "limit"),
+        )
+        return {"redactions": [encode_redaction(act) for act in acts]}
+
     async def append_turn(payload: dict[str, Any]) -> dict[str, Any]:
         turn = await conversation.append_turn(
             require_str(payload, "conversation_id"),
@@ -179,6 +197,8 @@ def store_routes(memory: MemoryStore, conversation: ConversationStore) -> list[R
         "memory/list_documents": list_documents,
         "memory/versions": versions,
         "memory/redact": redact,
+        "memory/history": history,
+        "memory/redactions": redactions,
         "conversation/append_turn": append_turn,
         "conversation/read_turns": read_turns,
         "conversation/last_turn_number": last_turn_number,
