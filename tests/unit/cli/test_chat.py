@@ -1,6 +1,6 @@
 """The conversation-backed chat helpers (N2 slice C). Zero keys."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -43,6 +43,13 @@ class TestNewConversationId:
         assert str(parse_conversation_id(result)) == result
         assert result.startswith("20260820-143207")
         assert len(result) <= 128
+
+    def test_default_clock_is_utc(self) -> None:
+        """The fallback clock is UTC, so ids sort across zones (EC-7)."""
+        before = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+        result = new_conversation_id("a")
+        after = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+        assert result[:15] in {before, after}
 
     def test_two_clocks_give_two_ids(self) -> None:
         later = datetime(2026, 8, 20, 14, 32, 8)

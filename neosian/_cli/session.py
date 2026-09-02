@@ -7,8 +7,11 @@ list — keeps its own opt-in JSON save at exit.
 
 import json
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Final
+
+ARENA_FORMAT_VERSION: Final = 1  # the `neosian_format` key of the saved JSON
 
 
 @dataclass
@@ -41,7 +44,7 @@ class ArenaSession:
     agent_name: str = ""
     models: list[dict[str, str]] = field(default_factory=list)
     turns: list[ArenaTurn] = field(default_factory=list)
-    started_at: str = field(default_factory=lambda: datetime.now().isoformat())
+    started_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
     def add_turn(self, user_message: str) -> ArenaTurn:
         """Add a new turn with user message."""
@@ -52,6 +55,7 @@ class ArenaSession:
     def to_dict(self) -> dict[str, object]:
         """Convert session to a serializable dictionary."""
         return {
+            "neosian_format": ARENA_FORMAT_VERSION,
             "agent_name": self.agent_name,
             "started_at": self.started_at,
             "mode": "arena",
@@ -87,5 +91,5 @@ class ArenaSession:
 
     def generate_filename(self) -> str:
         """Generate a filename for the arena session."""
-        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
+        timestamp = datetime.now(UTC).strftime("%Y-%m-%d_%H-%M")
         return f"{timestamp}_{self.agent_name}_arena.json"

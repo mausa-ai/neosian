@@ -11,7 +11,7 @@ import asyncio
 import dataclasses
 import logging
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 from neosian._foundation.agent.loader import load_agent_config
@@ -124,7 +124,7 @@ async def _run_memory_matrix(
     if store_root is not None:
         run_root = Path(store_root)
     else:
-        stamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        stamp = datetime.now(UTC).strftime("%Y-%m-%d_%H-%M-%S")
         run_root = Path(_MEMORY_ROOT_DIR) / f"{stamp}-memory"
 
     results: list[CaseResult] = []

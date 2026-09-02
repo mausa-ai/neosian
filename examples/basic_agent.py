@@ -4,7 +4,7 @@ Usage:
     neosian playground examples/basic_agent.py
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 from neosian import (
@@ -23,7 +23,7 @@ from neosian._foundation.shared.types import ReasoningEffort
 @Tool(name="get_current_datetime", description="Get the current date and time")
 async def get_current_datetime() -> ToolResult[str]:
     """Return the current date and time."""
-    now = datetime.now()
+    now = datetime.now(UTC)
     return ToolResult.ok(now.strftime("%Y-%m-%d %H:%M:%S"))
 
 

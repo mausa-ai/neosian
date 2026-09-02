@@ -2,6 +2,7 @@
 
 import json
 import re
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -112,6 +113,16 @@ class TestArtifact:
 
         bad = data["results"][1]
         assert bad["turns"][0]["failures"] == ["expected no tool call, got 'draw'"]
+
+    def test_timestamp_is_aware_utc(self, tmp_path: Path) -> None:
+        """The artifact's clock is tz-aware UTC, and the filename rides the
+        same instant (EC-3)."""
+        path = save_report(_report(), output_dir=str(tmp_path))
+        stamp = datetime.fromisoformat(json.loads(path.read_text())["timestamp"])
+
+        assert stamp.tzinfo is not None
+        assert stamp.utcoffset() == datetime.now(UTC).utcoffset()
+        assert path.stem == stamp.strftime("%Y-%m-%d_%H-%M-%S")
 
     def test_directory_is_created(self, tmp_path: Path) -> None:
         target = tmp_path / "nested" / "evals"

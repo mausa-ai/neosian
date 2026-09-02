@@ -7,7 +7,7 @@ and turns live under the working directory — project-local, in
 """
 
 import time
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 from rich.console import Console
@@ -43,7 +43,7 @@ def new_conversation_id(agent_name: str, *, now: datetime | None = None) -> str:
     The stamp prefix guarantees a non-empty id that is never a bare
     `.`/`..` and stays well under 128 chars, whatever the agent name.
     """
-    stamp = (now if now is not None else datetime.now()).strftime(_ID_STAMP)
+    stamp = (now if now is not None else datetime.now(UTC)).strftime(_ID_STAMP)
     slug = "".join(
         c if c.isascii() and (c.isalnum() or c in "_.-") else "-" for c in agent_name
     )

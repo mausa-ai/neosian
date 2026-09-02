@@ -6,7 +6,7 @@ presentation never needs the config type.
 """
 
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -135,11 +135,12 @@ def save_report(report: EvalReport, output_dir: str | None = None) -> Path:
     """Write the schema-2 JSON artifact; returns its path."""
     output_path = Path(output_dir if output_dir is not None else _OUTPUT_DIR)
     output_path.mkdir(parents=True, exist_ok=True)
-    filepath = output_path / f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.json"
+    now = datetime.now(UTC)
+    filepath = output_path / f"{now.strftime('%Y-%m-%d_%H-%M-%S')}.json"
 
     data = {
         "schema": ARTIFACT_SCHEMA,
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": now.isoformat(),
         "suite": report.suite,
         "axes": {
             "variants": list(report.variants),

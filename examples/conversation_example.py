@@ -11,7 +11,7 @@ Usage:
 
 import asyncio
 import os
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 from neosian import AgentConfig, Conversation, FileStore, Model
@@ -103,7 +103,7 @@ async def main() -> None:
         print("CEREBRAS_API_KEY not set — run `neosian configure` first.")
         return
 
-    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
     conversation_id = f"{stamp}-example"
 
     await example_quickstart(conversation_id)
