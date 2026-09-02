@@ -1,5 +1,6 @@
 """Unit tests for FileBlackboard provider."""
 
+import logging
 from pathlib import Path
 
 import pytest
@@ -131,6 +132,28 @@ class TestFileBlackboard:
         assert entries[0].description == "Media aliases"
 
     @pytest.mark.asyncio
+    async def test_update_writes_real_yaml(self, tmp_path: Path) -> None:
+        """A `: ` in a description survives a rewrite; the old
+        `f"{key}: {value}"` frontmatter made the entry vanish."""
+        (tmp_path / "w.md").write_text(
+            "---\nname: workspace\ndescription: 'Aliases: generated media'\n---\n\nold\n"
+        )
+        bb = FileBlackboard(tmp_path)
+        assert await bb.update_entry("workspace", "new content") is True
+        entries = await bb.list_entries()
+        assert [(e.name, e.description) for e in entries] == [
+            ("workspace", "Aliases: generated media")
+        ]
+        assert await bb.read_entry("workspace") == "new content"
+        assert list(tmp_path.glob(".neosian-tmp-*")) == []
+
+    @pytest.mark.asyncio
+    async def test_a_dash_run_in_the_body_survives(self, tmp_path: Path) -> None:
+        _write_entry(tmp_path, "w.md", "workspace", "Aliases", "above\n---\nbelow")
+        bb = FileBlackboard(tmp_path)
+        assert await bb.read_entry("workspace") == "above\n---\nbelow"
+
+    @pytest.mark.asyncio
     async def test_ignores_non_md_files(self, tmp_path: Path) -> None:
         """Only .md files are considered."""
         _write_entry(tmp_path, "workspace.md", "workspace", "Aliases", "content")
@@ -143,13 +166,18 @@ class TestFileBlackboard:
         assert entries[0].name == "workspace"
 
     @pytest.mark.asyncio
-    async def test_ignores_invalid_frontmatter(self, tmp_path: Path) -> None:
-        """Files with invalid frontmatter are skipped."""
+    async def test_invalid_frontmatter_is_skipped_and_logged(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A file that fails to parse is skipped with a warning naming
+        it — never silently dropped."""
         _write_entry(tmp_path, "valid.md", "valid", "Valid entry", "content")
         (tmp_path / "invalid.md").write_text("No frontmatter here.")
 
         bb = FileBlackboard(tmp_path)
-        entries = await bb.list_entries()
+        with caplog.at_level(logging.WARNING):
+            entries = await bb.list_entries()
 
         assert len(entries) == 1
         assert entries[0].name == "valid"
+        assert "invalid.md skipped" in caplog.text

@@ -54,7 +54,40 @@ class TestToolDefinition:
         assert definition.parameters["additionalProperties"] is False
 
 
+class _CountingStore(FileStore):
+    """Counts `list_documents` round trips — one per directory view."""
+
+    listings = 0
+
+    async def list_documents(self, scope: str, *, prefix: str = "") -> tuple:  # type: ignore[type-arg]
+        self.listings += 1
+        return await super().list_documents(scope, prefix=prefix)
+
+
+class _RacingStore(FileStore):
+    """Between the tool's read and its write, another writer lands."""
+
+    raced = False
+
+    async def read(self, scope: str, path: str):  # type: ignore[no-untyped-def]
+        document = await super().read(scope, path)
+        if document is not None and not self.raced:
+            self.raced = True
+            await super().write(scope, path, "moved underneath", actor="other")
+        return document
+
+
 class TestView:
+    async def test_a_directory_view_lists_once(self, tmp_path: object) -> None:
+        store = _CountingStore(f"{tmp_path}/counting")
+        config = MemoryConfig(store=store, mounts=(_USER,))
+        tool = create_memory_tool(config, actor="conv-1")
+        await store.write(_USER.scope, "notes/api", "rest")
+        store.listings = 0
+        result = await tool(command="view", path="/user/notes")
+        assert result.success and "- /user/notes/api" in str(result.data)
+        assert store.listings == 1
+
     async def test_root_is_the_index(
         self, tool: ToolFunction, config: MemoryConfig
     ) -> None:
@@ -115,6 +148,22 @@ class TestView:
 
 
 class TestCreate:
+    async def test_an_overwrite_carries_the_version_it_read(
+        self, tmp_path: object
+    ) -> None:
+        # The one create-or-overwrite command was the only content-
+        # destroying one without expected_version: a document that moved
+        # underneath now fails correctively instead of being replaced.
+        store = _RacingStore(f"{tmp_path}/racing")
+        config = MemoryConfig(store=store, mounts=(_USER,))
+        tool = create_memory_tool(config, actor="conv-1")
+        await store.write(_USER.scope, "prefs", "original")
+        result = await tool(command="create", path="/user/prefs", content="mine")
+        assert not result.success
+        assert "memory_conflict" in str(result.error) or "version" in str(result.error)
+        document = await store.read(_USER.scope, "prefs")
+        assert document is not None and document.content == "moved underneath"
+
     async def test_create(self, tool: ToolFunction, config: MemoryConfig) -> None:
         result = await tool(command="create", path="/user/prefs", content="espresso")
         assert result.success

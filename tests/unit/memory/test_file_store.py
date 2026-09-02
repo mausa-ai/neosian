@@ -5,6 +5,7 @@ trail. Cross-implementation semantics live in test_file_contract.py.
 
 import asyncio
 import json
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -19,6 +20,50 @@ from neosian._foundation.shared.exceptions import (
 from tests.unit.memory.conftest import ManualClock
 
 _SCOPE = "user:123/proj:erp"
+
+
+def _mode(path: Path) -> int:
+    if sys.platform == "win32":
+        pytest.skip("POSIX permission bits")
+    return path.stat().st_mode & 0o777
+
+
+class TestPrivateModes:
+    """Ledger #126: everything the store writes is private by decision —
+    the sidecar and the redaction trail were 0644 while the document was
+    0600 by accident."""
+
+    async def test_files_are_0600_and_directories_0700(
+        self, store: FileStore, tmp_path: Path
+    ) -> None:
+        await store.write(_SCOPE, "notes/api", "body")
+        await store.redact(_SCOPE, path="notes/api")
+        scope_dir = tmp_path / "memory" / "user%3A123" / "proj%3Aerp"
+        for file in (
+            scope_dir / "documents" / "notes" / "api.md",
+            scope_dir / "versions" / "notes" / "api.jsonl",
+            scope_dir / "redactions.jsonl",
+        ):
+            assert _mode(file) == 0o600, file
+        for directory in (
+            tmp_path / "memory",
+            scope_dir,
+            scope_dir / "documents" / "notes",
+            scope_dir / "versions" / "notes",
+        ):
+            assert _mode(directory) == 0o700, directory
+
+    async def test_the_sidecar_keeps_its_mode_across_redaction(
+        self, store: FileStore, tmp_path: Path
+    ) -> None:
+        await store.write(_SCOPE, "a", "one")
+        await store.write(_SCOPE, "a", "two")
+        sidecar = (
+            tmp_path / "memory" / "user%3A123" / "proj%3Aerp" / "versions" / "a.jsonl"
+        )
+        before = _mode(sidecar)
+        await store.redact(_SCOPE, path="a")
+        assert _mode(sidecar) == before == 0o600
 
 
 class TestOnDiskLayout:

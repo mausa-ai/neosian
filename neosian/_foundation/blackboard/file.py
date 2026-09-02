@@ -1,16 +1,28 @@
 """File-based blackboard provider.
 
 Each entry is a .md file with YAML frontmatter (name, description)
-and markdown body as content. Reads from disk on every call (always fresh).
+and markdown body as content. Reads from disk on every call (always
+fresh); an update rewrites the file atomically through the shared
+frontmatter renderer, so a value carrying a `: ` survives it, and a
+file that fails to parse is logged, never silently dropped.
 """
 
+import logging
 from pathlib import Path
+from typing import Any
 
 from neosian._foundation.blackboard.base import BlackboardProvider
 from neosian._foundation.shared.constants import SkillLoader
 from neosian._foundation.shared.exceptions import FileBlackboardDirectoryNotFoundError
-from neosian._foundation.shared.frontmatter import FrontmatterError, parse_frontmatter
+from neosian._foundation.shared.fileio import atomic_write
+from neosian._foundation.shared.frontmatter import (
+    FrontmatterError,
+    parse_frontmatter,
+    render_frontmatter,
+)
 from neosian._foundation.shared.types import BlackboardEntry, BlackboardName
+
+logger = logging.getLogger(__name__)
 
 
 class FileBlackboard(BlackboardProvider):
@@ -41,13 +53,13 @@ class FileBlackboard(BlackboardProvider):
         if not self._directory.is_dir():
             raise FileBlackboardDirectoryNotFoundError(str(self._directory))
 
-    def _scan_files(self) -> list[tuple[Path, dict[str, str], str]]:
+    def _scan_files(self) -> list[tuple[Path, dict[str, Any], str]]:
         """Scan directory for .md files and parse their frontmatter.
 
         Returns:
             List of (file_path, frontmatter_dict, body) tuples.
         """
-        results: list[tuple[Path, dict[str, str], str]] = []
+        results: list[tuple[Path, dict[str, Any], str]] = []
         for md_file in sorted(self._directory.glob("*.md")):
             try:
                 content = md_file.read_text(encoding="utf-8")
@@ -56,12 +68,17 @@ class FileBlackboard(BlackboardProvider):
                 desc = frontmatter.get(SkillLoader.DESCRIPTION_KEY)
                 if isinstance(name, str) and isinstance(desc, str):
                     results.append((md_file, frontmatter, body))
-            except (FrontmatterError, OSError):
-                # Skip files with invalid frontmatter or read errors
-                continue
+                else:
+                    logger.warning(
+                        "Blackboard entry %s skipped: name and description "
+                        "must be strings",
+                        md_file,
+                    )
+            except (FrontmatterError, OSError) as exc:
+                logger.warning("Blackboard entry %s skipped: %s", md_file, exc)
         return results
 
-    def _find_file(self, name: str) -> tuple[Path, dict[str, str], str] | None:
+    def _find_file(self, name: str) -> tuple[Path, dict[str, Any], str] | None:
         """Find a specific entry by name.
 
         Args:
@@ -103,13 +120,5 @@ class FileBlackboard(BlackboardProvider):
         if result is None:
             return False
         path, frontmatter, _ = result
-
-        # Reconstruct file with original frontmatter and new body
-        fm_lines: list[str] = []
-        for key, value in frontmatter.items():
-            fm_lines.append(f"{key}: {value}")
-        fm_text = "\n".join(fm_lines)
-
-        new_content = f"---\n{fm_text}\n---\n\n{content}\n"
-        path.write_text(new_content, encoding="utf-8")
+        atomic_write(path, render_frontmatter(frontmatter, content))
         return True

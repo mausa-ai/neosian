@@ -17,8 +17,9 @@ even though `expected_version` is honored best-effort in-process — and
 why §8 rules one writer per root (multi-writer needs route to
 PostgresStore or the state daemon).
 Durability between the sidecar append and the document write is not
-transactional (C1 permits); the sidecar is written first so a crash can
-never make a version number get reused.
+transactional (C1 permits); the sidecar is written first and fsync'd, so
+a crash can never make a version number get reused. Everything lands
+private — files 0600, directories 0700 (ledger #126).
 """
 
 from __future__ import annotations
@@ -47,6 +48,7 @@ from neosian._foundation.shared.exceptions import (
     MemoryDocumentNotFoundError,
     MemoryPathInvalidError,
 )
+from neosian._foundation.shared.fileio import append_line, private_mkdir
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -62,7 +64,7 @@ class FileStore(MemoryStore, FileTurnStore):
 
     def __init__(self, root: str | Path, *, clock: Clock | None = None) -> None:
         self._root = Path(root).resolve()
-        self._root.mkdir(parents=True, exist_ok=True)
+        private_mkdir(self._root)
         self._clock = clock if clock is not None else SystemClock()
         self._lock = asyncio.Lock()
 
@@ -395,5 +397,5 @@ class FileStore(MemoryStore, FileTurnStore):
             separators=(",", ":"),
         )
         trail = self._scope_dir(scope) / _REDACTIONS
-        with trail.open("a", encoding="utf-8", newline="") as handle:
-            handle.write(line + "\n")
+        private_mkdir(trail.parent)
+        append_line(trail, line + "\n")

@@ -36,6 +36,7 @@ from neosian._foundation.shared.exceptions import (
     ConversationFormatUnsupportedError,
     ConversationIdInvalidError,
 )
+from neosian._foundation.shared.fileio import append_line, private_mkdir
 
 if TYPE_CHECKING:
     import asyncio
@@ -75,9 +76,8 @@ class FileTurnStore(ConversationStore):
                 messages=tuple(messages),
                 created_at=created_at,
             )
-            turns_file.parent.mkdir(parents=True, exist_ok=True)
-            with turns_file.open("a", encoding="utf-8", newline="") as handle:
-                handle.write(_render_turn(record))
+            private_mkdir(turns_file.parent)
+            append_line(turns_file, _render_turn(record))
             return record
 
     async def read_turns(
@@ -100,10 +100,8 @@ class FileTurnStore(ConversationStore):
             return
         async with self._lock:
             file = self._projections_file(conversation_id)
-            file.parent.mkdir(parents=True, exist_ok=True)
-            with file.open("a", encoding="utf-8", newline="") as handle:
-                for entry in entries:
-                    handle.write(_render_projection(entry))
+            private_mkdir(file.parent)
+            append_line(file, "".join(_render_projection(entry) for entry in entries))
 
     async def read_projections(
         self, conversation_id: str, *, after: int = 0, limit: int | None = None

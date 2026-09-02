@@ -21,8 +21,10 @@ from neosian._foundation.shared.exceptions import (
 from neosian._foundation.tools.base import ToolResult
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from neosian._foundation.memory.mounts import MemoryConfig, Mount
-    from neosian._foundation.memory.types import MemoryDocument
+    from neosian._foundation.memory.types import MemoryDocument, MemoryEntry
 
 _REDACTED_NOTICE = "(redacted — content was cleared; history is preserved)"
 _INDEX_HINT = "Run the memory tool with command 'view' and path '/' first."
@@ -104,10 +106,7 @@ def _match_lines(content: str, needle: str) -> list[int]:
     return numbers
 
 
-async def _render_listing(
-    config: MemoryConfig, mount: Mount, *, prefix: str
-) -> ToolResult[str]:
-    entries = await config.store.list_documents(mount.scope, prefix=prefix)
+def _render_listing(mount: Mount, entries: Sequence[MemoryEntry]) -> ToolResult[str]:
     shown = [
         f"- {_virtual(mount, entry.path)}{' (redacted)' if entry.redacted else ''}"
         for entry in entries
@@ -126,7 +125,7 @@ async def view(
         return ToolResult.ok(await generate_memory_index(config.store, config.mounts))
     mount, doc_path = resolve(config, path)
     if not doc_path:
-        return await _render_listing(config, mount, prefix="")
+        return _render_listing(mount, await config.store.list_documents(mount.scope))
     document = await config.store.read(mount.scope, doc_path)
     if document is not None:
         if document.redacted:
@@ -142,7 +141,7 @@ async def view(
     # a directory boundary rather than a name prefix.
     entries = await config.store.list_documents(mount.scope, prefix=doc_path + "/")
     if entries:
-        return await _render_listing(config, mount, prefix=doc_path + "/")
+        return _render_listing(mount, entries)
     return ToolResult.fail(
         f"No document or directory at {_virtual(mount, doc_path)}",
         system_reminder=_INDEX_HINT,
@@ -158,7 +157,16 @@ async def create(
     if existing is None:
         # Overwriting is an edit; only a brand-new path grows the set.
         structural(mount)
-    document = await config.store.write(mount.scope, doc_path, content, actor=actor)
+    # An overwrite carries the version it read, like every other
+    # content-destroying command: a document that moved underneath fails
+    # correctively instead of being silently replaced.
+    document = await config.store.write(
+        mount.scope,
+        doc_path,
+        content,
+        actor=actor,
+        expected_version=None if existing is None else existing.version,
+    )
     receipt = _receipt("create", mount, doc_path, document.version)
     if existing is not None:
         return ToolResult.ok(

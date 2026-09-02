@@ -6,6 +6,7 @@ promises: layout, row shape, last-line numbering, refusals.
 """
 
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -30,8 +31,23 @@ def _turns_file(store: FileStore, conversation_id: str) -> Path:
     )  # noqa: SLF001
 
 
+def _mode(path: Path) -> int:
+    if sys.platform == "win32":
+        pytest.skip("POSIX permission bits")
+    return path.stat().st_mode & 0o777
+
+
 @pytest.mark.unit
 class TestLayout:
+    async def test_the_turn_log_is_private(self, store: FileStore) -> None:
+        # Ledger #126: turns carry the conversation verbatim; 0600/0700
+        # by decision, no longer the umask default.
+        await store.append_turn("c1", _EXCHANGE)
+        turns_file = _turns_file(store, "c1")
+        assert _mode(turns_file) == 0o600
+        assert _mode(turns_file.parent) == 0o700
+        assert _mode(turns_file.parent.parent) == 0o700
+
     async def test_turn_log_lands_under_conversations(self, store: FileStore) -> None:
         await store.append_turn("thread-1", _EXCHANGE)
         assert _turns_file(store, "thread-1").is_file()

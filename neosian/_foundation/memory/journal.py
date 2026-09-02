@@ -9,8 +9,6 @@ would silently corrupt the counter and let a version number be reused.
 from __future__ import annotations
 
 import json
-import os
-import tempfile
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, cast
 
@@ -19,7 +17,9 @@ from neosian._foundation.memory.types import (
     MemoryAction,
     MemoryVersion,
 )
+from neosian._foundation.shared import fileio
 from neosian._foundation.shared.exceptions import MemoryFormatUnsupportedError
+from neosian._foundation.shared.fileio import private_mkdir
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -29,20 +29,13 @@ _ACTIONS = ("created", "modified", "deleted")
 
 
 def atomic_write(file: Path, text: str) -> None:
-    """Write via a same-directory temp file + os.replace — never partial.
+    """A private, atomic document write (ledger #126) — never partial.
 
     Shared with the document writer in file.py; a crash mid-rewrite must
     not destroy an audit trail.
     """
-    file.parent.mkdir(parents=True, exist_ok=True)
-    fd, temp_name = tempfile.mkstemp(dir=file.parent, prefix=".neosian-tmp-")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
-            handle.write(text)
-        os.replace(temp_name, file)
-    except BaseException:
-        os.unlink(temp_name)
-        raise
+    private_mkdir(file.parent)
+    fileio.atomic_write(file, text)
 
 
 def read_rows(file: Path, *, scope: str, path: str) -> tuple[MemoryVersion, ...]:
@@ -57,15 +50,18 @@ def read_rows(file: Path, *, scope: str, path: str) -> tuple[MemoryVersion, ...]
 
 
 def append_row(file: Path, row: MemoryVersion) -> None:
-    """Append one complete row in a single write."""
-    file.parent.mkdir(parents=True, exist_ok=True)
-    with file.open("a", encoding="utf-8", newline="") as handle:
-        handle.write(_render_row(row))
+    """Append one complete row in a single write, fsync'd: the sidecar is
+    written before the document (file.py), and the row must be on disk
+    before the document can claim its number — otherwise a crash between
+    the two could let the number be reused."""
+    private_mkdir(file.parent)
+    fileio.append_line(file, _render_row(row), fsync=True)
 
 
 def rewrite_rows(file: Path, rows: Sequence[MemoryVersion]) -> None:
-    """Atomically replace the whole sidecar (redaction only)."""
-    atomic_write(file, "".join(_render_row(row) for row in rows))
+    """Atomically replace the whole sidecar (redaction only), fsync'd."""
+    private_mkdir(file.parent)
+    fileio.atomic_write(file, "".join(_render_row(row) for row in rows), fsync=True)
 
 
 def next_version(rows: Sequence[MemoryVersion]) -> int:
