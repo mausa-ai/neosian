@@ -382,7 +382,7 @@ class TestModelStage:
             )
         assert [(w.command, w.path) for w in result.writes] == [("delete", "/user/b")]
         assert result.usage is None and result.model is None
-        assert result.degraded == "Maintenance failed: RuntimeError: no client tonight"
+        assert result.degraded == "Maintenance failed: RuntimeError"
         assert "Maintenance failed; degrading" in caplog.text
 
     async def test_a_configuration_error_propagates(self, tmp_path: Path) -> None:

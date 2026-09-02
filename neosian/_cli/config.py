@@ -10,6 +10,7 @@ from pathlib import Path
 import tomli_w
 
 from neosian._foundation.shared.constants import Config
+from neosian._foundation.shared.fileio import PRIVATE_DIR, PRIVATE_FILE, private_mkdir
 
 
 def _get_config_path() -> Path:
@@ -35,15 +36,16 @@ def _write_config(config: dict[str, dict[str, str]]) -> None:
     """Write the config file.
 
     The file holds API keys: it is created 0600 in a 0700 directory, and
-    a file that already exists is tightened to 0600 on every write.
+    both are tightened on every write when they already exist.
     """
     config_path = _get_config_path()
-    config_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    private_mkdir(config_path.parent)
+    os.chmod(config_path.parent, PRIVATE_DIR)  # an existing directory too
 
-    fd = os.open(config_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    fd = os.open(config_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, PRIVATE_FILE)
     with os.fdopen(fd, "wb") as f:
         tomli_w.dump(config, f)
-    os.chmod(config_path, 0o600)
+    os.chmod(config_path, PRIVATE_FILE)
 
 
 def get_api_key(key_name: str) -> str | None:

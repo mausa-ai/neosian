@@ -135,7 +135,9 @@ async def run_reflection(
     memory = await render_documents(
         memory_config,
         fence=fence,
-        edit_only_note="edit-only — update existing documents; never add or remove one",
+        edit_only_note=(
+            "edit-only — update existing documents; never add or remove one"
+        ),
     )
     transcript = fenced(fence, "\n\n".join(render_turn(turn) for turn in turns))
     parsed, usage, api_model, degraded = await structured_call(

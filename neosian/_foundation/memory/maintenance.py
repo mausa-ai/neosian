@@ -9,7 +9,8 @@ shell verb keeps a working keyless mode (ledger #91); and a model stage,
 only when a model is given, that rules the judgment calls — semantic
 merges, stale pruning, project→user promotion via rename,
 confirm-or-decay — through one batched structured-output call (the
-reflection idiom) over the fenced, budgeted payload of memory/payload.py. Protection is enforced in code, never exhorted
+reflection idiom) over the fenced, budgeted payload of memory/payload.py.
+Protection is enforced in code, never exhorted
 (ledger #92): documents updated inside the age floor are never deleted,
 redacted documents take no operation at all, read-only mounts are
 excluded structurally, and edit-only mounts keep their document set —
@@ -226,7 +227,8 @@ async def _render_evidence(config: MemoryConfig, cutoff: datetime, fence: str) -
         config,
         fence=fence,
         edit_only_note=(
-            "edit-only — update existing documents; never create, delete, or rename one"
+            "edit-only — update existing documents; "
+            "never create, delete, or rename one"
         ),
         annotate=evidence,
     )

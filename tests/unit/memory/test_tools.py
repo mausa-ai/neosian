@@ -160,7 +160,7 @@ class TestCreate:
         await store.write(_USER.scope, "prefs", "original")
         result = await tool(command="create", path="/user/prefs", content="mine")
         assert not result.success
-        assert "memory_conflict" in str(result.error) or "version" in str(result.error)
+        assert str(result.error).startswith("[memory_conflict]")
         document = await store.read(_USER.scope, "prefs")
         assert document is not None and document.content == "moved underneath"
 

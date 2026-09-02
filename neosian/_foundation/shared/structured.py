@@ -63,5 +63,8 @@ async def structured_call[T: BaseModel](
     except ConfigurationError:
         raise
     except Exception as exc:
+        # The detail goes to the log; the carried reason names the failure
+        # by type only — a validation error quotes the model's reply, which
+        # was built from memory bodies, and this string is result surface.
         logger.warning("%s failed; degrading", what, exc_info=True)
-        return None, None, None, f"{what} failed: {type(exc).__name__}: {exc}"
+        return None, None, None, f"{what} failed: {type(exc).__name__}"

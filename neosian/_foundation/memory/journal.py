@@ -59,7 +59,8 @@ def append_row(file: Path, row: MemoryVersion) -> None:
 
 
 def rewrite_rows(file: Path, rows: Sequence[MemoryVersion]) -> None:
-    """Atomically replace the whole sidecar (redaction only), fsync'd."""
+    """Atomically replace the whole sidecar (redaction only); the temp
+    file is fsync'd before the rename."""
     private_mkdir(file.parent)
     fileio.atomic_write(file, "".join(_render_row(row) for row in rows), fsync=True)
 

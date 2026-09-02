@@ -9,8 +9,8 @@ mis-typed or missing parameter; only infrastructure failures are a bare
 500 the client propagates raw (the ledger #39 posture). Validation
 stays server-side: the real stores validate scope-then-path, one
 validator, one truth. A body over `MAX_REQUEST_BYTES` is 413 in the
-same envelope — one authenticated client cannot hold the daemon's
-memory hostage.
+same envelope on these twelve routes — `/mcp` rides the SDK's own app
+and carries no ceiling here (carried by id, IN-3).
 """
 
 from __future__ import annotations
@@ -86,9 +86,11 @@ def _endpoint(
             return JSONResponse(await handler(payload))
         except (NeosianError, ValueError) as exc:
             return JSONResponse({"error": encode_error(exc)}, status_code=400)
-        except (KeyError, TypeError) as exc:
+        except KeyError as exc:
             # The backstop beneath the typed readers: a malformed nested
-            # object (a message without a role) is still the caller's.
+            # object (a message without a role) is still the caller's. A
+            # TypeError is not — raised past the readers it is a store or
+            # encoder bug, and stays the bare 500 of ledger #39.
             return _envelope(f"malformed request: {exc}")
 
     return endpoint

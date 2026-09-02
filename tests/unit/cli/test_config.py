@@ -217,3 +217,20 @@ class TestWritePermissions:
             assert get_api_key(Config.OPENAI_API_KEY) == "sk-test"
 
         assert _mode(config_file) == 0o600
+
+
+@pytest.mark.unit
+class TestPrivateConfigDirectory:
+    """EC-2: the key file is 0600 in a 0700 directory — and a directory
+    that already exists world-readable is tightened on the next write."""
+
+    def test_tightens_an_existing_directory(self, tmp_path: Path) -> None:
+        from neosian._cli.config import _write_config
+
+        config_dir = tmp_path / ".neosian"
+        config_dir.mkdir(mode=0o755)
+        with patch("neosian._cli.config._get_config_path") as mock_path:
+            mock_path.return_value = config_dir / "config.toml"
+            _write_config({"credentials": {"openai": "sk-test"}})
+        assert stat.S_IMODE(config_dir.stat().st_mode) == 0o700
+        assert stat.S_IMODE((config_dir / "config.toml").stat().st_mode) == 0o600
