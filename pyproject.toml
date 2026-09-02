@@ -58,6 +58,7 @@ dev = [
     "psycopg[binary,pool]>=3.2",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
+    "pytest-cov>=7",
     "pytest-timeout>=2.3",
     "ruff>=0.16.3",
     "starlette>=1.6",
@@ -68,6 +69,12 @@ examples = [
     "fastapi>=0.141.1",
     "uvicorn>=0.52.4",
 ]
+
+[tool.coverage.run]
+source = ["neosian"]
+
+[tool.coverage.report]
+skip_empty = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

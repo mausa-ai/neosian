@@ -25,8 +25,8 @@ format: ## Autofix: black + ruff --fix
 typecheck: ## mypy --strict over library and tests
 	uv run mypy --strict neosian tests
 
-test: ## Unit tier — the default gate, zero API keys
-	uv run pytest
+test: ## Unit tier — the default gate, zero API keys, coverage floor
+	uv run pytest --cov --cov-report=term-missing:skip-covered --cov-fail-under=89
 
 test-external: ## Real-API suite: provider=<openai|anthropic|cerebras|xai|gemini|kimi> [file=creds]
 ifndef provider
