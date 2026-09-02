@@ -422,7 +422,10 @@ class OpenAICompatibleClient(BaseLLMClient):
 
                 # On finish, yield completed tool calls
                 finish_reason = choice.finish_reason
-                if finish_reason == "tool_calls" and tool_call_builders:
+                # Any terminal finish releases the accumulated calls: Gemini
+                # ends a streamed tool turn with "stop" (DESIGN §19.7), and
+                # the agent loop keys on the calls' presence, not the reason.
+                if finish_reason and tool_call_builders:
                     for idx, builder in tool_call_builders.items():
                         # Normalize empty arguments to {}
                         args_str = builder["arguments"] or "{}"

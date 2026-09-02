@@ -294,3 +294,20 @@ class TestToolCallExtras:
             "type",
             "function",
         }
+
+
+@pytest.mark.unit
+class TestStreamedToolCallFinish:
+    """A door that ends a streamed tool turn with `stop` (Gemini, DESIGN
+    §19.7) still delivers the accumulated call; the raw finish stays."""
+
+    async def test_a_stop_finish_releases_the_call(self) -> None:
+        client = _client()
+        opening = _chunk("", tool_calls=[_tool_call_mock({}, index=0)])
+        closing = _chunk("")
+        closing.choices[0].finish_reason = "stop"
+        _mock_stream(client, [opening, closing])
+        chunks = [chunk async for chunk in client.stream(_ASK, model=_grok())]
+        (call,) = [call for chunk in chunks for call in chunk.tool_calls]
+        assert call.name == "oracle" and call.arguments == {"q": "door"}
+        assert chunks[-1].finish_reason == "stop"
