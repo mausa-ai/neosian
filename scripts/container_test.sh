@@ -51,11 +51,18 @@ graceful_stop() {
     # SIGTERM drains, then uvicorn logs the shutdown — the log, never
     # the exit code, is the evidence (§18.7).
     docker stop -t 30 "$CID" >/dev/null
-    if ! docker logs "$CID" 2>&1 | grep -q "Application shutdown complete"; then
-        echo "container_test: no graceful shutdown in the logs" >&2
-        docker logs "$CID" >&2 || true
-        exit 1
-    fi
+    # The log driver can trail the stop by a beat (run 33643692828 read
+    # the log 60 ms before uvicorn's last lines landed): wait for the
+    # line, up to ten seconds, before calling the shutdown ungraceful.
+    local tries=0
+    until docker logs "$CID" 2>&1 | grep -q "Application shutdown complete"; do
+        if [ "$((tries += 1))" -ge 20 ]; then
+            echo "container_test: no graceful shutdown in the logs" >&2
+            docker logs "$CID" >&2 || true
+            exit 1
+        fi
+        sleep 0.5
+    done
     docker rm "$CID" >/dev/null
     CID=""
 }
