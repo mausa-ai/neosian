@@ -34,6 +34,7 @@ from neosian._foundation.llm.openai_convert import (
 )
 from neosian._foundation.shared.constants import ErrorMessages, LLMDefaults
 from neosian._foundation.shared.exceptions import (
+    ContextWindowExceededError,
     ToolCallGenerationError,
     UnsupportedParameterError,
 )
@@ -148,16 +149,17 @@ class OpenAICompatibleClient(BaseLLMClient):
                 return self._parse_response(response)
 
             except BadRequestError as e:
-                # Check if it's a tool call error
+                # An overflow is classified before the tool retry (LL-4).
+                wrapped = wrap_provider_error(self._door.name, e, model=model)
+                if isinstance(wrapped, ContextWindowExceededError):
+                    raise wrapped from e
                 if self._is_tool_call_error(e) and tools is not None:
-                    # If we have retries left, retry
                     if attempt < LLMDefaults.MAX_TOOL_CALL_RETRIES:
                         continue
-                    # Max retries exceeded
                     raise ToolCallGenerationError(
                         retries=LLMDefaults.MAX_TOOL_CALL_RETRIES
                     ) from e
-                raise wrap_provider_error(self._door.name, e, model=model) from e
+                raise wrapped from e
             except Exception as exc:
                 raise wrap_provider_error(self._door.name, exc, model=model) from exc
 

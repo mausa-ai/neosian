@@ -2,7 +2,7 @@
 
 import pytest
 
-from neosian._foundation.llm.errors import wrap_provider_error
+from neosian._foundation.llm.errors import tool_arguments, wrap_provider_error
 from neosian._foundation.shared.exceptions import (
     ContextWindowExceededError,
     ProviderError,
@@ -104,7 +104,6 @@ class TestWrapProviderError:
             "context_length_exceeded",
             "prompt is too long",
             "model_context_window_exceeded",
-            "Request too large",
         ],
     )
     def test_context_signature_at_400_with_model(self, signature: str) -> None:
@@ -114,6 +113,23 @@ class TestWrapProviderError:
         assert wrapped.model == Model.CLAUDE_HAIKU_4_5.value
         assert wrapped.context_window == Model.CLAUDE_HAIKU_4_5.context_window
         assert wrapped.provider == "anthropic"
+
+    def test_context_signature_at_413_with_model(self) -> None:
+        """A door that rejects an oversize prompt as 413 is still an overflow."""
+        exc = _StatusError("context_length_exceeded", status_code=413)
+        wrapped = wrap_provider_error("gemini", exc, model=Model.CLAUDE_HAIKU_4_5)
+        assert isinstance(wrapped, ContextWindowExceededError)
+
+    def test_a_429_request_too_large_is_not_retryable(self) -> None:
+        """OpenAI's per-request TPM cap (LL-19): a retry can never clear it,
+        and it is not a context overflow — the fallback gate stays out."""
+        exc = _StatusError(
+            "Request too large for gpt-5 on tokens per min (TPM)", status_code=429
+        )
+        wrapped = wrap_provider_error("openai", exc, model=Model.GPT_5_NANO)
+        assert type(wrapped) is ProviderError
+        assert wrapped.status == 429
+        assert wrapped.retryable is False
 
     def test_context_signature_at_500_stays_provider_error(self) -> None:
         exc = _StatusError("prompt is too long", status_code=500)
@@ -141,3 +157,30 @@ class TestWrapProviderError:
         assert isinstance(wrapped, ProviderError)
         assert wrapped.provider == "cerebras"
         assert "bad chunk" in wrapped.message
+
+
+@pytest.mark.unit
+class TestToolArguments:
+    """Streamed tool-call arguments decode in one place (LL-7)."""
+
+    def test_empty_is_an_empty_object(self) -> None:
+        assert tool_arguments("openai", "", stop_reason=None) == {}
+
+    def test_a_non_object_normalises_to_empty(self) -> None:
+        assert tool_arguments("openai", "[1]", stop_reason="stop") == {}
+
+    def test_an_object_decodes(self) -> None:
+        assert tool_arguments("openai", '{"a": 1}', stop_reason="stop") == {"a": 1}
+
+    def test_truncated_json_names_the_stop_reason(self) -> None:
+        with pytest.raises(ProviderError) as exc_info:
+            tool_arguments("anthropic", '{"location":', stop_reason="max_tokens")
+        error = exc_info.value
+        assert error.provider == "anthropic"
+        assert "stop reason: max_tokens" in str(error)
+        assert error.retryable is False
+        assert isinstance(error.__cause__, ValueError)
+
+    def test_an_unknown_stop_reason_is_named_as_such(self) -> None:
+        with pytest.raises(ProviderError, match="stop reason: unknown"):
+            tool_arguments("cerebras", "{", stop_reason=None)

@@ -11,14 +11,19 @@ import pytest
 from cerebras.cloud.sdk.types.chat.chat_completion import ChatChunkResponse
 
 from neosian._foundation.llm.anthropic import AnthropicClient
-from neosian._foundation.llm.base import BaseLLMClient, Message, Role
+from neosian._foundation.llm.base import (
+    BaseLLMClient,
+    Message,
+    Role,
+    ToolDefinition,
+)
 from neosian._foundation.llm.cerebras import CerebrasClient
 from neosian._foundation.llm.openai import OpenAIClient, OpenAICompatibleClient
 from neosian._foundation.shared.exceptions import (
     ContextWindowExceededError,
     ProviderError,
 )
-from neosian._foundation.shared.types import Model, OpenAICompatible
+from neosian._foundation.shared.types import Model, OpenAICompatible, ToolName
 
 
 class _ServerError(Exception):
@@ -176,6 +181,89 @@ class TestContextWindowClassification:
             exc_info.value.context_window == Model.CEREBRAS_GPT_OSS_120B.context_window
         )
         assert exc_info.value.__cause__ is original
+
+
+_TOOLS = [
+    ToolDefinition(
+        name=ToolName("lookup"),
+        description="A tool",
+        parameters={"type": "object", "properties": {}},
+    )
+]
+
+
+@pytest.mark.unit
+class TestOverflowBeforeToolRetry:
+    """A 400 that names both an overflow and a tool is an overflow (LL-4):
+    classification runs before the tool-retry branch, so the request is
+    not resent and the error is not ToolCallGenerationError."""
+
+    _MESSAGE = "prompt is too long: 200000 tokens (tool schemas included)"
+
+    async def test_cerebras(self) -> None:
+        from cerebras.cloud.sdk import BadRequestError
+
+        client = CerebrasClient(api_key="test-key")
+        original = BadRequestError(
+            message=self._MESSAGE,
+            body={"error": {"code": "bad_request", "message": self._MESSAGE}},
+            response=MagicMock(status_code=400),
+        )
+        create = AsyncMock(side_effect=original)
+        _sdk(client).chat.completions.create = create
+
+        with pytest.raises(ContextWindowExceededError):
+            await client.complete(
+                messages=[Message(role=Role.USER, content="Hi")],
+                model=Model.CEREBRAS_GPT_OSS_120B,
+                tools=_TOOLS,
+            )
+        assert create.call_count == 1
+
+    async def test_openai(self) -> None:
+        from openai import BadRequestError
+
+        client = OpenAIClient(api_key="test-key")
+        original = BadRequestError(
+            message=self._MESSAGE,
+            body={
+                "error": {"code": "context_length_exceeded", "message": self._MESSAGE}
+            },
+            response=MagicMock(status_code=400),
+        )
+        create = AsyncMock(side_effect=original)
+        _sdk(client).chat.completions.create = create
+
+        with pytest.raises(ContextWindowExceededError):
+            await client.complete(
+                messages=[Message(role=Role.USER, content="Hi")],
+                model=Model.GPT_5_NANO,
+                tools=_TOOLS,
+            )
+        assert create.call_count == 1
+
+    async def test_anthropic(self) -> None:
+        from anthropic import BadRequestError
+
+        client = AnthropicClient(api_key="test-key")
+        original = BadRequestError(
+            message=self._MESSAGE,
+            body={"message": self._MESSAGE},
+            response=MagicMock(status_code=400),
+        )
+        mock_stream = MagicMock()
+        mock_stream.__aenter__ = AsyncMock(side_effect=original)
+        mock_stream.__aexit__ = AsyncMock(return_value=False)
+        stream = MagicMock(return_value=mock_stream)
+        _sdk(client).messages.stream = stream
+
+        with pytest.raises(ContextWindowExceededError):
+            await client.complete(
+                messages=[Message(role=Role.USER, content="Hi")],
+                model=Model.CLAUDE_HAIKU_4_5,
+                tools=_TOOLS,
+            )
+        assert stream.call_count == 1
 
 
 @pytest.mark.unit

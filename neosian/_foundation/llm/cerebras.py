@@ -29,6 +29,7 @@ from neosian._foundation.llm.cerebras_convert import (
 from neosian._foundation.llm.errors import wrap_provider_error
 from neosian._foundation.shared.constants import ErrorMessages, LLMDefaults
 from neosian._foundation.shared.exceptions import (
+    ContextWindowExceededError,
     NeosianError,
     ProviderError,
     ToolCallGenerationError,
@@ -147,17 +148,18 @@ class CerebrasClient(BaseLLMClient):
                 return self._parse_response(response)
 
             except BadRequestError as e:
-                # Check if it's a tool call error
+                # An overflow is classified before the tool retry (LL-4).
+                wrapped = wrap_provider_error("cerebras", e, model=model)
+                if isinstance(wrapped, ContextWindowExceededError):
+                    raise wrapped from e
                 if self._is_tool_call_error(e) and tools is not None:
-                    # If we have retries left, try with lower temperature
                     if attempt < LLMDefaults.MAX_TOOL_CALL_RETRIES:
                         kwargs["temperature"] = LLMDefaults.RETRY_TEMPERATURE
                         continue
-                    # Max retries exceeded
                     raise ToolCallGenerationError(
                         retries=LLMDefaults.MAX_TOOL_CALL_RETRIES
                     ) from e
-                raise wrap_provider_error("cerebras", e, model=model) from e
+                raise wrapped from e
             except Exception as exc:
                 raise wrap_provider_error("cerebras", exc, model=model) from exc
 

@@ -31,6 +31,7 @@ from neosian._foundation.shared.constants import (
     LLMDefaults,
 )
 from neosian._foundation.shared.exceptions import (
+    ContextWindowExceededError,
     ToolCallGenerationError,
     UnsupportedContentError,
     UnsupportedParameterError,
@@ -324,6 +325,10 @@ class AnthropicClient(BaseLLMClient):
                 return self._parse_response(response)
 
             except BadRequestError as e:
+                # An overflow is classified before the tool retry (LL-4).
+                wrapped = wrap_provider_error("anthropic", e, model=model)
+                if isinstance(wrapped, ContextWindowExceededError):
+                    raise wrapped from e
                 if self._is_tool_call_error(e) and tools is not None:
                     if attempt < LLMDefaults.MAX_TOOL_CALL_RETRIES:
                         # Lower the temperature on retry only when one was
@@ -336,7 +341,7 @@ class AnthropicClient(BaseLLMClient):
                     raise ToolCallGenerationError(
                         retries=LLMDefaults.MAX_TOOL_CALL_RETRIES
                     ) from e
-                raise wrap_provider_error("anthropic", e, model=model) from e
+                raise wrapped from e
             except Exception as exc:
                 raise wrap_provider_error("anthropic", exc, model=model) from exc
 
