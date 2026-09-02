@@ -27,11 +27,11 @@ The repository is private; as a dependency of another uv project, install
 from the git URL, pinned to a release tag (extras ride the same URL):
 
 ```bash
-uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.82.0"
-uv add "neosian[postgres] @ git+ssh://git@github.com/neosae/neosian@v0.82.0"   # + PostgresStore
-uv add "neosian[mcp] @ git+ssh://git@github.com/neosae/neosian@v0.82.0"        # + MCP memory server
-uv add "neosian[otel] @ git+ssh://git@github.com/neosae/neosian@v0.82.0"       # + OpenTelemetry spans
-uv add "neosian[server] @ git+ssh://git@github.com/neosae/neosian@v0.82.0"     # + the state process
+uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.82.1"
+uv add "neosian[postgres] @ git+ssh://git@github.com/neosae/neosian@v0.82.1"   # + PostgresStore
+uv add "neosian[mcp] @ git+ssh://git@github.com/neosae/neosian@v0.82.1"        # + MCP memory server
+uv add "neosian[otel] @ git+ssh://git@github.com/neosae/neosian@v0.82.1"       # + OpenTelemetry spans
+uv add "neosian[server] @ git+ssh://git@github.com/neosae/neosian@v0.82.1"     # + the state process
 ```
 
 The core install is database-driver-free, MCP-free, and server-free

@@ -69,7 +69,7 @@ state process's HTTP wire.
 
 ## Install
 
-- `uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.82.0"`
+- `uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.82.1"`
   (private repository, no PyPI; pin an annotated release tag, never
   master; extras `[postgres]`, `[mcp]`, `[otel]`, and `[server]` ride
   the same URL).
