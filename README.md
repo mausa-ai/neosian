@@ -290,9 +290,11 @@ store = await RemoteStore.connect("http://localhost:6367", token="change-me")
 ```
 
 Agents speak MCP over streamable HTTP at `/mcp` when the server is
-started with mounts. Auth is one bearer token, env-only (an unset token
-refuses to start); `/health` is the one unauthenticated route; TLS
-terminates at a reverse proxy. FileStore and Postgres backends; both
+started with mounts. Auth is bearer tokens, env-only — one token, or a
+per-client table (`claude-code:laptop=…,app:kit=…`) so the process
+records *who* wrote (an unset token refuses to start); `/health` is the
+one unauthenticated route; TLS terminates at a reverse proxy.
+`neosian audit --scope S` reads the ledger back on any substrate. FileStore and Postgres backends; both
 conformance kits run against the served wire in CI — including against
 the container, on both backends.
 

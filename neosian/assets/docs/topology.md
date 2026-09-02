@@ -66,6 +66,16 @@ exactly where `FileStore` does. Agents speak MCP over streamable HTTP
 at `/mcp` when the server is started with mounts (`--scope` or
 `--mount`).
 
+## Who wrote what
+
+The state process asserts identity (DESIGN §20): `NEOSIAN_SERVE_TOKEN`
+may be a table — `claude-code:laptop=…,app:kit=…` — and every write
+through the wire is recorded under the presenting token's client
+(`<client>[/<what the client said>]`); a bare token is the one client
+`client:default`. Shell entry points reach the process with `--url` and
+`NEOSIAN_CLIENT_TOKEN`; `neosian audit --scope S` reads the ledger back
+on any substrate, and `--url` reads it through the process.
+
 ## One writer per root
 
 FileStore's in-process lock serializes mutations inside one process;

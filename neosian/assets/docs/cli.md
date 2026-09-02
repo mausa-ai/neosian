@@ -43,15 +43,16 @@ EOF
 | flag | meaning |
 |---|---|
 | `--root DIR` | FileStore root (created on first write) |
+| `--url URL` | the state process instead of a root; its token in `NEOSIAN_CLIENT_TOKEN` |
 | `--scope SCOPE` | single read-write mount of SCOPE at `/memories` (the sugar) |
 | `--mount scope=...,path=...` | explicit mount; repeatable; append `,ro` (read-only) or `,eo` (edit-only) |
-| `--actor NAME` | recorded on every version row (default `cli`; convention `cli:<host>`) |
+| `--actor NAME` | who writes, `<kind>:<id>` (default `cli:local`; `cli:<host>` names the agent driving the shell) |
 | `--schema NAME` | Postgres schema (Postgres only) |
 
 Postgres arrives only through the `NEOSIAN_POSTGRES_DSN` environment
-variable — there is no `--dsn` flag (argv is world-readable), and
-`--root` with the DSN set is refused. Exactly one of the two stores
-must be reachable. An edit-only mount (`eo`) fixes its document set:
+variable — there is no `--dsn` flag (argv is world-readable), and the
+state process through `--url` with `NEOSIAN_CLIENT_TOKEN` set the same
+way. Exactly one of the three stores is named; the others are refused. An edit-only mount (`eo`) fixes its document set:
 existing documents stay editable, but nothing may be created, deleted,
 or renamed there — pre-created layouts the agent works within.
 
@@ -123,10 +124,25 @@ prior content comes back — and the revert *appends* a new version row,
 never rewriting history. Its `--json` envelope is the write receipt's
 fields (`command`, `path`, `version`, `previous_path`).
 
+## The ledger — `neosian audit`
+
+`neosian audit --scope SCOPE [--conversation ID] [--actor A] [--since T]
+[--limit N] [--json]` answers "what was done, by whom, when" for a scope,
+newest first: every memory version row (deleted documents included),
+every redaction, and one conversation's turns when named. It takes the
+store selection above (`--root`, `--url`, or the DSN) — `--scope` is a
+raw scope here, not a mount — and answers identically on every
+substrate. `--actor` filters by prefix: `claude-code:s1` matches
+`claude-code:s1#4` and `claude-code:s1/conv:x#2`. Through the state
+process every actor carries the client prefix the daemon asserted.
+Exit tiers hold; an empty ledger is an answer (exit 0).
+
 ## One writer per root
 
 A FileStore root is owned by one writer at a time. Do not run
 `neosian memory` writes against a root an MCP server, a `neosian
 serve` process, or an embedding application is serving — route
-multi-writer needs to Postgres or to the state process itself. The
+multi-writer needs to Postgres or to the state process itself
+(`--url`, so the shell and an agent's MCP server both write through
+the one process that owns the files). The
 full rule: `neosian docs topology`.

@@ -3,7 +3,7 @@
 An http cell runs the standard memory tool over a `RemoteStore` whose
 server is an in-process state process on `httpx.ASGITransport` — every
 command's store I/O, the index render, and the corrective failures
-cross the twelve-route wire. These tests pin that the wire carries a
+cross the fourteen-route wire. These tests pin that the wire carries a
 scenario end to end exactly as the function transport does, and that
 every session's remote client is closed when the cell ends.
 """

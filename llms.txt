@@ -30,6 +30,9 @@ state process's HTTP wire.
 - Operator verbs, keyless: `versions PATH` (the audit trail; `--json`
   carries full historical content), `redact PATH [--all]` (the one
   eraser; audit skeleton preserved), `revert PATH --version N` (undo).
+- `neosian audit --scope S [--conversation C] [--actor A] [--since T]
+  [--json]` — the ledger: what was done, by whom, when — newest first,
+  identical on a root, Postgres, or the state process (`--url`).
 - Exit tiers: 0 success, 1 ran-and-failed, 2 bad invocation, 130
   interrupt. stdout carries the artifact; stderr carries guidance.
 - Postgres arrives only via the NEOSIAN_POSTGRES_DSN environment
@@ -49,7 +52,9 @@ state process's HTTP wire.
 - `NEOSIAN_SERVE_TOKEN=... neosian serve --root DIR` — the state
   process (`server` extra): memory and conversations on a port, MCP
   over streamable HTTP at /mcp when started with mounts. Token is
-  env-only; unset refuses to start; /health is unauthenticated.
+  env-only (one token, or a per-client table `actor=token,...` — the
+  process records who wrote); unset refuses to start; /health is
+  unauthenticated. Shell clients: `--url URL` + NEOSIAN_CLIENT_TOKEN.
 - The shipped Dockerfile is the appliance: `docker run -e
   NEOSIAN_SERVE_TOKEN=... -p 6367:6367 -v state:/data neosian`.
 - Python clients: `await RemoteStore.connect(url, token=...)` — both
