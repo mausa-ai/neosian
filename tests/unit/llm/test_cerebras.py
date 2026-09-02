@@ -9,6 +9,8 @@ from cerebras.cloud.sdk.types.chat.chat_completion import (
     ChatChunkResponse,
     ChatChunkResponseChoice,
     ChatChunkResponseChoiceDelta,
+    ChatChunkResponseChoiceDeltaToolCall,
+    ChatChunkResponseChoiceDeltaToolCallFunction,
     ChatChunkResponseUsage,
     ChatChunkResponseUsagePromptTokensDetails,
 )
@@ -40,6 +42,7 @@ def _make_stream_chunk(
     ) = None,
     usage: ChatChunkResponseUsage | None = None,
     with_choice: bool = True,
+    tool_calls: list[ChatChunkResponseChoiceDeltaToolCall] | None = None,
 ) -> ChatChunkResponse:
     """Build a real SDK stream chunk — stream() narrows on ChatChunkResponse."""
     choices: list[ChatChunkResponseChoice] = []
@@ -48,7 +51,7 @@ def _make_stream_chunk(
             ChatChunkResponseChoice(
                 index=0,
                 delta=ChatChunkResponseChoiceDelta(
-                    content=content, reasoning=reasoning
+                    content=content, reasoning=reasoning, tool_calls=tool_calls
                 ),
                 finish_reason=finish_reason,
             )
@@ -67,6 +70,60 @@ def _make_stream_chunk(
 def _sdk(client: CerebrasClient) -> Any:
     """The underlying SDK client, untyped for mock wiring and inspection."""
     return client._client
+
+
+def _partial_tool_call(arguments: str) -> ChatChunkResponseChoiceDeltaToolCall:
+    return ChatChunkResponseChoiceDeltaToolCall(
+        index=0,
+        id="call_1",
+        type="function",
+        function=ChatChunkResponseChoiceDeltaToolCallFunction(
+            name="get_weather", arguments=arguments
+        ),
+    )
+
+
+@pytest.mark.unit
+class TestCerebrasStreamedToolCallFinish:
+    """The Cerebras wire follows the OpenAI wire's flush rule (LL-13, LL-7)."""
+
+    async def _stream(self, client: CerebrasClient, chunks: list[Any]) -> list[Any]:
+        async def events() -> Any:
+            for chunk in chunks:
+                yield chunk
+
+        _sdk(client).chat.completions.create = AsyncMock(return_value=events())
+        received = []
+        async for chunk in client.stream(
+            messages=[Message(role=Role.USER, content="Hi")],
+            model=Model.CEREBRAS_GPT_OSS_120B,
+        ):
+            received.append(chunk)
+        return received
+
+    async def test_a_stop_finish_releases_the_call(self) -> None:
+        client = CerebrasClient(api_key="test-key")
+        received = await self._stream(
+            client,
+            [
+                _make_stream_chunk(tool_calls=[_partial_tool_call('{"a": 1}')]),
+                _make_stream_chunk(finish_reason="stop"),
+            ],
+        )
+        assert received[-1].tool_calls[0].arguments == {"a": 1}
+        assert received[-1].finish_reason == "stop"
+
+    async def test_a_truncated_tool_call_names_the_stop_reason(self) -> None:
+        client = CerebrasClient(api_key="test-key")
+        with pytest.raises(ProviderError, match="stop reason: length") as info:
+            await self._stream(
+                client,
+                [
+                    _make_stream_chunk(tool_calls=[_partial_tool_call('{"a":')]),
+                    _make_stream_chunk(finish_reason="length"),
+                ],
+            )
+        assert info.value.provider == "cerebras"
 
 
 @pytest.mark.unit

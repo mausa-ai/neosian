@@ -5,6 +5,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from openai import BadRequestError
+from openai.types.chat.chat_completion_chunk import (
+    ChoiceDeltaToolCall,
+    ChoiceDeltaToolCallFunction,
+)
 
 from neosian._foundation.llm.base import (
     CompactionBlock,
@@ -862,6 +866,46 @@ class TestOpenAIPromptCaching:
 
         assert len(chunks) == 2
         assert all(c.model == "gpt-5-nano-2026-01-01" for c in chunks)
+
+    async def test_a_truncated_tool_call_names_the_stop_reason(self) -> None:
+        """Arguments cut off at `length` raise naming that reason (LL-7)."""
+        client = OpenAIClient(api_key="test-key")
+
+        partial = autospec(SPEC["chunk"])
+        partial.choices = [autospec(SPEC["chunk_choice"])]
+        partial.choices[0].delta.content = None
+        partial.choices[0].delta.tool_calls = [
+            ChoiceDeltaToolCall(
+                index=0,
+                id="call_1",
+                type="function",
+                function=ChoiceDeltaToolCallFunction(
+                    name="get_weather", arguments='{"location":'
+                ),
+            )
+        ]
+        partial.choices[0].finish_reason = None
+        partial.usage = None
+        terminal = autospec(SPEC["chunk"])
+        terminal.choices = [autospec(SPEC["chunk_choice"])]
+        terminal.choices[0].delta.content = None
+        terminal.choices[0].delta.tool_calls = None
+        terminal.choices[0].finish_reason = "length"
+        terminal.usage = None
+
+        async def chunks() -> Any:
+            yield partial
+            yield terminal
+
+        _sdk(client).chat.completions.create = AsyncMock(return_value=chunks())
+
+        with pytest.raises(ProviderError, match="stop reason: length") as info:
+            async for _ in client.stream(
+                messages=[Message(role=Role.USER, content="Hi")],
+                model=Model.GPT_5_NANO,
+            ):
+                pass
+        assert info.value.provider == "openai"
 
 
 @pytest.mark.unit

@@ -1,6 +1,5 @@
 """Cerebras LLM client implementation."""
 
-import json
 import logging
 from collections.abc import AsyncIterator
 from typing import Any
@@ -26,7 +25,7 @@ from neosian._foundation.llm.cerebras_convert import (
     convert_response_format,
     convert_tools,
 )
-from neosian._foundation.llm.errors import wrap_provider_error
+from neosian._foundation.llm.errors import tool_arguments, wrap_provider_error
 from neosian._foundation.shared.constants import ErrorMessages, LLMDefaults
 from neosian._foundation.shared.exceptions import (
     ContextWindowExceededError,
@@ -201,13 +200,15 @@ class CerebrasClient(BaseLLMClient):
         tool_calls: list[ToolCall] = []
         if response_message.tool_calls:
             for tc in response_message.tool_calls:
-                # Normalize empty/missing arguments to {}
-                args_str = tc.function.arguments or "{}"
                 tool_calls.append(
                     ToolCall(
                         id=ToolCallId(tc.id),
                         name=ToolName(tc.function.name),
-                        arguments=json.loads(args_str),
+                        arguments=tool_arguments(
+                            "cerebras",
+                            tc.function.arguments or "",
+                            stop_reason=choice.finish_reason,
+                        ),
                     )
                 )
 
@@ -374,15 +375,20 @@ class CerebrasClient(BaseLLMClient):
 
                 # On finish, yield completed tool calls
                 finish_reason = choice.finish_reason
-                if finish_reason == "tool_calls" and tool_call_builders:
+                # Any terminal finish releases the accumulated calls (the
+                # OpenAI wire's rule, LL-13): the agent loop keys on the
+                # calls' presence, and a truncated call must name "length".
+                if finish_reason and tool_call_builders:
                     for builder in tool_call_builders.values():
-                        # Normalize empty arguments to {}
-                        args_str = builder["arguments"] or "{}"
                         tool_calls.append(
                             ToolCall(
                                 id=ToolCallId(builder["id"]),
                                 name=ToolName(builder["name"]),
-                                arguments=json.loads(args_str),
+                                arguments=tool_arguments(
+                                    "cerebras",
+                                    builder["arguments"],
+                                    stop_reason=finish_reason,
+                                ),
                             )
                         )
 

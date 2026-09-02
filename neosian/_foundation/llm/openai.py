@@ -1,6 +1,5 @@
 """The OpenAI-compatible client, and OpenAI's own instance of it (DESIGN §19)."""
 
-import json
 import logging
 from collections.abc import AsyncIterator
 from dataclasses import replace
@@ -26,7 +25,7 @@ from neosian._foundation.llm.base import (
     ToolDefinition,
     Usage,
 )
-from neosian._foundation.llm.errors import wrap_provider_error
+from neosian._foundation.llm.errors import tool_arguments, wrap_provider_error
 from neosian._foundation.llm.openai_convert import (
     convert_messages,
     convert_response_format,
@@ -284,13 +283,15 @@ class OpenAICompatibleClient(BaseLLMClient):
         tool_calls: list[ToolCall] = []
         if response_message.tool_calls:
             for tc in response_message.tool_calls:
-                # Normalize empty/missing arguments to {}
-                args_str = tc.function.arguments or "{}"
                 tool_calls.append(
                     ToolCall(
                         id=ToolCallId(tc.id),
                         name=ToolName(tc.function.name),
-                        arguments=json.loads(args_str),
+                        arguments=tool_arguments(
+                            self._door.name,
+                            tc.function.arguments,
+                            stop_reason=choice.finish_reason,
+                        ),
                         extra=_extra_of(tc),
                     )
                 )
@@ -429,13 +430,15 @@ class OpenAICompatibleClient(BaseLLMClient):
                 # the agent loop keys on the calls' presence, not the reason.
                 if finish_reason and tool_call_builders:
                     for idx, builder in tool_call_builders.items():
-                        # Normalize empty arguments to {}
-                        args_str = builder["arguments"] or "{}"
                         tool_calls.append(
                             ToolCall(
                                 id=ToolCallId(builder["id"]),
                                 name=ToolName(builder["name"]),
-                                arguments=json.loads(args_str),
+                                arguments=tool_arguments(
+                                    self._door.name,
+                                    builder["arguments"],
+                                    stop_reason=finish_reason,
+                                ),
                                 extra=tool_call_extras.get(idx),
                             )
                         )

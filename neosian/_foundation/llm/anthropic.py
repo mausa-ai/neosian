@@ -1,7 +1,6 @@
 """Anthropic Claude LLM client implementation."""
 
 import copy
-import json
 import logging
 from collections.abc import AsyncIterator
 from typing import Any
@@ -25,13 +24,14 @@ from neosian._foundation.llm.base import (
     required_content_types,
     requires_compaction_support,
 )
-from neosian._foundation.llm.errors import wrap_provider_error
+from neosian._foundation.llm.errors import tool_arguments, wrap_provider_error
 from neosian._foundation.shared.constants import (
     ErrorMessages,
     LLMDefaults,
 )
 from neosian._foundation.shared.exceptions import (
     ContextWindowExceededError,
+    NeosianError,
     ToolCallGenerationError,
     UnsupportedContentError,
     UnsupportedParameterError,
@@ -543,8 +543,9 @@ class AnthropicClient(BaseLLMClient):
                 # the previous one.
                 compaction_usage = Usage(input_tokens=0, output_tokens=0)
 
-                # Tool call accumulation state
-                accumulated_tool_calls: list[ToolCall] = []
+                # Tool call accumulation state: (id, name, raw input),
+                # decoded at message_stop once the stop reason is known.
+                pending_tools: list[tuple[str, str, str]] = []
                 current_tool_id: str | None = None
                 current_tool_name: str | None = None
                 current_tool_input: str = ""
@@ -636,16 +637,11 @@ class AnthropicClient(BaseLLMClient):
 
                     elif event.type == "content_block_stop":
                         if current_tool_id is not None:
-                            args = (
-                                json.loads(current_tool_input)
-                                if current_tool_input
-                                else {}
-                            )
-                            accumulated_tool_calls.append(
-                                ToolCall(
-                                    id=ToolCallId(current_tool_id),
-                                    name=ToolName(current_tool_name or ""),
-                                    arguments=args if isinstance(args, dict) else {},
+                            pending_tools.append(
+                                (
+                                    current_tool_id,
+                                    current_tool_name or "",
+                                    current_tool_input,
                                 )
                             )
                             current_tool_id = None
@@ -673,8 +669,18 @@ class AnthropicClient(BaseLLMClient):
                         # Prefer the API's stop reason; fall back to the
                         # synthesized value if the event never carried one.
                         finish_reason = stop_reason or (
-                            "tool_use" if accumulated_tool_calls else "stop"
+                            "tool_use" if pending_tools else "stop"
                         )
+                        tool_calls = [
+                            ToolCall(
+                                id=ToolCallId(tool_id),
+                                name=ToolName(name),
+                                arguments=tool_arguments(
+                                    "anthropic", raw, stop_reason=stop_reason
+                                ),
+                            )
+                            for tool_id, name, raw in pending_tools
+                        ]
                         yield StreamChunk(
                             finish_reason=finish_reason,
                             usage=Usage(
@@ -684,10 +690,12 @@ class AnthropicClient(BaseLLMClient):
                                 cache_write_tokens=cache_creation_tokens,
                             )
                             + compaction_usage,
-                            tool_calls=accumulated_tool_calls,
+                            tool_calls=tool_calls,
                             model=api_model,
                             compaction=tuple(compaction_blocks),
                         )
+        except NeosianError:
+            raise
         except Exception as exc:
             raise wrap_provider_error("anthropic", exc, model=model) from exc
 

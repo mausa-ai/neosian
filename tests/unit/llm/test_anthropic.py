@@ -23,6 +23,7 @@ from neosian._foundation.llm.base import (
 )
 from neosian._foundation.shared import models as models_module
 from neosian._foundation.shared.exceptions import (
+    ProviderError,
     UnsupportedContentError,
     UnsupportedParameterError,
 )
@@ -879,6 +880,65 @@ class TestAnthropicStreamingToolCalls:
         assert final.tool_calls[0].id == "toolu_abc"
         assert final.tool_calls[0].name == "get_weather"
         assert final.tool_calls[0].arguments == {"location": "Paris"}
+
+    @pytest.mark.asyncio
+    async def test_a_truncated_tool_call_names_the_stop_reason(
+        self, client: AnthropicClient, sample_messages: list[Message]
+    ) -> None:
+        """Arguments cut off at max_tokens raise naming the stop reason,
+        not the decoder — the stop reason arrives after the block ends,
+        so decoding waits for it (LL-7)."""
+        mock_block_start = MagicMock(spec_set=SPEC["content_block_start"])
+        mock_block_start.type = "content_block_start"
+        mock_content_block = MagicMock(
+            spec=SPEC["tool_use"], type="tool_use", id="toolu_abc"
+        )
+        mock_content_block.name = "get_weather"
+        mock_block_start.content_block = mock_content_block
+
+        mock_input_delta = MagicMock(spec_set=SPEC["content_block_delta"])
+        mock_input_delta.type = "content_block_delta"
+        mock_input_delta.delta = MagicMock(
+            spec=SPEC["input_json_delta"],
+            type="input_json_delta",
+            partial_json='{"location":',
+        )
+        mock_block_stop = MagicMock(spec_set=SPEC["content_block_stop"])
+        mock_block_stop.type = "content_block_stop"
+        mock_msg_delta = MagicMock(spec_set=SPEC["message_delta"])
+        mock_msg_delta.type = "message_delta"
+        mock_msg_delta.usage = MagicMock(
+            spec=SPEC["usage"], input_tokens=0, output_tokens=15
+        )
+        mock_msg_delta.delta = MagicMock(
+            spec_set=SPEC["stop"], stop_reason="max_tokens"
+        )
+        mock_msg_stop = MagicMock(spec_set=SPEC["message_stop"])
+        mock_msg_stop.type = "message_stop"
+
+        async def mock_stream_events() -> AsyncIterator[Any]:
+            yield mock_block_start
+            yield mock_input_delta
+            yield mock_block_stop
+            yield mock_msg_delta
+            yield mock_msg_stop
+
+        mock_stream = MagicMock()
+        mock_stream.__aenter__ = AsyncMock(return_value=mock_stream)
+        mock_stream.__aexit__ = AsyncMock(return_value=None)
+        mock_stream.__aiter__ = lambda _: mock_stream_events()
+        _sdk(client).messages.stream = MagicMock(return_value=mock_stream)
+
+        chunks = []
+        with pytest.raises(ProviderError, match="stop reason: max_tokens") as info:
+            async for chunk in client.stream(
+                messages=sample_messages, model=Model.CLAUDE_SONNET_5
+            ):
+                chunks.append(chunk)
+        assert info.value.provider == "anthropic"
+        assert info.value.retryable is False
+        assert info.value.__cause__ is not info.value
+        assert not any(chunk.tool_calls for chunk in chunks)
 
     @pytest.mark.asyncio
     async def test_stream_mixed_content_and_tool_calls(
