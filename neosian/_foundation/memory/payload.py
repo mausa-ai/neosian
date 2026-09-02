@@ -7,9 +7,10 @@ untrusted data — a stored document may carry text shaped like a heading
 or an instruction — so each rides between fence lines tagged with a
 per-call token the system prompt names, and the payload is bounded: past
 `PAYLOAD_BUDGET_CHARS` the remaining documents are listed by name only,
-so the dedup evidence survives where the bodies cannot. Bodies stay raw
-inside their fences, so an emitted `old_str` still matches stored
-content exactly.
+so the dedup evidence survives where the bodies cannot, and the session
+transcript takes what the documents left, oldest turns dropped first
+with their count named. Bodies stay raw inside their fences, so an
+emitted `old_str` still matches stored content exactly.
 """
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ import secrets
 from typing import TYPE_CHECKING, Final
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sequence
 
     from neosian._foundation.memory.mounts import MemoryConfig
     from neosian._foundation.memory.types import MemoryEntry
@@ -28,6 +29,8 @@ if TYPE_CHECKING:
 PAYLOAD_BUDGET_CHARS: Final = 120_000
 
 OMITTED_LINE: Final = "[body omitted — over the payload budget]"
+
+_TRANSCRIPT_HEADING: Final = "# Session transcript\n\n"
 
 
 def new_fence() -> str:
@@ -54,6 +57,7 @@ async def render_documents(
     header (the gardener's aging evidence)."""
     lines = ["# Current memory"]
     used = len(lines[0]) + 1
+    folded = False
 
     def add(line: str) -> None:
         nonlocal used
@@ -82,5 +86,28 @@ async def render_documents(
                 continue
             add(name + (annotate(entry) if annotate is not None else ""))
             body = fenced(fence, document.content)
-            add(body if used + len(body) + 1 <= budget else OMITTED_LINE)
+            folded = folded or used + len(body) + 1 > budget
+            add(OMITTED_LINE if folded else body)
     return "\n".join(lines)
+
+
+def _omitted_turns(count: int) -> str:
+    noun = "turn" if count == 1 else "turns"
+    return f"[{count} earlier {noun} omitted — over the payload budget]"
+
+
+def render_transcript(turns: Sequence[str], *, fence: str, budget: int) -> str:
+    """`# Session transcript`: the newest rendered turns that fit `budget`,
+    fenced; when older turns were dropped, the first line names how many."""
+    used = len(_TRANSCRIPT_HEADING) + len(fenced(fence, "")) + 2
+    used += len(_omitted_turns(len(turns)))
+    kept: list[str] = []
+    for turn in reversed(turns):
+        if used + len(turn) + 2 > budget:
+            break
+        kept.append(turn)
+        used += len(turn) + 2
+    kept.reverse()
+    if len(kept) < len(turns):
+        kept.insert(0, _omitted_turns(len(turns) - len(kept)))
+    return _TRANSCRIPT_HEADING + fenced(fence, "\n\n".join(kept))

@@ -31,6 +31,7 @@ from neosian._foundation.llm.base import BaseLLMClient, Message, Role, ToolCall,
 from neosian._foundation.llm.fake import FakeClient, FakeScript, FakeTurn
 from neosian._foundation.memory.file import FileStore
 from neosian._foundation.memory.mounts import MemoryConfig, Mount
+from neosian._foundation.memory.payload import PAYLOAD_BUDGET_CHARS
 from neosian._foundation.shared.exceptions import ConfigurationError
 from neosian._foundation.shared.types import (
     AnyModel,
@@ -167,6 +168,29 @@ class TestRunReflection:
         # Read-only mounts take no operations, so they are not shown.
         assert "/kb" not in text
         assert "Reference only." not in text
+
+    async def test_the_transcript_shares_the_payload_budget(
+        self, tmp_path: Path
+    ) -> None:
+        """The documents render first and the transcript takes the rest of
+        one budget, newest turns kept (MC-1). Names and headers never fold,
+        so the bound is exact when they fit — the index's posture."""
+        memory = _memory(tmp_path)
+        await memory.store.write("user:1", "stack", "Runs on Postgres 16.")
+        fake = _scripted(FakeTurn(content=_batch()))
+        await run_reflection(
+            memory_config=memory,
+            turns=[_turn(number, "x" * 60_000, "ok") for number in (1, 2, 3)],
+            acquire=lambda _: fake,
+            model=Model.FAKE,
+            actor="t1",
+        )
+        text = str(fake.calls[0].messages[1].content)
+        assert len(text) <= PAYLOAD_BUDGET_CHARS
+        assert "Runs on Postgres 16." in text
+        assert "[2 earlier turns omitted — over the payload budget]" in text
+        assert "Turn 3 (verbatim)" in text
+        assert "Turn 1 (verbatim)" not in text
 
     async def test_update_not_duplicate(self, tmp_path: Path) -> None:
         memory = _memory(tmp_path)

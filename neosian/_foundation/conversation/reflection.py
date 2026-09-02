@@ -29,7 +29,12 @@ from neosian._foundation.memory.maintenance import (
     MAINTENANCE_MIN_AGE_DAYS,
     protection_reason,
 )
-from neosian._foundation.memory.payload import fenced, new_fence, render_documents
+from neosian._foundation.memory.payload import (
+    PAYLOAD_BUDGET_CHARS,
+    new_fence,
+    render_documents,
+    render_transcript,
+)
 from neosian._foundation.shared.clock import Clock, SystemClock
 from neosian._foundation.shared.prompt_assets import get_prompt, render
 from neosian._foundation.shared.structured import structured_call
@@ -139,12 +144,16 @@ async def run_reflection(
             "edit-only — update existing documents; never add or remove one"
         ),
     )
-    transcript = fenced(fence, "\n\n".join(render_turn(turn) for turn in turns))
+    transcript = render_transcript(
+        [render_turn(turn) for turn in turns],
+        fence=fence,
+        budget=PAYLOAD_BUDGET_CHARS - len(memory) - 2,
+    )
     parsed, usage, api_model, degraded = await structured_call(
         acquire,
         model,
         render(get_prompt("reflection.system"), fence=fence),
-        "\n\n".join((memory, "# Session transcript", transcript)),
+        "\n\n".join((memory, transcript)),
         ReflectionBatch,
         "Reflection",
     )
