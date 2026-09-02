@@ -184,9 +184,9 @@ class TestAnthropicClient:
     ) -> None:
         """Test basic completion without tools."""
         # Mock the Anthropic API response
-        mock_response = MagicMock(spec=SPEC["message"])
+        mock_response = MagicMock(spec_set=SPEC["message"])
         mock_response.content = [
-            MagicMock(spec=SPEC["text"], type="text", text="Hello there!")
+            MagicMock(spec_set=SPEC["text"], type="text", text="Hello there!")
         ]
         mock_response.usage = MagicMock(
             spec=SPEC["usage"], input_tokens=10, output_tokens=5
@@ -211,13 +211,13 @@ class TestAnthropicClient:
         self, client: AnthropicClient, sample_messages: list[Message]
     ) -> None:
         """Test completion that returns tool calls."""
-        mock_tool_use = MagicMock(spec=SPEC["tool_use"])
+        mock_tool_use = MagicMock(spec_set=SPEC["tool_use"])
         mock_tool_use.type = "tool_use"
         mock_tool_use.id = "toolu_123"
         mock_tool_use.name = "get_weather"
         mock_tool_use.input = {"location": "Paris"}
 
-        mock_response = MagicMock(spec=SPEC["message"])
+        mock_response = MagicMock(spec_set=SPEC["message"])
         mock_response.content = [mock_tool_use]
         mock_response.usage = MagicMock(
             spec=SPEC["usage"], input_tokens=15, output_tokens=8
@@ -251,19 +251,19 @@ class TestAnthropicClient:
     ) -> None:
         """Test basic streaming."""
         # Create mock events with delta.type to match Anthropic SDK format
-        mock_event1 = MagicMock(spec=SPEC["content_block_delta"])
+        mock_event1 = MagicMock(spec_set=SPEC["content_block_delta"])
         mock_event1.type = "content_block_delta"
         mock_event1.delta = MagicMock(
             spec=SPEC["text_delta"], type="text_delta", text="Hello"
         )
 
-        mock_event2 = MagicMock(spec=SPEC["content_block_delta"])
+        mock_event2 = MagicMock(spec_set=SPEC["content_block_delta"])
         mock_event2.type = "content_block_delta"
         mock_event2.delta = MagicMock(
             spec=SPEC["text_delta"], type="text_delta", text=" world!"
         )
 
-        mock_event3 = MagicMock(spec=SPEC["message_stop"])
+        mock_event3 = MagicMock(spec_set=SPEC["message_stop"])
         mock_event3.type = "message_stop"
 
         # Create async iterator for stream
@@ -327,9 +327,9 @@ class TestAnthropicReasoningEffort:
         self, client: AnthropicClient, sample_messages: list[Message]
     ) -> None:
         """Verify thinking and output_config kwargs are passed, temperature is NOT."""
-        mock_response = MagicMock(spec=SPEC["message"])
+        mock_response = MagicMock(spec_set=SPEC["message"])
         mock_response.content = [
-            MagicMock(spec=SPEC["text"], type="text", text="Answer")
+            MagicMock(spec_set=SPEC["text"], type="text", text="Answer")
         ]
         mock_response.usage = MagicMock(
             spec=SPEC["usage"], input_tokens=10, output_tokens=5
@@ -355,9 +355,9 @@ class TestAnthropicReasoningEffort:
         self, client: AnthropicClient, sample_messages: list[Message]
     ) -> None:
         """Verify MAX effort is passed as 'max'."""
-        mock_response = MagicMock(spec=SPEC["message"])
+        mock_response = MagicMock(spec_set=SPEC["message"])
         mock_response.content = [
-            MagicMock(spec=SPEC["text"], type="text", text="Answer")
+            MagicMock(spec_set=SPEC["text"], type="text", text="Answer")
         ]
         mock_response.usage = MagicMock(
             spec=SPEC["usage"], input_tokens=10, output_tokens=5
@@ -398,9 +398,9 @@ class TestAnthropicReasoningEffort:
         Newer Claude models (e.g. Sonnet 5) reject non-default sampling
         parameters with a 400, so the API default must apply when unset.
         """
-        mock_response = MagicMock(spec=SPEC["message"])
+        mock_response = MagicMock(spec_set=SPEC["message"])
         mock_response.content = [
-            MagicMock(spec=SPEC["text"], type="text", text="Answer")
+            MagicMock(spec_set=SPEC["text"], type="text", text="Answer")
         ]
         mock_response.usage = MagicMock(
             spec=SPEC["usage"], input_tokens=10, output_tokens=5
@@ -424,9 +424,9 @@ class TestAnthropicReasoningEffort:
         self, client: AnthropicClient, sample_messages: list[Message]
     ) -> None:
         """An explicitly provided temperature still reaches the API."""
-        mock_response = MagicMock(spec=SPEC["message"])
+        mock_response = MagicMock(spec_set=SPEC["message"])
         mock_response.content = [
-            MagicMock(spec=SPEC["text"], type="text", text="Answer")
+            MagicMock(spec_set=SPEC["text"], type="text", text="Answer")
         ]
         mock_response.usage = MagicMock(
             spec=SPEC["usage"], input_tokens=10, output_tokens=5
@@ -449,7 +449,7 @@ class TestAnthropicReasoningEffort:
         self, client: AnthropicClient, sample_messages: list[Message]
     ) -> None:
         """Verify stream passes thinking and output_config kwargs."""
-        mock_event = MagicMock(spec=SPEC["message_stop"])
+        mock_event = MagicMock(spec_set=SPEC["message_stop"])
         mock_event.type = "message_stop"
 
         async def mock_stream_events() -> AsyncIterator[Any]:
@@ -493,9 +493,9 @@ class TestAnthropicReasoningEffort:
         self, client: AnthropicClient, sample_messages: list[Message]
     ) -> None:
         """Verify Sonnet 4.6 supports reasoning with adaptive thinking."""
-        mock_response = MagicMock(spec=SPEC["message"])
+        mock_response = MagicMock(spec_set=SPEC["message"])
         mock_response.content = [
-            MagicMock(spec=SPEC["text"], type="text", text="Answer")
+            MagicMock(spec_set=SPEC["text"], type="text", text="Answer")
         ]
         mock_response.usage = MagicMock(
             spec=SPEC["usage"], input_tokens=10, output_tokens=5
@@ -545,9 +545,9 @@ class TestAnthropicReasoningEffort:
         self, client: AnthropicClient, sample_messages: list[Message]
     ) -> None:
         """Verify MAX effort is passed through for Sonnet 5 (supports_max_effort)."""
-        mock_response = MagicMock(spec=SPEC["message"])
+        mock_response = MagicMock(spec_set=SPEC["message"])
         mock_response.content = [
-            MagicMock(spec=SPEC["text"], type="text", text="Answer")
+            MagicMock(spec_set=SPEC["text"], type="text", text="Answer")
         ]
         mock_response.usage = MagicMock(
             spec=SPEC["usage"], input_tokens=10, output_tokens=5
@@ -573,9 +573,9 @@ class TestAnthropicReasoningEffort:
         spec = models_module._MODEL_SPECS[Model.CLAUDE_SONNET_5.value]
         patched = dataclasses.replace(spec, supports_max_effort=False)
 
-        mock_response = MagicMock(spec=SPEC["message"])
+        mock_response = MagicMock(spec_set=SPEC["message"])
         mock_response.content = [
-            MagicMock(spec=SPEC["text"], type="text", text="Answer")
+            MagicMock(spec_set=SPEC["text"], type="text", text="Answer")
         ]
         mock_response.usage = MagicMock(
             spec=SPEC["usage"], input_tokens=10, output_tokens=5
@@ -601,9 +601,9 @@ class TestAnthropicReasoningEffort:
         self, client: AnthropicClient, sample_messages: list[Message]
     ) -> None:
         """Verify MAX effort is NOT downgraded for Opus 4.6."""
-        mock_response = MagicMock(spec=SPEC["message"])
+        mock_response = MagicMock(spec_set=SPEC["message"])
         mock_response.content = [
-            MagicMock(spec=SPEC["text"], type="text", text="Answer")
+            MagicMock(spec_set=SPEC["text"], type="text", text="Answer")
         ]
         mock_response.usage = MagicMock(
             spec=SPEC["usage"], input_tokens=10, output_tokens=5
@@ -626,7 +626,7 @@ class TestAnthropicReasoningEffort:
         self, client: AnthropicClient, sample_messages: list[Message]
     ) -> None:
         """Verify MAX effort is passed through in stream for Sonnet 5."""
-        mock_event = MagicMock(spec=SPEC["message_stop"])
+        mock_event = MagicMock(spec_set=SPEC["message_stop"])
         mock_event.type = "message_stop"
 
         async def mock_stream_events() -> AsyncIterator[Any]:
@@ -659,15 +659,15 @@ class TestAnthropicReasoningContent:
         self, client: AnthropicClient, sample_messages: list[Message]
     ) -> None:
         """Verify thinking blocks are parsed into message.reasoning."""
-        mock_thinking = MagicMock(spec=SPEC["thinking"])
+        mock_thinking = MagicMock(spec_set=SPEC["thinking"])
         mock_thinking.type = "thinking"
         mock_thinking.thinking = "Let me analyze step by step..."
 
-        mock_text = MagicMock(spec=SPEC["text"])
+        mock_text = MagicMock(spec_set=SPEC["text"])
         mock_text.type = "text"
         mock_text.text = "The answer is 42."
 
-        mock_response = MagicMock(spec=SPEC["message"])
+        mock_response = MagicMock(spec_set=SPEC["message"])
         mock_response.content = [mock_thinking, mock_text]
         mock_response.usage = MagicMock(
             spec=SPEC["usage"], input_tokens=10, output_tokens=20
@@ -690,15 +690,15 @@ class TestAnthropicReasoningContent:
         self, client: AnthropicClient, sample_messages: list[Message]
     ) -> None:
         """Verify redacted_thinking blocks are skipped without error."""
-        mock_redacted = MagicMock(spec=SPEC["redacted_thinking"])
+        mock_redacted = MagicMock(spec_set=SPEC["redacted_thinking"])
         mock_redacted.type = "redacted_thinking"
         mock_redacted.data = "encrypted-data-here"
 
-        mock_text = MagicMock(spec=SPEC["text"])
+        mock_text = MagicMock(spec_set=SPEC["text"])
         mock_text.type = "text"
         mock_text.text = "The answer."
 
-        mock_response = MagicMock(spec=SPEC["message"])
+        mock_response = MagicMock(spec_set=SPEC["message"])
         mock_response.content = [mock_redacted, mock_text]
         mock_response.usage = MagicMock(
             spec=SPEC["usage"], input_tokens=10, output_tokens=5
@@ -721,9 +721,9 @@ class TestAnthropicReasoningContent:
         self, client: AnthropicClient, sample_messages: list[Message]
     ) -> None:
         """Verify reasoning is None when no thinking blocks are present."""
-        mock_response = MagicMock(spec=SPEC["message"])
+        mock_response = MagicMock(spec_set=SPEC["message"])
         mock_response.content = [
-            MagicMock(spec=SPEC["text"], type="text", text="Hello!")
+            MagicMock(spec_set=SPEC["text"], type="text", text="Hello!")
         ]
         mock_response.usage = MagicMock(
             spec=SPEC["usage"], input_tokens=10, output_tokens=5
@@ -746,7 +746,7 @@ class TestAnthropicReasoningContent:
     ) -> None:
         """Verify thinking_delta events yield StreamChunk with reasoning."""
         # Thinking delta event
-        mock_thinking_event = MagicMock(spec=SPEC["content_block_delta"])
+        mock_thinking_event = MagicMock(spec_set=SPEC["content_block_delta"])
         mock_thinking_event.type = "content_block_delta"
         mock_thinking_event.delta = MagicMock(
             spec=SPEC["thinking_delta"],
@@ -755,13 +755,13 @@ class TestAnthropicReasoningContent:
         )
 
         # Text delta event
-        mock_text_event = MagicMock(spec=SPEC["content_block_delta"])
+        mock_text_event = MagicMock(spec_set=SPEC["content_block_delta"])
         mock_text_event.type = "content_block_delta"
         mock_text_event.delta = MagicMock(
             spec=SPEC["text_delta"], type="text_delta", text="The answer."
         )
 
-        mock_stop = MagicMock(spec=SPEC["message_stop"])
+        mock_stop = MagicMock(spec_set=SPEC["message_stop"])
         mock_stop.type = "message_stop"
 
         async def mock_stream_events() -> AsyncIterator[Any]:
@@ -802,7 +802,7 @@ class TestAnthropicStreamingToolCalls:
     ) -> None:
         """Stream should accumulate tool_use blocks and yield ToolCalls."""
         # content_block_start for tool_use
-        mock_block_start = MagicMock(spec=SPEC["content_block_start"])
+        mock_block_start = MagicMock(spec_set=SPEC["content_block_start"])
         mock_block_start.type = "content_block_start"
         mock_content_block = MagicMock(
             spec=SPEC["tool_use"], type="tool_use", id="toolu_abc"
@@ -811,7 +811,7 @@ class TestAnthropicStreamingToolCalls:
         mock_block_start.content_block = mock_content_block
 
         # input_json_delta chunks
-        mock_input_delta1 = MagicMock(spec=SPEC["content_block_delta"])
+        mock_input_delta1 = MagicMock(spec_set=SPEC["content_block_delta"])
         mock_input_delta1.type = "content_block_delta"
         mock_input_delta1.delta = MagicMock(
             spec=SPEC["input_json_delta"],
@@ -819,7 +819,7 @@ class TestAnthropicStreamingToolCalls:
             partial_json='{"location":',
         )
 
-        mock_input_delta2 = MagicMock(spec=SPEC["content_block_delta"])
+        mock_input_delta2 = MagicMock(spec_set=SPEC["content_block_delta"])
         mock_input_delta2.type = "content_block_delta"
         mock_input_delta2.delta = MagicMock(
             spec=SPEC["input_json_delta"],
@@ -828,19 +828,19 @@ class TestAnthropicStreamingToolCalls:
         )
 
         # content_block_stop finalizes the tool call
-        mock_block_stop = MagicMock(spec=SPEC["content_block_stop"])
+        mock_block_stop = MagicMock(spec_set=SPEC["content_block_stop"])
         mock_block_stop.type = "content_block_stop"
 
         # message_stop with usage; the API reports the real stop reason
         # on the message_delta event
-        mock_msg_delta = MagicMock(spec=SPEC["message_delta"])
+        mock_msg_delta = MagicMock(spec_set=SPEC["message_delta"])
         mock_msg_delta.type = "message_delta"
         mock_msg_delta.usage = MagicMock(
             spec=SPEC["usage"], input_tokens=0, output_tokens=15
         )
-        mock_msg_delta.delta = MagicMock(spec=SPEC["stop"], stop_reason="tool_use")
+        mock_msg_delta.delta = MagicMock(spec_set=SPEC["stop"], stop_reason="tool_use")
 
-        mock_msg_stop = MagicMock(spec=SPEC["message_stop"])
+        mock_msg_stop = MagicMock(spec_set=SPEC["message_stop"])
         mock_msg_stop.type = "message_stop"
 
         async def mock_stream_events() -> AsyncIterator[Any]:
@@ -886,14 +886,14 @@ class TestAnthropicStreamingToolCalls:
     ) -> None:
         """Stream should yield text content AND accumulate tool calls."""
         # Text content first
-        mock_text_delta = MagicMock(spec=SPEC["content_block_delta"])
+        mock_text_delta = MagicMock(spec_set=SPEC["content_block_delta"])
         mock_text_delta.type = "content_block_delta"
         mock_text_delta.delta = MagicMock(
             spec=SPEC["text_delta"], type="text_delta", text="Let me check."
         )
 
         # Then a tool_use block
-        mock_block_start = MagicMock(spec=SPEC["content_block_start"])
+        mock_block_start = MagicMock(spec_set=SPEC["content_block_start"])
         mock_block_start.type = "content_block_start"
         mock_content_block = MagicMock(
             spec=SPEC["tool_use"], type="tool_use", id="toolu_xyz"
@@ -901,7 +901,7 @@ class TestAnthropicStreamingToolCalls:
         mock_content_block.name = "search"
         mock_block_start.content_block = mock_content_block
 
-        mock_input_delta = MagicMock(spec=SPEC["content_block_delta"])
+        mock_input_delta = MagicMock(spec_set=SPEC["content_block_delta"])
         mock_input_delta.type = "content_block_delta"
         mock_input_delta.delta = MagicMock(
             spec=SPEC["input_json_delta"],
@@ -909,10 +909,10 @@ class TestAnthropicStreamingToolCalls:
             partial_json='{"query": "test"}',
         )
 
-        mock_block_stop = MagicMock(spec=SPEC["content_block_stop"])
+        mock_block_stop = MagicMock(spec_set=SPEC["content_block_stop"])
         mock_block_stop.type = "content_block_stop"
 
-        mock_msg_stop = MagicMock(spec=SPEC["message_stop"])
+        mock_msg_stop = MagicMock(spec_set=SPEC["message_stop"])
         mock_msg_stop.type = "message_stop"
 
         async def mock_stream_events() -> AsyncIterator[Any]:
@@ -959,7 +959,7 @@ class TestAnthropicStreamingToolCalls:
         self, client: AnthropicClient, sample_messages: list[Message]
     ) -> None:
         """Stream should pass converted tools to the Anthropic API."""
-        mock_event = MagicMock(spec=SPEC["message_stop"])
+        mock_event = MagicMock(spec_set=SPEC["message_stop"])
         mock_event.type = "message_stop"
 
         async def mock_stream_events() -> AsyncIterator[Any]:
@@ -995,13 +995,13 @@ class TestAnthropicStreamingToolCalls:
         self, client: AnthropicClient, sample_messages: list[Message]
     ) -> None:
         """Stream without tools should yield empty tool_calls in final chunk."""
-        mock_text = MagicMock(spec=SPEC["content_block_delta"])
+        mock_text = MagicMock(spec_set=SPEC["content_block_delta"])
         mock_text.type = "content_block_delta"
         mock_text.delta = MagicMock(
             spec=SPEC["text_delta"], type="text_delta", text="Hello!"
         )
 
-        mock_stop = MagicMock(spec=SPEC["message_stop"])
+        mock_stop = MagicMock(spec_set=SPEC["message_stop"])
         mock_stop.type = "message_stop"
 
         async def mock_stream_events() -> AsyncIterator[Any]:
@@ -1037,13 +1037,15 @@ class TestAnthropicStreamingToolCalls:
     ) -> None:
         """Stream should accumulate multiple tool_use blocks."""
         # First tool
-        mock_start1 = MagicMock(spec=SPEC["content_block_start"])
+        mock_start1 = MagicMock(spec_set=SPEC["content_block_start"])
         mock_start1.type = "content_block_start"
-        mock_block1 = MagicMock(spec=SPEC["tool_use"], type="tool_use", id="toolu_1")
+        mock_block1 = MagicMock(
+            spec_set=SPEC["tool_use"], type="tool_use", id="toolu_1"
+        )
         mock_block1.name = "search"
         mock_start1.content_block = mock_block1
 
-        mock_input1 = MagicMock(spec=SPEC["content_block_delta"])
+        mock_input1 = MagicMock(spec_set=SPEC["content_block_delta"])
         mock_input1.type = "content_block_delta"
         mock_input1.delta = MagicMock(
             spec=SPEC["input_json_delta"],
@@ -1051,17 +1053,19 @@ class TestAnthropicStreamingToolCalls:
             partial_json='{"q": "a"}',
         )
 
-        mock_stop1 = MagicMock(spec=SPEC["content_block_stop"])
+        mock_stop1 = MagicMock(spec_set=SPEC["content_block_stop"])
         mock_stop1.type = "content_block_stop"
 
         # Second tool
-        mock_start2 = MagicMock(spec=SPEC["content_block_start"])
+        mock_start2 = MagicMock(spec_set=SPEC["content_block_start"])
         mock_start2.type = "content_block_start"
-        mock_block2 = MagicMock(spec=SPEC["tool_use"], type="tool_use", id="toolu_2")
+        mock_block2 = MagicMock(
+            spec_set=SPEC["tool_use"], type="tool_use", id="toolu_2"
+        )
         mock_block2.name = "fetch"
         mock_start2.content_block = mock_block2
 
-        mock_input2 = MagicMock(spec=SPEC["content_block_delta"])
+        mock_input2 = MagicMock(spec_set=SPEC["content_block_delta"])
         mock_input2.type = "content_block_delta"
         mock_input2.delta = MagicMock(
             spec=SPEC["input_json_delta"],
@@ -1069,10 +1073,10 @@ class TestAnthropicStreamingToolCalls:
             partial_json='{"url": "https://x.com"}',
         )
 
-        mock_stop2 = MagicMock(spec=SPEC["content_block_stop"])
+        mock_stop2 = MagicMock(spec_set=SPEC["content_block_stop"])
         mock_stop2.type = "content_block_stop"
 
-        mock_msg_stop = MagicMock(spec=SPEC["message_stop"])
+        mock_msg_stop = MagicMock(spec_set=SPEC["message_stop"])
         mock_msg_stop.type = "message_stop"
 
         async def mock_stream_events() -> AsyncIterator[Any]:
@@ -1250,8 +1254,10 @@ class TestAnthropicPromptCaching:
         self, client: AnthropicClient, sample_messages: list[Message]
     ) -> None:
         """complete() should send system as structured list with cache_control."""
-        mock_response = MagicMock(spec=SPEC["message"])
-        mock_response.content = [MagicMock(spec=SPEC["text"], type="text", text="Hi")]
+        mock_response = MagicMock(spec_set=SPEC["message"])
+        mock_response.content = [
+            MagicMock(spec_set=SPEC["text"], type="text", text="Hi")
+        ]
         mock_response.usage = MagicMock(
             spec=SPEC["usage"],
             input_tokens=10,
@@ -1286,8 +1292,10 @@ class TestAnthropicPromptCaching:
         self, client: AnthropicClient, sample_messages: list[Message]
     ) -> None:
         """complete() should extract cache token counts from response usage."""
-        mock_response = MagicMock(spec=SPEC["message"])
-        mock_response.content = [MagicMock(spec=SPEC["text"], type="text", text="Hi")]
+        mock_response = MagicMock(spec_set=SPEC["message"])
+        mock_response.content = [
+            MagicMock(spec_set=SPEC["text"], type="text", text="Hi")
+        ]
         mock_response.usage = MagicMock(
             spec=SPEC["usage"],
             input_tokens=50,
@@ -1314,8 +1322,10 @@ class TestAnthropicPromptCaching:
         self, client: AnthropicClient, sample_messages: list[Message]
     ) -> None:
         """complete() should extract cache read tokens (cache hit scenario)."""
-        mock_response = MagicMock(spec=SPEC["message"])
-        mock_response.content = [MagicMock(spec=SPEC["text"], type="text", text="Hi")]
+        mock_response = MagicMock(spec_set=SPEC["message"])
+        mock_response.content = [
+            MagicMock(spec_set=SPEC["text"], type="text", text="Hi")
+        ]
         mock_response.usage = MagicMock(
             spec=SPEC["usage"],
             input_tokens=50,
@@ -1341,10 +1351,12 @@ class TestAnthropicPromptCaching:
         self, client: AnthropicClient, sample_messages: list[Message]
     ) -> None:
         """complete() should handle responses without cache fields (graceful fallback)."""
-        mock_response = MagicMock(spec=SPEC["message"])
-        mock_response.content = [MagicMock(spec=SPEC["text"], type="text", text="Hi")]
+        mock_response = MagicMock(spec_set=SPEC["message"])
+        mock_response.content = [
+            MagicMock(spec_set=SPEC["text"], type="text", text="Hi")
+        ]
         # Simulate response without cache fields (spec=False lets getattr return default)
-        mock_usage = MagicMock(spec=SPEC["usage"])
+        mock_usage = MagicMock(spec_set=SPEC["usage"])
         mock_usage.input_tokens = 10
         mock_usage.output_tokens = 5
         del mock_usage.cache_creation_input_tokens
@@ -1367,7 +1379,7 @@ class TestAnthropicPromptCaching:
         self, client: AnthropicClient, sample_messages: list[Message]
     ) -> None:
         """stream() should send system as structured list with cache_control."""
-        mock_event = MagicMock(spec=SPEC["message_stop"])
+        mock_event = MagicMock(spec_set=SPEC["message_stop"])
         mock_event.type = "message_stop"
 
         async def mock_stream_events() -> AsyncIterator[Any]:
@@ -1397,9 +1409,9 @@ class TestAnthropicPromptCaching:
     ) -> None:
         """stream() should extract cache tokens from message_start event."""
         # message_start with input + cache tokens
-        mock_msg_start = MagicMock(spec=SPEC["message_start"])
+        mock_msg_start = MagicMock(spec_set=SPEC["message_start"])
         mock_msg_start.type = "message_start"
-        mock_msg_start.message = MagicMock(spec=SPEC["message"])
+        mock_msg_start.message = MagicMock(spec_set=SPEC["message"])
         mock_msg_start.message.usage = MagicMock(
             spec=SPEC["usage"],
             input_tokens=50,
@@ -1407,18 +1419,18 @@ class TestAnthropicPromptCaching:
             cache_read_input_tokens=0,
         )
 
-        mock_text = MagicMock(spec=SPEC["content_block_delta"])
+        mock_text = MagicMock(spec_set=SPEC["content_block_delta"])
         mock_text.type = "content_block_delta"
         mock_text.delta = MagicMock(
             spec=SPEC["text_delta"], type="text_delta", text="Hi"
         )
 
         # message_delta with output tokens
-        mock_msg_delta = MagicMock(spec=SPEC["message_delta"])
+        mock_msg_delta = MagicMock(spec_set=SPEC["message_delta"])
         mock_msg_delta.type = "message_delta"
-        mock_msg_delta.usage = MagicMock(spec=SPEC["usage"], output_tokens=10)
+        mock_msg_delta.usage = MagicMock(spec_set=SPEC["usage"], output_tokens=10)
 
-        mock_msg_stop = MagicMock(spec=SPEC["message_stop"])
+        mock_msg_stop = MagicMock(spec_set=SPEC["message_stop"])
         mock_msg_stop.type = "message_stop"
 
         async def mock_stream_events() -> AsyncIterator[Any]:
@@ -1455,9 +1467,9 @@ class TestAnthropicPromptCaching:
     ) -> None:
         """stream() should surface a usage-only chunk right after message_start
         so consumers interrupted mid-stream can meter input/cache tokens."""
-        mock_msg_start = MagicMock(spec=SPEC["message_start"])
+        mock_msg_start = MagicMock(spec_set=SPEC["message_start"])
         mock_msg_start.type = "message_start"
-        mock_msg_start.message = MagicMock(spec=SPEC["message"])
+        mock_msg_start.message = MagicMock(spec_set=SPEC["message"])
         mock_msg_start.message.usage = MagicMock(
             spec=SPEC["usage"],
             input_tokens=50,
@@ -1465,18 +1477,18 @@ class TestAnthropicPromptCaching:
             cache_read_input_tokens=0,
         )
 
-        mock_text = MagicMock(spec=SPEC["content_block_delta"])
+        mock_text = MagicMock(spec_set=SPEC["content_block_delta"])
         mock_text.type = "content_block_delta"
         mock_text.delta = MagicMock(
             spec=SPEC["text_delta"], type="text_delta", text="Hi"
         )
 
-        mock_msg_delta = MagicMock(spec=SPEC["message_delta"])
+        mock_msg_delta = MagicMock(spec_set=SPEC["message_delta"])
         mock_msg_delta.type = "message_delta"
-        mock_msg_delta.usage = MagicMock(spec=SPEC["usage"], output_tokens=10)
-        mock_msg_delta.delta = MagicMock(spec=SPEC["stop"], stop_reason="end_turn")
+        mock_msg_delta.usage = MagicMock(spec_set=SPEC["usage"], output_tokens=10)
+        mock_msg_delta.delta = MagicMock(spec_set=SPEC["stop"], stop_reason="end_turn")
 
-        mock_msg_stop = MagicMock(spec=SPEC["message_stop"])
+        mock_msg_stop = MagicMock(spec_set=SPEC["message_stop"])
         mock_msg_stop.type = "message_stop"
 
         async def mock_stream_events() -> AsyncIterator[Any]:
@@ -1521,9 +1533,9 @@ class TestAnthropicPromptCaching:
         self, client: AnthropicClient, sample_messages: list[Message]
     ) -> None:
         """The message_start model string rides every subsequent chunk."""
-        mock_msg_start = MagicMock(spec=SPEC["message_start"])
+        mock_msg_start = MagicMock(spec_set=SPEC["message_start"])
         mock_msg_start.type = "message_start"
-        mock_msg_start.message = MagicMock(spec=SPEC["message"])
+        mock_msg_start.message = MagicMock(spec_set=SPEC["message"])
         mock_msg_start.message.model = "claude-sonnet-5-20260101"
         mock_msg_start.message.usage = MagicMock(
             spec=SPEC["usage"],
@@ -1532,19 +1544,19 @@ class TestAnthropicPromptCaching:
             cache_read_input_tokens=0,
         )
 
-        mock_reasoning = MagicMock(spec=SPEC["content_block_delta"])
+        mock_reasoning = MagicMock(spec_set=SPEC["content_block_delta"])
         mock_reasoning.type = "content_block_delta"
         mock_reasoning.delta = MagicMock(
             spec=SPEC["thinking_delta"], type="thinking_delta", thinking="hmm"
         )
 
-        mock_text = MagicMock(spec=SPEC["content_block_delta"])
+        mock_text = MagicMock(spec_set=SPEC["content_block_delta"])
         mock_text.type = "content_block_delta"
         mock_text.delta = MagicMock(
             spec=SPEC["text_delta"], type="text_delta", text="Hi"
         )
 
-        mock_msg_stop = MagicMock(spec=SPEC["message_stop"])
+        mock_msg_stop = MagicMock(spec_set=SPEC["message_stop"])
         mock_msg_stop.type = "message_stop"
 
         async def mock_stream_events() -> AsyncIterator[Any]:
@@ -1576,7 +1588,7 @@ class TestAnthropicPromptCaching:
         self, client: AnthropicClient, sample_messages: list[Message]
     ) -> None:
         """stream() should send tools with cache_control on last tool."""
-        mock_event = MagicMock(spec=SPEC["message_stop"])
+        mock_event = MagicMock(spec_set=SPEC["message_stop"])
         mock_event.type = "message_stop"
 
         async def mock_stream_events() -> AsyncIterator[Any]:
@@ -2029,9 +2041,9 @@ class TestAnthropicStructuredOutput:
         class Out(BaseModel):
             answer: str
 
-        mock_response = MagicMock(spec=SPEC["message"])
+        mock_response = MagicMock(spec_set=SPEC["message"])
         mock_response.content = [
-            MagicMock(spec=SPEC["text"], type="text", text='{"answer":"hi"}')
+            MagicMock(spec_set=SPEC["text"], type="text", text='{"answer":"hi"}')
         ]
         mock_response.usage = MagicMock(
             spec=SPEC["usage"], input_tokens=5, output_tokens=3
@@ -2069,9 +2081,9 @@ class TestAnthropicStructuredOutput:
         class Out(BaseModel):
             answer: str
 
-        mock_response = MagicMock(spec=SPEC["message"])
+        mock_response = MagicMock(spec_set=SPEC["message"])
         mock_response.content = [
-            MagicMock(spec=SPEC["text"], type="text", text='{"answer":"hi"}')
+            MagicMock(spec_set=SPEC["text"], type="text", text='{"answer":"hi"}')
         ]
         mock_response.usage = MagicMock(
             spec=SPEC["usage"], input_tokens=5, output_tokens=3
@@ -2366,9 +2378,9 @@ class TestAnthropicMultimodal:
         self, client: AnthropicClient, sample_messages: list[Message]
     ) -> None:
         """complete() passes the API's stop_reason through."""
-        mock_response = MagicMock(spec=SPEC["message"])
+        mock_response = MagicMock(spec_set=SPEC["message"])
         mock_response.content = [
-            MagicMock(spec=SPEC["text"], type="text", text="Truncated...")
+            MagicMock(spec_set=SPEC["text"], type="text", text="Truncated...")
         ]
         mock_response.usage = MagicMock(
             spec=SPEC["usage"], input_tokens=10, output_tokens=5
@@ -2390,8 +2402,10 @@ class TestAnthropicMultimodal:
         self, client: AnthropicClient, sample_messages: list[Message]
     ) -> None:
         """complete() streams internally — messages.create must not be used."""
-        mock_response = MagicMock(spec=SPEC["message"])
-        mock_response.content = [MagicMock(spec=SPEC["text"], type="text", text="Hi")]
+        mock_response = MagicMock(spec_set=SPEC["message"])
+        mock_response.content = [
+            MagicMock(spec_set=SPEC["text"], type="text", text="Hi")
+        ]
         mock_response.usage = MagicMock(
             spec=SPEC["usage"], input_tokens=1, output_tokens=1
         )
@@ -2410,8 +2424,10 @@ class TestAnthropicMultimodal:
         self, client: AnthropicClient, sample_messages: list[Message]
     ) -> None:
         """cache_conversation=False must reach _apply_cache_control."""
-        mock_response = MagicMock(spec=SPEC["message"])
-        mock_response.content = [MagicMock(spec=SPEC["text"], type="text", text="Hi")]
+        mock_response = MagicMock(spec_set=SPEC["message"])
+        mock_response.content = [
+            MagicMock(spec_set=SPEC["text"], type="text", text="Hi")
+        ]
         mock_response.usage = MagicMock(
             spec=SPEC["usage"], input_tokens=1, output_tokens=1
         )
@@ -2434,18 +2450,20 @@ class TestAnthropicMultimodal:
         self, client: AnthropicClient, sample_messages: list[Message]
     ) -> None:
         """The final chunk carries the API's stop_reason, not a synthesized one."""
-        mock_text_delta = MagicMock(spec=SPEC["content_block_delta"])
+        mock_text_delta = MagicMock(spec_set=SPEC["content_block_delta"])
         mock_text_delta.type = "content_block_delta"
         mock_text_delta.delta = MagicMock(
             spec=SPEC["text_delta"], type="text_delta", text="Truncated"
         )
 
-        mock_msg_delta = MagicMock(spec=SPEC["message_delta"])
+        mock_msg_delta = MagicMock(spec_set=SPEC["message_delta"])
         mock_msg_delta.type = "message_delta"
-        mock_msg_delta.usage = MagicMock(spec=SPEC["usage"], output_tokens=5)
-        mock_msg_delta.delta = MagicMock(spec=SPEC["stop"], stop_reason="max_tokens")
+        mock_msg_delta.usage = MagicMock(spec_set=SPEC["usage"], output_tokens=5)
+        mock_msg_delta.delta = MagicMock(
+            spec_set=SPEC["stop"], stop_reason="max_tokens"
+        )
 
-        mock_msg_stop = MagicMock(spec=SPEC["message_stop"])
+        mock_msg_stop = MagicMock(spec_set=SPEC["message_stop"])
         mock_msg_stop.type = "message_stop"
 
         async def mock_stream_events() -> AsyncIterator[Any]:
@@ -2572,8 +2590,10 @@ class TestNativeToolType:
         self, client: AnthropicClient, sample_messages: list[Message]
     ) -> None:
         """The native memory tool is GA — no beta header, no schema."""
-        mock_response = MagicMock(spec=SPEC["message"])
-        mock_response.content = [MagicMock(spec=SPEC["text"], type="text", text="ok")]
+        mock_response = MagicMock(spec_set=SPEC["message"])
+        mock_response.content = [
+            MagicMock(spec_set=SPEC["text"], type="text", text="ok")
+        ]
         mock_response.usage = MagicMock(
             spec=SPEC["usage"], input_tokens=1, output_tokens=1
         )
@@ -2600,12 +2620,12 @@ class TestNativeToolType:
     async def test_stream_sends_the_same_native_entry(
         self, client: AnthropicClient, sample_messages: list[Message]
     ) -> None:
-        mock_delta = MagicMock(spec=SPEC["content_block_delta"])
+        mock_delta = MagicMock(spec_set=SPEC["content_block_delta"])
         mock_delta.type = "content_block_delta"
         mock_delta.delta = MagicMock(
             spec=SPEC["text_delta"], type="text_delta", text="ok"
         )
-        mock_stop = MagicMock(spec=SPEC["message_stop"])
+        mock_stop = MagicMock(spec_set=SPEC["message_stop"])
         mock_stop.type = "message_stop"
 
         async def mock_stream_events() -> AsyncIterator[Any]:
@@ -2639,12 +2659,12 @@ class TestServerCompaction:
     """The compact beta opt-in: namespace switch, block round-trip, spend."""
 
     def _response(self, content_blocks: list[Any], usage: Any = None) -> MagicMock:
-        mock_response = MagicMock(spec=SPEC["message"])
+        mock_response = MagicMock(spec_set=SPEC["message"])
         mock_response.content = content_blocks
         mock_response.usage = (
             usage
             if usage is not None
-            else MagicMock(spec=SPEC["usage"], input_tokens=10, output_tokens=5)
+            else MagicMock(spec_set=SPEC["usage"], input_tokens=10, output_tokens=5)
         )
         mock_response.model = "claude-sonnet-5"
         return mock_response
@@ -2669,7 +2689,7 @@ class TestServerCompaction:
         _sdk(client).messages.stream = ga_stream
         beta_stream = self._mock_beta(
             client,
-            self._response([MagicMock(spec=SPEC["text"], type="text", text="ok")]),
+            self._response([MagicMock(spec_set=SPEC["text"], type="text", text="ok")]),
         )
         await client.complete(
             messages=sample_messages,
@@ -2689,7 +2709,7 @@ class TestServerCompaction:
     ) -> None:
         """Regression: default requests are byte-identical to before."""
         mock_response = self._response(
-            [MagicMock(spec=SPEC["text"], type="text", text="ok")]
+            [MagicMock(spec_set=SPEC["text"], type="text", text="ok")]
         )
         _mock_complete(client, mock_response)
         beta_stream = MagicMock()
@@ -2703,13 +2723,13 @@ class TestServerCompaction:
     def test_parse_with_compaction_block_is_an_ordered_list(
         self, client: AnthropicClient
     ) -> None:
-        comp = MagicMock(spec=SPEC["compaction"])
+        comp = MagicMock(spec_set=SPEC["compaction"])
         comp.type = "compaction"
         comp.content = "summary of earlier turns"
         comp.encrypted_content = None
         parsed = client._parse_response(
             self._response(
-                [comp, MagicMock(spec=SPEC["text"], type="text", text="hello")]
+                [comp, MagicMock(spec_set=SPEC["text"], type="text", text="hello")]
             )
         )
         assert parsed.message.content == [
@@ -2721,7 +2741,9 @@ class TestServerCompaction:
         self, client: AnthropicClient
     ) -> None:
         parsed = client._parse_response(
-            self._response([MagicMock(spec=SPEC["text"], type="text", text="hello")])
+            self._response(
+                [MagicMock(spec_set=SPEC["text"], type="text", text="hello")]
+            )
         )
         assert parsed.message.content == "hello"
 
@@ -2730,23 +2752,23 @@ class TestServerCompaction:
     ) -> None:
         """The beta reports summarization tokens only under
         usage.iterations — hiding them would hide real spend."""
-        compaction_iter = MagicMock(spec=SPEC["compaction_iteration"])
+        compaction_iter = MagicMock(spec_set=SPEC["compaction_iteration"])
         compaction_iter.type = "compaction"
         compaction_iter.input_tokens = 100
         compaction_iter.output_tokens = 50
         compaction_iter.cache_read_input_tokens = 7
         compaction_iter.cache_creation_input_tokens = 3
-        message_iter = MagicMock(spec=SPEC["message_iteration"])
+        message_iter = MagicMock(spec_set=SPEC["message_iteration"])
         message_iter.type = "message"
         message_iter.input_tokens = 10
         message_iter.output_tokens = 5
-        usage = MagicMock(spec=SPEC["usage"], input_tokens=10, output_tokens=5)
+        usage = MagicMock(spec_set=SPEC["beta_usage"], input_tokens=10, output_tokens=5)
         usage.cache_read_input_tokens = 0
         usage.cache_creation_input_tokens = 0
         usage.iterations = [compaction_iter, message_iter]
         parsed = client._parse_response(
             self._response(
-                [MagicMock(spec=SPEC["text"], type="text", text="ok")], usage=usage
+                [MagicMock(spec_set=SPEC["text"], type="text", text="ok")], usage=usage
             )
         )
         assert parsed.usage.input_tokens == 110
@@ -2802,25 +2824,25 @@ class TestServerCompaction:
     ) -> None:
         """The delta carries the full value — the second delta wins whole,
         never concatenates onto the first."""
-        start = MagicMock(spec=SPEC["content_block_start"])
+        start = MagicMock(spec_set=SPEC["content_block_start"])
         start.type = "content_block_start"
-        start.content_block = MagicMock(spec=SPEC["compaction"])
+        start.content_block = MagicMock(spec_set=SPEC["compaction"])
         start.content_block.type = "compaction"
         start.content_block.content = None
         start.content_block.encrypted_content = None
-        delta_one = MagicMock(spec=SPEC["content_block_delta"])
+        delta_one = MagicMock(spec_set=SPEC["content_block_delta"])
         delta_one.type = "content_block_delta"
-        delta_one.delta = MagicMock(spec=SPEC["compaction_delta"])
+        delta_one.delta = MagicMock(spec_set=SPEC["compaction_delta"])
         delta_one.delta.type = "compaction_delta"
         delta_one.delta.content = "partial"
-        delta_two = MagicMock(spec=SPEC["content_block_delta"])
+        delta_two = MagicMock(spec_set=SPEC["content_block_delta"])
         delta_two.type = "content_block_delta"
-        delta_two.delta = MagicMock(spec=SPEC["compaction_delta"])
+        delta_two.delta = MagicMock(spec_set=SPEC["compaction_delta"])
         delta_two.delta.type = "compaction_delta"
         delta_two.delta.content = "the full summary"
-        stop = MagicMock(spec=SPEC["content_block_stop"])
+        stop = MagicMock(spec_set=SPEC["content_block_stop"])
         stop.type = "content_block_stop"
-        message_stop = MagicMock(spec=SPEC["message_stop"])
+        message_stop = MagicMock(spec_set=SPEC["message_stop"])
         message_stop.type = "message_stop"
 
         async def mock_stream_events() -> AsyncIterator[Any]:

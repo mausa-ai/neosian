@@ -1,7 +1,8 @@
 """The conversation-backed chat helpers (N2 slice C). Zero keys."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, tzinfo
 from pathlib import Path
+from typing import Self
 
 import pytest
 
@@ -44,12 +45,21 @@ class TestNewConversationId:
         assert result.startswith("20260820-143207")
         assert len(result) <= 128
 
-    def test_default_clock_is_utc(self) -> None:
-        """The fallback clock is UTC, so ids sort across zones (EC-7)."""
-        before = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+    def test_default_clock_is_utc(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The fallback clock asks for UTC, so ids sort across zones (EC-7)
+        — pinned on the call, not on the runner's zone."""
+        asked: list[tzinfo | None] = []
+
+        class _Clock(datetime):
+            @classmethod
+            def now(cls, tz: tzinfo | None = None) -> Self:
+                asked.append(tz)
+                return super().now(tz)
+
+        monkeypatch.setattr("neosian._cli.chat.datetime", _Clock)
         result = new_conversation_id("a")
-        after = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
-        assert result[:15] in {before, after}
+        assert asked == [UTC]
+        assert len(result[:15]) == 15
 
     def test_two_clocks_give_two_ids(self) -> None:
         later = datetime(2026, 8, 20, 14, 32, 8)

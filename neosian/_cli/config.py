@@ -43,9 +43,9 @@ def _write_config(config: dict[str, dict[str, str]]) -> None:
     os.chmod(config_path.parent, PRIVATE_DIR)  # an existing directory too
 
     fd = os.open(config_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, PRIVATE_FILE)
+    os.fchmod(fd, PRIVATE_FILE)  # a file that already exists, before the key lands
     with os.fdopen(fd, "wb") as f:
         tomli_w.dump(config, f)
-    os.chmod(config_path, PRIVATE_FILE)
 
 
 def get_api_key(key_name: str) -> str | None:

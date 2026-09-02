@@ -62,7 +62,7 @@ async def execute_tool(agent: Agent, tool_call: ToolCall) -> ToolResult[Any]:
     # TypeError from inside the tool body is the tool failing (TG-7).
     try:
         inspect.signature(tool_func).bind(**tool_call.arguments)
-    except TypeError as e:
+    except (TypeError, ValueError) as e:  # ValueError: no signature to bind
         return ToolResult.fail(
             ErrorMessages.TOOL_INVALID_ARGUMENTS.format(
                 tool_name=tool_call.name, error=e

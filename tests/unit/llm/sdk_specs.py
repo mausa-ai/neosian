@@ -1,7 +1,7 @@
 """Real SDK instances that spec the provider test mocks (TP-10).
 
-A mock built with ``spec=`` or ``create_autospec`` refuses every attribute
-the real object lacks, so a renamed SDK field turns these suites red
+A mock built with ``spec_set=`` refuses every attribute the real object
+lacks, read or written, so a renamed SDK field turns these suites red
 instead of staying green. Pydantic models carry no field attributes on
 the class, so the specs are *instances*, constructed once here.
 """
@@ -20,8 +20,10 @@ from openai.types.completion_usage import CompletionUsage, PromptTokensDetails
 
 
 def autospec(instance: Any) -> Any:
-    """A recursively spec'd mock of a real SDK object; fields stay settable."""
-    return create_autospec(instance, instance=True)
+    """A recursively spec'd mock of a real SDK object; only its real
+    fields may be read or set (`spec_set`), so a renamed field turns a
+    test red at the assignment, not green by accident."""
+    return create_autospec(instance, spec_set=True, instance=True)
 
 
 _usage = at.Usage(
@@ -44,6 +46,14 @@ _message = at.Message(
 ANTHROPIC: dict[str, Any] = {
     "message": _message,
     "usage": _usage,
+    # Server compaction's spend rides the beta response: `iterations`
+    # exists only on BetaUsage.
+    "beta_usage": ab.BetaUsage(
+        input_tokens=1,
+        output_tokens=1,
+        cache_creation_input_tokens=0,
+        cache_read_input_tokens=0,
+    ),
     "stop": Delta(),
     "text": _text,
     "tool_use": at.ToolUseBlock(type="tool_use", id="", name="", input={}),

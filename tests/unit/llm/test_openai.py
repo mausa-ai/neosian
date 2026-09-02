@@ -642,7 +642,7 @@ class TestOpenAIPromptCaching:
         mock.usage.completion_tokens = completion_tokens
 
         if cached_tokens is not None:
-            mock.usage.prompt_tokens_details = MagicMock(spec=SPEC["details"])
+            mock.usage.prompt_tokens_details = MagicMock(spec_set=SPEC["details"])
             mock.usage.prompt_tokens_details.cached_tokens = cached_tokens
         else:
             mock.usage.prompt_tokens_details = None
@@ -696,7 +696,7 @@ class TestOpenAIPromptCaching:
         """Should handle cached_tokens=None in prompt_tokens_details."""
         client = OpenAIClient(api_key="test-key")
         mock_resp = self._mock_response(prompt_tokens=500, completion_tokens=20)
-        mock_resp.usage.prompt_tokens_details = MagicMock(spec=SPEC["details"])
+        mock_resp.usage.prompt_tokens_details = MagicMock(spec_set=SPEC["details"])
         mock_resp.usage.prompt_tokens_details.cached_tokens = None
         mock_create = AsyncMock(return_value=mock_resp)
         _sdk(client).chat.completions.create = mock_create
@@ -741,7 +741,7 @@ class TestOpenAIPromptCaching:
         usage_chunk.usage = autospec(SPEC["usage"])
         usage_chunk.usage.prompt_tokens = 1000
         usage_chunk.usage.completion_tokens = 50
-        usage_chunk.usage.prompt_tokens_details = MagicMock(spec=SPEC["details"])
+        usage_chunk.usage.prompt_tokens_details = MagicMock(spec_set=SPEC["details"])
         usage_chunk.usage.prompt_tokens_details.cached_tokens = 700
 
         class SingleChunkIter:

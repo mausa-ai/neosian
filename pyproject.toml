@@ -100,6 +100,8 @@ filterwarnings = [
     # create_autospec walks a pydantic instance's dir(); the SDK-spec mocks
     # (tests/unit/llm/sdk_specs.py) would otherwise emit this on every access
     "ignore:Accessing the 'model_(computed_)?fields' attribute:DeprecationWarning:unittest.mock",
+    "ignore:The `__fields__` attribute is deprecated:DeprecationWarning:unittest.mock",
+    "ignore:The `__fields_set__` attribute is deprecated:DeprecationWarning:unittest.mock",
 ]
 
 [tool.mypy]
