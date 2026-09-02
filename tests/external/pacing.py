@@ -5,10 +5,13 @@ A rate limit is an account property, not a dialect, so it never becomes an
 client instead. One `Pacer` per door for the whole process — every test
 in a lane shares it (a clock per test let consecutive probes burst past
 the tier: run 33556146015's kimi lane) — spaces request starts
-`60 / requests_per_minute` seconds apart across every client built on it
-(the agent creates a client per attempt), and a 429 that still arrives
-waits one more interval and retries, on a stream only before its first
-chunk — the SDK's own backoff runs underneath. Injected through the
+`60 / requests_per_minute` seconds apart, plus a tenth for the
+provider's window boundary, across every client built on it (the agent
+creates a client per attempt); a 429 that still arrives — a rate limit
+or an overloaded engine — waits a growing multiple of the interval and
+retries, up to six attempts, on a stream only before its first chunk
+(run 33595428001's kimi lane lost two cells to overloads that outlasted
+three) — the SDK's own backoff runs underneath. Injected through the
 `client_factory` seam the harness honors for scriptless cells, so every
 model call a cell makes — turns, reflection, maintenance — is paced.
 """
@@ -30,7 +33,8 @@ from neosian._foundation.shared.exceptions import ProviderError
 from neosian._foundation.shared.types import AnyModel, ReasoningEffort, ResponseFormat
 from tests.external.candidates import Candidate
 
-_ATTEMPTS = 3
+_ATTEMPTS = 6
+_MARGIN = 1.1  # a tenth over the tier: the provider's minute is not ours
 _PACERS: dict[str, "Pacer"] = {}
 
 
@@ -40,7 +44,7 @@ class Pacer:
     binding — pytest gives every test its own loop), then awaited."""
 
     def __init__(self, requests_per_minute: int) -> None:
-        self.interval = 60.0 / requests_per_minute
+        self.interval = 60.0 / requests_per_minute * _MARGIN
         self._next_at = 0.0
 
     @classmethod
@@ -96,7 +100,7 @@ class PacedClient(BaseLLMClient):
                 attempt += 1
                 if exc.status != 429 or attempt == _ATTEMPTS:
                     raise
-                await asyncio.sleep(self._pacer.interval)
+                await asyncio.sleep(self._pacer.interval * attempt)
 
     async def stream(
         self,
@@ -131,7 +135,7 @@ class PacedClient(BaseLLMClient):
                 attempt += 1
                 if started or exc.status != 429 or attempt == _ATTEMPTS:
                     raise
-                await asyncio.sleep(self._pacer.interval)
+                await asyncio.sleep(self._pacer.interval * attempt)
 
     async def close(self) -> None:
         await self._inner.close()

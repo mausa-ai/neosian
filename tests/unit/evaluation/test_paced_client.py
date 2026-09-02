@@ -29,7 +29,7 @@ def _failing(*statuses: int, then: str = "ok") -> FakeClient:
 
 @pytest.mark.unit
 async def test_requests_start_one_interval_apart() -> None:
-    pacer = Pacer(requests_per_minute=1200)  # 50 ms
+    pacer = Pacer(requests_per_minute=1200)  # 55 ms with the margin
     first = PacedClient(FakeClient(), pacer)
     second = PacedClient(FakeClient(), pacer)  # one clock, however many clients
     started = time.monotonic()
@@ -49,14 +49,14 @@ async def test_a_429_waits_one_interval_and_retries() -> None:
 
 
 @pytest.mark.unit
-async def test_a_persistent_429_gives_up_after_three() -> None:
-    inner = _failing(429, 429, 429)
+async def test_a_persistent_429_gives_up_after_six() -> None:
+    inner = _failing(429, 429, 429, 429, 429, 429)
     with pytest.raises(ProviderError) as info:
         await PacedClient(inner, Pacer(requests_per_minute=6000)).complete(
             _ASK, Model.FAKE
         )
     assert info.value.status == 429
-    assert len(inner.calls) == 3
+    assert len(inner.calls) == 6
 
 
 @pytest.mark.unit
@@ -85,7 +85,7 @@ def test_of_is_one_clock_per_door() -> None:
     assert Pacer.of(XAI) is None  # no tier stated, no pacing
     kimi = Pacer.of(KIMI)
     assert kimi is not None and kimi is Pacer.of(KIMI)
-    assert kimi.interval == 20.0
+    assert kimi.interval == 22.0  # 60 / 3, plus the tenth
 
 
 @pytest.mark.unit
