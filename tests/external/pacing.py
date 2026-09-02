@@ -2,13 +2,15 @@
 
 A rate limit is an account property, not a dialect, so it never becomes an
 `OpenAICompatible` knob (DESIGN §19.3): the external tier paces the door's
-client instead. One `Pacer` per lane spaces request starts
+client instead. One `Pacer` per door for the whole process — every test
+in a lane shares it (a clock per test let consecutive probes burst past
+the tier: run 33556146015's kimi lane) — spaces request starts
 `60 / requests_per_minute` seconds apart across every client built on it
 (the agent creates a client per attempt), and a 429 that still arrives
-waits one more interval and retries — the SDK's own backoff runs
-underneath. Injected through the `client_factory` seam the harness honors
-for scriptless cells, so every model call a cell makes — turns, reflection,
-maintenance — is paced.
+waits one more interval and retries, on a stream only before its first
+chunk — the SDK's own backoff runs underneath. Injected through the
+`client_factory` seam the harness honors for scriptless cells, so every
+model call a cell makes — turns, reflection, maintenance — is paced.
 """
 
 import asyncio
@@ -29,27 +31,31 @@ from neosian._foundation.shared.types import AnyModel, ReasoningEffort, Response
 from tests.external.candidates import Candidate
 
 _ATTEMPTS = 3
+_PACERS: dict[str, "Pacer"] = {}
 
 
 class Pacer:
-    """The shared clock: one per lane, however many clients ride it."""
+    """The shared clock: one per door, however many clients or tests ride
+    it. Slots are reserved synchronously (no lock, so no event-loop
+    binding — pytest gives every test its own loop), then awaited."""
 
     def __init__(self, requests_per_minute: int) -> None:
         self.interval = 60.0 / requests_per_minute
-        self._lock = asyncio.Lock()
         self._next_at = 0.0
 
     @classmethod
     def of(cls, candidate: Candidate) -> "Pacer | None":
         rpm = candidate.requests_per_minute
-        return None if rpm is None else cls(rpm)
+        if rpm is None:
+            return None
+        return _PACERS.setdefault(candidate.name, cls(rpm))
 
     async def slot(self) -> None:
-        async with self._lock:
-            wait = self._next_at - time.monotonic()
-            if wait > 0:
-                await asyncio.sleep(wait)
-            self._next_at = time.monotonic() + self.interval
+        now = time.monotonic()
+        start = max(now, self._next_at)
+        self._next_at = start + self.interval
+        if start > now:
+            await asyncio.sleep(start - now)
 
 
 class PacedClient(BaseLLMClient):
@@ -103,18 +109,29 @@ class PacedClient(BaseLLMClient):
         cache_conversation: bool = True,
         server_compaction: bool = False,
     ) -> AsyncIterator[StreamChunk]:
-        await self._pacer.slot()
-        async for chunk in self._inner.stream(
-            messages,
-            model,
-            tools=tools,
-            temperature=temperature,
-            reasoning_effort=reasoning_effort,
-            max_tokens=max_tokens,
-            cache_conversation=cache_conversation,
-            server_compaction=server_compaction,
-        ):
-            yield chunk
+        attempt = 0
+        while True:
+            await self._pacer.slot()
+            started = False
+            try:
+                async for chunk in self._inner.stream(
+                    messages,
+                    model,
+                    tools=tools,
+                    temperature=temperature,
+                    reasoning_effort=reasoning_effort,
+                    max_tokens=max_tokens,
+                    cache_conversation=cache_conversation,
+                    server_compaction=server_compaction,
+                ):
+                    started = True
+                    yield chunk
+                return
+            except ProviderError as exc:
+                attempt += 1
+                if started or exc.status != 429 or attempt == _ATTEMPTS:
+                    raise
+                await asyncio.sleep(self._pacer.interval)
 
     async def close(self) -> None:
         await self._inner.close()

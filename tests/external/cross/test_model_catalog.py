@@ -14,6 +14,7 @@ from neosian._foundation.llm.base import BaseLLMClient, Message, Role
 from neosian._foundation.llm.router import ProviderRouter
 from neosian._foundation.shared.types import Model, Provider
 from tests.external.candidates import CANDIDATES, Candidate, register
+from tests.external.pacing import PacedClient, Pacer
 
 _PROVIDER_FIXTURES: dict[Provider, str] = {
     Provider.OPENAI: "openai_api_key",
@@ -68,4 +69,6 @@ async def test_candidate_answers_minimal_completion(
     model takes (`create_client_for`, DESIGN §19.2)."""
     request.getfixturevalue(candidate.key_fixture)  # skips when unset
     model = register(candidate)
-    await _answers(ProviderRouter().create_client_for(model), model)
+    client = ProviderRouter().create_client_for(model)
+    pacer = Pacer.of(candidate)  # the lane's one clock, shared with the probes
+    await _answers(client if pacer is None else PacedClient(client, pacer), model)

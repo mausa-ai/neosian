@@ -8,6 +8,7 @@ from neosian import Model
 from neosian._foundation.llm.base import Message, Role, text_of
 from neosian._foundation.shared.exceptions import ProviderError
 from neosian.fake import FakeClient, FakeScript, FakeTurn
+from tests.external.candidates import KIMI, XAI
 from tests.external.pacing import PacedClient, Pacer
 
 _ASK = [Message(role=Role.USER, content="hi")]
@@ -77,3 +78,36 @@ async def test_streams_are_paced_and_close_passes_through() -> None:
     assert "".join(chunk.content or "" for chunk in chunks) == "streamed"
     await client.close()
     assert inner.closed
+
+
+@pytest.mark.unit
+def test_of_is_one_clock_per_door() -> None:
+    assert Pacer.of(XAI) is None  # no tier stated, no pacing
+    kimi = Pacer.of(KIMI)
+    assert kimi is not None and kimi is Pacer.of(KIMI)
+    assert kimi.interval == 20.0
+
+
+@pytest.mark.unit
+async def test_a_stream_429_before_the_first_chunk_retries() -> None:
+    inner = _failing(429, then="ok")
+    client = PacedClient(inner, Pacer(requests_per_minute=6000))
+    chunks = [chunk async for chunk in client.stream(_ASK, Model.FAKE)]
+    assert "".join(chunk.content or "" for chunk in chunks) == "ok"
+    assert len(inner.calls) == 2
+
+
+@pytest.mark.unit
+async def test_a_stream_429_after_a_chunk_raises() -> None:
+    inner = FakeClient(
+        FakeScript(
+            turns=(
+                FakeTurn(content="partial", error=_Status(429), error_after_chunks=1),
+                FakeTurn(content="never"),
+            )
+        )
+    )
+    client = PacedClient(inner, Pacer(requests_per_minute=6000))
+    with pytest.raises(ProviderError):
+        _ = [chunk async for chunk in client.stream(_ASK, Model.FAKE)]
+    assert len(inner.calls) == 1
