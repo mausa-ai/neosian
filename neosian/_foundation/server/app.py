@@ -9,7 +9,8 @@ transport uses, so all five transports execute one dispatcher.
 
 Auth is one bearer token compared timing-safely on every request except
 `/health`; a miss is a plain 401 (no §18 envelope — auth is transport,
-not a store error, and the client propagates it raw). The SDK's own auth
+not a store error, and the client propagates it raw). Inside the gate,
+one body ceiling covers every surface (`ceiling.py`). The SDK's own auth
 stack is OAuth-resource-server shaped and deliberately unused (NM scope:
 bearer only; TLS is a reverse proxy's job).
 
@@ -29,6 +30,10 @@ from typing import TYPE_CHECKING
 from neosian._foundation.conversation.base import ConversationStore
 from neosian._foundation.memory.base import MemoryStore
 from neosian._foundation.memory.mounts import MemoryConfig
+from neosian._foundation.server.ceiling import (
+    MAX_REQUEST_BYTES,
+    BodyCeilingMiddleware,
+)
 from neosian._foundation.server.routes import store_routes
 from neosian._foundation.server.sdk import (
     JSONResponse,
@@ -145,7 +150,11 @@ async def build_app(
         )
         # security_settings stays None: host filtering is a reverse
         # proxy's job and the bearer gate covers rebinding (§18).
-        manager = StreamableHTTPSessionManager(app=mcp_server)
+        # The SDK's own body limit is raised to ours: the ceiling
+        # middleware is outer and counts first, so one limit, one shape.
+        manager = StreamableHTTPSessionManager(
+            app=mcp_server, max_request_body_size=MAX_REQUEST_BYTES
+        )
         routes.append(Route("/mcp", endpoint=StreamableHTTPASGIApp(manager)))
 
     @asynccontextmanager
@@ -158,6 +167,9 @@ async def build_app(
 
     return Starlette(
         routes=routes,
-        middleware=[Middleware(BearerAuthMiddleware, token=token)],
+        middleware=[
+            Middleware(BearerAuthMiddleware, token=token),
+            Middleware(BodyCeilingMiddleware),
+        ],
         lifespan=lifespan,
     )

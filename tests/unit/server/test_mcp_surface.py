@@ -11,9 +11,11 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+import pytest
 
 from neosian._foundation.memory.file import FileStore
 from neosian._foundation.memory.mounts import Mount
+from neosian._foundation.server import ceiling
 from neosian._foundation.server.app import build_app
 
 from .conftest import BASE_URL, TOKEN
@@ -89,6 +91,45 @@ class TestMcpOverHttp:
                 "/mcp", json=_INITIALIZE, headers=unauthenticated
             )
         assert response.status_code == 401
+
+
+class TestMcpBodyCeiling:
+    """The one ceiling covers `/mcp` too, in the §18 envelope — not the
+    SDK's own plain-text 413 (IN-3's second half)."""
+
+    async def test_a_declared_oversize_post_is_the_envelope(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(ceiling, "MAX_REQUEST_BYTES", 256)
+        padded = {**_INITIALIZE, "pad": "x" * 300}
+        async with _mcp_client(tmp_path / "mem") as client:
+            response = await client.post("/mcp", json=padded, headers=_HEADERS)
+        assert response.status_code == 413
+        error = response.json()["error"]
+        assert error["code"] == "value_error"
+        assert "exceeds 256 bytes" in error["message"]
+
+    async def test_a_chunked_oversize_post_is_the_envelope(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(ceiling, "MAX_REQUEST_BYTES", 256)
+
+        async def chunks() -> AsyncIterator[bytes]:
+            for _ in range(4):
+                yield b"x" * 100
+
+        async with _mcp_client(tmp_path / "mem") as client:
+            response = await client.post("/mcp", content=chunks(), headers=_HEADERS)
+        assert response.status_code == 413
+        assert response.json()["error"]["code"] == "value_error"
+
+    async def test_a_post_under_the_ceiling_still_initializes(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(ceiling, "MAX_REQUEST_BYTES", 4096)
+        async with _mcp_client(tmp_path / "mem") as client:
+            response = await client.post("/mcp", json=_INITIALIZE, headers=_HEADERS)
+        assert response.status_code == 200
 
 
 class TestWithoutMounts:

@@ -10,7 +10,7 @@ import httpx
 import pytest
 
 from neosian._foundation.memory.file import FileStore
-from neosian._foundation.server import routes
+from neosian._foundation.server import ceiling
 from neosian._foundation.server.app import build_app
 from neosian._foundation.server.remote import RemoteStore
 from neosian._foundation.server.sdk import Starlette
@@ -150,7 +150,7 @@ class TestBodyCeiling:
         backing: FileStore,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        monkeypatch.setattr(routes, "MAX_REQUEST_BYTES", 256)
+        monkeypatch.setattr(ceiling, "MAX_REQUEST_BYTES", 256)
         response = await client.post("/v1/memory/write", json=_doc(content="x" * 300))
         assert response.status_code == 413
         error = response.json()["error"]
@@ -163,7 +163,7 @@ class TestBodyCeiling:
     ) -> None:
         # No Content-Length to short-circuit on: the ceiling bites while
         # the body streams in.
-        monkeypatch.setattr(routes, "MAX_REQUEST_BYTES", 256)
+        monkeypatch.setattr(ceiling, "MAX_REQUEST_BYTES", 256)
 
         async def chunks() -> AsyncIterator[bytes]:
             for _ in range(4):
@@ -180,14 +180,14 @@ class TestBodyCeiling:
     async def test_a_body_under_the_ceiling_passes(
         self, client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(routes, "MAX_REQUEST_BYTES", 256)
+        monkeypatch.setattr(ceiling, "MAX_REQUEST_BYTES", 256)
         response = await client.post("/v1/memory/write", json=_doc(content="x" * 100))
         assert response.status_code == 200
 
     async def test_remote_store_raises_value_error(
         self, app: Starlette, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(routes, "MAX_REQUEST_BYTES", 256)
+        monkeypatch.setattr(ceiling, "MAX_REQUEST_BYTES", 256)
         remote = await RemoteStore.connect(
             BASE_URL, token=TOKEN, transport=httpx.ASGITransport(app=app)
         )

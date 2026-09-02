@@ -8,15 +8,15 @@ Everything a store method raises — `NeosianError` and the ABCs' bare
 mis-typed or missing parameter; only infrastructure failures are a bare
 500 the client propagates raw (the ledger #39 posture). Validation
 stays server-side: the real stores validate scope-then-path, one
-validator, one truth. A body over `MAX_REQUEST_BYTES` is 413 in the
-same envelope on these twelve routes — `/mcp` rides the SDK's own app
-and carries no ceiling here (carried by id, IN-3).
+validator, one truth. A body over the ceiling is 413 in the same
+envelope on every surface, `/mcp` included — one middleware,
+`ceiling.py` (IN-3).
 """
 
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any
 
 from neosian._foundation.llm.codec import message_from_json
 from neosian._foundation.server.sdk import JSONResponse, Request, Response, Route
@@ -42,46 +42,25 @@ if TYPE_CHECKING:
     from neosian._foundation.conversation.base import ConversationStore
     from neosian._foundation.memory.base import MemoryStore
 
-# Generous because a turn may carry base64 media blocks; bounded because
-# the body is buffered whole before it is decoded.
-MAX_REQUEST_BYTES: Final = 64 * 1024 * 1024
 
-
-def _envelope(message: str, *, status: int = 400) -> Response:
+def envelope(message: str, *, status: int = 400) -> Response:
+    """The §18 error envelope under `value_error` — the caller's fault."""
     return JSONResponse(
         {"error": {"code": VALUE_ERROR_CODE, "message": message, "details": {}}},
         status_code=status,
     )
 
 
-async def _read_body(request: Request) -> bytes | None:
-    """The whole body, or None once it exceeds the ceiling."""
-    declared = request.headers.get("content-length", "")
-    if declared.isdigit() and int(declared) > MAX_REQUEST_BYTES:
-        return None
-    body = bytearray()
-    async for chunk in request.stream():
-        body += chunk
-        if len(body) > MAX_REQUEST_BYTES:
-            return None
-    return bytes(body)
-
-
 def _endpoint(
     handler: Callable[[dict[str, Any]], Awaitable[dict[str, Any]]],
 ) -> Callable[[Request], Awaitable[Response]]:
     async def endpoint(request: Request) -> Response:
-        body = await _read_body(request)
-        if body is None:
-            return _envelope(
-                f"request body exceeds {MAX_REQUEST_BYTES} bytes", status=413
-            )
         try:
-            payload: Any = json.loads(body)
+            payload: Any = json.loads(await request.body())
         except ValueError:
-            return _envelope("request body must be JSON")
+            return envelope("request body must be JSON")
         if not isinstance(payload, dict):
-            return _envelope("request body must be an object")
+            return envelope("request body must be an object")
         try:
             return JSONResponse(await handler(payload))
         except (NeosianError, ValueError) as exc:
@@ -91,7 +70,7 @@ def _endpoint(
             # object (a message without a role) is still the caller's. A
             # TypeError is not — raised past the readers it is a store or
             # encoder bug, and stays the bare 500 of ledger #39.
-            return _envelope(f"malformed request: {exc}")
+            return envelope(f"malformed request: {exc}")
 
     return endpoint
 
