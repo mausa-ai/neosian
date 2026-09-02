@@ -4,6 +4,7 @@ streaming fan-out worker."""
 from __future__ import annotations
 
 import asyncio
+import inspect
 import time
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
@@ -57,15 +58,18 @@ async def execute_tool(agent: Agent, tool_call: ToolCall) -> ToolResult[Any]:
         if denial is not None:
             return denial
 
+    # Bind before calling: a TypeError from binding is bad arguments, a
+    # TypeError from inside the tool body is the tool failing (TG-7).
     try:
-        result = await tool_func(**tool_call.arguments)
-        return result
+        inspect.signature(tool_func).bind(**tool_call.arguments)
     except TypeError as e:
         return ToolResult.fail(
             ErrorMessages.TOOL_INVALID_ARGUMENTS.format(
                 tool_name=tool_call.name, error=e
             )
         )
+    try:
+        return await tool_func(**tool_call.arguments)
     except Exception as e:
         return ToolResult.fail(
             ErrorMessages.TOOL_EXECUTION_FAILED.format(

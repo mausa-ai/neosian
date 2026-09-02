@@ -11,6 +11,8 @@ from neosian._foundation.shared.prompt_assets import get_prompt
 from neosian._foundation.shared.types import TodoStatus
 from neosian._foundation.tools.base import Tool, ToolResult
 
+_INVALID_STATUS = "todos[{index}]: status '{status}' is not one of {legal}"
+
 
 class TodoItemInput(TypedDict):
     """Input schema for a todo item.
@@ -43,16 +45,19 @@ async def update_todo(
     """
     result: list[dict[str, str]] = []
 
-    for item_dict in todos:
+    for index, item_dict in enumerate(todos):
         content = item_dict.get("content", "")
         status_str = item_dict.get("status", "pending")
-
-        # Validate status, default to pending if invalid
         try:
             status = TodoStatus(status_str)
         except ValueError:
-            status = TodoStatus.PENDING
-
+            return ToolResult.fail(
+                _INVALID_STATUS.format(
+                    index=index,
+                    status=status_str,
+                    legal=", ".join(member.value for member in TodoStatus),
+                )
+            )
         result.append({"content": content, "status": status.value})
 
     return ToolResult.ok(result)

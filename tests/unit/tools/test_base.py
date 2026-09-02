@@ -3,6 +3,7 @@
 # ruff: noqa: ARG001
 
 from enum import Enum
+from pathlib import Path
 from typing import Annotated, Literal, NotRequired, Optional, TypedDict, Union
 
 import pytest
@@ -15,6 +16,7 @@ from neosian._foundation.shared.constraints import (
     MinLen,
     Pattern,
 )
+from neosian._foundation.shared.exceptions import ConfigurationError
 from neosian._foundation.tools.base import (
     Tool,
     ToolResult,
@@ -847,3 +849,68 @@ class TestTypedDictConversion:
         ]
         assert set(item_schema["required"]) == {"content", "status"}
         assert item_schema["additionalProperties"] is False
+
+
+@pytest.mark.unit
+class TestDecorationRejections:
+    """Signatures the dispatch cannot satisfy are rejected at decoration."""
+
+    def test_var_positional_rejected(self) -> None:
+        """``*args`` cannot be supplied by keyword dispatch (TG-8)."""
+        with pytest.raises(ConfigurationError, match=r"\*args"):
+
+            @Tool(name="test", description="Test")
+            async def test_func(*args: str) -> ToolResult[str]:
+                return ToolResult.ok("ok")
+
+    def test_var_keyword_rejected(self) -> None:
+        """``**kwargs`` is not a parameter the model can name (TG-8)."""
+        with pytest.raises(ConfigurationError, match=r"\*\*kwargs"):
+
+            @Tool(name="test", description="Test")
+            async def test_func(**kwargs: str) -> ToolResult[str]:
+                return ToolResult.ok("ok")
+
+    def test_positional_only_rejected(self) -> None:
+        """A positional-only parameter can never be bound from arguments (TG-8)."""
+        with pytest.raises(ConfigurationError, match="query"):
+
+            @Tool(name="test", description="Test")
+            async def test_func(query: str, /) -> ToolResult[str]:
+                return ToolResult.ok("ok")
+
+    def test_path_default_rejected(self) -> None:
+        """A default that is not JSON never reaches the schema (TG-18)."""
+        with pytest.raises(ConfigurationError, match="root"):
+
+            @Tool(name="test", description="Test")
+            async def test_func(root: Path = Path("/tmp")) -> ToolResult[str]:
+                return ToolResult.ok("ok")
+
+    def test_enum_member_default_rejected(self) -> None:
+        """A plain Enum member is not JSON-serialisable (TG-18)."""
+
+        class Mode(Enum):
+            FAST = 1
+            SLOW = 2
+
+        with pytest.raises(ConfigurationError, match="mode"):
+
+            @Tool(name="test", description="Test")
+            async def test_func(mode: Mode = Mode.FAST) -> ToolResult[str]:
+                return ToolResult.ok("ok")
+
+    def test_str_enum_default_allowed(self) -> None:
+        """A str-Enum member serialises as its value and stays allowed."""
+
+        class Mode(str, Enum):
+            FAST = "fast"
+            SLOW = "slow"
+
+        @Tool(name="test", description="Test")
+        async def test_func(mode: Mode = Mode.FAST) -> ToolResult[str]:
+            return ToolResult.ok("ok")
+
+        definition = get_tool_definition(test_func)
+        assert definition is not None
+        assert definition.parameters["properties"]["mode"]["default"] == Mode.FAST

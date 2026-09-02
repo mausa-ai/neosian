@@ -28,6 +28,7 @@ from neosian._foundation.agent.fallback import (
 from neosian._foundation.agent.guards import check_guard_and_block
 from neosian._foundation.agent.hooks import AgentHooks, TurnEvent
 from neosian._foundation.agent.response import AgentResponse
+from neosian._foundation.agent.tool_exec import execute_tool
 from neosian._foundation.llm.base import (
     BaseLLMClient,
     CompactionBlock,
@@ -43,6 +44,7 @@ from neosian._foundation.llm.fake import FakeClient, FakeScript, FakeTurn
 from neosian._foundation.memory.file import FileStore
 from neosian._foundation.memory.mounts import MemoryConfig, Mount
 from neosian._foundation.shared.exceptions import (
+    ConfigurationError,
     UnsupportedContentError,
     UnsupportedParameterError,
 )
@@ -210,6 +212,49 @@ class TestAgentInit:
             with pytest.raises(ValueError, match="not decorated with @Tool"):
                 Agent(config=config)
 
+    def test_agent_rejects_user_tool_shadowing_builtin(self) -> None:
+        """A user tool named like a builtin raises instead of shadowing it (TG-2)."""
+
+        @Tool(name="update_todo", description="Not the builtin")
+        async def update_todo(todos: list[str]) -> ToolResult[str]:
+            return ToolResult.ok(str(todos))
+
+        with patch(
+            "neosian._foundation.agent.base.ProviderRouter",
+            return_value=_create_mock_router(),
+        ):
+            config = AgentConfig(
+                system_prompt=SystemPrompt("You are helpful."),
+                tools=[update_todo],
+                enable_todo=True,
+            )
+            with pytest.raises(ConfigurationError, match="update_todo") as info:
+                Agent(config=config)
+            assert "builtin.todo" in str(info.value)
+
+    def test_agent_rejects_duplicate_user_tool_names(self) -> None:
+        """Two user tools with one name raise; the message names the first (TG-2)."""
+
+        @Tool(name="greet", description="First")
+        async def greet_one(name: str) -> ToolResult[str]:
+            return ToolResult.ok(name)
+
+        @Tool(name="greet", description="Second")
+        async def greet_two(name: str) -> ToolResult[str]:
+            return ToolResult.ok(name)
+
+        with patch(
+            "neosian._foundation.agent.base.ProviderRouter",
+            return_value=_create_mock_router(),
+        ):
+            config = AgentConfig(
+                system_prompt=SystemPrompt("You are helpful."),
+                tools=[greet_one, greet_two],
+                enable_todo=False,
+            )
+            with pytest.raises(ConfigurationError, match="greet_one"):
+                Agent(config=config)
+
 
 @pytest.mark.unit
 class TestAgentRun:
@@ -335,6 +380,53 @@ class TestAgentRun:
             assert len(response.tool_results) == 1
             assert response.tool_results[0].success is False
             assert "not found" in (response.tool_results[0].error or "")
+
+    @pytest.mark.asyncio
+    async def test_type_error_inside_tool_is_execution_failure(self) -> None:
+        """A TypeError raised by the tool body is not an argument error (TG-7)."""
+
+        @Tool(name="add", description="Add")
+        async def add(a: int) -> ToolResult[int]:
+            return ToolResult.ok(a + "1")  # type: ignore[operator]
+
+        with patch(
+            "neosian._foundation.agent.base.ProviderRouter",
+            return_value=_create_mock_router(),
+        ):
+            agent = Agent(
+                config=AgentConfig(system_prompt=SystemPrompt("x"), tools=[add])
+            )
+            call = ToolCall(
+                id=ToolCallId("c1"), name=ToolName("add"), arguments={"a": 1}
+            )
+            result = await execute_tool(agent, call)
+
+        assert result.success is False
+        assert "failed" in (result.error or "")
+        assert "Invalid arguments" not in (result.error or "")
+
+    @pytest.mark.asyncio
+    async def test_unbindable_arguments_are_invalid_arguments(self) -> None:
+        """Arguments the signature cannot bind report as invalid (TG-7)."""
+
+        @Tool(name="add", description="Add")
+        async def add(a: int) -> ToolResult[int]:
+            return ToolResult.ok(a)
+
+        with patch(
+            "neosian._foundation.agent.base.ProviderRouter",
+            return_value=_create_mock_router(),
+        ):
+            agent = Agent(
+                config=AgentConfig(system_prompt=SystemPrompt("x"), tools=[add])
+            )
+            call = ToolCall(
+                id=ToolCallId("c1"), name=ToolName("add"), arguments={"b": 1}
+            )
+            result = await execute_tool(agent, call)
+
+        assert result.success is False
+        assert "Invalid arguments for tool 'add'" in (result.error or "")
 
     @pytest.mark.asyncio
     async def test_tool_exception_returns_error(self) -> None:

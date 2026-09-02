@@ -4,6 +4,7 @@ Provides the @Tool decorator and ToolResult for building agent tools.
 """
 
 import inspect
+import json
 import types
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -36,8 +37,21 @@ from neosian._foundation.shared.constraints import (
     MinLen,
     Pattern,
 )
+from neosian._foundation.shared.exceptions import ConfigurationError
 from neosian._foundation.shared.serialization import safe_json_dumps
 from neosian._foundation.shared.types import ToolFunction as ToolFunction, ToolName
+
+# Dispatch is ``tool(**arguments)``: only keyword-bindable parameters are legal.
+_BINDABLE_KINDS = (
+    inspect.Parameter.POSITIONAL_OR_KEYWORD,
+    inspect.Parameter.KEYWORD_ONLY,
+)
+_UNBINDABLE_PARAMETER = (
+    "Tool {func} declares '{param}', which keyword dispatch can never bind"
+)
+_UNSERIALISABLE_DEFAULT = (
+    "Tool {func} parameter '{name}' has a default that is not JSON: {default!r}"
+)
 
 
 @dataclass
@@ -345,12 +359,24 @@ def _extract_parameters_schema(func: Callable[..., Any]) -> dict[str, Any]:
     for param_name, param in sig.parameters.items():
         if param_name in ("self", "cls", "return"):
             continue
+        if param.kind not in _BINDABLE_KINDS:
+            raise ConfigurationError(
+                _UNBINDABLE_PARAMETER.format(func=func.__qualname__, param=param)
+            )
 
         # Get type hint (default to str if not annotated)
         param_type = hints.get(param_name, str)
 
-        # Get default value
         default = param.default
+        if default is not inspect.Parameter.empty:
+            try:
+                json.dumps(default)
+            except (TypeError, ValueError) as exc:
+                raise ConfigurationError(
+                    _UNSERIALISABLE_DEFAULT.format(
+                        func=func.__qualname__, name=param_name, default=default
+                    )
+                ) from exc
 
         # Build property schema with default value
         properties[param_name] = _python_type_to_json_schema(param_type, default)

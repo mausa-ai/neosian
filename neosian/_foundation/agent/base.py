@@ -29,6 +29,7 @@ from neosian._foundation.llm.router import ProviderRouter
 from neosian._foundation.memory.tools import create_memory_tool
 from neosian._foundation.shared.constants import ErrorMessages
 from neosian._foundation.shared.exceptions import (
+    ConfigurationError,
     GuardrailStreamingError,
     StructuredOutputStreamingError,
     StructuredOutputToolsError,
@@ -51,6 +52,11 @@ from neosian._foundation.tools.builtin.skill import create_skill_tools
 from neosian._foundation.tools.builtin.todo import update_todo
 
 logger = logging.getLogger(__name__)
+
+_DUPLICATE_TOOL_NAME = (
+    "Tool name '{name}' is already registered by {earlier}; "
+    "two tools cannot share a name"
+)
 
 
 class Agent:
@@ -196,6 +202,14 @@ class Agent:
             raise ValueError(
                 ErrorMessages.FUNCTION_NOT_DECORATED.format(
                     func_name=tool_func.__name__
+                )
+            )
+        earlier = self._tools.get(metadata.name)
+        if earlier is not None:
+            raise ConfigurationError(
+                _DUPLICATE_TOOL_NAME.format(
+                    name=metadata.name,
+                    earlier=f"{earlier.__module__}.{earlier.__qualname__}",
                 )
             )
         self._tools[metadata.name] = tool_func

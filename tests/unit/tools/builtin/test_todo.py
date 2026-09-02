@@ -88,16 +88,22 @@ class TestUpdateTodoTool:
         ]
 
     @pytest.mark.asyncio
-    async def test_invalid_status_defaults_to_pending(self) -> None:
-        """Invalid status values default to pending."""
+    async def test_invalid_status_fails(self) -> None:
+        """An invalid status fails the call instead of being rewritten (TG-13)."""
         result = await update_todo(
             todos=[
-                {"content": "Task", "status": "invalid_status"},
+                {"content": "Task A", "status": "pending"},
+                {"content": "Task B", "status": "invalid_status"},
             ]
         )
 
-        assert result.success
-        assert result.data == [{"content": "Task", "status": "pending"}]
+        assert not result.success
+        assert result.data is None
+        assert result.error is not None
+        assert "invalid_status" in result.error
+        assert "todos[1]" in result.error
+        for legal in ("pending", "in_progress", "completed"):
+            assert legal in result.error
 
     @pytest.mark.asyncio
     async def test_missing_status_defaults_to_pending(self) -> None:
