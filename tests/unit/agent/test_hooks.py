@@ -114,3 +114,32 @@ class TestHookRunner:
             "streamed",
             "duration_ms",
         }
+
+
+@pytest.mark.unit
+class TestRunContext:
+    """A context built without `started` still times from its birth (AG-11)."""
+
+    async def test_started_defaults_to_now(self) -> None:
+        from neosian._foundation.agent.base import Agent
+        from neosian._foundation.agent.context import RunContext
+        from neosian._foundation.agent.emit import emit_turn
+        from neosian._foundation.agent.response import AgentResponse
+        from neosian._foundation.llm.base import Message, Role
+        from neosian._foundation.shared.types import AgentConfig, Model, SystemPrompt
+
+        seen: list[TurnEvent] = []
+        agent = Agent(
+            config=AgentConfig(model=Model.FAKE, system_prompt=SystemPrompt("x"))
+        )
+        ctx = RunContext(
+            agent=agent,
+            acquire=agent._create_client,
+            hooks=HookRunner(AgentHooks(on_turn=seen.append)),
+        )
+        await emit_turn(
+            ctx,
+            AgentResponse(message=Message(role=Role.ASSISTANT, content="hi")),
+            streamed=False,
+        )
+        assert seen[0].duration_ms < 1000

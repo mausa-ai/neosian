@@ -5,7 +5,9 @@ streaming, tool loop, fallback, sessions) with zero API keys and zero
 ad-hoc mocks.
 """
 
+import dataclasses
 import os
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -25,6 +27,7 @@ from neosian import (
     TurnEvent,
 )
 from neosian._foundation.llm.base import (
+    CompletionResponse,
     ImageBlock,
     Message,
     ModelUsage,
@@ -77,6 +80,33 @@ class TestKeylessBoot:
             isinstance(event, ContentEvent) and "fake" in event.content
             for event in events
         )
+
+
+class _ModellessFake(FakeClient):
+    """A provider that reports no model string on its completions."""
+
+    async def complete(self, *args: Any, **kwargs: Any) -> CompletionResponse:
+        return dataclasses.replace(await super().complete(*args, **kwargs), model="")
+
+
+@pytest.mark.unit
+class TestResponseModel:
+    async def test_blocking_model_falls_back_to_requested_when_api_omits_it(
+        self,
+    ) -> None:
+        """AgentResponse.model never reads empty: the requested model stands
+        in on the blocking path as it already does when streaming (AG-12)."""
+        fake = _ModellessFake()
+        agent = Agent(
+            AgentConfig(
+                system_prompt=SystemPrompt("S"),
+                model=Model.FAKE,
+                enable_todo=False,
+                client_factory=lambda _: fake,
+            )
+        )
+        response = await agent.run(_USER, stream=False)
+        assert response.model == Model.FAKE.value
 
 
 @pytest.mark.unit

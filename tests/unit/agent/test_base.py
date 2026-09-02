@@ -2,9 +2,7 @@
 
 import asyncio
 import logging
-import time
-import weakref
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -13,7 +11,7 @@ import pytest
 
 from neosian._foundation.agent.base import Agent
 from neosian._foundation.agent.blocking import execute_with_fallback_model
-from neosian._foundation.agent.context import RunContext
+from neosian._foundation.agent.context import Attempt, RunContext
 from neosian._foundation.agent.events import (
     BlockedEvent,
     ContentEvent,
@@ -23,14 +21,19 @@ from neosian._foundation.agent.events import (
     ToolProgressEvent,
     ToolResultEvent,
 )
-from neosian._foundation.agent.fallback import unsupported_content_types
+from neosian._foundation.agent.fallback import (
+    ensure_fallback_viable,
+    unsupported_content_types,
+)
 from neosian._foundation.agent.guards import check_guard_and_block
+from neosian._foundation.agent.hooks import AgentHooks, TurnEvent
 from neosian._foundation.agent.response import AgentResponse
 from neosian._foundation.llm.base import (
     BaseLLMClient,
     CompactionBlock,
     CompletionResponse,
     Message,
+    ModelUsage,
     Role,
     StreamChunk,
     ToolCall,
@@ -39,7 +42,10 @@ from neosian._foundation.llm.base import (
 from neosian._foundation.llm.fake import FakeClient, FakeScript, FakeTurn
 from neosian._foundation.memory.file import FileStore
 from neosian._foundation.memory.mounts import MemoryConfig, Mount
-from neosian._foundation.shared.exceptions import UnsupportedParameterError
+from neosian._foundation.shared.exceptions import (
+    UnsupportedContentError,
+    UnsupportedParameterError,
+)
 from neosian._foundation.shared.types import (
     AgentConfig,
     AnyModel,
@@ -610,6 +616,64 @@ class TestStreamingUsageReporting:
         assert usage.input_tokens == 50
         assert usage.output_tokens == 25
         assert usage.total_tokens == 75
+
+    @pytest.mark.asyncio
+    async def test_final_call_without_finish_reason_still_terminates(self) -> None:
+        """A final-call stream that ends without a finish_reason (and no
+        usage chunk) still yields its terminal and fires on_turn exactly
+        once (AG-4) — the tool loop's terminal was already unconditional."""
+
+        @Tool(name="add", description="Add two numbers")
+        async def add(a: int, b: int) -> ToolResult[int]:
+            return ToolResult.ok(a + b)
+
+        mock_client = AsyncMock(spec=BaseLLMClient)
+        tool_call = ToolCall(
+            id=ToolCallId("call_1"), name=ToolName("add"), arguments={"a": 2, "b": 3}
+        )
+        call_count = 0
+
+        async def mock_stream(
+            *args: object, **kwargs: object  # noqa: ARG001
+        ) -> AsyncIterator[StreamChunk]:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                yield StreamChunk(
+                    tool_calls=[tool_call],
+                    finish_reason="tool_calls",
+                    usage=Usage(input_tokens=20, output_tokens=10),
+                )
+            else:
+                yield StreamChunk(content="Best guess: 5.")
+
+        mock_client.stream = mock_stream
+        turns: list[TurnEvent] = []
+
+        with patch(
+            "neosian._foundation.agent.base.ProviderRouter",
+            return_value=_create_mock_router(mock_client),
+        ):
+            config = AgentConfig(
+                system_prompt=SystemPrompt("You are a calculator."),
+                tools=[add],
+                enable_todo=False,
+                hooks=AgentHooks(on_turn=turns.append),
+            )
+            agent = Agent(config=config, max_tool_iterations=1)
+            result = await agent.run(
+                [Message(role=Role.USER, content="What is 2 + 3?")], stream=True
+            )
+            events = [event async for event in result]
+
+        done_events = [e for e in events if isinstance(e, DoneEvent)]
+        assert len(done_events) == 1
+        assert done_events[0].stop_reason is None
+        assert done_events[0].raw_stop_reason is None
+        assert done_events[0].usage is not None
+        assert done_events[0].usage.total_tokens == 30
+        assert len(turns) == 1
+        assert turns[0].response.message.content == "Best guess: 5."
 
     @pytest.mark.asyncio
     async def test_streaming_max_iterations_includes_prior_usage(self) -> None:
@@ -1195,23 +1259,33 @@ class TestAgentParallelToolExecution:
     """Test parallel dispatch of tool calls from a single assistant turn."""
 
     @pytest.mark.asyncio
-    async def test_blocking_parallel_wall_clock(self) -> None:
-        """Three tools at 300/100/200ms must finish in ~max, not sum."""
+    async def test_blocking_tools_run_concurrently(self) -> None:
+        """Three tools of a batch are all in flight at once — parallel, not
+        one after another (pinned by a counter, never by the wall clock)."""
+        in_flight = 0
+        peak = 0
+
+        async def _overlap(delay: float, result: str) -> ToolResult[str]:
+            nonlocal in_flight, peak
+            in_flight += 1
+            peak = max(peak, in_flight)
+            try:
+                await asyncio.sleep(delay)
+                return ToolResult.ok(result)
+            finally:
+                in_flight -= 1
 
         @Tool(name="t_a", description="A")
         async def t_a() -> ToolResult[str]:
-            await asyncio.sleep(0.3)
-            return ToolResult.ok("a")
+            return await _overlap(0.06, "a")
 
         @Tool(name="t_b", description="B")
         async def t_b() -> ToolResult[str]:
-            await asyncio.sleep(0.1)
-            return ToolResult.ok("b")
+            return await _overlap(0.02, "b")
 
         @Tool(name="t_c", description="C")
         async def t_c() -> ToolResult[str]:
-            await asyncio.sleep(0.2)
-            return ToolResult.ok("c")
+            return await _overlap(0.04, "c")
 
         mock_client = AsyncMock(spec=BaseLLMClient)
         tool_calls = [
@@ -1244,13 +1318,9 @@ class TestAgentParallelToolExecution:
             agent = Agent(config=config)
             messages = [Message(role=Role.USER, content="go")]
 
-            start = time.monotonic()
             response = await agent.run(messages, stream=False)
-            elapsed = time.monotonic() - start
 
-            # Parallel ~0.3s; sequential would be ~0.6s. 0.5s gives CI slack.
-            assert elapsed < 0.5, f"expected parallel execution, took {elapsed:.3f}s"
-
+            assert peak == 3, f"expected all three tools in flight, peak {peak}"
             assert [tc.name for tc in response.tool_calls_made] == ["t_a", "t_b", "t_c"]
             assert [r.data for r in response.tool_results] == ["a", "b", "c"]
 
@@ -1596,77 +1666,54 @@ class TestAgentParallelToolExecution:
 
     @pytest.mark.asyncio
     async def test_streaming_cancellation_no_orphan_tasks(self) -> None:
-        """When the SSE consumer disconnects mid-batch, tool tasks must not orphan."""
-
-        task_refs: list[weakref.ref[asyncio.Task[Any]]] = []
-        original_create_task = asyncio.create_task
-
-        def tracking_create_task(coro: Any, **kw: Any) -> asyncio.Task[Any]:
-            t = original_create_task(coro, **kw)
-            # Track only _run_tool_stream's task spawns.
-            if "_run_tool_stream" in repr(coro):
-                task_refs.append(weakref.ref(t))
-            return t
+        """When the SSE consumer disconnects mid-batch, the running tools
+        are cancelled — the tool body observes it — and nothing outlives
+        the stream (AG-1)."""
+        observed: list[str] = []
 
         @Tool(name="hang", description="hang")
         async def hang() -> ToolResult[str]:
-            await asyncio.sleep(10.0)
+            try:
+                await asyncio.sleep(10.0)
+            except asyncio.CancelledError:
+                observed.append("cancelled")
+                raise
             return ToolResult.ok("never")
 
-        tool_calls = [
+        tool_calls = tuple(
             ToolCall(id=ToolCallId(f"id{i}"), name=ToolName("hang"), arguments={})
             for i in range(3)
-        ]
+        )
+        fake = FakeClient(FakeScript(turns=(FakeTurn(tool_calls=tool_calls),)))
 
-        async def mock_stream(
-            *args: object, **kwargs: object  # noqa: ARG001
-        ) -> AsyncIterator[StreamChunk]:
-            yield StreamChunk(tool_calls=tool_calls, finish_reason="tool_calls")
-
-        mock_client = AsyncMock(spec=BaseLLMClient)
-        mock_client.stream = mock_stream
-
-        with (
-            patch(
-                "neosian._foundation.agent.base.ProviderRouter",
-                return_value=_create_mock_router(mock_client),
-            ),
-            patch(
-                "neosian._foundation.agent.stream_loop.asyncio.create_task",
-                side_effect=tracking_create_task,
-            ),
-            patch(
-                "neosian._foundation.agent.tool_exec.Streaming.HEARTBEAT_INTERVAL_SECONDS",
-                30.0,
-            ),
+        with patch(
+            "neosian._foundation.agent.tool_exec.Streaming.HEARTBEAT_INTERVAL_SECONDS",
+            0.01,
         ):
-            config = AgentConfig(
-                system_prompt=SystemPrompt("S"),
-                tools=[hang],
-                enable_todo=False,
+            agent = Agent(
+                config=AgentConfig(
+                    system_prompt=SystemPrompt("S"),
+                    tools=[hang],
+                    model=Model.FAKE,
+                    enable_todo=False,
+                    client_factory=lambda _: fake,
+                )
             )
-            agent = Agent(config=config)
+            before = asyncio.all_tasks()
             stream = await agent.run(
                 [Message(role=Role.USER, content="go")], stream=True
             )
+            assert isinstance(stream, AsyncGenerator)
 
-            # Pull tool_call events for all 3 tools, then close mid-batch.
-            tool_call_count = 0
+            # The first progress event means every tool is running (the
+            # batch is spawned whole); close mid-batch there.
             async for event in stream:
-                if isinstance(event, ToolCallEvent):
-                    tool_call_count += 1
-                if tool_call_count >= 3:
+                if isinstance(event, ToolProgressEvent):
                     break
-            await stream.aclose()  # type: ignore[attr-defined]
+            await stream.aclose()
 
-            # Let the event loop reap cancellations.
-            await asyncio.sleep(0.05)
-
-        live = [ref() for ref in task_refs]
-        # All tracked tool wrapper tasks should be done (cancelled or completed).
-        assert all(
-            t is None or t.done() for t in live
-        ), f"orphans: {[t for t in live if t and not t.done()]}"
+        assert observed == ["cancelled"] * 3
+        assert not (asyncio.all_tasks() - before)
 
     @pytest.mark.asyncio
     async def test_max_parallel_tools_caps_concurrency(self) -> None:
@@ -1682,7 +1729,7 @@ class TestAgentParallelToolExecution:
                 in_flight += 1
                 peak = max(peak, in_flight)
             try:
-                await asyncio.sleep(0.1)
+                await asyncio.sleep(0.05)
                 return ToolResult.ok("done")
             finally:
                 async with lock:
@@ -1734,13 +1781,11 @@ class TestAgentParallelToolExecution:
             )
             agent = Agent(config=config)
 
-            start = time.monotonic()
             await agent.run([Message(role=Role.USER, content="go")], stream=False)
-            elapsed = time.monotonic() - start
 
-        assert peak <= 2, f"expected peak<=2, got {peak}"
-        # Two batches of 2 × 100ms ≈ 0.2s; full parallel would be ~0.1s.
-        assert 0.18 < elapsed < 0.5, f"unexpected wall-clock {elapsed:.3f}s"
+        # The cap is reached (two enter and park before a third can) and
+        # never exceeded — both pinned deterministically, no wall clock.
+        assert peak == 2, f"expected peak == 2, got {peak}"
 
     def test_max_parallel_tools_validation_zero(self) -> None:
         """max_parallel_tools=0 must raise."""
@@ -1870,6 +1915,35 @@ class TestCapabilityAwareFallback:
                 ],
             ),
         ]
+
+    def test_unsupported_content_fallback_skip_keeps_ledger(self) -> None:
+        """The content gate re-raises the caller's error with the billed
+        ledger attached, as the window gate already does (AG-5)."""
+        with patch(
+            "neosian._foundation.agent.base.ProviderRouter",
+            return_value=_create_mock_router(),
+        ):
+            agent = Agent(
+                config=AgentConfig(
+                    system_prompt=SystemPrompt("S"),
+                    model=Model.CLAUDE_SONNET_5,
+                    fallback=FallbackConfig(model=Model.CEREBRAS_GEMMA_4_31B),
+                    enable_todo=False,
+                )
+            )
+        ctx = agent._run_context(None)
+        messages = [Message(role=Role.SYSTEM, content="S"), *self._doc_messages()]
+        attempt = Attempt.start(Model.CLAUDE_SONNET_5, messages, ctx.ledger)
+        attempt.record("claude", Usage(input_tokens=10, output_tokens=5))
+
+        with pytest.raises(UnsupportedContentError) as info:
+            ensure_fallback_viable(
+                agent, UnsupportedContentError("no documents"), messages, attempt
+            )
+        assert info.value.usage == Usage(input_tokens=10, output_tokens=5)
+        assert info.value.usage_by_model == (
+            ModelUsage(model="claude", usage=Usage(input_tokens=10, output_tokens=5)),
+        )
 
     @pytest.mark.asyncio
     async def test_fallback_skipped_when_model_lacks_support(self) -> None:
@@ -2178,3 +2252,67 @@ class TestCompactionFallbackGate:
     def test_plain_history_is_unaffected(self) -> None:
         plain = [Message(role=Role.USER, content="hi")]
         assert unsupported_content_types(Model.FAKE, plain) == []
+
+
+class _ClosingFake(FakeClient):
+    """A fake that counts how many of its streams were closed."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.closed_streams = 0
+
+    async def stream(self, *args: Any, **kwargs: Any) -> AsyncIterator[StreamChunk]:
+        try:
+            async for chunk in super().stream(*args, **kwargs):
+                yield chunk
+        finally:
+            self.closed_streams += 1
+
+
+@pytest.mark.unit
+class TestProviderStreamClosure:
+    """A consumer's aclose() closes the provider stream with it (AG-14) —
+    synchronously, not whenever the garbage collector gets to it."""
+
+    def _agent(self, fake: FakeClient, **kwargs: Any) -> Agent:
+        return Agent(
+            AgentConfig(
+                system_prompt=SystemPrompt("S"),
+                model=Model.FAKE,
+                enable_todo=False,
+                client_factory=lambda _: fake,
+                tools=kwargs.pop("tools", []),
+            ),
+            **kwargs,
+        )
+
+    async def _close_at_first_content(self, agent: Agent) -> None:
+        stream = await agent.run([Message(role=Role.USER, content="go")], stream=True)
+        assert isinstance(stream, AsyncGenerator)
+        async for event in stream:
+            if isinstance(event, ContentEvent):
+                break
+        await stream.aclose()
+
+    async def test_tool_loop_stream_closed_on_consumer_disconnect(self) -> None:
+        fake = _ClosingFake(
+            FakeScript(turns=(FakeTurn(content="a long answer"),), chunk_chars=2)
+        )
+        await self._close_at_first_content(self._agent(fake))
+        assert fake.closed_streams == 1
+
+    async def test_final_call_stream_closed_on_consumer_disconnect(self) -> None:
+        @Tool(name="noop", description="noop")
+        async def noop() -> ToolResult[str]:
+            return ToolResult.ok("ok")
+
+        call = ToolCall(id=ToolCallId("c1"), name=ToolName("noop"), arguments={})
+        fake = _ClosingFake(
+            FakeScript(
+                turns=(FakeTurn(tool_calls=(call,)), FakeTurn(content="final words")),
+                chunk_chars=2,
+            )
+        )
+        agent = self._agent(fake, tools=[noop], max_tool_iterations=1)
+        await self._close_at_first_content(agent)
+        assert fake.closed_streams == 2

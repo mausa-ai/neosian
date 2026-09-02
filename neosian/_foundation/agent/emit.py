@@ -96,7 +96,7 @@ def blocked_response(
     usage: Usage | None,
     usage_by_model: tuple[ModelUsage, ...],
 ) -> AgentResponse:
-    """The value object for an input-guard block on the streaming path.
+    """The value object for an input-guard block, on either path.
 
     Content is discarded but the billed usage survives; turn_messages
     stays empty — a blocked turn is not replayable.

@@ -95,10 +95,7 @@ def ensure_fallback_viable(
                 agent._fallback.model.context_window,
                 overflowed,
             )
-            if error.usage is None:  # keep billed usage on the error path
-                error.usage = attempt.usage
-                error.usage_by_model = attempt.usage_by_model
-            raise error
+            reraise_caller_errors(error, attempt)
     missing = unsupported_content_types(agent._fallback.model, messages)
     if not missing:
         return
@@ -108,8 +105,7 @@ def ensure_fallback_viable(
             block_type="/".join(missing),
         )
     )
-    if isinstance(error, UnsupportedContentError):
-        raise error
+    reraise_caller_errors(error, attempt)  # the ledger rides along (AG-5)
     raise ModelFailedError(
         model=agent._model.value,
         error=str(error),

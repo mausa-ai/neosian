@@ -58,6 +58,7 @@ dev = [
     "psycopg[binary,pool]>=3.2",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
+    "pytest-timeout>=2.3",
     "ruff>=0.16.3",
     "starlette>=1.6",
     "types-pyyaml>=6.0.12.20250915",
@@ -71,7 +72,7 @@ examples = [
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
-addopts = "-m 'not external' --strict-markers"
+addopts = "-m 'not external' --strict-markers --timeout=60"
 markers = [
     "unit: Fast tests on fakes only — the default, fully keyless gate",
     "external: Any test making real API calls (excluded by default)",

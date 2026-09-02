@@ -14,7 +14,10 @@ from neosian._foundation.agent.response import AgentResponse
 from neosian._foundation.guardrails.checker import check_with_policy
 from neosian._foundation.llm.base import Message, ModelUsage, Role, Usage, text_of
 from neosian._foundation.shared.constants import EnvVars
-from neosian._foundation.shared.exceptions import MissingAPIKeyError
+from neosian._foundation.shared.exceptions import (
+    GuardrailPolicyParseError,
+    MissingAPIKeyError,
+)
 from neosian._foundation.shared.types import (
     AnyModel,
     GuardrailErrorPolicy,
@@ -27,7 +30,7 @@ from neosian._foundation.shared.types import (
 
 if TYPE_CHECKING:
     from neosian._foundation.agent.base import Agent
-    from neosian._foundation.agent.context import RunContext
+    from neosian._foundation.agent.context import RunContext, UsageLedger
 
 logger = logging.getLogger(__name__)
 
@@ -65,24 +68,25 @@ def _require_env(env_var: str | None) -> None:
 
 
 async def check_guardrails(
-    agent: Agent,
+    ctx: RunContext,
     content: str,
     checkpoint: Literal["input", "output"],
 ) -> tuple[bool, PolicyResult | None]:
     """Check content against configured guardrails at the given checkpoint.
 
+    The classifier's client comes from the run's acquire seam — a
+    session's pool owns and closes it (AG-6); an Agent holds none.
+
     Args:
+        ctx: Per-run context (client acquisition).
         content: Content to check.
         checkpoint: "input" or "output" checkpoint.
 
     Returns:
         Tuple of (is_safe, policy_result).
     """
-    if (
-        agent._guardrails is None
-        or agent._guardrail_client is None
-        or agent._guardrail_model is None
-    ):
+    agent = ctx.agent
+    if agent._guardrails is None or agent._guardrail_model is None:
         return (True, None)
 
     # Select config fields based on checkpoint
@@ -103,13 +107,20 @@ async def check_guardrails(
 
     # Run policy check
     if policy is not None:
-        policy_result = await check_with_policy(
+        outcome = await check_with_policy(
             content=content,
             policy=policy,
-            client=agent._guardrail_client,
+            client=ctx.acquire(agent._guardrail_model),
             model=agent._guardrail_model,
         )
-        return (policy_result.safe, policy_result)
+        # The classifier's call is billed: it lands on the run's ledger
+        # under its own API-reported model, so every terminal value the
+        # run produces carries it — never undercount (TG-4).
+        if outcome.usage is not None:
+            ctx.ledger.record(
+                outcome.api_model or agent._guardrail_model.value, outcome.usage
+            )
+        return (outcome.policy.safe, outcome.policy)
 
     # Fallback (shouldn't reach here with valid config)
     return (True, None)
@@ -118,8 +129,10 @@ async def check_guardrails(
 def extract_user_content(messages: list[Message]) -> str:
     """Extract user content from messages for guardrail checking.
 
-    Returns the content of the last user message in the conversation.
-    This assumes the app appends the new user input as the last message
+    Returns the text of the last user message in the conversation — the
+    message that decides; a text-less last message (media-only, empty)
+    yields "" with a warning rather than an older message's text. This
+    assumes the app appends the new user input as the last message
     before calling agent.run().
 
     Expected app pattern:
@@ -134,10 +147,18 @@ def extract_user_content(messages: list[Message]) -> str:
         Content of the last user message, or empty string if none found.
     """
     for message in reversed(messages):
-        if message.role == Role.USER and text_of(message):
-            # Media-only user messages read as empty and are skipped,
-            # matching the existing None-content behavior.
-            return text_of(message)
+        if message.role != Role.USER:
+            continue
+        text = text_of(message)
+        if not text:
+            # The last user message decides; an older text message is never
+            # classified in its place (TG-15) — say so, never skip silently.
+            logger.warning(
+                "Input guardrail skipped: the last user message has no text "
+                "to classify (%s)",
+                "media-only" if isinstance(message.content, list) else "empty",
+            )
+        return text
     return ""
 
 
@@ -199,19 +220,25 @@ def handle_guard_error(
         if agent._guardrails
         else GuardrailErrorPolicy.FAIL_OPEN
     )
+    # A classifier that answered but could not be parsed is not "never
+    # answered" (TG-6): it is named at ERROR, by size — the reply itself
+    # is untrusted text and stays out of the log.
+    unparseable = isinstance(error, GuardrailPolicyParseError)
+    detail = (
+        "the classifier answered but its verdict was unparseable "
+        f"({len(error.response)} chars)"
+        if isinstance(error, GuardrailPolicyParseError)
+        else str(error)
+    )
 
     if error_policy == GuardrailErrorPolicy.FAIL_OPEN:
-        logger.warning(
-            "Guardrail check failed (fail-open): %s. Treating as safe.",
-            str(error),
-        )
+        log = logger.error if unparseable else logger.warning
+        log("Guardrail check failed (fail-open): %s. Treating as safe.", detail)
         return (True, None)
-    else:
-        logger.error(
-            "Guardrail check failed (fail-closed): %s. Treating as blocked.",
-            str(error),
-        )
-        return (False, None)
+    logger.error(
+        "Guardrail check failed (fail-closed): %s. Treating as blocked.", detail
+    )
+    return (False, None)
 
 
 async def check_guard_and_block(
@@ -260,17 +287,21 @@ async def check_guard_and_block(
 def attach_input_guard_results(
     response: AgentResponse,
     input_policy: PolicyResult | None,
+    ledger: UsageLedger,
 ) -> AgentResponse:
     """Attach input guardrail results to an existing AgentResponse.
 
-    Used when agent finishes before guard in parallel execution.
+    Used when agent finishes before guard in parallel execution — the
+    response was finalized before the verdict landed, so usage is re-read
+    off the run's ledger, which now carries the classifier's spend.
 
     Args:
         response: The agent response to augment.
         input_policy: Input policy result.
+        ledger: The run's usage ledger.
 
     Returns:
-        AgentResponse with updated guardrail_result.
+        AgentResponse with updated guardrail_result and usage.
     """
     if input_policy is None:
         return response
@@ -298,4 +329,10 @@ def attach_input_guard_results(
 
     # dataclasses.replace, never a field-by-field rebuild — the manual
     # version silently dropped model= (DESIGN §3 found-bug register #2).
-    return dataclasses.replace(response, guardrail_result=guardrail_result)
+    usage = ledger.usage
+    return dataclasses.replace(
+        response,
+        guardrail_result=guardrail_result,
+        usage=usage if usage is not None else Usage(input_tokens=0, output_tokens=0),
+        usage_by_model=ledger.usage_by_model,
+    )

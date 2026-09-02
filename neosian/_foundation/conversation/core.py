@@ -20,6 +20,7 @@ import logging
 from typing import TYPE_CHECKING, Literal, Self, overload
 
 from neosian._foundation.agent.base import Agent
+from neosian._foundation.agent.lifetimes import closing
 from neosian._foundation.agent.session import AgentSession
 from neosian._foundation.conversation.compaction import (
     CompactionConfig,
@@ -432,19 +433,22 @@ class Conversation:
             assert self._agent is not None
             self._captured = None
             events = await self._session_for_run().run([*view, user], stream=True)
-            async for event in events:
-                # The capture hook fires before the terminal event is
-                # yielded (register #6), so persisting here — before the
-                # relay — makes "consumer saw the terminal ⇒ turn
-                # persisted" unconditional, even for a consumer that
-                # stops iterating at `done`. A store failure surfaces in
-                # place of the terminal event. The guard keeps an awaited
-                # call off the per-delta hot path: _persist runs only
-                # once the capture lands, and clears it when written.
-                if self._capture_pending():
-                    await self._persist(user)
-                yield fold_event(event, compacted)
-            await self._persist(user)
+            # Closed with this generator (AG-14): a consumer that stops
+            # iterating reaches the run's streams and tools synchronously.
+            async with closing(events):
+                async for event in events:
+                    # The capture hook fires before the terminal event is
+                    # yielded (register #6), so persisting here — before the
+                    # relay — makes "consumer saw the terminal ⇒ turn
+                    # persisted" unconditional, even for a consumer that
+                    # stops iterating at `done`. A store failure surfaces in
+                    # place of the terminal event. The guard keeps an awaited
+                    # call off the per-delta hot path: _persist runs only
+                    # once the capture lands, and clears it when written.
+                    if self._capture_pending():
+                        await self._persist(user)
+                    yield fold_event(event, compacted)
+                await self._persist(user)
 
 
 def _as_user_message(message: str | Message) -> Message:

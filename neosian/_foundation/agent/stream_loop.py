@@ -23,10 +23,10 @@ from neosian._foundation.agent.events import (
     ToolCallEvent,
 )
 from neosian._foundation.agent.guards import (
-    await_guard_result_safe,
     check_guard_and_block,
 )
 from neosian._foundation.agent.hooks import ToolEvent
+from neosian._foundation.agent.lifetimes import closing
 from neosian._foundation.agent.stream_final import stream_final_with_client_and_guard
 from neosian._foundation.agent.tool_exec import format_tool_result, run_tool_stream
 from neosian._foundation.llm.base import (
@@ -39,11 +39,12 @@ from neosian._foundation.llm.base import (
     assemble_streamed_content,
     normalize_stop_reason,
 )
-from neosian._foundation.shared.types import AnyModel, PolicyResult, ToolCallId
+from neosian._foundation.shared.types import AnyModel, ToolCallId
 from neosian._foundation.tools.base import ToolResult
 
 if TYPE_CHECKING:
     from neosian._foundation.agent.context import Attempt, RunContext
+    from neosian._foundation.agent.lifetimes import GuardWatch
 
 
 async def stream_with_client(
@@ -51,7 +52,7 @@ async def stream_with_client(
     client: BaseLLMClient,
     model: AnyModel,
     attempt: Attempt,
-    guard_task: asyncio.Task[tuple[bool, PolicyResult | None]] | None,
+    guard: GuardWatch,
 ) -> AsyncIterator[AgentEvent]:
     """Stream agent response with a specific client while monitoring guard task.
 
@@ -61,7 +62,8 @@ async def stream_with_client(
         attempt: This try's message snapshot and usage ledger; the
             ledger outlives an exception, so the caller reads billed
             usage off the attempt when this generator raises.
-        guard_task: Background guard task to monitor (or None if no guard).
+        guard: The run's guard watch — a finished verdict is polled
+            before each call and after each tool batch.
 
     Yields:
         Unstamped AgentEvent values — run_streaming assigns sequence.
@@ -93,7 +95,7 @@ async def stream_with_client(
     try:
         for iteration in range(agent._max_tool_iterations):
             # Check guard before each LLM call
-            if guard_task is not None and guard_task.done():
+            if (guard_task := guard.poll()) is not None:
                 blocked = await check_guard_and_block(
                     ctx,
                     guard_task,
@@ -103,7 +105,6 @@ async def stream_with_client(
                 if blocked:
                     yield blocked
                     return
-                guard_task = None  # Don't check again
 
             # Stream LLM response (real-time content + tool call detection)
             content_parts: list[str] = []
@@ -125,42 +126,42 @@ async def stream_with_client(
                 server_compaction=agent._server_compaction,
             )
 
-            async for chunk in stream:
-                # Check guard during streaming
-                if guard_task is not None and guard_task.done():
-                    blocked = await check_guard_and_block(
-                        ctx,
-                        guard_task,
-                        usage=merge_usage(attempt.usage, final_usage),
-                        usage_by_model=attempt.usage_by_model,
-                    )
-                    if blocked:
-                        yield blocked
-                        return
-                    guard_task = None
+            async with closing(stream):
+                async for chunk in stream:
+                    # Check guard during streaming
+                    if (guard_task := guard.poll()) is not None:
+                        blocked = await check_guard_and_block(
+                            ctx,
+                            guard_task,
+                            usage=merge_usage(attempt.usage, final_usage),
+                            usage_by_model=attempt.usage_by_model,
+                        )
+                        if blocked:
+                            yield blocked
+                            return
 
-                if chunk.model:
-                    turn_api_model = chunk.model
+                    if chunk.model:
+                        turn_api_model = chunk.model
 
-                if chunk.reasoning:
-                    reasoning_parts.append(chunk.reasoning)
-                    yield ReasoningEvent(reasoning=chunk.reasoning)
+                    if chunk.reasoning:
+                        reasoning_parts.append(chunk.reasoning)
+                        yield ReasoningEvent(reasoning=chunk.reasoning)
 
-                if chunk.content:
-                    content_parts.append(chunk.content)
-                    yield ContentEvent(content=chunk.content)
+                    if chunk.content:
+                        content_parts.append(chunk.content)
+                        yield ContentEvent(content=chunk.content)
 
-                if chunk.tool_calls:
-                    accumulated_tool_calls.extend(chunk.tool_calls)
+                    if chunk.tool_calls:
+                        accumulated_tool_calls.extend(chunk.tool_calls)
 
-                if chunk.compaction:
-                    accumulated_compaction.extend(chunk.compaction)
+                    if chunk.compaction:
+                        accumulated_compaction.extend(chunk.compaction)
 
-                if chunk.usage:
-                    final_usage = chunk.usage
+                    if chunk.usage:
+                        final_usage = chunk.usage
 
-                if chunk.finish_reason:
-                    turn_finish_reason = chunk.finish_reason
+                    if chunk.finish_reason:
+                        turn_finish_reason = chunk.finish_reason
 
             # Turn complete — fold its usage into the ledger and reset
             # so guard checks / the except handler don't double count.
@@ -182,30 +183,27 @@ async def stream_with_client(
             # Stream complete — no tool calls means final response
             if not accumulated_tool_calls:
                 # Final guard await before done
-                if guard_task is not None:
-                    is_safe, policy = await await_guard_result_safe(agent, guard_task)
-                    if (
-                        not is_safe
-                        and agent._guardrails
-                        and agent._guardrails.block_on_input
-                    ):
-                        rationale = policy.rationale if policy else None
-                        # Hook before the terminal yield: a consumer that
-                        # saw the terminal event has had on_turn run
-                        # (register #6).
-                        await emit_turn(
-                            ctx,
-                            blocked_response(
-                                policy, attempt.usage, attempt.usage_by_model
-                            ),
-                            streamed=True,
-                        )
-                        yield BlockedEvent(
-                            rationale=rationale,
-                            usage=attempt.usage,
-                            usage_by_model=attempt.usage_by_model,
-                        )
-                        return
+                is_safe, policy = await guard.verdict()
+                if (
+                    not is_safe
+                    and agent._guardrails
+                    and agent._guardrails.block_on_input
+                ):
+                    rationale = policy.rationale if policy else None
+                    # Hook before the terminal yield: a consumer that
+                    # saw the terminal event has had on_turn run
+                    # (register #6).
+                    await emit_turn(
+                        ctx,
+                        blocked_response(policy, attempt.usage, attempt.usage_by_model),
+                        streamed=True,
+                    )
+                    yield BlockedEvent(
+                        rationale=rationale,
+                        usage=attempt.usage,
+                        usage_by_model=attempt.usage_by_model,
+                    )
+                    return
 
                 normalized = (
                     normalize_stop_reason(turn_finish_reason)
@@ -260,7 +258,7 @@ async def stream_with_client(
             # Pre-batch guard check. Note: with parallel execution the guard
             # cannot interrupt mid-batch; in-flight tools run to completion.
             # The post-batch check below blocks the next LLM call.
-            if guard_task is not None and guard_task.done():
+            if (guard_task := guard.poll()) is not None:
                 blocked = await check_guard_and_block(
                     ctx,
                     guard_task,
@@ -270,7 +268,6 @@ async def stream_with_client(
                 if blocked:
                     yield blocked
                     return
-                guard_task = None
 
             # 1. Emit all tool_call events first, in LLM submission order.
             #    Sequence numbers are assigned by run_streaming's single
@@ -306,8 +303,10 @@ async def stream_with_client(
                 for tc in accumulated_tool_calls
             ]
 
-            # 3. Drain queue; cancel surviving tasks on early exit (e.g.
-            #    consumer disconnect) to prevent orphaned tool tasks.
+            # 3. Drain queue. On early exit (a consumer disconnect) cancel
+            #    the surviving wrappers and wait them out: each wrapper's
+            #    own finally cancels the tool it shielded (AG-1), so
+            #    aclose() returns only once every tool has stopped.
             try:
                 while True:
                     item = await queue.get()
@@ -319,9 +318,10 @@ async def stream_with_client(
                 for t in tasks:
                     if not t.done():
                         t.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
 
             # 4. Post-batch guard check.
-            if guard_task is not None and guard_task.done():
+            if (guard_task := guard.poll()) is not None:
                 blocked = await check_guard_and_block(
                     ctx,
                     guard_task,
@@ -331,7 +331,6 @@ async def stream_with_client(
                 if blocked:
                     yield blocked
                     return
-                guard_task = None
 
             # 5. Append Tool messages in SUBMISSION order (Anthropic API
             #    contract). SSE emission used completion order; LLM history
@@ -361,17 +360,20 @@ async def stream_with_client(
 
         # Max iterations reached - stream final response without tools
         in_final = True
-        async for event in stream_final_with_client_and_guard(
-            ctx,
-            client=client,
-            model=model,
-            attempt=attempt,
-            guard_task=guard_task,
-            reasoning_effort=effective_reasoning,
-            run_tool_calls=run_tool_calls,
-            run_tool_results=run_tool_results,
-        ):
-            yield event
+        async with closing(
+            stream_final_with_client_and_guard(
+                ctx,
+                client=client,
+                model=model,
+                attempt=attempt,
+                guard=guard,
+                reasoning_effort=effective_reasoning,
+                run_tool_calls=run_tool_calls,
+                run_tool_results=run_tool_results,
+            )
+        ) as events:
+            async for event in events:
+                yield event
     except Exception as exc:
         # Fold the mid-turn remainder into the ledger before the
         # exception escapes — the caller reads billed usage off the

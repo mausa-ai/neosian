@@ -15,6 +15,7 @@ from neosian._foundation.agent.events import (
     ToolProgressEvent,
     ToolResultEvent,
 )
+from neosian._foundation.agent.lifetimes import reap
 from neosian._foundation.llm.base import ToolCall
 from neosian._foundation.shared.constants import ErrorMessages, Streaming
 from neosian._foundation.shared.types import ToolCallId
@@ -95,23 +96,26 @@ async def execute_tool_with_heartbeats(
     tool_task = asyncio.create_task(execute_tool(agent, tool_call))
     interval = Streaming.HEARTBEAT_INTERVAL_SECONDS
 
-    while not tool_task.done():
-        try:
-            # Wait for tool to complete or timeout
-            await asyncio.wait_for(
-                asyncio.shield(tool_task),
-                timeout=interval,
-            )
-        except TimeoutError:
-            # Tool still running - emit progress
-            elapsed_ms = int((time.monotonic() - start_time) * 1000)
-            yield (
-                None,
-                ToolProgressEvent(tool_call_id=tool_call.id, elapsed_ms=elapsed_ms),
-            )
+    try:
+        while not tool_task.done():
+            try:
+                # The shield keeps a heartbeat timeout from cancelling the
+                # tool; only closing this generator does (below).
+                await asyncio.wait_for(asyncio.shield(tool_task), timeout=interval)
+            except TimeoutError:
+                # Tool still running - emit progress
+                elapsed_ms = int((time.monotonic() - start_time) * 1000)
+                yield (
+                    None,
+                    ToolProgressEvent(tool_call_id=tool_call.id, elapsed_ms=elapsed_ms),
+                )
 
-    # Tool completed - yield result
-    yield (tool_task.result(), None)
+        # Tool completed - yield result
+        yield (tool_task.result(), None)
+    finally:
+        # Closing this generator — a consumer disconnect, a cancelled
+        # wrapper — cancels the tool it shielded and waits it out (AG-1).
+        await reap(tool_task)
 
 
 async def run_tool_stream(

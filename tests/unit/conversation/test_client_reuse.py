@@ -145,3 +145,31 @@ class TestClientReuse:
         await convo.send("first")
         await convo.send("second")
         assert clients[0].closed is False  # the documented safety
+
+    async def test_compaction_rebuild_mints_no_guard_client(
+        self, store: FileStore
+    ) -> None:
+        """A guarded agent rebuilt at the boundary creates no client of its
+        own — the classifier rides the pool's acquire lease (AG-6)."""
+        from neosian._foundation.guardrails.policy import PolicyBuilder
+        from neosian._foundation.shared.types import GuardrailMode, GuardrailsConfig
+
+        config, clients = _counting_config(
+            _replies("r1", "r2", "r3", "r4"),
+            model=Model.FAKE_SMALL,
+            guardrails=GuardrailsConfig(
+                input_mode=GuardrailMode.POLICY_ONLY,
+                input_policy=PolicyBuilder.test(),
+                block_on_input=False,
+            ),
+        )
+        convo = Conversation(
+            config, store=store, conversation_id="t1", compaction=_TRIGGER
+        )
+        await convo.send(_long(1))
+        await convo.send(_long(2))
+        await convo.send(_long(3))  # boundary fires here
+        await convo.send(_long(4))
+        assert len(clients) == 1
+        await convo.aclose()
+        assert all(client.closed for client in clients)

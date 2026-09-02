@@ -3,7 +3,6 @@ fallback (DESIGN §3)."""
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING
@@ -16,7 +15,7 @@ from neosian._foundation.agent.fallback import (
     reraise_caller_errors,
     unsupported_content_types,
 )
-from neosian._foundation.agent.guards import check_guardrails, extract_user_content
+from neosian._foundation.agent.lifetimes import GuardWatch, closing
 from neosian._foundation.agent.stream_loop import stream_with_client
 from neosian._foundation.llm.base import Message, Role
 from neosian._foundation.shared.constants import ErrorMessages
@@ -25,7 +24,6 @@ from neosian._foundation.shared.exceptions import (
     ModelFailedError,
 )
 from neosian._foundation.shared.registry import provider_label
-from neosian._foundation.shared.types import GuardrailMode, PolicyResult
 
 if TYPE_CHECKING:
     from neosian._foundation.agent.context import RunContext
@@ -53,40 +51,36 @@ async def run_streaming(
         AgentEvent values, ReadyEvent first, sequence starting at 1.
     """
     agent = ctx.agent
-    # Determine if we need to run input guardrails
-    has_input_guard = (
-        agent._guardrails is not None
-        and agent._guardrails.input_mode != GuardrailMode.NONE
-    )
-    user_content = extract_user_content(messages) if has_input_guard else ""
-
-    # Start guard task in background if needed
-    guard_task: asyncio.Task[tuple[bool, PolicyResult | None]] | None = None
-    if has_input_guard and user_content:
-        guard_task = asyncio.create_task(check_guardrails(agent, user_content, "input"))
-
     sequencer = EventSequencer()
-    yield sequencer.stamp(
-        ReadyEvent(
-            requested_model=agent._model.value,
-            provider=provider_label(agent._model),
+    # The watch owns the guard task for the whole run: a consumer that
+    # stops iterating, an error, a cancellation — each leaves the `async
+    # with`, which reaps whatever is still pending (AG-3).
+    async with GuardWatch.start(ctx, messages) as guard:
+        yield sequencer.stamp(
+            ReadyEvent(
+                requested_model=agent._model.value,
+                provider=provider_label(agent._model),
+            )
         )
-    )
-    async for event in stream_agent_with_guard(ctx, messages, guard_task):
-        yield sequencer.stamp(event)
+        # Every nested stream is closed with its consumer (AG-14): a
+        # consumer's aclose() reaches the provider stream and the tool
+        # batch synchronously, never on the garbage collector's schedule.
+        async with closing(stream_agent_with_guard(ctx, messages, guard)) as events:
+            async for event in events:
+                yield sequencer.stamp(event)
 
 
 async def stream_agent_with_guard(
     ctx: RunContext,
     messages: list[Message],
-    guard_task: asyncio.Task[tuple[bool, PolicyResult | None]] | None,
+    guard: GuardWatch,
 ) -> AsyncIterator[AgentEvent]:
     """Stream agent response while monitoring guard task.
 
     Args:
         ctx: Per-run context (client acquisition, sticky fallback state).
         messages: Conversation history (without system message).
-        guard_task: Background guard task to monitor (or None if no guard).
+        guard: The run's guard watch.
 
     Yields:
         Unstamped AgentEvent values — run_streaming assigns sequence.
@@ -130,22 +124,28 @@ async def stream_agent_with_guard(
 
     # If using fallback (sticky), try fallback first
     if fallback_state is not None and fallback_state.using_fallback:
-        async for event in stream_with_fallback_model(ctx, base_messages, guard_task):
-            yield event
+        async with closing(
+            stream_with_fallback_model(ctx, base_messages, guard)
+        ) as events:
+            async for event in events:
+                yield event
         return
 
     # Try main model
-    attempt = Attempt.start(agent._model, base_messages)
+    attempt = Attempt.start(agent._model, base_messages, ctx.ledger)
     try:
         client = ctx.acquire(agent._model)
-        async for event in stream_with_client(
-            ctx,
-            client=client,
-            model=agent._model,
-            attempt=attempt,
-            guard_task=guard_task,
-        ):
-            yield event
+        async with closing(
+            stream_with_client(
+                ctx,
+                client=client,
+                model=agent._model,
+                attempt=attempt,
+                guard=guard,
+            )
+        ) as events:
+            async for event in events:
+                yield event
         # Success on main - reset fallback state if present
         if fallback_state is not None:
             fallback_state.using_fallback = False
@@ -188,18 +188,21 @@ async def stream_agent_with_guard(
         # Fresh message snapshot (a failed attempt's partial tool rounds
         # must not leak into the fallback's history); billed usage carries.
         fallback_attempt = Attempt.start(
-            agent._fallback.model, base_messages, prior=attempt
+            agent._fallback.model, base_messages, ctx.ledger
         )
         try:
             fallback_client = ctx.acquire(agent._fallback.model)
-            async for event in stream_with_client(
-                ctx,
-                client=fallback_client,
-                model=agent._fallback.model,
-                attempt=fallback_attempt,
-                guard_task=guard_task,
-            ):
-                yield event
+            async with closing(
+                stream_with_client(
+                    ctx,
+                    client=fallback_client,
+                    model=agent._fallback.model,
+                    attempt=fallback_attempt,
+                    guard=guard,
+                )
+            ) as events:
+                async for event in events:
+                    yield event
             # Success on fallback - update state
             if fallback_state is not None:
                 fallback_state.using_fallback = True
@@ -219,7 +222,7 @@ async def stream_agent_with_guard(
 async def stream_with_fallback_model(
     ctx: RunContext,
     base_messages: list[Message],
-    guard_task: asyncio.Task[tuple[bool, PolicyResult | None]] | None,
+    guard: GuardWatch,
 ) -> AsyncIterator[AgentEvent]:
     """Stream with fallback model (sticky mode).
 
@@ -227,7 +230,7 @@ async def stream_with_fallback_model(
         ctx: Per-run context; its fallback_state is non-None here —
             callers dispatch to this method only when sticky.
         base_messages: Full conversation with system message prepended.
-        guard_task: Background guard task to monitor (or None).
+        guard: The run's guard watch.
 
     Yields:
         Unstamped AgentEvent values — run_streaming assigns sequence.
@@ -248,17 +251,20 @@ async def stream_with_fallback_model(
     # Capability-aware: media the sticky fallback model can't handle
     # routes straight to the main model.
     if unsupported_content_types(agent._fallback.model, base_messages):
-        attempt = Attempt.start(agent._model, base_messages)
+        attempt = Attempt.start(agent._model, base_messages, ctx.ledger)
         try:
             main_client = ctx.acquire(agent._model)
-            async for event in stream_with_client(
-                ctx,
-                client=main_client,
-                model=agent._model,
-                attempt=attempt,
-                guard_task=guard_task,
-            ):
-                yield event
+            async with closing(
+                stream_with_client(
+                    ctx,
+                    client=main_client,
+                    model=agent._model,
+                    attempt=attempt,
+                    guard=guard,
+                )
+            ) as events:
+                async for event in events:
+                    yield event
             # Main handled it - reset sticky state
             fallback_state.using_fallback = False
             fallback_state.successful_fallback_calls = 0
@@ -273,17 +279,20 @@ async def stream_with_fallback_model(
                 usage_by_model=attempt.usage_by_model,
             ) from e
 
-    attempt = Attempt.start(agent._fallback.model, base_messages)
+    attempt = Attempt.start(agent._fallback.model, base_messages, ctx.ledger)
     try:
         client = ctx.acquire(agent._fallback.model)
-        async for event in stream_with_client(
-            ctx,
-            client=client,
-            model=agent._fallback.model,
-            attempt=attempt,
-            guard_task=guard_task,
-        ):
-            yield event
+        async with closing(
+            stream_with_client(
+                ctx,
+                client=client,
+                model=agent._fallback.model,
+                attempt=attempt,
+                guard=guard,
+            )
+        ) as events:
+            async for event in events:
+                yield event
         # Success - increment counter
         fallback_state.successful_fallback_calls += 1
         return
@@ -306,17 +315,20 @@ async def stream_with_fallback_model(
             streamed=True,
         )
         fallback_error = str(e)
-        main_attempt = Attempt.start(agent._model, base_messages, prior=attempt)
+        main_attempt = Attempt.start(agent._model, base_messages, ctx.ledger)
         try:
             main_client = ctx.acquire(agent._model)
-            async for event in stream_with_client(
-                ctx,
-                client=main_client,
-                model=agent._model,
-                attempt=main_attempt,
-                guard_task=guard_task,
-            ):
-                yield event
+            async with closing(
+                stream_with_client(
+                    ctx,
+                    client=main_client,
+                    model=agent._model,
+                    attempt=main_attempt,
+                    guard=guard,
+                )
+            ) as events:
+                async for event in events:
+                    yield event
             # Main recovered - reset state
             fallback_state.using_fallback = False
             fallback_state.successful_fallback_calls = 0

@@ -30,7 +30,6 @@ from neosian._foundation.shared.types import (
 from neosian._foundation.tools.base import ToolResult
 
 if TYPE_CHECKING:
-    from neosian._foundation.agent.base import Agent
     from neosian._foundation.agent.context import Attempt, RunContext
 
 
@@ -115,14 +114,14 @@ async def execute_with_client(
         # If no tool calls, we're done - check output guardrails
         if not response.message.tool_calls:
             return await finalize_response(
-                agent,
+                ctx,
                 attempt,
                 message=response.message,
                 tool_calls_made=all_tool_calls,
                 tool_results=all_tool_results,
                 response_format=response_format,
                 stop_reason=response.stop_reason,
-                model=response.model,
+                model=response.model or model.value,
             )
 
         # Add assistant message with tool calls to history
@@ -215,19 +214,19 @@ async def execute_with_client(
     attempt.record(final_response.model, final_response.usage)
 
     return await finalize_response(
-        agent,
+        ctx,
         attempt,
         message=final_response.message,
         tool_calls_made=all_tool_calls,
         tool_results=all_tool_results,
         response_format=response_format,
         stop_reason=final_response.stop_reason,
-        model=final_response.model,
+        model=final_response.model or model.value,
     )
 
 
 async def finalize_response(
-    agent: Agent,
+    ctx: RunContext,
     attempt: Attempt,
     *,
     message: Message,
@@ -245,6 +244,7 @@ async def finalize_response(
     attempt — one source of truth, no field threading.
 
     Args:
+        ctx: Per-run context (the output guard's client acquisition).
         attempt: The successful attempt (messages + usage ledger).
         message: The assistant's response message.
         tool_calls_made: List of tool calls made during execution.
@@ -256,6 +256,7 @@ async def finalize_response(
     Returns:
         AgentResponse with output guardrail results and parsed content (if any).
     """
+    agent = ctx.agent
     output_policy: PolicyResult | None = None
     is_output_safe = True
     message_text = text_of(message)
@@ -267,7 +268,7 @@ async def finalize_response(
         and message_text
     ):
         is_output_safe, output_policy = await check_guardrails(
-            agent, message_text, "output"
+            ctx, message_text, "output"
         )
 
     # Build guardrail result if output guardrails were run

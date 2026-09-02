@@ -4,12 +4,11 @@ fallback (DESIGN §3)."""
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import logging
 from typing import TYPE_CHECKING
 
 from neosian._foundation.agent.context import Attempt
-from neosian._foundation.agent.emit import emit_fallback
+from neosian._foundation.agent.emit import blocked_response, emit_fallback
 from neosian._foundation.agent.fallback import (
     ensure_fallback_viable,
     reraise_caller_errors,
@@ -17,11 +16,9 @@ from neosian._foundation.agent.fallback import (
 )
 from neosian._foundation.agent.guards import (
     attach_input_guard_results,
-    await_guard_result_safe,
-    check_guardrails,
-    extract_user_content,
     get_guard_result_safe,
 )
+from neosian._foundation.agent.lifetimes import GuardWatch, reap
 from neosian._foundation.agent.loop import execute_with_client
 from neosian._foundation.agent.response import AgentResponse
 from neosian._foundation.llm.base import Message, Role
@@ -31,8 +28,6 @@ from neosian._foundation.shared.exceptions import (
     ModelFailedError,
 )
 from neosian._foundation.shared.types import (
-    GuardrailMode,
-    GuardrailResult,
     ResponseFormat,
 )
 
@@ -61,74 +56,61 @@ async def run_blocking(
         AgentResponse with the final message and execution details.
     """
     agent = ctx.agent
-    # No input guardrails configured - run agent directly
-    if agent._guardrails is None or agent._guardrails.input_mode == GuardrailMode.NONE:
-        return await execute_agent_core(ctx, messages, response_format=response_format)
-
-    # Extract user content for guardrail check
-    user_content = extract_user_content(messages)
-    if not user_content:
-        return await execute_agent_core(ctx, messages, response_format=response_format)
-
-    # Run guard and agent in parallel
-    guard_task = asyncio.create_task(check_guardrails(agent, user_content, "input"))
-    agent_task = asyncio.create_task(
-        execute_agent_core(ctx, messages, response_format=response_format)
-    )
-
-    # Wait for first to complete
-    done, pending = await asyncio.wait(
-        [guard_task, agent_task],
-        return_when=asyncio.FIRST_COMPLETED,
-    )
-
-    # Case 1: Guard finished first
-    if guard_task in done and agent_task in pending:
-        is_safe, input_policy = get_guard_result_safe(agent, guard_task)
-
-        if not is_safe and agent._guardrails.block_on_input:
-            # Cancel agent to save resources
-            agent_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await agent_task
-            return AgentResponse(
-                message=Message(role=Role.ASSISTANT, content=""),
-                blocked=True,
-                guardrail_result=GuardrailResult(
-                    safe=False,
-                    flagged_at="input",
-                    input_policy=input_policy,
-                ),
+    guardrails = agent._guardrails
+    block_on_input = guardrails is not None and guardrails.block_on_input
+    # The watch owns the guard task for the whole run: every exit below —
+    # a return, an agent error, a cancellation — leaves the `async with`,
+    # which reaps whatever is still pending (AG-2).
+    async with GuardWatch.start(ctx, messages) as guard:
+        guard_task = guard.task
+        if guard_task is None:
+            return await execute_agent_core(
+                ctx, messages, response_format=response_format
             )
 
-        # Safe or block_on_input=False - wait for agent and attach guard results
-        agent_response = await agent_task
-        return attach_input_guard_results(agent_response, input_policy)
-
-    # Case 2: Agent finished first
-    agent_response = agent_task.result()
-
-    # Still need guard verdict (with error handling)
-    is_safe, input_policy = await await_guard_result_safe(agent, guard_task)
-
-    if not is_safe and agent._guardrails.block_on_input:
-        # Agent ran but we must block - discard the response content.
-        # The tokens were still billed, so usage survives the discard;
-        # turn_messages stays empty (a blocked turn is not replayable).
-        return AgentResponse(
-            message=Message(role=Role.ASSISTANT, content=""),
-            usage=agent_response.usage,
-            blocked=True,
-            guardrail_result=GuardrailResult(
-                safe=False,
-                flagged_at="input",
-                input_policy=input_policy,
-            ),
-            usage_by_model=agent_response.usage_by_model,
+        # Run guard and agent in parallel
+        agent_task = asyncio.create_task(
+            execute_agent_core(ctx, messages, response_format=response_format)
         )
+        try:
+            done, _pending = await asyncio.wait(
+                [guard_task, agent_task], return_when=asyncio.FIRST_COMPLETED
+            )
+        except asyncio.CancelledError:
+            await reap(agent_task)
+            raise
 
-    # Safe or block_on_input=False - return with guard results
-    return attach_input_guard_results(agent_response, input_policy)
+        # Case 1: Guard finished first
+        if agent_task not in done:
+            is_safe, input_policy = get_guard_result_safe(agent, guard_task)
+
+            if not is_safe and block_on_input:
+                # Cancel the agent; what it billed before the cancel is on
+                # the run's ledger and rides the blocked response (AG-13).
+                await reap(agent_task)
+                return blocked_response(
+                    input_policy, ctx.ledger.usage, ctx.ledger.usage_by_model
+                )
+
+            # Safe or block_on_input=False - wait for agent and attach guard results
+            agent_response = await agent_task
+            return attach_input_guard_results(agent_response, input_policy, ctx.ledger)
+
+        # Case 2: Agent finished first
+        agent_response = agent_task.result()
+
+        # Still need guard verdict (with error handling)
+        is_safe, input_policy = await guard.verdict()
+
+        if not is_safe and block_on_input:
+            # Agent ran but we must block - discard the response content;
+            # the tokens were still billed, so the ledger rides along.
+            return blocked_response(
+                input_policy, ctx.ledger.usage, ctx.ledger.usage_by_model
+            )
+
+        # Safe or block_on_input=False - return with guard results
+        return attach_input_guard_results(agent_response, input_policy, ctx.ledger)
 
 
 async def execute_agent_core(
@@ -138,8 +120,8 @@ async def execute_agent_core(
 ) -> AgentResponse:
     """Execute the agent LLM and tool loop with optional fallback.
 
-    This is the core agent execution without input guardrail checks.
-    Used by both blocking and streaming modes.
+    This is the core agent execution without input guardrail checks —
+    the blocking twin of `stream_agent_with_guard`.
 
     Args:
         ctx: Per-run context (client acquisition, sticky fallback state).
@@ -191,7 +173,7 @@ async def execute_agent_core(
         return await execute_with_fallback_model(ctx, base_messages, response_format)
 
     # Try main model
-    attempt = Attempt.start(agent._model, base_messages)
+    attempt = Attempt.start(agent._model, base_messages, ctx.ledger)
     try:
         client = ctx.acquire(agent._model)
         response = await execute_with_client(
@@ -243,7 +225,7 @@ async def execute_agent_core(
         # Fresh message snapshot (a failed attempt's partial tool rounds
         # must not leak into the fallback's history); billed usage carries.
         fallback_attempt = Attempt.start(
-            agent._fallback.model, base_messages, prior=attempt
+            agent._fallback.model, base_messages, ctx.ledger
         )
         try:
             fallback_client = ctx.acquire(agent._fallback.model)
@@ -302,7 +284,7 @@ async def execute_with_fallback_model(
     # Capability-aware: media the sticky fallback model can't handle
     # routes straight to the main model.
     if unsupported_content_types(agent._fallback.model, base_messages):
-        attempt = Attempt.start(agent._model, base_messages)
+        attempt = Attempt.start(agent._model, base_messages, ctx.ledger)
         try:
             main_client = ctx.acquire(agent._model)
             response = await execute_with_client(
@@ -326,7 +308,7 @@ async def execute_with_fallback_model(
                 usage_by_model=attempt.usage_by_model,
             ) from e
 
-    attempt = Attempt.start(agent._fallback.model, base_messages)
+    attempt = Attempt.start(agent._fallback.model, base_messages, ctx.ledger)
     try:
         client = ctx.acquire(agent._fallback.model)
         response = await execute_with_client(
@@ -358,7 +340,7 @@ async def execute_with_fallback_model(
             streamed=False,
         )
         fallback_error = str(e)
-        main_attempt = Attempt.start(agent._model, base_messages, prior=attempt)
+        main_attempt = Attempt.start(agent._model, base_messages, ctx.ledger)
         try:
             main_client = ctx.acquire(agent._model)
             response = await execute_with_client(

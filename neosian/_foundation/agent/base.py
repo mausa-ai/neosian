@@ -112,19 +112,18 @@ class Agent:
         # the leaf both paths share — parity by construction.
         self._tool_gate = config.tool_gate
 
-        # Store guardrails config and create the policy client if needed.
-        # The policy model defaults to the agent's own (ledger #84); its
-        # client rides _create_client, so client_factory injection makes
+        # Store guardrails config. The policy model defaults to the agent's
+        # own (ledger #84); its client rides the run's acquire seam like
+        # every other client (cached and closed by a session's pool — an
+        # Agent mints nothing here), so client_factory injection makes
         # guardrails keylessly testable on FakeProvider. Key absence is
         # loud here, never a silent fail-open at check time.
         self._guardrails = config.guardrails
-        self._guardrail_client: BaseLLMClient | None = None
         self._guardrail_model: AnyModel | None = None
         if self._guardrails is not None:
             self._guardrail_model = self._guardrails.model or config.model
             if self._client_factory is None:
                 require_model_key(self._guardrail_model)
-            self._guardrail_client = self._create_client(self._guardrail_model)
 
         # Build tool registry from decorated functions
         self._tools: dict[ToolName, ToolFunction] = {}

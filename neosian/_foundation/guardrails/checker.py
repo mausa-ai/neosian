@@ -9,12 +9,30 @@ FakeProvider.
 """
 
 import json
+import secrets
+from dataclasses import dataclass
+
+from pydantic import BaseModel
 
 from neosian._foundation.guardrails.policy import evaluate_test_policy, is_test_policy
-from neosian._foundation.llm.base import BaseLLMClient, Message, Role, text_of
+from neosian._foundation.llm.base import BaseLLMClient, Message, Role, Usage, text_of
 from neosian._foundation.shared.exceptions import GuardrailPolicyParseError
 from neosian._foundation.shared.prompt_assets import get_prompt, render
-from neosian._foundation.shared.types import AnyModel, PolicyResult
+from neosian._foundation.shared.types import AnyModel, PolicyResult, ResponseFormat
+
+
+class _PolicyVerdict(BaseModel):
+    """The verdict's wire schema — the provider-side constraint (TG-6).
+
+    Every field is required (OpenAI strict mode's rule; nullable via the
+    type). `parse_policy_response` stays the parser: its rules are
+    stricter than a lax model (a string violation is rejected, a missing
+    one reads unsafe), and they are pinned.
+    """
+
+    violation: int
+    category: str | None
+    rationale: str | None
 
 
 def parse_policy_response(response: str) -> PolicyResult:
@@ -57,12 +75,23 @@ def parse_policy_response(response: str) -> PolicyResult:
         raise GuardrailPolicyParseError(response) from e
 
 
+@dataclass(frozen=True, slots=True)
+class GuardOutcome:
+    """One classifier verdict with what it cost: the call is billed, so
+    its usage and API-reported model travel to the run's ledger (TG-4).
+    The test policy answers for free."""
+
+    policy: PolicyResult
+    usage: Usage | None = None
+    api_model: str | None = None
+
+
 async def check_with_policy(
     content: str,
     policy: str,
     client: BaseLLMClient,
     model: AnyModel,
-) -> PolicyResult:
+) -> GuardOutcome:
     """Check content against a custom policy via the classifier prompt.
 
     No explicit temperature is sent — provider defaults are the only
@@ -76,7 +105,7 @@ async def check_with_policy(
         model: The policy model (GuardrailsConfig.model or the agent's).
 
     Returns:
-        PolicyResult with evaluation result.
+        The verdict and its spend.
 
     Raises:
         GuardrailPolicyParseError: If response cannot be parsed.
@@ -84,11 +113,17 @@ async def check_with_policy(
     # Handle test policy
     if is_test_policy(policy):
         safe, category, rationale = evaluate_test_policy()
-        return PolicyResult(safe=safe, category=category, rationale=rationale)
+        return GuardOutcome(
+            PolicyResult(safe=safe, category=category, rationale=rationale)
+        )
 
-    # Build the full prompt with policy and content
+    # Build the full prompt with policy and content. The untrusted content
+    # is fenced behind a per-call nonce (TG-5); the renderer substitutes in
+    # keyword order, so the nonce lands first and the content last — a
+    # literal "{{nonce}}" inside the content can never expand.
     full_prompt = render(
         get_prompt("guardrails.classifier"),
+        nonce=secrets.token_hex(8),
         policies=policy,
         content=content,
     )
@@ -96,5 +131,10 @@ async def check_with_policy(
     response = await client.complete(
         messages=[Message(role=Role.USER, content=full_prompt)],
         model=model,
+        response_format=ResponseFormat(schema=_PolicyVerdict),
     )
-    return parse_policy_response(text_of(response.message))
+    return GuardOutcome(
+        parse_policy_response(text_of(response.message)),
+        usage=response.usage,
+        api_model=response.model,
+    )
