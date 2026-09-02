@@ -72,6 +72,12 @@ from neosian._foundation.llm.base import (
     text_of,
 )
 from neosian._foundation.llm.codec import message_from_json, message_to_json
+from neosian._foundation.memory.actor import (
+    ACTOR_MAX_LENGTH,
+    ACTOR_PATTERN,
+    Actor,
+    parse_actor,
+)
 from neosian._foundation.memory.base import MemoryStore
 from neosian._foundation.memory.file import FileStore
 from neosian._foundation.memory.index import memory_system_section
@@ -277,6 +283,10 @@ __all__ = [
     "parse_scope",
     "SCOPE_PATTERN",
     "SCOPE_MAX_LENGTH",
+    "Actor",
+    "parse_actor",
+    "ACTOR_PATTERN",
+    "ACTOR_MAX_LENGTH",
     "MEMORY_FORMAT_VERSION",
     "MemoryStoreError",
     "MemoryConflictError",

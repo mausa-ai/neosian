@@ -359,7 +359,7 @@ class TestMemoryWiring:
         await convo.send("remember")
         (version,) = await store.versions("user:demo", "prefs")
         # NP: in-run tool writes carry the turn-ref actor.
-        assert version.actor == "t1#1"
+        assert version.actor == "conv:t1#1"
 
     async def test_no_duplicate_memory_tool_is_registered(
         self, store: FileStore

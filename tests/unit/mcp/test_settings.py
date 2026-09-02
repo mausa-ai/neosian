@@ -132,9 +132,9 @@ class TestMounts:
 
 
 class TestActor:
-    def test_defaults_to_mcp(self) -> None:
+    def test_defaults_to_mcp_stdio(self) -> None:
         settings = parse_args(["--root", "m", "--scope", "user:me"], _ENV)
-        assert settings.actor == "mcp"
+        assert settings.actor == "mcp:stdio"
 
     def test_override(self) -> None:
         settings = parse_args(

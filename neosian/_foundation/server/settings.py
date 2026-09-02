@@ -30,6 +30,9 @@ if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
 SERVE_TOKEN_ENV: Final = "NEOSIAN_SERVE_TOKEN"
+# The `/mcp` surface's process-wide actor (DESIGN §18.6, §20): the SDK's
+# session manager gives no per-request identity, so one name per process.
+DEFAULT_ACTOR: Final = "serve:mcp"
 DEFAULT_HOST: Final = "127.0.0.1"
 # "NEOS" on a phone keypad; unassigned in the registered range.
 DEFAULT_PORT: Final = 6367
@@ -70,7 +73,7 @@ def parse_args(
         "the state process.",
         epilog=_EPILOG,
     )
-    add_store_arguments(parser, default_actor="serve")
+    add_store_arguments(parser, default_actor=DEFAULT_ACTOR)
     parser.add_argument(
         "--host", default=DEFAULT_HOST, help=f"bind address (default {DEFAULT_HOST})"
     )

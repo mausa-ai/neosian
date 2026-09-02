@@ -756,6 +756,24 @@ class MemoryScopeInvalidError(MemoryStoreError):
         self.reason = reason
 
 
+class MemoryActorInvalidError(MemoryStoreError):
+    """Raised when an actor string violates the grammar (DESIGN §20).
+
+    Raised only by neosian's own writers, the shell and the daemon — the
+    store ABC keeps actors opaque (ECOSYSTEM §2's convention rule).
+    """
+
+    code = "memory_actor_invalid"
+
+    def __init__(self, actor: str, reason: str) -> None:
+        super().__init__(
+            f"Invalid actor {actor!r}: {reason}",
+            details={"actor": actor, "reason": reason},
+        )
+        self.actor = actor
+        self.reason = reason
+
+
 class MemoryPathInvalidError(MemoryStoreError):
     """Raised when a document path violates the grammar (DESIGN §8)."""
 

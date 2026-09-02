@@ -12,10 +12,11 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Final, TextIO
 
+from neosian._foundation.mcp.server import DEFAULT_ACTOR
 from neosian._foundation.memory.settings import (
     DEFAULT_SCHEMA,
     POSTGRES_DSN_ENV,
@@ -31,7 +32,7 @@ from neosian._foundation.shared.fileio import PRIVATE_FILE, atomic_write
 SERVER_NAME: Final = "neosian-memory"
 _SERVER_ARGV: Final = ("-m", "neosian.mcp")  # the one place the module path lives
 _SERVERS_KEY: Final = "mcpServers"
-_DEFAULT_ACTOR: Final = "mcp"
+_DEFAULT_ACTOR: Final = DEFAULT_ACTOR
 _DESCRIPTION: Final = "Print or apply an MCP client registration for neosian memory."
 _EPILOG: Final = (
     "Print mode (the default) puts the paste-able JSON fragment on stdout "
@@ -339,6 +340,9 @@ def run_install(
         return 2
 
     target = resolve_target(args.client, context)
+    if settings.actor == _DEFAULT_ACTOR:
+        # The installer knows the client; the stdio default does not.
+        settings = replace(settings, actor=f"mcp:{args.client}")
     entry = build_entry(settings, executable=context.executable)
     created = False
     try:

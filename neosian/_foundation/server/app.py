@@ -45,6 +45,7 @@ from neosian._foundation.server.sdk import (
     StreamableHTTPASGIApp,
     StreamableHTTPSessionManager,
 )
+from neosian._foundation.server.settings import DEFAULT_ACTOR
 from neosian._foundation.server.wire import WIRE_VERSION
 from neosian._foundation.shared.exceptions import ConfigurationError
 
@@ -113,7 +114,7 @@ async def build_app(
     *,
     token: str,
     mounts: Sequence[Mount] = (),
-    actor: str | None = "serve",
+    actor: str | None = DEFAULT_ACTOR,
 ) -> Starlette:
     """Build the state process's app over one both-seams store.
 

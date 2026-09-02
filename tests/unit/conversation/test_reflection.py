@@ -415,7 +415,7 @@ class TestConversationReflect:
         assert [w.path for w in result.writes] == ["/memories/preferences"]
         assert result.usage == _USAGE
         versions = await store.versions("user:1", "preferences")
-        assert versions[0].actor == "t1"
+        assert versions[0].actor == "conv:t1"
         # Pending cleared: a second reflect makes no further model call.
         assert await convo.reflect() == ReflectionResult()
         assert len(fake.calls) == 2
@@ -637,7 +637,7 @@ class TestReflectionAcrossSessions:
         document = await store_check.read("user:1", "preferences")
         assert document is not None and document.content == "Prefers espresso."
         versions = await store_check.versions("user:1", "preferences")
-        assert versions[0].actor == "thread-829"
+        assert versions[0].actor == "conv:thread-829"
 
         # Session 2 — a fresh store and conversation: the frozen index
         # lists the reflected document and the agent reads it back.

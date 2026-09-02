@@ -41,7 +41,7 @@ def _settings(
     root: Path | None = Path("mem"),
     dsn: str | None = None,
     schema: str = "neosian",
-    actor: str = "mcp",
+    actor: str = "mcp:stdio",
 ) -> StoreSettings:
     return StoreSettings(mounts=mounts, root=root, dsn=dsn, schema=schema, actor=actor)
 
@@ -436,3 +436,22 @@ class TestRendering:
         )
         assert code == 0
         assert "one writer per FileStore root" in err
+
+
+class TestTheClientActor:
+    def test_the_default_actor_names_the_client(self, tmp_path: Path) -> None:
+        """DESIGN §20: the installer knows the client, the stdio default does
+        not — `mcp:<client>` is rendered unless --actor was given."""
+        out, err = io.StringIO(), io.StringIO()
+        context = _context(tmp_path)
+        (context.home / ".claude").mkdir()
+        code = run_install(
+            ["--client", "claude-code", "--root", "m", "--scope", "user:me", "--json"],
+            {},
+            context=context,
+            out=out,
+            err=err,
+        )
+        assert code == 0
+        args = json.loads(out.getvalue())["entry"]["args"]
+        assert args[args.index("--actor") + 1] == "mcp:claude-code"

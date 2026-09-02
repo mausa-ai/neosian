@@ -105,7 +105,10 @@ class TestJsonEnvelope:
             mounts=(Mount(scope="user:me", mount_path="memories"),),
         )
         expected = await dispatch(
-            config, "create", {"path": "/memories/n", "content": "hi"}, actor="cli"
+            config,
+            "create",
+            {"path": "/memories/n", "content": "hi"},
+            actor="cli:local",
         )
         assert created.out == expected.to_json() + "\n"
 
@@ -167,12 +170,12 @@ class TestFailures:
 
 
 class TestActor:
-    async def test_default_actor_cli_lands_on_version_rows(
+    async def test_default_actor_cli_local_lands_on_version_rows(
         self, tmp_path: Path
     ) -> None:
         await _run(["create", "/memories/n", "--content", "x"], tmp_path)
         (row,) = await FileStore(tmp_path).versions("user:me", "n")
-        assert row.actor == "cli"
+        assert row.actor == "cli:local"
 
     async def test_actor_flag_passes_verbatim(self, tmp_path: Path) -> None:
         out, err = io.StringIO(), io.StringIO()

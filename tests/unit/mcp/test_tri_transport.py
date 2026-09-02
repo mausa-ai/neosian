@@ -99,7 +99,7 @@ async def test_one_store_five_transports(config: MemoryConfig, tmp_path: Path) -
     # 4. The CLI engine (the shell transport) writes to the same root.
     out, err = io.StringIO(), io.StringIO()
     argv = ["create", "/memories/from-cli", "--content", "hi from the shell"]
-    argv += ["--root", str(tmp_path / "memory"), "--actor", "cli"]
+    argv += ["--root", str(tmp_path / "memory"), "--actor", "cli:local"]
     for mount in config.mounts:
         argv += ["--mount", format_mount(mount)]
     code = await run(argv, {}, stdin=io.StringIO(), out=out, err=err)

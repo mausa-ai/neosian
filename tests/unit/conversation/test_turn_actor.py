@@ -1,4 +1,4 @@
-"""Turn-ref actors (NP, ledger #100): `<conversation_id>#<turn>`.
+"""Turn-ref actors (NP, ledger #100; NL): `<actor>#<turn>`, actor `conv:<id>`.
 
 The actor closure resolves per memory command under the send lock — no
 per-send agent rebuild — so version rows carry the turn each write
@@ -16,6 +16,7 @@ from neosian._foundation.conversation.core import Conversation
 from neosian._foundation.llm.base import ToolCall
 from neosian._foundation.llm.fake import FakeClient, FakeScript, FakeTurn
 from neosian._foundation.memory.file import FileStore
+from neosian._foundation.shared.exceptions import MemoryActorInvalidError
 from neosian._foundation.shared.types import SystemPrompt, ToolCallId, ToolName
 
 _SYSTEM = SystemPrompt("You are a test agent.")
@@ -64,8 +65,8 @@ class TestTurnRefActors:
         await convo.send("second")
         (one,) = await store.versions("user:demo", "one")
         (two,) = await store.versions("user:demo", "two")
-        assert one.actor == "t1#1"
-        assert two.actor == "t1#2"
+        assert one.actor == "conv:t1#1"
+        assert two.actor == "conv:t1#2"
 
     async def test_resume_continues_the_numbering(self, store: FileStore) -> None:
         first = Conversation(
@@ -87,7 +88,7 @@ class TestTurnRefActors:
         )
         await resumed.send("now write")
         (row,) = await store.versions("user:demo", "later")
-        assert row.actor == "t1#2"
+        assert row.actor == "conv:t1#2"
 
     async def test_failed_send_reuses_the_number(self, store: FileStore) -> None:
         """A raising send persists no turn (§9.5) — the next send takes
@@ -109,4 +110,31 @@ class TestTurnRefActors:
             await convo.send("this fails")
         await convo.send("this lands")
         (row,) = await store.versions("user:demo", "after")
-        assert row.actor == "t1#1"
+        assert row.actor == "conv:t1#1"
+
+
+class TestTheActorKeyword:
+    async def test_a_named_actor_stamps_its_turn_refs(self, store: FileStore) -> None:
+        """DESIGN §20: `actor=` names the writer; the turn-ref rides on it."""
+        script = FakeScript(turns=(_write("/memories/a", "1"), FakeTurn(content="ok")))
+        convo = Conversation(
+            _config(script),
+            store=store,
+            conversation_id="t1",
+            memory_scope="user:demo",
+            actor="agent:planner",
+        )
+        await convo.send("go")
+        (row,) = await store.versions("user:demo", "a")
+        assert row.actor == "agent:planner#1"
+
+    def test_an_ungrammatical_actor_is_refused_at_construction(
+        self, store: FileStore
+    ) -> None:
+        with pytest.raises(MemoryActorInvalidError):
+            Conversation(
+                _config(FakeScript(turns=())),
+                store=store,
+                conversation_id="t1",
+                actor="planner",
+            )

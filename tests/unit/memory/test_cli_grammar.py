@@ -112,9 +112,15 @@ class TestArgumentMapping:
 
 
 class TestStoreFlags:
-    def test_default_actor_is_cli(self) -> None:
+    def test_default_actor_is_cli_local(self) -> None:
         request = _parsed(["view", *_STORE])
-        assert request.settings.actor == "cli"
+        assert request.settings.actor == "cli:local"
+
+    def test_an_ungrammatical_actor_is_grammar(self) -> None:
+        """DESIGN §20: exit 2, nothing constructed, the fix named."""
+        with pytest.raises(SystemExit) as exc_info:
+            _parsed(["view", *_STORE, "--actor", "walkthrough"])
+        assert exc_info.value.code == 2
 
     def test_actor_passes_verbatim(self) -> None:
         request = _parsed(["view", *_STORE, "--actor", "cli:claude-code"])

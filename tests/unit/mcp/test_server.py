@@ -18,7 +18,7 @@ class TestConstruction:
     async def test_name_and_default_actor(self, config: MemoryConfig) -> None:
         server = await create_memory_server(config)
         assert server.name == "neosian-memory"
-        assert DEFAULT_ACTOR == "mcp"
+        assert DEFAULT_ACTOR == "mcp:stdio"
 
     async def test_instructions_are_the_system_section(
         self, config: MemoryConfig

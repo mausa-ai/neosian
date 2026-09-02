@@ -40,9 +40,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Recorded on every version row an MCP client writes; hosts pass
-# something more specific (e.g. "mcp:claude-code") via --actor.
-DEFAULT_ACTOR: Final = "mcp"
+# Recorded on every version row an MCP client writes (DESIGN §20 grammar);
+# `mcp install` renders the client's name (`mcp:claude-code`) via --actor.
+DEFAULT_ACTOR: Final = "mcp:stdio"
 _SERVER_NAME: Final = "neosian-memory"
 
 

@@ -11,6 +11,7 @@ a freshly constructed local store.
 """
 
 import dataclasses
+import re
 import time
 from contextlib import AsyncExitStack
 from datetime import UTC, datetime, timedelta
@@ -190,7 +191,7 @@ async def _run_cell(
         )
         capture = ToolCapture(stubbed)
         recorder = FallbackRecorder()
-        actor = f"eval:{scenario.name}:{session.name}"
+        actor = f"eval:{_actor_id(scenario.name)}/session:{_actor_id(session.name)}"
         via_cli = transport is Transport.CLI
         derived = derive_config(
             staged,
@@ -387,6 +388,11 @@ async def _score_session(
         + tuple(f"session '{session.name}': {f}" for f in failures),
     )
     return False
+
+
+def _actor_id(name: str) -> str:
+    """A scenario or session name as an actor id (DESIGN §20 grammar)."""
+    return re.sub(r"[^A-Za-z0-9_.-]", "_", name)[:128] or "_"
 
 
 def _noop(_event: TurnEvent) -> None:

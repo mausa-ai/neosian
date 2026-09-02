@@ -7,6 +7,13 @@ imports `.testing` (the conformance kit needs pytest, which is not a
 runtime dependency).
 """
 
+from neosian._foundation.memory.actor import (
+    ACTOR_MAX_LENGTH,
+    ACTOR_PATTERN,
+    Actor,
+    actor_matches,
+    parse_actor,
+)
 from neosian._foundation.memory.base import MemoryStore
 from neosian._foundation.memory.file import FileStore
 from neosian._foundation.memory.index import (
@@ -44,6 +51,7 @@ from neosian._foundation.postgres.store import PostgresStore
 from neosian._foundation.server.remote import RemoteStore
 from neosian._foundation.shared.clock import Clock, SystemClock
 from neosian._foundation.shared.exceptions import (
+    MemoryActorInvalidError,
     MemoryConflictError,
     MemoryDocumentNotFoundError,
     MemoryEditOnlyMountError,
@@ -55,6 +63,9 @@ from neosian._foundation.shared.exceptions import (
 )
 
 __all__ = [
+    "ACTOR_MAX_LENGTH",
+    "ACTOR_PATTERN",
+    "Actor",
     "MEMORY_FORMAT_VERSION",
     "PATH_MAX_LENGTH",
     "PATH_MAX_SEGMENTS",
@@ -65,6 +76,7 @@ __all__ = [
     "MaintenanceResult",
     "MaintenanceWrite",
     "MemoryAction",
+    "MemoryActorInvalidError",
     "MemoryConfig",
     "MemoryConflictError",
     "MemoryDocument",
@@ -84,9 +96,11 @@ __all__ = [
     "RemoteStore",
     "Scope",
     "SystemClock",
+    "actor_matches",
     "create_memory_tool",
     "generate_memory_index",
     "memory_system_section",
+    "parse_actor",
     "parse_scope",
     "revert_memory",
     "run_maintenance",

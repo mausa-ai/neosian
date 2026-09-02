@@ -298,6 +298,7 @@ _CODE_TABLE = {
     "MemoryStoreError": "memory_error",
     "MemoryDocumentNotFoundError": "memory_document_not_found",
     "MemoryScopeInvalidError": "memory_scope_invalid",
+    "MemoryActorInvalidError": "memory_actor_invalid",
     "MemoryPathInvalidError": "memory_path_invalid",
     "MemoryConflictError": "memory_conflict",
     "MemoryFormatUnsupportedError": "memory_format_unsupported",

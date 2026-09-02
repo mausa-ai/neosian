@@ -190,7 +190,7 @@ def build_parser(
     subs["revert"] = revert
 
     for sub in subs.values():
-        add_store_arguments(sub, default_actor="cli")
+        add_store_arguments(sub, default_actor="cli:local")
         sub.add_argument(
             "--json",
             action="store_true",

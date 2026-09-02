@@ -105,7 +105,7 @@ def _argv(case: dict[str, Any], root: Path) -> list[str]:
     for key, flag in _FLAGS.items():
         if key in case:
             argv += [flag, str(case[key])]
-    argv += ["--root", str(root), "--actor", "cli"]
+    argv += ["--root", str(root), "--actor", "cli:local"]
     for mount in _MOUNTS:
         argv += ["--mount", format_mount(mount)]
     return [*argv, "--json"]
@@ -123,7 +123,7 @@ async def test_both_transports_agree(tmp_path: Path, case: dict[str, Any]) -> No
     fn_config = await _seed(tmp_path / "fn")
     await _seed(tmp_path / "cli")
 
-    tool = create_memory_tool(fn_config, actor="cli")
+    tool = create_memory_tool(fn_config, actor="cli:local")
     fn_result = await tool(**case)
 
     out, err = io.StringIO(), io.StringIO()

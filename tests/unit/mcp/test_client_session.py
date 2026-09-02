@@ -117,7 +117,7 @@ class TestCallTool:
         assert result.is_error is True
         assert "Tool 'recall' not found" in result.content[0].text  # type: ignore[union-attr]
 
-    async def test_actor_defaults_to_mcp_on_version_rows(
+    async def test_actor_defaults_to_mcp_stdio_on_version_rows(
         self, config: MemoryConfig
     ) -> None:
         server = await create_memory_server(config)
@@ -126,4 +126,4 @@ class TestCallTool:
                 "memory", {"command": "create", "path": "/memories/a", "content": "x"}
             )
         versions = await config.store.versions("user:demo", "a")
-        assert versions[0].actor == "mcp"
+        assert versions[0].actor == "mcp:stdio"

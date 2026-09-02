@@ -21,7 +21,9 @@ from typing import TYPE_CHECKING, Any, Final, TextIO
 if TYPE_CHECKING:
     from _typeshed import SupportsWrite
 
+from neosian._foundation.memory.actor import parse_actor
 from neosian._foundation.memory.mounts import Mount
+from neosian._foundation.shared.exceptions import MemoryActorInvalidError
 
 POSTGRES_DSN_ENV: Final = "NEOSIAN_POSTGRES_DSN"
 DEFAULT_SCHEMA: Final = "neosian"
@@ -127,8 +129,8 @@ def add_store_arguments(parser: argparse.ArgumentParser, *, default_actor: str) 
     parser.add_argument(
         "--actor",
         default=default_actor,
-        help="recorded on every version row "
-        f"(default: {default_actor}; e.g. {default_actor}:claude-code)",
+        help="who writes: <kind>:<id>[/...] — recorded on every row "
+        f"(default: {default_actor})",
     )
     parser.add_argument(
         "--schema",
@@ -196,5 +198,14 @@ def resolve_store_settings(
         root=root,
         dsn=dsn,
         schema=schema,
-        actor=args.actor,
+        actor=resolve_actor(parser, args.actor),
     )
+
+
+def resolve_actor(parser: argparse.ArgumentParser, actor: str) -> str:
+    """Grammar-tier actor validation (DESIGN §20): exit 2, nothing built."""
+    try:
+        return str(parse_actor(actor))
+    except MemoryActorInvalidError as exc:
+        parser.error(f"--actor {actor!r}: {exc.reason} (e.g. cli:claude-code)")
+        raise AssertionError from None  # pragma: no cover - parser.error exits

@@ -44,6 +44,7 @@ from neosian._foundation.conversation.wiring import (
     resolve_memory,
 )
 from neosian._foundation.llm.base import Message, Role
+from neosian._foundation.memory.actor import parse_actor
 from neosian._foundation.memory.index import memory_system_section
 from neosian._foundation.shared.context_policy import ContextPolicy
 
@@ -107,8 +108,14 @@ class Conversation:
         memory_mount_path: str = DEFAULT_MEMORY_MOUNT_PATH,
         compaction: CompactionConfig | None = None,
         reflection: ReflectionConfig | None = None,
+        actor: str | None = None,
     ) -> None:
         self._conversation_id = str(parse_conversation_id(conversation_id))
+        # Who this instance writes as (DESIGN §20): turns carry it whole,
+        # in-run memory writes as `<actor>#<turn>`, reflection bare.
+        self._actor = str(
+            parse_actor(actor if actor is not None else f"conv:{self._conversation_id}")
+        )
         self._store = store
         if isinstance(agent, Agent):
             self._base_config = agent.config
@@ -312,16 +319,16 @@ class Conversation:
             self._session._rebind(self._agent)
 
     def _turn_actor(self) -> str:
-        """The in-flight turn's audit actor (NP): `<conversation_id>#<turn>`.
+        """The in-flight turn's audit actor (NP, NL): `<actor>#<turn>`.
 
         Resolved per memory command under the send lock, so the number is
-        the turn the write belongs to (`#` is illegal in conversation ids —
-        the suffix is unambiguous). A failed or blocked send persists no
-        turn, so its number is reused by the next send: a turn that never
+        the turn the write belongs to (`#` is the grammar's terminal
+        suffix — unambiguous). A failed or blocked send persists no turn,
+        so its number is reused by the next send: a turn that never
         happened leaves no rows. Reflection deliberately stays the bare
-        conversation_id (ledger #86).
+        actor (ledger #86).
         """
-        return f"{self._conversation_id}#{len(self._turns) + 1}"
+        return f"{self._actor}#{len(self._turns) + 1}"
 
     def _session_for_run(self) -> AgentSession:
         """The one client pool: sends and distillation share it, and a
@@ -346,7 +353,7 @@ class Conversation:
             model=self._reflection.model or self._base_config.model,
             # Deliberately bare — no turn-ref: a boundary write belongs to
             # the whole session, not a turn (ledger #86; NP kept it).
-            actor=self._conversation_id,
+            actor=self._actor,
         )
         if result.degraded is None:
             # The distillation call landed (even with zero writes); a

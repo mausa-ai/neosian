@@ -11,6 +11,9 @@ def test_memory_all_is_pinned() -> None:
     import neosian.memory
 
     assert neosian.memory.__all__ == [
+        "ACTOR_MAX_LENGTH",
+        "ACTOR_PATTERN",
+        "Actor",
         "MEMORY_FORMAT_VERSION",
         "PATH_MAX_LENGTH",
         "PATH_MAX_SEGMENTS",
@@ -21,6 +24,7 @@ def test_memory_all_is_pinned() -> None:
         "MaintenanceResult",
         "MaintenanceWrite",
         "MemoryAction",
+        "MemoryActorInvalidError",
         "MemoryConfig",
         "MemoryConflictError",
         "MemoryDocument",
@@ -40,9 +44,11 @@ def test_memory_all_is_pinned() -> None:
         "RemoteStore",
         "Scope",
         "SystemClock",
+        "actor_matches",
         "create_memory_tool",
         "generate_memory_index",
         "memory_system_section",
+        "parse_actor",
         "parse_scope",
         "revert_memory",
         "run_maintenance",

@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 from collections.abc import Mapping, Sequence
 
+from neosian._foundation.mcp.server import DEFAULT_ACTOR
 from neosian._foundation.memory.settings import (
     POSTGRES_DSN_ENV as POSTGRES_DSN_ENV,
     StoreSettings,
@@ -50,6 +51,6 @@ def parse_args(
         description="Serve neosian memory to MCP clients on stdio.",
         epilog=_EPILOG,
     )
-    add_store_arguments(parser, default_actor="mcp")
+    add_store_arguments(parser, default_actor=DEFAULT_ACTOR)
     args = parser.parse_args(list(argv))
     return resolve_store_settings(parser, args, env)

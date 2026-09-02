@@ -162,7 +162,7 @@ class TestSessions:
             store_root=root,
         )
         rows = await FileStore(root).versions(_MOUNT.scope, "preferences")
-        assert [row.actor for row in rows] == ["eval:recall:record"]
+        assert [row.actor for row in rows] == ["eval:recall/session:record"]
 
 
 @pytest.mark.unit
@@ -254,10 +254,10 @@ class TestSeedAndMaintain:
         assert await store.read(_MOUNT.scope, "coffee") is not None
         copy_rows = await store.versions(_MOUNT.scope, "coffee-copy")
         assert copy_rows[0].action == "deleted"
-        assert copy_rows[0].actor == "eval:garden:pass"
+        assert copy_rows[0].actor == "eval:garden/session:pass"
         stale_rows = await store.versions(_MOUNT.scope, "stale")
         assert stale_rows[0].action == "deleted"
-        assert stale_rows[0].actor == "eval:garden:pass"
+        assert stale_rows[0].actor == "eval:garden/session:pass"
 
 
 @pytest.mark.unit
