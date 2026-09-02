@@ -6,27 +6,38 @@ from the session is worth keeping, and the emitted operations execute as
 deliberate writes through the shared memory dispatcher — audited
 (``actor = conversation_id``), dedup-disciplined (the payload shows every
 writable mount's live documents, so the model updates what it can see
-instead of duplicating it). The model call failing degrades to an empty
-result with a warning; a failed operation is skipped with a warning and
-the rest still land. Spend is returned on the result, never hidden.
+instead of duplicating it — fenced and budgeted by memory/payload.py,
+since bodies and transcript are data, never instructions). The model
+call failing degrades to an empty result carrying the reason; a failed
+operation is skipped with a warning and the rest still land; a delete
+respects the gardener's protections (the age floor, redaction). Spend is
+returned on the result, never hidden.
 """
 
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel
 
 from neosian._foundation.conversation.projection import render_turn
 from neosian._foundation.memory.dispatch import dispatch
-from neosian._foundation.shared.prompt_assets import get_prompt
+from neosian._foundation.memory.maintenance import (
+    MAINTENANCE_MIN_AGE_DAYS,
+    protection_reason,
+)
+from neosian._foundation.memory.payload import fenced, new_fence, render_documents
+from neosian._foundation.shared.clock import Clock, SystemClock
+from neosian._foundation.shared.prompt_assets import get_prompt, render
 from neosian._foundation.shared.structured import structured_call
 from neosian._foundation.shared.types import AnyModel
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
+    from datetime import datetime
 
     from neosian._foundation.conversation.types import ConversationTurn
     from neosian._foundation.llm.base import BaseLLMClient, Usage
@@ -63,13 +74,16 @@ class ReflectionWrite:
 @dataclass(frozen=True, slots=True)
 class ReflectionResult:
     """What one reflection pass did: the writes that landed and the model
-    spend it incurred (visible, never hidden — §15). `model=None` means
-    the distillation call failed or never ran; empty writes under a model
-    mean the session held nothing worth keeping."""
+    spend it incurred (visible, never hidden — §15). `degraded` names the
+    failure when the distillation call did not land (the turns stay
+    pending for a retry); `model=None` with `degraded=None` means it never
+    ran; empty writes under a model mean the session held nothing worth
+    keeping."""
 
     writes: tuple[ReflectionWrite, ...] = ()
     usage: Usage | None = None
     model: str | None = None
+    degraded: str | None = None
 
 
 # Per-command shapes with every field required: OpenAI's strict mode
@@ -109,72 +123,51 @@ async def run_reflection(
     acquire: Callable[[AnyModel], BaseLLMClient],
     model: AnyModel,
     actor: str | None,
+    clock: Clock | None = None,
+    min_age: timedelta = timedelta(days=MAINTENANCE_MIN_AGE_DAYS),
 ) -> ReflectionResult:
-    """One reflection pass over the given turns; degrade-safe."""
+    """One reflection pass over the given turns; degrade-safe, except
+    that a `ConfigurationError` from the lease propagates (the #84 rule).
+    Deletes respect the gardener's age floor from `clock` and `min_age`."""
     if not turns:
         return ReflectionResult()
-    payload = "\n\n".join(
-        (
-            await _render_memory(memory_config),
-            "# Session transcript",
-            "\n\n".join(render_turn(turn) for turn in turns),
-        )
+    fence = new_fence()
+    memory = await render_documents(
+        memory_config,
+        fence=fence,
+        edit_only_note="edit-only — update existing documents; never add or remove one",
     )
-    parsed, usage, api_model = await structured_call(
+    transcript = fenced(fence, "\n\n".join(render_turn(turn) for turn in turns))
+    parsed, usage, api_model, degraded = await structured_call(
         acquire,
         model,
-        get_prompt("reflection.system"),
-        payload,
+        render(get_prompt("reflection.system"), fence=fence),
+        "\n\n".join((memory, "# Session transcript", transcript)),
         ReflectionBatch,
         "Reflection",
     )
     if parsed is None:
-        return ReflectionResult()
+        return ReflectionResult(degraded=degraded)
+    cutoff = (clock or SystemClock()).now() - min_age
     writes: list[ReflectionWrite] = []
     for op in parsed.ops:
-        write = await _execute(memory_config, op, actor)
+        write = await _execute(memory_config, op, actor, cutoff)
         if write is not None:
             writes.append(write)
     return ReflectionResult(writes=tuple(writes), usage=usage, model=api_model)
 
 
-async def _render_memory(config: MemoryConfig) -> str:
-    """Every writable mount with its live document bodies — the dedup
-    evidence. Bodies are raw (no line numbers), so an emitted `old_str`
-    matches stored content exactly. Read-only mounts are not shown: no
-    operation may target them. Edit-only mounts are shown — their
-    documents stay editable — annotated so the model never proposes a
-    create or delete there (the dispatcher refuses one anyway)."""
-    blocks = ["# Current memory"]
-    for mount in config.mounts:
-        if mount.read_only:
-            continue
-        header = f"## /{mount.mount_path}"
-        if mount.description:
-            header += f" — {mount.description}"
-        if mount.edit_only:
-            header += (
-                " (edit-only — update existing documents; never add or remove one)"
-            )
-        lines = [header]
-        entries = await config.store.list_documents(mount.scope)
-        if not entries:
-            lines.append("(empty)")
-        for entry in entries:
-            if entry.redacted:
-                lines.append(f"### /{mount.mount_path}/{entry.path} (redacted)")
-                continue
-            document = await config.store.read(mount.scope, entry.path)
-            if document is not None:
-                lines.append(f"### /{mount.mount_path}/{entry.path}")
-                lines.append(document.content)
-        blocks.append("\n".join(lines))
-    return "\n\n".join(blocks)
-
-
 async def _execute(
-    config: MemoryConfig, op: ReflectionOp, actor: str | None
+    config: MemoryConfig, op: ReflectionOp, actor: str | None, cutoff: datetime
 ) -> ReflectionWrite | None:
+    # The gardener's protections (ledger #92) hold here too: the more
+    # frequent pass must not carry the weaker guard.
+    reason = await protection_reason(
+        config, op.path, cutoff, deletion=isinstance(op, DeleteOp)
+    )
+    if reason is not None:
+        logger.warning("Reflection %s on %s skipped: %s", op.command, op.path, reason)
+        return None
     arguments = {k: v for k, v in op.model_dump().items() if k != "command"}
     result = await dispatch(config, op.command, arguments, actor=actor)
     if not result.success:

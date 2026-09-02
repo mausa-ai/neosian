@@ -8,12 +8,13 @@ wrote memory closes and the store holds the right facts.
 """
 
 import logging
-from datetime import UTC, datetime
+import re
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 
-from neosian import AgentConfig, Model
+from neosian import AgentConfig, Model, Provider
 from neosian._foundation.conversation.core import Conversation
 from neosian._foundation.conversation.reflection import (
     CreateOp,
@@ -26,11 +27,18 @@ from neosian._foundation.conversation.reflection import (
     run_reflection,
 )
 from neosian._foundation.conversation.types import ConversationTurn
-from neosian._foundation.llm.base import Message, Role, ToolCall, Usage
+from neosian._foundation.llm.base import BaseLLMClient, Message, Role, ToolCall, Usage
 from neosian._foundation.llm.fake import FakeClient, FakeScript, FakeTurn
 from neosian._foundation.memory.file import FileStore
 from neosian._foundation.memory.mounts import MemoryConfig, Mount
-from neosian._foundation.shared.types import SystemPrompt, ToolCallId, ToolName
+from neosian._foundation.shared.exceptions import ConfigurationError
+from neosian._foundation.shared.types import (
+    AnyModel,
+    SystemPrompt,
+    ToolCallId,
+    ToolName,
+)
+from tests.unit.memory.conftest import ManualClock
 
 _SYSTEM = SystemPrompt("You are a helpful agent with memory.")
 _USAGE = Usage(input_tokens=100, output_tokens=10)
@@ -142,10 +150,20 @@ class TestRunReflection:
         assert "closing out an agent session" in str(system.content)
         text = str(payload.content)
         assert "# Current memory" in text
-        assert "### /memories/stack" in text
-        assert "Runs on Postgres 16." in text  # raw body, no line numbers
-        assert "# Session transcript" in text
-        assert "USER: hello" in text
+        # Bodies and the transcript are data: each rides inside a fence
+        # tagged with a per-call token the system prompt names.
+        fence = re.search(r"<<<data ([0-9a-f]{16})>>>", text)
+        assert fence is not None
+        token = fence.group(1)
+        assert f"`<<<data {token}>>>`" in str(system.content)
+        assert (
+            f"### /memories/stack\n<<<data {token}>>>\nRuns on Postgres 16.\n<<<end {token}>>>"
+            in text
+        )
+        assert (
+            f"# Session transcript\n\n<<<data {token}>>>\nTurn 1 (verbatim):\nUSER: hello"
+            in text
+        )
         # Read-only mounts take no operations, so they are not shown.
         assert "/kb" not in text
         assert "Reference only." not in text
@@ -183,6 +201,7 @@ class TestRunReflection:
             acquire=lambda _: fake,
             model=Model.FAKE,
             actor="t1",
+            min_age=timedelta(0),  # just written; the floor is tested apart
         )
         assert [(w.command, w.version) for w in result.writes] == [("delete", None)]
         assert await memory.store.read("user:1", "stale") is None
@@ -200,9 +219,79 @@ class TestRunReflection:
                 model=Model.FAKE,
                 actor="t1",
             )
-        assert result == ReflectionResult()
+        assert result.writes == () and result.model is None
+        assert result.degraded is not None
+        assert result.degraded.startswith("Reflection failed: ")
         assert "Reflection failed; degrading" in caplog.text
         assert await memory.store.list_documents("user:1") == ()
+
+    async def test_a_configuration_error_propagates(self, tmp_path: Path) -> None:
+        # The #84 rule: a missing key or an unknown model is the caller's
+        # setup, never a degrade to swallow.
+        def refuse(_: AnyModel) -> BaseLLMClient:
+            raise ConfigurationError("no key for this provider")
+
+        with pytest.raises(ConfigurationError, match="no key"):
+            await run_reflection(
+                memory_config=_memory(tmp_path),
+                turns=[_turn(1, "hello", "hi")],
+                acquire=refuse,
+                model=Model.FAKE,
+                actor="t1",
+            )
+
+    async def test_deletes_respect_the_age_floor(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        # The gardener's protections hold for the more frequent pass too:
+        # a fresh document survives a reflection delete, an old one goes.
+        clock = ManualClock(datetime(2026, 8, 1, tzinfo=UTC))
+        memory = MemoryConfig(
+            store=FileStore(tmp_path / "store", clock=clock),
+            mounts=(Mount(scope="user:1", mount_path="memories"),),
+        )
+        await memory.store.write("user:1", "old", "stale claim")
+        clock._now = datetime(2026, 8, 22, tzinfo=UTC)  # noqa: SLF001
+        await memory.store.write("user:1", "fresh", "new today")
+        fake = _scripted(
+            FakeTurn(
+                content=_batch(
+                    DeleteOp(command="delete", path="/memories/old"),
+                    DeleteOp(command="delete", path="/memories/fresh"),
+                )
+            )
+        )
+        with caplog.at_level(logging.WARNING):
+            result = await run_reflection(
+                memory_config=memory,
+                turns=[_turn(1, "hello", "hi")],
+                acquire=lambda _: fake,
+                model=Model.FAKE,
+                actor="t1",
+                clock=clock,
+            )
+        assert [w.path for w in result.writes] == ["/memories/old"]
+        assert "inside the age floor" in caplog.text
+        assert await memory.store.read("user:1", "fresh") is not None
+        assert await memory.store.read("user:1", "old") is None
+
+    async def test_redacted_documents_take_no_operation(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        memory = _memory(tmp_path)
+        await memory.store.write("user:1", "erased", "secret")
+        await memory.store.redact("user:1", path="erased")
+        fake = _scripted(FakeTurn(content=_batch(_create_op("/memories/erased"))))
+        with caplog.at_level(logging.WARNING):
+            result = await run_reflection(
+                memory_config=memory,
+                turns=[_turn(1, "hello", "hi")],
+                acquire=lambda _: fake,
+                model=Model.FAKE,
+                actor="t1",
+            )
+        assert result.writes == ()
+        assert "is redacted" in caplog.text
 
     async def test_failed_op_is_skipped_and_the_rest_land(
         self, tmp_path: Path, caplog: pytest.LogCaptureFixture
@@ -343,9 +432,64 @@ class TestConversationReflect:
             memory_scope="user:1",
         )
         await convo.send("I only drink espresso.")
-        assert await convo.reflect() == ReflectionResult()  # degraded
+        degraded = await convo.reflect()
+        assert degraded.writes == () and degraded.degraded is not None
         result = await convo.reflect()  # the retry distills the same turns
         assert [w.path for w in result.writes] == ["/memories/preferences"]
+
+    async def test_a_fresh_document_survives_a_boundary_delete(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        store = FileStore(tmp_path / "live")  # the system clock: written *now*
+        await store.write("user:1", "today", "written moments ago")
+        fake = _scripted(
+            FakeTurn(content="Noted."),
+            FakeTurn(
+                content=_batch(DeleteOp(command="delete", path="/memories/today"))
+            ),
+        )
+        convo = Conversation(
+            _config(fake), store=store, conversation_id="t1", memory_scope="user:1"
+        )
+        await convo.send("forget that")
+        with caplog.at_level(logging.WARNING):
+            result = await convo.reflect()
+        assert result.writes == () and result.degraded is None
+        assert "inside the age floor" in caplog.text
+        assert await store.read("user:1", "today") is not None
+
+    async def test_a_misconfigured_reflection_model_raises(
+        self, store: FileStore
+    ) -> None:
+        # The reflection model has its own lease (a factory sees the
+        # provider); its ConfigurationError reaches the explicit caller
+        # instead of degrading silently.
+        fake = _scripted(FakeTurn(content="Noted."))
+        other = next(m for m in Model if m.provider is not Provider.FAKE)
+
+        def factory(provider: Provider) -> BaseLLMClient:
+            if provider is not Provider.FAKE:
+                raise ConfigurationError("no key for the reflection model")
+            return fake
+
+        config = AgentConfig(
+            system_prompt=_SYSTEM,
+            model=Model.FAKE,
+            enable_todo=False,
+            client_factory=factory,
+        )
+        convo = Conversation(
+            config,
+            store=store,
+            conversation_id="t1",
+            memory_scope="user:1",
+            reflection=ReflectionConfig(model=other),
+        )
+        await convo.send("I only drink espresso.")
+        with pytest.raises(ConfigurationError, match="reflection model"):
+            await convo.reflect()
+        assert await convo.aclose() is None  # a close always closes
+        assert fake.closed is True
 
 
 @pytest.mark.unit
@@ -433,7 +577,8 @@ class TestAcloseRider:
         await convo.send("I only drink espresso.")
         with caplog.at_level(logging.WARNING):
             result = await convo.aclose()
-        assert result == ReflectionResult()
+        assert result is not None and result.writes == ()
+        assert result.degraded is not None  # carried, never swallowed
         assert fake.closed is True
 
 

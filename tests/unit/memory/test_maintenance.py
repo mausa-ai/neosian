@@ -382,7 +382,18 @@ class TestModelStage:
             )
         assert [(w.command, w.path) for w in result.writes] == [("delete", "/user/b")]
         assert result.usage is None and result.model is None
+        assert result.degraded == "Maintenance failed: RuntimeError: no client tonight"
         assert "Maintenance failed; degrading" in caplog.text
+
+    async def test_a_configuration_error_propagates(self, tmp_path: Path) -> None:
+        clock = _Clock(_NOW)
+        memory = _memory(tmp_path, clock)
+
+        def refuse(_: object) -> FakeClient:
+            raise ConfigurationError("no key")
+
+        with pytest.raises(ConfigurationError, match="no key"):
+            await run_maintenance(memory, acquire=refuse, model=Model.FAKE, clock=clock)
 
     async def test_a_failed_op_is_skipped_while_the_rest_land(
         self, tmp_path: Path, caplog: pytest.LogCaptureFixture
@@ -433,7 +444,7 @@ class TestEvidencePayload:
         await memory.store.write("user:1", "fresh-fact", "New today")
         await memory.store.write("tenant:kb", "ref", "reference")
         cutoff = _NOW - timedelta(days=7)
-        payload = await _render_evidence(memory, cutoff)
+        payload = await _render_evidence(memory, cutoff, "abcd")
         assert "### /user/old-fact [v1 | created 2026-08-01 | updated 2026-08-01]" in (
             payload
         )
@@ -450,7 +461,7 @@ class TestEvidencePayload:
         memory = _fixed_memory(tmp_path, clock)
         await memory.store.write("user:1/layout:erp", "notes", "Template body.")
         clock.at = _NOW
-        payload = await _render_evidence(memory, _NOW - timedelta(days=7))
+        payload = await _render_evidence(memory, _NOW - timedelta(days=7), "abcd")
         assert "## /fixed (edit-only — update existing documents" in payload
         assert "Template body." in payload  # the documents stay editable evidence
 

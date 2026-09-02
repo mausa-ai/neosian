@@ -9,7 +9,7 @@ shell verb keeps a working keyless mode (ledger #91); and a model stage,
 only when a model is given, that rules the judgment calls — semantic
 merges, stale pruning, project→user promotion via rename,
 confirm-or-decay — through one batched structured-output call (the
-reflection idiom). Protection is enforced in code, never exhorted
+reflection idiom) over the fenced, budgeted payload of memory/payload.py. Protection is enforced in code, never exhorted
 (ledger #92): documents updated inside the age floor are never deleted,
 redacted documents take no operation at all, read-only mounts are
 excluded structurally, and edit-only mounts keep their document set —
@@ -31,12 +31,13 @@ from pydantic import BaseModel
 
 from neosian._foundation.memory.dispatch import dispatch
 from neosian._foundation.memory.mounts import MemoryConfig, Mount, resolve
+from neosian._foundation.memory.payload import new_fence, render_documents
 from neosian._foundation.shared.clock import Clock, SystemClock
 from neosian._foundation.shared.exceptions import (
     ConfigurationError,
     MemoryStoreError,
 )
-from neosian._foundation.shared.prompt_assets import get_prompt
+from neosian._foundation.shared.prompt_assets import get_prompt, render
 from neosian._foundation.shared.structured import structured_call
 from neosian._foundation.shared.types import AnyModel
 
@@ -67,12 +68,14 @@ class MaintenanceWrite:
 class MaintenanceResult:
     """What one maintenance pass did: the actions that landed and the
     model spend it incurred (visible, never hidden — §16). `model=None`
-    means the pass ran keylessly or the model call degraded; empty writes
-    mean the store needed no gardening."""
+    means the pass ran keylessly or the model call degraded — `degraded`
+    names the failure in the latter case; empty writes mean the store
+    needed no gardening."""
 
     writes: tuple[MaintenanceWrite, ...] = ()
     usage: Usage | None = None
     model: str | None = None
+    degraded: str | None = None
 
 
 # Per-command shapes with every field required — the OpenAI strict-mode
@@ -140,17 +143,17 @@ async def run_maintenance(
     writes = list(await _deterministic_stage(config, actor, cutoff))
     if acquire is None or model is None:
         return MaintenanceResult(writes=tuple(writes))
-    payload = await _render_evidence(config, cutoff)
-    parsed, usage, api_model = await structured_call(
+    fence = new_fence()
+    parsed, usage, api_model, degraded = await structured_call(
         acquire,
         model,
-        get_prompt("maintenance.system"),
-        payload,
+        render(get_prompt("maintenance.system"), fence=fence),
+        await _render_evidence(config, cutoff, fence),
         MaintenanceBatch,
         "Maintenance",
     )
     if parsed is None:
-        return MaintenanceResult(writes=tuple(writes))
+        return MaintenanceResult(writes=tuple(writes), degraded=degraded)
     for op in parsed.ops:
         write = await _execute(config, op, actor, cutoff)
         if write is not None:
@@ -205,60 +208,35 @@ async def _delete(
     return [MaintenanceWrite(command="delete", path=path, version=None)]
 
 
-async def _render_evidence(config: MemoryConfig, cutoff: datetime) -> str:
-    """Every writable mount's live raw bodies, annotated with the aging
-    evidence the model rules on (version, created/updated, protection
-    markers). Bodies are raw so an emitted `old_str` matches stored
-    content exactly; read-only mounts take no operations and are not
-    shown; redacted documents are named but never read; edit-only mounts
-    are shown annotated — their documents stay editable, their set does
-    not change."""
-    blocks = ["# Current memory"]
-    for mount in config.mounts:
-        if mount.read_only:
-            continue
-        header = f"## /{mount.mount_path}"
-        if mount.description:
-            header += f" — {mount.description}"
-        if mount.edit_only:
-            header += (
-                " (edit-only — update existing documents;"
-                " never create, delete, or rename one)"
-            )
-        lines = [header]
-        entries = await config.store.list_documents(mount.scope)
-        if not entries:
-            lines.append("(empty)")
-        for entry in entries:
-            if entry.redacted:
-                lines.append(
-                    f"### /{mount.mount_path}/{entry.path}"
-                    " (redacted — protected, take no action)"
-                )
-                continue
-            document = await config.store.read(mount.scope, entry.path)
-            if document is None:
-                continue
-            marker = (
-                " [fresh — protected from deletion]"
-                if entry.updated_at > cutoff
-                else ""
-            )
-            lines.append(
-                f"### /{mount.mount_path}/{entry.path}"
-                f" [v{entry.version} | created {entry.created_at:%Y-%m-%d}"
-                f" | updated {entry.updated_at:%Y-%m-%d}]{marker}"
-            )
-            lines.append(document.content)
-        blocks.append("\n".join(lines))
-    return "\n\n".join(blocks)
+async def _render_evidence(config: MemoryConfig, cutoff: datetime, fence: str) -> str:
+    """The shared write-path payload (memory/payload.py) annotated with
+    the aging evidence the model rules on: version, created/updated, and
+    the protection marker."""
+
+    def evidence(entry: MemoryEntry) -> str:
+        marker = (
+            " [fresh — protected from deletion]" if entry.updated_at > cutoff else ""
+        )
+        return (
+            f" [v{entry.version} | created {entry.created_at:%Y-%m-%d}"
+            f" | updated {entry.updated_at:%Y-%m-%d}]{marker}"
+        )
+
+    return await render_documents(
+        config,
+        fence=fence,
+        edit_only_note=(
+            "edit-only — update existing documents; never create, delete, or rename one"
+        ),
+        annotate=evidence,
+    )
 
 
 async def _execute(
     config: MemoryConfig, op: MaintainOp, actor: str | None, cutoff: datetime
 ) -> MaintenanceWrite | None:
     source = op.old_path if isinstance(op, MaintainRenameOp) else op.path
-    reason = await _protected(
+    reason = await protection_reason(
         config, source, cutoff, deletion=isinstance(op, MaintainDeleteOp)
     )
     if reason is None:
@@ -284,13 +262,14 @@ async def _execute(
     return MaintenanceWrite(command=op.command, path=live, version=version)
 
 
-async def _protected(
+async def protection_reason(
     config: MemoryConfig, path: str, cutoff: datetime, *, deletion: bool
 ) -> str | None:
-    """The ledger #92 rules, enforced in code: redacted documents take no
-    operation; the age floor blocks deletion (edits, creates and renames
-    of fresh documents stay legal — content survives them). An unresolvable
-    path returns None so the dispatcher produces its corrective failure."""
+    """The ledger #92 rules, enforced in code — for the gardener and for
+    reflection's deletes alike: redacted documents take no operation; the
+    age floor blocks deletion (edits, creates and renames of fresh
+    documents stay legal — content survives them). An unresolvable path
+    returns None so the dispatcher produces its corrective failure."""
     try:
         mount, doc_path = resolve(config, path)
         document = await config.store.read(mount.scope, doc_path)

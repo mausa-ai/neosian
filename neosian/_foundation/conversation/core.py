@@ -348,9 +348,9 @@ class Conversation:
             # the whole session, not a turn (ledger #86; NP kept it).
             actor=self._conversation_id,
         )
-        if result.model is not None:
-            # The distillation call landed (even with zero writes) — a
-            # None model means it degraded, leaving the turns for a retry.
+        if result.degraded is None:
+            # The distillation call landed (even with zero writes); a
+            # degraded pass leaves the turns for a retry.
             self._reflect_pending = []
         return result
 

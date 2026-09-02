@@ -114,6 +114,7 @@ class TestKeylessMode:
         assert envelope["model"] is None
         assert envelope["usage"] is None
         assert envelope["cost_micro_usd"] is None
+        assert envelope["degraded"] is None
 
 
 class TestModelMode:
@@ -152,7 +153,7 @@ class TestModelMode:
             client_factory=lambda _: fake,
         )
         assert result.code == 1
-        assert "the model stage failed" in result.err
+        assert "the model stage failed (Maintenance failed: " in result.err
         assert "deterministic actions still landed" in result.err
         assert "delete /memories/dup-b" in result.out  # stage 1 still ran
 

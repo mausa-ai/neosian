@@ -62,7 +62,7 @@ async def distill(
     """One line of digest per (turn, prose) item; {} on any failure."""
     payload = "\n\n".join(f"[{turn}]\n{prose}" for turn, prose in items)
     system = render(get_prompt("compaction.distill"), digest_chars=str(digest_chars))
-    parsed, usage, api_model = await structured_call(
+    parsed, usage, api_model, _ = await structured_call(
         acquire, model, system, payload, DigestBatch, "Compaction distillation"
     )
     if parsed is None:
@@ -91,7 +91,7 @@ async def summarize_epochs(
         for last_turn, lines in blocks
     )
     system = render(get_prompt("compaction.epoch"), epoch_chars=str(budget))
-    parsed, usage, api_model = await structured_call(
+    parsed, usage, api_model, _ = await structured_call(
         acquire, model, system, payload, EpochBatch, "Compaction epoch summarization"
     )
     if parsed is None:

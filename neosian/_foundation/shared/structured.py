@@ -7,7 +7,9 @@ a dead handle in the caller's pool). Any failure degrades — ``None``
 result, warning logged — so no caller ever loses its own work to a
 distillation call. Lives in the shared kernel because both the
 conversation and memory layers call it and neither may import the other's
-internals gratuitously (DESIGN §1).
+internals gratuitously (DESIGN §1). The degrade is *carried*: the fourth
+element names the reason, and a `ConfigurationError` — the caller's own
+setup, never the model's reply — propagates (the #84 rule).
 """
 
 from __future__ import annotations
@@ -18,6 +20,7 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel
 
 from neosian._foundation.llm.base import Message, Role, text_of
+from neosian._foundation.shared.exceptions import ConfigurationError
 from neosian._foundation.shared.schema import validate_json
 from neosian._foundation.shared.types import AnyModel, ResponseFormat
 
@@ -36,8 +39,10 @@ async def structured_call[T: BaseModel](
     payload: str,
     schema: type[T],
     what: str,
-) -> tuple[T | None, Usage | None, str | None]:
-    """One degrade-safe structured-output call through the lease."""
+) -> tuple[T | None, Usage | None, str | None, str | None]:
+    """One structured-output call through the lease: `(parsed, usage,
+    model, degraded)` — `degraded` is None on success and names the
+    failure when `parsed` is None."""
     try:
         client = acquire(model)
         response = await client.complete(
@@ -54,7 +59,9 @@ async def structured_call[T: BaseModel](
         )
         parsed = validate_json(schema, text_of(response.message))
         assert isinstance(parsed, schema)
-        return parsed, response.usage, response.model
-    except Exception:
+        return parsed, response.usage, response.model, None
+    except ConfigurationError:
+        raise
+    except Exception as exc:
         logger.warning("%s failed; degrading", what, exc_info=True)
-        return None, None, None
+        return None, None, None, f"{what} failed: {type(exc).__name__}: {exc}"

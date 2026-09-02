@@ -98,6 +98,7 @@ def _render_maintenance(
             "model": result.model,
             "usage": None if result.usage is None else asdict(result.usage),
             "cost_micro_usd": cost,
+            "degraded": result.degraded,
         }
         out.write(json.dumps(envelope) + "\n")
     else:
@@ -112,9 +113,12 @@ def _render_maintenance(
                 f"model pass: {result.model},"
                 f" {result.usage.total_tokens} tokens, {spend}\n"
             )
-    if request.model is not None and result.model is None:
+    if result.degraded is not None:
         # The stage was asked for and degraded — the explicit shell tells
-        # the operator, unlike the library's close paths (§16).
-        err.write("error: the model stage failed; deterministic actions still landed\n")
+        # the operator why, unlike the library's close paths (§16).
+        err.write(
+            f"error: the model stage failed ({result.degraded});"
+            " deterministic actions still landed\n"
+        )
         return 1
     return 0
