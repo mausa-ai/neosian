@@ -57,6 +57,10 @@ neosian mcp install --client claude-desktop ... --write
   the client's own environment.
 - `--json` prints one machine-readable envelope instead.
 
+The record half — a foreign agent's hooks — is `neosian record install`,
+which renders the same mount layout from the same flags
+(`neosian docs agents`).
+
 ## One writer per root
 
 An MCP server serving a FileStore root **owns** that root while it

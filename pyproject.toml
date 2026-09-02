@@ -1,6 +1,6 @@
 [project]
 name = "neosian"
-version = "0.82.1"
+version = "0.83.0"
 description = "Async-only library for LLM agents: tools, orchestration, streaming, guardrails — with opt-in conversation, memory, and compaction layers over a stateless core."
 readme = "README.md"
 license = "Apache-2.0"
@@ -199,6 +199,21 @@ type = "forbidden"
 source_modules = ["neosian._foundation.mcp"]
 forbidden_modules = [
     "neosian._foundation.agent",
+    "neosian._foundation.llm.openai",
+    "neosian._foundation.llm.anthropic",
+    "neosian._foundation.llm.cerebras",
+    "neosian._foundation.llm.fake",
+]
+
+# The record verb writes what a foreign agent's hooks report: the store
+# and the message codec, never the agent, a provider, or the MCP SDK (§20.9).
+[[tool.importlinter.contracts]]
+name = "the record verb speaks only to the store and codec layers"
+type = "forbidden"
+source_modules = ["neosian._foundation.record"]
+forbidden_modules = [
+    "neosian._foundation.agent",
+    "neosian._foundation.mcp",
     "neosian._foundation.llm.openai",
     "neosian._foundation.llm.anthropic",
     "neosian._foundation.llm.cerebras",

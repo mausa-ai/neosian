@@ -382,6 +382,26 @@ def audit(ctx: typer.Context) -> None:
 
 
 @app.command(
+    name="record",
+    context_settings={
+        "allow_extra_args": True,
+        "ignore_unknown_options": True,
+        "help_option_names": [],
+    },
+)
+def record(ctx: typer.Context) -> None:
+    """Record a foreign agent's session from its hooks (DESIGN §20.9).
+
+    A thin pass-through: every argument goes verbatim to the one grammar
+    (`neosian record --help`). Reads one hook payload on stdin per call;
+    `neosian record install` renders or applies the hooks.
+    """
+    from neosian.record import main as record_main
+
+    raise typer.Exit(record_main(list(ctx.args)))
+
+
+@app.command(
     name="mcp",
     context_settings={
         "allow_extra_args": True,

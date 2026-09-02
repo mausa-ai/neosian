@@ -27,11 +27,11 @@ The repository is private; as a dependency of another uv project, install
 from the git URL, pinned to a release tag (extras ride the same URL):
 
 ```bash
-uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.82.1"
-uv add "neosian[postgres] @ git+ssh://git@github.com/neosae/neosian@v0.82.1"   # + PostgresStore
-uv add "neosian[mcp] @ git+ssh://git@github.com/neosae/neosian@v0.82.1"        # + MCP memory server
-uv add "neosian[otel] @ git+ssh://git@github.com/neosae/neosian@v0.82.1"       # + OpenTelemetry spans
-uv add "neosian[server] @ git+ssh://git@github.com/neosae/neosian@v0.82.1"     # + the state process
+uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.83.0"
+uv add "neosian[postgres] @ git+ssh://git@github.com/neosae/neosian@v0.83.0"   # + PostgresStore
+uv add "neosian[mcp] @ git+ssh://git@github.com/neosae/neosian@v0.83.0"        # + MCP memory server
+uv add "neosian[otel] @ git+ssh://git@github.com/neosae/neosian@v0.83.0"       # + OpenTelemetry spans
+uv add "neosian[server] @ git+ssh://git@github.com/neosae/neosian@v0.83.0"     # + the state process
 ```
 
 The core install is database-driver-free, MCP-free, and server-free
@@ -257,6 +257,12 @@ Registering a client is one command:
 the exact `mcpServers` entry (paste-able JSON on stdout); `--write`
 merges it into the client's config, preserving every other key, and
 refuses a client whose config directory does not exist.
+
+The record half, for the agent you already use: `neosian record install
+--client claude-code` prints the three hooks that call `neosian record`;
+a Claude Code prompt-to-stop span then lands as one turn by
+`claude-code:<session_id>` plus a sessions document, and `neosian audit
+--conversation <session_id>` reads it back (`neosian docs agents`).
 
 ## The state process
 

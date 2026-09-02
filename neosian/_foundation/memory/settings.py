@@ -133,9 +133,9 @@ def add_store_selection_arguments(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def add_store_arguments(parser: argparse.ArgumentParser, *, default_actor: str) -> None:
-    """Add the store flags to `parser`; `resolve_store_settings` reads them."""
-    add_store_selection_arguments(parser)
+def add_mount_arguments(parser: argparse.ArgumentParser) -> None:
+    """The mount half of the grammar: the `--scope` sugar or repeatable
+    `--mount`; `resolve_mounts` reads them."""
     parser.add_argument(
         "--scope",
         help=f"single read-write mount of SCOPE at /{SUGAR_MOUNT_PATH} "
@@ -149,6 +149,12 @@ def add_store_arguments(parser: argparse.ArgumentParser, *, default_actor: str) 
         help="explicit mount; repeatable for multi-mount setups "
         "(ro = read-only, eo = edit-only: existing documents only)",
     )
+
+
+def add_store_arguments(parser: argparse.ArgumentParser, *, default_actor: str) -> None:
+    """Add the store flags to `parser`; `resolve_store_settings` reads them."""
+    add_store_selection_arguments(parser)
+    add_mount_arguments(parser)
     parser.add_argument(
         "--actor",
         default=default_actor,

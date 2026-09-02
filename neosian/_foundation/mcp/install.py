@@ -2,10 +2,10 @@
 
 Prints the exact client registration by default; applies it only with
 --write, merging key-preserving into the client's config file and
-refusing — never creating — a missing config home. Pure over an
-injected `Environment`: path resolution reads no ambient state, which
-keeps the suite monkeypatch-free. Never imports the MCP SDK — install
-works without the extra (it never serves).
+refusing — never creating — a missing config home (the shared rules live
+in `shared/client_config.py`, beside the hook installer's). Pure over an
+injected `Environment`. Never imports the MCP SDK — install works
+without the extra (it never serves).
 """
 
 from __future__ import annotations
@@ -27,8 +27,17 @@ from neosian._foundation.memory.settings import (
     format_mount,
     resolve_store_settings,
 )
+from neosian._foundation.shared.client_config import (
+    FIX_BY_HAND,
+    Environment,
+    InstallError,
+    ensure_evidence,
+    load_document,
+    write_document,
+)
 from neosian._foundation.shared.exceptions import MemoryStoreError
-from neosian._foundation.shared.fileio import PRIVATE_FILE, atomic_write
+
+__all__ = ["Environment"]  # re-exported: the entry point and the suite name it here
 
 SERVER_NAME: Final = "neosian-memory"
 _SERVER_ARGV: Final = ("-m", "neosian.mcp")  # the one place the module path lives
@@ -42,20 +51,6 @@ _EPILOG: Final = (
     "refused, never created. Postgres: set NEOSIAN_POSTGRES_DSN in the "
     "client's own environment — a DSN is never written into a registration."
 )
-_FIX_BY_HAND: Final = (
-    "fix it by hand, or re-run without --write and paste the entry yourself"
-)
-
-
-@dataclass(frozen=True, slots=True)
-class Environment:
-    """Everything path resolution reads — injected, never ambient."""
-
-    home: Path
-    cwd: Path
-    platform: str
-    env: Mapping[str, str]
-    executable: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,15 +74,6 @@ class RegistrationEntry:
 
     def to_json(self) -> dict[str, Any]:
         return {"command": self.command, "args": list(self.args)}
-
-
-class _InstallError(Exception):
-    """A tier-1 refusal: environment or config-file trouble, with its fix."""
-
-    def __init__(self, message: str, hint: str) -> None:
-        super().__init__(message)
-        self.message = message
-        self.hint = hint
 
 
 def _claude_code(context: Environment) -> ClientTarget:
@@ -151,9 +137,10 @@ def build_entry(settings: StoreSettings, *, executable: str) -> RegistrationEntr
     Absolute root (a client spawns the server from an arbitrary cwd),
     mounts in canonical `--mount` form (`format_mount`, ledger #75), the
     daemon URL when the store is the state process (its token rides the
-    client's environment, `NEOSIAN_CLIENT_TOKEN`), and never the DSN — Postgres reaches the server through the client's own
-    environment (`NEOSIAN_POSTGRES_DSN`), where a config file would be
-    even more readable than argv.
+    client's environment, `NEOSIAN_CLIENT_TOKEN`), and never the DSN —
+    Postgres reaches the server through the client's own environment
+    (`NEOSIAN_POSTGRES_DSN`), where a config file would be even more
+    readable than argv.
     """
     args: list[str] = list(_SERVER_ARGV)
     if settings.root is not None:
@@ -169,26 +156,6 @@ def build_entry(settings: StoreSettings, *, executable: str) -> RegistrationEntr
     return RegistrationEntry(command=executable, args=tuple(args))
 
 
-def load_document(path: Path) -> dict[str, Any]:
-    """The existing config as a dict, or {} when the file does not exist."""
-    if not path.exists():
-        return {}
-    try:
-        raw: Any = json.loads(path.read_text(encoding="utf-8"))
-    except OSError as exc:
-        raise _InstallError(f"cannot read {path}: {exc}", _FIX_BY_HAND) from exc
-    except json.JSONDecodeError as exc:
-        raise _InstallError(
-            f"{path} is not valid JSON; refusing to rewrite it", _FIX_BY_HAND
-        ) from exc
-    if not isinstance(raw, dict):
-        raise _InstallError(
-            f"{path} is not a JSON object; refusing to rewrite it", _FIX_BY_HAND
-        )
-    document: dict[str, Any] = raw
-    return document
-
-
 def merge_entry(
     document: dict[str, Any],
     *,
@@ -201,35 +168,14 @@ def merge_entry(
     merged = dict(document)
     existing = merged.get(servers_key, {})
     if not isinstance(existing, dict):
-        raise _InstallError(
+        raise InstallError(
             f"{servers_key} in {path} is not a JSON object; " "refusing to rewrite it",
-            _FIX_BY_HAND,
+            FIX_BY_HAND,
         )
     servers: dict[str, Any] = dict(existing)
     servers[name] = entry.to_json()
     merged[servers_key] = servers
     return merged
-
-
-def _ensure_evidence(target: ClientTarget) -> None:
-    if not target.evidence_dir.is_dir():
-        raise _InstallError(
-            f"{target.label} is not installed here: "
-            f"{target.evidence_dir} does not exist",
-            "install the client first — neosian never creates another "
-            "program's config directory",
-        )
-
-
-def _write_document(path: Path, document: dict[str, Any]) -> None:
-    # MCP configs carry other servers' credentials: an existing file keeps
-    # its mode, a new one is born private — never the umask default.
-    text = json.dumps(document, indent=2) + "\n"
-    try:
-        mode = path.stat().st_mode & 0o777 if path.exists() else PRIVATE_FILE
-        atomic_write(path, text, mode=mode)
-    except OSError as exc:
-        raise _InstallError(f"cannot write {path}: {exc}", _FIX_BY_HAND) from exc
 
 
 def _render_success(
@@ -285,7 +231,7 @@ def _render_success(
 
 
 def _render_failure(
-    exc: _InstallError,
+    exc: InstallError,
     *,
     target: ClientTarget,
     json_output: bool,
@@ -355,7 +301,7 @@ def run_install(
     entry = build_entry(settings, executable=context.executable)
     created = False
     try:
-        _ensure_evidence(target)
+        ensure_evidence(target.label, target.evidence_dir)
         if args.write:
             document = load_document(target.config_path)
             created = not target.config_path.exists()
@@ -366,8 +312,8 @@ def run_install(
                 entry=entry,
                 path=target.config_path,
             )
-            _write_document(target.config_path, merged)
-    except _InstallError as exc:
+            write_document(target.config_path, merged)
+    except InstallError as exc:
         return _render_failure(
             exc, target=target, json_output=args.json_output, out=out, err=err
         )

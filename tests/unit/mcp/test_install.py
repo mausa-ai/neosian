@@ -14,13 +14,13 @@ from neosian._foundation.mcp.install import (
     Environment,
     RegistrationEntry,
     build_entry,
-    load_document,
     merge_entry,
     resolve_target,
     run_install,
 )
 from neosian._foundation.memory.mounts import Mount
 from neosian._foundation.memory.settings import StoreSettings
+from neosian._foundation.shared.client_config import load_document
 
 _EXECUTABLE = "/venv/bin/python3"
 

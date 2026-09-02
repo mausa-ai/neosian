@@ -2,10 +2,11 @@
 
 A coding agent with shell access alone can discover (llms.txt), learn
 (`neosian docs`), operate memory (all six commands, `--json`, and the
-NP redaction leg over the operator verbs), and offer the MCP upgrade —
+NP redaction leg over the operator verbs), offer the MCP upgrade, and
+record a foreign agent's session from replayed hook payloads (NL) —
 driven through the LITERAL `neosian` binary, closing §14.3's honest
 limit (the process boundary the in-process cli transport deliberately
-skips, ledger #78). ~16 interpreter starts, once per gate.
+skips, ledger #78). ~21 interpreter starts, once per gate.
 
 No skip: if the console script ever stops being installed, this must
 go red, not green-by-skip.
@@ -19,6 +20,7 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from neosian._foundation.memory.file import FileStore
+from tests.unit.record.payloads import SESSION, prompt, stop, tool
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 
@@ -349,3 +351,74 @@ class TestUpgrade:
         assert result.returncode == 1
         assert "error:" in result.stderr
         assert not (tmp_path / ".cursor").exists()  # never created
+
+
+class TestRecord:
+    """NL slice B: a foreign agent's hooks, replayed through the literal
+    binary — the span lands as one turn with the foreign actor, the
+    sessions document appears in the index, the ledger names both."""
+
+    def test_replayed_hooks_land_a_turn_and_a_sessions_document(
+        self, tmp_path: Path
+    ) -> None:
+        env = _env(tmp_path)
+        root = tmp_path / "mem"
+        flags = ["--root", str(root), "--scope", "user:walkthrough"]
+        argv = ["record", *flags, "--spool", str(tmp_path / "spool")]
+        for payload in (prompt("hello"), tool(), stop("done")):
+            result = _run(argv, cwd=tmp_path, env=env, stdin=json.dumps(payload))
+            assert result.returncode == 0, result.stderr
+            assert result.stdout == ""  # silent: a hook's stdout is injected
+
+        ledger = _run(
+            ["audit", "--scope", "user:walkthrough", "--root", str(root), "--json"],
+            cwd=tmp_path,
+            env=env,
+        )
+        assert ledger.returncode == 0, ledger.stderr
+        (entry,) = json.loads(ledger.stdout)["entries"]
+        assert entry["path"] == f"sessions/{SESSION}"
+        assert entry["actor"] == f"claude-code:{SESSION}#1"
+        turns = _run(
+            [
+                "audit",
+                "--scope",
+                "user:walkthrough",
+                "--root",
+                str(root),
+                "--conversation",
+                SESSION,
+                "--json",
+            ],
+            cwd=tmp_path,
+            env=env,
+        )
+        events = [e["event"] for e in json.loads(turns.stdout)["entries"]]
+        assert events == ["created", "turn"]
+
+        index = _run(["memory", "view", "/", *flags], cwd=tmp_path, env=env)
+        assert index.returncode == 0
+        assert f"sessions/{SESSION}" in index.stdout
+
+    def test_install_prints_the_hooks(self, tmp_path: Path) -> None:
+        env = _env(tmp_path)
+        (tmp_path / ".claude").mkdir()  # HOME is tmp_path — install evidence
+        result = _run(
+            [
+                "record",
+                "install",
+                "--client",
+                "claude-code",
+                "--root",
+                str(tmp_path / "mem"),
+                "--scope",
+                "user:walkthrough",
+            ],
+            cwd=tmp_path,
+            env=env,
+        )
+        assert result.returncode == 0, result.stderr
+        hooks = json.loads(result.stdout)["hooks"]
+        assert set(hooks) == {"UserPromptSubmit", "PostToolUse", "Stop"}
+        assert "-m neosian.record" in hooks["Stop"][0]["hooks"][0]["command"]
+        assert not (tmp_path / ".claude" / "settings.json").exists()  # print mode

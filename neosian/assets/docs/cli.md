@@ -137,6 +137,22 @@ substrate. `--actor` filters by prefix: `claude-code:s1` matches
 process every actor carries the client prefix the daemon asserted.
 Exit tiers hold; an empty ledger is an answer (exit 0).
 
+## The record — `neosian record`
+
+`neosian record` is what a foreign agent's hooks call: one hook payload
+on stdin per event, `hook_event_name` saying which. `UserPromptSubmit`
+opens a span, `PostToolUse` adds a tool round, `Stop` lands it as one
+turn by `<agent>:<session_id>` in the conversation the session id names
+and writes the scope's sessions document. It takes the store and mount
+flags above plus `--agent KIND` (default `claude-code`) and `--spool
+DIR` (default `.neosian/spool`, never the store). `neosian record
+install --client claude-code [--write]` renders or applies the hooks —
+the `mcp install` twin (`neosian docs agents`). The exit tiers bend once
+for the hook's sake: 2 only for argv, 1 for everything after, so a
+broken store never blocks the agent; stdout is silent unless `--json`
+(`{"event", "session_id", "actor", "disposition", "conversation_id",
+"turn", "document", "client"}`).
+
 ## One writer per root
 
 A FileStore root is owned by one writer at a time. Do not run
