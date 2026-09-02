@@ -3,6 +3,7 @@
 Handles reading and writing credentials from ~/.neosian/config.toml.
 """
 
+import os
 import tomllib
 from pathlib import Path
 
@@ -33,13 +34,16 @@ def _read_config() -> dict[str, dict[str, str]]:
 def _write_config(config: dict[str, dict[str, str]]) -> None:
     """Write the config file.
 
-    Creates the directory if it doesn't exist.
+    The file holds API keys: it is created 0600 in a 0700 directory, and
+    a file that already exists is tightened to 0600 on every write.
     """
     config_path = _get_config_path()
-    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
 
-    with open(config_path, "wb") as f:
+    fd = os.open(config_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "wb") as f:
         tomli_w.dump(config, f)
+    os.chmod(config_path, 0o600)
 
 
 def get_api_key(key_name: str) -> str | None:

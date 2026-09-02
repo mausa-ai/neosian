@@ -17,7 +17,6 @@ from rich.panel import Panel
 from rich.prompt import Prompt
 from rich.table import Table
 from rich.text import Text
-from simple_term_menu import TerminalMenu  # type: ignore[import-untyped]
 
 from neosian._cli.models import select_arena_models
 from neosian._cli.session import ArenaModelResponse, ArenaSession
@@ -420,6 +419,8 @@ def _handle_arena_exit(console: Console, session: ArenaSession) -> None:
 
     # Show save menu with arrow selection
     console.print(f"[bold]{PlaygroundUI.SAVE_MENU_TITLE}[/bold]")
+
+    from simple_term_menu import TerminalMenu  # type: ignore[import-untyped]
 
     options = [PlaygroundUI.SAVE_OPTION_YES, PlaygroundUI.SAVE_OPTION_NO]
     menu = TerminalMenu(

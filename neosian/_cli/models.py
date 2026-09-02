@@ -1,7 +1,6 @@
 """Model and provider pickers for the CLI, derived from the Model registry."""
 
 from rich.console import Console
-from simple_term_menu import TerminalMenu  # type: ignore[import-untyped]
 
 from neosian._foundation.shared.constants import ArenaUI
 from neosian._foundation.shared.registry import registered_models
@@ -120,6 +119,8 @@ def select_provider_and_model(
     if not providers:
         return None
 
+    from simple_term_menu import TerminalMenu  # type: ignore[import-untyped]
+
     while True:
         console.print("\n[bold]Select Provider:[/bold]")
         provider_menu = TerminalMenu(
@@ -170,6 +171,8 @@ def select_provider_and_model_labeled(
     if not providers:
         return None
 
+    from simple_term_menu import TerminalMenu
+
     while True:
         console.print(f"\n[bold]{ArenaUI.SELECT_PROVIDER.format(label=label)}[/bold]")
         provider_menu = TerminalMenu([p[1] for p in providers], cursor_index=0)
@@ -214,6 +217,8 @@ def select_arena_models(
         List of Model enums or None if cancelled.
     """
     # Select count
+    from simple_term_menu import TerminalMenu
+
     console.print(f"\n[bold]{ArenaUI.SELECT_COUNT}[/bold]")
     count_menu = TerminalMenu(list(ArenaUI.COUNT_OPTIONS), cursor_index=0)
     count_choice = count_menu.show()

@@ -1,7 +1,11 @@
 """Unit tests for CLI config module."""
 
+import os
+import stat
 from pathlib import Path
 from unittest.mock import patch
+
+import pytest
 
 from neosian._cli.config import (
     config_exists,
@@ -180,3 +184,36 @@ class TestDeleteConfig:
         with patch("neosian._cli.config._get_config_path") as mock_path:
             mock_path.return_value = config_file
             assert delete_config() is True
+
+
+def _mode(path: Path) -> int:
+    return stat.S_IMODE(path.stat().st_mode)
+
+
+def _skip_unless_posix_modes() -> None:
+    if os.name != "posix":
+        pytest.skip("file modes are a POSIX contract")
+
+
+class TestWritePermissions:
+    """API keys are written 0600 in a 0700 directory (EC-2)."""
+
+    def test_new_file_and_directory_are_private(self, tmp_path: Path) -> None:
+        _skip_unless_posix_modes()
+        config_file = tmp_path / "home" / ".neosian" / "config.toml"
+        with patch("neosian._cli.config._get_config_path", return_value=config_file):
+            set_api_key(Config.OPENAI_API_KEY, "sk-test")
+
+        assert _mode(config_file) == 0o600
+        assert _mode(config_file.parent) == 0o700
+
+    def test_existing_world_readable_file_is_tightened(self, tmp_path: Path) -> None:
+        _skip_unless_posix_modes()
+        config_file = tmp_path / "config.toml"
+        config_file.write_text("")
+        config_file.chmod(0o644)
+        with patch("neosian._cli.config._get_config_path", return_value=config_file):
+            set_api_key(Config.OPENAI_API_KEY, "sk-test")
+            assert get_api_key(Config.OPENAI_API_KEY) == "sk-test"
+
+        assert _mode(config_file) == 0o600

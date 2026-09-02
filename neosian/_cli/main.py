@@ -11,7 +11,6 @@ import typer
 from rich.console import Console
 from rich.prompt import Prompt
 from rich.table import Table
-from simple_term_menu import TerminalMenu  # type: ignore[import-untyped]
 
 from neosian import __version__
 from neosian._cli.config import (
@@ -246,6 +245,8 @@ def configure() -> None:
 
     # Show menu
     console.print()
+    from simple_term_menu import TerminalMenu  # type: ignore[import-untyped]
+
     options = ["Configure credentials", "Delete configuration", "Exit"]
     menu = TerminalMenu(options, cursor_index=0)
     choice = menu.show()
