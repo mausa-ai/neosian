@@ -4,7 +4,10 @@ Tiers are marked by path (DESIGN §10): tests/unit/** is `unit`;
 tests/external/<provider>/** is `external` + `external_<provider>`;
 tests/external/cross/** is parametrized per provider and self-skips per
 key, so it carries every suite's marker. Selection is by marker —
-addopts exclude `external` by default.
+addopts exclude `external` by default. The addopts ceiling (60 s, TP-12)
+is the unit tier's hang detector over fakes; an external item carries
+its own — a real-API baseline runs minutes (the Kimi lane most of an
+hour), so its ceiling is an hour per test, inside the job's 180.
 """
 
 from collections.abc import Iterator
@@ -15,6 +18,7 @@ import pytest
 # The three shipped adapters, then the door lanes (tests/external/lanes.py).
 _PROVIDERS = ("openai", "anthropic", "cerebras", "xai", "gemini", "kimi")
 _TESTS_DIR = Path(__file__).parent
+_EXTERNAL_TIMEOUT_SECONDS = 3600
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
@@ -24,6 +28,7 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
             item.add_marker(pytest.mark.unit)
         elif rel[0] == "external":
             item.add_marker(pytest.mark.external)
+            item.add_marker(pytest.mark.timeout(_EXTERNAL_TIMEOUT_SECONDS))
             suites = _PROVIDERS if rel[1] == "cross" else (rel[1],)
             for suite in suites:
                 item.add_marker(getattr(pytest.mark, f"external_{suite}"))
