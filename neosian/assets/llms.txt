@@ -58,14 +58,18 @@ state process's HTTP wire.
 
 ## Bring an OpenAI-compatible model
 
-- `register_model("grok-4", provider=OpenAICompatible(name="xai",
-  api_key_env="XAI_API_KEY", base_url="https://api.x.ai/v1"), ...)` —
-  once at import; the model prices in µ$ and passes every gate like a
-  shipped one. `neosian docs quickstart` carries the snippet.
+- `register_model("acme-large", provider=OpenAICompatible(name="acme",
+  api_key_env="ACME_API_KEY", base_url="https://llm.acme.example/v1"),
+  ...)` — once at import; the model prices in µ$ and passes every gate
+  like a shipped one. `neosian docs quickstart` carries the snippet.
+- Shipped door rows — `from neosian.catalog import GROK_4_6,
+  GEMINI_3_7_FLASH` (xAI `XAI_API_KEY`; Gemini `GEMINI_API_KEY`):
+  first-party, fingerprinted, no client of their own; each earned by
+  green dispatched runs of the memory baselines.
 
 ## Install
 
-- `uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.81.0"`
+- `uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.82.0"`
   (private repository, no PyPI; pin an annotated release tag, never
   master; extras `[postgres]`, `[mcp]`, `[otel]`, and `[server]` ride
   the same URL).

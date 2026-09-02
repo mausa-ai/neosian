@@ -1,4 +1,4 @@
-"""The candidate lanes' pacing (tests/external/pacing.py), keylessly."""
+"""The door lanes' pacing (tests/external/pacing.py), keylessly."""
 
 import time
 
@@ -8,7 +8,7 @@ from neosian import Model
 from neosian._foundation.llm.base import Message, Role, text_of
 from neosian._foundation.shared.exceptions import ProviderError
 from neosian.fake import FakeClient, FakeScript, FakeTurn
-from tests.external.candidates import KIMI, XAI
+from tests.external.lanes import KIMI, XAI
 from tests.external.pacing import PacedClient, Pacer
 
 _ASK = [Message(role=Role.USER, content="hi")]

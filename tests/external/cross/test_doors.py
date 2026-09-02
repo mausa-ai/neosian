@@ -1,7 +1,8 @@
-"""The candidate doors' dialects, probed live (DESIGN §19.3, §19.7).
+"""The doors' dialects, probed live (DESIGN §19.3, §19.7) — shipped rows
+and candidates alike.
 
 One parametrized file in cross/, like the baselines and the catalog
-smoke: every probe self-skips on the candidate's key. A red probe is a
+smoke: every probe self-skips on the lane's key. A red probe is a
 finding about the door — the knob it earns, or the limit §19.7 records —
 never a broken test; the classes the provider docs predict are listed
 there (a json_object-only endpoint on structured output, a `stop` finish
@@ -23,7 +24,7 @@ from neosian._foundation.llm.base import (
 )
 from neosian._foundation.shared.schema import validate_json
 from neosian._foundation.shared.types import ReasoningEffort, ResponseFormat, ToolName
-from tests.external.candidates import CANDIDATES, Candidate, register
+from tests.external.lanes import LANES, Lane
 from tests.external.pacing import Pacer, door_client
 
 type Door = tuple[RegisteredModel, BaseLLMClient]
@@ -57,13 +58,13 @@ class _Capital(BaseModel):
     country: str
 
 
-@pytest.fixture(params=CANDIDATES, ids=lambda c: c.name)
+@pytest.fixture(params=LANES, ids=lambda lane: lane.name)
 async def door(request: pytest.FixtureRequest) -> AsyncIterator[Door]:
-    candidate: Candidate = request.param
-    key = request.getfixturevalue(candidate.key_fixture)  # skips when unset
-    client = door_client(candidate, key, Pacer.of(candidate))
+    lane: Lane = request.param
+    key = request.getfixturevalue(lane.key_fixture)  # skips when unset
+    client = door_client(lane, key, Pacer.of(lane))
     try:
-        yield register(candidate), client
+        yield lane.registered(), client
     finally:
         await client.close()
 

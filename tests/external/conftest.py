@@ -38,8 +38,8 @@ def cerebras_api_key() -> str:
     return _key_or_skip("CEREBRAS_API_KEY")
 
 
-# The candidate doors (tests/external/candidates.py) — keys only; the
-# door client is built from the candidate where it is probed.
+# The door lanes (tests/external/lanes.py) — keys only; the door client
+# is built from the lane where it is probed.
 
 
 @pytest.fixture
@@ -50,16 +50,6 @@ def xai_api_key() -> str:
 @pytest.fixture
 def gemini_api_key() -> str:
     return _key_or_skip("GEMINI_API_KEY")
-
-
-@pytest.fixture
-def deepseek_api_key() -> str:
-    return _key_or_skip("DEEPSEEK_API_KEY")
-
-
-@pytest.fixture
-def qwen_api_key() -> str:
-    return _key_or_skip("DASHSCOPE_API_KEY")
 
 
 @pytest.fixture

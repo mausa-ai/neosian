@@ -58,5 +58,5 @@ def test_gated_file_matches_the_recorded_fingerprint(relative: str) -> None:
 def test_results_name_every_measured_provider() -> None:
     text = _BASELINES.read_text(encoding="utf-8")
     results = text[text.index("## Results") :]
-    for provider in ("Anthropic", "OpenAI", "Cerebras"):
+    for provider in ("Anthropic", "OpenAI", "Cerebras", "xAI", "Gemini"):
         assert provider in results, f"Results tables must name {provider}"

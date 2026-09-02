@@ -81,20 +81,22 @@ what is stored never changes.
 
 ## Bring an OpenAI-compatible model
 
-Models the `Model` enum lacks — xAI, DeepSeek, a fine-tune — register
-once at import through a door: the endpoint, the env var that signs
-requests, and the dialect quirks the wire has.
+Models the `Model` enum lacks — a fine-tune, a local server, a provider
+not shipped — register once at import through a door: the endpoint, the
+env var that signs requests, and the dialect quirks the wire has. The
+doors neosian ships are already registered: `from neosian.catalog import
+GROK_4_6, GEMINI_3_7_FLASH` (xAI `XAI_API_KEY`, Gemini `GEMINI_API_KEY`).
 
 ```python
 from neosian import AgentConfig, ModelPricing, OpenAICompatible, register_model
 
-xai = OpenAICompatible(name="xai", api_key_env="XAI_API_KEY",
-                       base_url="https://api.x.ai/v1", temperature=True)
-GROK_4 = register_model("grok-4", provider=xai, context_window=131_072,
-                        max_output_tokens=16_384,
-                        pricing=ModelPricing(input_per_mtok=3_000_000,
-                                             output_per_mtok=15_000_000))
-config = AgentConfig(system_prompt="Be concise.", model=GROK_4)
+acme = OpenAICompatible(name="acme", api_key_env="ACME_API_KEY",
+                        base_url="https://llm.acme.example/v1", temperature=True)
+ACME_LARGE = register_model("acme-large", provider=acme, context_window=131_072,
+                            max_output_tokens=16_384,
+                            pricing=ModelPricing(input_per_mtok=3_000_000,
+                                                 output_per_mtok=15_000_000))
+config = AgentConfig(system_prompt="Be concise.", model=ACME_LARGE)
 ```
 
 Cost in µ$, the context policy, capability-aware fallback and the

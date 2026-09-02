@@ -39,7 +39,7 @@ ClientFactory = Callable[[Provider], "BaseLLMClient"]
 
 
 # Date the pricing table below was last verified against provider price lists.
-PRICES_AS_OF = "2026-08-18"
+PRICES_AS_OF = "2026-09-02"
 
 # Integer micro-USD per USD — money is int µ$ everywhere (ECOSYSTEM §4);
 # floats exist only at display edges (format_micro_usd).
@@ -370,6 +370,35 @@ _MODEL_SPECS[Model.FAKE_REASONING.value] = ModelSpec(
     ),
 )
 
+# The shipped OpenAI-compatible rows (DESIGN §19.5): priced here so the
+# fingerprint seals them; their doors and registrations live in catalog.py.
+# Where a card is tiered, the standard ≤200k tier is the sealed number.
+CATALOG_SPECS: dict[str, ModelSpec] = {
+    "grok-4.6": ModelSpec(
+        provider=Provider.OPENAI_COMPATIBLE,
+        context_window=500_000,
+        max_output_tokens=32_768,  # unpublished — a conservative ceiling
+        supports_reasoning=True,
+        pricing=ModelPricing(
+            input_per_mtok=2_000_000,
+            output_per_mtok=6_000_000,
+            cache_read_per_mtok=500_000,
+        ),
+    ),
+    "gemini-3.7-flash": ModelSpec(
+        provider=Provider.OPENAI_COMPATIBLE,
+        context_window=1_048_576,
+        max_output_tokens=65_536,
+        supports_reasoning=True,
+        # The introductory card, stated through 2026-12-31 (doubles after).
+        pricing=ModelPricing(
+            input_per_mtok=750_000,
+            output_per_mtok=3_750_000,
+            cache_read_per_mtok=75_000,
+        ),
+    ),
+}
+
 # Default models per provider
 DEFAULT_MODELS: dict[Provider, Model] = {
     Provider.OPENAI: Model.GPT_5_NANO,
@@ -382,13 +411,16 @@ DEFAULT_MODELS: dict[Provider, Model] = {
 def _prices_fingerprint() -> str:
     """Canonical sha256 of the shipped rate card + its as-of date.
 
+    The card is the enum's table plus the catalog rows (§19.5).
+
     A unit test recomputes this against PRICES_FINGERPRINT, so any price
     edit fails CI until the fingerprint (and, with it, PRICES_AS_OF) is
     bumped in the same commit — a gate, not a promise.
     """
+    table = _MODEL_SPECS | CATALOG_SPECS
     lines = [f"as_of:{PRICES_AS_OF}"]
-    for model_id in sorted(_MODEL_SPECS):
-        spec = _MODEL_SPECS[model_id]
+    for model_id in sorted(table):
+        spec = table[model_id]
         # Fake-model rates are test fixtures, not provider prices.
         if spec.pricing is None or spec.provider is Provider.FAKE:
             continue
@@ -400,4 +432,4 @@ def _prices_fingerprint() -> str:
     return hashlib.sha256("\n".join(lines).encode("ascii")).hexdigest()
 
 
-PRICES_FINGERPRINT = "3e59b9463e7aee2a3fe28798c13cd97aad3bea2ec1e6a198fa613e4dcb40c025"
+PRICES_FINGERPRINT = "cb065bfee6fc29b8fdbf95c297e1bdf0fe1bb818ae337b883a28e593f4de937a"

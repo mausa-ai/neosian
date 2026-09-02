@@ -16,6 +16,7 @@ from neosian import (
     Usage,
     register_model,
 )
+from neosian._foundation.shared.catalog import CATALOG
 from neosian._foundation.shared.models import _prices_fingerprint
 from neosian._foundation.shared.registry import (
     lookup_model,
@@ -114,13 +115,13 @@ class TestRegisteredModel:
 
 @pytest.mark.unit
 class TestRegistry:
-    def test_starts_empty_and_isolated(self) -> None:
-        assert registered_models() == ()
+    def test_starts_with_the_catalog_and_nothing_else(self) -> None:
+        assert registered_models() == CATALOG
 
     def test_register_then_lookup(self) -> None:
         grok = _grok()
         assert lookup_model("grok-4") is grok
-        assert registered_models() == (grok,)
+        assert registered_models() == (*CATALOG, grok)
 
     def test_lookup_prefers_the_enum_and_misses_unknown_ids(self) -> None:
         assert lookup_model("fake") is Model.FAKE
@@ -128,7 +129,7 @@ class TestRegistry:
 
     def test_identical_reregistration_is_idempotent(self) -> None:
         assert _grok() is _grok()
-        assert len(registered_models()) == 1
+        assert len(registered_models()) == len(CATALOG) + 1
 
     def test_conflicting_definition_is_refused(self) -> None:
         _grok()
@@ -159,7 +160,7 @@ class TestRegistry:
     def test_registration_order_is_kept(self) -> None:
         a = register_model("a", provider=XAI, context_window=1, max_output_tokens=1)
         b = register_model("b", provider=XAI, context_window=1, max_output_tokens=1)
-        assert registered_models() == (a, b)
+        assert registered_models() == (*CATALOG, a, b)
 
 
 @pytest.mark.unit

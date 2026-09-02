@@ -12,17 +12,8 @@ from pathlib import Path
 
 import pytest
 
-# The three shipped adapters, then the candidate doors of NC2 slice B.
-_PROVIDERS = (
-    "openai",
-    "anthropic",
-    "cerebras",
-    "xai",
-    "gemini",
-    "deepseek",
-    "qwen",
-    "kimi",
-)
+# The three shipped adapters, then the door lanes (tests/external/lanes.py).
+_PROVIDERS = ("openai", "anthropic", "cerebras", "xai", "gemini", "kimi")
 _TESTS_DIR = Path(__file__).parent
 
 

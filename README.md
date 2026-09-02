@@ -25,11 +25,11 @@ The repository is private; as a dependency of another uv project, install
 from the git URL, pinned to a release tag (extras ride the same URL):
 
 ```bash
-uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.81.0"
-uv add "neosian[postgres] @ git+ssh://git@github.com/neosae/neosian@v0.81.0"   # + PostgresStore
-uv add "neosian[mcp] @ git+ssh://git@github.com/neosae/neosian@v0.81.0"        # + MCP memory server
-uv add "neosian[otel] @ git+ssh://git@github.com/neosae/neosian@v0.81.0"       # + OpenTelemetry spans
-uv add "neosian[server] @ git+ssh://git@github.com/neosae/neosian@v0.81.0"     # + the state process
+uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.82.0"
+uv add "neosian[postgres] @ git+ssh://git@github.com/neosae/neosian@v0.82.0"   # + PostgresStore
+uv add "neosian[mcp] @ git+ssh://git@github.com/neosae/neosian@v0.82.0"        # + MCP memory server
+uv add "neosian[otel] @ git+ssh://git@github.com/neosae/neosian@v0.82.0"       # + OpenTelemetry spans
+uv add "neosian[server] @ git+ssh://git@github.com/neosae/neosian@v0.82.0"     # + the state process
 ```
 
 The core install is database-driver-free, MCP-free, and server-free
@@ -329,8 +329,10 @@ its key is set (asking for an unavailable model raises
 | OpenAI | `OPENAI_API_KEY` | GPT-5 family (reasoning models) |
 | Anthropic | `ANTHROPIC_API_KEY` | Claude; vision/PDF input, prompt caching, adaptive thinking |
 | Cerebras | `CEREBRAS_API_KEY` | Default provider (gpt-oss-120b) |
+| xAI | `XAI_API_KEY` | `grok-4.6` — a shipped door row (`from neosian.catalog import GROK_4_6`) |
+| Google Gemini API | `GEMINI_API_KEY` | `gemini-3.7-flash` on the OpenAI-compatible endpoint — a shipped door row (`GEMINI_3_7_FLASH`) |
 | Fake | — | Keyless, deterministic, always available (`Model.FAKE`) |
-| A registered door | the door's `api_key_env` | Any OpenAI-compatible endpoint (xAI, DeepSeek, a fine-tune…) via `register_model` |
+| A registered door | the door's `api_key_env` | Any OpenAI-compatible endpoint (a fine-tune, a local server, a provider not shipped) via `register_model` |
 
 The shipped registry lives in the `Model` enum, with per-model
 capabilities (`context_window`, `max_output_tokens`, reasoning/vision/
@@ -342,21 +344,23 @@ import:
 ```python
 from neosian import AgentConfig, ModelPricing, OpenAICompatible, register_model
 
-xai = OpenAICompatible(name="xai", api_key_env="XAI_API_KEY",
-                       base_url="https://api.x.ai/v1", temperature=True)
-GROK_4 = register_model("grok-4", provider=xai, context_window=131_072,
-                        max_output_tokens=16_384,
-                        pricing=ModelPricing(input_per_mtok=3_000_000,
-                                             output_per_mtok=15_000_000))
-config = AgentConfig(system_prompt="Be concise.", model=GROK_4)
+acme = OpenAICompatible(name="acme", api_key_env="ACME_API_KEY",
+                        base_url="https://llm.acme.example/v1", temperature=True)
+ACME_LARGE = register_model("acme-large", provider=acme, context_window=131_072,
+                            max_output_tokens=16_384,
+                            pricing=ModelPricing(input_per_mtok=3_000_000,
+                                                 output_per_mtok=15_000_000))
+config = AgentConfig(system_prompt="Be concise.", model=ACME_LARGE)
 ```
 
 A registered model is `Model`'s structural twin (`AnyModel = Model |
 RegisteredModel`): cost in µ$, the context policy, capability-aware
 fallback and the session's client cache treat it like a shipped one, and
 every error names the door, never the shared row. Registered pricing never
-enters `PRICES_FINGERPRINT`. `examples/custom_model_agent.py` is the
-runnable form; the v1 bar's candidate providers enter this way (DESIGN §19).
+enters `PRICES_FINGERPRINT`; the shipped door rows in `neosian.catalog` do —
+they are first-party rows without a client of their own, each earned by
+green dispatched runs of the memory baselines (DESIGN §19.5, §19.7).
+`examples/custom_model_agent.py` is the runnable form.
 
 ## Running without keys
 

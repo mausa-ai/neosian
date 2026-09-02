@@ -1,4 +1,4 @@
-"""Model-catalog smoke test: every shipped model, and every candidate door,
+"""Model-catalog smoke test: every shipped model, and every door lane,
 answers a 1-token request.
 
 Catches silent provider catalog churn (deprecated/renamed model IDs) that
@@ -13,7 +13,7 @@ from neosian import AnyModel
 from neosian._foundation.llm.base import BaseLLMClient, Message, Role
 from neosian._foundation.llm.router import ProviderRouter
 from neosian._foundation.shared.types import Model, Provider
-from tests.external.candidates import CANDIDATES, Candidate, register
+from tests.external.lanes import LANES, Lane
 from tests.external.pacing import PacedClient, Pacer
 
 _PROVIDER_FIXTURES: dict[Provider, str] = {
@@ -61,14 +61,15 @@ async def test_model_answers_minimal_completion(
     await _answers(ProviderRouter().create_client(model.provider), model)
 
 
-@pytest.mark.parametrize("candidate", CANDIDATES, ids=lambda c: c.name)
-async def test_candidate_answers_minimal_completion(
-    candidate: Candidate, request: pytest.FixtureRequest
+@pytest.mark.parametrize("lane", LANES, ids=lambda lane: lane.name)
+async def test_door_answers_minimal_completion(
+    lane: Lane, request: pytest.FixtureRequest
 ) -> None:
-    """A candidate's id resolves live, through the door path a registered
-    model takes (`create_client_for`, DESIGN §19.2)."""
-    request.getfixturevalue(candidate.key_fixture)  # skips when unset
-    model = register(candidate)
+    """A door's id resolves live, through the path a registered model
+    takes (`create_client_for`, DESIGN §19.2) — the catalog's rows and the
+    candidates alike."""
+    request.getfixturevalue(lane.key_fixture)  # skips when unset
+    model = lane.registered()
     client = ProviderRouter().create_client_for(model)
-    pacer = Pacer.of(candidate)  # the lane's one clock, shared with the probes
+    pacer = Pacer.of(lane)  # the lane's one clock, shared with the probes
     await _answers(client if pacer is None else PacedClient(client, pacer), model)

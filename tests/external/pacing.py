@@ -1,4 +1,4 @@
-"""Pacing for the candidate lanes: a door's rate limit, respected on our side.
+"""Pacing for the door lanes: a door's rate limit, respected on our side.
 
 A rate limit is an account property, not a dialect, so it never becomes an
 `OpenAICompatible` knob (DESIGN §19.3): the external tier paces the door's
@@ -31,7 +31,7 @@ from neosian._foundation.llm.openai import OpenAICompatibleClient
 from neosian._foundation.shared.constants import LLMDefaults
 from neosian._foundation.shared.exceptions import ProviderError
 from neosian._foundation.shared.types import AnyModel, ReasoningEffort, ResponseFormat
-from tests.external.candidates import Candidate
+from tests.external.lanes import Lane
 
 _ATTEMPTS = 6
 _MARGIN = 1.1  # a tenth over the tier: the provider's minute is not ours
@@ -48,11 +48,11 @@ class Pacer:
         self._next_at = 0.0
 
     @classmethod
-    def of(cls, candidate: Candidate) -> "Pacer | None":
-        rpm = candidate.requests_per_minute
+    def of(cls, lane: Lane) -> "Pacer | None":
+        rpm = lane.requests_per_minute
         if rpm is None:
             return None
-        return _PACERS.setdefault(candidate.name, cls(rpm))
+        return _PACERS.setdefault(lane.name, cls(rpm))
 
     async def slot(self) -> None:
         now = time.monotonic()
@@ -141,9 +141,7 @@ class PacedClient(BaseLLMClient):
         await self._inner.close()
 
 
-def door_client(
-    candidate: Candidate, api_key: str, pacer: Pacer | None
-) -> BaseLLMClient:
-    """The candidate's client, paced when its account states a limit."""
-    client = OpenAICompatibleClient(api_key=api_key, door=candidate.door)
+def door_client(lane: Lane, api_key: str, pacer: Pacer | None) -> BaseLLMClient:
+    """The lane's client, paced when its account states a limit."""
+    client = OpenAICompatibleClient(api_key=api_key, door=lane.door)
     return client if pacer is None else PacedClient(client, pacer)

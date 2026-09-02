@@ -161,27 +161,31 @@ def register_model(
         raise ConfigurationError(
             f"model {value!r} ships as Model.{shipped.name}; use the enum member"
         )
-    candidate = RegisteredModel(
-        value=value,
-        spec=ModelSpec(
-            provider=Provider.OPENAI_COMPATIBLE,
-            context_window=context_window,
-            max_output_tokens=max_output_tokens,
-            supports_reasoning=supports_reasoning,
-            supports_max_effort=supports_max_effort,
-            pricing=pricing,
-        ),
-        door=provider,
+    spec = ModelSpec(
+        provider=Provider.OPENAI_COMPATIBLE,
+        context_window=context_window,
+        max_output_tokens=max_output_tokens,
+        supports_reasoning=supports_reasoning,
+        supports_max_effort=supports_max_effort,
+        pricing=pricing,
     )
-    existing = _REGISTRY.get(value)
+    return _register(RegisteredModel(value=value, spec=spec, door=provider))
+
+
+def _register(model: RegisteredModel) -> RegisteredModel:
+    """Write-once: the new row, the identical existing one, or a refusal.
+
+    The catalog's shipped rows (§19.5) enter here with their sealed spec.
+    """
+    existing = _REGISTRY.get(model.value)
     if existing is None:
-        _REGISTRY[value] = candidate
-        return candidate
-    if existing == candidate:
+        _REGISTRY[model.value] = model
+        return model
+    if existing == model:
         return existing
     raise ConfigurationError(
-        f"model {value!r} is already registered with a different definition; "
-        "register each id once, or pick another id"
+        f"model {model.value!r} is already registered with a different "
+        "definition; register each id once, or pick another id"
     )
 
 

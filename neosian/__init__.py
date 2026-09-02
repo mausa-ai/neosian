@@ -2,6 +2,8 @@
 
 from importlib.metadata import version as _pkg_version
 
+# The shipped catalog rows register at import (DESIGN §19.5).
+import neosian._foundation.shared.catalog  # noqa: F401
 from neosian._foundation.agent.approval import (
     ToolApprovalRequest,
     ToolDecision,

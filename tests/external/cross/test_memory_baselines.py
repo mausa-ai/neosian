@@ -25,7 +25,7 @@ from neosian.evaluation import (
     load_eval_config,
     run_evaluation,
 )
-from tests.external.candidates import CANDIDATES, Candidate, register
+from tests.external.lanes import LANES, Lane
 from tests.external.pacing import Pacer, door_client
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -110,22 +110,23 @@ class TestMemoryBaselines:
             report = await run_evaluation(config, store_root=tmp_path / "stores")
         _assert_baseline(report)
 
-    @pytest.mark.parametrize("candidate", CANDIDATES, ids=lambda c: c.name)
-    async def test_candidate_baseline(
-        self, candidate: Candidate, request: pytest.FixtureRequest, tmp_path: Path
+    @pytest.mark.parametrize("lane", LANES, ids=lambda lane: lane.name)
+    async def test_door_baseline(
+        self, lane: Lane, request: pytest.FixtureRequest, tmp_path: Path
     ) -> None:
-        """A door awaiting NW's gate: these are the cells membership reads
-        — green over two dispatched runs ships the row, red exits. Every
-        model call rides one paced clock (pacing.py) so an account tier
-        never masquerades as model behavior."""
-        key = request.getfixturevalue(candidate.key_fixture)  # skips when unset
-        config = _scriptless(register(candidate))
-        pacer = Pacer.of(candidate)
-        with patch.dict(os.environ, {candidate.door.api_key_env: key}, clear=True):
+        """A door's row: a shipped catalog row is re-measured every dispatch
+        like the three adapters; a candidate's cells are what membership
+        reads — green over dispatched runs ships it, red exits. Every model
+        call rides one paced clock (pacing.py) so an account tier never
+        masquerades as model behavior."""
+        key = request.getfixturevalue(lane.key_fixture)  # skips when unset
+        config = _scriptless(lane.registered())
+        pacer = Pacer.of(lane)
+        with patch.dict(os.environ, {lane.door.api_key_env: key}, clear=True):
             report = await run_evaluation(
                 config,
                 store_root=tmp_path / "stores",
-                client_factory=lambda _provider: door_client(candidate, key, pacer),
+                client_factory=lambda _provider: door_client(lane, key, pacer),
             )
         _assert_baseline(report)
 
