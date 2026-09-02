@@ -6,6 +6,8 @@ from datetime import UTC, datetime
 import httpx
 import pytest
 
+from neosian._foundation.llm.base import Message, Role
+from neosian._foundation.memory.audit import audit
 from neosian._foundation.memory.file import FileStore
 from neosian._foundation.memory.types import MemoryRedaction
 from neosian._foundation.server.app import build_app
@@ -15,7 +17,7 @@ from neosian._foundation.server.wire import (
     encode_redaction,
 )
 
-from .conftest import BASE_URL, TOKEN
+from .conftest import BASE_URL, TOKEN, RemoteOverFile
 
 
 class TestRedactionCodec:
@@ -73,3 +75,29 @@ class TestLedgerRoutes:
         )
         assert response.status_code == 400
         assert response.json()["error"]["code"] == "value_error"
+
+
+class TestAuditThroughTheDaemon:
+    async def test_the_engine_answers_over_remote_store(
+        self, remote_over_file: RemoteOverFile
+    ) -> None:
+        """The same `audit()` over `RemoteStore`: the daemon's prefix on
+        every actor, the turn merged in, one answer for every substrate."""
+        remote = remote_over_file.remote
+        await remote.write("user:me", "a", "x", actor="conv:x#1")
+        await remote.append_turn(
+            "x", [Message(role=Role.USER, content="hi")], actor="conv:x"
+        )
+        await remote.redact("user:me", path="a")
+        entries = await audit(remote, "user:me", conversation_id="x")
+        assert [(e.event, e.actor) for e in entries] == [
+            ("redacted", "client:default"),
+            ("turn", "client:default/conv:x"),
+            ("created", "client:default/conv:x#1"),
+        ]
+        assert (
+            await audit(
+                remote, "user:me", conversation_id="x", actor="client:default/conv:x"
+            )
+            == entries[1:]
+        )

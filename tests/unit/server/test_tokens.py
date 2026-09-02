@@ -167,3 +167,13 @@ class TestRemoteStoreLearnsItsClient:
 
     def test_the_plain_constructor_knows_no_client(self) -> None:
         assert RemoteStore(BASE_URL, token="x").client is None
+
+
+class TestServeRefusesAUrl:
+    def test_a_daemon_over_a_daemon_is_grammar(self) -> None:
+        with pytest.raises(SystemExit) as exc_info:
+            parse_args(
+                ["--url", "http://h:1"],
+                {SERVE_TOKEN_ENV: "t", "NEOSIAN_CLIENT_TOKEN": "c"},
+            )
+        assert exc_info.value.code == 2

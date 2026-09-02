@@ -113,7 +113,11 @@ class TestStoreSelection:
         ) -> object:
             return object()
 
-        monkeypatch.setattr(serve_module, "PostgresStore", FakePostgres)
+        # The entry rides `open_store` (NL), whose function-local import
+        # resolves the class off the postgres module at call time.
+        import neosian._foundation.postgres.store as postgres_module
+
+        monkeypatch.setattr(postgres_module, "PostgresStore", FakePostgres)
         monkeypatch.setattr(serve_module, "create_memory_server", fake_create)
         monkeypatch.setenv("NEOSIAN_POSTGRES_DSN", "postgresql://localhost/x")
         code = main(["--scope", "user:demo", "--schema", "acme"])

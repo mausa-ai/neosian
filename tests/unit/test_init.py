@@ -243,6 +243,8 @@ def test_all_list_matches_exports() -> None:
         "MaintenanceResult",
         "MaintenanceWrite",
         "run_maintenance",
+        "AuditEntry",
+        "audit",
         # Conversation (DESIGN §9)
         "Conversation",
         "ConversationStore",

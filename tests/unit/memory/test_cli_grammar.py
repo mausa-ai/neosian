@@ -216,3 +216,36 @@ class TestArgvTier:
     def test_bad_mount_path_raises_structurally(self) -> None:
         with pytest.raises(MemoryPathInvalidError):
             _parsed(["view", "--root", "m", "--mount", "scope=user:me,path=a/b"])
+
+
+class TestTheDaemonUrl:
+    """NL: `--url` is the third store; its token rides the environment."""
+
+    def test_url_and_root_are_exclusive(self) -> None:
+        with pytest.raises(SystemExit) as exc_info:
+            _parsed(
+                ["view", "--root", "m", "--url", "http://h:1", "--scope", "user:me"]
+            )
+        assert exc_info.value.code == 2
+
+    def test_url_without_the_token_is_grammar(self) -> None:
+        with pytest.raises(SystemExit) as exc_info:
+            _parsed(["view", "--url", "http://h:1", "--scope", "user:me"])
+        assert exc_info.value.code == 2
+
+    def test_url_with_the_token_resolves(self) -> None:
+        request = _parsed(
+            ["view", "--url", "http://h:1", "--scope", "user:me"],
+            env={"NEOSIAN_CLIENT_TOKEN": "abc"},
+        )
+        assert request.settings.url == "http://h:1"
+        assert request.settings.client_token == "abc"
+        assert request.settings.root is None
+
+    def test_schema_refuses_without_a_dsn(self) -> None:
+        with pytest.raises(SystemExit) as exc_info:
+            _parsed(
+                ["view", "--url", "http://h:1", "--schema", "s", "--scope", "user:me"],
+                env={"NEOSIAN_CLIENT_TOKEN": "abc"},
+            )
+        assert exc_info.value.code == 2

@@ -26,6 +26,9 @@ from neosian._foundation.memory.mounts import Mount
 from neosian._foundation.shared.exceptions import MemoryActorInvalidError
 
 POSTGRES_DSN_ENV: Final = "NEOSIAN_POSTGRES_DSN"
+# The token a *client* of the state process presents (DESIGN §20) — a
+# distinct key from the server's table, because one laptop runs both.
+CLIENT_TOKEN_ENV: Final = "NEOSIAN_CLIENT_TOKEN"
 DEFAULT_SCHEMA: Final = "neosian"
 # The mount path Anthropic's trained memory behavior roots at (§9.5.13);
 # the --scope sugar mounts there, like Conversation's memory_scope=.
@@ -66,6 +69,10 @@ class StoreSettings:
     dsn: str | None
     schema: str
     actor: str
+    # The daemon URL (NL): the third store, beside a root and a DSN, with
+    # the client's token from the environment — never argv (#53).
+    url: str | None = None
+    client_token: str | None = None
 
 
 def parse_mount(parser: argparse.ArgumentParser, token: str) -> Mount:
@@ -108,11 +115,27 @@ def format_mount(mount: Mount) -> str:
     return token
 
 
-def add_store_arguments(parser: argparse.ArgumentParser, *, default_actor: str) -> None:
-    """Add the store flags to `parser`; `resolve_store_settings` reads them."""
+def add_store_selection_arguments(parser: argparse.ArgumentParser) -> None:
+    """The store-selection half of the grammar: a root, a daemon URL, or
+    (by environment) a DSN; `resolve_store_selection` reads them."""
     parser.add_argument(
         "--root", type=Path, help="FileStore root directory (created on start)"
     )
+    parser.add_argument(
+        "--url",
+        help="the state process to speak to (http[s]://host:port); the "
+        f"client token comes from {CLIENT_TOKEN_ENV}",
+    )
+    parser.add_argument(
+        "--schema",
+        default=None,
+        help=f"Postgres schema (default: {DEFAULT_SCHEMA}; Postgres only)",
+    )
+
+
+def add_store_arguments(parser: argparse.ArgumentParser, *, default_actor: str) -> None:
+    """Add the store flags to `parser`; `resolve_store_settings` reads them."""
+    add_store_selection_arguments(parser)
     parser.add_argument(
         "--scope",
         help=f"single read-write mount of SCOPE at /{SUGAR_MOUNT_PATH} "
@@ -132,29 +155,58 @@ def add_store_arguments(parser: argparse.ArgumentParser, *, default_actor: str) 
         help="who writes: <kind>:<id>[/...] — recorded on every row "
         f"(default: {default_actor})",
     )
-    parser.add_argument(
-        "--schema",
-        default=None,
-        help=f"Postgres schema (default: {DEFAULT_SCHEMA}; Postgres only)",
-    )
+
+
+@dataclass(frozen=True, slots=True)
+class StoreSelection:
+    """Which store the flags name — exactly one of root, dsn, url."""
+
+    root: Path | None
+    dsn: str | None
+    url: str | None
+    client_token: str | None
+    schema: str
 
 
 def resolve_store_selection(
     parser: argparse.ArgumentParser,
     args: argparse.Namespace,
     env: Mapping[str, str],
-) -> tuple[Path | None, str | None, str]:
-    """Resolve the root-vs-DSN half of the grammar: (root, dsn, schema)."""
+) -> StoreSelection:
+    """Resolve the store half of the grammar: exactly one of root, DSN, URL."""
     dsn = env.get(POSTGRES_DSN_ENV) or None
-    if args.root is not None and dsn is not None:
-        parser.error(f"--root and {POSTGRES_DSN_ENV} are mutually exclusive")
-    if args.root is None and dsn is None:
-        parser.error(f"a store is required: pass --root or set {POSTGRES_DSN_ENV}")
-    if args.schema is not None and args.root is not None:
-        parser.error("--schema applies only to Postgres (unset --root)")
-    root: Path | None = args.root
+    url: str | None = args.url
+    named = [
+        name
+        for name, present in (
+            ("--root", args.root is not None),
+            (POSTGRES_DSN_ENV, dsn is not None),
+            ("--url", url is not None),
+        )
+        if present
+    ]
+    if len(named) > 1:
+        parser.error(f"{' and '.join(named)} are mutually exclusive")
+    if not named:
+        parser.error(
+            f"a store is required: pass --root, --url, or set {POSTGRES_DSN_ENV}"
+        )
+    if args.schema is not None and dsn is None:
+        parser.error("--schema applies only to Postgres (unset --root/--url)")
+    client_token: str | None = None
+    if url is not None:
+        if not url.startswith(("http://", "https://")):
+            parser.error(f"--url must start with http:// or https://, got {url!r}")
+        client_token = env.get(CLIENT_TOKEN_ENV) or None
+        if client_token is None:
+            parser.error(
+                f"--url needs {CLIENT_TOKEN_ENV} — the client's bearer token, "
+                "never on the command line"
+            )
     schema: str = args.schema if args.schema is not None else DEFAULT_SCHEMA
-    return root, dsn, schema
+    return StoreSelection(
+        root=args.root, dsn=dsn, url=url, client_token=client_token, schema=schema
+    )
 
 
 def resolve_mounts(
@@ -191,14 +243,16 @@ def resolve_store_settings(
     validation is structural (`Mount` raises `MemoryScopeInvalidError` /
     `MemoryPathInvalidError`, which the entry point renders).
     """
-    root, dsn, schema = resolve_store_selection(parser, args, env)
+    selection = resolve_store_selection(parser, args, env)
     mounts = resolve_mounts(parser, args)
     return StoreSettings(
         mounts=mounts,
-        root=root,
-        dsn=dsn,
-        schema=schema,
+        root=selection.root,
+        dsn=selection.dsn,
+        schema=selection.schema,
         actor=resolve_actor(parser, args.actor),
+        url=selection.url,
+        client_token=selection.client_token,
     )
 
 

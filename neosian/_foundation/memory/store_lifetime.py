@@ -3,7 +3,8 @@
 The runtime counterpart to `settings.py`'s pure grammar: one async
 context manager builds the store the resolved settings name and closes
 it on exit, so every CLI verb — dispatch, maintain, the operator
-verbs — shares one DSN-vs-root branch instead of inlining it.
+verbs, the MCP entry — shares one root/DSN/URL branch instead of
+inlining it.
 """
 
 from __future__ import annotations
@@ -37,6 +38,18 @@ async def open_store(settings: StoreSettings) -> AsyncIterator[MemoryStore]:
             yield store
         finally:
             await store.aclose()
+        return
+    if settings.url is not None:
+        # The daemon (NL): the same function-local rule, for the same
+        # cycle; the grammar tier guaranteed the token.
+        from neosian._foundation.server.remote import RemoteStore
+
+        assert settings.client_token is not None
+        remote = await RemoteStore.connect(settings.url, token=settings.client_token)
+        try:
+            yield remote
+        finally:
+            await remote.aclose()
         return
     assert settings.root is not None  # resolve_store_settings guarantees one
     yield FileStore(settings.root)

@@ -18,6 +18,7 @@ from typing import Any, Final, TextIO
 
 from neosian._foundation.mcp.server import DEFAULT_ACTOR
 from neosian._foundation.memory.settings import (
+    CLIENT_TOKEN_ENV,
     DEFAULT_SCHEMA,
     POSTGRES_DSN_ENV,
     StoreSettings,
@@ -148,14 +149,17 @@ def build_entry(settings: StoreSettings, *, executable: str) -> RegistrationEntr
     """The resolved settings re-rendered as the server invocation.
 
     Absolute root (a client spawns the server from an arbitrary cwd),
-    mounts in canonical `--mount` form (`format_mount`, ledger #75), and
-    never the DSN — Postgres reaches the server through the client's own
+    mounts in canonical `--mount` form (`format_mount`, ledger #75), the
+    daemon URL when the store is the state process (its token rides the
+    client's environment, `NEOSIAN_CLIENT_TOKEN`), and never the DSN — Postgres reaches the server through the client's own
     environment (`NEOSIAN_POSTGRES_DSN`), where a config file would be
     even more readable than argv.
     """
     args: list[str] = list(_SERVER_ARGV)
     if settings.root is not None:
         args += ["--root", str(settings.root.expanduser().resolve())]
+    if settings.url is not None:
+        args += ["--url", settings.url]
     for mount in settings.mounts:
         args += ["--mount", format_mount(mount)]
     if settings.actor != _DEFAULT_ACTOR:
@@ -271,6 +275,11 @@ def _render_success(
         err.write(
             f"hint: set {POSTGRES_DSN_ENV} in the client's own environment — "
             "it is deliberately never written into a registration\n"
+        )
+    if settings.url is not None:
+        err.write(
+            f"hint: set {CLIENT_TOKEN_ENV} in the client's own environment — "
+            "the token is deliberately never written into a registration\n"
         )
     return 0
 

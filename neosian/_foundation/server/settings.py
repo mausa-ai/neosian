@@ -87,7 +87,11 @@ def parse_args(
     args = parser.parse_args(list(argv))
     if not 1 <= args.port <= 65535:
         parser.error(f"--port must be in 1..65535, got {args.port}")
-    root, dsn, schema = resolve_store_selection(parser, args, env)
+    selection = resolve_store_selection(parser, args, env)
+    if selection.url is not None:
+        parser.error(
+            "--url is a client's flag: the state process serves a root or a DSN"
+        )
     mounts = resolve_mounts(parser, args, required=False)
     token = env.get(SERVE_TOKEN_ENV) or ""
     if not token:
@@ -101,7 +105,11 @@ def parse_args(
         parser.error(exc.message)
     return ServeSettings(
         store=StoreSettings(
-            mounts=mounts, root=root, dsn=dsn, schema=schema, actor=args.actor
+            mounts=mounts,
+            root=selection.root,
+            dsn=selection.dsn,
+            schema=selection.schema,
+            actor=args.actor,
         ),
         host=args.host,
         port=args.port,

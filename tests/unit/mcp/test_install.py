@@ -455,3 +455,32 @@ class TestTheClientActor:
         assert code == 0
         args = json.loads(out.getvalue())["entry"]["args"]
         assert args[args.index("--actor") + 1] == "mcp:claude-code"
+
+
+class TestTheDaemonUrl:
+    def test_url_is_rendered_and_the_token_is_hinted(self, tmp_path: Path) -> None:
+        """NL: an agent's MCP server behind the state process — the URL in
+        the registration, the token in the client's own environment."""
+        out, err = io.StringIO(), io.StringIO()
+        context = _context(tmp_path)
+        (context.home / ".claude").mkdir()
+        code = run_install(
+            [
+                "--client",
+                "claude-code",
+                "--url",
+                "http://127.0.0.1:6367",
+                "--scope",
+                "user:me",
+            ],
+            {"NEOSIAN_CLIENT_TOKEN": "abc"},
+            context=context,
+            out=out,
+            err=err,
+        )
+        assert code == 0, err.getvalue()
+        args = json.loads(out.getvalue())["mcpServers"][SERVER_NAME]["args"]
+        assert args[args.index("--url") + 1] == "http://127.0.0.1:6367"
+        assert "--root" not in args
+        assert "abc" not in out.getvalue()
+        assert "NEOSIAN_CLIENT_TOKEN" in err.getvalue()

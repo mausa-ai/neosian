@@ -78,6 +78,7 @@ from neosian._foundation.memory.actor import (
     Actor,
     parse_actor,
 )
+from neosian._foundation.memory.audit import AuditEntry, audit
 from neosian._foundation.memory.base import MemoryStore
 from neosian._foundation.memory.file import FileStore
 from neosian._foundation.memory.index import memory_system_section
@@ -301,6 +302,8 @@ __all__ = [
     "MaintenanceResult",
     "MaintenanceWrite",
     "run_maintenance",
+    "AuditEntry",
+    "audit",
     # Conversation (DESIGN §9)
     "Conversation",
     "ConversationStore",

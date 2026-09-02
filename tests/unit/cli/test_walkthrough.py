@@ -190,6 +190,17 @@ class TestOperate:
         (row,) = await FileStore(root).versions("user:walkthrough", "keep")
         assert row.actor == "cli:walkthrough"
 
+        # NL: the ledger from the shell — the same actor, newest first.
+        ledger = _run(
+            ["audit", "--scope", "user:walkthrough", "--root", str(root), "--json"],
+            cwd=tmp_path,
+            env=env,
+        )
+        assert ledger.returncode == 0, ledger.stderr
+        entries = json.loads(ledger.stdout)["entries"]
+        assert entries[0]["path"] == "keep" and entries[0]["actor"] == "cli:walkthrough"
+        assert {e["event"] for e in entries} >= {"created", "deleted"}
+
     def test_redaction_runs_end_to_end(self, tmp_path: Path) -> None:
         """The NP done-when's second leg: find (versions) → erase
         (redact) → the store shows the skeleton and refuses the undo —

@@ -14,6 +14,7 @@ from neosian._foundation.memory.actor import (
     actor_matches,
     parse_actor,
 )
+from neosian._foundation.memory.audit import AuditEntry, audit
 from neosian._foundation.memory.base import MemoryStore
 from neosian._foundation.memory.file import FileStore
 from neosian._foundation.memory.index import (
@@ -67,6 +68,7 @@ __all__ = [
     "ACTOR_MAX_LENGTH",
     "ACTOR_PATTERN",
     "Actor",
+    "AuditEntry",
     "MEMORY_FORMAT_VERSION",
     "PATH_MAX_LENGTH",
     "PATH_MAX_SEGMENTS",
@@ -99,6 +101,7 @@ __all__ = [
     "Scope",
     "SystemClock",
     "actor_matches",
+    "audit",
     "create_memory_tool",
     "generate_memory_index",
     "memory_system_section",

@@ -362,6 +362,26 @@ def memory(ctx: typer.Context) -> None:
 
 
 @app.command(
+    name="audit",
+    context_settings={
+        "allow_extra_args": True,
+        "ignore_unknown_options": True,
+        "help_option_names": [],
+    },
+)
+def audit(ctx: typer.Context) -> None:
+    """What was done, by whom, when — a scope's ledger (DESIGN §20).
+
+    A thin pass-through: every argument goes verbatim to the one grammar
+    (`neosian audit --help`). Answers the same on a FileStore root,
+    Postgres, or the state process (--url).
+    """
+    from neosian.audit import main as audit_main
+
+    raise typer.Exit(audit_main(list(ctx.args)))
+
+
+@app.command(
     name="mcp",
     context_settings={
         "allow_extra_args": True,

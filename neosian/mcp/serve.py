@@ -15,31 +15,20 @@ from pathlib import Path
 
 from neosian._foundation.mcp.server import create_memory_server, serve_stdio
 from neosian._foundation.mcp.settings import ServerSettings, parse_args
-from neosian._foundation.memory.base import MemoryStore
-from neosian._foundation.memory.file import FileStore
 from neosian._foundation.memory.mounts import MemoryConfig
-from neosian._foundation.postgres.store import PostgresStore
+from neosian._foundation.memory.store_lifetime import open_store
 from neosian._foundation.shared.exceptions import MemoryStoreError
 
 
-def _build_store(settings: ServerSettings) -> MemoryStore:
-    if settings.dsn is not None:
-        return PostgresStore(settings.dsn, schema=settings.schema)
-    assert settings.root is not None  # parse_args guarantees one of the two
-    return FileStore(settings.root)
-
-
 async def _run(settings: ServerSettings) -> None:
-    store = _build_store(settings)
-    try:
+    # One root/DSN/URL branch for every entry (NL: `--url` puts this
+    # server behind the state process — the multi-writer shape, §8).
+    async with open_store(settings) as store:
         server = await create_memory_server(
             MemoryConfig(store=store, mounts=settings.mounts),
             actor=settings.actor,
         )
         await serve_stdio(server)
-    finally:
-        if isinstance(store, PostgresStore):
-            await store.aclose()
 
 
 def main(argv: list[str] | None = None, *, prog: str = "neosian mcp") -> int:
