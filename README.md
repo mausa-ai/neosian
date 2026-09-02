@@ -1,3 +1,5 @@
+<img src="branding/logo-adaptive.svg" alt="neosian" width="280">
+
 # neosian
 
 Async-only Python library for LLM agents: tools, orchestration, streaming,

@@ -3,12 +3,20 @@
 import importlib.resources
 
 from rich.console import Console
+from rich.text import Text
 
 from neosian._foundation.shared.constants import Assets, PlaygroundUI
 
+# The brand colours (branding/README.md), at the dark-theme lightness the
+# kit's clamp derives — terminals are dark far more often than not, and Rich
+# downgrades both to the nearest of 256 colours where truecolor is missing.
+BRAND_ACCENT = "#afaf73"  # maki: the wordmark art, the app name
+BRAND_SUPPORT = "#c6a850"  # maki sarısı: the mark
+_LOGO_DROP = 1  # rows the mark sits below the wordmark's i-dot, so their bases align
 
-def load_header() -> str:
-    """Construct the ASCII art header from logo and ascii files."""
+
+def load_header() -> Text:
+    """Build the header: the mark in the support colour, the wordmark in the accent."""
     try:
         files = importlib.resources.files(Assets.PACKAGE)
 
@@ -17,7 +25,7 @@ def load_header() -> str:
         ascii_text = files.joinpath(Assets.ASCII_FILE).read_text(encoding="utf-8")
 
         # Split into lines
-        logo_lines = logo_text.rstrip().split("\n")
+        logo_lines = [""] * _LOGO_DROP + logo_text.rstrip().split("\n")
         ascii_lines = ascii_text.rstrip().split("\n")
 
         # Pad to same height
@@ -29,22 +37,22 @@ def load_header() -> str:
         while len(ascii_lines) < max_lines:
             ascii_lines.append("")
 
-        # Combine side by side
-        combined = []
+        # Combine side by side, each column in its own colour
+        header = Text()
         for logo_line, ascii_line in zip(logo_lines, ascii_lines, strict=True):
-            padded_logo = logo_line.ljust(logo_width)
-            combined.append(f"{padded_logo}{Assets.HEADER_SPACING}{ascii_line}")
-
-        return "\n".join(combined)
+            header.append(logo_line.ljust(logo_width), style=BRAND_SUPPORT)
+            header.append(f"{Assets.HEADER_SPACING}{ascii_line}\n", style=BRAND_ACCENT)
+        header.rstrip()
+        return header
     except Exception:
-        return ""
+        return Text()
 
 
 def print_header(console: Console, agent_name: str) -> None:
     """Print the playground header with ASCII art."""
-    ascii_header = load_header()
-    if ascii_header:
-        console.print(ascii_header, style="cyan")
+    header = load_header()
+    if header.plain:
+        console.print(header)
         console.print()
 
     console.print(PlaygroundUI.AGENT_LOADED.format(name=agent_name), style="bold")

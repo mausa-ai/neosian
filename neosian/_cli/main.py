@@ -21,6 +21,7 @@ from neosian._cli.config import (
     set_api_key,
 )
 from neosian._cli.playground import run_playground
+from neosian._cli.ui import BRAND_ACCENT
 from neosian._foundation.shared.constants import App, Assets, Config
 
 app = typer.Typer(
@@ -94,7 +95,7 @@ def version() -> None:
     version_info = (
         f"\n"
         f"\n"
-        f"  [bold cyan]{App.NAME}[/bold cyan]\n"
+        f"  [bold {BRAND_ACCENT}]{App.NAME}[/bold {BRAND_ACCENT}]\n"
         f"  [dim]v{__version__}[/dim]\n"
         f"\n"
         f"  [dim]Python {App.PYTHON_VERSION}[/dim]\n"
