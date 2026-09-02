@@ -106,7 +106,7 @@ def _check_turn_format(conversation_id: str, where: str, declared: int) -> None:
 
 
 def conversation_turn(conversation_id: str, row: Row) -> ConversationTurn:
-    turn, encoded, created_at, declared = row
+    turn, encoded, created_at, declared, actor = row
     where = f"turn row {turn}"
     _check_turn_format(conversation_id, where, declared)
     if not isinstance(encoded, list) or not encoded:
@@ -124,6 +124,7 @@ def conversation_turn(conversation_id: str, row: Row) -> ConversationTurn:
         turn=turn,
         messages=messages,
         created_at=_utc(created_at),
+        actor=actor,
     )
 
 

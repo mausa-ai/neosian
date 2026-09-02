@@ -43,8 +43,10 @@ def _reply(text: str) -> FakeScript:
 
 
 class _FailingAppendStore(FileStore):
-    async def append_turn(self, conversation_id: str, messages: Any) -> Any:
-        del conversation_id, messages
+    async def append_turn(
+        self, conversation_id: str, messages: Any, *, actor: str | None = None
+    ) -> Any:
+        del conversation_id, messages, actor
         raise RuntimeError("append failed")
 
 

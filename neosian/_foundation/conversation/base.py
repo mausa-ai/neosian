@@ -29,7 +29,9 @@ Cross-implementation invariants (pinned by
 Deliberately absent: `list_conversations` (hosts list from their own
 tables), delete/redact, per-turn usage/model/cost, capability ClassVars.
 Frozen for hosts since the 2026-08-21 amendment (ECOSYSTEM §10); DESIGN §9
-carries the rationale and the CS1-CS7 rulings.
+carries the rationale and the CS1-CS7 rulings. NL added one thing,
+additively: `append_turn(..., actor=)` and `ConversationTurn.actor` —
+who appended a turn, opaque to the store (DESIGN §20).
 """
 
 from __future__ import annotations
@@ -52,9 +54,17 @@ class ConversationStore(ABC):
 
     @abstractmethod
     async def append_turn(
-        self, conversation_id: str, messages: Sequence[Message]
+        self,
+        conversation_id: str,
+        messages: Sequence[Message],
+        *,
+        actor: str | None = None,
     ) -> ConversationTurn:
-        """Append one turn; the store assigns its number and created_at."""
+        """Append one turn; the store assigns its number and created_at.
+
+        `actor` is who appended it — recorded verbatim, never interpreted
+        (DESIGN §20); an additive keyword since NL.
+        """
 
     @abstractmethod
     async def read_turns(

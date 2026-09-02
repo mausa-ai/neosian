@@ -104,8 +104,14 @@ CREATE TABLE IF NOT EXISTS {{schema}}.turns (
     messages        jsonb       NOT NULL,
     created_at      timestamptz NOT NULL,
     neosian_format  integer     NOT NULL DEFAULT 1,
+    actor           text,
     PRIMARY KEY (conversation_id, turn)
 );
+
+-- Generation 2 (NL, DESIGN §20): who appended the turn. Nullable, so
+-- generation-1 rows read back as `actor=None`; the ALTER converges a
+-- schema created before the column existed.
+ALTER TABLE {{schema}}.turns ADD COLUMN IF NOT EXISTS actor text;
 
 -- `id` realizes insertion order: read order is (turn, span, id), the
 -- tie-to-last-appended rule of §9.6. No unique key by design — entries

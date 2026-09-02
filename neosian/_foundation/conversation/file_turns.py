@@ -61,7 +61,11 @@ class FileTurnStore(ConversationStore):
     _lock: asyncio.Lock
 
     async def append_turn(
-        self, conversation_id: str, messages: Sequence[Message]
+        self,
+        conversation_id: str,
+        messages: Sequence[Message],
+        *,
+        actor: str | None = None,
     ) -> ConversationTurn:
         conversation_id = parse_conversation_id(conversation_id)
         if not messages:
@@ -75,6 +79,7 @@ class FileTurnStore(ConversationStore):
                 turn=turn,
                 messages=tuple(messages),
                 created_at=created_at,
+                actor=actor,
             )
             private_mkdir(turns_file.parent)
             append_line(turns_file, _render_turn(record))
@@ -176,6 +181,7 @@ def _render_turn(record: ConversationTurn) -> str:
         "turn": record.turn,
         "created_at": record.created_at.isoformat().replace("+00:00", "Z"),
         "messages": [message_to_json(message) for message in record.messages],
+        "actor": record.actor,
     }
     return json.dumps(data, ensure_ascii=True, separators=(",", ":")) + "\n"
 
@@ -220,6 +226,7 @@ def _parse_turn(line: str, number: int, conversation_id: str) -> ConversationTur
     turn = data.get("turn")
     created_raw = data.get("created_at")
     encoded = data.get("messages")
+    actor = data.get("actor")  # absent on pre-NL rows: None
     if (
         not isinstance(turn, int)
         or isinstance(turn, bool)
@@ -227,6 +234,7 @@ def _parse_turn(line: str, number: int, conversation_id: str) -> ConversationTur
         or not isinstance(created_raw, str)
         or not isinstance(encoded, list)
         or not encoded
+        or not (actor is None or isinstance(actor, str))
     ):
         raise ConversationFormatUnsupportedError(
             conversation_id, f"{where} has invalid fields"
@@ -252,6 +260,7 @@ def _parse_turn(line: str, number: int, conversation_id: str) -> ConversationTur
         turn=turn,
         messages=messages,
         created_at=created_at,
+        actor=actor,
     )
 
 

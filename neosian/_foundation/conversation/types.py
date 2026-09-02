@@ -37,6 +37,9 @@ class ConversationTurn:
     turn: int
     messages: tuple[Message, ...]
     created_at: datetime
+    # Who appended it (NL, DESIGN §20): opaque to the store, `None` for
+    # rows written before the field existed. Additive — last, defaulted.
+    actor: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

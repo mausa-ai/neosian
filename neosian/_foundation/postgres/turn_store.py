@@ -51,7 +51,11 @@ class PostgresTurnStore(ConversationStore):
     _clock: Clock
 
     async def append_turn(
-        self, conversation_id: str, messages: Sequence[Message]
+        self,
+        conversation_id: str,
+        messages: Sequence[Message],
+        *,
+        actor: str | None = None,
     ) -> ConversationTurn:
         conversation_id = parse_conversation_id(conversation_id)
         if not messages:
@@ -69,6 +73,7 @@ class PostgresTurnStore(ConversationStore):
                 "messages": encoded,
                 "now": created_at,
                 "format": CONVERSATION_FORMAT_VERSION,
+                "actor": actor,
             },
         )
         return ConversationTurn(
@@ -76,6 +81,7 @@ class PostgresTurnStore(ConversationStore):
             turn=int(row[0]),
             messages=tuple(messages),
             created_at=created_at,
+            actor=actor,
         )
 
     async def read_turns(

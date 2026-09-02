@@ -198,6 +198,7 @@ def encode_turn(turn: ConversationTurn) -> dict[str, Any]:
         "turn": turn.turn,
         "messages": [message_to_json(message) for message in turn.messages],
         "created_at": encode_timestamp(turn.created_at),
+        "actor": turn.actor,
     }
 
 
@@ -207,6 +208,7 @@ def decode_turn(data: Mapping[str, Any]) -> ConversationTurn:
         turn=data["turn"],
         messages=tuple(message_from_json(encoded) for encoded in data["messages"]),
         created_at=decode_timestamp(data["created_at"]),
+        actor=data.get("actor"),
     )
 
 

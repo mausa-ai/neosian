@@ -138,6 +138,7 @@ def store_routes(memory: MemoryStore, conversation: ConversationStore) -> list[R
         turn = await conversation.append_turn(
             require_str(payload, "conversation_id"),
             [message_from_json(e) for e in require_objects(payload, "messages")],
+            actor=optional_str(payload, "actor"),
         )
         return {"turn": encode_turn(turn)}
 

@@ -72,13 +72,18 @@ class _ProbeStore(ConversationStore):
         self.read_projection_calls = 0
 
     async def append_turn(
-        self, conversation_id: str, messages: Sequence[Message]
+        self,
+        conversation_id: str,
+        messages: Sequence[Message],
+        *,
+        actor: str | None = None,
     ) -> ConversationTurn:
         turn = ConversationTurn(
             conversation_id=conversation_id,
             turn=len(self.turns) + 1,
             messages=tuple(messages),
             created_at=datetime(2026, 8, 19, tzinfo=UTC),
+            actor=actor,
         )
         self.turns.append(turn)
         return turn

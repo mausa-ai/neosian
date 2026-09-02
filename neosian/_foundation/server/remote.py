@@ -267,13 +267,18 @@ class RemoteStore(MemoryStore, ConversationStore):
     # ConversationStore -----------------------------------------------------
 
     async def append_turn(
-        self, conversation_id: str, messages: Sequence[Message]
+        self,
+        conversation_id: str,
+        messages: Sequence[Message],
+        *,
+        actor: str | None = None,
     ) -> ConversationTurn:
         data = await self._call(
             "conversation/append_turn",
             {
                 "conversation_id": conversation_id,
                 "messages": [message_to_json(message) for message in messages],
+                "actor": actor,
             },
         )
         return decode_turn(data["turn"])

@@ -121,6 +121,20 @@ class ConversationStoreContract:
     # Turns ----------------------------------------------------------------
 
     @_asyncio
+    async def test_actor_is_recorded_verbatim_and_defaults_to_none(
+        self, store: ConversationStore, conversation_id: str
+    ) -> None:
+        """NL (DESIGN §20): who appended a turn rides the row, opaque."""
+        bare = await store.append_turn(conversation_id, self._exchange("a"))
+        named = await store.append_turn(
+            conversation_id, self._exchange("b"), actor="claude-code:s1"
+        )
+        assert bare.actor is None
+        assert named.actor == "claude-code:s1"
+        turns = await store.read_turns(conversation_id)
+        assert [turn.actor for turn in turns] == [None, "claude-code:s1"]
+
+    @_asyncio
     async def test_store_starts_empty(
         self, store: ConversationStore, conversation_id: str
     ) -> None:

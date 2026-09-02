@@ -138,3 +138,16 @@ class TestTheActorKeyword:
                 conversation_id="t1",
                 actor="planner",
             )
+
+
+class TestTurnAuthorship:
+    async def test_persisted_turns_carry_the_actor(self, store: FileStore) -> None:
+        """NL: the turn row records who appended it — the Conversation's actor."""
+        convo = Conversation(
+            _config(FakeScript(turns=(FakeTurn(content="hello"),))),
+            store=store,
+            conversation_id="t1",
+        )
+        await convo.send("hi")
+        (turn,) = await store.read_turns("t1")
+        assert turn.actor == "conv:t1"

@@ -268,15 +268,15 @@ def build_statements(schema: str) -> Statements:
             FROM {s}.turns WHERE conversation_id = %(conversation_id)s
         )
         INSERT INTO {s}.turns
-            (conversation_id, turn, messages, created_at, neosian_format)
+            (conversation_id, turn, messages, created_at, neosian_format, actor)
         SELECT %(conversation_id)s, next.turn, %(messages)s::jsonb,
-               %(now)s, %(format)s
+               %(now)s, %(format)s, %(actor)s
         FROM next
         RETURNING turn
     """
 
     read_turns = f"""
-        SELECT turn, messages, created_at, neosian_format
+        SELECT turn, messages, created_at, neosian_format, actor
         FROM {s}.turns
         WHERE conversation_id = %(conversation_id)s AND turn > %(after)s
         ORDER BY turn

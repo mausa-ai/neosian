@@ -412,7 +412,7 @@ class Conversation:
         if captured is None or not captured.turn_messages:
             return
         turn = await self._store.append_turn(
-            self._conversation_id, (user, *captured.turn_messages)
+            self._conversation_id, (user, *captured.turn_messages), actor=self._actor
         )
         self._turns.append(turn)
         self._reflect_pending.append(turn)

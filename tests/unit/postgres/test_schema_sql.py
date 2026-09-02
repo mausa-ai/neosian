@@ -61,7 +61,7 @@ def test_rendered_ddl_stamps_the_schema_version() -> None:
         in ddl
     )
     assert "ON CONFLICT (singleton) DO UPDATE" in ddl
-    assert SCHEMA_VERSION == 1  # bumping is a deliberate, reviewed diff
+    assert SCHEMA_VERSION == 2  # bumping is a deliberate, reviewed diff (NL)
 
 
 @pytest.mark.unit

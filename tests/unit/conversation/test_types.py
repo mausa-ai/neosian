@@ -17,7 +17,7 @@ from neosian._foundation.llm.base import Message, Role
 class TestConversationTurn:
     def test_field_list_is_the_contract(self) -> None:
         names = [f.name for f in dataclasses.fields(ConversationTurn)]
-        assert names == ["conversation_id", "turn", "messages", "created_at"]
+        assert names == ["conversation_id", "turn", "messages", "created_at", "actor"]
 
     def test_frozen_and_slotted(self) -> None:
         turn = ConversationTurn(
