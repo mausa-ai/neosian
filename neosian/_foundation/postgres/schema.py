@@ -23,6 +23,12 @@ from neosian._foundation.shared.prompt_assets import render
 
 _SQL_ASSET: Final = "sql/postgres.sql"
 
+# The DDL generation the asset describes, stamped into the one-row
+# `neosian_schema` table on apply. `IF NOT EXISTS` cannot add a column, so
+# a later generation ships as equally idempotent statements and bumps
+# this number — a store can read it before trusting a column.
+SCHEMA_VERSION: Final = 1
+
 # Lowercase unquoted-identifier shape, ≤ 63 bytes (the Postgres NAMEDATALEN
 # limit). Restricting to this set makes quoting trivially safe.
 SCHEMA_NAME_PATTERN: Final = re.compile(r"\A[a-z_][a-z0-9_]{0,62}\Z")
@@ -48,4 +54,6 @@ def schema_sql(schema: str = "neosian") -> str:
     beyond reading the packaged asset."""
     validate_schema_name(schema)
     template = resources.files("neosian.assets").joinpath(_SQL_ASSET).read_text("utf-8")
-    return render(template, schema=quote_identifier(schema))
+    return render(
+        template, schema=quote_identifier(schema), version=str(SCHEMA_VERSION)
+    )

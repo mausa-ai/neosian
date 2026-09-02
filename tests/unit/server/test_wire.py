@@ -4,7 +4,7 @@ exception — degraded to the base `NeosianError` on an unknown code or
 malformed details, never swallowed."""
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 
@@ -132,6 +132,15 @@ class TestTimestamps:
     def test_z_suffix_round_trip(self) -> None:
         assert encode_timestamp(_TS) == "2026-08-23T12:30:00Z"
         assert decode_timestamp("2026-08-23T12:30:00Z") == _TS
+
+    def test_offsets_normalise_to_utc_both_ways(self) -> None:
+        # ECOSYSTEM §9: ISO-8601 `Z` on the wire whatever zone a clock
+        # spoke, and a foreign offset lands as UTC (the postgres/rows.py rule).
+        plus_two = datetime(2026, 8, 23, 14, 30, tzinfo=timezone(timedelta(hours=2)))
+        assert encode_timestamp(plus_two) == "2026-08-23T12:30:00Z"
+        decoded = decode_timestamp("2026-08-23T14:30:00+02:00")
+        assert decoded == _TS
+        assert decoded.tzinfo is UTC
 
     def test_naive_refused_both_ways(self) -> None:
         with pytest.raises(ValueError, match="naive"):

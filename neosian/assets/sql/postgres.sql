@@ -1,9 +1,10 @@
 -- PostgresStore reference schema (DESIGN §8, §9.2; phase N3).
 --
--- Idempotent: every statement is IF NOT EXISTS, so re-applying is a no-op
--- and future releases extend it with equally idempotent statements.
--- {{schema}} is rendered by neosian before execution (a validated,
--- double-quoted identifier — never end-user input).
+-- Idempotent: every CREATE is IF NOT EXISTS and the version stamp is an
+-- upsert, so re-applying is a no-op and future releases extend it with
+-- equally idempotent statements. {{schema}} and {{version}} are rendered
+-- by neosian before execution (a validated, double-quoted identifier and
+-- SCHEMA_VERSION — never end-user input).
 --
 -- RLS-friendly by construction: the ownership key (scope on every memory
 -- row, conversation_id on every turn row) is present on each row, so a
@@ -14,6 +15,18 @@
 --         USING (scope = current_setting('neosian.scope', true));
 
 CREATE SCHEMA IF NOT EXISTS {{schema}};
+
+-- The DDL generation this schema holds: one row, monotonic. IF NOT EXISTS
+-- cannot add a column, so a later generation arrives as new idempotent
+-- statements and a higher number here (postgres/schema.py SCHEMA_VERSION).
+CREATE TABLE IF NOT EXISTS {{schema}}.neosian_schema (
+    singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
+    version   integer NOT NULL
+);
+
+INSERT INTO {{schema}}.neosian_schema (version) VALUES ({{version}})
+    ON CONFLICT (singleton) DO UPDATE
+    SET version = GREATEST(neosian_schema.version, EXCLUDED.version);
 
 -- Memory (DESIGN §8) ---------------------------------------------------
 

@@ -2,6 +2,7 @@
 
 import io
 import json
+import sys
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -51,6 +52,26 @@ def _run(
     out, err = io.StringIO(), io.StringIO()
     code = run_install(argv, env or {}, context=context, out=out, err=err)
     return code, out.getvalue(), err.getvalue()
+
+
+_WRITE_ARGV = (
+    "--client",
+    "claude-code",
+    "--root",
+    "m",
+    "--scope",
+    "user:me",
+    "--write",
+)
+
+
+def _posix_only() -> None:
+    if sys.platform == "win32":
+        pytest.skip("POSIX permission bits")
+
+
+def _mode(path: Path) -> int:
+    return path.stat().st_mode & 0o777
 
 
 class TestTargets:
@@ -252,6 +273,30 @@ class TestExitTiers:
         assert written["keep"] == 1
         assert written["mcpServers"]["other"] == {"command": "x"}
         assert SERVER_NAME in written["mcpServers"]
+
+    @pytest.mark.parametrize("mode", [0o600, 0o644])
+    def test_write_keeps_the_existing_files_mode(
+        self, tmp_path: Path, mode: int
+    ) -> None:
+        # MCP configs carry other servers' credentials: a hand-tightened
+        # 0600 must not widen to the umask default on rewrite.
+        _posix_only()
+        context = _context(tmp_path)
+        (context.home / ".claude").mkdir()
+        config = context.cwd / ".mcp.json"
+        config.write_text('{"mcpServers": {}}\n')
+        config.chmod(mode)
+        code, _, _ = _run(_WRITE_ARGV, context)
+        assert code == 0
+        assert _mode(config) == mode
+
+    def test_write_creates_a_private_file(self, tmp_path: Path) -> None:
+        _posix_only()
+        context = _context(tmp_path)
+        (context.home / ".claude").mkdir()
+        code, _, _ = _run(_WRITE_ARGV, context)
+        assert code == 0
+        assert _mode(context.cwd / ".mcp.json") == 0o600
 
     def test_unparseable_json_is_refused_and_the_file_untouched(
         self, tmp_path: Path

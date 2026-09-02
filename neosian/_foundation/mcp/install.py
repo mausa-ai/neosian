@@ -11,7 +11,6 @@ works without the extra (it never serves).
 from __future__ import annotations
 
 import json
-import os
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -27,6 +26,7 @@ from neosian._foundation.memory.settings import (
     resolve_store_settings,
 )
 from neosian._foundation.shared.exceptions import MemoryStoreError
+from neosian._foundation.shared.fileio import PRIVATE_FILE, atomic_write
 
 SERVER_NAME: Final = "neosian-memory"
 _SERVER_ARGV: Final = ("-m", "neosian.mcp")  # the one place the module path lives
@@ -217,11 +217,12 @@ def _ensure_evidence(target: ClientTarget) -> None:
 
 
 def _write_document(path: Path, document: dict[str, Any]) -> None:
+    # MCP configs carry other servers' credentials: an existing file keeps
+    # its mode, a new one is born private — never the umask default.
     text = json.dumps(document, indent=2) + "\n"
-    tmp = path.with_name(path.name + ".neosian-tmp")
     try:
-        tmp.write_text(text, encoding="utf-8")
-        os.replace(tmp, path)
+        mode = path.stat().st_mode & 0o777 if path.exists() else PRIVATE_FILE
+        atomic_write(path, text, mode=mode)
     except OSError as exc:
         raise _InstallError(f"cannot write {path}: {exc}", _FIX_BY_HAND) from exc
 

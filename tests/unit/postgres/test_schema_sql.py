@@ -7,6 +7,7 @@ from importlib import resources
 import pytest
 
 from neosian._foundation.postgres.schema import (
+    SCHEMA_VERSION,
     quote_identifier,
     schema_sql,
     validate_schema_name,
@@ -14,6 +15,7 @@ from neosian._foundation.postgres.schema import (
 from neosian._foundation.shared.exceptions import ConfigurationError
 
 _TABLES = (
+    "neosian_schema",
     "memories",
     "memory_versions",
     "memory_redactions",
@@ -47,6 +49,19 @@ def test_rendered_ddl_is_idempotent_by_construction() -> None:
     creates = [line for line in ddl.splitlines() if line.lstrip().startswith("CREATE")]
     assert creates, "no CREATE statements found"
     assert all("IF NOT EXISTS" in line for line in creates)
+
+
+@pytest.mark.unit
+def test_rendered_ddl_stamps_the_schema_version() -> None:
+    # One row, monotonic: re-applying is a no-op or a bump, never a
+    # second row — the marker a later column migration keys on.
+    ddl = schema_sql()
+    assert (
+        f'INSERT INTO "neosian".neosian_schema (version) VALUES ({SCHEMA_VERSION})'
+        in ddl
+    )
+    assert "ON CONFLICT (singleton) DO UPDATE" in ddl
+    assert SCHEMA_VERSION == 1  # bumping is a deliberate, reviewed diff
 
 
 @pytest.mark.unit

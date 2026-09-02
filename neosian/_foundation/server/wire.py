@@ -4,8 +4,8 @@ The wire mirrors the two storage ABCs: every payload is a method's
 parameters by name, every response the return value under one key, and
 the five frozen value types cross as flat JSON objects. Messages ride the
 public codec (`message_to_json`/`message_from_json` — CS5's verbatim
-round-trip). Timestamps are ISO-8601 `Z` strings; naive is refused on
-both ends (C4/CS4). `extra` is passed through verbatim and must be
+round-trip). Timestamps are ISO-8601 `Z` strings — normalised to UTC in both
+directions; naive is refused on both ends (C4/CS4). `extra` is passed through verbatim and must be
 JSON-safe (C6).
 
 Errors cross as one envelope — `{"code", "message", "details"}` — and
@@ -21,7 +21,7 @@ ECOSYSTEM seam (ledger #108). `WIRE_VERSION` guards skew:
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Final, cast
 
 from neosian._foundation.conversation.types import (
@@ -59,9 +59,10 @@ VALUE_ERROR_CODE: Final = "value_error"
 
 
 def encode_timestamp(value: datetime) -> str:
+    """ISO-8601 `Z`, whatever zone the clock spoke (ECOSYSTEM §9)."""
     if value.tzinfo is None or value.utcoffset() is None:
         raise ValueError("naive datetime cannot cross the wire (ECOSYSTEM §9)")
-    return value.isoformat().replace("+00:00", "Z")
+    return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
 def decode_timestamp(value: object) -> datetime:
@@ -70,7 +71,51 @@ def decode_timestamp(value: object) -> datetime:
     decoded = datetime.fromisoformat(value)
     if decoded.tzinfo is None or decoded.utcoffset() is None:
         raise ValueError(f"naive wire timestamp refused: {value!r}")
-    return decoded
+    return decoded.astimezone(UTC)
+
+
+# Request parameters --------------------------------------------------------
+#
+# Every route reads its parameters through these: a mis-typed value is a
+# `ValueError` — the sentinel envelope at 400 — never a JSON number written
+# verbatim as document content, never a bare 500. `bool` is refused where
+# an int is expected: one to Python, never on the wire.
+
+
+def _param(
+    payload: Mapping[str, Any], name: str, kind: type, label: str, *, required: bool
+) -> Any:
+    value = payload.get(name)
+    if value is None:
+        if required:
+            raise ValueError(f"missing parameter: {name!r}")
+        return None
+    if not isinstance(value, kind) or (kind is int and isinstance(value, bool)):
+        raise ValueError(f"parameter {name!r} must be {label}")
+    return value
+
+
+def require_str(payload: Mapping[str, Any], name: str) -> str:
+    return cast(str, _param(payload, name, str, "a string", required=True))
+
+
+def optional_str(payload: Mapping[str, Any], name: str) -> str | None:
+    return cast("str | None", _param(payload, name, str, "a string", required=False))
+
+
+def require_int(payload: Mapping[str, Any], name: str) -> int:
+    return cast(int, _param(payload, name, int, "an integer", required=True))
+
+
+def optional_int(payload: Mapping[str, Any], name: str) -> int | None:
+    return cast("int | None", _param(payload, name, int, "an integer", required=False))
+
+
+def require_objects(payload: Mapping[str, Any], name: str) -> list[dict[str, Any]]:
+    items = _param(payload, name, list, "a list of objects", required=True)
+    if not all(isinstance(item, dict) for item in items):
+        raise ValueError(f"parameter {name!r} must be a list of objects")
+    return cast(list[dict[str, Any]], items)
 
 
 # Value types ---------------------------------------------------------------
