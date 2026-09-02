@@ -4,9 +4,8 @@ The wire mirrors the two storage ABCs: every payload is a method's
 parameters by name, every response the return value under one key, and
 the five frozen value types cross as flat JSON objects. Messages ride the
 public codec (`message_to_json`/`message_from_json` — CS5's verbatim
-round-trip). Timestamps are ISO-8601 `Z` strings — normalised to UTC in both
-directions; naive is refused on both ends (C4/CS4). `extra` is passed through verbatim and must be
-JSON-safe (C6).
+round-trip). Timestamps are ISO-8601 `Z` strings, normalised to UTC both
+ways; naive is refused on both ends (C4/CS4). `extra` is verbatim, JSON-safe (C6).
 
 Errors cross as one envelope — `{"code", "message", "details"}` — and
 decode back to the exact typed exception, so a `RemoteStore` caller
