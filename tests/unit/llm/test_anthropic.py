@@ -165,6 +165,56 @@ class TestAnthropicClient:
         assert content[0]["content"] == '{"temperature": 22}'
 
     @pytest.mark.unit
+    def test_consecutive_tool_results_share_one_user_message(
+        self, client: AnthropicClient
+    ) -> None:
+        """A parallel batch's results ride one user message (LL-2)."""
+        messages = [
+            Message(role=Role.TOOL, content="22", tool_call_id=ToolCallId("call_1")),
+            Message(role=Role.TOOL, content="rain", tool_call_id=ToolCallId("call_2")),
+        ]
+
+        _, converted = client._convert_messages(messages)
+
+        assert len(converted) == 1
+        assert converted[0]["role"] == "user"
+        assert [block["tool_use_id"] for block in converted[0]["content"]] == [
+            "call_1",
+            "call_2",
+        ]
+        assert [block["content"] for block in converted[0]["content"]] == ["22", "rain"]
+
+    @pytest.mark.unit
+    def test_tool_results_split_by_a_user_turn_stay_apart(
+        self, client: AnthropicClient
+    ) -> None:
+        messages = [
+            Message(role=Role.TOOL, content="22", tool_call_id=ToolCallId("call_1")),
+            Message(role=Role.USER, content="and tomorrow?"),
+            Message(role=Role.TOOL, content="rain", tool_call_id=ToolCallId("call_2")),
+        ]
+
+        _, converted = client._convert_messages(messages)
+
+        assert [m["role"] for m in converted] == ["user", "user", "user"]
+        assert converted[1]["content"] == "and tomorrow?"
+        assert len(converted[2]["content"]) == 1
+
+    @pytest.mark.unit
+    def test_system_messages_join_in_order(self, client: AnthropicClient) -> None:
+        """Every SYSTEM message reaches the prompt; none overwrites (LL-3)."""
+        messages = [
+            Message(role=Role.SYSTEM, content="Be brief."),
+            Message(role=Role.USER, content="Hi"),
+            Message(role=Role.SYSTEM, content="Answer in French."),
+        ]
+
+        system_prompt, converted = client._convert_messages(messages)
+
+        assert system_prompt == "Be brief.\n\nAnswer in French."
+        assert len(converted) == 1
+
+    @pytest.mark.unit
     def test_convert_tools(
         self, client: AnthropicClient, sample_tool: ToolDefinition
     ) -> None:

@@ -156,6 +156,16 @@ def _strip_unsupported_constraints(
 _SAMPLING_REJECTED_MODELS: frozenset[Model] = frozenset({Model.CLAUDE_OPUS_5})
 
 
+def _is_tool_results(message: dict[str, Any]) -> bool:
+    content = message["content"]
+    return (
+        message["role"] == "user"
+        and isinstance(content, list)
+        and bool(content)
+        and content[-1].get("type") == "tool_result"
+    )
+
+
 class AnthropicClient(BaseLLMClient):
     """Anthropic Claude LLM client.
 
@@ -704,7 +714,10 @@ class AnthropicClient(BaseLLMClient):
     ) -> tuple[str | None, list[dict[str, Any]]]:
         """Convert internal messages to Anthropic format.
 
-        Anthropic requires system message to be passed separately.
+        Anthropic takes the system prompt separately: every SYSTEM message
+        joins it in order, none overwrites another (LL-3). Consecutive tool
+        results coalesce into the one user message the API expects after a
+        tool-use turn (LL-2).
 
         Args:
             messages: Internal Message objects.
@@ -712,7 +725,7 @@ class AnthropicClient(BaseLLMClient):
         Returns:
             Tuple of (system_prompt, messages_list).
         """
-        system_prompt: str | None = None
+        system_parts: list[str] = []
         anthropic_messages: list[dict[str, Any]] = []
 
         for msg in messages:
@@ -724,7 +737,8 @@ class AnthropicClient(BaseLLMClient):
                             block_type="system-message",
                         )
                     )
-                system_prompt = msg.content
+                if msg.content:
+                    system_parts.append(msg.content)
             elif msg.role == Role.USER:
                 if isinstance(msg.content, list):
                     anthropic_messages.append(
@@ -779,21 +793,19 @@ class AnthropicClient(BaseLLMClient):
                             block_type="tool-result",
                         )
                     )
-                # Tool results in Anthropic are user messages with tool_result content
-                anthropic_messages.append(
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "tool_result",
-                                "tool_use_id": msg.tool_call_id,
-                                "content": msg.content or "",
-                            }
-                        ],
-                    }
-                )
+                # Tool results are user-role tool_result blocks; a batch
+                # shares one message.
+                result = {
+                    "type": "tool_result",
+                    "tool_use_id": msg.tool_call_id,
+                    "content": msg.content or "",
+                }
+                if anthropic_messages and _is_tool_results(anthropic_messages[-1]):
+                    anthropic_messages[-1]["content"].append(result)
+                else:
+                    anthropic_messages.append({"role": "user", "content": [result]})
 
-        return system_prompt, anthropic_messages
+        return "\n\n".join(system_parts) or None, anthropic_messages
 
     def _convert_content_blocks(
         self, blocks: list[ContentBlock]
