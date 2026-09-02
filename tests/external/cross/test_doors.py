@@ -80,7 +80,10 @@ class TestDoors:
             model=model,
         )
         assert "PONG" in text_of(response.message).upper()
-        assert response.usage.input_tokens > 0
+        # The prompt was metered — as input, or as a cache read when the
+        # door served the whole prompt from cache (Moonshot, run 5).
+        usage = response.usage
+        assert usage.input_tokens + usage.cache_read_tokens > 0
 
     async def test_tool_call_round_trip(self, door: Door) -> None:
         """Call, result, answer — the shape every memory turn takes."""
