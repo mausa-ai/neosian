@@ -6,6 +6,7 @@ from dataclasses import replace
 from typing import Any, Final
 
 from openai import AsyncOpenAI, BadRequestError, omit
+from openai.types import CompletionUsage
 from openai.types.chat import (
     ChatCompletionMessageParam,
     ChatCompletionStreamOptionsParam,
@@ -51,6 +52,16 @@ logger = logging.getLogger(__name__)
 
 # OpenAI's own door: the SDK's endpoint (or OPENAI_BASE_URL), OpenAI's dialect.
 OPENAI_DOOR: Final = OpenAICompatible(name="openai", api_key_env="OPENAI_API_KEY")
+
+
+def _usage_of(usage: CompletionUsage) -> Usage:
+    details = getattr(usage, "prompt_tokens_details", None)
+    cached_tokens = getattr(details, "cached_tokens", 0) or 0
+    return Usage(
+        input_tokens=usage.prompt_tokens - cached_tokens,
+        output_tokens=usage.completion_tokens,
+        cache_read_tokens=cached_tokens,
+    )
 
 
 def _extra_of(part: object) -> dict[str, Any] | None:
@@ -374,23 +385,12 @@ class OpenAICompatibleClient(BaseLLMClient):
             tool_call_extras: dict[int, dict[str, Any]] = {}
 
             async for chunk in stream:
-                # Handle usage-only chunk (comes after finish_reason)
-                if not chunk.choices and chunk.usage:
-                    details = getattr(chunk.usage, "prompt_tokens_details", None)
-                    cached_tokens = getattr(details, "cached_tokens", 0) or 0
-                    prompt_tokens = chunk.usage.prompt_tokens
-
-                    yield StreamChunk(
-                        usage=Usage(
-                            input_tokens=prompt_tokens - cached_tokens,
-                            output_tokens=chunk.usage.completion_tokens,
-                            cache_read_tokens=cached_tokens,
-                        ),
-                        model=chunk.model,
-                    )
-                    continue
-
+                # Usage rides whichever chunk carries it — OpenAI's trailing
+                # choices-empty chunk, or a door's final content chunk (LL-12).
+                usage = _usage_of(chunk.usage) if chunk.usage else None
                 if not chunk.choices:
+                    if usage:
+                        yield StreamChunk(usage=usage, model=chunk.model)
                     continue
 
                 choice = chunk.choices[0]
@@ -448,6 +448,7 @@ class OpenAICompatibleClient(BaseLLMClient):
                     reasoning=self._reasoning_of(delta),
                     tool_calls=tool_calls,
                     finish_reason=finish_reason,
+                    usage=usage,
                     model=chunk.model,
                 )
         except Exception as exc:

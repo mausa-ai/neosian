@@ -205,7 +205,6 @@ class ErrorMessages:
 class LLMDefaults:
     """Default values for LLM configuration."""
 
-    TEMPERATURE: float = 0.7
     RETRY_TEMPERATURE: float = 0.3
     MAX_TOOL_CALL_RETRIES: int = 2
     # Transport-level retries (429/5xx/connection errors) handled natively by

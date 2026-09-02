@@ -4,7 +4,7 @@ from typing import Any, Literal
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from cerebras.cloud.sdk import BadRequestError
+from cerebras.cloud.sdk import BadRequestError, omit
 from cerebras.cloud.sdk.types.chat.chat_completion import (
     ChatChunkResponse,
     ChatChunkResponseChoice,
@@ -20,6 +20,7 @@ from neosian._foundation.llm.base import (
     Message,
     Role,
     ToolDefinition,
+    Usage,
 )
 from neosian._foundation.llm.cerebras import CerebrasClient
 from neosian._foundation.shared.constants import LLMDefaults
@@ -100,6 +101,26 @@ class TestCerebrasStreamedToolCallFinish:
         ):
             received.append(chunk)
         return received
+
+    async def test_usage_on_a_content_chunk_is_read(self) -> None:
+        """A door that attaches usage to its final content chunk is not
+        billed at zero (LL-12); the stream omits temperature (LL-15)."""
+        client = CerebrasClient(api_key="test-key")
+        received = await self._stream(
+            client,
+            [
+                _make_stream_chunk(
+                    content="Hi",
+                    finish_reason="stop",
+                    usage=ChatChunkResponseUsage(prompt_tokens=10, completion_tokens=5),
+                )
+            ],
+        )
+        assert len(received) == 1
+        assert received[0].content == "Hi"
+        assert received[0].usage == Usage(input_tokens=10, output_tokens=5)
+        create = _sdk(client).chat.completions.create
+        assert create.call_args.kwargs["temperature"] is omit
 
     async def test_a_stop_finish_releases_the_call(self) -> None:
         client = CerebrasClient(api_key="test-key")
@@ -330,18 +351,54 @@ class TestCerebrasClientRetry:
             messages=[Message(role=Role.USER, content="Hi")],
             model=Model.CEREBRAS_GPT_OSS_120B,
             tools=tools,
+            temperature=0.9,
         )
 
         assert result.message.content == "Success"
         assert mock_create.call_count == 2
 
-        # First call with default temperature
         first_call = mock_create.call_args_list[0]
-        assert first_call.kwargs["temperature"] == LLMDefaults.TEMPERATURE
+        assert first_call.kwargs["temperature"] == 0.9
 
-        # Second call with retry temperature
+        # The retry lowers a temperature that was explicitly in play
         second_call = mock_create.call_args_list[1]
         assert second_call.kwargs["temperature"] == LLMDefaults.RETRY_TEMPERATURE
+
+    @pytest.mark.asyncio
+    async def test_no_temperature_stays_omitted_across_the_retry(self) -> None:
+        """Cerebras no longer forces 0.7 (LL-15): the parameter is omitted
+        unless given, and the retry does not inject one."""
+        client = CerebrasClient(api_key="test-key")
+        mock_create = AsyncMock()
+        _sdk(client).chat.completions.create = mock_create
+        tool_error = BadRequestError(
+            message="Tool use failed",
+            body={"error": {"code": "tool_use_failed", "message": "Failed"}},
+            response=MagicMock(),
+        )
+        mock_response = autospec(SPEC["completion"])
+        mock_response.choices = [autospec(SPEC["choice"])]
+        mock_response.choices[0].message.content = "Success"
+        mock_response.choices[0].message.tool_calls = None
+        mock_response.usage.prompt_tokens = 10
+        mock_response.usage.completion_tokens = 5
+        mock_response.model = "gpt-oss-120b"
+        mock_create.side_effect = [tool_error, mock_response]
+
+        await client.complete(
+            messages=[Message(role=Role.USER, content="Hi")],
+            model=Model.CEREBRAS_GPT_OSS_120B,
+            tools=[
+                ToolDefinition(
+                    name=ToolName("test"),
+                    description="Test tool",
+                    parameters={"type": "object", "properties": {}},
+                )
+            ],
+        )
+        assert all(
+            call.kwargs["temperature"] is omit for call in mock_create.call_args_list
+        )
 
     @pytest.mark.asyncio
     async def test_raises_after_max_retries(self) -> None:

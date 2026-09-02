@@ -4,9 +4,10 @@ import logging
 from collections.abc import AsyncIterator
 from typing import Any
 
-from cerebras.cloud.sdk import AsyncCerebras, BadRequestError
+from cerebras.cloud.sdk import AsyncCerebras, BadRequestError, omit
 from cerebras.cloud.sdk.types.chat.chat_completion import (
     ChatChunkResponse,
+    ChatChunkResponseUsage,
     ErrorChunkResponse,
 )
 
@@ -43,6 +44,16 @@ from neosian._foundation.shared.types import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _usage_of(usage: ChatChunkResponseUsage) -> Usage:
+    details = usage.prompt_tokens_details
+    cache_read = (details.cached_tokens if details else 0) or 0
+    return Usage(
+        input_tokens=(usage.prompt_tokens or 0) - cache_read,
+        output_tokens=usage.completion_tokens or 0,
+        cache_read_tokens=cache_read,
+    )
 
 
 class CerebrasClient(BaseLLMClient):
@@ -120,18 +131,13 @@ class CerebrasClient(BaseLLMClient):
             self._convert_response_format(response_format) if response_format else None
         )
 
-        # Use provided temperature or default
-        current_temp = (
-            temperature if temperature is not None else LLMDefaults.TEMPERATURE
-        )
-
         # Build kwargs — only include reasoning params when set,
         # as Cerebras API rejects None values for these fields.
         kwargs: dict[str, Any] = {
             "model": model.value,
             "messages": cerebras_messages,
             "tools": cerebras_tools,
-            "temperature": current_temp,
+            "temperature": temperature if temperature is not None else omit,
             "max_completion_tokens": max_tokens,
             "response_format": cerebras_response_format,
         }
@@ -153,7 +159,10 @@ class CerebrasClient(BaseLLMClient):
                     raise wrapped from e
                 if self._is_tool_call_error(e) and tools is not None:
                     if attempt < LLMDefaults.MAX_TOOL_CALL_RETRIES:
-                        kwargs["temperature"] = LLMDefaults.RETRY_TEMPERATURE
+                        # Lower the temperature on retry only when one was
+                        # explicitly in play (LL-15).
+                        if temperature is not None:
+                            kwargs["temperature"] = LLMDefaults.RETRY_TEMPERATURE
                         continue
                     raise ToolCallGenerationError(
                         retries=LLMDefaults.MAX_TOOL_CALL_RETRIES
@@ -286,15 +295,13 @@ class CerebrasClient(BaseLLMClient):
 
         cerebras_messages = self._convert_messages(messages)
         cerebras_tools = self._convert_tools(tools) if tools else None
-        temp = temperature if temperature is not None else LLMDefaults.TEMPERATURE
-
         # Build kwargs — only include reasoning params when set,
         # as Cerebras API rejects None values for these fields.
         kwargs: dict[str, Any] = {
             "model": model.value,
             "messages": cerebras_messages,
             "tools": cerebras_tools,
-            "temperature": temp,
+            "temperature": temperature if temperature is not None else omit,
             "max_completion_tokens": max_tokens,
             "stream": True,
             "stream_options": {"include_usage": True},
@@ -319,27 +326,12 @@ class CerebrasClient(BaseLLMClient):
                 if not isinstance(chunk, ChatChunkResponse):
                     continue
 
-                # Handle usage-only chunk (comes after finish_reason)
-                if not chunk.choices and chunk.usage:
-                    # Extract cache tokens if available
-                    cache_read = 0
-                    details = chunk.usage.prompt_tokens_details
-                    if details:
-                        cache_read = details.cached_tokens or 0
-
-                    prompt_tokens = chunk.usage.prompt_tokens or 0
-
-                    yield StreamChunk(
-                        usage=Usage(
-                            input_tokens=prompt_tokens - cache_read,
-                            output_tokens=chunk.usage.completion_tokens or 0,
-                            cache_read_tokens=cache_read,
-                        ),
-                        model=chunk.model,
-                    )
-                    continue
-
+                # Usage rides whichever chunk carries it — OpenAI's trailing
+                # choices-empty chunk, or a door's final content chunk (LL-12).
+                usage = _usage_of(chunk.usage) if chunk.usage else None
                 if not chunk.choices:
+                    if usage:
+                        yield StreamChunk(usage=usage, model=chunk.model)
                     continue
 
                 choice = chunk.choices[0]
@@ -397,6 +389,7 @@ class CerebrasClient(BaseLLMClient):
                     reasoning=reasoning,
                     tool_calls=tool_calls,
                     finish_reason=finish_reason,
+                    usage=usage,
                     model=chunk.model,
                 )
         except NeosianError:

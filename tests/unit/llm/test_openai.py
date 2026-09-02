@@ -15,6 +15,7 @@ from neosian._foundation.llm.base import (
     Message,
     Role,
     ToolDefinition,
+    Usage,
 )
 from neosian._foundation.llm.openai import OpenAIClient
 from neosian._foundation.shared.constants import LLMDefaults
@@ -866,6 +867,34 @@ class TestOpenAIPromptCaching:
 
         assert len(chunks) == 2
         assert all(c.model == "gpt-5-nano-2026-01-01" for c in chunks)
+
+    async def test_usage_on_a_content_chunk_is_read(self) -> None:
+        """A door that attaches usage to its final content chunk is not
+        billed at zero (LL-12)."""
+        client = OpenAIClient(api_key="test-key")
+        chunk = autospec(SPEC["chunk"])
+        chunk.choices = [autospec(SPEC["chunk_choice"])]
+        chunk.choices[0].delta.content = "Hi"
+        chunk.choices[0].delta.tool_calls = None
+        chunk.choices[0].finish_reason = "stop"
+        chunk.usage = MagicMock(
+            spec=SPEC["usage"], prompt_tokens=10, completion_tokens=5
+        )
+        chunk.usage.prompt_tokens_details = None
+
+        async def chunks() -> Any:
+            yield chunk
+
+        _sdk(client).chat.completions.create = AsyncMock(return_value=chunks())
+
+        received = []
+        async for item in client.stream(
+            messages=[Message(role=Role.USER, content="Hi")], model=Model.GPT_5_NANO
+        ):
+            received.append(item)
+        assert len(received) == 1
+        assert received[0].content == "Hi"
+        assert received[0].usage == Usage(input_tokens=10, output_tokens=5)
 
     async def test_a_truncated_tool_call_names_the_stop_reason(self) -> None:
         """Arguments cut off at `length` raise naming that reason (LL-7)."""
