@@ -14,8 +14,10 @@ from neosian._foundation.llm.base import (
     CompactionBlock,
     Message,
     Role,
+    StopReason,
     ToolDefinition,
     Usage,
+    normalize_stop_reason,
 )
 from neosian._foundation.llm.openai import OpenAIClient
 from neosian._foundation.shared.constants import LLMDefaults
@@ -867,6 +869,60 @@ class TestOpenAIPromptCaching:
 
         assert len(chunks) == 2
         assert all(c.model == "gpt-5-nano-2026-01-01" for c in chunks)
+
+    async def test_a_refusal_is_the_content_and_the_stop_reason(self) -> None:
+        """OpenAI's `refusal` field reads into content_filter (LL-14)."""
+        client = OpenAIClient(api_key="test-key")
+        mock_response = autospec(SPEC["completion"])
+        mock_response.choices = [autospec(SPEC["choice"])]
+        mock_response.choices[0].message.content = None
+        mock_response.choices[0].message.refusal = "I can't help with that."
+        mock_response.choices[0].message.tool_calls = None
+        mock_response.choices[0].finish_reason = "stop"
+        mock_response.usage.prompt_tokens = 10
+        mock_response.usage.completion_tokens = 5
+        mock_response.model = "gpt-5-nano"
+        _sdk(client).chat.completions.create = AsyncMock(return_value=mock_response)
+
+        result = await client.complete(
+            messages=[Message(role=Role.USER, content="Hi")], model=Model.GPT_5_NANO
+        )
+        assert result.message.content == "I can't help with that."
+        assert result.stop_reason == "refusal"
+        assert normalize_stop_reason(result.stop_reason) is StopReason.CONTENT_FILTER
+
+    async def test_a_streamed_refusal_names_the_terminal_chunk(self) -> None:
+        """Refusal deltas are content; the chunk that ends the turn says
+        `refusal`, whatever the wire's own finish reason (LL-14)."""
+        client = OpenAIClient(api_key="test-key")
+        first = autospec(SPEC["chunk"])
+        first.choices = [autospec(SPEC["chunk_choice"])]
+        first.choices[0].delta.content = None
+        first.choices[0].delta.refusal = "I can't"
+        first.choices[0].delta.tool_calls = None
+        first.choices[0].finish_reason = None
+        first.usage = None
+        last = autospec(SPEC["chunk"])
+        last.choices = [autospec(SPEC["chunk_choice"])]
+        last.choices[0].delta.content = None
+        last.choices[0].delta.refusal = None
+        last.choices[0].delta.tool_calls = None
+        last.choices[0].finish_reason = "stop"
+        last.usage = None
+
+        async def chunks() -> Any:
+            yield first
+            yield last
+
+        _sdk(client).chat.completions.create = AsyncMock(return_value=chunks())
+        received = []
+        async for item in client.stream(
+            messages=[Message(role=Role.USER, content="Hi")], model=Model.GPT_5_NANO
+        ):
+            received.append(item)
+        assert received[0].content == "I can't"
+        assert received[0].finish_reason is None
+        assert received[-1].finish_reason == "refusal"
 
     async def test_usage_on_a_content_chunk_is_read(self) -> None:
         """A door that attaches usage to its final content chunk is not

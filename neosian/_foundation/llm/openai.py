@@ -6,7 +6,6 @@ from dataclasses import replace
 from typing import Any, Final
 
 from openai import AsyncOpenAI, BadRequestError, omit
-from openai.types import CompletionUsage
 from openai.types.chat import (
     ChatCompletionMessageParam,
     ChatCompletionStreamOptionsParam,
@@ -31,6 +30,9 @@ from neosian._foundation.llm.openai_convert import (
     convert_messages,
     convert_response_format,
     convert_tools,
+    extra_of,
+    refusal_of,
+    usage_of,
 )
 from neosian._foundation.shared.constants import ErrorMessages, LLMDefaults
 from neosian._foundation.shared.exceptions import (
@@ -52,23 +54,6 @@ logger = logging.getLogger(__name__)
 
 # OpenAI's own door: the SDK's endpoint (or OPENAI_BASE_URL), OpenAI's dialect.
 OPENAI_DOOR: Final = OpenAICompatible(name="openai", api_key_env="OPENAI_API_KEY")
-
-
-def _usage_of(usage: CompletionUsage) -> Usage:
-    details = getattr(usage, "prompt_tokens_details", None)
-    cached_tokens = getattr(details, "cached_tokens", 0) or 0
-    return Usage(
-        input_tokens=usage.prompt_tokens - cached_tokens,
-        output_tokens=usage.completion_tokens,
-        cache_read_tokens=cached_tokens,
-    )
-
-
-def _extra_of(part: object) -> dict[str, Any] | None:
-    """The provider's own fields on a tool call or delta (the SDK keeps them
-    in `model_extra`) — carried on `ToolCall.extra`, never interpreted."""
-    extra = getattr(part, "model_extra", None)
-    return dict(extra) if isinstance(extra, dict) and extra else None
 
 
 class OpenAICompatibleClient(BaseLLMClient):
@@ -303,7 +288,7 @@ class OpenAICompatibleClient(BaseLLMClient):
                             tc.function.arguments,
                             stop_reason=choice.finish_reason,
                         ),
-                        extra=_extra_of(tc),
+                        extra=extra_of(tc),
                     )
                 )
 
@@ -317,10 +302,11 @@ class OpenAICompatibleClient(BaseLLMClient):
             details = getattr(response.usage, "prompt_tokens_details", None)  # type: ignore[attr-defined]
             cached_tokens = getattr(details, "cached_tokens", 0) or 0
 
+        refusal = refusal_of(response_message)
         return CompletionResponse(
             message=Message(
                 role=Role.ASSISTANT,
-                content=response_message.content,
+                content=response_message.content or refusal,
                 tool_calls=tool_calls,
                 reasoning=self._reasoning_of(response_message),
             ),
@@ -330,7 +316,9 @@ class OpenAICompatibleClient(BaseLLMClient):
                 cache_read_tokens=cached_tokens,
             ),
             model=response.model,  # type: ignore[attr-defined]
-            stop_reason=getattr(choice, "finish_reason", None),
+            stop_reason=(
+                "refusal" if refusal else getattr(choice, "finish_reason", None)
+            ),
         )
 
     async def stream(
@@ -383,11 +371,12 @@ class OpenAICompatibleClient(BaseLLMClient):
             # Track tool calls being built across chunks
             tool_call_builders: dict[int, dict[str, str]] = {}
             tool_call_extras: dict[int, dict[str, Any]] = {}
+            refused = False
 
             async for chunk in stream:
                 # Usage rides whichever chunk carries it — OpenAI's trailing
                 # choices-empty chunk, or a door's final content chunk (LL-12).
-                usage = _usage_of(chunk.usage) if chunk.usage else None
+                usage = usage_of(chunk.usage) if chunk.usage else None
                 if not chunk.choices:
                     if usage:
                         yield StreamChunk(usage=usage, model=chunk.model)
@@ -397,7 +386,9 @@ class OpenAICompatibleClient(BaseLLMClient):
                 delta = choice.delta
 
                 # Handle content
-                content = delta.content if delta.content else None
+                refusal = refusal_of(delta)
+                refused = refused or refusal is not None
+                content = delta.content or refusal
 
                 # Handle tool calls (streamed in parts)
                 tool_calls: list[ToolCall] = []
@@ -413,7 +404,7 @@ class OpenAICompatibleClient(BaseLLMClient):
 
                         if tc.id:
                             tool_call_builders[idx]["id"] = tc.id
-                        if extra := _extra_of(tc):
+                        if extra := extra_of(tc):
                             tool_call_extras.setdefault(idx, {}).update(extra)
                         if tc.function:
                             if tc.function.name:
@@ -424,7 +415,10 @@ class OpenAICompatibleClient(BaseLLMClient):
                                 ] += tc.function.arguments
 
                 # On finish, yield completed tool calls
-                finish_reason = choice.finish_reason
+                # A refusal arrives in deltas; the terminal chunk names it.
+                finish_reason: str | None = choice.finish_reason
+                if refused and finish_reason:
+                    finish_reason = "refusal"
                 # Any terminal finish releases the accumulated calls: Gemini
                 # ends a streamed tool turn with "stop" (DESIGN §19.7), and
                 # the agent loop keys on the calls' presence, not the reason.

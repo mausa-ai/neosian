@@ -2,13 +2,15 @@
 
 Extracted for size-gate headroom (the adapter sat one line from the 500
 fail line); bodies are verbatim, `OpenAIClient`'s `_convert_*` methods
-delegate here. Deliberately not shared with the other OpenAI-compatible
+delegate here, and the field readers (`usage_of`, `refusal_of`,
+`extra_of`) live beside them. Deliberately not shared with the other OpenAI-compatible
 adapters: converters live per adapter until a real seam appears (the
 anthropic allowlist reason, applied in reverse).
 """
 
 from typing import Any, cast
 
+from openai.types import CompletionUsage
 from openai.types.chat import (
     ChatCompletionAssistantMessageParam,
     ChatCompletionMessageParam,
@@ -19,11 +21,40 @@ from openai.types.chat.completion_create_params import (
     ResponseFormat as OpenAIResponseFormat,
 )
 
-from neosian._foundation.llm.base import Message, Role, ToolCall, ToolDefinition
+from neosian._foundation.llm.base import (
+    Message,
+    Role,
+    ToolCall,
+    ToolDefinition,
+    Usage,
+)
 from neosian._foundation.shared.constants import ErrorMessages
 from neosian._foundation.shared.exceptions import UnsupportedContentError
 from neosian._foundation.shared.serialization import safe_json_dumps
 from neosian._foundation.shared.types import ResponseFormat
+
+
+def usage_of(usage: CompletionUsage) -> Usage:
+    details = getattr(usage, "prompt_tokens_details", None)
+    cached_tokens = getattr(details, "cached_tokens", 0) or 0
+    return Usage(
+        input_tokens=usage.prompt_tokens - cached_tokens,
+        output_tokens=usage.completion_tokens,
+        cache_read_tokens=cached_tokens,
+    )
+
+
+def refusal_of(part: object) -> str | None:
+    """OpenAI's `refusal` field off a message or delta (LL-14)."""
+    value = getattr(part, "refusal", None)
+    return value if isinstance(value, str) and value else None
+
+
+def extra_of(part: object) -> dict[str, Any] | None:
+    """The provider's own fields on a tool call or delta (the SDK keeps them
+    in `model_extra`) — carried on `ToolCall.extra`, never interpreted."""
+    extra = getattr(part, "model_extra", None)
+    return dict(extra) if isinstance(extra, dict) and extra else None
 
 
 def _tool_call_param(tc: ToolCall) -> ChatCompletionMessageToolCallParam:
