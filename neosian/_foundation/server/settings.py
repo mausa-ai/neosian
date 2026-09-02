@@ -5,7 +5,8 @@ The store flags are the shared grammar of `memory/settings.py` (ledger
 relaxation: the store-shaped API needs no mounts, only the MCP surface
 does, and a RemoteStore-only deployment has no natural scope to mount.
 
-The bearer token arrives only through `NEOSIAN_SERVE_TOKEN` — argv is
+The bearer tokens arrive only through `NEOSIAN_SERVE_TOKEN` (one token,
+or `actor=token[,…]` per client — DESIGN §20) — argv is
 world-readable in `ps`, the ledger #53 rule that keeps DSNs off command
 lines applies to tokens identically. Unset refuses to start at the
 grammar tier: default-deny is code, not configuration (the #107 shape) —
@@ -25,6 +26,8 @@ from neosian._foundation.memory.settings import (
     resolve_mounts,
     resolve_store_selection,
 )
+from neosian._foundation.server.tokens import parse_clients
+from neosian._foundation.shared.exceptions import ConfigurationError
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -47,7 +50,8 @@ _EPILOG = (
 
 @dataclass(frozen=True, slots=True)
 class ServeSettings:
-    """Everything the runner needs: the store, the bind, the token."""
+    """Everything the runner needs: the store, the bind, the token table
+    (the raw `NEOSIAN_SERVE_TOKEN` value; `build_app` parses it)."""
 
     store: StoreSettings
     host: str
@@ -91,6 +95,10 @@ def parse_args(
             f"{SERVE_TOKEN_ENV} is required — the state process never "
             "serves unauthenticated"
         )
+    try:
+        parse_clients(token)  # the table's shape is grammar: exit 2
+    except ConfigurationError as exc:
+        parser.error(exc.message)
     return ServeSettings(
         store=StoreSettings(
             mounts=mounts, root=root, dsn=dsn, schema=schema, actor=args.actor

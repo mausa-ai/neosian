@@ -86,6 +86,9 @@ class RemoteStore(MemoryStore, ConversationStore):
         timeout: float = 30.0,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
+        # Who the server makes this connection (§20), learned at `connect`;
+        # every write through it records `<client>[/<actor>]`.
+        self.client: str | None = None
         if not url.startswith(("http://", "https://")):
             raise ConfigurationError(f"RemoteStore url must be http(s), got {url!r}")
         if not token:
@@ -170,10 +173,12 @@ class RemoteStore(MemoryStore, ConversationStore):
             if capabilities.get("supports_optimistic_concurrency")
             else RemoteStore
         )
-        if type(probe) is target:
-            return probe
-        await probe.aclose()
-        return target(url, token=token, timeout=timeout, transport=transport)
+        client = capabilities.get("client")
+        if type(probe) is not target:
+            await probe.aclose()
+            probe = target(url, token=token, timeout=timeout, transport=transport)
+        probe.client = client if isinstance(client, str) else None
+        return probe
 
     async def capabilities(self) -> dict[str, Any]:
         """GET /v1/capabilities verbatim (wire version, backend, capability)."""

@@ -133,8 +133,10 @@ class TestOverTheWire:
             assert read_back is not None
             assert read_back.content == "over the wire"
             rows = await store.versions("user:smoke", "notes/hello")
+            # The daemon prefixes its asserted client (§20): a bare token
+            # is `client:default`, and the body actor lands under it.
             assert [(row.version, row.action, row.actor) for row in rows] == [
-                (1, "created", "serve:smoke")
+                (1, "created", f"{store.client}/serve:smoke")
             ]
         finally:
             await store.aclose()

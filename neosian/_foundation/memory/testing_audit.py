@@ -21,6 +21,10 @@ _asyncio = pytest.mark.asyncio
 class LedgerContract:
     """The `history` and `redactions` reads, pinned on every substrate."""
 
+    def stamped(self, store: MemoryStore, actor: str) -> str:
+        del store
+        return actor
+
     @_asyncio
     async def test_history_spans_every_path_deleted_ones_included(
         self, store: MemoryStore, scope: str
@@ -39,7 +43,7 @@ class LedgerContract:
         assert stamps == sorted(stamps, reverse=True)
         assert (rows[0].path, rows[0].action) == ("a", "deleted")
         assert all(r.created_at.tzinfo is not None for r in rows)
-        assert [r.actor for r in rows if r.path == "b"] == ["w2"]
+        assert [r.actor for r in rows if r.path == "b"] == [self.stamped(store, "w2")]
 
     @_asyncio
     async def test_history_since_is_inclusive_and_limit_takes_the_newest(
@@ -84,9 +88,10 @@ class LedgerContract:
         assert await store.redact(scope, path="a", actor="eraser") == 1
         assert await store.redact(scope, actor="eraser") == 2
         acts = await store.redactions(scope)
+        eraser = self.stamped(store, "eraser")
         assert [(a.path, a.count, a.actor) for a in acts] == [
-            (None, 2, "eraser"),
-            ("a", 1, "eraser"),
+            (None, 2, eraser),
+            ("a", 1, eraser),
         ]
         assert all(a.created_at.tzinfo is not None for a in acts)
         assert acts[0].created_at >= acts[1].created_at
@@ -104,5 +109,9 @@ class LedgerContract:
         await store.write(scope, "a", "secret", actor="w1")
         await store.redact(scope, path="a")
         (row,) = await store.history(scope)
-        assert (row.content, row.redacted, row.actor) == ("", True, "w1")
+        assert (row.content, row.redacted, row.actor) == (
+            "",
+            True,
+            self.stamped(store, "w1"),
+        )
         assert row.created_at.tzinfo is UTC or row.created_at.utcoffset() is not None

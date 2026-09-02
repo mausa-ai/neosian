@@ -53,6 +53,13 @@ class MemoryStoreContract(LedgerContract):
         """The scope under test; override to exercise another."""
         return parse_scope("user:contract-kit")
 
+    def stamped(self, store: MemoryStore, actor: str) -> str:
+        """What the store records for a write made as `actor`. Identity
+        everywhere but the daemon, which prefixes its asserted client
+        (§20); the Remote subclasses override."""
+        del store
+        return actor
+
     async def plant_raw_document(
         self,
         store: MemoryStore,
@@ -97,7 +104,7 @@ class MemoryStoreContract(LedgerContract):
         assert document is not None
         assert document.content == "body"
         assert document.version == 1
-        assert document.actor == "conv-1"
+        assert document.actor == self.stamped(store, "conv-1")
         assert document.path == "notes/api"
         assert document.scope == scope
         assert [e.path for e in await store.list_documents(scope)] == ["notes/api"]
@@ -168,7 +175,7 @@ class MemoryStoreContract(LedgerContract):
         assert rows[0].action == "deleted"
         assert rows[0].version == 2
         assert rows[0].content == "content"
-        assert rows[0].actor == "a2"
+        assert rows[0].actor == self.stamped(store, "a2")
 
     @_asyncio
     async def test_delete_missing_returns_false_and_appends_nothing(
@@ -204,7 +211,7 @@ class MemoryStoreContract(LedgerContract):
         assert newest.action == "modified"
         assert rows[-1].action == "created"
         assert all(row.content == f"v{row.version}" for row in rows)
-        assert all(row.actor == "conv" for row in rows)
+        assert all(row.actor == self.stamped(store, "conv") for row in rows)
 
     @_asyncio
     async def test_versions_respect_limit_and_unknown_path_is_empty(

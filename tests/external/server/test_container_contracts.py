@@ -46,6 +46,9 @@ def _fresh_conversation() -> str:
 class TestContainerFileMemoryContract(MemoryStoreContract):
     _harness: FileLeg
 
+    def stamped(self, store: RemoteStore, actor: str) -> str:  # type: ignore[override]
+        return f"{store.client}/{actor}"
+
     @pytest.fixture
     def scope(self) -> Scope:
         return _fresh_scope()
@@ -91,6 +94,9 @@ class TestContainerFileMemoryContract(MemoryStoreContract):
 
 class TestContainerFileConversationContract(ConversationStoreContract):
     _harness: FileLeg
+
+    def stamped(self, store: RemoteStore, actor: str) -> str:  # type: ignore[override]
+        return f"{store.client}/{actor}"
 
     @pytest.fixture
     def conversation_id(self) -> str:
@@ -148,6 +154,9 @@ def _decode(line: str) -> dict[str, Any] | None:
 class TestContainerPostgresMemoryContract(MemoryStoreContract):
     _harness: PgLeg
 
+    def stamped(self, store: RemoteStore, actor: str) -> str:  # type: ignore[override]
+        return f"{store.client}/{actor}"
+
     @pytest.fixture
     def scope(self) -> Scope:
         return _fresh_scope()
@@ -188,6 +197,9 @@ class TestContainerPostgresMemoryContract(MemoryStoreContract):
 
 class TestContainerPostgresConversationContract(ConversationStoreContract):
     _harness: PgLeg
+
+    def stamped(self, store: RemoteStore, actor: str) -> str:  # type: ignore[override]
+        return f"{store.client}/{actor}"
 
     @pytest.fixture
     def conversation_id(self) -> str:

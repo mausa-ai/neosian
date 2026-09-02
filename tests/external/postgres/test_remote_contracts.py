@@ -50,6 +50,9 @@ def _decode(line: str) -> dict[str, Any] | None:
 class TestRemotePostgresMemoryContract(MemoryStoreContract):
     _backing: PostgresStore
 
+    def stamped(self, store: RemoteStore, actor: str) -> str:  # type: ignore[override]
+        return f"{store.client}/{actor}"
+
     @pytest.fixture(name="store")
     async def remote_store(
         self,
@@ -90,6 +93,9 @@ class TestRemotePostgresMemoryContract(MemoryStoreContract):
 
 class TestRemotePostgresConversationContract(ConversationStoreContract):
     _backing: PostgresStore
+
+    def stamped(self, store: RemoteStore, actor: str) -> str:  # type: ignore[override]
+        return f"{store.client}/{actor}"
 
     @pytest.fixture(name="store")
     async def remote_store(

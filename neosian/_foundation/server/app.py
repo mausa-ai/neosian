@@ -7,8 +7,9 @@ routes, and — when mounts are given — MCP over streamable HTTP at
 `/mcp`, built from the same `create_memory_server` factory the stdio
 transport uses, so all five transports execute one dispatcher.
 
-Auth is one bearer token compared timing-safely on every request except
-`/health`; a miss is a plain 401 (no §18 envelope — auth is transport,
+Auth is a bearer-token table compared timing-safely on every request
+except `/health`, each token naming the client it asserts (§20); a miss
+is a plain 401 (no §18 envelope — auth is transport,
 not a store error, and the client propagates it raw). Inside the gate,
 one body ceiling covers every surface (`ceiling.py`). The SDK's own auth
 stack is OAuth-resource-server shaped and deliberately unused (NM scope:
@@ -28,6 +29,7 @@ from importlib import metadata
 from typing import TYPE_CHECKING
 
 from neosian._foundation.conversation.base import ConversationStore
+from neosian._foundation.memory.actor import parse_actor
 from neosian._foundation.memory.base import MemoryStore
 from neosian._foundation.memory.mounts import MemoryConfig
 from neosian._foundation.server.ceiling import (
@@ -46,11 +48,12 @@ from neosian._foundation.server.sdk import (
     StreamableHTTPSessionManager,
 )
 from neosian._foundation.server.settings import DEFAULT_ACTOR
+from neosian._foundation.server.tokens import parse_clients
 from neosian._foundation.server.wire import WIRE_VERSION
 from neosian._foundation.shared.exceptions import ConfigurationError
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
+    from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 
     from starlette.routing import BaseRoute
     from starlette.types import ASGIApp, Receive, Scope, Send
@@ -61,11 +64,14 @@ _HEALTH_PATH = "/health"
 
 
 class BearerAuthMiddleware:
-    """Pure ASGI: one token, compared timing-safely, `/health` exempt."""
+    """Pure ASGI: the token table, each compared timing-safely, `/health`
+    exempt; a hit stamps the client's actor on the request (§20)."""
 
-    def __init__(self, app: ASGIApp, *, token: str) -> None:
+    def __init__(self, app: ASGIApp, *, clients: Mapping[str, str]) -> None:
         self._app = app
-        self._expected = f"Bearer {token}".encode()
+        self._table = {
+            f"Bearer {token}".encode(): actor for token, actor in clients.items()
+        }
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http" or scope["path"] == _HEALTH_PATH:
@@ -76,7 +82,13 @@ class BearerAuthMiddleware:
             if name == b"authorization":
                 supplied = value
                 break
-        if not secrets.compare_digest(supplied, self._expected):
+        # Every candidate is compared — the table is small, and a
+        # short-circuit would leak which token prefix matched.
+        client: str | None = None
+        for expected, actor in self._table.items():
+            if secrets.compare_digest(supplied, expected):
+                client = actor
+        if client is None:
             response = Response(
                 "unauthorized",
                 status_code=401,
@@ -84,6 +96,7 @@ class BearerAuthMiddleware:
             )
             await response(scope, receive, send)
             return
+        scope.setdefault("state", {})["actor"] = client
         await self._app(scope, receive, send)
 
 
@@ -94,7 +107,7 @@ async def _health(request: Request) -> Response:  # noqa: ARG001 - route shape
 def _capabilities(
     store: MemoryStore,
 ) -> Callable[[Request], Awaitable[Response]]:
-    async def capabilities(request: Request) -> Response:  # noqa: ARG001
+    async def capabilities(request: Request) -> Response:
         return JSONResponse(
             {
                 "wire_version": WIRE_VERSION,
@@ -103,6 +116,9 @@ def _capabilities(
                 "supports_optimistic_concurrency": bool(
                     type(store).supports_optimistic_concurrency
                 ),
+                # Who the presented token makes the caller (§20) — the
+                # prefix every write through this connection records.
+                "client": request.state.actor,
             }
         )
 
@@ -118,16 +134,15 @@ async def build_app(
 ) -> Starlette:
     """Build the state process's app over one both-seams store.
 
-    The caller owns the store's lifetime (the ledger #33 rule); the app
-    never closes it. `mounts` gates the MCP surface: without them the
-    process serves the store-shaped API only — a RemoteStore-only
-    deployment has no natural scope to mount.
+    `token` is the raw `NEOSIAN_SERVE_TOKEN` value — one token or the
+    per-client table (`tokens.py`). The caller owns the store's lifetime
+    (the ledger #33 rule); the app never closes it. `mounts` gates the
+    MCP surface: without them the process serves the store-shaped API
+    only — a RemoteStore-only deployment has no natural scope to mount.
     """
-    if not token:
-        raise ConfigurationError(
-            "a bearer token is required — the state process never serves "
-            "unauthenticated (set NEOSIAN_SERVE_TOKEN)"
-        )
+    clients = parse_clients(token)  # refuses an empty or malformed table
+    if actor is not None:
+        parse_actor(actor)  # the /mcp surface's own identity (§20)
     if not isinstance(store, ConversationStore):
         raise ConfigurationError(
             f"{type(store).__name__} does not implement ConversationStore — "
@@ -169,7 +184,7 @@ async def build_app(
     return Starlette(
         routes=routes,
         middleware=[
-            Middleware(BearerAuthMiddleware, token=token),
+            Middleware(BearerAuthMiddleware, clients=clients),
             Middleware(BodyCeilingMiddleware),
         ],
         lifespan=lifespan,

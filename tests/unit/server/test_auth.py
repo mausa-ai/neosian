@@ -65,6 +65,7 @@ class TestBearerGate:
         assert payload["wire_version"] == WIRE_VERSION
         assert payload["backend"] == "FileStore"
         assert payload["supports_optimistic_concurrency"] is False
+        assert payload["client"] == "client:default"  # a bare token's client
 
 
 class TestBuildAppRefusals:

@@ -21,6 +21,9 @@ class TestRemoteConversationContract(ConversationStoreContract):
         self._harness = remote_over_file
         yield remote_over_file.remote
 
+    def stamped(self, store: RemoteStore, actor: str) -> str:  # type: ignore[override]
+        return f"{store.client}/{actor}"
+
     async def plant_raw_turn(
         self,
         store: RemoteStore,  # type: ignore[override]  # noqa: ARG002 - unused

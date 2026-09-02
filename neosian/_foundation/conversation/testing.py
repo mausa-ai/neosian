@@ -95,6 +95,12 @@ class ConversationStoreContract:
         """The conversation under test; override to exercise another."""
         return "contract-kit"
 
+    def stamped(self, store: ConversationStore, actor: str) -> str:
+        """What the store records for a turn appended as `actor` — identity
+        everywhere but the daemon (§20); the Remote subclasses override."""
+        del store
+        return actor
+
     async def plant_raw_turn(
         self, store: ConversationStore, conversation_id: str, *, line: str
     ) -> None:
@@ -129,10 +135,12 @@ class ConversationStoreContract:
         named = await store.append_turn(
             conversation_id, self._exchange("b"), actor="claude-code:s1"
         )
-        assert bare.actor is None
-        assert named.actor == "claude-code:s1"
+        # A bodyless append records the daemon's client, else nothing.
+        assert bare.actor in (None, self.stamped(store, "").rstrip("/") or None)
+        stamped = self.stamped(store, "claude-code:s1")
+        assert named.actor == stamped
         turns = await store.read_turns(conversation_id)
-        assert [turn.actor for turn in turns] == [None, "claude-code:s1"]
+        assert [turn.actor for turn in turns] == [bare.actor, stamped]
 
     @_asyncio
     async def test_store_starts_empty(
