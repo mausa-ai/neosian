@@ -21,6 +21,7 @@ from neosian._foundation.shared.exceptions import (
     UnsupportedParameterError,
 )
 from neosian._foundation.shared.types import Model, ReasoningEffort, ToolName
+from tests.unit.llm.sdk_specs import OPENAI as SPEC, autospec
 
 
 def _sdk(client: OpenAIClient) -> Any:
@@ -221,8 +222,8 @@ class TestOpenAIClientRetry:
             response=MagicMock(),
         )
 
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
+        mock_response = autospec(SPEC["completion"])
+        mock_response.choices = [autospec(SPEC["choice"])]
         mock_response.choices[0].message.content = "Success"
         mock_response.choices[0].message.tool_calls = None
         mock_response.usage.prompt_tokens = 10
@@ -373,8 +374,8 @@ class TestOpenAIClientTemperature:
         mock_create = AsyncMock()
         _sdk(client).chat.completions.create = mock_create
 
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
+        mock_response = autospec(SPEC["completion"])
+        mock_response.choices = [autospec(SPEC["choice"])]
         mock_response.choices[0].message.content = "Hello"
         mock_response.choices[0].message.tool_calls = None
         mock_response.usage.prompt_tokens = 10
@@ -396,10 +397,10 @@ class TestOpenAIClientTemperature:
 class TestOpenAIClientReasoningEffort:
     """Test reasoning_effort parameter handling for OpenAI GPT-5 models."""
 
-    def _mock_response(self, model: str = "gpt-5-nano-2025-08-07") -> MagicMock:
+    def _mock_response(self, model: str = "gpt-5-nano-2025-08-07") -> Any:
         """Create a mock OpenAI response."""
-        mock = MagicMock()
-        mock.choices = [MagicMock()]
+        mock = autospec(SPEC["completion"])
+        mock.choices = [autospec(SPEC["choice"])]
         mock.choices[0].message.content = "Response"
         mock.choices[0].message.tool_calls = None
         mock.usage.prompt_tokens = 10
@@ -631,17 +632,17 @@ class TestOpenAIPromptCaching:
         completion_tokens: int = 50,
         cached_tokens: int | None = None,
         model: str = "gpt-5-nano-2025-08-07",
-    ) -> MagicMock:
+    ) -> Any:
         """Create a mock OpenAI response with optional cache details."""
-        mock = MagicMock()
-        mock.choices = [MagicMock()]
+        mock = autospec(SPEC["completion"])
+        mock.choices = [autospec(SPEC["choice"])]
         mock.choices[0].message.content = "Hello"
         mock.choices[0].message.tool_calls = None
         mock.usage.prompt_tokens = prompt_tokens
         mock.usage.completion_tokens = completion_tokens
 
         if cached_tokens is not None:
-            mock.usage.prompt_tokens_details = MagicMock()
+            mock.usage.prompt_tokens_details = MagicMock(spec=SPEC["details"])
             mock.usage.prompt_tokens_details.cached_tokens = cached_tokens
         else:
             mock.usage.prompt_tokens_details = None
@@ -695,7 +696,7 @@ class TestOpenAIPromptCaching:
         """Should handle cached_tokens=None in prompt_tokens_details."""
         client = OpenAIClient(api_key="test-key")
         mock_resp = self._mock_response(prompt_tokens=500, completion_tokens=20)
-        mock_resp.usage.prompt_tokens_details = MagicMock()
+        mock_resp.usage.prompt_tokens_details = MagicMock(spec=SPEC["details"])
         mock_resp.usage.prompt_tokens_details.cached_tokens = None
         mock_create = AsyncMock(return_value=mock_resp)
         _sdk(client).chat.completions.create = mock_create
@@ -735,12 +736,12 @@ class TestOpenAIPromptCaching:
         _sdk(client).chat.completions.create = mock_create
 
         # Create a usage-only chunk (no choices, has usage)
-        usage_chunk = MagicMock()
+        usage_chunk = autospec(SPEC["chunk"])
         usage_chunk.choices = []
-        usage_chunk.usage = MagicMock()
+        usage_chunk.usage = autospec(SPEC["usage"])
         usage_chunk.usage.prompt_tokens = 1000
         usage_chunk.usage.completion_tokens = 50
-        usage_chunk.usage.prompt_tokens_details = MagicMock()
+        usage_chunk.usage.prompt_tokens_details = MagicMock(spec=SPEC["details"])
         usage_chunk.usage.prompt_tokens_details.cached_tokens = 700
 
         class SingleChunkIter:
@@ -750,7 +751,7 @@ class TestOpenAIPromptCaching:
             def __aiter__(self) -> "SingleChunkIter":
                 return self
 
-            async def __anext__(self) -> MagicMock:
+            async def __anext__(self) -> Any:
                 if self._yielded:
                     raise StopAsyncIteration
                 self._yielded = True
@@ -778,9 +779,9 @@ class TestOpenAIPromptCaching:
         mock_create = AsyncMock()
         _sdk(client).chat.completions.create = mock_create
 
-        usage_chunk = MagicMock()
+        usage_chunk = autospec(SPEC["chunk"])
         usage_chunk.choices = []
-        usage_chunk.usage = MagicMock()
+        usage_chunk.usage = autospec(SPEC["usage"])
         usage_chunk.usage.prompt_tokens = 500
         usage_chunk.usage.completion_tokens = 20
         usage_chunk.usage.prompt_tokens_details = None
@@ -792,7 +793,7 @@ class TestOpenAIPromptCaching:
             def __aiter__(self) -> "SingleChunkIter":
                 return self
 
-            async def __anext__(self) -> MagicMock:
+            async def __anext__(self) -> Any:
                 if self._yielded:
                     raise StopAsyncIteration
                 self._yielded = True
@@ -819,18 +820,20 @@ class TestOpenAIPromptCaching:
         mock_create = AsyncMock()
         _sdk(client).chat.completions.create = mock_create
 
-        content_chunk = MagicMock()
+        content_chunk = autospec(SPEC["chunk"])
         content_chunk.model = "gpt-5-nano-2026-01-01"
-        content_chunk.choices = [MagicMock()]
+        content_chunk.choices = [autospec(SPEC["chunk_choice"])]
         content_chunk.choices[0].delta.content = "Hi"
         content_chunk.choices[0].delta.tool_calls = None
         content_chunk.choices[0].finish_reason = "stop"
         content_chunk.usage = None
 
-        usage_chunk = MagicMock()
+        usage_chunk = autospec(SPEC["chunk"])
         usage_chunk.model = "gpt-5-nano-2026-01-01"
         usage_chunk.choices = []
-        usage_chunk.usage = MagicMock(prompt_tokens=10, completion_tokens=5)
+        usage_chunk.usage = MagicMock(
+            spec=SPEC["usage"], prompt_tokens=10, completion_tokens=5
+        )
         usage_chunk.usage.prompt_tokens_details = None
 
         class TwoChunkIter:
@@ -841,7 +844,7 @@ class TestOpenAIPromptCaching:
             def __aiter__(self) -> "TwoChunkIter":
                 return self
 
-            async def __anext__(self) -> MagicMock:
+            async def __anext__(self) -> Any:
                 if self._index >= len(self._items):
                     raise StopAsyncIteration
                 item = self._items[self._index]

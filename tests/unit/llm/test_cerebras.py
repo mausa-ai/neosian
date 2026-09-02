@@ -28,6 +28,7 @@ from neosian._foundation.shared.exceptions import (
     UnsupportedParameterError,
 )
 from neosian._foundation.shared.types import Model, ReasoningEffort, ToolName
+from tests.unit.llm.sdk_specs import CEREBRAS as SPEC, autospec
 
 
 def _make_stream_chunk(
@@ -250,8 +251,8 @@ class TestCerebrasClientRetry:
             response=MagicMock(),
         )
 
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
+        mock_response = autospec(SPEC["completion"])
+        mock_response.choices = [autospec(SPEC["choice"])]
         mock_response.choices[0].message.content = "Success"
         mock_response.choices[0].message.tool_calls = None
         mock_response.usage.prompt_tokens = 10
@@ -353,8 +354,8 @@ class TestCerebrasClientRetry:
         mock_create = AsyncMock()
         _sdk(client).chat.completions.create = mock_create
 
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
+        mock_response = autospec(SPEC["completion"])
+        mock_response.choices = [autospec(SPEC["choice"])]
         mock_response.choices[0].message.content = "Hello"
         mock_response.choices[0].message.tool_calls = None
         mock_response.usage.prompt_tokens = 10
@@ -418,8 +419,8 @@ class TestCerebrasClientReasoningEffort:
         mock_create = AsyncMock()
         _sdk(client).chat.completions.create = mock_create
 
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
+        mock_response = autospec(SPEC["completion"])
+        mock_response.choices = [autospec(SPEC["choice"])]
         mock_response.choices[0].message.content = "Reasoning response"
         mock_response.choices[0].message.tool_calls = None
         mock_response.usage.prompt_tokens = 10
@@ -459,8 +460,8 @@ class TestCerebrasClientReasoningEffort:
         mock_create = AsyncMock()
         _sdk(client).chat.completions.create = mock_create
 
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
+        mock_response = autospec(SPEC["completion"])
+        mock_response.choices = [autospec(SPEC["choice"])]
         mock_response.choices[0].message.content = "Normal response"
         mock_response.choices[0].message.tool_calls = None
         mock_response.usage.prompt_tokens = 10
@@ -535,8 +536,8 @@ class TestCerebrasClientReasoningEffort:
         mock_create = AsyncMock()
         _sdk(client).chat.completions.create = mock_create
 
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
+        mock_response = autospec(SPEC["completion"])
+        mock_response.choices = [autospec(SPEC["choice"])]
         mock_response.choices[0].message.content = "Response"
         mock_response.choices[0].message.tool_calls = None
         mock_response.usage.prompt_tokens = 10
@@ -566,8 +567,8 @@ class TestCerebrasClientReasoningEffort:
         mock_create = AsyncMock()
         _sdk(client).chat.completions.create = mock_create
 
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
+        mock_response = autospec(SPEC["completion"])
+        mock_response.choices = [autospec(SPEC["choice"])]
         mock_response.choices[0].message.content = "Response"
         mock_response.choices[0].message.tool_calls = None
         mock_response.usage.prompt_tokens = 10
@@ -635,8 +636,8 @@ class TestCerebrasClientReasoningContent:
         mock_create = AsyncMock()
         _sdk(client).chat.completions.create = mock_create
 
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
+        mock_response = autospec(SPEC["completion"])
+        mock_response.choices = [autospec(SPEC["choice"])]
         mock_response.choices[0].message.content = "The answer is 42"
         mock_response.choices[0].message.reasoning = "Let me think about this..."
         mock_response.choices[0].message.tool_calls = None
@@ -662,8 +663,8 @@ class TestCerebrasClientReasoningContent:
         mock_create = AsyncMock()
         _sdk(client).chat.completions.create = mock_create
 
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
+        mock_response = autospec(SPEC["completion"])
+        mock_response.choices = [autospec(SPEC["choice"])]
         mock_response.choices[0].message.content = "Hello"
         del mock_response.choices[0].message.reasoning
         mock_response.choices[0].message.tool_calls = None
@@ -818,8 +819,8 @@ class TestCerebrasClientMaxCompletionTokens:
         mock_create = AsyncMock()
         _sdk(client).chat.completions.create = mock_create
 
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
+        mock_response = autospec(SPEC["completion"])
+        mock_response.choices = [autospec(SPEC["choice"])]
         mock_response.choices[0].message.content = "Response"
         mock_response.choices[0].message.tool_calls = None
         mock_response.usage.prompt_tokens = 10
@@ -849,17 +850,17 @@ class TestCerebrasClientCaching:
         completion_tokens: int = 50,
         cached_tokens: int | None = None,
         model: str = "gpt-oss-120b",
-    ) -> MagicMock:
+    ) -> Any:
         """Create a mock Cerebras response with optional cache details."""
-        mock = MagicMock()
-        mock.choices = [MagicMock()]
+        mock = autospec(SPEC["completion"])
+        mock.choices = [autospec(SPEC["choice"])]
         mock.choices[0].message.content = "Hello"
         mock.choices[0].message.tool_calls = None
         mock.usage.prompt_tokens = prompt_tokens
         mock.usage.completion_tokens = completion_tokens
 
         if cached_tokens is not None:
-            mock.usage.prompt_tokens_details = MagicMock()
+            mock.usage.prompt_tokens_details = MagicMock(spec=SPEC["details"])
             mock.usage.prompt_tokens_details.cached_tokens = cached_tokens
         else:
             mock.usage.prompt_tokens_details = None
@@ -913,7 +914,7 @@ class TestCerebrasClientCaching:
         """Should handle cached_tokens=None in prompt_tokens_details."""
         client = CerebrasClient(api_key="test-key")
         mock_resp = self._mock_response(prompt_tokens=500, completion_tokens=20)
-        mock_resp.usage.prompt_tokens_details = MagicMock()
+        mock_resp.usage.prompt_tokens_details = MagicMock(spec=SPEC["details"])
         mock_resp.usage.prompt_tokens_details.cached_tokens = None
         mock_create = AsyncMock(return_value=mock_resp)
         _sdk(client).chat.completions.create = mock_create
