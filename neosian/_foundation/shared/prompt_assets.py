@@ -35,12 +35,18 @@ _CONTEXT_KEYS: Final = (
     "view_footer",
     "view_fold",
     "view_empty",
+    "start_index",
+    "start_header",
+    "start_session",
+    "start_footer",
+    "start_empty",
 )
 _TOOL_KEYS: Final = (
     "todo",
     "skill_list",
     "skill_load",
     "recall_turn",
+    "recall_turn_any",
 )
 
 

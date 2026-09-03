@@ -9,6 +9,7 @@ re-raised in the eval family — a `memory_*` code never escapes
 from collections.abc import Mapping
 from typing import Any
 
+from neosian._foundation.conversation.ids import parse_conversation_id
 from neosian._foundation.evaluation.cases import parse_script, parse_turns
 from neosian._foundation.evaluation.memory_expectations import (
     parse_store_expectation,
@@ -17,6 +18,8 @@ from neosian._foundation.evaluation.memory_types import (
     MemoryEvalConfig,
     MemoryScenario,
     MemorySession,
+    RecordedSession,
+    RecordedTool,
     SeedDocument,
     Transport,
 )
@@ -29,11 +32,14 @@ from neosian._foundation.evaluation.schema import (
 )
 from neosian._foundation.evaluation.types import EvalTurn
 from neosian._foundation.memory.mounts import Mount
+from neosian._foundation.record.settings import validate_agent_kind
 from neosian._foundation.shared.exceptions import (
+    ConversationStoreError,
     EvalCaseInvalidError,
     EvalConfigInvalidYAMLError,
     EvalConfigMissingKeyError,
     EvalConfigUnknownKeyError,
+    MemoryActorInvalidError,
     MemoryStoreError,
 )
 
@@ -64,8 +70,21 @@ _SCENARIO_HINTS = {
     "conversation": "a memory scenario's turns live under 'sessions[].turns'",
 }
 _SESSION_KEYS = frozenset(
-    {"name", "turns", "script", "expect_store", "reflect", "maintain"}
+    {
+        "name",
+        "turns",
+        "script",
+        "expect_store",
+        "reflect",
+        "maintain",
+        "record",
+        "session_start",
+    }
 )
+# A record session is a foreign agent's — nothing an agent session has.
+_AGENT_SESSION_KEYS = frozenset({"turns", "script", "reflect", "maintain"})
+_RECORD_KEYS = frozenset({"agent", "session_id", "prompt", "tools", "stop"})
+_RECORD_TOOL_KEYS = frozenset({"name", "input", "response", "id"})
 _SEED_KEYS = frozenset({"path", "content", "age_days"})
 
 
@@ -207,7 +226,7 @@ def _parse_scenario(data: Any, mount_paths: frozenset[str]) -> MemoryScenario:
             raise EvalCaseInvalidError(name, f"duplicate session name '{session.name}'")
         seen.add(session.name)
         sessions.append(session)
-    scripted = [s.script is not None for s in sessions]
+    scripted = [s.script is not None for s in sessions if s.record is None]
     if any(scripted) and not all(scripted):
         raise EvalCaseInvalidError(
             name,
@@ -280,6 +299,23 @@ def _parse_session(
     maintain = data.get("maintain", False)
     if not isinstance(maintain, bool):
         raise EvalCaseInvalidError(label, "'maintain' must be a boolean")
+    session_start = data.get("session_start", False)
+    if not isinstance(session_start, bool):
+        raise EvalCaseInvalidError(label, "'session_start' must be a boolean")
+    if "record" in data:
+        extra = sorted((_AGENT_SESSION_KEYS | {"session_start"}) & set(data))
+        if extra:
+            raise EvalCaseInvalidError(
+                label, f"a record session is a foreign agent's — drop {extra}"
+            )
+        return MemorySession(
+            name=data["name"],
+            turns=(),
+            expect_store=parse_store_expectation(
+                data.get("expect_store"), label, mount_paths
+            ),
+            record=_parse_record(data["record"], label),
+        )
     if "turns" not in data:
         # A pure gardening step needs no agent turns; everything else does.
         if not maintain:
@@ -300,4 +336,55 @@ def _parse_session(
         ),
         reflect=reflect,
         maintain=maintain,
+        session_start=session_start,
+    )
+
+
+def _parse_record(data: Any, label: str) -> RecordedSession:
+    """The hook-fed session's five keys, validated the way the verb
+    validates them: the agent a grammar kind, the session id a
+    conversation id (§20.9)."""
+    if not isinstance(data, dict):
+        raise EvalCaseInvalidError(label, "'record' must be a mapping")
+    for key in data:
+        if key not in _RECORD_KEYS:
+            raise EvalCaseInvalidError(label, f"record: unknown key '{key}'")
+    for key in ("agent", "session_id", "prompt", "stop"):
+        if not isinstance(data.get(key), str):
+            raise EvalCaseInvalidError(label, f"record: '{key}' must be a string")
+    try:
+        validate_agent_kind(data["agent"])
+        parse_conversation_id(data["session_id"])
+    except (MemoryActorInvalidError, ConversationStoreError) as e:
+        raise EvalCaseInvalidError(label, f"record: {e.message}") from e
+    tools_data = data.get("tools", [])
+    if not isinstance(tools_data, list):
+        raise EvalCaseInvalidError(label, "record: 'tools' must be a list")
+    tools: list[RecordedTool] = []
+    for idx, entry in enumerate(tools_data, start=1):
+        if not isinstance(entry, dict) or set(entry) - _RECORD_TOOL_KEYS:
+            raise EvalCaseInvalidError(
+                label, f"record: tools[{idx}] must map name/input/response/id"
+            )
+        name, response = entry.get("name"), entry.get("response", "")
+        tool_input = entry.get("input", {})
+        tool_id = entry.get("id")
+        if (
+            not isinstance(name, str)
+            or not isinstance(response, str)
+            or not isinstance(tool_input, dict)
+            or not (tool_id is None or isinstance(tool_id, str))
+        ):
+            raise EvalCaseInvalidError(
+                label, f"record: tools[{idx}] field of wrong type"
+            )
+        tools.append(
+            RecordedTool(name=name, input=tool_input, response=response, id=tool_id)
+        )
+    return RecordedSession(
+        agent=data["agent"],
+        session_id=data["session_id"],
+        prompt=data["prompt"],
+        stop=data["stop"],
+        tools=tuple(tools),
     )

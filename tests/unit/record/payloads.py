@@ -67,3 +67,14 @@ def stop(
         "stop_hook_active": False,
         "last_assistant_message": text,
     }
+
+
+def session_start(source: str = "startup", *, session: str = SESSION) -> dict[str, Any]:
+    """`source` is how the session began: startup, resume, clear, compact
+    (both references), fork (Claude Code)."""
+    return {
+        **_COMMON,
+        "session_id": session,
+        "hook_event_name": "SessionStart",
+        "source": source,
+    }

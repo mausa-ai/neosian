@@ -81,6 +81,7 @@ class TestErrorPaths:
             config: object,  # noqa: ARG001 - fake
             *,
             actor: object = None,  # noqa: ARG001 - fake
+            conversations: object = None,  # noqa: ARG001 - fake
         ) -> object:
             raise ImportError("uv add 'neosian[mcp]'")
 
@@ -110,6 +111,7 @@ class TestStoreSelection:
             config: object,  # noqa: ARG001 - fake
             *,
             actor: object = None,  # noqa: ARG001 - fake
+            conversations: object = None,  # noqa: ARG001 - fake
         ) -> object:
             return object()
 

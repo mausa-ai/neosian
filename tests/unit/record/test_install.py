@@ -122,7 +122,7 @@ class TestCommand:
         )
         assert "'/opt/py 3/bin/python'" in command and "/my spool'" in command
 
-    def test_the_fragment_names_the_three_events(self) -> None:
+    def test_the_fragment_names_the_four_events(self) -> None:
         fragment = hook_fragment("cmd")
         assert tuple(fragment["hooks"]) == HOOK_EVENTS
         assert fragment["hooks"]["Stop"] == [

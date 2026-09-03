@@ -15,7 +15,8 @@ from neosian._foundation.llm.base import Role
 from neosian._foundation.memory.file import FileStore
 from neosian._foundation.record.cli import run
 from neosian._foundation.server.app import build_app
-from tests.unit.record.payloads import SESSION, prompt, stop, tool
+from neosian._foundation.shared.prompt_assets import get_prompt
+from tests.unit.record.payloads import SESSION, prompt, session_start, stop, tool
 
 
 class _Result:
@@ -105,10 +106,11 @@ class TestTheSpan:
             "turn": 1,
             "document": f"/memories/sessions/{SESSION}",
             "client": None,
+            "context": None,
         }
 
     async def test_an_untracked_event_touches_nothing(self, tmp_path: Path) -> None:
-        payload = {**stop(), "hook_event_name": "SessionStart"}
+        payload = {**stop(), "hook_event_name": "Notification", "message": "hi"}
         result = await _run(_flags(tmp_path, "--json"), payload)
         assert result.code == 0
         assert json.loads(result.out)["disposition"] == "ignored"
@@ -133,6 +135,68 @@ class TestTheSpan:
         assert closed.out == "{}\n" and closed.err == ""
         (turn,) = await FileStore(tmp_path / "mem").read_turns(SESSION)
         assert turn.actor == f"codex:{SESSION}"
+
+
+async def _two_sessions(tmp_path: Path) -> None:
+    """Session `s-one` ("first") then `s-two` ("second") — two spans."""
+    for session, text in (("s-one", "first"), ("s-two", "second")):
+        argv = _flags(tmp_path)
+        await _run(argv, prompt(text, session=session))
+        await _run(argv, stop("ok", session=session))
+
+
+class TestSessionStart:
+    """NB slice B (§21.7): the read side — the hook's stdout is the context."""
+
+    async def test_startup_prints_the_index_and_the_recent_sessions(
+        self, tmp_path: Path
+    ) -> None:
+        await _two_sessions(tmp_path)
+        result = await _run(_flags(tmp_path), session_start("startup", session="s-3"))
+        assert result.code == 0 and result.err == "", result.err
+        assert result.out.startswith(get_prompt("context.start_index"))
+        assert "- /memories/sessions/s-one\n" in result.out
+        assert "- /memories/sessions/s-two\n" in result.out
+        assert get_prompt("context.start_header") in result.out
+        second, first = result.out.index("[1] USER: second"), result.out.index(
+            "[1] USER: first"
+        )
+        assert second < first  # newest first
+        assert "[conversation s-two — written by claude-code:s-two]" in result.out
+        assert result.out.rstrip().endswith(get_prompt("context.start_footer"))
+        assert not (tmp_path / "spool" / "s-3.jsonl").exists()  # a read, never spooled
+
+    async def test_compact_projects_the_own_session_alone(self, tmp_path: Path) -> None:
+        await _two_sessions(tmp_path)
+        own = await _run(_flags(tmp_path), session_start("compact", session="s-one"))
+        assert "[1] USER: first" in own.out and "second" not in own.out
+        # An own session not yet recorded falls back to the recent ones.
+        fresh = await _run(_flags(tmp_path), session_start("compact", session="s-9"))
+        assert "[1] USER: first" in fresh.out and "[1] USER: second" in fresh.out
+
+    async def test_an_empty_scope_still_frames_the_door(self, tmp_path: Path) -> None:
+        result = await _run(_flags(tmp_path), session_start())
+        assert result.code == 0
+        assert "## /memories\n(empty)" in result.out
+        assert get_prompt("context.start_empty") in result.out
+
+    async def test_the_json_envelope_carries_the_context(self, tmp_path: Path) -> None:
+        await _two_sessions(tmp_path)
+        result = await _run(_flags(tmp_path, "--json"), session_start())
+        envelope = json.loads(result.out)
+        assert envelope["disposition"] == "context" and envelope["turn"] is None
+        assert "[1] USER: second" in envelope["context"]
+
+    async def test_every_agent_gets_plain_text(self, tmp_path: Path) -> None:
+        """Codex's JSON rule is Stop-only: SessionStart stdout is context."""
+        result = await _run(_flags(tmp_path, "--agent", "codex"), session_start())
+        assert result.out.startswith("[neosian memory")
+
+    async def test_an_unreachable_store_is_tier_one_and_silent(self) -> None:
+        argv = ["--url", "http://127.0.0.1:1", "--scope", "user:me"]
+        result = await _run(argv, session_start(), {"NEOSIAN_CLIENT_TOKEN": "t"})
+        assert result.code == 1 and result.out == ""  # SessionStart cannot block
+        assert result.err.startswith("error:")
 
 
 class TestTierOne:

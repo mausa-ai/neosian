@@ -67,6 +67,11 @@ def add_record_arguments(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def validate_agent_kind(agent: str) -> None:
+    """A foreign agent's kind must make `<agent>:<session_id>` an actor."""
+    parse_actor(f"{agent}:session")
+
+
 def resolve_record_settings(
     parser: argparse.ArgumentParser,
     args: argparse.Namespace,
@@ -80,7 +85,7 @@ def resolve_record_settings(
     if not writable:
         parser.error("the sessions document needs a read-write mount (no ,ro or ,eo)")
     try:
-        parse_actor(f"{args.agent}:session")
+        validate_agent_kind(args.agent)
     except MemoryActorInvalidError as exc:
         parser.error(f"--agent {args.agent!r}: {exc.reason} (a kind, e.g. claude-code)")
     store = StoreSettings(

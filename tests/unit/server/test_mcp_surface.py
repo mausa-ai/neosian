@@ -82,6 +82,24 @@ class TestMcpOverHttp:
         # once per process; `view /` is the live read).
         assert "memories" in result["instructions"]
 
+    async def test_the_state_set_is_served_at_mcp(self, tmp_path: Path) -> None:
+        """NB slice B (§21.7): `/mcp` lists memory and recall_turn — the
+        state process already proves the store keeps conversations."""
+        listing = {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}
+        async with _mcp_client(tmp_path / "mem") as client:
+            init = await client.post("/mcp", json=_INITIALIZE, headers=_HEADERS)
+            session = {"mcp-session-id": init.headers["mcp-session-id"]}
+            note = await client.post(
+                "/mcp",
+                json={"jsonrpc": "2.0", "method": "notifications/initialized"},
+                headers=_HEADERS | session,
+            )
+            assert note.status_code in (200, 202)
+            listed = await client.post("/mcp", json=listing, headers=_HEADERS | session)
+        assert listed.status_code == 200
+        tools = _sse_payload(listed.text)["result"]["tools"]
+        assert [tool["name"] for tool in tools] == ["memory", "recall_turn"]
+
     async def test_the_mcp_surface_is_behind_the_bearer_gate(
         self, tmp_path: Path
     ) -> None:

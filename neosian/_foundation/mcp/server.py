@@ -1,12 +1,16 @@
-"""The MCP memory server factory: one tool, served verbatim.
+"""The MCP server factory: the state set, served verbatim.
 
 `create_memory_server` builds the SDK's low-level `Server` around the
-function tool's own `ToolDefinition` — name, description and JSON schema
-are the bytes `create_memory_tool` authors, never re-derived from type
-hints — and executes every call through `memory/dispatch.py`, so the
-function tool, the native declaration and this server cannot drift
-(ledger #50). Corrective failures ride MCP's in-band `is_error` — that
-is `ToolResult`, expressed in MCP's vocabulary (ledger #52).
+function tools' own `ToolDefinition`s — name, description and JSON
+schema are the bytes `create_memory_tool` (and, given a conversation
+store, `create_recall_any_tool`) author, never re-derived from type
+hints — and executes every memory call through `memory/dispatch.py`, so
+the function tool, the native declaration and this server cannot drift
+(ledger #50). The memory server becomes the state server one tool at a
+time (§21.7): `recall_turn` with `conversation` required, so any agent
+re-reads a recorded turn of any other. Corrective failures ride MCP's
+in-band `is_error` — that is `ToolResult`, expressed in MCP's vocabulary
+(ledger #52).
 
 The caller owns the store's lifetime (the ledger #33 rule): the factory
 and the SDK's per-connection lifespan never close it — the entry point
@@ -19,6 +23,7 @@ import logging
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any, Final
 
+from neosian._foundation.conversation.recall import create_recall_any_tool
 from neosian._foundation.mcp.sdk import Sdk, load_sdk
 from neosian._foundation.memory.dispatch import dispatch
 from neosian._foundation.memory.index import memory_system_section
@@ -28,7 +33,7 @@ from neosian._foundation.shared.constants import ErrorMessages
 from neosian._foundation.tools.base import ToolResult, get_tool_definition
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 
     from mcp.server import Server, ServerRequestContext
     from mcp.types import (
@@ -37,6 +42,12 @@ if TYPE_CHECKING:
         ListToolsResult,
         PaginatedRequestParams,
     )
+
+    from neosian._foundation.conversation.base import ConversationStore
+    from neosian._foundation.llm.base import ToolDefinition
+    from neosian._foundation.shared.types import ToolFunction
+
+    Handler = Callable[[Mapping[str, Any]], Awaitable[ToolResult[Any]]]
 
 logger = logging.getLogger(__name__)
 
@@ -58,13 +69,22 @@ def _to_call_tool_result(sdk: Sdk, result: ToolResult[Any]) -> CallToolResult:
     return sdk.call_tool_result(content=content, is_error=not result.success)
 
 
+def _definition(tool: ToolFunction) -> ToolDefinition:
+    definition = get_tool_definition(tool)
+    if definition is None:  # pragma: no cover - @Tool always attaches one
+        raise RuntimeError("a tool factory returned an undecorated function")
+    return definition
+
+
 async def create_memory_server(
     config: MemoryConfig,
     *,
     actor: str | None = DEFAULT_ACTOR,
     name: str = _SERVER_NAME,
+    conversations: ConversationStore | None = None,
 ) -> Server[None]:
-    """Build an MCP server serving `config`'s mounts over one `memory` tool.
+    """Build an MCP server serving `config`'s mounts over the `memory`
+    tool — and, given `conversations`, `recall_turn` over its turns.
 
     Async because the server's `instructions` are
     `memory_system_section(config)` — the prompt pack plus the live index,
@@ -73,57 +93,81 @@ async def create_memory_server(
     frozen-index-per-conversation rule (ledger #51).
     """
     sdk = load_sdk()
-    definition = get_tool_definition(create_memory_tool(config, actor=actor))
-    if definition is None:  # pragma: no cover - @Tool always attaches one
-        raise RuntimeError("create_memory_tool returned an undecorated function")
-    memory_tool = sdk.tool(
-        name=definition.name,
-        description=definition.description,
-        input_schema=definition.parameters,
-        annotations=sdk.tool_annotations(
-            read_only_hint=False,
-            destructive_hint=True,  # delete/rename/overwriting create exist
-            idempotent_hint=False,
-            open_world_hint=False,
-        ),
-    )
+    memory = _definition(create_memory_tool(config, actor=actor))
+
+    async def call_memory(arguments: Mapping[str, Any]) -> ToolResult[Any]:
+        return await dispatch(config, arguments.get("command"), arguments, actor=actor)
+
+    tools = [
+        sdk.tool(
+            name=memory.name,
+            description=memory.description,
+            input_schema=memory.parameters,
+            annotations=sdk.tool_annotations(
+                read_only_hint=False,
+                destructive_hint=True,  # delete/rename/overwriting create exist
+                idempotent_hint=False,
+                open_world_hint=False,
+            ),
+        )
+    ]
+    handlers: dict[str, Handler] = {memory.name: call_memory}
+    if conversations is not None:
+        recall_tool = create_recall_any_tool(conversations)
+        recall = _definition(recall_tool)
+
+        async def call_recall(arguments: Mapping[str, Any]) -> ToolResult[Any]:
+            return await recall_tool(**arguments)
+
+        tools.append(
+            sdk.tool(
+                name=recall.name,
+                description=recall.description,
+                input_schema=recall.parameters,
+                annotations=sdk.tool_annotations(
+                    read_only_hint=True,
+                    destructive_hint=False,
+                    idempotent_hint=True,
+                    open_world_hint=False,
+                ),
+            )
+        )
+        handlers[recall.name] = call_recall
 
     async def on_list_tools(
         ctx: ServerRequestContext[None, Any],  # noqa: ARG001 - SDK handler shape
-        params: PaginatedRequestParams | None,  # noqa: ARG001 - one tool, no paging
+        params: PaginatedRequestParams | None,  # noqa: ARG001 - no paging
     ) -> ListToolsResult:
-        return sdk.list_tools_result(tools=[memory_tool])
+        return sdk.list_tools_result(tools=tools)
 
     async def on_call_tool(
         ctx: ServerRequestContext[None, Any],  # noqa: ARG001 - SDK handler shape
         params: CallToolRequestParams,
     ) -> CallToolResult:
-        if params.name != definition.name:
+        handler = handlers.get(params.name)
+        if handler is None:
             return _to_call_tool_result(
                 sdk,
                 ToolResult.fail(
                     ErrorMessages.TOOL_NOT_FOUND.format(tool_name=params.name)
                 ),
             )
-        arguments = params.arguments or {}
         try:
-            result = await dispatch(
-                config, arguments.get("command"), arguments, actor=actor
-            )
-        # Parity with agent/tool_exec.py: a mistyped value must come back
-        # as the same corrective failure text on every transport, never a
-        # JSON-RPC internal error on this one.
+            result = await handler(params.arguments or {})
+        # Parity with agent/tool_exec.py: a mistyped or missing value must
+        # come back as the same corrective failure text on every
+        # transport, never a JSON-RPC internal error on this one.
         except TypeError as exc:
             result = ToolResult.fail(
                 ErrorMessages.TOOL_INVALID_ARGUMENTS.format(
-                    tool_name=definition.name, error=exc
+                    tool_name=params.name, error=exc
                 )
             )
         except Exception as exc:
-            logger.exception("memory command failed")
+            logger.exception("%s call failed", params.name)
             result = ToolResult.fail(
                 ErrorMessages.TOOL_EXECUTION_FAILED.format(
-                    tool_name=definition.name, error=exc
+                    tool_name=params.name, error=exc
                 )
             )
         return _to_call_tool_result(sdk, result)

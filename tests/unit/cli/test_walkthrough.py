@@ -22,7 +22,7 @@ from pathlib import Path
 import pytest
 
 from neosian._foundation.memory.file import FileStore
-from tests.unit.record.payloads import SESSION, prompt, stop, tool
+from tests.unit.record.payloads import SESSION, prompt, session_start, stop, tool
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 
@@ -371,6 +371,14 @@ class TestRecord:
             result = _run(argv, cwd=tmp_path, env=env, stdin=json.dumps(payload))
             assert result.returncode == 0, result.stderr
             assert result.stdout == ""  # silent: a hook's stdout is injected
+        # NB slice B: the next session's SessionStart reads it back — the
+        # index and "where we left off" are the hook's stdout, the context.
+        started = _run(
+            argv, cwd=tmp_path, env=env, stdin=json.dumps(session_start("startup"))
+        )
+        assert started.returncode == 0, started.stderr
+        assert f"/memories/sessions/{SESSION}" in started.stdout
+        assert "[1] USER: hello" in started.stdout
 
         ledger = _run(
             ["audit", "--scope", "user:walkthrough", "--root", str(root), "--json"],
@@ -435,7 +443,7 @@ class TestRecord:
             assert not (tmp_path / ".opencode").exists()  # print mode
             return
         hooks = json.loads(result.stdout)["hooks"]
-        assert set(hooks) == {"UserPromptSubmit", "PostToolUse", "Stop"}
+        assert set(hooks) == {"UserPromptSubmit", "PostToolUse", "Stop", "SessionStart"}
         assert "-m neosian.record" in hooks["Stop"][0]["hooks"][0]["command"]
         assert not (tmp_path / ".claude" / "settings.json").exists()  # print mode
         assert not (tmp_path / ".codex" / "hooks.json").exists()

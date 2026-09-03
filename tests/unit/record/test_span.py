@@ -73,7 +73,7 @@ class TestReducePayload:
         assert reduce_payload(tool(agent_id="agent-7")) == ("skipped", None)
 
     def test_an_untracked_event_is_ignored(self) -> None:
-        payload = {**stop(), "hook_event_name": "SessionStart", "source": "startup"}
+        payload = {**stop(), "hook_event_name": "Notification", "message": "hi"}
         assert reduce_payload(payload) == ("ignored", None)
 
     def test_the_stop_carries_the_final_text(self) -> None:

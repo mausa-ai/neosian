@@ -20,8 +20,10 @@ from neosian._foundation.memory.tools import (
     NATIVE_MEMORY_TOOL_TYPE,
     create_memory_tool,
 )
+from neosian._foundation.record.cli import run as record
 from neosian._foundation.server.app import build_app
 from neosian._foundation.tools.base import get_tool_definition
+from tests.unit.record.payloads import SESSION, prompt, stop
 
 _TOKEN = "five-transports"
 _HEADERS = {
@@ -64,11 +66,25 @@ def _sse_payload(body: str) -> dict[str, Any]:
     raise AssertionError(f"no SSE data frame in {body!r}")
 
 
-async def test_one_store_five_transports(config: MemoryConfig, tmp_path: Path) -> None:
+async def test_one_store_five_transports(
+    config: MemoryConfig, store: FileStore, tmp_path: Path
+) -> None:
     # 1. The function tool writes.
     plain = create_memory_tool(config)
     created = await plain(command="create", path="/memories/prefs", content="dark mode")
     assert created.success
+
+    # 1b. A foreign agent's hooks write a turn into the same root (NL's
+    #     record verb) — what step 3 recalls over MCP (NB, §21.7).
+    record_argv = ["--root", str(tmp_path / "memory"), "--spool", str(tmp_path / "sp")]
+    for mount in config.mounts:
+        record_argv += ["--mount", format_mount(mount)]
+    for payload in (prompt("hooked hello"), stop("hooked done")):
+        out, err = io.StringIO(), io.StringIO()
+        code = await record(
+            record_argv, {}, stdin=io.StringIO(json.dumps(payload)), out=out, err=err
+        )
+        assert code == 0, err.getvalue()
 
     # 2. The native-marked tool reads the same bytes (slice A pins that
     #    marked and unmarked execution are identical; here we pin the
@@ -81,14 +97,21 @@ async def test_one_store_five_transports(config: MemoryConfig, tmp_path: Path) -
     assert native_view.success
     assert "dark mode" in str(native_view.data)
 
-    # 3. An MCP client reads the same document and writes a second one.
-    server = await create_memory_server(config)
+    # 3. An MCP client reads the same document and writes a second one —
+    #    and recalls the hook-fed turn verbatim: any agent, the record.
+    server = await create_memory_server(config, conversations=store)
     async with Client(server) as client:
         mcp_view = await client.call_tool(
             "memory", {"command": "view", "path": "/memories/prefs"}
         )
         assert mcp_view.is_error is False
         assert mcp_view.content[0].text == native_view.data  # type: ignore[union-attr]
+
+        recalled = await client.call_tool(
+            "recall_turn", {"turn": 1, "conversation": SESSION}
+        )
+        assert recalled.is_error is False
+        assert "USER: hooked hello" in recalled.content[0].text  # type: ignore[union-attr]
 
         mcp_create = await client.call_tool(
             "memory",

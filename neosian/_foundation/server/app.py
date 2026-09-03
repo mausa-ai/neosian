@@ -157,12 +157,14 @@ async def build_app(
 
     manager: StreamableHTTPSessionManager | None = None
     if mounts:
-        # The stdio factory, reused verbatim: one tool, one dispatcher,
-        # every transport (ledger #50).
+        # The stdio factory, reused verbatim: the state set — memory and
+        # recall_turn — one dispatcher, every transport (ledger #50, §21.7).
         from neosian._foundation.mcp.server import create_memory_server
 
         mcp_server = await create_memory_server(
-            MemoryConfig(store=store, mounts=tuple(mounts)), actor=actor
+            MemoryConfig(store=store, mounts=tuple(mounts)),
+            actor=actor,
+            conversations=store,
         )
         # security_settings stays None: host filtering is a reverse
         # proxy's job and the bearer gate covers rebinding (§18).

@@ -7,6 +7,8 @@ import pytest
 from mcp.client import Client
 from mcp.types import CallToolResult
 
+from neosian._foundation.conversation.recall import create_recall_any_tool
+from neosian._foundation.llm.base import Message, Role
 from neosian._foundation.mcp.server import create_memory_server
 from neosian._foundation.memory.file import FileStore
 from neosian._foundation.memory.mounts import MemoryConfig, Mount
@@ -99,6 +101,72 @@ async def test_both_transports_agree(
     if fn_result.system_reminder is not None:
         expected.append(fn_result.system_reminder)
     assert _blocks(mcp_result) == expected
+
+
+_RECALL_CASES: list[dict[str, object]] = [
+    {"turn": 1, "conversation": "cc-1"},
+    {"turn": 0, "conversation": "cc-1"},
+    {"turn": 9, "conversation": "cc-1"},
+    {"turn": 1, "conversation": "nobody"},
+    {"turn": 1, "conversation": "bad/id"},
+]
+
+
+async def _seed_turn(root: Path) -> FileStore:
+    store = FileStore(root)
+    await store.append_turn(
+        "cc-1",
+        [
+            Message(role=Role.USER, content="hello"),
+            Message(role=Role.ASSISTANT, content="hi"),
+        ],
+        actor="claude-code:cc-1",
+    )
+    return store
+
+
+@pytest.mark.parametrize("arguments", _RECALL_CASES, ids=lambda a: str(a))
+async def test_recall_turn_agrees_on_both_transports(
+    tmp_path: Path, arguments: dict[str, object]
+) -> None:
+    """The MCP twin (§21.7) is the function tool's own bytes: every
+    success and every corrective failure, block for block."""
+    store = await _seed_turn(tmp_path / "s")
+    fn_result = await create_recall_any_tool(store)(**arguments)
+
+    server = await create_memory_server(
+        MemoryConfig(store=store, mounts=_MOUNTS), conversations=store
+    )
+    async with Client(server) as client:
+        mcp_result = await client.call_tool("recall_turn", arguments)
+
+    assert mcp_result.is_error == (not fn_result.success)
+    expected_text = fn_result.data if fn_result.success else fn_result.error
+    expected = ["" if expected_text is None else str(expected_text)]
+    if fn_result.system_reminder is not None:
+        expected.append(fn_result.system_reminder)
+    assert _blocks(mcp_result) == expected
+
+
+async def test_a_missing_conversation_is_the_invalid_arguments_text(
+    tmp_path: Path,
+) -> None:
+    """`conversation` is required on the server (ledger #138): omitting it
+    is the same corrective text tool_exec produces for the function tool."""
+    store = await _seed_turn(tmp_path / "s")
+    tool = create_recall_any_tool(store)
+    with pytest.raises(TypeError) as excinfo:
+        await tool(turn=1)
+    expected = ErrorMessages.TOOL_INVALID_ARGUMENTS.format(
+        tool_name="recall_turn", error=excinfo.value
+    )
+    server = await create_memory_server(
+        MemoryConfig(store=store, mounts=_MOUNTS), conversations=store
+    )
+    async with Client(server) as client:
+        mcp_result = await client.call_tool("recall_turn", {"turn": 1})
+    assert mcp_result.is_error is True
+    assert _blocks(mcp_result) == [expected]
 
 
 async def test_mistyped_value_parity(tmp_path: Path) -> None:

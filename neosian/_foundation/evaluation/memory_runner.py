@@ -31,6 +31,11 @@ from neosian._foundation.evaluation.capture import (
 from neosian._foundation.evaluation.matcher import match_turn
 from neosian._foundation.evaluation.memory_cli import create_cli_memory_tool
 from neosian._foundation.evaluation.memory_http import open_http_memory
+from neosian._foundation.evaluation.memory_record import (
+    recall_any_tool,
+    replay_record,
+    session_start_section,
+)
 from neosian._foundation.evaluation.memory_score import check_store
 from neosian._foundation.evaluation.memory_types import (
     MemoryScenario,
@@ -51,7 +56,12 @@ from neosian._foundation.shared.exceptions import (
     EvalError,
     EvalRunError,
 )
-from neosian._foundation.shared.types import AgentConfig, AnyModel, ToolName
+from neosian._foundation.shared.types import (
+    AgentConfig,
+    AnyModel,
+    ToolFunction,
+    ToolName,
+)
 
 
 async def run_scenario(
@@ -177,10 +187,29 @@ async def _run_cell(
     latency_ms = 0.0
     turn_index = 0
     for session in scenario.sessions:
+        if session.record is not None:
+            # A foreign agent's session, replayed through the record verb's
+            # engine — no model in the room; a synthetic result so store
+            # truth has a turn to land on (§21.7).
+            await replay_record(session.record, store_root=store_root, mounts=mounts)
+            turn_results.append(_synthetic_turn(turn_index))
+            turn_index += 1
+            clean = await _score_session(session, mounts, store_root, turn_results)
+            if not clean and stop_on_failure:
+                break
+            continue
         # A fresh store handle and a freshly rendered index per session —
         # the cross-session seam the scenario measures.
         memory_config = await _session_memory(transport, store_root, mounts, stack)
-        section = await memory_system_section(memory_config)
+        section = (
+            # The hook-fed start: the memory section plus "where we left
+            # off" over the scope's sessions — a foreign agent's prefix.
+            await session_start_section(
+                memory_config, own=f"eval-{_actor_id(session.name)}"
+            )
+            if session.session_start
+            else await memory_system_section(memory_config)
+        )
         # native_memory is read by derive_config when it builds the tool,
         # so the transport lands on the base *before* derivation.
         staged = dataclasses.replace(
@@ -193,24 +222,26 @@ async def _run_cell(
         recorder = FallbackRecorder()
         actor = f"eval:{_actor_id(scenario.name)}/session:{_actor_id(session.name)}"
         via_cli = transport is Transport.CLI
+        # A cli cell registers the shell-executed tool via extra_tools
+        # instead — passing memory_config too would put two `memory`
+        # tools on the wire; a session_start cell adds the server's
+        # recall_turn over the cell's own store handle.
+        extra_tools: list[ToolFunction] = []
+        if via_cli:
+            extra_tools.append(
+                create_cli_memory_tool(
+                    store_root=store_root, mounts=mounts, actor=actor
+                )
+            )
+        if session.session_start:
+            extra_tools.append(recall_any_tool(memory_config))
         derived = derive_config(
             staged,
             section=section,
-            # A cli cell registers the shell-executed tool via extra_tools
-            # instead — passing memory_config too would put two `memory`
-            # tools on the wire.
             memory_config=None if via_cli else memory_config,
             actor=actor,
             capture=_noop,
-            extra_tools=(
-                (
-                    create_cli_memory_tool(
-                        store_root=store_root, mounts=mounts, actor=actor
-                    ),
-                )
-                if via_cli
-                else ()
-            ),
+            extra_tools=extra_tools,
         )
         derived = dataclasses.replace(
             derived,
@@ -301,15 +332,7 @@ async def _run_cell(
                 actor=actor,
             )
             if not session.turns:
-                turn_results.append(
-                    TurnResult(
-                        index=turn_index,
-                        passed=True,
-                        expectation=Expectation(),
-                        tool_calls=(),
-                        response=None,
-                    )
-                )
+                turn_results.append(_synthetic_turn(turn_index))
                 turn_index += 1
         clean = await _score_session(session, mounts, store_root, turn_results)
         if not clean and stop_on_failure:
@@ -388,6 +411,18 @@ async def _score_session(
         + tuple(f"session '{session.name}': {f}" for f in failures),
     )
     return False
+
+
+def _synthetic_turn(index: int) -> TurnResult:
+    """A turn-less session's passed result, so store truth has a turn
+    to land on and a green cell counts as measured."""
+    return TurnResult(
+        index=index,
+        passed=True,
+        expectation=Expectation(),
+        tool_calls=(),
+        response=None,
+    )
 
 
 def _actor_id(name: str) -> str:

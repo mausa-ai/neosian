@@ -138,6 +138,7 @@ class TestPromptRegistry:
     def test_compaction_prompts_are_wired(self) -> None:
         # OpenAI-compatible providers cap function descriptions at 1024.
         assert len(get_prompt("tools.recall_turn")) <= 1024
+        assert len(get_prompt("tools.recall_turn_any")) <= 1024
         assert "{{digest_chars}}" in get_prompt("compaction.distill")
         assert "{{epoch_chars}}" in get_prompt("compaction.epoch")
         assert "recall_turn" in get_prompt("compaction.log_footer")
@@ -149,3 +150,10 @@ class TestPromptRegistry:
         for key in ("first", "last", "count"):
             assert "{{" + key + "}}" in get_prompt("context.view_fold")
         assert get_prompt("context.board")
+        # The SessionStart frame (§21.7): index intro, the block, the recall call.
+        assert get_prompt("context.start_index").startswith("[neosian memory")
+        assert get_prompt("context.start_header").startswith("[where we left off")
+        for key in ("conversation_id", "actor"):
+            assert "{{" + key + "}}" in get_prompt("context.start_session")
+        assert "recall_turn" in get_prompt("context.start_footer")
+        assert get_prompt("context.start_empty")

@@ -1,5 +1,6 @@
 """`kind: memory` suite loading — strict keys, loud failures (DESIGN §13.12)."""
 
+import re
 import textwrap
 from pathlib import Path
 
@@ -413,3 +414,105 @@ class TestMaintain:
         )
         with pytest.raises(EvalCaseInvalidError, match="reflects nothing"):
             load_eval_config(_write(tmp_path, body))
+
+
+_RECORD_SUITE = """
+kind: memory
+name: suite
+agent: agent.py
+models: [fake]
+mounts:
+  - scope: user:eval
+    mount_path: user
+scenarios:
+  - name: cross
+    sessions:
+      - name: writes
+        record:
+          agent: claude-code
+          session_id: cc-1
+          prompt: "Add a retry."
+          stop: "Done."
+          {tools}
+        {extra}
+      - name: reads
+        session_start: true
+        turns:
+          - user: what changed?
+            expect: {{tool: recall_turn}}
+        script:
+          - tool_calls:
+              - name: recall_turn
+                arguments: {{turn: 1, conversation: cc-1}}
+          - content: ok
+"""
+
+
+def _record_suite(tools: str = "", extra: str = "") -> str:
+    return _RECORD_SUITE.format(tools=tools, extra=extra)
+
+
+class TestRecordSessions:
+    """§21.7: a foreign agent's session in the pack — replayed, never
+    scripted; `session_start` on the session that reads it."""
+
+    def test_a_record_session_parses(self, tmp_path: Path) -> None:
+        tools = "tools: [{name: Edit, input: {file_path: f.py}, response: ok}]"
+        config = _load(tmp_path, _record_suite(tools))
+        writes, reads = config.scenarios[0].sessions
+        assert writes.record is not None and writes.turns == ()
+        assert writes.record.agent == "claude-code"
+        assert writes.record.session_id == "cc-1"
+        assert writes.record.tools[0].name == "Edit"
+        assert writes.record.tools[0].input == {"file_path": "f.py"}
+        assert writes.record.tools[0].id is None
+        assert reads.session_start is True and reads.record is None
+        # The all-or-none script rule ignores the record session.
+        assert config.scenarios[0].is_scripted
+
+    def test_tools_default_empty(self, tmp_path: Path) -> None:
+        config = _load(tmp_path, _record_suite())
+        assert config.scenarios[0].sessions[0].record is not None
+        assert config.scenarios[0].sessions[0].record.tools == ()
+
+    @pytest.mark.parametrize(
+        "extra", ["turns: []", "script: []", "session_start: true", "maintain: true"]
+    )
+    def test_a_record_session_has_nothing_an_agent_session_has(
+        self, tmp_path: Path, extra: str
+    ) -> None:
+        key = extra.split(":")[0]
+        with pytest.raises(EvalCaseInvalidError, match=re.escape(f"drop ['{key}']")):
+            _load(tmp_path, _record_suite(extra=extra))
+
+    @pytest.mark.parametrize(
+        ("tools", "reason"),
+        [
+            ("tools: [{name: Edit, verb: x}]", "tools\\[1\\]"),
+            ("tools: {name: Edit}", "'tools' must be a list"),
+            ("tools: [{name: 3}]", "wrong type"),
+        ],
+    )
+    def test_bad_tools_refused(self, tmp_path: Path, tools: str, reason: str) -> None:
+        with pytest.raises(EvalCaseInvalidError, match=reason):
+            _load(tmp_path, _record_suite(tools))
+
+    def test_the_verbs_own_validation_applies(self, tmp_path: Path) -> None:
+        with pytest.raises(EvalCaseInvalidError, match="record: "):
+            _load(tmp_path, _record_suite().replace("cc-1", "a/b"))
+        with pytest.raises(EvalCaseInvalidError, match="record: "):
+            _load(tmp_path, _record_suite().replace("claude-code", "Claude Code"))
+        with pytest.raises(EvalCaseInvalidError, match="unknown key 'model'"):
+            _load(
+                tmp_path,
+                _record_suite(extra="").replace("stop:", "model: x\n          stop:"),
+            )
+
+    def test_session_start_must_be_a_boolean(self, tmp_path: Path) -> None:
+        body = _record_suite().replace(
+            "session_start: true", "session_start: yes-please"
+        )
+        with pytest.raises(
+            EvalCaseInvalidError, match="'session_start' must be a boolean"
+        ):
+            _load(tmp_path, body)

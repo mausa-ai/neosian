@@ -24,3 +24,27 @@ view_fold: >-
 
 view_empty: >-
   (no turns yet)
+
+# The `start_*` keys frame what `neosian record` prints on a foreign
+# agent's SessionStart hook (§21.7): the memory index, then "where we
+# left off" — the scope's recent sessions, log-projected and read-only.
+# {{conversation_id}} and {{actor}} are interpolated per session.
+
+start_index: >-
+  [neosian memory — the index of this scope; read a document with the
+  memory tool's view command, never guess its contents]
+
+start_header: >-
+  [where we left off — the sessions recorded in this scope, newest first,
+  log-projected and read-only; the numbers in square brackets are turn
+  references]
+
+start_session: >-
+  [conversation {{conversation_id}} — written by {{actor}}]
+
+start_footer: >-
+  [end — call recall_turn(n, conversation="<id>") on the neosian-memory
+  server to re-read a listed turn verbatim]
+
+start_empty: >-
+  (no sessions recorded in this scope yet)

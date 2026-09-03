@@ -2,6 +2,7 @@
 (DESIGN §13.12)."""
 
 import copy
+import dataclasses
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -13,6 +14,8 @@ from neosian._foundation.evaluation.memory_types import (
     DocumentExpectation,
     MemoryScenario,
     MemorySession,
+    RecordedSession,
+    RecordedTool,
     SeedDocument,
     StoreExpectation,
     Transport,
@@ -392,3 +395,132 @@ class TestFailures:
         assert not result.passed
         assert len(result.turns) == 1
         assert result.turns[0].failures[0].startswith("session 'fails': ")
+
+
+def _cross_client_scenario() -> MemoryScenario:
+    recorded = RecordedSession(
+        agent="claude-code",
+        session_id="cc-1",
+        prompt="Add a retry to fetch.",
+        stop="Added a retry with exponential backoff.",
+        tools=(
+            RecordedTool(
+                name="Edit", input={"file_path": "fetch.py"}, response="ok", id="t1"
+            ),
+        ),
+    )
+    recall = FakeTurn(
+        tool_calls=(
+            ToolCall(
+                id=ToolCallId("c1"),
+                name=ToolName("recall_turn"),
+                arguments={"turn": 1, "conversation": "cc-1"},
+            ),
+        )
+    )
+    return MemoryScenario(
+        name="cross",
+        sessions=(
+            MemorySession(
+                name="writes",
+                turns=(),
+                record=recorded,
+                expect_store=StoreExpectation(
+                    documents=(
+                        DocumentExpectation(path="/user/sessions/cc-1", versions=1),
+                    )
+                ),
+            ),
+            MemorySession(
+                name="reads",
+                session_start=True,
+                turns=(
+                    _turn(
+                        "What changed?",
+                        {
+                            "tool": "recall_turn",
+                            "params": {"conversation": "cc-1", "turn": 1},
+                            "response": {"contains": "backoff"},
+                        },
+                    ),
+                ),
+                script=(recall, FakeTurn(content="A retry with backoff.")),
+                expect_store=StoreExpectation(counts={"/user": 1}),
+            ),
+        ),
+    )
+
+
+@pytest.mark.unit
+class TestCrossClient:
+    """§21.7 — the switching claim's cell: a hook-fed session lands
+    through the record verb's engine, the next agent starts with "where
+    we left off" in its prefix and recalls the foreign turn verbatim."""
+
+    @pytest.mark.parametrize(
+        "transport", [Transport.FUNCTION, Transport.CLI, Transport.HTTP]
+    )
+    async def test_the_foreign_turn_is_read_at_start_and_recalled(
+        self, tmp_path: Path, transport: Transport
+    ) -> None:
+        root = tmp_path / "store"
+        result = await run_scenario(
+            _base(),
+            transport,
+            Model.FAKE,
+            _cross_client_scenario(),
+            mounts=(_MOUNT,),
+            store_root=root,
+        )
+        assert result.passed, [f for t in result.turns for f in t.failures]
+        (turn,) = await FileStore(root).read_turns("cc-1")
+        assert turn.actor == "claude-code:cc-1"
+        assert [m.role for m in turn.messages] == [
+            Role.USER,
+            Role.ASSISTANT,
+            Role.TOOL,
+            Role.ASSISTANT,
+        ]
+        (row,) = await FileStore(root).versions(_MOUNT.scope, "sessions/cc-1")
+        assert row.actor == "claude-code:cc-1#1"
+        captures = [c for t in result.turns for c in t.tool_calls]
+        (recall,) = captures
+        assert str(recall.name) == "recall_turn" and recall.executed and recall.ok
+
+    async def test_the_reading_session_starts_where_we_left_off(
+        self, tmp_path: Path
+    ) -> None:
+        clients: list[FakeClient] = []
+        script = FakeScript(
+            turns=(_cross_client_scenario().sessions[1].script or ())  # the recall
+        )
+
+        def factory(_provider: Provider) -> FakeClient:
+            fake = FakeClient(script)
+            clients.append(fake)
+            return fake
+
+        scenario = _cross_client_scenario()
+        scenario = MemoryScenario(
+            name=scenario.name,
+            sessions=(
+                scenario.sessions[0],
+                dataclasses.replace(scenario.sessions[1], script=None),
+            ),
+        )
+        result = await run_scenario(
+            _base(client_factory=factory),
+            Transport.FUNCTION,
+            Model.FAKE,
+            scenario,
+            mounts=(_MOUNT,),
+            store_root=tmp_path / "store",
+        )
+        assert result.passed, [f for t in result.turns for f in t.failures]
+        (fake,) = clients  # the record session has no model in the room
+        system = str(fake.calls[0].messages[0].content)
+        assert "- /user/sessions/cc-1" in system  # the index lists the session
+        assert "[where we left off" in system
+        assert "[conversation cc-1 — written by claude-code:cc-1]" in system
+        assert "[1] USER: Add a retry to fetch." in system
+        assert [str(t.name) for t in fake.calls[0].tools] == ["memory", "recall_turn"]

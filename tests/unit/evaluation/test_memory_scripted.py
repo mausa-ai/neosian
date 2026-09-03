@@ -74,9 +74,9 @@ class TestShippedPack:
             _REPO_ROOT / "examples" / "eval_memory_baseline.yaml",
             tmp_path / "stores",
         )
-        # Eight scenarios × the three shipped transports (function, cli,
+        # Nine scenarios × the three shipped transports (function, cli,
         # http — the NM wire, ledger #113).
-        assert report.total == 24
+        assert report.total == 27
         assert report.failed == 0, _failures(report)
         assert report.variants == ("function", "cli", "http")
         assert report.cases == (
@@ -88,6 +88,7 @@ class TestShippedPack:
             "correct-wrong-memory",
             "reflection-close",
             "maintenance",
+            "cross-client",
         )
         assert all(r.error is None for r in report.results)
 
@@ -546,3 +547,56 @@ class TestDiscriminatingNegatives:
             for f in failures
         )
         assert any(f.startswith("store root: ") for f in failures)
+
+
+_CROSS_CLIENT_HEAD = """\
+  - name: cross
+    sessions:
+      - name: writes
+        record:
+          agent: claude-code
+          session_id: cc-1
+          prompt: "Add a retry."
+          stop: "Added a retry with backoff."
+      - name: reads
+        session_start: true
+        turns:
+          - user: what changed?
+            expect:
+              tool: recall_turn
+              params: {conversation: cc-1, turn: 1}
+        script:
+"""
+
+
+@pytest.mark.unit
+class TestCrossClientNegatives:
+    """The switching claim's scoring bites (§21.7): the wrong turn and a
+    reading session that writes are both red."""
+
+    async def test_recalling_the_wrong_turn_is_red(self, tmp_path: Path) -> None:
+        scenarios = _CROSS_CLIENT_HEAD + """\
+          - tool_calls:
+              - name: recall_turn
+                arguments: {turn: 2, conversation: cc-1}
+          - content: nothing
+        """
+        report = await _run(_suite(tmp_path, scenarios), tmp_path / "stores")
+        assert report.failed == 1
+        assert any("param 'turn'" in f for f in _failures(report))
+
+    async def test_a_reading_session_that_writes_is_red(self, tmp_path: Path) -> None:
+        scenarios = _CROSS_CLIENT_HEAD + """\
+          - tool_calls:
+              - name: recall_turn
+                arguments: {turn: 1, conversation: cc-1}
+          - tool_calls:
+              - name: memory
+                arguments: {command: create, path: /user/note, content: x}
+          - content: done
+        expect_store:
+          counts: {/user: 1}
+        """
+        report = await _run(_suite(tmp_path, scenarios), tmp_path / "stores")
+        assert report.failed == 1
+        assert any("/user" in f and "2" in f for f in _failures(report))

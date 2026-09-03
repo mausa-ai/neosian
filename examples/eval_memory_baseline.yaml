@@ -1,13 +1,14 @@
 # Memory eval baseline (kind: memory, schema v2) — DESIGN §13.12.
 #
-# Eight scenarios, one per measured behavior: write discipline,
+# Nine scenarios, one per measured behavior: write discipline,
 # recall-in-next-session, dedup, contradiction handling, long-horizon
 # recall, correcting a wrong memory, reflection at the session boundary
-# (§15), and maintenance over a seeded store (§16). Every session is
-# scripted, so the pack runs keylessly on FakeProvider and is all-green
-# by construction — a red run is a regression. Turn expectations stay
-# loose (they must survive a real provider); the store truth carries
-# the strictness.
+# (§15), maintenance over a seeded store (§16), and the cross-client
+# switch — a foreign agent's hook-fed session recalled by a neosian
+# agent (§21.7). Every agent session is scripted, so the pack runs
+# keylessly on FakeProvider and is all-green by construction — a red
+# run is a regression. Turn expectations stay loose (they must survive
+# a real provider); the store truth carries the strictness.
 #
 # The external baselines derive a scriptless copy of this same pack in
 # code (tests/external/cross/test_memory_baselines.py) — one source of
@@ -449,3 +450,46 @@ scenarios:
             - path_prefix: /user
               content: {contains: Europe/Paris}
           absent: [/user/coffee-copy, /user/scratch, /project/timezone]
+
+  # CROSS-CLIENT — the measured switching claim (VISION): a Claude Code
+  # session lands through the record verb's engine (its hooks' three
+  # payloads, no model in the room), then a neosian agent starts the way
+  # a hook-fed agent starts — the index plus "where we left off" in its
+  # prefix — and recalls the foreign turn verbatim through the server's
+  # recall_turn (conversation required). Store truth pins the sessions
+  # document the record wrote and that reading never writes.
+  - name: cross-client
+    sessions:
+      - name: claude-code-writes
+        record:
+          agent: claude-code
+          session_id: cc-7f3a
+          prompt: "Add a retry to the fetch helper."
+          tools:
+            - name: Edit
+              input: {file_path: src/fetch.py}
+              response: "ok"
+              id: toolu_01retry
+          stop: "Added a retry with exponential backoff to fetch()."
+        expect_store:
+          documents:
+            - path: /user/sessions/cc-7f3a
+              content: {contains: "claude-code"}
+              versions: 1
+      - name: neosian-recalls
+        session_start: true
+        turns:
+          - user: "What did the last Claude Code session change in fetch.py?"
+            expect:
+              tool: recall_turn
+              params: {conversation: cc-7f3a, turn: 1}
+              response: {contains: backoff}
+        script:
+          - tool_calls:
+              - name: recall_turn
+                arguments: {turn: 1, conversation: cc-7f3a}
+          - content: "It added a retry with exponential backoff to fetch()."
+        # Reading never writes: the sessions document is the one live
+        # document under /user.
+        expect_store:
+          counts: {/user: 1}

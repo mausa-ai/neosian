@@ -1,9 +1,9 @@
 ---
-title: MCP — the same memory, served to any client
-summary: Serve over stdio, register with neosian mcp install, one writer per root
+title: MCP — the same state, served to any client
+summary: memory and recall_turn over stdio; neosian mcp install; one writer per root
 ---
 
-# The MCP memory server
+# The MCP server
 
 The same stores, served to any MCP client — Claude Code, Claude
 Desktop, Cursor, Codex, OpenCode — over stdio. Requires the `mcp` extra
@@ -11,6 +11,22 @@ Desktop, Cursor, Codex, OpenCode — over stdio. Requires the `mcp` extra
 a traceback. For MCP over the network, the state process mounts this
 same factory's server at `/mcp`: `neosian serve` with mounts
 (`server` extra, `neosian docs topology`).
+
+## The state set
+
+The memory server becomes the state server one tool at a time. Today it
+serves two:
+
+- **`memory`** — the six commands over the mounts (`neosian docs
+  memory`), the same definition the function tool carries.
+- **`recall_turn(turn, conversation)`** — one turn of a recorded
+  conversation, verbatim: a hook-fed session of another agent
+  (`neosian docs agents`), a neosian `Conversation`, anything the store
+  holds. `conversation` is required here — the server has no
+  conversation of its own — and any id the store holds is addressable:
+  which conversations are shareable is the host's decision, never the
+  library's. The ids are in the memory index under `sessions/` and in
+  the "where we left off" block a `SessionStart` hook prints.
 
 ## Serve
 
@@ -25,10 +41,12 @@ defaults to `mcp`
 (convention `mcp:<host>`), and Postgres arrives only through
 `NEOSIAN_POSTGRES_DSN` — never an argv flag. The server's
 instructions carry the same memory index and prompt pack the function
-tool uses; the index refreshes per connection.
+tool uses; the index refreshes per connection. Every shipped store
+keeps conversations too, so `recall_turn` is always on the list.
 
 Hosts that embed the server in their own transport use
-`create_memory_server` from `neosian.mcp`.
+`create_memory_server` from `neosian.mcp`; passing their conversation
+store as `conversations=` adds `recall_turn` beside `memory`.
 
 ## Register a client
 

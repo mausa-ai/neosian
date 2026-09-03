@@ -47,7 +47,7 @@ from neosian._foundation.shared.exceptions import MemoryStoreError
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
 
-HOOK_EVENTS: Final = ("UserPromptSubmit", "PostToolUse", "Stop")
+HOOK_EVENTS: Final = ("UserPromptSubmit", "PostToolUse", "Stop", "SessionStart")
 HOOKS_KEY: Final = "hooks"
 _RECORD_ARGV: Final = ("-m", "neosian.record")  # the one place the module path lives
 _MARKER: Final = " ".join(_RECORD_ARGV)  # how ours is recognised in a merge
@@ -177,7 +177,9 @@ def render_plugin(argv: Sequence[str]) -> str:
 
 
 def hook_fragment(command: str) -> dict[str, Any]:
-    """The `hooks` fragment: the one command on the three events."""
+    """The `hooks` fragment: the one command on the four events — three
+    that write the span and `SessionStart`, whose stdout is the context
+    (no matcher: the verb reads `source` itself)."""
     return {
         HOOKS_KEY: {
             event: [{"hooks": [{"type": "command", "command": command}]}]

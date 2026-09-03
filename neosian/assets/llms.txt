@@ -48,13 +48,14 @@ conversation with cross-conversation `recall_turn`.
   client is not installed; Codex is print-only — apply with the printed
   `codex mcp add` line).
 - `python -m neosian.mcp --root DIR --scope user:me` serves the same
-  store over stdio (`mcp` extra).
+  store over stdio (`mcp` extra): the `memory` tool, and `recall_turn(turn,
+  conversation)` — any recorded turn of any agent's session, verbatim.
 
 ## Record a foreign agent
 
 - `neosian record install --client claude-code|codex|opencode --root DIR
-  --scope user:me` prints the three hooks (UserPromptSubmit, PostToolUse,
-  Stop) — for OpenCode, a plugin file; `--write` merges them into
+  --scope user:me` prints the four hooks (UserPromptSubmit, PostToolUse,
+  Stop, SessionStart) — for OpenCode, a plugin file; `--write` merges them into
   ./.claude/settings.json or ./.codex/hooks.json, every other hook
   preserved, or writes ./.opencode/plugins/neosian-record.js (Codex: a
   trusted project, hooks reviewed in /hooks).
@@ -62,7 +63,9 @@ conversation with cross-conversation `recall_turn`.
   prompt-to-stop span lands as one turn by `claude-code:<session_id>` in
   the conversation the session id names, plus a sessions document at
   /memories/sessions/<session_id>. Read it back: `neosian audit --scope S
-  --conversation <session_id>`.
+  --conversation <session_id>`. On SessionStart the verb prints the memory
+  index and "where we left off" (the recent sessions, log-projected) —
+  the client adds a hook's stdout to the model's context.
 - Hooks beside an MCP server are two writers: use `--url` (the state
   process) or Postgres. `neosian docs agents` carries the client table.
 
@@ -93,7 +96,7 @@ conversation with cross-conversation `recall_turn`.
 
 ## Install
 
-- `uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.83.2"`
+- `uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.84.0"`
   (private repository, no PyPI; pin an annotated release tag, never
   master; extras `[postgres]`, `[mcp]`, `[otel]`, and `[server]` ride
   the same URL).

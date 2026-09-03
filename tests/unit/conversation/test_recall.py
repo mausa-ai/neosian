@@ -8,7 +8,10 @@ import pytest
 from neosian import AgentConfig, Model
 from neosian._foundation.conversation.compaction import CompactionConfig
 from neosian._foundation.conversation.core import Conversation
-from neosian._foundation.conversation.recall import create_recall_turn_tool
+from neosian._foundation.conversation.recall import (
+    create_recall_any_tool,
+    create_recall_turn_tool,
+)
 from neosian._foundation.llm.base import Message, Role
 from neosian._foundation.llm.fake import FakeClient, FakeScript, FakeTurn
 from neosian._foundation.memory.file import FileStore
@@ -166,3 +169,34 @@ class TestLazyRegistration:
         await convo.compact()
         await convo.send("three")
         assert "recall_turn" not in _last_tool_names(fake)
+
+
+@pytest.mark.unit
+class TestRecallAny:
+    """The server's twin (§21.7): `conversation` required, any id the
+    store holds, the same corrective failures."""
+
+    async def test_reads_any_conversation_verbatim(self, store: FileStore) -> None:
+        await _seed(store, ["first", "second"])
+        tool = create_recall_any_tool(store)
+        result = await tool(turn=2, conversation="t1")
+        assert result.success and result.data is not None
+        assert "USER: second" in result.data
+
+    async def test_conversation_is_required(self, store: FileStore) -> None:
+        tool = create_recall_any_tool(store)
+        with pytest.raises(TypeError):  # tool_exec maps this to invalid arguments
+            await tool(turn=1)
+
+    async def test_out_of_range_names_the_conversation(self, store: FileStore) -> None:
+        await _seed(store, ["only"])
+        result = await create_recall_any_tool(store)(turn=3, conversation="t1")
+        assert not result.success
+        assert result.system_reminder == "Conversation 't1' has turns 1-1."
+
+    async def test_a_bad_id_is_a_failure_never_an_exception(
+        self, store: FileStore
+    ) -> None:
+        result = await create_recall_any_tool(store)(turn=1, conversation="a/b")
+        assert not result.success and result.error is not None
+        assert "conversation_id_invalid" in result.error

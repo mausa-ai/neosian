@@ -104,6 +104,30 @@ class SeedDocument:
 
 
 @dataclass(frozen=True, slots=True)
+class RecordedTool:
+    """One tool round of a hook-fed session: what `PostToolUse` carries."""
+
+    name: str
+    input: Mapping[str, object]
+    response: str
+    id: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class RecordedSession:
+    """A foreign agent's session, replayed through `neosian record`'s
+    engine (§21.7) — no model in the room: the prompt, the tool rounds
+    and the stop land as one turn by `<agent>:<session_id>` plus the
+    scope's sessions document, exactly as the hooks would write them."""
+
+    agent: str
+    session_id: str
+    prompt: str
+    stop: str
+    tools: tuple[RecordedTool, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class MemorySession:
     """One session: a fresh bare Agent over the scenario's store root.
 
@@ -115,7 +139,10 @@ class MemorySession:
     §15 reflection engine over the session's transcript at session end;
     `maintain` runs the §16 maintenance engine after it (turns are
     optional on a maintain session — a pure gardening step); both run
-    before the store check.
+    before the store check. A `record` session is a foreign agent's,
+    replayed — no turns, no script; `session_start` gives an agent
+    session the hook's own start context ("where we left off") and the
+    server's `recall_turn` beside its memory tool (§21.7).
     """
 
     name: str
@@ -124,6 +151,8 @@ class MemorySession:
     expect_store: StoreExpectation = field(default_factory=StoreExpectation)
     reflect: bool = False
     maintain: bool = False
+    record: RecordedSession | None = None
+    session_start: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -141,7 +170,7 @@ class MemoryScenario:
 
     @property
     def is_scripted(self) -> bool:
-        return all(s.script is not None for s in self.sessions)
+        return all(s.script is not None for s in self.sessions if s.record is None)
 
 
 @dataclass(frozen=True, slots=True)

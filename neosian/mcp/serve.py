@@ -13,6 +13,7 @@ import os
 import sys
 from pathlib import Path
 
+from neosian._foundation.conversation.base import ConversationStore
 from neosian._foundation.mcp.server import create_memory_server, serve_stdio
 from neosian._foundation.mcp.settings import ServerSettings, parse_args
 from neosian._foundation.memory.mounts import MemoryConfig
@@ -27,6 +28,9 @@ async def _run(settings: ServerSettings) -> None:
         server = await create_memory_server(
             MemoryConfig(store=store, mounts=settings.mounts),
             actor=settings.actor,
+            # Every shipped store keeps conversations too: `recall_turn`
+            # joins the tool list (§21.7).
+            conversations=store if isinstance(store, ConversationStore) else None,
         )
         await serve_stdio(server)
 

@@ -76,6 +76,14 @@ through the wire is recorded under the presenting token's client
 `NEOSIAN_CLIENT_TOKEN`; `neosian audit --scope S` reads the ledger back
 on any substrate, and `--url` reads it through the process.
 
+The agent door reads as well as writes. A foreign agent's `SessionStart`
+hook prints the memory index and "where we left off" — the scope's
+recent sessions, log-projected — into its own window, and its MCP
+client calls `recall_turn(turn, conversation)` on `/mcp` (or the stdio
+server) to re-read any recorded turn verbatim: one client writes, a
+different client recalls, on the same store (`neosian docs agents`,
+`neosian docs mcp`).
+
 ## One writer per root
 
 FileStore's in-process lock serializes mutations inside one process;
