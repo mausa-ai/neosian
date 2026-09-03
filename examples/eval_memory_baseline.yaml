@@ -460,7 +460,8 @@ scenarios:
   # the log line's 200-char digest and is in no document, so only the
   # verbatim turn can answer it: a right answer is the recall, whatever
   # the agent reads first (Sonnet views the sessions document before it
-  # recalls — a first-tool pin would call that a miss). Store truth pins
+  # recalls — a first-tool pin would call that a miss). The pin is the
+  # ticket's digits, the one spelling no model restyles. Store truth pins
   # the sessions document the record wrote and that reading never writes.
   - name: cross-client
     sessions:
@@ -493,7 +494,7 @@ scenarios:
               fetch.py change under? If the summary you were given does
               not say, re-read that session's turn.
             expect:
-              response: {contains: FETCH4821}
+              response: {contains: "4821"}  # the digits: Sonnet restyles the key as FETCH-4821
         script:
           - tool_calls:
               - name: recall_turn
