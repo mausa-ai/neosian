@@ -22,14 +22,14 @@ from neosian._foundation.shared.types import (
     SystemPrompt,
 )
 
-# The nine fields the pre-N2 hand-rolled rebuild silently dropped.
+# The fields the pre-N2 hand-rolled rebuild silently dropped (the
+# blackboard, retired at NB, was the ninth).
 _DROPPED = (
     "fallback",
     "max_parallel_tools",
     "max_retries",
     "cache_conversation",
     "skill_dir",
-    "blackboard",
     "client_factory",
     "hooks",
     "context_policy",
@@ -48,7 +48,6 @@ def _loaded_base(tmp_path: Path) -> AgentConfig:
         max_retries=7,
         cache_conversation=False,
         skill_dir=tmp_path,
-        blackboard={"k": "v"},
         client_factory=lambda _: fake,
         hooks=AgentHooks(),
         context_policy=None,  # explicitly disabled — must not be re-enabled

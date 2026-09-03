@@ -47,7 +47,8 @@ def menu_config(base: AgentConfig, model: AnyModel) -> AgentConfig:
     """Model override only. `replace()` re-runs `__post_init__` and
     carries every other field — the hand-rolled rebuild this replaces
     dropped nine (fallback, max_parallel_tools, max_retries,
-    cache_conversation, skill_dir, blackboard, client_factory,
+    cache_conversation, skill_dir, the since-retired blackboard,
+    client_factory,
     hooks, context_policy)."""
     return dataclasses.replace(base, model=model)
 

@@ -23,18 +23,23 @@ _MEMORY_FILE: Final = "prompts/memory.yaml"
 _COMPACTION_FILE: Final = "prompts/compaction.yaml"
 _REFLECTION_FILE: Final = "prompts/reflection.yaml"
 _MAINTENANCE_FILE: Final = "prompts/maintenance.yaml"
+_CONTEXT_FILE: Final = "prompts/context.yaml"
 _POLICY_KEYS: Final = ("name", "code", "description", "violates", "safe")
 _MEMORY_KEYS: Final = ("tool", "system_section")
 _COMPACTION_KEYS: Final = ("distill", "epoch", "log_header", "log_footer")
 _REFLECTION_KEYS: Final = ("system",)
 _MAINTENANCE_KEYS: Final = ("system",)
+_CONTEXT_KEYS: Final = (
+    "board",
+    "view_header",
+    "view_footer",
+    "view_fold",
+    "view_empty",
+)
 _TOOL_KEYS: Final = (
     "todo",
     "skill_list",
     "skill_load",
-    "blackboard_list",
-    "blackboard_read",
-    "blackboard_update",
     "recall_turn",
 )
 
@@ -88,6 +93,9 @@ def _load() -> tuple[dict[str, str], tuple[dict[str, Any], ...]]:
         prompts[f"maintenance.{key}"] = str(
             _require(maintenance, key, _MAINTENANCE_FILE)
         )
+    context = _load_yaml(_CONTEXT_FILE)
+    for key in _CONTEXT_KEYS:
+        prompts[f"context.{key}"] = str(_require(context, key, _CONTEXT_FILE))
     policies = tuple(_require(guardrails, "policies", _GUARDRAILS_FILE))
     for entry in policies:
         if not isinstance(entry, dict):

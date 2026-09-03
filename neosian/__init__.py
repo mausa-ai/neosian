@@ -37,8 +37,6 @@ from neosian._foundation.agent.hooks import (
 )
 from neosian._foundation.agent.response import AgentResponse
 from neosian._foundation.agent.session import AgentSession
-from neosian._foundation.blackboard.base import BlackboardProvider
-from neosian._foundation.blackboard.file import FileBlackboard
 from neosian._foundation.conversation.base import ConversationStore
 from neosian._foundation.conversation.compaction import (
     CompactionConfig,
@@ -56,6 +54,7 @@ from neosian._foundation.conversation.types import (
     ConversationProjection,
     ConversationTurn,
 )
+from neosian._foundation.conversation.views import ConversationView
 from neosian._foundation.guardrails.policy import CommonPolicies, PolicyBuilder
 from neosian._foundation.llm.base import (
     ContentBlock,
@@ -118,7 +117,6 @@ from neosian._foundation.shared.context_policy import ContextPolicy
 from neosian._foundation.shared.exceptions import (
     ERROR_CODES,
     AgentLoadError,
-    BlackboardError,
     ConfigurationError,
     ContextWindowExceededError,
     ConversationStoreError,
@@ -151,8 +149,6 @@ from neosian._foundation.shared.types import (
     PRICES_FINGERPRINT,
     AgentConfig,
     AnyModel,
-    BlackboardEntry,
-    BlackboardName,
     FallbackConfig,
     FallbackState,
     GuardrailErrorPolicy,
@@ -267,12 +263,6 @@ __all__ = [
     "SkillLoadError",
     "load_skill",
     "load_skills",
-    # Blackboard
-    "BlackboardProvider",
-    "BlackboardEntry",
-    "BlackboardName",
-    "FileBlackboard",
-    "BlackboardError",
     # Memory (DESIGN §8)
     "MemoryStore",
     "MemoryDocument",
@@ -309,6 +299,7 @@ __all__ = [
     "ConversationStore",
     "ConversationTurn",
     "ConversationProjection",
+    "ConversationView",
     "CompactionConfig",
     "CompactionResult",
     "ReflectionConfig",

@@ -208,12 +208,6 @@ def test_all_list_matches_exports() -> None:
         "SkillLoadError",
         "load_skill",
         "load_skills",
-        # Blackboard
-        "BlackboardProvider",
-        "BlackboardEntry",
-        "BlackboardName",
-        "FileBlackboard",
-        "BlackboardError",
         # Memory (DESIGN §8)
         "MemoryStore",
         "MemoryDocument",
@@ -250,6 +244,7 @@ def test_all_list_matches_exports() -> None:
         "ConversationStore",
         "ConversationTurn",
         "ConversationProjection",
+        "ConversationView",
         "CompactionConfig",
         "CompactionResult",
         "ReflectionConfig",

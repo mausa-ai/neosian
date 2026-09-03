@@ -271,7 +271,6 @@ name = "the runtime library never imports the eval harness"
 type = "forbidden"
 source_modules = [
     "neosian._foundation.agent",
-    "neosian._foundation.blackboard",
     "neosian._foundation.conversation",
     "neosian._foundation.guardrails",
     "neosian._foundation.llm",

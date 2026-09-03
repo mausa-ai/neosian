@@ -664,59 +664,36 @@ class SkillDirectoryNotFoundError(SkillLoadError):
         self.path = path
 
 
-# Blackboard Errors
+# Blackboard Errors — the subsystem retired at NB (DESIGN §21); the codes
+# stay in the table append-only (ECOSYSTEM §6) and nothing raises them.
 class BlackboardError(NeosianError):
-    """Base exception for blackboard-related errors."""
+    """Base of the retired blackboard family; never raised since NB."""
 
     code = "blackboard_error"
 
 
 class BlackboardEntryNotFoundError(BlackboardError):
-    """Raised when a blackboard entry does not exist."""
+    """Retired; the code stays."""
 
     code = "blackboard_entry_not_found"
 
-    def __init__(self, name: str) -> None:
-        super().__init__(ErrorMessages.BLACKBOARD_ENTRY_NOT_FOUND.format(name=name))
-        self.name = name
-
 
 class BlackboardReadError(BlackboardError):
-    """Raised when reading a blackboard entry fails."""
+    """Retired; the code stays."""
 
     code = "blackboard_read_failed"
 
-    def __init__(self, name: str, error: str) -> None:
-        super().__init__(
-            ErrorMessages.BLACKBOARD_READ_ERROR.format(name=name, error=error)
-        )
-        self.name = name
-        self.error = error
-
 
 class BlackboardUpdateError(BlackboardError):
-    """Raised when updating a blackboard entry fails."""
+    """Retired; the code stays."""
 
     code = "blackboard_update_failed"
 
-    def __init__(self, name: str, error: str) -> None:
-        super().__init__(
-            ErrorMessages.BLACKBOARD_UPDATE_ERROR.format(name=name, error=error)
-        )
-        self.name = name
-        self.error = error
-
 
 class FileBlackboardDirectoryNotFoundError(BlackboardError):
-    """Raised when the FileBlackboard directory does not exist."""
+    """Retired; the code stays."""
 
     code = "blackboard_directory_not_found"
-
-    def __init__(self, path: str) -> None:
-        super().__init__(
-            ErrorMessages.FILE_BLACKBOARD_DIRECTORY_NOT_FOUND.format(path=path)
-        )
-        self.path = path
 
 
 # Memory Errors (DESIGN §5 table, §8). Base is MemoryStoreError — never

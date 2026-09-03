@@ -31,7 +31,11 @@ from neosian._foundation.conversation.types import (
     ConversationTurn,
     ProjectionKind,
 )
-from neosian._foundation.conversation.wiring import DEFAULT_MEMORY_MOUNT_PATH
+from neosian._foundation.conversation.views import ConversationView
+from neosian._foundation.conversation.wiring import (
+    DEFAULT_BOARD_MOUNT_PATH,
+    DEFAULT_MEMORY_MOUNT_PATH,
+)
 from neosian._foundation.llm.codec import message_from_json, message_to_json
 from neosian._foundation.memory.file import FileStore
 from neosian._foundation.postgres.store import PostgresStore
@@ -46,6 +50,7 @@ __all__ = [
     "CONVERSATION_FORMAT_VERSION",
     "CONVERSATION_ID_MAX_LENGTH",
     "CONVERSATION_ID_PATTERN",
+    "DEFAULT_BOARD_MOUNT_PATH",
     "DEFAULT_MEMORY_MOUNT_PATH",
     "CompactionConfig",
     "CompactionResult",
@@ -57,6 +62,7 @@ __all__ = [
     "ConversationStore",
     "ConversationStoreError",
     "ConversationTurn",
+    "ConversationView",
     "FileStore",
     "PostgresStore",
     "ProjectionKind",

@@ -8,7 +8,9 @@ A stateless `Agent` core (tools, orchestration, streaming, fallback,
 guardrails, structured output) with opt-in `Conversation` and memory
 layers. One memory dispatcher serves five transports: the function tool,
 Anthropic's native declaration, an MCP stdio server, the shell, and the
-state process's HTTP wire.
+state process's HTTP wire. Agents share context by config: a `board`
+mount on a task scope, and read-only `ConversationView`s of another
+conversation with cross-conversation `recall_turn`.
 
 ## Learn from the shell
 

@@ -33,18 +33,6 @@ _LEGACY_TOOL_DESCRIPTIONS = {
         "Load a skill by name. Returns the full instructions. "
         "Use list_skills first to see what's available."
     ),
-    "tools.blackboard_list": (
-        "List available blackboard entries with their names and descriptions. "
-        "Blackboard contains dynamic context that may change during the session."
-    ),
-    "tools.blackboard_read": (
-        "Read the current content of a blackboard entry by name. "
-        "Use list_blackboard first to see what's available."
-    ),
-    "tools.blackboard_update": (
-        "Update an existing blackboard entry with new content. "
-        "Can only update entries that already exist, not create new ones."
-    ),
 }
 
 
@@ -154,3 +142,10 @@ class TestPromptRegistry:
         assert "{{epoch_chars}}" in get_prompt("compaction.epoch")
         assert "recall_turn" in get_prompt("compaction.log_footer")
         assert get_prompt("compaction.log_header").startswith("[conversation log")
+
+    def test_context_prompts_are_wired(self) -> None:
+        assert get_prompt("context.view_header").startswith("[view of conversation ")
+        assert "{{conversation_id}}" in get_prompt("context.view_footer")
+        for key in ("first", "last", "count"):
+            assert "{{" + key + "}}" in get_prompt("context.view_fold")
+        assert get_prompt("context.board")

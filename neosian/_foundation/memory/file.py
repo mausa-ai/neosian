@@ -9,8 +9,8 @@ names):
         versions/notes/api.jsonl    # one row per mutation, full content
         redactions.jsonl            # {ts, actor, path|null, count} per redact
 
-Sync I/O inside async methods (KB-scale files; the FileBlackboard
-precedent); an asyncio.Lock serializes mutations, so read-your-writes
+Sync I/O inside async methods (KB-scale files; the retired
+FileBlackboard's precedent); an asyncio.Lock serializes mutations, so read-your-writes
 holds within a process. Across processes files cannot arbitrate — last
 writer wins, which is why `supports_optimistic_concurrency` stays False
 even though `expected_version` is honored best-effort in-process — and

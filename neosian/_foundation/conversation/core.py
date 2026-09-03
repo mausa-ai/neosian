@@ -36,6 +36,11 @@ from neosian._foundation.conversation.reflection import (
     ReflectionResult,
     run_reflection,
 )
+from neosian._foundation.conversation.views import (
+    ConversationView,
+    render_views,
+    validated_views,
+)
 from neosian._foundation.conversation.wiring import (
     DEFAULT_MEMORY_MOUNT_PATH,
     derive_config,
@@ -83,6 +88,12 @@ class Conversation:
     Compaction is default-on (ledger #28); `CompactionConfig(enabled=
     False)` disables the automatic trigger, `compact()` always runs.
 
+    Shared context (§21): `board="task:42"` mounts the task's board at
+    `/board` beside any memory — the live channel between agents on one
+    task; `context=[ConversationView("conv-a")]` injects another
+    conversation as a frozen, log-projected, read-only block and makes
+    its turns recallable (`recall_turn(n, conversation="conv-a")`).
+
     Reflection (§15) is default-on the same way: a memory-bearing
     `aclose()` distills what this instance's sends are worth keeping
     into deliberate memory writes, and `reflect()` is the explicit
@@ -109,6 +120,8 @@ class Conversation:
         compaction: CompactionConfig | None = None,
         reflection: ReflectionConfig | None = None,
         actor: str | None = None,
+        board: str | None = None,
+        context: Sequence[ConversationView] = (),
     ) -> None:
         self._conversation_id = str(parse_conversation_id(conversation_id))
         # Who this instance writes as (DESIGN §20): turns carry it whole,
@@ -130,7 +143,9 @@ class Conversation:
             mounts=mounts,
             memory_scope=memory_scope,
             memory_mount_path=memory_mount_path,
+            board=board,
         )
+        self._views = validated_views(context, self._conversation_id)
         self._compaction = compaction if compaction is not None else CompactionConfig()
         self._reflection = reflection if reflection is not None else ReflectionConfig()
         if self._base_config.server_compaction:
@@ -147,6 +162,7 @@ class Conversation:
         self._turns: list[ConversationTurn] = []
         self._reflect_pending: list[ConversationTurn] = []
         self._projections: list[ConversationProjection] = []
+        self._context: list[Message] = []
         self._agent: Agent | None = None
         self._session: AgentSession | None = None
         self._captured: AgentResponse | None = None
@@ -296,12 +312,21 @@ class Conversation:
         section = None
         if self._memory_config is not None:
             section = await memory_system_section(self._memory_config)
+        # Views are frozen with the index and refreshed with it (§21).
+        self._context = await render_views(
+            self._store, self._views, config=self._compaction
+        )
         extra_tools: list[ToolFunction] = []
-        if self._compaction.recall_tool and self._projections:
+        if self._compaction.recall_tool and (self._projections or self._views):
             # Lazy registration (ledger #28): the tool appears in the
-            # same request as the first log block that references it.
+            # same request as the first log block that references it —
+            # a view is such a block from the first send.
             extra_tools.append(
-                create_recall_turn_tool(self._store, self._conversation_id)
+                create_recall_turn_tool(
+                    self._store,
+                    self._conversation_id,
+                    addressable=[view.conversation_id for view in self._views],
+                )
             )
         derived = derive_config(
             self._base_config,
@@ -388,6 +413,7 @@ class Conversation:
         policy = self._base_config.context_policy or ContextPolicy()
         probe = [
             Message(role=Role.SYSTEM, content=str(self._agent.config.system_prompt)),
+            *self._context,
             *view,
             user,
         ]
@@ -426,7 +452,9 @@ class Conversation:
                 view = self._view()
             assert self._agent is not None
             self._captured = None
-            response = await self._session_for_run().run([*view, user], stream=False)
+            response = await self._session_for_run().run(
+                [*self._context, *view, user], stream=False
+            )
             await self._persist(user)
             return fold_response(response, compacted)
 
@@ -439,7 +467,9 @@ class Conversation:
                 view = self._view()
             assert self._agent is not None
             self._captured = None
-            events = await self._session_for_run().run([*view, user], stream=True)
+            events = await self._session_for_run().run(
+                [*self._context, *view, user], stream=True
+            )
             # Closed with this generator (AG-14): a consumer that stops
             # iterating reaches the run's streams and tools synchronously.
             async with closing(events):

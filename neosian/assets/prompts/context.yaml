@@ -1,0 +1,26 @@
+# The shared-context prompt pack (DESIGN §7, §21 — NB). `board` is the
+# description the `Conversation(board=…)` sugar gives its mount; the
+# `view_*` keys frame the synthetic USER message that carries a
+# ConversationView — another conversation, log-projected and read-only.
+# {{conversation_id}}, {{first}}, {{last}} and {{count}} are interpolated
+# by prompt_assets.render.
+
+board: >-
+  The board: the shared working set for this task — what we are doing
+  now, who is on what, open questions, decisions taken. Other agents on
+  the task read and write it too; keep it current and small.
+
+view_header: >-
+  [view of conversation {{conversation_id}} — another agent's history,
+  read-only, log-projected; the numbers in square brackets are its turn
+  references]
+
+view_footer: >-
+  [end of view — call recall_turn(n, conversation="{{conversation_id}}")
+  to re-read its turn n verbatim]
+
+view_fold: >-
+  [{{first}}-{{last}}] {{count}} earlier turns not shown
+
+view_empty: >-
+  (no turns yet)

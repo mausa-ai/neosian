@@ -43,7 +43,6 @@ AgentName = NewType("AgentName", str)
 ToolName = NewType("ToolName", str)
 ToolCallId = NewType("ToolCallId", str)
 SkillName = NewType("SkillName", str)
-BlackboardName = NewType("BlackboardName", str)
 
 # Content types
 SystemPrompt = NewType("SystemPrompt", str)
@@ -173,22 +172,6 @@ class TodoStatus(str, Enum):
 
 
 @dataclass(frozen=True)
-class BlackboardEntry:
-    """An entry in the blackboard listing.
-
-    Represents the metadata of a blackboard entry (name and description).
-    The actual content is read on-demand via the provider.
-
-    Attributes:
-        name: Unique identifier for the entry.
-        description: Human-readable description shown when listing entries.
-    """
-
-    name: BlackboardName
-    description: str
-
-
-@dataclass(frozen=True)
 class Skill:
     """A skill loaded from a markdown file.
 
@@ -243,7 +226,6 @@ class AgentConfig:
     max_retries: int | None = None
     cache_conversation: bool = True
     skill_dir: str | Path | None = None
-    blackboard: Any = None  # BlackboardProvider | None (Any to avoid circular import)
     memory: Any = None  # MemoryConfig | None (Any to avoid circular import)
     client_factory: "ClientFactory | None" = None
     hooks: "AgentHooks | None" = None

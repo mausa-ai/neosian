@@ -24,6 +24,7 @@ from neosian._foundation.memory.base import MemoryStore
 from neosian._foundation.memory.mounts import MemoryConfig, Mount
 from neosian._foundation.memory.tools import create_memory_tool
 from neosian._foundation.shared.exceptions import ConfigurationError
+from neosian._foundation.shared.prompt_assets import get_prompt
 from neosian._foundation.shared.types import SystemPrompt
 
 if TYPE_CHECKING:
@@ -40,6 +41,10 @@ if TYPE_CHECKING:
 # memory_20250818 tool roots at, so N4's native wiring stays a pure
 # transport swap (§9.5 ruling 13).
 DEFAULT_MEMORY_MOUNT_PATH: Final = "memories"
+# The board (§21, ledger #136): a mount at this path on the scope the
+# caller names verbatim — shared by naming the same scope, reached from
+# the shell and MCP as `--mount scope=…,path=board`.
+DEFAULT_BOARD_MOUNT_PATH: Final = "board"
 
 
 def resolve_memory(
@@ -50,8 +55,39 @@ def resolve_memory(
     mounts: Sequence[Mount] | None,
     memory_scope: str | None,
     memory_mount_path: str,
+    board: str | None = None,
 ) -> MemoryConfig | None:
-    """Resolve the exclusive memory arguments to one MemoryConfig or None."""
+    """Resolve the exclusive memory arguments to one MemoryConfig or None;
+    `board` composes with any of them (or stands alone)."""
+    resolved = _resolve_exclusive(
+        store,
+        base_memory,
+        memory=memory,
+        mounts=mounts,
+        memory_scope=memory_scope,
+        memory_mount_path=memory_mount_path,
+    )
+    if board is None:
+        return resolved
+    mount = Mount(
+        scope=board,
+        mount_path=DEFAULT_BOARD_MOUNT_PATH,
+        description=get_prompt("context.board"),
+    )
+    if resolved is None:
+        return MemoryConfig(store=_as_memory_store(store, "board"), mounts=(mount,))
+    return MemoryConfig(store=resolved.store, mounts=(*resolved.mounts, mount))
+
+
+def _resolve_exclusive(
+    store: ConversationStore,
+    base_memory: object,
+    *,
+    memory: MemoryConfig | None,
+    mounts: Sequence[Mount] | None,
+    memory_scope: str | None,
+    memory_mount_path: str,
+) -> MemoryConfig | None:
     given = [
         name
         for name, value in (

@@ -181,16 +181,6 @@ class ErrorMessages:
     SKILL_DIRECTORY_NOT_FOUND: str = "Skills directory not found: {path}"
     SKILL_NOT_FOUND: str = "Skill '{name}' not found"
 
-    # Blackboard errors
-    BLACKBOARD_ENTRY_NOT_FOUND: str = "Blackboard entry '{name}' not found"
-    BLACKBOARD_READ_ERROR: str = "Failed to read blackboard entry '{name}': {error}"
-    BLACKBOARD_UPDATE_ERROR: str = "Failed to update blackboard entry '{name}': {error}"
-
-    # FileBlackboard-specific errors
-    FILE_BLACKBOARD_DIRECTORY_NOT_FOUND: str = (
-        "FileBlackboard directory not found: {path}"
-    )
-
     # Evaluation errors
     EVAL_CONFIG_NOT_FOUND: str = "Eval config file not found: {path}"
     EVAL_CONFIG_INVALID_YAML: str = "Invalid YAML in eval config: {path}"
@@ -234,13 +224,6 @@ class BuiltinTools:
 
         LIST_NAME: str = "list_skills"
         LOAD_NAME: str = "load_skill"
-
-    class Blackboard:
-        """Blackboard tool constants."""
-
-        LIST_NAME: str = "list_blackboard"
-        READ_NAME: str = "read_blackboard"
-        UPDATE_NAME: str = "update_blackboard"
 
 
 class SkillLoader:

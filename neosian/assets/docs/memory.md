@@ -42,6 +42,27 @@ editable, but nothing may be created, deleted, or renamed (marked
 `(edit-only)`; pre-created layouts the agent works within). Redaction
 stays legal on an edit-only mount: clearing content is a content act.
 
+## Three lifetimes: skills, memory, the board
+
+Skills are static (how), memory is cross-session (what we know), and
+the **board** is one task's working set (what we are doing now). The
+board is a memory mount at `/board` on the scope you name —
+`Conversation(board="task:42")` — shared between agents by naming the
+same scope, from the shell or MCP as `--mount scope=task:42,path=board`.
+Same six commands, same receipts (`conv:<id>#<turn>` on every write),
+same five transports; compaction never pages it, because it is memory,
+not history. The old update-only blackboard is
+`Mount(scope="task:42", mount_path="board", edit_only=True)`: a
+pre-created document set the agents edit but never extend.
+
+To read another agent's *history* rather than its board, give the
+conversation a view: `Conversation(agent_b, …,
+context=[ConversationView("conv-a")])` injects `conv-a` as a frozen,
+log-projected, read-only block (refreshed at the compaction boundary)
+and `recall_turn(n, conversation="conv-a")` re-reads any of its turns
+verbatim. Which conversations are shareable is your decision — ids carry
+no scope.
+
 ## The six commands
 
 One `memory` tool carries the whole vocabulary, on every transport:

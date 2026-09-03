@@ -1,7 +1,7 @@
 """Shared YAML frontmatter — parse and render.
 
-Markdown with a YAML block between `---` fence lines (skills, blackboard
-entries). Fences are whole lines: a `---` inside a value never closes
+Markdown with a YAML block between `---` fence lines (skills, the
+retired blackboard's entries). Fences are whole lines: a `---` inside a value never closes
 the block. `render_frontmatter` is the writer's inverse — real YAML, so
 a description carrying a `: ` survives a rewrite.
 """
