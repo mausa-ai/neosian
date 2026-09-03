@@ -43,7 +43,7 @@ conversation with cross-conversation `recall_turn`.
 
 ## Upgrade to MCP
 
-- `neosian mcp install --client claude-code|claude-desktop|cursor|codex`
+- `neosian mcp install --client claude-code|claude-desktop|cursor|codex|opencode`
   prints the exact registration; `--write` applies it (refused when the
   client is not installed; Codex is print-only — apply with the printed
   `codex mcp add` line).
@@ -52,10 +52,12 @@ conversation with cross-conversation `recall_turn`.
 
 ## Record a foreign agent
 
-- `neosian record install --client claude-code|codex --root DIR --scope user:me`
-  prints the three hooks (UserPromptSubmit, PostToolUse, Stop); `--write`
-  merges them into ./.claude/settings.json or ./.codex/hooks.json, every
-  other hook preserved (Codex: a trusted project, hooks reviewed in /hooks).
+- `neosian record install --client claude-code|codex|opencode --root DIR
+  --scope user:me` prints the three hooks (UserPromptSubmit, PostToolUse,
+  Stop) — for OpenCode, a plugin file; `--write` merges them into
+  ./.claude/settings.json or ./.codex/hooks.json, every other hook
+  preserved, or writes ./.opencode/plugins/neosian-record.js (Codex: a
+  trusted project, hooks reviewed in /hooks).
 - The hooks call `python -m neosian.record` with the payload on stdin; a
   prompt-to-stop span lands as one turn by `claude-code:<session_id>` in
   the conversation the session id names, plus a sessions document at
@@ -91,7 +93,7 @@ conversation with cross-conversation `recall_turn`.
 
 ## Install
 
-- `uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.83.1"`
+- `uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.83.2"`
   (private repository, no PyPI; pin an annotated release tag, never
   master; extras `[postgres]`, `[mcp]`, `[otel]`, and `[server]` ride
   the same URL).

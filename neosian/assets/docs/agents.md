@@ -1,6 +1,6 @@
 ---
 title: Any agent — the record through hooks
-summary: Claude Code's and Codex's hooks call neosian record; a span is one turn by that agent
+summary: Claude Code, Codex and OpenCode hooks call neosian record; a span is one turn by the agent
 ---
 
 # Any agent
@@ -20,6 +20,7 @@ payloads are the import path.
 neosian record install --client claude-code --root ~/.my-agent/state --scope user:me
 neosian record install --client claude-code --url http://127.0.0.1:6367 --scope user:me --write
 neosian record install --client codex --root ~/.my-agent/state --scope user:me --write
+neosian record install --client opencode --root ~/.my-agent/state --scope user:me --write
 ```
 
 - Print mode (the default) puts the paste-able `hooks` fragment on
@@ -47,6 +48,17 @@ neosian record install --client codex --root ~/.my-agent/state --scope user:me -
   --client codex` prints the `[mcp_servers.neosian-memory]` table and
   the `codex mcp add …` line; `--write` is refused with that line as
   the fix.
+- **OpenCode** has no shell hooks; it has a plugin API. The same command
+  writes a small plugin file, `.opencode/plugins/neosian-record.js`
+  (`~/.config/opencode`, or `$OPENCODE_CONFIG_DIR`, must exist), that
+  maps `chat.message`, `tool.execute.after` and `session.idle` onto the
+  verb's three payloads and pipes them in — ours whole, overwritten on
+  re-run, never merged; print mode prints its source. The writer is
+  `opencode:<session_id>`. The memory half is JSON: `neosian mcp install
+  --client opencode` merges `{"mcp": {"neosian-memory": {"type":
+  "local", …}}}` into the project's `opencode.json` (a `.jsonc` with
+  comments is refused; paste the fragment). Any model OpenCode can run
+  works, its free models included.
 
 ## What a span becomes
 
@@ -84,5 +96,6 @@ A row exists only while its walkthrough is green on a real install.
 |---|---|---|
 | Claude Code | ✓ | ✓ — walkthrough green 2026-09-02 |
 | Codex | ✓ print + `codex mcp add` | ✓ — walkthrough green 2026-09-03 (`codex exec`) |
+| OpenCode | ✓ | ✓ — walkthrough green 2026-09-03 (`opencode run`, a plugin) |
 | Claude Desktop | ✓ | no hooks surface |
 | Cursor | ✓ | not yet — enters on a verified hook surface |

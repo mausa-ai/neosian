@@ -68,7 +68,7 @@ def _settings_file(context: Environment) -> Path:
 
 class TestTarget:
     def test_the_rows_come_from_the_table(self, tmp_path: Path) -> None:
-        assert CLIENT_CHOICES == ("claude-code", "codex")
+        assert CLIENT_CHOICES == ("claude-code", "codex", "opencode")
         context = _context(tmp_path)
         target = resolve_target("claude-code", context)
         assert target.config_path == _settings_file(context)
@@ -280,6 +280,69 @@ class TestCodex:
         assert not (context.cwd / ".codex").exists()
 
 
+class TestOpenCode:
+    """OpenCode has no shell hooks: the row is a plugin file, ours whole."""
+
+    _ARGV = ["--client", "opencode", "--root", "m", "--scope", "user:me"]
+
+    def test_the_target_is_the_project_plugin_file(self, tmp_path: Path) -> None:
+        context = _context(tmp_path)
+        target = resolve_target("opencode", context)
+        assert (
+            target.config_path
+            == context.cwd / ".opencode" / "plugins" / "neosian-record.js"
+        )
+        assert target.evidence_dir == context.home / ".config" / "opencode"
+        assert target.plugin
+        moved = Environment(
+            home=tmp_path,
+            cwd=tmp_path,
+            platform="darwin",
+            env={"OPENCODE_CONFIG_DIR": str(tmp_path / "oc")},
+            executable=_EXECUTABLE,
+        )
+        assert resolve_target("opencode", moved).evidence_dir == tmp_path / "oc"
+
+    def test_print_mode_is_the_plugin_source(self, tmp_path: Path) -> None:
+        context = _context(tmp_path)
+        (context.home / ".config" / "opencode").mkdir(parents=True)
+        code, out, err = _run(self._ARGV, context)
+        assert code == 0, err
+        assert out.startswith("// neosian record — the OpenCode plugin.")
+        assert '"chat.message"' in out and '"tool.execute.after"' in out
+        assert "session.idle" in out and "__NEOSIAN" not in out
+        argv = json.loads(out.split("const ARGV = ", 1)[1].split(";", 1)[0])
+        assert argv[:3] == [_EXECUTABLE, "-m", "neosian.record"]
+        assert argv[argv.index("--agent") + 1] == "opencode"
+        assert "hint: re-run with --write" in err
+        assert not (context.cwd / ".opencode").exists()
+
+    def test_write_lands_the_plugin_and_overwrites_it(self, tmp_path: Path) -> None:
+        context = _context(tmp_path)
+        (context.home / ".config" / "opencode").mkdir(parents=True)
+        code, out, _ = _run([*self._ARGV, "--write"], context)
+        target = context.cwd / ".opencode" / "plugins" / "neosian-record.js"
+        assert code == 0 and out == f"created {target}\n"
+        assert "export const NeosianRecord" in target.read_text()
+        code, out, _ = _run([*self._ARGV, "--agent", "oc", "--write"], context)
+        assert code == 0 and out == f"updated {target}\n"
+        assert '"--agent", "oc"' in target.read_text()
+
+    def test_json_envelope_carries_the_plugin(self, tmp_path: Path) -> None:
+        context = _context(tmp_path)
+        (context.home / ".config" / "opencode").mkdir(parents=True)
+        code, out, _ = _run([*self._ARGV, "--json"], context)
+        assert code == 0
+        payload = json.loads(out)
+        assert payload["hooks"] is None and "NeosianRecord" in payload["plugin"]
+
+    def test_a_missing_config_dir_is_refused(self, tmp_path: Path) -> None:
+        context = _context(tmp_path)
+        code, _, err = _run([*self._ARGV, "--write"], context)
+        assert code == 1 and "OpenCode is not installed here" in err
+        assert not (context.cwd / ".opencode").exists()
+
+
 class TestRendering:
     def test_json_success_and_failure_envelopes(self, tmp_path: Path) -> None:
         context = _context(tmp_path)
@@ -291,7 +354,7 @@ class TestRendering:
         assert code == 0 and err == "" and out.count("\n") == 1
         payload = json.loads(out)
         assert payload["success"] is True and payload["written"] is False
-        assert tuple(payload["hooks"]) == HOOK_EVENTS
+        assert tuple(payload["hooks"]) == HOOK_EVENTS and payload["plugin"] is None
         assert payload["command"].startswith(_EXECUTABLE)
 
     def test_the_url_is_rendered_and_the_token_hinted(self, tmp_path: Path) -> None:

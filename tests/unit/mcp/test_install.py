@@ -76,7 +76,13 @@ def _mode(path: Path) -> int:
 
 class TestTargets:
     def test_choices_come_from_the_table(self) -> None:
-        assert CLIENT_CHOICES == ("claude-code", "claude-desktop", "cursor", "codex")
+        assert CLIENT_CHOICES == (
+            "claude-code",
+            "claude-desktop",
+            "cursor",
+            "codex",
+            "opencode",
+        )
 
     def test_codex_is_its_home_toml_or_codex_home(self, tmp_path: Path) -> None:
         context = _context(tmp_path)
@@ -502,6 +508,42 @@ class TestCodex:
             context,
         )
         assert code == 0 and json.loads(out)["apply"] is None
+
+
+class TestOpenCode:
+    """OpenCode's MCP config is JSON under `mcp` in the project's
+    opencode.json, the entry in its own shape."""
+
+    _ARGV = ["--client", "opencode", "--root", "m", "--scope", "user:me"]
+
+    def test_the_target_and_the_entry_shape(self, tmp_path: Path) -> None:
+        context = _context(tmp_path)
+        target = resolve_target("opencode", context)
+        assert target.config_path == context.cwd / "opencode.json"
+        assert target.evidence_dir == context.home / ".config" / "opencode"
+        assert target.servers_key == "mcp" and target.style == "opencode"
+        (context.home / ".config" / "opencode").mkdir(parents=True)
+        code, out, err = _run(self._ARGV, context)
+        assert code == 0, err
+        entry = json.loads(out)["mcp"][SERVER_NAME]
+        assert entry["type"] == "local" and entry["enabled"] is True
+        assert entry["command"][:3] == [_EXECUTABLE, "-m", "neosian.mcp"]
+        assert "--actor" in entry["command"] and "args" not in entry
+
+    def test_write_merges_into_opencode_json(self, tmp_path: Path) -> None:
+        context = _context(tmp_path)
+        (context.home / ".config" / "opencode").mkdir(parents=True)
+        config = context.cwd / "opencode.json"
+        config.write_text(
+            '{"$schema": "https://opencode.ai/config.json", '
+            '"mcp": {"other": {"type": "remote", "url": "x"}}}\n'
+        )
+        code, out, _ = _run([*self._ARGV, "--write"], context)
+        assert code == 0 and out == f"updated {config}\n"
+        written = json.loads(config.read_text())
+        assert written["$schema"].startswith("https://")
+        assert written["mcp"]["other"]["url"] == "x"
+        assert written["mcp"][SERVER_NAME]["type"] == "local"
 
 
 class TestTheClientActor:

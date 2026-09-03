@@ -78,9 +78,12 @@ def load_document(path: Path) -> dict[str, Any]:
 
 
 def write_document(path: Path, document: dict[str, Any]) -> None:
+    write_text(path, json.dumps(document, indent=2) + "\n")
+
+
+def write_text(path: Path, text: str) -> None:
     # Client configs carry other servers' credentials: an existing file
     # keeps its mode, a new one is born private — never the umask default.
-    text = json.dumps(document, indent=2) + "\n"
     try:
         mode = path.stat().st_mode & 0o777 if path.exists() else PRIVATE_FILE
         atomic_write(path, text, mode=mode)

@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import shlex
 from dataclasses import dataclass, replace
+from importlib import resources
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, TextIO
 
@@ -39,6 +40,7 @@ from neosian._foundation.shared.client_config import (
     ensure_evidence,
     load_document,
     write_document,
+    write_text,
 )
 from neosian._foundation.shared.exceptions import MemoryStoreError
 
@@ -49,6 +51,8 @@ HOOK_EVENTS: Final = ("UserPromptSubmit", "PostToolUse", "Stop")
 HOOKS_KEY: Final = "hooks"
 _RECORD_ARGV: Final = ("-m", "neosian.record")  # the one place the module path lives
 _MARKER: Final = " ".join(_RECORD_ARGV)  # how ours is recognised in a merge
+_PLUGIN_ASSET: Final = "clients/opencode-record.js"
+_PLUGIN_ARGV_SLOT: Final = "__NEOSIAN_RECORD_ARGV__"
 _DESCRIPTION: Final = "Print or apply a foreign agent's hooks for neosian record."
 _EPILOG: Final = (
     "Print mode (the default) puts the paste-able hooks fragment on stdout "
@@ -70,6 +74,9 @@ class HookTarget:
     evidence_dir: Path  # must already exist; NEVER created
     scope_note: str
     trust_hint: str | None = None  # what the client needs before it loads the file
+    # A plugin client (OpenCode) has no shell hooks: the file is ours whole
+    # — a rendered plugin, written and overwritten, never merged.
+    plugin: bool = False
 
 
 def _claude_code(context: Environment) -> HookTarget:
@@ -103,9 +110,29 @@ def _codex(context: Environment) -> HookTarget:
     )
 
 
+def opencode_config_dir(context: Environment) -> Path:
+    """`$OPENCODE_CONFIG_DIR` moves OpenCode's config; the default is
+    `~/.config/opencode`."""
+    override = context.env.get("OPENCODE_CONFIG_DIR")
+    return Path(override) if override else context.home / ".config" / "opencode"
+
+
+def _opencode(context: Environment) -> HookTarget:
+    return HookTarget(
+        client="opencode",
+        label="OpenCode",
+        config_path=context.cwd / ".opencode" / "plugins" / "neosian-record.js",
+        evidence_dir=opencode_config_dir(context),
+        scope_note="project scope — .opencode/plugins/neosian-record.js travels "
+        "with this directory's repo",
+        plugin=True,
+    )
+
+
 _TARGETS: Final[dict[str, Callable[[Environment], HookTarget]]] = {
     "claude-code": _claude_code,
     "codex": _codex,
+    "opencode": _opencode,
 }
 CLIENT_CHOICES: Final = tuple(_TARGETS)
 
@@ -115,8 +142,8 @@ def resolve_target(client: str, context: Environment) -> HookTarget:
     return _TARGETS[client](context)
 
 
-def build_command(settings: RecordSettings, *, executable: str) -> str:
-    """The resolved settings re-rendered as one hook line — the same
+def build_argv(settings: RecordSettings, *, executable: str) -> list[str]:
+    """The resolved settings re-rendered as the verb's argv — the same
     layout `mcp install` renders (absolute root, canonical mounts, the
     URL verbatim, never the DSN), plus the agent's kind and an absolute
     spool (hooks run in the project's cwd, worktrees included)."""
@@ -133,7 +160,20 @@ def build_command(settings: RecordSettings, *, executable: str) -> str:
     if settings.agent != DEFAULT_AGENT:
         args += ["--agent", settings.agent]
     args += ["--spool", str(settings.spool.expanduser().resolve())]
-    return shlex.join(args)
+    return args
+
+
+def build_command(settings: RecordSettings, *, executable: str) -> str:
+    """`build_argv` as one shell line — what a hooks file carries."""
+    return shlex.join(build_argv(settings, executable=executable))
+
+
+def render_plugin(argv: Sequence[str]) -> str:
+    """The OpenCode plugin with the verb's argv in its one slot."""
+    template = (
+        resources.files("neosian.assets").joinpath(_PLUGIN_ASSET).read_text("utf-8")
+    )
+    return template.replace(_PLUGIN_ARGV_SLOT, json.dumps(list(argv)))
 
 
 def hook_fragment(command: str) -> dict[str, Any]:
@@ -184,7 +224,7 @@ def merge_hooks(
 def _render_success(
     *,
     target: HookTarget,
-    command: str,
+    argv: Sequence[str],
     settings: RecordSettings,
     written: bool,
     created: bool,
@@ -192,14 +232,17 @@ def _render_success(
     out: TextIO,
     err: TextIO,
 ) -> int:
+    command = shlex.join(argv)
     fragment = hook_fragment(command)
+    plugin = render_plugin(argv) if target.plugin else None
     if json_output:
         payload = {
             "success": True,
             "client": target.client,
             "label": target.label,
             "config_path": str(target.config_path),
-            "hooks": fragment[HOOKS_KEY],
+            "hooks": None if target.plugin else fragment[HOOKS_KEY],
+            "plugin": plugin,
             "command": command,
             "written": written,
             "created": created,
@@ -209,8 +252,11 @@ def _render_success(
     if written:
         out.write(f"{'created' if created else 'updated'} {target.config_path}\n")
     else:
-        # stdout is only the paste-able fragment: `> snippet.json` stays valid.
-        out.write(json.dumps(fragment, indent=2) + "\n")
+        # stdout is only the paste-able artifact: the fragment, or the
+        # plugin source — `> file` stays valid either way.
+        out.write(
+            plugin if plugin is not None else json.dumps(fragment, indent=2) + "\n"
+        )
         err.write(f"{target.label}: {target.scope_note}\n")
         err.write(f"target: {target.config_path}\n")
         err.write(f"hint: re-run with --write to apply this to {target.config_path}\n")
@@ -301,27 +347,29 @@ def run_install(
     if settings.agent == DEFAULT_AGENT:
         # The installer knows the client; the verb's default does not.
         settings = replace(settings, agent=args.client)
-    command = build_command(settings, executable=context.executable)
+    argv = build_argv(settings, executable=context.executable)
     created = False
     try:
         ensure_evidence(target.label, target.evidence_dir)
         if args.write:
-            document = load_document(target.config_path)
             created = not target.config_path.exists()
-            merged = merge_hooks(
-                document, hook_fragment(command), path=target.config_path
-            )
             # The project's own config directory, like `.mcp.json`'s parent —
             # not the client's home, which is refused above.
-            target.config_path.parent.mkdir(exist_ok=True)
-            write_document(target.config_path, merged)
+            target.config_path.parent.mkdir(parents=True, exist_ok=True)
+            if target.plugin:
+                write_text(target.config_path, render_plugin(argv))
+            else:
+                document = load_document(target.config_path)
+                fragment = hook_fragment(shlex.join(argv))
+                merged = merge_hooks(document, fragment, path=target.config_path)
+                write_document(target.config_path, merged)
     except InstallError as exc:
         return _render_failure(
             exc, target=target, json_output=args.json_output, out=out, err=err
         )
     return _render_success(
         target=target,
-        command=command,
+        argv=argv,
         settings=settings,
         written=args.write,
         created=created,

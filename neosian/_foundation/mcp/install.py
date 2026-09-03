@@ -67,6 +67,9 @@ class ClientTarget:
     # A TOML client (Codex) is print-only: its own CLI writes its config,
     # so --write is refused with that command as the fix.
     toml: bool = False
+    # The entry's shape: `mcpServers` ({command, args}) or OpenCode's
+    # ({type: local, command: [...], enabled}).
+    style: str = "mcpServers"
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,6 +81,16 @@ class RegistrationEntry:
 
     def to_json(self) -> dict[str, Any]:
         return {"command": self.command, "args": list(self.args)}
+
+    def render(self, style: str) -> dict[str, Any]:
+        """The entry in a client's own shape."""
+        if style == "opencode":
+            return {
+                "type": "local",
+                "command": [self.command, *self.args],
+                "enabled": True,
+            }
+        return self.to_json()
 
     def to_toml(self, *, servers_key: str, name: str) -> str:
         """The `[<servers_key>.<name>]` table; JSON strings are valid TOML
@@ -151,11 +164,27 @@ def _codex(context: Environment) -> ClientTarget:
     )
 
 
+def _opencode(context: Environment) -> ClientTarget:
+    override = context.env.get("OPENCODE_CONFIG_DIR")
+    base = Path(override) if override else context.home / ".config" / "opencode"
+    return ClientTarget(
+        client="opencode",
+        label="OpenCode",
+        config_path=context.cwd / "opencode.json",
+        evidence_dir=base,
+        servers_key="mcp",
+        scope_note="project scope — opencode.json travels with this directory's "
+        "repo (a project on opencode.jsonc is refused: comments do not merge)",
+        style="opencode",
+    )
+
+
 _TARGETS: Final[dict[str, Callable[[Environment], ClientTarget]]] = {
     "claude-code": _claude_code,
     "claude-desktop": _claude_desktop,
     "cursor": _cursor,
     "codex": _codex,
+    "opencode": _opencode,
 }
 CLIENT_CHOICES: Final = tuple(_TARGETS)
 
@@ -197,6 +226,7 @@ def merge_entry(
     name: str,
     entry: RegistrationEntry,
     path: Path,
+    style: str = "mcpServers",
 ) -> dict[str, Any]:
     """A new document with our server registered; every other key preserved."""
     merged = dict(document)
@@ -207,7 +237,7 @@ def merge_entry(
             FIX_BY_HAND,
         )
     servers: dict[str, Any] = dict(existing)
-    servers[name] = entry.to_json()
+    servers[name] = entry.render(style)
     merged[servers_key] = servers
     return merged
 
@@ -232,7 +262,7 @@ def _render_success(
             "config_path": str(target.config_path),
             "servers_key": target.servers_key,
             "server_name": SERVER_NAME,
-            "entry": entry.to_json(),
+            "entry": entry.render(target.style),
             "written": written,
             "created": created,
             "apply": apply,
@@ -254,7 +284,7 @@ def _render_success(
             )
     else:
         # stdout is only the paste-able fragment: `> snippet.json` stays valid.
-        fragment = {target.servers_key: {SERVER_NAME: entry.to_json()}}
+        fragment = {target.servers_key: {SERVER_NAME: entry.render(target.style)}}
         out.write(json.dumps(fragment, indent=2) + "\n")
         err.write(f"{target.label}: {target.scope_note}\n")
         err.write(f"target: {target.config_path}\n")
@@ -358,6 +388,7 @@ def run_install(
                 name=SERVER_NAME,
                 entry=entry,
                 path=target.config_path,
+                style=target.style,
             )
             write_document(target.config_path, merged)
     except InstallError as exc:

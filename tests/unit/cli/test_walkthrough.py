@@ -6,7 +6,7 @@ NP redaction leg over the operator verbs), offer the MCP upgrade, and
 record a foreign agent's session from replayed hook payloads (NL) —
 driven through the LITERAL `neosian` binary, closing §14.3's honest
 limit (the process boundary the in-process cli transport deliberately
-skips, ledger #78). ~24 interpreter starts, once per gate.
+skips, ledger #78). ~25 interpreter starts, once per gate.
 
 No skip: if the console script ever stops being installed, this must
 go red, not green-by-skip.
@@ -403,13 +403,18 @@ class TestRecord:
         assert f"sessions/{SESSION}" in index.stdout
 
     @pytest.mark.parametrize(
-        ("client", "evidence"), [("claude-code", ".claude"), ("codex", ".codex")]
+        ("client", "evidence"),
+        [
+            ("claude-code", ".claude"),
+            ("codex", ".codex"),
+            ("opencode", ".config/opencode"),
+        ],
     )
     def test_install_prints_the_hooks(
         self, tmp_path: Path, client: str, evidence: str
     ) -> None:
         env = _env(tmp_path)
-        (tmp_path / evidence).mkdir()  # HOME is tmp_path — install evidence
+        (tmp_path / evidence).mkdir(parents=True)  # HOME is tmp_path — evidence
         result = _run(
             [
                 "record",
@@ -425,12 +430,14 @@ class TestRecord:
             env=env,
         )
         assert result.returncode == 0, result.stderr
+        if client == "opencode":
+            assert "export const NeosianRecord" in result.stdout
+            assert not (tmp_path / ".opencode").exists()  # print mode
+            return
         hooks = json.loads(result.stdout)["hooks"]
         assert set(hooks) == {"UserPromptSubmit", "PostToolUse", "Stop"}
         assert "-m neosian.record" in hooks["Stop"][0]["hooks"][0]["command"]
-        assert (
-            not (tmp_path / evidence).joinpath("settings.json").exists()
-        )  # print mode
+        assert not (tmp_path / ".claude" / "settings.json").exists()  # print mode
         assert not (tmp_path / ".codex" / "hooks.json").exists()
 
     def test_codex_mcp_install_prints_toml(self, tmp_path: Path) -> None:

@@ -27,11 +27,11 @@ The repository is private; as a dependency of another uv project, install
 from the git URL, pinned to a release tag (extras ride the same URL):
 
 ```bash
-uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.83.1"
-uv add "neosian[postgres] @ git+ssh://git@github.com/neosae/neosian@v0.83.1"   # + PostgresStore
-uv add "neosian[mcp] @ git+ssh://git@github.com/neosae/neosian@v0.83.1"        # + MCP memory server
-uv add "neosian[otel] @ git+ssh://git@github.com/neosae/neosian@v0.83.1"       # + OpenTelemetry spans
-uv add "neosian[server] @ git+ssh://git@github.com/neosae/neosian@v0.83.1"     # + the state process
+uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.83.2"
+uv add "neosian[postgres] @ git+ssh://git@github.com/neosae/neosian@v0.83.2"   # + PostgresStore
+uv add "neosian[mcp] @ git+ssh://git@github.com/neosae/neosian@v0.83.2"        # + MCP memory server
+uv add "neosian[otel] @ git+ssh://git@github.com/neosae/neosian@v0.83.2"       # + OpenTelemetry spans
+uv add "neosian[server] @ git+ssh://git@github.com/neosae/neosian@v0.83.2"     # + the state process
 ```
 
 The core install is database-driver-free, MCP-free, and server-free
@@ -253,14 +253,14 @@ function tool uses. Hosts that embed the server in their own transport use
 `create_memory_server` from `neosian.mcp`.
 
 Registering a client is one command:
-`neosian mcp install --client claude-code|claude-desktop|cursor|codex` prints
+`neosian mcp install --client claude-code|claude-desktop|cursor|codex|opencode` prints
 the exact `mcpServers` entry (paste-able JSON on stdout); `--write`
 merges it into the client's config, preserving every other key, and
 refuses a client whose config directory does not exist.
 
 The record half, for the agent you already use: `neosian record install
---client claude-code|codex` prints the three hooks that call `neosian
-record`; a prompt-to-stop span then lands as one turn by
+--client claude-code|codex|opencode` prints the three hooks that call
+`neosian record` (a plugin file for OpenCode); a prompt-to-stop span then lands as one turn by
 `claude-code:<session_id>` (or `codex:<thread_id>`) plus a sessions
 document, and `neosian audit --conversation <id>` reads it back
 (`neosian docs agents`).
