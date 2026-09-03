@@ -76,7 +76,22 @@ def _mode(path: Path) -> int:
 
 class TestTargets:
     def test_choices_come_from_the_table(self) -> None:
-        assert CLIENT_CHOICES == ("claude-code", "claude-desktop", "cursor")
+        assert CLIENT_CHOICES == ("claude-code", "claude-desktop", "cursor", "codex")
+
+    def test_codex_is_its_home_toml_or_codex_home(self, tmp_path: Path) -> None:
+        context = _context(tmp_path)
+        target = resolve_target("codex", context)
+        assert target.config_path == context.home / ".codex" / "config.toml"
+        assert target.evidence_dir == context.home / ".codex"
+        assert target.toml
+        moved = Environment(
+            home=context.home,
+            cwd=context.cwd,
+            platform="darwin",
+            env={"CODEX_HOME": str(tmp_path / "ch")},
+            executable=_EXECUTABLE,
+        )
+        assert resolve_target("codex", moved).evidence_dir == tmp_path / "ch"
 
     def test_claude_code_is_the_project_file(self, tmp_path: Path) -> None:
         context = _context(tmp_path)
@@ -436,6 +451,57 @@ class TestRendering:
         )
         assert code == 0
         assert "one writer per FileStore root" in err
+
+
+class TestCodex:
+    """Codex's config is TOML its own CLI writes: print mode renders the
+    table and the `codex mcp add` line; --write is refused with that line."""
+
+    _ARGV = ["--client", "codex", "--root", "m", "--scope", "user:me"]
+
+    def test_print_mode_renders_toml_and_the_apply_line(self, tmp_path: Path) -> None:
+        import tomllib
+
+        context = _context(tmp_path)
+        (context.home / ".codex").mkdir()
+        code, out, err = _run(self._ARGV, context)
+        assert code == 0, err
+        table = tomllib.loads(out)["mcp_servers"][SERVER_NAME]
+        assert table["command"] == _EXECUTABLE
+        assert table["args"][:2] == ["-m", "neosian.mcp"]
+        assert "--actor mcp:codex" in " ".join(table["args"]) or (
+            table["args"][table["args"].index("--actor") + 1] == "mcp:codex"
+        )
+        assert (
+            f"hint: apply it with: codex mcp add {SERVER_NAME} -- {_EXECUTABLE}" in err
+        )
+        assert "re-run with --write" not in err
+
+    def test_write_is_refused_with_the_apply_line(self, tmp_path: Path) -> None:
+        context = _context(tmp_path)
+        (context.home / ".codex").mkdir()
+        code, out, err = _run([*self._ARGV, "--write"], context)
+        assert code == 1 and out == ""
+        assert "owns its TOML" in err and "codex mcp add" in err
+        assert not (context.home / ".codex" / "config.toml").exists()
+
+    def test_json_envelope_carries_the_apply_line(self, tmp_path: Path) -> None:
+        context = _context(tmp_path)
+        (context.home / ".codex").mkdir()
+        code, out, _ = _run([*self._ARGV, "--json"], context)
+        assert code == 0
+        payload = json.loads(out)
+        assert payload["apply"].startswith(f"codex mcp add {SERVER_NAME} -- ")
+        assert payload["servers_key"] == "mcp_servers"
+
+    def test_a_json_client_has_no_apply_line(self, tmp_path: Path) -> None:
+        context = _context(tmp_path)
+        (context.home / ".cursor").mkdir()
+        code, out, _ = _run(
+            ["--client", "cursor", "--root", "m", "--scope", "user:me", "--json"],
+            context,
+        )
+        assert code == 0 and json.loads(out)["apply"] is None
 
 
 class TestTheClientActor:

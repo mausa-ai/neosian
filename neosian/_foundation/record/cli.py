@@ -24,6 +24,7 @@ from neosian._foundation.memory.actor import parse_actor
 from neosian._foundation.memory.settings import StreamParser
 from neosian._foundation.memory.store_lifetime import open_store
 from neosian._foundation.record.settings import (
+    JSON_STOP_AGENTS,
     RecordSettings,
     add_record_arguments,
     resolve_record_settings,
@@ -100,6 +101,8 @@ async def run(
         return 1
     if args.json_output:
         out.write(json.dumps(envelope) + "\n")
+    elif envelope["event"] == STOP_EVENT and settings.agent in JSON_STOP_AGENTS:
+        out.write("{}\n")  # the client wants a JSON decision; this is none
     return 0
 
 

@@ -121,10 +121,16 @@ class TestTheSpan:
         assert not (tmp_path / "mem" / "conversations").exists()
         assert not (tmp_path / "spool" / f"{SESSION}.jsonl").exists()
 
-    async def test_the_agent_kind_is_the_actor(self, tmp_path: Path) -> None:
+    async def test_the_agent_kind_is_the_actor_and_codex_gets_a_decision(
+        self, tmp_path: Path
+    ) -> None:
+        """Codex's Stop hook expects JSON on stdout (its reference); the
+        verb answers an empty decision there and nothing anywhere else."""
         argv = _flags(tmp_path, "--agent", "codex")
-        await _run(argv, prompt())
-        await _run(argv, stop())
+        opened = await _run(argv, prompt())
+        assert opened.out == ""
+        closed = await _run(argv, stop())
+        assert closed.out == "{}\n" and closed.err == ""
         (turn,) = await FileStore(tmp_path / "mem").read_turns(SESSION)
         assert turn.actor == f"codex:{SESSION}"
 

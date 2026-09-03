@@ -15,7 +15,8 @@ from __future__ import annotations
 
 import json
 import shlex
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, TextIO
 
 from neosian._foundation.memory.settings import (
@@ -42,12 +43,10 @@ from neosian._foundation.shared.client_config import (
 from neosian._foundation.shared.exceptions import MemoryStoreError
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
-    from pathlib import Path
+    from collections.abc import Callable, Mapping, Sequence
 
 HOOK_EVENTS: Final = ("UserPromptSubmit", "PostToolUse", "Stop")
 HOOKS_KEY: Final = "hooks"
-CLIENT_CHOICES: Final = ("claude-code",)
 _RECORD_ARGV: Final = ("-m", "neosian.record")  # the one place the module path lives
 _MARKER: Final = " ".join(_RECORD_ARGV)  # how ours is recognised in a merge
 _DESCRIPTION: Final = "Print or apply a foreign agent's hooks for neosian record."
@@ -70,19 +69,50 @@ class HookTarget:
     config_path: Path
     evidence_dir: Path  # must already exist; NEVER created
     scope_note: str
+    trust_hint: str | None = None  # what the client needs before it loads the file
 
 
-def resolve_target(client: str, context: Environment) -> HookTarget:
-    """The hooks surface for one `--client` token (Claude Code only)."""
-    assert client == "claude-code", client  # argparse choices guarantee it
+def _claude_code(context: Environment) -> HookTarget:
     return HookTarget(
-        client=client,
+        client="claude-code",
         label="Claude Code",
         config_path=context.cwd / ".claude" / "settings.json",
         evidence_dir=context.home / ".claude",
         scope_note="project scope — .claude/settings.json travels with this "
         "directory's repo",
     )
+
+
+def codex_home(context: Environment) -> Path:
+    """`$CODEX_HOME` moves every Codex file; the default is `~/.codex`."""
+    override = context.env.get("CODEX_HOME")
+    return Path(override) if override else context.home / ".codex"
+
+
+def _codex(context: Environment) -> HookTarget:
+    return HookTarget(
+        client="codex",
+        label="Codex",
+        config_path=context.cwd / ".codex" / "hooks.json",
+        evidence_dir=codex_home(context),
+        scope_note="project scope — .codex/hooks.json travels with this "
+        "directory's repo",
+        trust_hint="Codex loads project hooks only for a trusted project: "
+        f'[projects."{context.cwd}"] trust_level = "trusted" in its config.toml, '
+        "or accept the trust prompt on first run",
+    )
+
+
+_TARGETS: Final[dict[str, Callable[[Environment], HookTarget]]] = {
+    "claude-code": _claude_code,
+    "codex": _codex,
+}
+CLIENT_CHOICES: Final = tuple(_TARGETS)
+
+
+def resolve_target(client: str, context: Environment) -> HookTarget:
+    """The hooks surface for one `--client` token."""
+    return _TARGETS[client](context)
 
 
 def build_command(settings: RecordSettings, *, executable: str) -> str:
@@ -184,6 +214,8 @@ def _render_success(
         err.write(f"{target.label}: {target.scope_note}\n")
         err.write(f"target: {target.config_path}\n")
         err.write(f"hint: re-run with --write to apply this to {target.config_path}\n")
+    if target.trust_hint is not None:
+        err.write(f"hint: {target.trust_hint}\n")
     if settings.store.root is not None:
         err.write(
             "hint: one writer per FileStore root (DESIGN §8) — hooks beside an "
@@ -266,6 +298,9 @@ def run_install(
         return 2
 
     target = resolve_target(args.client, context)
+    if settings.agent == DEFAULT_AGENT:
+        # The installer knows the client; the verb's default does not.
+        settings = replace(settings, agent=args.client)
     command = build_command(settings, executable=context.executable)
     created = False
     try:

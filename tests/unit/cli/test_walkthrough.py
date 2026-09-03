@@ -6,7 +6,7 @@ NP redaction leg over the operator verbs), offer the MCP upgrade, and
 record a foreign agent's session from replayed hook payloads (NL) —
 driven through the LITERAL `neosian` binary, closing §14.3's honest
 limit (the process boundary the in-process cli transport deliberately
-skips, ledger #78). ~21 interpreter starts, once per gate.
+skips, ledger #78). ~24 interpreter starts, once per gate.
 
 No skip: if the console script ever stops being installed, this must
 go red, not green-by-skip.
@@ -18,6 +18,8 @@ import subprocess
 import sys
 from collections.abc import Mapping
 from pathlib import Path
+
+import pytest
 
 from neosian._foundation.memory.file import FileStore
 from tests.unit.record.payloads import SESSION, prompt, stop, tool
@@ -400,15 +402,20 @@ class TestRecord:
         assert index.returncode == 0
         assert f"sessions/{SESSION}" in index.stdout
 
-    def test_install_prints_the_hooks(self, tmp_path: Path) -> None:
+    @pytest.mark.parametrize(
+        ("client", "evidence"), [("claude-code", ".claude"), ("codex", ".codex")]
+    )
+    def test_install_prints_the_hooks(
+        self, tmp_path: Path, client: str, evidence: str
+    ) -> None:
         env = _env(tmp_path)
-        (tmp_path / ".claude").mkdir()  # HOME is tmp_path — install evidence
+        (tmp_path / evidence).mkdir()  # HOME is tmp_path — install evidence
         result = _run(
             [
                 "record",
                 "install",
                 "--client",
-                "claude-code",
+                client,
                 "--root",
                 str(tmp_path / "mem"),
                 "--scope",
@@ -421,4 +428,32 @@ class TestRecord:
         hooks = json.loads(result.stdout)["hooks"]
         assert set(hooks) == {"UserPromptSubmit", "PostToolUse", "Stop"}
         assert "-m neosian.record" in hooks["Stop"][0]["hooks"][0]["command"]
-        assert not (tmp_path / ".claude" / "settings.json").exists()  # print mode
+        assert (
+            not (tmp_path / evidence).joinpath("settings.json").exists()
+        )  # print mode
+        assert not (tmp_path / ".codex" / "hooks.json").exists()
+
+    def test_codex_mcp_install_prints_toml(self, tmp_path: Path) -> None:
+        import tomllib
+
+        env = _env(tmp_path)
+        (tmp_path / ".codex").mkdir()
+        result = _run(
+            [
+                "mcp",
+                "install",
+                "--client",
+                "codex",
+                "--root",
+                str(tmp_path / "mem"),
+                "--scope",
+                "user:walkthrough",
+            ],
+            cwd=tmp_path,
+            env=env,
+        )
+        assert result.returncode == 0, result.stderr
+        assert tomllib.loads(result.stdout)["mcp_servers"]["neosian-memory"]["args"][
+            :2
+        ] == ["-m", "neosian.mcp"]
+        assert "codex mcp add neosian-memory --" in result.stderr

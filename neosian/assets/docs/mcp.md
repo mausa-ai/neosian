@@ -6,7 +6,7 @@ summary: Serve over stdio, register with neosian mcp install, one writer per roo
 # The MCP memory server
 
 The same stores, served to any MCP client — Claude Code, Claude
-Desktop, Cursor — over stdio. Requires the `mcp` extra
+Desktop, Cursor, Codex — over stdio. Requires the `mcp` extra
 (`neosian[mcp]`); the core install refuses with an install hint, never
 a traceback. For MCP over the network, the state process mounts this
 same factory's server at `/mcp`: `neosian serve` with mounts
@@ -45,7 +45,10 @@ neosian mcp install --client claude-desktop ... --write
 - `--write` merges the entry into the client's config file,
   preserving every other key. Targets: `claude-code` → the project's
   `./.mcp.json`; `claude-desktop` → its platform config file;
-  `cursor` → `~/.cursor/mcp.json`.
+  `cursor` → `~/.cursor/mcp.json`; `codex` → `~/.codex/config.toml`
+  (TOML, print-only: stdout is the `[mcp_servers.neosian-memory]`
+  table and stderr the `codex mcp add …` line that applies it —
+  Codex's own CLI is the writer, so `--write` is refused).
 - A client whose config directory does not exist is refused (exit 1)
   — neosian never creates another program's config home. Install the
   client first.

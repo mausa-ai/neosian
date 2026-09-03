@@ -67,12 +67,30 @@ def _settings_file(context: Environment) -> Path:
 
 
 class TestTarget:
-    def test_claude_code_is_the_only_row(self, tmp_path: Path) -> None:
-        assert CLIENT_CHOICES == ("claude-code",)
+    def test_the_rows_come_from_the_table(self, tmp_path: Path) -> None:
+        assert CLIENT_CHOICES == ("claude-code", "codex")
         context = _context(tmp_path)
         target = resolve_target("claude-code", context)
         assert target.config_path == _settings_file(context)
         assert target.evidence_dir == context.home / ".claude"
+        assert target.trust_hint is None
+
+    def test_codex_is_the_project_hooks_file_under_trust(self, tmp_path: Path) -> None:
+        context = _context(tmp_path)
+        target = resolve_target("codex", context)
+        assert target.config_path == context.cwd / ".codex" / "hooks.json"
+        assert target.evidence_dir == context.home / ".codex"
+        assert target.trust_hint is not None and "trusted" in target.trust_hint
+
+    def test_codex_home_moves_the_evidence(self, tmp_path: Path) -> None:
+        context = Environment(
+            home=tmp_path,
+            cwd=tmp_path,
+            platform="darwin",
+            env={"CODEX_HOME": str(tmp_path / "elsewhere")},
+            executable=_EXECUTABLE,
+        )
+        assert resolve_target("codex", context).evidence_dir == tmp_path / "elsewhere"
 
 
 class TestCommand:
@@ -221,6 +239,45 @@ class TestExitTiers:
     def test_bad_invocations_exit_2(self, tmp_path: Path, argv: list[str]) -> None:
         code, out, _ = _run(argv, _context(tmp_path))
         assert code == 2 and out == ""
+
+
+class TestCodex:
+    _ARGV = ["--client", "codex", "--root", "m", "--scope", "user:me"]
+
+    def test_the_agent_kind_follows_the_client(self, tmp_path: Path) -> None:
+        context = _context(tmp_path)
+        (context.home / ".codex").mkdir()
+        code, out, err = _run(self._ARGV, context)
+        assert code == 0, err
+        command = json.loads(out)["hooks"]["Stop"][0]["hooks"][0]["command"]
+        assert "--agent codex" in command
+        assert "hint: Codex loads project hooks only for a trusted project" in err
+        assert not (context.cwd / ".codex").exists()  # print mode
+
+    def test_an_explicit_agent_wins(self, tmp_path: Path) -> None:
+        context = _context(tmp_path)
+        (context.home / ".codex").mkdir()
+        code, out, _ = _run([*self._ARGV, "--agent", "openai-codex"], context)
+        assert code == 0
+        assert (
+            "--agent openai-codex"
+            in json.loads(out)["hooks"]["Stop"][0]["hooks"][0]["command"]
+        )
+
+    def test_write_lands_the_project_hooks_file(self, tmp_path: Path) -> None:
+        context = _context(tmp_path)
+        (context.home / ".codex").mkdir()
+        code, out, _ = _run([*self._ARGV, "--write"], context)
+        assert code == 0
+        target = context.cwd / ".codex" / "hooks.json"
+        assert out == f"created {target}\n"
+        assert set(json.loads(target.read_text())["hooks"]) == set(HOOK_EVENTS)
+
+    def test_a_missing_codex_home_is_refused(self, tmp_path: Path) -> None:
+        context = _context(tmp_path)
+        code, _, err = _run([*self._ARGV, "--write"], context)
+        assert code == 1 and str(context.home / ".codex") in err
+        assert not (context.cwd / ".codex").exists()
 
 
 class TestRendering:

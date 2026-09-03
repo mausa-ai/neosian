@@ -32,6 +32,10 @@ if TYPE_CHECKING:
 DEFAULT_AGENT: Final = "claude-code"
 DEFAULT_SPOOL: Final = Path(".neosian") / "spool"
 _UNUSED_ACTOR: Final = "cli:record"  # StoreSettings needs one; the session's is stamped
+# Codex's `Stop` hook expects JSON on stdout at exit 0 ("plain text output is
+# invalid for this event" — its hooks reference, 2026-09-03); Claude Code
+# takes silence. The verb answers `{}` — an empty decision — for these kinds.
+JSON_STOP_AGENTS: Final = frozenset({"codex"})
 
 
 @dataclass(frozen=True, slots=True)

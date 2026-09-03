@@ -1,6 +1,6 @@
 ---
 title: Any agent — the record through hooks
-summary: Claude Code's hooks call neosian record; a span lands as one turn by a foreign actor
+summary: Claude Code's and Codex's hooks call neosian record; a span is one turn by that agent
 ---
 
 # Any agent
@@ -14,11 +14,12 @@ conversation keyed by the session id, plus a small **sessions document**
 under the scope. Transcript files are never read: the documented hook
 payloads are the import path.
 
-## Install (Claude Code)
+## Install
 
 ```bash
 neosian record install --client claude-code --root ~/.my-agent/state --scope user:me
 neosian record install --client claude-code --url http://127.0.0.1:6367 --scope user:me --write
+neosian record install --client codex --root ~/.my-agent/state --scope user:me --write
 ```
 
 - Print mode (the default) puts the paste-able `hooks` fragment on
@@ -35,6 +36,17 @@ neosian record install --client claude-code --url http://127.0.0.1:6367 --scope 
   token through `NEOSIAN_CLIENT_TOKEN` in the client's own environment.
 - Hooks beside an MCP server on one FileStore root are **two writers**:
   route both through the state process (`--url`) or Postgres.
+- **Codex** takes the same fragment at the project's `.codex/hooks.json`
+  (`~/.codex`, or `$CODEX_HOME`, must exist). Codex loads project hooks
+  only for a trusted project, and reviews each new hook once in its
+  `/hooks` command; automation that has vetted them runs
+  `codex exec --dangerously-bypass-hook-trust`. The hook line carries
+  `--agent codex`, so the writer is `codex:<thread_id>`; Codex's `Stop`
+  hook expects JSON on stdout, and the verb answers `{}` there. The
+  memory half is TOML Codex's own CLI writes: `neosian mcp install
+  --client codex` prints the `[mcp_servers.neosian-memory]` table and
+  the `codex mcp add …` line; `--write` is refused with that line as
+  the fix.
 
 ## What a span becomes
 
@@ -71,6 +83,6 @@ A row exists only while its walkthrough is green on a real install.
 | client | memory (`mcp install`) | record (`record install`) |
 |---|---|---|
 | Claude Code | ✓ | ✓ — walkthrough green 2026-09-02 |
+| Codex | ✓ print + `codex mcp add` | ✓ — walkthrough green 2026-09-03 (`codex exec`) |
 | Claude Desktop | ✓ | no hooks surface |
 | Cursor | ✓ | not yet — enters on a verified hook surface |
-| Codex | not yet | not yet |

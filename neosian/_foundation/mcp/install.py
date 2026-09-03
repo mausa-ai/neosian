@@ -11,6 +11,7 @@ without the extra (it never serves).
 from __future__ import annotations
 
 import json
+import shlex
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -63,6 +64,9 @@ class ClientTarget:
     evidence_dir: Path  # must already exist; NEVER created
     servers_key: str
     scope_note: str
+    # A TOML client (Codex) is print-only: its own CLI writes its config,
+    # so --write is refused with that command as the fix.
+    toml: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,6 +78,20 @@ class RegistrationEntry:
 
     def to_json(self) -> dict[str, Any]:
         return {"command": self.command, "args": list(self.args)}
+
+    def to_toml(self, *, servers_key: str, name: str) -> str:
+        """The `[<servers_key>.<name>]` table; JSON strings are valid TOML
+        basic strings, so one quoting rule serves both."""
+        args = ", ".join(json.dumps(arg) for arg in self.args)
+        return (
+            f"[{servers_key}.{name}]\n"
+            f"command = {json.dumps(self.command)}\n"
+            f"args = [{args}]\n"
+        )
+
+    def apply_line(self, name: str) -> str:
+        """Codex's own writer for its TOML: `codex mcp add`."""
+        return shlex.join(["codex", "mcp", "add", name, "--", self.command, *self.args])
 
 
 def _claude_code(context: Environment) -> ClientTarget:
@@ -118,10 +136,26 @@ def _cursor(context: Environment) -> ClientTarget:
     )
 
 
+def _codex(context: Environment) -> ClientTarget:
+    override = context.env.get("CODEX_HOME")
+    base = Path(override) if override else context.home / ".codex"
+    return ClientTarget(
+        client="codex",
+        label="Codex",
+        config_path=base / "config.toml",
+        evidence_dir=base,
+        servers_key="mcp_servers",
+        scope_note="user scope — applies to every Codex project; Codex's own "
+        "CLI writes its TOML",
+        toml=True,
+    )
+
+
 _TARGETS: Final[dict[str, Callable[[Environment], ClientTarget]]] = {
     "claude-code": _claude_code,
     "claude-desktop": _claude_desktop,
     "cursor": _cursor,
+    "codex": _codex,
 }
 CLIENT_CHOICES: Final = tuple(_TARGETS)
 
@@ -189,6 +223,7 @@ def _render_success(
     out: TextIO,
     err: TextIO,
 ) -> int:
+    apply = entry.apply_line(SERVER_NAME) if target.toml else None
     if json_output:
         payload = {
             "success": True,
@@ -200,10 +235,17 @@ def _render_success(
             "entry": entry.to_json(),
             "written": written,
             "created": created,
+            "apply": apply,
         }
         out.write(json.dumps(payload, ensure_ascii=False) + "\n")
         return 0
-    if written:
+    if apply is not None:
+        # stdout is only the paste-able fragment — here the TOML table.
+        out.write(entry.to_toml(servers_key=target.servers_key, name=SERVER_NAME))
+        err.write(f"{target.label}: {target.scope_note}\n")
+        err.write(f"target: {target.config_path}\n")
+        err.write(f"hint: apply it with: {apply}\n")
+    elif written:
         out.write(f"{'created' if created else 'updated'} {target.config_path}\n")
         if settings.root is not None:
             err.write(
@@ -302,6 +344,11 @@ def run_install(
     created = False
     try:
         ensure_evidence(target.label, target.evidence_dir)
+        if args.write and target.toml:
+            raise InstallError(
+                f"{target.label} owns its TOML config; --write is not offered",
+                f"apply it with: {entry.apply_line(SERVER_NAME)}",
+            )
         if args.write:
             document = load_document(target.config_path)
             created = not target.config_path.exists()
