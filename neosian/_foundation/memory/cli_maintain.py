@@ -3,7 +3,7 @@
 The gardener on the shell: keyless by default, `--model` adds the
 semantic pass through an injected client factory — the storage contract
 denies this package the router, so the entry tiers supply a lazy
-router-backed factory that checks the provider key eagerly (the #84
+router-backed factory that checks the model's key eagerly (the #84
 rule). The only CLI module that touches `llm.base`.
 """
 
@@ -18,7 +18,7 @@ from neosian._foundation.memory.maintenance import MaintenanceResult, run_mainte
 from neosian._foundation.memory.mounts import MemoryConfig
 from neosian._foundation.memory.store_lifetime import open_store
 from neosian._foundation.shared.exceptions import NeosianError
-from neosian._foundation.shared.types import AnyModel, format_micro_usd
+from neosian._foundation.shared.types import AnyModel, ClientFactory, format_micro_usd
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -26,12 +26,11 @@ if TYPE_CHECKING:
     from neosian._foundation.llm.base import BaseLLMClient
     from neosian._foundation.memory.base import MemoryStore
     from neosian._foundation.memory.cli_grammar import Request
-    from neosian._foundation.shared.types import Provider
 
 
 async def execute_maintain(
     request: Request,
-    client_factory: Callable[[Provider], BaseLLMClient] | None,
+    client_factory: ClientFactory | None,
     *,
     out: TextIO,
     err: TextIO,
@@ -45,7 +44,7 @@ async def execute_maintain(
         try:
             # Eager, so a missing provider key is loud at construction
             # (the #84 rule) instead of degrading inside the model stage.
-            client = client_factory(request.model.provider)
+            client = client_factory(request.model)
         except NeosianError as exc:
             err.write(f"error: [{exc.code}] {exc.message}\n")
             return 2

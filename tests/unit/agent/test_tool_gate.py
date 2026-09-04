@@ -34,14 +34,13 @@ from neosian._foundation.agent.hooks import ToolEvent, TurnEvent
 from neosian._foundation.llm.base import Message, Role, ToolCall
 from neosian._foundation.llm.fake import FakeClient, FakeScript, FakeTurn
 from neosian._foundation.shared.types import (
-    SystemPrompt,
     ToolCallId,
     ToolFunction,
     ToolName,
 )
 from neosian._foundation.tools.base import Tool, ToolResult
 
-_SYSTEM = SystemPrompt("You are a test agent.")
+_SYSTEM = "You are a test agent."
 _USER = [Message(role=Role.USER, content="launch it")]
 _HEARTBEAT = "neosian._foundation.agent.tool_exec.Streaming.HEARTBEAT_INTERVAL_SECONDS"
 

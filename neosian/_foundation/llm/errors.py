@@ -12,6 +12,7 @@ import json
 from typing import Any, Final
 
 from neosian._foundation.shared.exceptions import (
+    AuthenticationError,
     ContextWindowExceededError,
     NeosianError,
     ProviderError,
@@ -63,7 +64,7 @@ def wrap_provider_error(
     matching a context-overflow signature becomes ContextWindowExceededError
     when the model is known; 429/408/5xx/connection/timeout mark the
     ProviderError retryable, except a 429 that says the request itself is
-    too large.
+    too large; a 401/403 is an AuthenticationError.
     """
     if isinstance(exc, NeosianError):
         return exc
@@ -78,6 +79,10 @@ def wrap_provider_error(
             model.value,
             context_window=model.context_window,
             provider=provider,
+        )
+    if status in (401, 403):
+        return AuthenticationError(
+            provider, str(exc), status=status, request_id=_request_id_of(exc)
         )
     if status == 429 and _REQUEST_TOO_LARGE in text:
         retryable = False

@@ -5,7 +5,7 @@ from collections.abc import AsyncIterator
 from dataclasses import replace
 from typing import Any, Final
 
-from openai import AsyncOpenAI, BadRequestError, omit
+from openai import NOT_GIVEN, AsyncOpenAI, BadRequestError, omit
 from openai.types.chat import (
     ChatCompletionMessageParam,
     ChatCompletionStreamOptionsParam,
@@ -69,6 +69,7 @@ class OpenAICompatibleClient(BaseLLMClient):
         *,
         door: OpenAICompatible,
         max_retries: int = LLMDefaults.MAX_RETRIES,
+        timeout: float | None = None,
     ) -> None:
         """Initialize the client.
 
@@ -77,10 +78,14 @@ class OpenAICompatibleClient(BaseLLMClient):
             door: Where requests go and which dialect the wire speaks.
             max_retries: Transport-level retries handled by the SDK
                 (429/5xx/connection errors, exponential backoff).
+            timeout: Per-request deadline in seconds; None keeps the SDK's.
         """
         self._door = door
         self._client = AsyncOpenAI(
-            api_key=api_key, base_url=door.base_url, max_retries=max_retries
+            api_key=api_key,
+            base_url=door.base_url,
+            max_retries=max_retries,
+            timeout=NOT_GIVEN if timeout is None else timeout,
         )
 
     async def complete(
@@ -476,6 +481,11 @@ class OpenAIClient(OpenAICompatibleClient):
     """OpenAI's own client: the generic wire on OpenAI's door."""
 
     def __init__(
-        self, api_key: str, max_retries: int = LLMDefaults.MAX_RETRIES
+        self,
+        api_key: str,
+        max_retries: int = LLMDefaults.MAX_RETRIES,
+        timeout: float | None = None,
     ) -> None:
-        super().__init__(api_key, door=OPENAI_DOOR, max_retries=max_retries)
+        super().__init__(
+            api_key, door=OPENAI_DOOR, max_retries=max_retries, timeout=timeout
+        )

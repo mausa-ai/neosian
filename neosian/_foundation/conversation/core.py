@@ -133,12 +133,7 @@ class Conversation:
             parse_actor(actor if actor is not None else f"conv:{self._conversation_id}")
         )
         self._store = store
-        if isinstance(agent, Agent):
-            self._base_config = agent.config
-            self._max_tool_iterations: int | None = agent.max_tool_iterations
-        else:
-            self._base_config = agent
-            self._max_tool_iterations = None
+        self._base_config = agent.config if isinstance(agent, Agent) else agent
         self._memory_config = resolve_memory(
             store,
             self._base_config.memory,
@@ -332,10 +327,7 @@ class Conversation:
             extra_tools=extra_tools,
             links=self._links,
         )
-        if self._max_tool_iterations is None:
-            self._agent = Agent(derived)
-        else:
-            self._agent = Agent(derived, self._max_tool_iterations)
+        self._agent = Agent(derived)
         if self._session is not None:
             self._session._rebind(self._agent)
 

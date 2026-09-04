@@ -89,6 +89,7 @@ class _DonePayload(TypedDict):
     raw_stop_reason: str | None
     usage: _UsagePayload | None
     usage_by_model: list[_ModelUsagePayload]
+    iterations_exhausted: bool
 
 
 class _ErrorPayload(TypedDict):

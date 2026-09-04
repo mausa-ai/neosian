@@ -8,7 +8,6 @@ from neosian._foundation.shared.exceptions import ContextWindowExceededError
 from neosian._foundation.shared.types import (
     AgentConfig,
     Model,
-    SystemPrompt,
     ToolCallId,
     ToolName,
 )
@@ -68,9 +67,34 @@ class TestEnsureFits:
 @pytest.mark.unit
 class TestConfigDefault:
     def test_default_on(self) -> None:
-        config = AgentConfig(system_prompt=SystemPrompt("s"))
+        config = AgentConfig(system_prompt="s")
         assert config.context_policy == ContextPolicy()
 
     def test_none_disables(self) -> None:
-        config = AgentConfig(system_prompt=SystemPrompt("s"), context_policy=None)
+        config = AgentConfig(system_prompt="s", context_policy=None)
         assert config.context_policy is None
+
+
+@pytest.mark.unit
+class TestEstimatorHook:
+    """`estimator` replaces the character heuristic wholesale (TG-44)."""
+
+    def test_estimator_replaces_the_heuristic(self) -> None:
+        seen: list[int] = []
+
+        def count(messages: object) -> int:
+            seen.append(len(messages))  # type: ignore[arg-type]
+            return 7
+
+        policy = ContextPolicy(estimator=count)
+        messages = [Message(role=Role.USER, content="x" * 4000)]
+        assert policy.estimate_tokens(messages) == 7
+        assert seen == [1]
+
+    def test_ensure_fits_uses_it(self) -> None:
+        policy = ContextPolicy(estimator=lambda _m: 10**9)
+        with pytest.raises(ContextWindowExceededError) as exc_info:
+            policy.ensure_fits(
+                Model.FAKE_SMALL, [Message(role=Role.USER, content="hi")]
+            )
+        assert exc_info.value.estimated_tokens == 10**9

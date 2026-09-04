@@ -5,7 +5,7 @@ import logging
 from collections.abc import AsyncIterator
 from typing import Any
 
-from anthropic import AsyncAnthropic, BadRequestError
+from anthropic import NOT_GIVEN, AsyncAnthropic, BadRequestError
 
 from neosian._foundation.llm.base import (
     BaseLLMClient,
@@ -166,6 +166,19 @@ def _is_tool_results(message: dict[str, Any]) -> bool:
     )
 
 
+def _thinking_extra(blocks: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """The provider channel for a turn's thinking blocks — verbatim, with
+    their signatures, so the next turn can echo them (LL-1, NF #172)."""
+    return {"anthropic": {"thinking_blocks": blocks}} if blocks else None
+
+
+def _echoed_thinking(message: Message) -> list[dict[str, Any]]:
+    """The thinking blocks a prior turn stored, or nothing."""
+    channel = (message.extra or {}).get("anthropic")
+    blocks = channel.get("thinking_blocks") if isinstance(channel, dict) else None
+    return list(blocks) if isinstance(blocks, list) else []
+
+
 class AnthropicClient(BaseLLMClient):
     """Anthropic Claude LLM client.
 
@@ -174,7 +187,10 @@ class AnthropicClient(BaseLLMClient):
     """
 
     def __init__(
-        self, api_key: str, max_retries: int = LLMDefaults.MAX_RETRIES
+        self,
+        api_key: str,
+        max_retries: int = LLMDefaults.MAX_RETRIES,
+        timeout: float | None = None,
     ) -> None:
         """Initialize the Anthropic client.
 
@@ -182,8 +198,13 @@ class AnthropicClient(BaseLLMClient):
             api_key: Anthropic API key. Required, no implicit env var reading.
             max_retries: Transport-level retries handled by the SDK
                 (429/5xx/connection errors, exponential backoff).
+            timeout: Per-request deadline in seconds; None keeps the SDK's.
         """
-        self._client = AsyncAnthropic(api_key=api_key, max_retries=max_retries)
+        self._client = AsyncAnthropic(
+            api_key=api_key,
+            max_retries=max_retries,
+            timeout=NOT_GIVEN if timeout is None else timeout,
+        )
 
     def _validate_temperature_support(
         self, model: AnyModel, temperature: float | None
@@ -406,13 +427,24 @@ class AnthropicClient(BaseLLMClient):
         reasoning_content = ""
         tool_calls: list[ToolCall] = []
         ordered_blocks: list[ContentBlock] = []
+        thinking_blocks: list[dict[str, Any]] = []
         saw_compaction = False
 
         for block in response.content:  # type: ignore[attr-defined]
             if block.type == "thinking":
                 reasoning_content += block.thinking
+                thinking_blocks.append(
+                    {
+                        "type": "thinking",
+                        "thinking": block.thinking,
+                        "signature": block.signature,
+                    }
+                )
             elif block.type == "redacted_thinking":
-                pass  # Encrypted thinking block - cannot read content
+                # Encrypted: unreadable here, echoed back verbatim.
+                thinking_blocks.append(
+                    {"type": "redacted_thinking", "data": block.data}
+                )
             elif block.type == "text":
                 text_content += block.text
                 ordered_blocks.append(TextBlock(text=block.text))
@@ -447,6 +479,7 @@ class AnthropicClient(BaseLLMClient):
                 content=content,
                 reasoning=reasoning_content if reasoning_content else None,
                 tool_calls=tool_calls,
+                extra=_thinking_extra(thinking_blocks),
             ),
             usage=Usage(
                 input_tokens=response.usage.input_tokens,  # type: ignore[attr-defined]
@@ -565,6 +598,12 @@ class AnthropicClient(BaseLLMClient):
                 compaction_blocks: list[CompactionBlock] = []
                 current_compaction: CompactionBlock | None = None
 
+                # Thinking blocks, kept whole with their signatures for
+                # the echo-back (LL-1): the delta appends, the signature
+                # arrives last in its own delta.
+                thinking_blocks: list[dict[str, Any]] = []
+                current_thinking: dict[str, Any] | None = None
+
                 # Real stop reason from the API (reported in message_delta)
                 stop_reason: str | None = None
 
@@ -619,14 +658,29 @@ class AnthropicClient(BaseLLMClient):
                                     block, "encrypted_content", None
                                 ),
                             )
+                        elif getattr(block, "type", None) == "thinking":
+                            current_thinking = {
+                                "type": "thinking",
+                                "thinking": "",
+                                "signature": "",
+                            }
+                        elif getattr(block, "type", None) == "redacted_thinking":
+                            thinking_blocks.append(
+                                {"type": "redacted_thinking", "data": block.data}
+                            )
 
                     elif event.type == "content_block_delta":
                         delta_type = getattr(event.delta, "type", None)
                         if delta_type == "thinking_delta":
+                            if current_thinking is not None:
+                                current_thinking["thinking"] += event.delta.thinking
                             yield StreamChunk(
                                 reasoning=event.delta.thinking,
                                 model=api_model,
                             )
+                        elif delta_type == "signature_delta":
+                            if current_thinking is not None:
+                                current_thinking["signature"] = event.delta.signature
                         elif delta_type == "text_delta":
                             yield StreamChunk(
                                 content=event.delta.text,
@@ -660,6 +714,9 @@ class AnthropicClient(BaseLLMClient):
                         elif current_compaction is not None:
                             compaction_blocks.append(current_compaction)
                             current_compaction = None
+                        elif current_thinking is not None:
+                            thinking_blocks.append(current_thinking)
+                            current_thinking = None
 
                     elif event.type == "message_delta":
                         # Output tokens are reported in message_delta
@@ -703,6 +760,7 @@ class AnthropicClient(BaseLLMClient):
                             tool_calls=tool_calls,
                             model=api_model,
                             compaction=tuple(compaction_blocks),
+                            extra=_thinking_extra(thinking_blocks),
                         )
         except NeosianError:
             raise
@@ -752,11 +810,14 @@ class AnthropicClient(BaseLLMClient):
                         {"role": "user", "content": msg.content or ""}
                     )
             elif msg.role == Role.ASSISTANT:
+                # A prior turn's thinking blocks lead the content — the
+                # API requires them verbatim, signatures included (LL-1).
+                echoed = _echoed_thinking(msg)
                 if isinstance(msg.content, list):
                     # Text + compaction blocks (server-compaction echo),
                     # in provider order, with tool_use appended after —
                     # media on the assistant role still raises.
-                    content = self._convert_assistant_blocks(msg.content)
+                    content = echoed + self._convert_assistant_blocks(msg.content)
                     for tc in msg.tool_calls:
                         content.append(
                             {
@@ -767,8 +828,8 @@ class AnthropicClient(BaseLLMClient):
                             }
                         )
                     anthropic_messages.append({"role": "assistant", "content": content})
-                elif msg.tool_calls:
-                    content = []
+                elif msg.tool_calls or echoed:
+                    content = echoed
                     if msg.content:
                         content.append({"type": "text", "text": msg.content})
                     for tc in msg.tool_calls:

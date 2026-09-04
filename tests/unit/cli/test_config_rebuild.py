@@ -19,7 +19,6 @@ from neosian._foundation.memory.file import FileStore
 from neosian._foundation.memory.mounts import MemoryConfig, Mount
 from neosian._foundation.shared.types import (
     FallbackConfig,
-    SystemPrompt,
 )
 
 # The fields the pre-N2 hand-rolled rebuild silently dropped (the
@@ -40,7 +39,7 @@ def _loaded_base(tmp_path: Path) -> AgentConfig:
     """An AgentConfig with every previously dropped field set non-default."""
     fake = FakeClient(FakeScript(turns=()))
     return AgentConfig(
-        system_prompt=SystemPrompt("base"),
+        system_prompt="base",
         model=Model.FAKE,
         enable_todo=False,
         fallback=FallbackConfig(model=Model.FAKE_SMALL, retry_main_after=2),

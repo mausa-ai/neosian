@@ -29,7 +29,6 @@ from neosian._foundation.memory.skills import create_skill_tools
 from neosian._foundation.memory.tools import create_memory_tool
 from neosian._foundation.shared.exceptions import ConfigurationError
 from neosian._foundation.shared.prompt_assets import get_prompt
-from neosian._foundation.shared.types import SystemPrompt
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -156,7 +155,7 @@ def derive_config(
     """
     system_prompt = base.system_prompt
     if section is not None:
-        system_prompt = SystemPrompt(f"{base.system_prompt}\n\n{section}")
+        system_prompt = f"{base.system_prompt}\n\n{section}"
     tools = list(base.tools)
     skill_dir = base.skill_dir
     if memory_config is not None:

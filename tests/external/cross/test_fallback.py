@@ -28,7 +28,6 @@ from neosian._foundation.shared.types import (
     AgentConfig,
     FallbackConfig,
     Model,
-    SystemPrompt,
 )
 
 # Invalid API keys that will trigger authentication errors
@@ -54,9 +53,7 @@ class TestFallbackFirstProviderFails:
 
         with patch.dict(os.environ, env, clear=True):
             config = AgentConfig(
-                system_prompt=SystemPrompt(
-                    "You are a helpful assistant. Reply concisely."
-                ),
+                system_prompt="You are a helpful assistant. Reply concisely.",
                 tools=[],
                 model=Model.CEREBRAS_GPT_OSS_120B,  # Cerebras model
                 fallback=FallbackConfig(model=Model.GPT_5_NANO),  # OpenAI fallback
@@ -88,9 +85,7 @@ class TestFallbackFirstProviderFails:
 
         with patch.dict(os.environ, env, clear=True):
             config = AgentConfig(
-                system_prompt=SystemPrompt(
-                    "You are a helpful assistant. Reply concisely."
-                ),
+                system_prompt="You are a helpful assistant. Reply concisely.",
                 tools=[],
                 model=Model.GPT_5_MINI,  # OpenAI model
                 fallback=FallbackConfig(
@@ -128,7 +123,7 @@ class TestNoFallbackConfigured:
 
         with patch.dict(os.environ, env, clear=True):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are a helpful assistant."),
+                system_prompt="You are a helpful assistant.",
                 tools=[],
                 model=Model.CEREBRAS_GPT_OSS_120B,
                 # No fallback configured
@@ -164,7 +159,7 @@ class TestFallbackExhausted:
 
         with patch.dict(os.environ, env, clear=True):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are a helpful assistant."),
+                system_prompt="You are a helpful assistant.",
                 tools=[],
                 model=Model.CEREBRAS_GPT_OSS_120B,  # Will fail
                 fallback=FallbackConfig(model=Model.GPT_5_NANO),  # Will also fail
@@ -200,9 +195,7 @@ class TestSingleProviderWorks:
 
         with patch.dict(os.environ, env, clear=True):
             config = AgentConfig(
-                system_prompt=SystemPrompt(
-                    "You are a helpful assistant. Reply concisely."
-                ),
+                system_prompt="You are a helpful assistant. Reply concisely.",
                 tools=[],
                 model=Model.CEREBRAS_GPT_OSS_120B,
                 enable_todo=False,
@@ -235,9 +228,7 @@ class TestFallbackStreaming:
 
         with patch.dict(os.environ, env, clear=True):
             config = AgentConfig(
-                system_prompt=SystemPrompt(
-                    "You are a helpful assistant. Reply concisely."
-                ),
+                system_prompt="You are a helpful assistant. Reply concisely.",
                 tools=[],
                 model=Model.CEREBRAS_GPT_OSS_120B,
                 fallback=FallbackConfig(model=Model.GPT_5_NANO),
@@ -270,7 +261,7 @@ class TestFallbackStreaming:
 
         with patch.dict(os.environ, env, clear=True):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are a helpful assistant."),
+                system_prompt="You are a helpful assistant.",
                 tools=[],
                 model=Model.CEREBRAS_GPT_OSS_120B,
                 fallback=FallbackConfig(model=Model.GPT_5_NANO),
@@ -300,7 +291,7 @@ class TestFallbackStreaming:
 
         with patch.dict(os.environ, env, clear=True):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are a helpful assistant."),
+                system_prompt="You are a helpful assistant.",
                 tools=[],
                 model=Model.CEREBRAS_GPT_OSS_120B,
                 # No fallback
@@ -336,9 +327,7 @@ class TestStickyFallbackWithSession:
 
         with patch.dict(os.environ, env, clear=True):
             config = AgentConfig(
-                system_prompt=SystemPrompt(
-                    "You are a helpful assistant. Reply concisely."
-                ),
+                system_prompt="You are a helpful assistant. Reply concisely.",
                 tools=[],
                 model=Model.CEREBRAS_GPT_OSS_120B,
                 fallback=FallbackConfig(

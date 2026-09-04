@@ -18,7 +18,6 @@ from neosian import (
     ToolResult,
 )
 from neosian._foundation.llm.base import CompletionResponse, Usage
-from neosian._foundation.shared.types import SystemPrompt
 
 
 class WeatherResponse(BaseModel):
@@ -66,7 +65,7 @@ class TestStructuredOutputValidation:
     def agent_without_tools(self, mock_router: MagicMock) -> Agent:
         """Create an agent without tools (including todo disabled)."""
         config = AgentConfig(
-            system_prompt=SystemPrompt("You are a helpful assistant."),
+            system_prompt="You are a helpful assistant.",
             enable_todo=False,  # Disable todo to have no tools
         )
         agent = Agent(config=config)
@@ -82,7 +81,7 @@ class TestStructuredOutputValidation:
             return ToolResult(success=True, data="12:00 PM")
 
         config = AgentConfig(
-            system_prompt=SystemPrompt("You are a helpful assistant."),
+            system_prompt="You are a helpful assistant.",
             tools=[get_time],
             enable_todo=False,
         )
@@ -253,7 +252,7 @@ class TestUnionTypeSupport:
     def agent_without_tools(self, mock_router: MagicMock) -> Agent:
         """Create an agent without tools (including todo disabled)."""
         config = AgentConfig(
-            system_prompt=SystemPrompt("You are a helpful assistant."),
+            system_prompt="You are a helpful assistant.",
             enable_todo=False,
         )
         agent = Agent(config=config)

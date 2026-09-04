@@ -2,6 +2,7 @@
 
 # ruff: noqa: ARG001
 
+import json
 from enum import Enum
 from pathlib import Path
 from typing import Annotated, Literal, NotRequired, Optional, TypedDict, Union
@@ -914,3 +915,21 @@ class TestDecorationRejections:
         definition = get_tool_definition(test_func)
         assert definition is not None
         assert definition.parameters["properties"]["mode"]["default"] == Mode.FAST
+
+
+@pytest.mark.unit
+class TestToolResultCode:
+    """`code` names the failure class in-band (NF #171, TG-40)."""
+
+    def test_coded_failure_is_on_the_wire(self) -> None:
+        result: ToolResult[str] = ToolResult.fail("bad", code="tool_invalid_arguments")
+        assert result.code == "tool_invalid_arguments"
+        assert json.loads(result.to_json()) == {
+            "success": False,
+            "error": "bad",
+            "code": "tool_invalid_arguments",
+        }
+
+    def test_uncoded_failure_and_success_carry_no_key(self) -> None:
+        assert "code" not in json.loads(ToolResult.fail("bad").to_json())
+        assert "code" not in json.loads(ToolResult.ok("fine").to_json())

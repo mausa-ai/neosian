@@ -1,4 +1,13 @@
-"""neosian - Async-only library for LLM agents."""
+"""neosian - Async-only library for LLM agents.
+
+Two `*Event` families share this namespace, and they are not one thing
+(DESIGN §3, §6): the **hook events** — `TurnEvent`, `LlmCallEvent`,
+`ToolEvent`, `FallbackEvent` — are what `AgentHooks` callbacks receive
+inline; they observe a run and cannot alter it. The **wire events** —
+every `AgentEvent` (`ReadyEvent`, `ContentEvent`, `ToolCallEvent`,
+`ToolResultEvent`, …, `DoneEvent`) — are what `run(stream=True)` yields,
+the frozen v2 wire contract hosts relay over SSE.
+"""
 
 from importlib.metadata import version as _pkg_version
 
@@ -57,6 +66,8 @@ from neosian._foundation.conversation.types import (
 from neosian._foundation.conversation.views import ConversationView
 from neosian._foundation.guardrails.policy import CommonPolicies, PolicyBuilder
 from neosian._foundation.llm.base import (
+    BaseLLMClient,
+    CompletionResponse,
     ContentBlock,
     DocumentBlock,
     ImageBlock,
@@ -64,8 +75,10 @@ from neosian._foundation.llm.base import (
     ModelUsage,
     Role,
     StopReason,
+    StreamChunk,
     TextBlock,
     ToolCall,
+    ToolDefinition,
     Usage,
     normalize_stop_reason,
     text_of,
@@ -126,6 +139,7 @@ from neosian._foundation.shared.context_policy import ContextPolicy
 from neosian._foundation.shared.exceptions import (
     ERROR_CODES,
     AgentLoadError,
+    AuthenticationError,
     ConfigurationError,
     ContextWindowExceededError,
     ConversationConflictError,
@@ -160,6 +174,7 @@ from neosian._foundation.shared.types import (
     PRICES_FINGERPRINT,
     AgentConfig,
     AnyModel,
+    ClientFactory,
     FallbackConfig,
     FallbackState,
     GuardrailErrorPolicy,
@@ -239,6 +254,12 @@ __all__ = [
     "format_micro_usd",
     "register_model",
     "normalize_stop_reason",
+    # The client seam (DESIGN §2)
+    "BaseLLMClient",
+    "ClientFactory",
+    "CompletionResponse",
+    "StreamChunk",
+    "ToolDefinition",
     # Streaming events (v2 wire contract, DESIGN §6)
     "AgentEvent",
     "AgentEventType",
@@ -339,6 +360,7 @@ __all__ = [
     "NeosianError",
     "LLMError",
     "ProviderError",
+    "AuthenticationError",
     "ContextWindowExceededError",
     "ModelFailedError",
     "FallbackExhaustedError",

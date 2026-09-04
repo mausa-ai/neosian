@@ -6,7 +6,7 @@ Run with: CEREBRAS_API_KEY=xxx uv run pytest -m external_cerebras -v
 
 import pytest
 
-from neosian._foundation.llm.base import Message, Role, ToolDefinition, text_of
+from neosian import Message, Role, ToolDefinition, text_of
 from neosian._foundation.llm.cerebras import CerebrasClient
 from neosian._foundation.shared.types import Model, ReasoningEffort, ToolName
 

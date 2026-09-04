@@ -11,18 +11,15 @@ usage ledger, shared by every attempt the run makes. The
 from __future__ import annotations
 
 import time
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from neosian._foundation.llm.base import BaseLLMClient, Message, ModelUsage, Usage
-from neosian._foundation.shared.types import AnyModel, FallbackState
+from neosian._foundation.llm.base import Message, ModelUsage, Usage
+from neosian._foundation.shared.types import AnyModel, ClientFactory, FallbackState
 
 if TYPE_CHECKING:
     from neosian._foundation.agent.base import Agent
     from neosian._foundation.agent.hooks import HookRunner
-
-ClientAcquire = Callable[[AnyModel], BaseLLMClient]
 
 
 def merge_usage(a: Usage | None, b: Usage | None) -> Usage | None:
@@ -78,7 +75,7 @@ class RunContext:
     """
 
     agent: Agent
-    acquire: ClientAcquire
+    acquire: ClientFactory
     hooks: HookRunner
     fallback_state: FallbackState | None = None
     started: float = field(default_factory=time.monotonic)  # TurnEvent duration

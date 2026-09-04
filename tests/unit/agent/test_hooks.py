@@ -126,12 +126,10 @@ class TestRunContext:
         from neosian._foundation.agent.emit import emit_turn
         from neosian._foundation.agent.response import AgentResponse
         from neosian._foundation.llm.base import Message, Role
-        from neosian._foundation.shared.types import AgentConfig, Model, SystemPrompt
+        from neosian._foundation.shared.types import AgentConfig, Model
 
         seen: list[TurnEvent] = []
-        agent = Agent(
-            config=AgentConfig(model=Model.FAKE, system_prompt=SystemPrompt("x"))
-        )
+        agent = Agent(config=AgentConfig(model=Model.FAKE, system_prompt="x"))
         ctx = RunContext(
             agent=agent,
             acquire=agent._create_client,

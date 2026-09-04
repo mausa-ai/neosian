@@ -35,13 +35,12 @@ from neosian._foundation.memory.payload import PAYLOAD_BUDGET_CHARS
 from neosian._foundation.shared.exceptions import ConfigurationError
 from neosian._foundation.shared.types import (
     AnyModel,
-    SystemPrompt,
     ToolCallId,
     ToolName,
 )
 from tests.unit.memory.conftest import ManualClock
 
-_SYSTEM = SystemPrompt("You are a helpful agent with memory.")
+_SYSTEM = "You are a helpful agent with memory."
 _USAGE = Usage(input_tokens=100, output_tokens=10)
 
 
@@ -491,8 +490,8 @@ class TestConversationReflect:
         fake = _scripted(FakeTurn(content="Noted."))
         other = next(m for m in Model if m.provider is not Provider.FAKE)
 
-        def factory(provider: Provider) -> BaseLLMClient:
-            if provider is not Provider.FAKE:
+        def factory(model: AnyModel) -> BaseLLMClient:
+            if model.provider is not Provider.FAKE:
                 raise ConfigurationError("no key for the reflection model")
             return fake
 

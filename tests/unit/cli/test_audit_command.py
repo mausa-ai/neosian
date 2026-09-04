@@ -4,7 +4,7 @@ import click
 import pytest
 import typer
 
-import neosian.audit as audit_module
+import neosian.ledger as audit_module
 from neosian._cli.main import audit
 
 

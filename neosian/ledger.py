@@ -2,8 +2,9 @@
 
 The CLI tier, like `neosian/memory/cli.py`: owns the loop, the real
 streams and interrupt handling; the async engine is
-`_foundation/memory/cli_audit.py`. `python -m neosian.audit` is the
-PATH-free twin.
+`_foundation/memory/cli_audit.py`. `python -m neosian.ledger` is the
+PATH-free twin — named for the ledger, never `audit`, which is the
+function `neosian` exports (a same-named submodule would shadow it).
 """
 
 from __future__ import annotations
@@ -31,4 +32,4 @@ def main(argv: list[str] | None = None, *, prog: str = "neosian audit") -> int:
 
 
 if __name__ == "__main__":  # pragma: no cover - the twin
-    sys.exit(main(prog="python -m neosian.audit"))
+    sys.exit(main(prog="python -m neosian.ledger"))

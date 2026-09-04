@@ -67,6 +67,12 @@ class Message:
     since N4's server-compaction opt-in — TextBlock/CompactionBlock lists
     on ASSISTANT messages. Both shapes are Anthropic-only; the other
     converters reject block content rather than silently dropping it.
+
+    `extra` is the opaque provider channel, the twin of `ToolCall.extra`
+    (NF #172): whatever a wire must see again on the next turn and no
+    field names — Anthropic's thinking blocks with their signatures
+    under `extra["anthropic"]`. Persisted by the codec, echoed back only
+    by the wire that produced it, ignored by every other.
     """
 
     role: Role
@@ -74,6 +80,7 @@ class Message:
     reasoning: str | None = None
     tool_calls: list[ToolCall] = field(default_factory=list)
     tool_call_id: ToolCallId | None = None
+    extra: dict[str, Any] | None = None
 
 
 @dataclass
@@ -110,6 +117,8 @@ class StreamChunk:
     `compaction` carries server-side compaction blocks on the terminal
     chunk (Anthropic's compact beta, opt-in); consumers weave them into
     the assistant message they build so the echo-back contract holds.
+    `extra` rides the terminal chunk the same way — the provider channel
+    the assembled `Message.extra` carries (NF #172).
     """
 
     content: str | None = None
@@ -119,6 +128,7 @@ class StreamChunk:
     usage: "Usage | None" = None
     model: str | None = None
     compaction: tuple[CompactionBlock, ...] = ()
+    extra: dict[str, Any] | None = None
 
 
 _MTOK: Final = 1_000_000  # tokens per MTok — the pricing-rate divisor
@@ -268,9 +278,13 @@ class CompletionResponse:
 
 
 class BaseLLMClient(ABC):
-    """Abstract base class for LLM clients.
+    """The client seam (DESIGN §2): one provider behind two methods.
 
-    All provider implementations must inherit from this class.
+    Every shipped adapter implements this; a host's own client — returned
+    from `AgentConfig.client_factory` — implements the same two methods
+    and inherits every seam above it: fallback, guardrails, hooks, the
+    tool gate, conversations. Provider SDK exceptions never leave a
+    client: `wrap_provider_error` classifies them at this boundary (§5).
     """
 
     @abstractmethod

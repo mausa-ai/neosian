@@ -376,7 +376,7 @@ def audit(ctx: typer.Context) -> None:
     (`neosian audit --help`). Answers the same on a FileStore root,
     Postgres, or the state process (--url).
     """
-    from neosian.audit import main as audit_main
+    from neosian.ledger import main as audit_main
 
     raise typer.Exit(audit_main(list(ctx.args)))
 

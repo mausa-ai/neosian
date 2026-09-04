@@ -7,7 +7,7 @@ rides on the RunContext or their arguments.
 from __future__ import annotations
 
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from neosian._foundation.agent.hooks import FallbackEvent, LlmCallEvent, TurnEvent
 from neosian._foundation.agent.response import AgentResponse
@@ -95,8 +95,11 @@ def blocked_response(
     policy: PolicyResult | None,
     usage: Usage | None,
     usage_by_model: tuple[ModelUsage, ...],
+    *,
+    checkpoint: Literal["input", "output"] = "input",
 ) -> AgentResponse:
-    """The value object for an input-guard block, on either path.
+    """The value object for a guard block at either checkpoint, on either
+    path.
 
     Content is discarded but the billed usage survives; turn_messages
     stays empty — a blocked turn is not replayable.
@@ -107,8 +110,9 @@ def blocked_response(
         blocked=True,
         guardrail_result=GuardrailResult(
             safe=False,
-            flagged_at="input",
-            input_policy=policy,
+            flagged_at=checkpoint,
+            input_policy=policy if checkpoint == "input" else None,
+            output_policy=policy if checkpoint == "output" else None,
         ),
         usage_by_model=usage_by_model,
     )
@@ -122,6 +126,7 @@ def stream_response(
     *,
     stop_reason: str | None,
     model: str | None,
+    iterations_exhausted: bool = False,
 ) -> AgentResponse:
     """The value object for a streamed run's done terminal (on_turn)."""
     usage = attempt.usage
@@ -134,4 +139,5 @@ def stream_response(
         model=model,
         usage_by_model=attempt.usage_by_model,
         turn_messages=attempt.turn_messages(message),
+        iterations_exhausted=iterations_exhausted,
     )

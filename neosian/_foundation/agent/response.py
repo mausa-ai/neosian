@@ -48,6 +48,8 @@ class AgentResponse:
             the last element is `message` by identity, and input +
             turn_messages replays as valid history (DESIGN §3). Empty on
             guardrail-blocked responses — a blocked turn is not replayable.
+        iterations_exhausted: True when the tool loop hit `max_tool_iterations`
+            and this is the toolless final call's answer (NF #170, AG-7).
     """
 
     message: Message
@@ -61,6 +63,7 @@ class AgentResponse:
     model: str | None = None
     usage_by_model: tuple[ModelUsage, ...] = ()
     turn_messages: tuple[Message, ...] = ()
+    iterations_exhausted: bool = False
 
     @property
     def normalized_stop_reason(self) -> StopReason | None:

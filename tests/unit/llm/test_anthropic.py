@@ -3001,3 +3001,167 @@ class TestServerCompaction:
         ]
         with pytest.raises(UnsupportedContentError):
             await client.complete(messages=messages, model=Model.CLAUDE_HAIKU_4_5)
+
+
+def _block(kind: str, **fields: Any) -> MagicMock:
+    block = MagicMock(spec_set=SPEC[kind])
+    block.type = kind
+    for name, value in fields.items():
+        setattr(block, name, value)
+    return block
+
+
+def _event(kind: str, **fields: Any) -> MagicMock:
+    event = MagicMock(spec_set=SPEC[kind])
+    event.type = kind
+    for name, value in fields.items():
+        setattr(event, name, value)
+    return event
+
+
+@pytest.mark.unit
+class TestThinkingEcho:
+    """Thinking blocks survive a turn whole, signatures included, under
+    `Message.extra["anthropic"]`, and lead the next assistant message
+    (LL-1, NF #172)."""
+
+    _EXTRA = {
+        "anthropic": {
+            "thinking_blocks": [
+                {"type": "thinking", "thinking": "Let me see.", "signature": "sig-1"},
+                {"type": "redacted_thinking", "data": "enc"},
+            ]
+        }
+    }
+
+    async def test_complete_keeps_blocks_with_signatures(
+        self, client: AnthropicClient, sample_messages: list[Message]
+    ) -> None:
+        mock_response = MagicMock(spec_set=SPEC["message"])
+        mock_response.content = [
+            _block("thinking", thinking="Let me see.", signature="sig-1"),
+            _block("redacted_thinking", data="enc"),
+            _block("text", text="42."),
+        ]
+        mock_response.usage = MagicMock(
+            spec=SPEC["usage"], input_tokens=1, output_tokens=1
+        )
+        mock_response.model = "claude-opus-4-6"
+        _mock_complete(client, mock_response)
+
+        response = await client.complete(
+            messages=sample_messages,
+            model=Model.CLAUDE_OPUS_4_6,
+            reasoning_effort=ReasoningEffort.HIGH,
+        )
+
+        assert response.message.reasoning == "Let me see."
+        assert response.message.extra == self._EXTRA
+
+    async def test_a_turn_without_thinking_sets_nothing(
+        self, client: AnthropicClient, sample_messages: list[Message]
+    ) -> None:
+        mock_response = MagicMock(spec_set=SPEC["message"])
+        mock_response.content = [_block("text", text="42.")]
+        mock_response.usage = MagicMock(
+            spec=SPEC["usage"], input_tokens=1, output_tokens=1
+        )
+        mock_response.model = "claude-opus-4-6"
+        _mock_complete(client, mock_response)
+        response = await client.complete(
+            messages=sample_messages, model=Model.CLAUDE_OPUS_4_6
+        )
+        assert response.message.extra is None
+
+    async def test_stream_assembles_the_block_on_the_terminal_chunk(
+        self, client: AnthropicClient, sample_messages: list[Message]
+    ) -> None:
+        events = [
+            _event("content_block_start", content_block=_block("thinking")),
+            _event(
+                "content_block_delta",
+                delta=MagicMock(
+                    spec=SPEC["thinking_delta"], type="thinking_delta", thinking="Let "
+                ),
+            ),
+            _event(
+                "content_block_delta",
+                delta=MagicMock(
+                    spec=SPEC["thinking_delta"], type="thinking_delta", thinking="me."
+                ),
+            ),
+            _event(
+                "content_block_delta",
+                delta=MagicMock(
+                    spec=SPEC["signature_delta"],
+                    type="signature_delta",
+                    signature="sig-1",
+                ),
+            ),
+            _event("content_block_stop"),
+            _event(
+                "content_block_start",
+                content_block=_block("redacted_thinking", data="enc"),
+            ),
+            _event("content_block_stop"),
+            _event(
+                "content_block_delta",
+                delta=MagicMock(spec=SPEC["text_delta"], type="text_delta", text="42."),
+            ),
+            _event("message_stop"),
+        ]
+
+        async def mock_stream_events() -> AsyncIterator[Any]:
+            for event in events:
+                yield event
+
+        mock_stream = MagicMock()
+        mock_stream.__aenter__ = AsyncMock(return_value=mock_stream)
+        mock_stream.__aexit__ = AsyncMock(return_value=None)
+        mock_stream.__aiter__ = lambda _: mock_stream_events()
+        _sdk(client).messages.stream = MagicMock(return_value=mock_stream)
+
+        chunks = [
+            chunk
+            async for chunk in client.stream(
+                messages=sample_messages,
+                model=Model.CLAUDE_OPUS_4_6,
+                reasoning_effort=ReasoningEffort.HIGH,
+            )
+        ]
+
+        assert "".join(c.reasoning or "" for c in chunks) == "Let me."
+        assert all(c.extra is None for c in chunks[:-1])
+        assert chunks[-1].extra == {
+            "anthropic": {
+                "thinking_blocks": [
+                    {"type": "thinking", "thinking": "Let me.", "signature": "sig-1"},
+                    {"type": "redacted_thinking", "data": "enc"},
+                ]
+            }
+        }
+
+    def test_convert_echoes_the_blocks_first(self, client: AnthropicClient) -> None:
+        call = ToolCall(id=ToolCallId("c1"), name=ToolName("look"), arguments={})
+        history = [
+            Message(role=Role.USER, content="hi"),
+            Message(role=Role.ASSISTANT, content="thinking done", extra=self._EXTRA),
+            Message(role=Role.USER, content="more"),
+            Message(role=Role.ASSISTANT, tool_calls=[call], extra=self._EXTRA),
+        ]
+        _, converted = client._convert_messages(history)
+        blocks = self._EXTRA["anthropic"]["thinking_blocks"]
+        assert converted[1]["content"] == [
+            *blocks,
+            {"type": "text", "text": "thinking done"},
+        ]
+        assert converted[3]["content"] == [
+            *blocks,
+            {"type": "tool_use", "id": "c1", "name": "look", "input": {}},
+        ]
+
+    def test_convert_without_extra_is_unchanged(self, client: AnthropicClient) -> None:
+        _, converted = client._convert_messages(
+            [Message(role=Role.ASSISTANT, content="plain")]
+        )
+        assert converted == [{"role": "assistant", "content": "plain"}]

@@ -19,6 +19,10 @@ from neosian._foundation.agent.events import (
 from neosian._foundation.agent.lifetimes import reap
 from neosian._foundation.llm.base import ToolCall
 from neosian._foundation.shared.constants import ErrorMessages, Streaming
+from neosian._foundation.shared.exceptions import (
+    ToolExecutionError,
+    ToolInvalidArgumentsError,
+)
 from neosian._foundation.shared.types import ToolCallId
 from neosian._foundation.tools.base import ToolResult
 
@@ -66,7 +70,8 @@ async def execute_tool(agent: Agent, tool_call: ToolCall) -> ToolResult[Any]:
         return ToolResult.fail(
             ErrorMessages.TOOL_INVALID_ARGUMENTS.format(
                 tool_name=tool_call.name, error=e
-            )
+            ),
+            code=ToolInvalidArgumentsError.code,
         )
     try:
         return await tool_func(**tool_call.arguments)
@@ -74,7 +79,8 @@ async def execute_tool(agent: Agent, tool_call: ToolCall) -> ToolResult[Any]:
         return ToolResult.fail(
             ErrorMessages.TOOL_EXECUTION_FAILED.format(
                 tool_name=tool_call.name, error=e
-            )
+            ),
+            code=ToolExecutionError.code,
         )
 
 

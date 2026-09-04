@@ -11,7 +11,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any, ClassVar, Final
 
 from neosian._foundation.llm.fake import FakeTurn
-from neosian._foundation.shared.types import AnyModel, SystemPrompt, ToolName
+from neosian._foundation.shared.types import AnyModel, ToolName
 
 if TYPE_CHECKING:
     from neosian._foundation.evaluation.memory_types import MemoryEvalConfig
@@ -124,7 +124,7 @@ class Variant:
     """
 
     name: str
-    system_prompt: SystemPrompt | None = None
+    system_prompt: str | None = None
     tool_descriptions: Mapping[ToolName, str] = field(default_factory=dict)
     source: str | None = None
 

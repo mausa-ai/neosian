@@ -20,9 +20,9 @@ from neosian._foundation.llm.base import Message, Role, ToolCall
 from neosian._foundation.llm.fake import FakeClient, FakeScript, FakeTurn
 from neosian._foundation.memory.file import FileStore
 from neosian._foundation.memory.mounts import MemoryConfig, Mount
-from neosian._foundation.shared.types import SystemPrompt, ToolCallId, ToolName
+from neosian._foundation.shared.types import ToolCallId, ToolName
 
-_SYSTEM = SystemPrompt("You are a test agent with memory.")
+_SYSTEM = "You are a test agent with memory."
 _USER_MSG = [Message(role=Role.USER, content="remember this")]
 _MOUNT = Mount(scope="user:demo", mount_path="user")
 _KB = Mount(scope="tenant:acme/kb:main", mount_path="kb", read_only=True)

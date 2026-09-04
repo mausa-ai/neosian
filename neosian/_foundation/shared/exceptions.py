@@ -84,7 +84,8 @@ class ToolCallGenerationError(LLMError):
             retries: Number of retries attempted.
         """
         super().__init__(
-            ErrorMessages.TOOL_CALL_GENERATION_FAILED.format(retries=retries)
+            ErrorMessages.TOOL_CALL_GENERATION_FAILED.format(retries=retries),
+            details={"retries": retries},
         )
         self.retries = retries
 
@@ -129,7 +130,10 @@ class MessageSerializationError(LLMError):
             message = ErrorMessages.MESSAGE_SERIALIZATION_GENERIC.format(
                 context=context, value_type=value_type
             )
-        super().__init__(message)
+        super().__init__(
+            message,
+            details={"context": context, "value_type": value_type, "field": field},
+        )
         self.context = context
         self.field = field
         self.value_type = value_type
@@ -148,7 +152,10 @@ class PromptFileNotFoundError(PromptLoadError):
     code = "prompt_file_not_found"
 
     def __init__(self, path: str) -> None:
-        super().__init__(ErrorMessages.PROMPT_FILE_NOT_FOUND.format(path=path))
+        super().__init__(
+            ErrorMessages.PROMPT_FILE_NOT_FOUND.format(path=path),
+            details={"path": path},
+        )
         self.path = path
 
 
@@ -158,7 +165,9 @@ class PromptInvalidYAMLError(PromptLoadError):
     code = "prompt_invalid_yaml"
 
     def __init__(self, path: str) -> None:
-        super().__init__(ErrorMessages.PROMPT_INVALID_YAML.format(path=path))
+        super().__init__(
+            ErrorMessages.PROMPT_INVALID_YAML.format(path=path), details={"path": path}
+        )
         self.path = path
 
 
@@ -168,7 +177,10 @@ class PromptMissingKeyError(PromptLoadError):
     code = "prompt_missing_key"
 
     def __init__(self, key: str, path: str) -> None:
-        super().__init__(ErrorMessages.PROMPT_MISSING_KEY.format(key=key, path=path))
+        super().__init__(
+            ErrorMessages.PROMPT_MISSING_KEY.format(key=key, path=path),
+            details={"key": key, "path": path},
+        )
         self.key = key
         self.path = path
 
@@ -185,7 +197,9 @@ class AgentFileNotFoundError(AgentLoadError):
     code = "agent_file_not_found"
 
     def __init__(self, path: str) -> None:
-        super().__init__(ErrorMessages.AGENT_FILE_NOT_FOUND.format(path=path))
+        super().__init__(
+            ErrorMessages.AGENT_FILE_NOT_FOUND.format(path=path), details={"path": path}
+        )
         self.path = path
 
 
@@ -195,7 +209,10 @@ class AgentMissingConfigurationError(AgentLoadError):
     code = "agent_missing_configuration"
 
     def __init__(self, path: str) -> None:
-        super().__init__(ErrorMessages.AGENT_MISSING_CONFIGURATION.format(path=path))
+        super().__init__(
+            ErrorMessages.AGENT_MISSING_CONFIGURATION.format(path=path),
+            details={"path": path},
+        )
         self.path = path
 
 
@@ -205,7 +222,10 @@ class AgentInvalidConfigurationError(AgentLoadError):
     code = "agent_invalid_configuration"
 
     def __init__(self, path: str) -> None:
-        super().__init__(ErrorMessages.AGENT_INVALID_CONFIGURATION.format(path=path))
+        super().__init__(
+            ErrorMessages.AGENT_INVALID_CONFIGURATION.format(path=path),
+            details={"path": path},
+        )
         self.path = path
 
 
@@ -215,7 +235,10 @@ class AgentInvalidDefinitionError(AgentLoadError):
     code = "agent_invalid_definition"
 
     def __init__(self, path: str, error: str) -> None:
-        super().__init__(ErrorMessages.AGENT_LOAD_ERROR.format(path=path, error=error))
+        super().__init__(
+            ErrorMessages.AGENT_LOAD_ERROR.format(path=path, error=error),
+            details={"path": path, "error": error},
+        )
         self.path = path
         self.error = error
 
@@ -238,7 +261,7 @@ class InvalidModelError(ConfigurationError):
             message: Pre-formatted error message.
             model_value: The invalid value that was provided instead of a Model enum.
         """
-        super().__init__(message)
+        super().__init__(message, details={"model_value": repr(model_value)})
         self.model_value = model_value
 
 
@@ -264,6 +287,36 @@ class McpConnectionError(NeosianError):
             details={"server": server, "error": reason},
         )
         self.server = server
+
+
+class ToolInvalidArgumentsError(NeosianError):
+    """A tool call's arguments did not bind (or, from NF slice B, did not
+    validate); never raised — `ToolResult.code` carries the code in-band
+    so the model can repair the call (NF #171, TG-40)."""
+
+    code = "tool_invalid_arguments"
+
+    def __init__(self, tool_name: str, error: str) -> None:
+        super().__init__(
+            ErrorMessages.TOOL_INVALID_ARGUMENTS.format(
+                tool_name=tool_name, error=error
+            ),
+            details={"tool_name": tool_name, "error": error},
+        )
+
+
+class ToolExecutionError(NeosianError):
+    """The tool body raised; the `ToolResult` twin of that failure."""
+
+    code = "tool_execution_failed"
+
+    def __init__(self, tool_name: str, error: str) -> None:
+        super().__init__(
+            ErrorMessages.TOOL_EXECUTION_FAILED.format(
+                tool_name=tool_name, error=error
+            ),
+            details={"tool_name": tool_name, "error": error},
+        )
 
 
 class UnsupportedParameterError(LLMError):
@@ -296,11 +349,22 @@ class GuardrailPolicyParseError(GuardrailError):
 
     code = "guardrail_policy_parse_failed"
 
-    def __init__(self, response: str) -> None:
+    def __init__(
+        self,
+        response: str,
+        *,
+        usage: Usage | None = None,
+        api_model: str | None = None,
+    ) -> None:
+        """`usage`/`api_model` carry the billed classifier call so the run's
+        ledger still records it — never undercount (NF #171, NQ's carry)."""
         super().__init__(
-            ErrorMessages.GUARDRAIL_POLICY_PARSE_ERROR.format(response=response)
+            ErrorMessages.GUARDRAIL_POLICY_PARSE_ERROR.format(response=response),
+            details={"response_chars": len(response), "api_model": api_model},
         )
         self.response = response
+        self.usage = usage
+        self.api_model = api_model
 
 
 class GuardrailStreamingError(GuardrailError):
@@ -368,11 +432,23 @@ class ProviderError(LLMError):
         """
         super().__init__(
             ErrorMessages.PROVIDER_FAILED.format(provider=provider, error=message),
+            details={"provider": provider, "status": status, "request_id": request_id},
             retryable=retryable,
         )
         self.provider = provider
         self.status = status
         self.request_id = request_id
+
+
+class AuthenticationError(ProviderError):
+    """The provider rejected the credentials (HTTP 401/403).
+
+    Never retryable — a wrong key stays wrong — and fallback-eligible like
+    any ProviderError, so a second provider with its own key still answers
+    (NF #171, LL-20).
+    """
+
+    code = "llm_authentication_failed"
 
 
 class ContextWindowExceededError(LLMError):
@@ -397,7 +473,15 @@ class ContextWindowExceededError(LLMError):
         message = f"Context window exceeded for model {model}"
         if context_window is not None:
             message += f" (window: {context_window} tokens)"
-        super().__init__(message)
+        super().__init__(
+            message,
+            details={
+                "model": model,
+                "context_window": context_window,
+                "estimated_tokens": estimated_tokens,
+                "provider": provider,
+            },
+        )
         self.model = model
         self.context_window = context_window
         self.estimated_tokens = estimated_tokens
@@ -414,7 +498,10 @@ class FakeScriptExhaustedError(LLMError):
     code = "llm_fake_script_exhausted"
 
     def __init__(self, consumed: int) -> None:
-        super().__init__(f"FakeScript exhausted after {consumed} turn(s)")
+        super().__init__(
+            f"FakeScript exhausted after {consumed} turn(s)",
+            details={"consumed": consumed},
+        )
         self.consumed = consumed
 
 
@@ -457,7 +544,18 @@ class ModelFailedError(LLMError):
             message = ErrorMessages.MODEL_FAILED_NO_FALLBACK.format(
                 model=model, error=error
             )
-        super().__init__(message, usage=usage, usage_by_model=usage_by_model)
+        super().__init__(
+            message,
+            details={
+                "model": model,
+                "error": error,
+                "has_fallback": has_fallback,
+                "cause_code": cause_code,
+                "provider_status": provider_status,
+            },
+            usage=usage,
+            usage_by_model=usage_by_model,
+        )
         self.model = model
         self.error = error
         self.has_fallback = has_fallback
@@ -503,6 +601,14 @@ class FallbackExhaustedError(LLMError):
                 fallback_model=fallback_model,
                 fallback_error=fallback_error,
             ),
+            details={
+                "main_model": main_model,
+                "main_error": main_error,
+                "fallback_model": fallback_model,
+                "fallback_error": fallback_error,
+                "cause_code": cause_code,
+                "provider_status": provider_status,
+            },
             usage=usage,
             usage_by_model=usage_by_model,
         )
@@ -527,7 +633,10 @@ class EvalConfigNotFoundError(EvalError):
     code = "eval_config_not_found"
 
     def __init__(self, path: str) -> None:
-        super().__init__(ErrorMessages.EVAL_CONFIG_NOT_FOUND.format(path=path))
+        super().__init__(
+            ErrorMessages.EVAL_CONFIG_NOT_FOUND.format(path=path),
+            details={"path": path},
+        )
         self.path = path
 
 
@@ -541,7 +650,7 @@ class EvalConfigInvalidYAMLError(EvalError):
         message = ErrorMessages.EVAL_CONFIG_INVALID_YAML.format(path=path)
         if detail is not None:
             message = f"{message} — {detail}"
-        super().__init__(message)
+        super().__init__(message, details={"path": path, "detail": detail})
         self.path = path
         self.detail = detail
 
@@ -553,7 +662,8 @@ class EvalConfigMissingKeyError(EvalError):
 
     def __init__(self, key: str, path: str) -> None:
         super().__init__(
-            ErrorMessages.EVAL_CONFIG_MISSING_KEY.format(key=key, path=path)
+            ErrorMessages.EVAL_CONFIG_MISSING_KEY.format(key=key, path=path),
+            details={"key": key, "path": path},
         )
         self.key = key
         self.path = path
@@ -565,7 +675,10 @@ class EvalPromptNotFoundError(EvalError):
     code = "eval_prompt_not_found"
 
     def __init__(self, path: str) -> None:
-        super().__init__(ErrorMessages.EVAL_PROMPT_NOT_FOUND.format(path=path))
+        super().__init__(
+            ErrorMessages.EVAL_PROMPT_NOT_FOUND.format(path=path),
+            details={"path": path},
+        )
         self.path = path
 
 
@@ -575,7 +688,10 @@ class EvalCaseInvalidError(EvalError):
     code = "eval_case_invalid"
 
     def __init__(self, name: str, error: str) -> None:
-        super().__init__(ErrorMessages.EVAL_CASE_INVALID.format(name=name, error=error))
+        super().__init__(
+            ErrorMessages.EVAL_CASE_INVALID.format(name=name, error=error),
+            details={"name": name, "error": error},
+        )
         self.name = name
         self.error = error
 
@@ -590,7 +706,8 @@ class EvalRunError(EvalError):
         super().__init__(
             ErrorMessages.EVAL_RUN_ERROR.format(
                 variant=variant, model=model, case=case, error=error
-            )
+            ),
+            details={"variant": variant, "model": model, "case": case, "error": error},
         )
         self.variant = variant
         self.model = model
@@ -607,7 +724,7 @@ class EvalConfigUnknownKeyError(EvalError):
         message = f"Unknown key '{key}' in eval config: {path}"
         if hint is not None:
             message = f"{message} — {hint}"
-        super().__init__(message)
+        super().__init__(message, details={"key": key, "path": path, "hint": hint})
         self.key = key
         self.path = path
         self.hint = hint
@@ -619,7 +736,10 @@ class EvalModelUnknownError(EvalError):
     code = "eval_model_unknown"
 
     def __init__(self, model: str, path: str) -> None:
-        super().__init__(f"Unknown model '{model}' in eval config: {path}")
+        super().__init__(
+            f"Unknown model '{model}' in eval config: {path}",
+            details={"model": model, "path": path},
+        )
         self.model = model
         self.path = path
 
@@ -637,7 +757,9 @@ class SkillFileNotFoundError(SkillLoadError):
     code = "skill_file_not_found"
 
     def __init__(self, path: str) -> None:
-        super().__init__(ErrorMessages.SKILL_FILE_NOT_FOUND.format(path=path))
+        super().__init__(
+            ErrorMessages.SKILL_FILE_NOT_FOUND.format(path=path), details={"path": path}
+        )
         self.path = path
 
 
@@ -648,7 +770,10 @@ class SkillInvalidFrontmatterError(SkillLoadError):
 
     def __init__(self, path: str, reason: str | None = None) -> None:
         message = ErrorMessages.SKILL_INVALID_FRONTMATTER.format(path=path)
-        super().__init__(message if reason is None else f"{message} — {reason}")
+        super().__init__(
+            message if reason is None else f"{message} — {reason}",
+            details={"path": path, "reason": reason},
+        )
         self.path = path
 
 
@@ -658,7 +783,10 @@ class SkillMissingKeyError(SkillLoadError):
     code = "skill_missing_key"
 
     def __init__(self, key: str, path: str) -> None:
-        super().__init__(ErrorMessages.SKILL_MISSING_KEY.format(key=key, path=path))
+        super().__init__(
+            ErrorMessages.SKILL_MISSING_KEY.format(key=key, path=path),
+            details={"key": key, "path": path},
+        )
         self.key = key
         self.path = path
 
@@ -669,7 +797,9 @@ class SkillDuplicateNameError(SkillLoadError):
     code = "skill_duplicate_name"
 
     def __init__(self, name: str) -> None:
-        super().__init__(ErrorMessages.SKILL_DUPLICATE_NAME.format(name=name))
+        super().__init__(
+            ErrorMessages.SKILL_DUPLICATE_NAME.format(name=name), details={"name": name}
+        )
         self.name = name
 
 
@@ -679,7 +809,10 @@ class SkillDirectoryNotFoundError(SkillLoadError):
     code = "skill_directory_not_found"
 
     def __init__(self, path: str) -> None:
-        super().__init__(ErrorMessages.SKILL_DIRECTORY_NOT_FOUND.format(path=path))
+        super().__init__(
+            ErrorMessages.SKILL_DIRECTORY_NOT_FOUND.format(path=path),
+            details={"path": path},
+        )
         self.path = path
 
 

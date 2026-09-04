@@ -105,14 +105,27 @@ async def check_guardrails(
     if mode == GuardrailMode.NONE:
         return (True, None)
 
-    # Run policy check
+    # Run policy check, bounded by the config's deadline: a hung
+    # classifier is an error under `error_policy`, never a hung run.
     if policy is not None:
-        outcome = await check_with_policy(
-            content=content,
-            policy=policy,
-            client=ctx.acquire(agent._guardrail_model),
-            model=agent._guardrail_model,
-        )
+        try:
+            outcome = await asyncio.wait_for(
+                check_with_policy(
+                    content=content,
+                    policy=policy,
+                    client=ctx.acquire(agent._guardrail_model),
+                    model=agent._guardrail_model,
+                ),
+                timeout=agent._guardrails.timeout_seconds,
+            )
+        except GuardrailPolicyParseError as exc:
+            # Unparseable, yet billed: the ledger records it before the
+            # error policy decides (never undercount).
+            if exc.usage is not None:
+                ctx.ledger.record(
+                    exc.api_model or agent._guardrail_model.value, exc.usage
+                )
+            raise
         # The classifier's call is billed: it lands on the run's ledger
         # under its own API-reported model, so every terminal value the
         # run produces carries it — never undercount (TG-4).

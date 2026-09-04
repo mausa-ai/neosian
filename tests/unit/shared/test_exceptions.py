@@ -1,10 +1,13 @@
 """Tests for exceptions."""
 
+import inspect
 import json
 import re
+from collections.abc import Callable
 
 import pytest
 
+import neosian._foundation.shared.exceptions as exc
 from neosian._foundation.llm.base import ModelUsage, Usage
 from neosian._foundation.shared.constants import ErrorMessages, LLMDefaults
 from neosian._foundation.shared.exceptions import (
@@ -296,6 +299,9 @@ _CODE_TABLE = {
     "EvalRunError": "eval_run_failed",
     "EvalConfigUnknownKeyError": "eval_config_unknown_key",
     "EvalModelUnknownError": "eval_model_unknown",
+    "AuthenticationError": "llm_authentication_failed",
+    "ToolInvalidArgumentsError": "tool_invalid_arguments",
+    "ToolExecutionError": "tool_execution_failed",
     "MemoryStoreError": "memory_error",
     "MemoryDocumentNotFoundError": "memory_document_not_found",
     "MemoryScopeInvalidError": "memory_scope_invalid",
@@ -395,3 +401,107 @@ class TestNeosianErrorContract:
         )
         assert error.cause_code == "llm_provider_error"
         assert error.provider_status == 500
+
+
+# One sample construction per registered class: a class without an entry
+# fails the registry test below, so `details` coverage cannot drift.
+_SAMPLES: dict[str, Callable[[], NeosianError]] = {
+    "NeosianError": lambda: NeosianError("m"),
+    "LLMError": lambda: exc.LLMError("m"),
+    "ToolCallGenerationError": lambda: exc.ToolCallGenerationError(2),
+    "MessageSerializationError": lambda: exc.MessageSerializationError(
+        "tool_call.arguments", "Decimal", "boom", field="x.y"
+    ),
+    "UnsupportedParameterError": lambda: exc.UnsupportedParameterError("m"),
+    "UnsupportedContentError": lambda: exc.UnsupportedContentError("m"),
+    "ProviderError": lambda: exc.ProviderError("openai", "m", status=500),
+    "AuthenticationError": lambda: exc.AuthenticationError("openai", "m", status=401),
+    "ContextWindowExceededError": lambda: exc.ContextWindowExceededError(
+        "gpt", context_window=8, estimated_tokens=9, provider="openai"
+    ),
+    "FakeScriptExhaustedError": lambda: exc.FakeScriptExhaustedError(3),
+    "ModelFailedError": lambda: exc.ModelFailedError("m", "e", has_fallback=False),
+    "FallbackExhaustedError": lambda: exc.FallbackExhaustedError("a", "e1", "b", "e2"),
+    "PromptLoadError": lambda: exc.PromptLoadError("m"),
+    "PromptFileNotFoundError": lambda: exc.PromptFileNotFoundError("p"),
+    "PromptInvalidYAMLError": lambda: exc.PromptInvalidYAMLError("p"),
+    "PromptMissingKeyError": lambda: exc.PromptMissingKeyError("k", "p"),
+    "AgentLoadError": lambda: exc.AgentLoadError("m"),
+    "AgentFileNotFoundError": lambda: exc.AgentFileNotFoundError("p"),
+    "AgentMissingConfigurationError": lambda: exc.AgentMissingConfigurationError("p"),
+    "AgentInvalidConfigurationError": lambda: exc.AgentInvalidConfigurationError("p"),
+    "AgentInvalidDefinitionError": lambda: exc.AgentInvalidDefinitionError("p", "e"),
+    "ConfigurationError": lambda: exc.ConfigurationError("m"),
+    "InvalidModelError": lambda: exc.InvalidModelError("m", 42),
+    "MissingAPIKeyError": lambda: exc.MissingAPIKeyError("m"),
+    "McpConnectionError": lambda: exc.McpConnectionError("srv", OSError("down")),
+    "ToolInvalidArgumentsError": lambda: exc.ToolInvalidArgumentsError("t", "e"),
+    "ToolExecutionError": lambda: exc.ToolExecutionError("t", "e"),
+    "GuardrailError": lambda: exc.GuardrailError("m"),
+    "GuardrailPolicyParseError": lambda: exc.GuardrailPolicyParseError("not json"),
+    "GuardrailStreamingError": lambda: exc.GuardrailStreamingError(),
+    "StructuredOutputError": lambda: exc.StructuredOutputError("m"),
+    "StructuredOutputStreamingError": lambda: exc.StructuredOutputStreamingError(),
+    "StructuredOutputToolsError": lambda: exc.StructuredOutputToolsError(),
+    "EvalError": lambda: exc.EvalError("m"),
+    "EvalConfigNotFoundError": lambda: exc.EvalConfigNotFoundError("p"),
+    "EvalConfigInvalidYAMLError": lambda: exc.EvalConfigInvalidYAMLError("p", "d"),
+    "EvalConfigMissingKeyError": lambda: exc.EvalConfigMissingKeyError("k", "p"),
+    "EvalPromptNotFoundError": lambda: exc.EvalPromptNotFoundError("p"),
+    "EvalCaseInvalidError": lambda: exc.EvalCaseInvalidError("n", "e"),
+    "EvalRunError": lambda: exc.EvalRunError("v", "m", "c", "e"),
+    "EvalConfigUnknownKeyError": lambda: exc.EvalConfigUnknownKeyError("k", "p"),
+    "EvalModelUnknownError": lambda: exc.EvalModelUnknownError("m", "p"),
+    "SkillLoadError": lambda: exc.SkillLoadError("m"),
+    "SkillFileNotFoundError": lambda: exc.SkillFileNotFoundError("p"),
+    "SkillInvalidFrontmatterError": lambda: exc.SkillInvalidFrontmatterError("p", "r"),
+    "SkillMissingKeyError": lambda: exc.SkillMissingKeyError("k", "p"),
+    "SkillDuplicateNameError": lambda: exc.SkillDuplicateNameError("n"),
+    "SkillDirectoryNotFoundError": lambda: exc.SkillDirectoryNotFoundError("p"),
+    "BlackboardError": lambda: exc.BlackboardError("m"),
+    "BlackboardEntryNotFoundError": lambda: exc.BlackboardEntryNotFoundError("m"),
+    "BlackboardReadError": lambda: exc.BlackboardReadError("m"),
+    "BlackboardUpdateError": lambda: exc.BlackboardUpdateError("m"),
+    "FileBlackboardDirectoryNotFoundError": lambda: (
+        exc.FileBlackboardDirectoryNotFoundError("m")
+    ),
+    "MemoryStoreError": lambda: exc.MemoryStoreError("m"),
+    "MemoryDocumentNotFoundError": lambda: exc.MemoryDocumentNotFoundError("s", "p"),
+    "MemoryScopeInvalidError": lambda: exc.MemoryScopeInvalidError("s", "r"),
+    "MemoryActorInvalidError": lambda: exc.MemoryActorInvalidError("a", "r"),
+    "MemoryPathInvalidError": lambda: exc.MemoryPathInvalidError("p", "r"),
+    "MemoryConflictError": lambda: exc.MemoryConflictError("s", "p", "r"),
+    "MemoryFormatUnsupportedError": lambda: exc.MemoryFormatUnsupportedError(
+        "s", "p", "r"
+    ),
+    "MemoryReadOnlyMountError": lambda: exc.MemoryReadOnlyMountError("m"),
+    "MemoryEditOnlyMountError": lambda: exc.MemoryEditOnlyMountError("m"),
+    "ConversationStoreError": lambda: exc.ConversationStoreError("m"),
+    "ConversationIdInvalidError": lambda: exc.ConversationIdInvalidError("c", "r"),
+    "ConversationFormatUnsupportedError": lambda: (
+        exc.ConversationFormatUnsupportedError("c", "r")
+    ),
+    "ConversationConflictError": lambda: exc.ConversationConflictError("c", "r"),
+}
+
+_BASE_PARAMS = {"self", "message", "details", "retryable", "usage", "usage_by_model"}
+
+
+@pytest.mark.unit
+class TestDetailsBackfill:
+    """Every constructor that takes structural arguments hands them to
+    `details` as a JSON-safe dict — the wire-envelope promise (NF #171,
+    TG-34)."""
+
+    def test_every_registered_class_has_a_sample(self) -> None:
+        assert set(_SAMPLES) == {cls.__name__ for cls in ERROR_CODES.values()}
+
+    @pytest.mark.parametrize("name", sorted(_SAMPLES))
+    def test_structural_arguments_land_in_details(self, name: str) -> None:
+        error = _SAMPLES[name]()
+        structural = set(inspect.signature(type(error).__init__).parameters)
+        if structural - _BASE_PARAMS:
+            assert error.details, name
+            json.dumps(error.details)  # JSON-safe by construction
+        elif error.details is not None:
+            json.dumps(error.details)

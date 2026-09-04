@@ -4,7 +4,7 @@ import logging
 from collections.abc import AsyncIterator
 from typing import Any
 
-from cerebras.cloud.sdk import AsyncCerebras, BadRequestError, omit
+from cerebras.cloud.sdk import NOT_GIVEN, AsyncCerebras, BadRequestError, omit
 from cerebras.cloud.sdk.types.chat.chat_completion import (
     ChatChunkResponse,
     ChatChunkResponseUsage,
@@ -65,7 +65,10 @@ class CerebrasClient(BaseLLMClient):
     """
 
     def __init__(
-        self, api_key: str, max_retries: int = LLMDefaults.MAX_RETRIES
+        self,
+        api_key: str,
+        max_retries: int = LLMDefaults.MAX_RETRIES,
+        timeout: float | None = None,
     ) -> None:
         """Initialize the Cerebras client.
 
@@ -73,8 +76,13 @@ class CerebrasClient(BaseLLMClient):
             api_key: Cerebras API key. Required, no implicit env var reading.
             max_retries: Transport-level retries handled by the SDK
                 (429/5xx/connection errors, exponential backoff).
+            timeout: Per-request deadline in seconds; None keeps the SDK's.
         """
-        self._client = AsyncCerebras(api_key=api_key, max_retries=max_retries)
+        self._client = AsyncCerebras(
+            api_key=api_key,
+            max_retries=max_retries,
+            timeout=NOT_GIVEN if timeout is None else timeout,
+        )
 
     async def complete(
         self,

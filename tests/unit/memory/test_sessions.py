@@ -16,9 +16,9 @@ from neosian._foundation.llm.fake import FakeClient, FakeScript, FakeTurn
 from neosian._foundation.memory.file import FileStore
 from neosian._foundation.memory.index import generate_memory_index
 from neosian._foundation.memory.mounts import MemoryConfig, Mount
-from neosian._foundation.shared.types import SystemPrompt, ToolCallId, ToolName
+from neosian._foundation.shared.types import ToolCallId, ToolName
 
-_SYSTEM = SystemPrompt("You are a test agent with memory.")
+_SYSTEM = "You are a test agent with memory."
 _MOUNT = Mount(scope="user:demo", mount_path="user", description="user facts")
 
 

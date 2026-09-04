@@ -29,7 +29,7 @@ from neosian._foundation.shared.exceptions import (
     ConfigurationError,
     ConversationIdInvalidError,
 )
-from neosian._foundation.shared.types import SystemPrompt, ToolCallId, ToolName
+from neosian._foundation.shared.types import ToolCallId, ToolName
 
 _LINKS = LinkRegistry()
 
@@ -37,7 +37,7 @@ _LINKS = LinkRegistry()
 def _config(*turns: FakeTurn, **kwargs: Any) -> tuple[AgentConfig, FakeClient]:
     fake = FakeClient(FakeScript(turns=turns))
     config = AgentConfig(
-        system_prompt=SystemPrompt("You are a test agent."),
+        system_prompt="You are a test agent.",
         model=Model.FAKE,
         enable_todo=False,
         client_factory=lambda _: fake,

@@ -276,6 +276,8 @@ class DoneEvent(_EventBehavior):
     ``model`` is the API-reported string of the final completion — unified
     with ``AgentResponse.model``. ``stop_reason`` is the normalized view
     (``StopReason`` value), ``raw_stop_reason`` the provider-native string.
+    ``iterations_exhausted`` says the tool loop ran out and this is the
+    toolless final call's answer (additive, NF #170).
     """
 
     type: ClassVar[AgentEventType] = AgentEventType.DONE
@@ -285,6 +287,7 @@ class DoneEvent(_EventBehavior):
     raw_stop_reason: str | None = None
     usage: Usage | None = None
     usage_by_model: tuple[ModelUsage, ...] = ()
+    iterations_exhausted: bool = False
     sequence: int = 0
 
     def to_dict(self) -> dict[str, Any]:
@@ -296,6 +299,7 @@ class DoneEvent(_EventBehavior):
             "raw_stop_reason": self.raw_stop_reason,
             "usage": _usage_payload(self.usage) if self.usage else None,
             "usage_by_model": _usage_by_model_payload(self.usage_by_model),
+            "iterations_exhausted": self.iterations_exhausted,
         }
 
 

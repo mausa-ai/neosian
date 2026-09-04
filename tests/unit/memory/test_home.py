@@ -146,7 +146,7 @@ class TestBothDoors:
             SERVE_TOKEN_ENV,
             parse_args as parse_serve,
         )
-        from neosian._foundation.shared.types import SystemPrompt, ToolCallId, ToolName
+        from neosian._foundation.shared.types import ToolCallId, ToolName
         from tests.unit.record.payloads import SESSION, prompt, stop, tool
 
         fresh = tmp_path / "nh"
@@ -190,7 +190,7 @@ class TestBothDoors:
             )
         )
         config = AgentConfig(
-            system_prompt=SystemPrompt("remember"),
+            system_prompt="remember",
             model=Model.FAKE,
             enable_todo=False,
             client_factory=lambda _: FakeClient(script),

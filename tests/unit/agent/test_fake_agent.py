@@ -39,14 +39,14 @@ from neosian._foundation.llm.base import (
 from neosian._foundation.llm.fake import FakeClient, FakeScript, FakeTurn
 from neosian._foundation.shared.exceptions import ModelFailedError
 from neosian._foundation.shared.types import (
+    AnyModel,
     Provider,
-    SystemPrompt,
     ToolCallId,
     ToolName,
 )
 from neosian._foundation.tools.base import Tool, ToolResult
 
-_SYSTEM = SystemPrompt("You are a test agent.")
+_SYSTEM = "You are a test agent."
 _USER = [Message(role=Role.USER, content="Hi")]
 
 
@@ -99,7 +99,7 @@ class TestResponseModel:
         fake = _ModellessFake()
         agent = Agent(
             AgentConfig(
-                system_prompt=SystemPrompt("S"),
+                system_prompt="S",
                 model=Model.FAKE,
                 enable_todo=False,
                 client_factory=lambda _: fake,
@@ -115,8 +115,8 @@ class TestClientFactory:
         fake = FakeClient()
         seen: list[Provider] = []
 
-        def factory(provider: Provider) -> FakeClient:
-            seen.append(provider)
+        def factory(model: AnyModel) -> FakeClient:
+            seen.append(model.provider)
             return fake
 
         agent = Agent(_config(client_factory=factory))
@@ -258,8 +258,8 @@ class TestSessionWithFake:
     async def test_session_honors_factory_and_caches_per_provider(self) -> None:
         created: list[Provider] = []
 
-        def factory(provider: Provider) -> FakeClient:
-            created.append(provider)
+        def factory(model: AnyModel) -> FakeClient:
+            created.append(model.provider)
             return FakeClient()
 
         agent = Agent(_config(client_factory=factory))

@@ -175,3 +175,19 @@ class TestGuardrailResult:
         """policy_rationale should be None when no policies."""
         result = GuardrailResult(safe=True)
         assert result.policy_rationale is None
+
+
+@pytest.mark.unit
+class TestGuardrailsConfigKnobs:
+    """The two NF knobs (#169): output blocking is on by default and
+    opt-outable; the classifier deadline must be positive."""
+
+    def test_block_on_output_defaults_on(self) -> None:
+        assert GuardrailsConfig().block_on_output is True
+        assert GuardrailsConfig(block_on_output=False).block_on_output is False
+
+    def test_timeout_defaults_unbounded_and_must_be_positive(self) -> None:
+        assert GuardrailsConfig().timeout_seconds is None
+        assert GuardrailsConfig(timeout_seconds=2.5).timeout_seconds == 2.5
+        with pytest.raises(ValueError, match="timeout_seconds"):
+            GuardrailsConfig(timeout_seconds=0)

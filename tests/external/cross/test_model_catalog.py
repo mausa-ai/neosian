@@ -9,8 +9,7 @@ unit tests cannot see. Run per provider with the matching env var set:
 
 import pytest
 
-from neosian import AnyModel
-from neosian._foundation.llm.base import BaseLLMClient, Message, Role
+from neosian import AnyModel, BaseLLMClient, Message, Role
 from neosian._foundation.llm.router import ProviderRouter
 from neosian._foundation.shared.types import Model, Provider
 from tests.external.lanes import LANES, Lane

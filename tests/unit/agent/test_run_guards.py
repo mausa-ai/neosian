@@ -31,7 +31,7 @@ from neosian._foundation.shared.exceptions import (
     StructuredOutputStreamingError,
     StructuredOutputToolsError,
 )
-from neosian._foundation.shared.types import SystemPrompt, ToolName
+from neosian._foundation.shared.types import ToolName
 from neosian._foundation.tools.base import Tool, ToolResult
 
 _USER = [Message(role=Role.USER, content="Hi")]
@@ -59,7 +59,7 @@ async def _noop() -> ToolResult[str]:
 def _structured_agent() -> Agent:
     return Agent(
         AgentConfig(
-            system_prompt=SystemPrompt("test"),
+            system_prompt="test",
             model=Model.FAKE,
             enable_todo=False,
         )
@@ -69,7 +69,7 @@ def _structured_agent() -> Agent:
 def _tool_agent() -> Agent:
     return Agent(
         AgentConfig(
-            system_prompt=SystemPrompt("test"),
+            system_prompt="test",
             model=Model.FAKE,
             enable_todo=False,
             tools=[_noop],
@@ -81,7 +81,7 @@ def _output_guarded_agent() -> Agent:
     with patch.dict(os.environ, {"CEREBRAS_API_KEY": "test-key"}):
         return Agent(
             AgentConfig(
-                system_prompt=SystemPrompt("test"),
+                system_prompt="test",
                 model=Model.FAKE,
                 enable_todo=False,
                 guardrails=GuardrailsConfig(
@@ -152,7 +152,7 @@ class TestInputGuardModelPreservation:
         with patch.dict(os.environ, {"CEREBRAS_API_KEY": "test-key"}):
             agent = Agent(
                 AgentConfig(
-                    system_prompt=SystemPrompt("test"),
+                    system_prompt="test",
                     model=Model.FAKE,
                     enable_todo=False,
                     guardrails=GuardrailsConfig(

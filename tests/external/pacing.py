@@ -20,17 +20,19 @@ import asyncio
 import time
 from collections.abc import AsyncIterator
 
-from neosian._foundation.llm.base import (
+from neosian import (
+    AnyModel,
     BaseLLMClient,
     CompletionResponse,
     Message,
+    ReasoningEffort,
+    ResponseFormat,
     StreamChunk,
     ToolDefinition,
 )
 from neosian._foundation.llm.openai import OpenAICompatibleClient
 from neosian._foundation.shared.constants import LLMDefaults
 from neosian._foundation.shared.exceptions import ProviderError
-from neosian._foundation.shared.types import AnyModel, ReasoningEffort, ResponseFormat
 from tests.external.lanes import Lane
 
 _ATTEMPTS = 6

@@ -15,7 +15,6 @@ from neosian import Agent, AgentConfig, ContextPolicy, FallbackConfig, Model
 from neosian._foundation.llm.base import Message, Role
 from neosian._foundation.llm.fake import FakeClient, FakeScript, FakeTurn
 from neosian._foundation.shared.exceptions import ContextWindowExceededError
-from neosian._foundation.shared.types import SystemPrompt
 
 OVERSIZED = [Message(role=Role.USER, content="x" * 40_000)]  # ~10k tokens
 SMALL = [Message(role=Role.USER, content="hi")]
@@ -23,7 +22,7 @@ SMALL = [Message(role=Role.USER, content="hi")]
 
 def _config(**overrides: Any) -> AgentConfig:
     defaults: dict[str, Any] = {
-        "system_prompt": SystemPrompt("sys"),
+        "system_prompt": "sys",
         "tools": [],
         "enable_todo": False,
         "model": Model.FAKE_SMALL,  # 8_192-token window, by design

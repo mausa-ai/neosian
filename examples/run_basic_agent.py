@@ -11,11 +11,10 @@ import os
 import sys
 from pathlib import Path
 
-# Add examples directory to path to import basic_agent
-sys.path.insert(0, str(Path(__file__).parent))
+# The repo root on the path so the sibling imports as `examples.basic_agent`
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from basic_agent import configuration  # noqa: E402
-
+from examples.basic_agent import configuration  # noqa: E402
 from neosian import Agent, Message, Role  # noqa: E402
 
 

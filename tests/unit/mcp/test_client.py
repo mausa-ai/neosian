@@ -47,7 +47,6 @@ from neosian._foundation.memory.file import FileStore
 from neosian._foundation.memory.mounts import MemoryConfig
 from neosian._foundation.memory.tools import create_memory_tool
 from neosian._foundation.shared.types import (
-    SystemPrompt,
     ToolCallId,
     ToolFunction,
     ToolName,
@@ -55,7 +54,7 @@ from neosian._foundation.shared.types import (
 from neosian._foundation.tools.base import Tool, ToolResult, get_tool_definition
 from neosian.mcp import McpServer, create_memory_server
 
-_SYSTEM = SystemPrompt("You are a test agent.")
+_SYSTEM = "You are a test agent."
 _USER = [Message(role=Role.USER, content="go")]
 _CREATE = {"command": "create", "path": "/memories/prefs", "content": "Espresso only."}
 _BLOCKS: list[Any] = [

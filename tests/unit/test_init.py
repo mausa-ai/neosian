@@ -173,6 +173,12 @@ def test_all_list_matches_exports() -> None:
         "format_micro_usd",
         "register_model",
         "normalize_stop_reason",
+        # The client seam (DESIGN §2)
+        "BaseLLMClient",
+        "ClientFactory",
+        "CompletionResponse",
+        "StreamChunk",
+        "ToolDefinition",
         # Streaming events (v2 wire contract, DESIGN §6)
         "AgentEvent",
         "AgentEventType",
@@ -272,6 +278,7 @@ def test_all_list_matches_exports() -> None:
         "NeosianError",
         "LLMError",
         "ProviderError",
+        "AuthenticationError",
         "ContextWindowExceededError",
         "ModelFailedError",
         "FallbackExhaustedError",
@@ -298,3 +305,25 @@ def test_all_list_matches_exports() -> None:
     }
 
     assert set(neosian.__all__) == expected
+
+
+@pytest.mark.unit
+def test_no_export_is_shadowed_by_a_submodule() -> None:
+    """Importing every top-level submodule must leave each `__all__` name
+    bound to what `__init__` exported — a same-named submodule rebinds it
+    (NU's finding on `audit`, closed at NF by the `ledger` module)."""
+    import importlib
+    import pkgutil
+    from types import ModuleType
+
+    import neosian
+
+    for info in pkgutil.iter_modules(neosian.__path__):
+        if not info.name.startswith("_"):
+            importlib.import_module(f"neosian.{info.name}")
+    shadowed = [
+        name
+        for name in neosian.__all__
+        if isinstance(getattr(neosian, name), ModuleType)
+    ]
+    assert shadowed == []

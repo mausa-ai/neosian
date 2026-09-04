@@ -61,6 +61,7 @@ ANTHROPIC: dict[str, Any] = {
     "redacted_thinking": at.RedactedThinkingBlock(type="redacted_thinking", data=""),
     "text_delta": _text_delta,
     "thinking_delta": at.ThinkingDelta(type="thinking_delta", thinking=""),
+    "signature_delta": at.SignatureDelta(type="signature_delta", signature=""),
     "input_json_delta": at.InputJSONDelta(type="input_json_delta", partial_json=""),
     "message_start": at.RawMessageStartEvent(type="message_start", message=_message),
     "content_block_start": at.RawContentBlockStartEvent(

@@ -80,14 +80,18 @@ def _tool_call_to_json(tc: ToolCall) -> dict[str, Any]:
 
 
 def message_to_json(message: Message) -> dict[str, Any]:
-    """Full-fidelity JSON-safe encoding of one message."""
-    return {
+    """Full-fidelity JSON-safe encoding of one message; `extra` appears
+    only when a provider set it, so older lines encode exactly as before."""
+    encoded: dict[str, Any] = {
         "role": message.role.value,
         "content": content_to_json(message.content),
         "reasoning": message.reasoning,
         "tool_calls": [_tool_call_to_json(tc) for tc in message.tool_calls],
         "tool_call_id": message.tool_call_id,
     }
+    if message.extra:
+        encoded["extra"] = message.extra
+    return encoded
 
 
 def message_from_json(data: dict[str, Any]) -> Message:
@@ -107,4 +111,5 @@ def message_from_json(data: dict[str, Any]) -> Message:
             for tc in data.get("tool_calls") or []
         ],
         tool_call_id=ToolCallId(tool_call_id) if tool_call_id else None,
+        extra=data.get("extra"),
     )

@@ -55,7 +55,6 @@ from neosian._foundation.shared.types import (
     Model,
     Provider,
     ReasoningEffort,
-    SystemPrompt,
     ToolCallId,
     ToolName,
 )
@@ -93,7 +92,7 @@ class TestAgentInit:
             return_value=_create_mock_router(),
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 tools=[],
                 enable_todo=False,
             )
@@ -110,11 +109,12 @@ class TestAgentInit:
             return_value=_create_mock_router(),
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 tools=[],
                 enable_todo=False,
+                max_tool_iterations=7,
             )
-            agent = Agent(config=config, max_tool_iterations=7)
+            agent = Agent(config=config)
 
             assert agent.config is config
             assert agent.max_tool_iterations == 7
@@ -126,7 +126,7 @@ class TestAgentInit:
             return_value=_create_mock_router(),
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 tools=[],
             )
             agent = Agent(config=config)
@@ -141,7 +141,7 @@ class TestAgentInit:
             return_value=_create_mock_router(),
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 tools=[],
                 enable_todo=False,
             )
@@ -162,7 +162,7 @@ class TestAgentInit:
             return_value=_create_mock_router(),
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 tools=[greet],
                 enable_todo=False,
             )
@@ -183,7 +183,7 @@ class TestAgentInit:
             return_value=_create_mock_router(),
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 tools=[greet],
                 enable_todo=True,
             )
@@ -204,7 +204,7 @@ class TestAgentInit:
             return_value=_create_mock_router(),
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 tools=[not_a_tool],  # type: ignore[list-item]
                 enable_todo=False,
             )
@@ -224,7 +224,7 @@ class TestAgentInit:
             return_value=_create_mock_router(),
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 tools=[update_todo],
                 enable_todo=True,
             )
@@ -248,7 +248,7 @@ class TestAgentInit:
             return_value=_create_mock_router(),
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 tools=[greet_one, greet_two],
                 enable_todo=False,
             )
@@ -275,7 +275,7 @@ class TestAgentRun:
             return_value=_create_mock_router(mock_client),
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 tools=[],
             )
             agent = Agent(config=config)
@@ -323,7 +323,7 @@ class TestAgentRun:
             return_value=_create_mock_router(mock_client),
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are a calculator."),
+                system_prompt="You are a calculator.",
                 tools=[add],
                 enable_todo=False,
             )
@@ -369,7 +369,7 @@ class TestAgentRun:
             return_value=_create_mock_router(mock_client),
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 tools=[],
             )
             agent = Agent(config=config)
@@ -393,9 +393,7 @@ class TestAgentRun:
             "neosian._foundation.agent.base.ProviderRouter",
             return_value=_create_mock_router(),
         ):
-            agent = Agent(
-                config=AgentConfig(system_prompt=SystemPrompt("x"), tools=[add])
-            )
+            agent = Agent(config=AgentConfig(system_prompt="x", tools=[add]))
             call = ToolCall(
                 id=ToolCallId("c1"), name=ToolName("add"), arguments={"a": 1}
             )
@@ -404,6 +402,7 @@ class TestAgentRun:
         assert result.success is False
         assert "failed" in (result.error or "")
         assert "Invalid arguments" not in (result.error or "")
+        assert result.code == "tool_execution_failed"
 
     @pytest.mark.asyncio
     async def test_unbindable_arguments_are_invalid_arguments(self) -> None:
@@ -417,9 +416,7 @@ class TestAgentRun:
             "neosian._foundation.agent.base.ProviderRouter",
             return_value=_create_mock_router(),
         ):
-            agent = Agent(
-                config=AgentConfig(system_prompt=SystemPrompt("x"), tools=[add])
-            )
+            agent = Agent(config=AgentConfig(system_prompt="x", tools=[add]))
             call = ToolCall(
                 id=ToolCallId("c1"), name=ToolName("add"), arguments={"b": 1}
             )
@@ -427,6 +424,7 @@ class TestAgentRun:
 
         assert result.success is False
         assert "Invalid arguments for tool 'add'" in (result.error or "")
+        assert result.code == "tool_invalid_arguments"
 
     @pytest.mark.asyncio
     async def test_tool_exception_returns_error(self) -> None:
@@ -461,7 +459,7 @@ class TestAgentRun:
             return_value=_create_mock_router(mock_client),
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 tools=[failing_tool],
                 enable_todo=False,
             )
@@ -525,7 +523,7 @@ class TestAgentRunStreaming:
             return_value=_create_mock_router(mock_client),
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 tools=[],
                 enable_todo=False,
             )
@@ -585,7 +583,7 @@ class TestAgentRunStreaming:
             return_value=_create_mock_router(mock_client),
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are a calculator."),
+                system_prompt="You are a calculator.",
                 tools=[add],
                 enable_todo=False,
             )
@@ -629,7 +627,7 @@ class TestAgentRunStreaming:
             return_value=_create_mock_router(mock_client),
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 tools=[],
                 enable_todo=False,
             )
@@ -689,7 +687,7 @@ class TestStreamingUsageReporting:
             return_value=_create_mock_router(mock_client),
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are a calculator."),
+                system_prompt="You are a calculator.",
                 tools=[add],
                 enable_todo=False,
             )
@@ -747,12 +745,13 @@ class TestStreamingUsageReporting:
             return_value=_create_mock_router(mock_client),
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are a calculator."),
+                system_prompt="You are a calculator.",
                 tools=[add],
                 enable_todo=False,
                 hooks=AgentHooks(on_turn=turns.append),
+                max_tool_iterations=1,
             )
-            agent = Agent(config=config, max_tool_iterations=1)
+            agent = Agent(config=config)
             result = await agent.run(
                 [Message(role=Role.USER, content="What is 2 + 3?")], stream=True
             )
@@ -811,11 +810,12 @@ class TestStreamingUsageReporting:
             return_value=_create_mock_router(mock_client),
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are a calculator."),
+                system_prompt="You are a calculator.",
                 tools=[add],
                 enable_todo=False,
+                max_tool_iterations=1,
             )
-            agent = Agent(config=config, max_tool_iterations=1)
+            agent = Agent(config=config)
 
             messages = [Message(role=Role.USER, content="What is 2 + 3?")]
             result = await agent.run(messages, stream=True)
@@ -869,7 +869,7 @@ class TestStreamingUsageReporting:
             return_value=_create_mock_router(mock_client),
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are a calculator."),
+                system_prompt="You are a calculator.",
                 tools=[add],
                 enable_todo=False,
             )
@@ -923,7 +923,7 @@ class TestStreamingUsageReporting:
             return_value=mock_router,
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 tools=[],
                 enable_todo=False,
                 model=Model.CLAUDE_SONNET_5,
@@ -952,7 +952,7 @@ class TestStreamingUsageReporting:
             return_value=_create_mock_router(),
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 tools=[],
                 enable_todo=False,
             )
@@ -1019,7 +1019,7 @@ class TestAgentHeartbeats:
             return_value=_create_mock_router(mock_client),
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 tools=[fast_tool],
                 enable_todo=False,
             )
@@ -1081,7 +1081,7 @@ class TestAgentHeartbeats:
             ),
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 tools=[slow_tool],
                 enable_todo=False,
             )
@@ -1146,7 +1146,7 @@ class TestAgentHeartbeats:
             ),
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 tools=[delayed_tool],
                 enable_todo=False,
             )
@@ -1176,7 +1176,7 @@ class TestAgentReasoningEffort:
             return_value=_create_mock_router(),
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 model=Model.CEREBRAS_GPT_OSS_120B,
                 reasoning_effort=ReasoningEffort.HIGH,
                 enable_todo=False,
@@ -1202,7 +1202,7 @@ class TestAgentReasoningEffort:
             return_value=mock_router,
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 model=Model.CEREBRAS_GPT_OSS_120B,
                 reasoning_effort=ReasoningEffort.HIGH,
                 enable_todo=False,
@@ -1234,7 +1234,7 @@ class TestAgentReasoningEffort:
             return_value=mock_router,
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 model=Model.CEREBRAS_GPT_OSS_120B,
                 reasoning_effort=None,  # Explicitly None
                 enable_todo=False,
@@ -1284,7 +1284,7 @@ class TestAgentReasoningEffort:
             return_value=mock_router,
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 model=Model.CEREBRAS_GPT_OSS_120B,  # Supports reasoning
                 reasoning_effort=ReasoningEffort.HIGH,
                 fallback=FallbackConfig(
@@ -1329,7 +1329,7 @@ class TestAgentReasoningEffort:
             return_value=mock_router,
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 model=Model.CEREBRAS_GPT_OSS_120B,
                 reasoning_effort=ReasoningEffort.MEDIUM,
                 enable_todo=False,
@@ -1403,7 +1403,7 @@ class TestAgentParallelToolExecution:
             return_value=_create_mock_router(mock_client),
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("S"),
+                system_prompt="S",
                 tools=[t_a, t_b, t_c],
                 enable_todo=False,
             )
@@ -1468,7 +1468,7 @@ class TestAgentParallelToolExecution:
             ),
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("S"),
+                system_prompt="S",
                 tools=[slow, fast, mid],
                 enable_todo=False,
             )
@@ -1553,7 +1553,7 @@ class TestAgentParallelToolExecution:
             ),
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("S"),
+                system_prompt="S",
                 tools=[slow, fast, mid],
                 enable_todo=False,
             )
@@ -1618,7 +1618,7 @@ class TestAgentParallelToolExecution:
             ),
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("S"),
+                system_prompt="S",
                 tools=[ok1, bad, ok2],
                 enable_todo=False,
             )
@@ -1682,7 +1682,7 @@ class TestAgentParallelToolExecution:
             ),
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("S"),
+                system_prompt="S",
                 tools=[slow, fast],
                 enable_todo=False,
             )
@@ -1739,7 +1739,7 @@ class TestAgentParallelToolExecution:
             return_value=_create_mock_router(mock_client),
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("S"),
+                system_prompt="S",
                 tools=[solo],
                 enable_todo=False,
             )
@@ -1784,7 +1784,7 @@ class TestAgentParallelToolExecution:
         ):
             agent = Agent(
                 config=AgentConfig(
-                    system_prompt=SystemPrompt("S"),
+                    system_prompt="S",
                     tools=[hang],
                     model=Model.FAKE,
                     enable_todo=False,
@@ -1866,7 +1866,7 @@ class TestAgentParallelToolExecution:
             return_value=_create_mock_router(mock_client),
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("S"),
+                system_prompt="S",
                 tools=[t1, t2, t3, t4],
                 enable_todo=False,
                 max_parallel_tools=2,
@@ -1883,7 +1883,7 @@ class TestAgentParallelToolExecution:
         """max_parallel_tools=0 must raise."""
         with pytest.raises(UnsupportedParameterError, match="max_parallel_tools"):
             AgentConfig(
-                system_prompt=SystemPrompt("S"),
+                system_prompt="S",
                 tools=[],
                 enable_todo=False,
                 max_parallel_tools=0,
@@ -1893,7 +1893,7 @@ class TestAgentParallelToolExecution:
         """Negative max_parallel_tools must raise."""
         with pytest.raises(UnsupportedParameterError, match="max_parallel_tools"):
             AgentConfig(
-                system_prompt=SystemPrompt("S"),
+                system_prompt="S",
                 tools=[],
                 enable_todo=False,
                 max_parallel_tools=-1,
@@ -1920,7 +1920,7 @@ class TestAgentStopReason:
             return_value=_create_mock_router(mock_client),
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 tools=[],
                 enable_todo=False,
             )
@@ -1952,7 +1952,7 @@ class TestAgentCacheConversation:
             return_value=_create_mock_router(mock_client),
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You transcribe PDFs."),
+                system_prompt="You transcribe PDFs.",
                 tools=[],
                 enable_todo=False,
                 cache_conversation=False,
@@ -1979,7 +1979,7 @@ class TestAgentCacheConversation:
             return_value=_create_mock_router(mock_client),
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 tools=[],
                 enable_todo=False,
             )
@@ -2017,7 +2017,7 @@ class TestCapabilityAwareFallback:
         ):
             agent = Agent(
                 config=AgentConfig(
-                    system_prompt=SystemPrompt("S"),
+                    system_prompt="S",
                     model=Model.CLAUDE_SONNET_5,
                     fallback=FallbackConfig(model=Model.CEREBRAS_GEMMA_4_31B),
                     enable_todo=False,
@@ -2061,7 +2061,7 @@ class TestCapabilityAwareFallback:
             return_value=mock_router,
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You transcribe PDFs."),
+                system_prompt="You transcribe PDFs.",
                 tools=[],
                 enable_todo=False,
                 model=Model.CLAUDE_SONNET_5,
@@ -2091,7 +2091,7 @@ class TestCapabilityAwareFallback:
             return_value=_create_mock_router(mock_client),
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 tools=[],
                 enable_todo=False,
                 model=Model.GPT_5_NANO,
@@ -2133,7 +2133,7 @@ class TestCapabilityAwareFallback:
             return_value=mock_router,
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You transcribe PDFs."),
+                system_prompt="You transcribe PDFs.",
                 tools=[],
                 enable_todo=False,
                 model=Model.GPT_5_NANO,
@@ -2175,7 +2175,7 @@ class TestCapabilityAwareFallback:
             return_value=mock_router,
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You transcribe PDFs."),
+                system_prompt="You transcribe PDFs.",
                 tools=[],
                 enable_todo=False,
                 model=Model.CLAUDE_SONNET_5,
@@ -2222,7 +2222,7 @@ class TestAgentNativeMemory:
     def test_flag_marks_the_registered_definition(self, tmp_path: Path) -> None:
         agent = Agent(
             AgentConfig(
-                system_prompt=SystemPrompt("test"),
+                system_prompt="test",
                 model=Model.CLAUDE_SONNET_5,
                 memory=self._memory(tmp_path),
                 native_memory=True,
@@ -2234,7 +2234,7 @@ class TestAgentNativeMemory:
     def test_flag_off_leaves_the_definition_unmarked(self, tmp_path: Path) -> None:
         agent = Agent(
             AgentConfig(
-                system_prompt=SystemPrompt("test"),
+                system_prompt="test",
                 model=Model.CLAUDE_SONNET_5,
                 memory=self._memory(tmp_path),
                 enable_todo=False,
@@ -2246,7 +2246,7 @@ class TestAgentNativeMemory:
         """Ledger #42: the flag never raises — derive_config depends on it."""
         agent = Agent(
             AgentConfig(
-                system_prompt=SystemPrompt("test"),
+                system_prompt="test",
                 model=Model.CLAUDE_SONNET_5,
                 native_memory=True,
                 enable_todo=False,
@@ -2260,7 +2260,7 @@ class TestAgentNativeMemory:
         with caplog.at_level(logging.WARNING, logger=_AGENT_LOGGER):
             Agent(
                 AgentConfig(
-                    system_prompt=SystemPrompt("test"),
+                    system_prompt="test",
                     model=Model.FAKE,
                     memory=self._memory(tmp_path),
                     native_memory=True,
@@ -2275,7 +2275,7 @@ class TestAgentNativeMemory:
         with caplog.at_level(logging.WARNING, logger=_AGENT_LOGGER):
             Agent(
                 AgentConfig(
-                    system_prompt=SystemPrompt("test"),
+                    system_prompt="test",
                     model=Model.CLAUDE_SONNET_5,
                     memory=self._memory(tmp_path),
                     native_memory=True,
@@ -2294,7 +2294,7 @@ class TestServerCompactionThreading:
         fake = FakeClient(FakeScript(turns=(FakeTurn(content="ok"),)))
         agent = Agent(
             AgentConfig(
-                system_prompt=SystemPrompt("test"),
+                system_prompt="test",
                 model=Model.FAKE,
                 enable_todo=False,
                 client_factory=lambda _: fake,
@@ -2309,7 +2309,7 @@ class TestServerCompactionThreading:
         fake = FakeClient(FakeScript(turns=(FakeTurn(content="ok"),)))
         agent = Agent(
             AgentConfig(
-                system_prompt=SystemPrompt("test"),
+                system_prompt="test",
                 model=Model.FAKE,
                 enable_todo=False,
                 client_factory=lambda _: fake,
@@ -2369,13 +2369,12 @@ class TestProviderStreamClosure:
     def _agent(self, fake: FakeClient, **kwargs: Any) -> Agent:
         return Agent(
             AgentConfig(
-                system_prompt=SystemPrompt("S"),
+                system_prompt="S",
                 model=Model.FAKE,
                 enable_todo=False,
                 client_factory=lambda _: fake,
-                tools=kwargs.pop("tools", []),
-            ),
-            **kwargs,
+                **kwargs,
+            )
         )
 
     async def _close_at_first_content(self, agent: Agent) -> None:

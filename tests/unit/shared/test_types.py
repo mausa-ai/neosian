@@ -15,7 +15,6 @@ from neosian._foundation.shared.types import (
     ModelSpec,
     Provider,
     ReasoningEffort,
-    SystemPrompt,
     ToolName,
 )
 
@@ -131,7 +130,7 @@ class TestAgentConfigValidation:
     def test_valid_model_accepted(self) -> None:
         """AgentConfig should accept valid Model enum values."""
         config = AgentConfig(
-            system_prompt=SystemPrompt("You are helpful."),
+            system_prompt="You are helpful.",
             model=Model.CEREBRAS_GPT_OSS_120B,
         )
         assert config.model == Model.CEREBRAS_GPT_OSS_120B
@@ -139,7 +138,7 @@ class TestAgentConfigValidation:
     def test_default_model(self) -> None:
         """AgentConfig should use default model when not specified."""
         config = AgentConfig(
-            system_prompt=SystemPrompt("You are helpful."),
+            system_prompt="You are helpful.",
         )
         assert config.model == Model.CEREBRAS_GPT_OSS_120B
 
@@ -147,7 +146,7 @@ class TestAgentConfigValidation:
         """AgentConfig should raise InvalidModelError for string models."""
         with pytest.raises(InvalidModelError) as exc_info:
             AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 model="gpt-4o",  # type: ignore[arg-type]
             )
 
@@ -159,7 +158,7 @@ class TestAgentConfigValidation:
         """AgentConfig should raise InvalidModelError for non-string types."""
         with pytest.raises(InvalidModelError) as exc_info:
             AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 model=123,  # type: ignore[arg-type]
             )
 
@@ -170,7 +169,7 @@ class TestAgentConfigValidation:
         """InvalidModelError should list all supported models."""
         with pytest.raises(InvalidModelError) as exc_info:
             AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 model="invalid",  # type: ignore[arg-type]
             )
 
@@ -187,7 +186,7 @@ class TestAgentConfigReasoningEffort:
     def test_reasoning_effort_with_gpt_oss_model_accepted(self) -> None:
         """AgentConfig should accept reasoning_effort with GPT-OSS models."""
         config = AgentConfig(
-            system_prompt=SystemPrompt("You are helpful."),
+            system_prompt="You are helpful.",
             model=Model.CEREBRAS_GPT_OSS_120B,
             reasoning_effort=ReasoningEffort.HIGH,
         )
@@ -196,7 +195,7 @@ class TestAgentConfigReasoningEffort:
     def test_reasoning_effort_with_gpt_oss_120b_accepted(self) -> None:
         """AgentConfig should accept reasoning_effort with GPT-OSS-120B."""
         config = AgentConfig(
-            system_prompt=SystemPrompt("You are helpful."),
+            system_prompt="You are helpful.",
             model=Model.CEREBRAS_GPT_OSS_120B,
             reasoning_effort=ReasoningEffort.MEDIUM,
         )
@@ -205,7 +204,7 @@ class TestAgentConfigReasoningEffort:
     def test_reasoning_effort_none_accepted_with_any_model(self) -> None:
         """AgentConfig should accept reasoning_effort=None with any model."""
         config = AgentConfig(
-            system_prompt=SystemPrompt("You are helpful."),
+            system_prompt="You are helpful.",
             model=Model.CEREBRAS_GEMMA_4_31B,
             reasoning_effort=None,
         )
@@ -214,7 +213,7 @@ class TestAgentConfigReasoningEffort:
     def test_reasoning_effort_default_is_none(self) -> None:
         """AgentConfig should default reasoning_effort to None."""
         config = AgentConfig(
-            system_prompt=SystemPrompt("You are helpful."),
+            system_prompt="You are helpful.",
         )
         assert config.reasoning_effort is None
 
@@ -222,7 +221,7 @@ class TestAgentConfigReasoningEffort:
         """AgentConfig should raise error for reasoning_effort with non-reasoning models."""
         with pytest.raises(UnsupportedParameterError) as exc_info:
             AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 model=Model.CEREBRAS_GEMMA_4_31B,
                 reasoning_effort=ReasoningEffort.HIGH,
             )
@@ -233,7 +232,7 @@ class TestAgentConfigReasoningEffort:
     def test_reasoning_effort_with_openai_model_accepted(self) -> None:
         """AgentConfig should accept reasoning_effort with OpenAI GPT-5 models."""
         config = AgentConfig(
-            system_prompt=SystemPrompt("You are helpful."),
+            system_prompt="You are helpful.",
             model=Model.GPT_5_NANO,
             reasoning_effort=ReasoningEffort.LOW,
         )
@@ -245,7 +244,7 @@ class TestAgentConfigReasoningEffort:
         """AgentConfig should raise error for reasoning_effort with non-reasoning Anthropic models."""
         with pytest.raises(UnsupportedParameterError) as exc_info:
             AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 model=Model.CLAUDE_HAIKU_4_5,
                 reasoning_effort=ReasoningEffort.HIGH,
             )
@@ -256,7 +255,7 @@ class TestAgentConfigReasoningEffort:
     def test_reasoning_effort_with_claude_opus_accepted(self) -> None:
         """AgentConfig should accept reasoning_effort with Claude Opus 4.6."""
         config = AgentConfig(
-            system_prompt=SystemPrompt("You are helpful."),
+            system_prompt="You are helpful.",
             model=Model.CLAUDE_OPUS_4_6,
             reasoning_effort=ReasoningEffort.HIGH,
         )
@@ -265,7 +264,7 @@ class TestAgentConfigReasoningEffort:
     def test_reasoning_effort_max_accepted(self) -> None:
         """AgentConfig should accept reasoning_effort MAX with supported models."""
         config = AgentConfig(
-            system_prompt=SystemPrompt("You are helpful."),
+            system_prompt="You are helpful.",
             model=Model.CLAUDE_OPUS_4_6,
             reasoning_effort=ReasoningEffort.MAX,
         )
@@ -275,7 +274,7 @@ class TestAgentConfigReasoningEffort:
         """Error message should list supported models."""
         with pytest.raises(UnsupportedParameterError) as exc_info:
             AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 model=Model.CEREBRAS_GEMMA_4_31B,
                 reasoning_effort=ReasoningEffort.HIGH,
             )
@@ -299,14 +298,14 @@ class TestAgentConfigMaxOutputTokens:
         from neosian._foundation.shared.constants import LLMDefaults
 
         config = AgentConfig(
-            system_prompt=SystemPrompt("You are helpful."),
+            system_prompt="You are helpful.",
         )
         assert config.max_output_tokens == LLMDefaults.MAX_OUTPUT_TOKENS
 
     def test_max_output_tokens_custom_value(self) -> None:
         """AgentConfig should accept custom max_output_tokens within model limit."""
         config = AgentConfig(
-            system_prompt=SystemPrompt("You are helpful."),
+            system_prompt="You are helpful.",
             model=Model.CEREBRAS_GPT_OSS_120B,
             max_output_tokens=4096,
         )
@@ -315,7 +314,7 @@ class TestAgentConfigMaxOutputTokens:
     def test_max_output_tokens_at_model_limit(self) -> None:
         """AgentConfig should accept max_output_tokens equal to model limit."""
         config = AgentConfig(
-            system_prompt=SystemPrompt("You are helpful."),
+            system_prompt="You are helpful.",
             model=Model.CEREBRAS_GPT_OSS_120B,
             max_output_tokens=Model.CEREBRAS_GPT_OSS_120B.max_output_tokens,
         )
@@ -325,7 +324,7 @@ class TestAgentConfigMaxOutputTokens:
         """AgentConfig should raise error when max_output_tokens exceeds model limit."""
         with pytest.raises(UnsupportedParameterError) as exc_info:
             AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 model=Model.CEREBRAS_GPT_OSS_120B,
                 max_output_tokens=100_000,
             )
@@ -338,7 +337,7 @@ class TestAgentConfigMaxOutputTokens:
         """AgentConfig should raise error when max_output_tokens is 0."""
         with pytest.raises(UnsupportedParameterError):
             AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 max_output_tokens=0,
             )
 
@@ -346,7 +345,7 @@ class TestAgentConfigMaxOutputTokens:
         """AgentConfig should raise error when max_output_tokens is negative."""
         with pytest.raises(UnsupportedParameterError):
             AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 max_output_tokens=-1,
             )
 
@@ -374,20 +373,18 @@ class TestFakeModels:
     def test_default_agent_config_constructs_on_fake_models(self) -> None:
         """max_output_tokens >= the 8192 default — the keyless-boot guard."""
         for model in (Model.FAKE, Model.FAKE_SMALL, Model.FAKE_REASONING):
-            config = AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."), model=model
-            )
+            config = AgentConfig(system_prompt="You are helpful.", model=model)
             assert config.model is model
 
     def test_reasoning_effort_rejected_on_non_reasoning_fake(self) -> None:
         AgentConfig(
-            system_prompt=SystemPrompt("You are helpful."),
+            system_prompt="You are helpful.",
             model=Model.FAKE_REASONING,
             reasoning_effort=ReasoningEffort.LOW,
         )
         with pytest.raises(UnsupportedParameterError):
             AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 model=Model.FAKE,
                 reasoning_effort=ReasoningEffort.LOW,
             )
@@ -413,3 +410,23 @@ class TestCompactionCapability:
         assert not Model.FAKE.supports_compaction_blocks
         assert not Model.CEREBRAS_GPT_OSS_120B.supports_compaction_blocks
         assert not Model.GPT_5_1.supports_compaction_blocks
+
+
+@pytest.mark.unit
+class TestAgentConfigLoopAndDeadline:
+    """`max_tool_iterations` and `timeout_seconds` live on the config with
+    every other knob (NF #169, AG-15/LL-21)."""
+
+    def test_defaults(self) -> None:
+        config = AgentConfig(system_prompt="s", model=Model.FAKE)
+        assert config.max_tool_iterations == 10
+        assert config.timeout_seconds is None
+        assert config.memory is None
+
+    def test_iterations_must_be_positive(self) -> None:
+        with pytest.raises(UnsupportedParameterError, match="max_tool_iterations"):
+            AgentConfig(system_prompt="s", model=Model.FAKE, max_tool_iterations=0)
+
+    def test_deadline_must_be_positive(self) -> None:
+        with pytest.raises(UnsupportedParameterError, match="timeout_seconds"):
+            AgentConfig(system_prompt="s", model=Model.FAKE, timeout_seconds=0)

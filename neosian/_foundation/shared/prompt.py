@@ -13,10 +13,9 @@ from neosian._foundation.shared.exceptions import (
     PromptInvalidYAMLError,
     PromptMissingKeyError,
 )
-from neosian._foundation.shared.types import SystemPrompt
 
 
-def load_prompt(path: str | Path) -> SystemPrompt:
+def load_prompt(path: str | Path) -> str:
     """Load a system prompt from a YAML file.
 
     The YAML file must contain a 'system_prompt' key with a string value.
@@ -30,7 +29,7 @@ def load_prompt(path: str | Path) -> SystemPrompt:
         path: Path to the YAML file.
 
     Returns:
-        The system prompt as a SystemPrompt type.
+        The system prompt text.
 
     Raises:
         PromptFileNotFoundError: If the file does not exist.
@@ -60,4 +59,4 @@ def load_prompt(path: str | Path) -> SystemPrompt:
     if not isinstance(prompt, str):
         raise PromptInvalidYAMLError(path_str)
 
-    return SystemPrompt(prompt)
+    return prompt

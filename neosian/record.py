@@ -1,6 +1,6 @@
 """The `neosian record` entry point — the record's run tier (DESIGN §20.9).
 
-The CLI tier, like `neosian/audit.py`: owns the loop, the real streams
+The CLI tier, like `neosian/ledger.py`: owns the loop, the real streams
 and interrupt handling; the async engine is `_foundation/record/cli.py`,
 the installer `_foundation/record/install.py` — routed on the literal
 first token, as `neosian mcp install` is. `python -m neosian.record` is

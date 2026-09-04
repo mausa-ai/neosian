@@ -37,13 +37,13 @@ from neosian._foundation.shared.exceptions import (
 )
 from neosian._foundation.shared.types import (
     AgentConfig,
+    AnyModel,
     FallbackConfig,
     GuardrailErrorPolicy,
     GuardrailMode,
     GuardrailsConfig,
     Model,
     Provider,
-    SystemPrompt,
     ToolCallId,
     ToolName,
 )
@@ -90,11 +90,11 @@ def _guarded_agent(
     agent_fake = agent_client(FakeScript(turns=agent_turns))
     guard_fake = guard_client(FakeScript(turns=guard_turns))
 
-    def factory(provider: Provider) -> BaseLLMClient:
-        return guard_fake if provider is Provider.ANTHROPIC else agent_fake
+    def factory(model: AnyModel) -> BaseLLMClient:
+        return guard_fake if model.provider is Provider.ANTHROPIC else agent_fake
 
     config = AgentConfig(
-        system_prompt=SystemPrompt("You are helpful."),
+        system_prompt="You are helpful.",
         tools=tools or [],
         model=Model.FAKE,
         enable_todo=False,
@@ -147,7 +147,7 @@ class TestAgentGuardrailsInit:
         fail-open at check time."""
         with patch.dict(os.environ, {}, clear=True):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 tools=[],
                 model=Model.FAKE,
                 enable_todo=False,
@@ -160,7 +160,7 @@ class TestAgentGuardrailsInit:
         """The FAKE default is keyless by construction."""
         with patch.dict(os.environ, {}, clear=True):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 tools=[],
                 model=Model.FAKE,
                 enable_todo=False,
@@ -176,7 +176,7 @@ class TestAgentGuardrailsInit:
             return_value=_create_mock_router(),
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 tools=[],
                 enable_todo=False,
             )
@@ -334,11 +334,17 @@ class TestAgentInputGuardrails:
 class TestAgentOutputGuardrails:
     """Test Agent output guardrails behavior."""
 
-    async def test_output_flagged_sets_blocked(self) -> None:
-        """Flagged output should set blocked=True and preserve content."""
+    async def test_output_flagged_is_blanked_by_default(self) -> None:
+        """A flagged output is blocked the way a flagged input is: content
+        discarded, the turn not replayable, the verdict and the billed
+        usage kept (NF #169, TG-16)."""
         agent, _agent_fake, _guard_fake = _guarded_agent(
             guard_turns=(FakeTurn(content=_UNSAFE_JSON),),
-            agent_turns=(FakeTurn(content="Bad output"),),
+            agent_turns=(
+                FakeTurn(
+                    content="Bad output", usage=Usage(input_tokens=10, output_tokens=5)
+                ),
+            ),
             guardrails=_guardrails(
                 input_mode=GuardrailMode.NONE,
                 input_policy=None,
@@ -351,11 +357,39 @@ class TestAgentOutputGuardrails:
         response = await agent.run(messages, stream=False)
 
         assert response.blocked is True
-        assert response.message.content == "Bad output"  # Preserved for logging
+        assert response.message.content == ""
+        assert response.turn_messages == ()
+        assert response.usage == Usage(input_tokens=10, output_tokens=5)
         assert response.guardrail_result is not None
         assert response.guardrail_result.flagged_at == "output"
+        assert response.guardrail_result.input_policy is None
         assert response.guardrail_result.output_policy is not None
         assert response.guardrail_result.output_policy.category == "P1"
+
+    async def test_output_flagged_verbatim_when_blocking_is_off(self) -> None:
+        """`block_on_output=False` returns the flagged text for the host to
+        handle — the pre-NF shape, now opt-in."""
+        agent, _agent_fake, _guard_fake = _guarded_agent(
+            guard_turns=(FakeTurn(content=_UNSAFE_JSON),),
+            agent_turns=(FakeTurn(content="Bad output"),),
+            guardrails=_guardrails(
+                input_mode=GuardrailMode.NONE,
+                input_policy=None,
+                output_mode=GuardrailMode.POLICY_ONLY,
+                output_policy=_POLICY,
+                block_on_output=False,
+            ),
+        )
+
+        response = await agent.run(
+            [Message(role=Role.USER, content="Hello")], stream=False
+        )
+
+        assert response.blocked is True
+        assert response.message.content == "Bad output"
+        assert response.turn_messages[-1] is response.message
+        assert response.guardrail_result is not None
+        assert response.guardrail_result.flagged_at == "output"
 
     async def test_output_safe_not_blocked(self) -> None:
         """Safe output should not be blocked."""
@@ -396,7 +430,7 @@ class TestAgentNoGuardrails:
             return_value=_create_mock_router(mock_client),
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 tools=[],
                 enable_todo=False,
             )
@@ -481,13 +515,13 @@ class TestGuardrailClientLifecycle:
     def test_agent_init_mints_no_guard_client(self) -> None:
         created: list[Provider] = []
 
-        def factory(provider: Provider) -> BaseLLMClient:
-            created.append(provider)
+        def factory(model: AnyModel) -> BaseLLMClient:
+            created.append(model.provider)
             return FakeClient()
 
         Agent(
             config=AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 tools=[],
                 model=Model.FAKE,
                 enable_todo=False,
@@ -512,7 +546,7 @@ class TestGuardrailClientLifecycle:
     ) -> None:
         created: list[FakeClient] = []
 
-        def factory(_: Provider) -> BaseLLMClient:
+        def factory(_: AnyModel) -> BaseLLMClient:
             created.append(
                 FakeClient(
                     FakeScript(turns=(FakeTurn(content=_SAFE_JSON),), repeat_last=True)
@@ -522,7 +556,7 @@ class TestGuardrailClientLifecycle:
 
         agent = Agent(
             config=AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 tools=[],
                 model=Model.FAKE,
                 enable_todo=False,
@@ -812,3 +846,88 @@ class TestMediaOnlyInput:
         assert guard_fake.calls == []
         assert len(agent_fake.calls) == 1
         assert any("media-only" in r.getMessage() for r in caplog.records)
+
+
+class _HangingFake(FakeClient):
+    """A classifier that never answers inside any reasonable deadline."""
+
+    async def complete(self, *args: Any, **kwargs: Any) -> CompletionResponse:
+        await asyncio.sleep(30)
+        return await super().complete(*args, **kwargs)
+
+
+@pytest.mark.unit
+class TestGuardrailTimeout:
+    """`GuardrailsConfig.timeout_seconds` bounds the classifier; the
+    expiry is an error under `error_policy` (NF #169, TG-14)."""
+
+    async def test_fail_open_passes_a_hung_classifier(self) -> None:
+        agent, _agent_fake, _guard_fake = _guarded_agent(
+            guard_turns=(FakeTurn(content=_UNSAFE_JSON),),
+            guard_client=_HangingFake,
+            guardrails=_guardrails(
+                timeout_seconds=0.05, error_policy=GuardrailErrorPolicy.FAIL_OPEN
+            ),
+        )
+        response = await agent.run(
+            [Message(role=Role.USER, content="Hello")], stream=False
+        )
+        assert response.blocked is False
+        assert response.message.content == "Response"
+
+    async def test_fail_closed_blocks_a_hung_classifier(self) -> None:
+        agent, _agent_fake, _guard_fake = _guarded_agent(
+            guard_turns=(FakeTurn(content=_SAFE_JSON),),
+            guard_client=_HangingFake,
+            guardrails=_guardrails(
+                timeout_seconds=0.05, error_policy=GuardrailErrorPolicy.FAIL_CLOSED
+            ),
+        )
+        response = await agent.run(
+            [Message(role=Role.USER, content="Hello")], stream=False
+        )
+        assert response.blocked is True
+        assert response.message.content == ""
+
+    async def test_streaming_honours_the_deadline(self) -> None:
+        agent, _agent_fake, _guard_fake = _guarded_agent(
+            guard_turns=(FakeTurn(content=_SAFE_JSON),),
+            guard_client=_HangingFake,
+            guardrails=_guardrails(
+                timeout_seconds=0.05, error_policy=GuardrailErrorPolicy.FAIL_CLOSED
+            ),
+        )
+        events = [
+            event
+            async for event in await agent.run(
+                [Message(role=Role.USER, content="Hello")], stream=True
+            )
+        ]
+        assert isinstance(events[-1], BlockedEvent)
+
+
+@pytest.mark.unit
+class TestUnparseableVerdictSpend:
+    """A classifier call that answered garbage was still billed: its usage
+    reaches the run's ledger before the error policy decides (NF #171)."""
+
+    async def test_the_billed_call_is_ledgered(self) -> None:
+        agent, _agent_fake, _guard_fake = _guarded_agent(
+            guard_turns=(
+                FakeTurn(
+                    content="not json", usage=Usage(input_tokens=3, output_tokens=1)
+                ),
+            ),
+            agent_turns=(
+                FakeTurn(
+                    content="Response", usage=Usage(input_tokens=10, output_tokens=5)
+                ),
+            ),
+            guardrails=_guardrails(error_policy=GuardrailErrorPolicy.FAIL_OPEN),
+        )
+        response = await agent.run(
+            [Message(role=Role.USER, content="Hello")], stream=False
+        )
+        assert response.blocked is False
+        assert response.usage == Usage(input_tokens=13, output_tokens=6)
+        assert len(response.usage_by_model) == 2

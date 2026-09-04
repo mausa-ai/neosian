@@ -33,12 +33,11 @@ from neosian._foundation.shared.exceptions import (
 from neosian._foundation.shared.types import (
     GuardrailMode,
     GuardrailsConfig,
-    SystemPrompt,
     ToolCallId,
     ToolName,
 )
 
-_SYSTEM = SystemPrompt("You are a test agent.")
+_SYSTEM = "You are a test agent."
 _CORE_LOGGER = "neosian._foundation.conversation.core"
 
 
@@ -207,8 +206,8 @@ class TestSendPersistence:
             system_prompt=_SYSTEM,
             model=Model.FAKE,
             enable_todo=False,
-            client_factory=lambda p: (
-                guard_fake if p is Provider.ANTHROPIC else agent_fake
+            client_factory=lambda m: (
+                guard_fake if m.provider is Provider.ANTHROPIC else agent_fake
             ),
             guardrails=GuardrailsConfig(
                 input_mode=GuardrailMode.POLICY_ONLY,
@@ -283,7 +282,8 @@ class TestConstruction:
 
     async def test_accepts_a_built_agent(self, store: FileStore) -> None:
         config, _ = _config(_reply("from agent"))
-        agent = Agent(config, max_tool_iterations=7)
+        config.max_tool_iterations = 7
+        agent = Agent(config)
         convo = Conversation(agent, store=store, conversation_id="t1")
         response = await convo.send("hi")
         assert response.message.content == "from agent"

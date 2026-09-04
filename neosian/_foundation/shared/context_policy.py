@@ -14,7 +14,7 @@ disable.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 
@@ -36,10 +36,20 @@ class ContextPolicy:
 
     `chars_per_token` divides total prompt characters; 4 is the classic
     English heuristic and an underestimate for code and non-Latin scripts —
-    exactly the conservative direction this check wants.
+    exactly the conservative direction this check wants. `estimator`, when
+    set, replaces that heuristic with the caller's own count over the
+    prompt messages (a real tokenizer, say); it must underestimate too.
+
+    What is counted, either way: the messages handed to the model —
+    text content, reasoning, tool-call names and arguments, a flat
+    constant per media block. **Not counted**: the tool schemas sent
+    beside them, provider framing of the system prompt, and tool-call
+    ids — every one of them makes the real prompt larger, never smaller,
+    which keeps this check on the conservative side (TG-44).
     """
 
     chars_per_token: int = 4
+    estimator: Callable[[Sequence[Message]], int] | None = None
 
     def estimate_tokens(self, messages: Sequence[Message]) -> int:
         """Deliberately-low token estimate for a prompt.
@@ -47,8 +57,10 @@ class ContextPolicy:
         Counts text content, reasoning, and tool-call arguments by
         characters; media blocks contribute a flat low-ball constant
         (duck-typed on `.text` so this module never imports the block
-        classes at runtime).
+        classes at runtime). A configured `estimator` replaces all of it.
         """
+        if self.estimator is not None:
+            return self.estimator(messages)
         chars = 0
         media_blocks = 0
         for message in messages:

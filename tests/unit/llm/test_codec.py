@@ -140,3 +140,19 @@ class TestToolCallExtra:
         (encoded,) = message_to_json(message)["tool_calls"]
         assert set(encoded) == {"id", "name", "arguments"}
         assert _round_trip(message).tool_calls[0].extra is None
+
+
+@pytest.mark.unit
+class TestExtraRoundTrip:
+    """`Message.extra` persists only when set (NF #172)."""
+
+    def test_round_trips(self) -> None:
+        message = Message(
+            role=Role.ASSISTANT, content="x", extra={"anthropic": {"k": [1]}}
+        )
+        assert _round_trip(message) == message
+        assert message_to_json(message)["extra"] == {"anthropic": {"k": [1]}}
+
+    def test_absent_stays_absent(self) -> None:
+        assert "extra" not in message_to_json(Message(role=Role.USER, content="hi"))
+        assert message_from_json({"role": "user", "content": "hi"}).extra is None

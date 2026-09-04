@@ -22,8 +22,8 @@ format: ## Autofix: black + ruff --fix
 	uv run black .
 	uv run ruff check --fix .
 
-typecheck: ## mypy --strict over library and tests
-	uv run mypy --strict neosian tests
+typecheck: ## mypy --strict over library, tests and examples
+	uv run mypy --strict neosian tests examples
 
 test: ## Unit tier — the default gate, zero API keys, coverage floor
 	uv run pytest --cov --cov-report=term-missing:skip-covered --cov-fail-under=89

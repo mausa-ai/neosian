@@ -201,6 +201,7 @@ class TestPayloads:
             "raw_stop_reason": "end_turn",
             "usage": USAGE_PAYLOAD,
             "usage_by_model": BY_MODEL_PAYLOAD,
+            "iterations_exhausted": False,
         }
 
     def test_done_fields_nullable(self) -> None:
@@ -212,6 +213,7 @@ class TestPayloads:
             "raw_stop_reason": None,
             "usage": None,
             "usage_by_model": [],
+            "iterations_exhausted": False,
         }
 
     def test_error_has_no_message_field(self) -> None:

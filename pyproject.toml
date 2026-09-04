@@ -107,6 +107,9 @@ filterwarnings = [
 [tool.mypy]
 python_version = "3.12"
 strict = true
+# `examples/` is not a package; its files are checked as `examples.<name>`,
+# the name the tests import them by (NF, TP-8).
+explicit_package_bases = true
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true

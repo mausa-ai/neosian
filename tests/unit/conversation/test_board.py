@@ -18,7 +18,7 @@ from neosian._foundation.memory.file import FileStore
 from neosian._foundation.memory.mounts import MemoryConfig, Mount
 from neosian._foundation.server.app import build_app
 from neosian._foundation.server.remote import RemoteStore
-from neosian._foundation.shared.types import SystemPrompt, ToolCallId, ToolName
+from neosian._foundation.shared.types import ToolCallId, ToolName
 
 _BOARD = "task:42"
 
@@ -26,7 +26,7 @@ _BOARD = "task:42"
 def _config(*turns: FakeTurn, **kwargs: Any) -> tuple[AgentConfig, FakeClient]:
     fake = FakeClient(FakeScript(turns=turns))
     config = AgentConfig(
-        system_prompt=SystemPrompt("You are a test agent."),
+        system_prompt="You are a test agent.",
         model=Model.FAKE,
         enable_todo=False,
         client_factory=lambda _: fake,

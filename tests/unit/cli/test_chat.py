@@ -19,9 +19,8 @@ from neosian._foundation.llm.fake import FakeClient, FakeScript, FakeTurn
 from neosian._foundation.memory.file import FileStore
 from neosian._foundation.memory.mounts import MemoryConfig, Mount
 from neosian._foundation.shared.exceptions import ConversationIdInvalidError
-from neosian._foundation.shared.types import SystemPrompt
 
-_SYSTEM = SystemPrompt("You are a test agent.")
+_SYSTEM = "You are a test agent."
 _NOW = datetime(2026, 8, 20, 14, 32, 7)
 
 
@@ -117,6 +116,7 @@ class TestOpenChat:
         config = _config()
         derived = chat_config(config, store)
         assert config.memory is None  # never mutated in place
+        assert derived.memory is not None
         assert derived.memory.store is store
         assert [m.mount_path for m in derived.memory.mounts] == ["user", "project"]
         assert derived.memory.mounts[1].scope.endswith("/proj:demo-proj")

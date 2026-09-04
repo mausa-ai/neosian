@@ -91,21 +91,15 @@ class Agent:
         response = await agent.run(messages, stream=False)
     """
 
-    def __init__(
-        self,
-        config: AgentConfig,
-        max_tool_iterations: int = 10,
-    ) -> None:
-        """Initialize the agent.
-
-        Args:
-            config: Agent configuration with system_prompt, tools, model.
-            max_tool_iterations: Maximum tool call iterations to prevent infinite loops.
-        """
+    def __init__(self, config: AgentConfig) -> None:
+        """Initialize the agent from its configuration — every knob lives
+        on `AgentConfig` (DESIGN §3)."""
         # Initialize router for provider management
         assert config.max_retries is not None  # Set by AgentConfig.__post_init__
         self._config = config
-        self._router = ProviderRouter(max_retries=config.max_retries)
+        self._router = ProviderRouter(
+            max_retries=config.max_retries, timeout=config.timeout_seconds
+        )
         self._client_factory = config.client_factory
         self._hooks = HookRunner(config.hooks)
 
@@ -113,7 +107,7 @@ class Agent:
         self._model = config.model
         self._fallback = config.fallback
         self._system_prompt = config.system_prompt
-        self._max_tool_iterations = max_tool_iterations
+        self._max_tool_iterations = config.max_tool_iterations
         self._reasoning_effort = config.reasoning_effort
         assert config.max_output_tokens is not None  # Set by AgentConfig.__post_init__
         self._max_output_tokens = config.max_output_tokens
@@ -178,7 +172,7 @@ class Agent:
 
     @property
     def max_tool_iterations(self) -> int:
-        """The tool-loop bound this agent was constructed with."""
+        """The tool-loop bound, off the configuration."""
         return self._max_tool_iterations
 
     def _register_tool(self, tool_func: ToolFunction) -> None:
@@ -217,11 +211,11 @@ class Agent:
     def _create_client(self, model: AnyModel) -> BaseLLMClient:
         """Create a client for model, honoring the configured factory.
 
-        A factory sees the model's provider — `Provider.OPENAI_COMPATIBLE`
-        for every registered door (DESIGN §19).
+        A factory sees the model itself — a registered door is told apart
+        by `.door`, never collapsed to a provider row (DESIGN §2, §19).
         """
         if self._client_factory is not None:
-            return self._client_factory(model.provider)
+            return self._client_factory(model)
         return self._router.create_client_for(model)
 
     def _validate_run(

@@ -26,7 +26,6 @@ from neosian._foundation.shared.types import (
     AgentConfig,
     FallbackConfig,
     Model,
-    SystemPrompt,
     ToolCallId,
     ToolName,
 )
@@ -42,7 +41,7 @@ async def lookup(q: str) -> ToolResult[str]:
 
 def _config(**overrides: Any) -> AgentConfig:
     defaults: dict[str, Any] = {
-        "system_prompt": SystemPrompt("You are a test agent."),
+        "system_prompt": "You are a test agent.",
         "tools": [lookup],
         "model": Model.FAKE,
         "enable_todo": False,
@@ -83,7 +82,7 @@ class TestCallerConfigUntouched:
         tools_before = base.tools
         variant = Variant(
             name="v",
-            system_prompt=SystemPrompt("Variant prompt."),
+            system_prompt="Variant prompt.",
             tool_descriptions={ToolName("lookup"): "Overridden"},
         )
 

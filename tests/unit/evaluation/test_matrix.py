@@ -21,7 +21,7 @@ from neosian._foundation.evaluation.types import (
 )
 from neosian._foundation.llm.fake import FakeTurn
 from neosian._foundation.memory.mounts import Mount
-from neosian._foundation.shared.types import Model, SystemPrompt, ToolName
+from neosian._foundation.shared.types import Model, ToolName
 
 AGENT_FILE = """
 from neosian import AgentConfig, Tool, ToolResult
@@ -63,8 +63,8 @@ class TestMatrix:
             models=(Model.FAKE, Model.FAKE_SMALL),
             cases=(_case("one"), _case("two")),
             variants=(
-                Variant(name="a", system_prompt=SystemPrompt("A.")),
-                Variant(name="b", system_prompt=SystemPrompt("B.")),
+                Variant(name="a", system_prompt="A."),
+                Variant(name="b", system_prompt="B."),
             ),
         )
         report = await run_evaluation(config)

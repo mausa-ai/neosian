@@ -12,7 +12,7 @@ from neosian._foundation.llm.base import Role, ToolCall
 from neosian._foundation.llm.fake import FakeClient, FakeScript, FakeTurn
 from neosian._foundation.memory.file import FileStore
 from neosian._foundation.memory.mounts import Mount
-from neosian._foundation.shared.types import SystemPrompt, ToolCallId, ToolName
+from neosian._foundation.shared.types import ToolCallId, ToolName
 
 PROJECT = "user:demo/proj:app"
 MOUNTS = (Mount("user:demo", "user"), Mount(PROJECT, "project"))
@@ -53,7 +53,7 @@ async def test_an_agent_writes_loads_and_revises_a_skill(tmp_path: Path) -> None
     store = FileStore(tmp_path / "home")
     fake = FakeClient(SCRIPT)
     config = AgentConfig(
-        system_prompt=SystemPrompt("You are a test agent."),
+        system_prompt="You are a test agent.",
         model=Model.FAKE,
         enable_todo=False,
         client_factory=lambda _: fake,

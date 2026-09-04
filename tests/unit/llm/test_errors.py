@@ -4,6 +4,7 @@ import pytest
 
 from neosian._foundation.llm.errors import tool_arguments, wrap_provider_error
 from neosian._foundation.shared.exceptions import (
+    AuthenticationError,
     ContextWindowExceededError,
     ProviderError,
     UnsupportedContentError,
@@ -184,3 +185,26 @@ class TestToolArguments:
     def test_an_unknown_stop_reason_is_named_as_such(self) -> None:
         with pytest.raises(ProviderError, match="stop reason: unknown"):
             tool_arguments("cerebras", "{", stop_reason=None)
+
+
+@pytest.mark.unit
+class TestAuthentication:
+    """A 401/403 is `AuthenticationError` — a ProviderError, never
+    retryable, still fallback-eligible (NF #171, LL-20)."""
+
+    @pytest.mark.parametrize("status", [401, 403])
+    def test_rejected_credentials(self, status: int) -> None:
+        error = wrap_provider_error(
+            "openai", _StatusError("bad key", status_code=status, request_id="r1")
+        )
+        assert isinstance(error, AuthenticationError)
+        assert isinstance(error, ProviderError)
+        assert error.code == "llm_authentication_failed"
+        assert error.retryable is False
+        assert error.status == status
+        assert error.request_id == "r1"
+        assert error.details == {
+            "provider": "openai",
+            "status": status,
+            "request_id": "r1",
+        }

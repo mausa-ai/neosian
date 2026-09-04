@@ -19,18 +19,18 @@ from neosian._foundation.memory.cli import run
 
 if TYPE_CHECKING:
     from neosian._foundation.llm.base import BaseLLMClient
-    from neosian._foundation.shared.types import Provider
+    from neosian._foundation.shared.types import AnyModel
 
 
-def _client_factory(provider: Provider) -> BaseLLMClient:
+def _client_factory(model: AnyModel) -> BaseLLMClient:
     """The router-backed factory for `maintain --model` — imported lazily
     so every keyless command stays provider-SDK-free; a missing key
     raises `MissingAPIKeyError` here, loud at construction (§16)."""
-    from neosian._foundation.agent.guards import require_provider_key
+    from neosian._foundation.agent.guards import require_model_key
     from neosian._foundation.llm.router import ProviderRouter
 
-    require_provider_key(provider)
-    return ProviderRouter().create_client(provider)
+    require_model_key(model)
+    return ProviderRouter().create_client_for(model)
 
 
 def main(argv: list[str] | None = None, *, prog: str = "neosian memory") -> int:

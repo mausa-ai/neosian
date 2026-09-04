@@ -22,7 +22,6 @@ from neosian._foundation.shared.types import (
     FallbackConfig,
     Model,
     Provider,
-    SystemPrompt,
 )
 
 
@@ -60,7 +59,7 @@ class TestAgentSessionInit:
             return_value=_create_mock_router(),
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 tools=[],
                 enable_todo=False,
             )
@@ -76,7 +75,7 @@ class TestAgentSessionInit:
             return_value=_create_mock_router(),
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 tools=[],
                 enable_todo=False,
             )
@@ -100,7 +99,7 @@ class TestAgentSessionClientCaching:
             return_value=mock_router,
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 tools=[],
                 enable_todo=False,
             )
@@ -125,7 +124,7 @@ class TestAgentSessionClientCaching:
             return_value=mock_router,
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 tools=[],
                 enable_todo=False,
             )
@@ -158,7 +157,7 @@ class TestAgentSessionClientCaching:
             return_value=mock_router,
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 tools=[],
                 enable_todo=False,
             )
@@ -188,7 +187,7 @@ class TestAgentSessionClose:
             return_value=mock_router,
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 tools=[],
                 enable_todo=False,
             )
@@ -215,7 +214,7 @@ class TestAgentSessionClose:
             return_value=mock_router,
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 tools=[],
                 enable_todo=False,
             )
@@ -245,7 +244,7 @@ class TestAgentSessionContextManager:
             return_value=mock_router,
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 tools=[],
                 enable_todo=False,
             )
@@ -266,7 +265,7 @@ class TestAgentSessionContextManager:
             return_value=mock_router,
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 tools=[],
                 enable_todo=False,
             )
@@ -290,7 +289,7 @@ class TestAgentSessionContextManager:
             return_value=mock_router,
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 tools=[],
                 enable_todo=False,
             )
@@ -320,7 +319,7 @@ class TestAgentSessionRun:
             return_value=mock_router,
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 tools=[],
                 enable_todo=False,
             )
@@ -353,7 +352,7 @@ class TestAgentSessionRun:
             return_value=mock_router,
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 tools=[],
                 enable_todo=False,
             )
@@ -388,7 +387,7 @@ class TestAgentSessionRun:
             return_value=mock_router,
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 tools=[],
                 enable_todo=False,
             )
@@ -442,7 +441,7 @@ class TestAgentSessionMultipleClients:
             return_value=mock_router,
         ):
             config = AgentConfig(
-                system_prompt=SystemPrompt("You are helpful."),
+                system_prompt="You are helpful.",
                 model=Model.CEREBRAS_GPT_OSS_120B,  # Cerebras model
                 fallback=FallbackConfig(model=Model.GPT_5_NANO),  # OpenAI fallback
                 tools=[],

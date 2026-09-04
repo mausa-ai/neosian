@@ -6,14 +6,9 @@ PRICES_AS_OF move in the same commit (DESIGN §4).
 """
 
 import hashlib
-from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Final
-
-if TYPE_CHECKING:
-    from neosian._foundation.llm.base import BaseLLMClient
-
+from typing import Final
 
 # =============================================================================
 # Provider and Model Enums
@@ -30,12 +25,6 @@ class Provider(str, Enum):
     # the model's door, never from this row alone.
     OPENAI_COMPATIBLE = "openai_compatible"
     FAKE = "fake"
-
-
-# Factory seam for injecting clients (scripted fakes, host wiring) without
-# touching the router (DESIGN §2). BaseLLMClient import stays type-only —
-# shared must not import llm at runtime.
-ClientFactory = Callable[[Provider], "BaseLLMClient"]
 
 
 # Date the pricing table below was last verified against provider price lists.

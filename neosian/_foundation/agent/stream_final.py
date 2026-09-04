@@ -80,6 +80,7 @@ async def stream_final_with_client_and_guard(
     content_parts: list[str] = []
     reasoning_parts: list[str] = []
     compaction_blocks: list[CompactionBlock] = []
+    message_extra: dict[str, Any] | None = None
     call_started = time.monotonic()
 
     try:
@@ -121,6 +122,9 @@ async def stream_final_with_client_and_guard(
 
                 if chunk.compaction:
                     compaction_blocks.extend(chunk.compaction)
+
+                if chunk.extra:
+                    message_extra = chunk.extra
 
                 if chunk.usage:
                     # Last-wins within the call: a provider's early partial
@@ -170,6 +174,7 @@ async def stream_final_with_client_and_guard(
                 tuple(compaction_blocks),
             ),
             reasoning="".join(reasoning_parts) if reasoning_parts else None,
+            extra=message_extra,
         )
         api_model = final_api_model or model.value
         await emit_turn(
@@ -181,6 +186,7 @@ async def stream_final_with_client_and_guard(
                 run_tool_results,
                 stop_reason=final_finish_reason,
                 model=api_model,
+                iterations_exhausted=True,
             ),
             streamed=True,
         )
@@ -193,6 +199,7 @@ async def stream_final_with_client_and_guard(
             raw_stop_reason=final_finish_reason,
             usage=attempt.usage,
             usage_by_model=attempt.usage_by_model,
+            iterations_exhausted=True,
         )
     except Exception as exc:
         # Fold the un-ledgered remainder so the caller's attempt read

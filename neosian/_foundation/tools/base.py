@@ -1,6 +1,7 @@
 """Tool system base primitives.
 
-Provides the @Tool decorator and ToolResult for building agent tools.
+Provides the @Tool decorator for building agent tools; `ToolResult` lives
+in `tools/result.py` and is re-exported here (NF — the size gate).
 """
 
 import inspect
@@ -10,7 +11,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 from typing import (
-    TYPE_CHECKING,
     Annotated,
     Any,
     Literal,
@@ -22,9 +22,6 @@ from typing import (
     get_type_hints,
     is_typeddict,
 )
-
-if TYPE_CHECKING:
-    from neosian._foundation.memory.receipt import MemoryWriteReceipt
 
 from neosian._foundation.llm.base import ToolDefinition
 from neosian._foundation.shared.constants import ErrorMessages
@@ -38,8 +35,8 @@ from neosian._foundation.shared.constraints import (
     Pattern,
 )
 from neosian._foundation.shared.exceptions import ConfigurationError
-from neosian._foundation.shared.serialization import safe_json_dumps
 from neosian._foundation.shared.types import ToolFunction as ToolFunction, ToolName
+from neosian._foundation.tools.result import ToolResult as ToolResult
 
 # Dispatch is ``tool(**arguments)``: only keyword-bindable parameters are legal.
 _BINDABLE_KINDS = (
@@ -52,79 +49,6 @@ _UNBINDABLE_PARAMETER = (
 _UNSERIALISABLE_DEFAULT = (
     "Tool {func} parameter '{name}' has a default that is not JSON: {default!r}"
 )
-
-
-@dataclass
-class ToolResult[T]:
-    """Result from a tool execution.
-
-    Tools return either success with data or error with message.
-    Optionally includes a system_reminder for agent guidance.
-
-    Attributes:
-        success: Whether the tool execution succeeded.
-        data: The result data on success.
-        error: Error message on failure.
-        system_reminder: Optional guidance for the agent (hints, caveats, follow-ups).
-        receipt: Structured record of a successful memory mutation (NP).
-            In-process only — `to_json()` never carries it, so the wire
-            envelope is byte-identical with or without one.
-    """
-
-    success: bool
-    data: T | None = None
-    error: str | None = None
-    system_reminder: str | None = None
-    receipt: "MemoryWriteReceipt | None" = None
-
-    @classmethod
-    def ok(
-        cls,
-        data: T,
-        system_reminder: str | None = None,
-        *,
-        receipt: "MemoryWriteReceipt | None" = None,
-    ) -> "ToolResult[T]":
-        """Create a successful result.
-
-        Args:
-            data: The result data.
-            system_reminder: Optional guidance for the agent.
-            receipt: Structured memory-write record (in-process seam).
-        """
-        return cls(
-            success=True, data=data, system_reminder=system_reminder, receipt=receipt
-        )
-
-    @classmethod
-    def fail(cls, error: str, system_reminder: str | None = None) -> "ToolResult[T]":
-        """Create a failed result.
-
-        Args:
-            error: Error message describing the failure.
-            system_reminder: Optional guidance for the agent (e.g., retry hints).
-        """
-        return cls(success=False, error=error, system_reminder=system_reminder)
-
-    def to_json(self) -> str:
-        """Serialize to JSON string for LLM consumption.
-
-        Deliberately excludes `receipt` — the wire envelope is frozen
-        across transports (the CLI prints this verbatim, ledger #77) and
-        the receipt is an in-process seam.
-
-        Returns:
-            JSON string with success/data/error and optional system_reminder.
-        """
-        if self.success:
-            output: dict[str, Any] = {"success": True, "data": self.data}
-        else:
-            output = {"success": False, "error": self.error}
-
-        if self.system_reminder:
-            output["system_reminder"] = self.system_reminder
-
-        return safe_json_dumps(output, "tool_result.data")
 
 
 @dataclass

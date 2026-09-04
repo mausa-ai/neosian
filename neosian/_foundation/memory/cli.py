@@ -40,11 +40,9 @@ from neosian._foundation.shared.exceptions import MemoryStoreError
 from neosian._foundation.tools.base import ToolResult
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
 
-    from neosian._foundation.llm.base import BaseLLMClient
     from neosian._foundation.memory.base import MemoryStore
-    from neosian._foundation.shared.types import Provider
+    from neosian._foundation.shared.types import ClientFactory
 
 
 async def _execute(request: Request) -> ToolResult[str]:
@@ -87,7 +85,7 @@ async def run(
     out: TextIO,
     err: TextIO,
     prog: str = "neosian memory",
-    client_factory: Callable[[Provider], BaseLLMClient] | None = None,
+    client_factory: ClientFactory | None = None,
 ) -> int:
     """Parse and execute one memory command; construct nothing on exit 2.
 

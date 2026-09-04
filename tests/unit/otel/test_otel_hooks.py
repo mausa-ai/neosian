@@ -22,7 +22,6 @@ from neosian._foundation.llm.base import Message, Role, ToolCall, Usage
 from neosian._foundation.llm.fake import FakeClient, FakeScript, FakeTurn
 from neosian._foundation.shared.types import (
     Provider,
-    SystemPrompt,
     ToolCallId,
     ToolName,
 )
@@ -46,7 +45,7 @@ def provider(exporter: InMemorySpanExporter) -> TracerProvider:
 
 def _config(provider: TracerProvider, **overrides: object) -> AgentConfig:
     defaults: dict[str, object] = {
-        "system_prompt": SystemPrompt("You are a test agent."),
+        "system_prompt": "You are a test agent.",
         "model": Model.FAKE,
         "enable_todo": False,
         "hooks": otel_hooks(tracer_provider=provider),

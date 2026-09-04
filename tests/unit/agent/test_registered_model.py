@@ -10,6 +10,7 @@ import pytest
 from neosian import (
     Agent,
     AgentConfig,
+    AnyModel,
     Conversation,
     DoneEvent,
     FallbackConfig,
@@ -34,7 +35,6 @@ from neosian._foundation.shared.exceptions import (
     MissingAPIKeyError,
     ModelFailedError,
 )
-from neosian._foundation.shared.types import SystemPrompt
 
 XAI = OpenAICompatible(
     name="xai", api_key_env="XAI_API_KEY", base_url="https://api.x.ai/v1"
@@ -44,7 +44,7 @@ DEEPSEEK = OpenAICompatible(
 )
 # 3 µ$ per input token, 15 µ$ per output token — hand-computable.
 PRICING = ModelPricing(input_per_mtok=3_000_000, output_per_mtok=15_000_000)
-_SYSTEM = SystemPrompt("You are a test agent.")
+_SYSTEM = "You are a test agent."
 _USER = [Message(role=Role.USER, content="Hi")]
 _USAGE = Usage(input_tokens=10, output_tokens=5)
 
@@ -81,17 +81,17 @@ class TestTheQuickstart:
     async def test_blocking_run_prices_in_micro_usd(self) -> None:
         grok = _grok()
         fake = _fake()
-        seen: list[Provider] = []
+        seen: list[AnyModel] = []
 
-        def factory(provider: Provider) -> FakeClient:
-            seen.append(provider)
+        def factory(model: AnyModel) -> FakeClient:
+            seen.append(model)
             return fake
 
         agent = Agent(_config(model=grok, client_factory=factory))
         response = await agent.run(_USER, stream=False)
 
         assert response.message.content == "scripted"
-        assert seen == [Provider.OPENAI_COMPATIBLE]
+        assert seen == [grok]  # the door itself, never collapsed to its row
         assert fake.calls[0].model is grok
         assert response.usage is not None
         assert response.usage.cost_micro_usd(grok) == 10 * 3 + 5 * 15
@@ -142,7 +142,7 @@ class TestTheGates:
             _config(
                 model=Model.FAKE,
                 fallback=FallbackConfig(model=grok),
-                client_factory=lambda provider: clients[provider],
+                client_factory=lambda model: clients[model.provider],
             )
         )
         response = await agent.run(_USER, stream=False)
@@ -160,7 +160,7 @@ class TestTheGates:
             _config(
                 model=Model.FAKE,
                 fallback=FallbackConfig(model=grok),
-                client_factory=lambda provider: clients[provider],
+                client_factory=lambda model: clients[model.provider],
             )
         )
         with_image = [
@@ -189,7 +189,7 @@ class TestTheGates:
             _config(
                 model=grok,
                 fallback=FallbackConfig(model=Model.FAKE_SMALL),
-                client_factory=lambda provider: clients[provider],
+                client_factory=lambda model: clients[model.provider],
             )
         )
         with pytest.raises(ContextWindowExceededError) as exc_info:
@@ -256,7 +256,7 @@ class TestKeysAndConfig:
         )
         created: list[FakeClient] = []
 
-        def factory(_: Provider) -> FakeClient:
+        def factory(_: AnyModel) -> FakeClient:
             created.append(_fake())
             return created[-1]
 

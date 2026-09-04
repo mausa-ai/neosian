@@ -114,4 +114,4 @@ def scripted_factory(
         return None
     logger.info("%s runs scripted via FakeClient — no API calls are made", label)
     fake = FakeClient(FakeScript(turns=script))
-    return lambda _provider: fake
+    return lambda _model: fake

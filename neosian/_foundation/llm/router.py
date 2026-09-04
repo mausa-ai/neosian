@@ -31,15 +31,22 @@ class ProviderRouter:
             client = router.create_client(Provider.ANTHROPIC)
     """
 
-    def __init__(self, max_retries: int = LLMDefaults.MAX_RETRIES) -> None:
+    def __init__(
+        self,
+        max_retries: int = LLMDefaults.MAX_RETRIES,
+        timeout: float | None = None,
+    ) -> None:
         """Initialize the router and detect available API keys.
 
         Args:
             max_retries: Transport-level retries passed to each SDK client
                 (429/5xx/connection errors, with native backoff).
+            timeout: Per-request deadline in seconds passed to each SDK
+                client; None keeps the SDK's default.
         """
         self._available_providers = self._detect_available_providers()
         self._max_retries = max_retries
+        self._timeout = timeout
 
     def _detect_available_providers(self) -> set[Provider]:
         """Detect which providers have API keys configured.
@@ -90,15 +97,21 @@ class ProviderRouter:
         """
         if provider == Provider.OPENAI:
             key = api_key or os.environ.get(EnvVars.OPENAI_API_KEY, "")
-            return OpenAIClient(api_key=key, max_retries=self._max_retries)
+            return OpenAIClient(
+                api_key=key, max_retries=self._max_retries, timeout=self._timeout
+            )
 
         if provider == Provider.ANTHROPIC:
             key = api_key or os.environ.get(EnvVars.ANTHROPIC_API_KEY, "")
-            return AnthropicClient(api_key=key, max_retries=self._max_retries)
+            return AnthropicClient(
+                api_key=key, max_retries=self._max_retries, timeout=self._timeout
+            )
 
         if provider == Provider.CEREBRAS:
             key = api_key or os.environ.get(EnvVars.CEREBRAS_API_KEY, "")
-            return CerebrasClient(api_key=key, max_retries=self._max_retries)
+            return CerebrasClient(
+                api_key=key, max_retries=self._max_retries, timeout=self._timeout
+            )
 
         if provider == Provider.FAKE:
             # Canned, repeat-last behavior; scripted fakes are injected via
@@ -132,5 +145,5 @@ class ProviderRouter:
                 f"(the key for the {door.name!r} door)"
             )
         return OpenAICompatibleClient(
-            api_key=key, door=door, max_retries=self._max_retries
+            api_key=key, door=door, max_retries=self._max_retries, timeout=self._timeout
         )

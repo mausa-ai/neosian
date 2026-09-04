@@ -19,11 +19,10 @@ from neosian._foundation.conversation.distill import DigestBatch, DigestLine
 from neosian._foundation.llm.base import ModelUsage, Role, Usage
 from neosian._foundation.llm.fake import FakeClient, FakeScript, FakeTurn
 from neosian._foundation.memory.file import FileStore
-from neosian._foundation.shared.types import SystemPrompt
 
 from .conftest import ManualClock
 
-_SYSTEM = SystemPrompt("You are a test agent.")
+_SYSTEM = "You are a test agent."
 
 
 def _config(script: FakeScript, **kwargs: Any) -> tuple[AgentConfig, FakeClient]:
@@ -230,6 +229,7 @@ class TestStreamingCompaction:
             "raw_stop_reason",
             "usage",
             "usage_by_model",
+            "iterations_exhausted",
         }
 
     async def test_abandoning_after_the_boundary_keeps_the_checkpoint(

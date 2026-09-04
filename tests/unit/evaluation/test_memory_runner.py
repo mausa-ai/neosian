@@ -28,9 +28,8 @@ from neosian._foundation.memory.mounts import MemoryConfig, Mount
 from neosian._foundation.shared.exceptions import EvalRunError
 from neosian._foundation.shared.types import (
     AgentConfig,
+    AnyModel,
     Model,
-    Provider,
-    SystemPrompt,
     ToolCallId,
     ToolName,
 )
@@ -40,7 +39,7 @@ _MOUNT = Mount(scope="user:eval", mount_path="user", description="user facts")
 
 def _base(**kwargs: object) -> AgentConfig:
     return AgentConfig(
-        system_prompt=SystemPrompt("agent under test"),
+        system_prompt="agent under test",
         model=Model.FAKE,
         enable_todo=False,
         **kwargs,  # type: ignore[arg-type]
@@ -121,7 +120,7 @@ class TestSessions:
             FakeScript(turns=(_VIEW, FakeTurn(content="Espresso."))),
         ]
 
-        def factory(_provider: Provider) -> FakeClient:
+        def factory(_model: AnyModel) -> FakeClient:
             fake = FakeClient(scripts[len(clients)])
             clients.append(fake)
             return fake
@@ -296,7 +295,7 @@ class TestDerivation:
             clients: list[FakeClient] = []
 
             def factory(
-                _provider: Provider, clients: list[FakeClient] = clients
+                _model: AnyModel, clients: list[FakeClient] = clients
             ) -> FakeClient:
                 fake = FakeClient(
                     FakeScript(turns=(FakeTurn(content="ok"),), repeat_last=True)
@@ -495,7 +494,7 @@ class TestCrossClient:
             turns=(_cross_client_scenario().sessions[1].script or ())  # the recall
         )
 
-        def factory(_provider: Provider) -> FakeClient:
+        def factory(_model: AnyModel) -> FakeClient:
             fake = FakeClient(script)
             clients.append(fake)
             return fake

@@ -12,7 +12,7 @@ from neosian._foundation.shared.exceptions import (
     AgentInvalidDefinitionError,
     AgentMissingConfigurationError,
 )
-from neosian._foundation.shared.types import AgentConfig, Model, SystemPrompt
+from neosian._foundation.shared.types import AgentConfig, Model
 from neosian._foundation.tools.base import Tool, ToolResult
 
 
@@ -137,7 +137,7 @@ class TestAgentConfig:
             return ToolResult.ok("test")
 
         config = AgentConfig(
-            system_prompt=SystemPrompt("Test prompt"),
+            system_prompt="Test prompt",
             tools=[test_tool],
         )
 
@@ -149,7 +149,7 @@ class TestAgentConfig:
     def test_agent_config_with_all_fields(self) -> None:
         """Test AgentConfig with all optional fields."""
         config = AgentConfig(
-            system_prompt=SystemPrompt("Test prompt"),
+            system_prompt="Test prompt",
             tools=[],
             model=Model.CEREBRAS_GEMMA_4_31B,
             enable_todo=False,

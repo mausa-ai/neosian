@@ -111,6 +111,7 @@ async def stream_with_client(
             reasoning_parts: list[str] = []
             accumulated_tool_calls: list[ToolCall] = []
             accumulated_compaction: list[CompactionBlock] = []
+            message_extra: dict[str, Any] | None = None
             final_usage = None
             turn_api_model = None
             turn_finish_reason: str | None = None
@@ -156,6 +157,9 @@ async def stream_with_client(
 
                     if chunk.compaction:
                         accumulated_compaction.extend(chunk.compaction)
+
+                    if chunk.extra:
+                        message_extra = chunk.extra
 
                     if chunk.usage:
                         final_usage = chunk.usage
@@ -217,6 +221,7 @@ async def stream_with_client(
                         tuple(accumulated_compaction),
                     ),
                     reasoning=("".join(reasoning_parts) if reasoning_parts else None),
+                    extra=message_extra,
                 )
                 # Hook before the terminal yield: a consumer that saw
                 # `done` has had on_turn run (register #6).
@@ -251,6 +256,7 @@ async def stream_with_client(
                     ),
                     reasoning=("".join(reasoning_parts) if reasoning_parts else None),
                     tool_calls=accumulated_tool_calls,
+                    extra=message_extra,
                 )
             )
             run_tool_calls.extend(accumulated_tool_calls)

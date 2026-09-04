@@ -30,13 +30,13 @@ from neosian import (
 _ROOT = Path(__file__).resolve().parent.parent / ".neosian" / "tour"
 _MEMORY = MemoryConfig(
     store=FileStore(_ROOT),
-    mounts=[
+    mounts=(
         Mount(
             scope="user:tour",
             mount_path="memories",
             description="Durable facts about the user and their team.",
-        )
-    ],
+        ),
+    ),
 )
 
 

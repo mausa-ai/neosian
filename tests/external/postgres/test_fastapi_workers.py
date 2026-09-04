@@ -22,7 +22,7 @@ from neosian import (
     ToolCall,
     ToolResult,
 )
-from neosian._foundation.shared.types import SystemPrompt, ToolCallId, ToolName
+from neosian._foundation.shared.types import ToolCallId, ToolName
 from neosian.fake import FakeClient, FakeScript, FakeTurn
 from tests.external.postgres.conftest import store_schema
 
@@ -47,7 +47,7 @@ async def worker_b(
 
 def _agent_config(script: FakeScript, **kwargs: Any) -> AgentConfig:
     return AgentConfig(
-        system_prompt=SystemPrompt("You are a test agent."),
+        system_prompt="You are a test agent.",
         model=Model.FAKE,
         enable_todo=False,
         client_factory=lambda _: FakeClient(script),

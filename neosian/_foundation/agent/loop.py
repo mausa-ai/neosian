@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel
 
-from neosian._foundation.agent.emit import emit_llm_call
+from neosian._foundation.agent.emit import blocked_response, emit_llm_call
 from neosian._foundation.agent.guards import check_guardrails
 from neosian._foundation.agent.hooks import ToolEvent
 from neosian._foundation.agent.response import AgentResponse
@@ -222,6 +222,7 @@ async def execute_with_client(
         response_format=response_format,
         stop_reason=final_response.stop_reason,
         model=final_response.model or model.value,
+        iterations_exhausted=True,
     )
 
 
@@ -235,6 +236,7 @@ async def finalize_response(
     response_format: ResponseFormat | None = None,
     stop_reason: str | None = None,
     model: str | None = None,
+    iterations_exhausted: bool = False,
 ) -> AgentResponse:
     """Finalize response with output guardrails check and structured output parsing.
 
@@ -270,6 +272,13 @@ async def finalize_response(
         is_output_safe, output_policy = await check_guardrails(
             ctx, message_text, "output"
         )
+        if not is_output_safe and agent._guardrails.block_on_output:
+            return blocked_response(
+                output_policy,
+                attempt.usage,
+                attempt.usage_by_model,
+                checkpoint="output",
+            )
 
     # Build guardrail result if output guardrails were run
     guardrail_result: GuardrailResult | None = None
@@ -300,4 +309,5 @@ async def finalize_response(
         model=model,
         usage_by_model=attempt.usage_by_model,
         turn_messages=attempt.turn_messages(message),
+        iterations_exhausted=iterations_exhausted,
     )

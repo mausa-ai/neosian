@@ -24,6 +24,7 @@ _DOCS_DIR: Final = "docs"
 # import instead of becoming invisible.
 _TOPICS: Final = (
     "quickstart",
+    "agent",
     "memory",
     "skills",
     "cli",

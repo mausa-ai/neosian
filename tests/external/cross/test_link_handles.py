@@ -18,7 +18,6 @@ from uuid import uuid4
 import pytest
 
 from neosian import AgentConfig, AnyModel, Model, Tool, ToolResult
-from neosian._foundation.shared.types import SystemPrompt
 from neosian.conversation import CompactionConfig, Conversation, FileStore
 from tests.external.lanes import LANES, Lane
 from tests.external.pacing import Pacer, door_client
@@ -50,10 +49,8 @@ async def _measure(
     url = f"https://docs.example.test/specs/{uuid4()}/widget-design-v2"
     pacer = None if lane is None else Pacer.of(lane)
     config = AgentConfig(
-        system_prompt=SystemPrompt(
-            "You are a careful assistant. Use the fetch tool to open a "
-            "document whenever you are asked what it says."
-        ),
+        system_prompt="You are a careful assistant. Use the fetch tool to open a "
+        "document whenever you are asked what it says.",
         model=model,
         tools=[fetch],
         enable_todo=False,

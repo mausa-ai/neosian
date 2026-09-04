@@ -15,9 +15,8 @@ from neosian._foundation.conversation.recall import (
 from neosian._foundation.llm.base import Message, Role
 from neosian._foundation.llm.fake import FakeClient, FakeScript, FakeTurn
 from neosian._foundation.memory.file import FileStore
-from neosian._foundation.shared.types import SystemPrompt
 
-_SYSTEM = SystemPrompt("You are a test agent.")
+_SYSTEM = "You are a test agent."
 
 
 def _config(script: FakeScript, **kwargs: Any) -> tuple[AgentConfig, FakeClient]:

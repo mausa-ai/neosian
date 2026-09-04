@@ -225,8 +225,9 @@ write by appending its inverse — the shell face of `revert_memory`.
 ## Docs for agents
 
 The docs travel in the wheel, version-true by construction:
-`neosian docs` lists the shipped topics (quickstart, memory, cli, mcp,
-topology) and `neosian docs <topic>` prints one, pipe-safe. `llms.txt`
+`neosian docs` lists the shipped topics (quickstart, agent, memory,
+skills, cli, mcp, agents, topology) and `neosian docs <topic>` prints
+one, pipe-safe. `llms.txt`
 at the repo root (and in the package, byte-identical) is the discovery
 door for a coding agent with shell access alone.
 

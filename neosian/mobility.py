@@ -1,7 +1,7 @@
 """The `neosian export` / `neosian import` entry point — store mobility's
 run tier (DESIGN §26).
 
-The CLI tier, like `neosian/audit.py`: owns the loop, the real streams
+The CLI tier, like `neosian/ledger.py`: owns the loop, the real streams
 and interrupt handling; the async engine is
 `_foundation/memory/cli_transfer.py`. `python -m neosian.mobility export
 DIR` is the PATH-free twin (verb first — `import` cannot be a module).

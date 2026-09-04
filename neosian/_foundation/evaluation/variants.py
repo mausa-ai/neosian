@@ -18,7 +18,7 @@ from neosian._foundation.shared.exceptions import (
     EvalConfigUnknownKeyError,
     EvalPromptNotFoundError,
 )
-from neosian._foundation.shared.types import SystemPrompt, ToolName
+from neosian._foundation.shared.types import ToolName
 
 _VARIANT_KEYS = frozenset({"system_prompt", "tools"})
 _TOOL_KEYS = frozenset({"description"})
@@ -60,7 +60,7 @@ def load_variant(name: str, path: str | Path) -> Variant:
 
     return Variant(
         name=name,
-        system_prompt=SystemPrompt(system_prompt),
+        system_prompt=system_prompt,
         tool_descriptions=_parse_tools(data.get("tools"), path_str),
         source=path_str,
     )

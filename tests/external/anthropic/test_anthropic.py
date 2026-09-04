@@ -26,7 +26,6 @@ from neosian._foundation.shared.types import (
     AgentConfig,
     Model,
     ResponseFormat,
-    SystemPrompt,
 )
 
 # Distinctive token the model must reproduce verbatim in its transcription.
@@ -114,10 +113,8 @@ class TestAnthropicMultimodal:
         pdf_b64 = base64.standard_b64encode(_build_tiny_pdf(_SENTINEL)).decode()
 
         config = AgentConfig(
-            system_prompt=SystemPrompt(
-                "You transcribe documents to markdown. "
-                "Output only the transcribed text."
-            ),
+            system_prompt="You transcribe documents to markdown. "
+            "Output only the transcribed text.",
             tools=[],
             enable_todo=False,
             model=Model.CLAUDE_HAIKU_4_5,

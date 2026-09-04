@@ -133,8 +133,11 @@ async def check_with_policy(
         model=model,
         response_format=ResponseFormat(schema=_PolicyVerdict),
     )
-    return GuardOutcome(
-        parse_policy_response(text_of(response.message)),
-        usage=response.usage,
-        api_model=response.model,
-    )
+    try:
+        policy_result = parse_policy_response(text_of(response.message))
+    except GuardrailPolicyParseError as exc:
+        # The call was billed whether or not the verdict parsed.
+        raise GuardrailPolicyParseError(
+            exc.response, usage=response.usage, api_model=response.model
+        ) from exc
+    return GuardOutcome(policy_result, usage=response.usage, api_model=response.model)

@@ -26,7 +26,6 @@ from neosian._foundation.memory.file import FileStore
 from neosian._foundation.shared.types import (
     AgentConfig,
     Model,
-    SystemPrompt,
     ToolCallId,
     ToolName,
 )
@@ -36,7 +35,7 @@ _MOUNT_ARGS = {"scope": "user:eval", "mount_path": "user"}
 
 def _base() -> AgentConfig:
     return AgentConfig(
-        system_prompt=SystemPrompt("agent under test"),
+        system_prompt="agent under test",
         model=Model.FAKE,
         enable_todo=False,
     )

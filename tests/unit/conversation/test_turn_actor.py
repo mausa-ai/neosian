@@ -17,9 +17,9 @@ from neosian._foundation.llm.base import ToolCall
 from neosian._foundation.llm.fake import FakeClient, FakeScript, FakeTurn
 from neosian._foundation.memory.file import FileStore
 from neosian._foundation.shared.exceptions import MemoryActorInvalidError
-from neosian._foundation.shared.types import SystemPrompt, ToolCallId, ToolName
+from neosian._foundation.shared.types import ToolCallId, ToolName
 
-_SYSTEM = SystemPrompt("You are a test agent.")
+_SYSTEM = "You are a test agent."
 
 
 def _config(script: FakeScript, **kwargs: Any) -> AgentConfig:

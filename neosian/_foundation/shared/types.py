@@ -7,17 +7,23 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, NewType
+from typing import TYPE_CHECKING, Any, NewType
 
 from pydantic import BaseModel
 
 from neosian._foundation.shared.context_policy import ContextPolicy
+from neosian._foundation.shared.guardrail_types import (
+    GuardrailErrorPolicy as GuardrailErrorPolicy,
+    GuardrailMode as GuardrailMode,
+    GuardrailResult as GuardrailResult,
+    GuardrailsConfig as GuardrailsConfig,
+    PolicyResult as PolicyResult,
+)
 from neosian._foundation.shared.models import (
     DEFAULT_MODELS as DEFAULT_MODELS,
     MICRO_PER_USD as MICRO_PER_USD,
     PRICES_AS_OF as PRICES_AS_OF,
     PRICES_FINGERPRINT as PRICES_FINGERPRINT,
-    ClientFactory as ClientFactory,
     Model as Model,
     ModelPricing as ModelPricing,
     ModelSpec as ModelSpec,
@@ -36,6 +42,8 @@ from neosian._foundation.shared.registry import (
 if TYPE_CHECKING:
     from neosian._foundation.agent.approval import ToolGateConfig
     from neosian._foundation.agent.hooks import AgentHooks
+    from neosian._foundation.llm.base import BaseLLMClient
+    from neosian._foundation.memory.mounts import MemoryConfig
     from neosian._foundation.tools.base import ToolResult
 
 # Core identifiers
@@ -45,12 +53,21 @@ ToolCallId = NewType("ToolCallId", str)
 SkillName = NewType("SkillName", str)
 
 # Content types
-SystemPrompt = NewType("SystemPrompt", str)
 UserMessage = NewType("UserMessage", str)
 AssistantMessage = NewType("AssistantMessage", str)
 
 # Tool function type (defined here to avoid circular imports)
 ToolFunction = Callable[..., Awaitable["ToolResult[Any]"]]
+
+# The client seam (DESIGN §2, NF #168): a factory receives the model a
+# call is about to use — a `Model` or a `RegisteredModel`, whose `.door`
+# tells two doors apart — and returns its client. Scripted fakes and host
+# wiring inject here without touching the router. BaseLLMClient stays
+# type-only: shared never imports llm at runtime.
+ClientFactory = Callable[[AnyModel], "BaseLLMClient"]
+
+_MAX_TOOL_ITERATIONS_INVALID = "max_tool_iterations must be >= 1, got {value}"
+_TIMEOUT_INVALID = "timeout_seconds must be positive, got {value}"
 
 
 # =============================================================================
@@ -214,19 +231,25 @@ class AgentConfig:
         )
     """
 
-    system_prompt: SystemPrompt
+    system_prompt: str
     tools: list[ToolFunction] = field(default_factory=list)
     model: AnyModel = Model.CEREBRAS_GPT_OSS_120B
     fallback: FallbackConfig | None = None
     enable_todo: bool = True
-    guardrails: "GuardrailsConfig | None" = None
+    guardrails: GuardrailsConfig | None = None
     reasoning_effort: ReasoningEffort | None = None
     max_output_tokens: int | None = None
     max_parallel_tools: int | None = None
     max_retries: int | None = None
+    # The tool-loop bound: after this many tool rounds the final call is
+    # made without tools and the response says so (`iterations_exhausted`).
+    max_tool_iterations: int = 10
+    # Per-request deadline handed to the provider SDK; None keeps each
+    # SDK's own default (NF #169, LL-21).
+    timeout_seconds: float | None = None
     cache_conversation: bool = True
     skill_dir: str | Path | None = None
-    memory: Any = None  # MemoryConfig | None (Any to avoid circular import)
+    memory: "MemoryConfig | None" = None
     client_factory: "ClientFactory | None" = None
     hooks: "AgentHooks | None" = None
     # Default-on, deliberately-underestimating pre-call window check
@@ -336,145 +359,18 @@ class AgentConfig:
                 )
             )
 
+        if self.max_tool_iterations < 1:
+            raise UnsupportedParameterError(
+                _MAX_TOOL_ITERATIONS_INVALID.format(value=self.max_tool_iterations)
+            )
+        if self.timeout_seconds is not None and self.timeout_seconds <= 0:
+            raise UnsupportedParameterError(
+                _TIMEOUT_INVALID.format(value=self.timeout_seconds)
+            )
+
         # Load skills from directory if configured
         if self.skill_dir is not None:
             from neosian._foundation.shared.skill import load_skills
 
             loaded = load_skills(self.skill_dir)
             object.__setattr__(self, "_skills", loaded)
-
-
-# Guardrail types
-class GuardrailMode(str, Enum):
-    """Guardrail execution mode.
-
-    - NONE: No guardrails
-    - POLICY_ONLY: Run custom policy via GPT-OSS-Safeguard
-    """
-
-    NONE = "none"
-    POLICY_ONLY = "policy_only"
-
-
-class GuardrailErrorPolicy(str, Enum):
-    """Policy for handling guardrail errors (API failures, timeouts, etc.).
-
-    - FAIL_OPEN: On error, treat as safe and continue (default). Best for UX.
-    - FAIL_CLOSED: On error, treat as blocked. Best for high-security apps.
-    """
-
-    FAIL_OPEN = "fail_open"
-    FAIL_CLOSED = "fail_closed"
-
-
-@dataclass
-class GuardrailsConfig:
-    """Configuration for input and output guardrails.
-
-    Policy-based content moderation via the shipped classifier prompt,
-    run on `model` — or, when `model` is None (the default), on the
-    agent's own configured model: no hidden second provider, no second
-    API key, keyless on FakeProvider (ledger #84).
-
-    Modes:
-    - NONE: No guardrails
-    - POLICY_ONLY: Run custom policy (requires policy string)
-
-    Error Policy:
-    - FAIL_OPEN: On guardrail API error, treat as safe (default). Best for UX.
-    - FAIL_CLOSED: On guardrail API error, treat as blocked. Best for security.
-
-    Note: Output guardrails only work with stream=False.
-
-    Example:
-        from neosian import GuardrailsConfig, GuardrailMode, PolicyBuilder
-
-        # Policy guardrails
-        guardrails = GuardrailsConfig(
-            input_mode=GuardrailMode.POLICY_ONLY,
-            input_policy=PolicyBuilder.default(),
-            block_on_input=True,
-        )
-
-        # High-security: block on any guardrail error
-        guardrails = GuardrailsConfig(
-            input_mode=GuardrailMode.POLICY_ONLY,
-            input_policy=PolicyBuilder.default(),
-            error_policy=GuardrailErrorPolicy.FAIL_CLOSED,
-        )
-    """
-
-    # Input guardrails
-    input_mode: GuardrailMode = GuardrailMode.NONE
-    input_policy: str | None = None
-    block_on_input: bool = True
-
-    # Output guardrails (only work with stream=False)
-    output_mode: GuardrailMode = GuardrailMode.NONE
-    output_policy: str | None = None
-
-    # Error handling policy
-    error_policy: GuardrailErrorPolicy = GuardrailErrorPolicy.FAIL_OPEN
-
-    # Policy model; None = the agent's own configured model
-    model: AnyModel | None = None
-
-    def __post_init__(self) -> None:
-        """Validate configuration."""
-        # Check input policy requirement
-        if self.input_mode != GuardrailMode.NONE and self.input_policy is None:
-            raise ValueError(
-                f"input_mode={self.input_mode.value} requires input_policy to be set"
-            )
-
-        # Check output policy requirement
-        if self.output_mode != GuardrailMode.NONE and self.output_policy is None:
-            raise ValueError(
-                f"output_mode={self.output_mode.value} requires output_policy to be set"
-            )
-
-    @property
-    def has_output_guardrails(self) -> bool:
-        """Check if any output guardrails are configured."""
-        return self.output_mode != GuardrailMode.NONE
-
-
-@dataclass
-class PolicyResult:
-    """Result from GPT-OSS-Safeguard policy check.
-
-    Attributes:
-        safe: Whether the content passed the policy check.
-        category: The policy code that was violated (e.g., "P1").
-        rationale: Explanation of why content was flagged.
-    """
-
-    safe: bool
-    category: str | None = None
-    rationale: str | None = None
-
-
-@dataclass
-class GuardrailResult:
-    """Combined result from all guardrail checks.
-
-    Attributes:
-        safe: Overall safety status.
-        flagged_at: Where content was flagged ("input" or "output"), if any.
-        input_policy: Policy result for input.
-        output_policy: Policy result for output.
-    """
-
-    safe: bool
-    flagged_at: Literal["input", "output"] | None = None
-    input_policy: PolicyResult | None = None
-    output_policy: PolicyResult | None = None
-
-    @property
-    def policy_rationale(self) -> str | None:
-        """First available policy rationale (input or output)."""
-        if self.input_policy and self.input_policy.rationale:
-            return self.input_policy.rationale
-        if self.output_policy and self.output_policy.rationale:
-            return self.output_policy.rationale
-        return None

@@ -35,7 +35,7 @@ _SCOPE = "user:tour"
 _STORE = FileStore(_ROOT)
 # The operator's handle on the mount `memory_scope=` builds for the agent.
 _MEMORY = MemoryConfig(
-    store=_STORE, mounts=[Mount(scope=_SCOPE, mount_path="memories")]
+    store=_STORE, mounts=(Mount(scope=_SCOPE, mount_path="memories"),)
 )
 _SHOWN = {"tool_call", "tool_result", "memory_write", "done"}
 
