@@ -122,7 +122,7 @@ jobs:
           enable-cache: true
       - run: uv python install 3.12
       - run: make install
-      - run: uv run pytest -m external_${{ matrix.provider }} -v
+      - run: uv run pytest -m external_${{ matrix.provider }} -v -s
         env:
           OPENAI_API_KEY: ${{ matrix.provider == 'openai' && secrets.OPENAI_API_KEY || '' }}
           ANTHROPIC_API_KEY: ${{ matrix.provider == 'anthropic' && secrets.ANTHROPIC_API_KEY || '' }}
