@@ -25,6 +25,7 @@ from neosian._foundation.conversation.compaction import merge_usage
 from neosian._foundation.llm.base import Message, Role
 from neosian._foundation.memory.base import MemoryStore
 from neosian._foundation.memory.mounts import MemoryConfig, Mount
+from neosian._foundation.memory.skills import create_skill_tools
 from neosian._foundation.memory.tools import create_memory_tool
 from neosian._foundation.shared.exceptions import ConfigurationError
 from neosian._foundation.shared.prompt_assets import get_prompt
@@ -157,22 +158,29 @@ def derive_config(
     if section is not None:
         system_prompt = SystemPrompt(f"{base.system_prompt}\n\n{section}")
     tools = list(base.tools)
+    skill_dir = base.skill_dir
     if memory_config is not None:
         # native_memory itself survives the replace() below (a plain
         # field); only the tool registration needs the flag threaded.
         tools.append(
             create_memory_tool(memory_config, actor=actor, native=base.native_memory)
         )
+        # The skill tools ride with memory (§24) over the already-loaded
+        # directory skills plus the mounts; clearing skill_dir keeps the
+        # Agent from registering a directory-only pair beside them.
+        tools.extend(create_skill_tools(base.skills, memory_config))
+        skill_dir = None
     tools.extend(extra_tools)
     if links is not None:
         tools = [_expanding(tool, links) for tool in tools]
-    # replace() re-runs __post_init__ (re-reads skill_dir, re-validates)
-    # — once per conversation, at start().
+    # replace() re-runs __post_init__ (re-validates; re-reads skill_dir
+    # only for a memory-less conversation) — once per conversation.
     return dataclasses.replace(
         base,
         system_prompt=system_prompt,
         tools=tools,
         memory=None,
+        skill_dir=skill_dir,
         hooks=_compose_hooks(base.hooks, capture),
     )
 

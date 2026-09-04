@@ -25,13 +25,18 @@ _LEGACY_TOOL_DESCRIPTIONS = {
         "this replaces all existing tasks. Use status: 'pending' for not started, "
         "'in_progress' for current work (keep to one at a time), 'completed' when done."
     ),
+    # NK (§24): the skill descriptions name the mount path and version.
     "tools.skill_list": (
-        "List available skills with their names and descriptions. "
-        "Use this to discover what skills are available before loading one."
+        "List the available skills — reusable instructions — with their names "
+        "and descriptions. A skill kept in a memory mount also shows its path "
+        "(/mount/skills/name) and version. Use this to discover what is "
+        "available before loading one."
     ),
     "tools.skill_load": (
-        "Load a skill by name. Returns the full instructions. "
-        "Use list_skills first to see what's available."
+        "Load a skill by name, or by its /mount/skills/name path. Returns the "
+        "full instructions; for a skill in a mount the reminder names the "
+        "document, so you can revise it with the memory tool. Use list_skills "
+        "first to see what's available."
     ),
 }
 

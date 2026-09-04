@@ -628,8 +628,9 @@ class SkillInvalidFrontmatterError(SkillLoadError):
 
     code = "skill_invalid_frontmatter"
 
-    def __init__(self, path: str) -> None:
-        super().__init__(ErrorMessages.SKILL_INVALID_FRONTMATTER.format(path=path))
+    def __init__(self, path: str, reason: str | None = None) -> None:
+        message = ErrorMessages.SKILL_INVALID_FRONTMATTER.format(path=path)
+        super().__init__(message if reason is None else f"{message} — {reason}")
         self.path = path
 
 

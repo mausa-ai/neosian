@@ -14,9 +14,14 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from mcp.server import Server
+    from mcp.shared.exceptions import MCPError
     from mcp.types import (
         CallToolResult,
+        GetPromptResult,
+        ListPromptsResult,
         ListToolsResult,
+        Prompt,
+        PromptMessage,
         TextContent,
         Tool,
         ToolAnnotations,
@@ -31,7 +36,7 @@ _INSTALL_HINT = (
 @dataclass(frozen=True, slots=True)
 class Sdk:
     """The loaded SDK surface: the low-level server class and the wire
-    types the handlers construct."""
+    types the handlers construct — tools, and prompts for skills (§24)."""
 
     server_class: type[Server[Any]]
     tool: type[Tool]
@@ -39,15 +44,29 @@ class Sdk:
     text: type[TextContent]
     list_tools_result: type[ListToolsResult]
     call_tool_result: type[CallToolResult]
+    prompt: type[Prompt]
+    prompt_message: type[PromptMessage]
+    list_prompts_result: type[ListPromptsResult]
+    get_prompt_result: type[GetPromptResult]
+    # A raised `error(code=invalid_params, …)` is the JSON-RPC error reply
+    # a prompt request for an unknown skill gets — never an internal error.
+    error: type[MCPError]
+    invalid_params: int
 
 
 def load_sdk() -> Sdk:
     """Import the MCP SDK, raising a helpful ImportError without the extra."""
     try:
         from mcp.server import Server
+        from mcp.shared.exceptions import MCPError
         from mcp.types import (
+            INVALID_PARAMS,
             CallToolResult,
+            GetPromptResult,
+            ListPromptsResult,
             ListToolsResult,
+            Prompt,
+            PromptMessage,
             TextContent,
             Tool,
             ToolAnnotations,
@@ -61,4 +80,10 @@ def load_sdk() -> Sdk:
         text=TextContent,
         list_tools_result=ListToolsResult,
         call_tool_result=CallToolResult,
+        prompt=Prompt,
+        prompt_message=PromptMessage,
+        list_prompts_result=ListPromptsResult,
+        get_prompt_result=GetPromptResult,
+        error=MCPError,
+        invalid_params=INVALID_PARAMS,
     )

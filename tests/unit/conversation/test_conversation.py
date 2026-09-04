@@ -379,7 +379,11 @@ class TestMemoryWiring:
         convo = Conversation(config, store=store, conversation_id="t1")
         await convo.start()
         assert convo._agent is not None
-        assert [str(name) for name in convo._agent._tools] == ["memory"]
+        assert [str(name) for name in convo._agent._tools] == [
+            "memory",
+            "list_skills",
+            "load_skill",
+        ]
 
     async def test_memory_index_is_frozen_per_conversation(
         self, store: FileStore

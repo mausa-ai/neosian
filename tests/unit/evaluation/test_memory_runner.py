@@ -523,4 +523,9 @@ class TestCrossClient:
         assert "[where we left off" in system
         assert "[conversation cc-1 — written by claude-code:cc-1]" in system
         assert "[1] USER: Add a retry to fetch." in system
-        assert [str(t.name) for t in fake.calls[0].tools] == ["memory", "recall_turn"]
+        assert [str(t.name) for t in fake.calls[0].tools] == [
+            "memory",
+            "list_skills",
+            "load_skill",
+            "recall_turn",
+        ]

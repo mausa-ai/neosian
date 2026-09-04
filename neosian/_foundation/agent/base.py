@@ -26,6 +26,7 @@ from neosian._foundation.agent.response import AgentResponse
 from neosian._foundation.agent.stream_run import run_streaming
 from neosian._foundation.llm.base import BaseLLMClient, Message, ToolDefinition
 from neosian._foundation.llm.router import ProviderRouter
+from neosian._foundation.memory.skills import create_skill_tools
 from neosian._foundation.memory.tools import create_memory_tool
 from neosian._foundation.shared.constants import ErrorMessages
 from neosian._foundation.shared.exceptions import (
@@ -47,7 +48,6 @@ from neosian._foundation.tools.base import (
     get_tool_definition,
     get_tool_metadata,
 )
-from neosian._foundation.tools.builtin.skill import create_skill_tools
 from neosian._foundation.tools.builtin.todo import update_todo
 
 logger = logging.getLogger(__name__)
@@ -138,17 +138,16 @@ class Agent:
         if config.enable_todo:
             self._register_tool(update_todo)
 
-        # Register skill tools if skills are configured
-        if config.skills:
-            list_pb, load_pb = create_skill_tools(config.skills)
-            self._register_tool(list_pb)
-            self._register_tool(load_pb)
-
         # Register the memory tool if memory is configured
         if config.memory is not None:
             self._register_tool(
                 create_memory_tool(config.memory, native=config.native_memory)
             )
+        # Skill tools over the directory skills and the memory mounts'
+        # `skills/` documents (§24): wherever the memory tool is, they are.
+        if config.skills or config.memory is not None:
+            for skill_tool in create_skill_tools(config.skills, config.memory):
+                self._register_tool(skill_tool)
         if config.native_memory and config.model.provider is not Provider.ANTHROPIC:
             logger.warning(
                 "native_memory=True is inert on %s — the memory_20250818 "

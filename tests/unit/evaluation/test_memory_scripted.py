@@ -74,9 +74,9 @@ class TestShippedPack:
             _REPO_ROOT / "examples" / "eval_memory_baseline.yaml",
             tmp_path / "stores",
         )
-        # Nine scenarios × the three shipped transports (function, cli,
+        # Ten scenarios × the three shipped transports (function, cli,
         # http — the NM wire, ledger #113).
-        assert report.total == 27
+        assert report.total == 30
         assert report.failed == 0, _failures(report)
         assert report.variants == ("function", "cli", "http")
         assert report.cases == (
@@ -89,6 +89,7 @@ class TestShippedPack:
             "reflection-close",
             "maintenance",
             "cross-client",
+            "skills",
         )
         assert all(r.error is None for r in report.results)
 

@@ -45,6 +45,7 @@ _TOOL_KEYS: Final = (
     "todo",
     "skill_list",
     "skill_load",
+    "skill_guide",
     "recall_turn",
     "recall_turn_any",
 )

@@ -39,7 +39,8 @@ system_section: |-
   Mount routing: each top-level directory below is a separate mount.
   Durable facts about the user belong in the user-level mount; facts tied
   to one project belong in that project's mount; read-only mounts are
-  reference material.
+  reference material. Skills — reusable instructions — are the documents
+  under `skills/` in a mount; `list_skills` and `load_skill` read them.
 
   ### Index
 

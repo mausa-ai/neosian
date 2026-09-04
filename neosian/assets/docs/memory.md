@@ -44,8 +44,11 @@ stays legal on an edit-only mount: clearing content is a content act.
 
 ## Three lifetimes: skills, memory, the board
 
-Skills are static (how), memory is cross-session (what we know), and
-the **board** is one task's working set (what we are doing now). The
+Skills are how, memory is cross-session (what we know), and the
+**board** is one task's working set (what we are doing now). A skill is
+the document `skills/<name>` under any mount — the mount's scope owns
+it, the mount's flag curates it, and `list_skills`/`load_skill` read it
+(`neosian docs skills`). The
 board is a memory mount at `/board` on the scope you name —
 `Conversation(board="task:42")` — shared between agents by naming the
 same scope, from the shell or MCP as `--mount scope=task:42,path=board`.

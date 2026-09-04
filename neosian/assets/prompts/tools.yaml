@@ -2,9 +2,19 @@
 
 todo: "Update the task list with current progress. Pass the complete list of tasks - this replaces all existing tasks. Use status: 'pending' for not started, 'in_progress' for current work (keep to one at a time), 'completed' when done."
 
-skill_list: "List available skills with their names and descriptions. Use this to discover what skills are available before loading one."
+skill_list: "List the available skills — reusable instructions — with their names and descriptions. A skill kept in a memory mount also shows its path (/mount/skills/name) and version. Use this to discover what is available before loading one."
 
-skill_load: "Load a skill by name. Returns the full instructions. Use list_skills first to see what's available."
+skill_load: "Load a skill by name, or by its /mount/skills/name path. Returns the full instructions; for a skill in a mount the reminder names the document, so you can revise it with the memory tool. Use list_skills first to see what's available."
+
+skill_guide: |-
+  To add a skill, create /<mount>/skills/<name> with the memory tool: a
+  frontmatter block whose `description` says when to use it, then the
+  instructions as the body. Revise one with str_replace on its path; a
+  read-only mount's skills are fixed. For example:
+  ---
+  description: Release this project
+  ---
+  1. Bump the version ...
 
 recall_turn_any: "Re-read one turn of a recorded conversation verbatim. Every agent's sessions are listed in the memory index under sessions/ (each document names its conversation id), and the 'where we left off' block at session start shows each turn as one line labeled with its number in square brackets, e.g. [7]. Pass the conversation id and a turn number to get that turn's full original text, including complete tool calls and results. Use it whenever a log line mentions something you need the details of, and to read the URL, path or id a [link <id>:N] handle stands for."
 

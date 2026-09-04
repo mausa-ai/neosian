@@ -98,7 +98,12 @@ class TestMcpOverHttp:
             listed = await client.post("/mcp", json=listing, headers=_HEADERS | session)
         assert listed.status_code == 200
         tools = _sse_payload(listed.text)["result"]["tools"]
-        assert [tool["name"] for tool in tools] == ["memory", "recall_turn"]
+        assert [tool["name"] for tool in tools] == [
+            "memory",
+            "list_skills",
+            "load_skill",
+            "recall_turn",
+        ]
 
     async def test_the_mcp_surface_is_behind_the_bearer_gate(
         self, tmp_path: Path

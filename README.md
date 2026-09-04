@@ -27,11 +27,11 @@ The repository is private; as a dependency of another uv project, install
 from the git URL, pinned to a release tag (extras ride the same URL):
 
 ```bash
-uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.86.0"
-uv add "neosian[postgres] @ git+ssh://git@github.com/neosae/neosian@v0.86.0"   # + PostgresStore
-uv add "neosian[mcp] @ git+ssh://git@github.com/neosae/neosian@v0.86.0"        # + MCP memory server
-uv add "neosian[otel] @ git+ssh://git@github.com/neosae/neosian@v0.86.0"       # + OpenTelemetry spans
-uv add "neosian[server] @ git+ssh://git@github.com/neosae/neosian@v0.86.0"     # + the state process
+uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.87.0"
+uv add "neosian[postgres] @ git+ssh://git@github.com/neosae/neosian@v0.87.0"   # + PostgresStore
+uv add "neosian[mcp] @ git+ssh://git@github.com/neosae/neosian@v0.87.0"        # + MCP memory server
+uv add "neosian[otel] @ git+ssh://git@github.com/neosae/neosian@v0.87.0"       # + OpenTelemetry spans
+uv add "neosian[server] @ git+ssh://git@github.com/neosae/neosian@v0.87.0"     # + the state process
 ```
 
 The core install is database-driver-free, MCP-free, and server-free
@@ -481,8 +481,10 @@ so a prompt-pack change without a recorded re-run fails `make test`.
 - Structured output (`ResponseFormat` with Pydantic models or unions) on all providers
 - Multimodal content blocks (images, documents) on Anthropic; native
   `memory_20250818` and server-side compaction behind flags
-- Skills for app-supplied procedures; a shared board between agents is a
-  memory mount (`Conversation(board="task:42")`, NB)
+- Skills as documents in a mount (`/project/skills/<name>` — versioned,
+  curated by the mount flag, loaded by `list_skills`/`load_skill`,
+  served over MCP as tools and prompts, NK); a shared board between
+  agents is a memory mount (`Conversation(board="task:42")`, NB)
 - Playground: `uv run neosian playground examples/basic_agent.py` — chats
   persist per turn to `~/.neosian/conversations/<id>/`, `--resume <id>`
   continues one; an agent file that names no memory gets this

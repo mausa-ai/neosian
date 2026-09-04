@@ -1,11 +1,12 @@
 # Memory eval baseline (kind: memory, schema v2) — DESIGN §13.12.
 #
-# Nine scenarios, one per measured behavior: write discipline,
+# Ten scenarios, one per measured behavior: write discipline,
 # recall-in-next-session, dedup, contradiction handling, long-horizon
 # recall, correcting a wrong memory, reflection at the session boundary
-# (§15), maintenance over a seeded store (§16), and the cross-client
+# (§15), maintenance over a seeded store (§16), the cross-client
 # switch — a foreign agent's hook-fed session recalled by a neosian
-# agent (§21.7). Every agent session is scripted, so the pack runs
+# agent (§21.7) — and skills written, loaded and revised as documents in
+# a mount (§24). Every agent session is scripted, so the pack runs
 # keylessly on FakeProvider and is all-green by construction — a red
 # run is a regression. Turn expectations stay loose (they must survive
 # a real provider); the store truth carries the strictness.
@@ -504,3 +505,72 @@ scenarios:
         # document under /project (the mount at /project takes it, §22).
         expect_store:
           counts: {/project: 1}
+
+  # SKILLS — a skill is a document under skills/ in a mount (§24): the
+  # agent writes one through the memory tool with the frontmatter the
+  # guide names, loads it by name in the next session, and revises it in
+  # place — versions accrue on the one document. Store truth pins the
+  # convention (a frontmatter description, under /project/skills/), the
+  # history [created, modified], and that loading never writes; the name
+  # is the model's (path_prefix).
+  - name: skills
+    sessions:
+      - name: write
+        turns:
+          - user: >-
+              Save a reusable skill for releasing this project: bump the
+              version, run make test, then tag the release.
+            expect: {tool: memory}
+        script:
+          - tool_calls:
+              - name: memory
+                arguments:
+                  command: create
+                  path: /project/skills/release
+                  content: "---\ndescription: Release this project\n---\n1. Bump the version.\n2. Run make test.\n3. Tag the release."
+          - content: "Saved as the release skill."
+        expect_store:
+          counts: {/project: 1}
+          documents:
+            - path_prefix: /project/skills/
+              content: {contains: "description:"}
+              versions: 1
+              actions: [created]
+
+      - name: use
+        turns:
+          - user: "How do I release this project? Use the skill."
+            expect: {tool: load_skill}
+        script:
+          - tool_calls:
+              - name: load_skill
+                arguments: {name: release}
+          - content: "Bump the version, run make test, then tag the release."
+        expect_store:
+          counts: {/project: 1}
+          documents:
+            - path_prefix: /project/skills/
+              versions: 1
+
+      - name: revise
+        turns:
+          - user: >-
+              Add a final step to the release skill: push with
+              --follow-tags.
+            expect: {tool: memory}
+        script:
+          - tool_calls:
+              - name: memory
+                arguments:
+                  command: str_replace
+                  path: /project/skills/release
+                  old_str: "3. Tag the release."
+                  new_str: "3. Tag the release.\n4. Push with --follow-tags."
+          - content: "Added the push step to the release skill."
+        expect_store:
+          counts: {/project: 1}
+          documents:
+            - path_prefix: /project/skills/
+              content: {contains: "follow-tags"}
+              versions: 2
+              actions: [created, modified]

@@ -22,7 +22,10 @@ class TestListTools:
         server = await create_memory_server(config)
         async with Client(server) as client:
             result = await client.list_tools()
-        (tool,) = result.tools  # memory only: no conversation store given
+        # memory first; the skill readers follow (§24), no recall_turn
+        # without a conversation store.
+        tool, *readers = result.tools
+        assert [r.name for r in readers] == ["list_skills", "load_skill"]
         assert tool.name == definition.name
         assert tool.description == definition.description
         assert tool.input_schema == definition.parameters
@@ -38,7 +41,7 @@ class TestListTools:
         server = await create_memory_server(config, conversations=store)
         async with Client(server) as client:
             result = await client.list_tools()
-        memory, recall = result.tools
+        memory, *_, recall = result.tools
         assert memory.name == "memory" and recall.name == "recall_turn"
         assert recall.description == get_prompt("tools.recall_turn_any")
         assert set(recall.input_schema["required"]) == {"turn", "conversation"}

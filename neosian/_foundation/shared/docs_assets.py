@@ -22,7 +22,15 @@ _DOCS_DIR: Final = "docs"
 # The curated reading order — and the manifest: a page on disk that is
 # not listed here, or a listed page missing from the wheel, fails at
 # import instead of becoming invisible.
-_TOPICS: Final = ("quickstart", "memory", "cli", "mcp", "agents", "topology")
+_TOPICS: Final = (
+    "quickstart",
+    "memory",
+    "skills",
+    "cli",
+    "mcp",
+    "agents",
+    "topology",
+)
 _REQUIRED_KEYS: Final = ("title", "summary")
 _SUMMARY_MAX: Final = 90  # the listing stays one line per topic
 

@@ -51,6 +51,7 @@ from neosian._foundation.memory.file import FileStore
 from neosian._foundation.memory.index import memory_system_section
 from neosian._foundation.memory.maintenance import run_maintenance
 from neosian._foundation.memory.mounts import MemoryConfig, Mount
+from neosian._foundation.memory.skills import create_skill_tools
 from neosian._foundation.shared.exceptions import (
     EvalCaseInvalidError,
     EvalError,
@@ -233,6 +234,9 @@ async def _run_cell(
                     store_root=store_root, mounts=mounts, actor=actor
                 )
             )
+            # The skill tools derive_config would have built beside the
+            # memory tool (§24), over the cell's own store handle.
+            extra_tools.extend(create_skill_tools((), memory_config))
         if session.session_start:
             extra_tools.append(recall_any_tool(memory_config))
         derived = derive_config(

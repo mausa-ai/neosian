@@ -124,8 +124,10 @@ A store that cannot be reached exits 1 with nothing on stdout —
 The window stays each agent's own: neosian feeds it at the client's
 extension points — session start, the post-compaction re-injection —
 and never replaces it. The three lifetimes hold across clients
-(`neosian docs memory`): skills are how, memory is what we know, the
-board is what we are doing now; the record is history — recallable
+(`neosian docs memory`): skills are how — the `skills/` documents of
+the mounts, the same list and the same MCP prompts from every client
+(`neosian docs skills`) — memory is what we know, the board is what we
+are doing now; the record is history — recallable
 turn by turn, never in the window whole. Reflection at pre-compact is not offered: a hook
 process is keyless, and the foreign agent's own model is the only one
 in the room.

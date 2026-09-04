@@ -1,6 +1,6 @@
 ---
 title: MCP — the same state, served to any client
-summary: memory and recall_turn over stdio; neosian mcp install; one writer per root
+summary: memory, skills (also as prompts) and recall_turn over stdio; mcp install
 ---
 
 # The MCP server
@@ -15,10 +15,17 @@ same factory's server at `/mcp`: `neosian serve` with mounts
 ## The state set
 
 The memory server becomes the state server one tool at a time. Today it
-serves two:
+serves four:
 
 - **`memory`** — the six commands over the mounts (`neosian docs
   memory`), the same definition the function tool carries.
+- **`list_skills()`** and **`load_skill(name)`** — the skills kept as
+  `skills/<name>` documents in the mounts (`neosian docs skills`),
+  read-only; writing one is a `memory` call under the mount's flag.
+  Every skill is also an MCP **prompt** (`prompts/list`,
+  `prompts/get`), listed live — a client that renders prompts as
+  commands (Claude Code: `/mcp__neosian-memory__<name>`) gets a skill
+  one agent wrote as a command in the next.
 - **`recall_turn(turn, conversation)`** — one turn of a recorded
   conversation, verbatim: a hook-fed session of another agent
   (`neosian docs agents`), a neosian `Conversation`, anything the store

@@ -12,13 +12,15 @@ state process's HTTP wire. Agents share context by config: a `board`
 mount on a task scope, and read-only `ConversationView`s of another
 conversation with cross-conversation `recall_turn`. Long URLs, paths and
 ids in aged turns become `[link N]` handles, expanded at the tool boundary.
+Skills are documents under `skills/` in a mount — versioned, curated by
+the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
 
 ## Learn from the shell
 
 - `neosian docs` — list the shipped topics (they travel in the wheel, so
   they always describe the installed version).
-- `neosian docs quickstart | memory | cli | mcp | agents | topology` — one page,
-  markdown on stdout, pipe-safe.
+- `neosian docs quickstart | memory | skills | cli | mcp | agents | topology`
+  — one page, markdown on stdout, pipe-safe.
 - `neosian docs topology` — who runs neosian code x where the bytes live;
   one writer per FileStore root.
 
@@ -31,6 +33,9 @@ ids in aged turns become `[link N]` handles, expanded at the tool boundary.
   `--json` prints the memory tool's result envelope verbatim.
 - `neosian memory maintain` — the gardener: keyless dedup + empty-prune;
   `--model MODEL` adds the semantic pass (merge, prune stale, promote).
+- A skill is `create /project/skills/<name>` with a frontmatter
+  `description` and the instructions as the body (`neosian docs skills`);
+  `versions` and `revert` work on it like any document.
 - Operator verbs, keyless: `versions PATH` (the audit trail; `--json`
   carries full historical content), `redact PATH [--all]` (the one
   eraser; audit skeleton preserved), `revert PATH --version N` (undo).
@@ -50,8 +55,10 @@ ids in aged turns become `[link N]` handles, expanded at the tool boundary.
   client is not installed; Codex is print-only — apply with the printed
   `codex mcp add` line).
 - `python -m neosian.mcp --root DIR --scope user:me` serves the same
-  store over stdio (`mcp` extra): the `memory` tool, and `recall_turn(turn,
-  conversation)` — any recorded turn of any agent's session, verbatim.
+  store over stdio (`mcp` extra): the `memory` tool, `list_skills` and
+  `load_skill` over the mounts' skills (each skill also an MCP prompt — a
+  slash command in Claude Code), and `recall_turn(turn, conversation)` —
+  any recorded turn of any agent's session, verbatim.
 
 ## Record a foreign agent
 
@@ -101,7 +108,7 @@ ids in aged turns become `[link N]` handles, expanded at the tool boundary.
 
 ## Install
 
-- `uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.86.0"`
+- `uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.87.0"`
   (private repository, no PyPI; pin an annotated release tag, never
   master; extras `[postgres]`, `[mcp]`, `[otel]`, and `[server]` ride
   the same URL).

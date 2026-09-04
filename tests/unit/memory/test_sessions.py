@@ -54,7 +54,12 @@ class TestMemoryWiring:
                 memory=memory,
             )
         )
-        assert [str(name) for name in agent._tools] == ["memory"]
+        # The skill tools ride with memory (§24).
+        assert [str(name) for name in agent._tools] == [
+            "memory",
+            "list_skills",
+            "load_skill",
+        ]
 
     def test_no_memory_registers_nothing(self) -> None:
         agent = Agent(

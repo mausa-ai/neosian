@@ -8,9 +8,11 @@ hints — and executes every memory call through `memory/dispatch.py`, so
 the function tool, the native declaration and this server cannot drift
 (ledger #50). The memory server becomes the state server one tool at a
 time (§21.7): `recall_turn` with `conversation` required, so any agent
-re-reads a recorded turn of any other. Corrective failures ride MCP's
-in-band `is_error` — that is `ToolResult`, expressed in MCP's vocabulary
-(ledger #52).
+re-reads a recorded turn of any other; `list_skills`/`load_skill` over
+the mounts' `skills/` documents, each of which is also an MCP prompt —
+a slash command in the clients that render prompts (§24). Corrective
+failures ride MCP's in-band `is_error` — that is `ToolResult`, expressed
+in MCP's vocabulary (ledger #52).
 
 The caller owns the store's lifetime (the ledger #33 rule): the factory
 and the SDK's per-connection lifespan never close it — the entry point
@@ -28,6 +30,11 @@ from neosian._foundation.mcp.sdk import Sdk, load_sdk
 from neosian._foundation.memory.dispatch import dispatch
 from neosian._foundation.memory.index import memory_system_section
 from neosian._foundation.memory.mounts import MemoryConfig
+from neosian._foundation.memory.skills import (
+    create_skill_tools,
+    list_skills,
+    load_skill,
+)
 from neosian._foundation.memory.tools import create_memory_tool
 from neosian._foundation.shared.constants import ErrorMessages
 from neosian._foundation.tools.base import ToolResult, get_tool_definition
@@ -39,8 +46,12 @@ if TYPE_CHECKING:
     from mcp.types import (
         CallToolRequestParams,
         CallToolResult,
+        GetPromptRequestParams,
+        GetPromptResult,
+        ListPromptsResult,
         ListToolsResult,
         PaginatedRequestParams,
+        Tool as McpTool,
     )
 
     from neosian._foundation.conversation.base import ConversationStore
@@ -76,6 +87,27 @@ def _definition(tool: ToolFunction) -> ToolDefinition:
     return definition
 
 
+def _read_only(sdk: Sdk, tool: ToolFunction) -> tuple[McpTool, Handler]:
+    """A read-only tool served verbatim, its handler calling it by keyword."""
+    definition = _definition(tool)
+
+    async def call(arguments: Mapping[str, Any]) -> ToolResult[Any]:
+        return await tool(**arguments)
+
+    served = sdk.tool(
+        name=definition.name,
+        description=definition.description,
+        input_schema=definition.parameters,
+        annotations=sdk.tool_annotations(
+            read_only_hint=True,
+            destructive_hint=False,
+            idempotent_hint=True,
+            open_world_hint=False,
+        ),
+    )
+    return served, call
+
+
 async def create_memory_server(
     config: MemoryConfig,
     *,
@@ -84,7 +116,8 @@ async def create_memory_server(
     conversations: ConversationStore | None = None,
 ) -> Server[None]:
     """Build an MCP server serving `config`'s mounts over the `memory`
-    tool — and, given `conversations`, `recall_turn` over its turns.
+    tool, its skills over `list_skills`/`load_skill` and as prompts —
+    and, given `conversations`, `recall_turn` over its turns.
 
     Async because the server's `instructions` are
     `memory_system_section(config)` — the prompt pack plus the live index,
@@ -112,33 +145,53 @@ async def create_memory_server(
         )
     ]
     handlers: dict[str, Handler] = {memory.name: call_memory}
+    readers = list(create_skill_tools((), config))
     if conversations is not None:
-        recall_tool = create_recall_any_tool(conversations)
-        recall = _definition(recall_tool)
-
-        async def call_recall(arguments: Mapping[str, Any]) -> ToolResult[Any]:
-            return await recall_tool(**arguments)
-
-        tools.append(
-            sdk.tool(
-                name=recall.name,
-                description=recall.description,
-                input_schema=recall.parameters,
-                annotations=sdk.tool_annotations(
-                    read_only_hint=True,
-                    destructive_hint=False,
-                    idempotent_hint=True,
-                    open_world_hint=False,
-                ),
-            )
-        )
-        handlers[recall.name] = call_recall
+        readers.append(create_recall_any_tool(conversations))
+    for reader in readers:
+        served, call = _read_only(sdk, reader)
+        tools.append(served)
+        handlers[served.name] = call
 
     async def on_list_tools(
         ctx: ServerRequestContext[None, Any],  # noqa: ARG001 - SDK handler shape
         params: PaginatedRequestParams | None,  # noqa: ARG001 - no paging
     ) -> ListToolsResult:
         return sdk.list_tools_result(tools=tools)
+
+    # Skills as prompts, listed live: one written this session is a
+    # command in the next request (§24.3).
+    async def on_list_prompts(
+        ctx: ServerRequestContext[None, Any],  # noqa: ARG001 - SDK handler shape
+        params: PaginatedRequestParams | None,  # noqa: ARG001 - no paging
+    ) -> ListPromptsResult:
+        entries = await list_skills(config, ())
+        return sdk.list_prompts_result(
+            prompts=[
+                sdk.prompt(name=entry.name, description=entry.skill.description)
+                for entry in entries
+                if entry.skill is not None
+            ]
+        )
+
+    async def on_get_prompt(
+        ctx: ServerRequestContext[None, Any],  # noqa: ARG001 - SDK handler shape
+        params: GetPromptRequestParams,
+    ) -> GetPromptResult:
+        entry = await load_skill(config, (), params.name)
+        if entry is None or entry.skill is None:
+            raise sdk.error(
+                code=sdk.invalid_params,
+                message=ErrorMessages.SKILL_NOT_FOUND.format(name=params.name),
+            )
+        return sdk.get_prompt_result(
+            description=entry.skill.description,
+            messages=[
+                sdk.prompt_message(
+                    role="user", content=sdk.text(type="text", text=entry.skill.content)
+                )
+            ],
+        )
 
     async def on_call_tool(
         ctx: ServerRequestContext[None, Any],  # noqa: ARG001 - SDK handler shape
@@ -185,6 +238,8 @@ async def create_memory_server(
         lifespan=lifespan,
         on_list_tools=on_list_tools,
         on_call_tool=on_call_tool,
+        on_list_prompts=on_list_prompts,
+        on_get_prompt=on_get_prompt,
     )
 
 
