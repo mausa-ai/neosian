@@ -3,7 +3,9 @@
 A session is a fresh bare Agent wired through `derive_config` — the
 shipped wiring, not a harness replica — over a fresh store handle on
 the cell's one store root: a FileStore, or on the http transport a
-`RemoteStore` whose I/O crosses the state process's wire (#113). The
+`RemoteStore` whose I/O crosses the state process's wire (#113); on the
+mcp transport the tools are the memory server's, consumed over the
+official client (§25). The
 index section regenerates per session (the frozen-index rule), so a
 fact written in session 1 surfaces in session 2's prefix exactly as it
 would in production. Store truth is checked after each session through
@@ -31,6 +33,7 @@ from neosian._foundation.evaluation.capture import (
 from neosian._foundation.evaluation.matcher import match_turn
 from neosian._foundation.evaluation.memory_cli import create_cli_memory_tool
 from neosian._foundation.evaluation.memory_http import open_http_memory
+from neosian._foundation.evaluation.memory_mcp import open_mcp_tools
 from neosian._foundation.evaluation.memory_record import (
     recall_any_tool,
     replay_record,
@@ -222,13 +225,14 @@ async def _run_cell(
         capture = ToolCapture(stubbed)
         recorder = FallbackRecorder()
         actor = f"eval:{_actor_id(scenario.name)}/session:{_actor_id(session.name)}"
-        via_cli = transport is Transport.CLI
-        # A cli cell registers the shell-executed tool via extra_tools
+        via_wire = transport in (Transport.CLI, Transport.MCP)
+        # A cli or mcp cell registers its transport's tools via extra_tools
         # instead — passing memory_config too would put two `memory`
         # tools on the wire; a session_start cell adds the server's
-        # recall_turn over the cell's own store handle.
+        # recall_turn over the cell's own store handle (the mcp server
+        # serves its own).
         extra_tools: list[ToolFunction] = []
-        if via_cli:
+        if transport is Transport.CLI:
             extra_tools.append(
                 create_cli_memory_tool(
                     store_root=store_root, mounts=mounts, actor=actor
@@ -237,12 +241,18 @@ async def _run_cell(
             # The skill tools derive_config would have built beside the
             # memory tool (§24), over the cell's own store handle.
             extra_tools.extend(create_skill_tools((), memory_config))
-        if session.session_start:
+        elif transport is Transport.MCP:
+            extra_tools.extend(
+                await stack.enter_async_context(
+                    open_mcp_tools(memory_config, actor=actor)
+                )
+            )
+        if session.session_start and transport is not Transport.MCP:
             extra_tools.append(recall_any_tool(memory_config))
         derived = derive_config(
             staged,
             section=section,
-            memory_config=None if via_cli else memory_config,
+            memory_config=None if via_wire else memory_config,
             actor=actor,
             capture=_noop,
             extra_tools=extra_tools,

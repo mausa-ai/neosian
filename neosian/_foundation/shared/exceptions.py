@@ -248,6 +248,24 @@ class MissingAPIKeyError(ConfigurationError):
     code = "agent_missing_api_key"
 
 
+class McpConnectionError(NeosianError):
+    """An MCP server could not be connected or listed when `McpServer`
+    was entered — a spawn, handshake or transport failure (DESIGN §25).
+    Per-call failures never raise: they are in-band `ToolResult.fail`s.
+    The first code of the reserved `tool_` family (ECOSYSTEM §6).
+    """
+
+    code = "tool_mcp_connection_failed"
+
+    def __init__(self, server: str, error: BaseException) -> None:
+        reason = str(error) or type(error).__name__
+        super().__init__(
+            f"MCP server '{server}' could not be connected: {reason}",
+            details={"server": server, "error": reason},
+        )
+        self.server = server
+
+
 class UnsupportedParameterError(LLMError):
     """Raised when an unsupported parameter is passed to an LLM client."""
 

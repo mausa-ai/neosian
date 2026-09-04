@@ -27,11 +27,11 @@ The repository is private; as a dependency of another uv project, install
 from the git URL, pinned to a release tag (extras ride the same URL):
 
 ```bash
-uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.87.0"
-uv add "neosian[postgres] @ git+ssh://git@github.com/neosae/neosian@v0.87.0"   # + PostgresStore
-uv add "neosian[mcp] @ git+ssh://git@github.com/neosae/neosian@v0.87.0"        # + MCP memory server
-uv add "neosian[otel] @ git+ssh://git@github.com/neosae/neosian@v0.87.0"       # + OpenTelemetry spans
-uv add "neosian[server] @ git+ssh://git@github.com/neosae/neosian@v0.87.0"     # + the state process
+uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.88.0"
+uv add "neosian[postgres] @ git+ssh://git@github.com/neosae/neosian@v0.88.0"   # + PostgresStore
+uv add "neosian[mcp] @ git+ssh://git@github.com/neosae/neosian@v0.88.0"        # + MCP server and client
+uv add "neosian[otel] @ git+ssh://git@github.com/neosae/neosian@v0.88.0"       # + OpenTelemetry spans
+uv add "neosian[server] @ git+ssh://git@github.com/neosae/neosian@v0.88.0"     # + the state process
 ```
 
 The core install is database-driver-free, MCP-free, and server-free
@@ -266,6 +266,23 @@ python -m neosian.mcp --root ~/.my-agent/memory --scope user:me
 The server's instructions carry the same memory index and prompt pack the
 function tool uses. Hosts that embed the server in their own transport use
 `create_memory_server` from `neosian.mcp`.
+
+The other direction — a neosian agent consuming any MCP server as tools —
+is `McpServer` from the same module (the same extra):
+
+```python
+from neosian.mcp import McpServer
+
+async with McpServer.stdio("python", ["-m", "neosian.mcp", "--scope", "user:me"]) as server:
+    agent = Agent(AgentConfig(system_prompt=prompt, tools=[*server.tools]))
+    response = await agent.run(messages, stream=False)
+```
+
+`McpServer.http(url, headers=...)` reaches a streamable-HTTP endpoint (the
+state process's `/mcp`), `McpServer.in_process(server)` an SDK server object
+with no socket; `prefix="gh"` namespaces a clashing server. The schema
+crosses verbatim, `is_error` comes back as an in-band `ToolResult.fail`, and
+the approval gate and hooks apply unchanged (`neosian docs mcp`).
 
 Registering a client is one command:
 `neosian mcp install --client claude-code|claude-desktop|cursor|codex|opencode` prints

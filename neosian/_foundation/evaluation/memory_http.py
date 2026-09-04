@@ -7,9 +7,8 @@ crosses the twelve-route wire (codec, §5 error round-trip) against an
 in-process state process (`build_app` on `httpx.ASGITransport`),
 keyless and port-free. The model-visible surface is identical on every
 transport (#50), so the cells measure the owned wire under live
-traffic, never the MCP SDK's transport — that door stays
-deterministically pinned by the parity table and the five-transport
-test, and an MCP-client transport waits for NC1.
+traffic, never the MCP SDK's transport — that door is the `mcp`
+column's (`memory_mcp.py`, NC1, DESIGN §25.5).
 """
 
 from __future__ import annotations

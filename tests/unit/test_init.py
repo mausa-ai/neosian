@@ -279,6 +279,7 @@ def test_all_list_matches_exports() -> None:
         "UnsupportedContentError",
         "UnsupportedParameterError",
         "ConversationStoreError",
+        "McpConnectionError",
         "GuardrailError",
         "AgentLoadError",
         "PromptLoadError",

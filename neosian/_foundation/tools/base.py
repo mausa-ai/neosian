@@ -129,11 +129,13 @@ class ToolResult[T]:
 
 @dataclass
 class ToolMetadata:
-    """Metadata attached to a tool function."""
+    """Metadata attached to a tool function; `origin` names where a
+    library-bridged tool came from (for messages), None when decorated."""
 
     name: ToolName
     description: str
     definition: ToolDefinition
+    origin: str | None = None
 
 
 def _apply_constraints(schema: dict[str, Any], constraints: list[Constraint]) -> None:
@@ -455,19 +457,20 @@ def get_tool_definition(func: Callable[..., Any]) -> ToolDefinition | None:
 
 
 def attach_tool_metadata(
-    func: ToolFunction, definition: ToolDefinition
+    func: ToolFunction, definition: ToolDefinition, *, origin: str | None = None
 ) -> ToolFunction:
     """Attach a ready-made definition to a function the library built.
 
     Internal, reachable only through library factories — the eval
-    harness constructs stub/override wrappers and owns their metadata
-    (DESIGN §13.6); the same library-only-mutator idiom as
-    set_native_type below. Never reaches into an existing agent.
+    harness's stub/override wrappers (DESIGN §13.6), the MCP bridge
+    (§25) — the same library-only-mutator idiom as set_native_type
+    below. Never reaches into an existing agent.
     """
     metadata = ToolMetadata(
         name=definition.name,
         description=definition.description,
         definition=definition,
+        origin=origin,
     )
     func._tool_metadata = metadata  # type: ignore[attr-defined]
     return func

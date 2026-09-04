@@ -31,13 +31,17 @@ class Transport(str, Enum):
     `neosian memory`'s engine executed in-process (ledger #78); or the
     state process's store wire — the same function tool over a
     `RemoteStore`, every command's store I/O crossing the twelve-route
-    HTTP API against an in-process server (ledger #113).
+    HTTP API against an in-process server (ledger #113); or the MCP
+    door — the in-process memory server consumed through `McpServer`
+    over the official client, every tool call crossing the MCP wire
+    (NC1, DESIGN §25).
     """
 
     FUNCTION = "function"
     NATIVE = "native_memory"
     CLI = "cli"
     HTTP = "http"
+    MCP = "mcp"
 
 
 @dataclass(frozen=True, slots=True)

@@ -105,12 +105,13 @@ class TestSuiteLevel:
 
     def test_transports_parse(self, tmp_path: Path) -> None:
         config = _load(
-            tmp_path, MINIMAL + "transports: [function, native_memory, http]\n"
+            tmp_path, MINIMAL + "transports: [function, native_memory, http, mcp]\n"
         )
         assert config.transports == (
             Transport.FUNCTION,
             Transport.NATIVE,
             Transport.HTTP,
+            Transport.MCP,
         )
 
     def test_unknown_transport(self, tmp_path: Path) -> None:

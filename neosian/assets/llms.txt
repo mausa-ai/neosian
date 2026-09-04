@@ -14,6 +14,7 @@ conversation with cross-conversation `recall_turn`. Long URLs, paths and
 ids in aged turns become `[link N]` handles, expanded at the tool boundary.
 Skills are documents under `skills/` in a mount — versioned, curated by
 the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
+`McpServer` consumes any MCP server as agent tools, over stdio or HTTP.
 
 ## Learn from the shell
 
@@ -59,6 +60,11 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
   `load_skill` over the mounts' skills (each skill also an MCP prompt — a
   slash command in Claude Code), and `recall_turn(turn, conversation)` —
   any recorded turn of any agent's session, verbatim.
+- The other direction: `async with McpServer.stdio(cmd, args) as s:`
+  (or `.http(url, headers=)`, `.in_process(server)`) from `neosian.mcp`
+  — the server's tools as `AgentConfig(tools=[*s.tools])`, schema
+  verbatim, `is_error` in-band, `prefix=` for two servers that clash;
+  the gate and hooks apply unchanged (`neosian docs mcp`).
 
 ## Record a foreign agent
 
@@ -108,7 +114,7 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
 
 ## Install
 
-- `uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.87.0"`
+- `uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.88.0"`
   (private repository, no PyPI; pin an annotated release tag, never
   master; extras `[postgres]`, `[mcp]`, `[otel]`, and `[server]` ride
   the same URL).

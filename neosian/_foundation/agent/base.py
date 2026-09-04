@@ -58,6 +58,15 @@ _DUPLICATE_TOOL_NAME = (
 )
 
 
+def _origin(tool: ToolFunction) -> str:
+    """Who registered a tool: a bridged tool's origin (an MCP server, §25),
+    else the function's qualified name."""
+    metadata = get_tool_metadata(tool)
+    if metadata is not None and metadata.origin is not None:
+        return metadata.origin
+    return f"{tool.__module__}.{tool.__qualname__}"
+
+
 class Agent:
     """Stateless agent that orchestrates LLM and tool execution.
 
@@ -199,8 +208,7 @@ class Agent:
         if earlier is not None:
             raise ConfigurationError(
                 _DUPLICATE_TOOL_NAME.format(
-                    name=metadata.name,
-                    earlier=f"{earlier.__module__}.{earlier.__qualname__}",
+                    name=metadata.name, earlier=_origin(earlier)
                 )
             )
         self._tools[metadata.name] = tool_func

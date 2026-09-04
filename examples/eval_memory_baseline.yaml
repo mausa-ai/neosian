@@ -27,12 +27,14 @@ agent: examples/eval_memory_agent.py
 models: [fake]
 
 # The transport axis. The cli transport (the `neosian memory` engine,
-# run in-process — DESIGN §14.3) and the http transport (the memory
-# tool over `RemoteStore` against an in-process state process —
-# DESIGN §18, ledger #113) are provider-independent, so they belong in
-# the keyless gate beside the function tool; native_memory stays off
-# the pack because it is inert off Anthropic.
-transports: [function, cli, http]
+# run in-process — DESIGN §14.3), the http transport (the memory tool
+# over `RemoteStore` against an in-process state process — DESIGN §18,
+# ledger #113) and the mcp transport (the memory server consumed
+# through `McpServer` over the official client — DESIGN §25) are
+# provider-independent, so they belong in the keyless gate beside the
+# function tool; native_memory stays off the pack because it is inert
+# off Anthropic.
+transports: [function, cli, http, mcp]
 
 mounts:
   - scope: user:eval

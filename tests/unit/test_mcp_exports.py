@@ -10,7 +10,7 @@ import pytest
 def test_mcp_all_is_pinned() -> None:
     import neosian.mcp
 
-    assert neosian.mcp.__all__ == ["create_memory_server"]
+    assert neosian.mcp.__all__ == ["McpServer", "create_memory_server"]
     for name in neosian.mcp.__all__:
         assert getattr(neosian.mcp, name) is not None
 
@@ -37,6 +37,17 @@ def test_mcp_facade_does_not_load_the_sdk() -> None:
 def test_entry_point_module_does_not_load_the_sdk() -> None:
     """`--help` and grammar errors must work without the extra installed."""
     code = "import neosian.mcp.serve, sys; assert 'mcp' not in sys.modules"
+    subprocess.run([sys.executable, "-c", code], check=True)
+
+
+@pytest.mark.unit
+def test_client_side_does_not_load_the_sdk() -> None:
+    """`McpServer` and the bridge import without the extra — the SDK
+    loads when a server is entered, never before (DESIGN §25)."""
+    code = (
+        "import neosian._foundation.mcp.client, neosian._foundation.mcp.bridge, "
+        "sys; assert 'mcp' not in sys.modules"
+    )
     subprocess.run([sys.executable, "-c", code], check=True)
 
 

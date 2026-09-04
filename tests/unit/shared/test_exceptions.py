@@ -260,6 +260,7 @@ _CODE_TABLE = {
     "ConfigurationError": "agent_configuration_error",
     "InvalidModelError": "agent_invalid_model",
     "MissingAPIKeyError": "agent_missing_api_key",
+    "McpConnectionError": "tool_mcp_connection_failed",
     "AgentLoadError": "agent_load_failed",
     "AgentFileNotFoundError": "agent_file_not_found",
     "AgentMissingConfigurationError": "agent_missing_configuration",
