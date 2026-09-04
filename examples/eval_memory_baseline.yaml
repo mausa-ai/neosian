@@ -512,7 +512,12 @@ scenarios:
   # place — versions accrue on the one document. Store truth pins the
   # convention (a frontmatter description, under /project/skills/), the
   # history [created, modified], and that loading never writes; the name
-  # is the model's (path_prefix).
+  # is the model's (path_prefix). No turn carries a tool pin: the
+  # matcher's rule is the *first* tool, and dispatch #11 showed Sonnet,
+  # grok and kimi listing skills before a correct write (BASELINES) — a
+  # right answer the first-tool pin would call a miss, the cross-client
+  # lesson again. The turns keep only a loose response word; the store
+  # carries the whole verdict.
   - name: skills
     sessions:
       - name: write
@@ -520,7 +525,7 @@ scenarios:
           - user: >-
               Save a reusable skill for releasing this project: bump the
               version, run make test, then tag the release.
-            expect: {tool: memory}
+            expect: {response: {regex: "(?i)release"}}
         script:
           - tool_calls:
               - name: memory
@@ -540,7 +545,7 @@ scenarios:
       - name: use
         turns:
           - user: "How do I release this project? Use the skill."
-            expect: {tool: load_skill}
+            expect: {response: {regex: "(?i)test"}}
         script:
           - tool_calls:
               - name: load_skill
@@ -557,7 +562,7 @@ scenarios:
           - user: >-
               Add a final step to the release skill: push with
               --follow-tags.
-            expect: {tool: memory}
+            expect: {response: {regex: "(?i)push"}}
         script:
           - tool_calls:
               - name: memory
