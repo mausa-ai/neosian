@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Final
 
+from neosian._foundation.conversation.links import LinkRegistry, boundary
 from neosian._foundation.conversation.types import (
     ConversationProjection,
     ConversationTurn,
@@ -35,12 +36,18 @@ _RESULT_TAIL: Final = 40
 _SEPARATOR: Final = " | "
 
 
-def one_line(text: str, limit: int) -> str:
-    """Whitespace-flattened, head-clipped text — the log-line discipline."""
+def one_line(
+    text: str, limit: int, *, links: LinkRegistry | None = None, marker: str = " …"
+) -> str:
+    """Whitespace-flattened, contracted when `links` is given, head-clipped
+    at an atom boundary — a clip never splits a URL, path, id or handle
+    (§23); a token that cannot fit is dropped whole behind the marker."""
     flat = " ".join(text.split())
+    if links is not None:
+        flat = links.contract(flat)
     if len(flat) <= limit:
         return flat
-    return flat[:limit].rstrip() + " …"
+    return (flat[: boundary(flat, limit)[0]].rstrip() + marker).lstrip()
 
 
 def select(entries: Sequence[ConversationProjection]) -> dict[int, int]:
@@ -114,9 +121,12 @@ def agent_prose(turn: ConversationTurn) -> str:
     return "\n".join(parts)
 
 
-def needs_distillation(turn: ConversationTurn, *, digest_chars: int) -> bool:
-    """Long assistant prose wants the model; user/tool length never does."""
-    return len(agent_prose(turn)) > digest_chars
+def needs_distillation(
+    turn: ConversationTurn, *, digest_chars: int, links: LinkRegistry
+) -> bool:
+    """Long assistant prose wants the model; user/tool length never does.
+    Measured contracted — a reply that is mostly one URL needs no call."""
+    return len(links.contract(agent_prose(turn))) > digest_chars
 
 
 def log_line(
@@ -124,6 +134,7 @@ def log_line(
     *,
     digest_chars: int,
     user_chars: int,
+    links: LinkRegistry,
     agent_override: str | None = None,
 ) -> str:
     """One deterministic log line for a turn, in provider order.
@@ -132,7 +143,8 @@ def log_line(
     an inline recall pointer (ledger #31). AGENT prose clips at
     `digest_chars` unless `agent_override` — the model-distilled digest —
     replaces the turn's combined prose as a single segment. Tool rounds
-    render ``TOOL name(args digest) → result head/tail``.
+    render ``TOOL name(args digest) → result head/tail``. Every segment
+    is contracted through `links` and clipped atom-safe (§23).
     """
     results = {
         message.tool_call_id: message
@@ -143,55 +155,69 @@ def log_line(
     override_spliced = False
     for message in turn.messages:
         if message.role is Role.USER:
-            segments.append("USER: " + _user_text(message, user_chars, turn.turn))
+            text = one_line(
+                text_of(message),
+                user_chars,
+                links=links,
+                marker=f" … [recall_turn({turn.turn})]",
+            )
+            segments.append("USER: " + text)
         elif message.role is Role.ASSISTANT:
             prose = text_of(message).strip()
             if prose:
                 if agent_override is None:
-                    segments.append("AGENT: " + one_line(prose, digest_chars))
+                    segments.append(
+                        "AGENT: " + one_line(prose, digest_chars, links=links)
+                    )
                 elif not override_spliced:
-                    segments.append("AGENT: " + one_line(agent_override, digest_chars))
+                    segments.append(
+                        "AGENT: " + one_line(agent_override, digest_chars, links=links)
+                    )
                     override_spliced = True
             for call in message.tool_calls:
                 segments.append(
-                    _tool_segment(call.name, call.arguments, results.get(call.id))
+                    _tool_segment(
+                        call.name, call.arguments, results.get(call.id), links
+                    )
                 )
     return _SEPARATOR.join(segments)
 
 
-def _user_text(message: Message, user_chars: int, turn_number: int) -> str:
-    flat = " ".join(text_of(message).split())
-    if len(flat) <= user_chars:
-        return flat
-    return flat[:user_chars].rstrip() + f" … [recall_turn({turn_number})]"
-
-
 def _tool_segment(
-    name: str, arguments: dict[str, object], result: Message | None
+    name: str,
+    arguments: dict[str, object],
+    result: Message | None,
+    links: LinkRegistry,
 ) -> str:
-    args = one_line(json.dumps(arguments, separators=(",", ":")), _ARGS_CHARS)
-    outcome = "?" if result is None else _result_digest(text_of(result))
+    args = one_line(
+        json.dumps(arguments, separators=(",", ":")), _ARGS_CHARS, links=links
+    )
+    outcome = "?" if result is None else _result_digest(text_of(result), links)
     return f"TOOL {name}({args}) → {outcome}"
 
 
-def _result_digest(raw: str) -> str:
+def _result_digest(raw: str, links: LinkRegistry) -> str:
     try:
         payload = json.loads(raw)
     except ValueError:
-        return _head_tail(raw)
+        return _head_tail(raw, links)
     if isinstance(payload, dict):
         if payload.get("success") is False:
-            return _head_tail(f"error: {payload.get('error')}")
+            return _head_tail(f"error: {payload.get('error')}", links)
         if "data" in payload:
-            return _head_tail(str(payload["data"]))
-    return _head_tail(raw)
+            return _head_tail(str(payload["data"]), links)
+    return _head_tail(raw, links)
 
 
-def _head_tail(text: str) -> str:
-    flat = " ".join(text.split())
+def _head_tail(text: str, links: LinkRegistry) -> str:
+    """Head and tail, each cut moved off any atom it lands in: the head
+    ends before it, the tail starts after it — dropped whole, never split."""
+    flat = links.contract(" ".join(text.split()))
     if len(flat) <= _RESULT_HEAD + _RESULT_TAIL:
         return flat
-    return flat[:_RESULT_HEAD].rstrip() + " … " + flat[-_RESULT_TAIL:].lstrip()
+    head = boundary(flat, _RESULT_HEAD)[0]
+    tail = boundary(flat, len(flat) - _RESULT_TAIL)[1]
+    return flat[:head].rstrip() + " … " + flat[tail:].lstrip()
 
 
 def render_turn(turn: ConversationTurn) -> str:

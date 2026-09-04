@@ -27,11 +27,11 @@ The repository is private; as a dependency of another uv project, install
 from the git URL, pinned to a release tag (extras ride the same URL):
 
 ```bash
-uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.85.0"
-uv add "neosian[postgres] @ git+ssh://git@github.com/neosae/neosian@v0.85.0"   # + PostgresStore
-uv add "neosian[mcp] @ git+ssh://git@github.com/neosae/neosian@v0.85.0"        # + MCP memory server
-uv add "neosian[otel] @ git+ssh://git@github.com/neosae/neosian@v0.85.0"       # + OpenTelemetry spans
-uv add "neosian[server] @ git+ssh://git@github.com/neosae/neosian@v0.85.0"     # + the state process
+uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.86.0"
+uv add "neosian[postgres] @ git+ssh://git@github.com/neosae/neosian@v0.86.0"   # + PostgresStore
+uv add "neosian[mcp] @ git+ssh://git@github.com/neosae/neosian@v0.86.0"        # + MCP memory server
+uv add "neosian[otel] @ git+ssh://git@github.com/neosae/neosian@v0.86.0"       # + OpenTelemetry spans
+uv add "neosian[server] @ git+ssh://git@github.com/neosae/neosian@v0.86.0"     # + the state process
 ```
 
 The core install is database-driver-free, MCP-free, and server-free
@@ -101,7 +101,11 @@ scope string works in its place.
 compaction is default-on (`CompactionConfig`: 8 hot turns, trigger at 0.75
 of the model's context window): aged turns are projected to one-line log
 entries and a built-in `recall_turn` tool re-hydrates any of them verbatim —
-compaction is paging, not deletion, and never changes what is stored.
+compaction is paging, not deletion, and never changes what is stored. A
+long URL, path or id in an aged turn is never cut: it renders as a
+`[link N]` handle the model passes as written in any tool call, expanded
+before the tool runs (`neosian.conversation.LinkRegistry` is the same
+table for hosts).
 
 Reflection is default-on the same way: a memory-bearing `aclose()` (the
 `async with` exit above) distills what the session's turns are worth

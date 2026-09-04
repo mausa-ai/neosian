@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from neosian._foundation.conversation.ids import parse_conversation_id
+from neosian._foundation.conversation.links import LinkRegistry
 from neosian._foundation.conversation.projection import (
     entry_line,
     log_line,
@@ -80,13 +81,14 @@ def project_conversation(
     digest_chars: int,
     user_chars: int,
     budget_chars: int,
+    links: LinkRegistry,
 ) -> list[str]:
     """Every turn as one log line, newest kept within `budget_chars`.
 
     Pure, no I/O, no model: a covered turn renders its winning entry,
-    an uncovered one the deterministic line. Over budget, the oldest
-    lines fold into a single count line so the block always says how
-    much it hides.
+    an uncovered one the deterministic line through `links` (§23). Over
+    budget, the oldest lines fold into a single count line so the block
+    always says how much it hides.
     """
     winner = select(entries)
     lines: list[tuple[int, int, str]] = []  # (first turn, last turn, line)
@@ -94,7 +96,9 @@ def project_conversation(
     for turn in turns:
         index = winner.get(turn.turn)
         if index is None:
-            text = log_line(turn, digest_chars=digest_chars, user_chars=user_chars)
+            text = log_line(
+                turn, digest_chars=digest_chars, user_chars=user_chars, links=links
+            )
             lines.append((turn.turn, turn.turn, f"[{turn.turn}] {text}"))
         elif index not in emitted:
             emitted.add(index)
@@ -124,23 +128,28 @@ async def render_views(
     views: Sequence[ConversationView],
     *,
     config: CompactionConfig,
-) -> list[Message]:
-    """One synthetic USER block per view, in the order given.
+) -> tuple[list[Message], list[LinkRegistry]]:
+    """One synthetic USER block per view, in the order given, and each
+    view's registry — its handles are qualified by its id (§23).
 
     Projected the way this conversation would compact its own history
     (`config`'s digest and user widths); an empty source still renders
     its frame, so the model knows the view exists.
     """
     out: list[Message] = []
+    registries: list[LinkRegistry] = []
     for view in views:
         turns = await store.read_turns(view.conversation_id)
         entries = await store.read_projections(view.conversation_id)
+        links = LinkRegistry.of(turns, source=view.conversation_id)
+        registries.append(links)
         lines = project_conversation(
             turns,
             entries,
             digest_chars=config.digest_chars,
             user_chars=config.user_chars,
             budget_chars=view.budget_chars,
+            links=links,
         )
         body = "\n".join(lines) if lines else get_prompt("context.view_empty")
         header = render(
@@ -150,4 +159,4 @@ async def render_views(
             get_prompt("context.view_footer"), conversation_id=view.conversation_id
         )
         out.append(Message(role=Role.USER, content=f"{header}\n{body}\n{footer}"))
-    return out
+    return out, registries

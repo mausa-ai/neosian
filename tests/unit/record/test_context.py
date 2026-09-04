@@ -87,3 +87,12 @@ class TestRenderLeftOff:
         await store.write("user:me", "sessions/ghost", "# session", actor="t")
         block = await render_left_off(store, store, "user:me", own="x", source="")
         assert get_prompt("context.start_empty") in block
+
+    async def test_a_long_token_renders_as_a_qualified_handle(
+        self, tmp_path: Path
+    ) -> None:
+        url = "https://docs.example.test/specs/0f8fad5b-d9cb-469f-a165-70867728950e/v2"
+        store = await _seed(tmp_path, "s1", f"the spec is at {url}")
+        block = await render_left_off(store, store, "user:me", own="x", source="")
+        assert "[1] USER: the spec is at [link s1:1] | AGENT: ok" in block
+        assert url not in block

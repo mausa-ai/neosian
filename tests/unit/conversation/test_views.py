@@ -10,9 +10,10 @@ from typing import Any
 import httpx
 import pytest
 
-from neosian import AgentConfig, Model
+from neosian import AgentConfig, Model, Tool, ToolResult
 from neosian._foundation.conversation.compaction import CompactionConfig
 from neosian._foundation.conversation.core import Conversation
+from neosian._foundation.conversation.links import LinkRegistry
 from neosian._foundation.conversation.recall import create_recall_turn_tool
 from neosian._foundation.conversation.types import ConversationProjection
 from neosian._foundation.conversation.views import (
@@ -29,6 +30,8 @@ from neosian._foundation.shared.exceptions import (
     ConversationIdInvalidError,
 )
 from neosian._foundation.shared.types import SystemPrompt, ToolCallId, ToolName
+
+_LINKS = LinkRegistry()
 
 
 def _config(*turns: FakeTurn, **kwargs: Any) -> tuple[AgentConfig, FakeClient]:
@@ -81,7 +84,7 @@ class TestProjectConversation:
         await _seed(store, "a", "one", "two")
         turns = await store.read_turns("a")
         lines = project_conversation(
-            turns, (), digest_chars=200, user_chars=800, budget_chars=8192
+            turns, (), digest_chars=200, user_chars=800, budget_chars=8192, links=_LINKS
         )
         assert lines == [
             "[1] USER: one | AGENT: re: one",
@@ -95,7 +98,12 @@ class TestProjectConversation:
         turns = await store.read_turns("a")
         entry = ConversationProjection(turn=2, kind="epoch", text="the start", span=2)
         lines = project_conversation(
-            turns, (entry,), digest_chars=200, user_chars=800, budget_chars=8192
+            turns,
+            (entry,),
+            digest_chars=200,
+            user_chars=800,
+            budget_chars=8192,
+            links=_LINKS,
         )
         assert lines == ["[1-2] the start", "[3] USER: three | AGENT: re: three"]
 
@@ -103,7 +111,7 @@ class TestProjectConversation:
         await _seed(store, "a", "one", "two", "three")
         turns = await store.read_turns("a")
         lines = project_conversation(
-            turns, (), digest_chars=200, user_chars=800, budget_chars=40
+            turns, (), digest_chars=200, user_chars=800, budget_chars=40, links=_LINKS
         )
         assert lines == [
             "[1-2] 2 earlier turns not shown",
@@ -156,8 +164,9 @@ class TestTheBlock:
         assert block.startswith("[view of conversation a")
         assert "[1] USER: one | AGENT: re: one" in block
         assert "[2] USER: two | AGENT: re: two" in block
+        assert 'recall_turn(n, conversation="a") to re-read its turn n' in block
         assert block.endswith(
-            'recall_turn(n, conversation="a") to re-read its turn n verbatim]'
+            "[link a:N] stands for a URL, path or id of its turns: use it as written in any tool call, or recall the turn to read it]"
         )
         assert user == "what did A do?"
         assert fake.calls[-1].messages[1].role is Role.USER
@@ -268,3 +277,40 @@ class TestThroughTheDaemon:
         assert "[1] USER: one | AGENT: re: one" in _messages(fake, 0)[1]
         assert "USER: one" in _messages(fake, 1)[-1]
         await remote.aclose()
+
+
+@pytest.mark.unit
+class TestLinkHandlesAcrossViews:
+    async def test_a_views_handles_are_qualified_and_expand_beside_the_own(
+        self, store: FileStore
+    ) -> None:
+        base = "https://docs.example.test/specs/0f8fad5b-d9cb-469f-a165-70867728950e"
+        theirs, mine = f"{base}/theirs", f"{base}/mine"
+        await _seed(store, "a", f"the spec is at {theirs}")
+        received: list[str] = []
+
+        @Tool(name="echo", description="Echo.")
+        async def echo(text: str) -> ToolResult[str]:
+            received.append(text)
+            return ToolResult.ok(text)
+
+        call = ToolCall(
+            id=ToolCallId("e1"),
+            name=ToolName("echo"),
+            arguments={"text": "[link a:1] [link 1]"},
+        )
+        config, fake = _config(
+            FakeTurn(content="ok"),
+            FakeTurn(tool_calls=(call,)),
+            FakeTurn(content="done"),
+            tools=[echo],
+        )
+        convo = Conversation(
+            config, store=store, conversation_id="b", context=[ConversationView("a")]
+        )
+        await convo.send(f"mine is at {mine}")
+        await convo.send("echo both")
+        block = _messages(fake, 0)[1]
+        assert "[1] USER: the spec is at [link a:1]" in block
+        assert theirs not in block
+        assert received == [f"{theirs} {mine}"]

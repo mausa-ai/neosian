@@ -16,6 +16,7 @@ from neosian._foundation.agent.hooks import AgentHooks, TurnEvent
 from neosian._foundation.conversation.base import ConversationStore
 from neosian._foundation.conversation.compaction import CompactionConfig
 from neosian._foundation.conversation.core import Conversation
+from neosian._foundation.conversation.links import LinkRegistry
 from neosian._foundation.conversation.types import (
     ConversationProjection,
     ConversationTurn,
@@ -709,3 +710,71 @@ class TestServerCompactionWarning:
         with caplog.at_level(logging.WARNING, logger=_CORE_LOGGER):
             Conversation(config, store=store, conversation_id="t1")
         assert not [r for r in caplog.records if r.name == _CORE_LOGGER]
+
+
+def _link(n: int) -> str:
+    return f"https://docs.example.test/specs/0f8fad5b-d9cb-469f-a165-70867728950e/widget-{n}"
+
+
+@pytest.mark.unit
+class TestLinkHandles:
+    """The NJ done-when (§23): links cross the window whole, as handles the
+    tool boundary expands; what the model said stays in the transcript."""
+
+    async def test_every_link_survives_the_boundary(self, store: FileStore) -> None:
+        script = FakeScript(turns=tuple(FakeTurn(content=f"r{i}") for i in range(5)))
+        config, fake = _small_config(script)
+        convo = Conversation(
+            config, store=store, conversation_id="t1", compaction=_TRIGGER
+        )
+        for n in (1, 2, 3):
+            await convo.send("x" * 600 + f" spec {n} is at {_link(n)}")
+        await convo.send("x" * 600 + " noted")
+        await convo.send("x" * 600 + " and now?")  # turns 1-3 projected by now
+        block = next(
+            m.content
+            for m in fake.calls[-1].messages
+            if isinstance(m.content, str) and "[conversation log" in m.content
+        )
+        for n in (1, 2, 3):
+            assert f"[link {n}]" in block
+            assert _link(n)[8:40] not in block  # no fragment, ever
+        registry = LinkRegistry.of(await store.read_turns("t1"))
+        assert [registry.expand(f"[link {n}]") for n in (1, 2, 3)] == [
+            _link(1),
+            _link(2),
+            _link(3),
+        ]
+        stored = await store.read_projections("t1")
+        assert "[link 1]" in stored[0].text  # numbered once, stable ever after
+        assert "[link 3]" in stored[-1].text
+
+    async def test_a_handle_in_tool_arguments_reaches_the_tool_expanded(
+        self, store: FileStore
+    ) -> None:
+        received: list[str] = []
+
+        @Tool(name="fetch", description="Fetch a URL.")
+        async def fetch(url: str) -> ToolResult[str]:
+            received.append(url)
+            return ToolResult.ok("the widget ships in blue")
+
+        call = ToolCall(
+            id=ToolCallId("f1"), name=ToolName("fetch"), arguments={"url": "[link 1]"}
+        )
+        script = FakeScript(
+            turns=(
+                FakeTurn(content="noted"),
+                FakeTurn(tool_calls=(call,)),
+                FakeTurn(content="blue"),
+            )
+        )
+        config, fake = _config(script, tools=[fetch])
+        convo = Conversation(config, store=store, conversation_id="t1")
+        await convo.send(f"the widget spec is at {_link(1)}")
+        await convo.send("open it")
+        assert received == [_link(1)]  # what ran
+        _, second = await store.read_turns("t1")
+        assert second.messages[1].tool_calls[0].arguments == {"url": "[link 1]"}
+        definition = next(t for t in fake.calls[-1].tools if t.name == "fetch")
+        assert definition.description == "Fetch a URL."

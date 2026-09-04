@@ -60,8 +60,9 @@ conversation a view: `Conversation(agent_b, …,
 context=[ConversationView("conv-a")])` injects `conv-a` as a frozen,
 log-projected, read-only block (refreshed at the compaction boundary)
 and `recall_turn(n, conversation="conv-a")` re-reads any of its turns
-verbatim. Which conversations are shareable is your decision — ids carry
-no scope.
+verbatim; its long URLs, paths and ids render as `[link conv-a:N]`
+handles the model passes as written in tool calls. Which conversations
+are shareable is your decision — ids carry no scope.
 
 ## The six commands
 

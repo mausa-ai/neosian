@@ -14,12 +14,15 @@ may not (the storage-seam contract).
 from __future__ import annotations
 
 import dataclasses
+import functools
 import inspect
-from typing import TYPE_CHECKING, Final, cast
+import logging
+from typing import TYPE_CHECKING, Any, Final, cast
 
 from neosian._foundation.agent.events import BlockedEvent, DoneEvent
 from neosian._foundation.agent.hooks import AgentHooks
 from neosian._foundation.conversation.compaction import merge_usage
+from neosian._foundation.llm.base import Message, Role
 from neosian._foundation.memory.base import MemoryStore
 from neosian._foundation.memory.mounts import MemoryConfig, Mount
 from neosian._foundation.memory.tools import create_memory_tool
@@ -35,7 +38,11 @@ if TYPE_CHECKING:
     from neosian._foundation.agent.response import AgentResponse
     from neosian._foundation.conversation.base import ConversationStore
     from neosian._foundation.conversation.compaction import CompactionResult
+    from neosian._foundation.conversation.links import LinkRegistry
     from neosian._foundation.shared.types import AgentConfig, ToolFunction
+    from neosian._foundation.tools.base import ToolResult
+
+logger = logging.getLogger(__name__)
 
 # The single-scope sugar mounts here — the path Anthropic's native
 # memory_20250818 tool roots at, so N4's native wiring stays a pure
@@ -134,6 +141,7 @@ def derive_config(
     actor: str | Callable[[], str],
     capture: Callable[[TurnEvent], None],
     extra_tools: Sequence[ToolFunction] = (),
+    links: Callable[[], Sequence[LinkRegistry]] | None = None,
 ) -> AgentConfig:
     """Build the Conversation's own AgentConfig from the caller's.
 
@@ -141,7 +149,9 @@ def derive_config(
     passes its `_turn_actor` closure so version rows carry
     `<conversation_id>#<turn>` without a per-send rebuild. `extra_tools`
     carries conversation-owned tools beyond memory — the lazily-registered
-    `recall_turn` (§9.6); wiring stays dumb about them.
+    `recall_turn` (§9.6); wiring stays dumb about them. `links` resolves
+    the link registries per call: every tool then expands `[link N]`
+    handles in its arguments before it runs (§23).
     """
     system_prompt = base.system_prompt
     if section is not None:
@@ -154,6 +164,8 @@ def derive_config(
             create_memory_tool(memory_config, actor=actor, native=base.native_memory)
         )
     tools.extend(extra_tools)
+    if links is not None:
+        tools = [_expanding(tool, links) for tool in tools]
     # replace() re-runs __post_init__ (re-reads skill_dir, re-validates)
     # — once per conversation, at start().
     return dataclasses.replace(
@@ -163,6 +175,47 @@ def derive_config(
         memory=None,
         hooks=_compose_hooks(base.hooks, capture),
     )
+
+
+def _expanding(
+    tool: ToolFunction, links: Callable[[], Sequence[LinkRegistry]]
+) -> ToolFunction:
+    """The tool with the handles in its arguments expanded (§23). `wraps`
+    carries the tool metadata and the signature the core binds against;
+    the persisted call keeps what the model said — what ran is derivable."""
+
+    @functools.wraps(tool)
+    async def expanded(**arguments: Any) -> ToolResult[Any]:
+        for registry in links():
+            arguments = registry.expand(arguments)
+        return await tool(**arguments)
+
+    return expanded
+
+
+def as_user_message(message: str | Message) -> Message:
+    """`send()` takes the USER message that opens the turn (§9.5.2)."""
+    if isinstance(message, Message):
+        if message.role is not Role.USER:
+            raise ValueError(
+                f"send() takes the USER message that opens the turn; "
+                f"got role {message.role.value!r}"
+            )
+        return message
+    return Message(role=Role.USER, content=message)
+
+
+def warn_server_compaction(config: AgentConfig) -> None:
+    """Log-projection replaces aged turns with log lines, dropping any
+    server compaction blocks they carried — the server would then
+    re-compact (and re-bill) the same span every send (ledger #49)."""
+    if config.server_compaction:
+        logger.warning(
+            "server_compaction is on under a Conversation — the view's "
+            "log-projection drops server compaction blocks at the warm "
+            "boundary, paying for the same compaction repeatedly; "
+            "Conversation's own paging is the supported path (§9.6)"
+        )
 
 
 def _compose_hooks(

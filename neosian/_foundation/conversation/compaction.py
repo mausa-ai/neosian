@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from neosian._foundation.conversation.distill import distill, summarize_epochs
+from neosian._foundation.conversation.links import LinkRegistry
 from neosian._foundation.conversation.projection import (
     agent_prose,
     entry_line,
@@ -145,11 +146,12 @@ async def run_boundary(
     api_model: str | None = None
     new_entries: list[ConversationProjection] = []
 
+    links = LinkRegistry.of(turns)
     if pending:
         to_distill = [
-            (t.turn, agent_prose(t))
+            (t.turn, links.contract(agent_prose(t)))
             for t in pending
-            if needs_distillation(t, digest_chars=config.digest_chars)
+            if needs_distillation(t, digest_chars=config.digest_chars, links=links)
         ]
         digests: dict[int, str] = {}
         if to_distill:
@@ -169,6 +171,7 @@ async def run_boundary(
                         turn,
                         digest_chars=config.digest_chars,
                         user_chars=config.user_chars,
+                        links=links,
                         agent_override=override,
                     ),
                 )

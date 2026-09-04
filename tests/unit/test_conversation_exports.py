@@ -29,6 +29,7 @@ def test_conversation_all_is_pinned() -> None:
         "ConversationTurn",
         "ConversationView",
         "FileStore",
+        "LinkRegistry",
         "PostgresStore",
         "ProjectionKind",
         "ReflectionConfig",

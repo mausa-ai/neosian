@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 import pytest
 
 from neosian import ToolResult
+from neosian._foundation.conversation.links import LinkRegistry
 from neosian._foundation.conversation.projection import (
     agent_prose,
     entry_line,
@@ -21,6 +22,8 @@ from neosian._foundation.conversation.types import (
 )
 from neosian._foundation.llm.base import Message, Role, ToolCall
 from neosian._foundation.shared.types import ToolCallId, ToolName
+
+_LINKS = LinkRegistry()
 
 
 def _turn(number: int, *messages: Message) -> ConversationTurn:
@@ -61,14 +64,14 @@ def _tool_round(number: int) -> ConversationTurn:
 @pytest.mark.unit
 class TestLogLine:
     def test_full_word_role_labels_in_provider_order(self) -> None:
-        line = log_line(_tool_round(3), digest_chars=200, user_chars=800)
+        line = log_line(_tool_round(3), digest_chars=200, user_chars=800, links=_LINKS)
         user, tool, agent = line.split(" | ")
         assert user == "USER: run the tool"
         assert tool.startswith('TOOL echo({"text":"hi"}) → ')
         assert agent == "AGENT: done"
 
     def test_tool_segment_carries_args_digest_and_result(self) -> None:
-        line = log_line(_tool_round(1), digest_chars=200, user_chars=800)
+        line = log_line(_tool_round(1), digest_chars=200, user_chars=800, links=_LINKS)
         assert 'TOOL echo({"text":"hi"}) → echo: hi' in line
 
     def test_failed_tool_result_is_labeled(self) -> None:
@@ -83,21 +86,30 @@ class TestLogLine:
                 tool_call_id=ToolCallId("c1"),
             ),
         )
-        line = log_line(turn, digest_chars=200, user_chars=800)
+        line = log_line(turn, digest_chars=200, user_chars=800, links=_LINKS)
         assert "→ error: boom" in line
 
     def test_user_text_survives_verbatim_under_the_cap(self) -> None:
         text = "keep every word of this constraint"
-        line = log_line(_exchange(2, text, "ok"), digest_chars=10, user_chars=100)
+        line = log_line(
+            _exchange(2, text, "ok"), digest_chars=10, user_chars=100, links=_LINKS
+        )
         assert f"USER: {text}" in line
 
     def test_long_user_text_head_clips_with_recall_pointer(self) -> None:
-        line = log_line(_exchange(7, "x" * 500, "ok"), digest_chars=50, user_chars=200)
+        line = log_line(
+            _exchange(7, "x" * 500, "ok"), digest_chars=50, user_chars=200, links=_LINKS
+        )
         assert "[recall_turn(7)]" in line
         assert "x" * 500 not in line
 
     def test_agent_prose_clips_at_digest_chars(self) -> None:
-        line = log_line(_exchange(1, "hi", "y" * 500), digest_chars=100, user_chars=400)
+        line = log_line(
+            _exchange(1, "hi", "y" * 500),
+            digest_chars=100,
+            user_chars=400,
+            links=_LINKS,
+        )
         assert "y" * 500 not in line
         assert "AGENT: " + "y" * 100 + " …" in line
 
@@ -109,13 +121,20 @@ class TestLogLine:
             Message(role=Role.ASSISTANT, content="second prose"),
         )
         line = log_line(
-            turn, digest_chars=200, user_chars=800, agent_override="the digest"
+            turn,
+            digest_chars=200,
+            user_chars=800,
+            links=_LINKS,
+            agent_override="the digest",
         )
         assert line == "USER: go | AGENT: the digest"
 
     def test_newlines_flatten_to_one_line(self) -> None:
         line = log_line(
-            _exchange(1, "a\nb", "c\r\nd"), digest_chars=200, user_chars=800
+            _exchange(1, "a\nb", "c\r\nd"),
+            digest_chars=200,
+            user_chars=800,
+            links=_LINKS,
         )
         assert "\n" not in line
         assert line == "USER: a b | AGENT: c d"
@@ -125,9 +144,9 @@ class TestLogLine:
 class TestDistillationGate:
     def test_keys_on_assistant_prose_only(self) -> None:
         long_user = _exchange(1, "u" * 1000, "short")
-        assert not needs_distillation(long_user, digest_chars=200)
+        assert not needs_distillation(long_user, digest_chars=200, links=_LINKS)
         long_agent = _exchange(1, "short", "a" * 1000)
-        assert needs_distillation(long_agent, digest_chars=200)
+        assert needs_distillation(long_agent, digest_chars=200, links=_LINKS)
 
     def test_agent_prose_joins_segments_in_order(self) -> None:
         turn = _turn(

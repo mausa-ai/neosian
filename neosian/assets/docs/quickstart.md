@@ -82,7 +82,9 @@ docs agents`); any scope string works in its place.
 Resume is constructing again with the same id. History is append-only;
 log-projection compaction (default-on) pages aged turns out of context
 and a built-in `recall_turn` tool re-hydrates any of them verbatim —
-what is stored never changes.
+what is stored never changes. A long URL, path or id in an aged turn is
+never cut: it renders as a `[link N]` handle the model passes as written
+in any tool call, expanded before the tool runs.
 
 ## Bring an OpenAI-compatible model
 

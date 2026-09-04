@@ -29,6 +29,7 @@ from neosian._foundation.conversation.compaction import (
     should_compact,
 )
 from neosian._foundation.conversation.ids import parse_conversation_id
+from neosian._foundation.conversation.links import LinkRegistry
 from neosian._foundation.conversation.projection import render_view
 from neosian._foundation.conversation.recall import create_recall_turn_tool
 from neosian._foundation.conversation.reflection import (
@@ -43,10 +44,12 @@ from neosian._foundation.conversation.views import (
 )
 from neosian._foundation.conversation.wiring import (
     DEFAULT_MEMORY_MOUNT_PATH,
+    as_user_message,
     derive_config,
     fold_event,
     fold_response,
     resolve_memory,
+    warn_server_compaction,
 )
 from neosian._foundation.llm.base import Message, Role
 from neosian._foundation.memory.actor import parse_actor
@@ -148,21 +151,13 @@ class Conversation:
         self._views = validated_views(context, self._conversation_id)
         self._compaction = compaction if compaction is not None else CompactionConfig()
         self._reflection = reflection if reflection is not None else ReflectionConfig()
-        if self._base_config.server_compaction:
-            # Log-projection replaces aged turns with log lines, dropping
-            # any server compaction blocks they carried — the server would
-            # then re-compact (and re-bill) the same span every send.
-            logger.warning(
-                "server_compaction is on under a Conversation — the view's "
-                "log-projection drops server compaction blocks at the warm "
-                "boundary, paying for the same compaction repeatedly; "
-                "Conversation's own paging is the supported path (§9.6)"
-            )
+        warn_server_compaction(self._base_config)
         self._lock = asyncio.Lock()
         self._turns: list[ConversationTurn] = []
         self._reflect_pending: list[ConversationTurn] = []
         self._projections: list[ConversationProjection] = []
         self._context: list[Message] = []
+        self._view_links: list[LinkRegistry] = []
         self._agent: Agent | None = None
         self._session: AgentSession | None = None
         self._captured: AgentResponse | None = None
@@ -207,7 +202,7 @@ class Conversation:
         before it persists nothing. Blocked and raising runs persist
         nothing either way (§9.5).
         """
-        user = _as_user_message(message)
+        user = as_user_message(message)
         if stream:
             return self._send_streaming(user)
         return await self._send_blocking(user)
@@ -313,7 +308,7 @@ class Conversation:
         if self._memory_config is not None:
             section = await memory_system_section(self._memory_config)
         # Views are frozen with the index and refreshed with it (§21).
-        self._context = await render_views(
+        self._context, self._view_links = await render_views(
             self._store, self._views, config=self._compaction
         )
         extra_tools: list[ToolFunction] = []
@@ -335,6 +330,7 @@ class Conversation:
             actor=self._turn_actor,
             capture=self._capture,
             extra_tools=extra_tools,
+            links=self._links,
         )
         if self._max_tool_iterations is None:
             self._agent = Agent(derived)
@@ -354,6 +350,11 @@ class Conversation:
         actor (ledger #86).
         """
         return f"{self._actor}#{len(self._turns) + 1}"
+
+    def _links(self) -> list[LinkRegistry]:
+        """The registries a tool call expands through (§23): the own
+        history's, live per call, and each view's, frozen with its block."""
+        return [LinkRegistry.of(self._turns), *self._view_links]
 
     def _session_for_run(self) -> AgentSession:
         """The one client pool: sends and distillation share it, and a
@@ -486,14 +487,3 @@ class Conversation:
                         await self._persist(user)
                     yield fold_event(event, compacted)
                 await self._persist(user)
-
-
-def _as_user_message(message: str | Message) -> Message:
-    if isinstance(message, Message):
-        if message.role is not Role.USER:
-            raise ValueError(
-                f"send() takes the USER message that opens the turn; "
-                f"got role {message.role.value!r}"
-            )
-        return message
-    return Message(role=Role.USER, content=message)

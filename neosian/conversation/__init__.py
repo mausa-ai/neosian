@@ -19,6 +19,7 @@ from neosian._foundation.conversation.ids import (
     ConversationId,
     parse_conversation_id,
 )
+from neosian._foundation.conversation.links import LinkRegistry
 from neosian._foundation.conversation.recall import create_recall_turn_tool
 from neosian._foundation.conversation.reflection import (
     ReflectionConfig,
@@ -64,6 +65,7 @@ __all__ = [
     "ConversationTurn",
     "ConversationView",
     "FileStore",
+    "LinkRegistry",
     "PostgresStore",
     "ProjectionKind",
     "ReflectionConfig",

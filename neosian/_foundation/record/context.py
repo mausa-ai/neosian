@@ -16,6 +16,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Final
 
 from neosian._foundation.conversation.compaction import CompactionConfig
+from neosian._foundation.conversation.links import LinkRegistry
 from neosian._foundation.conversation.views import project_conversation
 from neosian._foundation.memory.index import INDEX_BUDGET_CHARS, generate_memory_index
 from neosian._foundation.record.span import SESSIONS_DIR
@@ -84,6 +85,7 @@ async def render_left_off(
             digest_chars=widths.digest_chars,
             user_chars=widths.user_chars,
             budget_chars=share,
+            links=LinkRegistry.of(turns, source=conversation_id),
         )
         head = render(
             get_prompt("context.start_session"),
