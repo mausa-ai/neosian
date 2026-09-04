@@ -136,6 +136,24 @@ substrate. `--actor` filters by prefix: `claude-code:s1` matches
 process every actor carries the client prefix the daemon asserted.
 Exit tiers hold; an empty ledger is an answer (exit 0).
 
+## Moving a store — `neosian export` / `neosian import`
+
+`neosian export DIR` writes the store to `DIR`, whole — every scope and
+conversation, version history and redaction trail included, verbatim.
+`DIR` is a FileStore root: `cat` it, `grep` it, `neosian serve --root
+DIR` it, or `neosian import DIR` it into any other store — a fresh
+root, Postgres by the DSN, or the state process by `--url`. Both verbs
+take the store selection above (the home when none is named) and
+`--scope S` / `--conversation C` (repeatable) to move only what they
+name; naming either moves nothing of the other kind. An import needs
+every unit it touches — a scope, a conversation — to be empty in the
+target: an occupied one refuses the whole run before anything is
+written (`memory_conflict` / `agent_conversation_conflict`, reason
+`target_occupied`); nothing merges, nothing overwrites. `--json` prints
+one object (`verb`, `archive`, `client`, `units` with the per-unit
+counts). Exit tiers hold: 2 for a bad name or a missing archive, 1 when
+a store refuses, 0 with the report (`nothing to export` is an answer).
+
 ## The record — `neosian record`
 
 `neosian record` is what a foreign agent's hooks call: one hook payload

@@ -35,6 +35,8 @@ from neosian._foundation.server.wire import (
     encode_version,
 )
 from neosian._foundation.shared.exceptions import (
+    ConfigurationError,
+    ConversationConflictError,
     ConversationFormatUnsupportedError,
     ConversationIdInvalidError,
     MemoryConflictError,
@@ -166,6 +168,9 @@ class TestErrorEnvelope:
             MemoryFormatUnsupportedError("user:a", "x", "format 999 is newer"),
             ConversationIdInvalidError("a/b", "one flat segment"),
             ConversationFormatUnsupportedError("t", "malformed turn-log line 1"),
+            ConversationConflictError("t", "target_occupied"),
+            MemoryConflictError("user:a", None, "target_occupied"),
+            ConfigurationError("FileStore does not implement Portable"),
         ],
     )
     def test_typed_exceptions_round_trip(self, original: NeosianError) -> None:

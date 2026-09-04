@@ -35,6 +35,8 @@ from neosian._foundation.memory.types import (
     MemoryVersion,
 )
 from neosian._foundation.shared.exceptions import (
+    ConfigurationError,
+    ConversationConflictError,
     ConversationFormatUnsupportedError,
     ConversationIdInvalidError,
     MemoryConflictError,
@@ -50,7 +52,7 @@ if TYPE_CHECKING:
 
     from neosian._foundation.memory.types import MemoryAction
 
-WIRE_VERSION: Final = 2  # NL: the ledger's reads and the turn author
+WIRE_VERSION: Final = 3  # NC4: the four store/* routes
 
 # The envelope code for the ABCs' bare ValueError (programmer errors:
 # negative cursors, empty message lists). Deliberately not a neosian
@@ -300,6 +302,9 @@ _DECODERS: Final[dict[str, Callable[[Mapping[str, Any]], NeosianError]]] = {
     ConversationFormatUnsupportedError.code: lambda d: (
         ConversationFormatUnsupportedError(d["conversation_id"], d["reason"])
     ),
+    ConversationConflictError.code: lambda d: ConversationConflictError(
+        d["conversation_id"], d["reason"]
+    ),
 }
 
 
@@ -316,6 +321,10 @@ def decode_error(envelope: Mapping[str, Any]) -> NeosianError | ValueError:
     details: Mapping[str, Any] = details_raw if isinstance(details_raw, dict) else {}
     if code == VALUE_ERROR_CODE:
         return ValueError(message)
+    if code == ConfigurationError.code:
+        # The daemon's own refusals (a backend without the NC4 protocol):
+        # message-shaped, no typed fields to rebuild.
+        return ConfigurationError(message, details=dict(details) or None)
     decoder = _DECODERS.get(code) if isinstance(code, str) else None
     if decoder is not None:
         try:

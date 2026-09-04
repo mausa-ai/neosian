@@ -308,6 +308,7 @@ _CODE_TABLE = {
     "ConversationStoreError": "agent_conversation_error",
     "ConversationIdInvalidError": "agent_conversation_id_invalid",
     "ConversationFormatUnsupportedError": "agent_conversation_format_unsupported",
+    "ConversationConflictError": "agent_conversation_conflict",
 }
 
 _CODE_PATTERN = re.compile(

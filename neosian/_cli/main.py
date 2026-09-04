@@ -381,6 +381,37 @@ def audit(ctx: typer.Context) -> None:
     raise typer.Exit(audit_main(list(ctx.args)))
 
 
+_PASS_THROUGH = {
+    "allow_extra_args": True,
+    "ignore_unknown_options": True,
+    "help_option_names": [],
+}
+
+
+@app.command(name="export", context_settings=_PASS_THROUGH)
+def export(ctx: typer.Context) -> None:
+    """Write the store to DIR, whole — history included (DESIGN §26).
+
+    A thin pass-through to the one grammar (`neosian export --help`); the
+    archive is a FileStore root you can read, serve or import anywhere.
+    """
+    from neosian.mobility import main as mobility_main
+
+    raise typer.Exit(mobility_main(["export", *ctx.args]))
+
+
+@app.command(name="import", context_settings=_PASS_THROUGH)
+def import_(ctx: typer.Context) -> None:
+    """Restore an export into the store, verbatim (DESIGN §26).
+
+    A thin pass-through to the one grammar (`neosian import --help`);
+    every unit must be empty in the store — nothing merges.
+    """
+    from neosian.mobility import main as mobility_main
+
+    raise typer.Exit(mobility_main(["import", *ctx.args]))
+
+
 @app.command(
     name="record",
     context_settings={

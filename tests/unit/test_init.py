@@ -243,6 +243,13 @@ def test_all_list_matches_exports() -> None:
         "run_maintenance",
         "AuditEntry",
         "audit",
+        # Store mobility (DESIGN §26)
+        "Portable",
+        "ScopeArchive",
+        "ConversationArchive",
+        "UnitReport",
+        "TransferReport",
+        "transfer",
         # Conversation (DESIGN §9)
         "Conversation",
         "ConversationStore",
@@ -279,6 +286,7 @@ def test_all_list_matches_exports() -> None:
         "UnsupportedContentError",
         "UnsupportedParameterError",
         "ConversationStoreError",
+        "ConversationConflictError",
         "McpConnectionError",
         "GuardrailError",
         "AgentLoadError",

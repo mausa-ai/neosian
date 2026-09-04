@@ -31,11 +31,12 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from neosian._foundation.conversation.file_turns import FileTurnStore
-from neosian._foundation.memory import journal
+from neosian._foundation.memory import file_layout as layout, journal
 from neosian._foundation.memory.base import MemoryStore
 from neosian._foundation.memory.envelope import Envelope, parse, render
-from neosian._foundation.memory.paths import path_segments, validate_document_path
-from neosian._foundation.memory.scope import parse_scope, scope_directory
+from neosian._foundation.memory.file_portable import FilePortableStore
+from neosian._foundation.memory.paths import validate_document_path
+from neosian._foundation.memory.scope import parse_scope
 from neosian._foundation.memory.types import (
     MemoryDocument,
     MemoryEntry,
@@ -53,14 +54,15 @@ from neosian._foundation.shared.fileio import private_mkdir
 if TYPE_CHECKING:
     from datetime import datetime
 
-_DOCUMENTS = "documents"
-_VERSIONS = "versions"
-_REDACTIONS = "redactions.jsonl"
+_DOCUMENTS = layout.DOCUMENTS
+_VERSIONS = layout.VERSIONS
+_REDACTIONS = layout.REDACTIONS
 
 
-class FileStore(MemoryStore, FileTurnStore):
+class FileStore(MemoryStore, FileTurnStore, FilePortableStore):
     """Markdown + frontmatter memory store over a plain directory —
-    implementing both storage seams (§8 documents, §9 turns)."""
+    implementing both storage seams (§8 documents, §9 turns) and the
+    mobility protocol (§26)."""
 
     def __init__(self, root: str | Path, *, clock: Clock | None = None) -> None:
         self._root = Path(root).resolve()
@@ -346,27 +348,13 @@ class FileStore(MemoryStore, FileTurnStore):
         return now
 
     def _scope_dir(self, scope: str) -> Path:
-        return self._root.joinpath(*scope_directory(parse_scope(scope)))
-
-    def _contained(self, candidate: Path, path: str) -> Path:
-        resolved = candidate.resolve()
-        if not resolved.is_relative_to(self._root):
-            raise MemoryPathInvalidError(path, "escapes the store root")
-        return candidate
+        return layout.scope_dir(self._root, scope)
 
     def _doc_file(self, scope: str, path: str) -> Path:
-        segments = path_segments(path)
-        candidate = self._scope_dir(scope).joinpath(
-            _DOCUMENTS, *segments[:-1], segments[-1] + ".md"
-        )
-        return self._contained(candidate, path)
+        return layout.doc_file(self._root, scope, path)
 
     def _journal_file(self, scope: str, path: str) -> Path:
-        segments = path_segments(path)
-        candidate = self._scope_dir(scope).joinpath(
-            _VERSIONS, *segments[:-1], segments[-1] + ".jsonl"
-        )
-        return self._contained(candidate, path)
+        return layout.journal_file(self._root, scope, path)
 
     def _rows(self, scope: str, path: str) -> tuple[MemoryVersion, ...]:
         return journal.read_rows(

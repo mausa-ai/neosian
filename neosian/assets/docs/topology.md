@@ -30,7 +30,11 @@ languages** — including one container in a dev compose beside redis
 and minio — or when a FileStore root needs more than one writer: one
 process owns the files and every client speaks to it. It adds no
 capability the library lacks, only reach. `docker run` is never step
-one.
+one. And nothing is a one-way door: `neosian export DIR` writes any
+store — a root, Postgres, the daemon by `--url` — to a directory that
+is itself a FileStore root, and `neosian import DIR` restores it
+verbatim into any other, one scope or conversation per request over
+the wire, version history and actors carried as they were.
 
 ## The appliance quickstart
 
@@ -154,3 +158,5 @@ on the version-row primary key, or to the state process, where one
 - Many apps or languages sharing one memory, or a FileStore root that
   needs more than one writer — the home, once two projects' hooks or
   servers write it → the state process (`neosian serve`).
+- Changing your mind later → `neosian export` from the one, `neosian
+  import` into the other; the archive is a FileStore root either way.

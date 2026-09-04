@@ -42,6 +42,7 @@ from neosian._foundation.memory.file import FileStore
 from neosian._foundation.postgres.store import PostgresStore
 from neosian._foundation.server.remote import RemoteStore
 from neosian._foundation.shared.exceptions import (
+    ConversationConflictError,
     ConversationFormatUnsupportedError,
     ConversationIdInvalidError,
     ConversationStoreError,
@@ -56,6 +57,7 @@ __all__ = [
     "CompactionConfig",
     "CompactionResult",
     "Conversation",
+    "ConversationConflictError",
     "ConversationFormatUnsupportedError",
     "ConversationId",
     "ConversationIdInvalidError",

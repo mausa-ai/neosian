@@ -32,6 +32,7 @@ from neosian._foundation.conversation.base import ConversationStore
 from neosian._foundation.llm.codec import message_to_json
 from neosian._foundation.memory.base import MemoryStore
 from neosian._foundation.memory.journal import since_window
+from neosian._foundation.server.remote_portable import RemotePortable
 from neosian._foundation.server.wire import (
     WIRE_VERSION,
     decode_document,
@@ -64,7 +65,7 @@ if TYPE_CHECKING:
     )
 
 
-class RemoteStore(MemoryStore, ConversationStore):
+class RemoteStore(MemoryStore, ConversationStore, RemotePortable):
     """Both storage ABCs over HTTP, against a running `neosian serve`.
 
     Construct with `await RemoteStore.connect(url, token=...)` — the

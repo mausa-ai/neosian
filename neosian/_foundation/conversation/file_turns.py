@@ -46,9 +46,9 @@ if TYPE_CHECKING:
     from neosian._foundation.llm.base import Message
     from neosian._foundation.shared.clock import Clock
 
-_CONVERSATIONS = "conversations"
-_TURNS = "turns.jsonl"
-_PROJECTIONS = "projections.jsonl"
+CONVERSATIONS = "conversations"
+TURNS = "turns.jsonl"
+PROJECTIONS = "projections.jsonl"
 _KINDS = ("log", "digest", "epoch")
 
 
@@ -82,7 +82,7 @@ class FileTurnStore(ConversationStore):
                 actor=actor,
             )
             private_mkdir(turns_file.parent)
-            append_line(turns_file, _render_turn(record))
+            append_line(turns_file, render_turn(record))
             return record
 
     async def read_turns(
@@ -106,7 +106,7 @@ class FileTurnStore(ConversationStore):
         async with self._lock:
             file = self._projections_file(conversation_id)
             private_mkdir(file.parent)
-            append_line(file, "".join(_render_projection(entry) for entry in entries))
+            append_line(file, "".join(render_projection(entry) for entry in entries))
 
     async def read_projections(
         self, conversation_id: str, *, after: int = 0, limit: int | None = None
@@ -133,16 +133,16 @@ class FileTurnStore(ConversationStore):
         return now
 
     def _conversation_dir(self, conversation_id: str) -> Path:
-        candidate = self._root / _CONVERSATIONS / conversation_id
+        candidate = self._root / CONVERSATIONS / conversation_id
         if not candidate.resolve().is_relative_to(self._root):
             raise ConversationIdInvalidError(conversation_id, "escapes the store root")
         return candidate
 
     def _turns_file(self, conversation_id: str) -> Path:
-        return self._conversation_dir(conversation_id) / _TURNS
+        return self._conversation_dir(conversation_id) / TURNS
 
     def _projections_file(self, conversation_id: str) -> Path:
-        return self._conversation_dir(conversation_id) / _PROJECTIONS
+        return self._conversation_dir(conversation_id) / PROJECTIONS
 
     def _all_turns(self, conversation_id: str) -> list[ConversationTurn]:
         file = self._turns_file(conversation_id)
@@ -175,7 +175,7 @@ def _check_cursor(after: int, limit: int | None) -> None:
         raise ValueError(f"limit must be >= 0, got {limit}")
 
 
-def _render_turn(record: ConversationTurn) -> str:
+def render_turn(record: ConversationTurn) -> str:
     data = {
         "neosian_format": CONVERSATION_FORMAT_VERSION,
         "turn": record.turn,
@@ -186,7 +186,7 @@ def _render_turn(record: ConversationTurn) -> str:
     return json.dumps(data, ensure_ascii=True, separators=(",", ":")) + "\n"
 
 
-def _render_projection(entry: ConversationProjection) -> str:
+def render_projection(entry: ConversationProjection) -> str:
     data = {
         "neosian_format": CONVERSATION_FORMAT_VERSION,
         "turn": entry.turn,

@@ -82,6 +82,26 @@ _WRONG_TYPES: list[tuple[str, dict[str, Any], str]] = [
         "entries",
     ),
     ("conversation/read_projections", {"conversation_id": "c1", "after": "0"}, "after"),
+    (
+        "store/restore_scope",
+        {"scope": 1, "documents": [], "versions": [], "redactions": []},
+        "scope",
+    ),
+    (
+        "store/restore_scope",
+        {"scope": "user:a", "documents": 5, "versions": [], "redactions": []},
+        "documents",
+    ),
+    (
+        "store/restore_scope",
+        {"scope": "user:a", "documents": [], "versions": ["x"], "redactions": []},
+        "versions",
+    ),
+    (
+        "store/restore_conversation",
+        {"conversation_id": "c1", "turns": {}, "projections": []},
+        "turns",
+    ),
 ]
 
 

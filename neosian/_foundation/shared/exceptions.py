@@ -790,9 +790,11 @@ class MemoryConflictError(MemoryStoreError):
     `reason` is machine-checkable: "version_mismatch", "document_absent"
     (an `expected_version` on a document that does not exist),
     "destination_exists" (rename onto an occupied path, src == dst
-    included), or "revert_stale" (`revert_memory` targeting a version the
-    document has already moved past — NP; reasons are documented here and
-    in DESIGN §8, appended together).
+    included), "revert_stale" (`revert_memory` targeting a version the
+    document has already moved past — NP), or "target_occupied" (a
+    verbatim restore into a scope that already holds documents, history
+    or redactions — NC4, `path=None`: the unit is the scope; reasons are
+    documented here and in DESIGN §8, appended together).
     """
 
     code = "memory_conflict"
@@ -800,14 +802,19 @@ class MemoryConflictError(MemoryStoreError):
     def __init__(
         self,
         scope: str,
-        path: str,
+        path: str | None,
         reason: str,
         *,
         expected_version: int | None = None,
         actual_version: int | None = None,
     ) -> None:
+        where = (
+            f"on {path!r} in scope {scope!r}"
+            if path is not None
+            else f"in scope {scope!r}"
+        )
         super().__init__(
-            f"Memory conflict on {path!r} in scope {scope!r}: {reason}",
+            f"Memory conflict {where}: {reason}",
             details={
                 "scope": scope,
                 "path": path,
@@ -912,6 +919,24 @@ class ConversationFormatUnsupportedError(ConversationStoreError):
     def __init__(self, conversation_id: str, reason: str) -> None:
         super().__init__(
             f"Unsupported turn format in conversation {conversation_id!r}: {reason}",
+            details={"conversation_id": conversation_id, "reason": reason},
+        )
+        self.conversation_id = conversation_id
+        self.reason = reason
+
+
+class ConversationConflictError(ConversationStoreError):
+    """Raised when a verbatim restore meets an occupied conversation (NC4).
+
+    `reason` is machine-checkable: "target_occupied" — the conversation
+    already holds turns or projections (DESIGN §26.3).
+    """
+
+    code = "agent_conversation_conflict"
+
+    def __init__(self, conversation_id: str, reason: str) -> None:
+        super().__init__(
+            f"Conversation conflict on {conversation_id!r}: {reason}",
             details={"conversation_id": conversation_id, "reason": reason},
         )
         self.conversation_id = conversation_id

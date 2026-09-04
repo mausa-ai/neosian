@@ -20,6 +20,7 @@ def test_conversation_all_is_pinned() -> None:
         "CompactionConfig",
         "CompactionResult",
         "Conversation",
+        "ConversationConflictError",
         "ConversationFormatUnsupportedError",
         "ConversationId",
         "ConversationIdInvalidError",

@@ -139,6 +139,13 @@ spend rides the result.
 Both implement the same `MemoryStore` ABC; a host may implement its
 own, kept honest by the shipped `MemoryStoreContract` conformance kit.
 
+Leave with your data, in every direction: `neosian export DIR` writes
+any store — files, Postgres, the state process — to a directory that is
+itself a FileStore root, history included, and `neosian import DIR`
+restores it verbatim into any other (`neosian docs cli`). In Python the
+same move is `transfer(source, target)` over the `Portable` protocol
+the three shipped stores implement.
+
 ## Five transports, one dispatcher
 
 The same memory is served through the provider-agnostic function

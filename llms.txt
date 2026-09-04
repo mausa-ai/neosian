@@ -43,6 +43,9 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
 - `neosian audit --scope S [--conversation C] [--actor A] [--since T]
   [--json]` — the ledger: what was done, by whom, when — newest first,
   identical on a root, Postgres, or the state process (`--url`).
+- `neosian export DIR` / `neosian import DIR` — a store moves whole,
+  history included, any substrate to any other; DIR is a FileStore root.
+  An import needs every scope and conversation empty in the target.
 - Exit tiers: 0 success, 1 ran-and-failed, 2 bad invocation, 130
   interrupt. stdout carries the artifact; stderr carries guidance.
 - Postgres arrives only via the NEOSIAN_POSTGRES_DSN environment
@@ -114,7 +117,7 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
 
 ## Install
 
-- `uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.88.0"`
+- `uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.89.0"`
   (private repository, no PyPI; pin an annotated release tag, never
   master; extras `[postgres]`, `[mcp]`, `[otel]`, and `[server]` ride
   the same URL).

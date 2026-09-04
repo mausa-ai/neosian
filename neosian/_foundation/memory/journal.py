@@ -64,8 +64,8 @@ def append_row(file: Path, row: MemoryVersion) -> None:
 
 
 def rewrite_rows(file: Path, rows: Sequence[MemoryVersion]) -> None:
-    """Atomically replace the whole sidecar (redaction only); the temp
-    file is fsync'd before the rename."""
+    """Atomically replace the whole sidecar (redaction, and a verbatim
+    restore — §26); the temp file is fsync'd before the rename."""
     private_mkdir(file.parent)
     fileio.atomic_write(file, "".join(_render_row(row) for row in rows), fsync=True)
 
@@ -98,18 +98,24 @@ def newest_first(rows: list[MemoryVersion]) -> list[MemoryVersion]:
 
 def append_redaction(trail: Path, act: MemoryRedaction) -> None:
     """One erasure act on the scope's trail (`redactions.jsonl`)."""
-    line = json.dumps(
-        {
-            "ts": act.created_at.isoformat().replace("+00:00", "Z"),
-            "actor": act.actor,
-            "path": act.path,
-            "count": act.count,
-        },
-        ensure_ascii=True,
-        separators=(",", ":"),
-    )
     private_mkdir(trail.parent)
-    fileio.append_line(trail, line + "\n")
+    fileio.append_line(trail, _render_redaction(act))
+
+
+def write_redactions(trail: Path, acts: Sequence[MemoryRedaction]) -> None:
+    """The whole trail at once, oldest first — a verbatim restore (§26)."""
+    private_mkdir(trail.parent)
+    fileio.atomic_write(trail, "".join(_render_redaction(act) for act in acts))
+
+
+def _render_redaction(act: MemoryRedaction) -> str:
+    data = {
+        "ts": act.created_at.isoformat().replace("+00:00", "Z"),
+        "actor": act.actor,
+        "path": act.path,
+        "count": act.count,
+    }
+    return json.dumps(data, ensure_ascii=True, separators=(",", ":")) + "\n"
 
 
 def read_redactions(trail: Path, *, scope: str) -> tuple[MemoryRedaction, ...]:

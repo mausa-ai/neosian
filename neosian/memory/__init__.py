@@ -33,6 +33,13 @@ from neosian._foundation.memory.paths import (
     PATH_MAX_SEGMENTS,
     validate_document_path,
 )
+from neosian._foundation.memory.portable import (
+    ConversationArchive,
+    Portable,
+    ScopeArchive,
+    TransferReport,
+    UnitReport,
+)
 from neosian._foundation.memory.receipt import MemoryWriteReceipt
 from neosian._foundation.memory.revert import revert_memory
 from neosian._foundation.memory.scope import (
@@ -42,6 +49,7 @@ from neosian._foundation.memory.scope import (
     parse_scope,
 )
 from neosian._foundation.memory.tools import create_memory_tool
+from neosian._foundation.memory.transfer import transfer
 from neosian._foundation.memory.types import (
     MEMORY_FORMAT_VERSION,
     MemoryAction,
@@ -76,6 +84,7 @@ __all__ = [
     "SCOPE_MAX_LENGTH",
     "SCOPE_PATTERN",
     "Clock",
+    "ConversationArchive",
     "FileStore",
     "MaintenanceResult",
     "MaintenanceWrite",
@@ -97,10 +106,14 @@ __all__ = [
     "MemoryVersion",
     "MemoryWriteReceipt",
     "Mount",
+    "Portable",
     "PostgresStore",
     "RemoteStore",
     "Scope",
+    "ScopeArchive",
     "SystemClock",
+    "TransferReport",
+    "UnitReport",
     "actor_matches",
     "audit",
     "create_memory_tool",
@@ -113,5 +126,6 @@ __all__ = [
     "project_scope",
     "revert_memory",
     "run_maintenance",
+    "transfer",
     "validate_document_path",
 ]

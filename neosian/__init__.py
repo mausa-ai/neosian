@@ -88,6 +88,13 @@ from neosian._foundation.memory.maintenance import (
     run_maintenance,
 )
 from neosian._foundation.memory.mounts import MemoryConfig, Mount
+from neosian._foundation.memory.portable import (
+    ConversationArchive,
+    Portable,
+    ScopeArchive,
+    TransferReport,
+    UnitReport,
+)
 from neosian._foundation.memory.receipt import MemoryWriteReceipt
 from neosian._foundation.memory.revert import revert_memory
 from neosian._foundation.memory.scope import (
@@ -97,6 +104,7 @@ from neosian._foundation.memory.scope import (
     parse_scope,
 )
 from neosian._foundation.memory.tools import create_memory_tool
+from neosian._foundation.memory.transfer import transfer
 from neosian._foundation.memory.types import (
     MEMORY_FORMAT_VERSION,
     MemoryDocument,
@@ -120,6 +128,7 @@ from neosian._foundation.shared.exceptions import (
     AgentLoadError,
     ConfigurationError,
     ContextWindowExceededError,
+    ConversationConflictError,
     ConversationStoreError,
     EvalError,
     FallbackExhaustedError,
@@ -300,6 +309,13 @@ __all__ = [
     "run_maintenance",
     "AuditEntry",
     "audit",
+    # Store mobility (DESIGN §26)
+    "Portable",
+    "ScopeArchive",
+    "ConversationArchive",
+    "UnitReport",
+    "TransferReport",
+    "transfer",
     # Conversation (DESIGN §9)
     "Conversation",
     "ConversationStore",
@@ -313,6 +329,7 @@ __all__ = [
     "ReflectionWrite",
     "CONVERSATION_FORMAT_VERSION",
     "parse_conversation_id",
+    "ConversationConflictError",
     # Utilities
     "load_prompt",
     # Fallback

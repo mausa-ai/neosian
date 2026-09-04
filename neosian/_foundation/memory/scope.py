@@ -6,7 +6,7 @@ type. Hierarchy is explicit mounts, chosen by the application.
 
 `scope_segments` and `scope_directory` are the only scope decomposition
 in the library; a test pins that nothing outside this module calls
-`scope_segments` (and only `file.py` calls `scope_directory`).
+`scope_segments` (and only `file_layout.py` calls `scope_directory`).
 """
 
 from __future__ import annotations

@@ -2,8 +2,8 @@
 
 One neosian-owned Starlette composes four surfaces: `/health`
 (unauthenticated — a container healthcheck needs no token), the
-authenticated `/v1/capabilities` handshake, the twelve store-shaped
-routes, and — when mounts are given — MCP over streamable HTTP at
+authenticated `/v1/capabilities` handshake, the fourteen store-shaped
+routes plus the four `store/*` routes (NC4), and — when mounts are given — MCP over streamable HTTP at
 `/mcp`, built from the same `create_memory_server` factory the stdio
 transport uses, so all five transports execute one dispatcher.
 
@@ -36,6 +36,7 @@ from neosian._foundation.server.ceiling import (
     MAX_REQUEST_BYTES,
     BodyCeilingMiddleware,
 )
+from neosian._foundation.server.portable_routes import portable_routes
 from neosian._foundation.server.routes import store_routes
 from neosian._foundation.server.sdk import (
     JSONResponse,
@@ -153,6 +154,7 @@ async def build_app(
         Route(_HEALTH_PATH, _health, methods=["GET"]),
         Route("/v1/capabilities", _capabilities(store), methods=["GET"]),
         *store_routes(store, store),
+        *portable_routes(store),
     ]
 
     manager: StreamableHTTPSessionManager | None = None

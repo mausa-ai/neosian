@@ -27,11 +27,11 @@ The repository is private; as a dependency of another uv project, install
 from the git URL, pinned to a release tag (extras ride the same URL):
 
 ```bash
-uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.88.0"
-uv add "neosian[postgres] @ git+ssh://git@github.com/neosae/neosian@v0.88.0"   # + PostgresStore
-uv add "neosian[mcp] @ git+ssh://git@github.com/neosae/neosian@v0.88.0"        # + MCP server and client
-uv add "neosian[otel] @ git+ssh://git@github.com/neosae/neosian@v0.88.0"       # + OpenTelemetry spans
-uv add "neosian[server] @ git+ssh://git@github.com/neosae/neosian@v0.88.0"     # + the state process
+uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.89.0"
+uv add "neosian[postgres] @ git+ssh://git@github.com/neosae/neosian@v0.89.0"   # + PostgresStore
+uv add "neosian[mcp] @ git+ssh://git@github.com/neosae/neosian@v0.89.0"        # + MCP server and client
+uv add "neosian[otel] @ git+ssh://git@github.com/neosae/neosian@v0.89.0"       # + OpenTelemetry spans
+uv add "neosian[server] @ git+ssh://git@github.com/neosae/neosian@v0.89.0"     # + the state process
 ```
 
 The core install is database-driver-free, MCP-free, and server-free
@@ -246,6 +246,12 @@ Postgres schema application is the operator's explicit act:
 python -m neosian.schemas postgres | psql "$DSN"
 ```
 
+Nothing is a one-way door: `neosian export DIR` writes any store — a
+root, Postgres, the state process — to a directory that is itself a
+FileStore root, history included, and `neosian import DIR` restores it
+verbatim into any other (every unit must be empty there; nothing
+merges). In Python: `transfer(source, target)`.
+
 One `PostgresStore` serves many worker processes — optimistic concurrency
 keeps concurrent workers on one conversation gapless. The multi-tenant
 FastAPI reference (per-tenant mounts, SSE relay) is
@@ -337,7 +343,9 @@ started with mounts. Auth is bearer tokens, env-only — one token, or a
 per-client table (`claude-code:laptop=…,app:kit=…`) so the process
 records *who* wrote (an unset token refuses to start); `/health` is the
 one unauthenticated route; TLS terminates at a reverse proxy.
-`neosian audit --scope S` reads the ledger back on any substrate. FileStore and Postgres backends; both
+`neosian audit --scope S` reads the ledger back on any substrate, and
+`neosian export`/`import --url` move a store in and out of the process
+verbatim. FileStore and Postgres backends; both
 conformance kits run against the served wire in CI — including against
 the container, on both backends.
 
