@@ -22,7 +22,7 @@ from neosian._foundation.memory.index import memory_system_section
 from neosian._foundation.memory.settings import DEFAULT_SCHEMA, StoreSettings
 from neosian._foundation.record.cli import record_payload
 from neosian._foundation.record.context import render_left_off
-from neosian._foundation.record.settings import RecordSettings
+from neosian._foundation.record.settings import RecordSettings, sessions_mount
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -58,10 +58,10 @@ def payloads_of(session: RecordedSession) -> list[dict[str, Any]]:
 
 def first_writable(mounts: tuple[Mount, ...]) -> Mount:
     """Where the sessions document lands — the verb's own rule."""
-    for mount in mounts:
-        if not mount.read_only and not mount.edit_only:
-            return mount
-    raise RuntimeError("a record session needs a read-write mount")
+    mount = sessions_mount(mounts)
+    if mount is None:
+        raise RuntimeError("a record session needs a read-write mount")
+    return mount
 
 
 async def replay_record(

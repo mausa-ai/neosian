@@ -230,6 +230,10 @@ def test_all_list_matches_exports() -> None:
         "MemoryConflictError",
         "Mount",
         "MemoryConfig",
+        # The home (DESIGN §22)
+        "home",
+        "project_scope",
+        "project_mounts",
         "create_memory_tool",
         "memory_system_section",
         "MemoryWriteReceipt",

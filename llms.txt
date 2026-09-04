@@ -23,8 +23,9 @@ conversation with cross-conversation `recall_turn`.
 
 ## Operate memory from the shell
 
-- `neosian memory view / --root DIR --scope user:me` — the first command
-  to try; renders the memory index.
+- `neosian memory view / --scope user:me` — the first command to try;
+  renders the memory index. The store is the home, `~/.neosian` or
+  `$NEOSIAN_HOME`, unless `--root DIR`, `--url` or the DSN names one.
 - Six commands: view, create, str_replace, insert, delete, rename.
   `--json` prints the memory tool's result envelope verbatim.
 - `neosian memory maintain` — the gardener: keyless dedup + empty-prune;
@@ -53,9 +54,12 @@ conversation with cross-conversation `recall_turn`.
 
 ## Record a foreign agent
 
-- `neosian record install --client claude-code|codex|opencode --root DIR
-  --scope user:me` prints the four hooks (UserPromptSubmit, PostToolUse,
-  Stop, SessionStart) — for OpenCode, a plugin file; `--write` merges them into
+- `neosian record install --client claude-code|codex|opencode` prints
+  the four hooks — no flags: the home and this directory's layout,
+  `user:<login>` at /user and `user:<login>/proj:<slug>` at /project,
+  spelled into the line; `--root DIR --scope S` override (the events:
+  UserPromptSubmit, PostToolUse, Stop, SessionStart) — for OpenCode, a
+  plugin file; `--write` merges them into
   ./.claude/settings.json or ./.codex/hooks.json, every other hook
   preserved, or writes ./.opencode/plugins/neosian-record.js (Codex: a
   trusted project, hooks reviewed in /hooks).
@@ -71,8 +75,8 @@ conversation with cross-conversation `recall_turn`.
 
 ## Reach it over the network
 
-- `NEOSIAN_SERVE_TOKEN=... neosian serve --root DIR` — the state
-  process (`server` extra): memory and conversations on a port, MCP
+- `NEOSIAN_SERVE_TOKEN=... neosian serve` — the state process
+  (`server` extra) on the home (`--root DIR` another root): memory and conversations on a port, MCP
   over streamable HTTP at /mcp when started with mounts. Token is
   env-only (one token, or a per-client table `actor=token,...` — the
   process records who wrote); unset refuses to start; /health is
@@ -96,7 +100,7 @@ conversation with cross-conversation `recall_turn`.
 
 ## Install
 
-- `uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.84.0"`
+- `uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.85.0"`
   (private repository, no PyPI; pin an annotated release tag, never
   master; extras `[postgres]`, `[mcp]`, `[otel]`, and `[server]` ride
   the same URL).

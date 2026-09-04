@@ -48,9 +48,52 @@ curl -fsS http://localhost:6367/health
 The default command serves a FileStore on the `/data` volume; set
 `NEOSIAN_POSTGRES_DSN` (and override the command, e.g. `--schema
 neosian`) for the Postgres backend. Without the container it is one
-command: `NEOSIAN_SERVE_TOKEN=… neosian serve --root DIR`. The token
-is env-only and an unset token refuses to start; TLS terminates at a
-reverse proxy.
+command: `NEOSIAN_SERVE_TOKEN=… neosian serve` — no flags serves the
+home, `--root DIR` another root. The token is env-only and an unset
+token refuses to start; TLS terminates at a reverse proxy.
+
+## The home: one place for every project
+
+`~/.neosian` — or `$NEOSIAN_HOME` — is the store every command and the
+playground use when no flag names one, and the root a neosian agent
+reaches through `home()`. Per project is a scope, not a root:
+`neosian record install` and `neosian mcp install` spell this
+directory's layout into the client's config (`user:<login>` at
+`/user`, `user:<login>/proj:<slug>` at `/project`), and
+`project_scope()` spells the same for a `Conversation`. One `neosian
+audit --scope user:<login>/proj:<slug>` then lists every agent's work
+in the project.
+
+Many projects and agents on one home is the multi-writer shape, so the
+answer is the state process on the home — one process owning the files,
+every hook and MCP server registered with `--url`. As a per-user
+service, a docs recipe, never library scope:
+
+```xml
+<!-- macOS: ~/Library/LaunchAgents/com.neosian.serve.plist -->
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.neosian.serve</string>
+  <key>ProgramArguments</key>
+  <array><string>/path/to/venv/bin/neosian</string><string>serve</string></array>
+  <key>EnvironmentVariables</key>
+  <dict><key>NEOSIAN_SERVE_TOKEN</key><string>change-me</string></dict>
+  <key>RunAtLoad</key><true/><key>KeepAlive</key><true/>
+</dict></plist>
+```
+
+```ini
+# Linux: ~/.config/systemd/user/neosian.service
+[Service]
+ExecStart=/path/to/venv/bin/neosian serve
+EnvironmentFile=%h/.config/neosian/serve.env   # NEOSIAN_SERVE_TOKEN=…
+Restart=on-failure
+[Install]
+WantedBy=default.target
+```
+
+Then `launchctl load` / `systemctl --user enable --now neosian`, and
+every install on the machine takes `--url http://127.0.0.1:6367` with
+`NEOSIAN_CLIENT_TOKEN` in the client's own environment.
 
 Python clients speak the store wire:
 
@@ -109,4 +152,5 @@ on the version-row primary key, or to the state process, where one
 - One app, one machine, inspectable state → embed + `FileStore`.
 - One app, many workers or many machines → embed + `PostgresStore`.
 - Many apps or languages sharing one memory, or a FileStore root that
-  needs more than one writer → the state process (`neosian serve`).
+  needs more than one writer — the home, once two projects' hooks or
+  servers write it → the state process (`neosian serve`).

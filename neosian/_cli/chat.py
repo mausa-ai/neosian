@@ -2,13 +2,14 @@
 
 The chat loop rides `Conversation` + `FileStore`: every turn persists as
 it completes (a crash or ^C loses nothing), resume is `--resume <id>`,
-and turns live under the working directory — project-local, in
-`.neosian/conversations/<id>/` (DESIGN §9.8).
+and turns live in the home — `~/.neosian/conversations/<id>/` (DESIGN
+§9.8, §22) — where an agent file that names no memory gets the
+project's layout, the same place the hooks write.
 """
 
 import time
+from dataclasses import replace
 from datetime import UTC, datetime
-from pathlib import Path
 
 from rich.console import Console
 from rich.markdown import Markdown
@@ -23,17 +24,18 @@ from neosian._foundation.conversation.core import Conversation
 from neosian._foundation.conversation.ids import parse_conversation_id
 from neosian._foundation.llm.base import text_of
 from neosian._foundation.memory.file import FileStore
+from neosian._foundation.memory.home import home, project_mounts
+from neosian._foundation.memory.mounts import MemoryConfig
 from neosian._foundation.shared.constants import PlaygroundUI
 from neosian._foundation.shared.registry import provider_label
 from neosian._foundation.shared.types import AgentConfig
 
-_STORE_DIR = ".neosian"  # FileStore root under cwd; turns in conversations/<id>/
 _ID_STAMP = "%Y%m%d-%H%M%S"
 _ID_NAME_CHARS = 64
 _RESUME_IS_PATH = (
     "--resume takes a conversation id, not a path: {value!r}. Saved-session "
-    "JSON files are no longer read; conversations persist under "
-    ".neosian/conversations/<id>/ — pass the id printed at chat start."
+    "JSON files are no longer read; conversations persist under the home "
+    "(~/.neosian/conversations/<id>/) — pass the id printed at chat start."
 )
 
 
@@ -64,16 +66,29 @@ def resolve_resume(value: str) -> str:
     return str(parse_conversation_id(value))
 
 
-def open_chat(config: AgentConfig, *, root: Path, conversation_id: str) -> Conversation:
-    """The playground's Conversation: a cwd-local FileStore for turns.
-
-    The agent file's own `config.memory` passes through untouched —
-    Conversation re-wires its tool with `actor=conversation_id`; this
-    store is only the turn seam, so a memory store (if any) stays
-    wherever the agent file put it.
+def chat_config(config: AgentConfig, store: FileStore) -> AgentConfig:
+    """The agent file's config, with the project layout on `store` when it
+    names no memory (DESIGN §22) — derived, never mutated in place. A
+    config's own `memory` passes through untouched, wherever it lives.
     """
-    store = FileStore(root / _STORE_DIR)
-    return Conversation(config, store=store, conversation_id=conversation_id)
+    if config.memory is not None:
+        return config
+    return replace(config, memory=MemoryConfig(store=store, mounts=project_mounts()))
+
+
+def open_chat(config: AgentConfig, *, conversation_id: str) -> Conversation:
+    """The playground's Conversation on the home: one FileStore for turns
+    and, unless the agent file says otherwise, for memory."""
+    store = FileStore(home())
+    return Conversation(
+        chat_config(config, store), store=store, conversation_id=conversation_id
+    )
+
+
+def describe_memory(config: AgentConfig) -> str:
+    """One line naming where memory goes, for the chat banner."""
+    mounts = project_mounts() if config.memory is None else config.memory.mounts
+    return ", ".join(f"/{m.mount_path} = {m.scope}" for m in mounts)
 
 
 async def run_chat(
@@ -82,18 +97,17 @@ async def run_chat(
     agent_name: str,
     *,
     conversation_id: str,
-    root: Path,
     resumed: bool,
 ) -> None:
     """Construct the store, start the conversation, run the loop.
 
     Everything shares one event loop: a store's internal lock binds to
     the first loop that awaits it, so the store is constructed and used
-    inside the same `asyncio.run` — and nothing under `root` is created
+    inside the same `asyncio.run` — and nothing under the home is created
     before this point.
     """
     try:
-        convo = open_chat(config, root=root, conversation_id=conversation_id)
+        convo = open_chat(config, conversation_id=conversation_id)
         await convo.start()
     except Exception as e:
         console.print(f"[red]Error starting conversation: {e}[/red]")
@@ -112,8 +126,9 @@ async def run_chat(
         )
     console.print(
         f"[dim]Conversation: {conversation_id}  "
-        f"(resume: --resume {conversation_id})[/dim]\n"
+        f"(resume: --resume {conversation_id})[/dim]"
     )
+    console.print(f"[dim]Home: {home()}  memory: {describe_memory(config)}[/dim]\n")
     async with convo:
         await _chat_loop(console, convo, config)
 

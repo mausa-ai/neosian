@@ -17,6 +17,7 @@ from neosian._foundation.memory.actor import (
 from neosian._foundation.memory.audit import AuditEntry, audit
 from neosian._foundation.memory.base import MemoryStore
 from neosian._foundation.memory.file import FileStore
+from neosian._foundation.memory.home import home, project_mounts, project_scope
 from neosian._foundation.memory.index import (
     generate_memory_index,
     memory_system_section,
@@ -104,9 +105,12 @@ __all__ = [
     "audit",
     "create_memory_tool",
     "generate_memory_index",
+    "home",
     "memory_system_section",
     "parse_actor",
     "parse_scope",
+    "project_mounts",
+    "project_scope",
     "revert_memory",
     "run_maintenance",
     "validate_document_path",

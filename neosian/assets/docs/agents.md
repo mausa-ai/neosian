@@ -17,12 +17,19 @@ payloads are the import path.
 ## Install
 
 ```bash
-neosian record install --client claude-code --root ~/.my-agent/state --scope user:me
-neosian record install --client claude-code --url http://127.0.0.1:6367 --scope user:me --write
-neosian record install --client codex --root ~/.my-agent/state --scope user:me --write
+neosian record install --client claude-code                       # the home, this project
+neosian record install --client claude-code --url http://127.0.0.1:6367 --write
+neosian record install --client codex --write
 neosian record install --client opencode --root ~/.my-agent/state --scope user:me --write
 ```
 
+- **No flags is the home and this project.** With no store flag the
+  line names `~/.neosian` (or `$NEOSIAN_HOME`); with no mount flag it
+  names this directory's layout — `user:<login>` at `/user`,
+  `user:<login>/proj:<slug>` at `/project`, the slug the directory's
+  name — spelled out in the config so the scope stays explicit. A
+  neosian agent lands in the same place with `FileStore(home())` and
+  `project_scope()` (`neosian docs quickstart`).
 - Print mode (the default) puts the paste-able `hooks` fragment on
   stdout — the one command on `UserPromptSubmit`, `PostToolUse`, `Stop`
   and `SessionStart` — and guidance on stderr.
@@ -35,8 +42,11 @@ neosian record install --client opencode --root ~/.my-agent/state --scope user:m
   the hook line adds `--spool` (absolute) and `--agent` when not the
   default. A DSN is never written into a hook line; `--url` carries the
   token through `NEOSIAN_CLIENT_TOKEN` in the client's own environment.
-- Hooks beside an MCP server on one FileStore root are **two writers**:
-  route both through the state process (`--url`) or Postgres.
+- Hooks beside an MCP server on one FileStore root are **two writers**,
+  and the home is one root for every project on the machine: run
+  `neosian serve` (no flags — it serves the home; `neosian docs
+  topology` has the per-user service recipe) and install with `--url`,
+  or use Postgres.
 - **Codex** takes the same fragment at the project's `.codex/hooks.json`
   (`~/.codex`, or `$CODEX_HOME`, must exist). Codex loads project hooks
   only for a trusted project, and reviews each new hook once in its
@@ -71,11 +81,11 @@ neosian record install --client opencode --root ~/.my-agent/state --scope user:m
 | `Stop` | the final `ASSISTANT` text (`last_assistant_message`); the span lands as one `append_turn` by `claude-code:<session_id>`, and the sessions document is written by `claude-code:<session_id>#<turn>` |
 | `SessionStart` | nothing written: the verb prints the context (below), which the client adds to the model's window |
 
-The sessions document lives at `/memories/sessions/<session_id>` in the
-first read-write mount — agent, conversation, started, last prompt,
-turn count — so the next agent finds the listing in its index. Between
-the prompt and the stop the span waits in a per-session spool
-(`.neosian/spool` under the project; `--spool DIR`), never the store; a
+The sessions document lives at `sessions/<session_id>` in the mount at
+`/project` (else the first read-write mount) — agent, conversation,
+started, last prompt, turn count — so the next agent finds the listing
+in its index. Between the prompt and the stop the span waits in a
+per-session spool (`spool/` under the home; `--spool DIR`), never the store; a
 failed landing keeps it, and the next stop carries the whole span.
 
 Exit tiers bend once, for the hook's sake: Claude Code reads a hook's
@@ -123,6 +133,7 @@ in the room.
 Read it back on any substrate:
 
 ```bash
+neosian audit --scope "$(python -c 'import neosian; print(neosian.project_scope())')"
 neosian audit --scope user:me --conversation <session_id> --root ~/.my-agent/state
 neosian audit --scope user:me --actor claude-code:<session_id> --url http://127.0.0.1:6367
 ```

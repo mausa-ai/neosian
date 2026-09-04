@@ -80,6 +80,7 @@ from neosian._foundation.memory.actor import (
 from neosian._foundation.memory.audit import AuditEntry, audit
 from neosian._foundation.memory.base import MemoryStore
 from neosian._foundation.memory.file import FileStore
+from neosian._foundation.memory.home import home, project_mounts, project_scope
 from neosian._foundation.memory.index import memory_system_section
 from neosian._foundation.memory.maintenance import (
     MaintenanceResult,
@@ -285,6 +286,10 @@ __all__ = [
     "MemoryConflictError",
     "Mount",
     "MemoryConfig",
+    # The home (DESIGN §22)
+    "home",
+    "project_scope",
+    "project_mounts",
     "create_memory_tool",
     "memory_system_section",
     "MemoryWriteReceipt",

@@ -57,6 +57,16 @@ class TestHappyPath:
         settings = captured.settings
         assert settings.store.mounts == ()  # type: ignore[attr-defined]
 
+    def test_no_flags_serves_the_home(
+        self, tmp_path: Path, captured: _Captured, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # DESIGN §22: `neosian serve` with no flags serves ~/.neosian
+        # ($NEOSIAN_HOME) — the many-projects shape.
+        monkeypatch.setenv("NEOSIAN_HOME", str(tmp_path / "home"))
+        assert main([]) == 0
+        settings = captured.settings
+        assert settings.store.root == tmp_path / "home"  # type: ignore[attr-defined]
+
 
 class TestGrammarTier:
     def test_a_missing_token_exits_2(
@@ -67,9 +77,9 @@ class TestGrammarTier:
             main(["--root", str(tmp_path / "mem")])
         assert excinfo.value.code == 2
 
-    def test_no_store_exits_2(self) -> None:
+    def test_two_stores_exit_2(self) -> None:
         with pytest.raises(SystemExit) as excinfo:
-            main(["--scope", "user:demo"])
+            main(["--root", "m", "--url", "http://x", "--scope", "user:demo"])
         assert excinfo.value.code == 2
 
     def test_root_and_dsn_conflict_exits_2(

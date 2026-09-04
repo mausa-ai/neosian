@@ -18,6 +18,7 @@ from neosian._foundation.mcp.install import (
     resolve_target,
     run_install,
 )
+from neosian._foundation.memory.home import HOME_ENV
 from neosian._foundation.memory.mounts import Mount
 from neosian._foundation.memory.settings import StoreSettings
 from neosian._foundation.shared.client_config import load_document
@@ -377,10 +378,32 @@ class TestExitTiers:
         assert code == 2
         assert "claude-code" in err  # choices named in the argparse error
 
-    def test_no_store_exits_2(self, tmp_path: Path) -> None:
-        code, _, err = _run(["--client", "cursor"], _context(tmp_path))
+    def test_no_flags_render_the_home_and_the_derived_layout(
+        self, tmp_path: Path
+    ) -> None:
+        # DESIGN §22: the registration names the home and this directory's
+        # two-mount layout — the scope explicit in the file, its spelling
+        # derived; print mode builds nothing.
+        context = _context(tmp_path)
+        (context.home / ".claude").mkdir()
+        code, out, _ = _run(
+            ["--client", "claude-code"], context, {HOME_ENV: str(tmp_path / "nh")}
+        )
+        assert code == 0
+        args = json.loads(out)["mcpServers"]["neosian-memory"]["args"]
+        assert args[args.index("--root") + 1] == str(tmp_path / "nh")
+        tokens = [args[i + 1] for i, a in enumerate(args) if a == "--mount"]
+        assert [t.split(",")[1] for t in tokens] == ["path=user", "path=project"]
+        assert tokens[1].split(",")[0].endswith("/proj:proj")
+        assert not (tmp_path / "nh").exists()
+
+    def test_two_stores_exit_2(self, tmp_path: Path) -> None:
+        code, _, err = _run(
+            ["--client", "cursor", "--root", "m", "--url", "http://x"],
+            _context(tmp_path),
+        )
         assert code == 2
-        assert "store is required" in err
+        assert "mutually exclusive" in err
 
     def test_a_bad_scope_exits_2_with_the_code(self, tmp_path: Path) -> None:
         code, _, err = _run(

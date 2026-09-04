@@ -13,7 +13,10 @@ import pytest
 
 from neosian._foundation.llm.base import Role
 from neosian._foundation.memory.file import FileStore
+from neosian._foundation.memory.home import HOME_ENV
+from neosian._foundation.memory.mounts import Mount
 from neosian._foundation.record.cli import run
+from neosian._foundation.record.settings import sessions_mount
 from neosian._foundation.server.app import build_app
 from neosian._foundation.shared.prompt_assets import get_prompt
 from tests.unit.record.payloads import SESSION, prompt, session_start, stop, tool
@@ -51,6 +54,48 @@ async def _span(argv: list[str], *, prompt_text: str = "q") -> list[_Result]:
         await _run(argv, tool()),
         await _run(argv, stop("a")),
     ]
+
+
+class TestTheHome:
+    async def test_the_spool_defaults_under_the_home(self, tmp_path: Path) -> None:
+        # DESIGN §22: repositories stay clean; the spool waits in the home.
+        argv = ["--root", str(tmp_path / "mem"), "--scope", "user:me"]
+        env = {HOME_ENV: str(tmp_path / "nh")}
+        result = await _run(argv, prompt(), env)
+        assert result.code == 0, result.err
+        assert (tmp_path / "nh" / "spool" / f"{SESSION}.jsonl").exists()
+        assert not (tmp_path / "mem" / "spool").exists()
+
+    async def test_the_document_lands_in_the_project_mount(
+        self, tmp_path: Path
+    ) -> None:
+        # The mount at /project takes the sessions document when present —
+        # not the first read-write one (§22 amends §20.9).
+        argv = [
+            "--root",
+            str(tmp_path / "mem"),
+            "--mount",
+            "scope=user:me,path=user",
+            "--mount",
+            "scope=user:me/proj:demo,path=project",
+            "--spool",
+            str(tmp_path / "spool"),
+            "--json",
+        ]
+        results = await _span(argv)
+        envelope = json.loads(results[-1].out)
+        assert envelope["document"] == f"/project/sessions/{SESSION}"
+        store = FileStore(tmp_path / "mem")
+        assert await store.read("user:me/proj:demo", f"sessions/{SESSION}")
+
+    def test_the_sessions_mount_rule(self) -> None:
+        user = Mount(scope="user:me", mount_path="user")
+        project = Mount(scope="user:me/proj:d", mount_path="project")
+        frozen = Mount(scope="user:me/proj:d", mount_path="project", read_only=True)
+        assert sessions_mount((user, project)) is project
+        assert sessions_mount((user,)) is user  # the first read-write one
+        assert sessions_mount((user, frozen)) is user  # /project must be writable
+        assert sessions_mount((frozen,)) is None
 
 
 class TestTheSpan:

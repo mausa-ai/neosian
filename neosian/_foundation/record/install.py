@@ -266,9 +266,10 @@ def _render_success(
         err.write(f"hint: {target.trust_hint}\n")
     if settings.store.root is not None:
         err.write(
-            "hint: one writer per FileStore root (DESIGN §8) — hooks beside an "
-            "MCP server on the same root are two; route both through the "
-            "state process (--url) or Postgres\n"
+            "hint: one writer per FileStore root (DESIGN §8) — the home is one "
+            "root shared by every project's hooks and MCP servers; for more "
+            "than one writer run `neosian serve` and install with --url, or "
+            "use Postgres\n"
         )
     if settings.store.dsn is not None:
         err.write(
@@ -336,7 +337,7 @@ def run_install(
     add_record_arguments(parser)
     try:
         args = parser.parse_args(list(argv))
-        settings = resolve_record_settings(parser, args, env)
+        settings = resolve_record_settings(parser, args, env, layout=context.cwd)
     except SystemExit as exc:  # argparse: usage already on the streams
         if exc.code is None:
             return 0

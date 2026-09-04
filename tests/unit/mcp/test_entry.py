@@ -40,10 +40,9 @@ class TestHappyPath:
 
 
 class TestErrorPaths:
-    def test_grammar_error_exits_2(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.delenv("NEOSIAN_POSTGRES_DSN", raising=False)
+    def test_grammar_error_exits_2(self) -> None:
         with pytest.raises(SystemExit) as excinfo:
-            main(["--scope", "user:demo"])  # no store
+            main(["--root", "m", "--url", "http://x", "--scope", "user:demo"])
         assert excinfo.value.code == 2
 
     def test_bad_scope_exits_2_with_the_code(

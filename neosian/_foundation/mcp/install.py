@@ -279,8 +279,9 @@ def _render_success(
         out.write(f"{'created' if created else 'updated'} {target.config_path}\n")
         if settings.root is not None:
             err.write(
-                "hint: one writer per FileStore root (DESIGN §8) — do not "
-                f"write to {settings.root} while this server is running\n"
+                "hint: one writer per FileStore root (DESIGN §8) — nothing else "
+                f"writes to {settings.root} while this server runs; for more "
+                "than one writer run `neosian serve` and register --url\n"
             )
     else:
         # stdout is only the paste-able fragment: `> snippet.json` stays valid.
@@ -357,7 +358,7 @@ def run_install(
     add_store_arguments(parser, default_actor=_DEFAULT_ACTOR)
     try:
         args = parser.parse_args(list(argv))
-        settings = resolve_store_settings(parser, args, env)
+        settings = resolve_store_settings(parser, args, env, layout=context.cwd)
     except SystemExit as exc:  # argparse: usage already on the streams
         if exc.code is None:
             return 0

@@ -1,9 +1,13 @@
 """Example: Conversation — the stateful, memory-bearing shell (N2).
 
 The three-line quickstart: construct a store, construct a Conversation,
-`send()`. History persists per turn under .neosian/example (gitignored),
-resume is constructing again with the same conversation id, and
-`memory_scope=` gives the agent durable memory across conversations.
+`send()`. History persists per turn in the home (`~/.neosian`, or
+`$NEOSIAN_HOME` — DESIGN §22), resume is constructing again with the
+same conversation id, and `memory_scope=project_scope()` gives the
+agent durable memory across conversations in this project's scope —
+the same scope a Claude Code session's hooks write to from this
+directory, so `neosian audit --scope "$(python -c 'import neosian;
+print(neosian.project_scope())')"` lists both.
 
 Usage:
     python examples/conversation_example.py
@@ -14,9 +18,9 @@ import os
 from datetime import UTC, datetime
 from pathlib import Path
 
-from neosian import AgentConfig, Conversation, FileStore, Model
+from neosian import AgentConfig, Conversation, FileStore, Model, home, project_scope
 
-_ROOT = Path(__file__).resolve().parent.parent / ".neosian" / "example"
+_ROOT = home()
 
 configuration = AgentConfig(
     system_prompt=("You are a concise assistant. Answer in one or two sentences."),
@@ -73,15 +77,19 @@ async def example_resume(conversation_id: str) -> None:
 
 async def example_memory_scope(stamp: str) -> None:
     """`memory_scope=` sugar: one mount at `memories`, shared across
-    conversations keyed by the scope — record in one, recall in another."""
+    conversations keyed by the scope — record in one, recall in another.
+    `project_scope()` spells this directory's scope, where the hooks of a
+    foreign agent installed here write too."""
     print("\n--- Memory scope ---")
 
     store = FileStore(_ROOT)
+    scope = project_scope()
+    print(f"scope: {scope}")
     recorder = Conversation(
         configuration,
         store=store,
         conversation_id=f"{stamp}-record",
-        memory_scope="user:demo",
+        memory_scope=scope,
     )
     async with recorder:
         await recorder.send("Remember this for later: my favorite color is teal.")
@@ -90,7 +98,7 @@ async def example_memory_scope(stamp: str) -> None:
         configuration,
         store=store,
         conversation_id=f"{stamp}-recall",
-        memory_scope="user:demo",
+        memory_scope=scope,
     )
     async with recaller:
         response = await recaller.send("What is my favorite color?")

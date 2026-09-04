@@ -31,6 +31,7 @@ serves two:
 ## Serve
 
 ```bash
+python -m neosian.mcp --scope user:me                  # the home, ~/.neosian
 python -m neosian.mcp --root ~/.my-agent/memory --scope user:me
 ```
 
@@ -54,6 +55,7 @@ store as `conversations=` adds `recall_turn` beside `memory`.
 and applies it only when you ask:
 
 ```bash
+neosian mcp install --client claude-code                 # the home, this project's layout
 neosian mcp install --client claude-code --root ~/.my-agent/memory --scope user:me
 neosian mcp install --client claude-desktop ... --write
 ```
@@ -72,6 +74,10 @@ neosian mcp install --client claude-desktop ... --write
 - A client whose config directory does not exist is refused (exit 1)
   — neosian never creates another program's config home. Install the
   client first.
+- With no flags the registration names the home (`~/.neosian`, or
+  `$NEOSIAN_HOME`) and this directory's two-mount layout —
+  `user:<login>` at `/user`, `user:<login>/proj:<slug>` at `/project` —
+  spelled out so the scope stays explicit (`neosian docs agents`).
 - The registration embeds the resolved settings: an absolute `--root`
   (clients spawn servers from arbitrary directories), mounts in
   canonical `--mount` form, and the current interpreter's absolute
@@ -89,7 +95,8 @@ which renders the same mount layout from the same flags
 An MCP server serving a FileStore root **owns** that root while it
 runs. Do not write to the same root with `neosian memory` or an
 embedding application at the same time — reads are fine, concurrent
-writers are not arbitrated on files. Multi-writer needs route to
-`PostgresStore` or to the state process (`neosian serve`), where one
-process owns the root for every client. The full rule:
+writers are not arbitrated on files. The home is one root for every
+project, so two projects' servers on it are two writers. Multi-writer
+needs route to `PostgresStore` or to the state process (`neosian
+serve`, no flags), where one process owns the root for every client. The full rule:
 `neosian docs topology`.

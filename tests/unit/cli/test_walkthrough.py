@@ -40,6 +40,7 @@ def _env(home: Path) -> dict[str, str]:
     # client configs.
     env = {k: v for k, v in os.environ.items() if k != "NEOSIAN_POSTGRES_DSN"}
     env["HOME"] = str(home)
+    env["NEOSIAN_HOME"] = str(home / "home")  # the default store (DESIGN §22)
     env["NO_COLOR"] = "1"
     return env
 
@@ -333,6 +334,38 @@ class TestUpgrade:
         entry = fragment["mcpServers"]["neosian-memory"]
         assert entry["args"][:2] == ["-m", "neosian.mcp"]
         assert not (tmp_path / ".mcp.json").exists()  # print mode writes nothing
+
+    def test_no_flags_render_the_home_and_the_project_layout(
+        self, tmp_path: Path
+    ) -> None:
+        """DESIGN §22: a fresh machine, no store flags — the registration
+        names the home and this directory's two-mount layout, visibly."""
+        env = _env(tmp_path)
+        (tmp_path / ".claude").mkdir()
+        project = tmp_path / "demo proj"
+        project.mkdir()
+        result = _run(
+            ["mcp", "install", "--client", "claude-code"], cwd=project, env=env
+        )
+        assert result.returncode == 0, result.stderr
+        args = json.loads(result.stdout)["mcpServers"]["neosian-memory"]["args"]
+        assert args[args.index("--root") + 1] == str(tmp_path / "home")
+        tokens = [args[i + 1] for i, a in enumerate(args) if a == "--mount"]
+        assert [t.split(",")[1] for t in tokens] == ["path=user", "path=project"]
+        assert tokens[1].split(",")[0].endswith("/proj:demo-proj")
+        hooks = _run(
+            ["record", "install", "--client", "claude-code"], cwd=project, env=env
+        )
+        assert hooks.returncode == 0, hooks.stderr
+        assert "/proj:demo-proj,path=project" in hooks.stdout
+        assert str(tmp_path / "home" / "spool") in hooks.stdout
+        # The shell itself keeps the scope the caller's: the refusal shows
+        # this directory's spelling instead of deciding it.
+        bare = _run(["memory", "view", "/"], cwd=project, env=env)
+        assert bare.returncode == 2
+        assert "this directory's layout" in bare.stderr
+        assert "/proj:demo-proj,path=project" in bare.stderr
+        assert not (tmp_path / "home").exists()  # nothing built on the tier
 
     def test_install_refuses_a_missing_client_dir(self, tmp_path: Path) -> None:
         env = _env(tmp_path)  # empty fake HOME — Cursor is "not installed"

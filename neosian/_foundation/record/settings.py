@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
 from neosian._foundation.memory.actor import parse_actor
+from neosian._foundation.memory.home import PROJECT_MOUNT_PATH, SPOOL_DIR_NAME, home
 from neosian._foundation.memory.settings import (
     StoreSettings,
     add_mount_arguments,
@@ -30,7 +31,6 @@ if TYPE_CHECKING:
     from neosian._foundation.memory.mounts import Mount
 
 DEFAULT_AGENT: Final = "claude-code"
-DEFAULT_SPOOL: Final = Path(".neosian") / "spool"
 _UNUSED_ACTOR: Final = "cli:record"  # StoreSettings needs one; the session's is stamped
 # Codex's `Stop` hook expects JSON on stdout at exit 0 ("plain text output is
 # invalid for this event" — its hooks reference, 2026-09-03); Claude Code
@@ -41,7 +41,7 @@ JSON_STOP_AGENTS: Final = frozenset({"codex"})
 @dataclass(frozen=True, slots=True)
 class RecordSettings:
     """Everything the verb needs: the store, where the sessions document
-    lands (the first read-write mount), the agent's kind, the spool."""
+    lands (`sessions_mount`), the agent's kind, the spool."""
 
     store: StoreSettings
     mount: Mount
@@ -61,9 +61,9 @@ def add_record_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--spool",
         type=Path,
-        default=DEFAULT_SPOOL,
+        default=None,
         help="where an open span waits between the prompt and the stop; "
-        f"never the store (default: {DEFAULT_SPOOL})",
+        f"never the store (default: {SPOOL_DIR_NAME}/ under the home)",
     )
 
 
@@ -72,18 +72,33 @@ def validate_agent_kind(agent: str) -> None:
     parse_actor(f"{agent}:session")
 
 
+def sessions_mount(mounts: tuple[Mount, ...]) -> Mount | None:
+    """Where the sessions document lands (§22): the mount at `/project`
+    when present, else the first read-write one; None when no mount
+    can take it."""
+    writable = [m for m in mounts if not m.read_only and not m.edit_only]
+    for mount in writable:
+        if mount.mount_path == PROJECT_MOUNT_PATH:
+            return mount
+    return writable[0] if writable else None
+
+
 def resolve_record_settings(
     parser: argparse.ArgumentParser,
     args: argparse.Namespace,
     env: Mapping[str, str],
+    *,
+    layout: Path | None = None,
 ) -> RecordSettings:
     """Resolve the flags against `env`; construct nothing (exit 2 via
-    `parser.error` on a shape miss)."""
+    `parser.error` on a shape miss). `layout` is the installer's derived
+    mount default (`resolve_mounts`)."""
     selection = resolve_store_selection(parser, args, env)
-    mounts = resolve_mounts(parser, args)
-    writable = [m for m in mounts if not m.read_only and not m.edit_only]
-    if not writable:
+    mounts = resolve_mounts(parser, args, layout=layout)
+    mount = sessions_mount(mounts)
+    if mount is None:
         parser.error("the sessions document needs a read-write mount (no ,ro or ,eo)")
+        raise AssertionError  # pragma: no cover - parser.error exits
     try:
         validate_agent_kind(args.agent)
     except MemoryActorInvalidError as exc:
@@ -97,6 +112,5 @@ def resolve_record_settings(
         url=selection.url,
         client_token=selection.client_token,
     )
-    return RecordSettings(
-        store=store, mount=writable[0], agent=args.agent, spool=args.spool
-    )
+    spool: Path = args.spool if args.spool is not None else home(env) / SPOOL_DIR_NAME
+    return RecordSettings(store=store, mount=mount, agent=args.agent, spool=spool)

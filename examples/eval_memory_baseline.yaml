@@ -483,7 +483,7 @@ scenarios:
             as FETCH4821.
         expect_store:
           documents:
-            - path: /user/sessions/cc-7f3a
+            - path: /project/sessions/cc-7f3a
               content: {contains: "claude-code"}
               versions: 1
       - name: neosian-recalls
@@ -501,6 +501,6 @@ scenarios:
                 arguments: {turn: 1, conversation: cc-7f3a}
           - content: "It was filed under FETCH4821 — a retry with exponential backoff in fetch()."
         # Reading never writes: the sessions document is the one live
-        # document under /user.
+        # document under /project (the mount at /project takes it, §22).
         expect_store:
-          counts: {/user: 1}
+          counts: {/project: 1}

@@ -6,11 +6,13 @@ import io
 import json
 import sys
 from collections.abc import Sequence
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from neosian._foundation.memory.home import HOME_ENV
 from neosian._foundation.memory.mounts import Mount
 from neosian._foundation.memory.settings import StoreSettings
 from neosian._foundation.record.install import (
@@ -232,13 +234,53 @@ class TestExitTiers:
         [
             ["--root", "m", "--scope", "user:me"],  # no client
             ["--client", "cursor", "--root", "m", "--scope", "user:me"],
-            ["--client", "claude-code"],  # no store
+            ["--client", "claude-code", "--root", "m", "--url", "http://x"],
             ["--client", "claude-code", "--root", "m", "--scope", "NOT A SCOPE"],
         ],
     )
     def test_bad_invocations_exit_2(self, tmp_path: Path, argv: list[str]) -> None:
         code, out, _ = _run(argv, _context(tmp_path))
         assert code == 2 and out == ""
+
+
+class TestTheHome:
+    """DESIGN §22: no store flags — the home is the root, the project
+    layout the mounts, both rendered visibly into the hook line."""
+
+    def test_no_flags_render_the_home_and_the_derived_layout(
+        self, tmp_path: Path
+    ) -> None:
+        context = _context(tmp_path)
+        (context.home / ".claude").mkdir()
+        env = {HOME_ENV: str(tmp_path / "nh")}
+        code, out, err = _run(["--client", "claude-code"], context, env)
+        assert code == 0, err
+        command = out  # the hooks fragment carries the one shell line
+        assert f"--root {tmp_path / 'nh'}" in command
+        assert "--mount scope=user:" in command
+        assert ",path=user " in command
+        assert "/proj:proj,path=project" in command  # the cwd's name, slugged
+        assert f"--spool {tmp_path / 'nh' / 'spool'}" in command
+        assert "one root shared by every project" in err  # the one-writer hint
+        assert not (tmp_path / "nh").exists()  # print mode builds nothing
+
+    def test_explicit_mounts_win(self, tmp_path: Path) -> None:
+        context = _context(tmp_path)
+        (context.home / ".claude").mkdir()
+        code, out, _ = _run(
+            ["--client", "claude-code", "--scope", "user:me", "--json"], context
+        )
+        assert code == 0
+        command = json.loads(out)["command"]
+        assert (
+            "scope=user:me,path=memories" in command and "path=project" not in command
+        )
+
+    def test_a_nameless_directory_exits_2(self, tmp_path: Path) -> None:
+        context = replace(_context(tmp_path), cwd=Path("/"))
+        code, out, err = _run(["--client", "claude-code"], context)
+        assert code == 2 and out == ""
+        assert "--scope" in err
 
 
 class TestCodex:

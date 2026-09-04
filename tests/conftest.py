@@ -34,6 +34,14 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
                 item.add_marker(getattr(pytest.mark, f"external_{suite}"))
 
 
+@pytest.fixture(autouse=True)
+def _isolated_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The home (DESIGN §22) is every entry's default store, so a test that
+    passes no store flag would otherwise reach the developer's real
+    `~/.neosian`; each test gets its own under tmp_path."""
+    monkeypatch.setenv("NEOSIAN_HOME", str(tmp_path / "home"))
+
+
 @pytest.fixture
 def sample_system_prompt() -> str:
     """Sample system prompt for testing."""

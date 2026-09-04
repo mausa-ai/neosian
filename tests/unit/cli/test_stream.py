@@ -58,7 +58,7 @@ class TestStreamTurn:
             FakeTurn(content="Noted: espresso, filed."),
             memory=memory,
         )
-        convo = open_chat(config, root=tmp_path, conversation_id="t1")
+        convo = open_chat(config, conversation_id="t1")
         console, out = _console()
         await stream_turn(
             console,
@@ -75,11 +75,9 @@ class TestStreamTurn:
         assert text.rstrip().endswith(turn_title(config).plain) or "fake/fake" in text
         assert (tmp_path / "mem").exists()
 
-    async def test_deltas_arrive_whole_and_the_footer_prices_the_turn(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_deltas_arrive_whole_and_the_footer_prices_the_turn(self) -> None:
         config = _config(FakeTurn(content="The answer is forty-two."))
-        convo = open_chat(config, root=tmp_path, conversation_id="t2")
+        convo = open_chat(config, conversation_id="t2")
         console, out = _console()
         await stream_turn(
             console, convo, "hi", model=Model.FAKE, title=turn_title(config)

@@ -27,11 +27,11 @@ The repository is private; as a dependency of another uv project, install
 from the git URL, pinned to a release tag (extras ride the same URL):
 
 ```bash
-uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.84.0"
-uv add "neosian[postgres] @ git+ssh://git@github.com/neosae/neosian@v0.84.0"   # + PostgresStore
-uv add "neosian[mcp] @ git+ssh://git@github.com/neosae/neosian@v0.84.0"        # + MCP memory server
-uv add "neosian[otel] @ git+ssh://git@github.com/neosae/neosian@v0.84.0"       # + OpenTelemetry spans
-uv add "neosian[server] @ git+ssh://git@github.com/neosae/neosian@v0.84.0"     # + the state process
+uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.85.0"
+uv add "neosian[postgres] @ git+ssh://git@github.com/neosae/neosian@v0.85.0"   # + PostgresStore
+uv add "neosian[mcp] @ git+ssh://git@github.com/neosae/neosian@v0.85.0"        # + MCP memory server
+uv add "neosian[otel] @ git+ssh://git@github.com/neosae/neosian@v0.85.0"       # + OpenTelemetry spans
+uv add "neosian[server] @ git+ssh://git@github.com/neosae/neosian@v0.85.0"     # + the state process
 ```
 
 The core install is database-driver-free, MCP-free, and server-free
@@ -82,14 +82,20 @@ thread — history persists per turn, and resume is constructing again with
 the same id:
 
 ```python
-from neosian import Conversation, FileStore
+from neosian import Conversation, FileStore, home, project_scope
 
-store = FileStore(".neosian")
+store = FileStore(home())                 # ~/.neosian, or $NEOSIAN_HOME
 convo = Conversation(configuration, store=store, conversation_id="thread-829",
-                     memory_scope="user:1234")
+                     memory_scope=project_scope())   # user:<login>/proj:<dir>
 async with convo:
     response = await convo.send("Where did we leave off?")
 ```
+
+`home()` is the one place every neosian door shares — the shell, the
+MCP server, a foreign agent's hooks, the playground — and
+`project_scope()` spells this directory's scope the way those hooks
+do, so one `neosian audit --scope` lists every agent's work here. Any
+scope string works in its place.
 
 `Conversation` accepts an `Agent` or an `AgentConfig`. Log-projection
 compaction is default-on (`CompactionConfig`: 8 hot turns, trigger at 0.75
@@ -125,7 +131,7 @@ from neosian import AgentConfig, FileStore, MemoryConfig, Mount
 configuration = AgentConfig(
     ...,
     memory=MemoryConfig(
-        store=FileStore(".neosian/memory"),
+        store=FileStore(home()),
         mounts=(
             Mount(scope="user:demo", mount_path="user",
                   description="durable facts about the user"),
@@ -135,6 +141,10 @@ configuration = AgentConfig(
     ),
 )
 ```
+
+`project_mounts()` builds exactly this layout for the current directory
+and login — the layout `neosian record install` and `neosian mcp
+install` render by default.
 
 `memory_scope="user:1234"` on `Conversation` is the one-mount sugar for
 exactly this. Two write controls, enforced in code: `read_only=True`
@@ -174,15 +184,15 @@ The same six commands, no Python in the loop — the shell transport over
 the same dispatcher the four runtime transports execute:
 
 ```bash
-neosian memory view / --root .neosian/memory --scope user:me
-neosian memory create /memories/prefs.md --content - <<'EOF'
+neosian memory view / --scope user:me            # the home, ~/.neosian
+neosian memory create /memories/prefs.md --content - --scope user:me <<'EOF'
 User prefers concise answers.
 EOF
 ```
 
-Store flags on every command: `--root` / `--scope` / `--mount
-scope=...,path=...[,ro|,eo]` / `--actor` (recorded on version rows;
-convention `cli:<host>`). `--json` prints the memory tool's result
+Store flags on every command: `--root` (default: the home) / `--scope`
+/ `--mount scope=...,path=...[,ro|,eo]` / `--actor` (recorded on
+version rows; convention `cli:<host>`). `--json` prints the memory tool's result
 envelope verbatim. Exit tiers everywhere: 0 success · 1 ran-and-failed ·
 2 bad invocation · 130 interrupt; stdout carries the artifact, stderr
 the `error:`/`hint:` guidance. Postgres arrives only via
@@ -243,6 +253,7 @@ The same stores, served to any MCP client — Claude Code, Claude Desktop,
 Cursor — over stdio (`mcp` extra):
 
 ```bash
+python -m neosian.mcp --scope user:me                  # the home
 python -m neosian.mcp --root ~/.my-agent/memory --scope user:me
 ```
 
@@ -263,7 +274,10 @@ The record half, for the agent you already use: `neosian record install
 `neosian record` (a plugin file for OpenCode); a prompt-to-stop span then lands as one turn by
 `claude-code:<session_id>` (or `codex:<thread_id>`) plus a sessions
 document, and `neosian audit --conversation <id>` reads it back
-(`neosian docs agents`).
+(`neosian docs agents`). With no flags both installers name the home
+and this directory's layout — `user:<login>` at `/user`,
+`user:<login>/proj:<slug>` at `/project` — so a foreign agent and a
+neosian `Conversation(memory_scope=project_scope())` share one scope.
 
 ## The state process
 
@@ -274,6 +288,7 @@ one container in a dev compose. It adds no capability the library lacks,
 only reach; the quickstart above stays embedded.
 
 ```bash
+NEOSIAN_SERVE_TOKEN=change-me neosian serve            # serves the home
 NEOSIAN_SERVE_TOKEN=change-me neosian serve --root ~/.my-agent/state
 ```
 
@@ -465,8 +480,9 @@ so a prompt-pack change without a recorded re-run fails `make test`.
 - Skills for app-supplied procedures; a shared board between agents is a
   memory mount (`Conversation(board="task:42")`, NB)
 - Playground: `uv run neosian playground examples/basic_agent.py` — chats
-  persist per turn to `.neosian/conversations/<id>/`, `--resume <id>`
-  continues one
+  persist per turn to `~/.neosian/conversations/<id>/`, `--resume <id>`
+  continues one; an agent file that names no memory gets this
+  directory's project layout on the home
 
 ## Stability
 

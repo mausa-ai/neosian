@@ -64,15 +64,20 @@ A store plus a conversation id turns the stateless agent into a
 persistent, memory-bearing thread:
 
 ```python
-from neosian import Conversation, FileStore
+from neosian import Conversation, FileStore, home, project_scope
 
-store = FileStore(".neosian")            # or PostgresStore(dsn)
+store = FileStore(home())                # ~/.neosian; or PostgresStore(dsn)
 convo = Conversation(config, store=store,
                      conversation_id="thread-829",
-                     memory_scope="user:1234")
+                     memory_scope=project_scope())   # user:<login>/proj:<dir>
 async with convo:
     response = await convo.send("Where did we leave off?")
 ```
+
+`home()` is the one place every neosian door shares — `~/.neosian`, or
+`$NEOSIAN_HOME` — and `project_scope()` spells this directory's scope,
+the same one a Claude Code session's hooks write to from here (`neosian
+docs agents`); any scope string works in its place.
 
 Resume is constructing again with the same id. History is append-only;
 log-projection compaction (default-on) pages aged turns out of context

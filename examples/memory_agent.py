@@ -6,14 +6,13 @@ Usage:
 Tell it something worth remembering, /exit, relaunch, and ask about it:
 the agent consults its memory through the `memory` tool, and the index
 of what it knows is injected into the system prompt at startup. Memory
-lives under the gitignored .neosian/memory directory — read it with cat.
+lives in the home — `~/.neosian`, or `$NEOSIAN_HOME` — under the
+project layout every neosian door shares (DESIGN §22): `user:<login>` at
+/user and `user:<login>/proj:<slug>` at /project, the slug this
+directory's name. Read it with cat; `neosian audit --scope` lists it.
 """
 
-from pathlib import Path
-
-from neosian import AgentConfig, FileStore, MemoryConfig, Model, Mount
-
-_STORE_ROOT = Path(__file__).resolve().parent.parent / ".neosian" / "memory"
+from neosian import AgentConfig, FileStore, MemoryConfig, Model, home, project_mounts
 
 configuration = AgentConfig(
     system_prompt=(
@@ -23,19 +22,5 @@ configuration = AgentConfig(
     ),
     model=Model.CEREBRAS_GPT_OSS_120B,
     enable_todo=False,
-    memory=MemoryConfig(
-        store=FileStore(_STORE_ROOT),
-        mounts=(
-            Mount(
-                scope="user:demo",
-                mount_path="user",
-                description="durable facts about the user",
-            ),
-            Mount(
-                scope="user:demo/proj:neosian",
-                mount_path="project",
-                description="facts about the current project",
-            ),
-        ),
-    ),
+    memory=MemoryConfig(store=FileStore(home()), mounts=project_mounts()),
 )

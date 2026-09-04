@@ -190,8 +190,9 @@ class TestArgvTier:
     async def test_root_and_dsn_conflict_exits_2(self) -> None:
         assert await _exit_code(["view", *_STORE], _DSN_ENV) == 2
 
-    async def test_no_store_exits_2(self) -> None:
-        assert await _exit_code(["view", "--scope", "user:me"]) == 2
+    async def test_two_stores_exit_2(self) -> None:
+        argv = ["view", "--root", "m", "--url", "http://x", "--scope", "user:me"]
+        assert await _exit_code(argv) == 2
 
     async def test_schema_with_root_exits_2(self) -> None:
         assert await _exit_code(["view", *_STORE, "--schema", "acme"]) == 2

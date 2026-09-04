@@ -592,11 +592,11 @@ class TestCrossClientNegatives:
                 arguments: {turn: 1, conversation: cc-1}
           - tool_calls:
               - name: memory
-                arguments: {command: create, path: /user/note, content: x}
+                arguments: {command: create, path: /project/note, content: x}
           - content: done
         expect_store:
-          counts: {/user: 1}
+          counts: {/project: 1}
         """
         report = await _run(_suite(tmp_path, scenarios), tmp_path / "stores")
         assert report.failed == 1
-        assert any("/user" in f and "2" in f for f in _failures(report))
+        assert any("/project" in f and "2" in f for f in _failures(report))

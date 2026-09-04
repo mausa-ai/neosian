@@ -32,8 +32,7 @@ the value of `--content` / `--new-str` / `--insert-text` reads stdin
 (the heredoc idiom; exactly one payload flag per command):
 
 ```bash
-neosian memory create user/prefs.md --content - \
-    --root .neosian/memory --scope user:me <<'EOF'
+neosian memory create user/prefs.md --content - --scope user:me <<'EOF'
 User prefers concise answers.
 EOF
 ```
@@ -42,7 +41,7 @@ EOF
 
 | flag | meaning |
 |---|---|
-| `--root DIR` | FileStore root (created on first write) |
+| `--root DIR` | FileStore root (created on first write); default: the home, `~/.neosian` or `$NEOSIAN_HOME` |
 | `--url URL` | the state process instead of a root; its token in `NEOSIAN_CLIENT_TOKEN` |
 | `--scope SCOPE` | single read-write mount of SCOPE at `/memories` (the sugar) |
 | `--mount scope=...,path=...` | explicit mount; repeatable; append `,ro` (read-only) or `,eo` (edit-only) |
@@ -145,7 +144,9 @@ opens a span, `PostToolUse` adds a tool round, `Stop` lands it as one
 turn by `<agent>:<session_id>` in the conversation the session id names
 and writes the scope's sessions document. It takes the store and mount
 flags above plus `--agent KIND` (default `claude-code`) and `--spool
-DIR` (default `.neosian/spool`, never the store). `neosian record
+DIR` (default `spool/` under the home, never the store). The sessions
+document lands in the mount at `/project` when there is one, else the
+first read-write mount. `neosian record
 install --client claude-code|codex|opencode [--write]` renders or applies the hooks —
 the `mcp install` twin (`neosian docs agents`). The exit tiers bend once
 for the hook's sake: 2 only for argv, 1 for everything after, so a

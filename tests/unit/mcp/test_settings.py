@@ -9,6 +9,7 @@ from neosian._foundation.mcp.settings import (
     ServerSettings,
     parse_args,
 )
+from neosian._foundation.memory.home import HOME_ENV
 from neosian._foundation.shared.exceptions import (
     MemoryPathInvalidError,
     MemoryScopeInvalidError,
@@ -38,16 +39,24 @@ class TestStores:
         settings = parse_args(["--scope", "user:me", "--schema", "acme"], _DSN_ENV)
         assert settings.schema == "acme"
 
-    def test_empty_env_dsn_is_unset(self) -> None:
-        # An absent CI secret arrives as "" — falsiness, not None (§10).
-        with pytest.raises(SystemExit) as excinfo:
-            parse_args(["--scope", "user:me"], {POSTGRES_DSN_ENV: ""})
-        assert excinfo.value.code == 2
+    def test_empty_env_dsn_is_unset(self, tmp_path: Path) -> None:
+        # An absent CI secret arrives as "" — falsiness, not None (§10):
+        # no store is named, so the home is the store.
+        env = {POSTGRES_DSN_ENV: "", HOME_ENV: str(tmp_path / "h")}
+        settings = parse_args(["--scope", "user:me"], env)
+        assert settings.dsn is None
+        assert settings.root == tmp_path / "h"
+
+    def test_no_store_flag_is_the_home(self, tmp_path: Path) -> None:
+        # DESIGN §22: a stated location replaces "a store is required".
+        settings = parse_args(["--scope", "user:me"], {HOME_ENV: str(tmp_path)})
+        assert settings.root == tmp_path
+        assert settings.dsn is None and settings.url is None
 
     @pytest.mark.parametrize(
         "argv",
         [
-            ["--scope", "user:me"],  # no store at all
+            ["--root", "m", "--url", "http://x", "--scope", "user:me"],  # two stores
             ["--root", "m", "--schema", "acme", "--scope", "user:me"],
         ],
     )

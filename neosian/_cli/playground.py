@@ -8,7 +8,6 @@ id); arena mode stays in-memory in `arena.py`.
 import asyncio
 import dataclasses
 import os
-from pathlib import Path
 
 from rich.console import Console
 
@@ -107,7 +106,7 @@ def run_playground(
         raise SystemExit(1) from e
 
     # Run chat loop — the store is constructed inside, in this one event
-    # loop, so --help/arena/cancel paths never create .neosian/.
+    # loop, so --help/arena/cancel paths never create the home.
     try:
         asyncio.run(
             run_chat(
@@ -115,7 +114,6 @@ def run_playground(
                 config,
                 agent_name,
                 conversation_id=conversation_id,
-                root=Path.cwd(),
                 resumed=resume is not None,
             )
         )

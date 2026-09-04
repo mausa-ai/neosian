@@ -7,7 +7,13 @@ from typing import Self
 import pytest
 
 from neosian import AgentConfig, Model
-from neosian._cli.chat import new_conversation_id, open_chat, resolve_resume
+from neosian._cli.chat import (
+    chat_config,
+    describe_memory,
+    new_conversation_id,
+    open_chat,
+    resolve_resume,
+)
 from neosian._foundation.conversation.ids import parse_conversation_id
 from neosian._foundation.llm.fake import FakeClient, FakeScript, FakeTurn
 from neosian._foundation.memory.file import FileStore
@@ -91,15 +97,44 @@ class TestResolveResume:
 
 @pytest.mark.unit
 class TestOpenChat:
-    async def test_send_lands_in_the_cwd_store_layout(self, tmp_path: Path) -> None:
-        convo = open_chat(_config(), root=tmp_path, conversation_id="t1")
+    async def test_send_lands_in_the_home_store_layout(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The home fixture points NEOSIAN_HOME at tmp_path/home (DESIGN §22).
+        monkeypatch.chdir(tmp_path)
+        convo = open_chat(_config(), conversation_id="t1")
         await convo.send("hi")
-        assert (tmp_path / ".neosian" / "conversations" / "t1" / "turns.jsonl").exists()
+        home = tmp_path / "home"
+        assert (home / "conversations" / "t1" / "turns.jsonl").exists()
 
-    async def test_resume_by_id_round_trips(self, tmp_path: Path) -> None:
-        first = open_chat(_config(), root=tmp_path, conversation_id="t1")
+    def test_a_config_without_memory_gets_the_project_layout(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        project = tmp_path / "demo proj"
+        project.mkdir()
+        monkeypatch.chdir(project)
+        store = FileStore(tmp_path / "home")
+        config = _config()
+        derived = chat_config(config, store)
+        assert config.memory is None  # never mutated in place
+        assert derived.memory.store is store
+        assert [m.mount_path for m in derived.memory.mounts] == ["user", "project"]
+        assert derived.memory.mounts[1].scope.endswith("/proj:demo-proj")
+        assert describe_memory(config).endswith("/proj:demo-proj")
+
+    def test_a_config_with_memory_is_left_alone(self, tmp_path: Path) -> None:
+        memory = MemoryConfig(
+            store=FileStore(tmp_path / "memstore"),
+            mounts=(Mount(scope="user:demo", mount_path="memories"),),
+        )
+        config = _config(memory=memory)
+        assert chat_config(config, FileStore(tmp_path / "home")) is config
+        assert describe_memory(config) == "/memories = user:demo"
+
+    async def test_resume_by_id_round_trips(self) -> None:
+        first = open_chat(_config(), conversation_id="t1")
         await first.send("hi")
-        second = open_chat(_config(), root=tmp_path, conversation_id="t1")
+        second = open_chat(_config(), conversation_id="t1")
         await second.start()
         assert [m.content for m in second.messages] == ["hi", "ok"]
 
@@ -111,7 +146,7 @@ class TestOpenChat:
             mounts=(Mount(scope="user:demo", mount_path="memories"),),
         )
         config = _config(memory=memory)
-        convo = open_chat(config, root=tmp_path, conversation_id="t1")
+        convo = open_chat(config, conversation_id="t1")
         await convo.send("hi")
         assert config.system_prompt == _SYSTEM
         assert config.memory is memory

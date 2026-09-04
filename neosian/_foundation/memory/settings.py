@@ -7,6 +7,8 @@ nothing here constructs a store or touches the filesystem. Postgres
 arrives only through `NEOSIAN_POSTGRES_DSN` — argv is world-readable in
 `ps`, so there is no `--dsn` flag (ledger #53; the key renamed from
 `NEOSIAN_MCP_POSTGRES_DSN` when it stopped being MCP-specific, #76).
+Since NU the home (`home.py`, DESIGN §22) is the store when no flag names
+one — a stated location, still constructed only past the grammar tier.
 """
 
 from __future__ import annotations
@@ -22,8 +24,12 @@ if TYPE_CHECKING:
     from _typeshed import SupportsWrite
 
 from neosian._foundation.memory.actor import parse_actor
+from neosian._foundation.memory.home import HOME_ENV, home, project_mounts
 from neosian._foundation.memory.mounts import Mount
-from neosian._foundation.shared.exceptions import MemoryActorInvalidError
+from neosian._foundation.shared.exceptions import (
+    ConfigurationError,
+    MemoryActorInvalidError,
+)
 
 POSTGRES_DSN_ENV: Final = "NEOSIAN_POSTGRES_DSN"
 # The token a *client* of the state process presents (DESIGN §20) — a
@@ -119,7 +125,10 @@ def add_store_selection_arguments(parser: argparse.ArgumentParser) -> None:
     """The store-selection half of the grammar: a root, a daemon URL, or
     (by environment) a DSN; `resolve_store_selection` reads them."""
     parser.add_argument(
-        "--root", type=Path, help="FileStore root directory (created on start)"
+        "--root",
+        type=Path,
+        help="FileStore root directory (created on start; default: the home, "
+        f"~/.neosian or ${HOME_ENV})",
     )
     parser.add_argument(
         "--url",
@@ -165,7 +174,8 @@ def add_store_arguments(parser: argparse.ArgumentParser, *, default_actor: str) 
 
 @dataclass(frozen=True, slots=True)
 class StoreSelection:
-    """Which store the flags name — exactly one of root, dsn, url."""
+    """Which store the flags name — exactly one of root, dsn, url; the
+    home when none is named."""
 
     root: Path | None
     dsn: str | None
@@ -179,7 +189,8 @@ def resolve_store_selection(
     args: argparse.Namespace,
     env: Mapping[str, str],
 ) -> StoreSelection:
-    """Resolve the store half of the grammar: exactly one of root, DSN, URL."""
+    """Resolve the store half of the grammar: at most one of root, DSN,
+    URL — the home (§22) when none is named. Explicit flags always win."""
     dsn = env.get(POSTGRES_DSN_ENV) or None
     url: str | None = args.url
     named = [
@@ -193,10 +204,7 @@ def resolve_store_selection(
     ]
     if len(named) > 1:
         parser.error(f"{' and '.join(named)} are mutually exclusive")
-    if not named:
-        parser.error(
-            f"a store is required: pass --root, --url, or set {POSTGRES_DSN_ENV}"
-        )
+    root: Path | None = args.root if named else home(env)
     if args.schema is not None and dsn is None:
         parser.error("--schema applies only to Postgres (unset --root/--url)")
     client_token: str | None = None
@@ -211,7 +219,7 @@ def resolve_store_selection(
             )
     schema: str = args.schema if args.schema is not None else DEFAULT_SCHEMA
     return StoreSelection(
-        root=args.root, dsn=dsn, url=url, client_token=client_token, schema=schema
+        root=root, dsn=dsn, url=url, client_token=client_token, schema=schema
     )
 
 
@@ -220,11 +228,16 @@ def resolve_mounts(
     args: argparse.Namespace,
     *,
     required: bool = True,
+    layout: Path | None = None,
 ) -> tuple[Mount, ...]:
     """Resolve the mount half of the grammar.
 
     `required=False` is the state process's relaxation (DESIGN §18): its
     store-shaped API needs no mounts — only the MCP surface does.
+    `layout` is the installers' default (§22): the directory whose
+    project layout is rendered — visibly, into the client's config —
+    when no flag names a mount. Everywhere else the scope stays the
+    caller's to spell; the refusal shows this directory's spelling.
     """
     if args.scope is not None and args.mount:
         parser.error("--scope is the single-mount sugar; use --mount for multi-mount")
@@ -232,25 +245,46 @@ def resolve_mounts(
         return (Mount(scope=args.scope, mount_path=SUGAR_MOUNT_PATH),)
     if args.mount:
         return tuple(parse_mount(parser, token) for token in args.mount)
+    if layout is not None:
+        try:
+            return project_mounts(layout)
+        except ConfigurationError as exc:
+            parser.error(exc.message)
     if required:
-        parser.error("memory needs an explicit scope: pass --scope or --mount")
+        parser.error(
+            f"memory needs an explicit scope: pass --scope or --mount{layout_hint()}"
+        )
         raise AssertionError  # pragma: no cover - parser.error exits
     return ()
+
+
+def layout_hint() -> str:
+    """This directory's project layout as `--mount` tokens, for a refusal;
+    empty where the directory has no derived scope."""
+    try:
+        mounts = project_mounts()
+    except ConfigurationError:
+        return ""
+    tokens = " ".join(f"--mount {format_mount(m)}" for m in mounts)
+    return f" (this directory's layout: {tokens})"
 
 
 def resolve_store_settings(
     parser: argparse.ArgumentParser,
     args: argparse.Namespace,
     env: Mapping[str, str],
+    *,
+    layout: Path | None = None,
 ) -> StoreSettings:
     """Resolve parsed store flags against `env`; construct no store.
 
     Shape errors exit 2 via `parser.error`; scope and mount-path
     validation is structural (`Mount` raises `MemoryScopeInvalidError` /
-    `MemoryPathInvalidError`, which the entry point renders).
+    `MemoryPathInvalidError`, which the entry point renders). `layout`
+    is `resolve_mounts`'s: the installers' derived default.
     """
     selection = resolve_store_selection(parser, args, env)
-    mounts = resolve_mounts(parser, args)
+    mounts = resolve_mounts(parser, args, layout=layout)
     return StoreSettings(
         mounts=mounts,
         root=selection.root,
