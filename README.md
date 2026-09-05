@@ -214,9 +214,13 @@ make test-container                                     # both kits vs the conta
 ```
 
 The default gate needs no accounts; external tiers inject credentials
-value-blind. [CONTRIBUTING.md](CONTRIBUTING.md) has the rest;
-[SECURITY.md](SECURITY.md) is where vulnerabilities go, and
-[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) applies in every project space.
+value-blind. Sign off every commit (`git commit -s`): contributions are
+accepted under the [Developer Certificate of
+Origin](https://developercertificate.org/) and licensed as the project
+is, Apache-2.0 — there is no CLA. Open an issue before a feature or a
+departure from documented behaviour; the public API is pinned by
+`tests/unit/test_init.py`, so an export change is a reviewed diff.
+[SECURITY.md](SECURITY.md) is where vulnerabilities go, never an issue.
 
 ## Documents
 
@@ -231,3 +235,8 @@ value-blind. [CONTRIBUTING.md](CONTRIBUTING.md) has the rest;
   every beat above, one page each, verbatim.
 - [llms.txt](llms.txt) — the machine-readable front door (byte-identical
   twin ships in the wheel).
+
+---
+
+Be kind and constructive in every project space; the maintainers read
+**community@neosian.com**.

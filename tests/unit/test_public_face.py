@@ -1,7 +1,8 @@
-"""The repository as strangers meet it (NI, DESIGN §28): the legal and
-community floor exists, the license metadata agrees with the file, and
-the installer is the shape the ruling fixed — pinned keylessly so a
-missing file fails the gate, never a visitor."""
+"""The repository as strangers meet it (NI, DESIGN §28; the floor trimmed
+at NX, ledger #199): the three floor files exist, SECURITY.md names the
+channel, the license metadata agrees with the file, and the installer is
+the shape the ruling fixed — pinned keylessly so a missing file fails the
+gate, never a visitor."""
 
 import re
 import tomllib
@@ -10,7 +11,7 @@ from pathlib import Path
 import pytest
 
 _ROOT = Path(__file__).resolve().parents[2]
-_FLOOR = ("LICENSE", "CODE_OF_CONDUCT.md", "SECURITY.md", "CONTRIBUTING.md")
+_FLOOR = ("LICENSE", "README.md", "SECURITY.md")
 _INSTALLER = _ROOT / "scripts" / "install.sh"
 _DOCKERFILE = _ROOT / "Dockerfile"
 
@@ -19,6 +20,18 @@ _DOCKERFILE = _ROOT / "Dockerfile"
 @pytest.mark.parametrize("name", _FLOOR)
 def test_the_floor_exists(name: str) -> None:
     assert (_ROOT / name).read_text(encoding="utf-8").strip()
+
+
+@pytest.mark.unit
+def test_security_names_the_channel_and_the_address() -> None:
+    # Private vulnerability reporting first, the one library address by
+    # email (ledger #186, #199); the README carries conduct and the DCO.
+    policy = (_ROOT / "SECURITY.md").read_text(encoding="utf-8")
+    assert "private vulnerability reporting" in policy
+    assert "community@neosian.com" in policy
+    readme = (_ROOT / "README.md").read_text(encoding="utf-8")
+    assert "git commit -s" in readme
+    assert "community@neosian.com" in readme
 
 
 @pytest.mark.unit

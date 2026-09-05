@@ -18,9 +18,9 @@ phase close names the version.
 - `scripts/install.sh` — the curl installer: it finds `uv` or installs it
   from a pinned release, runs `uv tool install "neosian[cli]"` and checks
   the PATH; `--find-links` and `--version` are accepted.
-- `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1), `SECURITY.md` and
-  `CONTRIBUTING.md` (the DCO), plus GitHub issue and pull-request
-  templates.
+- `SECURITY.md` — where to report, and the supported line. The public
+  floor is LICENSE, README and this file; the DCO sign-off lives in
+  README's Development section.
 
 ### Changed
 - The repository's one uv pin — the Dockerfile, the installer and both
