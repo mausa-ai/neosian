@@ -35,6 +35,18 @@ def test_security_names_the_channel_and_the_address() -> None:
 
 
 @pytest.mark.unit
+def test_the_record_is_not_here() -> None:
+    # The roadmap, the design record, the tour and the agent procedures
+    # live in a private sibling repository (ledger #198, #200); the public
+    # tree carries AGENTS.md and a CLAUDE.md that only defers to it.
+    assert not (_ROOT / "docs").exists()
+    assert not (_ROOT / ".claude" / "commands").exists()
+    assert (_ROOT / "CLAUDE.md").read_text(encoding="utf-8") == "@AGENTS.md\n"
+    agents = (_ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    assert agents.strip() and not any(ln.startswith("@") for ln in agents.splitlines())
+
+
+@pytest.mark.unit
 def test_license_metadata_matches_the_file() -> None:
     with (_ROOT / "pyproject.toml").open("rb") as f:
         assert tomllib.load(f)["project"]["license"] == "Apache-2.0"
