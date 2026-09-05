@@ -118,4 +118,4 @@ def test_the_changelog_names_the_version() -> None:
     text = (_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
     assert "\n## [Unreleased]\n" in text
     assert f"\n## [{neosian.__version__}] - " in text
-    assert f"[{neosian.__version__}]: https://github.com/neosae/neosian/" in text
+    assert f"[{neosian.__version__}]: https://github.com/mausa-ai/neosian/" in text

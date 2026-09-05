@@ -2,7 +2,7 @@
 
 # neosian
 
-[![CI](https://github.com/neosae/neosian/actions/workflows/ci.yml/badge.svg)](https://github.com/neosae/neosian/actions/workflows/ci.yml)
+[![CI](https://github.com/mausa-ai/neosian/actions/workflows/ci.yml/badge.svg)](https://github.com/mausa-ai/neosian/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-6d6d32.svg)](LICENSE)
 [![Python 3.12 | 3.13 | 3.14](https://img.shields.io/badge/python-3.12%20%7C%203.13%20%7C%203.14-6d6d32.svg)](pyproject.toml)
 
@@ -45,12 +45,12 @@ The repository is private; as a dependency of another uv project, install
 from the git URL, pinned to a release tag (extras ride the same URL):
 
 ```bash
-uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.90.0"
-uv add "neosian[postgres] @ git+ssh://git@github.com/neosae/neosian@v0.90.0"   # + PostgresStore
-uv add "neosian[mcp] @ git+ssh://git@github.com/neosae/neosian@v0.90.0"        # + MCP server and client
-uv add "neosian[otel] @ git+ssh://git@github.com/neosae/neosian@v0.90.0"       # + OpenTelemetry spans
-uv add "neosian[server] @ git+ssh://git@github.com/neosae/neosian@v0.90.0"     # + the state process
-uv add "neosian[cli] @ git+ssh://git@github.com/neosae/neosian@v0.90.0"        # + the `neosian` shell
+uv add "neosian @ git+ssh://git@github.com/mausa-ai/neosian@v0.90.0"
+uv add "neosian[postgres] @ git+ssh://git@github.com/mausa-ai/neosian@v0.90.0"   # + PostgresStore
+uv add "neosian[mcp] @ git+ssh://git@github.com/mausa-ai/neosian@v0.90.0"        # + MCP server and client
+uv add "neosian[otel] @ git+ssh://git@github.com/mausa-ai/neosian@v0.90.0"       # + OpenTelemetry spans
+uv add "neosian[server] @ git+ssh://git@github.com/mausa-ai/neosian@v0.90.0"     # + the state process
+uv add "neosian[cli] @ git+ssh://git@github.com/mausa-ai/neosian@v0.90.0"        # + the `neosian` shell
 ```
 
 The core install carries no terminal library, no database driver, no MCP

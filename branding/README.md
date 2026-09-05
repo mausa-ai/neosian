@@ -1,6 +1,6 @@
 # branding/ — the two SVG masters, and the two colours
 
-Neosian is a neosae library, so its identity is the kit's grammar with one
+Neosian is a Mausa AI library, so its identity is the kit's grammar with one
 move of its own. The kit's rules apply unchanged: masters are flat stroke and
 fill in `currentColor`, no `<text>`, no gradient, no `url(`, no raster — so
 they would pass the kit's icon sanitizer as they are.
@@ -14,16 +14,16 @@ they would pass the kit's icon sanitizer as they are.
 
 ## The mark
 
-Seam is the neosae `n` cut at its apex: two arcs of one circle, centre
+Seam is the kit's `n` cut at its apex: two arcs of one circle, centre
 (32, 31), radius 17, stroke 6, a 5-unit gap at the top. That circle has a
 centre Seam never draws. **Keep draws it**: `M 32 31 h 0.01`, a zero-length
 stroke whose round cap is a 6-unit point — the same weight as every other
 stroke, the same `currentColor`. Agents come and go; the store is what they
 were drawn around.
 
-The seam gap stays, so the mark is a neosae mark before it is anything else.
+The seam gap stays, so the mark is a Mausa mark before it is anything else.
 It closes into a solid n by ~110 px by design; at 16 px the point alone tells
-neosian from neosae, which is the right thing to survive.
+neosian from the kit, which is the right thing to survive.
 
 The lockup sets the mark as the first letter at its own 43-unit height against
 the 32-unit x-height (an emphasised n, not a capital). The wordmark reuses the
@@ -35,7 +35,7 @@ sidebar size and the mark vanishes into the word.
 ## The colours
 
 Both come from the Kekova ten, the company's own field (the kit's
-`branding/kekova-stratum.html`). Neosae took the sea; the library takes the
+`branding/kekova-stratum.html`). The kit took the sea; the library takes the
 rock's colour that survives August.
 
 | role | Kekova name | seed | what it is for |

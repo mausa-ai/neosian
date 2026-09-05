@@ -117,7 +117,7 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
 
 ## Install
 
-- `uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.90.0"`
+- `uv add "neosian @ git+ssh://git@github.com/mausa-ai/neosian@v0.90.0"`
   (private repository, no PyPI; pin an annotated release tag, never
   master; extras `[postgres]`, `[mcp]`, `[otel]`, `[server]`, and
   `[cli]` — the `neosian` shell — ride the same URL; the `python -m`

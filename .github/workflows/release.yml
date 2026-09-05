@@ -23,7 +23,7 @@ concurrency:
 
 env:
   UV_VERSION: "0.12.10"
-  IMAGE: ghcr.io/neosae/neosian
+  IMAGE: ghcr.io/mausa-ai/neosian
 
 jobs:
   # Nothing unverified is uploaded: the default gates on the tagged

@@ -16,12 +16,12 @@ The repository is private; install from the git URL, pinned to an
 annotated release tag (never master — extras ride the same URL):
 
 ```bash
-uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v<X.Y.Z>"
-uv add "neosian[postgres] @ git+ssh://git@github.com/neosae/neosian@v<X.Y.Z>"
-uv add "neosian[mcp] @ git+ssh://git@github.com/neosae/neosian@v<X.Y.Z>"
-uv add "neosian[otel] @ git+ssh://git@github.com/neosae/neosian@v<X.Y.Z>"
-uv add "neosian[server] @ git+ssh://git@github.com/neosae/neosian@v<X.Y.Z>"
-uv add "neosian[cli] @ git+ssh://git@github.com/neosae/neosian@v<X.Y.Z>"
+uv add "neosian @ git+ssh://git@github.com/mausa-ai/neosian@v<X.Y.Z>"
+uv add "neosian[postgres] @ git+ssh://git@github.com/mausa-ai/neosian@v<X.Y.Z>"
+uv add "neosian[mcp] @ git+ssh://git@github.com/mausa-ai/neosian@v<X.Y.Z>"
+uv add "neosian[otel] @ git+ssh://git@github.com/mausa-ai/neosian@v<X.Y.Z>"
+uv add "neosian[server] @ git+ssh://git@github.com/mausa-ai/neosian@v<X.Y.Z>"
+uv add "neosian[cli] @ git+ssh://git@github.com/mausa-ai/neosian@v<X.Y.Z>"
 ```
 
 Substitute the current release tag (the `llms.txt` beside this wheel

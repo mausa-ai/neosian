@@ -13,7 +13,7 @@ phase close names the version.
   `.github/`, `branding/` and the import-linter cache never ship.
 - `CHANGELOG.md` — this file; `make release` refuses a version without its
   section.
-- The container image is published to `ghcr.io/neosae/neosian:<X.Y.Z>` on
+- The container image is published to `ghcr.io/mausa-ai/neosian:<X.Y.Z>` on
   release tags (amd64 + arm64); PyPI by trusted publishing (NX).
 - `scripts/install.sh` — the curl installer: it finds `uv` or installs it
   from a pinned release, runs `uv tool install "neosian[cli]"` and checks
@@ -828,43 +828,43 @@ phase close names the version.
 - Both entry points share one `_validate_run`, so neither can skip a
   guard.
 
-[Unreleased]: https://github.com/neosae/neosian/compare/v0.90.0...HEAD
-[0.90.0]: https://github.com/neosae/neosian/compare/v0.89.0...v0.90.0
-[0.89.0]: https://github.com/neosae/neosian/compare/v0.88.0...v0.89.0
-[0.88.0]: https://github.com/neosae/neosian/compare/v0.87.0...v0.88.0
-[0.87.0]: https://github.com/neosae/neosian/compare/v0.86.0...v0.87.0
-[0.86.0]: https://github.com/neosae/neosian/compare/v0.85.0...v0.86.0
-[0.85.0]: https://github.com/neosae/neosian/compare/v0.84.0...v0.85.0
-[0.84.0]: https://github.com/neosae/neosian/compare/v0.83.2...v0.84.0
-[0.83.2]: https://github.com/neosae/neosian/compare/v0.83.1...v0.83.2
-[0.83.1]: https://github.com/neosae/neosian/compare/v0.83.0...v0.83.1
-[0.83.0]: https://github.com/neosae/neosian/compare/v0.82.1...v0.83.0
-[0.82.1]: https://github.com/neosae/neosian/compare/v0.82.0...v0.82.1
-[0.82.0]: https://github.com/neosae/neosian/compare/v0.81.0...v0.82.0
-[0.81.0]: https://github.com/neosae/neosian/compare/v0.80.0...v0.81.0
-[0.80.0]: https://github.com/neosae/neosian/compare/v0.79.0...v0.80.0
-[0.79.0]: https://github.com/neosae/neosian/compare/v0.78.0...v0.79.0
-[0.78.0]: https://github.com/neosae/neosian/compare/v0.77.0...v0.78.0
-[0.77.0]: https://github.com/neosae/neosian/compare/v0.76.0...v0.77.0
-[0.76.0]: https://github.com/neosae/neosian/compare/v0.75.0...v0.76.0
-[0.75.0]: https://github.com/neosae/neosian/compare/v0.74.0...v0.75.0
-[0.74.0]: https://github.com/neosae/neosian/compare/v0.73.0...v0.74.0
-[0.73.0]: https://github.com/neosae/neosian/compare/v0.72.0...v0.73.0
-[0.72.0]: https://github.com/neosae/neosian/compare/v0.71.0...v0.72.0
-[0.71.0]: https://github.com/neosae/neosian/compare/v0.70.0...v0.71.0
-[0.70.0]: https://github.com/neosae/neosian/compare/v0.69.0...v0.70.0
-[0.69.0]: https://github.com/neosae/neosian/compare/v0.68.0...v0.69.0
-[0.68.0]: https://github.com/neosae/neosian/compare/v0.67.0...v0.68.0
-[0.67.0]: https://github.com/neosae/neosian/compare/v0.66.0...v0.67.0
-[0.66.0]: https://github.com/neosae/neosian/compare/v0.65.0...v0.66.0
-[0.65.0]: https://github.com/neosae/neosian/compare/v0.64.0...v0.65.0
-[0.64.0]: https://github.com/neosae/neosian/compare/v0.63.0...v0.64.0
-[0.63.0]: https://github.com/neosae/neosian/compare/v0.62.0...v0.63.0
-[0.62.0]: https://github.com/neosae/neosian/compare/v0.61.0...v0.62.0
-[0.61.0]: https://github.com/neosae/neosian/compare/v0.60.0...v0.61.0
-[0.60.0]: https://github.com/neosae/neosian/compare/v0.58.0...v0.60.0
-[0.58.0]: https://github.com/neosae/neosian/compare/v0.57.0...v0.58.0
-[0.57.0]: https://github.com/neosae/neosian/compare/v0.56.0...v0.57.0
-[0.56.0]: https://github.com/neosae/neosian/compare/v0.55.0...v0.56.0
-[0.55.0]: https://github.com/neosae/neosian/compare/v0.54.0...v0.55.0
-[0.54.0]: https://github.com/neosae/neosian/releases/tag/v0.54.0
+[Unreleased]: https://github.com/mausa-ai/neosian/compare/v0.90.0...HEAD
+[0.90.0]: https://github.com/mausa-ai/neosian/compare/v0.89.0...v0.90.0
+[0.89.0]: https://github.com/mausa-ai/neosian/compare/v0.88.0...v0.89.0
+[0.88.0]: https://github.com/mausa-ai/neosian/compare/v0.87.0...v0.88.0
+[0.87.0]: https://github.com/mausa-ai/neosian/compare/v0.86.0...v0.87.0
+[0.86.0]: https://github.com/mausa-ai/neosian/compare/v0.85.0...v0.86.0
+[0.85.0]: https://github.com/mausa-ai/neosian/compare/v0.84.0...v0.85.0
+[0.84.0]: https://github.com/mausa-ai/neosian/compare/v0.83.2...v0.84.0
+[0.83.2]: https://github.com/mausa-ai/neosian/compare/v0.83.1...v0.83.2
+[0.83.1]: https://github.com/mausa-ai/neosian/compare/v0.83.0...v0.83.1
+[0.83.0]: https://github.com/mausa-ai/neosian/compare/v0.82.1...v0.83.0
+[0.82.1]: https://github.com/mausa-ai/neosian/compare/v0.82.0...v0.82.1
+[0.82.0]: https://github.com/mausa-ai/neosian/compare/v0.81.0...v0.82.0
+[0.81.0]: https://github.com/mausa-ai/neosian/compare/v0.80.0...v0.81.0
+[0.80.0]: https://github.com/mausa-ai/neosian/compare/v0.79.0...v0.80.0
+[0.79.0]: https://github.com/mausa-ai/neosian/compare/v0.78.0...v0.79.0
+[0.78.0]: https://github.com/mausa-ai/neosian/compare/v0.77.0...v0.78.0
+[0.77.0]: https://github.com/mausa-ai/neosian/compare/v0.76.0...v0.77.0
+[0.76.0]: https://github.com/mausa-ai/neosian/compare/v0.75.0...v0.76.0
+[0.75.0]: https://github.com/mausa-ai/neosian/compare/v0.74.0...v0.75.0
+[0.74.0]: https://github.com/mausa-ai/neosian/compare/v0.73.0...v0.74.0
+[0.73.0]: https://github.com/mausa-ai/neosian/compare/v0.72.0...v0.73.0
+[0.72.0]: https://github.com/mausa-ai/neosian/compare/v0.71.0...v0.72.0
+[0.71.0]: https://github.com/mausa-ai/neosian/compare/v0.70.0...v0.71.0
+[0.70.0]: https://github.com/mausa-ai/neosian/compare/v0.69.0...v0.70.0
+[0.69.0]: https://github.com/mausa-ai/neosian/compare/v0.68.0...v0.69.0
+[0.68.0]: https://github.com/mausa-ai/neosian/compare/v0.67.0...v0.68.0
+[0.67.0]: https://github.com/mausa-ai/neosian/compare/v0.66.0...v0.67.0
+[0.66.0]: https://github.com/mausa-ai/neosian/compare/v0.65.0...v0.66.0
+[0.65.0]: https://github.com/mausa-ai/neosian/compare/v0.64.0...v0.65.0
+[0.64.0]: https://github.com/mausa-ai/neosian/compare/v0.63.0...v0.64.0
+[0.63.0]: https://github.com/mausa-ai/neosian/compare/v0.62.0...v0.63.0
+[0.62.0]: https://github.com/mausa-ai/neosian/compare/v0.61.0...v0.62.0
+[0.61.0]: https://github.com/mausa-ai/neosian/compare/v0.60.0...v0.61.0
+[0.60.0]: https://github.com/mausa-ai/neosian/compare/v0.58.0...v0.60.0
+[0.58.0]: https://github.com/mausa-ai/neosian/compare/v0.57.0...v0.58.0
+[0.57.0]: https://github.com/mausa-ai/neosian/compare/v0.56.0...v0.57.0
+[0.56.0]: https://github.com/mausa-ai/neosian/compare/v0.55.0...v0.56.0
+[0.55.0]: https://github.com/mausa-ai/neosian/compare/v0.54.0...v0.55.0
+[0.54.0]: https://github.com/mausa-ai/neosian/releases/tag/v0.54.0

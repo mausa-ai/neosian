@@ -1,12 +1,12 @@
 # The state process, as an appliance (DESIGN §18.9): one token, one
 # volume, one health check. Built and smoked by CI on both backends on
-# every push; published to ghcr.io/neosae/neosian:<X.Y.Z> by release.yml
+# every push; published to ghcr.io/mausa-ai/neosian:<X.Y.Z> by release.yml
 # on a release tag (DESIGN §29, retiring ledger #114's built-not-published
 # posture). The base image is pinned by its multi-arch index digest and uv
 # by the repository's one pin; Dependabot moves both.
 #
 #   docker run -e NEOSIAN_SERVE_TOKEN=... -p 6367:6367 -v state:/data \
-#       ghcr.io/neosae/neosian:<X.Y.Z>
+#       ghcr.io/mausa-ai/neosian:<X.Y.Z>
 #   docker build -t neosian .            # the same image, locally
 #
 # The default command serves a FileStore on the /data volume; set

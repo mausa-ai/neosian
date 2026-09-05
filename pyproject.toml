@@ -56,11 +56,11 @@ otel = ["opentelemetry-api>=1.30"]
 server = ["mcp>=2,<3", "starlette>=1.6", "uvicorn>=0.52.4"]
 
 [project.urls]
-Homepage = "https://github.com/neosae/neosian"
-Repository = "https://github.com/neosae/neosian"
-Documentation = "https://github.com/neosae/neosian#readme"
-Changelog = "https://github.com/neosae/neosian/blob/master/CHANGELOG.md"
-Issues = "https://github.com/neosae/neosian/issues"
+Homepage = "https://github.com/mausa-ai/neosian"
+Repository = "https://github.com/mausa-ai/neosian"
+Documentation = "https://github.com/mausa-ai/neosian#readme"
+Changelog = "https://github.com/mausa-ai/neosian/blob/master/CHANGELOG.md"
+Issues = "https://github.com/mausa-ai/neosian/issues"
 
 [dependency-groups]
 dev = [

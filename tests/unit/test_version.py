@@ -17,7 +17,7 @@ import neosian
 
 PYPROJECT = Path(__file__).parents[2] / "pyproject.toml"
 _README = PYPROJECT.parent / "README.md"
-_PIN = re.compile(r"github\.com/neosae/neosian@(v\d+\.\d+\.\d+)")
+_PIN = re.compile(r"github\.com/mausa-ai/neosian@(v\d+\.\d+\.\d+)")
 _FINAL = re.compile(r"\d+\.\d+\.\d+")
 _UNDECLARED = "deliberately not yet cut"
 _STABLE = "Development Status :: 5 - Production/Stable"
