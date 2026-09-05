@@ -13,6 +13,8 @@ from typing import Any
 import pytest
 import yaml
 
+import neosian
+
 _ROOT = Path(__file__).resolve().parents[2]
 _WORKFLOWS = sorted((_ROOT / ".github" / "workflows").glob("*.yml"))
 _DOCKERFILE = _ROOT / "Dockerfile"
@@ -106,3 +108,14 @@ def test_the_release_publishes_by_trust_alone() -> None:
     assert publish[0]["if"] == "github.event_name == 'push'"
     others = {name: job for name, job in release["jobs"].items() if name != "pypi"}
     assert not any("id-token" in job.get("permissions", {}) for job in others.values())
+
+
+@pytest.mark.unit
+def test_the_changelog_names_the_version() -> None:
+    # Keep a Changelog, kept by the gate (DESIGN §29): `[Unreleased]`
+    # accumulates during a phase, the close names the version, and a bump
+    # without its section goes red here before `make release` refuses it.
+    text = (_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    assert "\n## [Unreleased]\n" in text
+    assert f"\n## [{neosian.__version__}] - " in text
+    assert f"[{neosian.__version__}]: https://github.com/neosae/neosian/" in text
