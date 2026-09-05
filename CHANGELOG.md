@@ -23,6 +23,9 @@ phase close names the version.
   README's Development section.
 
 ### Changed
+- `SERVICES.md` moves to the repository root and the memory baselines
+  become a shipped docs page (`neosian docs baselines`, run ids as text);
+  the fingerprint gate reads the page.
 - The repository's one uv pin — the Dockerfile, the installer and both
   workflows — moves from 0.9.11 to 0.12.10.
 - The README is rewritten for two readers — 566 lines down to 233, badges

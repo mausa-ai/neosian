@@ -126,6 +126,5 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
 ## Docs
 
 - README.md: install and quickstart.
-- docs/DESIGN.md: contracts and the decisions ledger.
-- docs/ECOSYSTEM.md: the frozen host-facing seams.
-- docs/SERVICES.md: every environment key and what turning it off means.
+- SERVICES.md: every environment key and what turning it off means.
+- `neosian docs baselines`: the published per-provider memory numbers.

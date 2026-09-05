@@ -32,6 +32,7 @@ _TOPICS: Final = (
     "mcp",
     "agents",
     "topology",
+    "baselines",
 )
 _REQUIRED_KEYS: Final = ("title", "summary")
 _SUMMARY_MAX: Final = 90  # the listing stays one line per topic

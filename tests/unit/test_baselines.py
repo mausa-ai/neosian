@@ -1,4 +1,4 @@
-"""BASELINES.md is fingerprint-gated (ROADMAP NV, DESIGN §13.12).
+"""The baselines page is fingerprint-gated (ROADMAP NV, DESIGN §13.12).
 
 The published numbers are only meaningful against the exact prompt pack
 and scenario pack they measured. This gate makes a silent edit to either
@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-_BASELINES = _REPO_ROOT / "docs" / "BASELINES.md"
+_BASELINES = _REPO_ROOT / "neosian" / "assets" / "docs" / "baselines.md"
 
 # Every file the baselines' meaning depends on. Adding a gated file
 # means adding its fingerprint line to BASELINES.md's Fingerprints

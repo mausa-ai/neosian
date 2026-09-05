@@ -102,8 +102,7 @@ file per feature, every one importing keylessly.
 
 ## What is in the box
 
-Each line is one page in the wheel — `neosian docs <topic>` — and one
-beat of the [tour](docs/tour/README.md), a real-key transcript.
+Each line is one page in the wheel — `neosian docs <topic>`.
 
 - **Conversation and memory** (`memory`). History is an append-only log;
   log-projection compaction pages aged turns out of context and
@@ -163,7 +162,7 @@ its key is set (asking for an unavailable model raises
 
 Every shipped row is earned by green dispatched runs of the memory
 baselines; membership is measured, never assumed
-([BASELINES.md](docs/BASELINES.md)).
+(`neosian docs baselines`).
 
 ## Storage
 
@@ -182,7 +181,8 @@ root; many workers on one Postgres.
 an agent suite over variants × models × cases, and `kind: memory`, which
 scores store truth across scripted sessions on every transport. The
 shipped memory pack is all-green on `models: [fake]`, and the same pack
-against the real providers produces [BASELINES.md](docs/BASELINES.md),
+against the real providers produces the
+[baselines page](neosian/assets/docs/baselines.md),
 fingerprint-gated so a prompt change without a recorded re-run fails
 `make test`.
 
@@ -190,13 +190,12 @@ fingerprint-gated so a prompt change without a recorded re-run fails
 
 `v1.0.0` is deliberately not yet cut. When it is, it will carry the API
 stability promise: `Agent`, `Conversation`, `MemoryStore`, and the
-`neosian.evaluation` facade stable under SemVer, the
-[ECOSYSTEM.md](docs/ECOSYSTEM.md) seams (scope grammar, token classes, integer
+`neosian.evaluation` facade stable under SemVer, the ecosystem
+seams (scope grammar, token classes, integer
 micro-USD, event vocabulary, error codes) SemVer-guaranteed — a seam break
 only at a major — and the state process's wire (the twelve `/v1/` store
 routes and their envelope, versioned by `WIRE_VERSION`) stable under the
-same promise: one promise covering library, seams, and wire (DESIGN
-§18.1). Until then the seams are append-only by convention, and error
+same promise: one promise covering library, seams, and wire. Until then the seams are append-only by convention, and error
 codes are already append-only forever. Consumers pin an annotated
 `v<X.Y.Z>` tag, never master.
 
@@ -224,15 +223,12 @@ departure from documented behaviour; the public API is pinned by
 
 ## Documents
 
-- [VISION.md](docs/VISION.md) — why and what; the school we chose.
-- [ROADMAP.md](docs/ROADMAP.md) — in what order; the session log.
-- [DESIGN.md](docs/DESIGN.md) — how; contracts; the decisions ledger.
-- [ECOSYSTEM.md](docs/ECOSYSTEM.md) — the frozen host-facing seams.
-- [BASELINES.md](docs/BASELINES.md) — the published per-provider memory
-  baselines: methodology, fingerprints, results.
-- [SERVICES.md](docs/SERVICES.md) — every env key and what turning it off means.
-- [docs/tour/](docs/tour/README.md) — the demo tour: real-key transcripts of
-  every beat above, one page each, verbatim.
+- `neosian docs <topic>` — the shipped pages, from the wheel: `quickstart`,
+  `agent`, `tools`, `memory`, `skills`, `cli`, `mcp`, `agents`, `topology`,
+  `baselines` (the published per-provider memory numbers).
+- [SERVICES.md](SERVICES.md) — every env key and what turning it off means.
+- [CHANGELOG.md](CHANGELOG.md) — Keep a Changelog, one section per release.
+- [SECURITY.md](SECURITY.md) — where to report, and the supported line.
 - [llms.txt](llms.txt) — the machine-readable front door (byte-identical
   twin ships in the wheel).
 
