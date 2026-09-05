@@ -10,7 +10,9 @@ dispatcher the function tool, the native Anthropic declaration, the
 MCP server, and the state process's HTTP wire execute. An agent with nothing but shell access
 operates the same memory the runtime transports serve.
 `python -m neosian.memory` is the sandbox-safe twin for a venv whose
-bin is not on PATH.
+bin is not on PATH — and the one that needs no extra: the `neosian`
+console script rides `neosian[cli]` (typer, rich, the terminal menu),
+and a core install answers it with the install hint.
 
 ## The grammar
 

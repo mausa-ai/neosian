@@ -9,22 +9,26 @@ A Rich tree over the suite's axes:
     ├── verbose
     │   └── ...
 
-Indicators: ○ pending · ◐ running · ● passed · ✗ failed.
+Indicators: ○ pending · ◐ running · ● passed · ✗ failed. Rich rides
+the `cli` extra and is imported at use (NF, TP-2).
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
-from rich.console import Console
-from rich.live import Live
-from rich.text import Text
-from rich.tree import Tree
-
+from neosian._foundation.evaluation.reporter import require_rich
 from neosian._foundation.evaluation.results import (
     CaseStatus,
     ProgressCallback,
     ProgressEvent,
 )
 from neosian._foundation.evaluation.types import EvalConfig
+
+if TYPE_CHECKING:
+    from rich.live import Live
+    from rich.tree import Tree
 
 _INDICATORS: dict[CaseStatus, tuple[str, str]] = {
     CaseStatus.PENDING: ("○", "dim"),
@@ -75,6 +79,9 @@ class EvalProgress:
     """Tree-based live progress for a suite run."""
 
     def __init__(self, config: EvalConfig) -> None:
+        require_rich()
+        from rich.console import Console
+
         self.config = config
         self.console = Console()
         self._live: Live | None = None
@@ -96,6 +103,8 @@ class EvalProgress:
 
     def start(self) -> None:
         """Start the live display."""
+        from rich.live import Live
+
         self._live = Live(
             self._build_tree(),
             console=self.console,
@@ -124,6 +133,9 @@ class EvalProgress:
             self._live.update(self._build_tree())
 
     def _build_tree(self) -> Tree:
+        from rich.text import Text
+        from rich.tree import Tree
+
         tree = Tree(Text(self.config.name, style="bold"), guide_style="dim")
         for variant_state in self.variants:
             variant_node = tree.add(Text(variant_state.variant, style="cyan"))

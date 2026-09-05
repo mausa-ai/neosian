@@ -21,11 +21,14 @@ uv add "neosian[postgres] @ git+ssh://git@github.com/neosae/neosian@v<X.Y.Z>"
 uv add "neosian[mcp] @ git+ssh://git@github.com/neosae/neosian@v<X.Y.Z>"
 uv add "neosian[otel] @ git+ssh://git@github.com/neosae/neosian@v<X.Y.Z>"
 uv add "neosian[server] @ git+ssh://git@github.com/neosae/neosian@v<X.Y.Z>"
+uv add "neosian[cli] @ git+ssh://git@github.com/neosae/neosian@v<X.Y.Z>"
 ```
 
 Substitute the current release tag (the `llms.txt` beside this wheel
-names it). The core install is database-driver-free, MCP-free, and
-server-free.
+names it). The core install is database-driver-free, MCP-free,
+server-free and shell-free: the `neosian` console script rides `[cli]`,
+while `python -m neosian.memory` and the other module doors need no
+extra.
 
 ## Keyless boot
 

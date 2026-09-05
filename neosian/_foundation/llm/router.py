@@ -1,15 +1,15 @@
 """Provider router for LLM client creation.
 
-Routes requests to LLM providers based on model configuration.
+Routes requests to LLM providers based on model configuration. Each
+provider's client — and its SDK — is imported inside the branch that
+builds it (NF, EC-5): `import neosian` loads no provider SDK, pinned by
+a subprocess test.
 """
 
 import os
 
-from neosian._foundation.llm.anthropic import AnthropicClient
 from neosian._foundation.llm.base import BaseLLMClient
-from neosian._foundation.llm.cerebras import CerebrasClient
 from neosian._foundation.llm.fake import FakeClient
-from neosian._foundation.llm.openai import OpenAIClient, OpenAICompatibleClient
 from neosian._foundation.shared.constants import (
     EnvVars,
     ErrorMessages,
@@ -96,18 +96,24 @@ class ProviderRouter:
             MissingAPIKeyError: If no API key available.
         """
         if provider == Provider.OPENAI:
+            from neosian._foundation.llm.openai import OpenAIClient
+
             key = api_key or os.environ.get(EnvVars.OPENAI_API_KEY, "")
             return OpenAIClient(
                 api_key=key, max_retries=self._max_retries, timeout=self._timeout
             )
 
         if provider == Provider.ANTHROPIC:
+            from neosian._foundation.llm.anthropic import AnthropicClient
+
             key = api_key or os.environ.get(EnvVars.ANTHROPIC_API_KEY, "")
             return AnthropicClient(
                 api_key=key, max_retries=self._max_retries, timeout=self._timeout
             )
 
         if provider == Provider.CEREBRAS:
+            from neosian._foundation.llm.cerebras import CerebrasClient
+
             key = api_key or os.environ.get(EnvVars.CEREBRAS_API_KEY, "")
             return CerebrasClient(
                 api_key=key, max_retries=self._max_retries, timeout=self._timeout
@@ -137,6 +143,8 @@ class ProviderRouter:
         """
         if not isinstance(model, RegisteredModel):
             return self.create_client(model.provider, api_key)
+        from neosian._foundation.llm.openai import OpenAICompatibleClient
+
         door = model.door
         key = api_key or os.environ.get(door.api_key_env, "")
         if not key:

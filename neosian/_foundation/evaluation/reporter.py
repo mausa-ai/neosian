@@ -2,28 +2,46 @@
 
 Rich tables to the terminal, a schema-2 JSON artifact to
 `.neosian/evals/<ts>.json`. Everything renders from EvalReport alone —
-presentation never needs the config type.
+presentation never needs the config type. Rich rides the `cli` extra
+and is imported at use (NF, TP-2): `import neosian.evaluation` stays
+extra-free, and the terminal rendering refuses with the install hint.
 """
+
+from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
-
-from rich.console import Console
-from rich.panel import Panel
-from rich.table import Table
+from typing import TYPE_CHECKING, Any
 
 from neosian._foundation.evaluation.results import CaseResult, EvalReport
 from neosian._foundation.evaluation.types import Expectation, ValueMatcher
 
+if TYPE_CHECKING:
+    from rich.console import Console
+
 ARTIFACT_SCHEMA = 2
 _OUTPUT_DIR = ".neosian/evals"
 _TITLE = "neosian eval"
+_INSTALL_HINT = (
+    "The eval terminal rendering requires the 'cli' extra — "
+    "uv add 'neosian[cli]' (or pip install 'neosian[cli]')"
+)
+
+
+def require_rich() -> None:
+    """Raise the install hint, not a traceback, when the extra is absent."""
+    try:
+        import rich  # noqa: F401
+    except ImportError as exc:
+        raise ImportError(_INSTALL_HINT) from exc
 
 
 def print_report(report: EvalReport, console: Console) -> None:
     """Print a full run to the terminal."""
+    require_rich()
+    from rich.panel import Panel
+
     console.print()
     console.print(
         Panel(f"[bold]{_TITLE}[/bold]\n[dim]{report.suite}[/dim]", expand=False)
@@ -57,6 +75,8 @@ def print_report(report: EvalReport, console: Console) -> None:
 
 
 def _print_model_table(model: str, report: EvalReport, console: Console) -> None:
+    from rich.table import Table
+
     table = Table(title=f"[bold]{model}[/bold]", expand=True)
     table.add_column("Variant", style="cyan")
     for case in report.cases:
