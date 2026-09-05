@@ -96,6 +96,15 @@ versions` reads the trail (`--json` carries full historical content),
 `revert` undoes the newest write, and `redact` is the one eraser —
 the find-and-redact remedy (`neosian docs cli`).
 
+A host sees the writes as they happen: on a streamed run every
+successful mutation emits a `memory_write` frame right after its
+`tool_result` — `{command, path, version, tool_call_id}`, never the
+content — so "remembered X" can render with a working undo.
+`revert_memory(config, path, version=N, actor=...)` executes the
+inverse through the same dispatcher and appends its own version row;
+if the document has already moved past the target it refuses instead
+of blind-restoring.
+
 ## Reflection at the session boundary
 
 A memory-bearing `Conversation` distills its session into memory at

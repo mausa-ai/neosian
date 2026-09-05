@@ -9,6 +9,7 @@ they would pass the kit's icon sanitizer as they are.
 |---|---|---|
 | `mark.svg` | **Keep**, the square mark (favicon, avatars, app icons) | root `viewBox` square; `currentColor` throughout |
 | `logo.svg` | the horizontal lockup (og-image, README, docs header) | root `viewBox` required; drawn wordmark, never type |
+| `social-preview.png` | the 1280×640 GitHub social preview: the lockup in ink on paper (`#17191a` on `#faf7f1`), rendered from `logo.svg` with `rsvg-convert` (NI); re-render after any change to `logo.svg`; uploaded in the repository settings at NX |
 | `logo-adaptive.svg` | `logo.svg` plus a `prefers-color-scheme` block | derived by hand for `<img>` contexts, where `currentColor` inherits nothing; re-derive after any change to `logo.svg` |
 
 ## The mark

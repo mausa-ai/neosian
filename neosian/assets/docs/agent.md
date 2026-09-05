@@ -68,6 +68,19 @@ what `run(stream=True)` yields, the frozen wire contract a host relays
 over SSE (`sse_stream`, `event_schemas`). `DoneEvent` and
 `AgentResponse` both carry `iterations_exhausted`.
 
+## The approval gate
+
+Hooks observe; the gate intercepts. `AgentConfig(tool_gate=
+ToolGateConfig(approver=...))` routes every tool call — builtins
+included — through one sync-or-async approver before it executes. An
+instant approve is no pause; a denial comes back to the model as an
+ordinary failed tool result carrying the reason, so the run continues
+and adapts; on the streaming path a pending approval keeps emitting
+`tool_progress` and the outcome rides `tool_result` — no new wire
+events. No decision is a denial, always: a timeout (default 60 s;
+`timeout_seconds=None` waits), an approver exception, or a malformed
+return all deny, naming the cause. There is no fail-open option.
+
 ## Guardrails
 
 `GuardrailsConfig(input_mode, input_policy, block_on_input,
