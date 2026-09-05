@@ -21,7 +21,8 @@ _ANY_USE = re.compile(r"^\s*-\s*uses:")
 _DIGEST = re.compile(r"^FROM python:[^@\s]+@(sha256:[0-9a-f]{64})", re.M)
 
 
-def _workflow(path: Path) -> dict[str, Any]:
+def _workflow(path: Path) -> dict[Any, Any]:
+    # YAML 1.1 reads the `on` key as the boolean True — hence the key type.
     loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
     assert isinstance(loaded, dict)
     return loaded
@@ -79,3 +80,29 @@ def test_the_sdist_leaves_the_planning_surface_out() -> None:
     assert {"/docs/", "/.claude/", "/.github/", "/.import_linter_cache/"} <= set(
         excluded
     )
+
+
+_RELEASE = _ROOT / ".github" / "workflows" / "release.yml"
+
+
+@pytest.mark.unit
+def test_the_release_publishes_by_trust_alone() -> None:
+    # DESIGN §29: a `v*` tag publishes; a dispatch rehearses; the only
+    # credential is the job's OIDC token, exchanged by uv on the `pypi`
+    # environment — no long-lived secret is referenced anywhere.
+    text = _RELEASE.read_text(encoding="utf-8")
+    release = _workflow(_RELEASE)
+    triggers = release[True]
+    assert triggers["push"]["tags"] == ["v*"]
+    assert "workflow_dispatch" in triggers
+    assert "secrets." not in text
+    pypi = release["jobs"]["pypi"]
+    assert pypi["environment"]["name"] == "pypi"
+    assert pypi["permissions"]["id-token"] == "write"
+    publish = [
+        s for s in pypi["steps"] if "--trusted-publishing always" in s.get("run", "")
+    ]
+    assert len(publish) == 1
+    assert publish[0]["if"] == "github.event_name == 'push'"
+    others = {name: job for name, job in release["jobs"].items() if name != "pypi"}
+    assert not any("id-token" in job.get("permissions", {}) for job in others.values())

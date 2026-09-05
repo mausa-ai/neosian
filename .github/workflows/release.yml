@@ -1,0 +1,168 @@
+name: Release
+
+# The publishing identity (DESIGN §29): a `v*` tag push re-asserts the
+# gates on the tagged commit, builds the wheel and sdist, publishes to
+# PyPI by trusted publishing (OIDC — no token exists anywhere) and pushes
+# the image to GHCR under the tag's version, one native leg per
+# architecture stitched into one index. A workflow_dispatch is the
+# keyless rehearsal: every step runs except the two pushes, which are
+# `if: github.event_name == 'push'`. No long-lived credential is
+# referenced anywhere in this file — by design, and by unit test.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One release per ref, never cancelled mid-publish.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  UV_VERSION: "0.12.10"
+  IMAGE: ghcr.io/neosae/neosian
+
+jobs:
+  # Nothing unverified is uploaded: the default gates on the tagged
+  # commit, then the artifacts into a fresh directory (TP-4), the sdist
+  # checked for the license and against the planning surface (TP-3).
+  build:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - id: version
+        run: |
+          version="$(sed -n 's/^version = "\(.*\)"$/\1/p' pyproject.toml)"
+          test -n "$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      # The tag is the version, or nothing ships (a dispatch from a branch skips).
+      - if: github.ref_type == 'tag'
+        run: test "$GITHUB_REF_NAME" = "v${{ steps.version.outputs.version }}"
+      - run: uv python install 3.12
+      - run: make install
+      - run: make lint
+      - run: make typecheck
+      - run: make test
+      - run: uv build --out-dir "$RUNNER_TEMP/dist"
+      - run: |
+          sdist="$(ls "$RUNNER_TEMP"/dist/neosian-*.tar.gz)"
+          tar tzf "$sdist" | grep -q '/LICENSE$'
+          ! tar tzf "$sdist" | grep -E '^[^/]+/(\.claude|\.github|\.import_linter_cache|docs|branding)/'
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: dist
+          path: ${{ runner.temp }}/dist
+          if-no-files-found: error
+
+  # Trusted publishing: the job's OIDC token is exchanged for a one-use
+  # upload token by uv itself; PyPI accepts it only from this repository's
+  # release.yml on the `pypi` environment. A pre-release version (1.0.0rc1)
+  # is marked so by PEP 440 — nothing to flag. `--check-url` makes a
+  # re-run skip what already landed.
+  pypi:
+    needs: build
+    runs-on: ubuntu-24.04
+    environment:
+      name: pypi
+      url: https://pypi.org/project/neosian/${{ needs.build.outputs.version }}/
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: dist
+          path: ${{ runner.temp }}/dist
+      - run: ls -l "$RUNNER_TEMP/dist"
+      # Rehearsal: the files are validated against the index, nothing moves.
+      - if: github.event_name != 'push'
+        run: uv publish --dry-run --trusted-publishing never --check-url https://pypi.org/simple/ "$RUNNER_TEMP"/dist/*
+      - if: github.event_name == 'push'
+        run: uv publish --trusted-publishing always --check-url https://pypi.org/simple/ "$RUNNER_TEMP"/dist/*
+
+  # One native build per architecture (no emulation, no third-party
+  # action); the smoke — the health route and the version inside the
+  # image — runs before any push. The labels are OCI's; `source` links
+  # the package to the repository.
+  image:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    env:
+      VERSION: ${{ needs.build.outputs.version }}
+      ARCH: ${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - run: |
+          docker build --platform "linux/$ARCH" \
+            --label "org.opencontainers.image.title=neosian" \
+            --label "org.opencontainers.image.description=The neosian state process: memory, skills, conversations and the ledger behind one bearer token" \
+            --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
+            --label "org.opencontainers.image.version=$VERSION" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            --label "org.opencontainers.image.licenses=Apache-2.0" \
+            --label "org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            -t "$IMAGE:$VERSION-$ARCH" .
+      - name: smoke
+        run: |
+          cid="$(docker run -d -e NEOSIAN_SERVE_TOKEN=smoke -p 127.0.0.1:16367:6367 "$IMAGE:$VERSION-$ARCH")"
+          ok=
+          for _ in $(seq 30); do
+            curl -fsS http://127.0.0.1:16367/health && ok=1 && break
+            sleep 1
+          done
+          docker logs "$cid"
+          docker rm -f "$cid" >/dev/null
+          test "$ok" = 1
+          inside="$(docker run --rm --entrypoint python "$IMAGE:$VERSION-$ARCH" -c 'import neosian; print(neosian.__version__)')"
+          test "$inside" = "$VERSION"
+      - if: github.event_name == 'push'
+        run: echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - if: github.event_name == 'push'
+        run: docker push "$IMAGE:$VERSION-$ARCH"
+
+  # The multi-arch index from the two pushed legs; `latest` only on a
+  # final version — a pre-release is never what an unpinned pull gets.
+  manifest:
+    if: github.event_name == 'push'
+    needs: [build, image]
+    runs-on: ubuntu-24.04
+    permissions:
+      packages: write
+    env:
+      VERSION: ${{ needs.build.outputs.version }}
+    steps:
+      - run: echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - run: |
+          tags=(-t "$IMAGE:$VERSION")
+          if [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then tags+=(-t "$IMAGE:latest"); fi
+          docker buildx imagetools create "${tags[@]}" \
+            --annotation "index:org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
+            --annotation "index:org.opencontainers.image.version=$VERSION" \
+            --annotation "index:org.opencontainers.image.revision=$GITHUB_SHA" \
+            --annotation "index:org.opencontainers.image.licenses=Apache-2.0" \
+            "$IMAGE:$VERSION-amd64" "$IMAGE:$VERSION-arm64"
+          docker buildx imagetools inspect "$IMAGE:$VERSION"
