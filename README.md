@@ -27,12 +27,12 @@ The repository is private; as a dependency of another uv project, install
 from the git URL, pinned to a release tag (extras ride the same URL):
 
 ```bash
-uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.89.0"
-uv add "neosian[postgres] @ git+ssh://git@github.com/neosae/neosian@v0.89.0"   # + PostgresStore
-uv add "neosian[mcp] @ git+ssh://git@github.com/neosae/neosian@v0.89.0"        # + MCP server and client
-uv add "neosian[otel] @ git+ssh://git@github.com/neosae/neosian@v0.89.0"       # + OpenTelemetry spans
-uv add "neosian[server] @ git+ssh://git@github.com/neosae/neosian@v0.89.0"     # + the state process
-uv add "neosian[cli] @ git+ssh://git@github.com/neosae/neosian@v0.89.0"        # + the `neosian` shell
+uv add "neosian @ git+ssh://git@github.com/neosae/neosian@v0.90.0"
+uv add "neosian[postgres] @ git+ssh://git@github.com/neosae/neosian@v0.90.0"   # + PostgresStore
+uv add "neosian[mcp] @ git+ssh://git@github.com/neosae/neosian@v0.90.0"        # + MCP server and client
+uv add "neosian[otel] @ git+ssh://git@github.com/neosae/neosian@v0.90.0"       # + OpenTelemetry spans
+uv add "neosian[server] @ git+ssh://git@github.com/neosae/neosian@v0.90.0"     # + the state process
+uv add "neosian[cli] @ git+ssh://git@github.com/neosae/neosian@v0.90.0"        # + the `neosian` shell
 ```
 
 The core install carries no terminal library: the `neosian` console script
