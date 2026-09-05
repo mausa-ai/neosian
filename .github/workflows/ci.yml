@@ -1,5 +1,12 @@
 name: CI
 
+# Least privilege at the top; a job that needs more grants it itself
+# (release.yml's publish jobs — DESIGN §29). Every action is pinned by
+# commit SHA with its version beside it, the way the Dockerfile pins uv;
+# Dependabot moves both together.
+permissions:
+  contents: read
+
 on:
   push:
     branches: [master]
@@ -13,13 +20,19 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
+# The repository's one uv pin (ledger #185): the Dockerfile, the installer
+# and both workflows name the same release; a unit test keeps them equal.
+env:
+  UV_VERSION: "0.12.10"
+
 jobs:
   lint:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v7
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
+          version: ${{ env.UV_VERSION }}
           enable-cache: true
       - run: uv python install 3.12
       - run: make install
@@ -29,19 +42,24 @@ jobs:
       - run: shellcheck scripts/install.sh
 
   # No secrets here — that absence is the keyless-boot assertion (DESIGN §11).
+  # UV_PYTHON names the interpreter each leg runs; `python -V` prints it.
   test:
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.12", "3.13", "3.14"]
+    env:
+      UV_PYTHON: ${{ matrix.python-version }}
     steps:
-      - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v7
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
+          version: ${{ env.UV_VERSION }}
           enable-cache: true
       - run: uv python install ${{ matrix.python-version }}
       - run: make install
+      - run: uv run python -V
       - run: make test
 
   # The declared floors, resolved and tested (NF, TP-7): the lock is the
@@ -56,28 +74,51 @@ jobs:
         python-version: ["3.12", "3.14"]
     env:
       UV_RESOLUTION: lowest-direct
+      UV_PYTHON: ${{ matrix.python-version }}
     steps:
-      - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v7
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
+          version: ${{ env.UV_VERSION }}
           enable-cache: true
       - run: uv python install ${{ matrix.python-version }}
       - run: uv sync --all-groups
+      - run: uv run python -V
       - run: uv tree --depth 1
       - run: make test
 
+  # The locked dependency set against the advisory database (DESIGN §29):
+  # every extra and group, the lock asserted unchanged. An advisory is a
+  # finding — the fix is a lock bump; `--ignore-until-fixed <ID>` is the
+  # escape hatch for a transitive with no fix yet.
+  audit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - run: uv audit --locked
+
   # The artifact a stranger installs (NI, DESIGN §28): the wheel and sdist
   # built into a fresh directory (never `dist/` — TP-4), the sdist checked
-  # for the license, and handed to the installer job below.
+  # for the license and against the planning surface (TP-3), and handed
+  # to the installer job below.
   build:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v7
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        with:
+          version: ${{ env.UV_VERSION }}
       - run: uv python install 3.12
       - run: uv build --out-dir "$RUNNER_TEMP/dist"
-      - run: tar tzf "$RUNNER_TEMP"/dist/neosian-*.tar.gz | grep -q '/LICENSE$'
-      - uses: actions/upload-artifact@v4
+      - run: |
+          sdist="$(ls "$RUNNER_TEMP"/dist/neosian-*.tar.gz)"
+          tar tzf "$sdist" | grep -q '/LICENSE$'
+          ! tar tzf "$sdist" | grep -E '^[^/]+/(\.claude|\.github|\.import_linter_cache|docs|branding)/'
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: dist
           path: ${{ runner.temp }}/dist
@@ -96,8 +137,8 @@ jobs:
         os: [ubuntu-24.04, macos-15]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: dist
           path: ${{ runner.temp }}/dist
@@ -127,9 +168,10 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     steps:
-      - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v7
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
+          version: ${{ env.UV_VERSION }}
           enable-cache: true
       - run: uv python install 3.12
       - run: make install
@@ -139,7 +181,8 @@ jobs:
 
   # The container conformance run (DESIGN §18.9): build the image, then
   # both kits over a real socket against it on both backends — NM's
-  # done-when. No secret, no registry push (ledger #114); every trigger.
+  # done-when. No secret; the registry push is release.yml's, on a tag
+  # (DESIGN §29); every trigger.
   container:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -156,9 +199,10 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     steps:
-      - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v7
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
+          version: ${{ env.UV_VERSION }}
           enable-cache: true
       - run: uv python install 3.12
       - run: make install
@@ -181,9 +225,10 @@ jobs:
       matrix:
         provider: [openai, anthropic, cerebras, xai, gemini, kimi]
     steps:
-      - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v7
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
+          version: ${{ env.UV_VERSION }}
           enable-cache: true
       - run: uv python install 3.12
       - run: make install
