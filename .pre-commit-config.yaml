@@ -1,0 +1,22 @@
+# The three fast gates `make lint` runs, from the locked venv — local
+# hooks only, so every tool pin lives in uv.lock (DESIGN §29, TP-35).
+# Opt in with `uvx pre-commit install`; `make lint` stays the gate.
+repos:
+  - repo: local
+    hooks:
+      - id: ruff
+        name: ruff check
+        entry: uv run ruff check
+        language: system
+        types: [python]
+      - id: black
+        name: black --check
+        entry: uv run black --check
+        language: system
+        types: [python]
+      - id: lint-imports
+        name: import-linter contracts
+        entry: uv run lint-imports
+        language: system
+        pass_filenames: false
+        types: [python]

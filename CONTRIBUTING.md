@@ -20,6 +20,9 @@ unit tier runs on `FakeProvider` and the shipped fakes; real-API suites
 are `external_<provider>` markers, dispatched deliberately, never a
 standing cost. `make test-postgres` and `make test-container` cover the
 Postgres store and the state-process container when you have them.
+`uvx pre-commit install` wires the three fast gates (ruff, black,
+import-linter) into `git commit`; the hooks are local and run from the
+same locked venv, so nothing is pinned twice.
 
 ## Before you write
 
