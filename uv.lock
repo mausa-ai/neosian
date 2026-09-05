@@ -1015,13 +1015,15 @@ dependencies = [
     { name = "openai" },
     { name = "pydantic" },
     { name = "pyyaml" },
+]
+
+[package.optional-dependencies]
+cli = [
     { name = "rich" },
     { name = "simple-term-menu" },
     { name = "tomli-w" },
     { name = "typer" },
 ]
-
-[package.optional-dependencies]
 mcp = [
     { name = "mcp" },
 ]
@@ -1049,8 +1051,12 @@ dev = [
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
     { name = "pytest-timeout" },
+    { name = "rich" },
     { name = "ruff" },
+    { name = "simple-term-menu" },
     { name = "starlette" },
+    { name = "tomli-w" },
+    { name = "typer" },
     { name = "types-pyyaml" },
     { name = "uvicorn" },
 ]
@@ -1061,24 +1067,24 @@ examples = [
 
 [package.metadata]
 requires-dist = [
-    { name = "anthropic", specifier = ">=0.122.0" },
-    { name = "cerebras-cloud-sdk", specifier = ">=1.91.0" },
+    { name = "anthropic", specifier = ">=0.122.0,<1" },
+    { name = "cerebras-cloud-sdk", specifier = ">=1.91.0,<2" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "mcp", marker = "extra == 'mcp'", specifier = ">=2,<3" },
     { name = "mcp", marker = "extra == 'server'", specifier = ">=2,<3" },
-    { name = "openai", specifier = ">=3.2.0" },
+    { name = "openai", specifier = ">=3.2.0,<4" },
     { name = "opentelemetry-api", marker = "extra == 'otel'", specifier = ">=1.30" },
-    { name = "psycopg", extras = ["binary", "pool"], marker = "extra == 'postgres'", specifier = ">=3.2" },
+    { name = "psycopg", extras = ["binary", "pool"], marker = "extra == 'postgres'", specifier = ">=3.2.10" },
     { name = "pydantic", specifier = ">=2.13.4" },
     { name = "pyyaml", specifier = ">=6.0.3" },
-    { name = "rich", specifier = ">=15.0.0" },
-    { name = "simple-term-menu", specifier = ">=1.6.6" },
+    { name = "rich", marker = "extra == 'cli'", specifier = ">=15.0.0" },
+    { name = "simple-term-menu", marker = "extra == 'cli'", specifier = ">=1.6.6" },
     { name = "starlette", marker = "extra == 'server'", specifier = ">=1.6" },
-    { name = "tomli-w", specifier = ">=1.2.0" },
-    { name = "typer", specifier = ">=0.27.1" },
+    { name = "tomli-w", marker = "extra == 'cli'", specifier = ">=1.2.0" },
+    { name = "typer", marker = "extra == 'cli'", specifier = ">=0.27.1" },
     { name = "uvicorn", marker = "extra == 'server'", specifier = ">=0.52.4" },
 ]
-provides-extras = ["postgres", "mcp", "otel", "server"]
+provides-extras = ["cli", "postgres", "mcp", "otel", "server"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -1087,13 +1093,17 @@ dev = [
     { name = "mcp", specifier = ">=2,<3" },
     { name = "mypy", specifier = ">=2.3.1" },
     { name = "opentelemetry-sdk", specifier = ">=1.30" },
-    { name = "psycopg", extras = ["binary", "pool"], specifier = ">=3.2" },
+    { name = "psycopg", extras = ["binary", "pool"], specifier = ">=3.2.10" },
     { name = "pytest", specifier = ">=9.1.1" },
     { name = "pytest-asyncio", specifier = ">=1.4.0" },
     { name = "pytest-cov", specifier = ">=7" },
     { name = "pytest-timeout", specifier = ">=2.3" },
+    { name = "rich", specifier = ">=15.0.0" },
     { name = "ruff", specifier = ">=0.16.3" },
+    { name = "simple-term-menu", specifier = ">=1.6.6" },
     { name = "starlette", specifier = ">=1.6" },
+    { name = "tomli-w", specifier = ">=1.2.0" },
+    { name = "typer", specifier = ">=0.27.1" },
     { name = "types-pyyaml", specifier = ">=6.0.12.20250915" },
     { name = "uvicorn", specifier = ">=0.52.4" },
 ]

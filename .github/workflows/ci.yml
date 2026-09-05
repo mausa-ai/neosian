@@ -43,6 +43,28 @@ jobs:
       - run: make install
       - run: make test
 
+  # The declared floors, resolved and tested (NF, TP-7): the lock is the
+  # highest resolution, this job is the lowest one the floors claim —
+  # an unlocked sync, the same unit tier, no secrets, on both Python
+  # ends (the oldest exercises a floor's API, the newest its wheels).
+  lowest:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.14"]
+    env:
+      UV_RESOLUTION: lowest-direct
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv python install ${{ matrix.python-version }}
+      - run: uv sync --all-groups
+      - run: uv tree --depth 1
+      - run: make test
+
   # Runs on every trigger, unlike the provider jobs: a service container
   # needs no secret and costs nothing, so the PostgresStore conformance
   # suite gates every push (DESIGN §12 ledger #40).

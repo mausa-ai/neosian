@@ -25,7 +25,7 @@ RUN uv sync --locked --no-dev --no-editable --extra server --extra postgres
 FROM python:3.13-slim
 RUN useradd --uid 1000 --create-home neosian \
     && mkdir /data && chown neosian:neosian /data
-# The venv keeps its build path, so the console script's shebang holds.
+# The venv keeps its build path; the module door below needs no shebang.
 COPY --from=builder /app/.venv /app/.venv
 ENV PATH="/app/.venv/bin:$PATH"
 USER neosian
@@ -35,6 +35,8 @@ HEALTHCHECK --interval=10s --timeout=3s --start-period=5s CMD \
     ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:6367/health', timeout=2)"]
 # 0.0.0.0 rides the entrypoint: the library default (127.0.0.1, §18.7)
 # is unreachable from outside a container, and a CMD override — a
-# different root, a schema — must not silently lose the bind.
-ENTRYPOINT ["neosian", "serve", "--host", "0.0.0.0"]
+# different root, a schema — must not silently lose the bind. The
+# module door is `neosian serve` without the shell's `cli` extra (TP-2):
+# the appliance installs no terminal library.
+ENTRYPOINT ["python", "-m", "neosian.server", "--host", "0.0.0.0"]
 CMD ["--root", "/data"]

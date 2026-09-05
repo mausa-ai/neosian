@@ -16,17 +16,18 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
     "Typing :: Typed",
 ]
+# The three provider SDKs are capped at their next major (NF, TP-1): a
+# green CI never vouches for a wire it has not seen, and the `lowest`
+# CI job resolves every declared floor for real on both Python ends
+# (TP-7 — its first run raised psycopg's: 3.2.10 is the first binary
+# wheel for 3.14).
 dependencies = [
-    "anthropic>=0.122.0",
-    "cerebras-cloud-sdk>=1.91.0",
+    "anthropic>=0.122.0,<1",
+    "cerebras-cloud-sdk>=1.91.0,<2",
     "httpx>=0.28.1",
-    "openai>=3.2.0",
+    "openai>=3.2.0,<4",
     "pydantic>=2.13.4",
     "pyyaml>=6.0.3",
-    "rich>=15.0.0",
-    "simple-term-menu>=1.6.6",
-    "tomli-w>=1.2.0",
-    "typer>=0.27.1",
 ]
 
 # The reference PostgresStore rides the `postgres` extra; the core install
@@ -37,9 +38,19 @@ dependencies = [
 # choice, dev-group here solely for the in-memory exporter tests). The
 # state process rides `server` (DESIGN §18): starlette/uvicorn pinned
 # explicitly, never leaned on as the MCP SDK's transitive deps;
-# `RemoteStore` needs none of it — httpx is core.
+# `RemoteStore` needs none of it — httpx is core. The shell — the
+# `neosian` console script, typer + rich + the terminal menu — rides
+# `cli` (NF, TP-2): a host calling `Agent.run` installs no terminal
+# library, and the `python -m` doors (memory, record, mcp, server,
+# ledger, mobility) stay argparse, in the core install.
 [project.optional-dependencies]
-postgres = ["psycopg[binary,pool]>=3.2"]
+cli = [
+    "rich>=15.0.0",
+    "simple-term-menu>=1.6.6",
+    "tomli-w>=1.2.0",
+    "typer>=0.27.1",
+]
+postgres = ["psycopg[binary,pool]>=3.2.10"]
 mcp = ["mcp>=2,<3"]
 otel = ["opentelemetry-api>=1.30"]
 server = ["mcp>=2,<3", "starlette>=1.6", "uvicorn>=0.52.4"]
@@ -55,13 +66,17 @@ dev = [
     "mcp>=2,<3",
     "mypy>=2.3.1",
     "opentelemetry-sdk>=1.30",
-    "psycopg[binary,pool]>=3.2",
+    "psycopg[binary,pool]>=3.2.10",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
     "pytest-cov>=7",
     "pytest-timeout>=2.3",
+    "rich>=15.0.0",
     "ruff>=0.16.3",
+    "simple-term-menu>=1.6.6",
     "starlette>=1.6",
+    "tomli-w>=1.2.0",
+    "typer>=0.27.1",
     "types-pyyaml>=6.0.12.20250915",
     "uvicorn>=0.52.4",
 ]
@@ -318,7 +333,7 @@ forbidden_modules = [
 ]
 
 [project.scripts]
-neosian = "neosian._cli.main:main"
+neosian = "neosian._cli.entry:main"
 
 [build-system]
 requires = ["hatchling"]
