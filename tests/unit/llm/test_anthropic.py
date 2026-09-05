@@ -33,6 +33,7 @@ from neosian._foundation.shared.types import (
     ToolCallId,
     ToolName,
 )
+from neosian._foundation.tools.result import ToolResult
 from tests.unit.llm.sdk_specs import ANTHROPIC as SPEC
 
 
@@ -165,6 +166,32 @@ class TestAnthropicClient:
         assert content[0]["content"] == '{"temperature": 22}'
 
     @pytest.mark.unit
+    def test_a_failed_envelope_is_marked_is_error(
+        self, client: AnthropicClient
+    ) -> None:
+        """A failed `ToolResult` rides as `is_error: true` (LL-10); a
+        success and a foreign payload carry no flag."""
+        messages = [
+            Message(
+                role=Role.TOOL,
+                content=ToolResult.fail("boom", code="tool_execution_failed").to_json(),
+                tool_call_id=ToolCallId("call_1"),
+            ),
+            Message(
+                role=Role.TOOL,
+                content=ToolResult.ok("fine").to_json(),
+                tool_call_id=ToolCallId("call_2"),
+            ),
+            Message(role=Role.TOOL, content="22", tool_call_id=ToolCallId("call_3")),
+        ]
+
+        _, converted = client._convert_messages(messages)
+
+        blocks = converted[0]["content"]
+        assert blocks[0]["is_error"] is True
+        assert "is_error" not in blocks[1]
+        assert "is_error" not in blocks[2]
+
     def test_consecutive_tool_results_share_one_user_message(
         self, client: AnthropicClient
     ) -> None:

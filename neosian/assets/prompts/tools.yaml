@@ -19,3 +19,20 @@ skill_guide: |-
 recall_turn_any: "Re-read one turn of a recorded conversation verbatim. Every agent's sessions are listed in the memory index under sessions/ (each document names its conversation id), and the 'where we left off' block at session start shows each turn as one line labeled with its number in square brackets, e.g. [7]. Pass the conversation id and a turn number to get that turn's full original text, including complete tool calls and results. Use it whenever a log line mentions something you need the details of, and to read the URL, path or id a [link <id>:N] handle stands for."
 
 recall_turn: "Re-read one earlier turn verbatim. Compacted turns appear in the conversation log — and in any view of another conversation — as one-line entries labeled with turn numbers in square brackets, e.g. [7] or [3-6]. Pass a turn number to get that turn's full original text, including complete tool calls and results; pass conversation=<id> to read a turn of a viewed conversation (omit it for this one). Use it whenever a log entry mentions something you need the details of. A [link N] handle in an entry stands for a URL, path or id: pass it as written in any tool call and it is expanded before the tool runs, or recall the turn to read it."
+
+# Parameter prose by parameter name (DESIGN §27.9): what each builtin's
+# schema says about its arguments, kept as data like the descriptions.
+
+todo_params:
+  todos: "The complete task list, replacing the previous one. Each item has 'content' (the task) and 'status' ('pending', 'in_progress' or 'completed')."
+
+skill_load_params:
+  name: "The skill's name as listed by list_skills, or its /mount/skills/name path."
+
+recall_turn_params:
+  turn: "The turn number shown in square brackets in a log entry, e.g. 7 for [7]."
+  conversation: "The id of a viewed conversation to read from; omit for this one."
+
+recall_turn_any_params:
+  turn: "The turn number shown in square brackets in the session's log, e.g. 7 for [7]."
+  conversation: "The conversation id, as the sessions/ document or the view names it."

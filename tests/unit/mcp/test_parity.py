@@ -2,10 +2,12 @@
 texts over identical stores (ledger #50 — one ladder, no drift)."""
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 from mcp.client import Client
 from mcp.types import CallToolResult
+from pydantic import ValidationError
 
 from neosian._foundation.conversation.recall import create_recall_any_tool
 from neosian._foundation.llm.base import Message, Role
@@ -13,7 +15,9 @@ from neosian._foundation.mcp.server import create_memory_server
 from neosian._foundation.memory.file import FileStore
 from neosian._foundation.memory.mounts import MemoryConfig, Mount
 from neosian._foundation.memory.tools import create_memory_tool
-from neosian._foundation.shared.constants import ErrorMessages
+from neosian._foundation.shared.types import ToolFunction
+from neosian._foundation.tools.base import ToolResult, get_tool_metadata
+from neosian._foundation.tools.schema import rejection, validate_arguments
 
 _MOUNTS = (
     Mount(scope="user:demo", mount_path="memories", description="user facts"),
@@ -81,6 +85,18 @@ def _blocks(result: CallToolResult) -> list[str]:
     return [c.text for c in result.content]  # type: ignore[union-attr]
 
 
+async def _call(tool: ToolFunction, arguments: dict[str, object]) -> ToolResult[Any]:
+    """The agent path in miniature: validate against the tool's own model
+    (`agent/tool_exec.py`), then call — the MCP handler does the same."""
+    metadata = get_tool_metadata(tool)
+    assert metadata is not None and metadata.arguments is not None
+    try:
+        validated = validate_arguments(metadata.arguments, arguments)
+    except ValidationError as exc:
+        return rejection(metadata.name, exc)
+    return await tool(**validated)
+
+
 @pytest.mark.parametrize("arguments", _CASES, ids=lambda a: str(a))
 async def test_both_transports_agree(
     tmp_path: Path, arguments: dict[str, object]
@@ -88,8 +104,7 @@ async def test_both_transports_agree(
     fn_config = await _seed(tmp_path / "fn")
     mcp_config = await _seed(tmp_path / "mcp")
 
-    tool = create_memory_tool(fn_config, actor="mcp")
-    fn_result = await tool(**arguments)
+    fn_result = await _call(create_memory_tool(fn_config, actor="mcp"), arguments)
 
     server = await create_memory_server(mcp_config)
     async with Client(server) as client:
@@ -132,7 +147,7 @@ async def test_recall_turn_agrees_on_both_transports(
     """The MCP twin (§21.7) is the function tool's own bytes: every
     success and every corrective failure, block for block."""
     store = await _seed_turn(tmp_path / "s")
-    fn_result = await create_recall_any_tool(store)(**arguments)
+    fn_result = await _call(create_recall_any_tool(store), arguments)
 
     server = await create_memory_server(
         MemoryConfig(store=store, mounts=_MOUNTS), conversations=store
@@ -154,12 +169,10 @@ async def test_a_missing_conversation_is_the_invalid_arguments_text(
     """`conversation` is required on the server (ledger #138): omitting it
     is the same corrective text tool_exec produces for the function tool."""
     store = await _seed_turn(tmp_path / "s")
-    tool = create_recall_any_tool(store)
-    with pytest.raises(TypeError) as excinfo:
-        await tool(turn=1)
-    expected = ErrorMessages.TOOL_INVALID_ARGUMENTS.format(
-        tool_name="recall_turn", error=excinfo.value
-    )
+    fn_result = await _call(create_recall_any_tool(store), {"turn": 1})
+    assert fn_result.success is False
+    assert fn_result.code == "tool_invalid_arguments"
+    expected = fn_result.error
     server = await create_memory_server(
         MemoryConfig(store=store, mounts=_MOUNTS), conversations=store
     )
@@ -170,23 +183,22 @@ async def test_a_missing_conversation_is_the_invalid_arguments_text(
 
 
 async def test_mistyped_value_parity(tmp_path: Path) -> None:
-    """A mistyped `insert_line` is a corrective failure on both transports
-    (the agent path via tool_exec's TypeError catch, MCP via the handler's),
-    formatted by the same constant."""
+    """A mistyped `insert_line` is the same corrective failure on both
+    transports — validation against the one schema (§27.9), not a
+    TypeError from inside the command."""
     config = await _seed(tmp_path / "m")
-    arguments = {
+    arguments: dict[str, object] = {
         "command": "insert",
         "path": "/memories/seeded",
-        "insert_line": "3",
+        "insert_line": "three",
         "insert_text": "t",
     }
 
-    tool = create_memory_tool(config)
-    with pytest.raises(TypeError) as excinfo:
-        await tool(**arguments)  # tool_exec catches this in the agent loop
-    expected = ErrorMessages.TOOL_INVALID_ARGUMENTS.format(
-        tool_name="memory", error=excinfo.value
-    )
+    fn_result = await _call(create_memory_tool(config), arguments)
+    assert fn_result.success is False
+    assert fn_result.code == "tool_invalid_arguments"
+    assert "insert_line" in (fn_result.error or "")
+    expected = fn_result.error
 
     server = await create_memory_server(config)
     async with Client(server) as client:

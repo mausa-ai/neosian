@@ -23,7 +23,7 @@ from neosian._foundation.memory.dispatch import corrective
 from neosian._foundation.memory.mounts import MemoryConfig, Mount, resolve
 from neosian._foundation.shared.constants import BuiltinTools, ErrorMessages
 from neosian._foundation.shared.exceptions import MemoryStoreError, SkillLoadError
-from neosian._foundation.shared.prompt_assets import get_prompt
+from neosian._foundation.shared.prompt_assets import get_prompt, get_prompt_params
 from neosian._foundation.shared.skill import skill_from_document
 from neosian._foundation.shared.types import Skill, ToolFunction
 from neosian._foundation.tools.base import Tool, ToolResult
@@ -134,13 +134,10 @@ def create_skill_tools(
     @Tool(
         name=BuiltinTools.Skill.LOAD_NAME,
         description=get_prompt("tools.skill_load"),
+        params=get_prompt_params("tools.skill_load_params"),
     )
     async def load_skill_tool(name: str) -> ToolResult[str]:
-        """Load a skill's instructions.
-
-        Args:
-            name: The skill name, or its /mount/skills/name path.
-        """
+        """Load a skill's instructions."""
         try:
             entry = await load_skill(memory, directory, name)
         except MemoryStoreError as exc:

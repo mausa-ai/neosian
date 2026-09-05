@@ -25,6 +25,8 @@ import logging
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any, Final
 
+from pydantic import ValidationError
+
 from neosian._foundation.conversation.recall import create_recall_any_tool
 from neosian._foundation.mcp.sdk import Sdk, load_sdk
 from neosian._foundation.memory.dispatch import dispatch
@@ -37,7 +39,8 @@ from neosian._foundation.memory.skills import (
 )
 from neosian._foundation.memory.tools import create_memory_tool
 from neosian._foundation.shared.constants import ErrorMessages
-from neosian._foundation.tools.base import ToolResult, get_tool_definition
+from neosian._foundation.tools.base import ToolMetadata, ToolResult, get_tool_metadata
+from neosian._foundation.tools.schema import rejection, validate_arguments
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
@@ -55,7 +58,6 @@ if TYPE_CHECKING:
     )
 
     from neosian._foundation.conversation.base import ConversationStore
-    from neosian._foundation.llm.base import ToolDefinition
     from neosian._foundation.shared.types import ToolFunction
 
     Handler = Callable[[Mapping[str, Any]], Awaitable[ToolResult[Any]]]
@@ -80,19 +82,36 @@ def _to_call_tool_result(sdk: Sdk, result: ToolResult[Any]) -> CallToolResult:
     return sdk.call_tool_result(content=content, is_error=not result.success)
 
 
-def _definition(tool: ToolFunction) -> ToolDefinition:
-    definition = get_tool_definition(tool)
-    if definition is None:  # pragma: no cover - @Tool always attaches one
+def _metadata(tool: ToolFunction) -> ToolMetadata:
+    metadata = get_tool_metadata(tool)
+    if metadata is None or metadata.arguments is None:  # pragma: no cover
         raise RuntimeError("a tool factory returned an undecorated function")
-    return definition
+    return metadata
+
+
+def _validated(
+    metadata: ToolMetadata, arguments: Mapping[str, Any]
+) -> dict[str, Any] | ToolResult[Any]:
+    """The arguments as the schema promises them, or the same corrective
+    failure `agent/tool_exec.py` returns — parity across transports."""
+    assert metadata.arguments is not None  # _metadata guarantees it
+    try:
+        return validate_arguments(metadata.arguments, arguments)
+    except ValidationError as exc:
+        return rejection(metadata.name, exc)
 
 
 def _read_only(sdk: Sdk, tool: ToolFunction) -> tuple[McpTool, Handler]:
-    """A read-only tool served verbatim, its handler calling it by keyword."""
-    definition = _definition(tool)
+    """A read-only tool served verbatim, its handler validating then
+    calling it by keyword."""
+    metadata = _metadata(tool)
+    definition = metadata.definition
 
     async def call(arguments: Mapping[str, Any]) -> ToolResult[Any]:
-        return await tool(**arguments)
+        validated = _validated(metadata, arguments)
+        if isinstance(validated, ToolResult):
+            return validated
+        return await tool(**validated)
 
     served = sdk.tool(
         name=definition.name,
@@ -126,10 +145,14 @@ async def create_memory_server(
     frozen-index-per-conversation rule (ledger #51).
     """
     sdk = load_sdk()
-    memory = _definition(create_memory_tool(config, actor=actor))
+    memory_metadata = _metadata(create_memory_tool(config, actor=actor))
+    memory = memory_metadata.definition
 
     async def call_memory(arguments: Mapping[str, Any]) -> ToolResult[Any]:
-        return await dispatch(config, arguments.get("command"), arguments, actor=actor)
+        validated = _validated(memory_metadata, arguments)
+        if isinstance(validated, ToolResult):
+            return validated
+        return await dispatch(config, validated["command"], validated, actor=actor)
 
     tools = [
         sdk.tool(

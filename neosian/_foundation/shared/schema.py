@@ -1,4 +1,4 @@
-"""Schema utilities for ResponseFormat.
+"""Schema utilities for ResponseFormat, and the strict pass tools share.
 
 Provides unified handling for both BaseModel subclasses and Union types
 using Pydantic's TypeAdapter.
@@ -8,6 +8,7 @@ Union types are automatically wrapped in an object schema because LLM APIs
 The wrapper is: {"result": <union_value>}
 """
 
+import copy
 import json
 import types
 from typing import Any, Union, get_args, get_origin
@@ -63,7 +64,7 @@ def get_schema_name(schema: SchemaType) -> str:
     return schema.__name__
 
 
-def _add_additional_properties_false(schema: Any) -> None:
+def add_additional_properties_false(schema: Any) -> None:
     """Recursively add additionalProperties: false to all object schemas.
 
     LLM APIs (OpenAI, Anthropic, Cerebras) require additionalProperties: false on
@@ -75,29 +76,75 @@ def _add_additional_properties_false(schema: Any) -> None:
     if not isinstance(schema, dict):
         return
 
-    # If this is an object type, add additionalProperties: false
-    if schema.get("type") == "object":
+    # An object without a stated policy is closed; a stated one (a
+    # `dict[str, int]` value schema, an explicit allow) is the author's.
+    if schema.get("type") == "object" and "additionalProperties" not in schema:
         schema["additionalProperties"] = False
 
     # Recurse into properties
     if "properties" in schema:
         for prop_schema in schema["properties"].values():
-            _add_additional_properties_false(prop_schema)
+            add_additional_properties_false(prop_schema)
 
     # Recurse into $defs
     if "$defs" in schema:
         for def_schema in schema["$defs"].values():
-            _add_additional_properties_false(def_schema)
+            add_additional_properties_false(def_schema)
 
     # Recurse into anyOf/oneOf/allOf
     for key in ("anyOf", "oneOf", "allOf"):
         if key in schema:
             for item_schema in schema[key]:
-                _add_additional_properties_false(item_schema)
+                add_additional_properties_false(item_schema)
 
     # Recurse into items (for arrays)
     if "items" in schema:
-        _add_additional_properties_false(schema["items"])
+        add_additional_properties_false(schema["items"])
+
+
+def _resolve_ref(root: dict[str, Any], ref: str) -> dict[str, Any]:
+    node: Any = root
+    for part in ref.removeprefix("#/").split("/"):
+        node = node[part]
+    if not isinstance(node, dict):
+        raise ValueError(f"$ref {ref!r} does not name a schema")
+    return node
+
+
+def _strictify(node: Any, root: dict[str, Any]) -> None:
+    if not isinstance(node, dict):
+        return
+    for key in ("$defs", "properties"):
+        for child in (node.get(key) or {}).values():
+            _strictify(child, root)
+    if node.get("type") == "object":
+        node["additionalProperties"] = False
+    if isinstance(node.get("properties"), dict):
+        node["required"] = list(node["properties"])
+    _strictify(node.get("items"), root)
+    for key in ("anyOf", "allOf"):
+        for child in node.get(key) or []:
+            _strictify(child, root)
+    if "default" in node and node["default"] is None:
+        del node["default"]
+    ref = node.get("$ref")
+    if isinstance(ref, str) and len(node) > 1:
+        # A $ref with siblings (a description beside it) is not allowed
+        # under strict: inline the target, the siblings winning.
+        resolved = _resolve_ref(root, ref)
+        del node["$ref"]
+        node.update({**resolved, **node})
+        _strictify(node, root)
+
+
+def strict_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    """The schema as OpenAI-style strict mode demands it (the rules of the
+    OpenAI SDK's own `_ensure_strict_json_schema`): every property
+    required, `null` defaults dropped, every object closed, a `$ref` with
+    siblings inlined. A deep copy; the input is untouched."""
+    result = copy.deepcopy(schema)
+    _strictify(result, result)
+    return result
 
 
 def get_json_schema(schema: SchemaType) -> dict[str, Any]:
@@ -142,7 +189,7 @@ def get_json_schema(schema: SchemaType) -> dict[str, Any]:
             del wrapper_schema["properties"][_UNION_WRAPPER_KEY]["$defs"]
 
         # Add additionalProperties: false to all objects (required by LLM APIs)
-        _add_additional_properties_false(wrapper_schema)
+        add_additional_properties_false(wrapper_schema)
 
         return wrapper_schema
 
@@ -150,7 +197,7 @@ def get_json_schema(schema: SchemaType) -> dict[str, Any]:
     # models under $defs without additionalProperties, so patch the whole
     # tree — root and every $defs entry.
     json_schema: dict[str, Any] = schema.model_json_schema()
-    _add_additional_properties_false(json_schema)
+    add_additional_properties_false(json_schema)
     return json_schema
 
 

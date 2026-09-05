@@ -92,7 +92,9 @@ def build_tools(
         else:
             wrapper = _stub(func, metadata.name, results)
             stubbed.add(metadata.name)
-        new_tools.append(attach_tool_metadata(wrapper, definition))
+        new_tools.append(
+            attach_tool_metadata(wrapper, definition, arguments=metadata.arguments)
+        )
 
     unknown_execute = sorted(str(n) for n in execute - known)
     if unknown_execute:

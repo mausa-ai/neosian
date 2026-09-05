@@ -226,6 +226,27 @@ class TestCerebrasClientToolConversion:
         assert result[0]["function"]["name"] == "search"
         assert result[0]["function"]["description"] == "Search for information"
         assert "properties" in result[0]["function"]["parameters"]
+        assert "strict" not in result[0]["function"]
+
+    def test_a_strict_tool_is_sent_strict(self) -> None:
+        """`strict=True` reaches the wire in the strict-mode shape (TG-9)."""
+        client = CerebrasClient(api_key="test-key")
+        tool = ToolDefinition(
+            name=ToolName("search"),
+            description="Search",
+            parameters={
+                "type": "object",
+                "properties": {"query": {"type": "string"}, "n": {"type": "integer"}},
+                "required": ["query"],
+            },
+            strict=True,
+        )
+
+        function = client._convert_tools([tool])[0]["function"]
+
+        assert function["strict"] is True
+        assert function["parameters"]["required"] == ["query", "n"]
+        assert function["parameters"]["additionalProperties"] is False
 
 
 @pytest.mark.unit

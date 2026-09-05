@@ -44,6 +44,7 @@ from neosian._foundation.shared.types import (
     ToolCallId,
     ToolName,
 )
+from neosian._foundation.tools.result import FAILED_ENVELOPE_PREFIX
 
 logger = logging.getLogger(__name__)
 
@@ -855,12 +856,15 @@ class AnthropicClient(BaseLLMClient):
                         )
                     )
                 # Tool results are user-role tool_result blocks; a batch
-                # shares one message.
-                result = {
+                # shares one message. A failed envelope is flagged in the
+                # provider's own vocabulary (LL-10).
+                result: dict[str, Any] = {
                     "type": "tool_result",
                     "tool_use_id": msg.tool_call_id,
                     "content": msg.content or "",
                 }
+                if (msg.content or "").startswith(FAILED_ENVELOPE_PREFIX):
+                    result["is_error"] = True
                 if anthropic_messages and _is_tool_results(anthropic_messages[-1]):
                     anthropic_messages[-1]["content"].append(result)
                 else:

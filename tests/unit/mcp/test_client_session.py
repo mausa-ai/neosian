@@ -131,7 +131,9 @@ class TestCallTool:
         async with Client(server) as client:
             result = await client.call_tool("memory", {"command": "update"})
         assert result.is_error is True
-        assert "Unknown command 'update'" in result.content[0].text  # type: ignore[union-attr]
+        text = result.content[0].text  # type: ignore[union-attr]
+        assert text.startswith("Invalid arguments for tool 'memory': command: ")
+        assert "'rename'" in text
 
     async def test_unknown_tool_is_in_band(self, config: MemoryConfig) -> None:
         server = await create_memory_server(config)

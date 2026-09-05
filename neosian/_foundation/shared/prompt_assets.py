@@ -6,6 +6,7 @@ the consumer seam: custom PolicyCategory lists replace the shipped policy
 pack, and user-defined @Tool descriptions replace the builtin ones.
 """
 
+from collections.abc import Mapping
 from importlib import resources
 from typing import Any, Final
 
@@ -49,6 +50,14 @@ _TOOL_KEYS: Final = (
     "recall_turn",
     "recall_turn_any",
 )
+# Parameter prose by parameter name (NF §27.9): the builtins' `params=`.
+_TOOL_PARAM_KEYS: Final = (
+    "todo_params",
+    "skill_load_params",
+    "recall_turn_params",
+    "recall_turn_any_params",
+)
+_MEMORY_PARAM_KEYS: Final = ("params",)
 
 
 def render(template: str, **variables: str) -> str:
@@ -75,9 +84,23 @@ def _require(data: dict[str, Any], key: str, filename: str) -> Any:
     return data[key]
 
 
-def _load() -> tuple[dict[str, str], tuple[dict[str, Any], ...]]:
+def _require_params(data: dict[str, Any], key: str, filename: str) -> dict[str, str]:
+    value = _require(data, key, filename)
+    if not isinstance(value, dict) or not all(
+        isinstance(k, str) and isinstance(v, str) for k, v in value.items()
+    ):
+        raise PromptInvalidYAMLError(filename)
+    return dict(value)
+
+
+def _load() -> (
+    tuple[dict[str, str], dict[str, dict[str, str]], tuple[dict[str, Any], ...]]
+):
     guardrails = _load_yaml(_GUARDRAILS_FILE)
     tools = _load_yaml(_TOOLS_FILE)
+    params: dict[str, dict[str, str]] = {}
+    for key in _TOOL_PARAM_KEYS:
+        params[f"tools.{key}"] = _require_params(tools, key, _TOOLS_FILE)
     prompts = {
         "guardrails.classifier": str(
             _require(guardrails, "classifier", _GUARDRAILS_FILE)
@@ -89,6 +112,8 @@ def _load() -> tuple[dict[str, str], tuple[dict[str, Any], ...]]:
     memory = _load_yaml(_MEMORY_FILE)
     for key in _MEMORY_KEYS:
         prompts[f"memory.{key}"] = str(_require(memory, key, _MEMORY_FILE))
+    for key in _MEMORY_PARAM_KEYS:
+        params[f"memory.{key}"] = _require_params(memory, key, _MEMORY_FILE)
     compaction = _load_yaml(_COMPACTION_FILE)
     for key in _COMPACTION_KEYS:
         prompts[f"compaction.{key}"] = str(_require(compaction, key, _COMPACTION_FILE))
@@ -109,10 +134,10 @@ def _load() -> tuple[dict[str, str], tuple[dict[str, Any], ...]]:
             raise PromptInvalidYAMLError(_GUARDRAILS_FILE)
         for key in _POLICY_KEYS:
             _require(entry, key, _GUARDRAILS_FILE)
-    return prompts, policies
+    return prompts, params, policies
 
 
-_PROMPTS, POLICY_DATA = _load()
+_PROMPTS, _PARAMS, POLICY_DATA = _load()
 
 
 def get_prompt(key: str) -> str:
@@ -120,3 +145,11 @@ def get_prompt(key: str) -> str:
     if key not in _PROMPTS:
         raise PromptMissingKeyError(key, "prompt registry")
     return _PROMPTS[key]
+
+
+def get_prompt_params(key: str) -> Mapping[str, str]:
+    """A builtin tool's parameter prose by registry key (e.g.
+    "tools.todo_params"): `{parameter: description}` for `Tool(params=)`."""
+    if key not in _PARAMS:
+        raise PromptMissingKeyError(key, "prompt registry")
+    return _PARAMS[key]

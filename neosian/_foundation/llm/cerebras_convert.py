@@ -12,6 +12,7 @@ from typing import Any
 from neosian._foundation.llm.base import Message, Role, ToolDefinition
 from neosian._foundation.shared.constants import ErrorMessages
 from neosian._foundation.shared.exceptions import UnsupportedContentError
+from neosian._foundation.shared.schema import strict_schema
 from neosian._foundation.shared.serialization import safe_json_dumps
 from neosian._foundation.shared.types import ResponseFormat
 
@@ -72,18 +73,20 @@ def convert_messages(messages: list[Message]) -> list[dict[str, Any]]:
 
 
 def convert_tools(tools: list[ToolDefinition]) -> list[dict[str, Any]]:
-    """Convert internal tool definitions to Cerebras format."""
-    return [
-        {
-            "type": "function",
-            "function": {
-                "name": tool.name,
-                "description": tool.description,
-                "parameters": tool.parameters,
-            },
+    """Convert internal tool definitions to Cerebras format; a strict tool
+    is sent as one, in the strict-mode schema shape (DESIGN §27.9)."""
+    result: list[dict[str, Any]] = []
+    for tool in tools:
+        function: dict[str, Any] = {
+            "name": tool.name,
+            "description": tool.description,
+            "parameters": tool.parameters,
         }
-        for tool in tools
-    ]
+        if tool.strict:
+            function["parameters"] = strict_schema(tool.parameters)
+            function["strict"] = True
+        result.append({"type": "function", "function": function})
+    return result
 
 
 def convert_response_format(response_format: ResponseFormat) -> dict[str, object]:

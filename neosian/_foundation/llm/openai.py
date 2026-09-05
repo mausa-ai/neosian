@@ -463,7 +463,7 @@ class OpenAICompatibleClient(BaseLLMClient):
     def _convert_tools(
         self, tools: list[ToolDefinition]
     ) -> list[ChatCompletionToolParam]:
-        return convert_tools(tools)
+        return convert_tools(tools, strict_schemas=self._door.strict_schemas)
 
     def _convert_response_format(
         self, response_format: ResponseFormat

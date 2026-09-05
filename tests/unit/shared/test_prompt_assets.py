@@ -10,7 +10,9 @@ from neosian import CommonPolicies, PolicyBuilder
 from neosian._foundation.shared.exceptions import PromptMissingKeyError
 from neosian._foundation.shared.prompt_assets import (
     POLICY_DATA,
+    _require_params,
     get_prompt,
+    get_prompt_params,
     render,
 )
 
@@ -134,6 +136,36 @@ class TestPromptRegistry:
         definition = get_tool_definition(update_todo)
         assert definition is not None
         assert definition.description == get_prompt("tools.todo")
+
+    def test_parameter_prose_is_wired(self) -> None:
+        """Every builtin's `params=` comes from the packs (§27.9)."""
+        from neosian._foundation.tools.base import get_tool_definition
+        from neosian._foundation.tools.builtin.todo import update_todo
+
+        definition = get_tool_definition(update_todo)
+        assert definition is not None
+        assert definition.parameters["properties"]["todos"]["description"] == (
+            get_prompt_params("tools.todo_params")["todos"]
+        )
+        for key in (
+            "tools.skill_load_params",
+            "tools.recall_turn_params",
+            "tools.recall_turn_any_params",
+            "memory.params",
+        ):
+            assert get_prompt_params(key)
+        with pytest.raises(PromptMissingKeyError):
+            get_prompt_params("tools.nonexistent_params")
+
+    def test_parameter_prose_must_be_a_string_map(self) -> None:
+        from neosian._foundation.shared.exceptions import PromptInvalidYAMLError
+
+        assert _require_params({"k": {"a": "b"}}, "k", "f") == {"a": "b"}
+        for bad in ("text", {"a": 1}, [("a", "b")]):
+            with pytest.raises(PromptInvalidYAMLError):
+                _require_params({"k": bad}, "k", "f")
+        with pytest.raises(PromptMissingKeyError):
+            _require_params({}, "k", "f")
 
     def test_memory_prompts_are_wired(self) -> None:
         # OpenAI-compatible providers cap function descriptions at 1024.

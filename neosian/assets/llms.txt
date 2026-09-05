@@ -20,7 +20,7 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
 
 - `neosian docs` — list the shipped topics (they travel in the wheel, so
   they always describe the installed version).
-- `neosian docs quickstart | agent | memory | skills | cli | mcp | agents | topology`
+- `neosian docs quickstart | agent | tools | memory | skills | cli | mcp | agents | topology`
   — one page, markdown on stdout, pipe-safe.
 - `neosian docs topology` — who runs neosian code x where the bytes live;
   one writer per FileStore root.

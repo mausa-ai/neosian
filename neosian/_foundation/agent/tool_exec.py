@@ -9,6 +9,8 @@ import time
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 
+from pydantic import ValidationError
+
 from neosian._foundation.agent.approval import ToolApprovalRequest, gate_tool_call
 from neosian._foundation.agent.events import (
     AgentEvent,
@@ -19,12 +21,10 @@ from neosian._foundation.agent.events import (
 from neosian._foundation.agent.lifetimes import reap
 from neosian._foundation.llm.base import ToolCall
 from neosian._foundation.shared.constants import ErrorMessages, Streaming
-from neosian._foundation.shared.exceptions import (
-    ToolExecutionError,
-    ToolInvalidArgumentsError,
-)
+from neosian._foundation.shared.exceptions import ToolExecutionError
 from neosian._foundation.shared.types import ToolCallId
-from neosian._foundation.tools.base import ToolResult
+from neosian._foundation.tools.base import ToolResult, get_tool_metadata
+from neosian._foundation.tools.schema import rejection, validate_arguments
 
 if TYPE_CHECKING:
     from neosian._foundation.agent.base import Agent
@@ -62,19 +62,22 @@ async def execute_tool(agent: Agent, tool_call: ToolCall) -> ToolResult[Any]:
         if denial is not None:
             return denial
 
-    # Bind before calling: a TypeError from binding is bad arguments, a
-    # TypeError from inside the tool body is the tool failing (TG-7).
+    # Validate before calling (DESIGN §27.9): a decorated tool's arguments
+    # are checked against the schema the model was given and arrive as the
+    # signature promises them; a definition the library attached (an MCP
+    # server's) only binds — the server validates. Either failure is bad
+    # arguments; an error inside the body is the tool failing (TG-7).
+    metadata = get_tool_metadata(tool_func)
     try:
-        inspect.signature(tool_func).bind(**tool_call.arguments)
-    except (TypeError, ValueError) as e:  # ValueError: no signature to bind
-        return ToolResult.fail(
-            ErrorMessages.TOOL_INVALID_ARGUMENTS.format(
-                tool_name=tool_call.name, error=e
-            ),
-            code=ToolInvalidArgumentsError.code,
-        )
+        if metadata is not None and metadata.arguments is not None:
+            arguments = validate_arguments(metadata.arguments, tool_call.arguments)
+        else:
+            inspect.signature(tool_func).bind(**tool_call.arguments)
+            arguments = dict(tool_call.arguments)
+    except (ValidationError, TypeError, ValueError) as e:  # ValueError: no signature
+        return rejection(tool_call.name, e)
     try:
-        return await tool_func(**tool_call.arguments)
+        return await tool_func(**arguments)
     except Exception as e:
         return ToolResult.fail(
             ErrorMessages.TOOL_EXECUTION_FAILED.format(

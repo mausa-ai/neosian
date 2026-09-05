@@ -29,13 +29,17 @@ class TestUpdateTodoTool:
         definition = get_tool_definition(update_todo)
         assert definition is not None
 
-        # Check that todos is an array
+        # Check that todos is an array, described from tools.yaml (§27.9)
         todos_schema = definition.parameters["properties"]["todos"]
         assert todos_schema["type"] == "array"
+        assert "'content'" in todos_schema["description"]
 
-        # Check item schema has explicit properties (not just additionalProperties)
-        item_schema = todos_schema["items"]
+        # The item is a closed object under $defs (pydantic's shape)
+        assert todos_schema["items"] == {"$ref": "#/$defs/TodoItemInput"}
+        item_schema = definition.parameters["$defs"]["TodoItemInput"]
         assert item_schema["type"] == "object"
+        assert "title" not in item_schema
+        assert "description" not in item_schema  # no docstring reaches the model
         assert "properties" in item_schema
         assert "content" in item_schema["properties"]
         assert "status" in item_schema["properties"]

@@ -7,20 +7,16 @@ Stateless - validates input and echoes back the list. State lives in conversatio
 from typing import Literal, TypedDict
 
 from neosian._foundation.shared.constants import BuiltinTools
-from neosian._foundation.shared.prompt_assets import get_prompt
+from neosian._foundation.shared.prompt_assets import get_prompt, get_prompt_params
 from neosian._foundation.shared.types import TodoStatus
 from neosian._foundation.tools.base import Tool, ToolResult
 
 _INVALID_STATUS = "todos[{index}]: status '{status}' is not one of {legal}"
 
 
+# One item; a TypedDict so the schema states the keys (no docstring — a
+# class docstring would reach the model, and its prose lives in YAML).
 class TodoItemInput(TypedDict):
-    """Input schema for a todo item.
-
-    This TypedDict generates explicit JSON Schema with required properties,
-    ensuring LLMs know exactly what keys to use.
-    """
-
     content: str
     status: Literal["pending", "in_progress", "completed"]
 
@@ -28,21 +24,13 @@ class TodoItemInput(TypedDict):
 @Tool(
     name=BuiltinTools.Todo.NAME,
     description=get_prompt("tools.todo"),
+    params=get_prompt_params("tools.todo_params"),
 )
 async def update_todo(
     todos: list[TodoItemInput],
 ) -> ToolResult[list[dict[str, str]]]:
-    """Update the todo list with new items.
-
-    Validates the input and returns the normalized list.
-    The actual state lives in the conversation history.
-
-    Args:
-        todos: List of todo items with 'content' and 'status' keys.
-
-    Returns:
-        The validated todo list.
-    """
+    """Validate the list and echo it back; the state lives in the
+    conversation history."""
     result: list[dict[str, str]] = []
 
     for index, item_dict in enumerate(todos):

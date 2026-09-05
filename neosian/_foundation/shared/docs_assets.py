@@ -25,6 +25,7 @@ _DOCS_DIR: Final = "docs"
 _TOPICS: Final = (
     "quickstart",
     "agent",
+    "tools",
     "memory",
     "skills",
     "cli",

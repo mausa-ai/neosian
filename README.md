@@ -225,8 +225,8 @@ write by appending its inverse — the shell face of `revert_memory`.
 ## Docs for agents
 
 The docs travel in the wheel, version-true by construction:
-`neosian docs` lists the shipped topics (quickstart, agent, memory,
-skills, cli, mcp, agents, topology) and `neosian docs <topic>` prints
+`neosian docs` lists the shipped topics (quickstart, agent, tools,
+memory, skills, cli, mcp, agents, topology) and `neosian docs <topic>` prints
 one, pipe-safe. `llms.txt`
 at the repo root (and in the package, byte-identical) is the discovery
 door for a coding agent with shell access alone.
@@ -498,7 +498,7 @@ so a prompt-pack change without a recorded re-run fails `make test`.
 
 ## Also in the box
 
-- `@Tool` decorator with JSON-Schema generation from Python signatures
+- `@Tool` decorator: the signature becomes the schema (nested models, `datetime`, `$defs`), every call validated before the body runs
   (`Literal`, `TypedDict`, `Annotated` constraints, enums)
 - Parallel tool execution with per-agent concurrency caps
 - Model fallback: capability-aware, sticky within a session

@@ -20,6 +20,7 @@ from openai.types.chat import (
 from openai.types.chat.completion_create_params import (
     ResponseFormat as OpenAIResponseFormat,
 )
+from openai.types.shared_params import FunctionDefinition
 
 from neosian._foundation.llm.base import (
     Message,
@@ -30,6 +31,7 @@ from neosian._foundation.llm.base import (
 )
 from neosian._foundation.shared.constants import ErrorMessages
 from neosian._foundation.shared.exceptions import UnsupportedContentError
+from neosian._foundation.shared.schema import strict_schema
 from neosian._foundation.shared.serialization import safe_json_dumps
 from neosian._foundation.shared.types import ResponseFormat
 
@@ -116,19 +118,27 @@ def convert_messages(messages: list[Message]) -> list[ChatCompletionMessageParam
     return result
 
 
-def convert_tools(tools: list[ToolDefinition]) -> list[ChatCompletionToolParam]:
-    """Convert internal tool definitions to OpenAI format."""
-    return [
-        {
-            "type": "function",
-            "function": {
-                "name": tool.name,
-                "description": tool.description,
-                "parameters": tool.parameters,
-            },
+def convert_tools(
+    tools: list[ToolDefinition], *, strict_schemas: bool = True
+) -> list[ChatCompletionToolParam]:
+    """Convert internal tool definitions to OpenAI format.
+
+    A strict tool is sent as one — `strict: true` with the schema in the
+    strict-mode shape (`strict_schema`) — unless the door's
+    `strict_schemas` is off, which drops the request (DESIGN §27.9).
+    """
+    result: list[ChatCompletionToolParam] = []
+    for tool in tools:
+        function: FunctionDefinition = {
+            "name": tool.name,
+            "description": tool.description,
+            "parameters": tool.parameters,
         }
-        for tool in tools
-    ]
+        if tool.strict and strict_schemas:
+            function["parameters"] = strict_schema(tool.parameters)
+            function["strict"] = True
+        result.append({"type": "function", "function": function})
+    return result
 
 
 def convert_response_format(response_format: ResponseFormat) -> OpenAIResponseFormat:

@@ -17,7 +17,7 @@ from typing import Any, Final, Literal
 
 from neosian._foundation.memory.dispatch import dispatch
 from neosian._foundation.memory.mounts import MemoryConfig
-from neosian._foundation.shared.prompt_assets import get_prompt
+from neosian._foundation.shared.prompt_assets import get_prompt, get_prompt_params
 from neosian._foundation.shared.types import ToolFunction
 from neosian._foundation.tools.base import Tool, ToolResult, set_native_type
 
@@ -44,7 +44,11 @@ def build_memory_tool(execute: MemoryExecute) -> ToolFunction:
     # `file_text` and `view_range` are the reference `memory_20250818`
     # argument names — accepted first-class so the native transport's
     # trained emissions never hit an unexpected-keyword failure.
-    @Tool(name=_TOOL_NAME, description=get_prompt("memory.tool"))
+    @Tool(
+        name=_TOOL_NAME,
+        description=get_prompt("memory.tool"),
+        params=get_prompt_params("memory.params"),
+    )
     async def memory(
         command: Literal["view", "create", "str_replace", "insert", "delete", "rename"],
         path: str | None = None,

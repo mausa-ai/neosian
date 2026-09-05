@@ -21,7 +21,7 @@ from typing import Final
 from neosian._foundation.conversation.base import ConversationStore
 from neosian._foundation.conversation.projection import render_turn
 from neosian._foundation.shared.exceptions import ConversationStoreError
-from neosian._foundation.shared.prompt_assets import get_prompt
+from neosian._foundation.shared.prompt_assets import get_prompt, get_prompt_params
 from neosian._foundation.shared.types import ToolFunction
 from neosian._foundation.tools.base import Tool, ToolResult
 
@@ -64,7 +64,11 @@ def create_recall_turn_tool(
     plus the `addressable` ones its views name."""
     ids = (conversation_id, *addressable)
 
-    @Tool(name=_TOOL_NAME, description=get_prompt("tools.recall_turn"))
+    @Tool(
+        name=_TOOL_NAME,
+        description=get_prompt("tools.recall_turn"),
+        params=get_prompt_params("tools.recall_turn_params"),
+    )
     async def recall_turn(
         turn: int, conversation: str | None = None
     ) -> ToolResult[str]:
@@ -89,7 +93,11 @@ def create_recall_any_tool(store: ConversationStore) -> ToolFunction:
     """The server's `recall_turn`: `conversation` required, any id the
     store holds — the memory server becoming the state server (§21.7)."""
 
-    @Tool(name=_TOOL_NAME, description=get_prompt("tools.recall_turn_any"))
+    @Tool(
+        name=_TOOL_NAME,
+        description=get_prompt("tools.recall_turn_any"),
+        params=get_prompt_params("tools.recall_turn_any_params"),
+    )
     async def recall_turn(turn: int, conversation: str) -> ToolResult[str]:
         return await recall(
             store, conversation, turn, label=f"Conversation {conversation!r}"

@@ -12,6 +12,11 @@ from neosian._foundation.shared.serialization import safe_json_dumps
 if TYPE_CHECKING:
     from neosian._foundation.memory.receipt import MemoryWriteReceipt
 
+# Every failed envelope starts with this — key order is insertion order —
+# so a wire that marks failed tool results (Anthropic's `is_error`) reads
+# the verdict without parsing; a test pins the writer to it.
+FAILED_ENVELOPE_PREFIX = '{"success": false'
+
 
 @dataclass
 class ToolResult[T]:

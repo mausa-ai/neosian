@@ -16,6 +16,22 @@ tool: >-
   old_path to new_path. Paths look like /mount/topic-name and are listed
   in the memory index. Check the index before creating anything new.
 
+# Parameter prose by parameter name (DESIGN §27.9), every command's
+# arguments in one map; `file_text` and `view_range` are the
+# memory_20250818 names, accepted first-class.
+params:
+  command: "The operation: 'view', 'create', 'str_replace', 'insert', 'delete' or 'rename'."
+  path: "The document or directory path, e.g. /mount/topic-name; '/' is the whole index. Used by view, create, str_replace, insert and delete."
+  view_range: "For view: two line numbers [start, end] to show only that slice of a document."
+  content: "For create: the full text of the document."
+  file_text: "For create: the full text of the document (the same as content)."
+  old_str: "For str_replace: the exact text to replace; it must occur exactly once."
+  new_str: "For str_replace: the replacement text."
+  insert_line: "For insert: the line number to insert after (0 = the top)."
+  insert_text: "For insert: the text to insert."
+  old_path: "For rename: the current path."
+  new_path: "For rename: the new path."
+
 system_section: |-
   ## Memory
 

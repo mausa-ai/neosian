@@ -20,7 +20,7 @@ from neosian import (
     RegisteredModel,
     register_model,
 )
-from neosian._foundation.llm.base import Message, Role, ToolCall
+from neosian._foundation.llm.base import Message, Role, ToolCall, ToolDefinition
 from neosian._foundation.llm.openai import (
     OPENAI_DOOR,
     OpenAIClient,
@@ -207,6 +207,21 @@ class TestSchemasAndErrors:
     def test_strict_schemas_off_sends_strict_false(self) -> None:
         converted = _client()._convert_response_format(ResponseFormat(schema=_Out))
         assert converted["json_schema"]["strict"] is False  # type: ignore[typeddict-item]
+
+    def test_strict_schemas_off_drops_strict_tools(self) -> None:
+        """A door without strict mode sends a strict tool best-effort."""
+        tool = ToolDefinition(
+            name=ToolName("t"),
+            description="T",
+            parameters={"type": "object", "properties": {"q": {"type": "string"}}},
+            strict=True,
+        )
+        function = _client()._convert_tools([tool])[0]["function"]
+        assert "strict" not in function
+        assert "required" not in function["parameters"]
+        strict = OpenAIClient(api_key="k")._convert_tools([tool])[0]["function"]
+        assert strict["strict"] is True
+        assert strict["parameters"]["required"] == ["q"]
 
     def test_strict_schemas_on_keeps_the_request(self) -> None:
         converted = OpenAIClient(api_key="k")._convert_response_format(

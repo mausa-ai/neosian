@@ -11,7 +11,7 @@ from neosian._foundation.memory.tools import (
     NATIVE_MEMORY_TOOL_TYPE,
     create_memory_tool,
 )
-from neosian._foundation.shared.prompt_assets import get_prompt
+from neosian._foundation.shared.prompt_assets import get_prompt, get_prompt_params
 from neosian._foundation.shared.types import ToolFunction
 from neosian._foundation.tools.base import get_tool_definition
 
@@ -52,6 +52,21 @@ class TestToolDefinition:
             "rename",
         ]
         assert definition.parameters["additionalProperties"] is False
+
+    def test_every_parameter_is_described_from_the_pack(
+        self, tool: ToolFunction
+    ) -> None:
+        """The parameter prose is data (§27.9): memory.yaml's `params` map,
+        one entry per parameter, and a nullable optional stays nullable."""
+        definition = get_tool_definition(tool)
+        assert definition is not None
+        properties = definition.parameters["properties"]
+        params = get_prompt_params("memory.params")
+        assert set(properties) == set(params)
+        for name, prose in params.items():
+            assert properties[name]["description"] == prose
+        assert {"type": "null"} in properties["path"]["anyOf"]
+        assert properties["path"]["default"] is None
 
 
 class _CountingStore(FileStore):

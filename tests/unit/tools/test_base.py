@@ -1,14 +1,20 @@
-"""Tests for tool system base primitives."""
+"""Tests for tool system base primitives.
+
+The schema shapes are pydantic's since NF slice B (DESIGN §27.9): a
+nullable optional is an `anyOf` with `null`, a TypedDict or Enum lives
+under `$defs`, no property carries a `title`.
+"""
 
 # ruff: noqa: ARG001
 
 import json
 from enum import Enum
 from pathlib import Path
-from typing import Annotated, Literal, NotRequired, Optional, TypedDict, Union
+from typing import Annotated, Any, Literal, NotRequired, Optional, TypedDict, Union
 
 import pytest
 
+from neosian._foundation.llm.base import ToolDefinition
 from neosian._foundation.shared.constraints import (
     Desc,
     Max,
@@ -21,11 +27,39 @@ from neosian._foundation.shared.exceptions import ConfigurationError
 from neosian._foundation.tools.base import (
     Tool,
     ToolResult,
-    _python_type_to_json_schema,
     get_tool_definition,
     get_tool_metadata,
     set_native_type,
 )
+from neosian._foundation.tools.result import FAILED_ENVELOPE_PREFIX
+
+
+def _resolved(definition: ToolDefinition | None, name: str = "arg") -> dict[str, Any]:
+    """One property's schema with a `$ref` into `$defs` inlined."""
+    assert definition is not None
+    prop = dict(definition.parameters["properties"][name])
+    if "$ref" in prop:
+        target = definition.parameters["$defs"][prop.pop("$ref").rsplit("/", 1)[1]]
+        prop = {**target, **prop}
+    return prop
+
+
+def _prop(hint: Any) -> dict[str, Any]:
+    """The schema one parameter typed `hint` gets."""
+
+    async def probe(arg: Any) -> ToolResult[str]:
+        return ToolResult.ok("ok")
+
+    probe.__annotations__["arg"] = hint
+    return _resolved(get_tool_definition(Tool(name="probe", description="p")(probe)))
+
+
+def _nullable(prop: dict[str, Any]) -> dict[str, Any]:
+    """The non-null branch of a nullable property, asserting the null one."""
+    assert {"type": "null"} in prop["anyOf"]
+    branches: list[dict[str, Any]] = [b for b in prop["anyOf"] if b != {"type": "null"}]
+    assert len(branches) == 1
+    return branches[0]
 
 
 @pytest.mark.unit
@@ -33,38 +67,47 @@ class TestToolResult:
     """Test ToolResult dataclass."""
 
     def test_ok_result(self) -> None:
-        """ToolResult.ok should create successful result."""
-        result = ToolResult.ok("hello")
+        """ToolResult.ok should create success result."""
+        result = ToolResult.ok("data")
         assert result.success is True
-        assert result.data == "hello"
+        assert result.data == "data"
         assert result.error is None
 
     def test_fail_result(self) -> None:
-        """ToolResult.fail should create failed result."""
-        result: ToolResult[str] = ToolResult.fail("something went wrong")
+        """ToolResult.fail should create error result."""
+        result: ToolResult[str] = ToolResult.fail("error message")
         assert result.success is False
         assert result.data is None
-        assert result.error == "something went wrong"
+        assert result.error == "error message"
 
     def test_ok_with_complex_data(self) -> None:
-        """ToolResult.ok should work with complex types."""
-        data = {"items": [1, 2, 3], "total": 3}
+        """ToolResult.ok should handle complex data."""
+        data = {"key": "value", "list": [1, 2, 3]}
         result = ToolResult.ok(data)
         assert result.success is True
         assert result.data == data
 
     def test_to_json_ignores_the_receipt(self) -> None:
-        """The receipt (NP) is in-process only: the wire envelope every
-        transport prints is byte-identical with or without one."""
+        """The wire envelope is byte-identical with or without a receipt."""
         from neosian._foundation.memory.receipt import MemoryWriteReceipt
 
         receipt = MemoryWriteReceipt(
             command="create", mount_path="user", path="/user/a", version=1
         )
-        with_receipt = ToolResult.ok("Created /user/a (v1)", receipt=receipt)
-        without = ToolResult.ok("Created /user/a (v1)")
+        with_receipt = ToolResult.ok("done", receipt=receipt)
+        without: ToolResult[str] = ToolResult.ok("done")
         assert with_receipt.to_json() == without.to_json()
         assert "receipt" not in with_receipt.to_json()
+
+    def test_every_failure_starts_with_the_pinned_prefix(self) -> None:
+        """Anthropic's `is_error` reads the verdict off this prefix (LL-10)."""
+        assert ToolResult.fail("x").to_json().startswith(FAILED_ENVELOPE_PREFIX)
+        assert (
+            ToolResult.fail("x", "hint", code="tool_execution_failed")
+            .to_json()
+            .startswith(FAILED_ENVELOPE_PREFIX)
+        )
+        assert not ToolResult.ok("x").to_json().startswith(FAILED_ENVELOPE_PREFIX)
 
 
 @pytest.mark.unit
@@ -82,14 +125,14 @@ class TestToolDecorator:
         assert metadata is not None
         assert metadata.name == "greet"
         assert metadata.description == "Greet a person"
+        assert metadata.arguments is not None
+        assert metadata.arguments.__name__ == "greet_arguments"
 
     def test_tool_definition_extraction(self) -> None:
         """@Tool should create correct ToolDefinition."""
 
         @Tool(name="search", description="Search for items")
-        async def search(
-            query: str, limit: int = 10  # noqa: ARG001
-        ) -> ToolResult[list[str]]:
+        async def search(query: str, limit: int = 10) -> ToolResult[list[str]]:
             return ToolResult.ok([])
 
         definition = get_tool_definition(search)
@@ -105,7 +148,7 @@ class TestToolDecorator:
 
         @Tool(name="test", description="Test tool")
         async def test_func(
-            required_arg: str, optional_arg: int = 5  # noqa: ARG001
+            required_arg: str, optional_arg: int = 5
         ) -> ToolResult[str]:
             return ToolResult.ok("ok")
 
@@ -115,233 +158,86 @@ class TestToolDecorator:
         assert "optional_arg" not in definition.parameters["required"]
 
     def test_tool_strict_defaults_false(self) -> None:
-        """@Tool without strict kwarg produces a non-strict definition."""
-
-        @Tool(name="lax", description="Default tool")
-        async def lax() -> ToolResult[str]:
+        @Tool(name="test", description="Test")
+        async def test_func(arg: str) -> ToolResult[str]:
             return ToolResult.ok("ok")
 
-        definition = get_tool_definition(lax)
+        definition = get_tool_definition(test_func)
         assert definition is not None
         assert definition.strict is False
 
     def test_tool_strict_true_propagates(self) -> None:
-        """@Tool(strict=True) propagates to ToolDefinition.strict."""
-
-        @Tool(name="exact", description="Strict tool", strict=True)
-        async def exact() -> ToolResult[str]:
+        @Tool(name="test", description="Test", strict=True)
+        async def test_func(arg: str) -> ToolResult[str]:
             return ToolResult.ok("ok")
 
-        definition = get_tool_definition(exact)
+        definition = get_tool_definition(test_func)
         assert definition is not None
         assert definition.strict is True
 
-    def test_tool_strict_false_explicit(self) -> None:
-        """@Tool(strict=False) explicitly produces a non-strict definition."""
+    def test_no_title_anywhere(self) -> None:
+        """Titles are tokens, not contract — none on the root, a property
+        or a `$defs` entry."""
 
-        @Tool(name="lax2", description="Explicit lax tool", strict=False)
-        async def lax() -> ToolResult[str]:
-            return ToolResult.ok("ok")
-
-        definition = get_tool_definition(lax)
-        assert definition is not None
-        assert definition.strict is False
-
-    def test_type_conversion_str(self) -> None:
-        """String type should convert to JSON string."""
+        class Item(TypedDict):
+            title: str  # a property literally named title survives
 
         @Tool(name="test", description="Test")
-        async def test_func(arg: str) -> ToolResult[str]:
-            return ToolResult.ok(arg)
-
-        definition = get_tool_definition(test_func)
-        assert definition is not None
-        assert definition.parameters["properties"]["arg"]["type"] == "string"
-
-    def test_type_conversion_int(self) -> None:
-        """Int type should convert to JSON integer."""
-
-        @Tool(name="test", description="Test")
-        async def test_func(arg: int) -> ToolResult[str]:
-            return ToolResult.ok(str(arg))
-
-        definition = get_tool_definition(test_func)
-        assert definition is not None
-        assert definition.parameters["properties"]["arg"]["type"] == "integer"
-
-    def test_type_conversion_float(self) -> None:
-        """Float type should convert to JSON number."""
-
-        @Tool(name="test", description="Test")
-        async def test_func(arg: float) -> ToolResult[str]:
-            return ToolResult.ok(str(arg))
-
-        definition = get_tool_definition(test_func)
-        assert definition is not None
-        assert definition.parameters["properties"]["arg"]["type"] == "number"
-
-    def test_type_conversion_bool(self) -> None:
-        """Bool type should convert to JSON boolean."""
-
-        @Tool(name="test", description="Test")
-        async def test_func(arg: bool) -> ToolResult[str]:
-            return ToolResult.ok(str(arg))
-
-        definition = get_tool_definition(test_func)
-        assert definition is not None
-        assert definition.parameters["properties"]["arg"]["type"] == "boolean"
-
-    def test_type_conversion_list(self) -> None:
-        """List type should convert to JSON array."""
-
-        @Tool(name="test", description="Test")
-        async def test_func(arg: list[str]) -> ToolResult[str]:
-            return ToolResult.ok(",".join(arg))
-
-        definition = get_tool_definition(test_func)
-        assert definition is not None
-        assert definition.parameters["properties"]["arg"]["type"] == "array"
-        assert definition.parameters["properties"]["arg"]["items"]["type"] == "string"
-
-    def test_type_conversion_dict(self) -> None:
-        """Dict type should convert to JSON object."""
-
-        @Tool(name="test", description="Test")
-        async def test_func(arg: dict[str, int]) -> ToolResult[str]:
-            return ToolResult.ok(str(arg))
-
-        definition = get_tool_definition(test_func)
-        assert definition is not None
-        assert definition.parameters["properties"]["arg"]["type"] == "object"
-        assert (
-            definition.parameters["properties"]["arg"]["additionalProperties"]["type"]
-            == "integer"
-        )
-
-    def test_type_conversion_optional_int(self) -> None:
-        """Optional[int] should convert to JSON integer."""
-
-        @Tool(name="test", description="Test")
-        async def test_func(
-            arg: int | None = None,  # noqa: ARG001
-        ) -> ToolResult[str]:
+        async def test_func(items: list[Item], count: int) -> ToolResult[str]:
             return ToolResult.ok("ok")
 
         definition = get_tool_definition(test_func)
         assert definition is not None
-        assert definition.parameters["properties"]["arg"]["type"] == "integer"
-
-    def test_type_conversion_optional_str(self) -> None:
-        """Optional[str] should convert to JSON string."""
-
-        @Tool(name="test", description="Test")
-        async def test_func(
-            arg: str | None = None,  # noqa: ARG001
-        ) -> ToolResult[str]:
-            return ToolResult.ok("ok")
-
-        definition = get_tool_definition(test_func)
-        assert definition is not None
-        assert definition.parameters["properties"]["arg"]["type"] == "string"
-
-    def test_type_conversion_union_pipe_syntax(self) -> None:
-        """int | None should convert to JSON integer (Python 3.10+ syntax)."""
-
-        @Tool(name="test", description="Test")
-        async def test_func(arg: int | None = None) -> ToolResult[str]:  # noqa: ARG001
-            return ToolResult.ok("ok")
-
-        definition = get_tool_definition(test_func)
-        assert definition is not None
-        assert definition.parameters["properties"]["arg"]["type"] == "integer"
-
-    def test_type_conversion_union_multiple_types(self) -> None:
-        """Union[int, str] should convert to anyOf schema."""
-
-        @Tool(name="test", description="Test")
-        async def test_func(arg: int | str) -> ToolResult[str]:  # noqa: ARG001
-            return ToolResult.ok("ok")
-
-        definition = get_tool_definition(test_func)
-        assert definition is not None
-        prop = definition.parameters["properties"]["arg"]
-        assert "anyOf" in prop
-        assert {"type": "integer"} in prop["anyOf"]
-        assert {"type": "string"} in prop["anyOf"]
-
-    def test_type_conversion_optional_list(self) -> None:
-        """Optional[list[str]] should convert to JSON array."""
-
-        @Tool(name="test", description="Test")
-        async def test_func(
-            arg: list[str] | None = None,  # noqa: ARG001
-        ) -> ToolResult[str]:
-            return ToolResult.ok("ok")
-
-        definition = get_tool_definition(test_func)
-        assert definition is not None
-        prop = definition.parameters["properties"]["arg"]
-        assert prop["type"] == "array"
-        assert prop["items"]["type"] == "string"
+        text = json.dumps(definition.parameters)
+        assert text.count('"title":') == 1
+        assert "title" in definition.parameters["$defs"]["Item"]["properties"]
 
 
 @pytest.mark.unit
-class TestPythonTypeToJsonSchema:
-    """Test _python_type_to_json_schema function directly.
+class TestTypeConversion:
+    """Python types to the JSON Schema the model gets."""
 
-    Note: Some tests use Optional[] and Union[] syntax intentionally
-    to verify backward compatibility with older typing styles.
-    """
+    def test_scalars(self) -> None:
+        assert _prop(str) == {"type": "string"}
+        assert _prop(int) == {"type": "integer"}
+        assert _prop(float) == {"type": "number"}
+        assert _prop(bool) == {"type": "boolean"}
 
-    def test_optional_int(self) -> None:
-        """Optional[int] should return integer schema."""
-        # Intentionally testing Optional[] backward compatibility
-        assert _python_type_to_json_schema(Optional[int]) == {  # noqa: UP045
-            "type": "integer"
+    def test_list_and_dict(self) -> None:
+        assert _prop(list[str]) == {"type": "array", "items": {"type": "string"}}
+        assert _prop(dict[str, int]) == {
+            "type": "object",
+            "additionalProperties": {"type": "integer"},
         }
 
-    def test_optional_float(self) -> None:
-        """Optional[float] should return number schema."""
-        # Intentionally testing Optional[] backward compatibility
-        assert _python_type_to_json_schema(Optional[float]) == {  # noqa: UP045
-            "type": "number"
+    def test_optional_keeps_the_null_branch(self) -> None:
+        """`int | None` is nullable on the wire (TG-17), old and new spellings."""
+        for hint in (int | None, Optional[int]):  # noqa: UP045
+            prop = _prop(hint)
+            assert _nullable(prop) == {"type": "integer"}
+        assert _nullable(_prop(str | None)) == {"type": "string"}
+        assert _nullable(_prop(list[str] | None)) == {
+            "type": "array",
+            "items": {"type": "string"},
         }
 
-    def test_optional_bool(self) -> None:
-        """Optional[bool] should return boolean schema."""
-        # Intentionally testing Optional[] backward compatibility
-        assert _python_type_to_json_schema(Optional[bool]) == {  # noqa: UP045
-            "type": "boolean"
-        }
+    def test_optional_without_a_default_stays_required(self) -> None:
+        """Nullable is not optional: no default means the model must pass it."""
 
-    def test_pipe_syntax_int_none(self) -> None:
-        """int | None should return integer schema."""
-        assert _python_type_to_json_schema(int | None) == {"type": "integer"}
+        @Tool(name="test", description="Test")
+        async def test_func(arg: int | None) -> ToolResult[str]:
+            return ToolResult.ok("ok")
 
-    def test_pipe_syntax_str_none(self) -> None:
-        """str | None should return string schema."""
-        assert _python_type_to_json_schema(str | None) == {"type": "string"}
+        definition = get_tool_definition(test_func)
+        assert definition is not None
+        assert definition.parameters["required"] == ["arg"]
+        assert "default" not in definition.parameters["properties"]["arg"]
 
-    def test_union_int_str(self) -> None:
-        """Union[int, str] should return anyOf schema."""
-        # noqa: UP007 - intentionally testing Union[] backward compatibility
-        result = _python_type_to_json_schema(Union[int, str])  # noqa: UP007
-        assert "anyOf" in result
-        assert {"type": "integer"} in result["anyOf"]
-        assert {"type": "string"} in result["anyOf"]
-
-    def test_pipe_syntax_int_str(self) -> None:
-        """int | str should return anyOf schema."""
-        result = _python_type_to_json_schema(int | str)
-        assert "anyOf" in result
-        assert {"type": "integer"} in result["anyOf"]
-        assert {"type": "string"} in result["anyOf"]
-
-    def test_nested_optional_list(self) -> None:
-        """Optional[list[int]] should return array schema."""
-        # noqa: UP045 - intentionally testing Optional[] backward compatibility
-        result = _python_type_to_json_schema(Optional[list[int]])  # noqa: UP045
-        assert result == {"type": "array", "items": {"type": "integer"}}
+    def test_union_of_types_is_any_of(self) -> None:
+        for hint in (int | str, Union[int, str]):  # noqa: UP007
+            prop = _prop(hint)
+            assert {"type": "integer"} in prop["anyOf"]
+            assert {"type": "string"} in prop["anyOf"]
 
 
 @pytest.mark.unit
@@ -349,16 +245,12 @@ class TestGetToolHelpers:
     """Test helper functions."""
 
     def test_get_metadata_on_non_tool(self) -> None:
-        """get_tool_metadata should return None for non-tools."""
-
         async def regular_func() -> str:
             return "hello"
 
         assert get_tool_metadata(regular_func) is None
 
     def test_get_definition_on_non_tool(self) -> None:
-        """get_tool_definition should return None for non-tools."""
-
         async def regular_func() -> str:
             return "hello"
 
@@ -385,38 +277,26 @@ class TestGetToolHelpers:
 
 @pytest.mark.unit
 class TestLiteralTypeConversion:
-    """Test Literal type to enum conversion."""
+    """Literal types to enums."""
 
     def test_literal_strings(self) -> None:
-        """Literal[str, ...] should convert to enum."""
-        result = _python_type_to_json_schema(Literal["a", "b", "c"])
-        assert result["type"] == "string"
-        assert result["enum"] == ["a", "b", "c"]
+        assert _prop(Literal["a", "b", "c"]) == {
+            "type": "string",
+            "enum": ["a", "b", "c"],
+        }
 
     def test_literal_integers(self) -> None:
-        """Literal[int, ...] should convert to integer enum."""
-        result = _python_type_to_json_schema(Literal[1, 2, 3])
-        assert result["type"] == "integer"
-        assert result["enum"] == [1, 2, 3]
+        assert _prop(Literal[1, 2, 3]) == {"type": "integer", "enum": [1, 2, 3]}
 
     def test_literal_single_value(self) -> None:
-        """Literal with single value should work."""
-        result = _python_type_to_json_schema(Literal["only"])
-        assert result["type"] == "string"
-        assert result["enum"] == ["only"]
+        assert _prop(Literal["only"]) == {"type": "string", "const": "only"}
 
     def test_literal_in_tool(self) -> None:
-        """Literal type should work in @Tool decorated function."""
-
         @Tool(name="test", description="Test")
-        async def test_func(
-            mode: Literal["fast", "slow"] = "fast",  # noqa: ARG001
-        ) -> ToolResult[str]:
+        async def test_func(mode: Literal["fast", "slow"] = "fast") -> ToolResult[str]:
             return ToolResult.ok("ok")
 
-        definition = get_tool_definition(test_func)
-        assert definition is not None
-        prop = definition.parameters["properties"]["mode"]
+        prop = _resolved(get_tool_definition(test_func), "mode")
         assert prop["type"] == "string"
         assert prop["enum"] == ["fast", "slow"]
         assert prop["default"] == "fast"
@@ -424,226 +304,159 @@ class TestLiteralTypeConversion:
 
 @pytest.mark.unit
 class TestEnumClassConversion:
-    """Test Enum class to enum conversion."""
+    """Enum classes to enums, under `$defs`."""
 
     def test_string_enum(self) -> None:
-        """String Enum should convert to string enum."""
-
         class Color(str, Enum):
             RED = "red"
             GREEN = "green"
             BLUE = "blue"
 
-        result = _python_type_to_json_schema(Color)
-        assert result["type"] == "string"
-        assert result["enum"] == ["red", "green", "blue"]
+        prop = _prop(Color)
+        assert prop["type"] == "string"
+        assert prop["enum"] == ["red", "green", "blue"]
 
     def test_int_enum(self) -> None:
-        """Int Enum should convert to integer enum."""
-
         class Priority(int, Enum):
             LOW = 1
             MEDIUM = 2
             HIGH = 3
 
-        result = _python_type_to_json_schema(Priority)
-        assert result["type"] == "integer"
-        assert result["enum"] == [1, 2, 3]
+        prop = _prop(Priority)
+        assert prop["type"] == "integer"
+        assert prop["enum"] == [1, 2, 3]
 
     def test_enum_in_tool(self) -> None:
-        """Enum class should work in @Tool decorated function."""
-
         class Status(str, Enum):
             PENDING = "pending"
             DONE = "done"
 
         @Tool(name="test", description="Test")
-        async def test_func(status: Status) -> ToolResult[str]:  # noqa: ARG001
+        async def test_func(status: Status) -> ToolResult[str]:
             return ToolResult.ok("ok")
 
         definition = get_tool_definition(test_func)
         assert definition is not None
-        prop = definition.parameters["properties"]["status"]
+        assert definition.parameters["properties"]["status"] == {
+            "$ref": "#/$defs/Status"
+        }
+        prop = _resolved(definition, "status")
         assert prop["type"] == "string"
         assert prop["enum"] == ["pending", "done"]
 
 
 @pytest.mark.unit
 class TestAnnotatedConstraints:
-    """Test Annotated type with constraint metadata."""
+    """neosian's constraint vocabulary, translated for pydantic (TG-10)."""
 
     def test_desc_constraint(self) -> None:
-        """Desc should add description to schema."""
-        result = _python_type_to_json_schema(Annotated[str, Desc("A query string")])
-        assert result["type"] == "string"
-        assert result["description"] == "A query string"
+        assert _prop(Annotated[str, Desc("A query string")]) == {
+            "type": "string",
+            "description": "A query string",
+        }
 
-    def test_min_constraint(self) -> None:
-        """Min should add minimum to schema."""
-        result = _python_type_to_json_schema(Annotated[int, Min(1)])
-        assert result["type"] == "integer"
-        assert result["minimum"] == 1
+    def test_min_max(self) -> None:
+        assert _prop(Annotated[int, Min(1)]) == {"type": "integer", "minimum": 1}
+        assert _prop(Annotated[int, Max(100)]) == {"type": "integer", "maximum": 100}
+        assert _prop(Annotated[int, Min(1), Max(100)]) == {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+        }
 
-    def test_max_constraint(self) -> None:
-        """Max should add maximum to schema."""
-        result = _python_type_to_json_schema(Annotated[int, Max(100)])
-        assert result["type"] == "integer"
-        assert result["maximum"] == 100
-
-    def test_min_max_combined(self) -> None:
-        """Min and Max should combine."""
-        result = _python_type_to_json_schema(Annotated[int, Min(1), Max(100)])
-        assert result["type"] == "integer"
-        assert result["minimum"] == 1
-        assert result["maximum"] == 100
-
-    def test_minlen_string(self) -> None:
-        """MinLen should add minLength for strings."""
-        result = _python_type_to_json_schema(Annotated[str, MinLen(1)])
-        assert result["type"] == "string"
-        assert result["minLength"] == 1
-
-    def test_maxlen_string(self) -> None:
-        """MaxLen should add maxLength for strings."""
-        result = _python_type_to_json_schema(Annotated[str, MaxLen(100)])
-        assert result["type"] == "string"
-        assert result["maxLength"] == 100
-
-    def test_minlen_array(self) -> None:
-        """MinLen should add minItems for arrays."""
-        result = _python_type_to_json_schema(Annotated[list[str], MinLen(1)])
-        assert result["type"] == "array"
-        assert result["minItems"] == 1
-
-    def test_maxlen_array(self) -> None:
-        """MaxLen should add maxItems for arrays."""
-        result = _python_type_to_json_schema(Annotated[list[str], MaxLen(10)])
-        assert result["type"] == "array"
-        assert result["maxItems"] == 10
+    def test_minlen_maxlen_by_type(self) -> None:
+        assert _prop(Annotated[str, MinLen(1)]) == {"type": "string", "minLength": 1}
+        assert _prop(Annotated[str, MaxLen(100)]) == {
+            "type": "string",
+            "maxLength": 100,
+        }
+        assert _prop(Annotated[list[str], MinLen(1)]) == {
+            "type": "array",
+            "items": {"type": "string"},
+            "minItems": 1,
+        }
+        assert _prop(Annotated[list[str], MaxLen(10)]) == {
+            "type": "array",
+            "items": {"type": "string"},
+            "maxItems": 10,
+        }
 
     def test_pattern_constraint(self) -> None:
-        """Pattern should add pattern to schema."""
-        result = _python_type_to_json_schema(Annotated[str, Pattern(r"^[a-z]+$")])
-        assert result["type"] == "string"
-        assert result["pattern"] == r"^[a-z]+$"
+        assert _prop(Annotated[str, Pattern(r"^[a-z]+$")]) == {
+            "type": "string",
+            "pattern": r"^[a-z]+$",
+        }
 
     def test_multiple_constraints(self) -> None:
-        """Multiple constraints should all be applied."""
-        result = _python_type_to_json_schema(
+        prop = _prop(
             Annotated[
                 str, Desc("Username"), MinLen(3), MaxLen(20), Pattern(r"^[a-z]+$")
             ]
         )
-        assert result["type"] == "string"
-        assert result["description"] == "Username"
-        assert result["minLength"] == 3
-        assert result["maxLength"] == 20
-        assert result["pattern"] == r"^[a-z]+$"
+        assert prop == {
+            "type": "string",
+            "description": "Username",
+            "minLength": 3,
+            "maxLength": 20,
+            "pattern": r"^[a-z]+$",
+        }
 
     def test_annotated_with_literal(self) -> None:
-        """Annotated[Literal[...], Desc(...)] should work."""
-        result = _python_type_to_json_schema(
-            Annotated[Literal["a", "b"], Desc("Choose a or b")]
-        )
-        assert result["type"] == "string"
-        assert result["enum"] == ["a", "b"]
-        assert result["description"] == "Choose a or b"
+        prop = _prop(Annotated[Literal["a", "b"], Desc("Choose a or b")])
+        assert prop["type"] == "string"
+        assert prop["enum"] == ["a", "b"]
+        assert prop["description"] == "Choose a or b"
 
     def test_constraints_in_tool(self) -> None:
-        """Annotated constraints should work in @Tool decorated function."""
-
         @Tool(name="search", description="Search items")
         async def search(
-            query: Annotated[str, Desc("Search query")],  # noqa: ARG001
-            limit: Annotated[
-                int, Desc("Max results"), Min(1), Max(100)
-            ] = 10,  # noqa: ARG001
+            query: Annotated[str, Desc("Search query")],
+            limit: Annotated[int, Desc("Max results"), Min(1), Max(100)] = 10,
         ) -> ToolResult[list[str]]:
             return ToolResult.ok([])
 
         definition = get_tool_definition(search)
-        assert definition is not None
-
-        query_prop = definition.parameters["properties"]["query"]
-        assert query_prop["type"] == "string"
-        assert query_prop["description"] == "Search query"
-
-        limit_prop = definition.parameters["properties"]["limit"]
-        assert limit_prop["type"] == "integer"
-        assert limit_prop["description"] == "Max results"
-        assert limit_prop["minimum"] == 1
-        assert limit_prop["maximum"] == 100
-        assert limit_prop["default"] == 10
+        assert _resolved(definition, "query") == {
+            "type": "string",
+            "description": "Search query",
+        }
+        assert _resolved(definition, "limit") == {
+            "type": "integer",
+            "description": "Max results",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 10,
+        }
 
 
 @pytest.mark.unit
 class TestDefaultValues:
-    """Test default value inclusion in schema."""
+    """Default values reach the schema."""
 
-    def test_default_string(self) -> None:
-        """String default should be included."""
-
-        @Tool(name="test", description="Test")
-        async def test_func(arg: str = "default") -> ToolResult[str]:  # noqa: ARG001
-            return ToolResult.ok("ok")
-
-        definition = get_tool_definition(test_func)
-        assert definition is not None
-        assert definition.parameters["properties"]["arg"]["default"] == "default"
-
-    def test_default_int(self) -> None:
-        """Int default should be included."""
-
-        @Tool(name="test", description="Test")
-        async def test_func(arg: int = 42) -> ToolResult[str]:  # noqa: ARG001
-            return ToolResult.ok("ok")
-
-        definition = get_tool_definition(test_func)
-        assert definition is not None
-        assert definition.parameters["properties"]["arg"]["default"] == 42
-
-    def test_default_bool(self) -> None:
-        """Bool default should be included."""
-
-        @Tool(name="test", description="Test")
-        async def test_func(arg: bool = False) -> ToolResult[str]:  # noqa: ARG001
-            return ToolResult.ok("ok")
-
-        definition = get_tool_definition(test_func)
-        assert definition is not None
-        assert definition.parameters["properties"]["arg"]["default"] is False
-
-    def test_default_none(self) -> None:
-        """None default should be included."""
-
+    def test_defaults_are_included(self) -> None:
         @Tool(name="test", description="Test")
         async def test_func(
-            arg: str | None = None,  # noqa: ARG001
+            s: str = "default",
+            i: int = 42,
+            b: bool = False,
+            n: str | None = None,
+            items: list[str] = [],  # noqa: B006
         ) -> ToolResult[str]:
             return ToolResult.ok("ok")
 
         definition = get_tool_definition(test_func)
         assert definition is not None
-        assert definition.parameters["properties"]["arg"]["default"] is None
-
-    def test_default_list(self) -> None:
-        """List default should be included."""
-
-        @Tool(name="test", description="Test")
-        async def test_func(
-            arg: list[str] = [],  # noqa: B006, ARG001
-        ) -> ToolResult[str]:
-            return ToolResult.ok("ok")
-
-        definition = get_tool_definition(test_func)
-        assert definition is not None
-        assert definition.parameters["properties"]["arg"]["default"] == []
+        properties = definition.parameters["properties"]
+        assert properties["s"]["default"] == "default"
+        assert properties["i"]["default"] == 42
+        assert properties["b"]["default"] is False
+        assert properties["n"]["default"] is None
+        assert properties["items"]["default"] == []
+        assert definition.parameters.get("required", []) == []
 
     def test_no_default_no_key(self) -> None:
-        """Required params should not have default key."""
-
         @Tool(name="test", description="Test")
-        async def test_func(arg: str) -> ToolResult[str]:  # noqa: ARG001
+        async def test_func(arg: str) -> ToolResult[str]:
             return ToolResult.ok("ok")
 
         definition = get_tool_definition(test_func)
@@ -653,26 +466,11 @@ class TestDefaultValues:
 
 @pytest.mark.unit
 class TestAdditionalPropertiesFalse:
-    """Test additionalProperties: false in schema."""
+    """Every object the model sees is closed."""
 
     def test_additional_properties_false(self) -> None:
-        """Schema should have additionalProperties: false."""
-
         @Tool(name="test", description="Test")
-        async def test_func(arg: str) -> ToolResult[str]:  # noqa: ARG001
-            return ToolResult.ok("ok")
-
-        definition = get_tool_definition(test_func)
-        assert definition is not None
-        assert definition.parameters["additionalProperties"] is False
-
-    def test_additional_properties_with_multiple_params(self) -> None:
-        """additionalProperties should be false with multiple params."""
-
-        @Tool(name="test", description="Test")
-        async def test_func(
-            a: str, b: int, c: bool = True  # noqa: ARG001
-        ) -> ToolResult[str]:
+        async def test_func(a: str, b: int, c: bool = True) -> ToolResult[str]:
             return ToolResult.ok("ok")
 
         definition = get_tool_definition(test_func)
@@ -682,15 +480,9 @@ class TestAdditionalPropertiesFalse:
 
 @pytest.mark.unit
 class TestComplexToolSchema:
-    """Test complex tool schemas matching the target format."""
+    """A complete schema matching the target format."""
 
     def test_full_schema_generation(self) -> None:
-        """Test complete schema matching target format."""
-
-        class Quality(str, Enum):
-            STANDARD = "standard"
-            HIGH = "high"
-
         @Tool(
             name="generate_image",
             description=(
@@ -699,7 +491,7 @@ class TestComplexToolSchema:
                 "Do NOT use for editing existing images."
             ),
         )
-        async def generate_image(  # noqa: ARG001
+        async def generate_image(
             prompt: Annotated[str, Desc("Detailed description of the image")],
             quality: Annotated[
                 Literal["standard", "high"],
@@ -715,146 +507,89 @@ class TestComplexToolSchema:
 
         definition = get_tool_definition(generate_image)
         assert definition is not None
-
-        # Check top-level
         assert definition.name == "generate_image"
         assert "Generate an image from text" in definition.description
         assert definition.parameters["type"] == "object"
         assert definition.parameters["additionalProperties"] is False
         assert definition.parameters["required"] == ["prompt"]
-
-        # Check prompt
-        prompt = definition.parameters["properties"]["prompt"]
-        assert prompt["type"] == "string"
-        assert prompt["description"] == "Detailed description of the image"
-        assert "default" not in prompt
-
-        # Check quality
-        quality = definition.parameters["properties"]["quality"]
-        assert quality["type"] == "string"
-        assert quality["enum"] == ["standard", "high"]
-        assert quality["default"] == "standard"
-        assert quality["description"] == "Image quality. 'high' costs 2x more."
-
-        # Check aspect_ratio
-        aspect = definition.parameters["properties"]["aspect_ratio"]
-        assert aspect["type"] == "string"
-        assert aspect["enum"] == ["1:1", "16:9", "9:16"]
-        assert aspect["default"] == "1:1"
-
-        # Check num_images
-        num = definition.parameters["properties"]["num_images"]
-        assert num["type"] == "integer"
-        assert num["minimum"] == 1
-        assert num["maximum"] == 4
-        assert num["default"] == 1
-        assert num["description"] == "Number of images"
-
-        # Check tags
-        tags = definition.parameters["properties"]["tags"]
-        assert tags["type"] == "array"
-        assert tags["items"]["type"] == "string"
-        assert tags["maxItems"] == 10
-        assert tags["default"] == []
-        assert tags["description"] == "Optional tags"
+        assert _resolved(definition, "prompt") == {
+            "type": "string",
+            "description": "Detailed description of the image",
+        }
+        assert _resolved(definition, "quality") == {
+            "type": "string",
+            "enum": ["standard", "high"],
+            "default": "standard",
+            "description": "Image quality. 'high' costs 2x more.",
+        }
+        assert _resolved(definition, "aspect_ratio") == {
+            "type": "string",
+            "enum": ["1:1", "16:9", "9:16"],
+            "default": "1:1",
+        }
+        assert _resolved(definition, "num_images") == {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4,
+            "default": 1,
+            "description": "Number of images",
+        }
+        assert _resolved(definition, "tags") == {
+            "type": "array",
+            "items": {"type": "string"},
+            "maxItems": 10,
+            "default": [],
+            "description": "Optional tags",
+        }
 
 
 @pytest.mark.unit
 class TestTypedDictConversion:
-    """Test TypedDict to JSON Schema conversion."""
+    """TypedDicts are closed objects under `$defs`."""
 
     def test_basic_typeddict(self) -> None:
-        """TypedDict should convert to object with properties."""
-
         class Person(TypedDict):
             name: str
             age: int
 
-        result = _python_type_to_json_schema(Person)
-        assert result["type"] == "object"
-        assert result["properties"]["name"]["type"] == "string"
-        assert result["properties"]["age"]["type"] == "integer"
-        assert set(result["required"]) == {"name", "age"}
-        assert result["additionalProperties"] is False
+        prop = _prop(Person)
+        assert prop["type"] == "object"
+        assert prop["properties"]["name"]["type"] == "string"
+        assert prop["properties"]["age"]["type"] == "integer"
+        assert set(prop["required"]) == {"name", "age"}
+        assert prop["additionalProperties"] is False
 
     def test_typeddict_with_optional_fields(self) -> None:
-        """TypedDict with NotRequired fields should have correct required list."""
-
         class Config(TypedDict):
             name: str
             description: NotRequired[str]
 
-        result = _python_type_to_json_schema(Config)
-        assert result["type"] == "object"
-        assert result["properties"]["name"]["type"] == "string"
-        assert result["properties"]["description"]["type"] == "string"
-        assert result["required"] == ["name"]
-
-    def test_typeddict_with_literal(self) -> None:
-        """TypedDict with Literal field should have enum."""
-
-        class Task(TypedDict):
-            content: str
-            status: Literal["pending", "done"]
-
-        result = _python_type_to_json_schema(Task)
-        assert result["type"] == "object"
-        assert result["properties"]["content"]["type"] == "string"
-        assert result["properties"]["status"]["type"] == "string"
-        assert result["properties"]["status"]["enum"] == ["pending", "done"]
-        assert set(result["required"]) == {"content", "status"}
+        prop = _prop(Config)
+        assert prop["properties"]["description"]["type"] == "string"
+        assert prop["required"] == ["name"]
 
     def test_typeddict_in_list(self) -> None:
-        """list[TypedDict] should convert to array of objects."""
-
         class Item(TypedDict):
             id: int
             name: str
 
-        result = _python_type_to_json_schema(list[Item])
-        assert result["type"] == "array"
-        assert result["items"]["type"] == "object"
-        assert result["items"]["properties"]["id"]["type"] == "integer"
-        assert result["items"]["properties"]["name"]["type"] == "string"
-        assert set(result["items"]["required"]) == {"id", "name"}
+        @Tool(name="test", description="Test")
+        async def test_func(items: list[Item]) -> ToolResult[str]:
+            return ToolResult.ok("ok")
 
-    def test_typeddict_in_tool(self) -> None:
-        """TypedDict should work in @Tool decorated function."""
-
-        class TodoItemInput(TypedDict):
-            content: str
-            status: Literal["pending", "in_progress", "completed"]
-
-        @Tool(name="update_todos", description="Update todo list")
-        async def update_todos(
-            todos: list[TodoItemInput],  # noqa: ARG001
-        ) -> ToolResult[list[dict[str, str]]]:
-            return ToolResult.ok([])
-
-        definition = get_tool_definition(update_todos)
+        definition = get_tool_definition(test_func)
         assert definition is not None
-
-        # Check todos parameter
-        todos_prop = definition.parameters["properties"]["todos"]
-        assert todos_prop["type"] == "array"
-
-        # Check item schema
-        item_schema = todos_prop["items"]
-        assert item_schema["type"] == "object"
-        assert item_schema["properties"]["content"]["type"] == "string"
-        assert item_schema["properties"]["status"]["type"] == "string"
-        assert item_schema["properties"]["status"]["enum"] == [
-            "pending",
-            "in_progress",
-            "completed",
-        ]
-        assert set(item_schema["required"]) == {"content", "status"}
-        assert item_schema["additionalProperties"] is False
+        items = definition.parameters["properties"]["items"]
+        assert items == {"type": "array", "items": {"$ref": "#/$defs/Item"}}
+        item = definition.parameters["$defs"]["Item"]
+        assert item["properties"]["id"]["type"] == "integer"
+        assert set(item["required"]) == {"id", "name"}
+        assert item["additionalProperties"] is False
 
 
 @pytest.mark.unit
 class TestDecorationRejections:
-    """Signatures the dispatch cannot satisfy are rejected at decoration."""
+    """Signatures the schema cannot state truthfully are rejected at decoration."""
 
     def test_var_positional_rejected(self) -> None:
         """``*args`` cannot be supplied by keyword dispatch (TG-8)."""
@@ -878,6 +613,22 @@ class TestDecorationRejections:
 
             @Tool(name="test", description="Test")
             async def test_func(query: str, /) -> ToolResult[str]:
+                return ToolResult.ok("ok")
+
+    def test_unannotated_rejected(self) -> None:
+        """No annotation, no schema — never a silent `string` (TG-19)."""
+        with pytest.raises(ConfigurationError, match="no type annotation"):
+
+            @Tool(name="test", description="Test")
+            async def test_func(query) -> ToolResult[str]:  # type: ignore[no-untyped-def]
+                return ToolResult.ok("ok")
+
+    def test_undeclared_params_prose_rejected(self) -> None:
+        """A `params=` name the signature lacks is a typo, not silence."""
+        with pytest.raises(ConfigurationError, match="does not declare.*'querry'"):
+
+            @Tool(name="test", description="Test", params={"querry": "The query."})
+            async def test_func(query: str) -> ToolResult[str]:
                 return ToolResult.ok("ok")
 
     def test_path_default_rejected(self) -> None:
@@ -914,7 +665,7 @@ class TestDecorationRejections:
 
         definition = get_tool_definition(test_func)
         assert definition is not None
-        assert definition.parameters["properties"]["mode"]["default"] == Mode.FAST
+        assert definition.parameters["properties"]["mode"]["default"] == "fast"
 
 
 @pytest.mark.unit
