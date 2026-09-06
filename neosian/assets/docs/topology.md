@@ -41,13 +41,16 @@ the wire, version history and actors carried as they were.
 One token, one volume, one health check:
 
 ```bash
-docker build -t neosian .          # the shipped Dockerfile
 docker run -d \
   -e NEOSIAN_SERVE_TOKEN=change-me \
   -p 6367:6367 -v neosian-state:/data \
-  neosian
+  ghcr.io/mausa-ai/neosian:<X.Y.Z>
 curl -fsS http://localhost:6367/health
 ```
+
+The image is published per release tag (amd64 and arm64; `latest` names
+the newest final release); the shipped `Dockerfile` builds the same image
+from a checkout (`docker build -t neosian .`).
 
 The default command serves a FileStore on the `/data` volume; set
 `NEOSIAN_POSTGRES_DSN` (and override the command, e.g. `--schema

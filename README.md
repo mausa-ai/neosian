@@ -1,10 +1,11 @@
-<img src="branding/logo-adaptive.svg" alt="neosian" width="280">
+<img src="https://raw.githubusercontent.com/mausa-ai/neosian/v1.0.0rc1/branding/logo-adaptive.svg" alt="neosian" width="280">
 
 # neosian
 
+[![PyPI](https://img.shields.io/pypi/v/neosian.svg?include_prereleases&color=6d6d32)](https://pypi.org/project/neosian/)
 [![CI](https://github.com/mausa-ai/neosian/actions/workflows/ci.yml/badge.svg)](https://github.com/mausa-ai/neosian/actions/workflows/ci.yml)
-[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-6d6d32.svg)](LICENSE)
-[![Python 3.12 | 3.13 | 3.14](https://img.shields.io/badge/python-3.12%20%7C%203.13%20%7C%203.14-6d6d32.svg)](pyproject.toml)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-6d6d32.svg)](https://github.com/mausa-ai/neosian/blob/v1.0.0rc1/LICENSE)
+[![Python 3.12 | 3.13 | 3.14](https://img.shields.io/badge/python-3.12%20%7C%203.13%20%7C%203.14-6d6d32.svg)](https://github.com/mausa-ai/neosian/blob/v1.0.0rc1/pyproject.toml)
 
 **The state layer for LLM agents**: durable conversations, agent-curated
 memory, skills, a shared board and a ledger of who did what — on storage
@@ -20,7 +21,7 @@ Two doors, one store:
   memory and skills over MCP and every session recorded through hooks —
   `neosian mcp install --client claude-code`, `neosian record install`.
 
-Agents read this repository too: [llms.txt](llms.txt) is the machine
+Agents read this repository too: [llms.txt](https://github.com/mausa-ai/neosian/blob/v1.0.0rc1/llms.txt) is the machine
 front door, `neosian docs` prints the shipped docs pages from the wheel
 (version-true), and every shell verb has `--json` and exit tiers.
 
@@ -33,24 +34,16 @@ response = await convo.send("Where did we leave off?")
 
 ## Install
 
-Requires Python >= 3.12. The project is managed with
-[uv](https://docs.astral.sh/uv/):
+Requires Python >= 3.12. On PyPI as a pre-release until v1.0.0, so pin it
+explicitly (extras ride the same pin):
 
 ```bash
-uv sync --all-groups          # library + dev tools
-uv run neosian version        # CLI sanity check
-```
-
-The repository is private; as a dependency of another uv project, install
-from the git URL, pinned to a release tag (extras ride the same URL):
-
-```bash
-uv add "neosian @ git+ssh://git@github.com/mausa-ai/neosian@v0.90.0"
-uv add "neosian[postgres] @ git+ssh://git@github.com/mausa-ai/neosian@v0.90.0"   # + PostgresStore
-uv add "neosian[mcp] @ git+ssh://git@github.com/mausa-ai/neosian@v0.90.0"        # + MCP server and client
-uv add "neosian[otel] @ git+ssh://git@github.com/mausa-ai/neosian@v0.90.0"       # + OpenTelemetry spans
-uv add "neosian[server] @ git+ssh://git@github.com/mausa-ai/neosian@v0.90.0"     # + the state process
-uv add "neosian[cli] @ git+ssh://git@github.com/mausa-ai/neosian@v0.90.0"        # + the `neosian` shell
+uv add "neosian==1.0.0rc1"
+uv add "neosian[postgres]==1.0.0rc1"   # + PostgresStore
+uv add "neosian[mcp]==1.0.0rc1"        # + MCP server and client
+uv add "neosian[otel]==1.0.0rc1"       # + OpenTelemetry spans
+uv add "neosian[server]==1.0.0rc1"     # + the state process
+uv add "neosian[cli]==1.0.0rc1"        # + the `neosian` shell
 ```
 
 The core install carries no terminal library, no database driver, no MCP
@@ -60,12 +53,21 @@ SDK and no server: the `neosian` console script rides `[cli]`, while the
 anthropic, cerebras) come unconditionally — a provider is *available*
 when its API key is set.
 
-For a machine with nothing on it, [scripts/install.sh](scripts/install.sh)
-is the one-liner: uv present or installed from a pinned release, then
-`uv tool install "neosian[cli]"`, the PATH check, and the registration
-command printed. It is CI-tested against the built wheel on Linux and
-macOS today and served as `curl -fsS https://neosian.com/install | bash`
-once the package is published.
+For a machine with nothing on it, the one-liner is
+[scripts/install.sh](https://github.com/mausa-ai/neosian/blob/v1.0.0rc1/scripts/install.sh): uv present or installed
+from a pinned release, `uv tool install "neosian[cli]"`, the PATH check,
+and the registration command printed. It is the same two commands,
+spelled out beside it:
+
+```bash
+curl -fsS https://neosian.com/install | bash
+# or, by hand:
+curl -LsSf https://astral.sh/uv/install.sh | sh
+uv tool install "neosian[cli]==1.0.0rc1"
+```
+
+To work on neosian itself, `uv sync --all-groups` then `uv run neosian
+version` (the Development section has the gates).
 
 ## Quickstart
 
@@ -97,7 +99,7 @@ asyncio.run(main())
 
 Set a key and name a real model (`model=Model.CLAUDE_SONNET_5`, the
 providers table below); tools are decorated functions whose signature is
-the schema (`neosian docs tools`). [examples/](examples/) has one runnable
+the schema (`neosian docs tools`). [examples/](https://github.com/mausa-ai/neosian/tree/v1.0.0rc1/examples) has one runnable
 file per feature, every one importing keylessly.
 
 ## What is in the box
@@ -182,7 +184,7 @@ an agent suite over variants × models × cases, and `kind: memory`, which
 scores store truth across scripted sessions on every transport. The
 shipped memory pack is all-green on `models: [fake]`, and the same pack
 against the real providers produces the
-[baselines page](neosian/assets/docs/baselines.md),
+[baselines page](https://github.com/mausa-ai/neosian/blob/v1.0.0rc1/neosian/assets/docs/baselines.md),
 fingerprint-gated so a prompt change without a recorded re-run fails
 `make test`.
 
@@ -196,8 +198,8 @@ micro-USD, event vocabulary, error codes) SemVer-guaranteed — a seam break
 only at a major — and the state process's wire (the twelve `/v1/` store
 routes and their envelope, versioned by `WIRE_VERSION`) stable under the
 same promise: one promise covering library, seams, and wire. Until then the seams are append-only by convention, and error
-codes are already append-only forever. Consumers pin an annotated
-`v<X.Y.Z>` tag, never master.
+codes are already append-only forever. Consumers pin a release
+(`neosian==X.Y.Z`), never master.
 
 ## Development
 
@@ -219,17 +221,17 @@ Origin](https://developercertificate.org/) and licensed as the project
 is, Apache-2.0 — there is no CLA. Open an issue before a feature or a
 departure from documented behaviour; the public API is pinned by
 `tests/unit/test_init.py`, so an export change is a reviewed diff.
-[SECURITY.md](SECURITY.md) is where vulnerabilities go, never an issue.
+[SECURITY.md](https://github.com/mausa-ai/neosian/blob/v1.0.0rc1/SECURITY.md) is where vulnerabilities go, never an issue.
 
 ## Documents
 
 - `neosian docs <topic>` — the shipped pages, from the wheel: `quickstart`,
   `agent`, `tools`, `memory`, `skills`, `cli`, `mcp`, `agents`, `topology`,
   `baselines` (the published per-provider memory numbers).
-- [SERVICES.md](SERVICES.md) — every env key and what turning it off means.
-- [CHANGELOG.md](CHANGELOG.md) — Keep a Changelog, one section per release.
-- [SECURITY.md](SECURITY.md) — where to report, and the supported line.
-- [llms.txt](llms.txt) — the machine-readable front door (byte-identical
+- [SERVICES.md](https://github.com/mausa-ai/neosian/blob/v1.0.0rc1/SERVICES.md) — every env key and what turning it off means.
+- [CHANGELOG.md](https://github.com/mausa-ai/neosian/blob/v1.0.0rc1/CHANGELOG.md) — Keep a Changelog, one section per release.
+- [SECURITY.md](https://github.com/mausa-ai/neosian/blob/v1.0.0rc1/SECURITY.md) — where to report, and the supported line.
+- [llms.txt](https://github.com/mausa-ai/neosian/blob/v1.0.0rc1/llms.txt) — the machine-readable front door (byte-identical
   twin ships in the wheel).
 
 ---

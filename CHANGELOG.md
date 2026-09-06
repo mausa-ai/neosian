@@ -8,7 +8,16 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [1.0.0rc1] - 2026-09-06
+
+The first published release: the repository public under `mausa-ai`,
+`neosian` on PyPI by trusted publishing, the container on GHCR. A
+pre-release — pin it explicitly; the API stability promise rides v1.0.0.
+
 ### Added
+- Published: `uv add "neosian==1.0.0rc1"` from PyPI and
+  `ghcr.io/mausa-ai/neosian:1.0.0rc1` from GHCR; `curl -fsS
+  https://neosian.com/install | bash` once the site serves the installer.
 - The sdist declares its contents: the planning documents, `.claude/`,
   `.github/`, `branding/` and the import-linter cache never ship.
 - `CHANGELOG.md` — this file; `make release` refuses a version without its
@@ -23,6 +32,11 @@ phase close names the version.
   README's Development section.
 
 ### Changed
+- The install form is the PyPI pin (`neosian[extra]==X.Y.Z`); the git-URL
+  form and the "private repository" wording leave README, `llms.txt` and
+  the quickstart page; README links and the lockup are absolute at the
+  release tag (PyPI renders the README). The topology page's appliance
+  quickstart runs the published image.
 - `SERVICES.md` moves to the repository root and the memory baselines
   become a shipped docs page (`neosian docs baselines`, run ids as text);
   the fingerprint gate reads the page.
@@ -32,6 +46,10 @@ phase close names the version.
   and the agent door on one screen, the keyless quickstart first. The
   `memory_write`, `revert_memory` and approval-gate passages moved onto the
   `memory` and `agent` docs pages.
+
+### Removed
+- `CODE_OF_CONDUCT.md`, `CONTRIBUTING.md` and the issue and PR templates:
+  the DCO sign-off and the conduct line live in README.
 
 ## [0.90.0] - 2026-09-05
 
@@ -828,7 +846,8 @@ phase close names the version.
 - Both entry points share one `_validate_run`, so neither can skip a
   guard.
 
-[Unreleased]: https://github.com/mausa-ai/neosian/compare/v0.90.0...HEAD
+[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc1...HEAD
+[1.0.0rc1]: https://github.com/mausa-ai/neosian/compare/v0.90.0...v1.0.0rc1
 [0.90.0]: https://github.com/mausa-ai/neosian/compare/v0.89.0...v0.90.0
 [0.89.0]: https://github.com/mausa-ai/neosian/compare/v0.88.0...v0.89.0
 [0.88.0]: https://github.com/mausa-ai/neosian/compare/v0.87.0...v0.88.0

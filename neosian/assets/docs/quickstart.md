@@ -12,23 +12,23 @@ agent-curated memory as opt-in layers.
 
 ## Install
 
-The repository is private; install from the git URL, pinned to an
-annotated release tag (never master — extras ride the same URL):
+From PyPI, pinned to a release — the `llms.txt` beside this wheel names
+the version; extras ride the same pin:
 
 ```bash
-uv add "neosian @ git+ssh://git@github.com/mausa-ai/neosian@v<X.Y.Z>"
-uv add "neosian[postgres] @ git+ssh://git@github.com/mausa-ai/neosian@v<X.Y.Z>"
-uv add "neosian[mcp] @ git+ssh://git@github.com/mausa-ai/neosian@v<X.Y.Z>"
-uv add "neosian[otel] @ git+ssh://git@github.com/mausa-ai/neosian@v<X.Y.Z>"
-uv add "neosian[server] @ git+ssh://git@github.com/mausa-ai/neosian@v<X.Y.Z>"
-uv add "neosian[cli] @ git+ssh://git@github.com/mausa-ai/neosian@v<X.Y.Z>"
+uv add "neosian==<X.Y.Z>"
+uv add "neosian[postgres]==<X.Y.Z>"
+uv add "neosian[mcp]==<X.Y.Z>"
+uv add "neosian[otel]==<X.Y.Z>"
+uv add "neosian[server]==<X.Y.Z>"
+uv add "neosian[cli]==<X.Y.Z>"
 ```
 
-Substitute the current release tag (the `llms.txt` beside this wheel
-names it). The core install is database-driver-free, MCP-free,
-server-free and shell-free: the `neosian` console script rides `[cli]`,
-while `python -m neosian.memory` and the other module doors need no
-extra.
+The core install is database-driver-free, MCP-free, server-free and
+shell-free: the `neosian` console script rides `[cli]`, while `python -m
+neosian.memory` and the other module doors need no extra. On a machine
+with nothing on it, `curl -fsS https://neosian.com/install | bash` lands
+uv and the shell.
 
 ## Keyless boot
 

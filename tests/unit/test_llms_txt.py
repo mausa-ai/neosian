@@ -40,4 +40,6 @@ def test_it_opens_the_docs_door() -> None:
 def test_the_install_pin_matches_the_version() -> None:
     # Deliberate coupling: a release bumps llms.txt in the same commit,
     # or this goes red — the stale-README-pin failure mode, closed.
-    assert f"@v{neosian.__version__}" in _packaged_copy().decode("utf-8")
+    text = _packaged_copy().decode("utf-8")
+    assert f'"neosian=={neosian.__version__}"' in text
+    assert f"ghcr.io/mausa-ai/neosian:{neosian.__version__}" in text

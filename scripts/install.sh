@@ -10,7 +10,7 @@
 # Public form (served by neosian.com at /install once published):
 #     curl -fsS https://neosian.com/install | bash
 # The same two commands, spelled out:
-#     curl -LsSf https://astral.sh/uv/0.9.11/install.sh | sh
+#     curl -LsSf https://astral.sh/uv/<UV_VERSION>/install.sh | sh
 #     uv tool install "neosian[cli]"
 # CI form — the wheel built in the same run instead of the index:
 #     bash scripts/install.sh --find-links DIR

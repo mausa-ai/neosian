@@ -1,10 +1,13 @@
 """Pins the version derivation: one literal in pyproject, everything follows.
 
-"Everything" includes the release surface: README's git-URL install pins
-(they went stale at v0.70.0 — found at NA — and at v0.78.0 — found at NM;
-``test_llms_txt.py`` gates only llms.txt) and the declaration's two
-otherwise-ungated flips — the ``Development Status`` classifier and README's
-Stability tense — which a 1.0 bump must carry in the same commit.
+"Everything" includes the release surface: README's install pins (they
+went stale at v0.70.0 — found at NA — and at v0.78.0 — found at NM;
+``test_llms_txt.py`` gates only llms.txt), the README's links — absolute at
+the release tag, because PyPI renders the README without rewriting them
+(NX) — the reader-facing files never calling the repository private again
+(TP-5 inverted at NX), and the declaration's two otherwise-ungated flips —
+the ``Development Status`` classifier and README's Stability tense — which
+a 1.0 bump must carry in the same commit.
 """
 
 import importlib.metadata
@@ -16,8 +19,20 @@ from typing import Any
 import neosian
 
 PYPROJECT = Path(__file__).parents[2] / "pyproject.toml"
-_README = PYPROJECT.parent / "README.md"
-_PIN = re.compile(r"github\.com/mausa-ai/neosian@(v\d+\.\d+\.\d+)")
+_ROOT = PYPROJECT.parent
+_README = _ROOT / "README.md"
+_READER_FACING = (
+    _README,
+    _ROOT / "llms.txt",
+    _ROOT / "neosian" / "assets" / "llms.txt",
+    _ROOT / "neosian" / "assets" / "docs" / "quickstart.md",
+)
+_PIN = re.compile(r'"neosian(?:\[[a-z,]+\])?==([^"]+)"')
+_TAG_REF = re.compile(
+    r"(?:github\.com/mausa-ai/neosian/(?:blob|tree)|"
+    r"raw\.githubusercontent\.com/mausa-ai/neosian)/(v[^/]+)/"
+)
+_RELATIVE = re.compile(r"\]\((?!https?://|#)")
 _FINAL = re.compile(r"\d+\.\d+\.\d+")
 _UNDECLARED = "deliberately not yet cut"
 _STABLE = "Development Status :: 5 - Production/Stable"
@@ -41,8 +56,29 @@ def test_pyproject_is_the_single_source() -> None:
 
 def test_every_readme_install_pin_is_the_current_release() -> None:
     pins = _PIN.findall(_README.read_text(encoding="utf-8"))
-    assert pins, "README carries no git-URL install pin"
-    assert set(pins) == {f"v{neosian.__version__}"}
+    assert pins, "README carries no install pin"
+    assert set(pins) == {neosian.__version__}
+
+
+def test_every_readme_link_is_absolute_at_the_release_tag() -> None:
+    # PyPI renders the README as is: a relative link dangles there, and a
+    # link at `master` drifts from the release it describes.
+    readme = _README.read_text(encoding="utf-8")
+    refs = _TAG_REF.findall(readme)
+    assert refs, "README carries no link at a release tag"
+    assert set(refs) == {f"v{neosian.__version__}"}
+    assert not _RELATIVE.search(readme), "README carries a relative link"
+    assert 'src="https://' in readme and 'src="branding' not in readme
+
+
+def test_nothing_reader_facing_calls_the_repository_private() -> None:
+    # The premise of the git-URL install form, closed at NX (TP-5 inverted):
+    # the repository is public and the package is on PyPI.
+    for path in _READER_FACING:
+        text = path.read_text(encoding="utf-8")
+        assert "repository is private" not in text, path.name
+        assert "private repository" not in text, path.name
+        assert "git+ssh://" not in text, path.name
 
 
 def test_the_declaration_is_all_or_nothing() -> None:
