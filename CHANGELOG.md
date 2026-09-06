@@ -18,6 +18,9 @@ pre-release — pin it explicitly; the API stability promise rides v1.0.0.
 - Published: `uv add "neosian==1.0.0rc1"` from PyPI and
   `ghcr.io/mausa-ai/neosian:1.0.0rc1` from GHCR; `curl -fsS
   https://neosian.com/install | bash` once the site serves the installer.
+- README: two terminal recordings after the one screen — a Claude Code
+  session recorded through the hooks, and the next session opening on
+  where we left off; the VHS tapes sit beside them under `branding/readme/`.
 - The sdist declares its contents: the planning documents, `.claude/`,
   `.github/`, `branding/` and the import-linter cache never ship.
 - `CHANGELOG.md` — this file; `make release` refuses a version without its

@@ -21,6 +21,16 @@ Two doors, one store:
   memory and skills over MCP and every session recorded through hooks —
   `neosian mcp install --client claude-code`, `neosian record install`.
 
+<p align="center">
+<img src="https://raw.githubusercontent.com/mausa-ai/neosian/v1.0.0rc1/branding/readme/record.gif" alt="neosian record install writes the hooks; one headless Claude Code session lands as a recorded turn; neosian audit names it" width="720">
+<br>
+<img src="https://raw.githubusercontent.com/mausa-ai/neosian/v1.0.0rc1/branding/readme/left-off.gif" alt="The next Claude Code session opens on where we left off and answers from the record" width="720">
+</p>
+
+*A Claude Code session landing as a recorded turn that `neosian audit`
+names, and the next session opening on where we left off — no key of
+yours, no flags: the home and this project's scope.*
+
 Agents read this repository too: [llms.txt](https://github.com/mausa-ai/neosian/blob/v1.0.0rc1/llms.txt) is the machine
 front door, `neosian docs` prints the shipped docs pages from the wheel
 (version-true), and every shell verb has `--json` and exit tiers.
