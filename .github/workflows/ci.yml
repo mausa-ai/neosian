@@ -146,7 +146,7 @@ jobs:
       - run: |
           export PATH="$HOME/.local/bin:$PATH"
           expected="$(sed -n 's/^version = "\(.*\)"$/\1/p' pyproject.toml)"
-          test "$(neosian version | grep -o 'v[0-9][0-9.]*' | head -1)" = "v$expected"
+          test "$(neosian version | grep -o 'v[0-9][0-9A-Za-z.]*' | head -1)" = "v$expected"
           neosian docs quickstart | head -1
 
   # Runs on every trigger, unlike the provider jobs: a service container
