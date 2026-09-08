@@ -117,18 +117,18 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
 
 ## Install
 
-- `uv add "neosian==1.0.0rc1"` — on PyPI as a pre-release until v1.0.0: pin
+- `uv add "neosian==1.0.0rc2"` — on PyPI as a pre-release until v1.0.0: pin
   it explicitly, never a default resolve; extras `[postgres]`, `[mcp]`,
   `[otel]`, `[server]`, and `[cli]` — the `neosian` shell — ride the
   same pin; the `python -m` doors need no extra.
 - `curl -fsS https://neosian.com/install | bash` — uv and the `neosian`
   shell on a machine with nothing on it.
 - The appliance: `docker run -d -e NEOSIAN_SERVE_TOKEN=… -p 6367:6367
-  -v neosian-state:/data ghcr.io/mausa-ai/neosian:1.0.0rc1` — the state
+  -v neosian-state:/data ghcr.io/mausa-ai/neosian:1.0.0rc2` — the state
   process on a volume, `/health` the one open route.
 
 ## Docs
 
-- https://github.com/mausa-ai/neosian/blob/v1.0.0rc1/README.md: install and quickstart.
-- https://github.com/mausa-ai/neosian/blob/v1.0.0rc1/SERVICES.md: every environment key and what turning it off means.
+- https://github.com/mausa-ai/neosian/blob/v1.0.0rc2/README.md: install and quickstart.
+- https://github.com/mausa-ai/neosian/blob/v1.0.0rc2/SERVICES.md: every environment key and what turning it off means.
 - `neosian docs baselines`: the published per-provider memory numbers.

@@ -25,7 +25,7 @@ PACKAGE="neosian[cli]"
 # it equal to pyproject's version; the site serves the script from master.
 # Explicit because uv refuses an unpinned pre-release while any final
 # release exists on the index, yanked or not (ledger #205).
-NEOSIAN_RELEASE="1.0.0rc1"
+NEOSIAN_RELEASE="1.0.0rc2"
 
 find_links="${NEOSIAN_INSTALL_FIND_LINKS:-}"
 version="${NEOSIAN_VERSION:-$NEOSIAN_RELEASE}"

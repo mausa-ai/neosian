@@ -8,7 +8,15 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [1.0.0rc2] - 2026-09-08
+
+The first rc's own findings, fixed at a tag the README can point at.
+
 ### Fixed
+- README's lockup follows GitHub's theme: a `<picture>` with a dark source
+  (`branding/logo-dark.svg`) beside the ink one; the OS-scheme file had
+  vanished on a dark GitHub page over a light OS.
+- CI's installer job accepted only final versions in the banner check.
 - `scripts/install.sh` pins the release it shipped with by default (`--version`
   still overrides): uv refuses an unpinned pre-release while any final
   release exists on the index, yanked or not, so the one-liner landed
@@ -855,7 +863,8 @@ pre-release — pin it explicitly; the API stability promise rides v1.0.0.
 - Both entry points share one `_validate_run`, so neither can skip a
   guard.
 
-[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc1...HEAD
+[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc2...HEAD
+[1.0.0rc2]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc1...v1.0.0rc2
 [1.0.0rc1]: https://github.com/mausa-ai/neosian/compare/v0.90.0...v1.0.0rc1
 [0.90.0]: https://github.com/mausa-ai/neosian/compare/v0.89.0...v0.90.0
 [0.89.0]: https://github.com/mausa-ai/neosian/compare/v0.88.0...v0.89.0
