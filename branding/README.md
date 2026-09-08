@@ -10,7 +10,7 @@ they would pass the kit's icon sanitizer as they are.
 | `mark.svg` | **Keep**, the square mark (favicon, avatars, app icons) | root `viewBox` square; `currentColor` throughout |
 | `logo.svg` | the horizontal lockup (og-image, README, docs header) | root `viewBox` required; drawn wordmark, never type |
 | `social-preview.png` | the 1280×640 GitHub social preview: the lockup in ink on paper (`#17191a` on `#faf7f1`), rendered from `logo.svg` with `rsvg-convert` (NI); re-render after any change to `logo.svg`; uploaded in the repository settings at NX |
-| `logo-adaptive.svg` | `logo.svg` plus a `prefers-color-scheme` block | derived by hand for `<img>` contexts, where `currentColor` inherits nothing; re-derive after any change to `logo.svg` |
+| `logo-light.svg`, `logo-dark.svg` | `logo.svg` with the stroke fixed to ink `#17191a` / off-white `#f0ece4` | derived by hand for README's `<picture>`: GitHub swaps the dark source by its own theme setting, PyPI keeps the light `<img>`; `logo-adaptive.svg`'s `prefers-color-scheme` block follows the OS, not GitHub, so an ink lockup vanished on a dark GitHub page over a light OS |
 
 ## The mark
 
@@ -72,7 +72,8 @@ neutrals: only the hue tells the siblings apart.
 - `neosian/assets/logo_ascii_small.txt` — the mark rasterized at 33×16 and
   written in half-blocks; the playground header prints it in the support
   colour beside the wordmark art in the accent (`neosian/_cli/ui.py`).
-- `README.md` — `logo-adaptive.svg` at the top.
+- `README.md` — `logo-light.svg` / `logo-dark.svg` in a `<picture>` at the top;
+  `logo-adaptive.svg` for `<img>` contexts that follow the OS scheme.
 - A neosian.com host (a kit fork) seeds `[design] seed = "#88884d"` and keeps
   maki sarısı as its artwork hue; nothing in this repo depends on that.
 

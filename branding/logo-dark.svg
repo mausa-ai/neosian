@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 252 51"
+     fill="none" stroke="#f0ece4" stroke-width="6"
+     stroke-linecap="round" stroke-linejoin="round">
+  <!-- DERIVED from logo.svg: the same paths with the stroke fixed to #f0ece4
+       (off-white, for a dark page) for README's <picture>, whose dark source GitHub swaps
+       by its own theme setting — an <img> gives currentColor nothing to
+       inherit and prefers-color-scheme follows the OS, not GitHub. Edit
+       logo.svg, then re-derive by hand.
+
+       The horizontal lockup: the mark IS the first letter, at its own 43-unit
+       height against the 32-unit x-height (an emphasised n, not a capital —
+       the brand sets lowercase everywhere). The i-dot is the same zero-length
+       stroke as the point in the mark, and the word ends on the plain n: the
+       same letter at two radii. One stroke weight, letterspacing rather than
+       a lockup gap: this is one word.
+
+       The wordmark is DRAWN, not set — the kit's e, o, s and a verbatim, plus
+       an i and an n in the same geometric monoline — so no font ever enters
+       the file. No stacked lockup exists: one stroke weight cannot balance a
+       mark over a wordmark; square contexts take mark.svg alone. -->
+  <g transform="translate(-8,-7)">
+    <path d="M 15 51 V 31 A 17 17 0 0 1 26.49 14.92" />
+    <path d="M 37.51 14.92 A 17 17 0 0 1 49 31 V 51" />
+    <path d="M 32 31 h 0.01" />
+  </g>
+  <g transform="translate(0,-1)">
+    <path d="M 55 32 H 81 A 13 13 0 1 0 77.19 41.19" />
+    <path d="M 94 32 A 13 13 0 1 1 120 32 A 13 13 0 1 1 94 32" />
+    <path d="M 150.52 23.28 A 8 6.5 0 1 0 143 32 A 8 6.5 0 1 1 135.48 40.72" />
+    <path d="M 164 45 V 19 M 164 9 h 0.01" />
+    <path d="M 179 32 A 13 13 0 1 1 205 32 A 13 13 0 1 1 179 32 M 205 19 V 45" />
+    <path d="M 219 45 V 19 M 219 32 A 13 13 0 0 1 245 32 V 45" />
+  </g>
+</svg>

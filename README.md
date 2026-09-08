@@ -1,4 +1,7 @@
-<img src="https://raw.githubusercontent.com/mausa-ai/neosian/v1.0.0rc1/branding/logo-adaptive.svg" alt="neosian" width="280">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/mausa-ai/neosian/v1.0.0rc1/branding/logo-dark.svg">
+  <img src="https://raw.githubusercontent.com/mausa-ai/neosian/v1.0.0rc1/branding/logo-light.svg" alt="neosian" width="280">
+</picture>
 
 # neosian
 
