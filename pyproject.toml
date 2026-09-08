@@ -22,7 +22,7 @@ classifiers = [
 # (TP-7 — its first run raised psycopg's: 3.2.10 is the first binary
 # wheel for 3.14).
 dependencies = [
-    "anthropic>=0.122.0,<1",
+    "anthropic>=0.122.0,<2",
     "cerebras-cloud-sdk>=1.91.0,<2",
     "httpx>=0.28.1",
     "openai>=3.2.0,<4",
