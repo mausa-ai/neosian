@@ -3,7 +3,7 @@
 # things and prints one next step (ROADMAP §NI, DESIGN §28):
 #
 #   1. uv present, or installed from its pinned release installer
-#   2. uv tool install "neosian[cli]"   (a versioned root, one PATH link)
+#   2. uv tool install "neosian[cli]==<release>"   (a versioned root, one PATH link)
 #   3. the PATH check
 #   4. the registration command a user came for
 #
@@ -11,7 +11,7 @@
 #     curl -fsS https://neosian.com/install | bash
 # The same two commands, spelled out:
 #     curl -LsSf https://astral.sh/uv/<UV_VERSION>/install.sh | sh
-#     uv tool install "neosian[cli]"
+#     uv tool install "neosian[cli]==<the release this script shipped with>"
 # CI form — the wheel built in the same run instead of the index:
 #     bash scripts/install.sh --find-links DIR
 #
@@ -21,9 +21,14 @@ set -euo pipefail
 UV_VERSION="0.12.10"           # the same pin as the Dockerfile
 UV_INSTALLER="https://astral.sh/uv/${UV_VERSION}/install.sh"
 PACKAGE="neosian[cli]"
+# The release this script shipped with — the default pin. A unit test keeps
+# it equal to pyproject's version; the site serves the script from master.
+# Explicit because uv refuses an unpinned pre-release while any final
+# release exists on the index, yanked or not (ledger #205).
+NEOSIAN_RELEASE="1.0.0rc1"
 
 find_links="${NEOSIAN_INSTALL_FIND_LINKS:-}"
-version="${NEOSIAN_VERSION:-}"
+version="${NEOSIAN_VERSION:-$NEOSIAN_RELEASE}"
 
 usage() {
     cat <<USAGE
@@ -31,7 +36,8 @@ usage: install.sh [--find-links DIR] [--version X.Y.Z]
 
   --find-links DIR   install the wheel found in DIR (CI, a local build);
                      the default source is the package index
-  --version X.Y.Z    pin the neosian version (default: the newest)
+  --version X.Y.Z    pin the neosian version (default: ${NEOSIAN_RELEASE},
+                     the release this script shipped with)
 
 Environment: NEOSIAN_INSTALL_FIND_LINKS, NEOSIAN_VERSION mirror the flags.
 USAGE
@@ -57,7 +63,7 @@ case "$os" in
     MINGW*|MSYS*|CYGWIN*)
         fail "Windows: run the two commands in PowerShell instead —" \
              "'powershell -c \"irm https://astral.sh/uv/${UV_VERSION}/install.ps1 | iex\"'" \
-             "then 'uv tool install \"${PACKAGE}\"'" ;;
+             "then 'uv tool install \"${PACKAGE}==${version}\"'" ;;
     *) fail "unsupported platform: $os $arch" ;;
 esac
 
@@ -76,8 +82,7 @@ else
 fi
 
 # --- 2. the package ---------------------------------------------------------
-spec="$PACKAGE"
-[ -n "$version" ] && spec="${PACKAGE}==${version}"
+spec="${PACKAGE}==${version}"
 if [ -n "$find_links" ]; then
     [ -d "$find_links" ] || fail "--find-links: not a directory: $find_links"
     uv tool install --python ">=3.12" --find-links "$find_links" "$spec"
@@ -89,7 +94,7 @@ fi
 
 # --- 3. PATH ----------------------------------------------------------------
 if command -v neosian >/dev/null 2>&1; then
-    ok "neosian on PATH: neosian $(neosian version | grep -o 'v[0-9][0-9.]*' | head -1)"
+    ok "neosian on PATH: neosian $(neosian version | grep -o 'v[0-9][0-9A-Za-z.]*' | head -1)"
 else
     bin_dir="$(uv tool dir --bin)"
     echo "  neosian is installed at ${bin_dir} but that directory is not on PATH."
@@ -97,7 +102,7 @@ else
     echo "      export PATH=\"${bin_dir}:\$PATH\""
     export PATH="${bin_dir}:$PATH"
     command -v neosian >/dev/null 2>&1 || fail "neosian not found on PATH after install"
-    ok "neosian installed: neosian $(neosian version | grep -o 'v[0-9][0-9.]*' | head -1) (PATH line above still needed)"
+    ok "neosian installed: neosian $(neosian version | grep -o 'v[0-9][0-9A-Za-z.]*' | head -1) (PATH line above still needed)"
 fi
 
 # --- 4. the next step -------------------------------------------------------

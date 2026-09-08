@@ -8,6 +8,12 @@ phase close names the version.
 
 ## [Unreleased]
 
+### Fixed
+- `scripts/install.sh` pins the release it shipped with by default (`--version`
+  still overrides): uv refuses an unpinned pre-release while any final
+  release exists on the index, yanked or not, so the one-liner landed
+  nothing during the rc period.
+
 ## [1.0.0rc1] - 2026-09-06
 
 The first published release: the repository public under `mausa-ai`,

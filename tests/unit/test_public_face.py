@@ -10,6 +10,8 @@ from pathlib import Path
 
 import pytest
 
+import neosian
+
 _ROOT = Path(__file__).resolve().parents[2]
 _FLOOR = ("LICENSE", "README.md", "SECURITY.md")
 _INSTALLER = _ROOT / "scripts" / "install.sh"
@@ -63,6 +65,10 @@ def test_the_installer_pins_uv_to_the_dockerfile() -> None:
     image = re.search(r"ghcr\.io/astral-sh/uv:(\d+\.\d+\.\d+)", _DOCKERFILE.read_text())
     assert image and image.group(1) == pinned.group(1)
     assert 'uv tool install --python ">=3.12"' in script
+    # The default pin is the release the script shipped with (ledger #205):
+    # uv refuses an unpinned pre-release while a yanked final exists.
+    release = re.search(r'^NEOSIAN_RELEASE="([^"]+)"', script, re.M)
+    assert release and release.group(1) == neosian.__version__
     commands = [ln for ln in script.splitlines() if not ln.lstrip().startswith("#")]
     assert not any("sudo" in ln for ln in commands)
     assert _INSTALLER.stat().st_mode & 0o111, "install.sh must be executable"
