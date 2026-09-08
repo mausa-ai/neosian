@@ -11,6 +11,7 @@ they would pass the kit's icon sanitizer as they are.
 | `logo.svg` | the horizontal lockup (og-image, README, docs header) | root `viewBox` required; drawn wordmark, never type |
 | `social-preview.png` | the 1280×640 GitHub social preview: the lockup in ink on paper (`#17191a` on `#faf7f1`), rendered from `logo.svg` with `rsvg-convert` (NI); re-render after any change to `logo.svg`; uploaded in the repository settings at NX |
 | `logo-light.svg`, `logo-dark.svg` | `logo.svg` with the stroke fixed to ink `#17191a` / off-white `#f0ece4` | derived by hand for README's `<picture>`: GitHub swaps the dark source by its own theme setting, PyPI keeps the light `<img>`; `logo-adaptive.svg`'s `prefers-color-scheme` block follows the OS, not GitHub, so an ink lockup vanished on a dark GitHub page over a light OS |
+| `avatar.svg`, `avatar.png` | the mark in maki sarısı on paper, padded square, 1024 px | derived from `mark.svg` for the GitHub organisation avatar (uploaded by hand — GitHub has no API for it); the support colour because an avatar is artwork |
 
 ## The mark
 

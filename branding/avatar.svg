@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-16 -16 96 96"
+     fill="none" stroke="#987b1b" stroke-width="6"
+     stroke-linecap="round" stroke-linejoin="round">
+  <!-- DERIVED from mark.svg for the GitHub organisation avatar: the mark in
+       maki sarısı (the support colour — artwork, where nothing owes a
+       contrast ratio) on paper #faf7f1, padded to a square. Render with
+       `rsvg-convert -w 1024 -h 1024 avatar.svg -o avatar.png`. -->
+  <rect x="-16" y="-16" width="96" height="96" fill="#faf7f1" stroke="none"/>
+<path d="M 15 51 V 31 A 17 17 0 0 1 26.49 14.92" />
+  <path d="M 37.51 14.92 A 17 17 0 0 1 49 31 V 51" />
+  <path d="M 32 31 h 0.01" />
+</svg>
