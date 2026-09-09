@@ -6,11 +6,10 @@ summary: memory, skills and recall_turn over stdio; mcp install; McpServer consu
 # The MCP server
 
 The same stores, served to any MCP client — Claude Code, Claude
-Desktop, Cursor, Codex, OpenCode — over stdio. Requires the `mcp` extra
-(`neosian[mcp]`); the core install refuses with an install hint, never
-a traceback. For MCP over the network, the state process mounts this
-same factory's server at `/mcp`: `neosian serve` with mounts
-(`server` extra, `neosian docs topology`).
+Desktop, Cursor, Codex, OpenCode — over stdio; the MCP SDK ships in
+the install and loads at first use. For MCP over the network, the state
+process mounts this same factory's server at `/mcp`: `neosian serve`
+with mounts (`neosian docs topology`).
 
 ## The state set
 
@@ -99,7 +98,7 @@ which renders the same mount layout from the same flags
 
 ## Consume a server
 
-The other direction, the same extra: a neosian agent uses any MCP
+The other direction, the same SDK: a neosian agent uses any MCP
 server's tools. `McpServer` connects through the official client for
 the lifetime of an `async with`, lists the tools once, and hands them
 over as plain tool functions:
@@ -142,8 +141,7 @@ async with McpServer.stdio(
   that cannot spawn, a failed handshake, an unreachable URL.
 - **Everything else applies unchanged.** The approval gate, hooks,
   `Conversation` (pass the tools in the base config), link handles in
-  tool arguments — a bridged tool is an ordinary tool. Without the
-  extra, entering raises the install hint.
+  tool arguments — a bridged tool is an ordinary tool.
 
 ## One writer per root
 

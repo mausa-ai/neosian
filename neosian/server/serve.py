@@ -3,7 +3,7 @@
 Library code stays async-only; this module is the CLI tier, like
 `neosian/mcp/serve.py`. The runner import is lazy so the grammar tier —
 --help, exit-2 errors, the missing-token refusal — works without the
-`server` extra; the missing extra surfaces as the install hint at exit 1.
+serving stack; a missing stack surfaces as the reinstall hint at exit 1.
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ def main(argv: list[str] | None = None, *, prog: str = "neosian serve") -> int:
     try:
         asyncio.run(_serve(settings))
     except ImportError as exc:
-        # The missing-extra hint, not a traceback.
+        # The reinstall hint, not a traceback.
         print(f"error: {exc}", file=sys.stderr)
         return 1
     except KeyboardInterrupt:

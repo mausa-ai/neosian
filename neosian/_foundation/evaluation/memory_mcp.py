@@ -8,7 +8,7 @@ agent consumes the daemon's `/mcp`, keyless and port-free. The
 session's index render, reflection and maintenance stay on the local
 store handle (the cli column's split), so the cells measure the door
 under live traffic, never the store. Importing this module never loads
-the SDK; an mcp cell without the extra fails with the install hint.
+the SDK; an mcp cell missing it fails with the reinstall hint.
 """
 
 from __future__ import annotations

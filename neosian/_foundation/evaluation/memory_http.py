@@ -32,9 +32,9 @@ async def open_http_memory(
 ) -> AsyncIterator[MemoryConfig]:
     """A `MemoryConfig` whose store I/O crosses the wire.
 
-    The server imports are lazy: `build_app` pulls the guarded `server`
-    extra, and `neosian.evaluation` must stay importable without it —
-    an http cell without the extra fails with the install hint, never
+    The server imports are lazy: `build_app` pulls the guarded serving
+    stack, and `neosian.evaluation` must stay importable without it —
+    an http cell missing the stack fails with the reinstall hint, never
     the facade's import.
     """
     from neosian._foundation.server.app import build_app

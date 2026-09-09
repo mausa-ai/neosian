@@ -24,7 +24,7 @@ store.
 
 ## The daemon is reach, not capability
 
-The state process — `neosian serve`, the `server` extra — is the
+The state process — `neosian serve` — is the
 first-class answer when state is **shared across processes, apps, or
 languages** — including one container in a dev compose beside redis
 and minio — or when a FileStore root needs more than one writer: one
@@ -110,8 +110,8 @@ from neosian import RemoteStore
 store = await RemoteStore.connect("http://localhost:6367", token="change-me")
 ```
 
-`RemoteStore` implements both storage ABCs over the core install (no
-extra needed), so it drops into `Conversation` and `MemoryConfig`
+`RemoteStore` implements both storage ABCs over httpx alone (no
+serving stack loaded), so it drops into `Conversation` and `MemoryConfig`
 exactly where `FileStore` does. Agents speak MCP over streamable HTTP
 at `/mcp` when the server is started with mounts (`--scope` or
 `--mount`).

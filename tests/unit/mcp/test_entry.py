@@ -82,12 +82,12 @@ class TestErrorPaths:
             actor: object = None,  # noqa: ARG001 - fake
             conversations: object = None,  # noqa: ARG001 - fake
         ) -> object:
-            raise ImportError("uv add 'neosian[mcp]'")
+            raise ImportError("reinstall: uv add neosian")
 
         monkeypatch.setattr(serve_module, "create_memory_server", no_sdk)
         code = main(["--root", str(tmp_path / "m"), "--scope", "user:demo"])
         assert code == 1
-        assert "neosian[mcp]" in capsys.readouterr().err
+        assert "uv add neosian" in capsys.readouterr().err
 
 
 class TestStoreSelection:

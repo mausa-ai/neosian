@@ -1006,44 +1006,37 @@ wheels = [
 
 [[package]]
 name = "neosian"
-version = "1.0.0rc2"
+version = "1.0.0rc3"
 source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
     { name = "cerebras-cloud-sdk" },
     { name = "httpx" },
+    { name = "mcp" },
     { name = "openai" },
+    { name = "opentelemetry-api" },
     { name = "pydantic" },
     { name = "pyyaml" },
+    { name = "rich" },
+    { name = "simple-term-menu" },
+    { name = "starlette" },
+    { name = "tomli-w" },
+    { name = "typer" },
+    { name = "uvicorn" },
 ]
 
 [package.optional-dependencies]
-cli = [
-    { name = "rich" },
-    { name = "simple-term-menu" },
-    { name = "tomli-w" },
-    { name = "typer" },
-]
-mcp = [
-    { name = "mcp" },
-]
-otel = [
-    { name = "opentelemetry-api" },
+all = [
+    { name = "psycopg", extra = ["binary", "pool"] },
 ]
 postgres = [
     { name = "psycopg", extra = ["binary", "pool"] },
-]
-server = [
-    { name = "mcp" },
-    { name = "starlette" },
-    { name = "uvicorn" },
 ]
 
 [package.dev-dependencies]
 dev = [
     { name = "black" },
     { name = "import-linter" },
-    { name = "mcp" },
     { name = "mypy" },
     { name = "opentelemetry-sdk" },
     { name = "psycopg", extra = ["binary", "pool"] },
@@ -1051,18 +1044,11 @@ dev = [
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
     { name = "pytest-timeout" },
-    { name = "rich" },
     { name = "ruff" },
-    { name = "simple-term-menu" },
-    { name = "starlette" },
-    { name = "tomli-w" },
-    { name = "typer" },
     { name = "types-pyyaml" },
-    { name = "uvicorn" },
 ]
 examples = [
     { name = "fastapi" },
-    { name = "uvicorn" },
 ]
 
 [package.metadata]
@@ -1070,27 +1056,26 @@ requires-dist = [
     { name = "anthropic", specifier = ">=0.122.0,<1" },
     { name = "cerebras-cloud-sdk", specifier = ">=1.91.0,<2" },
     { name = "httpx", specifier = ">=0.28.1" },
-    { name = "mcp", marker = "extra == 'mcp'", specifier = ">=2,<3" },
-    { name = "mcp", marker = "extra == 'server'", specifier = ">=2,<3" },
+    { name = "mcp", specifier = ">=2,<3" },
+    { name = "neosian", extras = ["postgres"], marker = "extra == 'all'" },
     { name = "openai", specifier = ">=3.2.0,<4" },
-    { name = "opentelemetry-api", marker = "extra == 'otel'", specifier = ">=1.30" },
+    { name = "opentelemetry-api", specifier = ">=1.30" },
     { name = "psycopg", extras = ["binary", "pool"], marker = "extra == 'postgres'", specifier = ">=3.2.10" },
     { name = "pydantic", specifier = ">=2.13.4" },
     { name = "pyyaml", specifier = ">=6.0.3" },
-    { name = "rich", marker = "extra == 'cli'", specifier = ">=15.0.0" },
-    { name = "simple-term-menu", marker = "extra == 'cli'", specifier = ">=1.6.6" },
-    { name = "starlette", marker = "extra == 'server'", specifier = ">=1.6" },
-    { name = "tomli-w", marker = "extra == 'cli'", specifier = ">=1.2.0" },
-    { name = "typer", marker = "extra == 'cli'", specifier = ">=0.27.1" },
-    { name = "uvicorn", marker = "extra == 'server'", specifier = ">=0.52.4" },
+    { name = "rich", specifier = ">=15.0.0" },
+    { name = "simple-term-menu", specifier = ">=1.6.6" },
+    { name = "starlette", specifier = ">=1.6" },
+    { name = "tomli-w", specifier = ">=1.2.0" },
+    { name = "typer", specifier = ">=0.27.1" },
+    { name = "uvicorn", specifier = ">=0.52.4" },
 ]
-provides-extras = ["cli", "postgres", "mcp", "otel", "server"]
+provides-extras = ["postgres", "all", "cli", "mcp", "otel", "server"]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "black", specifier = ">=26.5.1" },
     { name = "import-linter", specifier = ">=2.13" },
-    { name = "mcp", specifier = ">=2,<3" },
     { name = "mypy", specifier = ">=2.3.1" },
     { name = "opentelemetry-sdk", specifier = ">=1.30" },
     { name = "psycopg", extras = ["binary", "pool"], specifier = ">=3.2.10" },
@@ -1098,19 +1083,10 @@ dev = [
     { name = "pytest-asyncio", specifier = ">=1.4.0" },
     { name = "pytest-cov", specifier = ">=7" },
     { name = "pytest-timeout", specifier = ">=2.3" },
-    { name = "rich", specifier = ">=15.0.0" },
     { name = "ruff", specifier = ">=0.16.3" },
-    { name = "simple-term-menu", specifier = ">=1.6.6" },
-    { name = "starlette", specifier = ">=1.6" },
-    { name = "tomli-w", specifier = ">=1.2.0" },
-    { name = "typer", specifier = ">=0.27.1" },
     { name = "types-pyyaml", specifier = ">=6.0.12.20250915" },
-    { name = "uvicorn", specifier = ">=0.52.4" },
 ]
-examples = [
-    { name = "fastapi", specifier = ">=0.141.1" },
-    { name = "uvicorn", specifier = ">=0.52.4" },
-]
+examples = [{ name = "fastapi", specifier = ">=0.141.1" }]
 
 [[package]]
 name = "openai"

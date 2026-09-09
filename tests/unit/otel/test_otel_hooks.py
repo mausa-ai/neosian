@@ -219,7 +219,9 @@ class TestCallbacks:
 
 @pytest.mark.unit
 class TestLazyImport:
-    def test_missing_api_names_the_extra(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_missing_api_names_the_reinstall(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.setitem(sys.modules, "opentelemetry", None)
-        with pytest.raises(ImportError, match=r"neosian\[otel\]"):
+        with pytest.raises(ImportError, match="uv add neosian"):
             otel_hooks()

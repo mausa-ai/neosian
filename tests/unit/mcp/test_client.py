@@ -311,12 +311,12 @@ class TestConnection:
             async with McpServer.in_process(bad):
                 pass
 
-    async def test_the_extra_is_named_when_absent(
+    async def test_the_reinstall_is_named_when_absent(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         for name in ("mcp", "mcp.client", "mcp.client.stdio"):
             monkeypatch.setitem(sys.modules, name, None)
-        with pytest.raises(ImportError, match=r"neosian\[mcp\]"):
+        with pytest.raises(ImportError, match="uv add neosian"):
             async with McpServer.stdio("anything"):
                 pass
 

@@ -68,7 +68,7 @@ def main(argv: list[str] | None = None, *, prog: str = "neosian mcp") -> int:
     try:
         asyncio.run(_run(settings))
     except ImportError as exc:
-        # The missing-extra hint, not a traceback.
+        # The reinstall hint, not a traceback.
         print(f"error: {exc}", file=sys.stderr)
         return 1
     except KeyboardInterrupt:

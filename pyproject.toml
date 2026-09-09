@@ -1,6 +1,6 @@
 [project]
 name = "neosian"
-version = "1.0.0rc2"
+version = "1.0.0rc3"
 description = "Async-only library for LLM agents: tools, orchestration, streaming, guardrails — with opt-in conversation, memory, and compaction layers over a stateless core."
 readme = "README.md"
 license = "Apache-2.0"
@@ -16,44 +16,44 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
     "Typing :: Typed",
 ]
-# The three provider SDKs are capped at their next major (NF, TP-1): a
-# green CI never vouches for a wire it has not seen, and the `lowest`
-# CI job resolves every declared floor for real on both Python ends
-# (TP-7 — its first run raised psycopg's: 3.2.10 is the first binary
-# wheel for 3.14).
+# One package, every door but one (NX, ledger #206): the shell, the MCP
+# server and client, the state process and the OTel span exporter are
+# core — `uv add neosian` is the whole product short of a database
+# server. The imports stay lazy (#184): `import neosian` loads no
+# provider SDK, no serving stack and no terminal library; each arrives
+# at first use behind one guarded site. The three provider SDKs are
+# capped at their next major (#183): a green CI never vouches for a wire
+# it has not seen, and the `lowest` CI job resolves every declared floor
+# for real on both Python ends.
 dependencies = [
     "anthropic>=0.122.0,<1",
     "cerebras-cloud-sdk>=1.91.0,<2",
     "httpx>=0.28.1",
+    "mcp>=2,<3",
     "openai>=3.2.0,<4",
+    "opentelemetry-api>=1.30",
     "pydantic>=2.13.4",
     "pyyaml>=6.0.3",
-]
-
-# The reference PostgresStore rides the `postgres` extra; the core install
-# stays driver-free (keyless boot never needs a database). The MCP memory
-# server rides the `mcp` extra the same way — `import neosian` and
-# `import neosian.mcp` stay SDK-free (pinned by subprocess tests) — and
-# the OTel span exporter rides `otel` (api only; the SDK is the host's
-# choice, dev-group here solely for the in-memory exporter tests). The
-# state process rides `server` (DESIGN §18): starlette/uvicorn pinned
-# explicitly, never leaned on as the MCP SDK's transitive deps;
-# `RemoteStore` needs none of it — httpx is core. The shell — the
-# `neosian` console script, typer + rich + the terminal menu — rides
-# `cli` (NF, TP-2): a host calling `Agent.run` installs no terminal
-# library, and the `python -m` doors (memory, record, mcp, server,
-# ledger, mobility) stay argparse, in the core install.
-[project.optional-dependencies]
-cli = [
     "rich>=15.0.0",
     "simple-term-menu>=1.6.6",
+    "starlette>=1.6",
     "tomli-w>=1.2.0",
     "typer>=0.27.1",
+    "uvicorn>=0.52.4",
 ]
+
+# The one extra: the Postgres driver, a 20 MB binary wheel that matters
+# only beside a server you already run (psycopg 3.2.10 is the first
+# wheel for 3.14); `all` is its alias. `cli`, `mcp`, `otel` and `server`
+# are empty aliases for one release so pinned `neosian[extra]==…` lines
+# still resolve (#206).
+[project.optional-dependencies]
 postgres = ["psycopg[binary,pool]>=3.2.10"]
-mcp = ["mcp>=2,<3"]
-otel = ["opentelemetry-api>=1.30"]
-server = ["mcp>=2,<3", "starlette>=1.6", "uvicorn>=0.52.4"]
+all = ["neosian[postgres]"]
+cli = []
+mcp = []
+otel = []
+server = []
 
 [project.urls]
 Homepage = "https://github.com/mausa-ai/neosian"
@@ -66,7 +66,6 @@ Issues = "https://github.com/mausa-ai/neosian/issues"
 dev = [
     "black>=26.5.1",
     "import-linter>=2.13",
-    "mcp>=2,<3",
     "mypy>=2.3.1",
     "opentelemetry-sdk>=1.30",
     "psycopg[binary,pool]>=3.2.10",
@@ -74,18 +73,11 @@ dev = [
     "pytest-asyncio>=1.4.0",
     "pytest-cov>=7",
     "pytest-timeout>=2.3",
-    "rich>=15.0.0",
     "ruff>=0.16.3",
-    "simple-term-menu>=1.6.6",
-    "starlette>=1.6",
-    "tomli-w>=1.2.0",
-    "typer>=0.27.1",
     "types-pyyaml>=6.0.12.20250915",
-    "uvicorn>=0.52.4",
 ]
 examples = [
     "fastapi>=0.141.1",
-    "uvicorn>=0.52.4",
 ]
 
 [tool.coverage.run]

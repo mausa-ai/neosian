@@ -4,8 +4,8 @@ Prints the exact client registration by default; applies it only with
 --write, merging key-preserving into the client's config file and
 refusing — never creating — a missing config home (the shared rules live
 in `shared/client_config.py`, beside the hook installer's). Pure over an
-injected `Environment`. Never imports the MCP SDK — install works
-without the extra (it never serves).
+injected `Environment`. Never imports the MCP SDK — install never
+serves.
 """
 
 from __future__ import annotations

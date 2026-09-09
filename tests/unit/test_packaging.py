@@ -1,9 +1,13 @@
-"""The dependency list 1.0 would lock (NF slice C, DESIGN §27.9).
+"""The dependency list 1.0 would lock (NF slice C, DESIGN §27.11; NX §29.10).
 
-The shell rides the `cli` extra (TP-2), the three provider SDKs are
-capped at their next major (TP-1), and `import neosian` loads no provider
-SDK (EC-5) — each pinned here, keylessly, in a subprocess where the
-question is what an import loads.
+One package carries every door but one (ledger #206) — the shell, the MCP
+SDK, the serving stack and the OTel API are core; the Postgres driver is
+the one extra with `all` as its alias, and the four former extras are
+empty aliases for one release; the three provider SDKs
+are capped at their next major (TP-1); `import neosian` loads no provider
+SDK (EC-5); and a missing library still answers with a reinstall hint,
+never a traceback — each pinned here, keylessly, in a subprocess where
+the question is what an import loads.
 """
 
 import subprocess
@@ -14,7 +18,17 @@ from pathlib import Path
 import pytest
 
 _PYPROJECT = Path(__file__).parents[2] / "pyproject.toml"
-_CLI_EXTRA = {"rich", "simple-term-menu", "tomli-w", "typer"}
+_DOORS = {
+    "mcp",
+    "opentelemetry-api",
+    "rich",
+    "simple-term-menu",
+    "starlette",
+    "tomli-w",
+    "typer",
+    "uvicorn",
+}
+_ALIASES = {"cli", "mcp", "otel", "server"}
 _SDKS = ("anthropic", "cerebras-cloud-sdk", "openai")
 
 
@@ -34,14 +48,18 @@ def _run(code: str) -> subprocess.CompletedProcess[str]:
 
 
 @pytest.mark.unit
-def test_the_shell_rides_the_cli_extra() -> None:
+def test_the_core_carries_every_door_but_the_driver() -> None:
     project = _project()
-    extras = project["optional-dependencies"]
-    assert isinstance(extras, dict)
-    assert {_name(s) for s in extras["cli"]} == _CLI_EXTRA
     core = project["dependencies"]
     assert isinstance(core, list)
-    assert not _CLI_EXTRA & {_name(s) for s in core}
+    names = {_name(s) for s in core}
+    assert names >= _DOORS and "psycopg" not in names
+    extras = project["optional-dependencies"]
+    assert isinstance(extras, dict)
+    assert set(extras) == _ALIASES | {"postgres", "all"}
+    assert [_name(s) for s in extras["postgres"]] == ["psycopg"]
+    assert extras["all"] == ["neosian[postgres]"]
+    assert all(extras[name] == [] for name in _ALIASES), extras
 
 
 @pytest.mark.unit
@@ -54,13 +72,13 @@ def test_the_sdk_floors_are_capped() -> None:
 
 
 @pytest.mark.unit
-def test_the_console_script_hints_without_the_extra() -> None:
+def test_the_console_script_hints_without_typer() -> None:
     result = _run(
         "import sys; sys.modules['typer'] = None; "
         "from neosian._cli.entry import main; main()"
     )
     assert result.returncode == 1
-    assert "neosian[cli]" in result.stderr
+    assert "install neosian" in result.stderr
     assert "Traceback" not in result.stderr
 
 
@@ -75,7 +93,7 @@ def test_the_eval_facade_imports_without_rich_and_hints_at_use() -> None:
         "try:\n"
         "    ev.print_report(report, None)\n"
         "except ImportError as exc:\n"
-        "    assert 'neosian[cli]' in str(exc), exc\n"
+        "    assert 'install neosian' in str(exc), exc\n"
         "else:\n"
         "    raise SystemExit('no hint')"
     )

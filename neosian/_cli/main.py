@@ -5,10 +5,12 @@ Provides the main CLI application with commands.
 
 import asyncio
 import importlib.resources
+from importlib.util import find_spec
 from typing import Annotated
 
 import typer
 from rich.console import Console
+from rich.markup import escape
 from rich.prompt import Prompt
 from rich.table import Table
 
@@ -50,13 +52,15 @@ def playground(
     menu: Annotated[
         bool,
         typer.Option(
-            "--menu", help="Show interactive menu to select provider and model"
+            "--menu",
+            help="Pick provider and model from a terminal menu (Unix terminals only)",
         ),
     ] = False,
     arena: Annotated[
         bool,
         typer.Option(
-            "--arena", help="Run in arena mode with multiple models side-by-side"
+            "--arena",
+            help="Arena mode: several models side by side (Unix terminals only)",
         ),
     ] = False,
     resume: Annotated[
@@ -78,8 +82,18 @@ def playground(
         neosian playground my_agent.py --menu
         neosian playground my_agent.py --arena
         neosian playground my_agent.py --resume 20260820-143207-my_agent
+
+    The --menu and --arena pickers draw a terminal menu that needs a Unix
+    terminal (termios); everything else runs anywhere.
     """
     run_playground(agent_file, menu=menu, arena=arena, resume=resume)
+
+
+def _driver_line() -> str:
+    """The one extra, by presence: the banner says what this install carries."""
+    if find_spec("psycopg") is None:
+        return 'psycopg (PostgresStore): missing\n  uv add "neosian[postgres]" adds it'
+    return "psycopg (PostgresStore): installed"
 
 
 @app.command()
@@ -99,6 +113,11 @@ def version() -> None:
         f"\n"
         f"  [dim]Python {App.PYTHON_VERSION}[/dim]\n"
         f"  [dim]{App.DESCRIPTION}[/dim]\n"
+        f"\n"
+        f"  [dim]in the box: Agent + Conversation,[/dim]\n"
+        f"  [dim]the shell, MCP server and client,[/dim]\n"
+        f"  [dim]the state process, OpenTelemetry;[/dim]\n"
+        f"  [dim]{escape(_driver_line())}[/dim]\n"
         f"\n"
     )
 
@@ -444,7 +463,7 @@ def mcp(ctx: typer.Context) -> None:
     """Serve neosian memory to MCP clients on stdio.
 
     A thin pass-through: every argument goes verbatim to the one grammar
-    (`python -m neosian.mcp --help`). Needs the `mcp` extra.
+    (`python -m neosian.mcp --help`).
     """
     from neosian.mcp.serve import main as mcp_main
 
@@ -463,8 +482,7 @@ def serve(ctx: typer.Context) -> None:
     """Serve memory and conversations over HTTP — the state process.
 
     A thin pass-through: every argument goes verbatim to the one grammar
-    (`neosian serve --help`). Needs the `server` extra and
-    NEOSIAN_SERVE_TOKEN.
+    (`neosian serve --help`). Needs NEOSIAN_SERVE_TOKEN.
     """
     from neosian.server.serve import main as serve_main
 

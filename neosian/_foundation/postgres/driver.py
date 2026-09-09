@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
 
 _INSTALL_HINT = (
-    "PostgresStore requires the 'postgres' extra — "
+    "PostgresStore needs psycopg, the 'postgres' extra — "
     "uv add 'neosian[postgres]' (or pip install 'neosian[postgres]')"
 )
 

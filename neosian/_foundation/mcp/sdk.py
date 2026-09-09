@@ -32,8 +32,8 @@ if TYPE_CHECKING:
     )
 
 _INSTALL_HINT = (
-    "neosian's MCP support requires the 'mcp' extra — "
-    "uv add 'neosian[mcp]' (or pip install 'neosian[mcp]')"
+    "neosian's MCP support needs the mcp SDK, which the neosian install "
+    "carries — reinstall: uv add neosian (or pip install neosian)"
 )
 
 
@@ -59,7 +59,7 @@ class Sdk:
 
 
 def load_sdk() -> Sdk:
-    """Import the MCP SDK, raising a helpful ImportError without the extra."""
+    """Import the MCP SDK, raising a helpful ImportError when it is missing."""
     try:
         from mcp.server import Server
         from mcp.shared.exceptions import MCPError
@@ -108,7 +108,7 @@ class ClientSdk:
 
 
 def load_client_sdk() -> ClientSdk:
-    """Import the SDK's client side, the same ImportError without the extra."""
+    """Import the SDK's client side, the same ImportError when it is missing."""
     try:
         from mcp.client import Client
         from mcp.client.stdio import StdioServerParameters, stdio_client

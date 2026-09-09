@@ -13,8 +13,8 @@ counts, and outcomes — never message content, tool arguments, or tool
 results (telemetry must not become a second store of user data).
 
 The `opentelemetry` import is function-local on first use (the mcp
-sdk.py idiom): `import neosian` and `import neosian.otel` stay
-dependency-free without the `otel` extra, pinned by subprocess tests.
+sdk.py idiom): `import neosian` and `import neosian.otel` never load
+the API, pinned by subprocess tests.
 """
 
 from __future__ import annotations
@@ -36,8 +36,8 @@ if TYPE_CHECKING:
     from opentelemetry.util.types import AttributeValue
 
 _INSTALL_HINT = (
-    "The neosian OTel exporter requires the 'otel' extra — "
-    "uv add 'neosian[otel]' (or pip install 'neosian[otel]')"
+    "The neosian OTel exporter needs opentelemetry-api, which the neosian "
+    "install carries — reinstall: uv add neosian (or pip install neosian)"
 )
 
 _NS_PER_MS = 1_000_000
@@ -59,7 +59,7 @@ def otel_hooks(*, tracer_provider: TracerProvider | None = None) -> AgentHooks:
 
     Raises:
         ImportError: When `opentelemetry-api` is not installed — the
-            message names the `otel` extra.
+            message names the reinstall.
     """
     trace = _load_trace()
     provider = (
@@ -168,8 +168,8 @@ def otel_hooks(*, tracer_provider: TracerProvider | None = None) -> AgentHooks:
 
 
 def _load_trace() -> Any:
-    """Import the OTel trace API, raising a helpful ImportError without
-    the extra."""
+    """Import the OTel trace API, raising a helpful ImportError when it
+    is missing."""
     try:
         from opentelemetry import trace
     except ImportError as exc:

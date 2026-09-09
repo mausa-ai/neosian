@@ -2,9 +2,9 @@
 
 Rich tables to the terminal, a schema-2 JSON artifact to
 `.neosian/evals/<ts>.json`. Everything renders from EvalReport alone —
-presentation never needs the config type. Rich rides the `cli` extra
-and is imported at use (NF, TP-2): `import neosian.evaluation` stays
-extra-free, and the terminal rendering refuses with the install hint.
+presentation never needs the config type. Rich is imported at use (NF,
+TP-2): `import neosian.evaluation` never loads it, and the terminal
+rendering answers a missing rich with the reinstall hint.
 """
 
 from __future__ import annotations
@@ -24,13 +24,13 @@ ARTIFACT_SCHEMA = 2
 _OUTPUT_DIR = ".neosian/evals"
 _TITLE = "neosian eval"
 _INSTALL_HINT = (
-    "The eval terminal rendering requires the 'cli' extra — "
-    "uv add 'neosian[cli]' (or pip install 'neosian[cli]')"
+    "The eval terminal rendering needs rich, which the neosian install "
+    "carries — reinstall: uv add neosian (or pip install neosian)"
 )
 
 
 def require_rich() -> None:
-    """Raise the install hint, not a traceback, when the extra is absent."""
+    """Raise the reinstall hint, not a traceback, when rich is absent."""
     try:
         import rich  # noqa: F401
     except ImportError as exc:

@@ -1,8 +1,8 @@
 """`neosian serve` in-process: `main([...])`, never a real socket.
 
-The grammar tier is extra-free by construction — the runner import is
+The grammar tier needs no serving stack by construction — the runner import is
 lazy, so every exit-2 path answers without starlette or uvicorn, and a
-missing extra surfaces as the install hint at exit 1 (§14.1's tiers).
+missing serving stack surfaces as the install hint at exit 1 (§14.1's tiers).
 """
 
 from pathlib import Path
@@ -109,19 +109,19 @@ class TestGrammarTier:
         assert not root.exists()
 
 
-class TestExtraAndInterrupt:
-    def test_missing_extra_exits_1_with_the_hint(
+class TestHintAndInterrupt:
+    def test_missing_stack_exits_1_with_the_hint(
         self,
         tmp_path: Path,
         capsys: pytest.CaptureFixture[str],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        async def no_extra(settings: object) -> None:  # noqa: ARG001 - fake
-            raise ImportError("uv add 'neosian[server]'")
+        async def no_stack(settings: object) -> None:  # noqa: ARG001 - fake
+            raise ImportError("reinstall: uv add neosian")
 
-        monkeypatch.setattr(serve_module, "_serve", no_extra)
+        monkeypatch.setattr(serve_module, "_serve", no_stack)
         assert main(["--root", str(tmp_path / "m")]) == 1
-        assert "neosian[server]" in capsys.readouterr().err
+        assert "uv add neosian" in capsys.readouterr().err
 
     def test_keyboard_interrupt_exits_130(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

@@ -59,7 +59,7 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
   client is not installed; Codex is print-only — apply with the printed
   `codex mcp add` line).
 - `python -m neosian.mcp --root DIR --scope user:me` serves the same
-  store over stdio (`mcp` extra): the `memory` tool, `list_skills` and
+  store over stdio: the `memory` tool, `list_skills` and
   `load_skill` over the mounts' skills (each skill also an MCP prompt — a
   slash command in Claude Code), and `recall_turn(turn, conversation)` —
   any recorded turn of any agent's session, verbatim.
@@ -93,7 +93,7 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
 ## Reach it over the network
 
 - `NEOSIAN_SERVE_TOKEN=... neosian serve` — the state process
-  (`server` extra) on the home (`--root DIR` another root): memory and conversations on a port, MCP
+  on the home (`--root DIR` another root): memory and conversations on a port, MCP
   over streamable HTTP at /mcp when started with mounts. Token is
   env-only (one token, or a per-client table `actor=token,...` — the
   process records who wrote); unset refuses to start; /health is
@@ -117,18 +117,22 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
 
 ## Install
 
-- `uv add "neosian==1.0.0rc2"` — on PyPI as a pre-release until v1.0.0: pin
-  it explicitly, never a default resolve; extras `[postgres]`, `[mcp]`,
-  `[otel]`, `[server]`, and `[cli]` — the `neosian` shell — ride the
-  same pin; the `python -m` doors need no extra.
-- `curl -fsS https://neosian.com/install | bash` — uv and the `neosian`
-  shell on a machine with nothing on it.
+- `uv add "neosian==1.0.0rc3"` — one package: the library and its
+  provider SDKs, the `neosian` shell, the MCP server and client, the
+  state process and OpenTelemetry spans (about 70 MB; nothing loaded
+  until used). On PyPI as a pre-release until v1.0.0: pin it explicitly,
+  never a default resolve. Keyless to start — `Model.FAKE` and `FileStore`
+  need nothing. The one extra is the Postgres driver for `PostgresStore`,
+  `neosian[postgres]` (`[all]` its alias); the former `[cli]`, `[mcp]`,
+  `[otel]`, `[server]` resolve for one release and add nothing.
+- `curl -fsS https://neosian.com/install | bash` — uv and neosian on a
+  machine with nothing on it; the script says what it installs first.
 - The appliance: `docker run -d -e NEOSIAN_SERVE_TOKEN=… -p 6367:6367
-  -v neosian-state:/data ghcr.io/mausa-ai/neosian:1.0.0rc2` — the state
+  -v neosian-state:/data ghcr.io/mausa-ai/neosian:1.0.0rc3` — the state
   process on a volume, `/health` the one open route.
 
 ## Docs
 
-- https://github.com/mausa-ai/neosian/blob/v1.0.0rc2/README.md: install and quickstart.
-- https://github.com/mausa-ai/neosian/blob/v1.0.0rc2/SERVICES.md: every environment key and what turning it off means.
+- https://github.com/mausa-ai/neosian/blob/v1.0.0rc3/README.md: install and quickstart.
+- https://github.com/mausa-ai/neosian/blob/v1.0.0rc3/SERVICES.md: every environment key and what turning it off means.
 - `neosian docs baselines`: the published per-provider memory numbers.

@@ -94,7 +94,7 @@ async def test_async_with_needs_no_io() -> None:
 
 
 @pytest.mark.unit
-def test_missing_extra_names_the_install_command(
+def test_missing_driver_names_the_extra(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setitem(sys.modules, "psycopg", None)

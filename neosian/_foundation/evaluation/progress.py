@@ -9,8 +9,8 @@ A Rich tree over the suite's axes:
     ├── verbose
     │   └── ...
 
-Indicators: ○ pending · ◐ running · ● passed · ✗ failed. Rich rides
-the `cli` extra and is imported at use (NF, TP-2).
+Indicators: ○ pending · ◐ running · ● passed · ✗ failed. Rich is
+imported at use (NF, TP-2).
 """
 
 from __future__ import annotations

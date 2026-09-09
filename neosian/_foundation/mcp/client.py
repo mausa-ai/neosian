@@ -6,7 +6,7 @@ them as plain tool functions for `AgentConfig(tools=[*server.tools])`.
 The core stays stateless, and every seam — the approval gate, hooks,
 Conversation's per-boundary rebuild, link expansion — applies by
 construction, because a bridged tool is an ordinary tool. The SDK loads
-at connect time (`mcp` extra); importing this module never loads it.
+at connect time; importing this module never loads it.
 """
 
 from __future__ import annotations

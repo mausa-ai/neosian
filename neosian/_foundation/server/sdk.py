@@ -1,9 +1,9 @@
-"""The one guarded import site for the `server` extra.
+"""The one guarded import site for the serving stack.
 
 Everything the serving side needs from starlette, uvicorn and the MCP
-SDK is re-exported here behind one install hint — `wire.py` and
+SDK is re-exported here behind one reinstall hint — `wire.py` and
 `remote.py` never import this module, so `import neosian` and
-`import neosian.server` stay extra-free (pinned by subprocess test).
+`import neosian.server` never load the stack (pinned by subprocess test).
 Absolute imports mean `from mcp.server...` always resolves to the
 third-party `mcp` distribution, never to `neosian.mcp`.
 """
@@ -11,8 +11,8 @@ third-party `mcp` distribution, never to `neosian.mcp`.
 from __future__ import annotations
 
 _INSTALL_HINT = (
-    "The neosian state process requires the 'server' extra — "
-    "uv add 'neosian[server]' (or pip install 'neosian[server]')"
+    "The neosian state process needs starlette, uvicorn and the mcp SDK, "
+    "which the neosian install carries — reinstall: uv add neosian (or pip install neosian)"
 )
 
 try:

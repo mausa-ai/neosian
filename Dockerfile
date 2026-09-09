@@ -21,9 +21,9 @@ ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never
 WORKDIR /app
 COPY pyproject.toml uv.lock README.md LICENSE ./
 COPY neosian/ neosian/
-# The extras are the deliberate dependency set (never the dev group):
-# `server` serves, `postgres` is the second backend of NM's done-when.
-RUN uv sync --locked --no-dev --no-editable --extra server --extra postgres
+# The locked runtime set plus the one extra, never the dev group: the
+# appliance is NM's second backend, so it carries the driver (ledger #206).
+RUN uv sync --locked --no-dev --no-editable --extra postgres
 
 FROM python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
 RUN useradd --uid 1000 --create-home neosian \
@@ -39,7 +39,6 @@ HEALTHCHECK --interval=10s --timeout=3s --start-period=5s CMD \
 # 0.0.0.0 rides the entrypoint: the library default (127.0.0.1, §18.7)
 # is unreachable from outside a container, and a CMD override — a
 # different root, a schema — must not silently lose the bind. The
-# module door is `neosian serve` without the shell's `cli` extra (TP-2):
-# the appliance installs no terminal library.
+# module door is `neosian serve` with no shell in the way (§18.9).
 ENTRYPOINT ["python", "-m", "neosian.server", "--host", "0.0.0.0"]
 CMD ["--root", "/data"]

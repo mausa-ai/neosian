@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # neosian installer — uv does the platform work; this script does four
-# things and prints one next step (ROADMAP §NI, DESIGN §28):
+# things, says what lands first, and prints one next step (DESIGN §28,
+# §29.10):
 #
 #   1. uv present, or installed from its pinned release installer
-#   2. uv tool install "neosian[cli]==<release>"   (a versioned root, one PATH link)
+#   2. uv tool install "neosian==<release>"   (a versioned root, one PATH link)
 #   3. the PATH check
 #   4. the registration command a user came for
 #
@@ -11,7 +12,7 @@
 #     curl -fsS https://neosian.com/install | bash
 # The same two commands, spelled out:
 #     curl -LsSf https://astral.sh/uv/<UV_VERSION>/install.sh | sh
-#     uv tool install "neosian[cli]==<the release this script shipped with>"
+#     uv tool install "neosian==<the release this script shipped with>"
 # CI form — the wheel built in the same run instead of the index:
 #     bash scripts/install.sh --find-links DIR
 #
@@ -20,12 +21,12 @@ set -euo pipefail
 
 UV_VERSION="0.12.10"           # the same pin as the Dockerfile
 UV_INSTALLER="https://astral.sh/uv/${UV_VERSION}/install.sh"
-PACKAGE="neosian[cli]"
+PACKAGE="neosian"
 # The release this script shipped with — the default pin. A unit test keeps
 # it equal to pyproject's version; the site serves the script from master.
 # Explicit because uv refuses an unpinned pre-release while any final
 # release exists on the index, yanked or not (ledger #205).
-NEOSIAN_RELEASE="1.0.0rc2"
+NEOSIAN_RELEASE="1.0.0rc3"
 
 find_links="${NEOSIAN_INSTALL_FIND_LINKS:-}"
 version="${NEOSIAN_VERSION:-$NEOSIAN_RELEASE}"
@@ -82,6 +83,15 @@ else
 fi
 
 # --- 2. the package ---------------------------------------------------------
+# What lands, said before it does: a wheel cannot speak during an install.
+cat <<BRINGS
+  neosian ${version} is one package, about 70 MB on disk:
+    the library and its provider SDKs (OpenAI, Anthropic, Cerebras; xAI and
+    Gemini through the OpenAI wire), the neosian shell, the MCP server and
+    client, the state process, and OpenTelemetry spans. Nothing in it needs
+    a key to start. The one extra is the Postgres driver, for a PostgresStore
+    against a server you run:  uv tool install "neosian[postgres]"
+BRINGS
 spec="${PACKAGE}==${version}"
 if [ -n "$find_links" ]; then
     [ -d "$find_links" ] || fail "--find-links: not a directory: $find_links"

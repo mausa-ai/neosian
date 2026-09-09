@@ -64,7 +64,10 @@ def test_the_installer_pins_uv_to_the_dockerfile() -> None:
     assert pinned
     image = re.search(r"ghcr\.io/astral-sh/uv:(\d+\.\d+\.\d+)", _DOCKERFILE.read_text())
     assert image and image.group(1) == pinned.group(1)
+    assert 'PACKAGE="neosian"' in script
     assert 'uv tool install --python ">=3.12"' in script
+    # The install says what it brings, before it does (ledger #206).
+    assert script.index("is one package") < script.index("uv tool install --python")
     # The default pin is the release the script shipped with (ledger #205):
     # uv refuses an unpinned pre-release while a yanked final exists.
     release = re.search(r'^NEOSIAN_RELEASE="([^"]+)"', script, re.M)

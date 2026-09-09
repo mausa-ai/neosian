@@ -13,22 +13,22 @@ agent-curated memory as opt-in layers.
 ## Install
 
 From PyPI, pinned to a release — the `llms.txt` beside this wheel names
-the version; extras ride the same pin:
+the version:
 
 ```bash
 uv add "neosian==<X.Y.Z>"
-uv add "neosian[postgres]==<X.Y.Z>"
-uv add "neosian[mcp]==<X.Y.Z>"
-uv add "neosian[otel]==<X.Y.Z>"
-uv add "neosian[server]==<X.Y.Z>"
-uv add "neosian[cli]==<X.Y.Z>"
 ```
 
-The core install is database-driver-free, MCP-free, server-free and
-shell-free: the `neosian` console script rides `[cli]`, while `python -m
-neosian.memory` and the other module doors need no extra. On a machine
-with nothing on it, `curl -fsS https://neosian.com/install | bash` lands
-uv and the shell.
+One package, everything but a database driver: the library with its
+provider SDKs, the `neosian` shell, the MCP server and client, the state
+process and OpenTelemetry spans — about 70 MB, none of it loaded
+until used. Keyless to start: `Model.FAKE` needs no account and
+`FileStore` is a directory. The one extra is the Postgres driver for
+`PostgresStore`, `uv add "neosian[postgres]==<X.Y.Z>"`, with `[all]` as
+its alias; the former `[cli]`, `[mcp]`, `[otel]` and `[server]` resolve
+for one release and add nothing. On a machine with nothing on it,
+`curl -fsS https://neosian.com/install | bash` lands uv and neosian,
+saying what it installs first.
 
 ## Keyless boot
 

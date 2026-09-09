@@ -8,6 +8,29 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [1.0.0rc3] - 2026-09-09
+
+`uv add neosian` is the whole product, short of a database server.
+
+### Changed
+- The core dependency list carries every door but one: the `neosian`
+  shell, the MCP server and client, the state process and the
+  OpenTelemetry exporter install with the bare package (about 70 MB);
+  the imports stay lazy, so `import neosian` loads none of them. The
+  Postgres driver stays the one extra, `neosian[postgres]`, with `[all]`
+  as its alias (ledger #206).
+- The install says what it brings: `scripts/install.sh` lists what lands
+  and its size before installing, `neosian version` names the doors and
+  whether the driver is present, and README, the quickstart page and
+  `llms.txt` carry one paragraph on it. README's install block is one line.
+- The playground's `--menu` and `--arena` pickers state their Unix-terminal
+  requirement in their own help text.
+
+### Deprecated
+- The `cli`, `mcp`, `otel` and `server` extras are empty aliases for this
+  release so pinned `neosian[extra]==…` lines still resolve; they are
+  removed in the next release.
+
 ## [1.0.0rc2] - 2026-09-08
 
 The first rc's own findings, fixed at a tag the README can point at.
@@ -863,7 +886,8 @@ pre-release — pin it explicitly; the API stability promise rides v1.0.0.
 - Both entry points share one `_validate_run`, so neither can skip a
   guard.
 
-[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc2...HEAD
+[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc3...HEAD
+[1.0.0rc3]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc2...v1.0.0rc3
 [1.0.0rc2]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc1...v1.0.0rc2
 [1.0.0rc1]: https://github.com/mausa-ai/neosian/compare/v0.90.0...v1.0.0rc1
 [0.90.0]: https://github.com/mausa-ai/neosian/compare/v0.89.0...v0.90.0

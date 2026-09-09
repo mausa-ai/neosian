@@ -3,8 +3,8 @@
 The client half of the daemon: every method is one POST against the
 store-shaped API, decoded by the shared `wire` codec, so a `RemoteStore`
 caller catches exactly what a `FileStore` caller catches. httpx is a core
-dependency — this module stays extra-free and never imports the serving
-side (`sdk.py`, starlette, uvicorn).
+dependency — this module never imports the serving side (`sdk.py`,
+starlette, uvicorn).
 
 Capability is transmitted, never claimed (the NM ruling): construct via
 `await RemoteStore.connect(url, token=...)`, which performs one

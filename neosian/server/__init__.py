@@ -2,10 +2,10 @@
 
 One name: `build_app` — the state process's ASGI app for embedders who
 mount it on their own uvicorn/hypercorn. The import is lazy so
-`import neosian.server` stays extra-free (pinned by subprocess test);
-touching `build_app` without the `server` extra raises the install hint.
-The wire's client half, `RemoteStore`, lives on the root package and the
-memory/conversation facades — it needs no extra.
+`import neosian.server` never loads the serving stack (pinned by
+subprocess test); touching `build_app` without it raises the reinstall
+hint. The wire's client half, `RemoteStore`, lives on the root package
+and the memory/conversation facades — httpx alone.
 """
 
 from typing import Any

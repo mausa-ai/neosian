@@ -2,7 +2,7 @@
 
 Pure mappings, SDK-free at runtime — they duck-type on the wire objects
 the official client returns (`Tool`, `CallToolResult` and its content
-blocks), so this module imports without the `mcp` extra. The definition
+blocks), so this module imports without the SDK. The definition
 crosses verbatim (the model gets the server's own schema bytes); the
 result is ledger #52's mapping read from the other side: `is_error` is
 the verdict, text blocks join, every other block leaves a marker.

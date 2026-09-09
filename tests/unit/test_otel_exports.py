@@ -29,7 +29,7 @@ def test_root_import_does_not_load_otel_facade() -> None:
 
 @pytest.mark.unit
 def test_otel_facade_does_not_load_the_api() -> None:
-    """The `otel` extra is needed to build hooks, never to import."""
+    """The API is needed to build hooks, never to import."""
     code = (
         "import neosian.otel, sys; "
         "assert not any(m.startswith('opentelemetry') for m in sys.modules)"
