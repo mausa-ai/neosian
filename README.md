@@ -6,6 +6,7 @@
 # neosian
 
 [![PyPI](https://img.shields.io/pypi/v/neosian.svg?include_prereleases&color=6d6d32)](https://pypi.org/project/neosian/)
+[![Docs](https://img.shields.io/badge/docs-docs.neosian.com-6d6d32.svg)](https://docs.neosian.com)
 [![CI](https://github.com/mausa-ai/neosian/actions/workflows/ci.yml/badge.svg)](https://github.com/mausa-ai/neosian/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-6d6d32.svg)](https://github.com/mausa-ai/neosian/blob/v1.0.0rc3/LICENSE)
 [![Python 3.12 | 3.13 | 3.14](https://img.shields.io/badge/python-3.12%20%7C%203.13%20%7C%203.14-6d6d32.svg)](https://github.com/mausa-ai/neosian/blob/v1.0.0rc3/pyproject.toml)
@@ -238,7 +239,9 @@ departure from documented behaviour; the public API is pinned by
 
 - `neosian docs <topic>` — the shipped pages, from the wheel: `quickstart`,
   `agent`, `tools`, `memory`, `skills`, `cli`, `mcp`, `agents`, `topology`,
-  `baselines` (the published per-provider memory numbers).
+  `baselines` (the published per-provider memory numbers); the same pages
+  online at [docs.neosian.com](https://docs.neosian.com), rendered from the
+  wheel at the current release.
 - [SERVICES.md](https://github.com/mausa-ai/neosian/blob/v1.0.0rc3/SERVICES.md) — every env key and what turning it off means.
 - [CHANGELOG.md](https://github.com/mausa-ai/neosian/blob/v1.0.0rc3/CHANGELOG.md) — Keep a Changelog, one section per release.
 - [SECURITY.md](https://github.com/mausa-ai/neosian/blob/v1.0.0rc3/SECURITY.md) — where to report, and the supported line.

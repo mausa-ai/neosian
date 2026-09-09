@@ -58,7 +58,7 @@ server = []
 [project.urls]
 Homepage = "https://github.com/mausa-ai/neosian"
 Repository = "https://github.com/mausa-ai/neosian"
-Documentation = "https://github.com/mausa-ai/neosian#readme"
+Documentation = "https://docs.neosian.com"
 Changelog = "https://github.com/mausa-ai/neosian/blob/master/CHANGELOG.md"
 Issues = "https://github.com/mausa-ai/neosian/issues"
 

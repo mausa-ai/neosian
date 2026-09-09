@@ -8,6 +8,12 @@ phase close names the version.
 
 ## [Unreleased]
 
+### Changed
+
+- `project.urls` Documentation points at https://docs.neosian.com — the
+  wheel's docs pages and `llms.txt`, rendered per release; the README
+  carries the docs badge and `llms.txt` names the online copy.
+
 ## [1.0.0rc3] - 2026-09-09
 
 `uv add neosian` is the whole product, short of a database server.
