@@ -95,9 +95,9 @@ class FallbackConfig:
 
         config = AgentConfig(
             system_prompt="You are helpful.",
-            model=Model.CLAUDE_OPUS_4_6,
+            model=Model.CLAUDE_OPUS_5,
             fallback=FallbackConfig(
-                model=Model.GPT_5_PRO,
+                model=Model.GPT_5_6_SOL,
                 retry_main_after=5,  # Try main again after 5 successful calls
             ),
         )

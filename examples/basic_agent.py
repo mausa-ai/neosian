@@ -114,7 +114,7 @@ Be concise and helpful in your responses.""",
         write_file,
         list_directory,
     ],
-    model=Model.CLAUDE_OPUS_4_6,
+    model=Model.CLAUDE_OPUS_5,
     reasoning_effort=ReasoningEffort.HIGH,
     guardrails=GuardrailsConfig(
         # Input guardrails: policy check via GPT-OSS-Safeguard

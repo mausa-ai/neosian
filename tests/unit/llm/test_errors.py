@@ -127,7 +127,7 @@ class TestWrapProviderError:
         exc = _StatusError(
             "Request too large for gpt-5 on tokens per min (TPM)", status_code=429
         )
-        wrapped = wrap_provider_error("openai", exc, model=Model.GPT_5_NANO)
+        wrapped = wrap_provider_error("openai", exc, model=Model.GPT_5_6_LUNA)
         assert type(wrapped) is ProviderError
         assert wrapped.status == 429
         assert wrapped.retryable is False

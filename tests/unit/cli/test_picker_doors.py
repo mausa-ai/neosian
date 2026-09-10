@@ -13,7 +13,7 @@ from neosian._cli.models import (
 XAI = OpenAICompatible(
     name="xai", api_key_env="XAI_API_KEY", base_url="https://api.x.ai/v1"
 )
-CATALOG = [Model.GROK_4_6, Model.GEMINI_3_7_FLASH]
+CATALOG = [Model.GROK_4_6, Model.GEMINI_3_8_FLASH, Model.GEMINI_3_7_FLASH]
 
 
 @pytest.mark.unit

@@ -57,8 +57,9 @@ class TestModelEnum:
     def test_model_values(self) -> None:
         """Model enum should have expected values."""
         assert Model.CEREBRAS_GPT_OSS_120B.value == "gpt-oss-120b"
-        assert Model.CEREBRAS_GEMMA_4_31B.value == "gemma-4-31b"
-        assert Model.GPT_5_NANO.value == "gpt-5-nano-2025-08-07"
+        assert Model.CEREBRAS_QWEN_3_8_27B.value == "qwen-3.8-27b"
+        assert Model.GPT_5_6_LUNA.value == "gpt-5.6-luna"
+        assert Model.CLAUDE_FABLE_5_1.value == "claude-fable-5-1"
         assert Model.CLAUDE_SONNET_5.value == "claude-sonnet-5"
 
     def test_model_is_string_compatible(self) -> None:
@@ -71,23 +72,23 @@ class TestModelEnum:
     def test_model_provider_property(self) -> None:
         """Model should have provider property."""
         assert Model.CEREBRAS_GPT_OSS_120B.provider == Provider.CEREBRAS
-        assert Model.CEREBRAS_GEMMA_4_31B.provider == Provider.CEREBRAS
-        assert Model.GPT_5_NANO.provider == Provider.OPENAI
+        assert Model.CEREBRAS_QWEN_3_8_27B.provider == Provider.CEREBRAS
+        assert Model.GPT_5_6_LUNA.provider == Provider.OPENAI
         assert Model.CLAUDE_SONNET_5.provider == Provider.ANTHROPIC
 
     def test_model_max_output_tokens_property(self) -> None:
         """Model should have max_output_tokens property matching API ceilings."""
         # Cerebras
         assert Model.CEREBRAS_GPT_OSS_120B.max_output_tokens == 40_960
-        assert Model.CEREBRAS_GEMMA_4_31B.max_output_tokens == 32_768
+        assert Model.CEREBRAS_QWEN_3_8_27B.max_output_tokens == 40_960
 
         # OpenAI
-        assert Model.GPT_5_NANO.max_output_tokens == 128_000
-        assert Model.GPT_5_PRO.max_output_tokens == 128_000
+        assert Model.GPT_5_6_LUNA.max_output_tokens == 128_000
+        assert Model.GPT_5_1.max_output_tokens == 128_000
 
         # Anthropic
         assert Model.CLAUDE_OPUS_5.max_output_tokens == 128_000
-        assert Model.CLAUDE_OPUS_4_6.max_output_tokens == 128_000
+        assert Model.CLAUDE_FABLE_5_1.max_output_tokens == 128_000
         assert Model.CLAUDE_SONNET_5.max_output_tokens == 128_000
         assert Model.CLAUDE_HAIKU_4_5.max_output_tokens == 64_000
 
@@ -110,16 +111,16 @@ class TestModelEnum:
         """Model should have context_window property."""
         # Cerebras: 131,072
         assert Model.CEREBRAS_GPT_OSS_120B.context_window == 131_072
-        assert Model.CEREBRAS_GEMMA_4_31B.context_window == 131_072
+        assert Model.CEREBRAS_QWEN_3_8_27B.context_window == 131_072
 
         # OpenAI: 400k
-        assert Model.GPT_5_NANO.context_window == 400_000
-        assert Model.GPT_5_PRO.context_window == 400_000
+        assert Model.GPT_5_6_LUNA.context_window == 1_050_000
+        assert Model.GPT_5_1.context_window == 400_000
 
         # Anthropic: 1M except Haiku (200k)
         assert Model.CLAUDE_OPUS_5.context_window == 1_000_000
         assert Model.CLAUDE_SONNET_5.context_window == 1_000_000
-        assert Model.CLAUDE_OPUS_4_6.context_window == 1_000_000
+        assert Model.CLAUDE_OPUS_5.context_window == 1_000_000
         assert Model.CLAUDE_HAIKU_4_5.context_window == 200_000
 
 
@@ -199,7 +200,7 @@ class TestAgentConfigReasoningEffort:
         """AgentConfig should accept reasoning_effort=None with any model."""
         config = AgentConfig(
             system_prompt="You are helpful.",
-            model=Model.CEREBRAS_GEMMA_4_31B,
+            model=Model.CEREBRAS_QWEN_3_8_27B,
             reasoning_effort=None,
         )
         assert config.reasoning_effort is None
@@ -216,18 +217,18 @@ class TestAgentConfigReasoningEffort:
         with pytest.raises(UnsupportedParameterError) as exc_info:
             AgentConfig(
                 system_prompt="You are helpful.",
-                model=Model.CEREBRAS_GEMMA_4_31B,
+                model=Model.CLAUDE_HAIKU_4_5,
                 reasoning_effort=ReasoningEffort.HIGH,
             )
 
         error_msg = str(exc_info.value)
-        assert "gemma-4-31b" in error_msg
+        assert "claude-haiku-4-5-20251001" in error_msg
 
     def test_reasoning_effort_with_openai_model_accepted(self) -> None:
         """AgentConfig should accept reasoning_effort with OpenAI GPT-5 models."""
         config = AgentConfig(
             system_prompt="You are helpful.",
-            model=Model.GPT_5_NANO,
+            model=Model.GPT_5_6_LUNA,
             reasoning_effort=ReasoningEffort.LOW,
         )
         assert config.reasoning_effort == ReasoningEffort.LOW
@@ -250,7 +251,7 @@ class TestAgentConfigReasoningEffort:
         """AgentConfig should accept reasoning_effort with Claude Opus 4.6."""
         config = AgentConfig(
             system_prompt="You are helpful.",
-            model=Model.CLAUDE_OPUS_4_6,
+            model=Model.CLAUDE_OPUS_5,
             reasoning_effort=ReasoningEffort.HIGH,
         )
         assert config.reasoning_effort == ReasoningEffort.HIGH
@@ -259,7 +260,7 @@ class TestAgentConfigReasoningEffort:
         """AgentConfig should accept reasoning_effort MAX with supported models."""
         config = AgentConfig(
             system_prompt="You are helpful.",
-            model=Model.CLAUDE_OPUS_4_6,
+            model=Model.CLAUDE_OPUS_5,
             reasoning_effort=ReasoningEffort.MAX,
         )
         assert config.reasoning_effort == ReasoningEffort.MAX
@@ -269,18 +270,15 @@ class TestAgentConfigReasoningEffort:
         with pytest.raises(UnsupportedParameterError) as exc_info:
             AgentConfig(
                 system_prompt="You are helpful.",
-                model=Model.CEREBRAS_GEMMA_4_31B,
+                model=Model.CLAUDE_HAIKU_4_5,
                 reasoning_effort=ReasoningEffort.HIGH,
             )
 
         error_msg = str(exc_info.value)
-        assert "Model.CEREBRAS_GPT_OSS_120B" in error_msg
-        assert "Model.CEREBRAS_GPT_OSS_120B" in error_msg
-        assert "Model.CLAUDE_OPUS_4_6" in error_msg
-        assert "Model.GPT_5_1" in error_msg
-        assert "Model.GPT_5_MINI" in error_msg
-        assert "Model.GPT_5_NANO" in error_msg
-        assert "Model.GPT_5_PRO" in error_msg
+        for member in Model:
+            if member.supports_reasoning:
+                assert f"Model.{member.name}" in error_msg
+        assert "Model.CLAUDE_HAIKU_4_5" not in error_msg
 
 
 @pytest.mark.unit
@@ -396,7 +394,7 @@ class TestCompactionCapability:
         """The compact beta's support set — a provider check would be
         wrong: Haiku 4.5 is Anthropic and explicitly outside it."""
         assert Model.CLAUDE_OPUS_5.supports_compaction_blocks
-        assert Model.CLAUDE_OPUS_4_6.supports_compaction_blocks
+        assert Model.CLAUDE_FABLE_5_1.supports_compaction_blocks
         assert Model.CLAUDE_SONNET_5.supports_compaction_blocks
         assert not Model.CLAUDE_HAIKU_4_5.supports_compaction_blocks
 

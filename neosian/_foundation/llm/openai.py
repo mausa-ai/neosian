@@ -42,7 +42,6 @@ from neosian._foundation.shared.exceptions import (
 )
 from neosian._foundation.shared.types import (
     AnyModel,
-    Model,
     OpenAICompatible,
     ReasoningEffort,
     ResponseFormat,
@@ -209,8 +208,7 @@ class OpenAICompatibleClient(BaseLLMClient):
         Handles:
         - Validation: raises UnsupportedParameterError for non-reasoning models.
         - A door without the parameter: dropped with a warning.
-        - MAX downgrade: the dialect has no MAX, downgrade to HIGH.
-        - GPT-5-Pro constraint: only supports HIGH, force other values to HIGH.
+        - MAX downgrade: a model whose spec does not allow MAX gets HIGH.
 
         Args:
             model: The model being used.
@@ -238,27 +236,15 @@ class OpenAICompatibleClient(BaseLLMClient):
             )
             return None
 
-        effective_effort = reasoning_effort
-
-        # The dialect has no MAX - downgrade to HIGH with warning
-        if reasoning_effort == ReasoningEffort.MAX:
+        # MAX passes through where the spec allows it (§31); else HIGH.
+        if reasoning_effort is ReasoningEffort.MAX and not model.supports_max_effort:
             logger.warning(
                 ErrorMessages.REASONING_EFFORT_MAX_DOWNGRADED_OPENAI.format(
                     model=model.value
                 )
             )
-            effective_effort = ReasoningEffort.HIGH
-
-        # GPT-5-Pro only supports HIGH - force with warning
-        if model == Model.GPT_5_PRO and effective_effort != ReasoningEffort.HIGH:
-            logger.warning(
-                ErrorMessages.REASONING_EFFORT_FORCED_HIGH.format(
-                    model=model.value, requested=effective_effort.value
-                )
-            )
-            effective_effort = ReasoningEffort.HIGH
-
-        return effective_effort
+            return ReasoningEffort.HIGH
+        return reasoning_effort
 
     def _reasoning_of(self, part: object) -> str | None:
         """The door's reasoning field off a message or delta, if it carries one."""

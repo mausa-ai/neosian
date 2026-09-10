@@ -113,7 +113,7 @@ from neosian import AgentConfig, Model
 configuration = AgentConfig(
     system_prompt="You are helpful.",
     tools=[],
-    model=Model.GPT_5_NANO,
+    model=Model.GPT_5_6_LUNA,
 )
 """
         with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
@@ -122,7 +122,7 @@ configuration = AgentConfig(
 
             config, _ = load_agent_config(f.name)
 
-            assert config.model == Model.GPT_5_NANO
+            assert config.model == Model.GPT_5_6_LUNA
 
 
 @pytest.mark.unit
@@ -151,13 +151,13 @@ class TestAgentConfig:
         config = AgentConfig(
             system_prompt="Test prompt",
             tools=[],
-            model=Model.CEREBRAS_GEMMA_4_31B,
+            model=Model.CEREBRAS_QWEN_3_8_27B,
             enable_todo=False,
         )
 
         assert config.system_prompt == "Test prompt"
         assert config.tools == []
-        assert config.model == Model.CEREBRAS_GEMMA_4_31B
+        assert config.model == Model.CEREBRAS_QWEN_3_8_27B
         assert config.enable_todo is False
 
 

@@ -127,7 +127,7 @@ class TestStructuredOutputValidation:
                     content='{"temperature": 72.5, "conditions": "sunny", "humidity": 45}',
                 ),
                 usage=Usage(input_tokens=10, output_tokens=20),
-                model="gpt-5-nano",
+                model="gpt-5.6-luna",
             )
         )
         mock_router.create_client_for.return_value = mock_client
@@ -156,7 +156,7 @@ class TestStructuredOutputValidation:
                     content='{"temperature": 72.5, "conditions": "sunny", "humidity": 45}',
                 ),
                 usage=Usage(input_tokens=10, output_tokens=20),
-                model="gpt-5-nano",
+                model="gpt-5.6-luna",
             )
         )
         mock_router.create_client_for.return_value = mock_client
@@ -189,7 +189,7 @@ class TestStructuredOutputValidation:
                     content="The weather is sunny.",
                 ),
                 usage=Usage(input_tokens=10, output_tokens=20),
-                model="gpt-5-nano",
+                model="gpt-5.6-luna",
             )
         )
         mock_router.create_client_for.return_value = mock_client
@@ -284,7 +284,7 @@ class TestUnionTypeSupport:
                     content='{"result": {"type": "tts", "audio_url": "https://example.com/audio.mp3"}}',
                 ),
                 usage=Usage(input_tokens=10, output_tokens=20),
-                model="gpt-5-nano",
+                model="gpt-5.6-luna",
             )
         )
         mock_router.create_client_for.return_value = mock_client
@@ -315,7 +315,7 @@ class TestUnionTypeSupport:
                     content='{"result": {"type": "music", "track_id": "track-123"}}',
                 ),
                 usage=Usage(input_tokens=10, output_tokens=20),
-                model="gpt-5-nano",
+                model="gpt-5.6-luna",
             )
         )
         mock_router.create_client_for.return_value = mock_client
@@ -348,7 +348,7 @@ class TestUnionTypeSupport:
                     content='{"result": {"type": "tts", "audio_url": "https://example.com/test.mp3"}}',
                 ),
                 usage=Usage(input_tokens=10, output_tokens=20),
-                model="gpt-5-nano",
+                model="gpt-5.6-luna",
             )
         )
         mock_router.create_client_for.return_value = mock_client

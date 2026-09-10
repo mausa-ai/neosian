@@ -279,7 +279,7 @@ class TestOpenAIClientRetry:
 
         result = await client.complete(
             messages=[Message(role=Role.USER, content="Hi")],
-            model=Model.GPT_5_MINI,
+            model=Model.GPT_5_6_TERRA,
             tools=tools,
         )
 
@@ -314,7 +314,7 @@ class TestOpenAIClientRetry:
         with pytest.raises(ToolCallGenerationError) as exc_info:
             await client.complete(
                 messages=[Message(role=Role.USER, content="Hi")],
-                model=Model.GPT_5_MINI,
+                model=Model.GPT_5_6_TERRA,
                 tools=tools,
             )
 
@@ -342,7 +342,7 @@ class TestOpenAIClientRetry:
         with pytest.raises(ProviderError):
             await client.complete(
                 messages=[Message(role=Role.USER, content="Hi")],
-                model=Model.GPT_5_MINI,
+                model=Model.GPT_5_6_TERRA,
                 tools=None,
             )
 
@@ -377,7 +377,7 @@ class TestOpenAIClientRetry:
         with pytest.raises(ProviderError):
             await client.complete(
                 messages=[Message(role=Role.USER, content="Hi")],
-                model=Model.GPT_5_MINI,
+                model=Model.GPT_5_6_TERRA,
                 tools=tools,
             )
 
@@ -397,7 +397,7 @@ class TestOpenAIClientTemperature:
         with pytest.raises(UnsupportedParameterError) as exc_info:
             await client.complete(
                 messages=[Message(role=Role.USER, content="Hi")],
-                model=Model.GPT_5_NANO,
+                model=Model.GPT_5_6_LUNA,
                 temperature=0.5,
             )
 
@@ -417,13 +417,13 @@ class TestOpenAIClientTemperature:
         mock_response.choices[0].message.tool_calls = None
         mock_response.usage.prompt_tokens = 10
         mock_response.usage.completion_tokens = 5
-        mock_response.model = "gpt-5-nano"
+        mock_response.model = "gpt-5.6-luna"
 
         mock_create.return_value = mock_response
 
         result = await client.complete(
             messages=[Message(role=Role.USER, content="Hi")],
-            model=Model.GPT_5_NANO,
+            model=Model.GPT_5_6_LUNA,
         )
 
         assert result.message.content == "Hello"
@@ -434,7 +434,7 @@ class TestOpenAIClientTemperature:
 class TestOpenAIClientReasoningEffort:
     """Test reasoning_effort parameter handling for OpenAI GPT-5 models."""
 
-    def _mock_response(self, model: str = "gpt-5-nano-2025-08-07") -> Any:
+    def _mock_response(self, model: str = "gpt-5.6-luna") -> Any:
         """Create a mock OpenAI response."""
         mock = autospec(SPEC["completion"])
         mock.choices = [autospec(SPEC["choice"])]
@@ -454,7 +454,7 @@ class TestOpenAIClientReasoningEffort:
 
         await client.complete(
             messages=[Message(role=Role.USER, content="Think carefully")],
-            model=Model.GPT_5_NANO,
+            model=Model.GPT_5_6_LUNA,
             reasoning_effort=ReasoningEffort.HIGH,
         )
 
@@ -470,7 +470,7 @@ class TestOpenAIClientReasoningEffort:
 
         await client.complete(
             messages=[Message(role=Role.USER, content="Hi")],
-            model=Model.GPT_5_NANO,
+            model=Model.GPT_5_6_LUNA,
             reasoning_effort=ReasoningEffort.LOW,
         )
 
@@ -487,7 +487,7 @@ class TestOpenAIClientReasoningEffort:
 
         await client.complete(
             messages=[Message(role=Role.USER, content="Hi")],
-            model=Model.GPT_5_NANO,
+            model=Model.GPT_5_6_LUNA,
         )
 
         assert mock_create.call_args.kwargs["reasoning_effort"] is omit
@@ -501,7 +501,7 @@ class TestOpenAIClientReasoningEffort:
 
         await client.complete(
             messages=[Message(role=Role.USER, content="Think")],
-            model=Model.GPT_5_NANO,
+            model=Model.GPT_5_1,
             reasoning_effort=ReasoningEffort.MAX,
         )
 
@@ -521,84 +521,26 @@ class TestOpenAIClientReasoningEffort:
         with caplog.at_level(logging.WARNING, logger="neosian._foundation.llm.openai"):
             await client.complete(
                 messages=[Message(role=Role.USER, content="Think")],
-                model=Model.GPT_5_NANO,
+                model=Model.GPT_5_1,
                 reasoning_effort=ReasoningEffort.MAX,
             )
 
         assert any("MAX" in record.message for record in caplog.records)
 
     @pytest.mark.asyncio
-    async def test_gpt5_pro_forces_high_from_low(self) -> None:
-        """GPT-5 Pro should force LOW to HIGH."""
+    async def test_max_passes_through_where_the_spec_allows(self) -> None:
+        """A row with supports_max_effort sends `max` as is (§31)."""
         client = OpenAIClient(api_key="test-key")
-        mock_create = AsyncMock(
-            return_value=self._mock_response("gpt-5-pro-2025-10-06")
-        )
+        mock_create = AsyncMock(return_value=self._mock_response("gpt-5.6-sol"))
         _sdk(client).chat.completions.create = mock_create
 
         await client.complete(
             messages=[Message(role=Role.USER, content="Think")],
-            model=Model.GPT_5_PRO,
-            reasoning_effort=ReasoningEffort.LOW,
+            model=Model.GPT_5_6_SOL,
+            reasoning_effort=ReasoningEffort.MAX,
         )
 
-        assert mock_create.call_args.kwargs["reasoning_effort"] == "high"
-
-    @pytest.mark.asyncio
-    async def test_gpt5_pro_forces_high_from_medium(self) -> None:
-        """GPT-5 Pro should force MEDIUM to HIGH."""
-        client = OpenAIClient(api_key="test-key")
-        mock_create = AsyncMock(
-            return_value=self._mock_response("gpt-5-pro-2025-10-06")
-        )
-        _sdk(client).chat.completions.create = mock_create
-
-        await client.complete(
-            messages=[Message(role=Role.USER, content="Think")],
-            model=Model.GPT_5_PRO,
-            reasoning_effort=ReasoningEffort.MEDIUM,
-        )
-
-        assert mock_create.call_args.kwargs["reasoning_effort"] == "high"
-
-    @pytest.mark.asyncio
-    async def test_gpt5_pro_high_passes_through(self) -> None:
-        """GPT-5 Pro with HIGH should pass through correctly."""
-        client = OpenAIClient(api_key="test-key")
-        mock_create = AsyncMock(
-            return_value=self._mock_response("gpt-5-pro-2025-10-06")
-        )
-        _sdk(client).chat.completions.create = mock_create
-
-        await client.complete(
-            messages=[Message(role=Role.USER, content="Think")],
-            model=Model.GPT_5_PRO,
-            reasoning_effort=ReasoningEffort.HIGH,
-        )
-
-        assert mock_create.call_args.kwargs["reasoning_effort"] == "high"
-
-    @pytest.mark.asyncio
-    async def test_gpt5_pro_forced_high_logs_warning(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        """Warning should be logged when GPT-5-Pro forces HIGH."""
-        import logging
-
-        client = OpenAIClient(api_key="test-key")
-        mock_create = AsyncMock(
-            return_value=self._mock_response("gpt-5-pro-2025-10-06")
-        )
-        _sdk(client).chat.completions.create = mock_create
-
-        with caplog.at_level(logging.WARNING, logger="neosian._foundation.llm.openai"):
-            await client.complete(
-                messages=[Message(role=Role.USER, content="Think")],
-                model=Model.GPT_5_PRO,
-                reasoning_effort=ReasoningEffort.LOW,
-            )
-
-        assert any("HIGH" in record.message for record in caplog.records)
+        assert mock_create.call_args.kwargs["reasoning_effort"] == "max"
 
     @pytest.mark.asyncio
     async def test_reasoning_effort_in_stream(self) -> None:
@@ -625,7 +567,7 @@ class TestOpenAIClientReasoningEffort:
 
         async for _ in client.stream(
             messages=[Message(role=Role.USER, content="Think")],
-            model=Model.GPT_5_NANO,
+            model=Model.GPT_5_6_LUNA,
             reasoning_effort=ReasoningEffort.MEDIUM,
         ):
             pass
@@ -651,7 +593,7 @@ class TestOpenAIClientReasoningEffort:
 
         async for _ in client.stream(
             messages=[Message(role=Role.USER, content="Think")],
-            model=Model.GPT_5_NANO,
+            model=Model.GPT_5_1,
             reasoning_effort=ReasoningEffort.MAX,
         ):
             pass
@@ -668,7 +610,7 @@ class TestOpenAIPromptCaching:
         prompt_tokens: int = 1000,
         completion_tokens: int = 50,
         cached_tokens: int | None = None,
-        model: str = "gpt-5-nano-2025-08-07",
+        model: str = "gpt-5.6-luna",
     ) -> Any:
         """Create a mock OpenAI response with optional cache details."""
         mock = autospec(SPEC["completion"])
@@ -700,7 +642,7 @@ class TestOpenAIPromptCaching:
 
         response = await client.complete(
             messages=[Message(role=Role.USER, content="Hi")],
-            model=Model.GPT_5_NANO,
+            model=Model.GPT_5_6_LUNA,
         )
 
         # input_tokens should be normalized: prompt_tokens - cached_tokens
@@ -722,7 +664,7 @@ class TestOpenAIPromptCaching:
 
         response = await client.complete(
             messages=[Message(role=Role.USER, content="Hi")],
-            model=Model.GPT_5_NANO,
+            model=Model.GPT_5_6_LUNA,
         )
 
         assert response.usage.input_tokens == 500
@@ -740,7 +682,7 @@ class TestOpenAIPromptCaching:
 
         response = await client.complete(
             messages=[Message(role=Role.USER, content="Hi")],
-            model=Model.GPT_5_NANO,
+            model=Model.GPT_5_6_LUNA,
         )
 
         assert response.usage.input_tokens == 500
@@ -759,7 +701,7 @@ class TestOpenAIPromptCaching:
 
         response = await client.complete(
             messages=[Message(role=Role.USER, content="Hi")],
-            model=Model.GPT_5_NANO,
+            model=Model.GPT_5_6_LUNA,
         )
 
         # total = (1000 - 600) + 50 + 0 + 600 = 1050
@@ -799,7 +741,7 @@ class TestOpenAIPromptCaching:
         chunks = []
         async for chunk in client.stream(
             messages=[Message(role=Role.USER, content="Hi")],
-            model=Model.GPT_5_NANO,
+            model=Model.GPT_5_6_LUNA,
         ):
             chunks.append(chunk)
 
@@ -841,7 +783,7 @@ class TestOpenAIPromptCaching:
         chunks = []
         async for chunk in client.stream(
             messages=[Message(role=Role.USER, content="Hi")],
-            model=Model.GPT_5_NANO,
+            model=Model.GPT_5_6_LUNA,
         ):
             chunks.append(chunk)
 
@@ -858,7 +800,7 @@ class TestOpenAIPromptCaching:
         _sdk(client).chat.completions.create = mock_create
 
         content_chunk = autospec(SPEC["chunk"])
-        content_chunk.model = "gpt-5-nano-2026-01-01"
+        content_chunk.model = "gpt-5.6-luna-2026-01-01"
         content_chunk.choices = [autospec(SPEC["chunk_choice"])]
         content_chunk.choices[0].delta.content = "Hi"
         content_chunk.choices[0].delta.tool_calls = None
@@ -866,7 +808,7 @@ class TestOpenAIPromptCaching:
         content_chunk.usage = None
 
         usage_chunk = autospec(SPEC["chunk"])
-        usage_chunk.model = "gpt-5-nano-2026-01-01"
+        usage_chunk.model = "gpt-5.6-luna-2026-01-01"
         usage_chunk.choices = []
         usage_chunk.usage = MagicMock(
             spec=SPEC["usage"], prompt_tokens=10, completion_tokens=5
@@ -893,12 +835,12 @@ class TestOpenAIPromptCaching:
         chunks = []
         async for chunk in client.stream(
             messages=[Message(role=Role.USER, content="Hi")],
-            model=Model.GPT_5_NANO,
+            model=Model.GPT_5_6_LUNA,
         ):
             chunks.append(chunk)
 
         assert len(chunks) == 2
-        assert all(c.model == "gpt-5-nano-2026-01-01" for c in chunks)
+        assert all(c.model == "gpt-5.6-luna-2026-01-01" for c in chunks)
 
     async def test_a_refusal_is_the_content_and_the_stop_reason(self) -> None:
         """OpenAI's `refusal` field reads into content_filter (LL-14)."""
@@ -911,11 +853,11 @@ class TestOpenAIPromptCaching:
         mock_response.choices[0].finish_reason = "stop"
         mock_response.usage.prompt_tokens = 10
         mock_response.usage.completion_tokens = 5
-        mock_response.model = "gpt-5-nano"
+        mock_response.model = "gpt-5.6-luna"
         _sdk(client).chat.completions.create = AsyncMock(return_value=mock_response)
 
         result = await client.complete(
-            messages=[Message(role=Role.USER, content="Hi")], model=Model.GPT_5_NANO
+            messages=[Message(role=Role.USER, content="Hi")], model=Model.GPT_5_6_LUNA
         )
         assert result.message.content == "I can't help with that."
         assert result.stop_reason == "refusal"
@@ -947,7 +889,7 @@ class TestOpenAIPromptCaching:
         _sdk(client).chat.completions.create = AsyncMock(return_value=chunks())
         received = []
         async for item in client.stream(
-            messages=[Message(role=Role.USER, content="Hi")], model=Model.GPT_5_NANO
+            messages=[Message(role=Role.USER, content="Hi")], model=Model.GPT_5_6_LUNA
         ):
             received.append(item)
         assert received[0].content == "I can't"
@@ -975,7 +917,7 @@ class TestOpenAIPromptCaching:
 
         received = []
         async for item in client.stream(
-            messages=[Message(role=Role.USER, content="Hi")], model=Model.GPT_5_NANO
+            messages=[Message(role=Role.USER, content="Hi")], model=Model.GPT_5_6_LUNA
         ):
             received.append(item)
         assert len(received) == 1
@@ -1017,7 +959,7 @@ class TestOpenAIPromptCaching:
         with pytest.raises(ProviderError, match="stop reason: length") as info:
             async for _ in client.stream(
                 messages=[Message(role=Role.USER, content="Hi")],
-                model=Model.GPT_5_NANO,
+                model=Model.GPT_5_6_LUNA,
             ):
                 pass
         assert info.value.provider == "openai"

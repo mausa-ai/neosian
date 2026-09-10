@@ -412,13 +412,13 @@ class TestAnthropicReasoningEffort:
         mock_response.usage = MagicMock(
             spec=SPEC["usage"], input_tokens=10, output_tokens=5
         )
-        mock_response.model = "claude-opus-4-6"
+        mock_response.model = "claude-opus-5"
 
         _mock_complete(client, mock_response)
 
         await client.complete(
             messages=sample_messages,
-            model=Model.CLAUDE_OPUS_4_6,
+            model=Model.CLAUDE_OPUS_5,
             reasoning_effort=ReasoningEffort.HIGH,
         )
 
@@ -440,13 +440,13 @@ class TestAnthropicReasoningEffort:
         mock_response.usage = MagicMock(
             spec=SPEC["usage"], input_tokens=10, output_tokens=5
         )
-        mock_response.model = "claude-opus-4-6"
+        mock_response.model = "claude-opus-5"
 
         _mock_complete(client, mock_response)
 
         await client.complete(
             messages=sample_messages,
-            model=Model.CLAUDE_OPUS_4_6,
+            model=Model.CLAUDE_OPUS_5,
             reasoning_effort=ReasoningEffort.MAX,
         )
 
@@ -543,7 +543,7 @@ class TestAnthropicReasoningEffort:
         chunks = []
         async for chunk in client.stream(
             messages=sample_messages,
-            model=Model.CLAUDE_OPUS_4_6,
+            model=Model.CLAUDE_OPUS_5,
             reasoning_effort=ReasoningEffort.MEDIUM,
         ):
             chunks.append(chunk)
@@ -686,13 +686,13 @@ class TestAnthropicReasoningEffort:
         mock_response.usage = MagicMock(
             spec=SPEC["usage"], input_tokens=10, output_tokens=5
         )
-        mock_response.model = "claude-opus-4-6"
+        mock_response.model = "claude-opus-5"
 
         _mock_complete(client, mock_response)
 
         await client.complete(
             messages=sample_messages,
-            model=Model.CLAUDE_OPUS_4_6,
+            model=Model.CLAUDE_OPUS_5,
             reasoning_effort=ReasoningEffort.MAX,
         )
 
@@ -750,13 +750,13 @@ class TestAnthropicReasoningContent:
         mock_response.usage = MagicMock(
             spec=SPEC["usage"], input_tokens=10, output_tokens=20
         )
-        mock_response.model = "claude-opus-4-6"
+        mock_response.model = "claude-opus-5"
 
         _mock_complete(client, mock_response)
 
         response = await client.complete(
             messages=sample_messages,
-            model=Model.CLAUDE_OPUS_4_6,
+            model=Model.CLAUDE_OPUS_5,
             reasoning_effort=ReasoningEffort.HIGH,
         )
 
@@ -781,13 +781,13 @@ class TestAnthropicReasoningContent:
         mock_response.usage = MagicMock(
             spec=SPEC["usage"], input_tokens=10, output_tokens=5
         )
-        mock_response.model = "claude-opus-4-6"
+        mock_response.model = "claude-opus-5"
 
         _mock_complete(client, mock_response)
 
         response = await client.complete(
             messages=sample_messages,
-            model=Model.CLAUDE_OPUS_4_6,
+            model=Model.CLAUDE_OPUS_5,
             reasoning_effort=ReasoningEffort.HIGH,
         )
 
@@ -857,7 +857,7 @@ class TestAnthropicReasoningContent:
         chunks = []
         async for chunk in client.stream(
             messages=sample_messages,
-            model=Model.CLAUDE_OPUS_4_6,
+            model=Model.CLAUDE_OPUS_5,
             reasoning_effort=ReasoningEffort.HIGH,
         ):
             chunks.append(chunk)
@@ -2225,13 +2225,13 @@ class TestAnthropicStructuredOutput:
         mock_response.usage = MagicMock(
             spec=SPEC["usage"], input_tokens=5, output_tokens=3
         )
-        mock_response.model = "claude-opus-4-6"
+        mock_response.model = "claude-opus-5"
 
         _mock_complete(client, mock_response)
 
         await client.complete(
             messages=sample_messages,
-            model=Model.CLAUDE_OPUS_4_6,
+            model=Model.CLAUDE_OPUS_5,
             response_format=ResponseFormat(schema=Out),
             reasoning_effort=ReasoningEffort.HIGH,
         )
@@ -3073,12 +3073,12 @@ class TestThinkingEcho:
         mock_response.usage = MagicMock(
             spec=SPEC["usage"], input_tokens=1, output_tokens=1
         )
-        mock_response.model = "claude-opus-4-6"
+        mock_response.model = "claude-opus-5"
         _mock_complete(client, mock_response)
 
         response = await client.complete(
             messages=sample_messages,
-            model=Model.CLAUDE_OPUS_4_6,
+            model=Model.CLAUDE_OPUS_5,
             reasoning_effort=ReasoningEffort.HIGH,
         )
 
@@ -3093,10 +3093,10 @@ class TestThinkingEcho:
         mock_response.usage = MagicMock(
             spec=SPEC["usage"], input_tokens=1, output_tokens=1
         )
-        mock_response.model = "claude-opus-4-6"
+        mock_response.model = "claude-opus-5"
         _mock_complete(client, mock_response)
         response = await client.complete(
-            messages=sample_messages, model=Model.CLAUDE_OPUS_4_6
+            messages=sample_messages, model=Model.CLAUDE_OPUS_5
         )
         assert response.message.extra is None
 
@@ -3152,7 +3152,7 @@ class TestThinkingEcho:
             chunk
             async for chunk in client.stream(
                 messages=sample_messages,
-                model=Model.CLAUDE_OPUS_4_6,
+                model=Model.CLAUDE_OPUS_5,
                 reasoning_effort=ReasoningEffort.HIGH,
             )
         ]

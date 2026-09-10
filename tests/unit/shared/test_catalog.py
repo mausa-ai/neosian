@@ -22,7 +22,11 @@ from neosian._foundation.shared.catalog import GEMINI, XAI
 from neosian._foundation.shared.models import _MODEL_SPECS, _prices_fingerprint
 from neosian._foundation.shared.registry import provider_label, registered_models
 
-DOOR_ROWS = {Model.GROK_4_6: XAI, Model.GEMINI_3_7_FLASH: GEMINI}
+DOOR_ROWS = {
+    Model.GROK_4_6: XAI,
+    Model.GEMINI_3_8_FLASH: GEMINI,
+    Model.GEMINI_3_7_FLASH: GEMINI,
+}
 
 
 @pytest.mark.unit

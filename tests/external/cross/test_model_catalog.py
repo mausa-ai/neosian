@@ -21,15 +21,6 @@ _PROVIDER_FIXTURES: dict[Provider, str] = {
     Provider.CEREBRAS: "cerebras_api_key",
 }
 
-# Registry members the smoke test cannot reach, each with its reason —
-# found by the first real run (NV, 2026-08-21), not assumptions.
-_UNREACHABLE: dict[Model, str] = {
-    Model.GPT_5_PRO: (
-        "OpenAI serves gpt-5-pro only via the Responses API; the client "
-        "speaks chat completions (404, observed 2026-08-21)"
-    ),
-}
-
 
 async def _answers(client: BaseLLMClient, model: AnyModel) -> None:
     """A 404 / "model not found" here means the provider retired or renamed
@@ -53,8 +44,6 @@ async def test_model_answers_minimal_completion(
     """Each registry model must accept a minimal completion request."""
     if model.provider is Provider.FAKE:
         pytest.skip("FAKE models are keyless registry members (DESIGN §2)")
-    if model in _UNREACHABLE:
-        pytest.skip(_UNREACHABLE[model])
     if model.door is not None:
         pytest.skip("a door row is probed by its lane, on the lane's clock (§31)")
     fixture_name = _PROVIDER_FIXTURES[model.provider]

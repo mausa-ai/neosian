@@ -165,7 +165,7 @@ class TestAgentSessionClientCaching:
             session = AgentSession(agent)
 
             cerebras_client = session._get_or_create_client(Model.CEREBRAS_GPT_OSS_120B)
-            openai_client = session._get_or_create_client(Model.GPT_5_NANO)
+            openai_client = session._get_or_create_client(Model.GPT_5_6_LUNA)
 
             assert cerebras_client is mock_client_cerebras
             assert openai_client is mock_client_openai
@@ -423,7 +423,7 @@ class TestAgentSessionMultipleClients:
         mock_client_openai.complete.return_value = CompletionResponse(
             message=Message(role=Role.ASSISTANT, content="Hello from OpenAI!"),
             usage=Usage(input_tokens=10, output_tokens=5),
-            model="gpt-5-nano",
+            model="gpt-5.6-luna",
         )
 
         mock_router = MagicMock()
@@ -443,7 +443,7 @@ class TestAgentSessionMultipleClients:
             config = AgentConfig(
                 system_prompt="You are helpful.",
                 model=Model.CEREBRAS_GPT_OSS_120B,  # Cerebras model
-                fallback=FallbackConfig(model=Model.GPT_5_NANO),  # OpenAI fallback
+                fallback=FallbackConfig(model=Model.GPT_5_6_LUNA),  # OpenAI fallback
                 tools=[],
                 enable_todo=False,
             )

@@ -154,7 +154,7 @@ class TestTemperature:
         strict = OpenAICompatible(name="strict", api_key_env="STRICT_KEY")
         with pytest.raises(UnsupportedParameterError, match="'strict'"):
             await _client(strict).complete(
-                _USER, model=Model.GPT_5_NANO, temperature=0.3
+                _USER, model=Model.GPT_5_6_LUNA, temperature=0.3
             )
 
 
@@ -181,6 +181,37 @@ class TestReasoning:
                 _USER, model=plain, reasoning_effort=ReasoningEffort.LOW
             )
 
+    async def test_max_passes_through_on_a_row_that_allows_it(self) -> None:
+        """`supports_max_effort` on the spec is the pass-through (§31): a
+        shipped 5.6 row and a registered row alike send `max`; a row
+        without it still gets `high`, on both paths."""
+        door = OpenAICompatible(name="thinks", api_key_env="THINKS_KEY")
+        allows = register_model(
+            "door-max",
+            provider=door,
+            context_window=8_192,
+            max_output_tokens=1_024,
+            supports_reasoning=True,
+            supports_max_effort=True,
+        )
+        client = _client(door)
+        create = _mock_complete(client, _response())
+        for model in (Model.GPT_5_6_SOL, allows):
+            await client.complete(
+                _USER, model=model, reasoning_effort=ReasoningEffort.MAX
+            )
+            assert create.call_args.kwargs["reasoning_effort"] == "max"
+        await client.complete(
+            _USER, model=Model.GPT_5_1, reasoning_effort=ReasoningEffort.MAX
+        )
+        assert create.call_args.kwargs["reasoning_effort"] == "high"
+        stream = _mock_stream(client, [_chunk("ok")])
+        async for _ in client.stream(
+            _USER, model=Model.GPT_5_6_SOL, reasoning_effort=ReasoningEffort.MAX
+        ):
+            pass
+        assert stream.call_args.kwargs["reasoning_effort"] == "max"
+
     async def test_reasoning_field_lands_on_the_message(self) -> None:
         client = _client()
         _mock_complete(client, _response(reasoning_content="thinking..."))
@@ -198,7 +229,7 @@ class TestReasoning:
     async def test_a_door_without_a_reasoning_field_ignores_one(self) -> None:
         client = OpenAIClient(api_key="test-key")
         _mock_complete(client, _response(reasoning_content="leaked?"))
-        response = await client.complete(_USER, model=Model.GPT_5_NANO)
+        response = await client.complete(_USER, model=Model.GPT_5_6_LUNA)
         assert response.message.reasoning is None
 
 
