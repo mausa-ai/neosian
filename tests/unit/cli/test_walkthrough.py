@@ -547,6 +547,11 @@ class TestConsole:
         text = _run(["status"], cwd=project, env=env)
         assert text.returncode == 0 and text.stdout.startswith("neosian ")
 
+    def test_bare_neosian_under_a_pipe_is_the_help(self, tmp_path: Path) -> None:
+        result = _run([], cwd=tmp_path, env=_env(tmp_path))
+        assert result.returncode == 0, result.stderr
+        assert "Usage:" in result.stdout and "Connect an agent" in result.stdout
+
     def test_a_piped_chat_turn_persists_where_audit_looks(self, tmp_path: Path) -> None:
         """NY: `echo hi | neosian chat --model fake --json` — the resident
         agent usable by a script, keyless; the turn lands under the home

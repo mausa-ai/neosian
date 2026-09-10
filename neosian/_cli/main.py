@@ -30,9 +30,30 @@ app = typer.Typer(
     name="neosian",
     help="The state layer for LLM agents: memory, conversations, the record.",
     epilog="agents: neosian docs cli --json",
-    no_args_is_help=True,
+    invoke_without_command=True,
     add_completion=False,
 )
+
+
+def _on_a_terminal() -> bool:
+    return sys.stdin.isatty() and sys.stdout.isatty()
+
+
+@app.callback()
+def root(ctx: typer.Context) -> None:
+    """Bare `neosian` (DESIGN §30): on a terminal it opens `neosian chat`
+    — the `claude` shape; under a pipe it prints this help, as before."""
+    if ctx.invoked_subcommand is not None:
+        return
+    if _on_a_terminal():
+        from neosian._cli.chat_cmd import run_chat_command
+
+        raise typer.Exit(
+            run_chat_command(
+                None, model=None, agent=None, resume=None, json_output=False
+            )
+        )
+    typer.echo(ctx.get_help())
 
 
 def _load_logo() -> str:
