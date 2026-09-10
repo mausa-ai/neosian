@@ -222,6 +222,11 @@ class BuiltinTools:
         LIST_NAME: str = "list_skills"
         LOAD_NAME: str = "load_skill"
 
+    class Docs:
+        """The resident agent's docs tool (DESIGN §30.2)."""
+
+        NAME: str = "docs"
+
 
 class SkillLoader:
     """Constants for skill file loading."""
