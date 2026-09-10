@@ -33,9 +33,9 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 _PACK = _REPO_ROOT / "examples" / "eval_memory_baseline.yaml"
 
 _PROVIDER_CASES = [
-    # OpenAI's row moved gpt-5-mini -> gpt-5.1 (user ruling, 2026-08-22):
-    # the flagship chat model, measured per serving stack like every row.
-    pytest.param(Model.GPT_5_1, "openai_api_key", "OPENAI_API_KEY", id="openai"),
+    # One measured model per serving stack, the flagship rule: OpenAI's row
+    # moved gpt-5-mini -> gpt-5.1 (2026-08-22) -> gpt-5.6-sol (NW1, #210).
+    pytest.param(Model.GPT_5_6_SOL, "openai_api_key", "OPENAI_API_KEY", id="openai"),
     pytest.param(
         Model.CLAUDE_SONNET_5,
         "anthropic_api_key",
@@ -47,6 +47,14 @@ _PROVIDER_CASES = [
         "cerebras_api_key",
         "CEREBRAS_API_KEY",
         id="cerebras",
+    ),
+    # A second measured row on one adapter (#210): a row is provider+model,
+    # so this board says nothing about Qwen3.8-Max on Model Studio.
+    pytest.param(
+        Model.CEREBRAS_QWEN_3_8_27B,
+        "cerebras_api_key",
+        "CEREBRAS_API_KEY",
+        id="cerebras-qwen",
     ),
 ]
 

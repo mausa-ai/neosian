@@ -67,7 +67,8 @@ def _candidate(
 XAI = Lane(model=Model.GROK_4_6)
 
 GEMINI = Lane(
-    model=Model.GEMINI_3_7_FLASH,
+    # The measured Gemini row since NW1 (#210); 3.7 rides the catalog probe.
+    model=Model.GEMINI_3_8_FLASH,
     requests_per_minute=5,  # the project's tier, per model (probed 2026-09-01)
 )
 

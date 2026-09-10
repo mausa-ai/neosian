@@ -19,10 +19,10 @@ raises `MissingAPIKeyError` (`agent_missing_api_key`).
 | Key | Provider | Off means |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | Anthropic (Claude; vision/PDF, prompt caching, adaptive thinking) | Claude models leave the router; `external_anthropic` self-skips; playground hides the Anthropic menu |
-| `OPENAI_API_KEY` | OpenAI (GPT-5 family, reasoning) | GPT models leave the router; `external_openai` self-skips; playground hides the OpenAI menu |
-| `CEREBRAS_API_KEY` | Cerebras (default provider, gpt-oss models) | Cerebras models leave the router; `external_cerebras` self-skips |
-| `XAI_API_KEY` | xAI (`grok-4.6`, a shipped door row — `neosian.catalog`, DESIGN §19.5) | The row stays listed but its first call raises `MissingAPIKeyError` naming the var; `external_xai` self-skips |
-| `GEMINI_API_KEY` | Google Gemini API, OpenAI-compatible endpoint (`gemini-3.7-flash`, a shipped door row) | As above; `external_gemini` self-skips |
+| `OPENAI_API_KEY` | OpenAI (the GPT-5.6 family and `gpt-5.1`, reasoning) | GPT models leave the router; `external_openai` self-skips; playground hides the OpenAI menu |
+| `CEREBRAS_API_KEY` | Cerebras (default provider; `gpt-oss-120b`, `qwen-3.8-27b`) | Cerebras models leave the router; `external_cerebras` self-skips |
+| `XAI_API_KEY` | xAI (`grok-4.6`, a shipped door row — `Model.GROK_4_6`, DESIGN §31) | The row stays listed but its first call raises `MissingAPIKeyError` naming the var; `external_xai` self-skips |
+| `GEMINI_API_KEY` | Google Gemini API, OpenAI-compatible endpoint (`gemini-3.8-flash` and `gemini-3.7-flash`, shipped door rows) | As above; `external_gemini` self-skips |
 
 With **no** keys set, the library still imports, constructs, runs (on
 FakeProvider), and passes its full default test tier.
@@ -40,11 +40,14 @@ Nothing in the library reads these. Each drives one lane of NW's gate
 self-skips. A green row is promoted into the table above (the way
 `XAI_API_KEY` and `GEMINI_API_KEY` were, 2026-09-02); a red one exits
 whole (DeepSeek and Alibaba Model Studio did, the same day — BASELINES.md
-keeps their runs).
+keeps their runs; both re-enter under NW1, ledger #211, their lanes
+landing in slice C).
 
 | Key | Suite | Serving stack |
 |---|---|---|
 | `MOONSHOT_API_KEY` | `kimi` | Moonshot (`kimi-k3`) |
+| `DEEPSEEK_API_KEY` | `deepseek` | DeepSeek (`deepseek-flash`; the lane lands in NW1 slice C) |
+| `DASHSCOPE_API_KEY` | `qwen` | Alibaba Model Studio, Singapore, the token plan (`qwen3.8-max`; the lane lands in NW1 slice C) |
 
 Where an account tier caps requests per minute, the lane — shipped or
 candidate — is paced on our side (`requests_per_minute` in

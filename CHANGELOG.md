@@ -18,9 +18,32 @@ phase close names the version.
   `GuardrailsConfig`, `CompactionConfig` and `ReflectionConfig` accept a
   wire id string for `model` — `AgentConfig(model="gpt-oss-120b")` builds
   the same agent as the member; an unknown id raises `InvalidModelError`.
+- Rows, with their sealed cards (the providers' pages as read
+  2026-09-10): `Model.GPT_5_6_SOL`, `GPT_5_6_TERRA`, `GPT_5_6_LUNA`
+  (`reasoning_effort=MAX` passes through on them), `CLAUDE_FABLE_5_1`,
+  `GEMINI_3_8_FLASH`, `CEREBRAS_QWEN_3_8_27B`.
+- The catalog clock: `ModelSpec.retires` and `ModelSpec.card_until` on
+  every shipped row, and a keyless test that fails inside 30 days of
+  either (Haiku 4.5's floor is 2026-10-15; Gemini's introductory card
+  holds through 2026-12-31).
+
+### Removed
+
+- `Model.GPT_5_MINI`, `Model.GPT_5_NANO`, `Model.GPT_5_PRO` (OpenAI shuts
+  the snapshots down 2026-12-11), `Model.CEREBRAS_GEMMA_4_31B` (off
+  Cerebras's public endpoints since 2026-09-03) and
+  `Model.CLAUDE_OPUS_4_6` (legacy, superseded by Opus 5). A retired id
+  leaves in the next release after its provider's date (README,
+  Stability).
 
 ### Changed
 
+- `Model.CLAUDE_SONNET_5`'s card is $2/$10 (cache read $0.20, write
+  $2.50): the announced 2026-09-01 rise did not occur. `PRICES_AS_OF` is
+  2026-09-10; `DEFAULT_MODELS[Provider.OPENAI]` is `GPT_5_6_SOL`. The
+  measured set of the external tier is Sonnet 5, Sol, gpt-oss-120b,
+  qwen-3.8-27b, gemini-3.8-flash and grok-4.6; gpt-5.1 and Gemini 3.7 ride
+  the catalog probe.
 - The shipped door rows no longer register at import: `registered_models()`
   starts empty, and registering an id the enum ships is refused naming the
   member. `RegisteredModel` is `(value, spec)`; its `door` is the spec's.

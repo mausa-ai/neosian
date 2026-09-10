@@ -37,6 +37,31 @@ def test_it_opens_the_docs_door() -> None:
     assert "neosian mcp install" in text
 
 
+# Ids that left the enum (CHANGELOG, Removed): a shipped page naming one is
+# stale. `baselines.md` is history and keeps them.
+_RETIRED = (
+    "gpt-5-mini-2025-08-07",
+    "gpt-5-nano-2025-08-07",
+    "gpt-5-pro-2025-10-06",
+    "gemma-4-31b",
+    "claude-opus-4-6",
+)
+
+
+def test_no_shipped_page_names_a_retired_id() -> None:
+    pages = [
+        p
+        for p in (_REPO_ROOT / "neosian" / "assets" / "docs").glob("*.md")
+        if p.name != "baselines.md"
+    ]
+    pages.append(_REPO_ROOT / "README.md")
+    texts = {p.name: p.read_text(encoding="utf-8") for p in pages}
+    texts["llms.txt"] = _packaged_copy().decode("utf-8")
+    for name, text in texts.items():
+        for retired in _RETIRED:
+            assert retired not in text, f"{name} names the retired id {retired!r}"
+
+
 def test_the_install_pin_matches_the_version() -> None:
     # Deliberate coupling: a release bumps llms.txt in the same commit,
     # or this goes red — the stale-README-pin failure mode, closed.

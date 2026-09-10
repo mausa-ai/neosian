@@ -46,14 +46,19 @@ document), never the file name.
   — one source of scenario truth. The same pack, fully scripted, is the
   keyless FakeProvider regression gate (`make test`), all-green by
   construction.
-- One model per provider, the same set the library's external tier
-  pins: `claude-sonnet-5`, `gpt-5.1-2025-11-13`, `gpt-oss-120b`
-  (Cerebras). OpenAI's row moved `gpt-5-mini-2025-08-07` → `gpt-5.1`
-  (user ruling, 2026-08-22 — the flagship chat model; `gpt-5-pro` is
-  Responses-API-only and cannot ride this harness); earlier tables
-  name the model they measured. The 2026-08-21 tables also carry a
-  fourth, since-removed provider — see the historical note under the
-  table.
+- One measured model per serving stack, the set the library's external
+  tier pins (`_PROVIDER_CASES` and `LANES`): `claude-sonnet-5`,
+  `gpt-5.6-sol`, `gpt-oss-120b` **and** `qwen-3.8-27b` (two rows on the
+  Cerebras adapter — a row is provider+model, so neither says anything
+  about the other), `gemini-3.8-flash`, `grok-4.6`. Every other shipped
+  row rides the catalog probe on every dispatch, and each row carries its
+  provider's lifecycle as data (`ModelSpec.retires` / `card_until`,
+  DESIGN §31 — the 30-day alarm in `make test`). History: OpenAI's row
+  moved `gpt-5-mini` → `gpt-5.1` on 2026-08-22 (the flagship rule) and
+  `gpt-5.1` → `gpt-5.6-sol` on 2026-09-10 (NW1, ledger #210); Gemini's
+  from 3.7 to 3.8 the same day; earlier tables name the model they
+  measured. The 2026-08-21 tables also carry a fourth, since-removed
+  provider — see the historical note under the table.
 - Transports axis (ledger #64): `function` (the plain function tool),
   `cli` (the `neosian memory` engine in-process), and `http` (the same
   function tool over `RemoteStore` against an in-process state
@@ -210,9 +215,10 @@ A row is earned (ROADMAP §NW): a candidate door is wired
 (`tests/external/lanes.py`, NC2 slice B1), the shipped pack runs
 scriptless against it on dispatch, its first run lands as a dated block
 below, and green over dispatched runs ships the row first-party (a
-catalog registration, DESIGN §19.5 — `neosian.catalog`); red exits, the
-way the fourth provider did. Cadence is the operator's (ledger #89).
-B2 ruled the five on 2026-09-02 (ledger #124):
+`Model` member with its sealed card, DESIGN §31); red exits, the way the
+fourth provider did. Cadence is the operator's (ledger #89). B2 ruled the
+five on 2026-09-02 (ledger #124); NW1 re-entered two on 2026-09-10
+(ledger #211):
 
 | Serving stack | Model | Suite | Keys | Wired | Runs | Ruled |
 |---|---|---|---|---|---|---|
@@ -221,6 +227,8 @@ B2 ruled the five on 2026-09-02 (ledger #124):
 | DeepSeek | deepseek-v4-pro | `deepseek` | `DEEPSEEK_API_KEY` | 2026-09-01 | 21, 21, 21 (structured output, every run) | **exited** — one deterministic cause, no `json_schema` on the endpoint; re-entry is a `json_object` dialect knob (§19.7) |
 | Alibaba Model Studio (Singapore, token plan) | qwen3.8-max | `qwen` | `DASHSCOPE_API_KEY` | 2026-09-01 | 21, 23, 20 | **exited** — behavior reds in every run, the `forbidden` pin fired twice, the reasoning-echo class red on the round trip |
 | Moonshot | kimi-k3 | `kimi` | `MOONSHOT_API_KEY` | 2026-09-01 | 24, 21 (429s, harness), 22, 23, 24 (a probe miss, the probe's own) | **stays a candidate** — run 3 was the door's own (schema misses, §19.7); run 5 a clean board with the metering probe wrong about whole-prompt cache hits; ships on the user's ruling (#124) |
+| DeepSeek | deepseek-flash | `deepseek` | `DEEPSEEK_API_KEY` | NW1 slice C | — | **candidate again** (ledger #211) — two door knobs, each a documented fact: `json_mode="json_object"` (the schema in the prompt, validation ours) and `echo_reasoning` (the documented 400 in tool loops); first board owed to NW1's dispatch |
+| Alibaba Model Studio (Singapore, token plan) | qwen3.8-max | `qwen` | `DASHSCOPE_API_KEY` | NW1 slice C | — | **candidate again** (ledger #211) — the echo knob only (`json_schema` is documented on the 3.8 series); the `forbidden` pin stays real signal; `qwen-3.8-27b` on Cerebras is a separate, measured row |
 
 An exited row's data leaves the tree — the lane, the marker, the CI
 column, the secret, its SERVICES.md row — and its measured runs stay

@@ -94,8 +94,11 @@ in any tool call, expanded before the tool runs.
 Models the `Model` enum lacks — a fine-tune, a local server, a provider
 not shipped — register once at import through a door: the endpoint, the
 env var that signs requests, and the dialect quirks the wire has. The
-doors neosian ships are already registered: `from neosian.catalog import
-GROK_4_6, GEMINI_3_7_FLASH` (xAI `XAI_API_KEY`, Gemini `GEMINI_API_KEY`).
+door rows neosian ships are `Model` members like every other row —
+`Model.GROK_4_6` (xAI, `XAI_API_KEY`), `Model.GEMINI_3_8_FLASH` (Gemini,
+`GEMINI_API_KEY`) — and every shipped or registered row answers to its
+wire id: `AgentConfig(model="gpt-5.6-sol")` builds the same agent as the
+member.
 
 ```python
 from neosian import AgentConfig, ModelPricing, OpenAICompatible, register_model
