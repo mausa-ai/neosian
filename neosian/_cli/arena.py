@@ -417,20 +417,13 @@ def _handle_arena_exit(console: Console, session: ArenaSession) -> None:
         console.print(f"[dim]{PlaygroundUI.GOODBYE}[/dim]")
         return
 
-    # Show save menu with arrow selection
-    console.print(f"[bold]{PlaygroundUI.SAVE_MENU_TITLE}[/bold]")
+    from rich.prompt import Confirm
 
-    from simple_term_menu import TerminalMenu  # type: ignore[import-untyped]
-
-    options = [PlaygroundUI.SAVE_OPTION_YES, PlaygroundUI.SAVE_OPTION_NO]
-    menu = TerminalMenu(
-        options,
-        cursor_index=1,  # Default to "No"
-    )
-    choice = menu.show()
-
-    # choice is 0 for Yes, 1 for No, None if cancelled
-    if choice == 0:
+    try:
+        save = Confirm.ask(PlaygroundUI.SAVE_MENU_TITLE, default=False, console=console)
+    except EOFError:
+        save = False
+    if save:
         # Save to current directory
         filename = session.generate_filename()
         path = session.save(Path.cwd() / filename)

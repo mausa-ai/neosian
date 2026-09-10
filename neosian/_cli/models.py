@@ -2,6 +2,7 @@
 
 from rich.console import Console
 
+from neosian._cli.ui import pick
 from neosian._foundation.shared.constants import ArenaUI
 from neosian._foundation.shared.registry import registered_models
 from neosian._foundation.shared.types import DEFAULT_MODELS, AnyModel, Model, Provider
@@ -115,16 +116,8 @@ def select_provider_and_model(
     if not providers:
         return None
 
-    from simple_term_menu import TerminalMenu  # type: ignore[import-untyped]
-
     while True:
-        console.print("\n[bold]Select Provider:[/bold]")
-        provider_menu = TerminalMenu(
-            [p[1] for p in providers],
-            cursor_index=0,
-        )
-        provider_choice = provider_menu.show()
-
+        provider_choice = pick(console, "Select Provider:", [p[1] for p in providers])
         if provider_choice is None:
             return None
 
@@ -137,11 +130,10 @@ def select_provider_and_model(
         if not models:
             return None
 
-        console.print(f"\n[bold]Select Model ({selected_provider.value}):[/bold]")
         model_names = [m[1] for m in models] + ["← Back"]
-        model_menu = TerminalMenu(model_names, cursor_index=0)
-        model_choice = model_menu.show()
-
+        model_choice = pick(
+            console, f"Select Model ({selected_provider.value}):", model_names
+        )
         if model_choice is None or model_choice == len(models):
             # Back to provider selection
             continue
@@ -167,13 +159,12 @@ def select_provider_and_model_labeled(
     if not providers:
         return None
 
-    from simple_term_menu import TerminalMenu
-
     while True:
-        console.print(f"\n[bold]{ArenaUI.SELECT_PROVIDER.format(label=label)}[/bold]")
-        provider_menu = TerminalMenu([p[1] for p in providers], cursor_index=0)
-        provider_choice = provider_menu.show()
-
+        provider_choice = pick(
+            console,
+            ArenaUI.SELECT_PROVIDER.format(label=label),
+            [p[1] for p in providers],
+        )
         if provider_choice is None:
             return None
 
@@ -185,13 +176,12 @@ def select_provider_and_model_labeled(
         if not models:
             return None
 
-        console.print(
-            f"\n[bold]{ArenaUI.SELECT_MODEL.format(label=label, provider=selected_provider.value)}[/bold]"
-        )
         model_names = [m[1] for m in models] + ["← Back"]
-        model_menu = TerminalMenu(model_names, cursor_index=0)
-        model_choice = model_menu.show()
-
+        model_choice = pick(
+            console,
+            ArenaUI.SELECT_MODEL.format(label=label, provider=selected_provider.value),
+            model_names,
+        )
         if model_choice is None or model_choice == len(models):
             # Back to provider selection
             continue
@@ -212,13 +202,7 @@ def select_arena_models(
     Returns:
         List of Model enums or None if cancelled.
     """
-    # Select count
-    from simple_term_menu import TerminalMenu
-
-    console.print(f"\n[bold]{ArenaUI.SELECT_COUNT}[/bold]")
-    count_menu = TerminalMenu(list(ArenaUI.COUNT_OPTIONS), cursor_index=0)
-    count_choice = count_menu.show()
-
+    count_choice = pick(console, ArenaUI.SELECT_COUNT, list(ArenaUI.COUNT_OPTIONS))
     if count_choice is None:
         return None
 

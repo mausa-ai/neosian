@@ -112,14 +112,14 @@ def playground(
         bool,
         typer.Option(
             "--menu",
-            help="Pick provider and model from a terminal menu (Unix terminals only)",
+            help="Pick provider and model from a menu",
         ),
     ] = False,
     arena: Annotated[
         bool,
         typer.Option(
             "--arena",
-            help="Arena mode: several models side by side (Unix terminals only)",
+            help="Arena mode: several models side by side",
         ),
     ] = False,
     resume: Annotated[
@@ -141,9 +141,6 @@ def playground(
         neosian playground my_agent.py --menu
         neosian playground my_agent.py --arena
         neosian playground my_agent.py --resume 20260820-143207-my_agent
-
-    The --menu and --arena pickers draw a terminal menu that needs a Unix
-    terminal (termios); everything else runs anywhere.
     """
     run_playground(agent_file, menu=menu, arena=arena, resume=resume)
 
@@ -159,9 +156,14 @@ def status(ctx: typer.Context) -> None:
     A thin pass-through to the one grammar (`neosian status --help`);
     exit 0 whenever it ran — findings are data, `--json` one object.
     """
+    from neosian._cli.render import render_status, run_rendered
     from neosian.status import main as status_main
 
-    raise typer.Exit(status_main(list(ctx.args)))
+    raise typer.Exit(
+        run_rendered(
+            status_main, list(ctx.args), render_status, out=sys.stdout, env=os.environ
+        )
+    )
 
 
 @app.command(
@@ -276,9 +278,20 @@ def memory(ctx: typer.Context) -> None:
     (`neosian memory --help`). The six commands ride the shared memory
     dispatcher; --json prints the memory tool's envelope.
     """
+    from neosian._cli.render import render_index, run_rendered
     from neosian.memory.cli import main as memory_main
 
-    raise typer.Exit(memory_main(list(ctx.args)))
+    args = list(ctx.args)
+    if args[:1] == ["view"] and (
+        len(args) == 1 or args[1] in ("/", "--json") or args[1].startswith("--")
+    ):
+        # The index as a tree on a terminal; a document stays plain.
+        raise typer.Exit(
+            run_rendered(
+                memory_main, args, render_index, out=sys.stdout, env=os.environ
+            )
+        )
+    raise typer.Exit(memory_main(args))
 
 
 @app.command(
@@ -293,9 +306,14 @@ def audit(ctx: typer.Context) -> None:
     (`neosian audit --help`). Answers the same on a FileStore root,
     Postgres, or the state process (--url).
     """
+    from neosian._cli.render import render_audit, run_rendered
     from neosian.ledger import main as audit_main
 
-    raise typer.Exit(audit_main(list(ctx.args)))
+    raise typer.Exit(
+        run_rendered(
+            audit_main, list(ctx.args), render_audit, out=sys.stdout, env=os.environ
+        )
+    )
 
 
 @app.command(name="export", rich_help_panel=_OPERATE, context_settings=_PASS_THROUGH)
@@ -397,8 +415,18 @@ def docs(
         neosian docs topology
     """
     from neosian._cli.docs import run_docs
+    from neosian._cli.render import render_docs, run_rendered
 
-    raise typer.Exit(run_docs(topic, json_output=json_output))
+    if topic is None:  # the listing stays the engine's bytes everywhere
+        raise typer.Exit(run_docs(None, json_output=json_output))
+
+    def engine(argv: list[str]) -> int:
+        return run_docs(topic, json_output="--json" in argv)
+
+    argv = ["--json"] if json_output else []
+    raise typer.Exit(
+        run_rendered(engine, argv, render_docs, out=sys.stdout, env=os.environ)
+    )
 
 
 def main() -> None:

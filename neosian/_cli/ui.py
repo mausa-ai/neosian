@@ -59,6 +59,26 @@ def print_header(console: Console, agent_name: str) -> None:
     console.print(f"[dim]{PlaygroundUI.SESSION_START}[/dim]\n")
 
 
+def pick(
+    console: Console, title: str, options: list[str], *, default: int = 0
+) -> int | None:
+    """A numbered menu on `rich.prompt` (DESIGN §30: nothing in the shell
+    is platform-bound): the index chosen, None on EOF."""
+    from rich.prompt import Prompt
+
+    console.print(f"\n[bold]{title}[/bold]")
+    for number, option in enumerate(options, start=1):
+        console.print(f"  {number}. {option}")
+    choices = [str(n) for n in range(1, len(options) + 1)]
+    try:
+        answer = Prompt.ask(
+            "choice", choices=choices, default=str(default + 1), console=console
+        )
+    except EOFError:
+        return None
+    return int(answer) - 1
+
+
 def format_args(args: dict[str, object]) -> str:
     """Format tool arguments for display."""
     parts = []
