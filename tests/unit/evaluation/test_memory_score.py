@@ -79,8 +79,27 @@ class TestPrefixDocuments:
         (failure,) = await check_store(config, expect)
         assert failure == (
             "store: no document under /user matching contains 'espresso' "
-            "(live: /user/drinks.txt)"
+            "(live: /user/drinks.txt: 'Drinks tea.')"
         )
+
+    async def test_the_live_listing_clips_each_document(
+        self, config: MemoryConfig
+    ) -> None:
+        """The opening bytes ride the failure line — a red cell is read
+        from a CI log after its store is gone — clipped, never whole."""
+        await config.store.write(_USER.scope, "essay.md", "tea " * 100)
+        expect = StoreExpectation(
+            documents=(
+                DocumentExpectation(
+                    path_prefix="/user",
+                    content=(ValueMatcher(mode=MatchMode.CONTAINS, value="espresso"),),
+                ),
+            )
+        )
+        (failure,) = await check_store(config, expect)
+        assert "(live: /user/essay.md: 'tea tea " in failure
+        assert failure.endswith("…')")
+        assert len(failure) < 250
 
     async def test_two_matches_is_the_duplicate_failure(
         self, config: MemoryConfig

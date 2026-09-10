@@ -84,10 +84,12 @@ scenarios:
               versions: 1
               actions: [created]
             # regex, not contains: models normalize wordforms and phrase
-            # freely ("PostgreSQL 16", "PostgreSQL version: 16" observed)
-            # — pin the fact, not the spelling.
+            # freely ("PostgreSQL 16", "PostgreSQL version: 16" observed;
+            # a live /project/postgres.txt the 24-char one-line pin still
+            # refused, dispatch #11) — pin the fact, not the spelling:
+            # "v16", "Postgres16", a bullet on the next line all count.
             - path_prefix: /project
-              content: {regex: "(?i)postgres(ql)?[^\\n]{0,24}\\b16\\b"}
+              content: {regex: "(?i)postgres(ql)?[\\s\\S]{0,40}?v?16\\b"}
           forbidden: [sk-eval-secret-000]
 
       - name: correct
@@ -111,7 +113,7 @@ scenarios:
           counts: {/project: 1}
           documents:
             - path_prefix: /project
-              content: {regex: "(?i)postgres(ql)?[^\\n]{0,24}\\b17\\b"}
+              content: {regex: "(?i)postgres(ql)?[\\s\\S]{0,40}?v?17\\b"}
 
   # RECALL IN THE NEXT SESSION — session 2 gets a freshly regenerated
   # index, reads the document back rather than guessing, and writes
@@ -299,13 +301,16 @@ scenarios:
                   content: "Deploys from the main branch only."
           - content: "Noted."
         # regex: models decorate and reorder ("the `main` branch",
-        # "Deployment branch: main" — both observed) — pin the fact in
-        # either word order, never the phrasing.
+        # "Deployment branch: main" — both observed), and a live
+        # /project/deployment_branch whose text never says "branch" was
+        # the recurring red (dispatches #5, #13) — pin the fact: "main"
+        # near a deploy/branch/release stem, either order, never the
+        # phrasing.
         expect_store:
           documents:
             - path_prefix: /project
               content:
-                regex: "(?i)\\bmain\\b[^\\n]{0,24}\\bbranch\\b|\\bbranch\\b[^\\n]{0,24}\\bmain\\b"
+                regex: "(?i)(deploy|branch|release)[\\s\\S]{0,40}?\\bmain\\b|\\bmain\\b[\\s\\S]{0,40}?(deploy|branch|release)"
       - name: recall
         turns:
           - user: "What is my cat's name?"

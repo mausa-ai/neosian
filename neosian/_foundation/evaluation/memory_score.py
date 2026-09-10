@@ -6,7 +6,7 @@ documents survive re-reading, not that an in-memory view agreed.
 Failures are `store: `-prefixed and name the offenders (§13.4).
 """
 
-from neosian._foundation.evaluation.matcher import match_text
+from neosian._foundation.evaluation.matcher import clip, match_text
 from neosian._foundation.evaluation.memory_types import (
     DocumentExpectation,
     StoreExpectation,
@@ -73,20 +73,24 @@ async def _check_prefix(
     mount, rest = resolve(config, prefix)
     entries = await config.store.list_documents(mount.scope, prefix=rest)
     matches: list[str] = []
+    live: list[str] = []
     for entry in entries:
         document = await config.store.read(mount.scope, entry.path)
         if document is None:
             continue
+        path = f"/{mount.mount_path}/{entry.path}"
+        # The opening bytes ride the failure line: a red cell's store is
+        # gone by the time a CI log is read, so the log must carry them.
+        live.append(f"{path}: {clip(document.content)!r}")
         if all(
             match_text(matcher, document.content, label="") is None
             for matcher in expected.content
         ):
-            matches.append(f"/{mount.mount_path}/{entry.path}")
+            matches.append(path)
     if not matches:
-        listing = ", ".join(f"/{mount.mount_path}/{e.path}" for e in entries) or "none"
         return [
             f"store: no document under {prefix} matching {described} "
-            f"(live: {listing})"
+            f"(live: {', '.join(live) or 'none'})"
         ]
     if len(matches) > 1:
         return [

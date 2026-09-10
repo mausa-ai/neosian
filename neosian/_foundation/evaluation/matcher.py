@@ -106,7 +106,7 @@ def _match_value(matcher: ValueMatcher, present: bool, actual: Any) -> str | Non
             return (
                 None
                 if matcher.value in actual
-                else f"expected to contain {matcher.value!r}, got {_clip(actual)!r}"
+                else f"expected to contain {matcher.value!r}, got {clip(actual)!r}"
             )
         if isinstance(actual, list):
             return (
@@ -122,7 +122,7 @@ def _match_value(matcher: ValueMatcher, present: bool, actual: Any) -> str | Non
     if not isinstance(actual, str):
         return f"expected {matcher.describe()}, got {_type_name(actual)} {actual!r}"
     if matcher.value.search(actual) is None:
-        return f"expected {matcher.describe()} to match, got {_clip(actual)!r}"
+        return f"expected {matcher.describe()} to match, got {clip(actual)!r}"
     return None
 
 
@@ -150,14 +150,14 @@ def match_text(matcher: ValueMatcher, text: str, *, label: str) -> str | None:
     if matcher.mode is MatchMode.EQUALS:
         if text == matcher.value:
             return None
-        return f"{label}: expected equals {matcher.value!r}, got {_clip(text)!r}"
+        return f"{label}: expected equals {matcher.value!r}, got {clip(text)!r}"
     if matcher.mode is MatchMode.CONTAINS:
         if matcher.value.lower() in text.lower():
             return None
-        return f"{label}: expected to contain {matcher.value!r}, got {_clip(text)!r}"
+        return f"{label}: expected to contain {matcher.value!r}, got {clip(text)!r}"
     # REGEX
     if matcher.value.search(text) is None:
-        return f"{label}: expected {matcher.describe()} to match, got {_clip(text)!r}"
+        return f"{label}: expected {matcher.describe()} to match, got {clip(text)!r}"
     return None
 
 
@@ -193,5 +193,5 @@ def _type_name(value: Any) -> str:
     return type(value).__name__
 
 
-def _clip(text: str, limit: int = _CLIP) -> str:
+def clip(text: str, limit: int = _CLIP) -> str:
     return text if len(text) <= limit else text[: limit - 1] + "…"

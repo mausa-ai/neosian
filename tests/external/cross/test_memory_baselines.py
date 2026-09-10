@@ -18,6 +18,7 @@ from unittest.mock import patch
 import pytest
 
 from neosian import AnyModel, Model
+from neosian._foundation.evaluation.matcher import clip
 from neosian.evaluation import (
     EvalReport,
     MemoryEvalConfig,
@@ -79,10 +80,19 @@ def _scriptless(
 
 def _assert_baseline(report: EvalReport) -> None:
     # The whole board, one line per cell: pytest truncates the assertion's
-    # repr, and BASELINES.md transcribes every cell from the CI log.
+    # repr, and BASELINES.md transcribes every cell from the CI log. A red
+    # cell also prints its failure lines and every live document under its
+    # store root — the bytes are gone with the runner, so the log is the
+    # only place a red can be read (NZ: the recorded reds).
     for result in report.results:
         verdict = "ok" if result.passed else "RED"
         print(f"cell {result.variant} x {result.case}: {verdict}")
+        if result.passed:
+            continue
+        for failure in (f for t in result.turns for f in t.failures):
+            print(f"  {failure}")
+            if failure.startswith("store root: "):
+                _print_store(Path(failure.removeprefix("store root: ")))
     harness_errors = [r.error for r in report.results if r.error is not None]
     assert not harness_errors, harness_errors
     failures = [
@@ -92,6 +102,12 @@ def _assert_baseline(report: EvalReport) -> None:
         for f in t.failures
     ]
     assert report.failed == 0, failures
+
+
+def _print_store(root: Path) -> None:
+    for file in sorted(root.rglob("*.md")):
+        text = file.read_text(encoding="utf-8")
+        print(f"  {file.relative_to(root)}: {clip(text)!r}")
 
 
 class TestMemoryBaselines:

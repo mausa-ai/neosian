@@ -129,7 +129,22 @@ fails when any gated file changes without this section being updated —
   vocabulary as memory/reflection; first measured cells arrive with the
   maintenance scenario in this same batch.)*
 - `examples/eval_memory_baseline.yaml` — sha256
-  `d3f08d55945025d51b6d47fe09fedc588779ef76ca2f22c31813d02da45f9c0c`
+  `faca0af452178c19f8f2e9d9ab539f72c03cb9bc5c9dfc95a3006fec58d6942f`
+  *(NZ, 2026-09-10 — the recorded reds settled: two pins of the NV
+  wordform class widened, no scenario, turn or count moved.
+  `long-horizon-recall`'s `distractor-two` pinned "main" within 24
+  one-line characters of "branch"; every reachable red on it (dispatches
+  #5, #13, the NX pre-flight run) showed a live `/project/deployment_branch`
+  the pin refused — the path carried the word the text lacked — so the
+  pin is now "main" near a deploy/branch/release stem, either order,
+  across a line break. `write-discipline`'s Postgres pin dropped its
+  left word boundary and one-line 24-char window (`v16`, `Postgres16`,
+  a version on the next bullet all count; a live
+  `/project/postgres.txt` refused on dispatch #11). The `60 requests`
+  literal stands: its reds were the fact unfiled, never a phrasing. The
+  failure line now carries each live document's opening bytes, so the
+  next red is read from the log, not guessed at. The settling dispatch
+  is the dated block under Results. Prior: `d3f08d55…`.)*
   *(NC1, 2026-09-04 — the transport axis gains `mcp`: the memory server
   consumed through `McpServer` over the official MCP client (DESIGN
   §25), the fourth column beside function, cli and http. No scenario,
@@ -212,6 +227,34 @@ The flagship tier per stack (the 2026-08-22 ruling recorded below); ids,
 limits and door knobs from the provider docs as read on the wiring date,
 corrected by the door probes (`tests/external/cross/test_doors.py`) at
 the first run — DESIGN §19.7 lists what those docs already predict.
+
+## Known limits
+
+The model classes the pack records as found, run after run, on the
+shipped rows — settled at NZ (2026-09-10, ledger #208) as **the
+model's**, not the harness's, and named in the v1.0.0 declaration's
+evidence. Each stays measured every dispatch; none is tuned around
+(per-model prompt tuning is post-v1). Each entry names its evidence.
+
+- **gpt-5.1 files the project fact elsewhere** (`write-discipline`,
+  `record` session). Every reachable red since the calibrated pack —
+  dispatches #5, #11, #13 and the NX pre-flight run 33984972237 —
+  reads `expected 1 document(s) under /project, got 0 (live: none)`:
+  the Postgres fact never reaches the project mount, while the same
+  model files it correctly on another column of the same run. The
+  record's earlier "wordform regex" wording was read off the regex
+  line; the bytes say unfiled. A mount-routing miss, stochastic per
+  column — exactly the discipline the scenario measures.
+- **The distractor fact goes unfiled** (`long-horizon-recall`,
+  `distractor-one`; gpt-5.1 on dispatches #3, #5, #7, #11, grok-4.6 on
+  #7, #9, #10): `no document under /project matching contains
+  '60 requests' (live: none)` — nothing filed after an explicit "note
+  that". A memory-worthiness miss; the recall in session 4 still passes
+  when the model filed the fact.
+- **`skills` written without frontmatter** (Gemini on every column,
+  gpt-oss and Sonnet's axis run intermittently): the guide's
+  `description` key never reaches a writer that skips `list_skills` —
+  ruled at NK (the store truth stays the pin).
 
 ## Results
 

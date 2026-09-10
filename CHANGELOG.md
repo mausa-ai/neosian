@@ -10,6 +10,10 @@ phase close names the version.
 
 ### Changed
 
+- The memory baseline pack's two wordform pins (`long-horizon-recall`'s
+  deploy branch, `write-discipline`'s Postgres version) widened to the
+  fact, and a store-truth failure line now carries each live document's
+  opening bytes; `baselines.md` gains a Known limits section (NZ).
 - `project.urls` Documentation points at https://docs.neosian.com — the
   wheel's docs pages and `llms.txt`, rendered per release; the README
   carries the docs badge and `llms.txt` names the online copy.
