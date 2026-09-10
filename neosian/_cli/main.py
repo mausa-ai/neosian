@@ -41,6 +41,10 @@ def _on_a_terminal() -> bool:
 def root(ctx: typer.Context) -> None:
     """Bare `neosian` (DESIGN §30): on a terminal it opens `neosian chat`
     — the `claude` shape; under a pipe it prints this help, as before."""
+    from neosian._cli.update import check_on_the_human_door, human_door
+
+    if human_door(ctx.invoked_subcommand, on_terminal=_on_a_terminal(), argv=sys.argv):
+        check_on_the_human_door(os.environ, err=sys.stderr)  # the knob, §30.3
     if ctx.invoked_subcommand is not None:
         return
     if _on_a_terminal():
@@ -191,6 +195,21 @@ def setup(ctx: typer.Context) -> None:
             out=sys.stdout,
             err=sys.stderr,
         )
+    )
+
+
+@app.command(name="update", rich_help_panel=_OPERATE, context_settings=_PASS_THROUGH)
+def update(ctx: typer.Context) -> None:
+    """Check PyPI for a newer neosian; print the command, or apply it.
+
+    A thin pass-through to the one grammar (`neosian update --help`):
+    `--check` (the default), `--write` (fenced), `--json`, `--mode M` sets
+    the knob — off, notify or auto.
+    """
+    from neosian._cli.update import run_update
+
+    raise typer.Exit(
+        run_update(list(ctx.args), os.environ, out=sys.stdout, err=sys.stderr)
     )
 
 
