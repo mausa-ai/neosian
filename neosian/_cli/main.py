@@ -3,23 +3,21 @@
 Provides the main CLI application with commands.
 """
 
-import asyncio
-import importlib.resources
 import os
 import sys
-from importlib.util import find_spec
 from typing import Annotated
 
 import typer
-from rich.console import Console
-from rich.markup import escape
-from rich.table import Table
 
-from neosian import __version__
 from neosian._cli.playground import run_playground
-from neosian._cli.ui import BRAND_ACCENT
-from neosian._foundation.shared.constants import App, Assets
 
+# The operator and agent verbs are verbatim pass-throughs to their own
+# argparse grammars (§14.2's shape): every argument, --help included.
+_PASS_THROUGH = {
+    "allow_extra_args": True,
+    "ignore_unknown_options": True,
+    "help_option_names": [],
+}
 # The help is grouped by audience (DESIGN §30): who each verb is for.
 _TALK = "Talk"
 _OPERATE = "Operate"
@@ -54,16 +52,6 @@ def root(ctx: typer.Context) -> None:
             )
         )
     typer.echo(ctx.get_help())
-
-
-def _load_logo() -> str:
-    """Load the small ASCII logo from assets."""
-    try:
-        files = importlib.resources.files(Assets.PACKAGE)
-        logo_file = files.joinpath(Assets.LOGO_FILE)
-        return logo_file.read_text(encoding="utf-8").rstrip()
-    except Exception:
-        return ""
 
 
 @app.command(rich_help_panel=_TALK)
@@ -156,21 +144,10 @@ def playground(
     run_playground(agent_file, menu=menu, arena=arena, resume=resume)
 
 
-def _driver_line() -> str:
-    """The one extra, by presence: the banner says what this install carries."""
-    if find_spec("psycopg") is None:
-        return 'psycopg (PostgresStore): missing\n  uv add "neosian[postgres]" adds it'
-    return "psycopg (PostgresStore): installed"
-
-
 @app.command(
     name="status",
     rich_help_panel=_OPERATE,
-    context_settings={
-        "allow_extra_args": True,
-        "ignore_unknown_options": True,
-        "help_option_names": [],
-    },
+    context_settings=_PASS_THROUGH,
 )
 def status(ctx: typer.Context) -> None:
     """Is this machine set up? The home, the keys, the clients, the shape.
@@ -184,13 +161,43 @@ def status(ctx: typer.Context) -> None:
 
 
 @app.command(
+    name="setup",
+    rich_help_panel=_OPERATE,
+    context_settings=_PASS_THROUGH,
+)
+def setup(ctx: typer.Context) -> None:
+    """Wire the installed agents to this store: MCP and the hooks.
+
+    A thin pass-through to the one grammar (`neosian setup --help`):
+    prints what would land for every client found, `--write` applies it,
+    `--client C` narrows, `--json` one object.
+    """
+    from pathlib import Path
+
+    from neosian._cli.setup import run_setup
+    from neosian._foundation.shared.client_config import Environment
+
+    raise typer.Exit(
+        run_setup(
+            list(ctx.args),
+            os.environ,
+            context=Environment(
+                home=Path.home(),
+                cwd=Path.cwd(),
+                platform=sys.platform,
+                env=os.environ,
+                executable=sys.executable,
+            ),
+            out=sys.stdout,
+            err=sys.stderr,
+        )
+    )
+
+
+@app.command(
     name="configure",
     rich_help_panel=_OPERATE,
-    context_settings={
-        "allow_extra_args": True,
-        "ignore_unknown_options": True,
-        "help_option_names": [],
-    },
+    context_settings=_PASS_THROUGH,
 )
 def configure(ctx: typer.Context) -> None:
     """Store a provider's API key under the home, or list them.
@@ -233,76 +240,15 @@ def evaluate(
     Example:
         neosian eval eval_suite.yaml
     """
-    import json
-    from datetime import UTC, datetime
+    from neosian._cli.eval_cmd import run_eval
 
-    from neosian._cli.providers import load_keys_into_env
-    from neosian._foundation.evaluation.reporter import report_dict
-    from neosian.evaluation import (
-        EvalProgress,
-        create_progress_callback,
-        load_eval_config,
-        print_report,
-        run_evaluation,
-        save_report,
-    )
-
-    # The library reads keys from the environment only; loading them from the
-    # CLI config file is the CLI's job, done here before the run.
-    load_keys_into_env()
-
-    console = Console(stderr=json_output)
-
-    try:
-        config = load_eval_config(config_file)
-    except Exception as e:
-        if json_output:
-            print(json.dumps({"error": f"loading config: {e}", "hint": None}))
-        console.print(f"[red]Error loading config: {e}[/red]")
-        raise typer.Exit(1) from None
-
-    progress = EvalProgress(config) if not json_output else None
-    try:
-        if progress is not None:
-            progress.start()
-        report = asyncio.run(
-            run_evaluation(
-                config,
-                on_progress=(
-                    create_progress_callback(progress) if progress is not None else None
-                ),
-            )
-        )
-        if progress is not None:
-            progress.stop()
-    except Exception as e:
-        if progress is not None:
-            progress.stop()
-        if json_output:
-            print(json.dumps({"error": f"evaluation failed: {e}", "hint": None}))
-        console.print(f"[red]Evaluation failed: {e}[/red]")
-        raise typer.Exit(1) from None
-
-    output_path = save_report(report)
-    if json_output:
-        print(json.dumps(report_dict(report, now=datetime.now(UTC)), default=str))
-        raise typer.Exit(1 if report.failed else 0)
-    console.print()
-    print_report(report, console)
-    console.print()
-    console.print(f"[dim]{output_path}[/dim]")
-    console.print(f"{report.passed}/{report.total} passed")
-    raise typer.Exit(1 if report.failed else 0)
+    raise typer.Exit(run_eval(config_file, json_output=json_output))
 
 
 @app.command(
     name="memory",
     rich_help_panel=_OPERATE,
-    context_settings={
-        "allow_extra_args": True,
-        "ignore_unknown_options": True,
-        "help_option_names": [],
-    },
+    context_settings=_PASS_THROUGH,
 )
 def memory(ctx: typer.Context) -> None:
     """Read and write agent memory from the shell.
@@ -319,11 +265,7 @@ def memory(ctx: typer.Context) -> None:
 @app.command(
     name="audit",
     rich_help_panel=_OPERATE,
-    context_settings={
-        "allow_extra_args": True,
-        "ignore_unknown_options": True,
-        "help_option_names": [],
-    },
+    context_settings=_PASS_THROUGH,
 )
 def audit(ctx: typer.Context) -> None:
     """What was done, by whom, when — a scope's ledger (DESIGN §20).
@@ -335,13 +277,6 @@ def audit(ctx: typer.Context) -> None:
     from neosian.ledger import main as audit_main
 
     raise typer.Exit(audit_main(list(ctx.args)))
-
-
-_PASS_THROUGH = {
-    "allow_extra_args": True,
-    "ignore_unknown_options": True,
-    "help_option_names": [],
-}
 
 
 @app.command(name="export", rich_help_panel=_OPERATE, context_settings=_PASS_THROUGH)
@@ -371,11 +306,7 @@ def import_(ctx: typer.Context) -> None:
 @app.command(
     name="record",
     rich_help_panel=_CONNECT,
-    context_settings={
-        "allow_extra_args": True,
-        "ignore_unknown_options": True,
-        "help_option_names": [],
-    },
+    context_settings=_PASS_THROUGH,
 )
 def record(ctx: typer.Context) -> None:
     """Record a foreign agent's session from its hooks (DESIGN §20.9).
@@ -392,11 +323,7 @@ def record(ctx: typer.Context) -> None:
 @app.command(
     name="mcp",
     rich_help_panel=_CONNECT,
-    context_settings={
-        "allow_extra_args": True,
-        "ignore_unknown_options": True,
-        "help_option_names": [],
-    },
+    context_settings=_PASS_THROUGH,
 )
 def mcp(ctx: typer.Context) -> None:
     """Serve neosian memory to MCP clients on stdio.
@@ -412,11 +339,7 @@ def mcp(ctx: typer.Context) -> None:
 @app.command(
     name="serve",
     rich_help_panel=_CONNECT,
-    context_settings={
-        "allow_extra_args": True,
-        "ignore_unknown_options": True,
-        "help_option_names": [],
-    },
+    context_settings=_PASS_THROUGH,
 )
 def serve(ctx: typer.Context) -> None:
     """Serve memory and conversations over HTTP — the state process.
@@ -432,37 +355,9 @@ def serve(ctx: typer.Context) -> None:
 @app.command(rich_help_panel=_LEARN)
 def version() -> None:
     """Display version information."""
-    console = Console()
+    from neosian._cli.version import print_banner
 
-    # Load logo
-    logo_text = _load_logo()
-
-    # Build version info
-    version_info = (
-        f"\n"
-        f"\n"
-        f"  [bold {BRAND_ACCENT}]{App.NAME}[/bold {BRAND_ACCENT}]\n"
-        f"  [dim]v{__version__}[/dim]\n"
-        f"\n"
-        f"  [dim]Python {App.PYTHON_VERSION}[/dim]\n"
-        f"  [dim]{App.DESCRIPTION}[/dim]\n"
-        f"\n"
-        f"  [dim]in the box: Agent + Conversation,[/dim]\n"
-        f"  [dim]the shell, MCP server and client,[/dim]\n"
-        f"  [dim]the state process, OpenTelemetry;[/dim]\n"
-        f"  [dim]{escape(_driver_line())}[/dim]\n"
-        f"\n"
-    )
-
-    # Create table with logo on left, info on right
-    table = Table(show_header=False, box=None, padding=(0, 2))
-    table.add_column(style="cyan", vertical="middle")
-    table.add_column(vertical="middle")
-
-    table.add_row(logo_text, version_info)
-
-    console.print()
-    console.print(table)
+    print_banner()
 
 
 @app.command(rich_help_panel=_LEARN)

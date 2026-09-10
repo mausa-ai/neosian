@@ -27,7 +27,7 @@ def test_the_banner_names_the_version_and_the_doors(
 def test_the_banner_names_the_extra_when_the_driver_is_absent(
     capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr("neosian._cli.main.find_spec", lambda _name: None)
+    monkeypatch.setattr("neosian._cli.version.find_spec", lambda _name: None)
     version()
     out = capsys.readouterr().out
     assert "psycopg (PostgresStore): missing" in out
