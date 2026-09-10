@@ -239,28 +239,95 @@ model's**, not the harness's, and named in the v1.0.0 declaration's
 evidence. Each stays measured every dispatch; none is tuned around
 (per-model prompt tuning is post-v1). Each entry names its evidence.
 
-- **The project fact filed elsewhere** (`write-discipline`, `record`
-  session; gpt-5.1 on every board since the calibrated pack — dispatches
-  #5, #11, #13, the NX pre-flight run 33984972237, #14 — and gpt-oss-120b
-  on #14). Every red reads `expected 1 document(s) under /project, got
-  0 (live: none)`, and #14's store dump shows one document, under
-  `/user`: the Postgres fact never reaches the project mount, while the
-  same model files it correctly on another column of the same run. The
-  record's earlier "wordform regex" wording was read off the regex
-  line; the bytes say unfiled. A mount-routing miss, stochastic per
+- **The project fact filed into the user mount** (gpt-5.1 on every
+  board since the calibrated pack — dispatches #5, #11, #13, the NX
+  pre-flight run 33984972237, #14, #15 — and gpt-oss-120b on #14). Two
+  cells, one class. `write-discipline`'s `record` session reads
+  `expected 1 document(s) under /project, got 0 (live: none)` on every
+  red, and #15's bytes name the destination: `/user/preferences` —
+  `- Drinks: only espresso` / `- Project DB: Postgres 16`. `long-horizon-
+  recall`'s `distractor-one` reads `no document under /project matching
+  contains '60 requests' (live: none)`, and #15's bytes: `/user/pet.md` —
+  the cat, then `2: The user's project has an API rate limit of 60
+  requests per minute.` The same model files both facts correctly on
+  another column of the same run. The record's earlier "wordform regex"
+  and "unfiled" wordings were read off the failure line; the bytes say
+  filed, in the wrong mount. A mount-routing miss, stochastic per
   column — exactly the discipline the scenario measures.
-- **The distractor fact goes unfiled** (`long-horizon-recall`,
-  `distractor-one`; gpt-5.1 on dispatches #3, #5, #7, #11, grok-4.6 on
-  #7, #9, #10): `no document under /project matching contains
-  '60 requests' (live: none)` — nothing filed after an explicit "note
-  that". A memory-worthiness miss; the recall in session 4 still passes
-  when the model filed the fact.
 - **`skills` written without frontmatter** (Gemini on every column,
   gpt-oss and Sonnet's axis run intermittently): the guide's
   `description` key never reaches a writer that skips `list_skills` —
   ruled at NK (the store truth stays the pin).
 
 ## Results
+
+### 2026-09-10 — The final pin measured; the reds read whole (NZ /ship, dispatch #15)
+
+Measured by one dispatched run —
+run 34503001397
+(on master at 895cb31: the pack at `70f8fa0a…` — `distractor-two`
+pinned to the value alone — the memory prompt unchanged at `0ae69cc2…`;
+the red-cell store dump now printing document bodies, frontmatter
+stripped). Every cell named from the CI log; every red's bytes in it.
+
+| Provider | Model | function | cli | http | mcp | native | door probes | link |
+|---|---|---|---|---|---|---|---|---|
+| Anthropic | claude-sonnet-5 | 10/10 | 10/10 | 10/10 | 10/10 | 10/10 | — | re-typed |
+| OpenAI | gpt-5.1-2025-11-13 | 9/10 | 9/10 | 9/10 | 9/10 | n/a | — | handle |
+| Cerebras | gpt-oss-120b | 10/10 | 7/10 | 9/10 | 9/10 † | n/a | — | re-typed |
+| xAI | grok-4.6 | *403* | *403* | *403* | *403* | n/a | *403* | *403* |
+| Gemini | gemini-3.7-flash | 9/10 | 9/10 | 9/10 | 9/10 | n/a | 6/6 | handle |
+| Moonshot (candidate) | kimi-k3 | *timed out* | *timed out* | *timed out* | *timed out* | n/a | 6/6 | handle |
+
+Findings, recorded as found:
+
+- **The bytes name the wrong mount.** gpt-5.1's two Known-limits cells
+  moved to new columns and, for the first time, said where the fact
+  went: `write-discipline` on cli — `/user/preferences`: `- Drinks: only
+  espresso` / `- Project DB: Postgres 16`; `long-horizon-recall`
+  (`distractor-one`) on function — `/user/pet.md`: the cat, then `2:
+  The user's project has an API rate limit of 60 requests per minute.`
+  Filed, in the user mount: one class, not two (the entry above and
+  ledger #208 corrected the same day). Its other two reds are `skills`
+  on http and mcp, and this time the frontmatter was there — the `use`
+  session rewrote the skill on load (`[created, modified]` where loading
+  must not write), a second face of the same class.
+- **The final pin held — and the class it answers has a second face.**
+  gpt-oss's `long-horizon-recall` is green on function, http and mcp
+  with `deployment_branch` bodies of the one word `main` (the cli cell
+  fell to the first-tool pin: `load_skill` before the memory write, the
+  store truth intact — `cat.md: 'Cat name: Biscuit'`, `api_rate_limit`,
+  `deployment_branch: 'main'`); the harness's verdict of dispatch #14
+  stands measured. The same key-value shape then showed on
+  `write-discipline` (cli): `/user/drink_preference: 'espresso'`,
+  `/project/postgres_version: '16'` — the path the key, the body the
+  bare value — and the Postgres pin (`postgres(ql)?…16`) refused it as
+  the old `main…branch` pin refused `main`. Recorded, not changed: the
+  pin to the value alone, or a prefix match that reads path and body
+  together (a §13.4 change), is a ruling, not a /ship fix. Its cli
+  `correct-wrong-memory` fell to the same first-tool pin (`load_skill`
+  first). **The first fully green gpt-oss function column.**
+- **† Cerebras's hourly cap ended the lane:** the last cell (mcp ×
+  `skills`) and the gpt-oss catalog probe failed with 429 "Requests per
+  hour limit exceeded" at 17:24 UTC, the harness level, not a cell —
+  the mcp column reads 9/10 on the nine cells that ran. Two dispatches
+  in one day plus the 40-cell pack is past the account's tier; the
+  pacer (`tests/external/pacing.py`) clocks the door lanes only.
+  `gemma-4-31b` answered `model_not_found` again (the two adapter tests
+  and its probe): the row is dead, dispatch #14's finding repeated.
+- **Sonnet 40/40 and the axis 20/20** — the first fully green Anthropic
+  lane since the ten-scenario pack; the link re-typed, as every run.
+- **Gemini 36/40:** every red `skills` without frontmatter (the bodies
+  now in the log: `# Release Skill` headings, no `description:` key),
+  probes 6/6, the handle.
+- **xAI did not measure** — the 403 of dispatch #14, unchanged.
+- **Kimi's row did not measure, a fourth time** — probes 6/6, the
+  handle, then the baseline over the 3600 s timeout at the paced tier.
+  This time the timeout ended the test (`Failed: Timeout (>3600.0s)`,
+  the lane 1:04 h) where dispatch #14's had only dumped stacks and
+  idled two hours to the job cap — so the interruption is not reliable
+  in either direction. The candidate's membership, timeout or pack
+  size, and the lane's own ceiling, stay the user's ruling.
 
 ### 2026-09-10 — The recorded reds settled from the bytes (NZ, dispatch #14)
 
