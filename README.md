@@ -23,7 +23,9 @@ Two doors, one store:
   `Conversation` wraps into a durable, memory-bearing thread.
 - **Give your agent state.** Claude Code, Codex, Cursor or OpenCode get
   memory and skills over MCP and every session recorded through hooks —
-  `neosian mcp install --client claude-code`, `neosian record install`.
+  `neosian setup --write` wires every client it finds; `neosian status`
+  says whether the machine is set up; bare `neosian` opens a chat with
+  an agent that knows neosian, on the same memory.
 
 <p align="center">
 <img src="https://raw.githubusercontent.com/mausa-ai/neosian/v1.0.0rc3/branding/readme/record.gif" alt="neosian record install writes the hooks; one headless Claude Code session lands as a recorded turn; neosian audit names it" width="720">
@@ -37,7 +39,8 @@ yours, no flags: the home and this project's scope.*
 
 Agents read this repository too: [llms.txt](https://github.com/mausa-ai/neosian/blob/v1.0.0rc3/llms.txt) is the machine
 front door, `neosian docs` prints the shipped docs pages from the wheel
-(version-true), and every shell verb has `--json` and exit tiers.
+(version-true), and every shell verb has `--json` and exit tiers — one
+CLI for humans and agents (`neosian docs cli`).
 
 ```python
 store = FileStore(home())                          # ~/.neosian, or your PostgresStore(dsn)
