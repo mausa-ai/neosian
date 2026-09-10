@@ -26,6 +26,13 @@ phase close names the version.
   every shipped row, and a keyless test that fails inside 30 days of
   either (Haiku 4.5's floor is 2026-10-15; Gemini's introductory card
   holds through 2026-12-31).
+- `OpenAICompatible.json_mode` (`"json_schema"` | `"json_object"`) and
+  `OpenAICompatible.echo_reasoning`: a `json_object` door sends the plain
+  JSON mode with the schema prepended to the system prompt, an echoing
+  door sends `Message.reasoning` back under its `reasoning_field` on
+  assistant turns (NW1, DESIGN §31.4). The `deepseek` and `qwen` lanes
+  are back in the external tier as candidates; a door lane's board runs
+  under an in-loop ceiling that records a cut cell as `timeout`.
 
 ### Removed
 

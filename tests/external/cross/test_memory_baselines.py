@@ -10,7 +10,6 @@ discipline, the recall, or the dedup behavior the pack pins. Store
 roots land under the test's tmp dir for inspection.
 """
 
-import dataclasses
 import os
 from pathlib import Path
 from unittest.mock import patch
@@ -18,19 +17,25 @@ from unittest.mock import patch
 import pytest
 
 from neosian import AnyModel, Model
-from neosian._foundation.evaluation.matcher import clip
 from neosian.evaluation import (
-    EvalReport,
     MemoryEvalConfig,
     Transport,
-    load_eval_config,
     run_evaluation,
+)
+from tests.external.board import (
+    Board,
+    Split,
+    assert_board,
+    board_id,
+    boards,
+    scriptless,
 )
 from tests.external.lanes import LANES, Lane
 from tests.external.pacing import Pacer, door_client
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _PACK = _REPO_ROOT / "examples" / "eval_memory_baseline.yaml"
+_TRANSPORTS = scriptless(_PACK, Model.FAKE).transports  # the pack's axis
 
 _PROVIDER_CASES = [
     # One measured model per serving stack, the flagship rule: OpenAI's row
@@ -57,68 +62,17 @@ _PROVIDER_CASES = [
         id="cerebras-qwen",
     ),
 ]
+# A door's board, or one per transport for a paced lane (board.py, #211).
+BOARDS = [
+    pytest.param(lane, split, id=board_id(lane, split))
+    for lane, split in boards(LANES, _TRANSPORTS)
+]
 
 
 def _scriptless(
     model: AnyModel, transports: tuple[Transport, ...] | None = None
 ) -> MemoryEvalConfig:
-    """The shipped pack with scripts stripped and one real model on the
-    axis — derived in code so the scenario content never forks
-    (ledger #68)."""
-    config = load_eval_config(_PACK)
-    assert isinstance(config, MemoryEvalConfig)
-    scenarios = tuple(
-        dataclasses.replace(
-            scenario,
-            sessions=tuple(
-                dataclasses.replace(session, script=None)
-                for session in scenario.sessions
-            ),
-        )
-        for scenario in config.scenarios
-    )
-    return dataclasses.replace(
-        config,
-        agent=str(_REPO_ROOT / config.agent),
-        models=(model,),
-        scenarios=scenarios,
-        transports=transports if transports is not None else config.transports,
-    )
-
-
-def _assert_baseline(report: EvalReport) -> None:
-    # The whole board, one line per cell: pytest truncates the assertion's
-    # repr, and BASELINES.md transcribes every cell from the CI log. A red
-    # cell also prints its failure lines and every live document under its
-    # store root — the bytes are gone with the runner, so the log is the
-    # only place a red can be read (NZ: the recorded reds).
-    for result in report.results:
-        verdict = "ok" if result.passed else "RED"
-        print(f"cell {result.variant} x {result.case}: {verdict}")
-        if result.passed:
-            continue
-        for failure in (f for t in result.turns for f in t.failures):
-            print(f"  {failure}")
-            if failure.startswith("store root: "):
-                _print_store(Path(failure.removeprefix("store root: ")))
-    harness_errors = [r.error for r in report.results if r.error is not None]
-    assert not harness_errors, harness_errors
-    failures = [
-        (r.variant, r.case, f)
-        for r in report.results
-        for t in r.turns
-        for f in t.failures
-    ]
-    assert report.failed == 0, failures
-
-
-def _print_store(root: Path) -> None:
-    # The body only: FileStore's frontmatter block would eat the clip.
-    for file in sorted(root.rglob("*.md")):
-        text = file.read_text(encoding="utf-8")
-        if text.startswith("---\n"):
-            text = text.partition("\n---\n")[2]
-        print(f"  {file.relative_to(root)}: {clip(text.strip())!r}")
+    return scriptless(_PACK, model, transports)
 
 
 class TestMemoryBaselines:
@@ -135,27 +89,28 @@ class TestMemoryBaselines:
         config = _scriptless(model)
         with patch.dict(os.environ, {env_name: key}, clear=True):
             report = await run_evaluation(config, store_root=tmp_path / "stores")
-        _assert_baseline(report)
+        assert_board(report)
 
-    @pytest.mark.parametrize("lane", LANES, ids=lambda lane: lane.name)
+    @pytest.mark.parametrize(("lane", "split"), BOARDS)
     async def test_door_baseline(
-        self, lane: Lane, request: pytest.FixtureRequest, tmp_path: Path
+        self, lane: Lane, split: Split, request: pytest.FixtureRequest, tmp_path: Path
     ) -> None:
         """A door's row: a shipped catalog row is re-measured every dispatch
         like the three adapters; a candidate's cells are what membership
         reads — green over dispatched runs ships it, red exits. Every model
         call rides one paced clock (pacing.py) so an account tier never
-        masquerades as model behavior."""
+        masquerades as model behavior, and the board runs under the lane's
+        in-loop budget so a cut cell is a recorded `timeout` (board.py)."""
         key = request.getfixturevalue(lane.key_fixture)  # skips when unset
-        config = _scriptless(lane.registered())
+        board = Board(_scriptless(lane.registered(), split))
         pacer = Pacer.of(lane)
         with patch.dict(os.environ, {lane.door.api_key_env: key}, clear=True):
-            report = await run_evaluation(
-                config,
+            report = await board.run(
+                lane.budget_seconds,
                 store_root=tmp_path / "stores",
                 client_factory=lambda _provider: door_client(lane, key, pacer),
             )
-        _assert_baseline(report)
+        assert_board(report)
 
     async def test_anthropic_transport_axis(
         self, anthropic_api_key: str, tmp_path: Path
@@ -171,4 +126,4 @@ class TestMemoryBaselines:
         ):
             report = await run_evaluation(config, store_root=tmp_path / "stores")
         assert report.variants == ("function", "native_memory")
-        _assert_baseline(report)
+        assert_board(report)

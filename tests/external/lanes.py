@@ -10,7 +10,11 @@ idempotent, so every test may call `registered()`). A candidate carries
 no pricing: the number is sealed at promotion, where the fingerprint
 takes it. `requests_per_minute` is the lane's account tier, found by the
 first probes and paced in `pacing.py` — never a door knob (a limit is an
-account property, not a dialect).
+account property, not a dialect). `budget_seconds` is the in-loop
+ceiling a lane's board runs under (`board.py`, §31.4): inside
+`conftest.py`'s 3600 s outer mark, so an unfinished cell is a recorded
+`timeout` red, never an idle runner; a paced lane splits its board per
+transport so each part fits the budget.
 """
 
 from dataclasses import dataclass
@@ -24,6 +28,12 @@ from neosian._foundation.shared.registry import _register
 class Lane:
     model: AnyModel
     requests_per_minute: int | None = None  # the account's tier; see pacing.py
+    budget_seconds: float = 3000.0  # the in-loop ceiling per board (board.py)
+
+    @property
+    def split_transports(self) -> bool:
+        """A paced lane runs one board per transport (ledger #211)."""
+        return self.requests_per_minute is not None
 
     @property
     def door(self) -> OpenAICompatible:

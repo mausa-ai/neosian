@@ -114,7 +114,12 @@ config = AgentConfig(system_prompt="Be concise.", model=ACME_LARGE)
 
 Cost in µ$, the context policy, capability-aware fallback and the
 playground picker treat it like a shipped model; a missing `XAI_API_KEY`
-fails naming it.
+fails naming it. The door's dialect knobs default to OpenAI's wire:
+`temperature`, `reasoning_effort`, `reasoning_field`, `strict_schemas`,
+`json_mode="json_object"` (structured output as the plain JSON mode, the
+schema in the system prompt — DeepSeek) and `echo_reasoning` (the
+reasoning field sent back on assistant turns — a 400 in tool loops
+without it on DeepSeek, Qwen and Kimi).
 
 ## Where to go next
 

@@ -74,6 +74,13 @@ document), never the file name.
 - Candidate lanes (NC2 slice B) are paced on our side to the account's
   requests-per-minute tier (`tests/external/pacing.py`), so their
   wall-clock is not comparable across rows; cells and behavior are.
+- A door lane's board runs under an in-loop ceiling
+  (`tests/external/board.py`, ledger #211): one `run_evaluation` per
+  cell under a single `asyncio.timeout` of the lane's budget, a paced
+  lane split into one board per transport. A cut run keeps every
+  finished cell whole and records the started cell and the rest as
+  `timeout` reds in the same block — recorded, never masked (dispatch
+  #14's Kimi lane idled to the job cap with nothing recorded).
 - Honest limits: FileStore holds the bytes in every cell (the http
   transport crosses the wire to a FileStore backing — the substrate
   itself is not varied); the model-visible tool is identical on
@@ -227,8 +234,8 @@ five on 2026-09-02 (ledger #124); NW1 re-entered two on 2026-09-10
 | DeepSeek | deepseek-v4-pro | `deepseek` | `DEEPSEEK_API_KEY` | 2026-09-01 | 21, 21, 21 (structured output, every run) | **exited** — one deterministic cause, no `json_schema` on the endpoint; re-entry is a `json_object` dialect knob (§19.7) |
 | Alibaba Model Studio (Singapore, token plan) | qwen3.8-max | `qwen` | `DASHSCOPE_API_KEY` | 2026-09-01 | 21, 23, 20 | **exited** — behavior reds in every run, the `forbidden` pin fired twice, the reasoning-echo class red on the round trip |
 | Moonshot | kimi-k3 | `kimi` | `MOONSHOT_API_KEY` | 2026-09-01 | 24, 21 (429s, harness), 22, 23, 24 (a probe miss, the probe's own) | **stays a candidate** — run 3 was the door's own (schema misses, §19.7); run 5 a clean board with the metering probe wrong about whole-prompt cache hits; ships on the user's ruling (#124) |
-| DeepSeek | deepseek-flash | `deepseek` | `DEEPSEEK_API_KEY` | NW1 slice C | — | **candidate again** (ledger #211) — two door knobs, each a documented fact: `json_mode="json_object"` (the schema in the prompt, validation ours) and `echo_reasoning` (the documented 400 in tool loops); first board owed to NW1's dispatch |
-| Alibaba Model Studio (Singapore, token plan) | qwen3.8-max | `qwen` | `DASHSCOPE_API_KEY` | NW1 slice C | — | **candidate again** (ledger #211) — the echo knob only (`json_schema` is documented on the 3.8 series); the `forbidden` pin stays real signal; `qwen-3.8-27b` on Cerebras is a separate, measured row |
+| DeepSeek | deepseek-flash | `deepseek` | `DEEPSEEK_API_KEY` | 2026-09-10 | — | **candidate again** (ledger #211) — two door knobs, each a documented fact: `json_mode="json_object"` (the schema in the prompt, validation ours) and `echo_reasoning` (the documented 400 in tool loops); first board owed to NW1's dispatch |
+| Alibaba Model Studio (Singapore, token plan) | qwen3.8-max | `qwen` | `DASHSCOPE_API_KEY` | 2026-09-10 | — | **candidate again** (ledger #211) — the echo knob only (`json_schema` is documented on the 3.8 series); the `forbidden` pin stays real signal; `qwen-3.8-27b` on Cerebras is a separate, measured row |
 
 An exited row's data leaves the tree — the lane, the marker, the CI
 column, the secret, its SERVICES.md row — and its measured runs stay
