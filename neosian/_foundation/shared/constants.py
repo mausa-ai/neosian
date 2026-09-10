@@ -278,16 +278,6 @@ class Assets:
     HEADER_SPACING: str = "  "
 
 
-class Config:
-    """Configuration file constants."""
-
-    DIR_NAME: str = ".neosian"
-    FILE_NAME: str = "config.toml"
-    OPENAI_API_KEY: str = "openai_api_key"
-    ANTHROPIC_API_KEY: str = "anthropic_api_key"
-    CEREBRAS_API_KEY: str = "cerebras_api_key"
-
-
 class EnvVars:
     """Environment variable names."""
 

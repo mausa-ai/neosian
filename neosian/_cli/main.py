@@ -5,25 +5,20 @@ Provides the main CLI application with commands.
 
 import asyncio
 import importlib.resources
+import os
+import sys
 from importlib.util import find_spec
 from typing import Annotated
 
 import typer
 from rich.console import Console
 from rich.markup import escape
-from rich.prompt import Prompt
 from rich.table import Table
 
 from neosian import __version__
-from neosian._cli.config import (
-    delete_config,
-    get_all_credentials,
-    get_config_path,
-    set_api_key,
-)
 from neosian._cli.playground import run_playground
 from neosian._cli.ui import BRAND_ACCENT
-from neosian._foundation.shared.constants import App, Assets, Config
+from neosian._foundation.shared.constants import App, Assets
 
 app = typer.Typer(
     name="neosian",
@@ -132,149 +127,33 @@ def version() -> None:
     console.print(table)
 
 
-def _mask_key(key: str) -> str:
-    """Mask an API key for display.
+@app.command(
+    name="configure",
+    context_settings={
+        "allow_extra_args": True,
+        "ignore_unknown_options": True,
+        "help_option_names": [],
+    },
+)
+def configure(ctx: typer.Context) -> None:
+    """Store a provider's API key under the home, or list them.
 
-    Shows first 4 and last 3 characters.
-
-    Args:
-        key: The API key to mask.
-
-    Returns:
-        Masked key like "gsk_****...****xyz".
+    A thin pass-through to the one grammar (`neosian configure --help`):
+    `--list`, `--provider NAME --key -` (stdin), `--delete`, `--json`;
+    bare on a terminal prompts for each provider in turn.
     """
-    if len(key) <= 7:
-        return "****"
-    return f"{key[:4]}****...****{key[-3:]}"
+    from neosian._cli.configure import run_configure
 
-
-def _show_credentials_table(console: Console) -> None:
-    """Display credentials status table."""
-    credentials = get_all_credentials()
-
-    table = Table(show_header=True, header_style="bold")
-    table.add_column("Provider")
-    table.add_column("Status")
-    table.add_column("Key")
-
-    # OpenAI
-    openai_key = credentials.get(Config.OPENAI_API_KEY)
-    if openai_key:
-        table.add_row("OpenAI", "[green]●[/green]", _mask_key(openai_key))
-    else:
-        table.add_row("OpenAI", "[red]●[/red]", "[dim]Not configured[/dim]")
-
-    # Anthropic
-    anthropic_key = credentials.get(Config.ANTHROPIC_API_KEY)
-    if anthropic_key:
-        table.add_row("Anthropic", "[green]●[/green]", _mask_key(anthropic_key))
-    else:
-        table.add_row("Anthropic", "[red]●[/red]", "[dim]Not configured[/dim]")
-
-    # Cerebras
-    cerebras_key = credentials.get(Config.CEREBRAS_API_KEY)
-    if cerebras_key:
-        table.add_row("Cerebras", "[green]●[/green]", _mask_key(cerebras_key))
-    else:
-        table.add_row("Cerebras", "[red]●[/red]", "[dim]Not configured[/dim]")
-
-    console.print()
-    console.print(table)
-    console.print(f"\n[dim]Config file: {get_config_path()}[/dim]")
-
-
-def _configure_credentials(console: Console) -> None:
-    """Prompt for and save credentials."""
-    credentials = get_all_credentials()
-
-    console.print("\n[dim]Press Enter to keep existing values.[/dim]\n")
-
-    # OpenAI
-    existing_openai = credentials.get(Config.OPENAI_API_KEY, "")
-    openai_prompt = "OpenAI API key"
-    if existing_openai:
-        openai_prompt += f" [dim]({_mask_key(existing_openai)})[/dim]"
-
-    openai_key = Prompt.ask(openai_prompt, password=True, default="")
-    if openai_key:
-        set_api_key(Config.OPENAI_API_KEY, openai_key)
-        console.print("[green]OpenAI API key saved.[/green]")
-    elif existing_openai:
-        console.print("[dim]OpenAI API key unchanged.[/dim]")
-
-    # Anthropic
-    existing_anthropic = credentials.get(Config.ANTHROPIC_API_KEY, "")
-    anthropic_prompt = "Anthropic API key"
-    if existing_anthropic:
-        anthropic_prompt += f" [dim]({_mask_key(existing_anthropic)})[/dim]"
-
-    anthropic_key = Prompt.ask(anthropic_prompt, password=True, default="")
-    if anthropic_key:
-        set_api_key(Config.ANTHROPIC_API_KEY, anthropic_key)
-        console.print("[green]Anthropic API key saved.[/green]")
-    elif existing_anthropic:
-        console.print("[dim]Anthropic API key unchanged.[/dim]")
-
-    # Cerebras
-    existing_cerebras = credentials.get(Config.CEREBRAS_API_KEY, "")
-    cerebras_prompt = "Cerebras API key"
-    if existing_cerebras:
-        cerebras_prompt += f" [dim]({_mask_key(existing_cerebras)})[/dim]"
-
-    cerebras_key = Prompt.ask(cerebras_prompt, password=True, default="")
-    if cerebras_key:
-        set_api_key(Config.CEREBRAS_API_KEY, cerebras_key)
-        console.print("[green]Cerebras API key saved.[/green]")
-    elif existing_cerebras:
-        console.print("[dim]Cerebras API key unchanged.[/dim]")
-
-
-def _delete_configuration(console: Console) -> None:
-    """Delete configuration with confirmation."""
-    confirm = Prompt.ask(
-        "\n[yellow]Delete all stored credentials?[/yellow] [dim](y/n)[/dim]",
-        default="n",
+    raise typer.Exit(
+        run_configure(
+            list(ctx.args),
+            os.environ,
+            stdin=sys.stdin,
+            out=sys.stdout,
+            err=sys.stderr,
+            tty=sys.stdin.isatty() and sys.stdout.isatty(),
+        )
     )
-    if confirm.lower() == "y":
-        if delete_config():
-            console.print("[green]Configuration deleted.[/green]")
-        else:
-            console.print("[dim]No configuration to delete.[/dim]")
-    else:
-        console.print("[dim]Cancelled.[/dim]")
-
-
-@app.command()
-def configure() -> None:
-    """Configure API credentials for LLM providers.
-
-    Shows current configuration status and provides options to
-    configure or delete stored credentials.
-
-    Credentials are stored in ~/.neosian/config.toml.
-    Environment variables take precedence over stored credentials.
-
-    Example:
-        neosian configure
-    """
-    console = Console()
-
-    # Show current status
-    _show_credentials_table(console)
-
-    # Show menu
-    console.print()
-    from simple_term_menu import TerminalMenu  # type: ignore[import-untyped]
-
-    options = ["Configure credentials", "Delete configuration", "Exit"]
-    menu = TerminalMenu(options, cursor_index=0)
-    choice = menu.show()
-
-    if choice == 0:
-        _configure_credentials(console)
-    elif choice == 1:
-        _delete_configuration(console)
-    # choice == 2 or None (cancelled) -> just exit
 
 
 @app.command(name="eval")
@@ -292,7 +171,7 @@ def evaluate(
     Example:
         neosian eval eval_suite.yaml
     """
-    from neosian._cli.playground import _load_credentials_from_config
+    from neosian._cli.providers import load_keys_into_env
     from neosian.evaluation import (
         EvalProgress,
         create_progress_callback,
@@ -304,7 +183,7 @@ def evaluate(
 
     # The library reads keys from the environment only; loading them from the
     # CLI config file is the CLI's job, done here before the run.
-    _load_credentials_from_config()
+    load_keys_into_env()
 
     console = Console()
 

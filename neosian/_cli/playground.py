@@ -7,39 +7,16 @@ id); arena mode stays in-memory in `arena.py`.
 
 import asyncio
 import dataclasses
-import os
 
 from rich.console import Console
 
 from neosian._cli.arena import run_arena_mode
 from neosian._cli.chat import new_conversation_id, resolve_resume, run_chat
-from neosian._cli.config import get_api_key
 from neosian._cli.models import select_provider_and_model
 from neosian._foundation.agent.loader import load_agent_config
-from neosian._foundation.shared.constants import Config, PlaygroundUI
+from neosian._foundation.shared.constants import PlaygroundUI
 from neosian._foundation.shared.exceptions import ConversationIdInvalidError
 from neosian._foundation.shared.types import AgentConfig, AnyModel
-
-
-def _load_credentials_from_config() -> None:
-    """Load API keys from config file into environment if not already set."""
-    # OpenAI
-    if not os.environ.get("OPENAI_API_KEY"):
-        openai_key = get_api_key(Config.OPENAI_API_KEY)
-        if openai_key:
-            os.environ["OPENAI_API_KEY"] = openai_key
-
-    # Anthropic
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        anthropic_key = get_api_key(Config.ANTHROPIC_API_KEY)
-        if anthropic_key:
-            os.environ["ANTHROPIC_API_KEY"] = anthropic_key
-
-    # Cerebras
-    if not os.environ.get("CEREBRAS_API_KEY"):
-        cerebras_key = get_api_key(Config.CEREBRAS_API_KEY)
-        if cerebras_key:
-            os.environ["CEREBRAS_API_KEY"] = cerebras_key
 
 
 def menu_config(base: AgentConfig, model: AnyModel) -> AgentConfig:
@@ -68,8 +45,11 @@ def run_playground(
     """
     console = Console()
 
-    # Load credentials from config file if not in environment
-    _load_credentials_from_config()
+    # The library reads keys from the environment only; loading them from
+    # the config file is the shell's job, done here before any client.
+    from neosian._cli.providers import load_keys_into_env
+
+    load_keys_into_env()
 
     # Load agent configuration
     try:
