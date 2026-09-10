@@ -46,6 +46,50 @@ def _load_logo() -> str:
 
 
 @app.command(rich_help_panel=_TALK)
+def chat(
+    prompt: Annotated[
+        str | None,
+        typer.Argument(help="One turn: print the answer and exit (also: piped stdin)"),
+    ] = None,
+    model: Annotated[
+        str | None,
+        typer.Option("--model", help="A model id, or `fake` to try it keyless"),
+    ] = None,
+    agent: Annotated[
+        str | None,
+        typer.Option("--agent", help="An agent file instead of the resident agent"),
+    ] = None,
+    resume: Annotated[
+        str | None,
+        typer.Option("--resume", help="Resume a conversation by id"),
+    ] = None,
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="One-shot mode: the response envelope"),
+    ] = False,
+) -> None:
+    """Talk to your memory: the resident agent that knows neosian.
+
+    Bare on a terminal opens a session; a PROMPT (or piped stdin) runs one
+    turn and prints the answer. The model is --model, else [chat] model in
+    config.toml, else the first provider with a key (Anthropic, OpenAI,
+    Cerebras, registered doors). Every turn persists under the home.
+
+    Example:
+        neosian chat
+        neosian chat "what do you know about this project?"
+        echo hi | neosian chat --model fake --json
+    """
+    from neosian._cli.chat_cmd import run_chat_command
+
+    raise typer.Exit(
+        run_chat_command(
+            prompt, model=model, agent=agent, resume=resume, json_output=json_output
+        )
+    )
+
+
+@app.command(rich_help_panel=_TALK)
 def playground(
     agent_file: Annotated[
         str,

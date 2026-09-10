@@ -22,6 +22,7 @@ from neosian._cli.ui import format_args, format_elapsed_time, print_header
 from neosian._foundation.agent.response import AgentResponse
 from neosian._foundation.conversation.core import Conversation
 from neosian._foundation.conversation.ids import parse_conversation_id
+from neosian._foundation.conversation.reflection import ReflectionConfig
 from neosian._foundation.llm.base import text_of
 from neosian._foundation.memory.file import FileStore
 from neosian._foundation.memory.home import home, project_mounts
@@ -76,12 +77,21 @@ def chat_config(config: AgentConfig, store: FileStore) -> AgentConfig:
     return replace(config, memory=MemoryConfig(store=store, mounts=project_mounts()))
 
 
-def open_chat(config: AgentConfig, *, conversation_id: str) -> Conversation:
+def open_chat(
+    config: AgentConfig,
+    *,
+    conversation_id: str,
+    reflection: ReflectionConfig | None = None,
+) -> Conversation:
     """The playground's Conversation on the home: one FileStore for turns
-    and, unless the agent file says otherwise, for memory."""
+    and, unless the agent file says otherwise, for memory. `reflection`
+    is the session-boundary act (§15) — a one-shot turn passes it off."""
     store = FileStore(home())
     return Conversation(
-        chat_config(config, store), store=store, conversation_id=conversation_id
+        chat_config(config, store),
+        store=store,
+        conversation_id=conversation_id,
+        reflection=reflection,
     )
 
 

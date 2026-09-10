@@ -546,3 +546,27 @@ class TestConsole:
         assert not (tmp_path / "home").exists()  # status creates nothing
         text = _run(["status"], cwd=project, env=env)
         assert text.returncode == 0 and text.stdout.startswith("neosian ")
+
+    def test_a_piped_chat_turn_persists_where_audit_looks(self, tmp_path: Path) -> None:
+        """NY: `echo hi | neosian chat --model fake --json` — the resident
+        agent usable by a script, keyless; the turn lands under the home
+        and the same `audit` names it."""
+        env = _env(tmp_path)
+        project = tmp_path / "chat proj"
+        project.mkdir()
+        result = _run(
+            ["chat", "--model", "fake", "--json"], cwd=project, env=env, stdin="hi\n"
+        )
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.count("\n") == 1 and result.stderr == ""
+        payload = json.loads(result.stdout)
+        assert payload["text"] == "fake response" and payload["model"] == "fake"
+        assert set(payload) >= {"conversation_id", "usage", "cost_micro_usd"}
+        ledger = _run(
+            ["audit", "--conversation", payload["conversation_id"], "--json"],
+            cwd=project,
+            env=env,
+        )
+        assert ledger.returncode == 0, ledger.stderr
+        events = [e["event"] for e in json.loads(ledger.stdout)["entries"]]
+        assert "turn" in events
