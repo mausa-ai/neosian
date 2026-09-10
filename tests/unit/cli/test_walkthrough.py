@@ -547,6 +547,26 @@ class TestConsole:
         text = _run(["status"], cwd=project, env=env)
         assert text.returncode == 0 and text.stdout.startswith("neosian ")
 
+    def test_setup_prints_first_then_writes_both_files(self, tmp_path: Path) -> None:
+        env = _env(tmp_path)
+        (tmp_path / ".claude").mkdir()  # HOME is tmp_path — Claude Code's evidence
+        project = tmp_path / "setup proj"
+        project.mkdir()
+        printed = _run(["setup"], cwd=project, env=env)
+        assert printed.returncode == 0, printed.stderr
+        assert "would write" in printed.stdout
+        assert not (project / ".mcp.json").exists()  # print mode writes nothing
+        written = _run(["setup", "--write", "--json"], cwd=project, env=env)
+        assert written.returncode == 0, written.stderr
+        (row,) = json.loads(written.stdout)["clients"]
+        assert row["client"] == "claude-code"
+        assert (project / ".mcp.json").is_file()
+        assert (project / ".claude" / "settings.json").is_file()
+        status = _run(["status", "--json"], cwd=project, env=env)
+        claude = json.loads(status.stdout)["clients"][0]
+        assert claude["mcp_registered"] and claude["hooks_present"]
+        assert claude["interpreter_resolves"] is True
+
     def test_bare_neosian_under_a_pipe_is_the_help(self, tmp_path: Path) -> None:
         result = _run([], cwd=tmp_path, env=_env(tmp_path))
         assert result.returncode == 0, result.stderr
