@@ -58,6 +58,16 @@ def kimi_api_key() -> str:
 
 
 @pytest.fixture
+def deepseek_api_key() -> str:
+    return _key_or_skip("DEEPSEEK_API_KEY")
+
+
+@pytest.fixture
+def qwen_api_key() -> str:
+    return _key_or_skip("DASHSCOPE_API_KEY")
+
+
+@pytest.fixture
 def postgres_dsn() -> str:
     """A live PostgreSQL server — a DSN, not an API key (SERVICES.md)."""
     return _key_or_skip("NEOSIAN_TEST_POSTGRES_DSN")

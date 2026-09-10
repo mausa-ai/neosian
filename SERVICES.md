@@ -40,14 +40,14 @@ Nothing in the library reads these. Each drives one lane of NW's gate
 self-skips. A green row is promoted into the table above (the way
 `XAI_API_KEY` and `GEMINI_API_KEY` were, 2026-09-02); a red one exits
 whole (DeepSeek and Alibaba Model Studio did, the same day — BASELINES.md
-keeps their runs; both re-enter under NW1, ledger #211, their lanes
-landing in slice C).
+keeps their runs; both re-entered under NW1, ledger #211 — the lanes
+below, their first boards owed to NW1's dispatch).
 
 | Key | Suite | Serving stack |
 |---|---|---|
 | `MOONSHOT_API_KEY` | `kimi` | Moonshot (`kimi-k3`) |
-| `DEEPSEEK_API_KEY` | `deepseek` | DeepSeek (`deepseek-flash`; the lane lands in NW1 slice C) |
-| `DASHSCOPE_API_KEY` | `qwen` | Alibaba Model Studio, Singapore, the token plan (`qwen3.8-max`; the lane lands in NW1 slice C) |
+| `DEEPSEEK_API_KEY` | `deepseek` | DeepSeek (`deepseek-flash`; `json_mode="json_object"` + the reasoning echo) |
+| `DASHSCOPE_API_KEY` | `qwen` | Alibaba Model Studio, Singapore, the token plan (`qwen3.8-max`; the reasoning echo) |
 
 Where an account tier caps requests per minute, the lane — shipped or
 candidate — is paced on our side (`requests_per_minute` in
@@ -56,7 +56,7 @@ longer, never runs fewer cells.
 
 ## The external suites
 
-`make test-external provider=<openai|anthropic|cerebras|xai|gemini|kimi>`
+`make test-external provider=<openai|anthropic|cerebras|xai|gemini|kimi|deepseek|qwen>`
 runs that suite's real-API tests (`-m external_<provider>`).
 
 - `file=<envfile>` routes through `scripts/external_env.py`:

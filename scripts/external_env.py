@@ -24,6 +24,8 @@ KEY_ALLOWLIST: dict[str, tuple[str, ...]] = {
     "xai": ("XAI_API_KEY",),
     "gemini": ("GEMINI_API_KEY",),
     "kimi": ("MOONSHOT_API_KEY",),
+    "deepseek": ("DEEPSEEK_API_KEY",),
+    "qwen": ("DASHSCOPE_API_KEY",),
 }
 
 

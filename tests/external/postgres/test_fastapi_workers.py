@@ -12,7 +12,6 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
-from examples.fastapi_chatbot import create_app
 from neosian import (
     AgentConfig,
     Model,
@@ -43,6 +42,16 @@ async def worker_b(
         yield other
     finally:
         await other.aclose()
+
+
+def create_app(**kwargs: Any) -> FastAPI:
+    """The example, imported per test, never at collection: its module-level
+    `app = create_app()` loads `~/.neosian/config.toml` keys into
+    `os.environ`, which would defeat every later self-skip in the session
+    (the root conftest's collection guard pins this)."""
+    from examples.fastapi_chatbot import create_app as build
+
+    return build(**kwargs)
 
 
 def _agent_config(script: FakeScript, **kwargs: Any) -> AgentConfig:

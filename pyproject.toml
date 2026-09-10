@@ -99,6 +99,8 @@ markers = [
     "external_xai: Real xAI API calls (shipped door)",
     "external_gemini: Real Gemini API calls (shipped door)",
     "external_kimi: Real Moonshot API calls (candidate door)",
+    "external_deepseek: Real DeepSeek API calls (candidate door)",
+    "external_qwen: Real Alibaba Model Studio API calls (candidate door)",
     "external_postgres: A real PostgreSQL server (DSN env var, not an API key)",
     "external_server: A running state-process container (URL env var, not an API key)",
 ]

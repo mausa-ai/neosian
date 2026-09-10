@@ -212,10 +212,12 @@ jobs:
 
   # Dispatch only; an absent secret arrives as "" and the suite
   # self-skips per test (falsiness checks), keeping the job green.
-  # A lane is the 24-cell pack plus the door probes on a flagship at its
+  # A lane is the 40-cell pack plus the door probes on a flagship at its
   # default effort; a keyless lane still finishes in seconds. Door lanes
-  # are paced to the account's rate limit (tests/external/pacing.py), so
-  # a 3-requests-per-minute tier needs most of this budget.
+  # are paced to the account's rate limit (tests/external/pacing.py) and
+  # run under an in-loop ceiling (tests/external/board.py): a paced lane
+  # splits per transport, and a cut cell is a recorded `timeout` red,
+  # never an idle runner (dispatch #14).
   external:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
@@ -223,7 +225,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        provider: [openai, anthropic, cerebras, xai, gemini, kimi]
+        provider: [openai, anthropic, cerebras, xai, gemini, kimi, deepseek, qwen]
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
@@ -240,3 +242,5 @@ jobs:
           XAI_API_KEY: ${{ matrix.provider == 'xai' && secrets.XAI_API_KEY || '' }}
           GEMINI_API_KEY: ${{ matrix.provider == 'gemini' && secrets.GEMINI_API_KEY || '' }}
           MOONSHOT_API_KEY: ${{ matrix.provider == 'kimi' && secrets.MOONSHOT_API_KEY || '' }}
+          DEEPSEEK_API_KEY: ${{ matrix.provider == 'deepseek' && secrets.DEEPSEEK_API_KEY || '' }}
+          DASHSCOPE_API_KEY: ${{ matrix.provider == 'qwen' && secrets.DASHSCOPE_API_KEY || '' }}
