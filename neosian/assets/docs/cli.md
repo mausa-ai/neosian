@@ -66,7 +66,9 @@ or renamed there — pre-created layouts the agent works within.
 - **130** — interrupt.
 
 stdout carries the artifact; stderr carries guidance — redirecting
-stdout always captures something well-formed.
+stdout always captures something well-formed. With `--json` anywhere in
+argv, a tier-2 error also prints one `{"error": "usage", "hint": …}`
+object on stdout — the tier and the stderr text stay.
 
 ## --json
 

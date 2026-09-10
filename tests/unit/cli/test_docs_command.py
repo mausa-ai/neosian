@@ -69,12 +69,14 @@ class TestUnknownTopic:
         assert "error: unknown topic 'nope'" in err
         assert "topology" in err
 
-    def test_json_still_exits_2_as_text(self) -> None:
-        # §14.1: --json governs the executed tiers only; argv-tier
-        # errors stay text on stderr — the tiering, not drift.
+    def test_json_exits_2_with_one_object_and_the_text(self) -> None:
+        # §14.1 bent at NY (§30): exit 2 keeps its tier and its stderr
+        # text; a caller that asked for JSON also gets one object.
         code, out, err = _run("nope", json_output=True)
         assert code == 2
-        assert out == ""
+        payload = json.loads(out)
+        assert out.count("\n") == 1
+        assert payload["error"] == "usage" and "topology" in payload["hint"]
         assert "error:" in err
 
 

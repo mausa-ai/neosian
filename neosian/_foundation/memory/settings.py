@@ -16,11 +16,12 @@ working directory's project layout — the one the installers render.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Final, TextIO
+from typing import TYPE_CHECKING, Any, Final, NoReturn, TextIO
 
 if TYPE_CHECKING:
     from _typeshed import SupportsWrite
@@ -50,17 +51,35 @@ class StreamParser(argparse.ArgumentParser):
 
     The argv engines run in-process (the eval harness, unit suites), so
     they must not write to — or swap — the process's real stdio; help
-    and errors go to the streams `bind` sets.
+    and errors go to the streams `bind` sets. With `--json` anywhere in
+    argv a grammar error also prints one `{"error": "usage", "hint"}`
+    object on stdout (§14.1 bent at NY, §30): exit 2 keeps its tier and
+    its text on stderr, and a caller that asked for JSON gets JSON.
     """
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.out: TextIO = sys.stdout
         self.err: TextIO = sys.stderr
+        self.json_argv = False
 
     def bind(self, out: TextIO, err: TextIO) -> None:
         self.out = out
         self.err = err
+
+    def parse_known_args(  # type: ignore[override]  # the argv is all we read
+        self, args: Sequence[str] | None = None, namespace: Any = None
+    ) -> Any:
+        # Subparsers are invoked through this same method with their slice
+        # of argv, so each tier sees the flag for itself.
+        if args is not None:
+            self.json_argv = "--json" in list(args)
+        return super().parse_known_args(args, namespace)
+
+    def error(self, message: str) -> NoReturn:
+        if self.json_argv:
+            self.out.write(json.dumps({"error": "usage", "hint": message}) + "\n")
+        super().error(message)
 
     def _print_message(
         self, message: str, file: SupportsWrite[str] | None = None

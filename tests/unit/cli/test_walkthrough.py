@@ -289,6 +289,16 @@ class TestOperate:
         assert result.stdout == ""
         assert "--content" in result.stderr
 
+    def test_a_grammar_error_under_json_is_one_object_too(self, tmp_path: Path) -> None:
+        result = _run(
+            ["memory", "create", "/memories/n", "--json", *_store_flags(tmp_path)],
+            cwd=tmp_path,
+            env=_env(tmp_path),
+        )
+        assert result.returncode == 2
+        assert json.loads(result.stdout)["error"] == "usage"
+        assert "--content" in result.stderr
+
     def test_the_dsn_conflict_exits_2(self, tmp_path: Path) -> None:
         # The one test that SETS the DSN: proves the entry point reads
         # the real environment across the process boundary.

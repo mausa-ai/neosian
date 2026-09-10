@@ -8,6 +8,7 @@ harness uses; the real binary is pinned by the walkthrough).
 from __future__ import annotations
 
 import io
+import json
 from pathlib import Path
 from typing import Any
 
@@ -178,6 +179,25 @@ class TestArgvTier:
         assert code == 2
         # The argv tier constructs nothing.
         assert not root.exists()
+
+    async def test_json_in_argv_makes_the_usage_error_an_object(
+        self, tmp_path: Path
+    ) -> None:
+        """§14.1 bent at NY (§30): the tier and the stderr text stay; the
+        caller that asked for JSON gets one object on stdout too — from a
+        subcommand's own parser (a missing flag) and the top one (an
+        unknown command)."""
+        for argv in (
+            ["create", "/memories/n", "--json", "--root", str(tmp_path)],
+            ["nope", "--json"],
+        ):
+            out, err = io.StringIO(), io.StringIO()
+            code = await run(argv, _ENV, stdin=io.StringIO(), out=out, err=err)
+            assert code == 2
+            payload = json.loads(out.getvalue())
+            assert out.getvalue().count("\n") == 1
+            assert payload["error"] == "usage" and payload["hint"]
+            assert "usage:" in err.getvalue()
 
     async def test_help_exits_0(self) -> None:
         out = io.StringIO()
