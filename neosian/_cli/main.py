@@ -20,9 +20,16 @@ from neosian._cli.playground import run_playground
 from neosian._cli.ui import BRAND_ACCENT
 from neosian._foundation.shared.constants import App, Assets
 
+# The help is grouped by audience (DESIGN §30): who each verb is for.
+_TALK = "Talk"
+_OPERATE = "Operate"
+_CONNECT = "Connect an agent"
+_LEARN = "Learn"
+
 app = typer.Typer(
     name="neosian",
-    help="Async-only library for LLM agents: tools, orchestration, streaming, memory.",
+    help="The state layer for LLM agents: memory, conversations, the record.",
+    epilog="agents: neosian docs cli --json",
     no_args_is_help=True,
     add_completion=False,
 )
@@ -38,7 +45,7 @@ def _load_logo() -> str:
         return ""
 
 
-@app.command()
+@app.command(rich_help_panel=_TALK)
 def playground(
     agent_file: Annotated[
         str,
@@ -91,7 +98,273 @@ def _driver_line() -> str:
     return "psycopg (PostgresStore): installed"
 
 
-@app.command()
+@app.command(
+    name="status",
+    rich_help_panel=_OPERATE,
+    context_settings={
+        "allow_extra_args": True,
+        "ignore_unknown_options": True,
+        "help_option_names": [],
+    },
+)
+def status(ctx: typer.Context) -> None:
+    """Is this machine set up? The home, the keys, the clients, the shape.
+
+    A thin pass-through to the one grammar (`neosian status --help`);
+    exit 0 whenever it ran — findings are data, `--json` one object.
+    """
+    from neosian.status import main as status_main
+
+    raise typer.Exit(status_main(list(ctx.args)))
+
+
+@app.command(
+    name="configure",
+    rich_help_panel=_OPERATE,
+    context_settings={
+        "allow_extra_args": True,
+        "ignore_unknown_options": True,
+        "help_option_names": [],
+    },
+)
+def configure(ctx: typer.Context) -> None:
+    """Store a provider's API key under the home, or list them.
+
+    A thin pass-through to the one grammar (`neosian configure --help`):
+    `--list`, `--provider NAME --key -` (stdin), `--delete`, `--json`;
+    bare on a terminal prompts for each provider in turn.
+    """
+    from neosian._cli.configure import run_configure
+
+    raise typer.Exit(
+        run_configure(
+            list(ctx.args),
+            os.environ,
+            stdin=sys.stdin,
+            out=sys.stdout,
+            err=sys.stderr,
+            tty=sys.stdin.isatty() and sys.stdout.isatty(),
+        )
+    )
+
+
+@app.command(name="eval", rich_help_panel=_TALK)
+def evaluate(
+    config_file: Annotated[
+        str,
+        typer.Argument(help="Path to the evaluation config YAML file"),
+    ],
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Print the report as one JSON object on stdout"),
+    ] = False,
+) -> None:
+    """Run an eval suite: variants × models × cases over one agent.
+
+    Results are displayed in the terminal and saved to JSON. Exits
+    nonzero when any case fails, so the command works as a CI gate;
+    --json prints the saved artifact's document instead of the table.
+
+    Example:
+        neosian eval eval_suite.yaml
+    """
+    import json
+    from datetime import UTC, datetime
+
+    from neosian._cli.providers import load_keys_into_env
+    from neosian._foundation.evaluation.reporter import report_dict
+    from neosian.evaluation import (
+        EvalProgress,
+        create_progress_callback,
+        load_eval_config,
+        print_report,
+        run_evaluation,
+        save_report,
+    )
+
+    # The library reads keys from the environment only; loading them from the
+    # CLI config file is the CLI's job, done here before the run.
+    load_keys_into_env()
+
+    console = Console(stderr=json_output)
+
+    try:
+        config = load_eval_config(config_file)
+    except Exception as e:
+        if json_output:
+            print(json.dumps({"error": f"loading config: {e}", "hint": None}))
+        console.print(f"[red]Error loading config: {e}[/red]")
+        raise typer.Exit(1) from None
+
+    progress = EvalProgress(config) if not json_output else None
+    try:
+        if progress is not None:
+            progress.start()
+        report = asyncio.run(
+            run_evaluation(
+                config,
+                on_progress=(
+                    create_progress_callback(progress) if progress is not None else None
+                ),
+            )
+        )
+        if progress is not None:
+            progress.stop()
+    except Exception as e:
+        if progress is not None:
+            progress.stop()
+        if json_output:
+            print(json.dumps({"error": f"evaluation failed: {e}", "hint": None}))
+        console.print(f"[red]Evaluation failed: {e}[/red]")
+        raise typer.Exit(1) from None
+
+    output_path = save_report(report)
+    if json_output:
+        print(json.dumps(report_dict(report, now=datetime.now(UTC)), default=str))
+        raise typer.Exit(1 if report.failed else 0)
+    console.print()
+    print_report(report, console)
+    console.print()
+    console.print(f"[dim]{output_path}[/dim]")
+    console.print(f"{report.passed}/{report.total} passed")
+    raise typer.Exit(1 if report.failed else 0)
+
+
+@app.command(
+    name="memory",
+    rich_help_panel=_OPERATE,
+    context_settings={
+        "allow_extra_args": True,
+        "ignore_unknown_options": True,
+        "help_option_names": [],
+    },
+)
+def memory(ctx: typer.Context) -> None:
+    """Read and write agent memory from the shell.
+
+    A thin pass-through: every argument goes verbatim to the one grammar
+    (`neosian memory --help`). The six commands ride the shared memory
+    dispatcher; --json prints the memory tool's envelope.
+    """
+    from neosian.memory.cli import main as memory_main
+
+    raise typer.Exit(memory_main(list(ctx.args)))
+
+
+@app.command(
+    name="audit",
+    rich_help_panel=_OPERATE,
+    context_settings={
+        "allow_extra_args": True,
+        "ignore_unknown_options": True,
+        "help_option_names": [],
+    },
+)
+def audit(ctx: typer.Context) -> None:
+    """What was done, by whom, when — a scope's ledger (DESIGN §20).
+
+    A thin pass-through: every argument goes verbatim to the one grammar
+    (`neosian audit --help`). Answers the same on a FileStore root,
+    Postgres, or the state process (--url).
+    """
+    from neosian.ledger import main as audit_main
+
+    raise typer.Exit(audit_main(list(ctx.args)))
+
+
+_PASS_THROUGH = {
+    "allow_extra_args": True,
+    "ignore_unknown_options": True,
+    "help_option_names": [],
+}
+
+
+@app.command(name="export", rich_help_panel=_OPERATE, context_settings=_PASS_THROUGH)
+def export(ctx: typer.Context) -> None:
+    """Write the store to DIR, whole — history included (DESIGN §26).
+
+    A thin pass-through to the one grammar (`neosian export --help`); the
+    archive is a FileStore root you can read, serve or import anywhere.
+    """
+    from neosian.mobility import main as mobility_main
+
+    raise typer.Exit(mobility_main(["export", *ctx.args]))
+
+
+@app.command(name="import", rich_help_panel=_OPERATE, context_settings=_PASS_THROUGH)
+def import_(ctx: typer.Context) -> None:
+    """Restore an export into the store, verbatim (DESIGN §26).
+
+    A thin pass-through to the one grammar (`neosian import --help`);
+    every unit must be empty in the store — nothing merges.
+    """
+    from neosian.mobility import main as mobility_main
+
+    raise typer.Exit(mobility_main(["import", *ctx.args]))
+
+
+@app.command(
+    name="record",
+    rich_help_panel=_CONNECT,
+    context_settings={
+        "allow_extra_args": True,
+        "ignore_unknown_options": True,
+        "help_option_names": [],
+    },
+)
+def record(ctx: typer.Context) -> None:
+    """Record a foreign agent's session from its hooks (DESIGN §20.9).
+
+    A thin pass-through: every argument goes verbatim to the one grammar
+    (`neosian record --help`). Reads one hook payload on stdin per call;
+    `neosian record install` renders or applies the hooks.
+    """
+    from neosian.record import main as record_main
+
+    raise typer.Exit(record_main(list(ctx.args)))
+
+
+@app.command(
+    name="mcp",
+    rich_help_panel=_CONNECT,
+    context_settings={
+        "allow_extra_args": True,
+        "ignore_unknown_options": True,
+        "help_option_names": [],
+    },
+)
+def mcp(ctx: typer.Context) -> None:
+    """Serve neosian memory to MCP clients on stdio.
+
+    A thin pass-through: every argument goes verbatim to the one grammar
+    (`python -m neosian.mcp --help`).
+    """
+    from neosian.mcp.serve import main as mcp_main
+
+    raise typer.Exit(mcp_main(list(ctx.args)))
+
+
+@app.command(
+    name="serve",
+    rich_help_panel=_CONNECT,
+    context_settings={
+        "allow_extra_args": True,
+        "ignore_unknown_options": True,
+        "help_option_names": [],
+    },
+)
+def serve(ctx: typer.Context) -> None:
+    """Serve memory and conversations over HTTP — the state process.
+
+    A thin pass-through: every argument goes verbatim to the one grammar
+    (`neosian serve --help`). Needs NEOSIAN_SERVE_TOKEN.
+    """
+    from neosian.server.serve import main as serve_main
+
+    raise typer.Exit(serve_main(list(ctx.args)))
+
+
+@app.command(rich_help_panel=_LEARN)
 def version() -> None:
     """Display version information."""
     console = Console()
@@ -127,116 +400,7 @@ def version() -> None:
     console.print(table)
 
 
-@app.command(
-    name="status",
-    context_settings={
-        "allow_extra_args": True,
-        "ignore_unknown_options": True,
-        "help_option_names": [],
-    },
-)
-def status(ctx: typer.Context) -> None:
-    """Is this machine set up? The home, the keys, the clients, the shape.
-
-    A thin pass-through to the one grammar (`neosian status --help`);
-    exit 0 whenever it ran — findings are data, `--json` one object.
-    """
-    from neosian.status import main as status_main
-
-    raise typer.Exit(status_main(list(ctx.args)))
-
-
-@app.command(
-    name="configure",
-    context_settings={
-        "allow_extra_args": True,
-        "ignore_unknown_options": True,
-        "help_option_names": [],
-    },
-)
-def configure(ctx: typer.Context) -> None:
-    """Store a provider's API key under the home, or list them.
-
-    A thin pass-through to the one grammar (`neosian configure --help`):
-    `--list`, `--provider NAME --key -` (stdin), `--delete`, `--json`;
-    bare on a terminal prompts for each provider in turn.
-    """
-    from neosian._cli.configure import run_configure
-
-    raise typer.Exit(
-        run_configure(
-            list(ctx.args),
-            os.environ,
-            stdin=sys.stdin,
-            out=sys.stdout,
-            err=sys.stderr,
-            tty=sys.stdin.isatty() and sys.stdout.isatty(),
-        )
-    )
-
-
-@app.command(name="eval")
-def evaluate(
-    config_file: Annotated[
-        str,
-        typer.Argument(help="Path to the evaluation config YAML file"),
-    ],
-) -> None:
-    """Run an eval suite: variants × models × cases over one agent.
-
-    Results are displayed in the terminal and saved to JSON. Exits
-    nonzero when any case fails, so the command works as a CI gate.
-
-    Example:
-        neosian eval eval_suite.yaml
-    """
-    from neosian._cli.providers import load_keys_into_env
-    from neosian.evaluation import (
-        EvalProgress,
-        create_progress_callback,
-        load_eval_config,
-        print_report,
-        run_evaluation,
-        save_report,
-    )
-
-    # The library reads keys from the environment only; loading them from the
-    # CLI config file is the CLI's job, done here before the run.
-    load_keys_into_env()
-
-    console = Console()
-
-    try:
-        config = load_eval_config(config_file)
-    except Exception as e:
-        console.print(f"[red]Error loading config: {e}[/red]")
-        raise typer.Exit(1) from None
-
-    console.print()
-
-    progress = EvalProgress(config)
-    try:
-        progress.start()
-        report = asyncio.run(
-            run_evaluation(config, on_progress=create_progress_callback(progress))
-        )
-        progress.stop()
-    except Exception as e:
-        progress.stop()
-        console.print(f"[red]Evaluation failed: {e}[/red]")
-        raise typer.Exit(1) from None
-
-    console.print()
-    print_report(report, console)
-
-    output_path = save_report(report)
-    console.print()
-    console.print(f"[dim]{output_path}[/dim]")
-    console.print(f"{report.passed}/{report.total} passed")
-    raise typer.Exit(1 if report.failed else 0)
-
-
-@app.command()
+@app.command(rich_help_panel=_LEARN)
 def docs(
     topic: Annotated[
         str | None,
@@ -256,135 +420,6 @@ def docs(
     from neosian._cli.docs import run_docs
 
     raise typer.Exit(run_docs(topic, json_output=json_output))
-
-
-@app.command(
-    name="memory",
-    context_settings={
-        "allow_extra_args": True,
-        "ignore_unknown_options": True,
-        "help_option_names": [],
-    },
-)
-def memory(ctx: typer.Context) -> None:
-    """Read and write agent memory from the shell.
-
-    A thin pass-through: every argument goes verbatim to the one grammar
-    (`neosian memory --help`). The six commands ride the shared memory
-    dispatcher; --json prints the memory tool's envelope.
-    """
-    from neosian.memory.cli import main as memory_main
-
-    raise typer.Exit(memory_main(list(ctx.args)))
-
-
-@app.command(
-    name="audit",
-    context_settings={
-        "allow_extra_args": True,
-        "ignore_unknown_options": True,
-        "help_option_names": [],
-    },
-)
-def audit(ctx: typer.Context) -> None:
-    """What was done, by whom, when — a scope's ledger (DESIGN §20).
-
-    A thin pass-through: every argument goes verbatim to the one grammar
-    (`neosian audit --help`). Answers the same on a FileStore root,
-    Postgres, or the state process (--url).
-    """
-    from neosian.ledger import main as audit_main
-
-    raise typer.Exit(audit_main(list(ctx.args)))
-
-
-_PASS_THROUGH = {
-    "allow_extra_args": True,
-    "ignore_unknown_options": True,
-    "help_option_names": [],
-}
-
-
-@app.command(name="export", context_settings=_PASS_THROUGH)
-def export(ctx: typer.Context) -> None:
-    """Write the store to DIR, whole — history included (DESIGN §26).
-
-    A thin pass-through to the one grammar (`neosian export --help`); the
-    archive is a FileStore root you can read, serve or import anywhere.
-    """
-    from neosian.mobility import main as mobility_main
-
-    raise typer.Exit(mobility_main(["export", *ctx.args]))
-
-
-@app.command(name="import", context_settings=_PASS_THROUGH)
-def import_(ctx: typer.Context) -> None:
-    """Restore an export into the store, verbatim (DESIGN §26).
-
-    A thin pass-through to the one grammar (`neosian import --help`);
-    every unit must be empty in the store — nothing merges.
-    """
-    from neosian.mobility import main as mobility_main
-
-    raise typer.Exit(mobility_main(["import", *ctx.args]))
-
-
-@app.command(
-    name="record",
-    context_settings={
-        "allow_extra_args": True,
-        "ignore_unknown_options": True,
-        "help_option_names": [],
-    },
-)
-def record(ctx: typer.Context) -> None:
-    """Record a foreign agent's session from its hooks (DESIGN §20.9).
-
-    A thin pass-through: every argument goes verbatim to the one grammar
-    (`neosian record --help`). Reads one hook payload on stdin per call;
-    `neosian record install` renders or applies the hooks.
-    """
-    from neosian.record import main as record_main
-
-    raise typer.Exit(record_main(list(ctx.args)))
-
-
-@app.command(
-    name="mcp",
-    context_settings={
-        "allow_extra_args": True,
-        "ignore_unknown_options": True,
-        "help_option_names": [],
-    },
-)
-def mcp(ctx: typer.Context) -> None:
-    """Serve neosian memory to MCP clients on stdio.
-
-    A thin pass-through: every argument goes verbatim to the one grammar
-    (`python -m neosian.mcp --help`).
-    """
-    from neosian.mcp.serve import main as mcp_main
-
-    raise typer.Exit(mcp_main(list(ctx.args)))
-
-
-@app.command(
-    name="serve",
-    context_settings={
-        "allow_extra_args": True,
-        "ignore_unknown_options": True,
-        "help_option_names": [],
-    },
-)
-def serve(ctx: typer.Context) -> None:
-    """Serve memory and conversations over HTTP — the state process.
-
-    A thin pass-through: every argument goes verbatim to the one grammar
-    (`neosian serve --help`). Needs NEOSIAN_SERVE_TOKEN.
-    """
-    from neosian.server.serve import main as serve_main
-
-    raise typer.Exit(serve_main(list(ctx.args)))
 
 
 def main() -> None:

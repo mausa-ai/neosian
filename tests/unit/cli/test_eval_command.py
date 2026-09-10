@@ -62,6 +62,20 @@ class TestExitCodes:
             evaluate(str(_suite(tmp_path, "goodbye")))
         assert excinfo.value.exit_code == 1
 
+    def test_json_prints_the_artifact_document(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        import json
+
+        with pytest.raises(typer.Exit) as excinfo:
+            evaluate(str(_suite(tmp_path, "hi")), json_output=True)
+        assert excinfo.value.exit_code == 0
+        out = capsys.readouterr().out
+        assert out.count("\n") == 1
+        payload = json.loads(out)
+        assert payload["summary"] == {"total": 1, "passed": 1, "failed": 0}
+        assert payload["schema"] == 2
+
     def test_a_load_error_exits_one(self, tmp_path: Path) -> None:
         with pytest.raises(typer.Exit) as excinfo:
             evaluate(str(tmp_path / "absent.yaml"))
