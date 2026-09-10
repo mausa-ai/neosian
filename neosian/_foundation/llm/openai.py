@@ -31,7 +31,9 @@ from neosian._foundation.llm.openai_convert import (
     convert_response_format,
     convert_tools,
     extra_of,
+    json_object_format,
     refusal_of,
+    schema_in_prompt,
     usage_of,
 )
 from neosian._foundation.shared.constants import ErrorMessages, LLMDefaults
@@ -124,6 +126,8 @@ class OpenAICompatibleClient(BaseLLMClient):
         self._check_temperature(temperature)
         effective_effort = self._resolve_reasoning_effort(model, reasoning_effort)
 
+        if response_format and self._door.json_mode == "json_object":
+            messages = schema_in_prompt(messages, response_format)
         openai_messages = self._convert_messages(messages)
         openai_tools = self._convert_tools(tools) if tools else None
         openai_response_format: OpenAIResponseFormat | None = (
@@ -444,7 +448,9 @@ class OpenAICompatibleClient(BaseLLMClient):
     def _convert_messages(
         self, messages: list[Message]
     ) -> list[ChatCompletionMessageParam]:
-        return convert_messages(messages)
+        door = self._door
+        echo = door.reasoning_field if door.echo_reasoning else None
+        return convert_messages(messages, echo_field=echo)
 
     def _convert_tools(
         self, tools: list[ToolDefinition]
@@ -454,6 +460,8 @@ class OpenAICompatibleClient(BaseLLMClient):
     def _convert_response_format(
         self, response_format: ResponseFormat
     ) -> OpenAIResponseFormat:
+        if self._door.json_mode == "json_object":
+            return json_object_format()
         if not self._door.strict_schemas:
             response_format = replace(response_format, strict=False)
         return convert_response_format(response_format)

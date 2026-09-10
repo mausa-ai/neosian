@@ -31,6 +31,7 @@ from neosian._foundation.shared.exceptions import (
     ProviderError,
     UnsupportedParameterError,
 )
+from neosian._foundation.shared.prompt_assets import get_prompt
 from neosian._foundation.shared.types import ResponseFormat, ToolCallId, ToolName
 
 XAI = OpenAICompatible(
@@ -357,3 +358,100 @@ class TestStreamedToolCallFinish:
         (call,) = [call for chunk in chunks for call in chunk.tool_calls]
         assert call.name == "oracle" and call.arguments == {"q": "door"}
         assert chunks[-1].finish_reason == "stop"
+
+
+_ECHO = OpenAICompatible(
+    name="echo",
+    api_key_env="ECHO_KEY",
+    reasoning_field="reasoning_content",
+    echo_reasoning=True,
+)
+_OBJECT = OpenAICompatible(
+    name="plain", api_key_env="PLAIN_KEY", json_mode="json_object"
+)
+
+
+def _thought(*, tool_calls: bool) -> Message:
+    calls = (
+        [ToolCall(id=ToolCallId("c1"), name=ToolName("oracle"), arguments={})]
+        if tool_calls
+        else []
+    )
+    return Message(
+        role=Role.ASSISTANT, content="ok", reasoning="because", tool_calls=calls
+    )
+
+
+@pytest.mark.unit
+class TestDoorDialects:
+    """The two knobs of DESIGN §31.4, each a documented wire fact."""
+
+    @pytest.mark.parametrize("tool_calls", [False, True])
+    async def test_echo_reasoning_sends_the_field_back(self, tool_calls: bool) -> None:
+        client = _client(_ECHO)
+        create = _mock_complete(client, _response())
+        await client.complete([*_USER, _thought(tool_calls=tool_calls)], _grok())
+        sent = create.call_args.kwargs["messages"][1]
+        assert sent["reasoning_content"] == "because"
+        assert ("tool_calls" in sent) is tool_calls
+
+    async def test_echo_on_the_streamed_path_too(self) -> None:
+        client = _client(_ECHO)
+        create = _mock_stream(client, [_chunk("Hi")])
+        async for _ in client.stream([*_USER, _thought(tool_calls=False)], _grok()):
+            pass
+        assert create.call_args.kwargs["messages"][1]["reasoning_content"] == "because"
+
+    def test_a_turn_without_reasoning_carries_no_key(self) -> None:
+        (sent,) = convert_messages(
+            [Message(role=Role.ASSISTANT, content="ok")], echo_field="reasoning_content"
+        )
+        assert "reasoning_content" not in sent
+
+    async def test_no_echo_unless_the_door_says_so(self) -> None:
+        client = _client()  # xAI: a reasoning field, no echo
+        create = _mock_complete(client, _response())
+        await client.complete([*_USER, _thought(tool_calls=False)], _grok())
+        assert "reasoning_content" not in create.call_args.kwargs["messages"][1]
+
+    async def test_json_object_sends_the_plain_mode_and_the_schema_in_the_prompt(
+        self,
+    ) -> None:
+        client = _client(_OBJECT)
+        create = _mock_complete(client, _response())
+        history = [
+            Message(role=Role.SYSTEM, content="Be brief."),
+            Message(role=Role.USER, content="x?"),
+        ]
+        await client.complete(
+            history,
+            model=Model.GPT_5_6_LUNA,
+            response_format=ResponseFormat(schema=_Out),
+        )
+        assert create.call_args.kwargs["response_format"] == {"type": "json_object"}
+        sent = create.call_args.kwargs["messages"]
+        assert len(sent) == 2 and sent[0]["role"] == "system"
+        assert sent[0]["content"].startswith(get_prompt("tools.json_object"))
+        assert '"x"' in sent[0]["content"] and sent[0]["content"].endswith("Be brief.")
+        assert history[0].content == "Be brief."  # the caller's history untouched
+
+    async def test_json_object_inserts_a_system_message_when_there_is_none(
+        self,
+    ) -> None:
+        client = _client(_OBJECT)
+        create = _mock_complete(client, _response())
+        await client.complete(
+            _USER, model=Model.GPT_5_6_LUNA, response_format=ResponseFormat(schema=_Out)
+        )
+        sent = create.call_args.kwargs["messages"]
+        assert [m["role"] for m in sent] == ["system", "user"]
+        assert "json" in sent[0]["content"].lower()
+
+    async def test_json_schema_doors_are_unchanged(self) -> None:
+        client = _client()
+        create = _mock_complete(client, _response())
+        await client.complete(
+            _USER, model=Model.GPT_5_6_LUNA, response_format=ResponseFormat(schema=_Out)
+        )
+        assert create.call_args.kwargs["response_format"]["type"] == "json_schema"
+        assert [m["role"] for m in create.call_args.kwargs["messages"]] == ["user"]

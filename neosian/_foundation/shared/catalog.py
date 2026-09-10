@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Final
+from typing import Final, Literal
 
 from neosian._foundation.shared.exceptions import ConfigurationError
 
@@ -30,7 +30,11 @@ class OpenAICompatible:
     keeps the SDK's own endpoint (OpenAI's, or `OPENAI_BASE_URL`), which
     is how a fine-tuned OpenAI id the enum lacks gets registered. The
     dialect knobs default to OpenAI's behavior; a knob is earned by a
-    measured need.
+    measured need. `json_mode="json_object"` sends structured output as
+    the plain JSON mode with the schema in the system prompt (DeepSeek);
+    `echo_reasoning` sends `Message.reasoning` back under
+    `reasoning_field` on assistant turns — the documented 400 in tool
+    loops without it (DESIGN §31.4).
     """
 
     name: str
@@ -40,6 +44,8 @@ class OpenAICompatible:
     reasoning_effort: bool = True
     reasoning_field: str | None = None
     strict_schemas: bool = True
+    json_mode: Literal["json_schema", "json_object"] = "json_schema"
+    echo_reasoning: bool = False
 
     def __post_init__(self) -> None:
         if not _DOOR_NAME.match(self.name):
@@ -63,6 +69,17 @@ class OpenAICompatible:
             raise ConfigurationError(
                 f"door {self.name!r}: reasoning_field {self.reasoning_field!r} must "
                 "be a response field name such as 'reasoning_content'"
+            )
+        if self.json_mode not in ("json_schema", "json_object"):
+            raise ConfigurationError(
+                f"door {self.name!r}: json_mode {self.json_mode!r} must be "
+                "'json_schema' (the schema on the wire) or 'json_object' (the "
+                "schema in the prompt)"
+            )
+        if self.echo_reasoning and self.reasoning_field is None:
+            raise ConfigurationError(
+                f"door {self.name!r}: echo_reasoning needs a reasoning_field — "
+                "the field the echo is sent under"
             )
 
 

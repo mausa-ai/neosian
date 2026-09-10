@@ -49,6 +49,7 @@ _TOOL_KEYS: Final = (
     "skill_guide",
     "recall_turn",
     "recall_turn_any",
+    "json_object",
 )
 # Parameter prose by parameter name (NF §27.9): the builtins' `params=`.
 _TOOL_PARAM_KEYS: Final = (

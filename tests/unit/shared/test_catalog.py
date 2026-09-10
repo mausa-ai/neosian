@@ -18,7 +18,7 @@ from neosian import (
     register_model,
 )
 from neosian._foundation.llm.router import ProviderRouter
-from neosian._foundation.shared.catalog import GEMINI, XAI
+from neosian._foundation.shared.catalog import GEMINI, XAI, OpenAICompatible
 from neosian._foundation.shared.models import _MODEL_SPECS, _prices_fingerprint
 from neosian._foundation.shared.registry import provider_label, registered_models
 
@@ -73,3 +73,19 @@ def test_the_facade_aliases_the_enum() -> None:
 
     assert neosian.catalog.GROK_4_6 is Model.GROK_4_6
     assert neosian.catalog.GEMINI_3_7_FLASH is Model.GEMINI_3_7_FLASH
+
+
+@pytest.mark.unit
+def test_the_dialect_knobs_are_validated() -> None:
+    with pytest.raises(ConfigurationError, match="json_mode"):
+        OpenAICompatible(name="d", api_key_env="D_KEY", json_mode="yaml")  # type: ignore[arg-type]
+    with pytest.raises(ConfigurationError, match="reasoning_field"):
+        OpenAICompatible(name="d", api_key_env="D_KEY", echo_reasoning=True)
+    door = OpenAICompatible(
+        name="d",
+        api_key_env="D_KEY",
+        reasoning_field="reasoning_content",
+        echo_reasoning=True,
+        json_mode="json_object",
+    )
+    assert door.echo_reasoning and door.json_mode == "json_object"

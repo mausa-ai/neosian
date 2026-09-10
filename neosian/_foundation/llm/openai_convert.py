@@ -8,6 +8,7 @@ adapters: converters live per adapter until a real seam appears (the
 anthropic allowlist reason, applied in reverse).
 """
 
+import json
 from typing import Any, cast
 
 from openai.types import CompletionUsage
@@ -31,6 +32,7 @@ from neosian._foundation.llm.base import (
 )
 from neosian._foundation.shared.constants import ErrorMessages
 from neosian._foundation.shared.exceptions import UnsupportedContentError
+from neosian._foundation.shared.prompt_assets import get_prompt
 from neosian._foundation.shared.schema import strict_schema
 from neosian._foundation.shared.serialization import safe_json_dumps
 from neosian._foundation.shared.types import ResponseFormat
@@ -75,8 +77,14 @@ def _tool_call_param(tc: ToolCall) -> ChatCompletionMessageToolCallParam:
     return cast(ChatCompletionMessageToolCallParam, param)
 
 
-def convert_messages(messages: list[Message]) -> list[ChatCompletionMessageParam]:
+def convert_messages(
+    messages: list[Message], *, echo_field: str | None = None
+) -> list[ChatCompletionMessageParam]:
     """Convert internal messages to OpenAI format.
+
+    `echo_field` names the door's reasoning field to send `Message.reasoning`
+    back under on assistant turns (`OpenAICompatible.echo_reasoning`,
+    DESIGN §31.4) — DeepSeek's documented 400 in a tool loop without it.
 
     Raises:
         UnsupportedContentError: On block-list content — neosian's
@@ -97,15 +105,17 @@ def convert_messages(messages: list[Message]) -> list[ChatCompletionMessageParam
         elif msg.role == Role.USER:
             result.append({"role": "user", "content": msg.content or ""})
         elif msg.role == Role.ASSISTANT:
+            assistant_msg: ChatCompletionAssistantMessageParam = {
+                "role": "assistant",
+                "content": msg.content,
+            }
             if msg.tool_calls:
-                assistant_msg: ChatCompletionAssistantMessageParam = {
-                    "role": "assistant",
-                    "content": msg.content,
-                    "tool_calls": [_tool_call_param(tc) for tc in msg.tool_calls],
-                }
-                result.append(assistant_msg)
-            else:
-                result.append({"role": "assistant", "content": msg.content})
+                assistant_msg["tool_calls"] = [
+                    _tool_call_param(tc) for tc in msg.tool_calls
+                ]
+            if echo_field is not None and msg.reasoning:
+                cast(dict[str, Any], assistant_msg)[echo_field] = msg.reasoning
+            result.append(assistant_msg)
         elif msg.role == Role.TOOL:
             result.append(
                 {
@@ -167,3 +177,30 @@ def convert_response_format(response_format: ResponseFormat) -> OpenAIResponseFo
             },
         },
     )
+
+
+def json_object_format() -> OpenAIResponseFormat:
+    """The plain JSON mode — a `json_object` door's response_format."""
+    return {"type": "json_object"}
+
+
+def schema_in_prompt(
+    messages: list[Message], response_format: ResponseFormat
+) -> list[Message]:
+    """The schema a `json_object` door cannot take on the wire, prepended to
+    the system prompt (one is inserted when the history has none); the
+    instruction is the shipped `tools.json_object` asset. A new list — the
+    caller's history is never rewritten.
+    """
+    from neosian._foundation.shared.schema import get_json_schema
+
+    block = (
+        f"{get_prompt('tools.json_object')}\n"
+        f"{json.dumps(get_json_schema(response_format.schema))}"
+    )
+    if messages and messages[0].role == Role.SYSTEM:
+        first = messages[0]
+        content = first.content if isinstance(first.content, str) else ""
+        system = Message(role=Role.SYSTEM, content=f"{block}\n\n{content}".rstrip())
+        return [system, *messages[1:]]
+    return [Message(role=Role.SYSTEM, content=block), *messages]
