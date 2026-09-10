@@ -105,9 +105,12 @@ def _assert_baseline(report: EvalReport) -> None:
 
 
 def _print_store(root: Path) -> None:
+    # The body only: FileStore's frontmatter block would eat the clip.
     for file in sorted(root.rglob("*.md")):
         text = file.read_text(encoding="utf-8")
-        print(f"  {file.relative_to(root)}: {clip(text)!r}")
+        if text.startswith("---\n"):
+            text = text.partition("\n---\n")[2]
+        print(f"  {file.relative_to(root)}: {clip(text.strip())!r}")
 
 
 class TestMemoryBaselines:

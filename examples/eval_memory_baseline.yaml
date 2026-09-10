@@ -301,16 +301,15 @@ scenarios:
                   content: "Deploys from the main branch only."
           - content: "Noted."
         # regex: models decorate and reorder ("the `main` branch",
-        # "Deployment branch: main" — both observed), and a live
-        # /project/deployment_branch whose text never says "branch" was
-        # the recurring red (dispatches #5, #13) — pin the fact: "main"
-        # near a deploy/branch/release stem, either order, never the
-        # phrasing.
+        # "Deployment branch: main" — both observed), and the recurring
+        # red (dispatches #5, #13, the NZ settling run) was a document
+        # named deployment_branch whose whole body is `main` — the path
+        # the key, the body the value. Naming is the model's, so the pin
+        # is the value in the project region, never the phrasing.
         expect_store:
           documents:
             - path_prefix: /project
-              content:
-                regex: "(?i)(deploy|branch|release)[\\s\\S]{0,40}?\\bmain\\b|\\bmain\\b[\\s\\S]{0,40}?(deploy|branch|release)"
+              content: {regex: "(?i)\\bmain\\b"}
       - name: recall
         turns:
           - user: "What is my cat's name?"

@@ -129,22 +129,25 @@ fails when any gated file changes without this section being updated —
   vocabulary as memory/reflection; first measured cells arrive with the
   maintenance scenario in this same batch.)*
 - `examples/eval_memory_baseline.yaml` — sha256
-  `faca0af452178c19f8f2e9d9ab539f72c03cb9bc5c9dfc95a3006fec58d6942f`
+  `70f8fa0ae776e22dbc6e69699ae080f6aefbb382a1f9cc71128a2482160831a7`
   *(NZ, 2026-09-10 — the recorded reds settled: two pins of the NV
   wordform class widened, no scenario, turn or count moved.
   `long-horizon-recall`'s `distractor-two` pinned "main" within 24
   one-line characters of "branch"; every reachable red on it (dispatches
   #5, #13, the NX pre-flight run) showed a live `/project/deployment_branch`
-  the pin refused — the path carried the word the text lacked — so the
-  pin is now "main" near a deploy/branch/release stem, either order,
-  across a line break. `write-discipline`'s Postgres pin dropped its
-  left word boundary and one-line 24-char window (`v16`, `Postgres16`,
-  a version on the next bullet all count; a live
-  `/project/postgres.txt` refused on dispatch #11). The `60 requests`
-  literal stands: its reds were the fact unfiled, never a phrasing. The
-  failure line now carries each live document's opening bytes, so the
-  next red is read from the log, not guessed at. The settling dispatch
-  is the dated block under Results. Prior: `d3f08d55…`.)*
+  the pin refused, and the settling dispatch — the first to carry the
+  bytes — read its whole body: `main`. The path is the key and the body
+  the value, so the pin is the value in the project region, `\bmain\b`,
+  never the phrasing (the session's first widening, a stem near the
+  value, was measured by that dispatch at `faca0af4…` and still refused
+  the one-word body). `write-discipline`'s Postgres pin dropped its left
+  word boundary and one-line 24-char window (`v16`, `Postgres16`, a
+  version on the next bullet all count; a live `/project/postgres.txt`
+  refused on dispatch #11). The `60 requests` literal stands: its reds
+  were the fact unfiled, never a phrasing. The failure line now carries
+  each live document's opening bytes and the external suite prints a red
+  cell's store, so a red is read from the log, not guessed at. The
+  final pin's re-run rides the next dispatch. Prior: `d3f08d55…`.)*
   *(NC1, 2026-09-04 — the transport axis gains `mcp`: the memory server
   consumed through `McpServer` over the official MCP client (DESIGN
   §25), the fourth column beside function, cli and http. No scenario,
@@ -236,12 +239,13 @@ model's**, not the harness's, and named in the v1.0.0 declaration's
 evidence. Each stays measured every dispatch; none is tuned around
 (per-model prompt tuning is post-v1). Each entry names its evidence.
 
-- **gpt-5.1 files the project fact elsewhere** (`write-discipline`,
-  `record` session). Every reachable red since the calibrated pack —
-  dispatches #5, #11, #13 and the NX pre-flight run 33984972237 —
-  reads `expected 1 document(s) under /project, got 0 (live: none)`:
-  the Postgres fact never reaches the project mount, while the same
-  model files it correctly on another column of the same run. The
+- **The project fact filed elsewhere** (`write-discipline`, `record`
+  session; gpt-5.1 on every board since the calibrated pack — dispatches
+  #5, #11, #13, the NX pre-flight run 33984972237, #14 — and gpt-oss-120b
+  on #14). Every red reads `expected 1 document(s) under /project, got
+  0 (live: none)`, and #14's store dump shows one document, under
+  `/user`: the Postgres fact never reaches the project mount, while the
+  same model files it correctly on another column of the same run. The
   record's earlier "wordform regex" wording was read off the regex
   line; the bytes say unfiled. A mount-routing miss, stochastic per
   column — exactly the discipline the scenario measures.
@@ -257,6 +261,77 @@ evidence. Each stays measured every dispatch; none is tuned around
   ruled at NK (the store truth stays the pin).
 
 ## Results
+
+### 2026-09-10 — The recorded reds settled from the bytes (NZ, dispatch #14)
+
+Measured by one dispatched run —
+run 34457119814
+(on `phase/nz-reds` at a7811ad: the memory prompt unchanged at
+`0ae69cc2…`, the pack at `faca0af4…` — the session's first widening of
+the two pins, see Fingerprints; the failure line and the external suite
+now carrying the bytes). Every cell named from the CI log. The NX
+pre-flight run 33984972237 (2026-09-05, at the publication) went
+unrecorded here; its reds were the classes below and its logs are part
+of the evidence.
+
+| Provider | Model | function | cli | http | mcp | native | door probes | link |
+|---|---|---|---|---|---|---|---|---|
+| Anthropic | claude-sonnet-5 | 9/10 | 10/10 | 10/10 | 10/10 | 10/10 | — | re-typed |
+| OpenAI | gpt-5.1-2025-11-13 | 9/10 | 9/10 | 9/10 | 9/10 | n/a | — | handle |
+| Cerebras | gpt-oss-120b | 9/10 | 7/10 | 9/10 | 8/10 | n/a | — | re-typed |
+| xAI | grok-4.6 | *403* | *403* | *403* | *403* | n/a | *403* | *403* |
+| Gemini | gemini-3.7-flash | 9/10 | 10/10 | 9/10 | 9/10 | n/a | 6/6 | handle |
+| Moonshot (candidate) | kimi-k3 | *timed out* | *timed out* | *timed out* | *timed out* | n/a | 6/6 | handle |
+
+Findings, recorded as found — the first board whose reds are read from
+the bytes:
+
+- **The three cells NZ works last, settled.** OpenAI's
+  `write-discipline` (cli): the store dump holds one document,
+  `/user/preferences`, and nothing under `/project` — the model's, the
+  Known limits entry above; function, http and mcp green this run.
+  OpenAI's `long-horizon-recall`: green on all four columns — the
+  distractor class is stochastic, recorded as the model's on its
+  history. Cerebras's `long-horizon-recall` `distractor-two` (mcp):
+  `(live: … /project/deployment_branch: 'main')` — the body is the one
+  word, the path the key: the harness's, and the first widening (a
+  deploy/branch/release stem near the value) still refused it, so the
+  pin became the value alone (`70f8fa0a…`, Fingerprints), its re-run
+  owed to the next dispatch.
+- **gpt-oss files the project fact elsewhere too:** `write-discipline`
+  on cli, the store holding `/user/drink_preference` only — the same
+  class as gpt-5.1's, now on two rows. Its cli `long-horizon-recall`
+  fell to the first-tool pin (`list_skills` before the memory write on
+  `distractor-two`; both distractor documents live), the #11
+  collateral class.
+- **`skills` without frontmatter is the largest class on the board:**
+  OpenAI on function/http/mcp, Cerebras on all four, Gemini on
+  function/mcp (its http cell wrote on load instead — `[created,
+  modified]` where loading must not write), Sonnet's axis run on
+  function (it asked a clarifying question before saving — the turn's
+  response pin, the store untouched). The NK ruling stands.
+- **Sonnet 39/40 + the axis 19/20:** function `correct-wrong-memory` —
+  the disavowed note survived as a second version of `/project/notes.md`
+  (the softened edit, dispatch #12's reason); native 10/10.
+- **xAI did not measure:** every call 403 — the team's credits or
+  monthly limit spent, the state the NX pre-flight run hit; an account
+  act, not a cell.
+- **Cerebras stopped serving `gemma-4-31b`:** twelve `model_not_found`
+  404s on the row's catalog probe and the two adapter tests that name
+  it; the same probe passed on both 2026-09-05 runs. The shipped enum
+  row is dead on its serving stack — an NW membership fact for the
+  user's ruling (removal is a public-surface change), recorded not
+  decided.
+- **Kimi's row did not measure, a third time:** door probes 6/6 and
+  the link by handle, then the 40-cell baseline crossed the 3600 s
+  per-test timeout at the account's paced tier — and this time the
+  timeout only dumped stacks: the paced async loop was never
+  interrupted, the runner idled to the job's 180-minute cap and GitHub
+  cancelled it (no API spend in those two hours, one runner-hour
+  each). Two facts for the user's ruling: the candidate's membership,
+  timeout or pack size (#12, #13), and a per-test timeout that cannot
+  end an async test — the lane's own ceiling is the harness's to fix,
+  recorded not decided.
 
 ### 2026-09-05 — The freeze list's schemas on every row (NF, dispatch #13)
 
