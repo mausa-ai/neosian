@@ -128,6 +128,25 @@ def version() -> None:
 
 
 @app.command(
+    name="status",
+    context_settings={
+        "allow_extra_args": True,
+        "ignore_unknown_options": True,
+        "help_option_names": [],
+    },
+)
+def status(ctx: typer.Context) -> None:
+    """Is this machine set up? The home, the keys, the clients, the shape.
+
+    A thin pass-through to the one grammar (`neosian status --help`);
+    exit 0 whenever it ran — findings are data, `--json` one object.
+    """
+    from neosian.status import main as status_main
+
+    raise typer.Exit(status_main(list(ctx.args)))
+
+
+@app.command(
     name="configure",
     context_settings={
         "allow_extra_args": True,

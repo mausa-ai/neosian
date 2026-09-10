@@ -515,3 +515,24 @@ class TestRecord:
             :2
         ] == ["-m", "neosian.mcp"]
         assert "codex mcp add neosian-memory --" in result.stderr
+
+
+class TestConsole:
+    """NY: the operator console through the literal binary."""
+
+    def test_status_json_on_a_fresh_home(self, tmp_path: Path) -> None:
+        env = _env(tmp_path)
+        project = tmp_path / "fresh proj"
+        project.mkdir()
+        result = _run(["status", "--json"], cwd=project, env=env)
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.count("\n") == 1 and result.stderr == ""
+        payload = json.loads(result.stdout)
+        assert payload["home"] == str(tmp_path / "home")
+        assert payload["home_exists"] is False
+        assert payload["scopes"]["/project"].endswith("/proj:fresh-proj")
+        assert [c["installed"] for c in payload["clients"]] == [False] * 3
+        assert payload["update_mode"] == "off"
+        assert not (tmp_path / "home").exists()  # status creates nothing
+        text = _run(["status"], cwd=project, env=env)
+        assert text.returncode == 0 and text.stdout.startswith("neosian ")
