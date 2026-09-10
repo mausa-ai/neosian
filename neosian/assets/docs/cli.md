@@ -43,8 +43,9 @@ EOF
 |---|---|
 | `--root DIR` | FileStore root (created on first write); default: the home, `~/.neosian` or `$NEOSIAN_HOME` |
 | `--url URL` | the state process instead of a root; its token in `NEOSIAN_CLIENT_TOKEN` |
-| `--scope SCOPE` | single read-write mount of SCOPE at `/memories` (the sugar) |
+| `--scope SCOPE` | single read-write mount of SCOPE at `/memories` (the sugar); `NEOSIAN_SCOPE` is its environment twin |
 | `--mount scope=...,path=...` | explicit mount; repeatable; append `,ro` (read-only) or `,eo` (edit-only) |
+| *(neither)* | this directory's project layout — `user:<login>` at `/user`, `user:<login>/proj:<slug>` at `/project`, the pair the installers render; a directory with no name refuses at exit 2 |
 | `--actor NAME` | who writes, `<kind>:<id>` (default `cli:local`; `cli:<host>` names the agent driving the shell) |
 | `--schema NAME` | Postgres schema (Postgres only) |
 
@@ -125,8 +126,9 @@ fields (`command`, `path`, `version`, `previous_path`).
 
 ## The ledger — `neosian audit`
 
-`neosian audit --scope SCOPE [--conversation ID] [--actor A] [--since T]
-[--limit N] [--json]` answers "what was done, by whom, when" for a scope,
+`neosian audit [--scope SCOPE] [--conversation ID] [--actor A] [--since T]
+[--limit N] [--json]` answers "what was done, by whom, when" for a scope
+(default: `NEOSIAN_SCOPE`, else this directory's project scope),
 newest first: every memory version row (deleted documents included),
 every redaction, and one conversation's turns when named. It takes the
 store selection above (`--root`, `--url`, or the DSN) — `--scope` is a

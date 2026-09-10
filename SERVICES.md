@@ -103,6 +103,16 @@ home is `~/.neosian`. An explicit flag always wins; the unit tier points
 it at a temporary directory for every test, so no keyless run touches
 the real one.
 
+## The scope — `NEOSIAN_SCOPE`
+
+`NEOSIAN_SCOPE` is `--scope`'s environment twin (DESIGN §30): read by
+the same argv entry points, it names the single read-write mount at
+`/memories` when no flag does (`audit` reads it as the raw scope). Unset,
+the shell verbs resolve the working directory's project layout — the
+`user:<login>` + `user:<login>/proj:<slug>` pair the installers render —
+and a directory with no derived name refuses at exit 2. An explicit
+`--scope` or `--mount` always wins.
+
 ## The MCP server — a DSN, not an API key
 
 `NEOSIAN_POSTGRES_DSN` (renamed from `NEOSIAN_MCP_POSTGRES_DSN` at NA,

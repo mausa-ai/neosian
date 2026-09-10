@@ -280,7 +280,6 @@ class TestGrammarTier:
     @pytest.mark.parametrize(
         "argv",
         [
-            ["--root", "never"],  # no scope
             ["--root", "never", "--mount", "scope=user:me,path=memories,ro"],
             ["--root", "never", "--scope", "user:me", "--agent", "Claude Code"],
             ["--root", "never", "--scope", "nobody"],

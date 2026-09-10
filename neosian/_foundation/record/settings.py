@@ -91,10 +91,10 @@ def resolve_record_settings(
     layout: Path | None = None,
 ) -> RecordSettings:
     """Resolve the flags against `env`; construct nothing (exit 2 via
-    `parser.error` on a shape miss). `layout` is the installer's derived
-    mount default (`resolve_mounts`)."""
+    `parser.error` on a shape miss). `layout` is the directory whose
+    project layout is the default mount set (`resolve_mounts`)."""
     selection = resolve_store_selection(parser, args, env)
-    mounts = resolve_mounts(parser, args, layout=layout)
+    mounts = resolve_mounts(parser, args, env, layout=layout)
     mount = sessions_mount(mounts)
     if mount is None:
         parser.error("the sessions document needs a read-write mount (no ,ro or ,eo)")

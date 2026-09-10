@@ -359,13 +359,23 @@ class TestUpgrade:
         assert hooks.returncode == 0, hooks.stderr
         assert "/proj:demo-proj,path=project" in hooks.stdout
         assert str(tmp_path / "home" / "spool") in hooks.stdout
-        # The shell itself keeps the scope the caller's: the refusal shows
-        # this directory's spelling instead of deciding it.
+        # NY (DESIGN §30): the shell verbs default to the same layout — no
+        # flags inside a project reads the project's memory on the home.
         bare = _run(["memory", "view", "/"], cwd=project, env=env)
-        assert bare.returncode == 2
-        assert "this directory's layout" in bare.stderr
-        assert "/proj:demo-proj,path=project" in bare.stderr
-        assert not (tmp_path / "home").exists()  # nothing built on the tier
+        assert bare.returncode == 0, bare.stderr
+        assert "## /user" in bare.stdout and "## /project" in bare.stdout
+        ledger = _run(["audit", "--json"], cwd=project, env=env)
+        assert ledger.returncode == 0, ledger.stderr
+        assert json.loads(ledger.stdout)["scope"].endswith("/proj:demo-proj")
+        # NEOSIAN_SCOPE is --scope's environment twin; a nameless directory
+        # (nothing to derive a project from) still refuses at exit 2.
+        scoped = _run(
+            ["memory", "view", "/"], cwd=project, env={**env, "NEOSIAN_SCOPE": "user:t"}
+        )
+        assert scoped.returncode == 0 and "/memories" in scoped.stdout
+        nameless = _run(["memory", "view", "/"], cwd=Path("/"), env=env)
+        assert nameless.returncode == 2
+        assert "--scope" in nameless.stderr
 
     def test_install_refuses_a_missing_client_dir(self, tmp_path: Path) -> None:
         env = _env(tmp_path)  # empty fake HOME — Cursor is "not installed"

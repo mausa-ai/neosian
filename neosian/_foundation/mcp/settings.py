@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Mapping, Sequence
+from pathlib import Path
 
 from neosian._foundation.mcp.server import DEFAULT_ACTOR
 from neosian._foundation.memory.settings import (
@@ -53,4 +54,4 @@ def parse_args(
     )
     add_store_arguments(parser, default_actor=DEFAULT_ACTOR)
     args = parser.parse_args(list(argv))
-    return resolve_store_settings(parser, args, env)
+    return resolve_store_settings(parser, args, env, layout=Path.cwd())

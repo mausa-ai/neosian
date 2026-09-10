@@ -10,6 +10,7 @@ from neosian._foundation.mcp.settings import (
     parse_args,
 )
 from neosian._foundation.memory.home import HOME_ENV
+from neosian._foundation.memory.settings import SCOPE_ENV
 from neosian._foundation.shared.exceptions import (
     MemoryPathInvalidError,
     MemoryScopeInvalidError,
@@ -110,7 +111,33 @@ class TestMounts:
             )
         assert excinfo.value.code == 2
 
-    def test_no_mounts_exits_2(self) -> None:
+    def test_no_mounts_is_this_directorys_layout(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """NY (DESIGN §30): the default is the project layout the installers
+        render — the same two mounts, spelled from the working directory."""
+        project = tmp_path / "demo proj"
+        project.mkdir()
+        monkeypatch.chdir(project)
+        settings = parse_args(["--root", "m"], _ENV)
+        assert [m.mount_path for m in settings.mounts] == ["user", "project"]
+        assert settings.mounts[1].scope.endswith("/proj:demo-proj")
+
+    def test_the_scope_env_is_the_sugar(self) -> None:
+        settings = parse_args(["--root", "m"], {SCOPE_ENV: "user:env"})
+        (mount,) = settings.mounts
+        assert (mount.scope, mount.mount_path) == ("user:env", "memories")
+
+    def test_the_flags_win_over_the_scope_env(self) -> None:
+        env = {SCOPE_ENV: "user:env"}
+        assert parse_args(["--scope", "user:me"], env).mounts[0].scope == "user:me"
+        mounted = parse_args(["--mount", "scope=user:m,path=p"], env)
+        assert [m.scope for m in mounted.mounts] == ["user:m"]
+
+    def test_a_nameless_directory_still_exits_2(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.chdir(Path("/"))
         with pytest.raises(SystemExit) as excinfo:
             parse_args(["--root", "m"], _ENV)
         assert excinfo.value.code == 2
