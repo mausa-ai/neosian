@@ -55,6 +55,7 @@ from neosian._foundation.llm.base import Message, Role
 from neosian._foundation.memory.actor import parse_actor
 from neosian._foundation.memory.index import memory_system_section
 from neosian._foundation.shared.context_policy import ContextPolicy
+from neosian._foundation.shared.registry import resolve_model
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Sequence
@@ -368,7 +369,7 @@ class Conversation:
             memory_config=self._memory_config,
             turns=self._reflect_pending,
             acquire=self._session_for_run()._get_or_create_client,
-            model=self._reflection.model or self._base_config.model,
+            model=resolve_model(self._reflection.model or self._base_config.model),
             # Deliberately bare — no turn-ref: a boundary write belongs to
             # the whole session, not a turn (ledger #86; NP kept it).
             actor=self._actor,
@@ -387,7 +388,7 @@ class Conversation:
             turns=self._turns,
             projections=self._projections,
             config=self._compaction,
-            model=self._base_config.model,
+            model=resolve_model(self._base_config.model),
             acquire=self._session_for_run()._get_or_create_client,
         )
         if result.entries:
@@ -413,7 +414,7 @@ class Conversation:
         if not should_compact(
             probe,
             policy=policy,
-            model=self._base_config.model,
+            model=resolve_model(self._base_config.model),
             fraction=self._compaction.trigger_fraction,
         ):
             return None

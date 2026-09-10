@@ -55,6 +55,8 @@ async def test_model_answers_minimal_completion(
         pytest.skip("FAKE models are keyless registry members (DESIGN §2)")
     if model in _UNREACHABLE:
         pytest.skip(_UNREACHABLE[model])
+    if model.door is not None:
+        pytest.skip("a door row is probed by its lane, on the lane's clock (§31)")
     fixture_name = _PROVIDER_FIXTURES[model.provider]
     request.getfixturevalue(fixture_name)  # skips when the env var is unset
     await _answers(ProviderRouter().create_client(model.provider), model)

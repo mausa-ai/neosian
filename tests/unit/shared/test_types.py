@@ -142,13 +142,10 @@ class TestAgentConfigValidation:
         )
         assert config.model == Model.CEREBRAS_GPT_OSS_120B
 
-    def test_invalid_model_string_raises_error(self) -> None:
-        """AgentConfig should raise InvalidModelError for string models."""
+    def test_unknown_model_string_raises_error(self) -> None:
+        """A wire id neosian does not know is refused at construction (§31)."""
         with pytest.raises(InvalidModelError) as exc_info:
-            AgentConfig(
-                system_prompt="You are helpful.",
-                model="gpt-4o",  # type: ignore[arg-type]
-            )
+            AgentConfig(system_prompt="You are helpful.", model="gpt-4o")
 
         assert exc_info.value.model_value == "gpt-4o"
         assert "str" in str(exc_info.value)
@@ -168,10 +165,7 @@ class TestAgentConfigValidation:
     def test_error_message_lists_all_models(self) -> None:
         """InvalidModelError should list all supported models."""
         with pytest.raises(InvalidModelError) as exc_info:
-            AgentConfig(
-                system_prompt="You are helpful.",
-                model="invalid",  # type: ignore[arg-type]
-            )
+            AgentConfig(system_prompt="You are helpful.", model="invalid")
 
         error_msg = str(exc_info.value)
         # Check that all models are listed

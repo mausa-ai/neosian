@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Final
 
+from neosian._foundation.shared.catalog import GEMINI, XAI, OpenAICompatible
+
 # =============================================================================
 # Provider and Model Enums
 # =============================================================================
@@ -95,6 +97,10 @@ class ModelSpec:
     # wrong: Haiku 4.5 is Anthropic and outside the support set (N4).
     supports_compaction_blocks: bool = False
     pricing: ModelPricing | None = None
+    # The door a compat row is served through (DESIGN §31): set on the
+    # shipped door rows and on every registered model, None on a provider
+    # adapter's row. Not part of the rate card the fingerprint seals.
+    door: OpenAICompatible | None = None
 
 
 # Model specs registry (populated after Model enum is defined)
@@ -139,6 +145,11 @@ class Model(str, Enum):
 
     # Cerebras - Preview
     CEREBRAS_GEMMA_4_31B = "gemma-4-31b"
+
+    # The shipped door rows (DESIGN §19.5, §31): first-party, no client of
+    # their own, served through the doors in catalog.py.
+    GROK_4_6 = "grok-4.6"
+    GEMINI_3_7_FLASH = "gemini-3.7-flash"
 
     # Fake (deterministic, keyless — public surface in neosian.fake)
     FAKE = "fake"
@@ -194,6 +205,11 @@ class Model(str, Enum):
     def pricing(self) -> "ModelPricing | None":
         """Get list pricing for this model (None if not verified)."""
         return _MODEL_SPECS[self.value].pricing
+
+    @property
+    def door(self) -> OpenAICompatible | None:
+        """The door this model is served through, if it is a compat row."""
+        return _MODEL_SPECS[self.value].door
 
 
 # OpenAI
@@ -359,34 +375,34 @@ _MODEL_SPECS[Model.FAKE_REASONING.value] = ModelSpec(
     ),
 )
 
-# The shipped OpenAI-compatible rows (DESIGN §19.5): priced here so the
-# fingerprint seals them; their doors and registrations live in catalog.py.
-# Where a card is tiered, the standard ≤200k tier is the sealed number.
-CATALOG_SPECS: dict[str, ModelSpec] = {
-    "grok-4.6": ModelSpec(
-        provider=Provider.OPENAI_COMPATIBLE,
-        context_window=500_000,
-        max_output_tokens=32_768,  # unpublished — a conservative ceiling
-        supports_reasoning=True,
-        pricing=ModelPricing(
-            input_per_mtok=2_000_000,
-            output_per_mtok=6_000_000,
-            cache_read_per_mtok=500_000,
-        ),
+# The shipped door rows (DESIGN §19.5, §31): priced here so the fingerprint
+# seals them. Where a card is tiered, the standard ≤200k tier is the sealed
+# number.
+_MODEL_SPECS[Model.GROK_4_6.value] = ModelSpec(
+    provider=Provider.OPENAI_COMPATIBLE,
+    context_window=500_000,
+    max_output_tokens=32_768,  # unpublished — a conservative ceiling
+    supports_reasoning=True,
+    pricing=ModelPricing(
+        input_per_mtok=2_000_000,
+        output_per_mtok=6_000_000,
+        cache_read_per_mtok=500_000,
     ),
-    "gemini-3.7-flash": ModelSpec(
-        provider=Provider.OPENAI_COMPATIBLE,
-        context_window=1_048_576,
-        max_output_tokens=65_536,
-        supports_reasoning=True,
-        # The introductory card, stated through 2026-12-31 (doubles after).
-        pricing=ModelPricing(
-            input_per_mtok=750_000,
-            output_per_mtok=3_750_000,
-            cache_read_per_mtok=75_000,
-        ),
+    door=XAI,
+)
+_MODEL_SPECS[Model.GEMINI_3_7_FLASH.value] = ModelSpec(
+    provider=Provider.OPENAI_COMPATIBLE,
+    context_window=1_048_576,
+    max_output_tokens=65_536,
+    supports_reasoning=True,
+    # The introductory card, stated through 2026-12-31 (doubles after).
+    pricing=ModelPricing(
+        input_per_mtok=750_000,
+        output_per_mtok=3_750_000,
+        cache_read_per_mtok=75_000,
     ),
-}
+    door=GEMINI,
+)
 
 # Default models per provider
 DEFAULT_MODELS: dict[Provider, Model] = {
@@ -400,16 +416,16 @@ DEFAULT_MODELS: dict[Provider, Model] = {
 def _prices_fingerprint() -> str:
     """Canonical sha256 of the shipped rate card + its as-of date.
 
-    The card is the enum's table plus the catalog rows (§19.5).
+    The card is the enum's one table — every shipped row, door rows
+    included (§31).
 
     A unit test recomputes this against PRICES_FINGERPRINT, so any price
     edit fails CI until the fingerprint (and, with it, PRICES_AS_OF) is
     bumped in the same commit — a gate, not a promise.
     """
-    table = _MODEL_SPECS | CATALOG_SPECS
     lines = [f"as_of:{PRICES_AS_OF}"]
-    for model_id in sorted(table):
-        spec = table[model_id]
+    for model_id in sorted(_MODEL_SPECS):
+        spec = _MODEL_SPECS[model_id]
         # Fake-model rates are test fixtures, not provider prices.
         if spec.pricing is None or spec.provider is Provider.FAKE:
             continue

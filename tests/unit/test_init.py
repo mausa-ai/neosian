@@ -171,6 +171,7 @@ def test_all_list_matches_exports() -> None:
         "StopReason",
         "Usage",
         "format_micro_usd",
+        "lookup_model",
         "register_model",
         "normalize_stop_reason",
         # The client seam (DESIGN §2)

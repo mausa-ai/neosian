@@ -1,19 +1,70 @@
-"""The shipped OpenAI-compatible rows (DESIGN §19.5).
+"""The doors (DESIGN §19.2, §31).
 
-First-party models without a client of their own: a door plus a spec
-from `models.CATALOG_SPECS`, where the fingerprint seals the price. Each
-registers once at `import neosian`, so `lookup_model`, the picker, the
-eval axis and the memory CLI reach it like a user's registration. A row
-is earned by NW's gate — green over dispatched runs of the shipped pack
+An `OpenAICompatible` door names where an OpenAI-compatible endpoint
+lives, which environment variable signs requests to it, and the dialect
+quirks its wire has. The two doors neosian ships live here beside the
+class; the rows on them are `Model` members whose spec carries the door
+(`models.py`), sealed by the fingerprint like every shipped row. A row is
+earned by NW's gate — green over dispatched runs of the shipped pack
 (§19.7, ledger #124) — and a red one exits whole.
 """
 
-from neosian._foundation.shared.models import CATALOG_SPECS
-from neosian._foundation.shared.registry import (
-    OpenAICompatible,
-    RegisteredModel,
-    _register,
-)
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+from typing import Final
+
+from neosian._foundation.shared.exceptions import ConfigurationError
+
+_DOOR_NAME: Final = re.compile(r"\A[a-z][a-z0-9_-]{0,63}\Z")
+_ENV_NAME: Final = re.compile(r"\A[A-Z][A-Z0-9_]*\Z")
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class OpenAICompatible:
+    """An OpenAI-compatible endpoint and the dialect its wire speaks.
+
+    `name` is the provider label wherever one is rendered for a model on
+    this door — errors, the ready frame, the picker. `base_url=None`
+    keeps the SDK's own endpoint (OpenAI's, or `OPENAI_BASE_URL`), which
+    is how a fine-tuned OpenAI id the enum lacks gets registered. The
+    dialect knobs default to OpenAI's behavior; a knob is earned by a
+    measured need.
+    """
+
+    name: str
+    api_key_env: str
+    base_url: str | None = None
+    temperature: bool = False
+    reasoning_effort: bool = True
+    reasoning_field: str | None = None
+    strict_schemas: bool = True
+
+    def __post_init__(self) -> None:
+        if not _DOOR_NAME.match(self.name):
+            raise ConfigurationError(
+                f"door name {self.name!r}: use lowercase letters, digits, '-' or "
+                "'_', starting with a letter (at most 64 characters)"
+            )
+        if not _ENV_NAME.match(self.api_key_env):
+            raise ConfigurationError(
+                f"door {self.name!r}: api_key_env {self.api_key_env!r} must be an "
+                "environment variable name (uppercase letters, digits, '_')"
+            )
+        if self.base_url is not None and not self.base_url.startswith(
+            ("http://", "https://")
+        ):
+            raise ConfigurationError(
+                f"door {self.name!r}: base_url {self.base_url!r} must start with "
+                "http:// or https://, or be None for the SDK's own endpoint"
+            )
+        if self.reasoning_field is not None and not self.reasoning_field.isidentifier():
+            raise ConfigurationError(
+                f"door {self.name!r}: reasoning_field {self.reasoning_field!r} must "
+                "be a response field name such as 'reasoning_content'"
+            )
+
 
 XAI = OpenAICompatible(
     name="xai",
@@ -31,13 +82,3 @@ GEMINI = OpenAICompatible(
     base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
     temperature=True,
 )
-
-
-def _row(value: str, door: OpenAICompatible) -> RegisteredModel:
-    return _register(RegisteredModel(value, CATALOG_SPECS[value], door))
-
-
-GROK_4_6 = _row("grok-4.6", XAI)
-GEMINI_3_7_FLASH = _row("gemini-3.7-flash", GEMINI)
-
-CATALOG: tuple[RegisteredModel, ...] = (GROK_4_6, GEMINI_3_7_FLASH)

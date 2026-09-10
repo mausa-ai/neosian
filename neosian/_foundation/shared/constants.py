@@ -39,7 +39,8 @@ class ErrorMessages:
 
     # Configuration validation errors
     INVALID_MODEL: str = (
-        "Invalid model: expected Model enum, got {model_type} with value '{model_value}'. "
+        "Invalid model: expected a Model member, a registered model or a known "
+        "wire id, got {model_type} with value '{model_value}'. "
         "Supported models: {supported_models}"
     )
 

@@ -8,8 +8,22 @@ phase close names the version.
 
 ## [Unreleased]
 
+### Added
+
+- `Model.GROK_4_6` and `Model.GEMINI_3_7_FLASH`: every shipped row is a
+  `Model` member, a door row carrying its `OpenAICompatible` door on
+  `ModelSpec.door` / `Model.door` (NW1, DESIGN §31); `neosian.catalog`
+  keeps the old names as aliases of the members.
+- `lookup_model` is a root export, and `AgentConfig`, `FallbackConfig`,
+  `GuardrailsConfig`, `CompactionConfig` and `ReflectionConfig` accept a
+  wire id string for `model` — `AgentConfig(model="gpt-oss-120b")` builds
+  the same agent as the member; an unknown id raises `InvalidModelError`.
+
 ### Changed
 
+- The shipped door rows no longer register at import: `registered_models()`
+  starts empty, and registering an id the enum ships is refused naming the
+  member. `RegisteredModel` is `(value, spec)`; its `door` is the spec's.
 - The memory baseline pack's two wordform pins (`long-horizon-recall`'s
   deploy branch, `write-discipline`'s Postgres version) widened to the
   fact, and a store-truth failure line now carries each live document's

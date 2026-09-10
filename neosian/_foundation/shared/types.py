@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, NewType
 
 from pydantic import BaseModel
 
+from neosian._foundation.shared.catalog import OpenAICompatible as OpenAICompatible
 from neosian._foundation.shared.context_policy import ContextPolicy
 from neosian._foundation.shared.guardrail_types import (
     GuardrailErrorPolicy as GuardrailErrorPolicy,
@@ -33,10 +34,11 @@ from neosian._foundation.shared.models import (
 )
 from neosian._foundation.shared.registry import (
     AnyModel as AnyModel,
-    OpenAICompatible as OpenAICompatible,
     RegisteredModel as RegisteredModel,
+    lookup_model as lookup_model,
     register_model as register_model,
     registered_models,
+    resolve_model,
 )
 
 if TYPE_CHECKING:
@@ -101,8 +103,11 @@ class FallbackConfig:
         )
     """
 
-    model: AnyModel
+    model: AnyModel | str
     retry_main_after: int = 0
+
+    def __post_init__(self) -> None:
+        self.model = resolve_model(self.model)
 
 
 @dataclass
@@ -233,7 +238,7 @@ class AgentConfig:
 
     system_prompt: str
     tools: list[ToolFunction] = field(default_factory=list)
-    model: AnyModel = Model.CEREBRAS_GPT_OSS_120B
+    model: AnyModel | str = Model.CEREBRAS_GPT_OSS_120B
     fallback: FallbackConfig | None = None
     enable_todo: bool = True
     guardrails: GuardrailsConfig | None = None
@@ -280,10 +285,7 @@ class AgentConfig:
         """Validate configuration after initialization."""
         # Lazy import to avoid circular dependency at module load time
         from neosian._foundation.shared.constants import ErrorMessages, LLMDefaults
-        from neosian._foundation.shared.exceptions import (
-            InvalidModelError,
-            UnsupportedParameterError,
-        )
+        from neosian._foundation.shared.exceptions import UnsupportedParameterError
 
         # Apply default max_output_tokens from config
         if self.max_output_tokens is None:
@@ -299,29 +301,19 @@ class AgentConfig:
         if self.max_retries is None:
             object.__setattr__(self, "max_retries", LLMDefaults.MAX_RETRIES)
 
-        # Runtime validation - model could be anything if user bypasses type hints
-        model: object = self.model  # Type erasure to enable isinstance check
-        if not isinstance(model, (Model, RegisteredModel)):
-            supported = ", ".join(
-                [f"Model.{m.name}" for m in Model]
-                + [repr(m.value) for m in registered_models()]
-            )
-            message = ErrorMessages.INVALID_MODEL.format(
-                model_type=type(model).__name__,
-                model_value=model,
-                supported_models=supported,
-            )
-            raise InvalidModelError(message, model)
+        # A wire id resolves once, here (§31); anything unknown raises.
+        model = resolve_model(self.model)
+        object.__setattr__(self, "model", model)
 
         # Validate reasoning_effort is only used with models that support it
-        if self.reasoning_effort is not None and not self.model.supports_reasoning:
+        if self.reasoning_effort is not None and not model.supports_reasoning:
             supported_models = ", ".join(
                 [f"Model.{m.name}" for m in Model if m.supports_reasoning]
                 + [repr(m.value) for m in registered_models() if m.supports_reasoning]
             )
             raise UnsupportedParameterError(
                 ErrorMessages.REASONING_EFFORT_MODEL_MISMATCH.format(
-                    model=self.model.value,
+                    model=model.value,
                     supported_models=supported_models,
                 )
             )
@@ -334,12 +326,12 @@ class AgentConfig:
                     requested=self.max_output_tokens,
                 )
             )
-        if self.max_output_tokens > self.model.max_output_tokens:
+        if self.max_output_tokens > model.max_output_tokens:
             raise UnsupportedParameterError(
                 ErrorMessages.MAX_OUTPUT_TOKENS_EXCEEDED.format(
                     requested=self.max_output_tokens,
-                    model=self.model.value,
-                    limit=self.model.max_output_tokens,
+                    model=model.value,
+                    limit=model.max_output_tokens,
                 )
             )
 

@@ -37,6 +37,7 @@ from neosian._foundation.memory.payload import (
 )
 from neosian._foundation.shared.clock import Clock, SystemClock
 from neosian._foundation.shared.prompt_assets import get_prompt, render
+from neosian._foundation.shared.registry import resolve_model
 from neosian._foundation.shared.structured import structured_call
 from neosian._foundation.shared.types import AnyModel
 
@@ -62,7 +63,11 @@ class ReflectionConfig:
     """
 
     enabled: bool = True
-    model: AnyModel | None = None
+    model: AnyModel | str | None = None
+
+    def __post_init__(self) -> None:
+        if self.model is not None:
+            object.__setattr__(self, "model", resolve_model(self.model))
 
 
 @dataclass(frozen=True, slots=True)

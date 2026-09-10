@@ -16,7 +16,7 @@ from neosian._foundation.shared.constants import (
     LLMDefaults,
 )
 from neosian._foundation.shared.exceptions import MissingAPIKeyError
-from neosian._foundation.shared.types import AnyModel, Provider, RegisteredModel
+from neosian._foundation.shared.types import AnyModel, Provider
 
 
 class ProviderRouter:
@@ -137,15 +137,15 @@ class ProviderRouter:
     ) -> BaseLLMClient:
         """Create the client that serves `model` (DESIGN §19).
 
-        Shipped models route by provider exactly as `create_client`; a
-        registered model's door names the endpoint and the env var that
-        signs requests to it — absence is loud, naming the variable.
+        Adapter rows route by provider exactly as `create_client`; a door
+        row's — shipped or registered — names the endpoint and the env var
+        that signs requests to it — absence is loud, naming the variable.
         """
-        if not isinstance(model, RegisteredModel):
+        door = model.door
+        if door is None:
             return self.create_client(model.provider, api_key)
         from neosian._foundation.llm.openai import OpenAICompatibleClient
 
-        door = model.door
         key = api_key or os.environ.get(door.api_key_env, "")
         if not key:
             raise MissingAPIKeyError(

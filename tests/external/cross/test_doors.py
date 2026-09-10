@@ -14,7 +14,7 @@ from collections.abc import AsyncIterator
 import pytest
 from pydantic import BaseModel
 
-from neosian import RegisteredModel
+from neosian import AnyModel
 from neosian._foundation.llm.base import (
     BaseLLMClient,
     Message,
@@ -27,7 +27,7 @@ from neosian._foundation.shared.types import ReasoningEffort, ResponseFormat, To
 from tests.external.lanes import LANES, Lane
 from tests.external.pacing import Pacer, door_client
 
-type Door = tuple[RegisteredModel, BaseLLMClient]
+type Door = tuple[AnyModel, BaseLLMClient]
 
 _ORACLE = ToolDefinition(
     name=ToolName("oracle"),
@@ -144,6 +144,7 @@ class TestDoors:
         (§19.3), so a reasoning model on a door with a field must show
         reasoning on one path or the other — or the name is wrong."""
         model, client = door
+        assert model.door is not None
         if model.door.reasoning_field is None or not model.supports_reasoning:
             pytest.skip(f"the {model.door.name} door exposes no reasoning to read")
         response = await client.complete(
@@ -159,6 +160,7 @@ class TestDoors:
 
     async def test_temperature_is_accepted(self, door: Door) -> None:
         model, client = door
+        assert model.door is not None
         if not model.door.temperature:
             pytest.skip(f"the {model.door.name} door refuses temperature by design")
         response = await client.complete(

@@ -45,6 +45,8 @@ class TestPlaygroundModelPicker:
                 assert model.supports_reasoning
 
     def test_display_name_contains_model_id(self) -> None:
-        """Labels always start with the exact model ID."""
+        """Labels always start with the exact model ID — a door row's under
+        its door (DESIGN §19.2)."""
         for model in Model:
-            assert display_name(model).startswith(model.value)
+            head = model.value if model.door is None else f"{model.door.name}/"
+            assert display_name(model).startswith(head)

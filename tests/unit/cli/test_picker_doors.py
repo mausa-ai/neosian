@@ -1,19 +1,19 @@
-"""The playground picker lists registered models under their door
-(DESIGN §19): the shipped catalog first, then the process's own."""
+"""The playground picker lists door rows under their door (DESIGN §19,
+§31): the shipped ones first, then the process's own registrations."""
 
 import pytest
 
-from neosian import OpenAICompatible, Provider, register_model
+from neosian import Model, OpenAICompatible, Provider, register_model
 from neosian._cli.models import (
     display_name,
     get_available_providers,
     get_models_for_provider,
 )
-from neosian._foundation.shared.catalog import CATALOG, GROK_4_6
 
 XAI = OpenAICompatible(
     name="xai", api_key_env="XAI_API_KEY", base_url="https://api.x.ai/v1"
 )
+CATALOG = [Model.GROK_4_6, Model.GEMINI_3_7_FLASH]
 
 
 @pytest.mark.unit
@@ -21,8 +21,8 @@ class TestPickerDoors:
     def test_the_door_row_lists_the_catalog(self) -> None:
         assert Provider.OPENAI_COMPATIBLE in dict(get_available_providers())
         listed = get_models_for_provider(Provider.OPENAI_COMPATIBLE)
-        assert [m for m, _ in listed] == list(CATALOG)
-        assert display_name(GROK_4_6) == "xai/grok-4.6"
+        assert [m for m, _ in listed] == CATALOG
+        assert display_name(Model.GROK_4_6) == "xai/grok-4.6"
 
     def test_registered_models_sit_under_the_door_row_labeled_by_door(self) -> None:
         grok = register_model(

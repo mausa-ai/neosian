@@ -1,8 +1,8 @@
-"""The door lanes of the external tier: shipped catalog rows and the
-candidates still at NW's gate (DESIGN §19.7, NC2 slice B).
+"""The door lanes of the external tier: the shipped door rows and the
+candidates still at NW's gate (DESIGN §19.7, §31).
 
 One shape either way — the same probes, the same pack, the same pacer. A
-shipped row is the catalog's own object; a candidate is built here and
+shipped row is the `Model` member itself; a candidate is built here and
 registered inside a test (`pytest -m 'not external'` imports this tree
 at collection, and a module-level registration would leak past the unit
 tier's "nothing beyond the shipped set" pins — `_register` is write-once
@@ -15,19 +15,19 @@ account property, not a dialect).
 
 from dataclasses import dataclass
 
-from neosian import OpenAICompatible, Provider, RegisteredModel
-from neosian._foundation.shared.catalog import GEMINI_3_7_FLASH, GROK_4_6
+from neosian import AnyModel, Model, OpenAICompatible, Provider, RegisteredModel
 from neosian._foundation.shared.models import ModelSpec
 from neosian._foundation.shared.registry import _register
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class Lane:
-    model: RegisteredModel
+    model: AnyModel
     requests_per_minute: int | None = None  # the account's tier; see pacing.py
 
     @property
     def door(self) -> OpenAICompatible:
+        assert self.model.door is not None  # a lane is a door's
         return self.model.door
 
     @property
@@ -39,9 +39,11 @@ class Lane:
     def key_fixture(self) -> str:
         return f"{self.name}_api_key"
 
-    def registered(self) -> RegisteredModel:
-        """The catalog row itself; a candidate registers for this test."""
-        return _register(self.model)
+    def registered(self) -> AnyModel:
+        """The shipped row itself; a candidate registers for this test."""
+        if isinstance(self.model, RegisteredModel):
+            return _register(self.model)
+        return self.model
 
 
 def _candidate(
@@ -57,14 +59,15 @@ def _candidate(
         context_window=context_window,
         max_output_tokens=max_output_tokens,
         supports_reasoning=supports_reasoning,
+        door=door,
     )
-    return RegisteredModel(value, spec, door)
+    return RegisteredModel(value, spec)
 
 
-XAI = Lane(model=GROK_4_6)
+XAI = Lane(model=Model.GROK_4_6)
 
 GEMINI = Lane(
-    model=GEMINI_3_7_FLASH,
+    model=Model.GEMINI_3_7_FLASH,
     requests_per_minute=5,  # the project's tier, per model (probed 2026-09-01)
 )
 

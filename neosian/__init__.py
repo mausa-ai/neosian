@@ -11,8 +11,6 @@ the frozen v2 wire contract hosts relay over SSE.
 
 from importlib.metadata import version as _pkg_version
 
-# The shipped catalog rows register at import (DESIGN §19.5).
-import neosian._foundation.shared.catalog  # noqa: F401
 from neosian._foundation.agent.approval import (
     ToolApprovalRequest,
     ToolDecision,
@@ -194,6 +192,7 @@ from neosian._foundation.shared.types import (
     SkillName,
     ToolCallId,
     format_micro_usd,
+    lookup_model,
     register_model,
 )
 from neosian._foundation.tools.base import Tool, ToolResult
@@ -252,6 +251,7 @@ __all__ = [
     "StopReason",
     "Usage",
     "format_micro_usd",
+    "lookup_model",
     "register_model",
     "normalize_stop_reason",
     # The client seam (DESIGN §2)

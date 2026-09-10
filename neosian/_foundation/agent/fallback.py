@@ -84,24 +84,24 @@ def ensure_fallback_viable(
       larger window — falling back smaller is a guaranteed second
       failure and a doubled bill (DESIGN §5).
     """
-    assert agent._fallback is not None  # Callers check before invoking
+    assert agent._fallback_model is not None  # Callers check before invoking
     if isinstance(error, ContextWindowExceededError):
         overflowed = error.context_window or agent._model.context_window
-        if agent._fallback.model.context_window <= overflowed:
+        if agent._fallback_model.context_window <= overflowed:
             logger.warning(
                 "Fallback to %s skipped: its context window (%d) is not "
                 "larger than the overflowed one (%d)",
-                agent._fallback.model.value,
-                agent._fallback.model.context_window,
+                agent._fallback_model.value,
+                agent._fallback_model.context_window,
                 overflowed,
             )
             reraise_caller_errors(error, attempt)
-    missing = unsupported_content_types(agent._fallback.model, messages)
+    missing = unsupported_content_types(agent._fallback_model, messages)
     if not missing:
         return
     logger.warning(
         ErrorMessages.FALLBACK_SKIPPED_UNSUPPORTED_CONTENT.format(
-            model=agent._fallback.model.value,
+            model=agent._fallback_model.value,
             block_type="/".join(missing),
         )
     )

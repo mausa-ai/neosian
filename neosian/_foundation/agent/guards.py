@@ -25,7 +25,6 @@ from neosian._foundation.shared.types import (
     GuardrailResult,
     PolicyResult,
     Provider,
-    RegisteredModel,
 )
 
 if TYPE_CHECKING:
@@ -54,9 +53,9 @@ def require_provider_key(provider: Provider) -> None:
 
 
 def require_model_key(model: AnyModel) -> None:
-    """The model-keyed form: a registered model's door names its own env
-    var (DESIGN §19); shipped models defer to `require_provider_key`."""
-    if isinstance(model, RegisteredModel):
+    """The model-keyed form: a door row's door names its own env var
+    (DESIGN §19); adapter rows defer to `require_provider_key`."""
+    if model.door is not None:
         _require_env(model.door.api_key_env)
     else:
         require_provider_key(model.provider)

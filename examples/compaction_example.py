@@ -60,7 +60,7 @@ async def main() -> None:
         for entry in result.entries:
             print(f"  turn {entry.turn} ({entry.kind}): {entry.text}")
         if result.usage is not None:
-            spend = result.usage.cost_micro_usd(configuration.model) or 0
+            spend = result.usage.cost_micro_usd(Model.CLAUDE_SONNET_5) or 0
             print(f"  spend: {format_micro_usd(spend)}")
 
         print("--- a question only the paged turn can answer")
