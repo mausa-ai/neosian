@@ -3,47 +3,106 @@
 Provides the main CLI application with commands.
 """
 
-import asyncio
-import importlib.resources
-from importlib.util import find_spec
+import os
+import sys
 from typing import Annotated
 
 import typer
-from rich.console import Console
-from rich.markup import escape
-from rich.prompt import Prompt
-from rich.table import Table
 
-from neosian import __version__
-from neosian._cli.config import (
-    delete_config,
-    get_all_credentials,
-    get_config_path,
-    set_api_key,
-)
 from neosian._cli.playground import run_playground
-from neosian._cli.ui import BRAND_ACCENT
-from neosian._foundation.shared.constants import App, Assets, Config
+
+# The operator and agent verbs are verbatim pass-throughs to their own
+# argparse grammars (§14.2's shape): every argument, --help included.
+_PASS_THROUGH = {
+    "allow_extra_args": True,
+    "ignore_unknown_options": True,
+    "help_option_names": [],
+}
+# The help is grouped by audience (DESIGN §30): who each verb is for.
+_TALK = "Talk"
+_OPERATE = "Operate"
+_CONNECT = "Connect an agent"
+_LEARN = "Learn"
 
 app = typer.Typer(
     name="neosian",
-    help="Async-only library for LLM agents: tools, orchestration, streaming, memory.",
-    no_args_is_help=True,
+    help="The state layer for LLM agents: memory, conversations, the record.",
+    epilog="agents: neosian docs cli --json",
+    invoke_without_command=True,
     add_completion=False,
 )
 
 
-def _load_logo() -> str:
-    """Load the small ASCII logo from assets."""
-    try:
-        files = importlib.resources.files(Assets.PACKAGE)
-        logo_file = files.joinpath(Assets.LOGO_FILE)
-        return logo_file.read_text(encoding="utf-8").rstrip()
-    except Exception:
-        return ""
+def _on_a_terminal() -> bool:
+    return sys.stdin.isatty() and sys.stdout.isatty()
 
 
-@app.command()
+@app.callback()
+def root(ctx: typer.Context) -> None:
+    """Bare `neosian` (DESIGN §30): on a terminal it opens `neosian chat`
+    — the `claude` shape; under a pipe it prints this help, as before."""
+    from neosian._cli.update import check_on_the_human_door, human_door
+
+    if human_door(ctx.invoked_subcommand, on_terminal=_on_a_terminal(), argv=sys.argv):
+        check_on_the_human_door(os.environ, err=sys.stderr)  # the knob, §30.3
+    if ctx.invoked_subcommand is not None:
+        return
+    if _on_a_terminal():
+        from neosian._cli.chat_cmd import run_chat_command
+
+        raise typer.Exit(
+            run_chat_command(
+                None, model=None, agent=None, resume=None, json_output=False
+            )
+        )
+    typer.echo(ctx.get_help())
+
+
+@app.command(rich_help_panel=_TALK)
+def chat(
+    prompt: Annotated[
+        str | None,
+        typer.Argument(help="One turn: print the answer and exit (also: piped stdin)"),
+    ] = None,
+    model: Annotated[
+        str | None,
+        typer.Option("--model", help="A model id, or `fake` to try it keyless"),
+    ] = None,
+    agent: Annotated[
+        str | None,
+        typer.Option("--agent", help="An agent file instead of the resident agent"),
+    ] = None,
+    resume: Annotated[
+        str | None,
+        typer.Option("--resume", help="Resume a conversation by id"),
+    ] = None,
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="One-shot mode: the response envelope"),
+    ] = False,
+) -> None:
+    """Talk to your memory: the resident agent that knows neosian.
+
+    Bare on a terminal opens a session; a PROMPT (or piped stdin) runs one
+    turn and prints the answer. The model is --model, else [chat] model in
+    config.toml, else the first provider with a key (Anthropic, OpenAI,
+    Cerebras, registered doors). Every turn persists under the home.
+
+    Example:
+        neosian chat
+        neosian chat "what do you know about this project?"
+        echo hi | neosian chat --model fake --json
+    """
+    from neosian._cli.chat_cmd import run_chat_command
+
+    raise typer.Exit(
+        run_chat_command(
+            prompt, model=model, agent=agent, resume=resume, json_output=json_output
+        )
+    )
+
+
+@app.command(rich_help_panel=_TALK)
 def playground(
     agent_file: Annotated[
         str,
@@ -53,14 +112,14 @@ def playground(
         bool,
         typer.Option(
             "--menu",
-            help="Pick provider and model from a terminal menu (Unix terminals only)",
+            help="Pick provider and model from a menu",
         ),
     ] = False,
     arena: Annotated[
         bool,
         typer.Option(
             "--arena",
-            help="Arena mode: several models side by side (Unix terminals only)",
+            help="Arena mode: several models side by side",
         ),
     ] = False,
     resume: Annotated[
@@ -82,263 +141,263 @@ def playground(
         neosian playground my_agent.py --menu
         neosian playground my_agent.py --arena
         neosian playground my_agent.py --resume 20260820-143207-my_agent
-
-    The --menu and --arena pickers draw a terminal menu that needs a Unix
-    terminal (termios); everything else runs anywhere.
     """
     run_playground(agent_file, menu=menu, arena=arena, resume=resume)
 
 
-def _driver_line() -> str:
-    """The one extra, by presence: the banner says what this install carries."""
-    if find_spec("psycopg") is None:
-        return 'psycopg (PostgresStore): missing\n  uv add "neosian[postgres]" adds it'
-    return "psycopg (PostgresStore): installed"
+@app.command(
+    name="status",
+    rich_help_panel=_OPERATE,
+    context_settings=_PASS_THROUGH,
+)
+def status(ctx: typer.Context) -> None:
+    """Is this machine set up? The home, the keys, the clients, the shape.
 
+    A thin pass-through to the one grammar (`neosian status --help`);
+    exit 0 whenever it ran — findings are data, `--json` one object.
+    """
+    from neosian._cli.render import render_status, run_rendered
+    from neosian.status import main as status_main
 
-@app.command()
-def version() -> None:
-    """Display version information."""
-    console = Console()
-
-    # Load logo
-    logo_text = _load_logo()
-
-    # Build version info
-    version_info = (
-        f"\n"
-        f"\n"
-        f"  [bold {BRAND_ACCENT}]{App.NAME}[/bold {BRAND_ACCENT}]\n"
-        f"  [dim]v{__version__}[/dim]\n"
-        f"\n"
-        f"  [dim]Python {App.PYTHON_VERSION}[/dim]\n"
-        f"  [dim]{App.DESCRIPTION}[/dim]\n"
-        f"\n"
-        f"  [dim]in the box: Agent + Conversation,[/dim]\n"
-        f"  [dim]the shell, MCP server and client,[/dim]\n"
-        f"  [dim]the state process, OpenTelemetry;[/dim]\n"
-        f"  [dim]{escape(_driver_line())}[/dim]\n"
-        f"\n"
+    raise typer.Exit(
+        run_rendered(
+            status_main, list(ctx.args), render_status, out=sys.stdout, env=os.environ
+        )
     )
 
-    # Create table with logo on left, info on right
-    table = Table(show_header=False, box=None, padding=(0, 2))
-    table.add_column(style="cyan", vertical="middle")
-    table.add_column(vertical="middle")
 
-    table.add_row(logo_text, version_info)
+@app.command(
+    name="setup",
+    rich_help_panel=_OPERATE,
+    context_settings=_PASS_THROUGH,
+)
+def setup(ctx: typer.Context) -> None:
+    """Wire the installed agents to this store: MCP and the hooks.
 
-    console.print()
-    console.print(table)
-
-
-def _mask_key(key: str) -> str:
-    """Mask an API key for display.
-
-    Shows first 4 and last 3 characters.
-
-    Args:
-        key: The API key to mask.
-
-    Returns:
-        Masked key like "gsk_****...****xyz".
+    A thin pass-through to the one grammar (`neosian setup --help`):
+    prints what would land for every client found, `--write` applies it,
+    `--client C` narrows, `--json` one object.
     """
-    if len(key) <= 7:
-        return "****"
-    return f"{key[:4]}****...****{key[-3:]}"
+    from pathlib import Path
 
+    from neosian._cli.setup import run_setup
+    from neosian._foundation.shared.client_config import Environment
 
-def _show_credentials_table(console: Console) -> None:
-    """Display credentials status table."""
-    credentials = get_all_credentials()
-
-    table = Table(show_header=True, header_style="bold")
-    table.add_column("Provider")
-    table.add_column("Status")
-    table.add_column("Key")
-
-    # OpenAI
-    openai_key = credentials.get(Config.OPENAI_API_KEY)
-    if openai_key:
-        table.add_row("OpenAI", "[green]●[/green]", _mask_key(openai_key))
-    else:
-        table.add_row("OpenAI", "[red]●[/red]", "[dim]Not configured[/dim]")
-
-    # Anthropic
-    anthropic_key = credentials.get(Config.ANTHROPIC_API_KEY)
-    if anthropic_key:
-        table.add_row("Anthropic", "[green]●[/green]", _mask_key(anthropic_key))
-    else:
-        table.add_row("Anthropic", "[red]●[/red]", "[dim]Not configured[/dim]")
-
-    # Cerebras
-    cerebras_key = credentials.get(Config.CEREBRAS_API_KEY)
-    if cerebras_key:
-        table.add_row("Cerebras", "[green]●[/green]", _mask_key(cerebras_key))
-    else:
-        table.add_row("Cerebras", "[red]●[/red]", "[dim]Not configured[/dim]")
-
-    console.print()
-    console.print(table)
-    console.print(f"\n[dim]Config file: {get_config_path()}[/dim]")
-
-
-def _configure_credentials(console: Console) -> None:
-    """Prompt for and save credentials."""
-    credentials = get_all_credentials()
-
-    console.print("\n[dim]Press Enter to keep existing values.[/dim]\n")
-
-    # OpenAI
-    existing_openai = credentials.get(Config.OPENAI_API_KEY, "")
-    openai_prompt = "OpenAI API key"
-    if existing_openai:
-        openai_prompt += f" [dim]({_mask_key(existing_openai)})[/dim]"
-
-    openai_key = Prompt.ask(openai_prompt, password=True, default="")
-    if openai_key:
-        set_api_key(Config.OPENAI_API_KEY, openai_key)
-        console.print("[green]OpenAI API key saved.[/green]")
-    elif existing_openai:
-        console.print("[dim]OpenAI API key unchanged.[/dim]")
-
-    # Anthropic
-    existing_anthropic = credentials.get(Config.ANTHROPIC_API_KEY, "")
-    anthropic_prompt = "Anthropic API key"
-    if existing_anthropic:
-        anthropic_prompt += f" [dim]({_mask_key(existing_anthropic)})[/dim]"
-
-    anthropic_key = Prompt.ask(anthropic_prompt, password=True, default="")
-    if anthropic_key:
-        set_api_key(Config.ANTHROPIC_API_KEY, anthropic_key)
-        console.print("[green]Anthropic API key saved.[/green]")
-    elif existing_anthropic:
-        console.print("[dim]Anthropic API key unchanged.[/dim]")
-
-    # Cerebras
-    existing_cerebras = credentials.get(Config.CEREBRAS_API_KEY, "")
-    cerebras_prompt = "Cerebras API key"
-    if existing_cerebras:
-        cerebras_prompt += f" [dim]({_mask_key(existing_cerebras)})[/dim]"
-
-    cerebras_key = Prompt.ask(cerebras_prompt, password=True, default="")
-    if cerebras_key:
-        set_api_key(Config.CEREBRAS_API_KEY, cerebras_key)
-        console.print("[green]Cerebras API key saved.[/green]")
-    elif existing_cerebras:
-        console.print("[dim]Cerebras API key unchanged.[/dim]")
-
-
-def _delete_configuration(console: Console) -> None:
-    """Delete configuration with confirmation."""
-    confirm = Prompt.ask(
-        "\n[yellow]Delete all stored credentials?[/yellow] [dim](y/n)[/dim]",
-        default="n",
+    raise typer.Exit(
+        run_setup(
+            list(ctx.args),
+            os.environ,
+            context=Environment(
+                home=Path.home(),
+                cwd=Path.cwd(),
+                platform=sys.platform,
+                env=os.environ,
+                executable=sys.executable,
+            ),
+            out=sys.stdout,
+            err=sys.stderr,
+        )
     )
-    if confirm.lower() == "y":
-        if delete_config():
-            console.print("[green]Configuration deleted.[/green]")
-        else:
-            console.print("[dim]No configuration to delete.[/dim]")
-    else:
-        console.print("[dim]Cancelled.[/dim]")
 
 
-@app.command()
-def configure() -> None:
-    """Configure API credentials for LLM providers.
+@app.command(name="update", rich_help_panel=_OPERATE, context_settings=_PASS_THROUGH)
+def update(ctx: typer.Context) -> None:
+    """Check PyPI for a newer neosian; print the command, or apply it.
 
-    Shows current configuration status and provides options to
-    configure or delete stored credentials.
-
-    Credentials are stored in ~/.neosian/config.toml.
-    Environment variables take precedence over stored credentials.
-
-    Example:
-        neosian configure
+    A thin pass-through to the one grammar (`neosian update --help`):
+    `--check` (the default), `--write` (fenced), `--json`, `--mode M` sets
+    the knob — off, notify or auto.
     """
-    console = Console()
+    from neosian._cli.update import run_update
 
-    # Show current status
-    _show_credentials_table(console)
-
-    # Show menu
-    console.print()
-    from simple_term_menu import TerminalMenu  # type: ignore[import-untyped]
-
-    options = ["Configure credentials", "Delete configuration", "Exit"]
-    menu = TerminalMenu(options, cursor_index=0)
-    choice = menu.show()
-
-    if choice == 0:
-        _configure_credentials(console)
-    elif choice == 1:
-        _delete_configuration(console)
-    # choice == 2 or None (cancelled) -> just exit
+    raise typer.Exit(
+        run_update(list(ctx.args), os.environ, out=sys.stdout, err=sys.stderr)
+    )
 
 
-@app.command(name="eval")
+@app.command(
+    name="configure",
+    rich_help_panel=_OPERATE,
+    context_settings=_PASS_THROUGH,
+)
+def configure(ctx: typer.Context) -> None:
+    """Store a provider's API key under the home, or list them.
+
+    A thin pass-through to the one grammar (`neosian configure --help`):
+    `--list`, `--provider NAME --key -` (stdin), `--delete`, `--json`;
+    bare on a terminal prompts for each provider in turn.
+    """
+    from neosian._cli.configure import run_configure
+
+    raise typer.Exit(
+        run_configure(
+            list(ctx.args),
+            os.environ,
+            stdin=sys.stdin,
+            out=sys.stdout,
+            err=sys.stderr,
+            tty=sys.stdin.isatty() and sys.stdout.isatty(),
+        )
+    )
+
+
+@app.command(name="eval", rich_help_panel=_TALK)
 def evaluate(
     config_file: Annotated[
         str,
         typer.Argument(help="Path to the evaluation config YAML file"),
     ],
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Print the report as one JSON object on stdout"),
+    ] = False,
 ) -> None:
     """Run an eval suite: variants × models × cases over one agent.
 
     Results are displayed in the terminal and saved to JSON. Exits
-    nonzero when any case fails, so the command works as a CI gate.
+    nonzero when any case fails, so the command works as a CI gate;
+    --json prints the saved artifact's document instead of the table.
 
     Example:
         neosian eval eval_suite.yaml
     """
-    from neosian._cli.playground import _load_credentials_from_config
-    from neosian.evaluation import (
-        EvalProgress,
-        create_progress_callback,
-        load_eval_config,
-        print_report,
-        run_evaluation,
-        save_report,
+    from neosian._cli.eval_cmd import run_eval
+
+    raise typer.Exit(run_eval(config_file, json_output=json_output))
+
+
+@app.command(
+    name="memory",
+    rich_help_panel=_OPERATE,
+    context_settings=_PASS_THROUGH,
+)
+def memory(ctx: typer.Context) -> None:
+    """Read and write agent memory from the shell.
+
+    A thin pass-through: every argument goes verbatim to the one grammar
+    (`neosian memory --help`). The six commands ride the shared memory
+    dispatcher; --json prints the memory tool's envelope.
+    """
+    from neosian._cli.render import render_index, run_rendered
+    from neosian.memory.cli import main as memory_main
+
+    args = list(ctx.args)
+    if args[:1] == ["view"] and (
+        len(args) == 1 or args[1] in ("/", "--json") or args[1].startswith("--")
+    ):
+        # The index as a tree on a terminal; a document stays plain.
+        raise typer.Exit(
+            run_rendered(
+                memory_main, args, render_index, out=sys.stdout, env=os.environ
+            )
+        )
+    raise typer.Exit(memory_main(args))
+
+
+@app.command(
+    name="audit",
+    rich_help_panel=_OPERATE,
+    context_settings=_PASS_THROUGH,
+)
+def audit(ctx: typer.Context) -> None:
+    """What was done, by whom, when — a scope's ledger (DESIGN §20).
+
+    A thin pass-through: every argument goes verbatim to the one grammar
+    (`neosian audit --help`). Answers the same on a FileStore root,
+    Postgres, or the state process (--url).
+    """
+    from neosian._cli.render import render_audit, run_rendered
+    from neosian.ledger import main as audit_main
+
+    raise typer.Exit(
+        run_rendered(
+            audit_main, list(ctx.args), render_audit, out=sys.stdout, env=os.environ
+        )
     )
 
-    # The library reads keys from the environment only; loading them from the
-    # CLI config file is the CLI's job, done here before the run.
-    _load_credentials_from_config()
 
-    console = Console()
+@app.command(name="export", rich_help_panel=_OPERATE, context_settings=_PASS_THROUGH)
+def export(ctx: typer.Context) -> None:
+    """Write the store to DIR, whole — history included (DESIGN §26).
 
-    try:
-        config = load_eval_config(config_file)
-    except Exception as e:
-        console.print(f"[red]Error loading config: {e}[/red]")
-        raise typer.Exit(1) from None
+    A thin pass-through to the one grammar (`neosian export --help`); the
+    archive is a FileStore root you can read, serve or import anywhere.
+    """
+    from neosian.mobility import main as mobility_main
 
-    console.print()
-
-    progress = EvalProgress(config)
-    try:
-        progress.start()
-        report = asyncio.run(
-            run_evaluation(config, on_progress=create_progress_callback(progress))
-        )
-        progress.stop()
-    except Exception as e:
-        progress.stop()
-        console.print(f"[red]Evaluation failed: {e}[/red]")
-        raise typer.Exit(1) from None
-
-    console.print()
-    print_report(report, console)
-
-    output_path = save_report(report)
-    console.print()
-    console.print(f"[dim]{output_path}[/dim]")
-    console.print(f"{report.passed}/{report.total} passed")
-    raise typer.Exit(1 if report.failed else 0)
+    raise typer.Exit(mobility_main(["export", *ctx.args]))
 
 
-@app.command()
+@app.command(name="import", rich_help_panel=_OPERATE, context_settings=_PASS_THROUGH)
+def import_(ctx: typer.Context) -> None:
+    """Restore an export into the store, verbatim (DESIGN §26).
+
+    A thin pass-through to the one grammar (`neosian import --help`);
+    every unit must be empty in the store — nothing merges.
+    """
+    from neosian.mobility import main as mobility_main
+
+    raise typer.Exit(mobility_main(["import", *ctx.args]))
+
+
+@app.command(
+    name="record",
+    rich_help_panel=_CONNECT,
+    context_settings=_PASS_THROUGH,
+)
+def record(ctx: typer.Context) -> None:
+    """Record a foreign agent's session from its hooks (DESIGN §20.9).
+
+    A thin pass-through: every argument goes verbatim to the one grammar
+    (`neosian record --help`). Reads one hook payload on stdin per call;
+    `neosian record install` renders or applies the hooks.
+    """
+    from neosian.record import main as record_main
+
+    raise typer.Exit(record_main(list(ctx.args)))
+
+
+@app.command(
+    name="mcp",
+    rich_help_panel=_CONNECT,
+    context_settings=_PASS_THROUGH,
+)
+def mcp(ctx: typer.Context) -> None:
+    """Serve neosian memory to MCP clients on stdio.
+
+    A thin pass-through: every argument goes verbatim to the one grammar
+    (`python -m neosian.mcp --help`).
+    """
+    from neosian.mcp.serve import main as mcp_main
+
+    raise typer.Exit(mcp_main(list(ctx.args)))
+
+
+@app.command(
+    name="serve",
+    rich_help_panel=_CONNECT,
+    context_settings=_PASS_THROUGH,
+)
+def serve(ctx: typer.Context) -> None:
+    """Serve memory and conversations over HTTP — the state process.
+
+    A thin pass-through: every argument goes verbatim to the one grammar
+    (`neosian serve --help`). Needs NEOSIAN_SERVE_TOKEN.
+    """
+    from neosian.server.serve import main as serve_main
+
+    raise typer.Exit(serve_main(list(ctx.args)))
+
+
+@app.command(rich_help_panel=_LEARN)
+def version() -> None:
+    """Display version information."""
+    from neosian._cli.version import print_banner
+
+    print_banner()
+
+
+@app.command(rich_help_panel=_LEARN)
 def docs(
     topic: Annotated[
         str | None,
@@ -356,137 +415,18 @@ def docs(
         neosian docs topology
     """
     from neosian._cli.docs import run_docs
+    from neosian._cli.render import render_docs, run_rendered
 
-    raise typer.Exit(run_docs(topic, json_output=json_output))
+    if topic is None:  # the listing stays the engine's bytes everywhere
+        raise typer.Exit(run_docs(None, json_output=json_output))
 
+    def engine(argv: list[str]) -> int:
+        return run_docs(topic, json_output="--json" in argv)
 
-@app.command(
-    name="memory",
-    context_settings={
-        "allow_extra_args": True,
-        "ignore_unknown_options": True,
-        "help_option_names": [],
-    },
-)
-def memory(ctx: typer.Context) -> None:
-    """Read and write agent memory from the shell.
-
-    A thin pass-through: every argument goes verbatim to the one grammar
-    (`neosian memory --help`). The six commands ride the shared memory
-    dispatcher; --json prints the memory tool's envelope.
-    """
-    from neosian.memory.cli import main as memory_main
-
-    raise typer.Exit(memory_main(list(ctx.args)))
-
-
-@app.command(
-    name="audit",
-    context_settings={
-        "allow_extra_args": True,
-        "ignore_unknown_options": True,
-        "help_option_names": [],
-    },
-)
-def audit(ctx: typer.Context) -> None:
-    """What was done, by whom, when — a scope's ledger (DESIGN §20).
-
-    A thin pass-through: every argument goes verbatim to the one grammar
-    (`neosian audit --help`). Answers the same on a FileStore root,
-    Postgres, or the state process (--url).
-    """
-    from neosian.ledger import main as audit_main
-
-    raise typer.Exit(audit_main(list(ctx.args)))
-
-
-_PASS_THROUGH = {
-    "allow_extra_args": True,
-    "ignore_unknown_options": True,
-    "help_option_names": [],
-}
-
-
-@app.command(name="export", context_settings=_PASS_THROUGH)
-def export(ctx: typer.Context) -> None:
-    """Write the store to DIR, whole — history included (DESIGN §26).
-
-    A thin pass-through to the one grammar (`neosian export --help`); the
-    archive is a FileStore root you can read, serve or import anywhere.
-    """
-    from neosian.mobility import main as mobility_main
-
-    raise typer.Exit(mobility_main(["export", *ctx.args]))
-
-
-@app.command(name="import", context_settings=_PASS_THROUGH)
-def import_(ctx: typer.Context) -> None:
-    """Restore an export into the store, verbatim (DESIGN §26).
-
-    A thin pass-through to the one grammar (`neosian import --help`);
-    every unit must be empty in the store — nothing merges.
-    """
-    from neosian.mobility import main as mobility_main
-
-    raise typer.Exit(mobility_main(["import", *ctx.args]))
-
-
-@app.command(
-    name="record",
-    context_settings={
-        "allow_extra_args": True,
-        "ignore_unknown_options": True,
-        "help_option_names": [],
-    },
-)
-def record(ctx: typer.Context) -> None:
-    """Record a foreign agent's session from its hooks (DESIGN §20.9).
-
-    A thin pass-through: every argument goes verbatim to the one grammar
-    (`neosian record --help`). Reads one hook payload on stdin per call;
-    `neosian record install` renders or applies the hooks.
-    """
-    from neosian.record import main as record_main
-
-    raise typer.Exit(record_main(list(ctx.args)))
-
-
-@app.command(
-    name="mcp",
-    context_settings={
-        "allow_extra_args": True,
-        "ignore_unknown_options": True,
-        "help_option_names": [],
-    },
-)
-def mcp(ctx: typer.Context) -> None:
-    """Serve neosian memory to MCP clients on stdio.
-
-    A thin pass-through: every argument goes verbatim to the one grammar
-    (`python -m neosian.mcp --help`).
-    """
-    from neosian.mcp.serve import main as mcp_main
-
-    raise typer.Exit(mcp_main(list(ctx.args)))
-
-
-@app.command(
-    name="serve",
-    context_settings={
-        "allow_extra_args": True,
-        "ignore_unknown_options": True,
-        "help_option_names": [],
-    },
-)
-def serve(ctx: typer.Context) -> None:
-    """Serve memory and conversations over HTTP — the state process.
-
-    A thin pass-through: every argument goes verbatim to the one grammar
-    (`neosian serve --help`). Needs NEOSIAN_SERVE_TOKEN.
-    """
-    from neosian.server.serve import main as serve_main
-
-    raise typer.Exit(serve_main(list(ctx.args)))
+    argv = ["--json"] if json_output else []
+    raise typer.Exit(
+        run_rendered(engine, argv, render_docs, out=sys.stdout, env=os.environ)
+    )
 
 
 def main() -> None:

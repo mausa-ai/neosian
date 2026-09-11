@@ -29,8 +29,12 @@ def run_docs(
         return _render_listing(json_output, out, err)
     page = load_page(topic)
     if page is None:
-        # Argv tier: text on stderr even under --json (§14.1's asymmetry).
+        # Argv tier (§14.1, bent at NY): text on stderr, and one object on
+        # stdout when JSON was asked for.
         known = ", ".join(entry.topic for entry in list_topics())
+        if json_output:
+            hint = f"unknown topic {topic!r}; known topics: {known}"
+            out.write(json.dumps({"error": "usage", "hint": hint}) + "\n")
         err.write(f"error: unknown topic {topic!r}\n")
         err.write(f"hint: known topics: {known}\n")
         return 2

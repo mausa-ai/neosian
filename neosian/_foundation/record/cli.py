@@ -17,6 +17,7 @@ the agent.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, TextIO
 
 import httpx
@@ -92,7 +93,7 @@ async def run(
     )
     try:
         args = parser.parse_args(list(argv))
-        settings = resolve_record_settings(parser, args, env)
+        settings = resolve_record_settings(parser, args, env, layout=Path.cwd())
     except SystemExit as exc:  # argparse: usage already on the streams
         if exc.code is None:
             return 0

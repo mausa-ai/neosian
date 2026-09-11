@@ -9,16 +9,19 @@ arrives only through `NEOSIAN_POSTGRES_DSN` — argv is world-readable in
 `NEOSIAN_MCP_POSTGRES_DSN` when it stopped being MCP-specific, #76).
 Since NU the home (`home.py`, DESIGN §22) is the store when no flag names
 one — a stated location, still constructed only past the grammar tier.
+Since NY the mounts default the same way (§30): `NEOSIAN_SCOPE`, else the
+working directory's project layout — the one the installers render.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import sys
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Final, TextIO
+from typing import TYPE_CHECKING, Any, Final, NoReturn, TextIO
 
 if TYPE_CHECKING:
     from _typeshed import SupportsWrite
@@ -35,6 +38,8 @@ POSTGRES_DSN_ENV: Final = "NEOSIAN_POSTGRES_DSN"
 # The token a *client* of the state process presents (DESIGN §20) — a
 # distinct key from the server's table, because one laptop runs both.
 CLIENT_TOKEN_ENV: Final = "NEOSIAN_CLIENT_TOKEN"
+# The environment twin of `--scope` (NY, §30): a sugar mount, like the flag.
+SCOPE_ENV: Final = "NEOSIAN_SCOPE"
 DEFAULT_SCHEMA: Final = "neosian"
 # The mount path Anthropic's trained memory behavior roots at (§9.5.13);
 # the --scope sugar mounts there, like Conversation's memory_scope=.
@@ -46,17 +51,35 @@ class StreamParser(argparse.ArgumentParser):
 
     The argv engines run in-process (the eval harness, unit suites), so
     they must not write to — or swap — the process's real stdio; help
-    and errors go to the streams `bind` sets.
+    and errors go to the streams `bind` sets. With `--json` anywhere in
+    argv a grammar error also prints one `{"error": "usage", "hint"}`
+    object on stdout (§14.1 bent at NY, §30): exit 2 keeps its tier and
+    its text on stderr, and a caller that asked for JSON gets JSON.
     """
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.out: TextIO = sys.stdout
         self.err: TextIO = sys.stderr
+        self.json_argv = False
 
     def bind(self, out: TextIO, err: TextIO) -> None:
         self.out = out
         self.err = err
+
+    def parse_known_args(  # type: ignore[override]  # the argv is all we read
+        self, args: Sequence[str] | None = None, namespace: Any = None
+    ) -> Any:
+        # Subparsers are invoked through this same method with their slice
+        # of argv, so each tier sees the flag for itself.
+        if args is not None:
+            self.json_argv = "--json" in list(args)
+        return super().parse_known_args(args, namespace)
+
+    def error(self, message: str) -> NoReturn:
+        if self.json_argv:
+            self.out.write(json.dumps({"error": "usage", "hint": message}) + "\n")
+        super().error(message)
 
     def _print_message(
         self, message: str, file: SupportsWrite[str] | None = None
@@ -226,47 +249,37 @@ def resolve_store_selection(
 def resolve_mounts(
     parser: argparse.ArgumentParser,
     args: argparse.Namespace,
+    env: Mapping[str, str],
     *,
     required: bool = True,
     layout: Path | None = None,
 ) -> tuple[Mount, ...]:
-    """Resolve the mount half of the grammar.
+    """Resolve the mount half of the grammar: the flags, else `NEOSIAN_SCOPE`
+    (the sugar mount), else `layout`'s project layout (§22.2, flipped at
+    NY: the same two mounts the installers render, now every shell verb's
+    default — a directory with no derived name refuses at exit 2).
 
     `required=False` is the state process's relaxation (DESIGN §18): its
     store-shaped API needs no mounts — only the MCP surface does.
-    `layout` is the installers' default (§22): the directory whose
-    project layout is rendered — visibly, into the client's config —
-    when no flag names a mount. Everywhere else the scope stays the
-    caller's to spell; the refusal shows this directory's spelling.
     """
     if args.scope is not None and args.mount:
         parser.error("--scope is the single-mount sugar; use --mount for multi-mount")
-    if args.scope is not None:
-        return (Mount(scope=args.scope, mount_path=SUGAR_MOUNT_PATH),)
+    scope = args.scope if args.scope is not None else env.get(SCOPE_ENV) or None
     if args.mount:
         return tuple(parse_mount(parser, token) for token in args.mount)
+    if scope is not None:
+        return (Mount(scope=scope, mount_path=SUGAR_MOUNT_PATH),)
     if layout is not None:
         try:
             return project_mounts(layout)
         except ConfigurationError as exc:
-            parser.error(exc.message)
+            if required:
+                parser.error(exc.message)
+            return ()  # §18's relaxation: no layout to derive, no mounts
     if required:
-        parser.error(
-            f"memory needs an explicit scope: pass --scope or --mount{layout_hint()}"
-        )
+        parser.error("memory needs a scope: pass --scope or --mount")
         raise AssertionError  # pragma: no cover - parser.error exits
     return ()
-
-
-def layout_hint() -> str:
-    """This directory's project layout as `--mount` tokens, for a refusal;
-    empty where the directory has no derived scope."""
-    try:
-        mounts = project_mounts()
-    except ConfigurationError:
-        return ""
-    tokens = " ".join(f"--mount {format_mount(m)}" for m in mounts)
-    return f" (this directory's layout: {tokens})"
 
 
 def resolve_store_settings(
@@ -281,10 +294,11 @@ def resolve_store_settings(
     Shape errors exit 2 via `parser.error`; scope and mount-path
     validation is structural (`Mount` raises `MemoryScopeInvalidError` /
     `MemoryPathInvalidError`, which the entry point renders). `layout`
-    is `resolve_mounts`'s: the installers' derived default.
+    is `resolve_mounts`'s: the directory whose project layout is the
+    default mount set.
     """
     selection = resolve_store_selection(parser, args, env)
-    mounts = resolve_mounts(parser, args, layout=layout)
+    mounts = resolve_mounts(parser, args, env, layout=layout)
     return StoreSettings(
         mounts=mounts,
         root=selection.root,

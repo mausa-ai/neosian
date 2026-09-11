@@ -1,8 +1,8 @@
 """The console script (NF, TP-2; the shell core since NX, ledger #206).
 
-`neosian` is the shell: typer, rich and the terminal menu ship in the
-install, and an environment missing them answers with the reinstall
-hint, never a traceback. The `python -m` doors — `neosian.memory`,
+`neosian` is the shell: typer and rich ship in the install, and an
+environment missing them answers with the reinstall hint, never a
+traceback. The `python -m` doors — `neosian.memory`,
 `neosian.record`, `neosian.mcp`, `neosian.server`, `neosian.ledger`,
 `neosian.mobility` — are argparse and need none of them.
 """

@@ -17,12 +17,17 @@ payloads are the import path.
 ## Install
 
 ```bash
+neosian setup --write                                             # every client found: MCP + hooks
 neosian record install --client claude-code                       # the home, this project
 neosian record install --client claude-code --url http://127.0.0.1:6367 --write
 neosian record install --client codex --write
 neosian record install --client opencode --root ~/.my-agent/state --scope user:me --write
 ```
 
+- **`neosian setup`** runs this installer and `mcp install` for every
+  client it finds (their config directories are the evidence), prints
+  first and applies with `--write`; `neosian status` shows each client
+  green afterwards and names an interpreter that stopped resolving.
 - **No flags is the home and this project.** With no store flag the
   line names `~/.neosian` (or `$NEOSIAN_HOME`); with no mount flag it
   names this directory's layout — `user:<login>` at `/user`,

@@ -37,6 +37,11 @@ recall_turn_any_params:
   turn: "The turn number shown in square brackets in the session's log, e.g. 7 for [7]."
   conversation: "The conversation id, as the sessions/ document or the view names it."
 
+docs: "Read one page of neosian's own documentation, shipped with this version. Topics: quickstart, agent, tools, memory, skills, cli, mcp, agents, topology, baselines. Call it whenever a question is about how neosian works and answer from the page."
+
+docs_params:
+  topic: "The page to read: one of quickstart, agent, tools, memory, skills, cli, mcp, agents, topology, baselines."
+
 # The json_object door dialect (DESIGN §31.4): an endpoint with no
 # json_schema mode gets the schema in the system prompt; the word "json"
 # must appear (DeepSeek's rule). Validation stays neosian's.

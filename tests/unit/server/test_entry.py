@@ -51,11 +51,21 @@ class TestHappyPath:
         assert settings.host == DEFAULT_HOST  # type: ignore[attr-defined]
         assert settings.port == DEFAULT_PORT  # type: ignore[attr-defined]
 
-    def test_mounts_are_optional(self, tmp_path: Path, captured: _Captured) -> None:
-        # §18's relaxation: the store API needs no mounts; only /mcp does.
+    def test_no_mounts_is_this_directorys_layout(
+        self, tmp_path: Path, captured: _Captured, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # NY (§30): /mcp serves the working directory's project layout by
+        # default; §18's relaxation stands where no layout can be derived.
+        project = tmp_path / "proj"
+        project.mkdir()
+        monkeypatch.chdir(project)
         assert main(["--root", str(tmp_path / "mem")]) == 0
         settings = captured.settings
-        assert settings.store.mounts == ()  # type: ignore[attr-defined]
+        mounts = settings.store.mounts  # type: ignore[attr-defined]
+        assert [m.mount_path for m in mounts] == ["user", "project"]
+        monkeypatch.chdir(Path("/"))
+        assert main(["--root", str(tmp_path / "mem")]) == 0
+        assert captured.settings.store.mounts == ()  # type: ignore[attr-defined]
 
     def test_no_flags_serves_the_home(
         self, tmp_path: Path, captured: _Captured, monkeypatch: pytest.MonkeyPatch

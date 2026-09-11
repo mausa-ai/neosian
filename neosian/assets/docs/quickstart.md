@@ -30,6 +30,12 @@ for one release and add nothing. On a machine with nothing on it,
 `curl -fsS https://neosian.com/install | bash` lands uv and neosian,
 saying what it installs first.
 
+On your own machine, three commands and no Python: `neosian status`
+says whether it is set up, `neosian setup --write` wires every installed
+agent (Claude Code, Codex, OpenCode) to the home, and bare `neosian`
+opens a chat with an agent that knows neosian and writes to the same
+memory (`neosian docs cli`).
+
 ## Keyless boot
 
 A provider is available when its API key env var is set

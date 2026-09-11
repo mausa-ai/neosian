@@ -222,6 +222,11 @@ class BuiltinTools:
         LIST_NAME: str = "list_skills"
         LOAD_NAME: str = "load_skill"
 
+    class Docs:
+        """The resident agent's docs tool (DESIGN §30.2)."""
+
+        NAME: str = "docs"
+
 
 class SkillLoader:
     """Constants for skill file loading."""
@@ -276,16 +281,6 @@ class Assets:
     LOGO_FILE: str = "logo_ascii_small.txt"
     ASCII_FILE: str = "ascii.txt"
     HEADER_SPACING: str = "  "
-
-
-class Config:
-    """Configuration file constants."""
-
-    DIR_NAME: str = ".neosian"
-    FILE_NAME: str = "config.toml"
-    OPENAI_API_KEY: str = "openai_api_key"
-    ANTHROPIC_API_KEY: str = "anthropic_api_key"
-    CEREBRAS_API_KEY: str = "cerebras_api_key"
 
 
 class EnvVars:

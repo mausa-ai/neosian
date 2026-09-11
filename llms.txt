@@ -27,11 +27,32 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
 - The same pages online, rendered from the wheel at the current release:
   https://docs.neosian.com (this file at https://docs.neosian.com/llms.txt).
 
+## Set up from the shell (the human path)
+
+- `neosian status [--json]` — is this machine set up: the home, which
+  providers have a key (never values), this directory's two scopes, per
+  client installed / MCP registered / hooks present / interpreter
+  resolving, the last recorded session, the install shape. Exit 0
+  always — findings are data.
+- `neosian setup [--write]` — wire every installed client (Claude Code,
+  Codex, OpenCode) to the home: MCP + the record hooks; print first.
+- `neosian configure --list | --provider NAME --key - | --delete` — keys
+  under `<home>/config.toml`, read from stdin, never argv.
+- `neosian chat [PROMPT] [--model M] [--json]` — the resident agent that
+  knows neosian (a `docs` tool over these pages) on the same memory;
+  a PROMPT or piped stdin is one turn, `--model fake` keyless. Bare
+  `neosian` on a terminal opens it.
+- `neosian update [--mode off|notify|auto]` — a PyPI check on the human
+  verbs only, never on an agent verb; `auto` applies a uv tool install
+  within the major.
+
 ## Operate memory from the shell
 
-- `neosian memory view / --scope user:me` — the first command to try;
-  renders the memory index. The store is the home, `~/.neosian` or
-  `$NEOSIAN_HOME`, unless `--root DIR`, `--url` or the DSN names one.
+- `neosian memory view /` — the first command to try; renders the
+  memory index. No flags inside a project means this directory's
+  layout (`/user`, `/project`); `--scope S` or `NEOSIAN_SCOPE` names a
+  scope. The store is the home, `~/.neosian` or `$NEOSIAN_HOME`, unless
+  `--root DIR`, `--url` or the DSN names one.
 - Six commands: view, create, str_replace, insert, delete, rename.
   `--json` prints the memory tool's result envelope verbatim.
 - `neosian memory maintain` — the gardener: keyless dedup + empty-prune;
@@ -49,7 +70,8 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
   history included, any substrate to any other; DIR is a FileStore root.
   An import needs every scope and conversation empty in the target.
 - Exit tiers: 0 success, 1 ran-and-failed, 2 bad invocation, 130
-  interrupt. stdout carries the artifact; stderr carries guidance.
+  interrupt. stdout carries the artifact; stderr carries guidance; with
+  `--json` in argv a tier-2 error is also one `{"error": "usage"}` object.
 - Postgres arrives only via the NEOSIAN_POSTGRES_DSN environment
   variable (never an argv flag). `python -m neosian.memory` is the
   PATH-free twin.

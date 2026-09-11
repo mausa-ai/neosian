@@ -157,8 +157,15 @@ def save_report(report: EvalReport, output_dir: str | None = None) -> Path:
     output_path.mkdir(parents=True, exist_ok=True)
     now = datetime.now(UTC)
     filepath = output_path / f"{now.strftime('%Y-%m-%d_%H-%M-%S')}.json"
+    with open(filepath, "w", encoding="utf-8") as f:
+        json.dump(report_dict(report, now=now), f, indent=2, default=str)
+    return filepath
 
-    data = {
+
+def report_dict(report: EvalReport, *, now: datetime) -> dict[str, Any]:
+    """The artifact's document — what `save_report` writes and `neosian
+    eval --json` prints."""
+    return {
         "schema": ARTIFACT_SCHEMA,
         "timestamp": now.isoformat(),
         "suite": report.suite,
@@ -174,9 +181,6 @@ def save_report(report: EvalReport, output_dir: str | None = None) -> Path:
         },
         "results": [_result_to_dict(r) for r in report.results],
     }
-    with open(filepath, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, default=str)
-    return filepath
 
 
 def _result_to_dict(result: CaseResult) -> dict[str, Any]:

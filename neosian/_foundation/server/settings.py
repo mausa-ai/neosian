@@ -1,9 +1,10 @@
 """Argument parsing for `neosian serve` — pure, I/O-free.
 
 The store flags are the shared grammar of `memory/settings.py` (ledger
-#75) with `default_actor="serve"`; mounts are optional here — the §18
-relaxation: the store-shaped API needs no mounts, only the MCP surface
-does, and a RemoteStore-only deployment has no natural scope to mount.
+#75) with `default_actor="serve"`; the mounts default like every shell
+verb's (§30: `NEOSIAN_SCOPE`, else the working directory's project
+layout) and gate the `/mcp` surface — the store-shaped API needs none
+(the §18 relaxation stands for a directory with no derived name).
 
 The bearer tokens arrive only through `NEOSIAN_SERVE_TOKEN` (one token,
 or `actor=token[,…]` per client — DESIGN §20) — argv is
@@ -17,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
 from neosian._foundation.memory.settings import (
@@ -43,8 +45,9 @@ DEFAULT_PORT: Final = 6367
 _EPILOG = (
     f"Auth: set {SERVE_TOKEN_ENV} (a token never belongs in argv); the "
     "server refuses to start without it. Postgres: set "
-    f"{POSTGRES_DSN_ENV} instead of --root. Mounts (--scope/--mount) are "
-    "optional and gate the /mcp surface; the store API needs none."
+    f"{POSTGRES_DSN_ENV} instead of --root. Mounts (--scope/--mount, "
+    "default: this directory's project layout) gate the /mcp surface; the "
+    "store API needs none."
 )
 
 
@@ -92,7 +95,7 @@ def parse_args(
         parser.error(
             "--url is a client's flag: the state process serves a root or a DSN"
         )
-    mounts = resolve_mounts(parser, args, required=False)
+    mounts = resolve_mounts(parser, args, env, required=False, layout=Path.cwd())
     token = env.get(SERVE_TOKEN_ENV) or ""
     if not token:
         parser.error(

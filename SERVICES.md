@@ -103,6 +103,29 @@ home is `~/.neosian`. An explicit flag always wins; the unit tier points
 it at a temporary directory for every test, so no keyless run touches
 the real one.
 
+## The update knob — in the config, not the environment
+
+`[update] mode = off | notify | auto` lives in `<home>/config.toml`
+(`neosian update --mode M` sets it; default `off`), deliberately not
+an environment variable: the check contacts PyPI's simple index and
+the opt-in is the asking (DESIGN §30.3, ledger #214). It runs only on
+the human door — bare `neosian`, `chat`, `status`, `playground`,
+`configure`, on a terminal, never under `--json` — never on `memory`,
+`audit`, `export`, `import`, `record`, `mcp` or `serve`; once per 24 h
+by a stamp under the home; silent when offline. `NEOSIAN_INSTALL`
+(set to `container` by the image) names the installation shape
+`status` and `update` report — `auto` applies only the uv tool shape.
+
+## The scope — `NEOSIAN_SCOPE`
+
+`NEOSIAN_SCOPE` is `--scope`'s environment twin (DESIGN §30): read by
+the same argv entry points, it names the single read-write mount at
+`/memories` when no flag does (`audit` reads it as the raw scope). Unset,
+the shell verbs resolve the working directory's project layout — the
+`user:<login>` + `user:<login>/proj:<slug>` pair the installers render —
+and a directory with no derived name refuses at exit 2. An explicit
+`--scope` or `--mount` always wins.
+
 ## The MCP server — a DSN, not an API key
 
 `NEOSIAN_POSTGRES_DSN` (renamed from `NEOSIAN_MCP_POSTGRES_DSN` at NA,

@@ -31,6 +31,8 @@ RUN useradd --uid 1000 --create-home neosian \
 # The venv keeps its build path; the module door below needs no shebang.
 COPY --from=builder /app/.venv /app/.venv
 ENV PATH="/app/.venv/bin:$PATH"
+# The installation shape `neosian status`/`update` report (DESIGN §30).
+ENV NEOSIAN_INSTALL=container
 USER neosian
 VOLUME /data
 EXPOSE 6367

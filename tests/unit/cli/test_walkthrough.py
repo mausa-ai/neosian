@@ -289,6 +289,16 @@ class TestOperate:
         assert result.stdout == ""
         assert "--content" in result.stderr
 
+    def test_a_grammar_error_under_json_is_one_object_too(self, tmp_path: Path) -> None:
+        result = _run(
+            ["memory", "create", "/memories/n", "--json", *_store_flags(tmp_path)],
+            cwd=tmp_path,
+            env=_env(tmp_path),
+        )
+        assert result.returncode == 2
+        assert json.loads(result.stdout)["error"] == "usage"
+        assert "--content" in result.stderr
+
     def test_the_dsn_conflict_exits_2(self, tmp_path: Path) -> None:
         # The one test that SETS the DSN: proves the entry point reads
         # the real environment across the process boundary.
@@ -359,13 +369,23 @@ class TestUpgrade:
         assert hooks.returncode == 0, hooks.stderr
         assert "/proj:demo-proj,path=project" in hooks.stdout
         assert str(tmp_path / "home" / "spool") in hooks.stdout
-        # The shell itself keeps the scope the caller's: the refusal shows
-        # this directory's spelling instead of deciding it.
+        # NY (DESIGN §30): the shell verbs default to the same layout — no
+        # flags inside a project reads the project's memory on the home.
         bare = _run(["memory", "view", "/"], cwd=project, env=env)
-        assert bare.returncode == 2
-        assert "this directory's layout" in bare.stderr
-        assert "/proj:demo-proj,path=project" in bare.stderr
-        assert not (tmp_path / "home").exists()  # nothing built on the tier
+        assert bare.returncode == 0, bare.stderr
+        assert "## /user" in bare.stdout and "## /project" in bare.stdout
+        ledger = _run(["audit", "--json"], cwd=project, env=env)
+        assert ledger.returncode == 0, ledger.stderr
+        assert json.loads(ledger.stdout)["scope"].endswith("/proj:demo-proj")
+        # NEOSIAN_SCOPE is --scope's environment twin; a nameless directory
+        # (nothing to derive a project from) still refuses at exit 2.
+        scoped = _run(
+            ["memory", "view", "/"], cwd=project, env={**env, "NEOSIAN_SCOPE": "user:t"}
+        )
+        assert scoped.returncode == 0 and "/memories" in scoped.stdout
+        nameless = _run(["memory", "view", "/"], cwd=Path("/"), env=env)
+        assert nameless.returncode == 2
+        assert "--scope" in nameless.stderr
 
     def test_install_refuses_a_missing_client_dir(self, tmp_path: Path) -> None:
         env = _env(tmp_path)  # empty fake HOME — Cursor is "not installed"
@@ -505,3 +525,73 @@ class TestRecord:
             :2
         ] == ["-m", "neosian.mcp"]
         assert "codex mcp add neosian-memory --" in result.stderr
+
+
+class TestConsole:
+    """NY: the operator console through the literal binary."""
+
+    def test_status_json_on_a_fresh_home(self, tmp_path: Path) -> None:
+        env = _env(tmp_path)
+        project = tmp_path / "fresh proj"
+        project.mkdir()
+        result = _run(["status", "--json"], cwd=project, env=env)
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.count("\n") == 1 and result.stderr == ""
+        payload = json.loads(result.stdout)
+        assert payload["home"] == str(tmp_path / "home")
+        assert payload["home_exists"] is False
+        assert payload["scopes"]["/project"].endswith("/proj:fresh-proj")
+        assert [c["installed"] for c in payload["clients"]] == [False] * 3
+        assert payload["update_mode"] == "off"
+        assert not (tmp_path / "home").exists()  # status creates nothing
+        text = _run(["status"], cwd=project, env=env)
+        assert text.returncode == 0 and text.stdout.startswith("neosian ")
+
+    def test_setup_prints_first_then_writes_both_files(self, tmp_path: Path) -> None:
+        env = _env(tmp_path)
+        (tmp_path / ".claude").mkdir()  # HOME is tmp_path — Claude Code's evidence
+        project = tmp_path / "setup proj"
+        project.mkdir()
+        printed = _run(["setup"], cwd=project, env=env)
+        assert printed.returncode == 0, printed.stderr
+        assert "would write" in printed.stdout
+        assert not (project / ".mcp.json").exists()  # print mode writes nothing
+        written = _run(["setup", "--write", "--json"], cwd=project, env=env)
+        assert written.returncode == 0, written.stderr
+        (row,) = json.loads(written.stdout)["clients"]
+        assert row["client"] == "claude-code"
+        assert (project / ".mcp.json").is_file()
+        assert (project / ".claude" / "settings.json").is_file()
+        status = _run(["status", "--json"], cwd=project, env=env)
+        claude = json.loads(status.stdout)["clients"][0]
+        assert claude["mcp_registered"] and claude["hooks_present"]
+        assert claude["interpreter_resolves"] is True
+
+    def test_bare_neosian_under_a_pipe_is_the_help(self, tmp_path: Path) -> None:
+        result = _run([], cwd=tmp_path, env=_env(tmp_path))
+        assert result.returncode == 0, result.stderr
+        assert "Usage:" in result.stdout and "Connect an agent" in result.stdout
+
+    def test_a_piped_chat_turn_persists_where_audit_looks(self, tmp_path: Path) -> None:
+        """NY: `echo hi | neosian chat --model fake --json` — the resident
+        agent usable by a script, keyless; the turn lands under the home
+        and the same `audit` names it."""
+        env = _env(tmp_path)
+        project = tmp_path / "chat proj"
+        project.mkdir()
+        result = _run(
+            ["chat", "--model", "fake", "--json"], cwd=project, env=env, stdin="hi\n"
+        )
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.count("\n") == 1 and result.stderr == ""
+        payload = json.loads(result.stdout)
+        assert payload["text"] == "fake response" and payload["model"] == "fake"
+        assert set(payload) >= {"conversation_id", "usage", "cost_micro_usd"}
+        ledger = _run(
+            ["audit", "--conversation", payload["conversation_id"], "--json"],
+            cwd=project,
+            env=env,
+        )
+        assert ledger.returncode == 0, ledger.stderr
+        events = [e["event"] for e in json.loads(ledger.stdout)["entries"]]
+        assert "turn" in events

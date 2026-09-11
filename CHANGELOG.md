@@ -10,6 +10,20 @@ phase close names the version.
 
 ### Added
 
+- The shell for humans and agents (NY, DESIGN §30): `neosian status`
+  (is this machine set up — the home, the keys by source, this
+  directory's scopes, per client MCP / hooks / a resolving interpreter,
+  the last recorded session, the install shape; exit 0, findings are
+  data), `neosian setup [--write]` (both installers for every client
+  found), `neosian chat [PROMPT] [--model M] [--agent FILE] [--resume ID]
+  [--json]` (the resident agent that knows neosian — a `docs` tool over
+  the shipped pages — on the home's project layout; one turn from a
+  PROMPT or piped stdin, `--model fake` keyless) and bare `neosian`
+  opening it on a terminal, `neosian update [--check|--write] [--mode
+  off|notify|auto]` with the `[update] mode` knob (a PyPI check on the
+  human verbs only), `NEOSIAN_SCOPE` as `--scope`'s environment twin,
+  `eval --json`, the help grouped by audience.
+
 - `Model.GROK_4_6` and `Model.GEMINI_3_7_FLASH`: every shipped row is a
   `Model` member, a door row carrying its `OpenAICompatible` door on
   `ModelSpec.door` / `Model.door` (NW1, DESIGN §31); `neosian.catalog`
@@ -34,8 +48,24 @@ phase close names the version.
   are back in the external tier as candidates; a door lane's board runs
   under an in-loop ceiling that records a cut cell as `timeout`.
 
+### Changed
+
+- With no `--scope`/`--mount`, every shell verb (`memory`, `audit`,
+  `mcp`, `record`, `serve`'s `/mcp`) resolves the working directory's
+  project layout — the pair the installers render — instead of refusing;
+  a directory with no derived name still exits 2. `configure` is
+  non-interactive and catalog-driven (`--list`, `--provider NAME --key -`
+  from stdin, `--delete`, `--json`; prompts only bare on a terminal) and
+  `config.toml` lives under the home (`NEOSIAN_HOME`). With `--json` in
+  argv a grammar error (exit 2) also prints one `{"error": "usage",
+  "hint"}` object on stdout. On a terminal `docs <topic>`, `audit`,
+  `memory view /` and `status` render (markdown, a table, a tree); under
+  a pipe, `NO_COLOR` or `--json` the bytes are unchanged.
+
 ### Removed
 
+- `simple-term-menu`: the playground's pickers and the arena's save
+  prompt ride `rich.prompt`; nothing in the shell is platform-bound.
 - `Model.GPT_5_MINI`, `Model.GPT_5_NANO`, `Model.GPT_5_PRO` (OpenAI shuts
   the snapshots down 2026-12-11), `Model.CEREBRAS_GEMMA_4_31B` (off
   Cerebras's public endpoints since 2026-09-03) and

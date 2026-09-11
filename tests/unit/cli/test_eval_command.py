@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 import typer
 
-import neosian._cli.playground as playground
+import neosian._cli.providers as providers
 from neosian._cli.main import evaluate
 
 AGENT_FILE = """
@@ -42,7 +42,7 @@ def _suite(tmp_path: Path, expected: str) -> Path:
 
 @pytest.fixture(autouse=True)
 def _isolate(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setattr(playground, "_load_credentials_from_config", lambda: None)
+    monkeypatch.setattr(providers, "load_keys_into_env", lambda: None)
     monkeypatch.chdir(tmp_path)  # the artifact lands in tmp's .neosian/evals
 
 
@@ -61,6 +61,20 @@ class TestExitCodes:
         with pytest.raises(typer.Exit) as excinfo:
             evaluate(str(_suite(tmp_path, "goodbye")))
         assert excinfo.value.exit_code == 1
+
+    def test_json_prints_the_artifact_document(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        import json
+
+        with pytest.raises(typer.Exit) as excinfo:
+            evaluate(str(_suite(tmp_path, "hi")), json_output=True)
+        assert excinfo.value.exit_code == 0
+        out = capsys.readouterr().out
+        assert out.count("\n") == 1
+        payload = json.loads(out)
+        assert payload["summary"] == {"total": 1, "passed": 1, "failed": 0}
+        assert payload["schema"] == 2
 
     def test_a_load_error_exits_one(self, tmp_path: Path) -> None:
         with pytest.raises(typer.Exit) as excinfo:

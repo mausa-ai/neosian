@@ -22,7 +22,6 @@ _DOORS = {
     "mcp",
     "opentelemetry-api",
     "rich",
-    "simple-term-menu",
     "starlette",
     "tomli-w",
     "typer",

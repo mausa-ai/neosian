@@ -25,11 +25,13 @@ _COMPACTION_FILE: Final = "prompts/compaction.yaml"
 _REFLECTION_FILE: Final = "prompts/reflection.yaml"
 _MAINTENANCE_FILE: Final = "prompts/maintenance.yaml"
 _CONTEXT_FILE: Final = "prompts/context.yaml"
+_CHAT_FILE: Final = "prompts/chat.yaml"
 _POLICY_KEYS: Final = ("name", "code", "description", "violates", "safe")
 _MEMORY_KEYS: Final = ("tool", "system_section")
 _COMPACTION_KEYS: Final = ("distill", "epoch", "log_header", "log_footer")
 _REFLECTION_KEYS: Final = ("system",)
 _MAINTENANCE_KEYS: Final = ("system",)
+_CHAT_KEYS: Final = ("system",)
 _CONTEXT_KEYS: Final = (
     "board",
     "view_header",
@@ -49,6 +51,7 @@ _TOOL_KEYS: Final = (
     "skill_guide",
     "recall_turn",
     "recall_turn_any",
+    "docs",
     "json_object",
 )
 # Parameter prose by parameter name (NF §27.9): the builtins' `params=`.
@@ -57,6 +60,7 @@ _TOOL_PARAM_KEYS: Final = (
     "skill_load_params",
     "recall_turn_params",
     "recall_turn_any_params",
+    "docs_params",
 )
 _MEMORY_PARAM_KEYS: Final = ("params",)
 
@@ -129,6 +133,9 @@ def _load() -> (
     context = _load_yaml(_CONTEXT_FILE)
     for key in _CONTEXT_KEYS:
         prompts[f"context.{key}"] = str(_require(context, key, _CONTEXT_FILE))
+    chat = _load_yaml(_CHAT_FILE)
+    for key in _CHAT_KEYS:
+        prompts[f"chat.{key}"] = str(_require(chat, key, _CHAT_FILE))
     policies = tuple(_require(guardrails, "policies", _GUARDRAILS_FILE))
     for entry in policies:
         if not isinstance(entry, dict):

@@ -1,9 +1,62 @@
 ---
-title: The shell — operate memory with no Python in the loop
-summary: Six commands + the operator verbs as neosian memory, --json, exit tiers 0/1/2/130
+title: The shell — one CLI for humans and agents
+summary: status, setup, chat, configure; then the memory grammar, --json, exit tiers 0/1/2/130
 ---
 
-# Memory from the shell
+# The shell
+
+One `neosian` for two readers: the operator console for the state your
+agents already write, and the agent-facing grammar underneath it —
+every verb with `--json` and exit tiers, so a script or an agent uses
+the same doors. On a terminal the verbs render (a table, a tree,
+markdown); under a pipe, `NO_COLOR` or `--json` the bytes are plain and
+identical.
+
+## Set up and talk
+
+```
+neosian status [--json]                  # is this machine set up?
+neosian setup [--client C]… [--write]    # wire the installed agents to this store
+neosian configure [--list | --provider NAME --key - | --delete]
+neosian chat [PROMPT] [--model M] [--agent FILE] [--resume ID] [--json]
+neosian update [--check | --write] [--mode off|notify|auto]
+neosian                                  # on a terminal: chat; under a pipe: the help
+```
+
+- **`status`** — the home and whether it exists; the config and which
+  providers have a key (names and sources, never values); this
+  directory's two scopes; per client (Claude Code, Codex, OpenCode)
+  installed / MCP registered / hooks present / the interpreter those
+  files name still resolving; the last recorded session; the one-writer
+  note; the installation shape with its upgrade line; the update knob.
+  Exit 0 whenever it ran — findings are data.
+- **`setup`** — detects the clients present and runs both installers
+  for each (`mcp install` and `record install`, the home and this
+  directory's layout): prints what would land, `--write` applies it.
+- **`configure`** — keys under `<home>/config.toml`, one row per
+  provider the catalog knows (shipped, door rows, registered doors);
+  `--provider NAME --key -` reads the key from stdin — never argv;
+  bare on a terminal prompts for each.
+- **`chat`** — the resident agent: it knows neosian (the `docs` tool
+  reads the shipped pages on demand), writes to `/user` and `/project`
+  on the home and loads the skills your other agents wrote. A PROMPT or
+  piped stdin runs one turn; `--json` the envelope (text, tool calls,
+  usage, µ$); `--model fake` is keyless. The model: `--model`, else
+  `[chat] model` in `config.toml`, else the first provider with a key
+  (Anthropic, OpenAI, Cerebras, registered doors).
+- **`update`** — checks PyPI's simple index; `[update] mode` is `off`
+  (default), `notify` (one stderr line on the human verbs, once per
+  24 h) or `auto` (applies a uv tool install within the major, never a
+  pre-release over a stable, then re-executes itself).
+
+**No flags means this project.** Every verb below resolves the working
+directory's layout — `user:<login>` at `/user`, `user:<login>/proj:<slug>`
+at `/project`, the same pair the installers write — when no `--scope`
+or `--mount` names a mount; `NEOSIAN_SCOPE` is `--scope`'s environment
+twin. The store is the home unless `--root`, `--url` or the DSN names
+one.
+
+## Memory from the shell
 
 `neosian memory <command>` is the shell transport over the same
 dispatcher the function tool, the native Anthropic declaration, the
@@ -43,8 +96,9 @@ EOF
 |---|---|
 | `--root DIR` | FileStore root (created on first write); default: the home, `~/.neosian` or `$NEOSIAN_HOME` |
 | `--url URL` | the state process instead of a root; its token in `NEOSIAN_CLIENT_TOKEN` |
-| `--scope SCOPE` | single read-write mount of SCOPE at `/memories` (the sugar) |
+| `--scope SCOPE` | single read-write mount of SCOPE at `/memories` (the sugar); `NEOSIAN_SCOPE` is its environment twin |
 | `--mount scope=...,path=...` | explicit mount; repeatable; append `,ro` (read-only) or `,eo` (edit-only) |
+| *(neither)* | this directory's project layout — `user:<login>` at `/user`, `user:<login>/proj:<slug>` at `/project`, the pair the installers render; a directory with no name refuses at exit 2 |
 | `--actor NAME` | who writes, `<kind>:<id>` (default `cli:local`; `cli:<host>` names the agent driving the shell) |
 | `--schema NAME` | Postgres schema (Postgres only) |
 
@@ -65,7 +119,9 @@ or renamed there — pre-created layouts the agent works within.
 - **130** — interrupt.
 
 stdout carries the artifact; stderr carries guidance — redirecting
-stdout always captures something well-formed.
+stdout always captures something well-formed. With `--json` anywhere in
+argv, a tier-2 error also prints one `{"error": "usage", "hint": …}`
+object on stdout — the tier and the stderr text stay.
 
 ## --json
 
@@ -125,8 +181,9 @@ fields (`command`, `path`, `version`, `previous_path`).
 
 ## The ledger — `neosian audit`
 
-`neosian audit --scope SCOPE [--conversation ID] [--actor A] [--since T]
-[--limit N] [--json]` answers "what was done, by whom, when" for a scope,
+`neosian audit [--scope SCOPE] [--conversation ID] [--actor A] [--since T]
+[--limit N] [--json]` answers "what was done, by whom, when" for a scope
+(default: `NEOSIAN_SCOPE`, else this directory's project scope),
 newest first: every memory version row (deleted documents included),
 every redaction, and one conversation's turns when named. It takes the
 store selection above (`--root`, `--url`, or the DSN) — `--scope` is a

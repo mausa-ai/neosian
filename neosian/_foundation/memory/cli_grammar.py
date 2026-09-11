@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
+from pathlib import Path
 from typing import Any, Final, TextIO
 
 from neosian._foundation.memory.maintenance import MAINTENANCE_MIN_AGE_DAYS
@@ -212,7 +213,7 @@ def parse_request(
     parser, subs = build_parser(prog, out, err)
     args = parser.parse_args(list(argv))
     command: str = args.command
-    settings = resolve_store_settings(subs[command], args, env)
+    settings = resolve_store_settings(subs[command], args, env, layout=Path.cwd())
     if command == "maintain":
         if args.min_age_days < 0:
             subs[command].error("--min-age-days must not be negative")

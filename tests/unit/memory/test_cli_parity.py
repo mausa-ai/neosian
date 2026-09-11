@@ -12,6 +12,7 @@ dispatcher does. That divergence is §14.1's tiering, not drift.
 from __future__ import annotations
 
 import io
+import json
 from pathlib import Path
 from typing import Any
 
@@ -139,7 +140,8 @@ async def test_both_transports_agree(tmp_path: Path, case: dict[str, Any]) -> No
         # Both fail; the CLI's answer is the grammar's, at exit 2.
         assert fn_result.success is False
         assert code == 2
-        assert out.getvalue() == ""
+        # --json is in argv, so the usage error is one object too (§30).
+        assert json.loads(out.getvalue())["error"] == "usage"
         text = err.getvalue()
         assert "--content" in text or "invalid choice" in text
         return
