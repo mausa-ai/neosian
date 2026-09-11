@@ -47,7 +47,6 @@ class ErrorMessages:
     # Playground errors
     OPENAI_API_KEY_MISSING: str = "OPENAI_API_KEY environment variable not set"
     ANTHROPIC_API_KEY_MISSING: str = "ANTHROPIC_API_KEY environment variable not set"
-    CEREBRAS_API_KEY_MISSING: str = "CEREBRAS_API_KEY environment variable not set"
 
     # OpenAI specific errors
     OPENAI_TEMPERATURE_NOT_SUPPORTED: str = (
@@ -77,12 +76,6 @@ class ErrorMessages:
     REASONING_EFFORT_MAX_DOWNGRADED_OPENAI: str = (
         "reasoning_effort=MAX is not supported by model '{model}'. "
         "Downgrading to HIGH."
-    )
-
-    # Cerebras MAX-to-HIGH downgrade
-    REASONING_EFFORT_MAX_DOWNGRADED_CEREBRAS: str = (
-        "reasoning_effort=MAX is not supported by Cerebras models. "
-        "Downgrading to HIGH for model '{model}'."
     )
 
     # Anthropic MAX-to-HIGH downgrade (models without supports_max_effort)

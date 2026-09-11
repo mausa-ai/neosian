@@ -7,6 +7,7 @@ from typing import Any, Final
 
 from openai import NOT_GIVEN, AsyncOpenAI, BadRequestError, omit
 from openai.types.chat import (
+    ChatCompletion,
     ChatCompletionMessageParam,
     ChatCompletionStreamOptionsParam,
     ChatCompletionToolParam,
@@ -31,6 +32,7 @@ from neosian._foundation.llm.openai_convert import (
     convert_response_format,
     convert_tools,
     extra_of,
+    is_tool_call_error,
     json_object_format,
     refusal_of,
     schema_in_prompt,
@@ -39,6 +41,8 @@ from neosian._foundation.llm.openai_convert import (
 from neosian._foundation.shared.constants import ErrorMessages, LLMDefaults
 from neosian._foundation.shared.exceptions import (
     ContextWindowExceededError,
+    NeosianError,
+    ProviderError,
     ToolCallGenerationError,
     UnsupportedParameterError,
 )
@@ -134,21 +138,21 @@ class OpenAICompatibleClient(BaseLLMClient):
             self._convert_response_format(response_format) if response_format else None
         )
 
+        kwargs: dict[str, Any] = {
+            "model": model.value,
+            "messages": openai_messages,
+            "tools": openai_tools if openai_tools else omit,
+            "max_completion_tokens": max_tokens,
+            "temperature": temperature if temperature is not None else omit,
+            "response_format": (
+                openai_response_format if openai_response_format else omit
+            ),
+            "reasoning_effort": effective_effort.value if effective_effort else omit,
+            "extra_body": self._extra_body(effective_effort),
+        }
         for attempt in range(LLMDefaults.MAX_TOOL_CALL_RETRIES + 1):
             try:
-                response = await self._client.chat.completions.create(
-                    model=model.value,
-                    messages=openai_messages,
-                    tools=openai_tools if openai_tools else omit,
-                    max_completion_tokens=max_tokens,
-                    temperature=temperature if temperature is not None else omit,
-                    response_format=(
-                        openai_response_format if openai_response_format else omit
-                    ),
-                    reasoning_effort=(
-                        effective_effort.value if effective_effort else omit
-                    ),
-                )
+                response = await self._client.chat.completions.create(**kwargs)
                 return self._parse_response(response)
 
             except BadRequestError as e:
@@ -158,6 +162,11 @@ class OpenAICompatibleClient(BaseLLMClient):
                     raise wrapped from e
                 if self._is_tool_call_error(e) and tools is not None:
                     if attempt < LLMDefaults.MAX_TOOL_CALL_RETRIES:
+                        # A door may retry cooler — only when a temperature
+                        # was explicitly in play (LL-15, #218).
+                        retry = self._door.retry_temperature
+                        if temperature is not None and retry is not None:
+                            kwargs["temperature"] = retry
                         continue
                     raise ToolCallGenerationError(
                         retries=LLMDefaults.MAX_TOOL_CALL_RETRIES
@@ -182,27 +191,16 @@ class OpenAICompatibleClient(BaseLLMClient):
         )
 
     def _is_tool_call_error(self, error: BadRequestError) -> bool:
-        """Check if the error is a tool call generation failure.
+        return is_tool_call_error(error.body)
 
-        Args:
-            error: The BadRequestError to check.
+    def _extra_body(self, effort: ReasoningEffort | None) -> dict[str, str] | None:
+        """The door's `reasoning_format`, riding beside a sent effort (#218).
 
-        Returns:
-            True if it's a tool call related error.
+        `None`, not `omit`: the SDK merges `extra_body` as a mapping.
         """
-        # OpenAI returns different error codes/messages for tool failures
-        if error.body and isinstance(error.body, dict):
-            err = error.body.get("error", {})
-            if isinstance(err, dict):
-                code = err.get("code", "")
-                message = err.get("message", "")
-                # Check for various tool-related error indicators
-                return (
-                    code == "invalid_tool_call"
-                    or "tool" in message.lower()
-                    or "function" in message.lower()
-                )
-        return False
+        if effort is None or self._door.reasoning_format is None:
+            return None
+        return {"reasoning_format": self._door.reasoning_format}
 
     def _resolve_reasoning_effort(
         self, model: AnyModel, reasoning_effort: ReasoningEffort | None
@@ -257,23 +255,17 @@ class OpenAICompatibleClient(BaseLLMClient):
         value = getattr(part, self._door.reasoning_field, None)
         return value if isinstance(value, str) and value else None
 
-    def _parse_response(self, response: object) -> CompletionResponse:
-        """Parse the response into CompletionResponse.
-
-        Args:
-            response: Raw response from the API.
-
-        Returns:
-            Parsed CompletionResponse.
-        """
-        # Type ignore needed because openai SDK types are complex
-        choice = response.choices[0]  # type: ignore[attr-defined]
+    def _parse_response(self, response: ChatCompletion) -> CompletionResponse:
+        """Parse the response into CompletionResponse."""
+        choice = response.choices[0]
         response_message = choice.message
 
         # Convert tool calls if present
         tool_calls: list[ToolCall] = []
         if response_message.tool_calls:
             for tc in response_message.tool_calls:
+                if tc.type == "custom":  # never sent: every tool is a function
+                    continue
                 tool_calls.append(
                     ToolCall(
                         id=ToolCallId(tc.id),
@@ -287,16 +279,6 @@ class OpenAICompatibleClient(BaseLLMClient):
                     )
                 )
 
-        # Extract cached token count (OpenAI automatic prompt caching)
-        cached_tokens = 0
-        prompt_tokens = 0
-        output_tokens = 0
-        if response.usage:  # type: ignore[attr-defined]
-            prompt_tokens = response.usage.prompt_tokens  # type: ignore[attr-defined]
-            output_tokens = response.usage.completion_tokens  # type: ignore[attr-defined]
-            details = getattr(response.usage, "prompt_tokens_details", None)  # type: ignore[attr-defined]
-            cached_tokens = getattr(details, "cached_tokens", 0) or 0
-
         refusal = refusal_of(response_message)
         return CompletionResponse(
             message=Message(
@@ -305,12 +287,12 @@ class OpenAICompatibleClient(BaseLLMClient):
                 tool_calls=tool_calls,
                 reasoning=self._reasoning_of(response_message),
             ),
-            usage=Usage(
-                input_tokens=prompt_tokens - cached_tokens,
-                output_tokens=output_tokens,
-                cache_read_tokens=cached_tokens,
+            usage=(
+                usage_of(response.usage)
+                if response.usage
+                else Usage(input_tokens=0, output_tokens=0)
             ),
-            model=response.model,  # type: ignore[attr-defined]
+            model=response.model,
             stop_reason=(
                 "refusal" if refusal else getattr(choice, "finish_reason", None)
             ),
@@ -361,6 +343,7 @@ class OpenAICompatibleClient(BaseLLMClient):
                 stream=True,
                 stream_options=stream_opts,
                 reasoning_effort=effective_effort.value if effective_effort else omit,
+                extra_body=self._extra_body(effective_effort),
             )
 
             # Track tool calls being built across chunks
@@ -369,6 +352,9 @@ class OpenAICompatibleClient(BaseLLMClient):
             refused = False
 
             async for chunk in stream:
+                # An in-band error frame ends the stream loudly (#218).
+                if (extra := extra_of(chunk)) and "error" in extra:
+                    raise ProviderError(self._door.name, str(extra["error"]))
                 # Usage rides whichever chunk carries it — OpenAI's trailing
                 # choices-empty chunk, or a door's final content chunk (LL-12).
                 usage = usage_of(chunk.usage) if chunk.usage else None
@@ -440,6 +426,8 @@ class OpenAICompatibleClient(BaseLLMClient):
                     usage=usage,
                     model=chunk.model,
                 )
+        except NeosianError:
+            raise
         except Exception as exc:
             raise wrap_provider_error(self._door.name, exc, model=model) from exc
 

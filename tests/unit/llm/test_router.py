@@ -69,11 +69,12 @@ class TestProviderRouter:
             assert isinstance(router.create_client(Provider.FAKE), FakeClient)
 
     def test_create_client_cerebras(self, cerebras_only: dict[str, str]) -> None:
-        """Test creating Cerebras client."""
+        """The Cerebras rows ride a door (#218): the model-keyed path serves them."""
         with patch.dict(os.environ, cerebras_only, clear=True):
             router = ProviderRouter()
-            client = router.create_client(Provider.CEREBRAS)
-            assert client is not None
+            with pytest.raises(ValueError, match="create_client_for"):
+                router.create_client(Provider.CEREBRAS)
+            assert router.create_client_for(Model.CEREBRAS_GPT_OSS_120B) is not None
 
     def test_create_client_openai(self, all_keys_available: dict[str, str]) -> None:
         """Test creating OpenAI client."""

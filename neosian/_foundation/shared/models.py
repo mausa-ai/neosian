@@ -12,7 +12,7 @@ from enum import Enum
 from functools import partial
 from typing import Final
 
-from neosian._foundation.shared.catalog import GEMINI, XAI, OpenAICompatible
+from neosian._foundation.shared.catalog import CEREBRAS, GEMINI, XAI, OpenAICompatible
 
 # =============================================================================
 # Provider and Model Enums
@@ -322,13 +322,15 @@ _MODEL_SPECS[Model.CLAUDE_HAIKU_4_5.value] = ModelSpec(
 )
 
 # Cerebras (inference-docs.cerebras.ai/models, 2026-09-10): the public
-# catalog is these two; the paid tier's limits.
+# catalog is these two; the paid tier's limits. Served through the door
+# since NC7 (ledger #218); the provider row stays the rows' label.
 _MODEL_SPECS[Model.CEREBRAS_GPT_OSS_120B.value] = ModelSpec(
     provider=Provider.CEREBRAS,
     context_window=131_072,
     max_output_tokens=40_960,
     supports_reasoning=True,
     pricing=ModelPricing(input_per_mtok=250_000, output_per_mtok=690_000),
+    door=CEREBRAS,
 )
 _MODEL_SPECS[Model.CEREBRAS_QWEN_3_8_27B.value] = ModelSpec(
     provider=Provider.CEREBRAS,
@@ -336,6 +338,7 @@ _MODEL_SPECS[Model.CEREBRAS_QWEN_3_8_27B.value] = ModelSpec(
     max_output_tokens=40_960,
     supports_reasoning=True,
     pricing=ModelPricing(input_per_mtok=990_000, output_per_mtok=1_490_000),
+    door=CEREBRAS,
 )
 
 # Fake — deterministic keyless models (ECOSYSTEM §7). The capability split

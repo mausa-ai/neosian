@@ -44,11 +44,11 @@ async def test_model_answers_minimal_completion(
     """Each registry model must accept a minimal completion request."""
     if model.provider is Provider.FAKE:
         pytest.skip("FAKE models are keyless registry members (DESIGN §2)")
-    if model.door is not None:
+    if model.provider is Provider.OPENAI_COMPATIBLE:
         pytest.skip("a door row is probed by its lane, on the lane's clock (§31)")
     fixture_name = _PROVIDER_FIXTURES[model.provider]
     request.getfixturevalue(fixture_name)  # skips when the env var is unset
-    await _answers(ProviderRouter().create_client(model.provider), model)
+    await _answers(ProviderRouter().create_client_for(model), model)
 
 
 @pytest.mark.parametrize("lane", LANES, ids=lambda lane: lane.name)

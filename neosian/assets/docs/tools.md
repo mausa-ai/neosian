@@ -77,7 +77,7 @@ All of it lands in the schema and all of it is **enforced at the tool
 boundary on every provider**; what differs is whether the model is told
 up front:
 
-| keyword | Anthropic | OpenAI wire, Cerebras |
+| keyword | Anthropic | OpenAI wire |
 |---|---|---|
 | `minimum`, `maximum`, `exclusive*` | dropped on the wire, always | sent |
 | `multipleOf`, `minLength`, `maxLength` | sent; dropped under `strict` | sent |
@@ -109,7 +109,7 @@ validates and answers in-band.
 
 `Tool(..., strict=True)` asks the provider to constrain decoding to the
 schema. Anthropic honours it against a per-request complexity budget
-(twenty strict tools). On the OpenAI wire and Cerebras the tool is sent
+(twenty strict tools). On the OpenAI wire the tool is sent
 with `strict: true` in the strict-mode shape: every property required,
 `null` defaults dropped, every object closed — so make optional
 parameters nullable (`T | None`). A registered door with

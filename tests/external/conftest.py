@@ -12,7 +12,8 @@ import os
 import pytest
 
 from neosian._foundation.llm.anthropic import AnthropicClient
-from neosian._foundation.llm.cerebras import CerebrasClient
+from neosian._foundation.llm.openai import OpenAICompatibleClient
+from neosian._foundation.shared.catalog import CEREBRAS
 
 
 def _key_or_skip(name: str) -> str:
@@ -74,8 +75,8 @@ def postgres_dsn() -> str:
 
 
 @pytest.fixture
-def cerebras_client(cerebras_api_key: str) -> CerebrasClient:
-    return CerebrasClient(api_key=cerebras_api_key)
+def cerebras_client(cerebras_api_key: str) -> OpenAICompatibleClient:
+    return OpenAICompatibleClient(api_key=cerebras_api_key, door=CEREBRAS)
 
 
 @pytest.fixture

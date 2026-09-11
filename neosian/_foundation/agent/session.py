@@ -36,7 +36,7 @@ class AgentSession:
     fallback model until retry_main_after successful calls.
 
     Thread-safety: Sessions are safe for concurrent use. The underlying
-    SDK clients (AsyncOpenAI, AsyncAnthropic, AsyncCerebras) use httpx which
+    SDK clients (AsyncOpenAI, AsyncAnthropic) use httpx which
     supports concurrent requests from multiple coroutines.
 
     Usage patterns:

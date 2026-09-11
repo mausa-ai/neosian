@@ -28,7 +28,7 @@ _DOORS = {
     "uvicorn",
 }
 _ALIASES = {"cli", "mcp", "otel", "server"}
-_SDKS = ("anthropic", "cerebras-cloud-sdk", "openai")
+_SDKS = ("anthropic", "openai")
 
 
 def _project() -> dict[str, object]:
@@ -105,11 +105,11 @@ def test_import_neosian_loads_no_provider_sdk() -> None:
         "import sys, neosian\n"
         "from neosian import Agent, AgentConfig, Model\n"
         "Agent(AgentConfig(model=Model.FAKE, system_prompt='x'))\n"
-        "loaded = {'anthropic', 'openai', 'cerebras'} & set(sys.modules)\n"
+        "loaded = {'anthropic', 'openai'} & set(sys.modules)\n"
         "assert not loaded, loaded\n"
         "clients = [m for m in sys.modules if m.startswith("
         "'neosian._foundation.llm.') and m.rsplit('.', 1)[1] in "
-        "('anthropic', 'openai', 'cerebras')]\n"
+        "('anthropic', 'openai')]\n"
         "assert not clients, clients"
     )
     assert result.returncode == 0, result.stderr

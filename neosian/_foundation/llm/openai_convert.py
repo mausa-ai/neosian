@@ -39,12 +39,34 @@ from neosian._foundation.shared.types import ResponseFormat
 
 
 def usage_of(usage: CompletionUsage) -> Usage:
+    """Token counts off a usage block; a door may leave a count null (#218)."""
     details = getattr(usage, "prompt_tokens_details", None)
     cached_tokens = getattr(details, "cached_tokens", 0) or 0
     return Usage(
-        input_tokens=usage.prompt_tokens - cached_tokens,
-        output_tokens=usage.completion_tokens,
+        input_tokens=(usage.prompt_tokens or 0) - cached_tokens,
+        output_tokens=usage.completion_tokens or 0,
         cache_read_tokens=cached_tokens,
+    )
+
+
+def is_tool_call_error(body: object) -> bool:
+    """Whether a 400's body names a tool-call generation failure.
+
+    Two shapes on one wire (#218): OpenAI nests `{"error": {"code",
+    "message"}}`; Cerebras answers the flat `{"code": "tool_use_failed",
+    "message"}`.
+    """
+    if not isinstance(body, dict):
+        return False
+    err = body.get("error", body)
+    if not isinstance(err, dict):
+        return False
+    code = str(err.get("code", ""))
+    message = str(err.get("message", "")).lower()
+    return (
+        code in ("invalid_tool_call", "tool_use_failed")
+        or "tool" in message
+        or "function" in message
     )
 
 

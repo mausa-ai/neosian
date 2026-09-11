@@ -16,6 +16,7 @@ from neosian._foundation.llm.base import (
     StreamChunk,
     Usage,
 )
+from neosian._foundation.shared.catalog import CEREBRAS
 from neosian._foundation.shared.types import (
     AgentConfig,
     AnyModel,
@@ -109,7 +110,7 @@ class TestAgentSessionClientCaching:
             client = session._get_or_create_client(Model.CEREBRAS_GPT_OSS_120B)
 
             assert client is mock_client
-            assert Provider.CEREBRAS in session._clients
+            assert CEREBRAS in session._clients  # keyed by the door (#218)
             mock_router.create_client_for.assert_called_once_with(
                 Model.CEREBRAS_GPT_OSS_120B
             )
@@ -458,5 +459,5 @@ class TestAgentSessionMultipleClients:
 
                 # Both clients should be cached
                 assert len(session._clients) == 2
-                assert Provider.CEREBRAS in session._clients
+                assert CEREBRAS in session._clients  # keyed by the door (#218)
                 assert Provider.OPENAI in session._clients

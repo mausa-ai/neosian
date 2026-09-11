@@ -8,7 +8,6 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from cerebras.cloud.sdk.types.chat.chat_completion import ChatChunkResponse
 
 from neosian._foundation.llm.anthropic import AnthropicClient
 from neosian._foundation.llm.base import (
@@ -17,8 +16,8 @@ from neosian._foundation.llm.base import (
     Role,
     ToolDefinition,
 )
-from neosian._foundation.llm.cerebras import CerebrasClient
 from neosian._foundation.llm.openai import OpenAIClient, OpenAICompatibleClient
+from neosian._foundation.shared.catalog import CEREBRAS
 from neosian._foundation.shared.exceptions import (
     ContextWindowExceededError,
     ProviderError,
@@ -51,8 +50,8 @@ class _ChunkIterator:
             raise StopAsyncIteration from None
 
 
-def _content_chunk(text: str, spec: type | None = None) -> MagicMock:
-    chunk = MagicMock(spec=spec) if spec is not None else MagicMock()
+def _content_chunk(text: str) -> MagicMock:
+    chunk = MagicMock()
     chunk.model = "stream-model"
     chunk.choices = [MagicMock()]
     chunk.choices[0].delta.content = text
@@ -70,10 +69,14 @@ def _xai_client(api_key: str) -> OpenAICompatibleClient:
     return OpenAICompatibleClient(api_key, door=_XAI)
 
 
+def _cerebras_client(api_key: str) -> OpenAICompatibleClient:
+    return OpenAICompatibleClient(api_key, door=CEREBRAS)
+
+
 # (client factory, provider name, model) for the OpenAI-compatible wire:
-# Cerebras on its own SDK, OpenAI on its door, a registered door.
+# Cerebras on its shipped door, OpenAI on its door, a registered door.
 _OPENAI_COMPAT = [
-    (CerebrasClient, "cerebras", Model.CEREBRAS_GPT_OSS_120B),
+    (_cerebras_client, "cerebras", Model.CEREBRAS_GPT_OSS_120B),
     (OpenAIClient, "openai", Model.GPT_5_6_LUNA),
     (_xai_client, "xai", Model.GPT_5_6_LUNA),
 ]
@@ -126,10 +129,8 @@ class TestOpenAICompatWrap:
     ) -> None:
         client = client_cls(api_key="test-key")  # type: ignore[call-arg]
         original = _ServerError("stream died", status_code=500)
-        # Cerebras type-filters chunks, so its mock must satisfy isinstance.
-        spec = ChatChunkResponse if client_cls is CerebrasClient else None
         _sdk(client).chat.completions.create = AsyncMock(
-            return_value=_ChunkIterator([_content_chunk("Hel", spec)], error=original)
+            return_value=_ChunkIterator([_content_chunk("Hel")], error=original)
         )
 
         received = []
@@ -161,8 +162,8 @@ class TestOpenAICompatWrap:
 @pytest.mark.unit
 class TestContextWindowClassification:
     async def test_cerebras_400_overflow_becomes_context_window_error(self) -> None:
-        client = CerebrasClient(api_key="test-key")
-        from cerebras.cloud.sdk import BadRequestError
+        client = _cerebras_client(api_key="test-key")
+        from openai import BadRequestError
 
         original = BadRequestError(
             message="prompt is too long: 200000 tokens",
@@ -201,9 +202,9 @@ class TestOverflowBeforeToolRetry:
     _MESSAGE = "prompt is too long: 200000 tokens (tool schemas included)"
 
     async def test_cerebras(self) -> None:
-        from cerebras.cloud.sdk import BadRequestError
+        from openai import BadRequestError
 
-        client = CerebrasClient(api_key="test-key")
+        client = _cerebras_client(api_key="test-key")
         original = BadRequestError(
             message=self._MESSAGE,
             body={"error": {"code": "bad_request", "message": self._MESSAGE}},
@@ -307,14 +308,13 @@ class TestAnthropicWrap:
 
 
 @pytest.mark.unit
-class TestCerebrasInBandError:
+class TestInBandError:
     async def test_error_chunk_raises_provider_error_uncaused(self) -> None:
-        """The in-band ErrorChunkResponse passes the NeosianError guard."""
-        from cerebras.cloud.sdk.types.chat.chat_completion import ErrorChunkResponse
-
-        client = CerebrasClient(api_key="test-key")
-        error_chunk = MagicMock(spec=ErrorChunkResponse)
-        error_chunk.error = "mid-stream failure"
+        """An in-band error frame (the SDK keeps the unknown field in
+        `model_extra`) passes the NeosianError guard (#218)."""
+        client = _cerebras_client(api_key="test-key")
+        error_chunk = MagicMock()
+        error_chunk.model_extra = {"error": {"message": "mid-stream failure"}}
         _sdk(client).chat.completions.create = AsyncMock(
             return_value=_ChunkIterator([error_chunk])
         )

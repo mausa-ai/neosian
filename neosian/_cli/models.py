@@ -4,7 +4,7 @@ from rich.console import Console
 
 from neosian._cli.ui import pick
 from neosian._foundation.shared.constants import ArenaUI
-from neosian._foundation.shared.registry import registered_models
+from neosian._foundation.shared.registry import provider_label, registered_models
 from neosian._foundation.shared.types import DEFAULT_MODELS, AnyModel, Model, Provider
 
 # Models hidden from the interactive picker (special-purpose).
@@ -28,8 +28,10 @@ _MODEL_NOTES: dict[Model, str] = {
 
 def display_name(model: AnyModel) -> str:
     """Build the picker label for a model from the registry."""
-    if model.door is not None:
-        return f"{model.door.name}/{model.value}"
+    # A door row on the shared enum row is labelled under its door; an
+    # adapter row served through a door (Cerebras, #218) keeps its notes.
+    if not isinstance(model, Model) or model.provider is Provider.OPENAI_COMPATIBLE:
+        return f"{provider_label(model)}/{model.value}"
     notes: list[str] = []
     if DEFAULT_MODELS.get(model.provider) is model:
         notes.append("default")

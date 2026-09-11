@@ -2,7 +2,7 @@
 
 An `OpenAICompatible` door names where an OpenAI-compatible endpoint
 lives, which environment variable signs requests to it, and the dialect
-quirks its wire has. The two doors neosian ships live here beside the
+quirks its wire has. The three doors neosian ships live here beside the
 class; the rows on them are `Model` members whose spec carries the door
 (`models.py`), sealed by the fingerprint like every shipped row. A row is
 earned by NW's gate — green over dispatched runs of the shipped pack
@@ -34,7 +34,11 @@ class OpenAICompatible:
     the plain JSON mode with the schema in the system prompt (DeepSeek);
     `echo_reasoning` sends `Message.reasoning` back under
     `reasoning_field` on assistant turns — the documented 400 in tool
-    loops without it (DESIGN §31.4).
+    loops without it (DESIGN §31.4). `reasoning_format` rides in
+    `extra_body` beside a sent `reasoning_effort` (Cerebras's `parsed`
+    keeps thoughts in `reasoning_field`); `retry_temperature` is the
+    value resent on a tool-call 400 when a temperature was in play
+    (ledger #218).
     """
 
     name: str
@@ -46,6 +50,8 @@ class OpenAICompatible:
     strict_schemas: bool = True
     json_mode: Literal["json_schema", "json_object"] = "json_schema"
     echo_reasoning: bool = False
+    reasoning_format: str | None = None
+    retry_temperature: float | None = None
 
     def __post_init__(self) -> None:
         if not _DOOR_NAME.match(self.name):
@@ -81,6 +87,18 @@ class OpenAICompatible:
                 f"door {self.name!r}: echo_reasoning needs a reasoning_field — "
                 "the field the echo is sent under"
             )
+        if self.reasoning_format is not None and not self.reasoning_effort:
+            raise ConfigurationError(
+                f"door {self.name!r}: reasoning_format rides beside "
+                "reasoning_effort — declare reasoning_effort=True"
+            )
+        if self.retry_temperature is not None and not (
+            self.temperature and 0.0 <= self.retry_temperature <= 2.0
+        ):
+            raise ConfigurationError(
+                f"door {self.name!r}: retry_temperature {self.retry_temperature!r} "
+                "needs temperature=True and a value between 0.0 and 2.0"
+            )
 
 
 XAI = OpenAICompatible(
@@ -98,4 +116,17 @@ GEMINI = OpenAICompatible(
     api_key_env="GEMINI_API_KEY",
     base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
     temperature=True,
+)
+
+
+CEREBRAS = OpenAICompatible(
+    # On the OpenAI door since NC7 (ledger #218): `parsed` keeps thoughts in
+    # `reasoning`, and a tool-call 400 retries at 0.3 (LL-15).
+    name="cerebras",
+    api_key_env="CEREBRAS_API_KEY",
+    base_url="https://api.cerebras.ai/v1",
+    temperature=True,
+    reasoning_field="reasoning",
+    reasoning_format="parsed",
+    retry_temperature=0.3,
 )

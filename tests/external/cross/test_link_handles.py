@@ -19,7 +19,7 @@ import pytest
 
 from neosian import AgentConfig, AnyModel, Model, Tool, ToolResult
 from neosian.conversation import CompactionConfig, Conversation, FileStore
-from tests.external.lanes import LANES, Lane
+from tests.external.lanes import BOARD_LANES, Lane
 from tests.external.pacing import Pacer, door_client
 
 _PROVIDER_CASES = [
@@ -107,7 +107,7 @@ class TestLinkHandles:
         key = request.getfixturevalue(fixture)  # skips when the env var is unset
         await _measure(model, key, env_name, None, tmp_path / "store")
 
-    @pytest.mark.parametrize("lane", LANES, ids=lambda lane: lane.name)
+    @pytest.mark.parametrize("lane", BOARD_LANES, ids=lambda lane: lane.name)
     async def test_a_door_reuses_a_link_by_handle(
         self, lane: Lane, request: pytest.FixtureRequest, tmp_path: Path
     ) -> None:

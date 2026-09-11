@@ -50,6 +50,8 @@ class TestDoor:
         assert door.reasoning_effort is True
         assert door.reasoning_field is None
         assert door.strict_schemas is True
+        assert door.reasoning_format is None
+        assert door.retry_temperature is None
 
     @pytest.mark.parametrize(
         "override",

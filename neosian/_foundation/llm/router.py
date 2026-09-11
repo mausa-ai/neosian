@@ -111,23 +111,15 @@ class ProviderRouter:
                 api_key=key, max_retries=self._max_retries, timeout=self._timeout
             )
 
-        if provider == Provider.CEREBRAS:
-            from neosian._foundation.llm.cerebras import CerebrasClient
-
-            key = api_key or os.environ.get(EnvVars.CEREBRAS_API_KEY, "")
-            return CerebrasClient(
-                api_key=key, max_retries=self._max_retries, timeout=self._timeout
-            )
-
         if provider == Provider.FAKE:
             # Canned, repeat-last behavior; scripted fakes are injected via
             # AgentConfig.client_factory, never through the router.
             return FakeClient()
 
-        if provider == Provider.OPENAI_COMPATIBLE:
+        if provider in (Provider.OPENAI_COMPATIBLE, Provider.CEREBRAS):
             raise ValueError(
-                "Provider.OPENAI_COMPATIBLE has no client of its own: the client "
-                "is built from a registered model's door — use create_client_for"
+                f"{provider!s} has no client of its own: the client is built "
+                "from the model's door — use create_client_for"
             )
 
         raise ValueError(ErrorMessages.UNSUPPORTED_PROVIDER.format(provider=provider))

@@ -1,4 +1,4 @@
-"""External tests for the Cerebras LLM client.
+"""External tests for the Cerebras rows on their door (ledger #218).
 
 Requires CEREBRAS_API_KEY environment variable.
 Run with: CEREBRAS_API_KEY=xxx uv run pytest -m external_cerebras -v
@@ -7,7 +7,7 @@ Run with: CEREBRAS_API_KEY=xxx uv run pytest -m external_cerebras -v
 import pytest
 
 from neosian import Message, Role, ToolDefinition, text_of
-from neosian._foundation.llm.cerebras import CerebrasClient
+from neosian._foundation.llm.openai import OpenAICompatibleClient
 from neosian._foundation.shared.types import Model, ReasoningEffort, ToolName
 
 
@@ -15,7 +15,9 @@ class TestCerebrasCompletion:
     """Test real Cerebras API completions."""
 
     @pytest.mark.asyncio
-    async def test_simple_completion(self, cerebras_client: CerebrasClient) -> None:
+    async def test_simple_completion(
+        self, cerebras_client: OpenAICompatibleClient
+    ) -> None:
         """Test basic completion without tools."""
         messages = [
             Message(role=Role.USER, content="Say 'hello' and nothing else."),
@@ -34,7 +36,7 @@ class TestCerebrasCompletion:
 
     @pytest.mark.asyncio
     async def test_completion_with_system_prompt(
-        self, cerebras_client: CerebrasClient
+        self, cerebras_client: OpenAICompatibleClient
     ) -> None:
         """Test completion with system message."""
         messages = [
@@ -52,7 +54,7 @@ class TestCerebrasCompletion:
 
     @pytest.mark.asyncio
     async def test_completion_with_tool_call(
-        self, cerebras_client: CerebrasClient
+        self, cerebras_client: OpenAICompatibleClient
     ) -> None:
         """Test that model can request tool calls."""
         messages = [
@@ -97,7 +99,9 @@ class TestCerebrasStreaming:
     """Test real Cerebras API streaming."""
 
     @pytest.mark.asyncio
-    async def test_streaming_content(self, cerebras_client: CerebrasClient) -> None:
+    async def test_streaming_content(
+        self, cerebras_client: OpenAICompatibleClient
+    ) -> None:
         """Test streaming returns content chunks."""
         messages = [
             Message(role=Role.USER, content="Count from 1 to 5."),
@@ -124,7 +128,7 @@ class TestCerebrasReasoningEffort:
 
     @pytest.mark.asyncio
     async def test_reasoning_effort_high_completion(
-        self, cerebras_client: CerebrasClient
+        self, cerebras_client: OpenAICompatibleClient
     ) -> None:
         """Test completion with reasoning_effort=HIGH."""
         messages = [
@@ -148,7 +152,7 @@ class TestCerebrasReasoningEffort:
 
     @pytest.mark.asyncio
     async def test_reasoning_effort_low_completion(
-        self, cerebras_client: CerebrasClient
+        self, cerebras_client: OpenAICompatibleClient
     ) -> None:
         """Test completion with reasoning_effort=LOW."""
         messages = [
@@ -167,7 +171,7 @@ class TestCerebrasReasoningEffort:
 
     @pytest.mark.asyncio
     async def test_reasoning_effort_streaming(
-        self, cerebras_client: CerebrasClient
+        self, cerebras_client: OpenAICompatibleClient
     ) -> None:
         """Test streaming with reasoning_effort parameter."""
         messages = [
@@ -196,7 +200,7 @@ class TestCerebrasReasoningContent:
 
     @pytest.mark.asyncio
     async def test_completion_returns_reasoning_content(
-        self, cerebras_client: CerebrasClient
+        self, cerebras_client: OpenAICompatibleClient
     ) -> None:
         """Test that completion with reasoning_effort returns reasoning content."""
         messages = [
@@ -217,7 +221,7 @@ class TestCerebrasReasoningContent:
 
     @pytest.mark.asyncio
     async def test_streaming_returns_reasoning_chunks(
-        self, cerebras_client: CerebrasClient
+        self, cerebras_client: OpenAICompatibleClient
     ) -> None:
         """Test that streaming with reasoning_effort returns reasoning chunks."""
         messages = [

@@ -30,7 +30,7 @@ from tests.external.board import (
     boards,
     scriptless,
 )
-from tests.external.lanes import LANES, Lane
+from tests.external.lanes import BOARD_LANES, Lane
 from tests.external.pacing import Pacer, door_client
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -65,7 +65,7 @@ _PROVIDER_CASES = [
 # A door's board, or one per transport for a paced lane (board.py, #211).
 BOARDS = [
     pytest.param(lane, split, id=board_id(lane, split))
-    for lane, split in boards(LANES, _TRANSPORTS)
+    for lane, split in boards(BOARD_LANES, _TRANSPORTS)
 ]
 
 

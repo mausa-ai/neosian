@@ -8,10 +8,10 @@ from unittest.mock import patch
 import pytest
 
 from neosian import Model, OpenAICompatible, Provider, RegisteredModel, register_model
-from neosian._foundation.llm.cerebras import CerebrasClient
 from neosian._foundation.llm.fake import FakeClient
 from neosian._foundation.llm.openai import OpenAICompatibleClient
 from neosian._foundation.llm.router import ProviderRouter
+from neosian._foundation.shared.catalog import CEREBRAS
 from neosian._foundation.shared.exceptions import MissingAPIKeyError
 
 XAI = OpenAICompatible(
@@ -32,9 +32,23 @@ def _sdk(client: object) -> Any:
 @pytest.mark.unit
 class TestDoorRouting:
     def test_shipped_models_route_by_provider(self) -> None:
-        with patch.dict(os.environ, {"CEREBRAS_API_KEY": "k"}, clear=True):
+        from neosian._foundation.llm.openai import OpenAIClient
+
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "k"}, clear=True):
+            client = ProviderRouter().create_client_for(Model.GPT_5_6_LUNA)
+        assert isinstance(client, OpenAIClient)
+
+    def test_the_cerebras_rows_ride_the_shipped_door(self) -> None:
+        """Both rows share the door, so the session shares one client (#218)."""
+        with patch.dict(os.environ, {"CEREBRAS_API_KEY": "csk"}, clear=True):
             client = ProviderRouter().create_client_for(Model.CEREBRAS_GPT_OSS_120B)
-        assert isinstance(client, CerebrasClient)
+        assert isinstance(client, OpenAICompatibleClient)
+        assert client._door is CEREBRAS
+        assert Model.CEREBRAS_QWEN_3_8_27B.door is CEREBRAS
+        assert _sdk(client).api_key == "csk"
+        assert str(_sdk(client).base_url).startswith("https://api.cerebras.ai/v1")
+        with pytest.raises(ValueError, match="create_client_for"):
+            ProviderRouter().create_client(Provider.CEREBRAS)
 
     def test_fake_stays_keyless(self) -> None:
         with patch.dict(os.environ, {}, clear=True):

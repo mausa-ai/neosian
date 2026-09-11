@@ -74,6 +74,12 @@ def _candidate(
     return RegisteredModel(value, spec)
 
 
+CEREBRAS = Lane(
+    # The shipped door since NC7 (#218). Its boards are the two adapter-row
+    # cases of the baselines (a row is provider+model), so it probes only.
+    model=Model.CEREBRAS_GPT_OSS_120B,
+)
+
 XAI = Lane(model=Model.GROK_4_6)
 
 GEMINI = Lane(
@@ -143,4 +149,5 @@ QWEN = Lane(
     ),
 )
 
-LANES: tuple[Lane, ...] = (XAI, GEMINI, KIMI, DEEPSEEK, QWEN)
+LANES: tuple[Lane, ...] = (CEREBRAS, XAI, GEMINI, KIMI, DEEPSEEK, QWEN)
+BOARD_LANES: tuple[Lane, ...] = tuple(lane for lane in LANES if lane is not CEREBRAS)

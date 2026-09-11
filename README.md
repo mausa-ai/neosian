@@ -1,6 +1,6 @@
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/mausa-ai/neosian/v1.0.0rc4/branding/logo-dark.svg">
-  <img src="https://raw.githubusercontent.com/mausa-ai/neosian/v1.0.0rc4/branding/logo-light.svg" alt="neosian" width="280">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/mausa-ai/neosian/v1.0.0rc5/branding/logo-dark.svg">
+  <img src="https://raw.githubusercontent.com/mausa-ai/neosian/v1.0.0rc5/branding/logo-light.svg" alt="neosian" width="280">
 </picture>
 
 # neosian
@@ -8,8 +8,8 @@
 [![PyPI](https://img.shields.io/pypi/v/neosian.svg?include_prereleases&color=6d6d32)](https://pypi.org/project/neosian/)
 [![Docs](https://img.shields.io/badge/docs-docs.neosian.com-6d6d32.svg)](https://docs.neosian.com)
 [![CI](https://github.com/mausa-ai/neosian/actions/workflows/ci.yml/badge.svg)](https://github.com/mausa-ai/neosian/actions/workflows/ci.yml)
-[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-6d6d32.svg)](https://github.com/mausa-ai/neosian/blob/v1.0.0rc4/LICENSE)
-[![Python 3.12 | 3.13 | 3.14](https://img.shields.io/badge/python-3.12%20%7C%203.13%20%7C%203.14-6d6d32.svg)](https://github.com/mausa-ai/neosian/blob/v1.0.0rc4/pyproject.toml)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-6d6d32.svg)](https://github.com/mausa-ai/neosian/blob/v1.0.0rc5/LICENSE)
+[![Python 3.12 | 3.13 | 3.14](https://img.shields.io/badge/python-3.12%20%7C%203.13%20%7C%203.14-6d6d32.svg)](https://github.com/mausa-ai/neosian/blob/v1.0.0rc5/pyproject.toml)
 
 **The state layer for LLM agents**: durable conversations, agent-curated
 memory, skills, a shared board and a ledger of who did what — on storage
@@ -28,16 +28,16 @@ Two doors, one store:
   an agent that knows neosian, on the same memory.
 
 <p align="center">
-<img src="https://raw.githubusercontent.com/mausa-ai/neosian/v1.0.0rc4/branding/readme/record.gif" alt="neosian record install writes the hooks; one headless Claude Code session lands as a recorded turn; neosian audit names it" width="720">
+<img src="https://raw.githubusercontent.com/mausa-ai/neosian/v1.0.0rc5/branding/readme/record.gif" alt="neosian record install writes the hooks; one headless Claude Code session lands as a recorded turn; neosian audit names it" width="720">
 <br>
-<img src="https://raw.githubusercontent.com/mausa-ai/neosian/v1.0.0rc4/branding/readme/left-off.gif" alt="The next Claude Code session opens on where we left off and answers from the record" width="720">
+<img src="https://raw.githubusercontent.com/mausa-ai/neosian/v1.0.0rc5/branding/readme/left-off.gif" alt="The next Claude Code session opens on where we left off and answers from the record" width="720">
 </p>
 
 *A Claude Code session landing as a recorded turn that `neosian audit`
 names, and the next session opening on where we left off — no key of
 yours, no flags: the home and this project's scope.*
 
-Agents read this repository too: [llms.txt](https://github.com/mausa-ai/neosian/blob/v1.0.0rc4/llms.txt) is the machine
+Agents read this repository too: [llms.txt](https://github.com/mausa-ai/neosian/blob/v1.0.0rc5/llms.txt) is the machine
 front door, `neosian docs` prints the shipped docs pages from the wheel
 (version-true), and every shell verb has `--json` and exit tiers — one
 CLI for humans and agents (`neosian docs cli`).
@@ -55,22 +55,22 @@ Requires Python >= 3.12. One package, everything in it — on PyPI as a
 pre-release until v1.0.0, so pin it:
 
 ```bash
-uv add "neosian==1.0.0rc4"
+uv add "neosian==1.0.0rc5"
 ```
 
-The install brings the library with its three provider SDKs (OpenAI,
-Anthropic, Cerebras — xAI and Gemini ride the OpenAI wire), the `neosian`
+The install brings the library with its two provider SDKs (OpenAI and
+Anthropic — Cerebras, xAI and Gemini ride the OpenAI wire), the `neosian`
 shell, the MCP server and client, the state process and OpenTelemetry
 spans: about 70 MB on disk, none of it loaded until used. Nothing in
 it needs an account or a server to start — `Model.FAKE` runs keylessly
 and `FileStore` is a directory. The one extra is the Postgres driver,
-`uv add "neosian[postgres]==1.0.0rc4"`, for a `PostgresStore` against a
+`uv add "neosian[postgres]==1.0.0rc5"`, for a `PostgresStore` against a
 server you already run; `[all]` is its alias, and the former `[cli]`,
 `[mcp]`, `[otel]` and `[server]` still resolve for one release and add
 nothing.
 
 For a machine with nothing on it, the one-liner is
-[scripts/install.sh](https://github.com/mausa-ai/neosian/blob/v1.0.0rc4/scripts/install.sh): it says what it
+[scripts/install.sh](https://github.com/mausa-ai/neosian/blob/v1.0.0rc5/scripts/install.sh): it says what it
 installs, finds uv or installs it from a pinned release, runs `uv tool
 install neosian`, checks the PATH and prints the registration command.
 It is the same two commands, spelled out beside it:
@@ -79,7 +79,7 @@ It is the same two commands, spelled out beside it:
 curl -fsS https://neosian.com/install | bash
 # or, by hand:
 curl -LsSf https://astral.sh/uv/install.sh | sh
-uv tool install "neosian==1.0.0rc4"
+uv tool install "neosian==1.0.0rc5"
 ```
 
 To work on neosian itself, `uv sync --all-groups` then `uv run neosian
@@ -115,7 +115,7 @@ asyncio.run(main())
 
 Set a key and name a real model (`model=Model.CLAUDE_SONNET_5`, the
 providers table below); tools are decorated functions whose signature is
-the schema (`neosian docs tools`). [examples/](https://github.com/mausa-ai/neosian/tree/v1.0.0rc4/examples) has one runnable
+the schema (`neosian docs tools`). [examples/](https://github.com/mausa-ai/neosian/tree/v1.0.0rc5/examples) has one runnable
 file per feature, every one importing keylessly.
 
 ## What is in the box
@@ -201,7 +201,7 @@ an agent suite over variants × models × cases, and `kind: memory`, which
 scores store truth across scripted sessions on every transport. The
 shipped memory pack is all-green on `models: [fake]`, and the same pack
 against the real providers produces the
-[baselines page](https://github.com/mausa-ai/neosian/blob/v1.0.0rc4/neosian/assets/docs/baselines.md),
+[baselines page](https://github.com/mausa-ai/neosian/blob/v1.0.0rc5/neosian/assets/docs/baselines.md),
 fingerprint-gated so a prompt change without a recorded re-run fails
 `make test`.
 
@@ -241,7 +241,7 @@ Origin](https://developercertificate.org/) and licensed as the project
 is, Apache-2.0 — there is no CLA. Open an issue before a feature or a
 departure from documented behaviour; the public API is pinned by
 `tests/unit/test_init.py`, so an export change is a reviewed diff.
-[SECURITY.md](https://github.com/mausa-ai/neosian/blob/v1.0.0rc4/SECURITY.md) is where vulnerabilities go, never an issue.
+[SECURITY.md](https://github.com/mausa-ai/neosian/blob/v1.0.0rc5/SECURITY.md) is where vulnerabilities go, never an issue.
 
 ## Documents
 
@@ -250,10 +250,10 @@ departure from documented behaviour; the public API is pinned by
   `baselines` (the published per-provider memory numbers); the same pages
   online at [docs.neosian.com](https://docs.neosian.com), rendered from the
   wheel at the current release.
-- [SERVICES.md](https://github.com/mausa-ai/neosian/blob/v1.0.0rc4/SERVICES.md) — every env key and what turning it off means.
-- [CHANGELOG.md](https://github.com/mausa-ai/neosian/blob/v1.0.0rc4/CHANGELOG.md) — Keep a Changelog, one section per release.
-- [SECURITY.md](https://github.com/mausa-ai/neosian/blob/v1.0.0rc4/SECURITY.md) — where to report, and the supported line.
-- [llms.txt](https://github.com/mausa-ai/neosian/blob/v1.0.0rc4/llms.txt) — the machine-readable front door (byte-identical
+- [SERVICES.md](https://github.com/mausa-ai/neosian/blob/v1.0.0rc5/SERVICES.md) — every env key and what turning it off means.
+- [CHANGELOG.md](https://github.com/mausa-ai/neosian/blob/v1.0.0rc5/CHANGELOG.md) — Keep a Changelog, one section per release.
+- [SECURITY.md](https://github.com/mausa-ai/neosian/blob/v1.0.0rc5/SECURITY.md) — where to report, and the supported line.
+- [llms.txt](https://github.com/mausa-ai/neosian/blob/v1.0.0rc5/llms.txt) — the machine-readable front door (byte-identical
   twin ships in the wheel).
 
 ---

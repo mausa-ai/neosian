@@ -18,7 +18,12 @@ from neosian import (
     register_model,
 )
 from neosian._foundation.llm.router import ProviderRouter
-from neosian._foundation.shared.catalog import GEMINI, XAI, OpenAICompatible
+from neosian._foundation.shared.catalog import (
+    CEREBRAS,
+    GEMINI,
+    XAI,
+    OpenAICompatible,
+)
 from neosian._foundation.shared.models import _MODEL_SPECS, _prices_fingerprint
 from neosian._foundation.shared.registry import provider_label, registered_models
 
@@ -32,10 +37,15 @@ DOOR_ROWS = {
 @pytest.mark.unit
 class TestCatalog:
     def test_the_door_rows_are_the_enums_and_register_nothing(self) -> None:
-        assert {m for m in Model if m.door is not None} == set(DOOR_ROWS)
+        shared_row = {m for m in Model if m.provider is Provider.OPENAI_COMPATIBLE}
+        assert shared_row == set(DOOR_ROWS)
         for row, door in DOOR_ROWS.items():
             assert row.door is door
             assert lookup_model(row.value) is row
+        # The Cerebras rows keep their provider row and ride a door (#218).
+        served = {m for m in Model if m.door is not None} - shared_row
+        assert served == {Model.CEREBRAS_GPT_OSS_120B, Model.CEREBRAS_QWEN_3_8_27B}
+        assert all(m.door is CEREBRAS for m in served)
         assert registered_models() == ()
 
     def test_rows_are_priced_door_rows(self) -> None:

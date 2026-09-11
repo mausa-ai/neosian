@@ -8,11 +8,32 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [1.0.0rc5] - 2026-09-11
+
+Cerebras rides the OpenAI wire; one implementation of that wire ships.
+
 ### Changed
 
+- The two Cerebras rows (`gpt-oss-120b`, `qwen-3.8-27b`) are served
+  through a shipped `OpenAICompatible` door on the generic client, like
+  xAI and Gemini (DESIGN §19.3, ledger #218). `Provider.CEREBRAS` stays
+  their provider row; `ProviderRouter.create_client_for` serves them and
+  the provider-keyed `create_client(Provider.CEREBRAS)` refuses, naming
+  it. The door gains two knobs the move earned: `reasoning_format` (sent
+  in `extra_body` beside a reasoning effort) and `retry_temperature`
+  (the value resent on a tool-call 400 when a temperature was in play).
+- The OpenAI-compatible client reads both tool-error body shapes (the
+  nested `error.code` and Cerebras's flat `tool_use_failed`), raises
+  `ProviderError` on an in-band error frame mid-stream, and reads a
+  null token count as zero.
 - The installer's closing lines name the human path: `neosian setup
   --write`, `neosian status`, bare `neosian`; the two per-client install
   verbs stay for agents behind `setup`.
+
+### Removed
+
+- `cerebras-cloud-sdk` leaves the dependency list; the Cerebras adapter
+  and its converter are gone (536 lines).
 
 ## [1.0.0rc4] - 2026-09-11
 
@@ -980,7 +1001,8 @@ pre-release — pin it explicitly; the API stability promise rides v1.0.0.
 - Both entry points share one `_validate_run`, so neither can skip a
   guard.
 
-[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc4...HEAD
+[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc5...HEAD
+[1.0.0rc5]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc4...v1.0.0rc5
 [1.0.0rc4]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc3...v1.0.0rc4
 [1.0.0rc3]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc2...v1.0.0rc3
 [1.0.0rc2]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc1...v1.0.0rc2

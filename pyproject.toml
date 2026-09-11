@@ -1,6 +1,6 @@
 [project]
 name = "neosian"
-version = "1.0.0rc4"
+version = "1.0.0rc5"
 description = "Async-only library for LLM agents: tools, orchestration, streaming, guardrails — with opt-in conversation, memory, and compaction layers over a stateless core."
 readme = "README.md"
 license = "Apache-2.0"
@@ -27,7 +27,6 @@ classifiers = [
 # for real on both Python ends.
 dependencies = [
     "anthropic>=0.122.0,<1",
-    "cerebras-cloud-sdk>=1.91.0,<2",
     "httpx>=0.28.1",
     "mcp>=2,<3",
     "openai>=3.2.0,<4",
@@ -206,8 +205,6 @@ forbidden_modules = [
     "neosian._foundation.llm.anthropic",
     "neosian._foundation.llm.anthropic_convert",
     "neosian._foundation.llm.anthropic_stream",
-    "neosian._foundation.llm.cerebras",
-    "neosian._foundation.llm.cerebras_convert",
     "neosian._foundation.llm.fake",
 ]
 
@@ -222,8 +219,6 @@ forbidden_modules = [
     "neosian._foundation.llm.anthropic",
     "neosian._foundation.llm.anthropic_convert",
     "neosian._foundation.llm.anthropic_stream",
-    "neosian._foundation.llm.cerebras",
-    "neosian._foundation.llm.cerebras_convert",
     "neosian._foundation.llm.fake",
 ]
 
@@ -241,8 +236,6 @@ forbidden_modules = [
     "neosian._foundation.llm.anthropic",
     "neosian._foundation.llm.anthropic_convert",
     "neosian._foundation.llm.anthropic_stream",
-    "neosian._foundation.llm.cerebras",
-    "neosian._foundation.llm.cerebras_convert",
     "neosian._foundation.llm.fake",
 ]
 
@@ -259,8 +252,6 @@ forbidden_modules = [
     "neosian._foundation.llm.anthropic",
     "neosian._foundation.llm.anthropic_convert",
     "neosian._foundation.llm.anthropic_stream",
-    "neosian._foundation.llm.cerebras",
-    "neosian._foundation.llm.cerebras_convert",
     "neosian._foundation.llm.fake",
 ]
 
@@ -276,8 +267,6 @@ forbidden_modules = [
     "neosian._foundation.llm.anthropic",
     "neosian._foundation.llm.anthropic_convert",
     "neosian._foundation.llm.anthropic_stream",
-    "neosian._foundation.llm.cerebras",
-    "neosian._foundation.llm.cerebras_convert",
     "neosian._foundation.llm.fake",
 ]
 allow_indirect_imports = true
@@ -329,8 +318,6 @@ forbidden_modules = [
     "neosian._foundation.llm.anthropic",
     "neosian._foundation.llm.anthropic_convert",
     "neosian._foundation.llm.anthropic_stream",
-    "neosian._foundation.llm.cerebras",
-    "neosian._foundation.llm.cerebras_convert",
 ]
 allow_indirect_imports = true
 
@@ -346,8 +333,6 @@ forbidden_modules = [
     "neosian._foundation.llm.anthropic",
     "neosian._foundation.llm.anthropic_convert",
     "neosian._foundation.llm.anthropic_stream",
-    "neosian._foundation.llm.cerebras",
-    "neosian._foundation.llm.cerebras_convert",
     "neosian._foundation.conversation",
     "neosian._foundation.memory",
     "neosian._foundation.postgres",

@@ -45,8 +45,12 @@ class TestPlaygroundModelPicker:
                 assert model.supports_reasoning
 
     def test_display_name_contains_model_id(self) -> None:
-        """Labels always start with the exact model ID — a door row's under
-        its door (DESIGN §19.2)."""
+        """Labels always start with the exact model ID — a row on the shared
+        enum row under its door (DESIGN §19.2); an adapter row served through
+        a door (Cerebras, #218) keeps its provider's notes."""
         for model in Model:
-            head = model.value if model.door is None else f"{model.door.name}/"
+            head = model.value
+            if model.provider is Provider.OPENAI_COMPATIBLE:
+                assert model.door is not None
+                head = f"{model.door.name}/"
             assert display_name(model).startswith(head)

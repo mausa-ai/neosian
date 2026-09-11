@@ -11,7 +11,6 @@ from unittest.mock import create_autospec
 
 import anthropic.types as at
 import anthropic.types.beta as ab
-import cerebras.cloud.sdk.types.chat.chat_completion as cb
 import openai.types.chat.chat_completion as oc
 import openai.types.chat.chat_completion_chunk as ok
 from anthropic.types.raw_message_delta_event import Delta
@@ -132,33 +131,5 @@ OPENAI: dict[str, Any] = {
         model="m",
         object="chat.completion.chunk",
         usage=_oa_usage,
-    ),
-}
-
-_cb_details = cb.ChatCompletionResponseUsagePromptTokensDetails(cached_tokens=0)
-_cb_usage = cb.ChatCompletionResponseUsage(
-    prompt_tokens=1,
-    completion_tokens=1,
-    total_tokens=2,
-    prompt_tokens_details=_cb_details,
-)
-_cb_choice = cb.ChatCompletionResponseChoice(
-    index=0,
-    message=cb.ChatCompletionResponseChoiceMessage(role="assistant", content=""),
-    finish_reason="stop",
-)
-
-CEREBRAS: dict[str, Any] = {
-    "usage": _cb_usage,
-    "details": _cb_details,
-    "choice": _cb_choice,
-    "completion": cb.ChatCompletionResponse(
-        id="c",
-        choices=[_cb_choice],
-        created=0,
-        model="m",
-        object="chat.completion",
-        system_fingerprint="",
-        usage=_cb_usage,
     ),
 }
