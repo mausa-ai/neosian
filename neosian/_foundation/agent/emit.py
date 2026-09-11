@@ -21,6 +21,7 @@ from neosian._foundation.tools.base import ToolResult
 
 if TYPE_CHECKING:
     from neosian._foundation.agent.context import Attempt, RunContext
+    from neosian._foundation.agent.plan import Switch
 
 
 async def emit_turn(
@@ -65,27 +66,19 @@ async def emit_llm_call(
     )
 
 
-async def emit_fallback(
-    ctx: RunContext,
-    *,
-    from_model: str,
-    to_model: str,
-    reason: str,
-    cause: BaseException | None,
-    sticky: bool,
-    streamed: bool,
-) -> None:
+async def emit_fallback(ctx: RunContext, switch: Switch, *, streamed: bool) -> None:
     """Fire on_fallback for one model switch."""
+    cause = switch.cause
     code = getattr(cause, "code", None) if cause is not None else None
     status = getattr(cause, "status", None) if cause is not None else None
     await ctx.hooks.fallback(
         FallbackEvent(
-            from_model=from_model,
-            to_model=to_model,
-            reason=reason,
+            from_model=switch.from_model,
+            to_model=switch.to_model,
+            reason=switch.reason,
             cause_code=code if isinstance(code, str) else None,
             provider_status=status if isinstance(status, int) else None,
-            sticky=sticky,
+            sticky=switch.sticky,
             streamed=streamed,
         )
     )

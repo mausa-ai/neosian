@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from neosian._foundation.agent.base import Agent
-from neosian._foundation.agent.blocking import execute_with_fallback_model
+from neosian._foundation.agent.blocking import execute_agent_core
 from neosian._foundation.agent.context import Attempt, RunContext
 from neosian._foundation.agent.events import (
     BlockedEvent,
@@ -2184,18 +2184,13 @@ class TestCapabilityAwareFallback:
             fallback_state = FallbackState(
                 using_fallback=True, successful_fallback_calls=1
             )
-            full_messages = [
-                Message(role=Role.SYSTEM, content="You transcribe PDFs."),
-                *self._doc_messages(),
-            ]
-
             ctx = RunContext(
                 agent=agent,
                 acquire=agent._create_client,
                 hooks=agent._hooks,
                 fallback_state=fallback_state,
             )
-            response = await execute_with_fallback_model(ctx, full_messages)
+            response = await execute_agent_core(ctx, self._doc_messages())
 
             assert response.message.content == "# Transcription"
             fallback_client.complete.assert_not_called()
