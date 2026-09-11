@@ -119,7 +119,7 @@ fi
 cat <<NEXT
 
 Next:
-  neosian mcp install --client claude-code      # memory + skills over MCP (--write applies it)
-  neosian record install --client claude-code   # the ledger: every session recorded
-  neosian docs                                  # the shipped docs, version-true
+  neosian setup --write    # wire every agent client found: MCP + the ledger's hooks
+  neosian status           # is this machine set up (home, keys by name, each client)
+  neosian                  # talk to your memory; agents: neosian docs cli --json
 NEXT

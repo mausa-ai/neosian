@@ -8,6 +8,12 @@ phase close names the version.
 
 ## [Unreleased]
 
+### Changed
+
+- The installer's closing lines name the human path: `neosian setup
+  --write`, `neosian status`, bare `neosian`; the two per-client install
+  verbs stay for agents behind `setup`.
+
 ## [1.0.0rc4] - 2026-09-11
 
 The shell for humans and agents, and the catalog current at the promise.
