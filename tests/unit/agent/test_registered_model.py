@@ -239,9 +239,10 @@ class TestKeysAndConfig:
         )
 
     def test_invalid_model_text_lists_registered_ids(self) -> None:
-        _grok()
+        grok = _grok()
+        assert _config(model="grok-4").model is grok  # a registered id resolves (§31)
         with pytest.raises(InvalidModelError) as exc_info:
-            _config(model="grok-4")
+            _config(model="grok-5")
         assert "Model.FAKE" in str(exc_info.value)
         assert "'grok-4'" in str(exc_info.value)
 

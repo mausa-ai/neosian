@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Literal
 
-from neosian._foundation.shared.registry import AnyModel
+from neosian._foundation.shared.registry import AnyModel, resolve_model
 
 
 class GuardrailMode(str, Enum):
@@ -86,10 +86,12 @@ class GuardrailsConfig:
     timeout_seconds: float | None = None
 
     # Policy model; None = the agent's own configured model
-    model: AnyModel | None = None
+    model: AnyModel | str | None = None
 
     def __post_init__(self) -> None:
         """Validate configuration."""
+        if self.model is not None:
+            self.model = resolve_model(self.model)
         # Check input policy requirement
         if self.input_mode != GuardrailMode.NONE and self.input_policy is None:
             raise ValueError(

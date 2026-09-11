@@ -29,6 +29,7 @@ from neosian._foundation.conversation.projection import (
 from neosian._foundation.conversation.types import ConversationProjection
 from neosian._foundation.llm.base import ModelUsage, Usage
 from neosian._foundation.shared.exceptions import ConfigurationError
+from neosian._foundation.shared.registry import resolve_model
 from neosian._foundation.shared.types import AnyModel
 
 if TYPE_CHECKING:
@@ -56,7 +57,7 @@ class CompactionConfig:
     """
 
     enabled: bool = True
-    model: AnyModel | None = None
+    model: AnyModel | str | None = None
     hot_turns: int = 8
     trigger_fraction: float = 0.75
     digest_chars: int = 200
@@ -64,6 +65,8 @@ class CompactionConfig:
     recall_tool: bool = True
 
     def __post_init__(self) -> None:
+        if self.model is not None:
+            object.__setattr__(self, "model", resolve_model(self.model))
         if self.hot_turns < 1:
             raise ConfigurationError(f"hot_turns must be >= 1, got {self.hot_turns}")
         if self.epoch_turns < 1:
@@ -158,7 +161,7 @@ async def run_boundary(
             digests, usage, api_model = await distill(
                 to_distill,
                 acquire=acquire,
-                model=config.model or model,
+                model=resolve_model(config.model or model),
                 digest_chars=config.digest_chars,
             )
         for turn in pending:
@@ -183,7 +186,7 @@ async def run_boundary(
         summaries, epoch_usage, epoch_model = await summarize_epochs(
             blocks,
             acquire=acquire,
-            model=config.model or model,
+            model=resolve_model(config.model or model),
             digest_chars=config.digest_chars,
         )
         for last_turn, _ in blocks:

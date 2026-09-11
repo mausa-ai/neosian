@@ -7,8 +7,12 @@ PRICES_AS_OF move in the same commit (DESIGN §4).
 
 import hashlib
 from dataclasses import dataclass
+from datetime import date
 from enum import Enum
+from functools import partial
 from typing import Final
+
+from neosian._foundation.shared.catalog import GEMINI, XAI, OpenAICompatible
 
 # =============================================================================
 # Provider and Model Enums
@@ -28,7 +32,7 @@ class Provider(str, Enum):
 
 
 # Date the pricing table below was last verified against provider price lists.
-PRICES_AS_OF = "2026-09-02"
+PRICES_AS_OF = "2026-09-10"
 
 # Integer micro-USD per USD — money is int µ$ everywhere (ECOSYSTEM §4);
 # floats exist only at display edges (format_micro_usd).
@@ -95,6 +99,15 @@ class ModelSpec:
     # wrong: Haiku 4.5 is Anthropic and outside the support set (N4).
     supports_compaction_blocks: bool = False
     pricing: ModelPricing | None = None
+    # The door a compat row is served through (DESIGN §31): set on the
+    # shipped door rows and on every registered model, None on a provider
+    # adapter's row. Not part of the rate card the fingerprint seals.
+    door: OpenAICompatible | None = None
+    # The catalog clock (DESIGN §31, ROADMAP §NW): the provider's shutdown
+    # or not-sooner-than date, and the date a stated card stops holding.
+    # A keyless test fails `make test` inside 30 days of either.
+    retires: date | None = None
+    card_until: date | None = None
 
 
 # Model specs registry (populated after Model enum is defined)
@@ -108,9 +121,8 @@ class ReasoningEffort(str, Enum):
     Supported by GPT-OSS models (Cerebras), GPT-5 models (OpenAI),
     and reasoning-capable Claude models (Anthropic).
     Note: MAX is only passed through for models whose spec sets
-    supports_max_effort; OpenAI-compatible providers downgrade MAX to
-    HIGH with a warning.
-    Note: GPT-5-Pro only supports HIGH; other values are forced to HIGH with a warning.
+    supports_max_effort; every client downgrades it to HIGH with a
+    warning otherwise.
     """
 
     LOW = "low"
@@ -123,22 +135,26 @@ class Model(str, Enum):
     """Supported LLM models."""
 
     # OpenAI
+    GPT_5_6_SOL = "gpt-5.6-sol"
+    GPT_5_6_TERRA = "gpt-5.6-terra"
+    GPT_5_6_LUNA = "gpt-5.6-luna"
     GPT_5_1 = "gpt-5.1-2025-11-13"
-    GPT_5_MINI = "gpt-5-mini-2025-08-07"
-    GPT_5_NANO = "gpt-5-nano-2025-08-07"
-    GPT_5_PRO = "gpt-5-pro-2025-10-06"
 
     # Anthropic
+    CLAUDE_FABLE_5_1 = "claude-fable-5-1"
     CLAUDE_OPUS_5 = "claude-opus-5"
-    CLAUDE_OPUS_4_6 = "claude-opus-4-6"
     CLAUDE_SONNET_5 = "claude-sonnet-5"
     CLAUDE_HAIKU_4_5 = "claude-haiku-4-5-20251001"
 
-    # Cerebras - Production
+    # Cerebras
     CEREBRAS_GPT_OSS_120B = "gpt-oss-120b"
+    CEREBRAS_QWEN_3_8_27B = "qwen-3.8-27b"
 
-    # Cerebras - Preview
-    CEREBRAS_GEMMA_4_31B = "gemma-4-31b"
+    # The shipped door rows (DESIGN §19.5, §31): first-party, no client of
+    # their own, served through the doors in catalog.py.
+    GROK_4_6 = "grok-4.6"
+    GEMINI_3_8_FLASH = "gemini-3.8-flash"
+    GEMINI_3_7_FLASH = "gemini-3.7-flash"
 
     # Fake (deterministic, keyless — public surface in neosian.fake)
     FAKE = "fake"
@@ -195,8 +211,45 @@ class Model(str, Enum):
         """Get list pricing for this model (None if not verified)."""
         return _MODEL_SPECS[self.value].pricing
 
+    @property
+    def door(self) -> OpenAICompatible | None:
+        """The door this model is served through, if it is a compat row."""
+        return _MODEL_SPECS[self.value].door
 
-# OpenAI
+
+# OpenAI — the GPT-5.6 family (developers.openai.com/api/docs/pricing,
+# 2026-09-10): standard tier sealed; input above 272K bills at 2× in and
+# 1.5× out. Every 5.6 row takes `reasoning_effort=max`.
+_GPT_5_6 = partial(
+    ModelSpec,
+    provider=Provider.OPENAI,
+    context_window=1_050_000,
+    max_output_tokens=128_000,
+    supports_reasoning=True,
+    supports_max_effort=True,
+)
+_MODEL_SPECS[Model.GPT_5_6_SOL.value] = _GPT_5_6(
+    pricing=ModelPricing(
+        input_per_mtok=4_000_000,
+        output_per_mtok=20_000_000,
+        cache_read_per_mtok=400_000,
+    ),
+)
+_MODEL_SPECS[Model.GPT_5_6_TERRA.value] = _GPT_5_6(
+    pricing=ModelPricing(
+        input_per_mtok=2_000_000,
+        output_per_mtok=12_000_000,
+        cache_read_per_mtok=200_000,
+    ),
+)
+_MODEL_SPECS[Model.GPT_5_6_LUNA.value] = _GPT_5_6(
+    pricing=ModelPricing(
+        input_per_mtok=200_000,
+        output_per_mtok=1_200_000,
+        cache_read_per_mtok=20_000,
+    ),
+)
+# Not on OpenAI's deprecation list (2026-09-10); rides the catalog probe.
 _MODEL_SPECS[Model.GPT_5_1.value] = ModelSpec(
     provider=Provider.OPENAI,
     context_window=400_000,
@@ -208,38 +261,12 @@ _MODEL_SPECS[Model.GPT_5_1.value] = ModelSpec(
         cache_read_per_mtok=125_000,
     ),
 )
-_MODEL_SPECS[Model.GPT_5_MINI.value] = ModelSpec(
-    provider=Provider.OPENAI,
-    context_window=400_000,
-    max_output_tokens=128_000,
-    supports_reasoning=True,
-    pricing=ModelPricing(
-        input_per_mtok=250_000,
-        output_per_mtok=2_000_000,
-        cache_read_per_mtok=25_000,
-    ),
-)
-_MODEL_SPECS[Model.GPT_5_NANO.value] = ModelSpec(
-    provider=Provider.OPENAI,
-    context_window=400_000,
-    max_output_tokens=128_000,
-    supports_reasoning=True,
-    pricing=ModelPricing(
-        input_per_mtok=50_000,
-        output_per_mtok=400_000,
-        cache_read_per_mtok=5_000,
-    ),
-)
-_MODEL_SPECS[Model.GPT_5_PRO.value] = ModelSpec(
-    provider=Provider.OPENAI,
-    context_window=400_000,
-    max_output_tokens=128_000,
-    supports_reasoning=True,
-    pricing=ModelPricing(input_per_mtok=15_000_000, output_per_mtok=120_000_000),
-)
 
-# Anthropic
-_MODEL_SPECS[Model.CLAUDE_OPUS_5.value] = ModelSpec(
+# Anthropic (platform.claude.com/docs/en/about-claude/pricing and
+# /model-deprecations, 2026-09-10): `retires` is the published
+# not-sooner-than floor.
+_CLAUDE_5 = partial(
+    ModelSpec,
     provider=Provider.ANTHROPIC,
     context_window=1_000_000,
     max_output_tokens=128_000,
@@ -248,44 +275,36 @@ _MODEL_SPECS[Model.CLAUDE_OPUS_5.value] = ModelSpec(
     supports_documents=True,
     supports_max_effort=True,
     supports_compaction_blocks=True,
+)
+_MODEL_SPECS[Model.CLAUDE_FABLE_5_1.value] = _CLAUDE_5(
+    # Its own cache-read rate: 0.025× of input, not the 0.1× of the rest.
+    pricing=ModelPricing(
+        input_per_mtok=10_000_000,
+        output_per_mtok=50_000_000,
+        cache_read_per_mtok=250_000,
+        cache_write_per_mtok=12_500_000,
+    ),
+    retires=date(2027, 9, 1),
+)
+_MODEL_SPECS[Model.CLAUDE_OPUS_5.value] = _CLAUDE_5(
     pricing=ModelPricing(
         input_per_mtok=5_000_000,
         output_per_mtok=25_000_000,
         cache_read_per_mtok=500_000,
         cache_write_per_mtok=6_250_000,
     ),
+    retires=date(2027, 7, 24),
 )
-_MODEL_SPECS[Model.CLAUDE_OPUS_4_6.value] = ModelSpec(
-    provider=Provider.ANTHROPIC,
-    context_window=1_000_000,
-    max_output_tokens=128_000,
-    supports_reasoning=True,
-    supports_images=True,
-    supports_documents=True,
-    supports_max_effort=True,
-    supports_compaction_blocks=True,
+_MODEL_SPECS[Model.CLAUDE_SONNET_5.value] = _CLAUDE_5(
+    # The announced 2026-09-01 rise to $3/$15 did not occur (re-verified
+    # 2026-09-10); the card is $2/$10.
     pricing=ModelPricing(
-        input_per_mtok=5_000_000,
-        output_per_mtok=25_000_000,
-        cache_read_per_mtok=500_000,
-        cache_write_per_mtok=6_250_000,
+        input_per_mtok=2_000_000,
+        output_per_mtok=10_000_000,
+        cache_read_per_mtok=200_000,
+        cache_write_per_mtok=2_500_000,
     ),
-)
-_MODEL_SPECS[Model.CLAUDE_SONNET_5.value] = ModelSpec(
-    provider=Provider.ANTHROPIC,
-    context_window=1_000_000,
-    max_output_tokens=128_000,
-    supports_reasoning=True,
-    supports_images=True,
-    supports_documents=True,
-    supports_max_effort=True,
-    supports_compaction_blocks=True,
-    pricing=ModelPricing(
-        input_per_mtok=3_000_000,
-        output_per_mtok=15_000_000,
-        cache_read_per_mtok=300_000,
-        cache_write_per_mtok=3_750_000,
-    ),
+    retires=date(2027, 6, 30),
 )
 _MODEL_SPECS[Model.CLAUDE_HAIKU_4_5.value] = ModelSpec(
     provider=Provider.ANTHROPIC,
@@ -299,9 +318,11 @@ _MODEL_SPECS[Model.CLAUDE_HAIKU_4_5.value] = ModelSpec(
         cache_read_per_mtok=100_000,
         cache_write_per_mtok=1_250_000,
     ),
+    retires=date(2026, 10, 15),
 )
 
-# Cerebras - Production
+# Cerebras (inference-docs.cerebras.ai/models, 2026-09-10): the public
+# catalog is these two; the paid tier's limits.
 _MODEL_SPECS[Model.CEREBRAS_GPT_OSS_120B.value] = ModelSpec(
     provider=Provider.CEREBRAS,
     context_window=131_072,
@@ -309,12 +330,12 @@ _MODEL_SPECS[Model.CEREBRAS_GPT_OSS_120B.value] = ModelSpec(
     supports_reasoning=True,
     pricing=ModelPricing(input_per_mtok=250_000, output_per_mtok=690_000),
 )
-
-# Cerebras - Preview
-_MODEL_SPECS[Model.CEREBRAS_GEMMA_4_31B.value] = ModelSpec(
+_MODEL_SPECS[Model.CEREBRAS_QWEN_3_8_27B.value] = ModelSpec(
     provider=Provider.CEREBRAS,
     context_window=131_072,
-    max_output_tokens=32_768,
+    max_output_tokens=40_960,
+    supports_reasoning=True,
+    pricing=ModelPricing(input_per_mtok=990_000, output_per_mtok=1_490_000),
 )
 
 # Fake — deterministic keyless models (ECOSYSTEM §7). The capability split
@@ -359,38 +380,43 @@ _MODEL_SPECS[Model.FAKE_REASONING.value] = ModelSpec(
     ),
 )
 
-# The shipped OpenAI-compatible rows (DESIGN §19.5): priced here so the
-# fingerprint seals them; their doors and registrations live in catalog.py.
-# Where a card is tiered, the standard ≤200k tier is the sealed number.
-CATALOG_SPECS: dict[str, ModelSpec] = {
-    "grok-4.6": ModelSpec(
-        provider=Provider.OPENAI_COMPATIBLE,
-        context_window=500_000,
-        max_output_tokens=32_768,  # unpublished — a conservative ceiling
-        supports_reasoning=True,
-        pricing=ModelPricing(
-            input_per_mtok=2_000_000,
-            output_per_mtok=6_000_000,
-            cache_read_per_mtok=500_000,
-        ),
+# The shipped door rows (DESIGN §19.5, §31): priced here so the fingerprint
+# seals them. Where a card is tiered, the standard ≤200k tier is the sealed
+# number (docs.x.ai/docs/models; ai.google.dev/gemini-api/docs/pricing).
+_MODEL_SPECS[Model.GROK_4_6.value] = ModelSpec(
+    provider=Provider.OPENAI_COMPATIBLE,
+    context_window=500_000,
+    max_output_tokens=32_768,  # unpublished — a conservative ceiling
+    supports_reasoning=True,
+    pricing=ModelPricing(
+        input_per_mtok=2_000_000,
+        output_per_mtok=6_000_000,
+        cache_read_per_mtok=500_000,
     ),
-    "gemini-3.7-flash": ModelSpec(
-        provider=Provider.OPENAI_COMPATIBLE,
-        context_window=1_048_576,
-        max_output_tokens=65_536,
-        supports_reasoning=True,
-        # The introductory card, stated through 2026-12-31 (doubles after).
-        pricing=ModelPricing(
-            input_per_mtok=750_000,
-            output_per_mtok=3_750_000,
-            cache_read_per_mtok=75_000,
-        ),
+    door=XAI,
+)
+# Gemini's introductory card holds through 2026-12-31 and doubles after;
+# 3.8 is the measured row, 3.7 stays on the probe.
+_GEMINI_FLASH = partial(
+    ModelSpec,
+    provider=Provider.OPENAI_COMPATIBLE,
+    context_window=1_048_576,
+    max_output_tokens=65_536,
+    supports_reasoning=True,
+    pricing=ModelPricing(
+        input_per_mtok=750_000,
+        output_per_mtok=3_750_000,
+        cache_read_per_mtok=75_000,
     ),
-}
+    door=GEMINI,
+    card_until=date(2026, 12, 31),
+)
+_MODEL_SPECS[Model.GEMINI_3_8_FLASH.value] = _GEMINI_FLASH()
+_MODEL_SPECS[Model.GEMINI_3_7_FLASH.value] = _GEMINI_FLASH()
 
 # Default models per provider
 DEFAULT_MODELS: dict[Provider, Model] = {
-    Provider.OPENAI: Model.GPT_5_NANO,
+    Provider.OPENAI: Model.GPT_5_6_SOL,
     Provider.ANTHROPIC: Model.CLAUDE_SONNET_5,
     Provider.CEREBRAS: Model.CEREBRAS_GPT_OSS_120B,
     Provider.FAKE: Model.FAKE,
@@ -400,16 +426,16 @@ DEFAULT_MODELS: dict[Provider, Model] = {
 def _prices_fingerprint() -> str:
     """Canonical sha256 of the shipped rate card + its as-of date.
 
-    The card is the enum's table plus the catalog rows (§19.5).
+    The card is the enum's one table — every shipped row, door rows
+    included (§31).
 
     A unit test recomputes this against PRICES_FINGERPRINT, so any price
     edit fails CI until the fingerprint (and, with it, PRICES_AS_OF) is
     bumped in the same commit — a gate, not a promise.
     """
-    table = _MODEL_SPECS | CATALOG_SPECS
     lines = [f"as_of:{PRICES_AS_OF}"]
-    for model_id in sorted(table):
-        spec = table[model_id]
+    for model_id in sorted(_MODEL_SPECS):
+        spec = _MODEL_SPECS[model_id]
         # Fake-model rates are test fixtures, not provider prices.
         if spec.pricing is None or spec.provider is Provider.FAKE:
             continue
@@ -421,4 +447,4 @@ def _prices_fingerprint() -> str:
     return hashlib.sha256("\n".join(lines).encode("ascii")).hexdigest()
 
 
-PRICES_FINGERPRINT = "cb065bfee6fc29b8fdbf95c297e1bdf0fe1bb818ae337b883a28e593f4de937a"
+PRICES_FINGERPRINT = "2933a70ba5b3fba4e114cecd21fac80bea66955b8817ade83e90c5b949b2e6b9"

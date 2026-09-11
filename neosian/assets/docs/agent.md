@@ -18,7 +18,7 @@ quickstart (`neosian docs quickstart`) is the tour.
 |---|---|---|
 | `system_prompt: str` | required | The system prompt. A plain string — `load_prompt(path)` reads one from YAML. |
 | `tools` | `[]` | `@Tool`-decorated async functions; an MCP server's `[*server.tools]` (`neosian docs mcp`). Two tools cannot share a name. |
-| `model: AnyModel` | `Model.CEREBRAS_GPT_OSS_120B` | A shipped `Model` or a `register_model(...)` door. |
+| `model: AnyModel \| str` | `Model.CEREBRAS_GPT_OSS_120B` | A shipped `Model`, a `register_model(...)` door, or either's wire id as a string — resolved once at construction; an unknown id raises `InvalidModelError`. |
 | `fallback` | `None` | `FallbackConfig(model, retry_main_after)` — capability-aware, sticky within a session. |
 | `enable_todo` | `True` | The builtin `update_todo` tool. |
 | `guardrails` | `None` | `GuardrailsConfig` — below. |

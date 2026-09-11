@@ -56,7 +56,7 @@ class TestFallbackFirstProviderFails:
                 system_prompt="You are a helpful assistant. Reply concisely.",
                 tools=[],
                 model=Model.CEREBRAS_GPT_OSS_120B,  # Cerebras model
-                fallback=FallbackConfig(model=Model.GPT_5_NANO),  # OpenAI fallback
+                fallback=FallbackConfig(model=Model.GPT_5_6_LUNA),  # OpenAI fallback
                 enable_todo=False,
             )
             agent = Agent(config=config)
@@ -87,7 +87,7 @@ class TestFallbackFirstProviderFails:
             config = AgentConfig(
                 system_prompt="You are a helpful assistant. Reply concisely.",
                 tools=[],
-                model=Model.GPT_5_MINI,  # OpenAI model
+                model=Model.GPT_5_6_TERRA,  # OpenAI model
                 fallback=FallbackConfig(
                     model=Model.CEREBRAS_GPT_OSS_120B
                 ),  # Cerebras fallback
@@ -162,7 +162,7 @@ class TestFallbackExhausted:
                 system_prompt="You are a helpful assistant.",
                 tools=[],
                 model=Model.CEREBRAS_GPT_OSS_120B,  # Will fail
-                fallback=FallbackConfig(model=Model.GPT_5_NANO),  # Will also fail
+                fallback=FallbackConfig(model=Model.GPT_5_6_LUNA),  # Will also fail
                 enable_todo=False,
             )
             agent = Agent(config=config)
@@ -175,7 +175,7 @@ class TestFallbackExhausted:
             # Verify the error contains both model information
             error = exc_info.value
             assert "gpt-oss-120b" in error.main_model
-            assert "gpt-5-nano" in error.fallback_model
+            assert "gpt-5.6-luna" in error.fallback_model
 
 
 class TestSingleProviderWorks:
@@ -231,7 +231,7 @@ class TestFallbackStreaming:
                 system_prompt="You are a helpful assistant. Reply concisely.",
                 tools=[],
                 model=Model.CEREBRAS_GPT_OSS_120B,
-                fallback=FallbackConfig(model=Model.GPT_5_NANO),
+                fallback=FallbackConfig(model=Model.GPT_5_6_LUNA),
                 enable_todo=False,
             )
             agent = Agent(config=config)
@@ -264,7 +264,7 @@ class TestFallbackStreaming:
                 system_prompt="You are a helpful assistant.",
                 tools=[],
                 model=Model.CEREBRAS_GPT_OSS_120B,
-                fallback=FallbackConfig(model=Model.GPT_5_NANO),
+                fallback=FallbackConfig(model=Model.GPT_5_6_LUNA),
                 enable_todo=False,
             )
             agent = Agent(config=config)
@@ -331,7 +331,7 @@ class TestStickyFallbackWithSession:
                 tools=[],
                 model=Model.CEREBRAS_GPT_OSS_120B,
                 fallback=FallbackConfig(
-                    model=Model.GPT_5_NANO,
+                    model=Model.GPT_5_6_LUNA,
                     retry_main_after=0,  # Never retry main
                 ),
                 enable_todo=False,

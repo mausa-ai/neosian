@@ -1,69 +1,21 @@
-"""The open model surface (DESIGN §19).
+"""The open model surface (DESIGN §19, §31).
 
-An `OpenAICompatible` door names where an OpenAI-compatible endpoint
-lives, which environment variable signs requests to it, and the dialect
-quirks its wire has. A `RegisteredModel` is `Model`'s structural twin —
-the same capability properties over a `ModelSpec` — so every consumer
-that reads a model reads both. The registry is configuration, not run
-state: process-global, string-keyed, write-once per id.
+A `RegisteredModel` is `Model`'s structural twin — the same capability
+properties over a `ModelSpec` — so every consumer that reads a model
+reads both; its door is the spec's, as a shipped door row's is. The
+registry is configuration, not run state: process-global, string-keyed,
+write-once per id. `resolve_model` is the one boundary where a wire id
+becomes the object every internal seam keeps.
 """
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
-from typing import Final
 
-from neosian._foundation.shared.exceptions import ConfigurationError
+from neosian._foundation.shared.catalog import OpenAICompatible
+from neosian._foundation.shared.constants import ErrorMessages
+from neosian._foundation.shared.exceptions import ConfigurationError, InvalidModelError
 from neosian._foundation.shared.models import Model, ModelPricing, ModelSpec, Provider
-
-_DOOR_NAME: Final = re.compile(r"\A[a-z][a-z0-9_-]{0,63}\Z")
-_ENV_NAME: Final = re.compile(r"\A[A-Z][A-Z0-9_]*\Z")
-
-
-@dataclass(frozen=True, slots=True, kw_only=True)
-class OpenAICompatible:
-    """An OpenAI-compatible endpoint and the dialect its wire speaks.
-
-    `name` is the provider label wherever one is rendered for a model on
-    this door — errors, the ready frame, the picker. `base_url=None`
-    keeps the SDK's own endpoint (OpenAI's, or `OPENAI_BASE_URL`), which
-    is how a fine-tuned OpenAI id the enum lacks gets registered. The
-    dialect knobs default to OpenAI's behavior; a knob is earned by a
-    measured need.
-    """
-
-    name: str
-    api_key_env: str
-    base_url: str | None = None
-    temperature: bool = False
-    reasoning_effort: bool = True
-    reasoning_field: str | None = None
-    strict_schemas: bool = True
-
-    def __post_init__(self) -> None:
-        if not _DOOR_NAME.match(self.name):
-            raise ConfigurationError(
-                f"door name {self.name!r}: use lowercase letters, digits, '-' or "
-                "'_', starting with a letter (at most 64 characters)"
-            )
-        if not _ENV_NAME.match(self.api_key_env):
-            raise ConfigurationError(
-                f"door {self.name!r}: api_key_env {self.api_key_env!r} must be an "
-                "environment variable name (uppercase letters, digits, '_')"
-            )
-        if self.base_url is not None and not self.base_url.startswith(
-            ("http://", "https://")
-        ):
-            raise ConfigurationError(
-                f"door {self.name!r}: base_url {self.base_url!r} must start with "
-                "http:// or https://, or be None for the SDK's own endpoint"
-            )
-        if self.reasoning_field is not None and not self.reasoning_field.isidentifier():
-            raise ConfigurationError(
-                f"door {self.name!r}: reasoning_field {self.reasoning_field!r} must "
-                "be a response field name such as 'reasoning_content'"
-            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,7 +29,11 @@ class RegisteredModel:
 
     value: str
     spec: ModelSpec
-    door: OpenAICompatible
+
+    @property
+    def door(self) -> OpenAICompatible:
+        assert self.spec.door is not None  # register_model always sets it
+        return self.spec.door
 
     @property
     def provider(self) -> Provider:
@@ -168,15 +124,13 @@ def register_model(
         supports_reasoning=supports_reasoning,
         supports_max_effort=supports_max_effort,
         pricing=pricing,
+        door=provider,
     )
-    return _register(RegisteredModel(value=value, spec=spec, door=provider))
+    return _register(RegisteredModel(value=value, spec=spec))
 
 
 def _register(model: RegisteredModel) -> RegisteredModel:
-    """Write-once: the new row, the identical existing one, or a refusal.
-
-    The catalog's shipped rows (§19.5) enter here with their sealed spec.
-    """
+    """Write-once: the new row, the identical existing one, or a refusal."""
     existing = _REGISTRY.get(model.value)
     if existing is None:
         _REGISTRY[model.value] = model
@@ -195,14 +149,36 @@ def lookup_model(value: str) -> AnyModel | None:
     return shipped if shipped is not None else _REGISTRY.get(value)
 
 
+def resolve_model(value: AnyModel | str) -> AnyModel:
+    """The model object for a config's `model` — the object itself, or the
+    shipped/registered model a wire id names (§31). An unknown id, or any
+    other type, raises `InvalidModelError` listing every known id."""
+    # The object check comes first: `Model` is a `str` subclass.
+    if isinstance(value, (Model, RegisteredModel)):
+        return value
+    model = lookup_model(value) if isinstance(value, str) else None
+    if model is not None:
+        return model
+    supported = ", ".join(
+        [f"Model.{m.name} ({m.value!r})" for m in Model]
+        + [repr(m.value) for m in registered_models()]
+    )
+    raise InvalidModelError(
+        ErrorMessages.INVALID_MODEL.format(
+            model_type=type(value).__name__,
+            model_value=value,
+            supported_models=supported,
+        ),
+        value,
+    )
+
+
 def registered_models() -> tuple[RegisteredModel, ...]:
     """Every registered model, in registration order."""
     return tuple(_REGISTRY.values())
 
 
 def provider_label(model: AnyModel) -> str:
-    """The provider string rendered for a model: the enum value, or the
-    door's name — never the door's shared enum row."""
-    if isinstance(model, RegisteredModel):
-        return model.door.name
-    return model.provider.value
+    """The provider string rendered for a model: the door's name where
+    there is one, else the enum value — never the door's shared enum row."""
+    return model.door.name if model.door is not None else model.provider.value

@@ -39,7 +39,8 @@ class ErrorMessages:
 
     # Configuration validation errors
     INVALID_MODEL: str = (
-        "Invalid model: expected Model enum, got {model_type} with value '{model_value}'. "
+        "Invalid model: expected a Model member, a registered model or a known "
+        "wire id, got {model_type} with value '{model_value}'. "
         "Supported models: {supported_models}"
     )
 
@@ -74,8 +75,8 @@ class ErrorMessages:
 
     # OpenAI MAX-to-HIGH downgrade
     REASONING_EFFORT_MAX_DOWNGRADED_OPENAI: str = (
-        "reasoning_effort=MAX is not supported by OpenAI models. "
-        "Downgrading to HIGH for model '{model}'."
+        "reasoning_effort=MAX is not supported by model '{model}'. "
+        "Downgrading to HIGH."
     )
 
     # Cerebras MAX-to-HIGH downgrade
@@ -91,10 +92,6 @@ class ErrorMessages:
     )
 
     # GPT-5-Pro only supports HIGH
-    REASONING_EFFORT_FORCED_HIGH: str = (
-        "Model '{model}' only supports reasoning_effort=HIGH. "
-        "Forcing reasoning_effort from {requested} to HIGH."
-    )
 
     # Max output tokens validation
     MAX_OUTPUT_TOKENS_EXCEEDED: str = (

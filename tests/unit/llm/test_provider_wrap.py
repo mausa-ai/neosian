@@ -74,8 +74,8 @@ def _xai_client(api_key: str) -> OpenAICompatibleClient:
 # Cerebras on its own SDK, OpenAI on its door, a registered door.
 _OPENAI_COMPAT = [
     (CerebrasClient, "cerebras", Model.CEREBRAS_GPT_OSS_120B),
-    (OpenAIClient, "openai", Model.GPT_5_NANO),
-    (_xai_client, "xai", Model.GPT_5_NANO),
+    (OpenAIClient, "openai", Model.GPT_5_6_LUNA),
+    (_xai_client, "xai", Model.GPT_5_6_LUNA),
 ]
 
 
@@ -237,7 +237,7 @@ class TestOverflowBeforeToolRetry:
         with pytest.raises(ContextWindowExceededError):
             await client.complete(
                 messages=[Message(role=Role.USER, content="Hi")],
-                model=Model.GPT_5_NANO,
+                model=Model.GPT_5_6_LUNA,
                 tools=_TOOLS,
             )
         assert create.call_count == 1

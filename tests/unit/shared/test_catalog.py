@@ -1,4 +1,5 @@
-"""The shipped catalog rows (DESIGN §19.5): registered at import, sealed."""
+"""The shipped door rows (DESIGN §19.5, §31): `Model` members with a door,
+sealed by the fingerprint, reaching their key through the door."""
 
 import dataclasses
 import os
@@ -10,41 +11,52 @@ from neosian import (
     PRICES_FINGERPRINT,
     ConfigurationError,
     MissingAPIKeyError,
+    Model,
     ModelPricing,
     Provider,
+    lookup_model,
     register_model,
 )
 from neosian._foundation.llm.router import ProviderRouter
-from neosian._foundation.shared.catalog import CATALOG, GROK_4_6, XAI
-from neosian._foundation.shared.models import CATALOG_SPECS, _prices_fingerprint
-from neosian._foundation.shared.registry import lookup_model, provider_label
+from neosian._foundation.shared.catalog import GEMINI, XAI, OpenAICompatible
+from neosian._foundation.shared.models import _MODEL_SPECS, _prices_fingerprint
+from neosian._foundation.shared.registry import provider_label, registered_models
+
+DOOR_ROWS = {
+    Model.GROK_4_6: XAI,
+    Model.GEMINI_3_8_FLASH: GEMINI,
+    Model.GEMINI_3_7_FLASH: GEMINI,
+}
 
 
 @pytest.mark.unit
 class TestCatalog:
-    def test_rows_are_registered_at_import(self) -> None:
-        for row in CATALOG:
+    def test_the_door_rows_are_the_enums_and_register_nothing(self) -> None:
+        assert {m for m in Model if m.door is not None} == set(DOOR_ROWS)
+        for row, door in DOOR_ROWS.items():
+            assert row.door is door
             assert lookup_model(row.value) is row
-        assert set(CATALOG_SPECS) == {row.value for row in CATALOG}
+        assert registered_models() == ()
 
     def test_rows_are_priced_door_rows(self) -> None:
-        for row in CATALOG:
+        for row, door in DOOR_ROWS.items():
             assert row.provider is Provider.OPENAI_COMPATIBLE
             assert row.pricing is not None
-            assert provider_label(row) == row.door.name
+            assert provider_label(row) == door.name
+        assert provider_label(Model.FAKE) == "fake"
 
-    def test_a_catalog_id_is_write_once(self) -> None:
-        with pytest.raises(ConfigurationError, match="already registered"):
+    def test_a_shipped_id_cannot_be_registered(self) -> None:
+        with pytest.raises(ConfigurationError, match="Model.GROK_4_6"):
             register_model(
                 "grok-4.6", provider=XAI, context_window=1, max_output_tokens=1
             )
 
     def test_catalog_prices_are_sealed(self, monkeypatch: pytest.MonkeyPatch) -> None:
         cheaper = dataclasses.replace(
-            CATALOG_SPECS["grok-4.6"],
+            _MODEL_SPECS["grok-4.6"],
             pricing=ModelPricing(input_per_mtok=1, output_per_mtok=1),
         )
-        monkeypatch.setitem(CATALOG_SPECS, "grok-4.6", cheaper)
+        monkeypatch.setitem(_MODEL_SPECS, "grok-4.6", cheaper)
         assert _prices_fingerprint() != PRICES_FINGERPRINT
 
     def test_a_row_reads_its_key_through_its_door(self) -> None:
@@ -52,4 +64,28 @@ class TestCatalog:
             patch.dict(os.environ, {}, clear=True),
             pytest.raises(MissingAPIKeyError, match="XAI_API_KEY"),
         ):
-            ProviderRouter().create_client_for(GROK_4_6)
+            ProviderRouter().create_client_for(Model.GROK_4_6)
+
+
+@pytest.mark.unit
+def test_the_facade_aliases_the_enum() -> None:
+    import neosian.catalog
+
+    assert neosian.catalog.GROK_4_6 is Model.GROK_4_6
+    assert neosian.catalog.GEMINI_3_7_FLASH is Model.GEMINI_3_7_FLASH
+
+
+@pytest.mark.unit
+def test_the_dialect_knobs_are_validated() -> None:
+    with pytest.raises(ConfigurationError, match="json_mode"):
+        OpenAICompatible(name="d", api_key_env="D_KEY", json_mode="yaml")  # type: ignore[arg-type]
+    with pytest.raises(ConfigurationError, match="reasoning_field"):
+        OpenAICompatible(name="d", api_key_env="D_KEY", echo_reasoning=True)
+    door = OpenAICompatible(
+        name="d",
+        api_key_env="D_KEY",
+        reasoning_field="reasoning_content",
+        echo_reasoning=True,
+        json_mode="json_object",
+    )
+    assert door.echo_reasoning and door.json_mode == "json_object"

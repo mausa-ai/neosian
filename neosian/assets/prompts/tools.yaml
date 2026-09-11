@@ -36,3 +36,8 @@ recall_turn_params:
 recall_turn_any_params:
   turn: "The turn number shown in square brackets in the session's log, e.g. 7 for [7]."
   conversation: "The conversation id, as the sessions/ document or the view names it."
+
+# The json_object door dialect (DESIGN §31.4): an endpoint with no
+# json_schema mode gets the schema in the system prompt; the word "json"
+# must appear (DeepSeek's rule). Validation stays neosian's.
+json_object: "Respond with exactly one JSON object that conforms to this JSON schema, and nothing else:"

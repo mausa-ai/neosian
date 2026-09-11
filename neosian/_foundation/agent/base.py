@@ -35,6 +35,7 @@ from neosian._foundation.shared.exceptions import (
     StructuredOutputStreamingError,
     StructuredOutputToolsError,
 )
+from neosian._foundation.shared.registry import resolve_model
 from neosian._foundation.shared.types import (
     AgentConfig,
     AnyModel,
@@ -104,8 +105,12 @@ class Agent:
         self._hooks = HookRunner(config.hooks)
 
         # Model and fallback configuration
-        self._model = config.model
+        self._model = resolve_model(config.model)
         self._fallback = config.fallback
+        # The fallback row, resolved once like the main one (§31).
+        self._fallback_model: AnyModel | None = (
+            None if config.fallback is None else resolve_model(config.fallback.model)
+        )
         self._system_prompt = config.system_prompt
         self._max_tool_iterations = config.max_tool_iterations
         self._reasoning_effort = config.reasoning_effort
@@ -129,7 +134,9 @@ class Agent:
         self._guardrails = config.guardrails
         self._guardrail_model: AnyModel | None = None
         if self._guardrails is not None:
-            self._guardrail_model = self._guardrails.model or config.model
+            self._guardrail_model = resolve_model(
+                self._guardrails.model or config.model
+            )
             if self._client_factory is None:
                 require_model_key(self._guardrail_model)
 
@@ -151,12 +158,12 @@ class Agent:
         if config.skills or config.memory is not None:
             for skill_tool in create_skill_tools(config.skills, config.memory):
                 self._register_tool(skill_tool)
-        if config.native_memory and config.model.provider is not Provider.ANTHROPIC:
+        if config.native_memory and self._model.provider is not Provider.ANTHROPIC:
             logger.warning(
                 "native_memory=True is inert on %s — the memory_20250818 "
                 "declaration is Anthropic-only; other providers receive "
                 "the ordinary function schema",
-                config.model.provider.value,
+                self._model.provider.value,
             )
 
         # Register user-provided tools

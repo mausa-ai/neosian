@@ -15,7 +15,6 @@ from neosian._foundation.shared.types import (
     FallbackState,
     OpenAICompatible,
     Provider,
-    RegisteredModel,
     ResponseFormat,
 )
 
@@ -67,10 +66,10 @@ class AgentSession:
     def _get_or_create_client(self, model: AnyModel) -> BaseLLMClient:
         """Get a cached client or create and cache a new one.
 
-        Shipped models share one client per provider; registered models
-        share one per door (DESIGN §19).
+        Adapter rows share one client per provider; door rows share one
+        per door (DESIGN §19).
         """
-        key = model.door if isinstance(model, RegisteredModel) else model.provider
+        key = model.door or model.provider
         if key not in self._clients:
             self._clients[key] = self._agent._create_client(model)
         return self._clients[key]

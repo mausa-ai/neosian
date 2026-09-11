@@ -31,7 +31,9 @@ from neosian._foundation.llm.openai_convert import (
     convert_response_format,
     convert_tools,
     extra_of,
+    json_object_format,
     refusal_of,
+    schema_in_prompt,
     usage_of,
 )
 from neosian._foundation.shared.constants import ErrorMessages, LLMDefaults
@@ -42,7 +44,6 @@ from neosian._foundation.shared.exceptions import (
 )
 from neosian._foundation.shared.types import (
     AnyModel,
-    Model,
     OpenAICompatible,
     ReasoningEffort,
     ResponseFormat,
@@ -125,6 +126,8 @@ class OpenAICompatibleClient(BaseLLMClient):
         self._check_temperature(temperature)
         effective_effort = self._resolve_reasoning_effort(model, reasoning_effort)
 
+        if response_format and self._door.json_mode == "json_object":
+            messages = schema_in_prompt(messages, response_format)
         openai_messages = self._convert_messages(messages)
         openai_tools = self._convert_tools(tools) if tools else None
         openai_response_format: OpenAIResponseFormat | None = (
@@ -209,8 +212,7 @@ class OpenAICompatibleClient(BaseLLMClient):
         Handles:
         - Validation: raises UnsupportedParameterError for non-reasoning models.
         - A door without the parameter: dropped with a warning.
-        - MAX downgrade: the dialect has no MAX, downgrade to HIGH.
-        - GPT-5-Pro constraint: only supports HIGH, force other values to HIGH.
+        - MAX downgrade: a model whose spec does not allow MAX gets HIGH.
 
         Args:
             model: The model being used.
@@ -238,27 +240,15 @@ class OpenAICompatibleClient(BaseLLMClient):
             )
             return None
 
-        effective_effort = reasoning_effort
-
-        # The dialect has no MAX - downgrade to HIGH with warning
-        if reasoning_effort == ReasoningEffort.MAX:
+        # MAX passes through where the spec allows it (§31); else HIGH.
+        if reasoning_effort is ReasoningEffort.MAX and not model.supports_max_effort:
             logger.warning(
                 ErrorMessages.REASONING_EFFORT_MAX_DOWNGRADED_OPENAI.format(
                     model=model.value
                 )
             )
-            effective_effort = ReasoningEffort.HIGH
-
-        # GPT-5-Pro only supports HIGH - force with warning
-        if model == Model.GPT_5_PRO and effective_effort != ReasoningEffort.HIGH:
-            logger.warning(
-                ErrorMessages.REASONING_EFFORT_FORCED_HIGH.format(
-                    model=model.value, requested=effective_effort.value
-                )
-            )
-            effective_effort = ReasoningEffort.HIGH
-
-        return effective_effort
+            return ReasoningEffort.HIGH
+        return reasoning_effort
 
     def _reasoning_of(self, part: object) -> str | None:
         """The door's reasoning field off a message or delta, if it carries one."""
@@ -458,7 +448,9 @@ class OpenAICompatibleClient(BaseLLMClient):
     def _convert_messages(
         self, messages: list[Message]
     ) -> list[ChatCompletionMessageParam]:
-        return convert_messages(messages)
+        door = self._door
+        echo = door.reasoning_field if door.echo_reasoning else None
+        return convert_messages(messages, echo_field=echo)
 
     def _convert_tools(
         self, tools: list[ToolDefinition]
@@ -468,6 +460,8 @@ class OpenAICompatibleClient(BaseLLMClient):
     def _convert_response_format(
         self, response_format: ResponseFormat
     ) -> OpenAIResponseFormat:
+        if self._door.json_mode == "json_object":
+            return json_object_format()
         if not self._door.strict_schemas:
             response_format = replace(response_format, strict=False)
         return convert_response_format(response_format)

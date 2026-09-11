@@ -4,13 +4,7 @@ from rich.console import Console
 
 from neosian._foundation.shared.constants import ArenaUI
 from neosian._foundation.shared.registry import registered_models
-from neosian._foundation.shared.types import (
-    DEFAULT_MODELS,
-    AnyModel,
-    Model,
-    Provider,
-    RegisteredModel,
-)
+from neosian._foundation.shared.types import DEFAULT_MODELS, AnyModel, Model, Provider
 
 # Models hidden from the interactive picker (special-purpose).
 _HIDDEN_MODELS: frozenset[Model] = frozenset()
@@ -18,21 +12,22 @@ _HIDDEN_MODELS: frozenset[Model] = frozenset()
 # Optional flavor text appended to a model's display name. The "(default)"
 # marker is derived from DEFAULT_MODELS, not baked in here.
 _MODEL_NOTES: dict[Model, str] = {
-    Model.GPT_5_NANO: "fastest",
-    Model.GPT_5_MINI: "balanced",
-    Model.GPT_5_1: "best for coding",
-    Model.GPT_5_PRO: "most precise",
-    Model.CLAUDE_OPUS_5: "most capable",
+    Model.GPT_5_6_SOL: "most capable",
+    Model.GPT_5_6_TERRA: "balanced",
+    Model.GPT_5_6_LUNA: "fastest",
+    Model.GPT_5_1: "previous flagship",
+    Model.CLAUDE_FABLE_5_1: "most capable",
+    Model.CLAUDE_OPUS_5: "capable",
     Model.CLAUDE_SONNET_5: "balanced",
     Model.CLAUDE_HAIKU_4_5: "fastest",
     Model.CEREBRAS_GPT_OSS_120B: "fastest 120B",
-    Model.CEREBRAS_GEMMA_4_31B: "preview",
+    Model.CEREBRAS_QWEN_3_8_27B: "reasoning 27B",
 }
 
 
 def display_name(model: AnyModel) -> str:
     """Build the picker label for a model from the registry."""
-    if isinstance(model, RegisteredModel):
+    if model.door is not None:
         return f"{model.door.name}/{model.value}"
     notes: list[str] = []
     if DEFAULT_MODELS.get(model.provider) is model:
@@ -48,8 +43,9 @@ def get_models_for_provider(
 ) -> list[tuple[AnyModel, str]]:
     """Get available models for a provider, derived from the Model registry.
 
-    Registered models (DESIGN §19) sit under `Provider.OPENAI_COMPATIBLE`,
-    labeled by their door, in registration order.
+    Door rows (DESIGN §19, §31) sit under `Provider.OPENAI_COMPATIBLE`,
+    labeled by their door: the shipped ones first, then registrations in
+    registration order.
 
     Args:
         provider: The LLM provider.
@@ -66,7 +62,7 @@ def get_models_for_provider(
         and (not require_reasoning or m.supports_reasoning)
     ]
     if provider is Provider.OPENAI_COMPATIBLE:
-        models = [
+        models += [
             m
             for m in registered_models()
             if not require_reasoning or m.supports_reasoning

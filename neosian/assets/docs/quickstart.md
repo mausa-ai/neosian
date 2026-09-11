@@ -94,8 +94,11 @@ in any tool call, expanded before the tool runs.
 Models the `Model` enum lacks — a fine-tune, a local server, a provider
 not shipped — register once at import through a door: the endpoint, the
 env var that signs requests, and the dialect quirks the wire has. The
-doors neosian ships are already registered: `from neosian.catalog import
-GROK_4_6, GEMINI_3_7_FLASH` (xAI `XAI_API_KEY`, Gemini `GEMINI_API_KEY`).
+door rows neosian ships are `Model` members like every other row —
+`Model.GROK_4_6` (xAI, `XAI_API_KEY`), `Model.GEMINI_3_8_FLASH` (Gemini,
+`GEMINI_API_KEY`) — and every shipped or registered row answers to its
+wire id: `AgentConfig(model="gpt-5.6-sol")` builds the same agent as the
+member.
 
 ```python
 from neosian import AgentConfig, ModelPricing, OpenAICompatible, register_model
@@ -111,7 +114,12 @@ config = AgentConfig(system_prompt="Be concise.", model=ACME_LARGE)
 
 Cost in µ$, the context policy, capability-aware fallback and the
 playground picker treat it like a shipped model; a missing `XAI_API_KEY`
-fails naming it.
+fails naming it. The door's dialect knobs default to OpenAI's wire:
+`temperature`, `reasoning_effort`, `reasoning_field`, `strict_schemas`,
+`json_mode="json_object"` (structured output as the plain JSON mode, the
+schema in the system prompt — DeepSeek) and `echo_reasoning` (the
+reasoning field sent back on assistant turns — a 400 in tool loops
+without it on DeepSeek, Qwen and Kimi).
 
 ## Where to go next
 

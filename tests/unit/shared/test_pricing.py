@@ -8,7 +8,6 @@ import pytest
 from neosian import (
     MICRO_PER_USD,
     PRICES_FINGERPRINT,
-    AnyModel,
     Model,
     ModelPricing,
     Provider,
@@ -16,25 +15,26 @@ from neosian import (
     format_micro_usd,
 )
 from neosian._foundation.llm.base import ModelUsage
-from neosian._foundation.shared.catalog import CATALOG, GEMINI_3_7_FLASH, GROK_4_6
 from neosian._foundation.shared.models import _prices_fingerprint
 
 # The published USD/MTok rate card, as verified on PRICES_AS_OF — the
 # no-rounding gate: every shipped int µ$ rate must equal its decimal USD
-# price exactly. Order: (input, output, cache_read, cache_write). The
-# catalog rows (DESIGN §19.5) sit on the same card, standard tier.
-_USD_RATE_CARD: dict[AnyModel, tuple[str, str, str | None, str | None]] = {
+# price exactly. Order: (input, output, cache_read, cache_write). The door
+# rows (DESIGN §19.5, §31) sit on the same card, standard tier.
+_USD_RATE_CARD: dict[Model, tuple[str, str, str | None, str | None]] = {
+    Model.GPT_5_6_SOL: ("4.00", "20.00", "0.40", None),
+    Model.GPT_5_6_TERRA: ("2.00", "12.00", "0.20", None),
+    Model.GPT_5_6_LUNA: ("0.20", "1.20", "0.02", None),
     Model.GPT_5_1: ("1.25", "10.00", "0.125", None),
-    Model.GPT_5_MINI: ("0.25", "2.00", "0.025", None),
-    Model.GPT_5_NANO: ("0.05", "0.40", "0.005", None),
-    Model.GPT_5_PRO: ("15.00", "120.00", None, None),
+    Model.CLAUDE_FABLE_5_1: ("10.00", "50.00", "0.25", "12.50"),
     Model.CLAUDE_OPUS_5: ("5.00", "25.00", "0.50", "6.25"),
-    Model.CLAUDE_OPUS_4_6: ("5.00", "25.00", "0.50", "6.25"),
-    Model.CLAUDE_SONNET_5: ("3.00", "15.00", "0.30", "3.75"),
+    Model.CLAUDE_SONNET_5: ("2.00", "10.00", "0.20", "2.50"),
     Model.CLAUDE_HAIKU_4_5: ("1.00", "5.00", "0.10", "1.25"),
     Model.CEREBRAS_GPT_OSS_120B: ("0.25", "0.69", None, None),
-    GROK_4_6: ("2.00", "6.00", "0.50", None),
-    GEMINI_3_7_FLASH: ("0.75", "3.75", "0.075", None),
+    Model.CEREBRAS_QWEN_3_8_27B: ("0.99", "1.49", None, None),
+    Model.GROK_4_6: ("2.00", "6.00", "0.50", None),
+    Model.GEMINI_3_8_FLASH: ("0.75", "3.75", "0.075", None),
+    Model.GEMINI_3_7_FLASH: ("0.75", "3.75", "0.075", None),
 }
 
 
@@ -67,7 +67,7 @@ class TestRateCard:
         """
         priced = {
             m
-            for m in (*Model, *CATALOG)
+            for m in Model
             if m.pricing is not None and m.provider is not Provider.FAKE
         }
         assert priced == set(_USD_RATE_CARD)
@@ -83,11 +83,11 @@ class TestCostGoldenVectors:
     """Hand-computed ceiling-division vectors — the kit must agree on these."""
 
     def test_exact_division(self) -> None:
-        # 10k in + 2k out + 50k cache-read on Sonnet 5 = exactly 75_000 µ$
+        # 10k in + 2k out + 50k cache-read on Sonnet 5 = exactly 50_000 µ$
         usage = Usage(
             input_tokens=10_000, output_tokens=2_000, cache_read_tokens=50_000
         )
-        assert usage.cost_micro_usd(Model.CLAUDE_SONNET_5) == 75_000
+        assert usage.cost_micro_usd(Model.CLAUDE_SONNET_5) == 50_000
 
     def test_fractional_rounds_up(self) -> None:
         # 1234*250_000 + 567*690_000 = 699_730_000 → 699.73 µ$ → 700

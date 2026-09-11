@@ -581,11 +581,11 @@ class TestCerebrasClientReasoningEffort:
         with pytest.raises(UnsupportedParameterError) as exc_info:
             await client.complete(
                 messages=[Message(role=Role.USER, content="Hi")],
-                model=Model.CEREBRAS_GEMMA_4_31B,
+                model=Model.FAKE_SMALL,
                 reasoning_effort=ReasoningEffort.HIGH,
             )
 
-        assert "gemma-4-31b" in str(exc_info.value)
+        assert "fake-small" in str(exc_info.value)
 
     @pytest.mark.asyncio
     async def test_reasoning_effort_none_omitted_from_request(self) -> None:
@@ -658,7 +658,7 @@ class TestCerebrasClientReasoningEffort:
         with pytest.raises(UnsupportedParameterError):
             async for _ in client.stream(
                 messages=[Message(role=Role.USER, content="Hi")],
-                model=Model.CEREBRAS_GEMMA_4_31B,
+                model=Model.FAKE_SMALL,
                 reasoning_effort=ReasoningEffort.LOW,
             ):
                 pass
@@ -811,7 +811,7 @@ class TestCerebrasClientReasoningContent:
 
         result = await client.complete(
             messages=[Message(role=Role.USER, content="Hi")],
-            model=Model.CEREBRAS_GEMMA_4_31B,
+            model=Model.CEREBRAS_QWEN_3_8_27B,
         )
 
         assert result.message.content == "Hello"
@@ -933,7 +933,7 @@ class TestCerebrasClientReasoningContent:
         chunks = []
         async for c in client.stream(
             messages=[Message(role=Role.USER, content="Hi")],
-            model=Model.CEREBRAS_GEMMA_4_31B,
+            model=Model.CEREBRAS_QWEN_3_8_27B,
         ):
             chunks.append(c)
 

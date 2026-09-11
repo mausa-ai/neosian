@@ -164,19 +164,21 @@ API keys are read from environment variables; a provider is available when
 its key is set (asking for an unavailable model raises
 `MissingAPIKeyError`).
 
-| Provider | Env var | Notes |
+| Provider | Env var | Models |
 |---|---|---|
-| OpenAI | `OPENAI_API_KEY` | GPT-5 family (reasoning models) |
-| Anthropic | `ANTHROPIC_API_KEY` | Claude; vision/PDF input, prompt caching, adaptive thinking |
-| Cerebras | `CEREBRAS_API_KEY` | Default provider (gpt-oss-120b) |
-| xAI | `XAI_API_KEY` | `grok-4.6` — a shipped door row (`from neosian.catalog import GROK_4_6`) |
-| Google Gemini API | `GEMINI_API_KEY` | `gemini-3.7-flash` on the OpenAI-compatible endpoint (`GEMINI_3_7_FLASH`) |
+| A registered door | the door's `api_key_env` | The day-one door for any model neosian has not shipped: any OpenAI-compatible endpoint via `register_model` (`neosian docs quickstart`) |
+| OpenAI | `OPENAI_API_KEY` | `gpt-5.6-sol` (default), `gpt-5.6-terra`, `gpt-5.6-luna` (reasoning, `max` effort), `gpt-5.1` |
+| Anthropic | `ANTHROPIC_API_KEY` | `claude-fable-5-1`, `claude-opus-5`, `claude-sonnet-5` (default), `claude-haiku-4-5` (retirement floor 2026-10-15); vision/PDF input, prompt caching, adaptive thinking |
+| Cerebras | `CEREBRAS_API_KEY` | Default provider: `gpt-oss-120b`, `qwen-3.8-27b` |
+| xAI | `XAI_API_KEY` | `grok-4.6` — a shipped door row (`Model.GROK_4_6`) |
+| Google Gemini API | `GEMINI_API_KEY` | `gemini-3.8-flash`, `gemini-3.7-flash` on the OpenAI-compatible endpoint (`Model.GEMINI_3_8_FLASH`; the introductory card through 2026-12-31) |
 | Fake | — | Keyless, deterministic, always available (`Model.FAKE`) |
-| A registered door | the door's `api_key_env` | Any OpenAI-compatible endpoint via `register_model` (`neosian docs quickstart`) |
 
-Every shipped row is earned by green dispatched runs of the memory
-baselines; membership is measured, never assumed
-(`neosian docs baselines`).
+Every shipped row is a `Model` member and answers to its wire id too
+(`AgentConfig(model="gpt-5.6-sol")`); each carries its provider's
+lifecycle as data (`Model.X.spec.retires`, `card_until`) and is earned by
+green dispatched runs of the memory baselines — membership is measured,
+never assumed (`neosian docs baselines`).
 
 ## Storage
 
@@ -211,7 +213,10 @@ only at a major — and the state process's wire (the twelve `/v1/` store
 routes and their envelope, versioned by `WIRE_VERSION`) stable under the
 same promise: one promise covering library, seams, and wire. Until then the seams are append-only by convention, and error
 codes are already append-only forever. Consumers pin a release
-(`neosian==X.Y.Z`), never master.
+(`neosian==X.Y.Z`), never master. Model ids follow their providers'
+lifecycles: a retired id leaves in the next release after its provider's
+date, named in the changelog; each shipped row's clock is data on its
+spec (`neosian docs baselines`).
 
 ## Development
 

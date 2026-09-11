@@ -65,7 +65,7 @@ async def main() -> None:
     for write in result.writes:
         print(f"  {write.command} {write.path} -> v{write.version}")
     if result.usage is not None:
-        spend = result.usage.cost_micro_usd(configuration.model) or 0
+        spend = result.usage.cost_micro_usd(Model.CLAUDE_SONNET_5) or 0
         print(f"  spend: {format_micro_usd(spend)}")
 
     print("--- session 2: a fresh conversation on the same scope")

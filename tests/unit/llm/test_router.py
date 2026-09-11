@@ -109,7 +109,7 @@ class TestModelEnum:
     def test_anthropic_models_have_expected_token_limits(self) -> None:
         """Test that Anthropic models have correct max output tokens."""
         assert Model.CLAUDE_OPUS_5.max_output_tokens == 128_000
-        assert Model.CLAUDE_OPUS_4_6.max_output_tokens == 128_000
+        assert Model.CLAUDE_FABLE_5_1.max_output_tokens == 128_000
         assert Model.CLAUDE_SONNET_5.max_output_tokens == 128_000
         assert Model.CLAUDE_HAIKU_4_5.max_output_tokens == 64_000
 
@@ -119,16 +119,16 @@ class TestModelEnum:
             assert isinstance(model.context_window, int)
             assert model.context_window > 0
 
-    def test_openai_models_have_400k_context_window(self) -> None:
-        """Test that OpenAI models have 400k context window."""
-        openai_models = [m for m in Model if m.provider == Provider.OPENAI]
-        for model in openai_models:
-            assert model.context_window == 400_000
+    def test_openai_models_have_expected_context_windows(self) -> None:
+        """The GPT-5.6 rows carry the 1,050,000 window; gpt-5.1 its 400k."""
+        for model in (Model.GPT_5_6_SOL, Model.GPT_5_6_TERRA, Model.GPT_5_6_LUNA):
+            assert model.context_window == 1_050_000
+        assert Model.GPT_5_1.context_window == 400_000
 
     def test_anthropic_models_have_expected_context_windows(self) -> None:
         """Test that Anthropic models have the expected context windows."""
         assert Model.CLAUDE_OPUS_5.context_window == 1_000_000
-        assert Model.CLAUDE_OPUS_4_6.context_window == 1_000_000
+        assert Model.CLAUDE_FABLE_5_1.context_window == 1_000_000
         assert Model.CLAUDE_SONNET_5.context_window == 1_000_000
         assert Model.CLAUDE_HAIKU_4_5.context_window == 200_000
 

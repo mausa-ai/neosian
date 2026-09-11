@@ -73,10 +73,19 @@ class TestUsageCostMicroUsd:
         assert usage.cost_micro_usd(Model.CEREBRAS_GPT_OSS_120B) == 1
 
     def test_cost_unpriced_model_returns_none(self) -> None:
-        """Models without verified pricing return None, never 0."""
+        """Models without verified pricing return None, never 0 — every
+        shipped row is priced, so the unpriced one is a registration."""
+        from neosian import OpenAICompatible, register_model
+
+        unpriced = register_model(
+            "unpriced",
+            provider=OpenAICompatible(name="door", api_key_env="DOOR_KEY"),
+            context_window=1,
+            max_output_tokens=1,
+        )
         usage = Usage(input_tokens=100, output_tokens=100)
-        assert Model.CEREBRAS_GEMMA_4_31B.pricing is None
-        assert usage.cost_micro_usd(Model.CEREBRAS_GEMMA_4_31B) is None
+        assert unpriced.pricing is None
+        assert usage.cost_micro_usd(unpriced) is None
 
     def test_zero_usage_costs_zero(self) -> None:
         usage = Usage(input_tokens=0, output_tokens=0)

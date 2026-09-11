@@ -927,7 +927,7 @@ class TestStreamingUsageReporting:
                 tools=[],
                 enable_todo=False,
                 model=Model.CLAUDE_SONNET_5,
-                fallback=FallbackConfig(model=Model.CEREBRAS_GEMMA_4_31B),
+                fallback=FallbackConfig(model=Model.CEREBRAS_QWEN_3_8_27B),
             )
             agent = Agent(config=config)
 
@@ -1287,9 +1287,7 @@ class TestAgentReasoningEffort:
                 system_prompt="You are helpful.",
                 model=Model.CEREBRAS_GPT_OSS_120B,  # Supports reasoning
                 reasoning_effort=ReasoningEffort.HIGH,
-                fallback=FallbackConfig(
-                    model=Model.CEREBRAS_GEMMA_4_31B
-                ),  # No reasoning
+                fallback=FallbackConfig(model=Model.CLAUDE_HAIKU_4_5),  # No reasoning
                 enable_todo=False,
             )
             agent = Agent(config=config)
@@ -2019,7 +2017,7 @@ class TestCapabilityAwareFallback:
                 config=AgentConfig(
                     system_prompt="S",
                     model=Model.CLAUDE_SONNET_5,
-                    fallback=FallbackConfig(model=Model.CEREBRAS_GEMMA_4_31B),
+                    fallback=FallbackConfig(model=Model.CEREBRAS_QWEN_3_8_27B),
                     enable_todo=False,
                 )
             )
@@ -2065,7 +2063,7 @@ class TestCapabilityAwareFallback:
                 tools=[],
                 enable_todo=False,
                 model=Model.CLAUDE_SONNET_5,
-                fallback=FallbackConfig(model=Model.CEREBRAS_GEMMA_4_31B),
+                fallback=FallbackConfig(model=Model.CEREBRAS_QWEN_3_8_27B),
             )
             agent = Agent(config=config)
 
@@ -2094,7 +2092,7 @@ class TestCapabilityAwareFallback:
                 system_prompt="You are helpful.",
                 tools=[],
                 enable_todo=False,
-                model=Model.GPT_5_NANO,
+                model=Model.GPT_5_6_LUNA,
             )
             agent = Agent(config=config)
 
@@ -2136,7 +2134,7 @@ class TestCapabilityAwareFallback:
                 system_prompt="You transcribe PDFs.",
                 tools=[],
                 enable_todo=False,
-                model=Model.GPT_5_NANO,
+                model=Model.GPT_5_6_LUNA,
                 fallback=FallbackConfig(model=Model.CLAUDE_SONNET_5),
             )
             agent = Agent(config=config)
@@ -2179,7 +2177,7 @@ class TestCapabilityAwareFallback:
                 tools=[],
                 enable_todo=False,
                 model=Model.CLAUDE_SONNET_5,
-                fallback=FallbackConfig(model=Model.CEREBRAS_GEMMA_4_31B),
+                fallback=FallbackConfig(model=Model.CEREBRAS_QWEN_3_8_27B),
             )
             agent = Agent(config=config)
 

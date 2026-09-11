@@ -157,10 +157,10 @@ async def execute_agent_core(
         )
         fallback_state.using_fallback = False
         fallback_state.successful_fallback_calls = 0
-        assert agent._fallback is not None  # _should_retry_main checked
+        assert agent._fallback_model is not None  # _should_retry_main checked
         await emit_fallback(
             ctx,
-            from_model=agent._fallback.model.value,
+            from_model=agent._fallback_model.value,
             to_model=agent._model.value,
             reason="retry_main_after threshold reached",
             cause=None,
@@ -191,7 +191,7 @@ async def execute_agent_core(
     except Exception as e:
         main_error = str(e)
         # No fallback configured - raise immediately
-        if agent._fallback is None:
+        if agent._fallback_model is None:
             reraise_caller_errors(e, attempt)
             raise ModelFailedError(
                 model=agent._model.value,
@@ -209,14 +209,14 @@ async def execute_agent_core(
         logger.warning(
             ErrorMessages.FALLBACK_TRIGGERED.format(
                 from_model=agent._model.value,
-                to_model=agent._fallback.model.value,
+                to_model=agent._fallback_model.value,
                 reason=main_error,
             )
         )
         await emit_fallback(
             ctx,
             from_model=agent._model.value,
-            to_model=agent._fallback.model.value,
+            to_model=agent._fallback_model.value,
             reason=main_error,
             cause=e,
             sticky=False,
@@ -225,14 +225,14 @@ async def execute_agent_core(
         # Fresh message snapshot (a failed attempt's partial tool rounds
         # must not leak into the fallback's history); billed usage carries.
         fallback_attempt = Attempt.start(
-            agent._fallback.model, base_messages, ctx.ledger
+            agent._fallback_model, base_messages, ctx.ledger
         )
         try:
-            fallback_client = ctx.acquire(agent._fallback.model)
+            fallback_client = ctx.acquire(agent._fallback_model)
             response = await execute_with_client(
                 ctx,
                 client=fallback_client,
-                model=agent._fallback.model,
+                model=agent._fallback_model,
                 attempt=fallback_attempt,
                 response_format=response_format,
             )
@@ -245,7 +245,7 @@ async def execute_agent_core(
             raise FallbackExhaustedError(
                 main_model=agent._model.value,
                 main_error=main_error,
-                fallback_model=agent._fallback.model.value,
+                fallback_model=agent._fallback_model.value,
                 fallback_error=str(fallback_e),
                 usage=fallback_attempt.usage,
                 usage_by_model=fallback_attempt.usage_by_model,
@@ -274,7 +274,7 @@ async def execute_with_fallback_model(
     agent = ctx.agent
     fallback_state = ctx.fallback_state
     assert fallback_state is not None  # Callers check using_fallback first
-    if agent._fallback is None:
+    if agent._fallback_model is None:
         raise ModelFailedError(
             model=agent._model.value,
             error="No fallback configured but fallback_state.using_fallback=True",
@@ -283,7 +283,7 @@ async def execute_with_fallback_model(
 
     # Capability-aware: media the sticky fallback model can't handle
     # routes straight to the main model.
-    if unsupported_content_types(agent._fallback.model, base_messages):
+    if unsupported_content_types(agent._fallback_model, base_messages):
         attempt = Attempt.start(agent._model, base_messages, ctx.ledger)
         try:
             main_client = ctx.acquire(agent._model)
@@ -308,13 +308,13 @@ async def execute_with_fallback_model(
                 usage_by_model=attempt.usage_by_model,
             ) from e
 
-    attempt = Attempt.start(agent._fallback.model, base_messages, ctx.ledger)
+    attempt = Attempt.start(agent._fallback_model, base_messages, ctx.ledger)
     try:
-        client = ctx.acquire(agent._fallback.model)
+        client = ctx.acquire(agent._fallback_model)
         response = await execute_with_client(
             ctx,
             client=client,
-            model=agent._fallback.model,
+            model=agent._fallback_model,
             attempt=attempt,
             response_format=response_format,
         )
@@ -325,14 +325,14 @@ async def execute_with_fallback_model(
         # Fallback failed - try main as last resort
         logger.warning(
             ErrorMessages.FALLBACK_TRIGGERED.format(
-                from_model=agent._fallback.model.value,
+                from_model=agent._fallback_model.value,
                 to_model=agent._model.value,
                 reason=str(e),
             )
         )
         await emit_fallback(
             ctx,
-            from_model=agent._fallback.model.value,
+            from_model=agent._fallback_model.value,
             to_model=agent._model.value,
             reason=str(e),
             cause=e,
@@ -358,7 +358,7 @@ async def execute_with_fallback_model(
             raise FallbackExhaustedError(
                 main_model=agent._model.value,
                 main_error=str(main_e),
-                fallback_model=agent._fallback.model.value,
+                fallback_model=agent._fallback_model.value,
                 fallback_error=fallback_error,
                 usage=main_attempt.usage,
                 usage_by_model=main_attempt.usage_by_model,

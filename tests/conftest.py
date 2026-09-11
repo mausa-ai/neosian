@@ -10,15 +10,44 @@ its own — a real-API baseline runs minutes (the Kimi lane most of an
 hour), so its ceiling is an hour per test, inside the job's 180.
 """
 
+import os
 from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 
 # The three shipped adapters, then the door lanes (tests/external/lanes.py).
-_PROVIDERS = ("openai", "anthropic", "cerebras", "xai", "gemini", "kimi")
+_PROVIDERS = (
+    "openai",
+    "anthropic",
+    "cerebras",
+    "xai",
+    "gemini",
+    "kimi",
+    "deepseek",
+    "qwen",
+)
 _TESTS_DIR = Path(__file__).parent
 _EXTERNAL_TIMEOUT_SECONDS = 3600
+_KEYS_AT_START: set[str] = set()
+
+
+def _provider_keys() -> set[str]:
+    return {name for name in os.environ if name.endswith("_API_KEY")}
+
+
+def pytest_sessionstart() -> None:
+    _KEYS_AT_START.update(_provider_keys())
+
+
+def pytest_collection_finish() -> None:
+    """A provider key reaches a test only from the operator's environment
+    (DESIGN §10): an import at collection that loads one — an example's
+    module-level app reading `~/.neosian/config.toml` did — defeats every
+    self-skip after it and spends the developer's account. Names only."""
+    leaked = sorted(_provider_keys() - _KEYS_AT_START)
+    if leaked:
+        pytest.exit(f"collection put provider keys in the environment: {leaked}", 3)
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
