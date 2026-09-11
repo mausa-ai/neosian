@@ -36,7 +36,7 @@ on storage the product owns. Read `README.md` first; `neosian docs
 - Constants live module-local; `shared/constants.py` is named debt, never
   grown further — new constants go next to their use.
 - File-size gate: warn 300, fail 500 lines (`make size`); allowlist
-  entries carry a mandatory `# reason`, stale entries fail the gate.
+  entries carry a ceiling and a reason, stale entries fail the gate.
 - Test tiers: `unit` (FakeProvider and the shipped fakes only — the
   default, fully keyless) / `external_<provider>` (real API calls;
   dispatch-only). Per-test skip helpers, never module-level skips; key

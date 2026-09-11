@@ -7,10 +7,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from neosian._foundation.llm.anthropic import (
-    AnthropicClient,
-    _strip_unsupported_constraints,
-)
+from neosian._foundation.llm.anthropic import AnthropicClient
+from neosian._foundation.llm.anthropic_convert import strip_unsupported_constraints
 from neosian._foundation.llm.base import (
     CompactionBlock,
     DocumentBlock,
@@ -1487,17 +1485,16 @@ class TestAnthropicPromptCaching:
     async def test_complete_handles_missing_cache_fields(
         self, client: AnthropicClient, sample_messages: list[Message]
     ) -> None:
-        """complete() should handle responses without cache fields (graceful fallback)."""
+        """complete() reads absent cache fields — None on the SDK type — as 0."""
         mock_response = MagicMock(spec_set=SPEC["message"])
         mock_response.content = [
             MagicMock(spec_set=SPEC["text"], type="text", text="Hi")
         ]
-        # Simulate response without cache fields (spec=False lets getattr return default)
         mock_usage = MagicMock(spec_set=SPEC["usage"])
         mock_usage.input_tokens = 10
         mock_usage.output_tokens = 5
-        del mock_usage.cache_creation_input_tokens
-        del mock_usage.cache_read_input_tokens
+        mock_usage.cache_creation_input_tokens = None
+        mock_usage.cache_read_input_tokens = None
         mock_response.usage = mock_usage
         mock_response.model = "claude-sonnet-5"
 
@@ -1773,7 +1770,7 @@ class TestStripUnsupportedConstraints:
                 },
             },
         }
-        result = _strip_unsupported_constraints(schema, strict=True)
+        result = strip_unsupported_constraints(schema, strict=True)
         prop = result["properties"]["fontsize"]
         assert "minimum" not in prop
         assert "maximum" not in prop
@@ -1791,7 +1788,7 @@ class TestStripUnsupportedConstraints:
                 },
             },
         }
-        result = _strip_unsupported_constraints(schema, strict=True)
+        result = strip_unsupported_constraints(schema, strict=True)
         assert "minimum" not in result["properties"]["width"]
         assert "maximum" not in result["properties"]["width"]
 
@@ -1807,7 +1804,7 @@ class TestStripUnsupportedConstraints:
                 },
             },
         }
-        result = _strip_unsupported_constraints(schema, strict=True)
+        result = strip_unsupported_constraints(schema, strict=True)
         assert "exclusiveMinimum" not in result["properties"]["val"]
         assert "exclusiveMaximum" not in result["properties"]["val"]
 
@@ -1824,7 +1821,7 @@ class TestStripUnsupportedConstraints:
                 },
             },
         }
-        result = _strip_unsupported_constraints(schema, strict=True)
+        result = strip_unsupported_constraints(schema, strict=True)
         prop = result["properties"]["name"]
         assert "minLength" not in prop
         assert "maxLength" not in prop
@@ -1843,7 +1840,7 @@ class TestStripUnsupportedConstraints:
             },
             "properties": {},
         }
-        result = _strip_unsupported_constraints(schema, strict=True)
+        result = strip_unsupported_constraints(schema, strict=True)
         assert "minimum" not in result["$defs"]["Size"]
         assert "maximum" not in result["$defs"]["Size"]
 
@@ -1859,7 +1856,7 @@ class TestStripUnsupportedConstraints:
                 },
             ],
         }
-        result = _strip_unsupported_constraints(schema, strict=True)
+        result = strip_unsupported_constraints(schema, strict=True)
         assert "minimum" not in result["anyOf"][0]["properties"]["count"]
 
     def test_does_not_mutate_original(self) -> None:
@@ -1870,7 +1867,7 @@ class TestStripUnsupportedConstraints:
                 "x": {"type": "integer", "minimum": 1, "maximum": 10},
             },
         }
-        _strip_unsupported_constraints(schema, strict=True)
+        strip_unsupported_constraints(schema, strict=True)
         assert schema["properties"]["x"]["minimum"] == 1
         assert schema["properties"]["x"]["maximum"] == 10
 
@@ -1907,7 +1904,7 @@ class TestStripUnsupportedConstraints:
                 "name": {"type": "string", "minLength": 1},
             },
         }
-        result = _strip_unsupported_constraints(schema, strict=True)
+        result = strip_unsupported_constraints(schema, strict=True)
         assert "minLength" not in result["properties"]["name"]
 
     def test_strips_maxlength_on_strings(self) -> None:
@@ -1918,7 +1915,7 @@ class TestStripUnsupportedConstraints:
                 "name": {"type": "string", "maxLength": 100},
             },
         }
-        result = _strip_unsupported_constraints(schema, strict=True)
+        result = strip_unsupported_constraints(schema, strict=True)
         assert "maxLength" not in result["properties"]["name"]
 
     def test_strips_multipleof_on_numbers(self) -> None:
@@ -1930,7 +1927,7 @@ class TestStripUnsupportedConstraints:
                 "f": {"type": "number", "multipleOf": 0.25},
             },
         }
-        result = _strip_unsupported_constraints(schema, strict=True)
+        result = strip_unsupported_constraints(schema, strict=True)
         assert "multipleOf" not in result["properties"]["n"]
         assert "multipleOf" not in result["properties"]["f"]
 
@@ -1942,7 +1939,7 @@ class TestStripUnsupportedConstraints:
                 "tags": {"type": "array", "minItems": 3, "items": {"type": "string"}},
             },
         }
-        result = _strip_unsupported_constraints(schema, strict=True)
+        result = strip_unsupported_constraints(schema, strict=True)
         assert "minItems" not in result["properties"]["tags"]
 
     def test_keeps_minitems_zero_or_one(self) -> None:
@@ -1954,7 +1951,7 @@ class TestStripUnsupportedConstraints:
                 "b": {"type": "array", "minItems": 1, "items": {"type": "string"}},
             },
         }
-        result = _strip_unsupported_constraints(schema, strict=True)
+        result = strip_unsupported_constraints(schema, strict=True)
         assert result["properties"]["a"]["minItems"] == 0
         assert result["properties"]["b"]["minItems"] == 1
 
@@ -1966,7 +1963,7 @@ class TestStripUnsupportedConstraints:
                 "tags": {"type": "array", "maxItems": 10, "items": {"type": "string"}},
             },
         }
-        result = _strip_unsupported_constraints(schema, strict=True)
+        result = strip_unsupported_constraints(schema, strict=True)
         assert "maxItems" not in result["properties"]["tags"]
 
     def test_keeps_maxitems_zero_or_one(self) -> None:
@@ -1978,7 +1975,7 @@ class TestStripUnsupportedConstraints:
                 "b": {"type": "array", "maxItems": 1, "items": {"type": "string"}},
             },
         }
-        result = _strip_unsupported_constraints(schema, strict=True)
+        result = strip_unsupported_constraints(schema, strict=True)
         assert result["properties"]["a"]["maxItems"] == 0
         assert result["properties"]["b"]["maxItems"] == 1
 
@@ -1988,7 +1985,7 @@ class TestStripUnsupportedConstraints:
             "type": "object",
             "properties": {"name": {"type": "string", "minLength": 1}},
         }
-        result = _strip_unsupported_constraints(schema, strict=False)
+        result = strip_unsupported_constraints(schema, strict=False)
         assert result["properties"]["name"]["minLength"] == 1
 
     def test_strict_false_preserves_multipleof(self) -> None:
@@ -1997,7 +1994,7 @@ class TestStripUnsupportedConstraints:
             "type": "object",
             "properties": {"n": {"type": "integer", "multipleOf": 5}},
         }
-        result = _strip_unsupported_constraints(schema, strict=False)
+        result = strip_unsupported_constraints(schema, strict=False)
         assert result["properties"]["n"]["multipleOf"] == 5
 
     def test_strict_false_still_strips_numeric_minimum(self) -> None:
@@ -2008,7 +2005,7 @@ class TestStripUnsupportedConstraints:
                 "n": {"type": "integer", "minimum": 1, "maximum": 100},
             },
         }
-        result = _strip_unsupported_constraints(schema, strict=False)
+        result = strip_unsupported_constraints(schema, strict=False)
         assert "minimum" not in result["properties"]["n"]
         assert "maximum" not in result["properties"]["n"]
 

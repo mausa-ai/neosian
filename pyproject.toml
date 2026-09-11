@@ -202,8 +202,12 @@ source_modules = [
 ]
 forbidden_modules = [
     "neosian._foundation.llm.openai",
+    "neosian._foundation.llm.openai_convert",
     "neosian._foundation.llm.anthropic",
+    "neosian._foundation.llm.anthropic_convert",
+    "neosian._foundation.llm.anthropic_stream",
     "neosian._foundation.llm.cerebras",
+    "neosian._foundation.llm.cerebras_convert",
     "neosian._foundation.llm.fake",
 ]
 
@@ -214,8 +218,12 @@ source_modules = ["neosian._foundation.mcp"]
 forbidden_modules = [
     "neosian._foundation.agent",
     "neosian._foundation.llm.openai",
+    "neosian._foundation.llm.openai_convert",
     "neosian._foundation.llm.anthropic",
+    "neosian._foundation.llm.anthropic_convert",
+    "neosian._foundation.llm.anthropic_stream",
     "neosian._foundation.llm.cerebras",
+    "neosian._foundation.llm.cerebras_convert",
     "neosian._foundation.llm.fake",
 ]
 
@@ -229,8 +237,12 @@ forbidden_modules = [
     "neosian._foundation.agent",
     "neosian._foundation.mcp",
     "neosian._foundation.llm.openai",
+    "neosian._foundation.llm.openai_convert",
     "neosian._foundation.llm.anthropic",
+    "neosian._foundation.llm.anthropic_convert",
+    "neosian._foundation.llm.anthropic_stream",
     "neosian._foundation.llm.cerebras",
+    "neosian._foundation.llm.cerebras_convert",
     "neosian._foundation.llm.fake",
 ]
 
@@ -243,8 +255,12 @@ source_modules = ["neosian._foundation.server"]
 forbidden_modules = [
     "neosian._foundation.agent",
     "neosian._foundation.llm.openai",
+    "neosian._foundation.llm.openai_convert",
     "neosian._foundation.llm.anthropic",
+    "neosian._foundation.llm.anthropic_convert",
+    "neosian._foundation.llm.anthropic_stream",
     "neosian._foundation.llm.cerebras",
+    "neosian._foundation.llm.cerebras_convert",
     "neosian._foundation.llm.fake",
 ]
 
@@ -256,8 +272,12 @@ type = "forbidden"
 source_modules = ["neosian._foundation.conversation"]
 forbidden_modules = [
     "neosian._foundation.llm.openai",
+    "neosian._foundation.llm.openai_convert",
     "neosian._foundation.llm.anthropic",
+    "neosian._foundation.llm.anthropic_convert",
+    "neosian._foundation.llm.anthropic_stream",
     "neosian._foundation.llm.cerebras",
+    "neosian._foundation.llm.cerebras_convert",
     "neosian._foundation.llm.fake",
 ]
 allow_indirect_imports = true
@@ -305,8 +325,12 @@ type = "forbidden"
 source_modules = ["neosian._foundation.evaluation"]
 forbidden_modules = [
     "neosian._foundation.llm.openai",
+    "neosian._foundation.llm.openai_convert",
     "neosian._foundation.llm.anthropic",
+    "neosian._foundation.llm.anthropic_convert",
+    "neosian._foundation.llm.anthropic_stream",
     "neosian._foundation.llm.cerebras",
+    "neosian._foundation.llm.cerebras_convert",
 ]
 allow_indirect_imports = true
 
@@ -318,8 +342,12 @@ type = "forbidden"
 source_modules = ["neosian._foundation.otel"]
 forbidden_modules = [
     "neosian._foundation.llm.openai",
+    "neosian._foundation.llm.openai_convert",
     "neosian._foundation.llm.anthropic",
+    "neosian._foundation.llm.anthropic_convert",
+    "neosian._foundation.llm.anthropic_stream",
     "neosian._foundation.llm.cerebras",
+    "neosian._foundation.llm.cerebras_convert",
     "neosian._foundation.conversation",
     "neosian._foundation.memory",
     "neosian._foundation.postgres",
