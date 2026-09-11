@@ -19,9 +19,6 @@ ALLOWLIST: dict[str, str] = {
         "grew with v0.49 multimodal + N4 native tools/server compaction; "
         "single-file adapter until a real seam appears"
     ),
-    "neosian/_foundation/shared/exceptions.py": (
-        "one class per error code (DESIGN §5); size is the full registry, not debt"
-    ),
 }
 
 
