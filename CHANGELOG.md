@@ -8,6 +8,10 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [1.0.0rc4] - 2026-09-11
+
+The shell for humans and agents, and the catalog current at the promise.
+
 ### Added
 
 - The shell for humans and agents (NY, DESIGN §30): `neosian status`
@@ -970,7 +974,8 @@ pre-release — pin it explicitly; the API stability promise rides v1.0.0.
 - Both entry points share one `_validate_run`, so neither can skip a
   guard.
 
-[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc3...HEAD
+[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc4...HEAD
+[1.0.0rc4]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc3...v1.0.0rc4
 [1.0.0rc3]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc2...v1.0.0rc3
 [1.0.0rc2]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc1...v1.0.0rc2
 [1.0.0rc1]: https://github.com/mausa-ai/neosian/compare/v0.90.0...v1.0.0rc1
