@@ -50,6 +50,10 @@ phase close names the version.
   `list_documents`, `redact` and `history` move to a worker thread, so a
   large scope no longer stalls `neosian serve`'s loop for every other
   request. Single-file reads and writes are unchanged (ledger #233).
+- **The Anthropic door runs on SDK 1.x.** The `anthropic` cap moves from
+  `<1` to `<2`; the floor stays 0.122.0. SDK 1.0 dropped `temperature`
+  from `messages.stream()`, so an explicit temperature now travels in
+  `extra_body`: the same request body on either SDK line.
 
 ## [1.0.0rc7] - 2026-09-12
 

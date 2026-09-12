@@ -198,7 +198,8 @@ class AnthropicClient(BaseLLMClient):
 
         # Only send temperature when explicitly requested: newer Claude
         # models (e.g. Sonnet 5) reject non-default sampling parameters
-        # with a 400, so the API default must apply when unset.
+        # with a 400, so the API default must apply when unset. It rides
+        # extra_body: SDK 1.x dropped the keyword, the wire still takes it.
         current_temp: float | None = temperature
 
         for attempt in range(LLMDefaults.MAX_TOOL_CALL_RETRIES + 1):
@@ -214,7 +215,7 @@ class AnthropicClient(BaseLLMClient):
                     kwargs["thinking"] = {"type": "adaptive"}
                     kwargs["output_config"] = {"effort": effective_effort.value}
                 elif current_temp is not None:
-                    kwargs["temperature"] = current_temp
+                    kwargs["extra_body"] = {"temperature": current_temp}
 
                 if cached_system:
                     kwargs["system"] = cached_system
@@ -367,11 +368,13 @@ class AnthropicClient(BaseLLMClient):
         # Thinking mode: add adaptive thinking + effort, omit temperature.
         # Temperature is only sent when explicitly requested: newer Claude
         # models (e.g. Sonnet 5) reject non-default sampling parameters.
+        # It rides extra_body: SDK 1.x dropped the keyword, the wire still
+        # takes it.
         if effective_effort is not None:
             kwargs["thinking"] = {"type": "adaptive"}
             kwargs["output_config"] = {"effort": effective_effort.value}
         elif temperature is not None:
-            kwargs["temperature"] = temperature
+            kwargs["extra_body"] = {"temperature": temperature}
 
         if cached_system:
             kwargs["system"] = cached_system

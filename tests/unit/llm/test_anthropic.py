@@ -3,7 +3,7 @@
 import dataclasses
 from collections.abc import AsyncIterator
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, create_autospec, patch
 
 import pytest
 
@@ -45,6 +45,13 @@ def _sdk(client: AnthropicClient) -> Any:
     return client._client
 
 
+def _stub_stream(client: AnthropicClient, mock_stream: MagicMock) -> None:
+    """Stub messages.stream against the installed SDK's real signature, so a
+    keyword the SDK dropped turns these suites red (TP-10)."""
+    real = _sdk(client).messages.stream
+    _sdk(client).messages.stream = create_autospec(real, return_value=mock_stream)
+
+
 def _mock_complete(client: AnthropicClient, mock_response: MagicMock) -> None:
     """Wire a mocked final message into complete()'s internal-streaming path.
 
@@ -57,7 +64,7 @@ def _mock_complete(client: AnthropicClient, mock_response: MagicMock) -> None:
     mock_stream = MagicMock()
     mock_stream.__aenter__ = AsyncMock(return_value=inner)
     mock_stream.__aexit__ = AsyncMock(return_value=False)
-    _sdk(client).messages.stream = MagicMock(return_value=mock_stream)
+    _stub_stream(client, mock_stream)
 
 
 @pytest.fixture
@@ -359,7 +366,7 @@ class TestAnthropicClient:
         mock_stream.__aexit__ = AsyncMock(return_value=None)
         mock_stream.__aiter__ = lambda _: mock_stream_events()
 
-        _sdk(client).messages.stream = MagicMock(return_value=mock_stream)
+        _stub_stream(client, mock_stream)
 
         chunks = []
         async for chunk in client.stream(
@@ -523,7 +530,35 @@ class TestAnthropicReasoningEffort:
         )
 
         call_kwargs = _sdk(client).messages.stream.call_args.kwargs
-        assert call_kwargs["temperature"] == 0.3
+        assert call_kwargs["extra_body"] == {"temperature": 0.3}
+
+    @pytest.mark.asyncio
+    async def test_explicit_temperature_is_sent_in_stream(
+        self, client: AnthropicClient, sample_messages: list[Message]
+    ) -> None:
+        """The stream path sends an explicit temperature the same way."""
+        mock_event = MagicMock(spec_set=SPEC["message_stop"])
+        mock_event.type = "message_stop"
+
+        async def mock_stream_events() -> AsyncIterator[Any]:
+            yield mock_event
+
+        mock_stream = MagicMock()
+        mock_stream.__aenter__ = AsyncMock(return_value=mock_stream)
+        mock_stream.__aexit__ = AsyncMock(return_value=None)
+        mock_stream.__aiter__ = lambda _: mock_stream_events()
+
+        _stub_stream(client, mock_stream)
+
+        async for _ in client.stream(
+            messages=sample_messages,
+            model=Model.CLAUDE_HAIKU_4_5,
+            temperature=0.3,
+        ):
+            pass
+
+        call_kwargs = _sdk(client).messages.stream.call_args.kwargs
+        assert call_kwargs["extra_body"] == {"temperature": 0.3}
 
     @pytest.mark.asyncio
     async def test_reasoning_effort_in_stream_passes_thinking_kwargs(
@@ -541,7 +576,7 @@ class TestAnthropicReasoningEffort:
         mock_stream.__aexit__ = AsyncMock(return_value=None)
         mock_stream.__aiter__ = lambda _: mock_stream_events()
 
-        _sdk(client).messages.stream = MagicMock(return_value=mock_stream)
+        _stub_stream(client, mock_stream)
 
         chunks = []
         async for chunk in client.stream(
@@ -718,7 +753,7 @@ class TestAnthropicReasoningEffort:
         mock_stream.__aexit__ = AsyncMock(return_value=None)
         mock_stream.__aiter__ = lambda _: mock_stream_events()
 
-        _sdk(client).messages.stream = MagicMock(return_value=mock_stream)
+        _stub_stream(client, mock_stream)
 
         async for _ in client.stream(
             messages=sample_messages,
@@ -855,7 +890,7 @@ class TestAnthropicReasoningContent:
         mock_stream.__aexit__ = AsyncMock(return_value=None)
         mock_stream.__aiter__ = lambda _: mock_stream_events()
 
-        _sdk(client).messages.stream = MagicMock(return_value=mock_stream)
+        _stub_stream(client, mock_stream)
 
         chunks = []
         async for chunk in client.stream(
@@ -937,7 +972,7 @@ class TestAnthropicStreamingToolCalls:
         mock_stream.__aexit__ = AsyncMock(return_value=None)
         mock_stream.__aiter__ = lambda _: mock_stream_events()
 
-        _sdk(client).messages.stream = MagicMock(return_value=mock_stream)
+        _stub_stream(client, mock_stream)
 
         chunks = []
         async for chunk in client.stream(
@@ -1007,7 +1042,7 @@ class TestAnthropicStreamingToolCalls:
         mock_stream.__aenter__ = AsyncMock(return_value=mock_stream)
         mock_stream.__aexit__ = AsyncMock(return_value=None)
         mock_stream.__aiter__ = lambda _: mock_stream_events()
-        _sdk(client).messages.stream = MagicMock(return_value=mock_stream)
+        _stub_stream(client, mock_stream)
 
         chunks = []
         with pytest.raises(ProviderError, match="stop reason: max_tokens") as info:
@@ -1067,7 +1102,7 @@ class TestAnthropicStreamingToolCalls:
         mock_stream.__aexit__ = AsyncMock(return_value=None)
         mock_stream.__aiter__ = lambda _: mock_stream_events()
 
-        _sdk(client).messages.stream = MagicMock(return_value=mock_stream)
+        _stub_stream(client, mock_stream)
 
         chunks = []
         async for chunk in client.stream(
@@ -1110,7 +1145,7 @@ class TestAnthropicStreamingToolCalls:
         mock_stream.__aexit__ = AsyncMock(return_value=None)
         mock_stream.__aiter__ = lambda _: mock_stream_events()
 
-        _sdk(client).messages.stream = MagicMock(return_value=mock_stream)
+        _stub_stream(client, mock_stream)
 
         tool_def = ToolDefinition(
             name=ToolName("calc"),
@@ -1153,7 +1188,7 @@ class TestAnthropicStreamingToolCalls:
         mock_stream.__aexit__ = AsyncMock(return_value=None)
         mock_stream.__aiter__ = lambda _: mock_stream_events()
 
-        _sdk(client).messages.stream = MagicMock(return_value=mock_stream)
+        _stub_stream(client, mock_stream)
 
         chunks = []
         async for chunk in client.stream(
@@ -1233,7 +1268,7 @@ class TestAnthropicStreamingToolCalls:
         mock_stream.__aexit__ = AsyncMock(return_value=None)
         mock_stream.__aiter__ = lambda _: mock_stream_events()
 
-        _sdk(client).messages.stream = MagicMock(return_value=mock_stream)
+        _stub_stream(client, mock_stream)
 
         chunks = []
         async for chunk in client.stream(
@@ -1529,7 +1564,7 @@ class TestAnthropicPromptCaching:
         mock_stream.__aexit__ = AsyncMock(return_value=None)
         mock_stream.__aiter__ = lambda _: mock_stream_events()
 
-        _sdk(client).messages.stream = MagicMock(return_value=mock_stream)
+        _stub_stream(client, mock_stream)
 
         async for _ in client.stream(
             messages=sample_messages,
@@ -1583,7 +1618,7 @@ class TestAnthropicPromptCaching:
         mock_stream.__aexit__ = AsyncMock(return_value=None)
         mock_stream.__aiter__ = lambda _: mock_stream_events()
 
-        _sdk(client).messages.stream = MagicMock(return_value=mock_stream)
+        _stub_stream(client, mock_stream)
 
         chunks = []
         async for chunk in client.stream(
@@ -1641,7 +1676,7 @@ class TestAnthropicPromptCaching:
         mock_stream.__aexit__ = AsyncMock(return_value=None)
         mock_stream.__aiter__ = lambda _: mock_stream_events()
 
-        _sdk(client).messages.stream = MagicMock(return_value=mock_stream)
+        _stub_stream(client, mock_stream)
 
         chunks = []
         async for chunk in client.stream(
@@ -1709,7 +1744,7 @@ class TestAnthropicPromptCaching:
         mock_stream.__aexit__ = AsyncMock(return_value=None)
         mock_stream.__aiter__ = lambda _: mock_stream_events()
 
-        _sdk(client).messages.stream = MagicMock(return_value=mock_stream)
+        _stub_stream(client, mock_stream)
 
         chunks = []
         async for chunk in client.stream(
@@ -1738,7 +1773,7 @@ class TestAnthropicPromptCaching:
         mock_stream.__aexit__ = AsyncMock(return_value=None)
         mock_stream.__aiter__ = lambda _: mock_stream_events()
 
-        _sdk(client).messages.stream = MagicMock(return_value=mock_stream)
+        _stub_stream(client, mock_stream)
 
         tool_def = ToolDefinition(
             name=ToolName("calc"),
@@ -2286,7 +2321,7 @@ class TestAnthropicArgumentFragments:
         mock_stream.__aenter__ = AsyncMock(return_value=mock_stream)
         mock_stream.__aexit__ = AsyncMock(return_value=None)
         mock_stream.__aiter__ = lambda _: events()
-        _sdk(client).messages.stream = MagicMock(return_value=mock_stream)
+        _stub_stream(client, mock_stream)
 
         chunks = [
             chunk
@@ -2323,7 +2358,7 @@ class TestAnthropicArgumentFragments:
         mock_stream.__aenter__ = AsyncMock(return_value=mock_stream)
         mock_stream.__aexit__ = AsyncMock(return_value=None)
         mock_stream.__aiter__ = lambda _: events()
-        _sdk(client).messages.stream = MagicMock(return_value=mock_stream)
+        _stub_stream(client, mock_stream)
 
         chunks = [
             chunk
@@ -2864,7 +2899,7 @@ class TestAnthropicMultimodal:
         mock_stream.__aexit__ = AsyncMock(return_value=None)
         mock_stream.__aiter__ = lambda _: mock_stream_events()
 
-        _sdk(client).messages.stream = MagicMock(return_value=mock_stream)
+        _stub_stream(client, mock_stream)
 
         chunks = []
         async for chunk in client.stream(
@@ -3024,7 +3059,7 @@ class TestNativeToolType:
         mock_stream.__aenter__ = AsyncMock(return_value=mock_stream)
         mock_stream.__aexit__ = AsyncMock(return_value=None)
         mock_stream.__aiter__ = lambda _: mock_stream_events()
-        _sdk(client).messages.stream = MagicMock(return_value=mock_stream)
+        _stub_stream(client, mock_stream)
 
         async for _ in client.stream(
             messages=sample_messages,
@@ -3397,7 +3432,7 @@ class TestThinkingEcho:
         mock_stream.__aenter__ = AsyncMock(return_value=mock_stream)
         mock_stream.__aexit__ = AsyncMock(return_value=None)
         mock_stream.__aiter__ = lambda _: mock_stream_events()
-        _sdk(client).messages.stream = MagicMock(return_value=mock_stream)
+        _stub_stream(client, mock_stream)
 
         chunks = [
             chunk
