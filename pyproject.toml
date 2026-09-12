@@ -26,7 +26,7 @@ classifiers = [
 # it has not seen, and the `lowest` CI job resolves every declared floor
 # for real on both Python ends.
 dependencies = [
-    "anthropic>=0.122.0,<1",
+    "anthropic>=0.122.0,<2",
     "httpx>=0.28.1",
     "mcp>=2,<3",
     "openai>=3.2.0,<4",
