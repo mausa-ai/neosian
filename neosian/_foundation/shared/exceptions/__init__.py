@@ -20,6 +20,7 @@ from neosian._foundation.shared.exceptions.agent import (
     AgentInvalidDefinitionError as AgentInvalidDefinitionError,
     AgentLoadError as AgentLoadError,
     AgentMissingConfigurationError as AgentMissingConfigurationError,
+    BudgetExceededError as BudgetExceededError,
     ConfigurationError as ConfigurationError,
     InvalidModelError as InvalidModelError,
     MissingAPIKeyError as MissingAPIKeyError,

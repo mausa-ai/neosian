@@ -3,7 +3,7 @@
 All NewType definitions are centralized here.
 """
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -70,6 +70,11 @@ ClientFactory = Callable[[AnyModel], "BaseLLMClient"]
 
 _MAX_TOOL_ITERATIONS_INVALID = "max_tool_iterations must be >= 1, got {value}"
 _TIMEOUT_INVALID = "timeout_seconds must be positive, got {value}"
+_BUDGET_INVALID = "{field} must be >= 1 when set, got {value}"
+_FALLBACK_BOTH = (
+    "FallbackConfig takes model= (one rung) or models= (a ladder), never both"
+)
+_FALLBACK_NEITHER = "FallbackConfig needs model= or models=; both were empty"
 
 
 # =============================================================================
@@ -81,12 +86,20 @@ _TIMEOUT_INVALID = "timeout_seconds must be positive, got {value}"
 class FallbackConfig:
     """Configuration for model fallback behavior.
 
-    When the primary model fails, the agent will fall back to this model.
-    The fallback is "sticky" - once fallen back, subsequent calls continue
-    using the fallback model until retry_main_after successful calls.
+    When the primary model fails, the agent walks this ladder in order,
+    trying each rung until one answers. The fallback is "sticky" — once
+    fallen back, subsequent calls continue on the rung that answered
+    until retry_main_after successful calls.
+
+    Give exactly one of `model` (one rung) or `models` (a ladder); both,
+    or neither, is a configuration error. After construction `models` is
+    always the canonical ordered tuple and `model` is its first rung, so
+    a one-rung ladder reads exactly as it always did.
 
     Attributes:
-        model: The fallback model to use when primary fails.
+        model: The single fallback model. Set from `models[0]` when a
+            ladder was given.
+        models: The ladder, in the order it is walked (NC9, ledger #223).
         retry_main_after: Number of successful fallback calls before retrying
             the main model. 0 means never retry main (stay on fallback).
 
@@ -97,17 +110,29 @@ class FallbackConfig:
             system_prompt="You are helpful.",
             model=Model.CLAUDE_OPUS_5,
             fallback=FallbackConfig(
-                model=Model.GPT_5_6_SOL,
+                models=[Model.GPT_5_6_SOL, Model.CEREBRAS_GPT_OSS_120B],
                 retry_main_after=5,  # Try main again after 5 successful calls
             ),
         )
     """
 
-    model: AnyModel | str
+    model: AnyModel | str | None = None
+    models: Sequence[AnyModel | str] = ()
     retry_main_after: int = 0
 
     def __post_init__(self) -> None:
-        self.model = resolve_model(self.model)
+        # Lazy import to avoid the circular dependency at module load
+        # time (the same idiom AgentConfig.__post_init__ uses).
+        from neosian._foundation.shared.exceptions import UnsupportedParameterError
+
+        if self.model is not None and self.models:
+            raise UnsupportedParameterError(_FALLBACK_BOTH)
+        rungs = [self.model] if self.model is not None else list(self.models)
+        if not rungs:
+            raise UnsupportedParameterError(_FALLBACK_NEITHER)
+        resolved = tuple(resolve_model(rung) for rung in rungs if rung is not None)
+        self.models = resolved
+        self.model = resolved[0]
 
 
 @dataclass
@@ -125,6 +150,10 @@ class FallbackState:
 
     using_fallback: bool = False
     successful_fallback_calls: int = 0
+    # Which rung of the ladder is sticky, 0-based into
+    # FallbackConfig.models (NC9, ledger #223). Always 0 for a one-rung
+    # ladder, which is what it was before the ladder existed.
+    fallback_index: int = 0
 
 
 @dataclass
@@ -252,6 +281,14 @@ class AgentConfig:
     # Per-request deadline handed to the provider SDK; None keeps each
     # SDK's own default (NF #169, LL-21).
     timeout_seconds: float | None = None
+    # The run's spend ceilings (NC9, ledger #222): the run raises
+    # BudgetExceededError the moment its usage ledger crosses one, so
+    # nothing is billed past the cap. Both default to None — off.
+    # A model with no verified pricing contributes nothing to the cost
+    # tally (Usage.cost_micro_usd is None for it) and says so once per
+    # run; max_total_tokens is the rail that fires on every model.
+    max_cost_micro_usd: int | None = None
+    max_total_tokens: int | None = None
     cache_conversation: bool = True
     skill_dir: str | Path | None = None
     memory: "MemoryConfig | None" = None
@@ -359,6 +396,14 @@ class AgentConfig:
             raise UnsupportedParameterError(
                 _TIMEOUT_INVALID.format(value=self.timeout_seconds)
             )
+        for _field, _value in (
+            ("max_cost_micro_usd", self.max_cost_micro_usd),
+            ("max_total_tokens", self.max_total_tokens),
+        ):
+            if _value is not None and _value < 1:
+                raise UnsupportedParameterError(
+                    _BUDGET_INVALID.format(field=_field, value=_value)
+                )
 
         # Load skills from directory if configured
         if self.skill_dir is not None:

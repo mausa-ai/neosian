@@ -203,9 +203,10 @@ async def stream_final_with_client_and_guard(
         )
     except Exception as exc:
         # Fold the un-ledgered remainder so the caller's attempt read
-        # sees everything billed before the failure.
+        # sees everything billed before the failure. `fold`, not
+        # `record`: a budget raise here would mask `exc`.
         if final_usage is not None:
-            attempt.record(final_api_model, final_usage)
+            attempt.fold(final_api_model, final_usage)
         await emit_llm_call(
             ctx,
             model=model,

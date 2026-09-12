@@ -3,8 +3,18 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, Any
+
 from neosian._foundation.shared.constants import ErrorMessages
 from neosian._foundation.shared.exceptions.base import NeosianError
+
+if TYPE_CHECKING:
+    from neosian._foundation.llm.base import ModelUsage, Usage
+
+_BUDGET_EXCEEDED = (
+    "Run stopped: {kind} budget of {limit} exceeded ({spent} billed). "
+    "Nothing was spent past the cap."
+)
 
 
 class PromptLoadError(NeosianError):
@@ -160,3 +170,46 @@ class StructuredOutputToolsError(StructuredOutputError):
 
     def __init__(self) -> None:
         super().__init__(ErrorMessages.STRUCTURED_OUTPUT_INCOMPATIBLE_WITH_TOOLS)
+
+
+class BudgetExceededError(NeosianError):
+    """Raised when a run crosses the spend ceiling its config set.
+
+    The run's ledger is the one place every micro-dollar is folded — every
+    attempt, every fallback leg, and the guardrail classifier's own call —
+    so the check lives there and fires the moment the ledger crosses. The
+    billed usage rides the exception on both paths (DESIGN §3): a relaying
+    host's ``ErrorEvent.from_exception`` reads `usage`/`usage_by_model`
+    off it like any provider failure.
+    """
+
+    code = "agent_budget_exceeded"
+
+    def __init__(
+        self,
+        kind: str,
+        limit: int,
+        spent: int,
+        *,
+        usage: Usage | None = None,
+        usage_by_model: tuple[ModelUsage, ...] = (),
+    ) -> None:
+        """Initialize with the ceiling that was crossed.
+
+        Args:
+            kind: Which ceiling — "cost" (micro-USD) or "tokens".
+            limit: The configured ceiling.
+            spent: What the run had billed when it crossed.
+            usage: The run's summed usage at the breach.
+            usage_by_model: Per-API-reported-model split of `usage`.
+        """
+        details: dict[str, Any] = {"kind": kind, "limit": limit, "spent": spent}
+        super().__init__(
+            _BUDGET_EXCEEDED.format(kind=kind, limit=limit, spent=spent),
+            details=details,
+        )
+        self.kind = kind
+        self.limit = limit
+        self.spent = spent
+        self.usage = usage
+        self.usage_by_model = usage_by_model

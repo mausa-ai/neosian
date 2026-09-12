@@ -19,7 +19,7 @@ quickstart (`neosian docs quickstart`) is the tour.
 | `system_prompt: str` | required | The system prompt. A plain string; `load_prompt(path)` reads one from YAML. |
 | `tools` | `[]` | `@Tool`-decorated async functions; an MCP server's `[*server.tools]` (`neosian docs mcp`). Two tools cannot share a name. |
 | `model: AnyModel \| str` | `Model.CEREBRAS_GPT_OSS_120B` | A shipped `Model`, a `register_model(...)` door, or either's wire id as a string, resolved once at construction; an unknown id raises `InvalidModelError`. |
-| `fallback` | `None` | `FallbackConfig(model, retry_main_after)`: capability-aware, sticky within a session. |
+| `fallback` | `None` | `FallbackConfig(model=…)` or `FallbackConfig(models=[…])`: one rung or a ladder, capability-aware and sticky within a session. Below. |
 | `enable_todo` | `True` | The builtin `update_todo` tool. |
 | `guardrails` | `None` | `GuardrailsConfig`: below. |
 | `reasoning_effort` | `None` | `ReasoningEffort` on models that support it; refused otherwise. |
@@ -28,6 +28,8 @@ quickstart (`neosian docs quickstart`) is the tour.
 | `max_retries` | `2` | Transport-level SDK retries (429/5xx/connection). |
 | `max_tool_iterations` | `10` | Tool rounds before the toolless final call; that response says `iterations_exhausted=True`. |
 | `timeout_seconds` | `None` | Per-request deadline handed to the provider SDK; `None` keeps each SDK's own default. |
+| `max_cost_micro_usd` | `None` | The run's spend ceiling in integer micro-USD. Below. |
+| `max_total_tokens` | `None` | The run's token ceiling, all four token classes. Below. |
 | `cache_conversation` | `True` | Anthropic cache breakpoint on the last message; off for one-shot calls. |
 | `skill_dir` | `None` | Directory skills (`neosian docs skills`). |
 | `memory` | `None` | `MemoryConfig`: the memory tool over mounts (`neosian docs memory`). |
@@ -41,6 +43,69 @@ quickstart (`neosian docs quickstart`) is the tour.
 Validation is eager: an unsupported `reasoning_effort`, an output cap
 over the model's, a non-positive bound or deadline raise at
 construction, never mid-run.
+
+## The budget stop
+
+Two ceilings bound what one run may bill:
+
+```python
+config = AgentConfig(
+    system_prompt="You are helpful.",
+    max_cost_micro_usd=500_000,   # $0.50, integer micro-USD
+    max_total_tokens=200_000,
+)
+```
+
+Both default to `None`, which is off. A run that crosses either raises
+`BudgetExceededError` (`agent_budget_exceeded`, never retryable) with
+`kind`, `limit` and `spent` in `details` and the billed
+`usage`/`usage_by_model` on the exception, exactly like every other
+terminal error. Nothing is billed past the cap: the run stops on the
+call that crossed it, and a crossed budget never buys a fallback
+attempt, because the ceiling is the run's and no other model can fix it.
+
+The check sits on the run's usage ledger, which is where every billed
+call is folded, so it covers both `stream=True` and `stream=False`,
+every fallback rung, and the guardrail classifier's own call.
+
+**One limit worth knowing.** `max_cost_micro_usd` prices each call
+through the model's published rates, and a model registered without
+pricing has none, so its spend cannot count against the cost ceiling.
+The run says so once, at `WARNING`. `max_total_tokens` counts tokens
+rather than money and fires on every model, priced or not.
+
+## The fallback ladder
+
+`FallbackConfig` takes either one rung or several, never both:
+
+```python
+FallbackConfig(model=Model.GPT_5_6_SOL)                    # one rung
+FallbackConfig(models=[Model.GPT_5_6_SOL,                  # a ladder
+                       Model.CEREBRAS_GPT_OSS_120B],
+               retry_main_after=5)
+```
+
+A run tries the main model, then each rung in order, until one answers.
+After construction `models` is always the ordered tuple and `model` is
+its first rung, so a one-rung ladder behaves exactly as a single
+fallback always did.
+
+Within a session the ladder is sticky: the rung that answered is where
+the next run starts, and a sticky rung that fails keeps walking down
+before the main model gets a last try. `retry_main_after` successful
+fallback calls return the run to the main model.
+
+Capability gating applies per rung. A rung that cannot carry the
+conversation's media leaves the ladder rather than being attempted:
+media is never downgraded. A context overflow raises instead of walking
+further down, because every rung below is another window the prompt
+does not fit, and an overflow is the caller's error rather than
+something more attempts fix.
+
+When every rung fails, `FallbackExhaustedError.attempts` lists each
+`(model, error)` in the order tried; `main_model`/`main_error` and
+`fallback_model`/`fallback_error` keep naming the main model and a
+fallback rung.
 
 ## The client seam
 

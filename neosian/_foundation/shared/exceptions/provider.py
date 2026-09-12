@@ -8,6 +8,10 @@ from typing import TYPE_CHECKING
 from neosian._foundation.shared.constants import ErrorMessages
 from neosian._foundation.shared.exceptions.llm import LLMError
 
+# Three rungs or more: the two-model sentence cannot say what happened,
+# so the ladder lists itself (NC9, ledger #223).
+_LADDER_EXHAUSTED = "All {count} models in the fallback ladder failed. {failures}"
+
 if TYPE_CHECKING:
     from neosian._foundation.llm.base import ModelUsage, Usage
 
@@ -189,16 +193,21 @@ class FallbackExhaustedError(LLMError):
         *,
         usage: Usage | None = None,
         usage_by_model: tuple[ModelUsage, ...] = (),
+        attempts: tuple[tuple[str, str], ...] = (),
         cause_code: str | None = None,
         provider_status: int | None = None,
     ) -> None:
-        """Initialize with details from both failed models.
+        """Initialize with details from every failed model.
 
         Args:
-            main_model: The primary model that failed.
-            main_error: Error from the primary model.
-            fallback_model: The fallback model that also failed.
-            fallback_error: Error from the fallback model.
+            main_model: The first model tried.
+            main_error: Error from the first model.
+            fallback_model: The last model tried, which also failed.
+            fallback_error: Error from the last model.
+            attempts: Every (model, error) in the order they were tried —
+                the whole ladder when a run walked more than two rungs
+                (NC9, ledger #223). Empty means the two above are all
+                there was.
             usage: Best-effort combined token usage billed across both
                 failed attempts.
             usage_by_model: Per-API-reported-model split of `usage`.
@@ -206,18 +215,31 @@ class FallbackExhaustedError(LLMError):
                 terminal frames carry structure, not formatted English.
             provider_status: HTTP status of the final failure, if any.
         """
-        super().__init__(
+        attempts = attempts or (
+            (main_model, main_error),
+            (fallback_model, fallback_error),
+        )
+        message = (
             ErrorMessages.FALLBACK_EXHAUSTED.format(
                 main_model=main_model,
                 main_error=main_error,
                 fallback_model=fallback_model,
                 fallback_error=fallback_error,
-            ),
+            )
+            if len(attempts) == 2
+            else _LADDER_EXHAUSTED.format(
+                count=len(attempts),
+                failures="; ".join(f"{m}: {e}" for m, e in attempts),
+            )
+        )
+        super().__init__(
+            message,
             details={
                 "main_model": main_model,
                 "main_error": main_error,
                 "fallback_model": fallback_model,
                 "fallback_error": fallback_error,
+                "attempts": [list(pair) for pair in attempts],
                 "cause_code": cause_code,
                 "provider_status": provider_status,
             },
@@ -228,5 +250,6 @@ class FallbackExhaustedError(LLMError):
         self.main_error = main_error
         self.fallback_model = fallback_model
         self.fallback_error = fallback_error
+        self.attempts = attempts
         self.cause_code = cause_code
         self.provider_status = provider_status

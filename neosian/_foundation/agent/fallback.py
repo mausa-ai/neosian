@@ -12,6 +12,7 @@ from neosian._foundation.llm.base import (
 )
 from neosian._foundation.shared.constants import ErrorMessages
 from neosian._foundation.shared.exceptions import (
+    BudgetExceededError,
     ContextWindowExceededError,
     ModelFailedError,
     UnsupportedContentError,
@@ -52,10 +53,15 @@ def reraise_caller_errors(error: Exception, attempt: Attempt) -> None:
 
     Unsupported content and context overflow are prompt problems, not
     model failures — ModelFailedError would bury the structure hosts key
-    on. Billed usage is attached so the error path keeps the ledger
-    (DESIGN §3 register #4). Returns normally for every other error.
+    on. A budget breach is the run's own ceiling, which no model can fix,
+    so it joins them (NC9, ledger #222). Billed usage is attached so the
+    error path keeps the ledger (DESIGN §3 register #4). Returns normally
+    for every other error.
     """
-    if not isinstance(error, (UnsupportedContentError, ContextWindowExceededError)):
+    if not isinstance(
+        error,
+        (UnsupportedContentError, ContextWindowExceededError, BudgetExceededError),
+    ):
         return
     if error.usage is None:
         error.usage = attempt.usage
@@ -68,12 +74,14 @@ def ensure_fallback_viable(
     error: Exception,
     messages: list[Message],
     attempt: Attempt,
+    target: AnyModel | None = None,
 ) -> None:
-    """Gate a fallback attempt on the fallback model's capabilities.
+    """Gate a fallback attempt on the target model's capabilities.
 
-    Called inside a main-model except block once a fallback is
-    configured. Returns normally when the fallback model can handle the
-    conversation. Otherwise logs the skip and raises — the original
+    Called inside a failed leg's except block once a next rung exists;
+    `target` is that rung (the first one, when a caller does not say).
+    Returns normally when it can handle the conversation. Otherwise logs
+    the skip and raises — the original
     UnsupportedContentError/ContextWindowExceededError as-is, anything
     else wrapped in ModelFailedError carrying the failed attempt's
     billed usage. Two gates:
@@ -82,26 +90,30 @@ def ensure_fallback_viable(
       handle it (DESIGN §2).
     - Window: a context overflow falls back only onto a strictly
       larger window — falling back smaller is a guaranteed second
-      failure and a doubled bill (DESIGN §5).
+      failure and a doubled bill (DESIGN §5). On a ladder this raises
+      rather than walking further down: every rung below is another
+      window this prompt does not fit, and an overflow is the caller's
+      error, not something more attempts fix (NC9, ledger #223).
     """
-    assert agent._fallback_model is not None  # Callers check before invoking
+    fallback = target if target is not None else agent._fallback_model
+    assert fallback is not None  # Callers check before invoking
     if isinstance(error, ContextWindowExceededError):
         overflowed = error.context_window or agent._model.context_window
-        if agent._fallback_model.context_window <= overflowed:
+        if fallback.context_window <= overflowed:
             logger.warning(
                 "Fallback to %s skipped: its context window (%d) is not "
                 "larger than the overflowed one (%d)",
-                agent._fallback_model.value,
-                agent._fallback_model.context_window,
+                fallback.value,
+                fallback.context_window,
                 overflowed,
             )
             reraise_caller_errors(error, attempt)
-    missing = unsupported_content_types(agent._fallback_model, messages)
+    missing = unsupported_content_types(fallback, messages)
     if not missing:
         return
     logger.warning(
         ErrorMessages.FALLBACK_SKIPPED_UNSUPPORTED_CONTENT.format(
-            model=agent._fallback_model.value,
+            model=fallback.value,
             block_type="/".join(missing),
         )
     )

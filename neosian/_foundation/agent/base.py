@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from neosian._foundation.agent.session import AgentSession
 
 from neosian._foundation.agent.blocking import run_blocking
-from neosian._foundation.agent.context import RunContext
+from neosian._foundation.agent.context import RunContext, UsageLedger
 from neosian._foundation.agent.emit import emit_turn
 from neosian._foundation.agent.events import AgentEvent
 from neosian._foundation.agent.guards import require_model_key
@@ -107,9 +107,16 @@ class Agent:
         # Model and fallback configuration
         self._model = resolve_model(config.model)
         self._fallback = config.fallback
-        # The fallback row, resolved once like the main one (§31).
+        # The fallback ladder, resolved once like the main row (§31).
+        # `_fallback_model` is its first rung — what every one-rung
+        # reader meant before the ladder existed (NC9, ledger #223).
+        self._fallback_models: tuple[AnyModel, ...] = (
+            ()
+            if config.fallback is None
+            else tuple(resolve_model(rung) for rung in config.fallback.models)
+        )
         self._fallback_model: AnyModel | None = (
-            None if config.fallback is None else resolve_model(config.fallback.model)
+            self._fallback_models[0] if self._fallback_models else None
         )
         self._system_prompt = config.system_prompt
         self._max_tool_iterations = config.max_tool_iterations
@@ -121,6 +128,9 @@ class Agent:
         assert config.max_parallel_tools is not None  # Set by AgentConfig.__post_init__
         self._max_parallel_tools = config.max_parallel_tools
         self._context_policy = config.context_policy
+        # The run's spend ceilings; enforced on the run's usage ledger.
+        self._max_cost_micro_usd = config.max_cost_micro_usd
+        self._max_total_tokens = config.max_total_tokens
         # The tool-approval gate (DESIGN §17): checked in execute_tool,
         # the leaf both paths share — parity by construction.
         self._tool_gate = config.tool_gate
@@ -249,6 +259,18 @@ class Agent:
         ):
             raise GuardrailStreamingError()
 
+    def _ledger(self) -> UsageLedger:
+        """A fresh ledger carrying this run's spend ceilings (ledger #222).
+
+        The budget lives on the ledger because the ledger is where every
+        billed call in a run is folded — both paths, every fallback leg,
+        and the guardrail classifier's own call.
+        """
+        return UsageLedger(
+            max_cost_micro_usd=self._max_cost_micro_usd,
+            max_total_tokens=self._max_total_tokens,
+        )
+
     def _run_context(self, session: AgentSession | None) -> RunContext:
         """Build the per-run context — the seam the session twins collapsed into."""
         if session is None:
@@ -257,6 +279,7 @@ class Agent:
                 acquire=self._create_client,
                 hooks=self._hooks,
                 started=time.monotonic(),
+                ledger=self._ledger(),
             )
         return RunContext(
             agent=self,
@@ -264,6 +287,7 @@ class Agent:
             hooks=self._hooks,
             fallback_state=session._fallback_state,
             started=time.monotonic(),
+            ledger=self._ledger(),
         )
 
     async def _dispatch(

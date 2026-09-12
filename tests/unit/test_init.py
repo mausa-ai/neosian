@@ -283,6 +283,7 @@ def test_all_list_matches_exports() -> None:
         "ContextWindowExceededError",
         "ModelFailedError",
         "FallbackExhaustedError",
+        "BudgetExceededError",
         "ToolCallGenerationError",
         "ConfigurationError",
         "InvalidModelError",

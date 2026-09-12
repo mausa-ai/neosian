@@ -8,6 +8,35 @@ phase close names the version.
 
 ## [Unreleased]
 
+### Added
+
+- **A budget stop.** `AgentConfig` gains `max_cost_micro_usd` and
+  `max_total_tokens`; a run that crosses either raises the new
+  `BudgetExceededError` (`agent_budget_exceeded`, never retryable)
+  carrying `kind`, `limit` and `spent` plus the billed usage. Both
+  default to `None`. The ceiling lives on the run's usage ledger, the
+  one place every billed call is folded, so it covers both paths, every
+  fallback rung and the guardrail classifier's call with no parity to
+  keep. Nothing is billed past the cap: the run stops on the call that
+  crossed it, and a crossed budget never buys a fallback attempt, since
+  the ceiling is the run's and no other model can fix it. A model
+  registered without pricing cannot count against the cost ceiling and
+  says so once per run at `WARNING`; `max_total_tokens` is the rail that
+  fires on every model (DESIGN §3, ledger #222).
+- **A fallback ladder.** `FallbackConfig` takes `models=[...]` beside
+  the single `model=`, never both; a run walks the rungs in order until
+  one answers. After construction `models` is the ordered tuple and
+  `model` its first rung, so a one-rung ladder is the single fallback
+  unchanged. Sticky state follows the rung that answered
+  (`FallbackState.fallback_index`), and a sticky rung that fails keeps
+  walking down before the main model's last try. A rung that cannot
+  carry the conversation's media leaves the ladder rather than being
+  attempted; a context overflow still raises rather than walking down
+  into smaller windows. `FallbackExhaustedError` gains `attempts` —
+  every `(model, error)` in trial order — while `main_*`/`fallback_*`
+  keep naming the main model and a fallback rung, and the two-rung
+  message is unchanged (DESIGN §3, ledger #223).
+
 ## [1.0.0rc6] - 2026-09-12
 
 The shipped pages read without an em dash.

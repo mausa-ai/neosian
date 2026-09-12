@@ -385,8 +385,9 @@ async def stream_with_client(
         # exception escapes — the caller reads billed usage off the
         # attempt. Exception (not BaseException) deliberately excludes
         # GeneratorExit/CancelledError from consumer disconnects.
+        # `fold`, not `record`: a budget raise here would mask `exc`.
         if final_usage is not None:
-            attempt.record(turn_api_model, final_usage)
+            attempt.fold(turn_api_model, final_usage)
         if not in_final:
             # The final call reports its own llm_call event; a failure
             # in this loop's drain is this call's to report.

@@ -119,10 +119,13 @@ async def check_guardrails(
             )
         except GuardrailPolicyParseError as exc:
             # Unparseable, yet billed: the ledger records it before the
-            # error policy decides (never undercount).
+            # error policy decides (never undercount). Folded without the
+            # budget check — a raise here would mask the parse failure.
             if exc.usage is not None:
                 ctx.ledger.record(
-                    exc.api_model or agent._guardrail_model.value, exc.usage
+                    exc.api_model or agent._guardrail_model.value,
+                    exc.usage,
+                    agent._guardrail_model,
                 )
             raise
         # The classifier's call is billed: it lands on the run's ledger
@@ -130,8 +133,11 @@ async def check_guardrails(
         # run produces carries it — never undercount (TG-4).
         if outcome.usage is not None:
             ctx.ledger.record(
-                outcome.api_model or agent._guardrail_model.value, outcome.usage
+                outcome.api_model or agent._guardrail_model.value,
+                outcome.usage,
+                agent._guardrail_model,
             )
+            ctx.ledger.ensure_within_budget()
         return (outcome.policy.safe, outcome.policy)
 
     # Fallback (shouldn't reach here with valid config)
