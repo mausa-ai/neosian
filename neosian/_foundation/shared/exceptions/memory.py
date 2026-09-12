@@ -83,8 +83,11 @@ class MemoryConflictError(MemoryStoreError):
     included), "revert_stale" (`revert_memory` targeting a version the
     document has already moved past — NP), or "target_occupied" (a
     verbatim restore into a scope that already holds documents, history
-    or redactions — NC4, `path=None`: the unit is the scope; reasons are
-    documented here and in DESIGN §8, appended together).
+    or redactions — NC4, `path=None`), or "case_collision" (NQ2, MC-13: a
+    case-folding filesystem already holds this scope or path under a
+    different spelling, and merging them would share one version counter;
+    `path=None` when the scope segment is the one that folded). Reasons
+    are documented here and in DESIGN §8, appended together.
     """
 
     code = "memory_conflict"

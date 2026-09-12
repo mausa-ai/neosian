@@ -37,7 +37,11 @@ def parse_scope(value: str) -> Scope:
 
     Raises:
         MemoryScopeInvalidError: On any shape violation. Never normalizes:
-            case, whitespace and length are the caller's problem.
+            case, whitespace and length are the caller's problem — and
+            case-folding filesystems are a legal substrate, so scopes
+            differing only in case are not guaranteed distinct. FileStore
+            refuses the collision it can see rather than merging two
+            scopes into one directory and one version counter (MC-13).
     """
     if len(value) > SCOPE_MAX_LENGTH:
         raise MemoryScopeInvalidError(

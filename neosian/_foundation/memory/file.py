@@ -10,8 +10,11 @@ names):
         redactions.jsonl            # {ts, actor, path|null, count} per redact
 
 Sync I/O inside async methods (KB-scale files; the retired
-FileBlackboard's precedent); an asyncio.Lock serializes mutations, so read-your-writes
-holds within a process. Across processes files cannot arbitrate — last
+FileBlackboard's precedent) — except the three that walk a whole scope
+(`list_documents`, `history`, `redact`), which run in a worker thread so
+they never stall the daemon's loop (IN-13; §18 calls the FileStore leg a
+low-concurrency appliance for the rest). An asyncio.Lock serializes
+mutations, so read-your-writes holds within a process. Across processes files cannot arbitrate — last
 writer wins, which is why `supports_optimistic_concurrency` stays False
 even though `expected_version` is honored best-effort in-process — and
 why §8 rules one writer per root (multi-writer needs route to
@@ -36,7 +39,7 @@ from neosian._foundation.memory.base import MemoryStore
 from neosian._foundation.memory.envelope import Envelope, parse, render
 from neosian._foundation.memory.file_portable import FilePortableStore
 from neosian._foundation.memory.paths import validate_document_path
-from neosian._foundation.memory.scope import parse_scope
+from neosian._foundation.memory.scope import Scope, parse_scope
 from neosian._foundation.memory.types import (
     MemoryDocument,
     MemoryEntry,
@@ -69,9 +72,11 @@ class FileStore(MemoryStore, FileTurnStore, FilePortableStore):
         private_mkdir(self._root)
         self._clock = clock if clock is not None else SystemClock()
         self._lock = asyncio.Lock()
+        # MC-13: scopes whose on-disk spelling this instance has checked.
+        self._verified_scopes: set[str] = set()
 
     async def read(self, scope: str, path: str) -> MemoryDocument | None:
-        scope = parse_scope(scope)
+        scope = self._scope(scope)
         validate_document_path(path)
         doc_file = self._doc_file(scope, path)
         if not doc_file.is_file():
@@ -87,7 +92,7 @@ class FileStore(MemoryStore, FileTurnStore, FilePortableStore):
         actor: str | None = None,
         expected_version: int | None = None,
     ) -> MemoryDocument:
-        scope = parse_scope(scope)
+        scope = self._scope(scope)
         validate_document_path(path)
         async with self._lock:
             doc_file = self._doc_file(scope, path)
@@ -144,7 +149,7 @@ class FileStore(MemoryStore, FileTurnStore, FilePortableStore):
             )
 
     async def delete(self, scope: str, path: str, *, actor: str | None = None) -> bool:
-        scope = parse_scope(scope)
+        scope = self._scope(scope)
         validate_document_path(path)
         async with self._lock:
             doc_file = self._doc_file(scope, path)
@@ -168,7 +173,7 @@ class FileStore(MemoryStore, FileTurnStore, FilePortableStore):
     async def rename(
         self, scope: str, src: str, dst: str, *, actor: str | None = None
     ) -> MemoryDocument:
-        scope = parse_scope(scope)
+        scope = self._scope(scope)
         validate_document_path(src)
         validate_document_path(dst)
         async with self._lock:
@@ -229,7 +234,10 @@ class FileStore(MemoryStore, FileTurnStore, FilePortableStore):
     async def list_documents(
         self, scope: str, *, prefix: str = ""
     ) -> tuple[MemoryEntry, ...]:
-        scope = parse_scope(scope)
+        scope = self._scope(scope)
+        return await asyncio.to_thread(self._list_documents, scope, prefix)
+
+    def _list_documents(self, scope: Scope, prefix: str) -> tuple[MemoryEntry, ...]:
         docs_dir = self._scope_dir(scope) / _DOCUMENTS
         if not docs_dir.is_dir():
             return ()
@@ -254,7 +262,7 @@ class FileStore(MemoryStore, FileTurnStore, FilePortableStore):
     async def versions(
         self, scope: str, path: str, *, limit: int = 50
     ) -> tuple[MemoryVersion, ...]:
-        scope = parse_scope(scope)
+        scope = self._scope(scope)
         validate_document_path(path)
         if limit < 0:
             raise ValueError("limit must be >= 0")
@@ -264,45 +272,48 @@ class FileStore(MemoryStore, FileTurnStore, FilePortableStore):
     async def redact(
         self, scope: str, *, path: str | None = None, actor: str | None = None
     ) -> int:
-        scope = parse_scope(scope)
+        scope = self._scope(scope)
         if path is not None:
             validate_document_path(path)
         async with self._lock:
-            targets = self._redact_targets(scope, path)
-            for target in targets:
-                journal_file = self._journal_file(scope, target)
-                rows = journal.read_rows(journal_file, scope=scope, path=target)
-                if rows:
-                    journal.rewrite_rows(
-                        journal_file,
-                        [
-                            dataclasses.replace(row, content="", redacted=True)
-                            for row in rows
-                        ],
-                    )
-                doc_file = self._doc_file(scope, target)
-                if doc_file.is_file():
-                    document = self._load(scope, target, doc_file)
-                    envelope = Envelope(
-                        version=document.version,
-                        created_at=document.created_at,
-                        updated_at=document.updated_at,
-                        actor=document.actor,
-                        redacted=True,
-                        extra=document.extra,
-                    )
-                    journal.atomic_write(doc_file, render(envelope, ""))
-            if targets:
-                journal.append_redaction(
-                    self._scope_dir(scope) / _REDACTIONS,
-                    MemoryRedaction(
-                        path=path,
-                        actor=actor,
-                        created_at=self._now(),
-                        count=len(targets),
-                    ),
+            return await asyncio.to_thread(self._redact, scope, path, actor)
+
+    def _redact(self, scope: Scope, path: str | None, actor: str | None) -> int:
+        targets = self._redact_targets(scope, path)
+        for target in targets:
+            journal_file = self._journal_file(scope, target)
+            rows = journal.read_rows(journal_file, scope=scope, path=target)
+            if rows:
+                journal.rewrite_rows(
+                    journal_file,
+                    [
+                        dataclasses.replace(row, content="", redacted=True)
+                        for row in rows
+                    ],
                 )
-            return len(targets)
+            doc_file = self._doc_file(scope, target)
+            if doc_file.is_file():
+                document = self._load(scope, target, doc_file)
+                envelope = Envelope(
+                    version=document.version,
+                    created_at=document.created_at,
+                    updated_at=document.updated_at,
+                    actor=document.actor,
+                    redacted=True,
+                    extra=document.extra,
+                )
+                journal.atomic_write(doc_file, render(envelope, ""))
+        if targets:
+            journal.append_redaction(
+                self._scope_dir(scope) / _REDACTIONS,
+                MemoryRedaction(
+                    path=path,
+                    actor=actor,
+                    created_at=self._now(),
+                    count=len(targets),
+                ),
+            )
+        return len(targets)
 
     async def history(
         self,
@@ -311,8 +322,13 @@ class FileStore(MemoryStore, FileTurnStore, FilePortableStore):
         since: datetime | None = None,
         limit: int | None = None,
     ) -> tuple[MemoryVersion, ...]:
-        scope = parse_scope(scope)
+        scope = self._scope(scope)
         journal.since_window(since, limit)
+        return await asyncio.to_thread(self._history, scope, since, limit)
+
+    def _history(
+        self, scope: Scope, since: datetime | None, limit: int | None
+    ) -> tuple[MemoryVersion, ...]:
         rows: list[MemoryVersion] = []
         for logical in journal.logical_paths(self._scope_dir(scope) / _VERSIONS):
             rows.extend(
@@ -329,7 +345,7 @@ class FileStore(MemoryStore, FileTurnStore, FilePortableStore):
         since: datetime | None = None,
         limit: int | None = None,
     ) -> tuple[MemoryRedaction, ...]:
-        scope = parse_scope(scope)
+        scope = self._scope(scope)
         journal.since_window(since, limit)
         acts = journal.read_redactions(
             self._scope_dir(scope) / _REDACTIONS, scope=scope
@@ -347,6 +363,24 @@ class FileStore(MemoryStore, FileTurnStore, FilePortableStore):
             raise ValueError("Clock returned a naive datetime (ECOSYSTEM §9)")
         return now
 
+    def _scope(self, scope: str) -> Scope:
+        """Validate a scope, then refuse a case fold once per scope (MC-13).
+
+        The grammar admits mixed-case ids and never normalizes
+        (ECOSYSTEM §2), so on a case-folding filesystem two scopes would
+        share a directory and a version counter. The check is one listing
+        per scope per instance — the in-process guarantee FileStore
+        already makes for `expected_version`, and the same one: across
+        processes files cannot arbitrate.
+        """
+        parsed = parse_scope(scope)
+        if parsed not in self._verified_scopes:
+            collided = layout.scope_case_collision(self._root, parsed)
+            if collided is not None:
+                raise MemoryConflictError(parsed, None, "case_collision")
+            self._verified_scopes.add(parsed)
+        return parsed
+
     def _scope_dir(self, scope: str) -> Path:
         return layout.scope_dir(self._root, scope)
 
@@ -357,9 +391,16 @@ class FileStore(MemoryStore, FileTurnStore, FilePortableStore):
         return layout.journal_file(self._root, scope, path)
 
     def _rows(self, scope: str, path: str) -> tuple[MemoryVersion, ...]:
-        return journal.read_rows(
+        rows = journal.read_rows(
             self._journal_file(scope, path), scope=scope, path=path
         )
+        # MC-13, for free: every row records the spelling it was written
+        # under, so a case-folding filesystem hands back another path's
+        # history. Refusing here is enough — the first write raises, so a
+        # second document at the folded name never comes into being.
+        if rows and rows[0].path != path:
+            raise MemoryConflictError(scope, path, "case_collision")
+        return rows
 
     def _load(self, scope: str, path: str, doc_file: Path) -> MemoryDocument:
         # Path.read_text(newline=) is 3.13+; the floor is 3.12.

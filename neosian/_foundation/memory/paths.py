@@ -27,6 +27,9 @@ def validate_document_path(path: str) -> None:
     Raises:
         MemoryPathInvalidError: On any shape violation. Only segments that
             are exactly `.` or `..` are rejected — `..foo` is legal.
+            Never normalizes case, and case-folding filesystems are a
+            legal substrate, so paths differing only in case are not
+            guaranteed distinct (MC-13).
     """
     if len(path) > PATH_MAX_LENGTH:
         raise MemoryPathInvalidError(path, f"longer than {PATH_MAX_LENGTH} characters")
