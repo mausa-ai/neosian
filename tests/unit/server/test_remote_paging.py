@@ -87,9 +87,7 @@ class TestReadTurnsPaging:
 
 
 class TestReadProjectionsPaging:
-    async def _plant(
-        self, harness: RemoteOverFile, per_turn: int, turns: int
-    ) -> None:
+    async def _plant(self, harness: RemoteOverFile, per_turn: int, turns: int) -> None:
         entries = [
             ConversationProjection(turn=turn, kind="log", text=f"{turn}.{n}")
             for turn in range(1, turns + 1)

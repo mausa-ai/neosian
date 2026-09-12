@@ -52,9 +52,7 @@ class TestScopeCaseCollision:
         # refuse.
         assert collided == ("user:A" if _folds_case(tmp_path) else None)
 
-    def test_a_nested_segment_is_reported_by_its_own_name(
-        self, tmp_path: Path
-    ) -> None:
+    def test_a_nested_segment_is_reported_by_its_own_name(self, tmp_path: Path) -> None:
         (tmp_path / "user%3Aa" / "proj%3AERP").mkdir(parents=True)
         collided = layout.scope_case_collision(tmp_path, "user:a/proj:erp")
         assert collided == ("proj:ERP" if _folds_case(tmp_path) else None)
