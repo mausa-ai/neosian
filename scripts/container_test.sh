@@ -26,13 +26,16 @@ cleanup() {
     if [ -n "${CID:-}" ]; then
         docker rm -f "$CID" >/dev/null 2>&1 || true
     fi
+    if [ -n "${ROOT:-}" ]; then
+        rm -rf "$ROOT"
+    fi
 }
 trap cleanup EXIT
 
 wait_health() {
     local url="$1" waited=0
     until curl -fsS "$url/health" >/dev/null 2>&1; do
-        if [ -z "$(docker ps -q --no-trunc | grep "$CID" || true)" ]; then
+        if [ "$(docker inspect -f '{{.State.Running}}' "$CID" 2>/dev/null)" != "true" ]; then
             echo "container_test: container exited before healthy" >&2
             docker logs "$CID" >&2 || true
             exit 1
@@ -72,7 +75,6 @@ docker build -q -t "$IMAGE" . >/dev/null
 
 echo "== leg 1: volume FileStore"
 ROOT="$(mktemp -d)"
-chmod 0777 "$ROOT"
 CID="$(docker run -d --user "$(id -u):$(id -g)" \
     -e NEOSIAN_SERVE_TOKEN="$TOKEN" \
     -p "127.0.0.1:${PORT}:6367" -v "$ROOT:/data" "$IMAGE")"
@@ -83,6 +85,7 @@ NEOSIAN_TEST_SERVER_URL="http://127.0.0.1:${PORT}" \
     uv run pytest -m external_server -q
 graceful_stop
 rm -rf "$ROOT"
+ROOT=""
 
 if [ -z "${NEOSIAN_TEST_POSTGRES_DSN:-}" ]; then
     echo "== leg 2: Postgres — SKIPPED (NEOSIAN_TEST_POSTGRES_DSN not set)"
@@ -107,8 +110,10 @@ asyncio.run(main())
 "
 # Inside the container, the host's databases live at
 # host.docker.internal (mapped to the gateway on plain Linux docker).
-CONTAINER_DSN="${NEOSIAN_TEST_POSTGRES_DSN/localhost/host.docker.internal}"
-CONTAINER_DSN="${CONTAINER_DSN/127.0.0.1/host.docker.internal}"
+# Only the host part moves: a user, password or database that happens to
+# read "localhost" stays as written.
+CONTAINER_DSN="$(printf '%s' "$NEOSIAN_TEST_POSTGRES_DSN" | sed -E \
+    's#^([a-z]+://([^@/]*@)?)(localhost|127\.0\.0\.1)([:/?]|$)#\1host.docker.internal\4#')"
 CID="$(docker run -d --add-host=host.docker.internal:host-gateway \
     -e NEOSIAN_SERVE_TOKEN="$TOKEN" \
     -e NEOSIAN_POSTGRES_DSN="$CONTAINER_DSN" \
