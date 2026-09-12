@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from neosian._cli.config import (
+    ConfigFileError,
     config_exists,
     delete_api_key,
     delete_config,
@@ -88,3 +89,25 @@ class TestPermissions:
         assert get_api_key("openai_api_key") == "sk-test"
         assert stat.S_IMODE(path.stat().st_mode) == 0o600
         assert stat.S_IMODE(path.parent.stat().st_mode) == 0o700
+
+
+class TestABrokenFile:
+    """EC-11: a file that is not TOML is named with its fix, never a
+    traceback from `tomllib`."""
+
+    def test_names_the_file_and_the_way_out(self) -> None:
+        path = get_config_path()
+        path.parent.mkdir(parents=True)
+        path.write_text("[credentials\nopenai_api_key = 'sk'\n")
+        with pytest.raises(ConfigFileError) as info:
+            get_api_key("openai_api_key")
+        assert str(path) in info.value.message
+        assert "neosian configure --delete" in info.value.message
+        assert info.value.__cause__ is None
+
+    def test_delete_is_the_way_out(self) -> None:
+        path = get_config_path()
+        path.parent.mkdir(parents=True)
+        path.write_text("not = = toml\n")
+        assert delete_config() is True
+        assert get_all_credentials() == {}

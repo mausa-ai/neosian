@@ -207,6 +207,22 @@ class TestCollect:
             await collect(_context(tmp_path), _env(tmp_path))
         ).update_mode == "notify"
 
+    async def test_a_broken_config_is_a_finding(self, tmp_path: Path) -> None:
+        """EC-11: exit 0 still; the file is named, the knob reads off and
+        the keys fall back to the environment."""
+        config = tmp_path / "home" / "config.toml"
+        config.parent.mkdir(parents=True)
+        config.write_text("[update\n")
+        status = await collect(
+            _context(tmp_path), _env(tmp_path, OPENAI_API_KEY="sk-test")
+        )
+        assert status.config_path == str(config)
+        assert status.config_error is not None
+        assert status.config_error.startswith("not valid TOML")
+        assert status.update_mode == "off"
+        sources = {p["name"]: p["source"] for p in status.providers}
+        assert sources["openai"] == "env" and sources["anthropic"] is None
+
     async def test_a_nameless_directory_reports_the_reason(
         self, tmp_path: Path
     ) -> None:

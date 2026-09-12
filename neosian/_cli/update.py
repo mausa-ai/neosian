@@ -32,7 +32,7 @@ from typing import Any, Final, TextIO
 import httpx
 
 from neosian import __version__
-from neosian._cli.config import get_section, set_value
+from neosian._cli.config import ConfigFileError, get_section, set_value
 from neosian._cli.shape import UV_TOOL, Shape, detect_shape
 from neosian._foundation.memory.home import home
 from neosian._foundation.memory.settings import StreamParser
@@ -179,7 +179,12 @@ Apply = Callable[[str], int]
 
 
 def current_mode() -> str:
-    mode = get_section("update").get("mode", DEFAULT_MODE)
+    """The knob; an unreadable file is `off` — the verb that reads it next
+    names the file (EC-11)."""
+    try:
+        mode = get_section("update").get("mode", DEFAULT_MODE)
+    except ConfigFileError:
+        return DEFAULT_MODE
     return str(mode) if mode in MODES else DEFAULT_MODE
 
 

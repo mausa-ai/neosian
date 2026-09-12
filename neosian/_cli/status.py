@@ -24,7 +24,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, TextIO
 
 from neosian import __version__
-from neosian._cli.config import get_config_path, get_section
+from neosian._cli.config import (
+    ConfigFileError,
+    get_config_path,
+    get_section,
+    read_config,
+)
 from neosian._cli.providers import key_source, provider_keys
 from neosian._cli.shape import Shape, detect_shape
 from neosian._foundation.mcp.install import SERVER_NAME, resolve_target as mcp_target
@@ -68,6 +73,7 @@ class Status:
     home_exists: bool
     config_path: str
     config_exists: bool
+    config_error: str | None
     providers: tuple[dict[str, str | None], ...]
     scopes: dict[str, str] | None
     scopes_error: str | None
@@ -218,16 +224,27 @@ async def collect(context: Environment, env: Mapping[str, str]) -> Status:
     clients = tuple(client_status(client, context) for client in CLIENTS)
     shape = detect_shape(Path(sys.prefix), env)
     config_path = get_config_path()
-    mode = get_section("update").get("mode", _DEFAULT_MODE)
+    config_error: str | None = None
+    try:
+        read_config()
+    except ConfigFileError as exc:  # a finding, and the keys fall back to env
+        config_error = exc.problem
+    if config_error is None:
+        mode = get_section("update").get("mode", _DEFAULT_MODE)
+        sources = [key_source(row, env) for row in provider_keys()]
+    else:
+        mode = _DEFAULT_MODE
+        sources = ["env" if env.get(row.env) else None for row in provider_keys()]
     return Status(
         version=__version__,
         home=str(root),
         home_exists=root.is_dir(),
         config_path=str(config_path),
         config_exists=config_path.is_file(),
+        config_error=config_error,
         providers=tuple(
-            {"name": row.name, "env": row.env, "source": key_source(row, env)}
-            for row in provider_keys()
+            {"name": row.name, "env": row.env, "source": source}
+            for row, source in zip(provider_keys(), sources, strict=True)
         ),
         scopes=scopes,
         scopes_error=scopes_error,
@@ -264,7 +281,7 @@ def render_text(status: Status) -> str:
         f"neosian {status.version}  {status.shape}  upgrade: {status.upgrade}",
         f"home      {status.home}  ({'exists' if status.home_exists else 'missing'})",
         f"config    {status.config_path}  "
-        f"({'exists' if status.config_exists else 'missing'})",
+        f"({status.config_error or ('exists' if status.config_exists else 'missing')})",
         f"keys      {', '.join(keyed) if keyed else 'none — neosian configure'}",
     ]
     if status.scopes is not None:

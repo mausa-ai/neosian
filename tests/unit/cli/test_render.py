@@ -154,6 +154,7 @@ class TestTheProjections:
                 "home_exists": True,
                 "config_path": "/h/config.toml",
                 "config_exists": False,
+                "config_error": None,
                 "providers": [
                     {"name": "openai", "env": "OPENAI_API_KEY", "source": "env"}
                 ],

@@ -10,6 +10,7 @@ never a traceback — each pinned here, keylessly, in a subprocess where
 the question is what an import loads.
 """
 
+import json
 import subprocess
 import sys
 import tomllib
@@ -79,6 +80,25 @@ def test_the_console_script_hints_without_typer() -> None:
     assert result.returncode == 1
     assert "install neosian" in result.stderr
     assert "Traceback" not in result.stderr
+
+
+@pytest.mark.unit
+def test_a_broken_config_file_is_an_error_line_not_a_traceback(
+    tmp_path: Path,
+) -> None:
+    """EC-11: every verb that reads the keys reaches the file; the console
+    script names it at exit 1, and the `--json` door prints one object."""
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / "config.toml").write_text("[credentials\n")
+    result = _run(
+        f"import os, sys; os.environ['NEOSIAN_HOME'] = {str(home)!r}; "
+        "sys.argv = ['neosian', 'configure', '--list', '--json']; "
+        "from neosian._cli.entry import main; main()"
+    )
+    assert result.returncode == 1
+    assert "not valid TOML" in result.stderr and "Traceback" not in result.stderr
+    assert "not valid TOML" in json.loads(result.stdout)["error"]
 
 
 @pytest.mark.unit

@@ -108,7 +108,7 @@ def render_status(status: dict[str, Any], console: Console) -> None:
     table.add_row(
         "config",
         f"{status['config_path']}  "
-        f"({'exists' if status['config_exists'] else 'missing'})",
+        f"({status['config_error'] or ('exists' if status['config_exists'] else 'missing')})",
     )
     keyed = [f"{p['name']} ({p['source']})" for p in status["providers"] if p["source"]]
     table.add_row("keys", ", ".join(keyed) if keyed else "none — neosian configure")

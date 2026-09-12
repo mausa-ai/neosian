@@ -66,6 +66,16 @@ phase close names the version.
   `python:3.13-slim` to `3.14-slim`, digest-pinned. The library's
   supported range is unchanged (3.12 to 3.14).
 
+### Fixed
+
+- **A broken `config.toml` is one error line, not a traceback.** The
+  update check runs before every human verb, so a file that was not TOML
+  crashed bare `neosian`, `chat`, `configure` and `playground` alike.
+  The shell now names the file and the way out (`neosian configure
+  --delete`) at exit 1 (one JSON object under `--json`); `neosian status`
+  reports it as a finding at exit 0, with keys read from the environment
+  and the knob off.
+
 ## [1.0.0rc7] - 2026-09-12
 
 The loop gains the SOTA knobs the review named: a budget stop, a

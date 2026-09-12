@@ -30,13 +30,28 @@ def get_config_path() -> Path:
     return home() / CONFIG_FILE_NAME
 
 
+class ConfigFileError(Exception):
+    """The file exists but is not TOML (EC-11): named, never a traceback."""
+
+    def __init__(self, path: Path, cause: tomllib.TOMLDecodeError) -> None:
+        self.problem = (
+            f"not valid TOML ({cause}): fix it, or start over with "
+            "`neosian configure --delete`"
+        )
+        self.message = f"{path} is {self.problem}"
+        super().__init__(self.message)
+
+
 def read_config() -> dict[str, Any]:
     """The whole document, or `{}` when the file does not exist."""
     path = get_config_path()
     if not path.exists():
         return {}
     with open(path, "rb") as f:
-        return tomllib.load(f)
+        try:
+            return tomllib.load(f)
+        except tomllib.TOMLDecodeError as exc:
+            raise ConfigFileError(path, exc) from None
 
 
 def write_config(config: dict[str, Any]) -> None:

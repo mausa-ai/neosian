@@ -17,6 +17,7 @@ from neosian._cli.shape import CONTAINER, PROJECT, UV_TOOL, Shape
 from neosian._cli.update import (
     Version,
     check_on_the_human_door,
+    current_mode,
     human_door,
     latest_release,
     plan,
@@ -285,3 +286,12 @@ class TestTheHumanDoor:
         )
         assert decision is not None and decision.action == "refuse"
         assert applied == [] and "new major" in err.getvalue()
+
+
+def test_a_broken_config_leaves_the_knob_off(tmp_path: Path) -> None:
+    """EC-11: the check at the human door never crashes the verb behind
+    it; that verb names the file when it reads the keys."""
+    config = tmp_path / "home" / "config.toml"
+    config.parent.mkdir(parents=True)
+    config.write_text("[update\nmode = 'auto'\n")
+    assert current_mode() == "off"

@@ -7,6 +7,7 @@ traceback. The `python -m` doors — `neosian.memory`,
 `neosian.mobility` — are argparse and need none of them.
 """
 
+import json
 import sys
 
 _INSTALL_HINT = (
@@ -22,6 +23,13 @@ def main() -> None:
     except ImportError:
         print(f"error: {_INSTALL_HINT}", file=sys.stderr)
         raise SystemExit(1) from None
+    from neosian._cli.config import ConfigFileError
     from neosian._cli.main import app
 
-    app()
+    try:
+        app()
+    except ConfigFileError as exc:  # any verb that reads the keys (EC-11)
+        if "--json" in sys.argv:
+            print(json.dumps({"error": exc.message, "hint": None}))
+        print(f"error: {exc.message}", file=sys.stderr)
+        raise SystemExit(1) from None
