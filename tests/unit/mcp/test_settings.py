@@ -185,3 +185,10 @@ class TestShape:
         assert isinstance(settings, ServerSettings)
         with pytest.raises(AttributeError):
             settings.actor = "other"  # type: ignore[misc]
+
+
+def test_the_help_names_install(capsys: pytest.CaptureFixture[str]) -> None:
+    """EC-19: `install` is routed before this grammar, so its help says so."""
+    with pytest.raises(SystemExit):
+        parse_args(["--help"], _ENV, prog="neosian mcp")
+    assert "neosian mcp install --client" in " ".join(capsys.readouterr().out.split())

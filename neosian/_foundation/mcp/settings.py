@@ -50,7 +50,9 @@ def parse_args(
     parser = argparse.ArgumentParser(
         prog=prog,
         description="Serve neosian memory to MCP clients on stdio.",
-        epilog=_EPILOG,
+        # `install` is routed before this grammar, so the help names it (EC-19).
+        epilog=f"{_EPILOG} Register with a client: `{prog} install --client "
+        "<client>` (its own --help).",
     )
     add_store_arguments(parser, default_actor=DEFAULT_ACTOR)
     args = parser.parse_args(list(argv))

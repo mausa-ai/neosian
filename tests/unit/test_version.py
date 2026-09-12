@@ -2,9 +2,9 @@
 
 "Everything" includes the release surface: README's install pins (they
 went stale at v0.70.0 — found at NA — and at v0.78.0 — found at NM;
-``test_llms_txt.py`` gates only llms.txt), the README's links — absolute at
-the release tag, because PyPI renders the README without rewriting them
-(NX) — the reader-facing files never calling the repository private again
+``test_llms_txt.py`` gates only llms.txt), the README's and llms.txt's
+links — absolute at the release tag, because PyPI renders the README
+without rewriting them (NX) and the wheel carries llms.txt (TP-32) — the reader-facing files never calling the repository private again
 (TP-5 inverted at NX), and the declaration's two otherwise-ungated flips —
 the ``Development Status`` classifier and README's Stability tense — which
 a 1.0 bump must carry in the same commit.
@@ -69,6 +69,16 @@ def test_every_readme_link_is_absolute_at_the_release_tag() -> None:
     assert set(refs) == {f"v{neosian.__version__}"}
     assert not _RELATIVE.search(readme), "README carries a relative link"
     assert 'src="https://' in readme and 'src="branding' not in readme
+
+
+def test_every_llms_txt_link_is_absolute_at_the_release_tag() -> None:
+    # The wheel carries llms.txt where no repository path resolves (TP-32);
+    # `test_llms_txt.py` keeps the two copies byte-identical.
+    text = (_ROOT / "llms.txt").read_text(encoding="utf-8")
+    refs = _TAG_REF.findall(text)
+    assert refs, "llms.txt carries no link at a release tag"
+    assert set(refs) == {f"v{neosian.__version__}"}
+    assert not _RELATIVE.search(text), "llms.txt carries a relative link"
 
 
 def test_nothing_reader_facing_calls_the_repository_private() -> None:

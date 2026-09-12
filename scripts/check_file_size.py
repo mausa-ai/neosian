@@ -27,7 +27,7 @@ def main() -> int:
 
     for path in sorted((ROOT / "neosian").rglob("*.py")):
         rel = path.relative_to(ROOT).as_posix()
-        lines = len(path.read_text().splitlines())
+        lines = len(path.read_text(encoding="utf-8").splitlines())
         if lines >= FAIL_LINES:
             seen_over_limit.add(rel)
             if rel not in ALLOWLIST:

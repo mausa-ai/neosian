@@ -363,10 +363,11 @@ def record(ctx: typer.Context) -> None:
     context_settings=_PASS_THROUGH,
 )
 def mcp(ctx: typer.Context) -> None:
-    """Serve neosian memory to MCP clients on stdio.
+    """Serve neosian memory to MCP clients on stdio; `install` registers it.
 
     A thin pass-through: every argument goes verbatim to the one grammar
-    (`python -m neosian.mcp --help`).
+    (`python -m neosian.mcp --help`); `neosian mcp install --client <c>`
+    writes a client's registration.
     """
     from neosian.mcp.serve import main as mcp_main
 

@@ -3,7 +3,7 @@
 One package carries every door but one (ledger #206) — the shell, the MCP
 SDK, the serving stack and the OTel API are core; the Postgres driver is
 the one extra with `all` as its alias, and the four former extras are
-empty aliases for one release; the three provider SDKs
+empty aliases for one release; the two provider SDKs
 are capped at their next major (TP-1); `import neosian` loads no provider
 SDK (EC-5); and a missing library still answers with a reinstall hint,
 never a traceback — each pinned here, keylessly, in a subprocess where

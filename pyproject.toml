@@ -21,7 +21,7 @@ classifiers = [
 # core — `uv add neosian` is the whole product short of a database
 # server. The imports stay lazy (#184): `import neosian` loads no
 # provider SDK, no serving stack and no terminal library; each arrives
-# at first use behind one guarded site. The three provider SDKs are
+# at first use behind one guarded site. The two provider SDKs are
 # capped at their next major (#183): a green CI never vouches for a wire
 # it has not seen, and the `lowest` CI job resolves every declared floor
 # for real on both Python ends.

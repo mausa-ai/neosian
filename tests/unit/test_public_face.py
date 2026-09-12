@@ -5,6 +5,8 @@ the shape the ruling fixed — pinned keylessly so a missing file fails the
 gate, never a visitor."""
 
 import re
+import subprocess
+import sys
 import tomllib
 from pathlib import Path
 
@@ -81,3 +83,25 @@ def test_the_installer_pins_uv_to_the_dockerfile() -> None:
 def test_no_funding_file() -> None:
     # Ruled an explicit no (ledger #187); a FUNDING.yml is a decision, not a drop-in.
     assert not (_ROOT / ".github" / "FUNDING.yml").exists()
+
+
+@pytest.mark.unit
+def test_the_size_gate_reads_utf8_on_any_code_page() -> None:
+    # The sources carry `—` and `→`; a read in the platform default encoding
+    # dies on a legacy Windows code page (EC-24). The warning Python emits
+    # for an implicit encoding is the portable witness.
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-X",
+            "warn_default_encoding",
+            "-W",
+            "error::EncodingWarning",
+            str(_ROOT / "scripts" / "check_file_size.py"),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert "EncodingWarning" not in result.stderr, result.stderr
+    assert result.returncode == 0, result.stdout

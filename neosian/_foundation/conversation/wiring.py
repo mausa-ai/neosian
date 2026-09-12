@@ -17,7 +17,7 @@ import dataclasses
 import functools
 import inspect
 import logging
-from typing import TYPE_CHECKING, Any, Final, cast
+from typing import TYPE_CHECKING, Any, Final
 
 from neosian._foundation.agent.events import BlockedEvent, DoneEvent
 from neosian._foundation.agent.hooks import AgentHooks
@@ -56,7 +56,7 @@ DEFAULT_BOARD_MOUNT_PATH: Final = "board"
 
 def resolve_memory(
     store: ConversationStore,
-    base_memory: object,
+    base_memory: MemoryConfig | None,
     *,
     memory: MemoryConfig | None,
     mounts: Sequence[Mount] | None,
@@ -88,7 +88,7 @@ def resolve_memory(
 
 def _resolve_exclusive(
     store: ConversationStore,
-    base_memory: object,
+    base_memory: MemoryConfig | None,
     *,
     memory: MemoryConfig | None,
     mounts: Sequence[Mount] | None,
@@ -120,7 +120,7 @@ def _resolve_exclusive(
         return MemoryConfig(
             store=_as_memory_store(store, "memory_scope"), mounts=(mount,)
         )
-    return cast("MemoryConfig | None", base_memory)
+    return base_memory
 
 
 def _as_memory_store(store: ConversationStore, argument: str) -> MemoryStore:
