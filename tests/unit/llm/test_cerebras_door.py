@@ -144,9 +144,9 @@ class TestToolCallErrorShapes:
         [
             ({"error": _TOOL_FAILED}, True),
             (_TOOL_FAILED, True),
-            ({"code": "bad_request", "message": "Invalid tool call"}, True),
             ({"error": {"code": "invalid_tool_call", "message": ""}}, True),
-            ({"error": {"code": "x", "message": "Invalid function arguments"}}, True),
+            ({"code": "bad_request", "message": "Invalid tool call"}, False),
+            ({"error": {"code": "x", "message": "Invalid function arguments"}}, False),
             ({"error": {"code": "invalid_request", "message": "Bad request"}}, False),
             ({"code": "invalid_request", "message": "Bad request"}, False),
             (None, False),

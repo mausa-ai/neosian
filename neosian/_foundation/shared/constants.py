@@ -186,7 +186,6 @@ class ErrorMessages:
 class LLMDefaults:
     """Default values for LLM configuration."""
 
-    RETRY_TEMPERATURE: float = 0.3
     MAX_TOOL_CALL_RETRIES: int = 2
     # Transport-level retries (429/5xx/connection errors) handled natively by
     # each provider SDK with exponential backoff and Retry-After support.

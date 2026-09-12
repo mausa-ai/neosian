@@ -5,7 +5,7 @@ from collections.abc import AsyncIterator
 from contextlib import aclosing
 from typing import Any
 
-from anthropic import NOT_GIVEN, AsyncAnthropic, BadRequestError
+from anthropic import NOT_GIVEN, AsyncAnthropic
 from anthropic.types import Message as AnthropicMessage
 from anthropic.types.beta import BetaMessage
 
@@ -33,9 +33,7 @@ from neosian._foundation.shared.constants import (
     LLMDefaults,
 )
 from neosian._foundation.shared.exceptions import (
-    ContextWindowExceededError,
     NeosianError,
-    ToolCallGenerationError,
     UnsupportedParameterError,
 )
 from neosian._foundation.shared.types import (
@@ -143,9 +141,6 @@ class AnthropicClient(BaseLLMClient):
     ) -> CompletionResponse:
         """Send a completion request to Anthropic.
 
-        Automatically retries if tool call generation fails.
-        After max retries, raises ToolCallGenerationError.
-
         The request is streamed internally (messages.stream +
         get_final_message) so large max_tokens values don't trip the SDK's
         non-streaming timeout guard on long-output workloads.
@@ -169,7 +164,6 @@ class AnthropicClient(BaseLLMClient):
             CompletionResponse with the model's response.
 
         Raises:
-            ToolCallGenerationError: If tool call generation fails after retries.
             UnsupportedParameterError: If reasoning_effort used with unsupported model.
             UnsupportedContentError: If messages carry content blocks the
                 model does not support.
@@ -196,88 +190,51 @@ class AnthropicClient(BaseLLMClient):
             ttl=cache_ttl,
         )
 
-        # Only send temperature when explicitly requested: newer Claude
-        # models (e.g. Sonnet 5) reject non-default sampling parameters
-        # with a 400, so the API default must apply when unset. It rides
-        # extra_body: SDK 1.x dropped the keyword, the wire still takes it.
-        current_temp: float | None = temperature
+        kwargs: dict[str, Any] = {
+            "model": model,
+            "messages": anthropic_messages,
+            "max_tokens": max_tokens,
+        }
 
-        for attempt in range(LLMDefaults.MAX_TOOL_CALL_RETRIES + 1):
-            try:
-                kwargs: dict[str, Any] = {
-                    "model": model,
-                    "messages": anthropic_messages,
-                    "max_tokens": max_tokens,
-                }
+        # Thinking mode: add adaptive thinking + effort, omit temperature.
+        # Otherwise temperature is sent only when explicitly requested: newer
+        # Claude models (e.g. Sonnet 5) reject non-default sampling parameters
+        # with a 400. It rides extra_body: SDK 1.x dropped the keyword, the
+        # wire still takes it.
+        if effective_effort is not None:
+            kwargs["thinking"] = {"type": "adaptive"}
+            kwargs["output_config"] = {"effort": effective_effort.value}
+        elif temperature is not None:
+            kwargs["extra_body"] = {"temperature": temperature}
 
-                # Thinking mode: add adaptive thinking + effort, omit temperature
-                if effective_effort is not None:
-                    kwargs["thinking"] = {"type": "adaptive"}
-                    kwargs["output_config"] = {"effort": effective_effort.value}
-                elif current_temp is not None:
-                    kwargs["extra_body"] = {"temperature": current_temp}
+        if cached_system:
+            kwargs["system"] = cached_system
 
-                if cached_system:
-                    kwargs["system"] = cached_system
+        if anthropic_tools:
+            kwargs["tools"] = anthropic_tools
+            # A choice without tools is a 400: the wire only takes
+            # one beside a tool list.
+            if tool_choice is not None:
+                kwargs["tool_choice"] = convert_tool_choice(tool_choice)
 
-                if anthropic_tools:
-                    kwargs["tools"] = anthropic_tools
-                    # A choice without tools is a 400: the wire only takes
-                    # one beside a tool list.
-                    if tool_choice is not None:
-                        kwargs["tool_choice"] = convert_tool_choice(tool_choice)
+        if response_format:
+            # output_config may already exist from reasoning effort above;
+            # merge rather than overwrite.
+            output_config = kwargs.setdefault("output_config", {})
+            output_config["format"] = self._convert_response_format(response_format)
 
-                if response_format:
-                    # output_config may already exist from reasoning effort above;
-                    # merge rather than overwrite.
-                    output_config = kwargs.setdefault("output_config", {})
-                    output_config["format"] = self._convert_response_format(
-                        response_format
-                    )
-                # Stream internally: the SDK refuses non-streaming requests
-                # it estimates may exceed ~10 minutes (large max_tokens).
-                async with self._stream_manager(
-                    kwargs, server_compaction=server_compaction
-                ) as stream:
-                    response = await stream.get_final_message()
-
-                return self._parse_response(response)
-
-            except BadRequestError as e:
-                # An overflow is classified before the tool retry (LL-4).
-                wrapped = wrap_provider_error("anthropic", e, model=model)
-                if isinstance(wrapped, ContextWindowExceededError):
-                    raise wrapped from e
-                if self._is_tool_call_error(e) and tools is not None:
-                    if attempt < LLMDefaults.MAX_TOOL_CALL_RETRIES:
-                        # Lower the temperature on retry only when one was
-                        # explicitly in play — injecting it on models that
-                        # reject sampling params would turn the retry into
-                        # a 400.
-                        if current_temp is not None:
-                            current_temp = LLMDefaults.RETRY_TEMPERATURE
-                        continue
-                    raise ToolCallGenerationError(
-                        retries=LLMDefaults.MAX_TOOL_CALL_RETRIES
-                    ) from e
-                raise wrapped from e
-            except Exception as exc:
-                raise wrap_provider_error("anthropic", exc, model=model) from exc
-
-        # Should not reach here, but satisfy type checker
-        raise ToolCallGenerationError(retries=LLMDefaults.MAX_TOOL_CALL_RETRIES)
-
-    def _is_tool_call_error(self, error: BadRequestError) -> bool:
-        """Check if the error is a tool call generation failure.
-
-        Args:
-            error: The BadRequestError to check.
-
-        Returns:
-            True if it's a tool call related error.
-        """
-        error_message = str(error).lower()
-        return "tool" in error_message or "function" in error_message
+        # No tool-call retry (#236): Anthropic has no coded generation
+        # failure, and a 400 naming a tool is a request a re-send repeats.
+        try:
+            # Stream internally: the SDK refuses non-streaming requests
+            # it estimates may exceed ~10 minutes (large max_tokens).
+            async with self._stream_manager(
+                kwargs, server_compaction=server_compaction
+            ) as stream:
+                response = await stream.get_final_message()
+            return self._parse_response(response)
+        except Exception as exc:
+            raise wrap_provider_error("anthropic", exc, model=model) from exc
 
     def _stream_manager(
         self, kwargs: dict[str, Any], *, server_compaction: bool

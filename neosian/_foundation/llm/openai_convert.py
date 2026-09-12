@@ -38,6 +38,10 @@ from neosian._foundation.shared.schema import strict_schema
 from neosian._foundation.shared.serialization import safe_json_dumps
 from neosian._foundation.shared.types import ResponseFormat, ToolChoice
 
+# The server-side generation failures a re-sample can fix: OpenAI's and
+# Cerebras's spellings.
+_TOOL_CALL_FAILURE_CODES = frozenset({"invalid_tool_call", "tool_use_failed"})
+
 
 def usage_of(usage: CompletionUsage) -> Usage:
     """Token counts off a usage block; a door may leave a count null (#218)."""
@@ -51,24 +55,17 @@ def usage_of(usage: CompletionUsage) -> Usage:
 
 
 def is_tool_call_error(body: object) -> bool:
-    """Whether a 400's body names a tool-call generation failure.
+    """Whether a 400's body carries a tool-call generation failure code.
 
     Two shapes on one wire (#218): OpenAI nests `{"error": {"code",
     "message"}}`; Cerebras answers the flat `{"code": "tool_use_failed",
-    "message"}`.
+    "message"}`. The code alone decides (#236): a message that merely
+    names a tool or function is some other 400, and re-sending it repeats it.
     """
     if not isinstance(body, dict):
         return False
     err = body.get("error", body)
-    if not isinstance(err, dict):
-        return False
-    code = str(err.get("code", ""))
-    message = str(err.get("message", "")).lower()
-    return (
-        code in ("invalid_tool_call", "tool_use_failed")
-        or "tool" in message
-        or "function" in message
-    )
+    return isinstance(err, dict) and err.get("code") in _TOOL_CALL_FAILURE_CODES
 
 
 def refusal_of(part: object) -> str | None:

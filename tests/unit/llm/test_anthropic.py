@@ -381,29 +381,37 @@ class TestAnthropicClient:
         assert chunks[2].finish_reason == "stop"
 
     @pytest.mark.unit
-    def test_is_tool_call_error(self, client: AnthropicClient) -> None:
-        """Test tool call error detection."""
+    async def test_a_400_naming_a_tool_is_one_call(
+        self, client: AnthropicClient
+    ) -> None:
+        """LL-5/LL-6 (#236): no tool-call retry — Anthropic has no coded
+        generation failure, and a re-send of a bad request repeats it."""
         from anthropic import BadRequestError
 
-        # Create mock error with tool-related message
-        mock_body = {"message": "Invalid tool call"}
-
         error = BadRequestError(
-            message="Invalid tool call format",
+            message="tools.0.custom.name: invalid tool 'search_functions'",
             response=MagicMock(status_code=400),
-            body=mock_body,
+            body={"message": "invalid tool"},
         )
+        mock_stream = MagicMock()
+        mock_stream.__aenter__ = AsyncMock(side_effect=error)
+        mock_stream.__aexit__ = AsyncMock(return_value=False)
+        _stub_stream(client, mock_stream)
 
-        assert client._is_tool_call_error(error) is True
-
-        # Test with non-tool error
-        error2 = BadRequestError(
-            message="Invalid request",
-            response=MagicMock(status_code=400),
-            body={"message": "Invalid model"},
-        )
-
-        assert client._is_tool_call_error(error2) is False
+        with pytest.raises(ProviderError) as info:
+            await client.complete(
+                messages=[Message(role=Role.USER, content="Hi")],
+                model=Model.CLAUDE_SONNET_5,
+                tools=[
+                    ToolDefinition(
+                        name=ToolName("search_functions"),
+                        description="Search",
+                        parameters={"type": "object", "properties": {}},
+                    )
+                ],
+            )
+        assert info.value.__cause__ is error
+        assert _sdk(client).messages.stream.call_count == 1
 
 
 @pytest.mark.unit

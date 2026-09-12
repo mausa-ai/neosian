@@ -34,6 +34,14 @@ phase close names the version.
   happens. All three shipped stores already behaved this way; a host
   store that drops the keyword now fails the conformance kit, which
   previously passed it (ledger #232, ECOSYSTEM §10).
+- **A tool-call retry fires on a code, never on a word.** The
+  OpenAI-compatible doors re-sample only a 400 coded `invalid_tool_call`
+  or `tool_use_failed`; a 400 whose message merely names a tool or a
+  function (a schema error, a tool called `search_functions`) is raised
+  at once as the `ProviderError` it is, instead of being re-sent twice
+  and hidden behind `ToolCallGenerationError`. The Anthropic client no
+  longer retries at all: it has no coded generation failure, so its
+  retry only ever repeated a bad request (ledger #236).
 - **A long conversation crosses the wire a page at a time.**
   `RemoteStore.read_turns` and `read_projections` fetch 500 rows per
   request instead of asking for a whole conversation at once. Callers see

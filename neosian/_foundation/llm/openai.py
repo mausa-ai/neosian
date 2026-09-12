@@ -68,7 +68,7 @@ OPENAI_DOOR: Final = OpenAICompatible(name="openai", api_key_env="OPENAI_API_KEY
 class OpenAICompatibleClient(BaseLLMClient):
     """A client for any OpenAI-compatible endpoint; quirks read off its door.
 
-    Retries tool-call generation failures before raising
+    Retries a coded tool-call generation failure before raising
     ToolCallGenerationError.
     """
 
@@ -113,7 +113,7 @@ class OpenAICompatibleClient(BaseLLMClient):
     ) -> CompletionResponse:
         """Send a completion request.
 
-        Automatically retries if tool call generation fails. After max
+        Re-samples a coded tool-call generation failure (#236). After max
         retries, raises ToolCallGenerationError.
 
         Args:

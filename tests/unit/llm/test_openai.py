@@ -338,29 +338,23 @@ class TestOpenAIClientToolCallError:
 
         assert client._is_tool_call_error(error) is True
 
-    def test_is_tool_call_error_true_tool_in_message(self) -> None:
-        """Should detect tool-related errors by message content."""
+    @pytest.mark.parametrize(
+        "message", ["Invalid tool arguments", "Unknown function search_functions"]
+    )
+    def test_a_message_naming_a_tool_is_not_a_generation_failure(
+        self, message: str
+    ) -> None:
+        """LL-6 (#236): only the code decides — a tool named
+        `search_functions` must not make every 400 a tool failure."""
         client = OpenAIClient(api_key="test-key")
 
         error = BadRequestError(
-            message="Tool error",
-            body={"error": {"code": "some_code", "message": "Invalid tool arguments"}},
+            message=message,
+            body={"error": {"code": "invalid_request", "message": message}},
             response=MagicMock(),
         )
 
-        assert client._is_tool_call_error(error) is True
-
-    def test_is_tool_call_error_true_function_in_message(self) -> None:
-        """Should detect function-related errors by message content."""
-        client = OpenAIClient(api_key="test-key")
-
-        error = BadRequestError(
-            message="Function error",
-            body={"error": {"code": "some_code", "message": "Invalid function call"}},
-            response=MagicMock(),
-        )
-
-        assert client._is_tool_call_error(error) is True
+        assert client._is_tool_call_error(error) is False
 
     def test_is_tool_call_error_false_different_code(self) -> None:
         """Should return False for other error codes."""
@@ -522,16 +516,17 @@ class TestOpenAIClientRetry:
 
     @pytest.mark.asyncio
     async def test_non_tool_error_reraises_immediately(self) -> None:
-        """Should re-raise non-tool BadRequestError without retry."""
+        """A 400 without the code is re-raised at once — even one whose
+        message names a tool, which a re-send would only repeat (#236)."""
         client = OpenAIClient(api_key="test-key")
 
         mock_create = AsyncMock()
         _sdk(client).chat.completions.create = mock_create
 
-        # Different error code - not a tool call error
+        message = "tools[0].function 'search_functions': invalid schema"
         other_error = BadRequestError(
-            message="Invalid request",
-            body={"error": {"code": "invalid_request", "message": "Bad"}},
+            message=message,
+            body={"error": {"code": "invalid_request", "message": message}},
             response=MagicMock(),
         )
 
