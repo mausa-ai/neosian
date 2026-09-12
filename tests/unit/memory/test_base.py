@@ -37,3 +37,9 @@ class TestMemoryStoreABC:
     def test_owns_no_init(self) -> None:
         # C1: no __init__ in the ABC — construction is the implementation's.
         assert "__init__" not in MemoryStore.__dict__
+
+    def test_search_is_reserved_never_shipped(self) -> None:
+        # NQ2, ledger #230: `search` is reserved for a 1.x minor and
+        # arrives only through an ECOSYSTEM §12 pair. If this fails, the
+        # hatch was activated without the pair.
+        assert not hasattr(MemoryStore, "search")

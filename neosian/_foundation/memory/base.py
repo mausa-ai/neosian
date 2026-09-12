@@ -35,9 +35,28 @@ Cross-implementation invariants (pinned by `testing.MemoryStoreContract`):
   string prefix — never validated, never a raiser.
 - Every method validates scope then path, raising
   MemoryScopeInvalidError / MemoryPathInvalidError.
-- `expected_version=` raises MemoryConflictError on mismatch (or on an
-  absent document) where `supports_optimistic_concurrency` is declared;
-  any store must accept a *matching* expected_version.
+- `expected_version=` raises MemoryConflictError on mismatch (reason
+  "version_mismatch") and on an absent document ("document_absent"), and
+  accepts a *matching* version — on **every** store (NQ2, MC-14).
+  `supports_optimistic_concurrency` declares whether that check is
+  race-safe across workers, never whether it happens: FileStore arbitrates
+  in-process and says False because files cannot arbitrate between
+  processes. A store that drops the keyword fails the kit.
+
+**Reserved for a 1.x minor** (NQ2, ledger #230) — neosian will not claim
+this name for anything else, so a host may implement it early:
+
+    async def search(
+        self, scope: str, query: str, *, limit: int | None = None
+    ) -> tuple[MemoryEntry, ...]: ...
+        # Documents whose content matches `query`, best first.
+
+DESIGN §8's activation criteria were checked at NQ2 and recorded unmet
+(2026-09-12): neither leg has happened — no harness evidence at scale
+that the budgeted index plus `view` paging misses facts the store holds,
+and no deployment asking. So the Postgres `tsvector` + GIN column stays
+a dormant operator escape with no API surface, and activation is an
+ECOSYSTEM §12 session-pair, never a quiet method on a reference store.
 """
 
 from __future__ import annotations

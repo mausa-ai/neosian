@@ -26,12 +26,27 @@ Cross-implementation invariants (pinned by
   (ConversationIdInvalidError); negative `after`/`limit` and an empty
   `messages` sequence are programmer errors (ValueError).
 
-Deliberately absent: `list_conversations` (hosts list from their own
-tables), delete/redact, per-turn usage/model/cost, capability ClassVars.
-Frozen for hosts since the 2026-08-21 amendment (ECOSYSTEM §10); DESIGN §9
-carries the rationale and the CS1-CS7 rulings. NL added one thing,
-additively: `append_turn(..., actor=)` and `ConversationTurn.actor` —
-who appended a turn, opaque to the store (DESIGN §20).
+Deliberately absent: `list_conversations`, delete/redact, per-turn
+usage/model/cost, capability ClassVars. Frozen for hosts since the
+2026-08-21 amendment (ECOSYSTEM §10); DESIGN §9 carries the rationale and
+the CS1-CS7 rulings. NL added one thing, additively:
+`append_turn(..., actor=)` and `ConversationTurn.actor` — who appended a
+turn, opaque to the store (DESIGN §20).
+
+**Reserved for a 1.x minor** (NQ2, ledger #229) — neosian will not claim
+this name for anything else, so a host may implement it early:
+
+    async def list_conversations(
+        self, *, prefix: str | None = None, limit: int | None = None
+    ) -> tuple[str, ...]: ...
+        # Conversation ids ascending; `prefix` a plain string prefix.
+
+It stays off the ABC for 1.0 because the need arose twice and was met
+twice without it: NL's sessions listing is memory documents under the
+scope (#123), and NC4's export enumerates through the `Portable`
+privilege, which the three shipped stores pay for and hosts do not.
+Arrival is an ECOSYSTEM §12 session-pair, never a quiet method on a
+reference store.
 """
 
 from __future__ import annotations
