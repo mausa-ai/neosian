@@ -78,6 +78,7 @@ async def execute_with_client(
                 reasoning_effort=effective_reasoning,
                 max_tokens=agent._max_output_tokens,
                 cache_conversation=agent._cache_conversation,
+                cache_ttl=agent._cache_ttl,
                 server_compaction=agent._server_compaction,
             )
         except Exception as exc:
@@ -167,7 +168,9 @@ async def execute_with_client(
             tool_calls, timed_results, strict=True
         ):
             all_tool_results.append(result)
-            tool_result_content = format_tool_result(result)
+            tool_result_content = format_tool_result(
+                result, agent._max_tool_result_chars
+            )
             attempt.messages.append(
                 Message(
                     role=Role.TOOL,
@@ -201,6 +204,7 @@ async def execute_with_client(
             reasoning_effort=effective_reasoning,
             max_tokens=agent._max_output_tokens,
             cache_conversation=agent._cache_conversation,
+            cache_ttl=agent._cache_ttl,
             server_compaction=agent._server_compaction,
         )
     except Exception as exc:

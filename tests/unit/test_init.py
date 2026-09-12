@@ -177,6 +177,7 @@ def test_all_list_matches_exports() -> None:
         "normalize_stop_reason",
         # The client seam (DESIGN §2)
         "BaseLLMClient",
+        "CacheTtl",
         "ClientFactory",
         "CompletionResponse",
         "StreamChunk",

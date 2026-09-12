@@ -125,6 +125,8 @@ class Agent:
         assert config.max_output_tokens is not None  # Set by AgentConfig.__post_init__
         self._max_output_tokens = config.max_output_tokens
         self._cache_conversation = config.cache_conversation
+        self._cache_ttl = config.cache_ttl
+        self._max_tool_result_chars = config.max_tool_result_chars
         self._stream_tool_arguments = config.stream_tool_arguments
         self._server_compaction = config.server_compaction
         assert config.max_parallel_tools is not None  # Set by AgentConfig.__post_init__
@@ -269,6 +271,7 @@ class Agent:
         return UsageLedger(
             max_cost_micro_usd=self._max_cost_micro_usd,
             max_total_tokens=self._max_total_tokens,
+            cache_ttl=self._cache_ttl,
         )
 
     def _run_context(

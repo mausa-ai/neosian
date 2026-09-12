@@ -75,6 +75,18 @@ class ModelPricing:
             return self.cache_write_per_mtok
         return self.input_per_mtok
 
+    @property
+    def effective_cache_write_1h_per_mtok(self) -> int:
+        """Cache-write rate for an hour-long breakpoint (NC9, #227).
+
+        Derived rather than carded: the shipped rates bake in the 5m
+        premium as absolute figures, and the hour costs twice base where
+        five minutes cost 1.25x — a published multiple of a rate already
+        verified, so no new column enters the card and the fingerprint
+        keeps sealing what it sealed.
+        """
+        return 2 * self.input_per_mtok
+
 
 @dataclass(frozen=True)
 class ModelSpec:

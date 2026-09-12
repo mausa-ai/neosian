@@ -91,6 +91,7 @@ async def stream_final_with_client_and_guard(
             reasoning_effort=reasoning_effort,
             max_tokens=agent._max_output_tokens,
             cache_conversation=agent._cache_conversation,
+            cache_ttl=agent._cache_ttl,
             server_compaction=agent._server_compaction,
         )
 

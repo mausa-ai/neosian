@@ -17,7 +17,12 @@ from typing import TYPE_CHECKING
 
 from neosian._foundation.agent.tool_scope import ToolScope
 from neosian._foundation.llm.base import Message, ModelUsage, Usage
-from neosian._foundation.shared.types import AnyModel, ClientFactory, FallbackState
+from neosian._foundation.shared.types import (
+    AnyModel,
+    CacheTtl,
+    ClientFactory,
+    FallbackState,
+)
 
 if TYPE_CHECKING:
     from neosian._foundation.agent.base import Agent
@@ -62,6 +67,9 @@ class UsageLedger:
     # AgentConfig by `Agent._run_context`.
     max_cost_micro_usd: int | None = None
     max_total_tokens: int | None = None
+    # The lifetime this run's cache breakpoints carry, so a fold prices
+    # its cache writes at the rate they were actually written at (#227).
+    cache_ttl: CacheTtl = "5m"
     _spent_micro_usd: int = 0
     _warned_unpriced: bool = False
 
@@ -78,7 +86,7 @@ class UsageLedger:
         self._by_model[key] = usage if existing is None else existing + usage
         if self.max_cost_micro_usd is None or model is None:
             return
-        cost = usage.cost_micro_usd(model)
+        cost = usage.cost_micro_usd(model, cache_ttl=self.cache_ttl)
         if cost is None:
             if not self._warned_unpriced:
                 self._warned_unpriced = True

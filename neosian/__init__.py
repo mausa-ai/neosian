@@ -175,6 +175,7 @@ from neosian._foundation.shared.types import (
     PRICES_FINGERPRINT,
     AgentConfig,
     AnyModel,
+    CacheTtl,
     ClientFactory,
     FallbackConfig,
     FallbackState,
@@ -261,6 +262,7 @@ __all__ = [
     "normalize_stop_reason",
     # The client seam (DESIGN §2)
     "BaseLLMClient",
+    "CacheTtl",
     "ClientFactory",
     "CompletionResponse",
     "StreamChunk",

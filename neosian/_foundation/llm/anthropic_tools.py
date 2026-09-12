@@ -10,7 +10,7 @@ import copy
 from typing import Any
 
 from neosian._foundation.llm.base import ToolDefinition
-from neosian._foundation.shared.types import ResponseFormat, ToolChoice
+from neosian._foundation.shared.types import CacheTtl, ResponseFormat, ToolChoice
 
 # Anthropic rejects these on integer/number fields regardless of strict mode.
 _ALWAYS_UNSUPPORTED_NUMERIC_KEYS = frozenset(
@@ -89,6 +89,18 @@ def strip_unsupported_constraints(
     return result
 
 
+def cache_control(ttl: CacheTtl = "5m") -> dict[str, Any]:
+    """The cache_control marker for a breakpoint at `ttl`.
+
+    "5m" is the wire's own default, so it is sent as the bare marker and
+    no request changes shape for an agent that never asked for anything
+    else. The `ttl` key appears only for "1h" (NC9, #227).
+    """
+    if ttl == "1h":
+        return {"type": "ephemeral", "ttl": "1h"}
+    return {"type": "ephemeral"}
+
+
 def convert_tool_choice(tool_choice: ToolChoice) -> dict[str, Any]:
     """Convert a ToolChoice to Anthropic's `tool_choice` value.
 
@@ -110,7 +122,9 @@ def convert_tool_choice(tool_choice: ToolChoice) -> dict[str, Any]:
     return value
 
 
-def convert_tools(tools: list[ToolDefinition]) -> list[dict[str, Any]]:
+def convert_tools(
+    tools: list[ToolDefinition], ttl: CacheTtl = "5m"
+) -> list[dict[str, Any]]:
     """Convert internal tool definitions to Anthropic format.
 
     Tools with strict=True opt into provider-enforced constrained decoding.
@@ -156,7 +170,7 @@ def convert_tools(tools: list[ToolDefinition]) -> list[dict[str, Any]]:
                 input_schema["additionalProperties"] = False
         result.append(entry)
     if result:
-        result[-1]["cache_control"] = {"type": "ephemeral"}
+        result[-1]["cache_control"] = cache_control(ttl)
     return result
 
 

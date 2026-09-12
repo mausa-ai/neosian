@@ -7,6 +7,7 @@ import asyncio
 import inspect
 import time
 from collections.abc import AsyncIterator
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
 from pydantic import ValidationError
@@ -22,6 +23,7 @@ from neosian._foundation.agent.lifetimes import reap
 from neosian._foundation.llm.base import ToolCall
 from neosian._foundation.shared.constants import ErrorMessages, Streaming
 from neosian._foundation.shared.exceptions import ToolExecutionError
+from neosian._foundation.shared.serialization import safe_json_dumps
 from neosian._foundation.shared.types import ToolCallId
 from neosian._foundation.tools.base import ToolResult, get_tool_metadata
 from neosian._foundation.tools.schema import rejection, validate_arguments
@@ -192,13 +194,66 @@ async def run_tool_stream(
             queue.put_nowait(None)
 
 
-def format_tool_result(result: ToolResult[Any]) -> str:
-    """Format a tool result as a string for the LLM.
+# The clip marker, shaped as `record/span.py`'s: the dropped count, not
+# the kept one, so the model reads how much it is missing (NC9, #228).
+_TRUNCATED = "\n… [truncated {dropped} chars]"
+
+
+def _clipped(result: ToolResult[Any], limit: int) -> str:
+    """The envelope with its payload cut to fit, still valid JSON.
+
+    The payload is clipped rather than the serialized string, because a
+    head-clip of the string would take the closing brace with it — and
+    `system_reminder`, which is the repair hint the model needs most when
+    a result was too big to send whole. `success` stays first, so
+    `FAILED_ENVELOPE_PREFIX` survives for the wire that reads `is_error`
+    off it.
+    """
+    payload = result.data if result.success else result.error
+    text = payload if isinstance(payload, str) else safe_json_dumps(payload, "data")
+
+    def envelope(kept: str) -> str:
+        marked = kept + _TRUNCATED.format(dropped=len(text) - len(kept))
+        clipped = (
+            replace(result, data=marked)
+            if result.success
+            else replace(result, error=marked)
+        )
+        return clipped.to_json()
+
+    # Measured, never estimated: escaping makes one source character cost
+    # one serialized character or six, so no arithmetic on the source
+    # length is right for exactly the payloads worth clipping — a page of
+    # CJK would lose almost all of it. Bisect on the serialized envelope
+    # instead, which is the thing the cap is about. The envelope has a
+    # floor — its own braces, the marker, a system_reminder — and a limit
+    # under that floor buys an empty payload, never a broken envelope or a
+    # lost repair hint: the cap bounds the payload, which is what grows.
+    low, high = 0, len(text)
+    while low < high:
+        middle = (low + high + 1) // 2
+        if len(envelope(text[:middle])) <= limit:
+            low = middle
+        else:
+            high = middle - 1
+    return envelope(text[:low])
+
+
+def format_tool_result(result: ToolResult[Any], limit: int | None = None) -> str:
+    """Format a tool result as the string the model reads.
 
     Args:
         result: The tool result to format.
+        limit: The model's copy is capped here, marker included; None
+            sends it whole. A limit below the envelope's own floor leaves
+            an empty payload rather than breaking the JSON. The streamed
+            `ToolResultEvent` and the hooks carry the uncapped result
+            either way (#228).
 
     Returns:
         JSON string representation of the result.
     """
-    return result.to_json()
+    envelope = result.to_json()
+    if limit is None or len(envelope) <= limit:
+        return envelope
+    return _clipped(result, limit)

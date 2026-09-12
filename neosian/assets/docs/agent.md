@@ -31,6 +31,8 @@ quickstart (`neosian docs quickstart`) is the tour.
 | `max_cost_micro_usd` | `None` | The run's spend ceiling in integer micro-USD. Below. |
 | `max_total_tokens` | `None` | The run's token ceiling, all four token classes. Below. |
 | `cache_conversation` | `True` | Anthropic cache breakpoint on the last message; off for one-shot calls. |
+| `cache_ttl` | `"5m"` | How long Anthropic keeps those breakpoints: `"5m"` or `"1h"`. Below. |
+| `max_tool_result_chars` | `32_000` | The cap on the model's copy of a tool result; `None` disables it. Below. |
 | `stream_tool_arguments` | `False` | Relay each piece of a tool call's arguments as a `tool_call_delta` frame. Below. |
 | `skill_dir` | `None` | Directory skills (`neosian docs skills`). |
 | `memory` | `None` | `MemoryConfig`: the memory tool over mounts (`neosian docs memory`). |
@@ -174,6 +176,55 @@ Two shapes are still refused. `stream=True` with a schema raises
 A schema under a `tool_choice` forcing some *other* tool raises
 `StructuredOutputToolsError`, because the model is then never free to
 emit the answer.
+
+## How long the cache lives
+
+Anthropic keeps a cache breakpoint for five minutes by default. An hour
+is one word:
+
+```python
+config = AgentConfig(system_prompt="...", cache_ttl="1h")
+```
+
+It applies to every breakpoint the agent writes: the system prompt, the
+tool block, and the last message. The trade is price, not behavior. A
+five-minute write costs 1.25 times the base input rate; an hour costs
+twice it. Reads are the same either way (a tenth of base), so the hour
+pays whenever the same prefix is re-sent more than five minutes later
+and loses whenever it is not.
+
+`usage.cache_write_tokens` is priced at whichever rate the run asked
+for, so `max_cost_micro_usd` and the cost on every response already
+reflect the choice. Providers without explicit breakpoints ignore the
+setting, as they ignore `cache_conversation`.
+
+## The cap on a tool result
+
+A tool's result goes into the conversation and is re-sent on every turn
+after it, so one runaway result can crowd out the window. The model's
+copy is capped:
+
+```python
+config = AgentConfig(system_prompt="...", max_tool_result_chars=32_000)
+```
+
+A result under the cap is sent exactly as it was. Over it, the payload
+is cut and the envelope says how much went:
+
+```json
+{"success": true, "data": "...\n… [truncated 51204 chars]"}
+```
+
+Three things the cap does not touch. It never breaks the envelope: the
+JSON still parses, `success` still leads it (the wire reads a failure
+off that), and a `system_reminder` or `code` still reaches the model,
+which is the repair hint it needs most when a result was too big. It
+never touches what your tool returned: `ToolResultEvent` on the stream
+and the `on_tool` hook both carry the whole thing. And it is a character
+count, not a token count, measured on the serialized envelope, so a
+result full of non-ASCII text is cut where it actually costs.
+
+`None` disables the cap.
 
 ## The client seam
 

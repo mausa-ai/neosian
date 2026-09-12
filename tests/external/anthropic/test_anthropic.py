@@ -8,6 +8,7 @@ Run with:
 """
 
 import base64
+from uuid import uuid4
 
 import pytest
 from pydantic import BaseModel
@@ -205,3 +206,41 @@ class TestAnthropicStructuredOutputNested:
         quiz = validate_json(_Quiz, text_of(response.message))
         assert isinstance(quiz, _Quiz)
         assert len(quiz.questions) >= 1
+
+
+@pytest.mark.external_anthropic
+class TestAnthropicCacheTtl:
+    """The hour-long breakpoint against the real API (NC9 #227).
+
+    The keyless pins prove the body's shape; only the wire proves the API
+    accepts `ttl` on the GA endpoint and bills a 1h entry — the audit's
+    finding that no beta is needed rests on this run.
+    """
+
+    @pytest.mark.asyncio
+    async def test_an_hour_long_write_is_accepted_and_reported(
+        self, anthropic_client: AnthropicClient
+    ) -> None:
+        # Two things this prompt has to be. Over the model's minimum
+        # cacheable prefix, or nothing is cached at all. And cold: a
+        # verbatim re-run inside the hour would be a cache *read*, and the
+        # write this asserts would never happen — the feature defeating
+        # its own test. The nonce buys both.
+        nonce = uuid4().hex
+        system = f"You are a careful assistant, session {nonce}. " * 1_600
+        messages = [
+            Message(role=Role.SYSTEM, content=system),
+            Message(role=Role.USER, content="Reply with the single word: ok."),
+        ]
+
+        response = await anthropic_client.complete(
+            messages=messages,
+            model=Model.CLAUDE_HAIKU_4_5,
+            cache_ttl="1h",
+            max_tokens=16,
+        )
+
+        # The request was accepted on the GA namespace and the write is
+        # reported: a 5m entry would have been billed at 1.25x instead.
+        assert response.usage.cache_write_tokens > 0
+        assert text_of(response.message)

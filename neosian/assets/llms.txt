@@ -144,7 +144,7 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
 
 ## Install
 
-- `uv add "neosian==1.0.0rc6"`: one package, the library and its
+- `uv add "neosian==1.0.0rc7"`: one package, the library and its
   provider SDKs, the `neosian` shell, the MCP server and client, the
   state process and OpenTelemetry spans (about 70 MB; nothing loaded
   until used). On PyPI as a pre-release until v1.0.0: pin it explicitly,
@@ -155,11 +155,11 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
 - `curl -fsS https://neosian.com/install | bash` puts uv and neosian on a
   machine with nothing on it; the script says what it installs first.
 - The appliance: `docker run -d -e NEOSIAN_SERVE_TOKEN=… -p 6367:6367
-  -v neosian-state:/data ghcr.io/mausa-ai/neosian:1.0.0rc6`, the state
+  -v neosian-state:/data ghcr.io/mausa-ai/neosian:1.0.0rc7`, the state
   process on a volume, `/health` the one open route.
 
 ## Docs
 
-- https://github.com/mausa-ai/neosian/blob/v1.0.0rc6/README.md: install and quickstart.
-- https://github.com/mausa-ai/neosian/blob/v1.0.0rc6/SERVICES.md: every environment key and what turning it off means.
+- https://github.com/mausa-ai/neosian/blob/v1.0.0rc7/README.md: install and quickstart.
+- https://github.com/mausa-ai/neosian/blob/v1.0.0rc7/SERVICES.md: every environment key and what turning it off means.
 - `neosian docs baselines`: the published per-provider memory numbers.

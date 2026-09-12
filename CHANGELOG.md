@@ -8,7 +8,40 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [1.0.0rc7] - 2026-09-12
+
+The loop gains the SOTA knobs the review named: a budget stop, a
+fallback ladder, per-call tools with a `tool_choice`, structured output
+beside tools, streamed tool-call arguments, an hour-long cache, and a
+cap on a tool result.
+
+
 ### Added
+
+- **An hour-long prompt cache.** `AgentConfig(cache_ttl="1h")` writes
+  every Anthropic breakpoint the agent makes (system prompt, tool block,
+  last message) at the hour lifetime instead of the five-minute default.
+  The trade is price: a five-minute write costs 1.25x the base input
+  rate, an hour costs 2x, and reads cost the same either way, so the hour
+  pays when the same prefix is re-sent beyond five minutes.
+  `Usage.cost_micro_usd(model, cache_ttl=...)` and the run's ledger price
+  the writes at whichever rate was asked for, so the budget ceilings and
+  every reported cost already reflect it — `ModelPricing` gains the
+  derived `effective_cache_write_1h_per_mtok`, and no rate card data
+  moves. `ttl` is a GA parameter, so no beta is opened. Other providers
+  ignore the setting, as they ignore `cache_conversation` (DESIGN §3,
+  ledger #227).
+- **A cap on the model's copy of a tool result.** `AgentConfig` gains
+  `max_tool_result_chars`, **default 32,000** (`None` disables it): a
+  tool result under it is sent exactly as before, over it the payload is
+  cut and the envelope says how much went
+  (`… [truncated 51204 chars]`). The envelope is never broken to make the
+  number fit — it still parses, `success` still leads it so a wire can
+  read a failure off the prefix, and `code`/`system_reminder` still reach
+  the model. What your tool returned is untouched: `ToolResultEvent` and
+  the `on_tool` hook carry the whole result. The budget is measured on
+  the serialized envelope, so heavily escaped text is cut where it
+  actually costs (DESIGN §3, ledger #228).
 
 - **Tool-call arguments as they arrive.** The streaming vocabulary gains
   an eleventh frame, `tool_call_delta`, carrying `{tool_call_id, name,
@@ -80,6 +113,9 @@ phase close names the version.
 
 ### Changed
 
+- `BaseLLMClient.complete` and `.stream` take `cache_ttl`; a host's own
+  client implementing the seam gains the parameter with a `"5m"` default,
+  and `CacheTtl` is exported beside the seam's other parameter types.
 - The OpenAI wire's streamed chunk reader moved to
   `llm/openai_stream.py` (an internal split for size-gate headroom, the
   way `anthropic_stream.py` was split out of `anthropic.py`).
@@ -1098,7 +1134,8 @@ pre-release — pin it explicitly; the API stability promise rides v1.0.0.
 - Both entry points share one `_validate_run`, so neither can skip a
   guard.
 
-[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc5...HEAD
+[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc7...HEAD
+[1.0.0rc7]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc6...v1.0.0rc7
 [1.0.0rc6]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc5...v1.0.0rc6
 [1.0.0rc5]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc4...v1.0.0rc5
 [1.0.0rc4]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc3...v1.0.0rc4

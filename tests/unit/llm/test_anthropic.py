@@ -9,6 +9,7 @@ import pytest
 
 from neosian._foundation.llm.anthropic import AnthropicClient
 from neosian._foundation.llm.anthropic_tools import (
+    cache_control,
     convert_tool_choice,
     strip_unsupported_constraints,
 )
@@ -2161,6 +2162,82 @@ class TestAnthropicStrictToolUse:
         assert "minimum" not in px
         assert "maximum" not in px
         assert px["multipleOf"] == 5
+
+
+@pytest.mark.unit
+class TestAnthropicCacheTtl:
+    """The hour-long breakpoint (NC9 #227): opt-in, and invisible at 5m."""
+
+    def test_the_default_is_the_bare_marker(self) -> None:
+        """5m is the wire's own default, so the request does not change
+        shape for an agent that never asked for anything else — which is
+        what keeps every existing cache assertion true."""
+        assert cache_control() == {"type": "ephemeral"}
+        assert cache_control("5m") == {"type": "ephemeral"}
+
+    def test_an_hour_adds_the_ttl_key(self) -> None:
+        assert cache_control("1h") == {"type": "ephemeral", "ttl": "1h"}
+
+    def test_every_breakpoint_carries_it(
+        self, client: AnthropicClient, sample_tool: ToolDefinition
+    ) -> None:
+        """All four: the system prompt, the last message in both content
+        shapes, and the tool block."""
+        cached_system, messages = client._apply_cache_control(
+            "You are helpful.",
+            [{"role": "user", "content": "hi"}],
+            ttl="1h",
+        )
+        assert cached_system is not None
+        assert cached_system[0]["cache_control"] == {"type": "ephemeral", "ttl": "1h"}
+        assert messages[-1]["content"][-1]["cache_control"] == {
+            "type": "ephemeral",
+            "ttl": "1h",
+        }
+
+        _, blocks = client._apply_cache_control(
+            None,
+            [{"role": "user", "content": [{"type": "text", "text": "hi"}]}],
+            ttl="1h",
+        )
+        assert blocks[-1]["content"][-1]["cache_control"] == {
+            "type": "ephemeral",
+            "ttl": "1h",
+        }
+
+        tools = client._convert_tools([sample_tool], "1h")
+        assert tools[-1]["cache_control"] == {"type": "ephemeral", "ttl": "1h"}
+
+    @pytest.mark.asyncio
+    async def test_it_reaches_the_wire_on_the_ga_namespace(
+        self,
+        client: AnthropicClient,
+        sample_messages: list[Message],
+        sample_tool: ToolDefinition,
+    ) -> None:
+        """`ttl` is a GA parameter, so no beta is opened for it: a beta
+        namespace would drag `betas` along and collide with compaction."""
+        mock_response = MagicMock(spec_set=SPEC["message"])
+        mock_response.content = [
+            MagicMock(spec_set=SPEC["text"], type="text", text="hi")
+        ]
+        mock_response.usage = MagicMock(
+            spec=SPEC["usage"], input_tokens=5, output_tokens=3
+        )
+        mock_response.model = "claude-sonnet-5"
+        _mock_complete(client, mock_response)
+
+        await client.complete(
+            messages=sample_messages,
+            model=Model.CLAUDE_SONNET_5,
+            tools=[sample_tool],
+            cache_ttl="1h",
+        )
+
+        call_kwargs = _sdk(client).messages.stream.call_args.kwargs
+        assert call_kwargs["system"][0]["cache_control"]["ttl"] == "1h"
+        assert call_kwargs["tools"][-1]["cache_control"]["ttl"] == "1h"
+        assert "betas" not in call_kwargs
 
 
 @pytest.mark.unit

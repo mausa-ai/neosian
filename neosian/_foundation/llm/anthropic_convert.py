@@ -8,6 +8,7 @@ message, never of the client.
 
 from typing import Any
 
+from neosian._foundation.llm.anthropic_tools import cache_control
 from neosian._foundation.llm.base import (
     CompactionBlock,
     ContentBlock,
@@ -24,7 +25,7 @@ from neosian._foundation.shared.exceptions import (
     UnsupportedContentError,
     UnsupportedParameterError,
 )
-from neosian._foundation.shared.types import AnyModel
+from neosian._foundation.shared.types import AnyModel, CacheTtl
 from neosian._foundation.tools.result import FAILED_ENVELOPE_PREFIX
 
 
@@ -260,6 +261,7 @@ def apply_cache_control(
     system_prompt: str | None,
     anthropic_messages: list[dict[str, Any]],
     cache_last_message: bool = True,
+    ttl: CacheTtl = "5m",
 ) -> tuple[list[dict[str, Any]] | None, list[dict[str, Any]]]:
     """Apply cache_control breakpoints for Anthropic prompt caching.
 
@@ -295,7 +297,7 @@ def apply_cache_control(
             {
                 "type": "text",
                 "text": system_prompt,
-                "cache_control": {"type": "ephemeral"},
+                "cache_control": cache_control(ttl),
             }
         ]
 
@@ -311,11 +313,11 @@ def apply_cache_control(
                 {
                     "type": "text",
                     "text": content,
-                    "cache_control": {"type": "ephemeral"},
+                    "cache_control": cache_control(ttl),
                 }
             ]
         elif isinstance(content, list) and content:
             # Add cache_control to the last block in the list
-            content[-1]["cache_control"] = {"type": "ephemeral"}
+            content[-1]["cache_control"] = cache_control(ttl)
 
     return cached_system, anthropic_messages

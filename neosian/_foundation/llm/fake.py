@@ -30,6 +30,7 @@ from neosian._foundation.shared.exceptions import FakeScriptExhaustedError
 from neosian._foundation.shared.serialization import safe_json_dumps
 from neosian._foundation.shared.types import (
     AnyModel,
+    CacheTtl,
     ReasoningEffort,
     ResponseFormat,
     ToolChoice,
@@ -102,6 +103,7 @@ class FakeCall:
     reasoning_effort: ReasoningEffort | None
     max_tokens: int
     cache_conversation: bool
+    cache_ttl: CacheTtl
     server_compaction: bool
     stream: bool
 
@@ -226,6 +228,7 @@ class FakeClient(BaseLLMClient):
         reasoning_effort: ReasoningEffort | None,
         max_tokens: int,
         cache_conversation: bool,
+        cache_ttl: CacheTtl,
         server_compaction: bool,
         stream: bool,
     ) -> None:
@@ -240,6 +243,7 @@ class FakeClient(BaseLLMClient):
                 reasoning_effort=reasoning_effort,
                 max_tokens=max_tokens,
                 cache_conversation=cache_conversation,
+                cache_ttl=cache_ttl,
                 server_compaction=server_compaction,
                 stream=stream,
             )
@@ -256,6 +260,7 @@ class FakeClient(BaseLLMClient):
         reasoning_effort: ReasoningEffort | None = None,
         max_tokens: int = LLMDefaults.MAX_OUTPUT_TOKENS,
         cache_conversation: bool = True,
+        cache_ttl: CacheTtl = "5m",
         server_compaction: bool = False,
     ) -> CompletionResponse:
         self._record(
@@ -268,6 +273,7 @@ class FakeClient(BaseLLMClient):
             reasoning_effort=reasoning_effort,
             max_tokens=max_tokens,
             cache_conversation=cache_conversation,
+            cache_ttl=cache_ttl,
             server_compaction=server_compaction,
             stream=False,
         )
@@ -296,6 +302,7 @@ class FakeClient(BaseLLMClient):
         reasoning_effort: ReasoningEffort | None = None,
         max_tokens: int = LLMDefaults.MAX_OUTPUT_TOKENS,
         cache_conversation: bool = True,
+        cache_ttl: CacheTtl = "5m",
         server_compaction: bool = False,
     ) -> AsyncIterator[StreamChunk]:
         self._record(
@@ -308,6 +315,7 @@ class FakeClient(BaseLLMClient):
             reasoning_effort=reasoning_effort,
             max_tokens=max_tokens,
             cache_conversation=cache_conversation,
+            cache_ttl=cache_ttl,
             server_compaction=server_compaction,
             stream=True,
         )

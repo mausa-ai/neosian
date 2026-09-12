@@ -258,3 +258,54 @@ class TestConfigValidation:
         config = AgentConfig(system_prompt="s", model=Model.FAKE)
         assert config.max_cost_micro_usd is None
         assert config.max_total_tokens is None
+
+
+@pytest.mark.unit
+class TestTheLedgerPricesAtTheRunsTtl:
+    """A run writes every breakpoint at one lifetime, so pricing the whole
+    of its cache-write tokens at that rate is exact (NC9 #227)."""
+
+    async def test_an_hour_long_run_crosses_the_cap_a_five_minute_one_clears(
+        self,
+    ) -> None:
+        # 300k cache-write on Model.FAKE: 1.25x input = 375_000 µ$ clears a
+        # 400_000 ceiling, 2x = 600_000 µ$ does not.
+        usage = Usage(input_tokens=0, output_tokens=0, cache_write_tokens=300_000)
+        client = FakeClient(_script(turns=1, usage=usage))
+        await _run(_agent(client, max_cost_micro_usd=400_000), stream=False)
+
+        client = FakeClient(_script(turns=1, usage=usage))
+        agent = Agent(
+            AgentConfig(
+                system_prompt="You are a test agent.",
+                model=Model.FAKE,
+                tools=[ping],
+                enable_todo=False,
+                client_factory=lambda _m: client,
+                max_cost_micro_usd=400_000,
+                cache_ttl="1h",
+            )
+        )
+        with pytest.raises(BudgetExceededError) as info:
+            await agent.run(_USER, stream=False)
+        assert info.value.kind == "cost"
+        assert info.value.spent == 600_000
+
+    async def test_the_ttl_reaches_the_wire(self) -> None:
+        client = FakeClient(_script(turns=1))
+        agent = Agent(
+            AgentConfig(
+                system_prompt="You are a test agent.",
+                model=Model.FAKE,
+                enable_todo=False,
+                client_factory=lambda _m: client,
+                cache_ttl="1h",
+            )
+        )
+        await agent.run(_USER, stream=False)
+        assert client.calls[0].cache_ttl == "1h"
+
+    async def test_five_minutes_is_the_default(self) -> None:
+        client = FakeClient(_script(turns=1))
+        await _run(_agent(client), stream=False)
+        assert client.calls[0].cache_ttl == "5m"

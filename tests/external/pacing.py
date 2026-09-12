@@ -23,6 +23,7 @@ from collections.abc import AsyncIterator
 from neosian import (
     AnyModel,
     BaseLLMClient,
+    CacheTtl,
     CompletionResponse,
     Message,
     ReasoningEffort,
@@ -83,6 +84,7 @@ class PacedClient(BaseLLMClient):
         reasoning_effort: ReasoningEffort | None = None,
         max_tokens: int = LLMDefaults.MAX_OUTPUT_TOKENS,
         cache_conversation: bool = True,
+        cache_ttl: CacheTtl = "5m",
         server_compaction: bool = False,
     ) -> CompletionResponse:
         attempt = 0
@@ -99,6 +101,7 @@ class PacedClient(BaseLLMClient):
                     reasoning_effort=reasoning_effort,
                     max_tokens=max_tokens,
                     cache_conversation=cache_conversation,
+                    cache_ttl=cache_ttl,
                     server_compaction=server_compaction,
                 )
             except ProviderError as exc:
@@ -117,6 +120,7 @@ class PacedClient(BaseLLMClient):
         reasoning_effort: ReasoningEffort | None = None,
         max_tokens: int = LLMDefaults.MAX_OUTPUT_TOKENS,
         cache_conversation: bool = True,
+        cache_ttl: CacheTtl = "5m",
         server_compaction: bool = False,
     ) -> AsyncIterator[StreamChunk]:
         attempt = 0
@@ -133,6 +137,7 @@ class PacedClient(BaseLLMClient):
                     reasoning_effort=reasoning_effort,
                     max_tokens=max_tokens,
                     cache_conversation=cache_conversation,
+                    cache_ttl=cache_ttl,
                     server_compaction=server_compaction,
                 ):
                     started = True

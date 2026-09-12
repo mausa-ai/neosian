@@ -126,6 +126,7 @@ async def stream_with_client(
                 reasoning_effort=effective_reasoning,
                 max_tokens=agent._max_output_tokens,
                 cache_conversation=agent._cache_conversation,
+                cache_ttl=agent._cache_ttl,
                 server_compaction=agent._server_compaction,
             )
 
@@ -355,7 +356,9 @@ async def stream_with_client(
             for tool_call in accumulated_tool_calls:
                 result = results[tool_call.id]
                 run_tool_results.append(result)
-                tool_result_content = format_tool_result(result)
+                tool_result_content = format_tool_result(
+                    result, agent._max_tool_result_chars
+                )
                 attempt.messages.append(
                     Message(
                         role=Role.TOOL,

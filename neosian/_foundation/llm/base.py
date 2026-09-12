@@ -26,6 +26,7 @@ from neosian._foundation.llm.blocks import (
 from neosian._foundation.shared.constants import LLMDefaults
 from neosian._foundation.shared.types import (
     AnyModel,
+    CacheTtl,
     ReasoningEffort,
     ResponseFormat,
     ToolCallId,
@@ -194,7 +195,9 @@ class Usage:
             cache_write_tokens=self.cache_write_tokens + other.cache_write_tokens,
         )
 
-    def cost_micro_usd(self, model: AnyModel) -> int | None:
+    def cost_micro_usd(
+        self, model: AnyModel, *, cache_ttl: CacheTtl = "5m"
+    ) -> int | None:
         """Cost of this usage in integer micro-USD at the model's list prices.
 
         Ceiling division — never undercount (ECOSYSTEM §4). Approximate, for
@@ -206,6 +209,10 @@ class Usage:
         Args:
             model: The model whose pricing to apply. For multi-model runs
                 (fallback), price each model's usage separately.
+            cache_ttl: The lifetime the run's cache breakpoints carried.
+                A run sets one TTL for every breakpoint it writes, so the
+                whole of `cache_write_tokens` priced at that rate is exact
+                rather than an estimate (NC9 #227).
 
         Returns:
             Cost in micro-USD, or None if the model has no verified pricing.
@@ -217,7 +224,12 @@ class Usage:
             self.input_tokens * pricing.input_per_mtok
             + self.output_tokens * pricing.output_per_mtok
             + self.cache_read_tokens * pricing.effective_cache_read_per_mtok
-            + self.cache_write_tokens * pricing.effective_cache_write_per_mtok
+            + self.cache_write_tokens
+            * (
+                pricing.effective_cache_write_1h_per_mtok
+                if cache_ttl == "1h"
+                else pricing.effective_cache_write_per_mtok
+            )
         )
         return -(-total // _MTOK)  # ceiling — never undercount
 
@@ -322,6 +334,7 @@ class BaseLLMClient(ABC):
         reasoning_effort: ReasoningEffort | None = None,
         max_tokens: int = LLMDefaults.MAX_OUTPUT_TOKENS,
         cache_conversation: bool = True,
+        cache_ttl: CacheTtl = "5m",
         server_compaction: bool = False,
     ) -> CompletionResponse:
         """Send a completion request to the LLM.
@@ -343,6 +356,9 @@ class BaseLLMClient(ABC):
                 one-shot calls whose conversation is never re-sent. System prompt
                 and tool caching are unaffected. Providers with automatic caching
                 ignore this.
+            cache_ttl: How long the provider keeps those breakpoints: "5m"
+                (the wire's default) or "1h", which bills a write at twice
+                base instead of 1.25x (NC9 #227). Anthropic-only.
             server_compaction: Opt into provider-side history compaction
                 (Anthropic's compact beta today; other providers ignore it,
                 like cache_conversation). Responses may then carry a
@@ -364,6 +380,7 @@ class BaseLLMClient(ABC):
         reasoning_effort: ReasoningEffort | None = None,
         max_tokens: int = LLMDefaults.MAX_OUTPUT_TOKENS,
         cache_conversation: bool = True,
+        cache_ttl: CacheTtl = "5m",
         server_compaction: bool = False,
     ) -> AsyncIterator[StreamChunk]:
         """Stream a completion request from the LLM.
@@ -380,6 +397,7 @@ class BaseLLMClient(ABC):
             cache_conversation: When False, providers with explicit prompt-cache
                 breakpoints (Anthropic) skip the last-message breakpoint. See
                 `complete`.
+            cache_ttl: The breakpoints' lifetime; see `complete`.
             server_compaction: Opt into provider-side history compaction;
                 see `complete`. Compaction blocks arrive on the terminal
                 chunk's `compaction` field.

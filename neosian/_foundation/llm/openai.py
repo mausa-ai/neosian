@@ -50,6 +50,7 @@ from neosian._foundation.shared.exceptions import (
 )
 from neosian._foundation.shared.types import (
     AnyModel,
+    CacheTtl,
     OpenAICompatible,
     ReasoningEffort,
     ResponseFormat,
@@ -107,6 +108,7 @@ class OpenAICompatibleClient(BaseLLMClient):
         reasoning_effort: ReasoningEffort | None = None,
         max_tokens: int = LLMDefaults.MAX_OUTPUT_TOKENS,
         cache_conversation: bool = True,  # noqa: ARG002 - no explicit cache breakpoints
+        cache_ttl: CacheTtl = "5m",  # noqa: ARG002 - Anthropic-only cache lifetime
         server_compaction: bool = False,  # noqa: ARG002 - Anthropic-only compaction beta
     ) -> CompletionResponse:
         """Send a completion request.
@@ -310,6 +312,7 @@ class OpenAICompatibleClient(BaseLLMClient):
         reasoning_effort: ReasoningEffort | None = None,
         max_tokens: int = LLMDefaults.MAX_OUTPUT_TOKENS,
         cache_conversation: bool = True,  # noqa: ARG002 - no explicit cache breakpoints
+        cache_ttl: CacheTtl = "5m",  # noqa: ARG002 - Anthropic-only cache lifetime
         server_compaction: bool = False,  # noqa: ARG002 - Anthropic-only compaction beta
     ) -> AsyncIterator[StreamChunk]:
         """Stream a completion request.

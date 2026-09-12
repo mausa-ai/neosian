@@ -40,6 +40,7 @@ from neosian._foundation.shared.exceptions import (
 )
 from neosian._foundation.shared.types import (
     AnyModel,
+    CacheTtl,
     Model,
     ReasoningEffort,
     ResponseFormat,
@@ -137,6 +138,7 @@ class AnthropicClient(BaseLLMClient):
         reasoning_effort: ReasoningEffort | None = None,
         max_tokens: int = LLMDefaults.MAX_OUTPUT_TOKENS,
         cache_conversation: bool = True,
+        cache_ttl: CacheTtl = "5m",
         server_compaction: bool = False,
     ) -> CompletionResponse:
         """Send a completion request to Anthropic.
@@ -184,11 +186,14 @@ class AnthropicClient(BaseLLMClient):
         effective_effort = self._resolve_effort(model, reasoning_effort)
 
         system_prompt, anthropic_messages = self._convert_messages(messages)
-        anthropic_tools = self._convert_tools(tools) if tools else None
+        anthropic_tools = self._convert_tools(tools, cache_ttl) if tools else None
 
         # Apply prompt caching breakpoints
         cached_system, anthropic_messages = self._apply_cache_control(
-            system_prompt, anthropic_messages, cache_last_message=cache_conversation
+            system_prompt,
+            anthropic_messages,
+            cache_last_message=cache_conversation,
+            ttl=cache_ttl,
         )
 
         # Only send temperature when explicitly requested: newer Claude
@@ -301,6 +306,7 @@ class AnthropicClient(BaseLLMClient):
         reasoning_effort: ReasoningEffort | None = None,
         max_tokens: int = LLMDefaults.MAX_OUTPUT_TOKENS,
         cache_conversation: bool = True,
+        cache_ttl: CacheTtl = "5m",
         server_compaction: bool = False,
     ) -> AsyncIterator[StreamChunk]:
         """Stream a completion request from Anthropic.
@@ -342,11 +348,14 @@ class AnthropicClient(BaseLLMClient):
         effective_effort = self._resolve_effort(model, reasoning_effort)
 
         system_prompt, anthropic_messages = self._convert_messages(messages)
-        anthropic_tools = self._convert_tools(tools) if tools else None
+        anthropic_tools = self._convert_tools(tools, cache_ttl) if tools else None
 
         # Apply prompt caching breakpoints
         cached_system, anthropic_messages = self._apply_cache_control(
-            system_prompt, anthropic_messages, cache_last_message=cache_conversation
+            system_prompt,
+            anthropic_messages,
+            cache_last_message=cache_conversation,
+            ttl=cache_ttl,
         )
 
         kwargs: dict[str, Any] = {
@@ -393,17 +402,23 @@ class AnthropicClient(BaseLLMClient):
     ) -> tuple[str | None, list[dict[str, Any]]]:
         return convert_messages(messages)
 
-    def _convert_tools(self, tools: list[ToolDefinition]) -> list[dict[str, Any]]:
-        return convert_tools(tools)
+    def _convert_tools(
+        self, tools: list[ToolDefinition], ttl: CacheTtl = "5m"
+    ) -> list[dict[str, Any]]:
+        return convert_tools(tools, ttl)
 
     def _apply_cache_control(
         self,
         system_prompt: str | None,
         anthropic_messages: list[dict[str, Any]],
         cache_last_message: bool = True,
+        ttl: CacheTtl = "5m",
     ) -> tuple[list[dict[str, Any]] | None, list[dict[str, Any]]]:
         return apply_cache_control(
-            system_prompt, anthropic_messages, cache_last_message=cache_last_message
+            system_prompt,
+            anthropic_messages,
+            cache_last_message=cache_last_message,
+            ttl=ttl,
         )
 
     def _convert_response_format(

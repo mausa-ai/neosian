@@ -120,4 +120,5 @@ parameters nullable (`T | None`). A registered door with
 `ToolResult.ok(data)` or `ToolResult.fail(error, system_reminder=…,
 code=…)`; the JSON envelope is what the model reads. The `tool_` codes
 and the agent-side knobs (`max_parallel_tools`, `max_tool_iterations`,
+`max_tool_result_chars`, which caps the model's copy of a big result,
 the approval gate) are on the `agent` page (`neosian docs agent`).

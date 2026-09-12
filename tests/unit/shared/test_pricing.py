@@ -94,6 +94,30 @@ class TestCostGoldenVectors:
         usage = Usage(input_tokens=1_234, output_tokens=567)
         assert usage.cost_micro_usd(Model.CEREBRAS_GPT_OSS_120B) == 700
 
+    def test_a_cache_write_bills_the_five_minute_rate_by_default(self) -> None:
+        # 100k cache-write on Sonnet 5 at 2.50 $/MTok = 250_000 µ$. The
+        # suite had no cost vector covering a cache write before NC9.
+        usage = Usage(input_tokens=0, output_tokens=0, cache_write_tokens=100_000)
+        assert usage.cost_micro_usd(Model.CLAUDE_SONNET_5) == 250_000
+
+    def test_an_hour_long_write_bills_twice_base(self) -> None:
+        # The same 100k at 2x input (4.00 $/MTok) = 400_000 µ$ (#227).
+        usage = Usage(input_tokens=0, output_tokens=0, cache_write_tokens=100_000)
+        assert usage.cost_micro_usd(Model.CLAUDE_SONNET_5, cache_ttl="1h") == 400_000
+
+    def test_the_ttl_moves_only_the_write(self) -> None:
+        """Reads cost the same at either lifetime, and Anthropic reports no
+        per-TTL split for them — so only the write rail moves."""
+        usage = Usage(
+            input_tokens=1_000,
+            output_tokens=1_000,
+            cache_read_tokens=1_000,
+            cache_write_tokens=0,
+        )
+        assert usage.cost_micro_usd(Model.CLAUDE_SONNET_5) == usage.cost_micro_usd(
+            Model.CLAUDE_SONNET_5, cache_ttl="1h"
+        )
+
     def test_sub_micro_usd_bills_one(self) -> None:
         # 1 in + 1 out on Cerebras 120B = 940_000 / 1e6 = 0.94 µ$ → 1
         usage = Usage(input_tokens=1, output_tokens=1)
@@ -132,6 +156,15 @@ class TestValueObjects:
         with pytest.raises(FrozenInstanceError):
             pricing.input_per_mtok = 3  # type: ignore[misc]
         assert not hasattr(pricing, "__dict__")
+
+    def test_the_hour_rate_is_twice_base_whatever_the_card_says(self) -> None:
+        """Derived, not carded: the 1h premium is a published multiple of a
+        rate the fingerprint already seals, so no column enters the card."""
+        pricing = ModelPricing(
+            input_per_mtok=100, output_per_mtok=200, cache_write_per_mtok=125
+        )
+        assert pricing.effective_cache_write_per_mtok == 125
+        assert pricing.effective_cache_write_1h_per_mtok == 200
 
     def test_effective_cache_rates_fall_back_to_input(self) -> None:
         bare = ModelPricing(input_per_mtok=100, output_per_mtok=200)

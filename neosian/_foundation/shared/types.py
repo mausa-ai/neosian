@@ -7,7 +7,7 @@ from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, NewType
+from typing import TYPE_CHECKING, Any, Final, Literal, NewType
 
 from pydantic import BaseModel
 
@@ -71,6 +71,16 @@ ToolFunction = Callable[..., Awaitable["ToolResult[Any]"]]
 # wiring inject here without touching the router. BaseLLMClient stays
 # type-only: shared never imports llm at runtime.
 ClientFactory = Callable[[AnyModel], "BaseLLMClient"]
+
+# Anthropic's two cache lifetimes (NC9, ledger #227). The wire's own
+# vocabulary: "5m" is its default and is sent as the bare marker, "1h"
+# adds the ttl key and bills the write at twice base instead of 1.25x.
+CacheTtl = Literal["5m", "1h"]
+
+# The model's copy of a tool result is capped here (NC9, ledger #228);
+# roughly 8k tokens under the §6 character heuristic.
+_TOOL_RESULT_CHARS: Final = 32_000
+_TOOL_RESULT_INVALID = "max_tool_result_chars must be >= 1 when set, got {value}"
 
 _MAX_TOOL_ITERATIONS_INVALID = "max_tool_iterations must be >= 1, got {value}"
 _TIMEOUT_INVALID = "timeout_seconds must be positive, got {value}"
@@ -294,6 +304,15 @@ class AgentConfig:
     max_cost_micro_usd: int | None = None
     max_total_tokens: int | None = None
     cache_conversation: bool = True
+    # How long Anthropic keeps this agent's cache breakpoints (#227).
+    # "1h" costs twice base per write instead of 1.25x, so it pays only
+    # when the prefix is re-sent beyond five minutes. Other providers
+    # ignore it, as they ignore cache_conversation.
+    cache_ttl: CacheTtl = "5m"
+    # The cap on the model's copy of a tool result (#228). None disables
+    # it; the streamed ToolResultEvent and the hooks always carry the
+    # whole result, capped or not.
+    max_tool_result_chars: int | None = _TOOL_RESULT_CHARS
     # Emit a `tool_call_delta` frame per argument fragment while the model
     # writes a tool call (NC9, ledger #226). Off by default: it is the one
     # frame a turn can emit many of per call, so a host asks for it rather
@@ -405,6 +424,10 @@ class AgentConfig:
         if self.timeout_seconds is not None and self.timeout_seconds <= 0:
             raise UnsupportedParameterError(
                 _TIMEOUT_INVALID.format(value=self.timeout_seconds)
+            )
+        if self.max_tool_result_chars is not None and self.max_tool_result_chars < 1:
+            raise UnsupportedParameterError(
+                _TOOL_RESULT_INVALID.format(value=self.max_tool_result_chars)
             )
         for _field, _value in (
             ("max_cost_micro_usd", self.max_cost_micro_usd),
