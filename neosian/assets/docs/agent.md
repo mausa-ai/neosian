@@ -31,6 +31,7 @@ quickstart (`neosian docs quickstart`) is the tour.
 | `max_cost_micro_usd` | `None` | The run's spend ceiling in integer micro-USD. Below. |
 | `max_total_tokens` | `None` | The run's token ceiling, all four token classes. Below. |
 | `cache_conversation` | `True` | Anthropic cache breakpoint on the last message; off for one-shot calls. |
+| `stream_tool_arguments` | `False` | Relay each piece of a tool call's arguments as a `tool_call_delta` frame. Below. |
 | `skill_dir` | `None` | Directory skills (`neosian docs skills`). |
 | `memory` | `None` | `MemoryConfig`: the memory tool over mounts (`neosian docs memory`). |
 | `client_factory` | `None` | The client seam: below. |
@@ -194,11 +195,34 @@ Two `*Event` families share the namespace. **Hook events**
 `AgentHooks` callbacks inline; they observe a run and cannot alter it
 (the shipped OTel exporter is one such consumer). **Wire events** are
 every `AgentEvent`: `ReadyEvent`, `ContentEvent`, `ReasoningEvent`,
-`ToolCallEvent`, `ToolResultEvent`, `ToolProgressEvent`,
-`MemoryWriteEvent`, `BlockedEvent`, `DoneEvent` and `ErrorEvent`, and
+`ToolCallEvent`, `ToolCallDeltaEvent`, `ToolResultEvent`,
+`ToolProgressEvent`, `MemoryWriteEvent`, `BlockedEvent`, `DoneEvent` and
+`ErrorEvent`, and
 they are what `run(stream=True)` yields, the frozen wire contract a host relays
 over SSE (`sse_stream`, `event_schemas`). `DoneEvent` and
 `AgentResponse` both carry `iterations_exhausted`.
+
+`ToolCallDeltaEvent` is the one frame you opt into:
+
+```python
+config = AgentConfig(system_prompt="...", stream_tool_arguments=True)
+```
+
+With it on, each piece of a tool call's arguments is relayed as it
+arrives, before the finished `tool_call` frame:
+
+```
+event: tool_call_delta
+data: {"event":"tool_call_delta","sequence":4,"tool_call_id":"call_1",
+       "name":"weather","fragment":"{\"city\": "}
+```
+
+A fragment is a slice of JSON text and is never valid JSON on its own:
+concatenate the fragments of one `tool_call_id` to get the arguments, or
+just read them off the `tool_call` frame, which is unchanged and still
+carries them parsed. It is off by default because it is the only frame a
+turn can emit many of per call, and a host that has not asked for it
+sees the stream it always saw.
 
 ## The approval gate
 

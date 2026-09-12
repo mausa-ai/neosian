@@ -10,6 +10,21 @@ phase close names the version.
 
 ### Added
 
+- **Tool-call arguments as they arrive.** The streaming vocabulary gains
+  an eleventh frame, `tool_call_delta`, carrying `{tool_call_id, name,
+  fragment}`: each piece of a tool call's arguments as the model writes
+  it, before the finished `tool_call` frame (which is unchanged and
+  still carries the parsed arguments). A fragment is a slice of JSON
+  text and is never valid JSON alone. It is opt-in —
+  `AgentConfig(stream_tool_arguments=True)` — because it is the only
+  frame a turn can emit many of per call; with it off the stream is
+  byte-identical to before. `StreamChunk` gains
+  `tool_call_fragments: tuple[ToolCallFragment, ...]`, populated by both
+  wires whether or not the frame is on, so a caller driving a client
+  directly reads them too. Both wires already built arguments from
+  fragments and concatenated them into a local buffer; now they forward
+  as well as buffer (ECOSYSTEM §5, DESIGN §6, ledger #226).
+
 - **Per-call tools and a `tool_choice`.** `Agent.run` and
   `AgentSession.run` take `tools=` (the registered tools this run may
   call, by name or by decorated function; `None` is all of them, `[]` is
@@ -65,6 +80,9 @@ phase close names the version.
 
 ### Changed
 
+- The OpenAI wire's streamed chunk reader moved to
+  `llm/openai_stream.py` (an internal split for size-gate headroom, the
+  way `anthropic_stream.py` was split out of `anthropic.py`).
 - `BaseLLMClient.complete` and `.stream` take `tool_choice`; a host's
   own client implementing the seam gains the parameter with a `None`
   default. Anthropic's tool, tool-choice and output-schema converters

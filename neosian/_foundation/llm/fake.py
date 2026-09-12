@@ -20,12 +20,14 @@ from neosian._foundation.llm.base import (
     Role,
     StreamChunk,
     ToolCall,
+    ToolCallFragment,
     ToolDefinition,
     Usage,
 )
 from neosian._foundation.llm.errors import wrap_provider_error
 from neosian._foundation.shared.constants import LLMDefaults
 from neosian._foundation.shared.exceptions import FakeScriptExhaustedError
+from neosian._foundation.shared.serialization import safe_json_dumps
 from neosian._foundation.shared.types import (
     AnyModel,
     ReasoningEffort,
@@ -129,16 +131,42 @@ def _split(text: str | None, width: int) -> list[str]:
     return [text[i : i + width] for i in range(0, len(text), width)]
 
 
+def _fragments(turn: FakeTurn, script: FakeScript, api_model: str) -> list[StreamChunk]:
+    """Each scripted call's arguments, sliced the way a wire sends them.
+
+    Both real wires stream a tool call's arguments in pieces before the
+    finished call lands (#226); a fake that jumped straight to the call
+    would let an agent-side bug through.
+    """
+    return [
+        StreamChunk(
+            tool_call_fragments=(
+                ToolCallFragment(id=call.id, name=call.name, fragment=part),
+            ),
+            model=api_model,
+        )
+        for call in turn.tool_calls
+        for part in _split(
+            safe_json_dumps(call.arguments, "fake_tool_call.arguments", compact=True),
+            script.chunk_chars,
+        )
+    ]
+
+
 def _chunks(turn: FakeTurn, script: FakeScript, model: AnyModel) -> list[StreamChunk]:
     """The full deterministic chunk sequence for a turn."""
     api_model = model.value
-    parts = [
-        StreamChunk(reasoning=part, model=api_model)
-        for part in _split(turn.reasoning, script.chunk_chars)
-    ] + [
-        StreamChunk(content=part, model=api_model)
-        for part in _split(turn.content, script.chunk_chars)
-    ]
+    parts = (
+        [
+            StreamChunk(reasoning=part, model=api_model)
+            for part in _split(turn.reasoning, script.chunk_chars)
+        ]
+        + [
+            StreamChunk(content=part, model=api_model)
+            for part in _split(turn.content, script.chunk_chars)
+        ]
+        + _fragments(turn, script, api_model)
+    )
     finish = _stop_reason(turn)
     if script.stream_shape is StreamShape.ANTHROPIC:
         lead = StreamChunk(

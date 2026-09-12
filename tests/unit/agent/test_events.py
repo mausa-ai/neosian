@@ -24,6 +24,7 @@ from neosian._foundation.agent.events import (
     MemoryWriteEvent,
     ReadyEvent,
     ReasoningEvent,
+    ToolCallDeltaEvent,
     ToolCallEvent,
     ToolProgressEvent,
     ToolResultEvent,
@@ -51,6 +52,7 @@ def _one_of_each() -> list[AgentEvent]:
         ContentEvent(content="Hello"),
         ReasoningEvent(reasoning="thinking..."),
         ToolCallEvent(id="call_1", name="lookup", arguments={"q": "x"}),
+        ToolCallDeltaEvent(tool_call_id="call_1", name="lookup", fragment='{"q": '),
         ToolResultEvent(tool_call_id="call_1", success=True, data={"n": 1}),
         ToolProgressEvent(tool_call_id="call_1", elapsed_ms=15000),
         MemoryWriteEvent(
@@ -82,6 +84,7 @@ class TestProtocol:
             "content",
             "reasoning",
             "tool_call",
+            "tool_call_delta",
             "tool_result",
             "tool_progress",
             "memory_write",
@@ -129,6 +132,16 @@ class TestPayloads:
             "id": "c1",
             "name": "lookup",
             "arguments": {"q": "x"},
+        }
+
+    def test_tool_call_delta(self) -> None:
+        event = ToolCallDeltaEvent(tool_call_id="c1", name="lookup", fragment='{"q": ')
+        assert event.to_dict() == {
+            "event": "tool_call_delta",
+            "sequence": 0,
+            "tool_call_id": "c1",
+            "name": "lookup",
+            "fragment": '{"q": ',
         }
 
     def test_tool_result(self) -> None:
@@ -318,7 +331,7 @@ class TestEventSchemas:
             AGENT_EVENT_SCHEMA_KEY
         }
         root = schemas[AGENT_EVENT_SCHEMA_KEY]
-        assert root["title"] == "AgentEvent" and len(root["oneOf"]) == 10
+        assert root["title"] == "AgentEvent" and len(root["oneOf"]) == 11
 
     def test_schemas_discriminate_on_event(self) -> None:
         for name, schema in event_schemas().items():

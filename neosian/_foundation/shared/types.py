@@ -294,6 +294,12 @@ class AgentConfig:
     max_cost_micro_usd: int | None = None
     max_total_tokens: int | None = None
     cache_conversation: bool = True
+    # Emit a `tool_call_delta` frame per argument fragment while the model
+    # writes a tool call (NC9, ledger #226). Off by default: it is the one
+    # frame a turn can emit many of per call, so a host asks for it rather
+    # than inheriting it. The finished `tool_call` frame is unchanged
+    # either way.
+    stream_tool_arguments: bool = False
     skill_dir: str | Path | None = None
     memory: "MemoryConfig | None" = None
     client_factory: "ClientFactory | None" = None

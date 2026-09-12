@@ -2,6 +2,7 @@
 
 import logging
 from collections.abc import AsyncIterator
+from contextlib import aclosing
 from dataclasses import replace
 from typing import Any, Final
 
@@ -39,11 +40,11 @@ from neosian._foundation.llm.openai_convert import (
     tool_choice_body,
     usage_of,
 )
+from neosian._foundation.llm.openai_stream import iter_chunks, reasoning_of
 from neosian._foundation.shared.constants import ErrorMessages, LLMDefaults
 from neosian._foundation.shared.exceptions import (
     ContextWindowExceededError,
     NeosianError,
-    ProviderError,
     ToolCallGenerationError,
     UnsupportedParameterError,
 )
@@ -254,10 +255,7 @@ class OpenAICompatibleClient(BaseLLMClient):
 
     def _reasoning_of(self, part: object) -> str | None:
         """The door's reasoning field off a message or delta, if it carries one."""
-        if self._door.reasoning_field is None:
-            return None
-        value = getattr(part, self._door.reasoning_field, None)
-        return value if isinstance(value, str) and value else None
+        return reasoning_of(part, self._door)
 
     def _parse_response(self, response: ChatCompletion) -> CompletionResponse:
         """Parse the response into CompletionResponse."""
@@ -352,86 +350,9 @@ class OpenAICompatibleClient(BaseLLMClient):
                 extra_body=self._extra_body(effective_effort),
             )
 
-            # Track tool calls being built across chunks
-            tool_call_builders: dict[int, dict[str, str]] = {}
-            tool_call_extras: dict[int, dict[str, Any]] = {}
-            refused = False
-
-            async for chunk in stream:
-                # An in-band error frame ends the stream loudly (#218).
-                if (extra := extra_of(chunk)) and "error" in extra:
-                    raise ProviderError(self._door.name, str(extra["error"]))
-                # Usage rides whichever chunk carries it — OpenAI's trailing
-                # choices-empty chunk, or a door's final content chunk (LL-12).
-                usage = usage_of(chunk.usage) if chunk.usage else None
-                if not chunk.choices:
-                    if usage:
-                        yield StreamChunk(usage=usage, model=chunk.model)
-                    continue
-
-                choice = chunk.choices[0]
-                delta = choice.delta
-
-                # Handle content
-                refusal = refusal_of(delta)
-                refused = refused or refusal is not None
-                content = delta.content or refusal
-
-                # Handle tool calls (streamed in parts)
-                tool_calls: list[ToolCall] = []
-                if delta.tool_calls:
-                    for tc in delta.tool_calls:
-                        idx = tc.index
-                        if idx not in tool_call_builders:
-                            tool_call_builders[idx] = {
-                                "id": "",
-                                "name": "",
-                                "arguments": "",
-                            }
-
-                        if tc.id:
-                            tool_call_builders[idx]["id"] = tc.id
-                        if extra := extra_of(tc):
-                            tool_call_extras.setdefault(idx, {}).update(extra)
-                        if tc.function:
-                            if tc.function.name:
-                                tool_call_builders[idx]["name"] = tc.function.name
-                            if tc.function.arguments:
-                                tool_call_builders[idx][
-                                    "arguments"
-                                ] += tc.function.arguments
-
-                # On finish, yield completed tool calls
-                # A refusal arrives in deltas; the terminal chunk names it.
-                finish_reason: str | None = choice.finish_reason
-                if refused and finish_reason:
-                    finish_reason = "refusal"
-                # Any terminal finish releases the accumulated calls: Gemini
-                # ends a streamed tool turn with "stop" (DESIGN §19.7), and
-                # the agent loop keys on the calls' presence, not the reason.
-                if finish_reason and tool_call_builders:
-                    for idx, builder in tool_call_builders.items():
-                        tool_calls.append(
-                            ToolCall(
-                                id=ToolCallId(builder["id"]),
-                                name=ToolName(builder["name"]),
-                                arguments=tool_arguments(
-                                    self._door.name,
-                                    builder["arguments"],
-                                    stop_reason=finish_reason,
-                                ),
-                                extra=tool_call_extras.get(idx),
-                            )
-                        )
-
-                yield StreamChunk(
-                    content=content,
-                    reasoning=self._reasoning_of(delta),
-                    tool_calls=tool_calls,
-                    finish_reason=finish_reason,
-                    usage=usage,
-                    model=chunk.model,
-                )
+            async with aclosing(iter_chunks(stream, self._door)) as chunks:
+                async for chunk in chunks:
+                    yield chunk
         except NeosianError:
             raise
         except Exception as exc:

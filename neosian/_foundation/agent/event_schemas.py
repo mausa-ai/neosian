@@ -47,6 +47,14 @@ class _ToolCallPayload(TypedDict):
     arguments: dict[str, Any]
 
 
+class _ToolCallDeltaPayload(TypedDict):
+    event: Literal["tool_call_delta"]
+    sequence: int
+    tool_call_id: str
+    name: str
+    fragment: str
+
+
 class _ToolResultPayload(TypedDict):
     event: Literal["tool_result"]
     sequence: int
@@ -106,6 +114,7 @@ _PAYLOAD_TYPES: Final[dict[str, Any]] = {
     AgentEventType.CONTENT.value: _ContentPayload,
     AgentEventType.REASONING.value: _ReasoningPayload,
     AgentEventType.TOOL_CALL.value: _ToolCallPayload,
+    AgentEventType.TOOL_CALL_DELTA.value: _ToolCallDeltaPayload,
     AgentEventType.TOOL_RESULT.value: _ToolResultPayload,
     AgentEventType.TOOL_PROGRESS.value: _ToolProgressPayload,
     AgentEventType.MEMORY_WRITE.value: _MemoryWritePayload,
@@ -121,7 +130,7 @@ def event_schemas() -> dict[str, Any]:
     """JSON Schemas of the wire payloads — hosts codegen their SSE seam.
 
     One schema per event name, plus an ``agent_event`` root: a ``oneOf``
-    over all ten, discriminated on the ``event`` key. pydantic runs here
+    over all eleven, discriminated on the ``event`` key. pydantic runs here
     only — zero hot-path cost.
     """
     from pydantic import TypeAdapter  # schema-export time only

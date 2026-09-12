@@ -20,6 +20,7 @@ from neosian._foundation.agent.events import (
     ContentEvent,
     DoneEvent,
     ReasoningEvent,
+    ToolCallDeltaEvent,
     ToolCallEvent,
 )
 from neosian._foundation.agent.guards import (
@@ -152,6 +153,14 @@ async def stream_with_client(
                     if chunk.content:
                         content_parts.append(chunk.content)
                         yield ContentEvent(content=chunk.content)
+
+                    if chunk.tool_call_fragments and agent._stream_tool_arguments:
+                        for piece in chunk.tool_call_fragments:
+                            yield ToolCallDeltaEvent(
+                                tool_call_id=piece.id,
+                                name=piece.name,
+                                fragment=piece.fragment,
+                            )
 
                     if chunk.tool_calls:
                         accumulated_tool_calls.extend(chunk.tool_calls)

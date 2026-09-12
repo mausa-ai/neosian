@@ -35,6 +35,7 @@ class AgentEventType(str, Enum):
     CONTENT = "content"
     REASONING = "reasoning"
     TOOL_CALL = "tool_call"
+    TOOL_CALL_DELTA = "tool_call_delta"
     TOOL_RESULT = "tool_result"
     TOOL_PROGRESS = "tool_progress"
     MEMORY_WRITE = "memory_write"
@@ -165,6 +166,35 @@ class ToolCallEvent(_EventBehavior):
             "id": self.id,
             "name": self.name,
             "arguments": dict(self.arguments),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class ToolCallDeltaEvent(_EventBehavior):
+    """One piece of a tool call's arguments, while the model is writing it.
+
+    Opt-in (`AgentConfig.stream_tool_arguments`): it is the only frame a
+    turn can emit many of per call, so a host asks for it rather than
+    inheriting it (#226). `fragment` is a slice of JSON text and is never
+    valid JSON on its own — a consumer concatenates the fragments of one
+    `tool_call_id`, and the finished, parsed arguments still arrive on the
+    `tool_call` frame that follows.
+    """
+
+    type: ClassVar[AgentEventType] = AgentEventType.TOOL_CALL_DELTA
+
+    tool_call_id: str
+    name: str
+    fragment: str
+    sequence: int = 0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "event": self.type.value,
+            "sequence": self.sequence,
+            "tool_call_id": self.tool_call_id,
+            "name": self.name,
+            "fragment": self.fragment,
         }
 
 
@@ -347,6 +377,7 @@ AgentEvent = (
     | ContentEvent
     | ReasoningEvent
     | ToolCallEvent
+    | ToolCallDeltaEvent
     | ToolResultEvent
     | ToolProgressEvent
     | MemoryWriteEvent

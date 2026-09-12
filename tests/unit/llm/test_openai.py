@@ -157,6 +157,86 @@ class TestOpenAIClientToolConversion:
 
 
 @pytest.mark.unit
+class TestOpenAIArgumentFragments:
+    """Argument deltas reach the caller as well as the builder (#226)."""
+
+    def _chunk(self, arguments: str | None, *, call_id: str | None, finish: str | None):  # type: ignore[no-untyped-def]
+        chunk = autospec(SPEC["chunk"])
+        chunk.choices = [autospec(SPEC["chunk_choice"])]
+        chunk.choices[0].delta.content = None
+        chunk.choices[0].delta.tool_calls = (
+            [
+                ChoiceDeltaToolCall(
+                    index=0,
+                    id=call_id,
+                    type="function",
+                    function=ChoiceDeltaToolCallFunction(
+                        name="get_weather" if call_id else None, arguments=arguments
+                    ),
+                )
+            ]
+            if arguments is not None
+            else None
+        )
+        chunk.choices[0].finish_reason = finish
+        chunk.usage = None
+        return chunk
+
+    @pytest.mark.asyncio
+    async def test_each_delta_is_forwarded_and_still_assembled(self) -> None:
+        client = OpenAIClient(api_key="test-key")
+        first = self._chunk('{"location":', call_id="call_1", finish=None)
+        # The wire announces the id once; a later fragment still carries it.
+        second = self._chunk(' "Paris"}', call_id=None, finish=None)
+        terminal = self._chunk(None, call_id=None, finish="tool_calls")
+
+        async def chunks() -> Any:
+            yield first
+            yield second
+            yield terminal
+
+        _sdk(client).chat.completions.create = AsyncMock(return_value=chunks())
+
+        streamed = [
+            chunk
+            async for chunk in client.stream(
+                messages=[Message(role=Role.USER, content="Hi")],
+                model=Model.GPT_5_6_LUNA,
+            )
+        ]
+
+        fragments = [f for chunk in streamed for f in chunk.tool_call_fragments]
+        assert [f.fragment for f in fragments] == ['{"location":', ' "Paris"}']
+        assert {f.id for f in fragments} == {"call_1"}
+        assert {f.name for f in fragments} == {"get_weather"}
+        assert streamed[-1].tool_calls[0].arguments == {"location": "Paris"}
+
+    @pytest.mark.asyncio
+    async def test_a_content_chunk_carries_no_fragments(self) -> None:
+        client = OpenAIClient(api_key="test-key")
+        chunk = autospec(SPEC["chunk"])
+        chunk.choices = [autospec(SPEC["chunk_choice"])]
+        chunk.choices[0].delta.content = "hi"
+        chunk.choices[0].delta.tool_calls = None
+        chunk.choices[0].finish_reason = "stop"
+        chunk.usage = None
+
+        async def chunks() -> Any:
+            yield chunk
+
+        _sdk(client).chat.completions.create = AsyncMock(return_value=chunks())
+
+        streamed = [
+            piece
+            async for piece in client.stream(
+                messages=[Message(role=Role.USER, content="Hi")],
+                model=Model.GPT_5_6_LUNA,
+            )
+        ]
+        assert all(piece.tool_call_fragments == () for piece in streamed)
+
+
+@pytest.mark.unit
 class TestOpenAIToolChoice:
     """Three modes are the wire's own strings, a named tool its object
     form, and `parallel` rides the body flag beside them (NC9 #224)."""

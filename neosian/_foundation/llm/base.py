@@ -59,6 +59,24 @@ class ToolCall:
     extra: dict[str, Any] | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class ToolCallFragment:
+    """One provider-sized piece of a tool call's arguments, mid-stream.
+
+    Both wires build a tool call's arguments from fragments — Anthropic's
+    `input_json_delta`, the OpenAI wire's argument deltas — and both
+    concatenated them into a local buffer before NC9 (#226). A fragment
+    is a slice of JSON text, never valid JSON on its own: it is carried
+    verbatim and never parsed. `id` and `name` are the ones the wire has
+    already announced for the call being built, so a consumer can group
+    fragments without waiting for the finished `ToolCall`.
+    """
+
+    id: ToolCallId
+    name: ToolName
+    fragment: str
+
+
 @dataclass
 class Message:
     """A message in the conversation.
@@ -125,6 +143,10 @@ class StreamChunk:
     content: str | None = None
     reasoning: str | None = None
     tool_calls: list[ToolCall] = field(default_factory=list)
+    # The arguments this chunk carried for a call still being built
+    # (#226). Always populated; whether it reaches the wire is the
+    # agent's `stream_tool_arguments` knob, not the client's business.
+    tool_call_fragments: tuple[ToolCallFragment, ...] = ()
     finish_reason: str | None = None
     usage: "Usage | None" = None
     model: str | None = None

@@ -2164,6 +2164,100 @@ class TestAnthropicStrictToolUse:
 
 
 @pytest.mark.unit
+class TestAnthropicArgumentFragments:
+    """`input_json_delta` reaches the caller as well as the buffer (#226)."""
+
+    @pytest.mark.asyncio
+    async def test_each_delta_is_forwarded_and_still_buffered(
+        self, client: AnthropicClient, sample_messages: list[Message]
+    ) -> None:
+        block_start = MagicMock(spec_set=SPEC["content_block_start"])
+        block_start.type = "content_block_start"
+        block = MagicMock(spec=SPEC["tool_use"], type="tool_use", id="toolu_abc")
+        block.name = "get_weather"
+        block_start.content_block = block
+
+        deltas = []
+        for piece in ('{"location":', ' "Paris"}'):
+            event = MagicMock(spec_set=SPEC["content_block_delta"])
+            event.type = "content_block_delta"
+            event.delta = MagicMock(
+                spec=SPEC["input_json_delta"],
+                type="input_json_delta",
+                partial_json=piece,
+            )
+            deltas.append(event)
+
+        block_stop = MagicMock(spec_set=SPEC["content_block_stop"])
+        block_stop.type = "content_block_stop"
+        msg_delta = MagicMock(spec_set=SPEC["message_delta"])
+        msg_delta.type = "message_delta"
+        msg_delta.usage = MagicMock(spec=SPEC["usage"], input_tokens=0, output_tokens=5)
+        msg_delta.delta = MagicMock(spec_set=SPEC["stop"], stop_reason="tool_use")
+        msg_stop = MagicMock(spec_set=SPEC["message_stop"])
+        msg_stop.type = "message_stop"
+
+        async def events() -> AsyncIterator[Any]:
+            yield block_start
+            for event in deltas:
+                yield event
+            yield block_stop
+            yield msg_delta
+            yield msg_stop
+
+        mock_stream = MagicMock()
+        mock_stream.__aenter__ = AsyncMock(return_value=mock_stream)
+        mock_stream.__aexit__ = AsyncMock(return_value=None)
+        mock_stream.__aiter__ = lambda _: events()
+        _sdk(client).messages.stream = MagicMock(return_value=mock_stream)
+
+        chunks = [
+            chunk
+            async for chunk in client.stream(
+                messages=sample_messages, model=Model.CLAUDE_SONNET_5
+            )
+        ]
+
+        fragments = [f for chunk in chunks for f in chunk.tool_call_fragments]
+        assert [f.fragment for f in fragments] == ['{"location":', ' "Paris"}']
+        # Every fragment names the call the block announced.
+        assert {f.id for f in fragments} == {"toolu_abc"}
+        assert {f.name for f in fragments} == {"get_weather"}
+        # The buffer still decodes the finished call at message_stop.
+        assert chunks[-1].tool_calls[0].arguments == {"location": "Paris"}
+
+    @pytest.mark.asyncio
+    async def test_text_deltas_carry_no_fragments(
+        self, client: AnthropicClient, sample_messages: list[Message]
+    ) -> None:
+        text_delta = MagicMock(spec_set=SPEC["content_block_delta"])
+        text_delta.type = "content_block_delta"
+        text_delta.delta = MagicMock(
+            spec=SPEC["text_delta"], type="text_delta", text="hi"
+        )
+        msg_stop = MagicMock(spec_set=SPEC["message_stop"])
+        msg_stop.type = "message_stop"
+
+        async def events() -> AsyncIterator[Any]:
+            yield text_delta
+            yield msg_stop
+
+        mock_stream = MagicMock()
+        mock_stream.__aenter__ = AsyncMock(return_value=mock_stream)
+        mock_stream.__aexit__ = AsyncMock(return_value=None)
+        mock_stream.__aiter__ = lambda _: events()
+        _sdk(client).messages.stream = MagicMock(return_value=mock_stream)
+
+        chunks = [
+            chunk
+            async for chunk in client.stream(
+                messages=sample_messages, model=Model.CLAUDE_SONNET_5
+            )
+        ]
+        assert all(chunk.tool_call_fragments == () for chunk in chunks)
+
+
+@pytest.mark.unit
 class TestAnthropicToolChoice:
     """The four choices are Anthropic's four types, and a choice only ever
     rides beside a tool list (NC9 #224)."""

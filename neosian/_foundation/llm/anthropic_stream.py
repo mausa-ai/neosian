@@ -21,6 +21,7 @@ from neosian._foundation.llm.base import (
     StreamChunk,
     TextBlock,
     ToolCall,
+    ToolCallFragment,
     Usage,
 )
 from neosian._foundation.llm.errors import tool_arguments
@@ -245,6 +246,21 @@ async def iter_chunks(events: AsyncIterator[Any]) -> AsyncGenerator[StreamChunk]
                 )
             elif delta_type == "input_json_delta":
                 current_tool_input += event.delta.partial_json
+                # The fragment goes out as well as into the buffer: the
+                # buffer still decodes the finished call at message_stop,
+                # and a consumer that wants the arguments as they arrive
+                # no longer has to wait for it (#226).
+                if current_tool_id is not None:
+                    yield StreamChunk(
+                        tool_call_fragments=(
+                            ToolCallFragment(
+                                id=ToolCallId(current_tool_id),
+                                name=ToolName(current_tool_name or ""),
+                                fragment=event.delta.partial_json,
+                            ),
+                        ),
+                        model=api_model,
+                    )
             elif delta_type == "compaction_delta" and current_compaction is not None:
                 # The delta carries the FULL summary (the SDK
                 # accumulator assigns, never appends) — += here

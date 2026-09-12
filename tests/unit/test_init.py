@@ -180,6 +180,7 @@ def test_all_list_matches_exports() -> None:
         "ClientFactory",
         "CompletionResponse",
         "StreamChunk",
+        "ToolCallFragment",
         "ToolDefinition",
         # Streaming events (v2 wire contract, DESIGN §6)
         "AgentEvent",
@@ -190,6 +191,7 @@ def test_all_list_matches_exports() -> None:
         "ContentEvent",
         "ReasoningEvent",
         "ToolCallEvent",
+        "ToolCallDeltaEvent",
         "ToolResultEvent",
         "ToolProgressEvent",
         "MemoryWriteEvent",
