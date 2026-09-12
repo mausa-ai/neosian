@@ -12,7 +12,7 @@ import yaml
 from neosian import RemoteStore
 from neosian._foundation.memory.paths import path_segments
 from neosian._foundation.memory.scope import parse_scope, scope_directory
-from neosian._foundation.memory.testing import MemoryStoreContract
+from neosian.memory.testing import MemoryStoreContract
 
 from .conftest import RemoteOverFile
 

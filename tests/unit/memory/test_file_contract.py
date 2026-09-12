@@ -11,7 +11,7 @@ import yaml
 from neosian._foundation.memory.file import FileStore
 from neosian._foundation.memory.paths import path_segments
 from neosian._foundation.memory.scope import parse_scope, scope_directory
-from neosian._foundation.memory.testing import MemoryStoreContract
+from neosian.memory.testing import MemoryStoreContract
 
 from .conftest import ManualClock
 

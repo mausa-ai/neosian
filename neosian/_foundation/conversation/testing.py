@@ -150,6 +150,25 @@ class ConversationStoreContract:
         assert await store.last_turn_number(conversation_id) == 0
 
     @_asyncio
+    async def test_an_append_is_visible_to_the_next_read(
+        self, store: ConversationStore, conversation_id: str
+    ) -> None:
+        """CS2, read-your-writes within a task — named rather than leaned
+        on silently by every other test (NQ2, MC-14)."""
+        first = await store.append_turn(conversation_id, self._exchange("a"))
+        assert await store.last_turn_number(conversation_id) == first.turn
+        assert [t.turn for t in await store.read_turns(conversation_id)] == [first.turn]
+        second = await store.append_turn(conversation_id, self._exchange("b"))
+        assert await store.last_turn_number(conversation_id) == second.turn
+        assert [t.turn for t in await store.read_turns(conversation_id)] == [
+            first.turn,
+            second.turn,
+        ]
+        assert [
+            t.turn for t in await store.read_turns(conversation_id, after=first.turn)
+        ] == [second.turn]
+
+    @_asyncio
     async def test_append_assigns_turn_one_and_reads_back(
         self, store: ConversationStore, conversation_id: str
     ) -> None:

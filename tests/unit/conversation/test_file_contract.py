@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from neosian._foundation.conversation.testing import ConversationStoreContract
 from neosian._foundation.memory.file import FileStore
+from neosian.conversation.testing import ConversationStoreContract
 
 from .conftest import ManualClock
 

@@ -19,10 +19,10 @@ import pytest
 import yaml
 
 from neosian import RemoteStore
-from neosian._foundation.conversation.testing import ConversationStoreContract
 from neosian._foundation.memory.paths import path_segments
 from neosian._foundation.memory.scope import Scope, parse_scope, scope_directory
-from neosian._foundation.memory.testing import MemoryStoreContract
+from neosian.conversation.testing import ConversationStoreContract
+from neosian.memory.testing import MemoryStoreContract
 from tests.external.postgres.conftest import plant_sql, store_schema
 
 from .conftest import FileLeg, PgLeg

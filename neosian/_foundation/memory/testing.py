@@ -13,8 +13,10 @@ The `store` fixture must be function-scoped, empty and isolated —
 `test_store_starts_empty` fails loudly when it leaks state. Override
 `plant_raw_document` to enable the two substrate-planting tests
 (format refusal, unknown-key preservation); by default they skip.
-Two paths differing only in case are never used (case-insensitive
-filesystems are a legal substrate).
+Two paths differing only in case are never used (case-folding
+filesystems are a legal substrate, ECOSYSTEM §2). `expected_version` and
+C2 read-your-writes live in `testing_concurrency.ConcurrencyContract`,
+the ledger reads in `testing_audit.LedgerContract`; both are inherited.
 """
 
 from __future__ import annotations
@@ -25,6 +27,7 @@ import pytest
 
 from neosian._foundation.memory.scope import Scope, parse_scope
 from neosian._foundation.memory.testing_audit import LedgerContract
+from neosian._foundation.memory.testing_concurrency import ConcurrencyContract
 from neosian._foundation.shared.exceptions import (
     MemoryConflictError,
     MemoryDocumentNotFoundError,
@@ -40,12 +43,36 @@ if TYPE_CHECKING:
 
 _asyncio = pytest.mark.asyncio
 
-_BAD_SCOPES = ("", "user", "user:", "User:1", "user:a:b", "user:1\n", "user:..")
-_BAD_PATHS = ("", "/a", "a/", "a//b", ".", "..", "a/../b", "a\\b", "a b")
+_BAD_SCOPES = (
+    "",
+    "user",
+    "user:",
+    "User:1",
+    "user:a:b",
+    "user:1\n",
+    "user:..",
+    "user:" + "a" * 129,  # segment id over 128
+    "/".join(f"t{n}:a" for n in range(9)),  # over 8 segments
+    "user:" + "a" * 508,  # over 512 characters
+)
+_BAD_PATHS = (
+    "",
+    "/a",
+    "a/",
+    "a//b",
+    ".",
+    "..",
+    "a/../b",
+    "a\\b",
+    "a b",
+    "a" * 129,  # segment over 128
+    "/".join("s" for _ in range(17)),  # over 16 segments
+    "/".join("a" * 64 for _ in range(9)),  # over 512 characters
+)
 _ROUND_TRIP = ("", "x", "x\n", "\n", "a\r\nb", "---\ntitle: t\n---\nbody", "café ✓")
 
 
-class MemoryStoreContract(LedgerContract):
+class MemoryStoreContract(LedgerContract, ConcurrencyContract):
     """Inherit ~25 conformance tests; provide a `store` fixture."""
 
     @pytest.fixture
@@ -409,28 +436,6 @@ class MemoryStoreContract(LedgerContract):
             await store.versions(scope, bad_path)
         with pytest.raises(MemoryPathInvalidError):
             await store.redact(scope, path=bad_path)
-
-    # Optimistic concurrency ----------------------------------------------
-
-    @_asyncio
-    async def test_matching_expected_version_is_accepted(
-        self, store: MemoryStore, scope: Scope
-    ) -> None:
-        await store.write(scope, "doc", "v1")
-        document = await store.write(scope, "doc", "v2", expected_version=1)
-        assert document.version == 2
-
-    @_asyncio
-    async def test_expected_version_mismatch_raises_conflict(
-        self, store: MemoryStore, scope: Scope
-    ) -> None:
-        if not type(store).supports_optimistic_concurrency:
-            pytest.skip("store does not declare optimistic concurrency")
-        await store.write(scope, "doc", "v1")
-        with pytest.raises(MemoryConflictError):
-            await store.write(scope, "doc", "v2", expected_version=99)
-        with pytest.raises(MemoryConflictError):
-            await store.write(scope, "absent", "x", expected_version=1)
 
     # Format discipline (C6) ----------------------------------------------
 

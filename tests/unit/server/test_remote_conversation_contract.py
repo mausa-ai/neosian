@@ -6,7 +6,7 @@ from collections.abc import AsyncIterator
 import pytest
 
 from neosian import RemoteStore
-from neosian._foundation.conversation.testing import ConversationStoreContract
+from neosian.conversation.testing import ConversationStoreContract
 
 from .conftest import RemoteOverFile
 

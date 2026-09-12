@@ -1,5 +1,6 @@
 """The neosian.memory facade: pinned surface, lazily loaded (DESIGN §1, §8)."""
 
+import pathlib
 import subprocess
 import sys
 
@@ -74,7 +75,11 @@ def test_memory_all_is_pinned() -> None:
 def test_memory_testing_exports_the_contract_kit() -> None:
     import neosian.memory.testing
 
-    assert neosian.memory.testing.__all__ == ["MemoryStoreContract"]
+    assert neosian.memory.testing.__all__ == [
+        "ConcurrencyContract",
+        "LedgerContract",
+        "MemoryStoreContract",
+    ]
 
 
 @pytest.mark.unit
@@ -94,3 +99,24 @@ def test_memory_facade_does_not_load_the_testing_kit() -> None:
         "assert 'pytest' not in sys.modules"
     )
     subprocess.run([sys.executable, "-c", code], check=True)
+
+
+@pytest.mark.unit
+def test_every_contract_suite_reaches_the_kit_through_the_facade() -> None:
+    """TP-16: the seam hosts are told to use is the seam we use.
+
+    Six of eight call sites imported `neosian._foundation.*.testing`
+    directly, so the public facade was never exercised by the default
+    (unit) tier — the review's finding. Planting a kit at the private path
+    is still legal for the library's own internals; importing one from a
+    test suite is not.
+    """
+    root = pathlib.Path(__file__).resolve().parents[1]
+    offenders = [
+        f"{path.relative_to(root.parent)}:{number}"
+        for path in sorted(root.rglob("test_*.py"))
+        for number, line in enumerate(path.read_text().splitlines(), start=1)
+        if line.startswith("from neosian._foundation.")
+        and (".memory.testing" in line or ".conversation.testing" in line)
+    ]
+    assert offenders == [], offenders
