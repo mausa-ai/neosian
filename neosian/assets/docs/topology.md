@@ -6,32 +6,32 @@ summary: Who runs neosian code, where the bytes live, and one writer per root
 # Topology, not hierarchy
 
 Two axes decide how you deploy neosian: **who runs neosian code** and
-**where the bytes live**. Four shapes fall out — none is a hierarchy,
+**where the bytes live**. Four shapes fall out, none of them a hierarchy,
 and the quickstart always begins embedded.
 
 |  | bytes on local files | bytes in a database |
 |---|---|---|
-| **your app runs neosian** | embed + `FileStore` — dev, local tools, single-writer agents | embed + `PostgresStore` — production, multi-worker |
+| **your app runs neosian** | embed + `FileStore`: dev, local tools, single-writer agents | embed + `PostgresStore`: production, multi-worker |
 | **a separate process runs neosian** | the state process (`neosian serve`) owning a FileStore root | the state process over Postgres |
 
 ## Embed first
 
 A single app embeds the library and talks to its store directly:
 files for dev/local, Postgres for production. `PostgresStore` is a
-**driver, not a process** — the database is your existing infra, the
+**driver, not a process**: the database is your existing infra, the
 SQLAlchemy shape. An embedded app needs no proxy in front of its own
 store.
 
 ## The daemon is reach, not capability
 
-The state process — `neosian serve` — is the
+The state process (`neosian serve`) is the
 first-class answer when state is **shared across processes, apps, or
-languages** — including one container in a dev compose beside redis
-and minio — or when a FileStore root needs more than one writer: one
+languages**, including one container in a dev compose beside redis
+and minio, or when a FileStore root needs more than one writer: one
 process owns the files and every client speaks to it. It adds no
 capability the library lacks, only reach. `docker run` is never step
 one. And nothing is a one-way door: `neosian export DIR` writes any
-store — a root, Postgres, the daemon by `--url` — to a directory that
+store (a root, Postgres, the daemon by `--url`) to a directory that
 is itself a FileStore root, and `neosian import DIR` restores it
 verbatim into any other, one scope or conversation per request over
 the wire, version history and actors carried as they were.
@@ -55,13 +55,13 @@ from a checkout (`docker build -t neosian .`).
 The default command serves a FileStore on the `/data` volume; set
 `NEOSIAN_POSTGRES_DSN` (and override the command, e.g. `--schema
 neosian`) for the Postgres backend. Without the container it is one
-command: `NEOSIAN_SERVE_TOKEN=… neosian serve` — no flags serves the
+command: `NEOSIAN_SERVE_TOKEN=… neosian serve`, where no flags serve the
 home, `--root DIR` another root. The token is env-only and an unset
 token refuses to start; TLS terminates at a reverse proxy.
 
 ## The home: one place for every project
 
-`~/.neosian` — or `$NEOSIAN_HOME` — is the store every command and the
+`~/.neosian` (or `$NEOSIAN_HOME`) is the store every command and the
 playground use when no flag names one, and the root a neosian agent
 reaches through `home()`. Per project is a scope, not a root:
 `neosian record install` and `neosian mcp install` spell this
@@ -72,7 +72,7 @@ audit --scope user:<login>/proj:<slug>` then lists every agent's work
 in the project.
 
 Many projects and agents on one home is the multi-writer shape, so the
-answer is the state process on the home — one process owning the files,
+answer is the state process on the home: one process owning the files,
 every hook and MCP server registered with `--url`. As a per-user
 service, a docs recipe, never library scope:
 
@@ -119,7 +119,7 @@ at `/mcp` when the server is started with mounts (`--scope` or
 ## Who wrote what
 
 The state process asserts identity (DESIGN §20): `NEOSIAN_SERVE_TOKEN`
-may be a table — `claude-code:laptop=…,app:kit=…` — and every write
+may be a table (`claude-code:laptop=…,app:kit=…`) and every write
 through the wire is recorded under the presenting token's client
 (`<client>[/<what the client said>]`); a bare token is the one client
 `client:default`. Shell entry points reach the process with `--url` and
@@ -127,8 +127,8 @@ through the wire is recorded under the presenting token's client
 on any substrate, and `--url` reads it through the process.
 
 The agent door reads as well as writes. A foreign agent's `SessionStart`
-hook prints the memory index and "where we left off" — the scope's
-recent sessions, log-projected — into its own window, and its MCP
+hook prints the memory index and "where we left off" (the scope's
+recent sessions, log-projected) into its own window, and its MCP
 client calls `recall_turn(turn, conversation)` on `/mcp` (or the stdio
 server) to re-read any recorded turn verbatim: one client writes, a
 different client recalls, on the same store (`neosian docs agents`,
@@ -137,7 +137,7 @@ different client recalls, on the same store (`neosian docs agents`,
 ## One writer per root
 
 FileStore's in-process lock serializes mutations inside one process;
-across processes, files cannot arbitrate — two writers on one root
+across processes, files cannot arbitrate: two writers on one root
 can interleave a read-modify-write and lose an edit. neosian
 documents the constraint instead of engineering around it: no lock
 files, no `flock`, no leases (they half-promise arbitration at the
@@ -145,9 +145,9 @@ price of an NFS/Windows/containers portability matrix and a
 stale-lock failure mode, on the substrate whose entire value is that
 you can `cat` it).
 
-**A root is owned by one writer at a time** — an agent's shell
+**A root is owned by one writer at a time**: an agent's shell
 (`neosian memory`), one MCP server process, or one embedding
-application — while any number of readers may run beside it; a
+application. Any number of readers may run beside it; a
 concurrent reader is bounded to a stale read, never a corrupted
 store. Multi-writer needs route to `PostgresStore`, which arbitrates
 on the version-row primary key, or to the state process, where one
@@ -159,7 +159,7 @@ on the version-row primary key, or to the state process, where one
 - One app, one machine, inspectable state → embed + `FileStore`.
 - One app, many workers or many machines → embed + `PostgresStore`.
 - Many apps or languages sharing one memory, or a FileStore root that
-  needs more than one writer — the home, once two projects' hooks or
-  servers write it → the state process (`neosian serve`).
+  needs more than one writer (the home, once two projects' hooks or
+  servers write it) → the state process (`neosian serve`).
 - Changing your mind later → `neosian export` from the one, `neosian
   import` into the other; the archive is a FileStore root either way.

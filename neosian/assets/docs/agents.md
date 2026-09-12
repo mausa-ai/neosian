@@ -9,7 +9,7 @@ neosian is the state layer for the agent you already use. The memory
 half is the MCP server and `neosian mcp install` (`neosian docs mcp`).
 The record half is `neosian record`: the agent's hooks call it with one
 payload on stdin per event, and a prompt-to-stop span lands in the store
-as **one turn with a foreign actor** — `claude-code:<session_id>` — in a
+as **one turn with a foreign actor** (`claude-code:<session_id>`) in a
 conversation keyed by the session id, plus a small **sessions document**
 under the scope. Transcript files are never read: the documented hook
 payloads are the import path.
@@ -30,18 +30,18 @@ neosian record install --client opencode --root ~/.my-agent/state --scope user:m
   green afterwards and names an interpreter that stopped resolving.
 - **No flags is the home and this project.** With no store flag the
   line names `~/.neosian` (or `$NEOSIAN_HOME`); with no mount flag it
-  names this directory's layout — `user:<login>` at `/user`,
+  names this directory's layout: `user:<login>` at `/user`,
   `user:<login>/proj:<slug>` at `/project`, the slug the directory's
-  name — spelled out in the config so the scope stays explicit. A
+  name, spelled out in the config so the scope stays explicit. A
   neosian agent lands in the same place with `FileStore(home())` and
   `project_scope()` (`neosian docs quickstart`).
 - Print mode (the default) puts the paste-able `hooks` fragment on
-  stdout — the one command on `UserPromptSubmit`, `PostToolUse`, `Stop`
-  and `SessionStart` — and guidance on stderr.
+  stdout (the one command on `UserPromptSubmit`, `PostToolUse`, `Stop`
+  and `SessionStart`) and guidance on stderr.
 - `--write` merges it into the project's `.claude/settings.json`
   (`.mcp.json`'s scope), preserving every other key, event and hook; a
   group carrying our command is replaced, so a re-run is idempotent.
-  `~/.claude` must exist — neosian never creates another program's
+  `~/.claude` must exist: neosian never creates another program's
   config home.
 - The same store flags as `mcp install` render the same mount layout;
   the hook line adds `--spool` (absolute) and `--agent` when not the
@@ -49,7 +49,7 @@ neosian record install --client opencode --root ~/.my-agent/state --scope user:m
   token through `NEOSIAN_CLIENT_TOKEN` in the client's own environment.
 - Hooks beside an MCP server on one FileStore root are **two writers**,
   and the home is one root for every project on the machine: run
-  `neosian serve` (no flags — it serves the home; `neosian docs
+  `neosian serve` (no flags: it serves the home; `neosian docs
   topology` has the per-user service recipe) and install with `--url`,
   or use Postgres.
 - **Codex** takes the same fragment at the project's `.codex/hooks.json`
@@ -67,7 +67,7 @@ neosian record install --client opencode --root ~/.my-agent/state --scope user:m
   writes a small plugin file, `.opencode/plugins/neosian-record.js`
   (`~/.config/opencode`, or `$OPENCODE_CONFIG_DIR`, must exist), that
   maps `chat.message`, `tool.execute.after` and `session.idle` onto the
-  verb's three write payloads and pipes them in — ours whole,
+  verb's three write payloads and pipes them in: ours whole,
   overwritten on re-run, never merged; print mode prints its source.
   The writer is `opencode:<session_id>`. OpenCode's only context door
   is an experimental per-call hook, so its row is write-only: the read
@@ -87,52 +87,52 @@ neosian record install --client opencode --root ~/.my-agent/state --scope user:m
 | `SessionStart` | nothing written: the verb prints the context (below), which the client adds to the model's window |
 
 The sessions document lives at `sessions/<session_id>` in the mount at
-`/project` (else the first read-write mount) — agent, conversation,
-started, last prompt, turn count — so the next agent finds the listing
+`/project` (else the first read-write mount) with agent, conversation,
+started, last prompt and turn count, so the next agent finds the listing
 in its index. Between the prompt and the stop the span waits in a
 per-session spool (`spool/` under the home; `--spool DIR`), never the store; a
 failed landing keeps it, and the next stop carries the whole span.
 
 Exit tiers bend once, for the hook's sake: Claude Code reads a hook's
 exit 2 as "block", so the verb exits 2 only for a bad invocation
-(caught at install time) and 1 for everything after — a broken store
-never blocks the agent — and prints nothing on stdout unless `--json`,
+(caught at install time) and 1 for everything after (a broken store
+never blocks the agent) and prints nothing on stdout unless `--json`,
 except on `SessionStart`.
 
-## Session start — where we left off
+## Session start: where we left off
 
 Claude Code and Codex add a `SessionStart` hook's stdout to the model's
 context, so on that event the verb prints two blocks and writes
 nothing:
 
-1. **The memory index** of the scope — the same rendering the MCP
+1. **The memory index** of the scope: the same rendering the MCP
    server's instructions carry, so the sessions documents are listed.
-2. **Where we left off** — the scope's recent sessions, log-projected
+2. **Where we left off**: the scope's recent sessions, log-projected
    the way a conversation view is (`neosian docs memory`): one line per
    turn, its number in square brackets, newest session first, under one
    8192-character budget shared evenly (older turns fold into a count
-   line — paging, never deletion). Which sessions depends on `source`:
+   line: paging, never deletion). Which sessions depends on `source`:
    after a **compaction** (`source: compact`) the session's own record
-   comes back — the re-injection of what the client just paged out;
+   comes back, the re-injection of what the client just paged out;
    on `startup`, `resume`, `clear` or `fork` the three most recently
    written sessions, the own one included when it is among them.
 
 The block names every turn it shows, and the footer names the call
 that re-reads one: `recall_turn(n, conversation="<id>")` on the
-`neosian-memory` MCP server (`neosian docs mcp`) — the same tool a
+`neosian-memory` MCP server (`neosian docs mcp`), the same tool a
 neosian `Conversation` uses to page its own history. Bodies stay
 behind tools; the block is a table of contents, not the transcript. An
 empty scope still prints the frame, so the agent knows the door exists.
-A store that cannot be reached exits 1 with nothing on stdout —
+A store that cannot be reached exits 1 with nothing on stdout:
 `SessionStart` never blocks.
 
 The window stays each agent's own: neosian feeds it at the client's
-extension points — session start, the post-compaction re-injection —
+extension points (session start, the post-compaction re-injection)
 and never replaces it. The three lifetimes hold across clients
-(`neosian docs memory`): skills are how — the `skills/` documents of
-the mounts, the same list and the same MCP prompts from every client
-(`neosian docs skills`) — memory is what we know, the board is what we
-are doing now; the record is history — recallable
+(`neosian docs memory`): skills are how (the `skills/` documents of
+the mounts, the same list and the same MCP prompts from every client,
+`neosian docs skills`), memory is what we know, the board is what we
+are doing now, and the record is history, recallable
 turn by turn, never in the window whole. Reflection at pre-compact is not offered: a hook
 process is keyless, and the foreign agent's own model is the only one
 in the room.
@@ -151,8 +151,8 @@ A row exists only while its walkthrough is green on a real install.
 
 | client | memory (`mcp install`) | record (`record install`) | session start |
 |---|---|---|---|
-| Claude Code | ✓ | ✓ — walkthrough green 2026-09-02 | ✓ — `SessionStart`, stdout as context (2026-09-03) |
-| Codex | ✓ print + `codex mcp add` | ✓ — walkthrough green 2026-09-03 (`codex exec`) | ✓ — the same event and `source` values (its reference, 2026-09-03) |
-| OpenCode | ✓ | ✓ — walkthrough green 2026-09-03 (`opencode run`, a plugin) | — (an experimental per-call door only; not wired) |
+| Claude Code | ✓ | ✓ walkthrough green 2026-09-02 | ✓ `SessionStart`, stdout as context (2026-09-03) |
+| Codex | ✓ print + `codex mcp add` | ✓ walkthrough green 2026-09-03 (`codex exec`) | ✓ the same event and `source` values (its reference, 2026-09-03) |
+| OpenCode | ✓ | ✓ walkthrough green 2026-09-03 (`opencode run`, a plugin) | — (an experimental per-call door only; not wired) |
 | Claude Desktop | ✓ | no hooks surface | — |
-| Cursor | ✓ | not yet — enters on a verified hook surface | — |
+| Cursor | ✓ | not yet; enters on a verified hook surface | — |

@@ -13,6 +13,10 @@ phase close names the version.
 - The ten shipped docs pages title themselves with a colon, not an em
   dash (`Memory: the file school`); the values are quoted YAML, so a
   title carrying a `: ` survives the frontmatter round trip.
+- Their bodies drop the em dash too: roughly 450 of them become a
+  colon, a comma or a pair of parentheses, sentence by sentence. The
+  48 empty-table-cell markers stay. `baselines.md`'s Fingerprints rows
+  read `` `path`: sha256 ``, and the gate that reads them follows.
 
 ## [1.0.0rc5] - 2026-09-11
 

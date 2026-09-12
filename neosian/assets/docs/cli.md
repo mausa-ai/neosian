@@ -6,7 +6,7 @@ summary: status, setup, chat, configure; then the memory grammar, --json, exit t
 # The shell
 
 One `neosian` for two readers: the operator console for the state your
-agents already write, and the agent-facing grammar underneath it —
+agents already write, and the agent-facing grammar underneath it:
 every verb with `--json` and exit tiers, so a script or an agent uses
 the same doors. On a terminal the verbs render (a table, a tree,
 markdown); under a pipe, `NO_COLOR` or `--json` the bytes are plain and
@@ -23,35 +23,35 @@ neosian update [--check | --write] [--mode off|notify|auto]
 neosian                                  # on a terminal: chat; under a pipe: the help
 ```
 
-- **`status`** — the home and whether it exists; the config and which
+- **`status`**: the home and whether it exists; the config and which
   providers have a key (names and sources, never values); this
   directory's two scopes; per client (Claude Code, Codex, OpenCode)
   installed / MCP registered / hooks present / the interpreter those
   files name still resolving; the last recorded session; the one-writer
   note; the installation shape with its upgrade line; the update knob.
-  Exit 0 whenever it ran — findings are data.
-- **`setup`** — detects the clients present and runs both installers
+  Exit 0 whenever it ran; findings are data.
+- **`setup`**: detects the clients present and runs both installers
   for each (`mcp install` and `record install`, the home and this
-  directory's layout): prints what would land, `--write` applies it.
-- **`configure`** — keys under `<home>/config.toml`, one row per
+  directory's layout). It prints what would land; `--write` applies it.
+- **`configure`**: keys under `<home>/config.toml`, one row per
   provider the catalog knows (shipped, door rows, registered doors);
-  `--provider NAME --key -` reads the key from stdin — never argv;
+  `--provider NAME --key -` reads the key from stdin, never argv;
   bare on a terminal prompts for each.
-- **`chat`** — the resident agent: it knows neosian (the `docs` tool
+- **`chat`**: the resident agent. It knows neosian (the `docs` tool
   reads the shipped pages on demand), writes to `/user` and `/project`
   on the home and loads the skills your other agents wrote. A PROMPT or
   piped stdin runs one turn; `--json` the envelope (text, tool calls,
   usage, µ$); `--model fake` is keyless. The model: `--model`, else
   `[chat] model` in `config.toml`, else the first provider with a key
   (Anthropic, OpenAI, Cerebras, registered doors).
-- **`update`** — checks PyPI's simple index; `[update] mode` is `off`
+- **`update`**: checks PyPI's simple index; `[update] mode` is `off`
   (default), `notify` (one stderr line on the human verbs, once per
   24 h) or `auto` (applies a uv tool install within the major, never a
   pre-release over a stable, then re-executes itself).
 
 **No flags means this project.** Every verb below resolves the working
-directory's layout — `user:<login>` at `/user`, `user:<login>/proj:<slug>`
-at `/project`, the same pair the installers write — when no `--scope`
+directory's layout (`user:<login>` at `/user`, `user:<login>/proj:<slug>`
+at `/project`, the same pair the installers write) when no `--scope`
 or `--mount` names a mount; `NEOSIAN_SCOPE` is `--scope`'s environment
 twin. The store is the home unless `--root`, `--url` or the DSN names
 one.
@@ -80,7 +80,7 @@ neosian memory redact PATH [--all]
 neosian memory revert PATH --version N
 ```
 
-`view /` renders the memory index — the first command to try. `-` as
+`view /` renders the memory index: the first command to try. `-` as
 the value of `--content` / `--new-str` / `--insert-text` reads stdin
 (the heredoc idiom; exactly one payload flag per command):
 
@@ -98,30 +98,30 @@ EOF
 | `--url URL` | the state process instead of a root; its token in `NEOSIAN_CLIENT_TOKEN` |
 | `--scope SCOPE` | single read-write mount of SCOPE at `/memories` (the sugar); `NEOSIAN_SCOPE` is its environment twin |
 | `--mount scope=...,path=...` | explicit mount; repeatable; append `,ro` (read-only) or `,eo` (edit-only) |
-| *(neither)* | this directory's project layout — `user:<login>` at `/user`, `user:<login>/proj:<slug>` at `/project`, the pair the installers render; a directory with no name refuses at exit 2 |
+| *(neither)* | this directory's project layout: `user:<login>` at `/user`, `user:<login>/proj:<slug>` at `/project`, the pair the installers render; a directory with no name refuses at exit 2 |
 | `--actor NAME` | who writes, `<kind>:<id>` (default `cli:local`; `cli:<host>` names the agent driving the shell) |
 | `--schema NAME` | Postgres schema (Postgres only) |
 
 Postgres arrives only through the `NEOSIAN_POSTGRES_DSN` environment
-variable — there is no `--dsn` flag (argv is world-readable), and the
+variable; there is no `--dsn` flag (argv is world-readable), and the
 state process through `--url` with `NEOSIAN_CLIENT_TOKEN` set the same
 way. Exactly one of the three stores is named; the others are refused. An edit-only mount (`eo`) fixes its document set:
 existing documents stay editable, but nothing may be created, deleted,
-or renamed there — pre-created layouts the agent works within.
+or renamed there (pre-created layouts the agent works within).
 
 ## Exit tiers, everywhere
 
-- **0** — success.
-- **1** — the command ran and failed: a corrective failure rendered
+- **0**: success.
+- **1**: the command ran and failed; a corrective failure rendered
   as `error: [code] message` plus a `hint:` line on stderr.
-- **2** — the invocation was wrong: grammar, an unknown name, an
+- **2**: the invocation was wrong: grammar, an unknown name, an
   invalid scope or mount. Nothing is constructed on this tier.
-- **130** — interrupt.
+- **130**: interrupt.
 
-stdout carries the artifact; stderr carries guidance — redirecting
+stdout carries the artifact; stderr carries guidance, so redirecting
 stdout always captures something well-formed. With `--json` anywhere in
 argv, a tier-2 error also prints one `{"error": "usage", "hint": …}`
-object on stdout — the tier and the stderr text stay.
+object on stdout; the tier and the stderr text stay.
 
 ## --json
 
@@ -133,39 +133,39 @@ neosian memory view / --root .neosian/memory --scope user:me --json
 ```
 
 `maintain` and the operator verbs print their own envelopes instead
-(described below) — still exactly one JSON object on stdout. Argv-tier
-errors (exit 2) stay argparse text on stderr — a shell answers grammar
+(described below), still exactly one JSON object on stdout. Argv-tier
+errors (exit 2) stay argparse text on stderr: a shell answers grammar
 before any envelope exists.
 
-## maintain — the gardener
+## maintain: the gardener
 
 `maintain` is not one of the six dispatch commands: it runs the
 maintenance pass over the writable mounts (`neosian docs memory`).
-Keyless by default — prune empty documents, merge byte-identical
-duplicates keeping the oldest — and `--model MODEL` adds the semantic
+Keyless by default (prune empty documents, merge byte-identical
+duplicates keeping the oldest), and `--model MODEL` adds the semantic
 pass (merge overlapping, prune stale, promote), which needs that
 provider's API key: a missing key is refused at construction, never a
 silent half-pass. `--min-age-days N` (default 7) protects recently
-updated documents from deletion. Its `--json` envelope is its own —
-`{"writes": [...], "model", "usage", "cost_micro_usd"}` — and a
+updated documents from deletion. Its `--json` envelope is its own,
+`{"writes": [...], "model", "usage", "cost_micro_usd"}`, and a
 requested model stage that fails exits 1 and says so on stderr while
 the deterministic actions stand.
 
-## The operator verbs — audit and remedy
+## The operator verbs: audit and remedy
 
 `versions`, `redact` and `revert` sit beside `maintain` on the operator
 side of the line: keyless acts over the store, never part of the
 agent-facing six-command vocabulary.
 
 **`versions PATH [--limit N]`** lists a document's version rows newest
-first. Text output is the audit trail without content — one line per
+first. Text output is the audit trail without content: one line per
 row (version, action, actor, timestamp). `--json` carries every row's
 **full content**: that is the point-in-time read, and it means history
-reveals everything a document ever held — `redact` is the only eraser.
+reveals everything a document ever held. `redact` is the only eraser.
 Empty history is an answer (exit 0), not an error.
 
-**`redact PATH [--all]`** clears content everywhere for one document —
-current state and every version row — preserving the audit skeleton
+**`redact PATH [--all]`** clears content everywhere for one document,
+current state and every version row alike, preserving the audit skeleton
 (paths, versions, actors, timestamps). A mount root redacts the whole
 scope, but only with the explicit `--all`; without it the grammar
 refuses. Redaction is the one irreversible act: the skeleton is
@@ -174,36 +174,36 @@ Its `--json` envelope is `{"path", "scope_wide", "matched"}`.
 
 **`revert PATH --version N`** undoes one write: `N` names the row to
 undo (find it with `versions`) and must be the newest. One rule covers
-every case — no live document before row N means delete, otherwise the
-prior content comes back — and the revert *appends* a new version row,
+every case (no live document before row N means delete, otherwise the
+prior content comes back) and the revert *appends* a new version row,
 never rewriting history. Its `--json` envelope is the write receipt's
 fields (`command`, `path`, `version`, `previous_path`).
 
-## The ledger — `neosian audit`
+## The ledger: `neosian audit`
 
 `neosian audit [--scope SCOPE] [--conversation ID] [--actor A] [--since T]
 [--limit N] [--json]` answers "what was done, by whom, when" for a scope
 (default: `NEOSIAN_SCOPE`, else this directory's project scope),
 newest first: every memory version row (deleted documents included),
 every redaction, and one conversation's turns when named. It takes the
-store selection above (`--root`, `--url`, or the DSN) — `--scope` is a
-raw scope here, not a mount — and answers identically on every
+store selection above (`--root`, `--url`, or the DSN; `--scope` is a
+raw scope here, not a mount) and answers identically on every
 substrate. `--actor` filters by prefix: `claude-code:s1` matches
 `claude-code:s1#4` and `claude-code:s1/conv:x#2`. Through the state
 process every actor carries the client prefix the daemon asserted.
 Exit tiers hold; an empty ledger is an answer (exit 0).
 
-## Moving a store — `neosian export` / `neosian import`
+## Moving a store: `neosian export` / `neosian import`
 
-`neosian export DIR` writes the store to `DIR`, whole — every scope and
+`neosian export DIR` writes the store to `DIR`, whole: every scope and
 conversation, version history and redaction trail included, verbatim.
 `DIR` is a FileStore root: `cat` it, `grep` it, `neosian serve --root
-DIR` it, or `neosian import DIR` it into any other store — a fresh
+DIR` it, or `neosian import DIR` it into any other store: a fresh
 root, Postgres by the DSN, or the state process by `--url`. Both verbs
 take the store selection above (the home when none is named) and
 `--scope S` / `--conversation C` (repeatable) to move only what they
 name; naming either moves nothing of the other kind. An import needs
-every unit it touches — a scope, a conversation — to be empty in the
+every unit it touches (a scope, a conversation) to be empty in the
 target: an occupied one refuses the whole run before anything is
 written (`memory_conflict` / `agent_conversation_conflict`, reason
 `target_occupied`); nothing merges, nothing overwrites. `--json` prints
@@ -211,7 +211,7 @@ one object (`verb`, `archive`, `client`, `units` with the per-unit
 counts). Exit tiers hold: 2 for a bad name or a missing archive, 1 when
 a store refuses, 0 with the report (`nothing to export` is an answer).
 
-## The record — `neosian record`
+## The record: `neosian record`
 
 `neosian record` is what a foreign agent's hooks call: one hook payload
 on stdin per event, `hook_event_name` saying which. `UserPromptSubmit`
@@ -222,7 +222,7 @@ flags above plus `--agent KIND` (default `claude-code`) and `--spool
 DIR` (default `spool/` under the home, never the store). The sessions
 document lands in the mount at `/project` when there is one, else the
 first read-write mount. `neosian record
-install --client claude-code|codex|opencode [--write]` renders or applies the hooks —
+install --client claude-code|codex|opencode [--write]` renders or applies the hooks,
 the `mcp install` twin (`neosian docs agents`). The exit tiers bend once
 for the hook's sake: 2 only for argv, 1 for everything after, so a
 broken store never blocks the agent; stdout is silent unless `--json`
@@ -233,7 +233,7 @@ broken store never blocks the agent; stdout is silent unless `--json`
 
 A FileStore root is owned by one writer at a time. Do not run
 `neosian memory` writes against a root an MCP server, a `neosian
-serve` process, or an embedding application is serving — route
+serve` process, or an embedding application is serving: route
 multi-writer needs to Postgres or to the state process itself
 (`--url`, so the shell and an agent's MCP server both write through
 the one process that owns the files). The

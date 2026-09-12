@@ -25,7 +25,7 @@ _GATED = (
     "examples/eval_memory_baseline.yaml",
 )
 
-_FINGERPRINT = re.compile(r"`([^`]+\.yaml)` — sha256\s*\n?\s*`([0-9a-f]{64})`")
+_FINGERPRINT = re.compile(r"`([^`]+\.yaml)`: sha256\s*\n?\s*`([0-9a-f]{64})`")
 
 
 def _recorded_fingerprints() -> dict[str, str]:

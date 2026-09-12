@@ -9,8 +9,8 @@ A tool is an async function under `@Tool(name, description)`. Its
 signature is the contract: one pydantic model is synthesised from the
 parameters, its JSON Schema is what every provider receives, and the
 same model validates every call before the body runs. The arguments a
-tool receives are therefore the ones its signature promises — a nested
-model as an instance, a `datetime` as a `datetime` — or the model gets
+tool receives are therefore the ones its signature promises (a nested
+model as an instance, a `datetime` as a `datetime`), or the model gets
 a failure it can repair.
 
 ```python
@@ -46,10 +46,10 @@ async def ship(
 | `str`, `int`, `float`, `bool` | the JSON scalar |
 | `list[T]`, `dict[str, T]`, `set[T]`, `tuple[A, B]` | `array` (`uniqueItems`, `prefixItems`) / `object` with the value schema |
 | `Literal[...]`, an `Enum` | `enum` (the Enum under `$defs`) |
-| `T | None` | `anyOf` with `null` — nullable, and still required when it has no default |
+| `T | None` | `anyOf` with `null`: nullable, and still required when it has no default |
 | `TypedDict`, `BaseModel`, `@dataclass` | a closed object under `$defs`, referenced by `$ref`; nesting and recursion work |
 | `datetime`, `date`, `UUID`, `Decimal` | `string` with `format`, validated back into the type |
-| `Any` | `{}` — anything; say so deliberately |
+| `Any` | `{}`: anything; say so deliberately |
 | a default | `default`, and the parameter leaves `required` |
 
 Every object carries `additionalProperties: false`; no property carries
@@ -63,7 +63,7 @@ that is not JSON, a `params=` name the signature does not declare.
 Three sources, in precedence order:
 
 1. `Annotated[T, Desc("…")]` on the parameter.
-2. `Tool(params={"name": "…"})` — prose kept outside the function; the
+2. `Tool(params={"name": "…"})`: prose kept outside the function; the
    builtins take theirs from the shipped YAML packs.
 3. A Google-style `Args:` section in the docstring (`name: text`,
    `name (type): text`, continuation lines indented deeper).
@@ -71,8 +71,8 @@ Three sources, in precedence order:
 ## Constraints, and what each provider keeps
 
 `Min`, `Max`, `MinLen`, `MaxLen`, `Pattern` are neosian's names;
-pydantic's own vocabulary — `Field(ge=1, max_length=8)`,
-`annotated_types.Gt(0)`, `StringConstraints` — is honoured beside them.
+pydantic's own vocabulary (`Field(ge=1, max_length=8)`,
+`annotated_types.Gt(0)`, `StringConstraints`) is honoured beside them.
 All of it lands in the schema and all of it is **enforced at the tool
 boundary on every provider**; what differs is whether the model is told
 up front:
@@ -101,8 +101,8 @@ returned to the model as `ToolResult.fail` with
 
 The body never sees a call that did not validate. On Anthropic a failed
 result also rides as `is_error: true` on the `tool_result` block. A
-definition the library attached rather than built — an MCP server's
-(`neosian docs mcp`) — has no local model: the core binds, the server
+definition the library attached rather than built, an MCP server's
+(`neosian docs mcp`), has no local model: the core binds, the server
 validates and answers in-band.
 
 ## Strict mode
@@ -111,7 +111,7 @@ validates and answers in-band.
 schema. Anthropic honours it against a per-request complexity budget
 (twenty strict tools). On the OpenAI wire the tool is sent
 with `strict: true` in the strict-mode shape: every property required,
-`null` defaults dropped, every object closed — so make optional
+`null` defaults dropped, every object closed, so make optional
 parameters nullable (`T | None`). A registered door with
 `strict_schemas=False` sends the tool best-effort instead. Default off.
 
