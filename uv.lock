@@ -953,7 +953,7 @@ wheels = [
 
 [[package]]
 name = "neosian"
-version = "1.0.0rc5"
+version = "1.0.0rc6"
 source = { editable = "." }
 dependencies = [
     { name = "anthropic" },

@@ -8,6 +8,10 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [1.0.0rc6] - 2026-09-12
+
+The shipped pages read without an em dash.
+
 ### Changed
 
 - The ten shipped docs pages title themselves with a colon, not an em
@@ -1014,6 +1018,7 @@ pre-release — pin it explicitly; the API stability promise rides v1.0.0.
   guard.
 
 [Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc5...HEAD
+[1.0.0rc6]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc5...v1.0.0rc6
 [1.0.0rc5]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc4...v1.0.0rc5
 [1.0.0rc4]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc3...v1.0.0rc4
 [1.0.0rc3]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc2...v1.0.0rc3

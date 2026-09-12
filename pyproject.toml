@@ -1,6 +1,6 @@
 [project]
 name = "neosian"
-version = "1.0.0rc5"
+version = "1.0.0rc6"
 description = "Async-only library for LLM agents: tools, orchestration, streaming, guardrails — with opt-in conversation, memory, and compaction layers over a stateless core."
 readme = "README.md"
 license = "Apache-2.0"
