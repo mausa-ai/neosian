@@ -1,7 +1,7 @@
 # neosian
 
 > Async-only Python state layer for LLM agents: durable conversations,
-> agent-curated file-shaped memory, and context lifecycle — on storage the
+> agent-curated file-shaped memory, and context lifecycle, on storage the
 > product owns. Keyless to boot; Python >= 3.12.
 
 A stateless `Agent` core (tools, orchestration, streaming, fallback,
@@ -12,50 +12,50 @@ state process's HTTP wire. Agents share context by config: a `board`
 mount on a task scope, and read-only `ConversationView`s of another
 conversation with cross-conversation `recall_turn`. Long URLs, paths and
 ids in aged turns become `[link N]` handles, expanded at the tool boundary.
-Skills are documents under `skills/` in a mount — versioned, curated by
+Skills are documents under `skills/` in a mount: versioned, curated by
 the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
 `McpServer` consumes any MCP server as agent tools, over stdio or HTTP.
 
 ## Learn from the shell
 
-- `neosian docs` — list the shipped topics (they travel in the wheel, so
+- `neosian docs`: list the shipped topics (they travel in the wheel, so
   they always describe the installed version).
 - `neosian docs quickstart | agent | tools | memory | skills | cli | mcp | agents | topology`
-  — one page, markdown on stdout, pipe-safe.
-- `neosian docs topology` — who runs neosian code x where the bytes live;
+  prints one page, markdown on stdout, pipe-safe.
+- `neosian docs topology`: who runs neosian code x where the bytes live;
   one writer per FileStore root.
 - The same pages online, rendered from the wheel at the current release:
   https://docs.neosian.com (this file at https://docs.neosian.com/llms.txt).
 
 ## Set up from the shell (the human path)
 
-- `neosian status [--json]` — is this machine set up: the home, which
+- `neosian status [--json]`: is this machine set up? The home, which
   providers have a key (never values), this directory's two scopes, per
   client installed / MCP registered / hooks present / interpreter
   resolving, the last recorded session, the install shape. Exit 0
-  always — findings are data.
-- `neosian setup [--write]` — wire every installed client (Claude Code,
+  always; findings are data.
+- `neosian setup [--write]`: wire every installed client (Claude Code,
   Codex, OpenCode) to the home: MCP + the record hooks; print first.
-- `neosian configure --list | --provider NAME --key - | --delete` — keys
+- `neosian configure --list | --provider NAME --key - | --delete`: keys
   under `<home>/config.toml`, read from stdin, never argv.
-- `neosian chat [PROMPT] [--model M] [--json]` — the resident agent that
+- `neosian chat [PROMPT] [--model M] [--json]`: the resident agent that
   knows neosian (a `docs` tool over these pages) on the same memory;
   a PROMPT or piped stdin is one turn, `--model fake` keyless. Bare
   `neosian` on a terminal opens it.
-- `neosian update [--mode off|notify|auto]` — a PyPI check on the human
+- `neosian update [--mode off|notify|auto]`: a PyPI check on the human
   verbs only, never on an agent verb; `auto` applies a uv tool install
   within the major.
 
 ## Operate memory from the shell
 
-- `neosian memory view /` — the first command to try; renders the
+- `neosian memory view /`: the first command to try; renders the
   memory index. No flags inside a project means this directory's
   layout (`/user`, `/project`); `--scope S` or `NEOSIAN_SCOPE` names a
   scope. The store is the home, `~/.neosian` or `$NEOSIAN_HOME`, unless
   `--root DIR`, `--url` or the DSN names one.
 - Six commands: view, create, str_replace, insert, delete, rename.
   `--json` prints the memory tool's result envelope verbatim.
-- `neosian memory maintain` — the gardener: keyless dedup + empty-prune;
+- `neosian memory maintain`, the gardener: keyless dedup + empty-prune;
   `--model MODEL` adds the semantic pass (merge, prune stale, promote).
 - A skill is `create /project/skills/<name>` with a frontmatter
   `description` and the instructions as the body (`neosian docs skills`);
@@ -64,9 +64,9 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
   carries full historical content), `redact PATH [--all]` (the one
   eraser; audit skeleton preserved), `revert PATH --version N` (undo).
 - `neosian audit --scope S [--conversation C] [--actor A] [--since T]
-  [--json]` — the ledger: what was done, by whom, when — newest first,
+  [--json]`, the ledger: what was done, by whom, when, newest first,
   identical on a root, Postgres, or the state process (`--url`).
-- `neosian export DIR` / `neosian import DIR` — a store moves whole,
+- `neosian export DIR` / `neosian import DIR`: a store moves whole,
   history included, any substrate to any other; DIR is a FileStore root.
   An import needs every scope and conversation empty in the target.
 - Exit tiers: 0 success, 1 ran-and-failed, 2 bad invocation, 130
@@ -80,26 +80,26 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
 
 - `neosian mcp install --client claude-code|claude-desktop|cursor|codex|opencode`
   prints the exact registration; `--write` applies it (refused when the
-  client is not installed; Codex is print-only — apply with the printed
+  client is not installed; Codex is print-only, so apply with the printed
   `codex mcp add` line).
 - `python -m neosian.mcp --root DIR --scope user:me` serves the same
   store over stdio: the `memory` tool, `list_skills` and
-  `load_skill` over the mounts' skills (each skill also an MCP prompt — a
-  slash command in Claude Code), and `recall_turn(turn, conversation)` —
+  `load_skill` over the mounts' skills (each skill also an MCP prompt, a
+  slash command in Claude Code), and `recall_turn(turn, conversation)` for
   any recorded turn of any agent's session, verbatim.
 - The other direction: `async with McpServer.stdio(cmd, args) as s:`
   (or `.http(url, headers=)`, `.in_process(server)`) from `neosian.mcp`
-  — the server's tools as `AgentConfig(tools=[*s.tools])`, schema
+  gives the server's tools as `AgentConfig(tools=[*s.tools])`, schema
   verbatim, `is_error` in-band, `prefix=` for two servers that clash;
   the gate and hooks apply unchanged (`neosian docs mcp`).
 
 ## Record a foreign agent
 
 - `neosian record install --client claude-code|codex|opencode` prints
-  the four hooks — no flags: the home and this directory's layout,
+  the four hooks. No flags: the home and this directory's layout,
   `user:<login>` at /user and `user:<login>/proj:<slug>` at /project,
   spelled into the line; `--root DIR --scope S` override (the events:
-  UserPromptSubmit, PostToolUse, Stop, SessionStart) — for OpenCode, a
+  UserPromptSubmit, PostToolUse, Stop, SessionStart); for OpenCode, a
   plugin file; `--write` merges them into
   ./.claude/settings.json or ./.codex/hooks.json, every other hook
   preserved, or writes ./.opencode/plugins/neosian-record.js (Codex: a
@@ -109,22 +109,22 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
   the conversation the session id names, plus a sessions document at
   /memories/sessions/<session_id>. Read it back: `neosian audit --scope S
   --conversation <session_id>`. On SessionStart the verb prints the memory
-  index and "where we left off" (the recent sessions, log-projected) —
+  index and "where we left off" (the recent sessions, log-projected):
   the client adds a hook's stdout to the model's context.
 - Hooks beside an MCP server are two writers: use `--url` (the state
   process) or Postgres. `neosian docs agents` carries the client table.
 
 ## Reach it over the network
 
-- `NEOSIAN_SERVE_TOKEN=... neosian serve` — the state process
+- `NEOSIAN_SERVE_TOKEN=... neosian serve` runs the state process
   on the home (`--root DIR` another root): memory and conversations on a port, MCP
   over streamable HTTP at /mcp when started with mounts. Token is
-  env-only (one token, or a per-client table `actor=token,...` — the
+  env-only (one token, or a per-client table `actor=token,...`, so the
   process records who wrote); unset refuses to start; /health is
   unauthenticated. Shell clients: `--url URL` + NEOSIAN_CLIENT_TOKEN.
 - The shipped Dockerfile is the appliance: `docker run -e
   NEOSIAN_SERVE_TOKEN=... -p 6367:6367 -v state:/data neosian`.
-- Python clients: `await RemoteStore.connect(url, token=...)` — both
+- Python clients: `await RemoteStore.connect(url, token=...)` carries both
   storage ABCs over the wire, core install, drops in where FileStore
   does. `neosian docs topology` carries the full shape.
 
@@ -132,10 +132,10 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
 
 - `register_model("acme-large", provider=OpenAICompatible(name="acme",
   api_key_env="ACME_API_KEY", base_url="https://llm.acme.example/v1"),
-  ...)` — the day-one door for any model neosian has not shipped: once
+  ...)` is the day-one door for any model neosian has not shipped: once
   at import; the model prices in µ$ and passes every gate like a shipped
   one. `neosian docs quickstart` carries the snippet.
-- Every shipped row is a `Model` member, the door rows too —
+- Every shipped row is a `Model` member, the door rows too:
   `Model.GROK_4_6` (xAI `XAI_API_KEY`), `Model.GEMINI_3_8_FLASH` (Gemini
   `GEMINI_API_KEY`): first-party, fingerprinted, no client of their own;
   each earned by green dispatched runs of the memory baselines and
@@ -144,18 +144,18 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
 
 ## Install
 
-- `uv add "neosian==1.0.0rc5"` — one package: the library and its
+- `uv add "neosian==1.0.0rc5"`: one package, the library and its
   provider SDKs, the `neosian` shell, the MCP server and client, the
   state process and OpenTelemetry spans (about 70 MB; nothing loaded
   until used). On PyPI as a pre-release until v1.0.0: pin it explicitly,
-  never a default resolve. Keyless to start — `Model.FAKE` and `FileStore`
+  never a default resolve. Keyless to start: `Model.FAKE` and `FileStore`
   need nothing. The one extra is the Postgres driver for `PostgresStore`,
   `neosian[postgres]` (`[all]` its alias); the former `[cli]`, `[mcp]`,
   `[otel]`, `[server]` resolve for one release and add nothing.
-- `curl -fsS https://neosian.com/install | bash` — uv and neosian on a
+- `curl -fsS https://neosian.com/install | bash` puts uv and neosian on a
   machine with nothing on it; the script says what it installs first.
 - The appliance: `docker run -d -e NEOSIAN_SERVE_TOKEN=… -p 6367:6367
-  -v neosian-state:/data ghcr.io/mausa-ai/neosian:1.0.0rc5` — the state
+  -v neosian-state:/data ghcr.io/mausa-ai/neosian:1.0.0rc5`, the state
   process on a volume, `/health` the one open route.
 
 ## Docs

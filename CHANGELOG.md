@@ -17,6 +17,8 @@ phase close names the version.
   colon, a comma or a pair of parentheses, sentence by sentence. The
   48 empty-table-cell markers stay. `baselines.md`'s Fingerprints rows
   read `` `path`: sha256 ``, and the gate that reads them follows.
+- `llms.txt` and its twin read the same way: no em dash in the front
+  door either.
 
 ## [1.0.0rc5] - 2026-09-11
 
