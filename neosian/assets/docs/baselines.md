@@ -1,5 +1,5 @@
 ---
-title: Memory baselines — the published per-provider numbers
+title: "Memory baselines: the published per-provider numbers"
 summary: Self-measured memory-layer results per provider and transport, fingerprint-gated
 ---
 

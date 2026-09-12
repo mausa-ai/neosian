@@ -1,5 +1,5 @@
 ---
-title: Skills — documents in a mount, versioned, served
+title: "Skills: documents in a mount, versioned, served"
 summary: a skill is skills/<name> in a mount - versioned, curated by flag, served as MCP prompts
 ---
 

@@ -1,5 +1,5 @@
 ---
-title: Agent — the stateless core and every knob on it
+title: "Agent: the stateless core and every knob on it"
 summary: AgentConfig field by field, the client seam, hooks vs wire events, the knobs
 ---
 

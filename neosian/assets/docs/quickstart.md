@@ -1,5 +1,5 @@
 ---
-title: Quickstart — the stateless core and the opt-in layers
+title: "Quickstart: the stateless core and the opt-in layers"
 summary: Install, boot keylessly, run an agent, wrap it in a Conversation
 ---
 

@@ -1,5 +1,5 @@
 ---
-title: MCP — the same state, served to any client
+title: "MCP: the same state, served to any client"
 summary: memory, skills and recall_turn over stdio; mcp install; McpServer consumes any server
 ---
 

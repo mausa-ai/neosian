@@ -1,5 +1,5 @@
 ---
-title: Topology, not hierarchy — the four shapes
+title: "Topology, not hierarchy: the four shapes"
 summary: Who runs neosian code, where the bytes live, and one writer per root
 ---
 

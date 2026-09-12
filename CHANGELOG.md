@@ -8,6 +8,12 @@ phase close names the version.
 
 ## [Unreleased]
 
+### Changed
+
+- The ten shipped docs pages title themselves with a colon, not an em
+  dash (`Memory: the file school`); the values are quoted YAML, so a
+  title carrying a `: ` survives the frontmatter round trip.
+
 ## [1.0.0rc5] - 2026-09-11
 
 Cerebras rides the OpenAI wire; one implementation of that wire ships.

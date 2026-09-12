@@ -1,5 +1,5 @@
 ---
-title: Any agent — the record through hooks
+title: "Any agent: the record through hooks"
 summary: Claude Code, Codex and OpenCode hooks call neosian record; SessionStart reads it back
 ---
 

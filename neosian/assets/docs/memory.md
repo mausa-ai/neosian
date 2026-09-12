@@ -1,5 +1,5 @@
 ---
-title: Memory — the file school
+title: "Memory: the file school"
 summary: Small documents, mounts and scopes, six commands, every write versioned
 ---
 

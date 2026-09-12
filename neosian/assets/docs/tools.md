@@ -1,5 +1,5 @@
 ---
-title: Tools — the schema the model gets
+title: "Tools: the schema the model gets"
 summary: "@Tool: what the signature becomes on the wire, what is validated, what each provider keeps"
 ---
 

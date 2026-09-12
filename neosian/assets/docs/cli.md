@@ -1,5 +1,5 @@
 ---
-title: The shell — one CLI for humans and agents
+title: "The shell: one CLI for humans and agents"
 summary: status, setup, chat, configure; then the memory grammar, --json, exit tiers 0/1/2/130
 ---
 
