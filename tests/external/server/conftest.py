@@ -28,7 +28,7 @@ from pathlib import Path
 import pytest
 
 from neosian import PostgresStore, RemoteStore
-from tests.external.postgres.conftest import plant_sql
+from tests.support.postgres import plant_sql
 
 URL_ENV = "NEOSIAN_TEST_SERVER_URL"
 TOKEN_ENV = "NEOSIAN_TEST_SERVER_TOKEN"

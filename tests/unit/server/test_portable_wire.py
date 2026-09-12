@@ -42,7 +42,7 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator
     from pathlib import Path
 
-    from tests.unit.memory.conftest import ManualClock
+    from tests.support.clock import ManualClock
 
 pytestmark = pytest.mark.asyncio
 

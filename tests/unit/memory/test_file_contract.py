@@ -12,8 +12,7 @@ from neosian._foundation.memory.file import FileStore
 from neosian._foundation.memory.paths import path_segments
 from neosian._foundation.memory.scope import parse_scope, scope_directory
 from neosian.memory.testing import MemoryStoreContract
-
-from .conftest import ManualClock
+from tests.support.clock import ManualClock
 
 
 class TestFileStoreContract(MemoryStoreContract):

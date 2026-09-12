@@ -38,7 +38,7 @@ from neosian._foundation.shared.types import (
     ToolCallId,
     ToolName,
 )
-from tests.unit.memory.conftest import ManualClock
+from tests.support.clock import ManualClock
 
 _SYSTEM = "You are a helpful agent with memory."
 _USAGE = Usage(input_tokens=100, output_tokens=10)

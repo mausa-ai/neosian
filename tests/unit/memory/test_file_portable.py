@@ -19,8 +19,7 @@ from neosian._foundation.shared.exceptions import (
     MemoryConflictError,
     MemoryPathInvalidError,
 )
-
-from .conftest import ManualClock
+from tests.support.clock import ManualClock
 
 if TYPE_CHECKING:
     from pathlib import Path

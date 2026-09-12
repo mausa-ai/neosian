@@ -7,7 +7,7 @@ from typing import Any
 
 from neosian import PostgresStore
 from neosian.conversation.testing import ConversationStoreContract
-from tests.external.postgres.conftest import plant_sql, store_schema
+from tests.support.postgres import plant_sql, store_schema
 
 _PLANT_TS = datetime(2026, 1, 1, tzinfo=UTC)
 

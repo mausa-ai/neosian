@@ -17,7 +17,7 @@ from neosian._foundation.shared.exceptions import (
     MemoryFormatUnsupportedError,
     MemoryPathInvalidError,
 )
-from tests.unit.memory.conftest import ManualClock
+from tests.support.clock import ManualClock
 
 _SCOPE = "user:123/proj:erp"
 

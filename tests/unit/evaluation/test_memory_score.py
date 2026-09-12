@@ -13,7 +13,7 @@ from neosian._foundation.evaluation.memory_types import (
 from neosian._foundation.evaluation.types import MatchMode, ValueMatcher
 from neosian._foundation.memory.file import FileStore
 from neosian._foundation.memory.mounts import MemoryConfig, Mount
-from tests.unit.memory.conftest import ManualClock
+from tests.support.clock import ManualClock
 
 _USER = Mount(scope="user:eval", mount_path="user")
 _PROJECT = Mount(scope="user:eval/proj:demo", mount_path="project")

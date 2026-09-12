@@ -5,9 +5,7 @@ from pathlib import Path
 import pytest
 
 from neosian._foundation.memory.file import FileStore
-from tests.unit.memory.conftest import ManualClock
-
-__all__ = ["ManualClock"]
+from tests.support.clock import ManualClock
 
 
 @pytest.fixture

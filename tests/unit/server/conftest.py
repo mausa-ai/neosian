@@ -15,7 +15,7 @@ import pytest
 from neosian import RemoteStore
 from neosian._foundation.memory.file import FileStore
 from neosian._foundation.server.app import build_app
-from tests.unit.memory.conftest import ManualClock
+from tests.support.clock import ManualClock
 
 TOKEN = "unit-test-token"
 BASE_URL = "http://state-process"

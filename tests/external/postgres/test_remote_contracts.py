@@ -19,7 +19,7 @@ from neosian import PostgresStore, RemoteStore
 from neosian._foundation.server.app import build_app
 from neosian.conversation.testing import ConversationStoreContract
 from neosian.memory.testing import MemoryStoreContract
-from tests.external.postgres.conftest import plant_sql, store_schema
+from tests.support.postgres import plant_sql, store_schema
 
 _PLANT_TS = datetime(2026, 1, 1, tzinfo=UTC)
 _TOKEN = "postgres-contract-token"

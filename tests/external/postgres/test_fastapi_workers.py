@@ -23,7 +23,7 @@ from neosian import (
 )
 from neosian._foundation.shared.types import ToolCallId, ToolName
 from neosian.fake import FakeClient, FakeScript, FakeTurn
-from tests.external.postgres.conftest import store_schema
+from tests.support.postgres import store_schema
 
 _MESSAGES_URL = "/tenants/acme/users/ada/threads/general/messages"
 _THREAD_URL = "/tenants/acme/users/ada/threads/general"

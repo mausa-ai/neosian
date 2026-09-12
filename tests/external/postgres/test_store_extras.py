@@ -12,7 +12,7 @@ from neosian._foundation.shared.exceptions import (
     ConversationFormatUnsupportedError,
     MemoryFormatUnsupportedError,
 )
-from tests.external.postgres.conftest import fetch_sql, plant_sql, store_schema
+from tests.support.postgres import fetch_sql, plant_sql, store_schema
 
 _SCOPE = "user:extras"
 _TS = datetime(2026, 1, 1, tzinfo=UTC)

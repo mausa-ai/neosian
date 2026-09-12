@@ -16,8 +16,7 @@ from neosian._foundation.memory.index import (
     memory_system_section,
 )
 from neosian._foundation.memory.mounts import MemoryConfig, Mount
-
-from .conftest import ManualClock
+from tests.support.clock import ManualClock
 
 _USER = Mount(scope="user:123", mount_path="user", description="user facts")
 _PROJECT = Mount(scope="user:123/proj:erp", mount_path="project")

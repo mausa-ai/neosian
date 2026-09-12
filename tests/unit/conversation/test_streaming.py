@@ -19,8 +19,7 @@ from neosian._foundation.conversation.distill import DigestBatch, DigestLine
 from neosian._foundation.llm.base import ModelUsage, Role, Usage
 from neosian._foundation.llm.fake import FakeClient, FakeScript, FakeTurn
 from neosian._foundation.memory.file import FileStore
-
-from .conftest import ManualClock
+from tests.support.clock import ManualClock
 
 _SYSTEM = "You are a test agent."
 

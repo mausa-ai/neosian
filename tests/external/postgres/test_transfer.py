@@ -16,7 +16,7 @@ from neosian._foundation.memory.portable import ConversationArchive
 from neosian._foundation.memory.transfer import archive_scope, transfer
 from neosian._foundation.server.app import build_app
 from neosian._foundation.shared.exceptions import MemoryConflictError
-from tests.external.postgres.conftest import ManualClock
+from tests.support.clock import ManualClock
 from tests.unit.memory.mobility import (
     CONVERSATIONS,
     SCOPES,

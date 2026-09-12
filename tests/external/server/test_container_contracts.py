@@ -23,7 +23,7 @@ from neosian._foundation.memory.paths import path_segments
 from neosian._foundation.memory.scope import Scope, parse_scope, scope_directory
 from neosian.conversation.testing import ConversationStoreContract
 from neosian.memory.testing import MemoryStoreContract
-from tests.external.postgres.conftest import plant_sql, store_schema
+from tests.support.postgres import plant_sql, store_schema
 
 from .conftest import FileLeg, PgLeg
 

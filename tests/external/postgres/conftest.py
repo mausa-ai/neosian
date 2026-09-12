@@ -14,15 +14,13 @@ kits' timestamp assertions prove the Clock is genuinely injected.
 """
 
 import uuid
-from collections.abc import AsyncIterator, Mapping
-from typing import Any
+from collections.abc import AsyncIterator
 
 import pytest
 
 from neosian import PostgresStore
-from tests.unit.memory.conftest import ManualClock
-
-__all__ = ["ManualClock"]
+from tests.support.clock import ManualClock
+from tests.support.postgres import plant_sql
 
 
 @pytest.fixture
@@ -42,23 +40,3 @@ async def store(
     finally:
         await plant_sql(store, f'DROP SCHEMA "{schema}" CASCADE', {})
         await store.aclose()
-
-
-# Substrate hooks reach the tables directly through the store's own pool
-# and schema — deliberately inside, the FileStore contract-test idiom.
-
-
-def store_schema(store: PostgresStore) -> str:
-    return store._schema  # noqa: SLF001 — substrate hook, deliberately inside
-
-
-async def plant_sql(
-    store: PostgresStore, query: str, params: Mapping[str, Any]
-) -> None:
-    await store._pool.execute(query, params)  # noqa: SLF001 — substrate hook
-
-
-async def fetch_sql(
-    store: PostgresStore, query: str, params: Mapping[str, Any]
-) -> list[tuple[Any, ...]]:
-    return await store._pool.fetch(query, params)  # noqa: SLF001 — substrate hook

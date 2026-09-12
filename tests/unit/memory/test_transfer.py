@@ -17,8 +17,8 @@ from neosian._foundation.shared.exceptions import (
     MemoryConflictError,
     MemoryScopeInvalidError,
 )
+from tests.support.clock import ManualClock
 
-from .conftest import ManualClock
 from .mobility import (
     CONVERSATIONS,
     SCOPES,

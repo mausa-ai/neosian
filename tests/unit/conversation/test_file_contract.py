@@ -7,8 +7,7 @@ import pytest
 
 from neosian._foundation.memory.file import FileStore
 from neosian.conversation.testing import ConversationStoreContract
-
-from .conftest import ManualClock
+from tests.support.clock import ManualClock
 
 
 class TestFileStoreConversationContract(ConversationStoreContract):

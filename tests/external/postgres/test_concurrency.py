@@ -10,7 +10,7 @@ import pytest
 from neosian import Message, PostgresStore, Role
 from neosian._foundation.memory.types import MemoryDocument
 from neosian._foundation.shared.exceptions import MemoryConflictError
-from tests.external.postgres.conftest import store_schema
+from tests.support.postgres import store_schema
 
 _SCOPE = "user:workers"
 _TURNS = 25
