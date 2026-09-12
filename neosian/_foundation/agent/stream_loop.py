@@ -120,7 +120,8 @@ async def stream_with_client(
             stream = client.stream(
                 messages=attempt.messages,
                 model=model,
-                tools=agent._tool_definitions if agent._tool_definitions else None,
+                tools=ctx.scope.wire_tools,
+                tool_choice=ctx.scope.wire_choice,
                 reasoning_effort=effective_reasoning,
                 max_tokens=agent._max_output_tokens,
                 cache_conversation=agent._cache_conversation,

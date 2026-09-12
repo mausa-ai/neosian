@@ -22,11 +22,13 @@ from neosian import (
     Model,
     PolicyBuilder,
     ResponseFormat,
+    ToolChoice,
 )
 from neosian._foundation.agent.hooks import HookRunner
 from neosian._foundation.llm.base import Message, Role
 from neosian._foundation.llm.fake import FakeClient
 from neosian._foundation.shared.exceptions import (
+    ConfigurationError,
     GuardrailStreamingError,
     StructuredOutputStreamingError,
     StructuredOutputToolsError,
@@ -56,6 +58,11 @@ async def _noop() -> ToolResult[str]:
     return ToolResult.ok("ok")
 
 
+@Tool(name=ToolName("other"), description="Do nothing, differently")
+async def _other() -> ToolResult[str]:
+    return ToolResult.ok("ok")
+
+
 def _structured_agent() -> Agent:
     return Agent(
         AgentConfig(
@@ -73,6 +80,17 @@ def _tool_agent() -> Agent:
             model=Model.FAKE,
             enable_todo=False,
             tools=[_noop],
+        )
+    )
+
+
+def _two_tool_agent() -> Agent:
+    return Agent(
+        AgentConfig(
+            system_prompt="test",
+            model=Model.FAKE,
+            enable_todo=False,
+            tools=[_noop, _other],
         )
     )
 
@@ -99,11 +117,35 @@ _SCENARIOS = [
         StructuredOutputStreamingError,
         id="structured-output-requires-blocking",
     ),
+    # Since NC9 a schema and tools coexist (#225) — what cannot be
+    # honored is a schema under a choice that forces some *other* tool.
     pytest.param(
         _tool_agent,
-        {"stream": False, "response_format": ResponseFormat(schema=_Answer)},
+        {
+            "stream": False,
+            "response_format": ResponseFormat(schema=_Answer),
+            "tool_choice": ToolChoice.tool("noop"),
+        },
         StructuredOutputToolsError,
-        id="structured-output-incompatible-with-tools",
+        id="structured-output-under-a-forced-other-tool",
+    ),
+    pytest.param(
+        _tool_agent,
+        {"stream": False, "tools": ["nope"]},
+        ConfigurationError,
+        id="tools-names-an-unregistered-tool",
+    ),
+    pytest.param(
+        _structured_agent,
+        {"stream": False, "tool_choice": ToolChoice.required()},
+        ConfigurationError,
+        id="a-forced-choice-with-no-tools",
+    ),
+    pytest.param(
+        _two_tool_agent,
+        {"stream": False, "tools": ["noop"], "tool_choice": ToolChoice.tool("other")},
+        ConfigurationError,
+        id="a-forced-tool-outside-this-runs-scope",
     ),
     pytest.param(
         _output_guarded_agent,

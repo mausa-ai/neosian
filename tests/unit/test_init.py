@@ -169,6 +169,7 @@ def test_all_list_matches_exports() -> None:
         "ReasoningEffort",
         "ResponseFormat",
         "StopReason",
+        "ToolChoice",
         "Usage",
         "format_micro_usd",
         "lookup_model",

@@ -21,8 +21,9 @@ _ALLOWED_CALLERS = {
     },
     "._tool_definitions": {
         Path("_foundation/agent/base.py"),  # built at construction
-        Path("_foundation/agent/loop.py"),  # passed to the client
-        Path("_foundation/agent/stream_loop.py"),  # passed to the client
+        # Since NC9 the drivers read `ctx.scope`, not the registry: the
+        # per-call subset is resolved once, here (#224).
+        Path("_foundation/agent/tool_scope.py"),  # narrowed to the run's
     },
     "._tool_metadata": {
         Path("_foundation/tools/base.py"),  # the attribute's owner

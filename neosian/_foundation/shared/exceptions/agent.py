@@ -164,12 +164,24 @@ class StructuredOutputStreamingError(StructuredOutputError):
 
 
 class StructuredOutputToolsError(StructuredOutputError):
-    """Raised when structured outputs are used with tool-enabled agents."""
+    """Raised when a schema and the call's tools cannot both be honored.
+
+    Since NC9 (#225) a schema rides a synthetic final tool, so tools and
+    structured output coexist. What stays impossible is a tool_choice
+    that forces some *other* tool: the model is then never free to emit
+    the answer.
+    """
 
     code = "agent_structured_output_incompatible_with_tools"
 
-    def __init__(self) -> None:
-        super().__init__(ErrorMessages.STRUCTURED_OUTPUT_INCOMPATIBLE_WITH_TOOLS)
+    def __init__(self, tool_name: str) -> None:
+        super().__init__(
+            ErrorMessages.STRUCTURED_OUTPUT_INCOMPATIBLE_WITH_TOOLS.format(
+                tool_name=tool_name
+            ),
+            details={"tool_name": tool_name},
+        )
+        self.tool_name = tool_name
 
 
 class BudgetExceededError(NeosianError):

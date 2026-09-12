@@ -15,6 +15,7 @@ import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from neosian._foundation.agent.tool_scope import ToolScope
 from neosian._foundation.llm.base import Message, ModelUsage, Usage
 from neosian._foundation.shared.types import AnyModel, ClientFactory, FallbackState
 
@@ -142,7 +143,8 @@ class RunContext:
     `acquire` IS the session-twin seam: Agent passes `_create_client`
     (fresh client per attempt), a session passes `_get_or_create_client`
     (cached per provider). `fallback_state` is None outside sessions —
-    sticky fallback is session behavior.
+    sticky fallback is session behavior. `scope` is what this run may
+    call and how it must answer, resolved once at the funnel (#224).
     """
 
     agent: Agent
@@ -151,6 +153,7 @@ class RunContext:
     fallback_state: FallbackState | None = None
     started: float = field(default_factory=time.monotonic)  # TurnEvent duration
     ledger: UsageLedger = field(default_factory=UsageLedger)
+    scope: ToolScope = field(default_factory=ToolScope)
 
 
 @dataclass(slots=True)

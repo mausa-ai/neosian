@@ -29,6 +29,7 @@ from neosian._foundation.shared.types import (
     ReasoningEffort,
     ResponseFormat,
     ToolCallId,
+    ToolChoice,
     ToolName,
 )
 
@@ -293,6 +294,7 @@ class BaseLLMClient(ABC):
         messages: list[Message],
         model: AnyModel,
         tools: list[ToolDefinition] | None = None,
+        tool_choice: ToolChoice | None = None,
         temperature: float | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: ReasoningEffort | None = None,
@@ -306,6 +308,8 @@ class BaseLLMClient(ABC):
             messages: Conversation history.
             model: Model identifier.
             tools: Optional list of tools the model can call.
+            tool_choice: Whether the model may, must, or must not call one
+                of them this turn; None leaves the wire's default (NC9 #224).
             temperature: Sampling temperature (0.0-2.0). None uses provider default.
             response_format: Optional structured output configuration. When provided,
                 the model will be constrained to generate valid JSON matching the
@@ -333,6 +337,7 @@ class BaseLLMClient(ABC):
         messages: list[Message],
         model: AnyModel,
         tools: list[ToolDefinition] | None = None,
+        tool_choice: ToolChoice | None = None,
         temperature: float | None = None,
         reasoning_effort: ReasoningEffort | None = None,
         max_tokens: int = LLMDefaults.MAX_OUTPUT_TOKENS,
@@ -345,6 +350,8 @@ class BaseLLMClient(ABC):
             messages: Conversation history.
             model: Model identifier.
             tools: Optional list of tools the model can call.
+            tool_choice: Whether the model may, must, or must not call one
+                of them this turn; None leaves the wire's default (NC9 #224).
             temperature: Sampling temperature (0.0-2.0). None uses provider default.
             reasoning_effort: Optional reasoning effort level for supported models.
             max_tokens: Maximum output tokens for this request.

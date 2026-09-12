@@ -444,7 +444,7 @@ _SAMPLES: dict[str, Callable[[], NeosianError]] = {
     "GuardrailStreamingError": lambda: exc.GuardrailStreamingError(),
     "StructuredOutputError": lambda: exc.StructuredOutputError("m"),
     "StructuredOutputStreamingError": lambda: exc.StructuredOutputStreamingError(),
-    "StructuredOutputToolsError": lambda: exc.StructuredOutputToolsError(),
+    "StructuredOutputToolsError": lambda: exc.StructuredOutputToolsError("search"),
     "EvalError": lambda: exc.EvalError("m"),
     "EvalConfigNotFoundError": lambda: exc.EvalConfigNotFoundError("p"),
     "EvalConfigInvalidYAMLError": lambda: exc.EvalConfigInvalidYAMLError("p", "d"),

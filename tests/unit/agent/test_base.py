@@ -29,6 +29,7 @@ from neosian._foundation.agent.guards import check_guard_and_block
 from neosian._foundation.agent.hooks import AgentHooks, TurnEvent
 from neosian._foundation.agent.response import AgentResponse
 from neosian._foundation.agent.tool_exec import execute_tool
+from neosian._foundation.agent.tool_scope import ToolScope
 from neosian._foundation.llm.base import (
     BaseLLMClient,
     CompactionBlock,
@@ -966,7 +967,7 @@ class TestStreamingUsageReporting:
         await guard_task
 
         blocked = await check_guard_and_block(
-            agent._run_context(None),
+            agent._run_context(None, ToolScope()),
             guard_task,
             usage=Usage(input_tokens=20, output_tokens=10),
         )
@@ -2021,7 +2022,7 @@ class TestCapabilityAwareFallback:
                     enable_todo=False,
                 )
             )
-        ctx = agent._run_context(None)
+        ctx = agent._run_context(None, ToolScope())
         messages = [Message(role=Role.SYSTEM, content="S"), *self._doc_messages()]
         attempt = Attempt.start(Model.CLAUDE_SONNET_5, messages, ctx.ledger)
         attempt.record("claude", Usage(input_tokens=10, output_tokens=5))

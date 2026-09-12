@@ -12,11 +12,14 @@ from anthropic.types.beta import BetaMessage
 from neosian._foundation.llm.anthropic_convert import (
     apply_cache_control,
     convert_messages,
-    convert_response_format,
-    convert_tools,
     validate_content_support,
 )
 from neosian._foundation.llm.anthropic_stream import iter_chunks, parse_message
+from neosian._foundation.llm.anthropic_tools import (
+    convert_response_format,
+    convert_tool_choice,
+    convert_tools,
+)
 from neosian._foundation.llm.base import (
     BaseLLMClient,
     CompletionResponse,
@@ -40,6 +43,7 @@ from neosian._foundation.shared.types import (
     Model,
     ReasoningEffort,
     ResponseFormat,
+    ToolChoice,
 )
 
 logger = logging.getLogger(__name__)
@@ -127,6 +131,7 @@ class AnthropicClient(BaseLLMClient):
         messages: list[Message],
         model: AnyModel,
         tools: list[ToolDefinition] | None = None,
+        tool_choice: ToolChoice | None = None,
         temperature: float | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: ReasoningEffort | None = None,
@@ -211,6 +216,10 @@ class AnthropicClient(BaseLLMClient):
 
                 if anthropic_tools:
                     kwargs["tools"] = anthropic_tools
+                    # A choice without tools is a 400: the wire only takes
+                    # one beside a tool list.
+                    if tool_choice is not None:
+                        kwargs["tool_choice"] = convert_tool_choice(tool_choice)
 
                 if response_format:
                     # output_config may already exist from reasoning effort above;
@@ -287,6 +296,7 @@ class AnthropicClient(BaseLLMClient):
         messages: list[Message],
         model: AnyModel,
         tools: list[ToolDefinition] | None = None,
+        tool_choice: ToolChoice | None = None,
         temperature: float | None = None,
         reasoning_effort: ReasoningEffort | None = None,
         max_tokens: int = LLMDefaults.MAX_OUTPUT_TOKENS,
@@ -359,6 +369,8 @@ class AnthropicClient(BaseLLMClient):
 
         if anthropic_tools:
             kwargs["tools"] = anthropic_tools
+            if tool_choice is not None:
+                kwargs["tool_choice"] = convert_tool_choice(tool_choice)
         try:
             async with (
                 self._stream_manager(

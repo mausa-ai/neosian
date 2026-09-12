@@ -144,8 +144,9 @@ class ErrorMessages:
         "Schema validation needs the complete response."
     )
     STRUCTURED_OUTPUT_INCOMPATIBLE_WITH_TOOLS: str = (
-        "Structured outputs cannot be used with tool-enabled agents. "
-        "The agent's tool loop requires unstructured responses for tool call detection."
+        "A forced tool_choice and response_format cannot both be honored: "
+        "the model must call '{tool_name}' every turn, so it can never "
+        "return the schema. Use ToolChoice.auto() or ToolChoice.required()."
     )
 
     # Serialization errors

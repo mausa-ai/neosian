@@ -20,6 +20,7 @@ from neosian._foundation.llm.base import (
     normalize_stop_reason,
 )
 from neosian._foundation.llm.openai import OpenAIClient
+from neosian._foundation.llm.openai_convert import convert_tool_choice
 from neosian._foundation.shared.constants import LLMDefaults
 from neosian._foundation.shared.exceptions import (
     ProviderError,
@@ -27,7 +28,12 @@ from neosian._foundation.shared.exceptions import (
     UnsupportedContentError,
     UnsupportedParameterError,
 )
-from neosian._foundation.shared.types import Model, ReasoningEffort, ToolName
+from neosian._foundation.shared.types import (
+    Model,
+    ReasoningEffort,
+    ToolChoice,
+    ToolName,
+)
 from tests.unit.llm.sdk_specs import OPENAI as SPEC, autospec
 
 
@@ -148,6 +154,92 @@ class TestOpenAIClientToolConversion:
         assert "default" not in parameters["properties"]["limit"]
         assert parameters["additionalProperties"] is False
         assert tool.parameters["required"] == ["query"]  # untouched
+
+
+@pytest.mark.unit
+class TestOpenAIToolChoice:
+    """Three modes are the wire's own strings, a named tool its object
+    form, and `parallel` rides the body flag beside them (NC9 #224)."""
+
+    def _mock_response(self) -> Any:
+        mock = autospec(SPEC["completion"])
+        mock.choices = [autospec(SPEC["choice"])]
+        mock.choices[0].message.content = "Response"
+        mock.choices[0].message.tool_calls = None
+        mock.usage.prompt_tokens = 10
+        mock.usage.completion_tokens = 5
+        mock.model = "gpt-5.6-luna"
+        return mock
+
+    def _tool(self) -> ToolDefinition:
+        return ToolDefinition(
+            name=ToolName("search"),
+            description="Search",
+            parameters={"type": "object", "properties": {}},
+        )
+
+    @pytest.mark.parametrize(
+        ("choice", "expected"),
+        [
+            (ToolChoice.auto(), "auto"),
+            (ToolChoice.required(), "required"),
+            (ToolChoice.none(), "none"),
+            (
+                ToolChoice.tool("search"),
+                {"type": "function", "function": {"name": "search"}},
+            ),
+        ],
+        ids=["auto", "required", "none", "tool"],
+    )
+    def test_the_wire_shapes(self, choice: ToolChoice, expected: object) -> None:
+        assert convert_tool_choice(choice) == expected
+
+    @pytest.mark.asyncio
+    async def test_the_choice_reaches_the_body_beside_the_tools(self) -> None:
+        client = OpenAIClient(api_key="test-key")
+        mock_create = AsyncMock(return_value=self._mock_response())
+        _sdk(client).chat.completions.create = mock_create
+
+        await client.complete(
+            messages=[Message(role=Role.USER, content="Hi")],
+            model=Model.GPT_5_6_LUNA,
+            tools=[self._tool()],
+            tool_choice=ToolChoice.required(parallel=False),
+        )
+
+        kwargs = mock_create.call_args.kwargs
+        assert kwargs["tool_choice"] == "required"
+        assert kwargs["parallel_tool_calls"] is False
+
+    @pytest.mark.asyncio
+    async def test_the_parallel_default_sends_no_flag(self) -> None:
+        """Only a False says something the wire's default does not."""
+        client = OpenAIClient(api_key="test-key")
+        mock_create = AsyncMock(return_value=self._mock_response())
+        _sdk(client).chat.completions.create = mock_create
+
+        await client.complete(
+            messages=[Message(role=Role.USER, content="Hi")],
+            model=Model.GPT_5_6_LUNA,
+            tools=[self._tool()],
+            tool_choice=ToolChoice.auto(),
+        )
+
+        assert "parallel_tool_calls" not in mock_create.call_args.kwargs
+
+    @pytest.mark.asyncio
+    async def test_without_tools_no_choice_is_sent(self) -> None:
+        client = OpenAIClient(api_key="test-key")
+        mock_create = AsyncMock(return_value=self._mock_response())
+        _sdk(client).chat.completions.create = mock_create
+
+        await client.complete(
+            messages=[Message(role=Role.USER, content="Hi")],
+            model=Model.GPT_5_6_LUNA,
+            tool_choice=ToolChoice.required(),
+        )
+
+        assert "tool_choice" not in mock_create.call_args.kwargs
 
 
 @pytest.mark.unit

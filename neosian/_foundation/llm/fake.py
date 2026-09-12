@@ -30,6 +30,7 @@ from neosian._foundation.shared.types import (
     AnyModel,
     ReasoningEffort,
     ResponseFormat,
+    ToolChoice,
 )
 
 
@@ -93,6 +94,7 @@ class FakeCall:
     model: AnyModel
     messages: tuple[Message, ...]
     tools: tuple[ToolDefinition, ...]
+    tool_choice: ToolChoice | None
     temperature: float | None
     response_format: ResponseFormat | None
     reasoning_effort: ReasoningEffort | None
@@ -190,6 +192,7 @@ class FakeClient(BaseLLMClient):
         model: AnyModel,
         messages: list[Message],
         tools: list[ToolDefinition] | None,
+        tool_choice: ToolChoice | None,
         temperature: float | None,
         response_format: ResponseFormat | None,
         reasoning_effort: ReasoningEffort | None,
@@ -203,6 +206,7 @@ class FakeClient(BaseLLMClient):
                 model=model,
                 messages=tuple(messages),
                 tools=tuple(tools) if tools else (),
+                tool_choice=tool_choice,
                 temperature=temperature,
                 response_format=response_format,
                 reasoning_effort=reasoning_effort,
@@ -218,6 +222,7 @@ class FakeClient(BaseLLMClient):
         messages: list[Message],
         model: AnyModel,
         tools: list[ToolDefinition] | None = None,
+        tool_choice: ToolChoice | None = None,
         temperature: float | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: ReasoningEffort | None = None,
@@ -229,6 +234,7 @@ class FakeClient(BaseLLMClient):
             model=model,
             messages=messages,
             tools=tools,
+            tool_choice=tool_choice,
             temperature=temperature,
             response_format=response_format,
             reasoning_effort=reasoning_effort,
@@ -257,6 +263,7 @@ class FakeClient(BaseLLMClient):
         messages: list[Message],
         model: AnyModel,
         tools: list[ToolDefinition] | None = None,
+        tool_choice: ToolChoice | None = None,
         temperature: float | None = None,
         reasoning_effort: ReasoningEffort | None = None,
         max_tokens: int = LLMDefaults.MAX_OUTPUT_TOKENS,
@@ -267,6 +274,7 @@ class FakeClient(BaseLLMClient):
             model=model,
             messages=messages,
             tools=tools,
+            tool_choice=tool_choice,
             temperature=temperature,
             response_format=None,
             reasoning_effort=reasoning_effort,

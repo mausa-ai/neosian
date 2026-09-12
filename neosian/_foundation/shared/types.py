@@ -40,6 +40,10 @@ from neosian._foundation.shared.registry import (
     registered_models,
     resolve_model,
 )
+from neosian._foundation.shared.tool_choice import (
+    ToolChoice as ToolChoice,
+    ToolChoiceMode as ToolChoiceMode,
+)
 
 if TYPE_CHECKING:
     from neosian._foundation.agent.approval import ToolGateConfig

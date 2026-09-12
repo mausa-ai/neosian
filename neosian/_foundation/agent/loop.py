@@ -25,7 +25,6 @@ from neosian._foundation.shared.types import (
     AnyModel,
     GuardrailResult,
     PolicyResult,
-    ResponseFormat,
 )
 from neosian._foundation.tools.base import ToolResult
 
@@ -38,23 +37,22 @@ async def execute_with_client(
     client: BaseLLMClient,
     model: AnyModel,
     attempt: Attempt,
-    response_format: ResponseFormat | None = None,
 ) -> AgentResponse:
     """Execute the agent with a specific client and model.
 
     Args:
-        ctx: Per-run context (hook dispatch).
+        ctx: Per-run context (hook dispatch, the run's tool scope).
         client: LLM client to use.
         model: Model identifier.
         attempt: This try's message snapshot and usage ledger; the
             ledger outlives an exception, so the caller reads billed
             usage off the attempt when this method raises.
-        response_format: Optional structured output configuration.
 
     Returns:
         AgentResponse with the final message and execution details.
     """
     agent = ctx.agent
+    scope = ctx.scope
     all_tool_calls: list[ToolCall] = []
     all_tool_results: list[ToolResult[Any]] = []
 
@@ -74,8 +72,9 @@ async def execute_with_client(
             response = await client.complete(
                 messages=attempt.messages,
                 model=model,
-                tools=agent._tool_definitions if agent._tool_definitions else None,
-                response_format=response_format,
+                tools=scope.wire_tools,
+                tool_choice=scope.wire_choice,
+                response_format=scope.wire_format,
                 reasoning_effort=effective_reasoning,
                 max_tokens=agent._max_output_tokens,
                 cache_conversation=agent._cache_conversation,
@@ -119,7 +118,21 @@ async def execute_with_client(
                 message=response.message,
                 tool_calls_made=all_tool_calls,
                 tool_results=all_tool_results,
-                response_format=response_format,
+                stop_reason=response.stop_reason,
+                model=response.model or model.value,
+            )
+
+        # The synthetic final tool is the answer, not a tool to run: the
+        # model calling it ends the loop the way text does (#225).
+        final_call = scope.final_call(response.message.tool_calls)
+        if final_call is not None:
+            return await finalize_response(
+                ctx,
+                attempt,
+                message=response.message,
+                tool_calls_made=all_tool_calls,
+                tool_results=all_tool_results,
+                final_call=final_call,
                 stop_reason=response.stop_reason,
                 model=response.model or model.value,
             )
@@ -173,14 +186,18 @@ async def execute_with_client(
                 )
             )
 
-    # Max iterations reached - return last response
+    # Max iterations reached: the last call sends no real tools, so the
+    # model must answer — a schema's final tool stays, forced, so a typed
+    # run still returns its type (#225).
+    last = scope.last_resort()
     call_started = time.monotonic()
     try:
         final_response = await client.complete(
             messages=attempt.messages,
             model=model,
-            tools=None,  # No tools on final call to force text response
-            response_format=response_format,
+            tools=last.wire_tools,
+            tool_choice=last.wire_choice,
+            response_format=last.wire_format,
             reasoning_effort=effective_reasoning,
             max_tokens=agent._max_output_tokens,
             cache_conversation=agent._cache_conversation,
@@ -219,7 +236,7 @@ async def execute_with_client(
         message=final_response.message,
         tool_calls_made=all_tool_calls,
         tool_results=all_tool_results,
-        response_format=response_format,
+        final_call=last.final_call(final_response.message.tool_calls),
         stop_reason=final_response.stop_reason,
         model=final_response.model or model.value,
         iterations_exhausted=True,
@@ -233,7 +250,7 @@ async def finalize_response(
     message: Message,
     tool_calls_made: list[ToolCall],
     tool_results: list[ToolResult[Any]],
-    response_format: ResponseFormat | None = None,
+    final_call: ToolCall | None = None,
     stop_reason: str | None = None,
     model: str | None = None,
     iterations_exhausted: bool = False,
@@ -251,7 +268,8 @@ async def finalize_response(
         message: The assistant's response message.
         tool_calls_made: List of tool calls made during execution.
         tool_results: Results from tool executions.
-        response_format: Optional structured output configuration for parsing.
+        final_call: The synthetic final tool's call, when the model
+            answered through it; its arguments carry the schema (#225).
         stop_reason: Provider-native stop reason of the final completion.
         model: Model string reported by the API for the final completion.
 
@@ -289,12 +307,16 @@ async def finalize_response(
             output_policy=output_policy,
         )
 
-    # Parse structured output if response_format was provided
+    # Parse structured output: off the final tool's arguments when one
+    # carried the schema, off the message text when the wire did.
+    scope = ctx.scope
     parsed: BaseModel | None = None
-    if response_format is not None and message_text:
+    if final_call is not None:
+        parsed = scope.parse(final_call)
+    elif scope.response_format is not None and message_text:
         from neosian._foundation.shared.schema import validate_json
 
-        parsed = validate_json(response_format.schema, message_text)
+        parsed = validate_json(scope.response_format.schema, message_text)
 
     usage = attempt.usage
     return AgentResponse(

@@ -36,6 +36,7 @@ from neosian._foundation.llm.openai_convert import (
     json_object_format,
     refusal_of,
     schema_in_prompt,
+    tool_choice_body,
     usage_of,
 )
 from neosian._foundation.shared.constants import ErrorMessages, LLMDefaults
@@ -52,6 +53,7 @@ from neosian._foundation.shared.types import (
     ReasoningEffort,
     ResponseFormat,
     ToolCallId,
+    ToolChoice,
     ToolName,
 )
 
@@ -98,6 +100,7 @@ class OpenAICompatibleClient(BaseLLMClient):
         messages: list[Message],
         model: AnyModel,
         tools: list[ToolDefinition] | None = None,
+        tool_choice: ToolChoice | None = None,
         temperature: float | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: ReasoningEffort | None = None,
@@ -142,6 +145,7 @@ class OpenAICompatibleClient(BaseLLMClient):
             "model": model.value,
             "messages": openai_messages,
             "tools": openai_tools if openai_tools else omit,
+            **tool_choice_body(openai_tools, tool_choice),
             "max_completion_tokens": max_tokens,
             "temperature": temperature if temperature is not None else omit,
             "response_format": (
@@ -303,6 +307,7 @@ class OpenAICompatibleClient(BaseLLMClient):
         messages: list[Message],
         model: AnyModel,
         tools: list[ToolDefinition] | None = None,
+        tool_choice: ToolChoice | None = None,
         temperature: float | None = None,
         reasoning_effort: ReasoningEffort | None = None,
         max_tokens: int = LLMDefaults.MAX_OUTPUT_TOKENS,
@@ -338,6 +343,7 @@ class OpenAICompatibleClient(BaseLLMClient):
                 model=model.value,
                 messages=openai_messages,
                 tools=openai_tools if openai_tools else omit,
+                **tool_choice_body(openai_tools, tool_choice),
                 max_completion_tokens=max_tokens,
                 temperature=temperature if temperature is not None else omit,
                 stream=True,

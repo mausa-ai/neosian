@@ -8,7 +8,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from neosian._foundation.llm.anthropic import AnthropicClient
-from neosian._foundation.llm.anthropic_convert import strip_unsupported_constraints
+from neosian._foundation.llm.anthropic_tools import (
+    convert_tool_choice,
+    strip_unsupported_constraints,
+)
 from neosian._foundation.llm.base import (
     CompactionBlock,
     DocumentBlock,
@@ -29,6 +32,7 @@ from neosian._foundation.shared.types import (
     Model,
     ReasoningEffort,
     ToolCallId,
+    ToolChoice,
     ToolName,
 )
 from neosian._foundation.tools.result import ToolResult
@@ -2157,6 +2161,85 @@ class TestAnthropicStrictToolUse:
         assert "minimum" not in px
         assert "maximum" not in px
         assert px["multipleOf"] == 5
+
+
+@pytest.mark.unit
+class TestAnthropicToolChoice:
+    """The four choices are Anthropic's four types, and a choice only ever
+    rides beside a tool list (NC9 #224)."""
+
+    @pytest.mark.parametrize(
+        ("choice", "expected"),
+        [
+            (ToolChoice.auto(), {"type": "auto"}),
+            (ToolChoice.required(), {"type": "any"}),
+            (ToolChoice.none(), {"type": "none"}),
+            (ToolChoice.tool("get_weather"), {"type": "tool", "name": "get_weather"}),
+            (
+                ToolChoice.required(parallel=False),
+                {"type": "any", "disable_parallel_tool_use": True},
+            ),
+        ],
+        ids=["auto", "required", "none", "tool", "serial"],
+    )
+    def test_the_wire_shapes(
+        self, choice: ToolChoice, expected: dict[str, Any]
+    ) -> None:
+        assert convert_tool_choice(choice) == expected
+
+    def test_none_has_no_parallel_knob(self) -> None:
+        """Nothing is called, so nothing can be parallel."""
+        assert "disable_parallel_tool_use" not in convert_tool_choice(ToolChoice.none())
+
+    @pytest.mark.asyncio
+    async def test_the_choice_reaches_the_body_beside_the_tools(
+        self,
+        client: AnthropicClient,
+        sample_messages: list[Message],
+        sample_tool: ToolDefinition,
+    ) -> None:
+        mock_response = MagicMock(spec_set=SPEC["message"])
+        mock_response.content = [
+            MagicMock(spec_set=SPEC["text"], type="text", text="hi")
+        ]
+        mock_response.usage = MagicMock(
+            spec=SPEC["usage"], input_tokens=5, output_tokens=3
+        )
+        mock_response.model = "claude-sonnet-5"
+        _mock_complete(client, mock_response)
+
+        await client.complete(
+            messages=sample_messages,
+            model=Model.CLAUDE_SONNET_5,
+            tools=[sample_tool],
+            tool_choice=ToolChoice.tool("get_weather"),
+        )
+
+        call_kwargs = _sdk(client).messages.stream.call_args.kwargs
+        assert call_kwargs["tool_choice"] == {"type": "tool", "name": "get_weather"}
+
+    @pytest.mark.asyncio
+    async def test_without_tools_no_choice_is_sent(
+        self, client: AnthropicClient, sample_messages: list[Message]
+    ) -> None:
+        """A tool_choice with no tools is a 400 on the wire."""
+        mock_response = MagicMock(spec_set=SPEC["message"])
+        mock_response.content = [
+            MagicMock(spec_set=SPEC["text"], type="text", text="hi")
+        ]
+        mock_response.usage = MagicMock(
+            spec=SPEC["usage"], input_tokens=5, output_tokens=3
+        )
+        mock_response.model = "claude-sonnet-5"
+        _mock_complete(client, mock_response)
+
+        await client.complete(
+            messages=sample_messages,
+            model=Model.CLAUDE_SONNET_5,
+            tool_choice=ToolChoice.required(),
+        )
+
+        assert "tool_choice" not in _sdk(client).messages.stream.call_args.kwargs
 
 
 @pytest.mark.unit

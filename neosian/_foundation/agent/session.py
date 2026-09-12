@@ -16,6 +16,8 @@ from neosian._foundation.shared.types import (
     OpenAICompatible,
     Provider,
     ResponseFormat,
+    ToolChoice,
+    ToolFunction,
 )
 
 if TYPE_CHECKING:
@@ -89,6 +91,8 @@ class AgentSession:
         *,
         stream: Literal[False],
         response_format: ResponseFormat | None = None,
+        tools: list[str | ToolFunction] | None = None,
+        tool_choice: ToolChoice | None = None,
     ) -> AgentResponse: ...
 
     @overload
@@ -98,6 +102,8 @@ class AgentSession:
         *,
         stream: Literal[True],
         response_format: None = None,
+        tools: list[str | ToolFunction] | None = None,
+        tool_choice: ToolChoice | None = None,
     ) -> AsyncIterator[AgentEvent]: ...
 
     async def run(
@@ -106,6 +112,8 @@ class AgentSession:
         *,
         stream: bool,
         response_format: ResponseFormat | None = None,
+        tools: list[str | ToolFunction] | None = None,
+        tool_choice: ToolChoice | None = None,
     ) -> AgentResponse | AsyncIterator[AgentEvent]:
         """Execute the agent with cached clients.
 
@@ -117,15 +125,24 @@ class AgentSession:
             stream: If True, yields typed AgentEvent values (DESIGN §6).
                 If False, returns AgentResponse.
             response_format: Optional structured output configuration.
+            tools: This run's tools, by name or decorated function; None is
+                every registered one, [] is none.
+            tool_choice: Whether the model may, must, or must not call one.
 
         Returns:
             AgentResponse when stream=False, AsyncIterator[AgentEvent]
             when stream=True.
         """
-        # One funnel with Agent.run — _dispatch validates and builds the
-        # RunContext carrying this session's client cache + sticky state.
+        # One funnel with Agent.run — _dispatch validates, resolves the
+        # tool scope, and builds the RunContext carrying this session's
+        # client cache + sticky state.
         return await self._agent._dispatch(
-            messages, stream=stream, response_format=response_format, session=self
+            messages,
+            stream=stream,
+            response_format=response_format,
+            tools=tools,
+            tool_choice=tool_choice,
+            session=self,
         )
 
     async def close(self) -> None:

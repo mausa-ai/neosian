@@ -24,6 +24,7 @@ from neosian._foundation.agent.guards import require_model_key
 from neosian._foundation.agent.hooks import HookRunner
 from neosian._foundation.agent.response import AgentResponse
 from neosian._foundation.agent.stream_run import run_streaming
+from neosian._foundation.agent.tool_scope import ToolScope, resolve_scope
 from neosian._foundation.llm.base import BaseLLMClient, Message, ToolDefinition
 from neosian._foundation.llm.router import ProviderRouter
 from neosian._foundation.memory.skills import create_skill_tools
@@ -33,7 +34,6 @@ from neosian._foundation.shared.exceptions import (
     ConfigurationError,
     GuardrailStreamingError,
     StructuredOutputStreamingError,
-    StructuredOutputToolsError,
 )
 from neosian._foundation.shared.registry import resolve_model
 from neosian._foundation.shared.types import (
@@ -42,6 +42,7 @@ from neosian._foundation.shared.types import (
     FallbackState,
     Provider,
     ResponseFormat,
+    ToolChoice,
     ToolFunction,
     ToolName,
 )
@@ -241,15 +242,13 @@ class Agent:
         """Run-entry guards, shared verbatim by Agent.run and AgentSession.run.
 
         The session twin skipping these was a defect class, not a variant
-        (DESIGN §3 found-bug register #1).
+        (DESIGN §3 found-bug register #1). What tools and a schema may do
+        together is `resolve_scope`'s to refuse, not these guards' (#225).
         """
-        # Structured outputs require blocking mode
+        # Structured outputs require blocking mode: the streaming seam has
+        # no response_format, and a schema needs the whole reply to validate.
         if response_format is not None and stream:
             raise StructuredOutputStreamingError()
-
-        # Structured outputs are incompatible with tool-enabled agents
-        if response_format is not None and self._tool_definitions:
-            raise StructuredOutputToolsError()
 
         # Output guardrails require blocking mode
         if (
@@ -271,7 +270,9 @@ class Agent:
             max_total_tokens=self._max_total_tokens,
         )
 
-    def _run_context(self, session: AgentSession | None) -> RunContext:
+    def _run_context(
+        self, session: AgentSession | None, scope: ToolScope
+    ) -> RunContext:
         """Build the per-run context — the seam the session twins collapsed into."""
         if session is None:
             return RunContext(
@@ -280,6 +281,7 @@ class Agent:
                 hooks=self._hooks,
                 started=time.monotonic(),
                 ledger=self._ledger(),
+                scope=scope,
             )
         return RunContext(
             agent=self,
@@ -288,6 +290,7 @@ class Agent:
             fallback_state=session._fallback_state,
             started=time.monotonic(),
             ledger=self._ledger(),
+            scope=scope,
         )
 
     async def _dispatch(
@@ -296,18 +299,30 @@ class Agent:
         *,
         stream: bool,
         response_format: ResponseFormat | None,
+        tools: list[str | ToolFunction] | None,
+        tool_choice: ToolChoice | None,
         session: AgentSession | None,
     ) -> AgentResponse | AsyncIterator[AgentEvent]:
         """The one entry funnel behind Agent.run and AgentSession.run.
 
         A single call site for the guards means neither entry point can
-        skip them by construction (DESIGN §3 found-bug register #1).
+        skip them by construction (DESIGN §3 found-bug register #1). The
+        tool scope is resolved here too, once, and rides the context the
+        way the ledger does — neither driver resolves anything (#224).
         """
         self._validate_run(stream=stream, response_format=response_format)
-        ctx = self._run_context(session)
+        ctx = self._run_context(
+            session,
+            resolve_scope(
+                self,
+                tools=tools,
+                tool_choice=tool_choice,
+                response_format=response_format,
+            ),
+        )
         if stream:
             return run_streaming(ctx, messages)
-        response = await run_blocking(ctx, messages, response_format=response_format)
+        response = await run_blocking(ctx, messages)
         # The one blocking on_turn site: every path through _run_blocking
         # (finalized, input-blocked, guard-merged) funnels through here.
         await emit_turn(ctx, response, streamed=False)
@@ -320,6 +335,8 @@ class Agent:
         *,
         stream: Literal[False],
         response_format: ResponseFormat | None = None,
+        tools: list[str | ToolFunction] | None = None,
+        tool_choice: ToolChoice | None = None,
     ) -> AgentResponse: ...
 
     @overload
@@ -329,6 +346,8 @@ class Agent:
         *,
         stream: Literal[True],
         response_format: None = None,
+        tools: list[str | ToolFunction] | None = None,
+        tool_choice: ToolChoice | None = None,
     ) -> AsyncIterator[AgentEvent]: ...
 
     async def run(
@@ -337,6 +356,8 @@ class Agent:
         *,
         stream: bool,
         response_format: ResponseFormat | None = None,
+        tools: list[str | ToolFunction] | None = None,
+        tool_choice: ToolChoice | None = None,
     ) -> AgentResponse | AsyncIterator[AgentEvent]:
         """Execute the agent with the given conversation history.
 
@@ -347,7 +368,12 @@ class Agent:
                 AgentResponse.
             response_format: Optional structured output configuration. When provided,
                 the agent returns a structured response matching the Pydantic schema.
-                Incompatible with stream=True and tool-enabled agents.
+                Incompatible with stream=True. With tools in play the schema
+                rides a synthetic final tool (NC9 #225).
+            tools: The registered tools this run may call, by name or by
+                decorated function; None is all of them, [] is none.
+            tool_choice: Whether the model may, must, or must not call one
+                this turn (NC9 #224).
 
         Returns:
             AgentResponse when stream=False, AsyncIterator[AgentEvent]
@@ -358,12 +384,20 @@ class Agent:
         Raises:
             GuardrailStreamingError: If stream=True with output guardrails configured.
             StructuredOutputStreamingError: If stream=True with response_format.
-            StructuredOutputToolsError: If response_format with tool-enabled agent.
+            StructuredOutputToolsError: If response_format rides a tool_choice
+                that forces some other tool.
+            ConfigurationError: If tools names an unregistered tool, or
+                tool_choice forces one this run does not send.
             ModelFailedError: If model fails and no fallback is configured.
             FallbackExhaustedError: If both main and fallback models fail.
         """
         return await self._dispatch(
-            messages, stream=stream, response_format=response_format, session=None
+            messages,
+            stream=stream,
+            response_format=response_format,
+            tools=tools,
+            tool_choice=tool_choice,
+            session=None,
         )
 
     def _should_retry_main(self, fallback_state: FallbackState) -> bool:

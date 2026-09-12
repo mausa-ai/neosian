@@ -15,6 +15,7 @@ from neosian import (
     StructuredOutputStreamingError,
     StructuredOutputToolsError,
     Tool,
+    ToolChoice,
     ToolResult,
 )
 from neosian._foundation.llm.base import CompletionResponse, Usage
@@ -103,15 +104,22 @@ class TestStructuredOutputValidation:
             )
 
     @pytest.mark.asyncio
-    async def test_tools_with_response_format_raises_error(
+    async def test_a_forced_other_tool_with_response_format_raises_error(
         self, agent_with_tools: Agent
     ) -> None:
-        """Test that tools + response_format raises StructuredOutputToolsError."""
+        """Forced to get_time every turn, the model can never emit the
+        schema — the one shape tools and a schema cannot share (#225)."""
         messages = [Message(role=Role.USER, content="What time is it?")]
         rf = ResponseFormat(schema=WeatherResponse)
 
-        with pytest.raises(StructuredOutputToolsError):
-            await agent_with_tools.run(messages, stream=False, response_format=rf)
+        with pytest.raises(StructuredOutputToolsError) as info:
+            await agent_with_tools.run(
+                messages,
+                stream=False,
+                response_format=rf,
+                tool_choice=ToolChoice.tool("get_time"),
+            )
+        assert info.value.details == {"tool_name": "get_time"}
 
     @pytest.mark.asyncio
     async def test_response_format_without_streaming_allowed(

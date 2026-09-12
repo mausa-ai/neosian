@@ -16,6 +16,7 @@ from openai.types.chat import (
     ChatCompletionAssistantMessageParam,
     ChatCompletionMessageParam,
     ChatCompletionMessageToolCallParam,
+    ChatCompletionToolChoiceOptionParam,
     ChatCompletionToolParam,
 )
 from openai.types.chat.completion_create_params import (
@@ -35,7 +36,7 @@ from neosian._foundation.shared.exceptions import UnsupportedContentError
 from neosian._foundation.shared.prompt_assets import get_prompt
 from neosian._foundation.shared.schema import strict_schema
 from neosian._foundation.shared.serialization import safe_json_dumps
-from neosian._foundation.shared.types import ResponseFormat
+from neosian._foundation.shared.types import ResponseFormat, ToolChoice
 
 
 def usage_of(usage: CompletionUsage) -> Usage:
@@ -171,6 +172,41 @@ def convert_tools(
             function["strict"] = True
         result.append({"type": "function", "function": function})
     return result
+
+
+def convert_tool_choice(tool_choice: ToolChoice) -> ChatCompletionToolChoiceOptionParam:
+    """Convert a ToolChoice to the OpenAI wire's `tool_choice` value.
+
+    Three of the four modes are the wire's own strings; a named tool is
+    its object form. `parallel` is not part of this value — it rides the
+    body's own `parallel_tool_calls` flag.
+    """
+    if tool_choice.mode == "tool":
+        return {
+            "type": "function",
+            "function": {"name": tool_choice.name or ""},
+        }
+    modes: dict[str, ChatCompletionToolChoiceOptionParam] = {
+        "auto": "auto",
+        "required": "required",
+        "none": "none",
+    }
+    return modes[tool_choice.mode]
+
+
+def tool_choice_body(
+    tools: list[ChatCompletionToolParam] | None, tool_choice: ToolChoice | None
+) -> dict[str, Any]:
+    """The body keys a choice contributes — none at all without tools,
+    since the wire takes a choice only beside a tool list, and
+    `parallel_tool_calls` only when it says what the default does not.
+    """
+    if not tools or tool_choice is None:
+        return {}
+    body: dict[str, Any] = {"tool_choice": convert_tool_choice(tool_choice)}
+    if not tool_choice.parallel:
+        body["parallel_tool_calls"] = False
+    return body
 
 
 def convert_response_format(response_format: ResponseFormat) -> OpenAIResponseFormat:

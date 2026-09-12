@@ -23,7 +23,6 @@ from neosian._foundation.agent.plan import (
 )
 from neosian._foundation.agent.response import AgentResponse
 from neosian._foundation.llm.base import Message, Role
-from neosian._foundation.shared.types import ResponseFormat
 
 if TYPE_CHECKING:
     from neosian._foundation.agent.context import RunContext
@@ -32,7 +31,6 @@ if TYPE_CHECKING:
 async def run_blocking(
     ctx: RunContext,
     messages: list[Message],
-    response_format: ResponseFormat | None = None,
 ) -> AgentResponse:
     """Execute agent without streaming.
 
@@ -42,7 +40,6 @@ async def run_blocking(
 
     Args:
         messages: Conversation history (without system message).
-        response_format: Optional structured output configuration.
 
     Returns:
         AgentResponse with the final message and execution details.
@@ -56,14 +53,10 @@ async def run_blocking(
     async with GuardWatch.start(ctx, messages) as guard:
         guard_task = guard.task
         if guard_task is None:
-            return await execute_agent_core(
-                ctx, messages, response_format=response_format
-            )
+            return await execute_agent_core(ctx, messages)
 
         # Run guard and agent in parallel
-        agent_task = asyncio.create_task(
-            execute_agent_core(ctx, messages, response_format=response_format)
-        )
+        agent_task = asyncio.create_task(execute_agent_core(ctx, messages))
         try:
             done, _pending = await asyncio.wait(
                 [guard_task, agent_task], return_when=asyncio.FIRST_COMPLETED
@@ -108,15 +101,14 @@ async def run_blocking(
 async def execute_agent_core(
     ctx: RunContext,
     messages: list[Message],
-    response_format: ResponseFormat | None = None,
 ) -> AgentResponse:
     """Run the plan's legs in order without input-guard checks — the
     blocking driver; `stream_agent_with_guard` is its streamed twin.
 
     Args:
-        ctx: Per-run context (client acquisition, sticky fallback state).
+        ctx: Per-run context (client acquisition, sticky fallback state,
+            the run's tool scope).
         messages: Conversation history (without system message).
-        response_format: Optional structured output configuration.
 
     Returns:
         AgentResponse with the final message and execution details.
@@ -144,7 +136,6 @@ async def execute_agent_core(
                 client=ctx.acquire(leg.model),
                 model=leg.model,
                 attempt=attempt,
-                response_format=response_format,
             )
         except Exception as e:
             failures.append((leg, e))

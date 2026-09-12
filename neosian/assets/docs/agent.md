@@ -17,7 +17,7 @@ quickstart (`neosian docs quickstart`) is the tour.
 | field | default | what it binds |
 |---|---|---|
 | `system_prompt: str` | required | The system prompt. A plain string; `load_prompt(path)` reads one from YAML. |
-| `tools` | `[]` | `@Tool`-decorated async functions; an MCP server's `[*server.tools]` (`neosian docs mcp`). Two tools cannot share a name. |
+| `tools` | `[]` | `@Tool`-decorated async functions; an MCP server's `[*server.tools]` (`neosian docs mcp`). Two tools cannot share a name. One run narrows them with `run(tools=…)`: below. |
 | `model: AnyModel \| str` | `Model.CEREBRAS_GPT_OSS_120B` | A shipped `Model`, a `register_model(...)` door, or either's wire id as a string, resolved once at construction; an unknown id raises `InvalidModelError`. |
 | `fallback` | `None` | `FallbackConfig(model=…)` or `FallbackConfig(models=[…])`: one rung or a ladder, capability-aware and sticky within a session. Below. |
 | `enable_todo` | `True` | The builtin `update_todo` tool. |
@@ -106,6 +106,73 @@ When every rung fails, `FallbackExhaustedError.attempts` lists each
 `(model, error)` in the order tried; `main_model`/`main_error` and
 `fallback_model`/`fallback_error` keep naming the main model and a
 fallback rung.
+
+## Per-call tools and the choice
+
+The configuration registers what an agent *can* call; a single run can
+narrow that and say how the model must treat it:
+
+```python
+from neosian import ToolChoice
+
+await agent.run(
+    messages,
+    stream=False,
+    tools=["search"],                  # names, or the @Tool functions
+    tool_choice=ToolChoice.required(),
+)
+```
+
+`tools=None` (the default) sends every registered tool, `tools=[]` sends
+none, and a name the agent does not register raises
+`ConfigurationError` before any call is made: the registry is the only
+name authority. Narrowing is per run, never a mutation, so the agent
+keeps its whole registry for the next one.
+
+`ToolChoice` has four shapes: `auto()` leaves the provider's default,
+`required()` says a tool must be called this turn, `none()` says none
+will be (the declarations still ride along, as description), and
+`tool("search")` forces exactly that one. A forced tool this run does
+not send, or a forced call with no tools at all, is a
+`ConfigurationError`. `parallel=False` asks for at most one call per
+turn where the wire has a knob for it.
+
+Both the choice and the tools are resolved once per run and apply to
+every fallback rung. The last call, the one made after
+`max_tool_iterations` rounds, is the exception: it carries no tools, so
+a forced choice would leave the model required to call what it was not
+given, and is dropped with them.
+
+## A schema with tools
+
+Structured output and tools work together (they did not before 1.0):
+
+```python
+response = await agent.run(
+    messages, stream=False, response_format=ResponseFormat(schema=Answer)
+)
+response.parsed   # an Answer
+```
+
+A model cannot be constrained to JSON by the wire while it is still
+calling tools, so with tools in play the schema rides one more
+declaration instead: a synthetic `final_response` tool whose arguments
+are the answer's fields. The model uses the real tools as it needs them
+and calls `final_response` when it is done, which ends the run the way
+a text answer does. That call is the answer, not work: it never
+dispatches, and `tool_results` does not list it. A registered tool
+already named `final_response` is a `ConfigurationError` (rename it, or
+drop `response_format`).
+
+With no tools in play, nothing changes: the schema goes on the wire and
+the reply is parsed from the text. `tool_choice=ToolChoice.none()` is
+that same case, since nothing will be called.
+
+Two shapes are still refused. `stream=True` with a schema raises
+`StructuredOutputStreamingError`: validation needs the whole reply.
+A schema under a `tool_choice` forcing some *other* tool raises
+`StructuredOutputToolsError`, because the model is then never free to
+emit the answer.
 
 ## The client seam
 

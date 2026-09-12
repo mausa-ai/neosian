@@ -10,6 +10,32 @@ phase close names the version.
 
 ### Added
 
+- **Per-call tools and a `tool_choice`.** `Agent.run` and
+  `AgentSession.run` take `tools=` (the registered tools this run may
+  call, by name or by decorated function; `None` is all of them, `[]` is
+  none) and `tool_choice=` (the new `ToolChoice` value type:
+  `auto()`, `required()`, `none()`, `tool("search")`, with
+  `parallel=False` where a wire has the knob). Both are resolved once at
+  the dispatch funnel and ride the run context, so they cover both
+  drivers and every fallback rung. A name the agent does not register, a
+  forced tool outside the run's scope, and a forced call with no tools
+  are each a `ConfigurationError` raised before any call is made. The
+  last call after `max_tool_iterations` rounds carries no tools, so a
+  forced choice is dropped with them rather than deadlocking it (DESIGN
+  §3, ledger #224).
+- **Structured output with tools.** A schema and a tool-enabled agent no
+  longer exclude each other. With tools in play the schema rides a
+  synthetic `final_response` tool whose arguments are the answer's
+  fields: the model calls the real tools as it needs them and calls that
+  one to finish, which ends the run the way text does. The call is the
+  answer, not work, so it never dispatches and never appears in
+  `tool_results`. With no tools in play (including under
+  `ToolChoice.none()`) the schema still goes on the wire and the text is
+  parsed, unchanged. `StructuredOutputToolsError` narrows to the one
+  shape that cannot be honored, a schema under a `tool_choice` forcing
+  some other tool, and now carries that tool's name; `stream=True` with
+  a schema is still refused (DESIGN §3, §9.1, ledger #225).
+
 - **A budget stop.** `AgentConfig` gains `max_cost_micro_usd` and
   `max_total_tokens`; a run that crosses either raises the new
   `BudgetExceededError` (`agent_budget_exceeded`, never retryable)
@@ -36,6 +62,14 @@ phase close names the version.
   every `(model, error)` in trial order — while `main_*`/`fallback_*`
   keep naming the main model and a fallback rung, and the two-rung
   message is unchanged (DESIGN §3, ledger #223).
+
+### Changed
+
+- `BaseLLMClient.complete` and `.stream` take `tool_choice`; a host's
+  own client implementing the seam gains the parameter with a `None`
+  default. Anthropic's tool, tool-choice and output-schema converters
+  moved to `llm/anthropic_tools.py` (an internal split for size-gate
+  headroom, the way `anthropic_convert.py` itself was split).
 
 ## [1.0.0rc6] - 2026-09-12
 
