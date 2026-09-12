@@ -8,6 +8,49 @@ phase close names the version.
 
 ## [Unreleased]
 
+### Added
+
+- **A token can say what it reaches, not only who it is.** An actor in
+  `NEOSIAN_SERVE_TOKEN` may carry an allowance —
+  `client:alice@user:alice+alice-=tok` fences memory scopes to the prefix
+  `user:alice` and conversation ids to `alice-`. Both are literal text,
+  matched with `startswith`; neither is interpreted, so an operator who
+  wants a segment boundary writes `user:alice/`. An allowance is an
+  allowlist: naming scopes and not ids reaches no conversation, and a
+  constrained token is refused `/mcp` and the four `store/*` routes.
+  Refusals are 403 in the §18 envelope under `forbidden`. **A token with
+  no allowance behaves exactly as before** (DESIGN §18.4, ledger #234).
+- **`neosian.memory.testing` exports `LedgerContract` and
+  `ConcurrencyContract`** beside `MemoryStoreContract`, so a host can
+  name the slices it inherits (ledger #232).
+
+### Changed
+
+- **`expected_version` is checked by every store.** A mismatch raises
+  `MemoryConflictError` with reason `version_mismatch`, and an
+  `expected_version` on an absent document raises `document_absent`, on
+  every substrate. `supports_optimistic_concurrency` now declares only
+  whether that check is race-safe *across workers* — not whether it
+  happens. All three shipped stores already behaved this way; a host
+  store that drops the keyword now fails the conformance kit, which
+  previously passed it (ledger #232, ECOSYSTEM §10).
+- **A long conversation crosses the wire a page at a time.**
+  `RemoteStore.read_turns` and `read_projections` fetch 500 rows per
+  request instead of asking for a whole conversation at once. Callers see
+  no difference — the same tuple, the same ordering — but neither the
+  daemon nor the client builds the whole of a long history in memory
+  (ledger #235).
+- **FileStore refuses a case collision instead of merging.** On a
+  case-folding filesystem (APFS, NTFS) `user:A` and `user:a` shared one
+  directory and one version counter. A write to the folded name now
+  raises `MemoryConflictError` with the appended reason `case_collision`.
+  The scope grammar is unchanged and the on-disk layout has not moved
+  (ledger #231, ECOSYSTEM §2).
+- **FileStore's three whole-scope reads run off the event loop.**
+  `list_documents`, `redact` and `history` move to a worker thread, so a
+  large scope no longer stalls `neosian serve`'s loop for every other
+  request. Single-file reads and writes are unchanged (ledger #233).
+
 ## [1.0.0rc7] - 2026-09-12
 
 The loop gains the SOTA knobs the review named: a budget stop, a
