@@ -152,6 +152,28 @@ records every write under the presenting token's actor
 (`<client>[/<what the client said>]`); a malformed table refuses to
 start at the grammar tier naming the entry, never the secret.
 
+Since NQ2 an actor may carry an **allowance** — what the token reaches,
+not only who it is — written left of the `=` so the token itself stays
+opaque to the last character:
+
+```
+client:alice@user:alice+alice-=tok1   scopes under `user:alice`,
+                                      conversation ids starting `alice-`
+client:reader@user:alice=tok2         those scopes; no conversation
+client:ops=tok3                        everything, exactly as before
+```
+
+Both prefixes are **literal text** matched with `startswith` against the
+parameter a request names — neither is interpreted, so `user:alice` also
+admits `user:alice2` and an operator who wants the boundary writes
+`user:alice/`. An allowance is an **allowlist**: what it does not name is
+refused with 403 in the §18 envelope, so `client:reader` above reaches no
+conversation at all, and any constrained token is refused `/mcp` (its
+reach is the operator's mounts, which no prefix can fence) and the four
+`store/*` routes (they move the store whole and restore verbatim under
+the archive's own actors). **A token with no allowance behaves exactly as
+it did before** — nothing existing changes.
+
 `NEOSIAN_CLIENT_TOKEN` is the **client's** side: read only by the argv
 entry points when `--url` names a state process (`neosian memory`,
 `neosian mcp`, `neosian audit`), never by the library
@@ -163,7 +185,8 @@ grammar tier. Off means no daemon store from the shell.
 naming the key. Default-deny is code, not configuration (ledger #107,
 applied to the wire at #110): the state process never serves
 unauthenticated, because TLS terminates at a reverse proxy and an open
-port would otherwise expose every scope in the store. Clients send
+port would otherwise expose every scope in the store — an allowance
+narrows a token, never a missing one. Clients send
 `Authorization: Bearer <token>`; `RemoteStore.connect(url, token=…)`
 does it for them and names this key when the server rejects the token.
 `/health` is the one unauthenticated route (a container healthcheck

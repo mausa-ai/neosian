@@ -49,8 +49,8 @@ from neosian._foundation.server.sdk import (
     StreamableHTTPSessionManager,
 )
 from neosian._foundation.server.settings import DEFAULT_ACTOR
-from neosian._foundation.server.tokens import parse_clients
-from neosian._foundation.server.wire import WIRE_VERSION
+from neosian._foundation.server.tokens import Client, parse_clients
+from neosian._foundation.server.wire import FORBIDDEN_CODE, WIRE_VERSION
 from neosian._foundation.shared.exceptions import ConfigurationError
 
 if TYPE_CHECKING:
@@ -62,16 +62,18 @@ if TYPE_CHECKING:
     from neosian._foundation.memory.mounts import Mount
 
 _HEALTH_PATH = "/health"
+_MCP_PATH = "/mcp"
 
 
 class BearerAuthMiddleware:
     """Pure ASGI: the token table, each compared timing-safely, `/health`
-    exempt; a hit stamps the client's actor on the request (§20)."""
+    exempt; a hit stamps the presenting client on the request — its actor
+    (§20) and what it may reach (§18.4)."""
 
-    def __init__(self, app: ASGIApp, *, clients: Mapping[str, str]) -> None:
+    def __init__(self, app: ASGIApp, *, clients: Mapping[str, Client]) -> None:
         self._app = app
         self._table = {
-            f"Bearer {token}".encode(): actor for token, actor in clients.items()
+            f"Bearer {token}".encode(): client for token, client in clients.items()
         }
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
@@ -85,10 +87,10 @@ class BearerAuthMiddleware:
                 break
         # Every candidate is compared — the table is small, and a
         # short-circuit would leak which token prefix matched.
-        client: str | None = None
-        for expected, actor in self._table.items():
+        client: Client | None = None
+        for expected, candidate in self._table.items():
             if secrets.compare_digest(supplied, expected):
-                client = actor
+                client = candidate
         if client is None:
             response = Response(
                 "unauthorized",
@@ -97,12 +99,66 @@ class BearerAuthMiddleware:
             )
             await response(scope, receive, send)
             return
-        scope.setdefault("state", {})["actor"] = client
+        if client.constrained and scope["path"] == _MCP_PATH:
+            # The surface's reach is its **mounts** — operator config
+            # chosen at serve time, not a parameter a request names — so
+            # there is nothing for a prefix to match and no honest way to
+            # fence it per token. The allowlist rule applies (§18.4).
+            await _forbidden(
+                "this token's allowance does not reach /mcp — the surface "
+                "serves the operator's mounts, which no prefix can fence"
+            )(scope, receive, send)
+            return
+        state = scope.setdefault("state", {})
+        state["actor"] = client.actor
+        state["client"] = client
         await self._app(scope, receive, send)
+
+
+def _forbidden(message: str) -> Response:
+    """403 in the §18 envelope: authenticated, outside the allowance."""
+    return JSONResponse(
+        {"error": {"code": FORBIDDEN_CODE, "message": message, "details": {}}},
+        status_code=403,
+    )
 
 
 async def _health(request: Request) -> Response:  # noqa: ARG001 - route shape
     return JSONResponse({"status": "ok"})
+
+
+def _unconstrained(app: ASGIApp) -> ASGIApp:
+    """`/mcp` for tokens with no allowance only (§18.4, IN-4).
+
+    The surface's reach is its **mounts** — operator config chosen at
+    serve time, not a parameter a request names — so there is nothing for
+    a scope prefix to match against and no honest way to fence it per
+    token. Refusing is the allowlist rule applied: what an allowance does
+    not name, it does not reach.
+    """
+
+    async def guarded(scope: Scope, receive: Receive, send: Send) -> None:
+        client: Client = scope["state"]["client"]
+        if client.constrained:
+            response = JSONResponse(
+                {
+                    "error": {
+                        "code": FORBIDDEN_CODE,
+                        "message": (
+                            "this token's allowance does not reach /mcp — the "
+                            "surface serves the operator's mounts, which no "
+                            "prefix can fence"
+                        ),
+                        "details": {},
+                    }
+                },
+                status_code=403,
+            )
+            await response(scope, receive, send)
+            return
+        await app(scope, receive, send)
+
+    return guarded
 
 
 def _capabilities(
@@ -175,7 +231,7 @@ async def build_app(
         manager = StreamableHTTPSessionManager(
             app=mcp_server, max_request_body_size=MAX_REQUEST_BYTES
         )
-        routes.append(Route("/mcp", endpoint=StreamableHTTPASGIApp(manager)))
+        routes.append(Route(_MCP_PATH, endpoint=StreamableHTTPASGIApp(manager)))
 
     @asynccontextmanager
     async def lifespan(app: Starlette) -> AsyncIterator[None]:  # noqa: ARG001

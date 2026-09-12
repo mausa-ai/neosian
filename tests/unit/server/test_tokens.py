@@ -11,7 +11,12 @@ from neosian._foundation.llm.base import Message, Role
 from neosian._foundation.memory.file import FileStore
 from neosian._foundation.server.app import build_app
 from neosian._foundation.server.settings import SERVE_TOKEN_ENV, parse_args
-from neosian._foundation.server.tokens import DEFAULT_CLIENT, parse_clients, stamp
+from neosian._foundation.server.tokens import (
+    DEFAULT_CLIENT,
+    Client,
+    parse_clients,
+    stamp,
+)
 from neosian._foundation.shared.exceptions import ConfigurationError
 
 from .conftest import BASE_URL
@@ -21,10 +26,20 @@ _TABLE = "claude-code:laptop=abc,app:kit=def"
 
 class TestParseClients:
     def test_a_bare_token_is_the_default_client(self) -> None:
-        assert parse_clients("secret") == {"secret": DEFAULT_CLIENT}
+        assert parse_clients("secret") == {"secret": Client(DEFAULT_CLIENT)}
 
     def test_a_table_maps_tokens_to_actors(self) -> None:
-        assert parse_clients(_TABLE) == {"abc": "claude-code:laptop", "def": "app:kit"}
+        assert parse_clients(_TABLE) == {
+            "abc": Client("claude-code:laptop"),
+            "def": Client("app:kit"),
+        }
+
+    def test_a_table_without_an_allowance_constrains_nothing(self) -> None:
+        # The shape every token had before IN-4, unchanged by construction.
+        for client in parse_clients(_TABLE).values():
+            assert client.constrained is False
+            assert client.may_reach_scope("user:anyone") is True
+            assert client.may_reach_conversation("anything") is True
 
     @pytest.mark.parametrize(
         "value",

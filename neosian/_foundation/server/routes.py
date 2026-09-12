@@ -21,8 +21,9 @@ from typing import TYPE_CHECKING, Any
 
 from neosian._foundation.llm.codec import message_from_json
 from neosian._foundation.server.sdk import JSONResponse, Request, Response, Route
-from neosian._foundation.server.tokens import stamp
+from neosian._foundation.server.tokens import Client, stamp
 from neosian._foundation.server.wire import (
+    FORBIDDEN_CODE,
     VALUE_ERROR_CODE,
     decode_projection,
     encode_document,
@@ -47,12 +48,44 @@ if TYPE_CHECKING:
     from neosian._foundation.memory.base import MemoryStore
 
 
-def envelope(message: str, *, status: int = 400) -> Response:
+def envelope(
+    message: str, *, status: int = 400, code: str = VALUE_ERROR_CODE
+) -> Response:
     """The §18 error envelope under `value_error` — the caller's fault."""
     return JSONResponse(
-        {"error": {"code": VALUE_ERROR_CODE, "message": message, "details": {}}},
+        {"error": {"code": code, "message": message, "details": {}}},
         status_code=status,
     )
+
+
+def _refused(what: str) -> Response:
+    """403 in the envelope: authenticated, but outside the token's
+    allowance (§18.4, IN-4). Authorization, never a store error."""
+    return envelope(
+        f"this token's allowance does not reach {what}",
+        status=403,
+        code=FORBIDDEN_CODE,
+    )
+
+
+def _allowed(client: Client, payload: dict[str, Any]) -> Response | None:
+    """One gate for every route: the parameter a request names is the
+    thing the allowance is checked against. A route naming neither is
+    whole-store and refuses a constrained client outright."""
+    if not client.constrained:
+        return None
+    named = False
+    scope = payload.get("scope")
+    if isinstance(scope, str):
+        named = True
+        if not client.may_reach_scope(scope):
+            return _refused(f"scope {scope!r}")
+    conversation_id = payload.get("conversation_id")
+    if isinstance(conversation_id, str):
+        named = True
+        if not client.may_reach_conversation(conversation_id):
+            return _refused(f"conversation {conversation_id!r}")
+    return None if named else _refused("the whole store")
 
 
 def endpoint(
@@ -65,6 +98,9 @@ def endpoint(
             return envelope("request body must be JSON")
         if not isinstance(payload, dict):
             return envelope("request body must be an object")
+        refusal = _allowed(request.state.client, payload)
+        if refusal is not None:
+            return refusal
         try:
             return JSONResponse(await handler(payload, request.state.actor))
         except (NeosianError, ValueError) as exc:

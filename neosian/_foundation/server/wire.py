@@ -59,6 +59,11 @@ WIRE_VERSION: Final = 3  # NC4: the four store/* routes
 # error code — the §5 registry is a host contract, closed to plumbing.
 VALUE_ERROR_CODE: Final = "value_error"
 
+# The envelope code for a token reaching outside its allowance (§18.4,
+# IN-4). Deliberately not a neosian error code either, and for the same
+# reason: authorization is the daemon's plumbing, not a store's error.
+FORBIDDEN_CODE: Final = "forbidden"
+
 
 def encode_timestamp(value: datetime) -> str:
     """ISO-8601 `Z`, whatever zone the clock spoke (ECOSYSTEM §9)."""
