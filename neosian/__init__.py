@@ -101,6 +101,7 @@ from neosian._foundation.memory.maintenance import (
     run_maintenance,
 )
 from neosian._foundation.memory.mounts import MemoryConfig, Mount
+from neosian._foundation.memory.pageable import Page, Pageable
 from neosian._foundation.memory.portable import (
     ConversationArchive,
     Portable,
@@ -346,6 +347,9 @@ __all__ = [
     "UnitReport",
     "TransferReport",
     "transfer",
+    # Paged listings (DESIGN §8)
+    "Pageable",
+    "Page",
     # Conversation (DESIGN §9)
     "Conversation",
     "ConversationStore",

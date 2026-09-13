@@ -28,6 +28,7 @@ from neosian._foundation.memory.maintenance import (
     run_maintenance,
 )
 from neosian._foundation.memory.mounts import MemoryConfig, Mount
+from neosian._foundation.memory.pageable import Page, Pageable
 from neosian._foundation.memory.paths import (
     PATH_MAX_LENGTH,
     PATH_MAX_SEGMENTS,
@@ -106,6 +107,8 @@ __all__ = [
     "MemoryVersion",
     "MemoryWriteReceipt",
     "Mount",
+    "Page",
+    "Pageable",
     "Portable",
     "PostgresStore",
     "RemoteStore",

@@ -37,6 +37,7 @@ from neosian._foundation.conversation.file_turns import FileTurnStore
 from neosian._foundation.memory import file_layout as layout, journal
 from neosian._foundation.memory.base import MemoryStore
 from neosian._foundation.memory.envelope import Envelope, parse, render
+from neosian._foundation.memory.file_pageable import FilePageableStore
 from neosian._foundation.memory.file_portable import FilePortableStore
 from neosian._foundation.memory.paths import validate_document_path
 from neosian._foundation.memory.scope import Scope, parse_scope
@@ -62,10 +63,10 @@ _VERSIONS = layout.VERSIONS
 _REDACTIONS = layout.REDACTIONS
 
 
-class FileStore(MemoryStore, FileTurnStore, FilePortableStore):
+class FileStore(MemoryStore, FileTurnStore, FilePortableStore, FilePageableStore):
     """Markdown + frontmatter memory store over a plain directory —
-    implementing both storage seams (§8 documents, §9 turns) and the
-    mobility protocol (§26)."""
+    implementing both storage seams (§8 documents, §9 turns), the
+    mobility protocol (§26) and paged listings (§8)."""
 
     def __init__(self, root: str | Path, *, clock: Clock | None = None) -> None:
         self._root = Path(root).resolve()

@@ -44,7 +44,7 @@ if TYPE_CHECKING:
     from neosian._foundation.shared.clock import Clock
 
 
-def _like_prefix(prefix: str) -> str:
+def like_prefix(prefix: str) -> str:
     """Escape a plain string prefix into a LIKE pattern (never validated)."""
     escaped = prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     return escaped + "%"
@@ -198,7 +198,7 @@ class PostgresMemoryStore(MemoryStore):
         scope = parse_scope(scope)
         rows = await self._pool.fetch(
             self._sql.list_documents,
-            {"scope": scope, "pattern": _like_prefix(prefix)},
+            {"scope": scope, "pattern": like_prefix(prefix)},
         )
         return tuple(memory_entry(scope, row) for row in rows)
 

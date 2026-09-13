@@ -44,6 +44,8 @@ def test_memory_all_is_pinned() -> None:
         "MemoryVersion",
         "MemoryWriteReceipt",
         "Mount",
+        "Page",
+        "Pageable",
         "Portable",
         "PostgresStore",
         "RemoteStore",

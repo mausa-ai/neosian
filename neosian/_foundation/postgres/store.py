@@ -1,7 +1,8 @@
 """PostgresStore — the relational reference implementation (N3).
 
 The standalone counterpart of FileStore, implementing both storage seams
-(§8 documents, §9 turns) and the mobility protocol (§26) over one
+(§8 documents, §9 turns), the mobility protocol (§26) and paged
+listings (§8) over one
 lazily-opened autocommit pool
 (ledger #34): every mutation is a single atomic statement, the store
 never issues BEGIN/COMMIT/ROLLBACK, and `expected_version` is race-safe
@@ -28,10 +29,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from neosian._foundation.postgres.memory_store import PostgresMemoryStore
+from neosian._foundation.postgres.pageable import PostgresPageableStore
 from neosian._foundation.postgres.pool import PostgresPool
 from neosian._foundation.postgres.portable import PostgresPortableStore
 from neosian._foundation.postgres.schema import schema_sql, validate_schema_name
 from neosian._foundation.postgres.statements import build_statements
+from neosian._foundation.postgres.statements_pageable import build_pageable_statements
 from neosian._foundation.postgres.statements_portable import build_portable_statements
 from neosian._foundation.postgres.turn_store import PostgresTurnStore
 from neosian._foundation.shared.clock import Clock, SystemClock
@@ -40,7 +43,9 @@ if TYPE_CHECKING:
     from types import TracebackType
 
 
-class PostgresStore(PostgresMemoryStore, PostgresTurnStore, PostgresPortableStore):
+class PostgresStore(
+    PostgresMemoryStore, PostgresTurnStore, PostgresPortableStore, PostgresPageableStore
+):
     """Both storage seams over one Postgres schema (default ``neosian``).
 
     Usage::
@@ -67,6 +72,7 @@ class PostgresStore(PostgresMemoryStore, PostgresTurnStore, PostgresPortableStor
         )
         self._sql = build_statements(self._schema)
         self._portable_sql = build_portable_statements(self._schema)
+        self._pageable_sql = build_pageable_statements(self._schema)
         self._clock = clock if clock is not None else SystemClock()
 
     def schema_sql(self) -> str:

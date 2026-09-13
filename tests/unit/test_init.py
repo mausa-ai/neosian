@@ -261,6 +261,9 @@ def test_all_list_matches_exports() -> None:
         "UnitReport",
         "TransferReport",
         "transfer",
+        # Paged listings (DESIGN §8)
+        "Pageable",
+        "Page",
         # Conversation (DESIGN §9)
         "Conversation",
         "ConversationStore",
