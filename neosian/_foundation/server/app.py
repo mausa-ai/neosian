@@ -32,6 +32,7 @@ from neosian._foundation.conversation.base import ConversationStore
 from neosian._foundation.memory.actor import parse_actor
 from neosian._foundation.memory.base import MemoryStore
 from neosian._foundation.memory.mounts import MemoryConfig
+from neosian._foundation.memory.pageable import Pageable
 from neosian._foundation.server.ceiling import (
     MAX_REQUEST_BYTES,
     BodyCeilingMiddleware,
@@ -173,6 +174,9 @@ def _capabilities(
                 "supports_optimistic_concurrency": bool(
                     type(store).supports_optimistic_concurrency
                 ),
+                # Whether a listing can answer a page (§18.2); without it
+                # every listing answers whole and a page is refused.
+                "pageable": isinstance(store, Pageable),
                 # Who the presented token makes the caller (§20) — the
                 # prefix every write through this connection records.
                 "client": request.state.actor,

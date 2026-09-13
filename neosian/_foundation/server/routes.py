@@ -20,6 +20,11 @@ import json
 from typing import TYPE_CHECKING, Any
 
 from neosian._foundation.llm.codec import message_from_json
+from neosian._foundation.server.paging import (
+    memory_page,
+    projections_page,
+    turns_page,
+)
 from neosian._foundation.server.sdk import JSONResponse, Request, Response, Route
 from neosian._foundation.server.tokens import Client, stamp
 from neosian._foundation.server.wire import (
@@ -154,20 +159,37 @@ def store_routes(memory: MemoryStore, conversation: ConversationStore) -> list[R
 
     async def list_documents(payload: dict[str, Any], client: str) -> dict[str, Any]:
         del client  # a read records nobody
-        entries = await memory.list_documents(
-            require_str(payload, "scope"), prefix=optional_str(payload, "prefix") or ""
+        scope = require_str(payload, "scope")
+        prefix = optional_str(payload, "prefix") or ""
+        page = await memory_page(
+            memory,
+            payload,
+            lambda store, cursor, size: store.list_documents_page(
+                scope, prefix=prefix, cursor=cursor, limit=size
+            ),
+            lambda _: memory.list_documents(scope, prefix=prefix),
         )
-        return {"entries": [encode_entry(entry) for entry in entries]}
+        return {
+            "entries": [encode_entry(entry) for entry in page.items],
+            "next_cursor": page.next_cursor,
+        }
 
     async def versions(payload: dict[str, Any], client: str) -> dict[str, Any]:
         del client  # a read records nobody
-        limit = optional_int(payload, "limit")
-        rows = await memory.versions(
-            require_str(payload, "scope"),
-            require_str(payload, "path"),
-            limit=50 if limit is None else limit,
+        scope, path = require_str(payload, "scope"), require_str(payload, "path")
+        page = await memory_page(
+            memory,
+            payload,
+            lambda store, cursor, size: store.versions_page(
+                scope, path, cursor=cursor, limit=size
+            ),
+            lambda limit: memory.versions(scope, path, limit=limit or 0),
+            default_limit=50,
         )
-        return {"versions": [encode_version(row) for row in rows]}
+        return {
+            "versions": [encode_version(row) for row in page.items],
+            "next_cursor": page.next_cursor,
+        }
 
     async def redact(payload: dict[str, Any], client: str) -> dict[str, Any]:
         count = await memory.redact(
@@ -179,21 +201,37 @@ def store_routes(memory: MemoryStore, conversation: ConversationStore) -> list[R
 
     async def history(payload: dict[str, Any], client: str) -> dict[str, Any]:
         del client  # a read records nobody
-        rows = await memory.history(
-            require_str(payload, "scope"),
-            since=optional_timestamp(payload, "since"),
-            limit=optional_int(payload, "limit"),
+        scope = require_str(payload, "scope")
+        since = optional_timestamp(payload, "since")
+        page = await memory_page(
+            memory,
+            payload,
+            lambda store, cursor, size: store.history_page(
+                scope, since=since, cursor=cursor, limit=size
+            ),
+            lambda limit: memory.history(scope, since=since, limit=limit),
         )
-        return {"versions": [encode_version(row) for row in rows]}
+        return {
+            "versions": [encode_version(row) for row in page.items],
+            "next_cursor": page.next_cursor,
+        }
 
     async def redactions(payload: dict[str, Any], client: str) -> dict[str, Any]:
         del client  # a read records nobody
-        acts = await memory.redactions(
-            require_str(payload, "scope"),
-            since=optional_timestamp(payload, "since"),
-            limit=optional_int(payload, "limit"),
+        scope = require_str(payload, "scope")
+        since = optional_timestamp(payload, "since")
+        page = await memory_page(
+            memory,
+            payload,
+            lambda store, cursor, size: store.redactions_page(
+                scope, since=since, cursor=cursor, limit=size
+            ),
+            lambda limit: memory.redactions(scope, since=since, limit=limit),
         )
-        return {"redactions": [encode_redaction(act) for act in acts]}
+        return {
+            "redactions": [encode_redaction(act) for act in page.items],
+            "next_cursor": page.next_cursor,
+        }
 
     async def append_turn(payload: dict[str, Any], client: str) -> dict[str, Any]:
         turn = await conversation.append_turn(
@@ -205,12 +243,11 @@ def store_routes(memory: MemoryStore, conversation: ConversationStore) -> list[R
 
     async def read_turns(payload: dict[str, Any], client: str) -> dict[str, Any]:
         del client  # a read records nobody
-        turns = await conversation.read_turns(
-            require_str(payload, "conversation_id"),
-            after=optional_int(payload, "after") or 0,
-            limit=optional_int(payload, "limit"),
-        )
-        return {"turns": [encode_turn(turn) for turn in turns]}
+        turns, next_after = await turns_page(conversation, payload)
+        return {
+            "turns": [encode_turn(turn) for turn in turns],
+            "next_after": next_after,
+        }
 
     async def last_turn_number(payload: dict[str, Any], client: str) -> dict[str, Any]:
         del client  # a read records nobody
@@ -231,12 +268,11 @@ def store_routes(memory: MemoryStore, conversation: ConversationStore) -> list[R
 
     async def read_projections(payload: dict[str, Any], client: str) -> dict[str, Any]:
         del client  # a read records nobody
-        entries = await conversation.read_projections(
-            require_str(payload, "conversation_id"),
-            after=optional_int(payload, "after") or 0,
-            limit=optional_int(payload, "limit"),
-        )
-        return {"entries": [encode_projection(entry) for entry in entries]}
+        entries, next_after = await projections_page(conversation, payload)
+        return {
+            "entries": [encode_projection(entry) for entry in entries],
+            "next_after": next_after,
+        }
 
     handlers: dict[str, Callable[[dict[str, Any], str], Awaitable[dict[str, Any]]]] = {
         "memory/read": read,

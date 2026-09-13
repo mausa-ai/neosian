@@ -160,6 +160,6 @@ class PagingSuite:
                 with pytest.raises(ValueError):  # minted by another method
                     await method(*args, cursor=minted, limit=2)
         with pytest.raises(MemoryScopeInvalidError):
-            await seeded.history_page("not a scope", limit=0)
+            await seeded.history_page("not a scope", limit=1)
         with pytest.raises(ValueError):
             await seeded.history_page(SCOPE, since=datetime(2026, 1, 1), limit=1)

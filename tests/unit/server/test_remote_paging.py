@@ -1,13 +1,10 @@
-"""IN-14: RemoteStore pages the two reads that have a cursor.
+"""IN-14: the two conversation reads cross the wire a page at a time.
 
-The paging is invisible — a caller gets one tuple, identical to the one
+The server cuts each answer at `PAGE` rows and names `next_after`; the
+paging is invisible — a caller gets one tuple, identical to the one
 FileStore returns for the same call — so what these pins check is that
 the answer is exact *and* that the wire actually carried it in pieces.
-
-The four listings with no cursor (`list_documents`, `versions`,
-`history`, `redactions`) cannot be done this way: `since` is a lower
-bound over a newest-first order, and the others have no start key at
-all. They wait for the `Pageable` protocol beside the ABCs.
+The memory listings page through `Pageable` (`test_pageable_wire.py`).
 """
 
 from __future__ import annotations
@@ -16,7 +13,7 @@ import pytest
 
 from neosian._foundation.conversation.types import ConversationProjection
 from neosian._foundation.llm.base import Message, Role
-from neosian._foundation.server import remote as remote_module
+from neosian._foundation.server import paging
 
 from .conftest import RemoteOverFile
 
@@ -24,7 +21,7 @@ from .conftest import RemoteOverFile
 @pytest.fixture(autouse=True)
 def _tiny_pages(monkeypatch: pytest.MonkeyPatch) -> None:
     """Four rows a page, so a handful of turns spans several requests."""
-    monkeypatch.setattr(remote_module, "_PAGE", 4)
+    monkeypatch.setattr(paging, "PAGE", 4)
 
 
 def _exchange(marker: str) -> list[Message]:
@@ -108,7 +105,7 @@ class TestReadProjectionsPaging:
     async def test_one_turn_wider_than_a_page_still_arrives_whole(
         self, remote_over_file: RemoteOverFile
     ) -> None:
-        # _PAGE is 4; turn 1 alone carries 9 entries, so the first page
+        # PAGE is 4; turn 1 alone carries 9 entries, so the first page
         # holds a single turn and cannot be split. The page widens.
         await self._plant(remote_over_file, per_turn=9, turns=1)
         await self._plant(remote_over_file, per_turn=1, turns=0)

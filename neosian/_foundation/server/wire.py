@@ -52,7 +52,7 @@ if TYPE_CHECKING:
 
     from neosian._foundation.memory.types import MemoryAction
 
-WIRE_VERSION: Final = 3  # NC4: the four store/* routes
+WIRE_VERSION: Final = 4  # NC4: the four store/* routes; NQ2: every listing pages
 
 # The envelope code for the ABCs' bare ValueError (programmer errors:
 # negative cursors, empty message lists). Deliberately not a neosian

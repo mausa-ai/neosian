@@ -24,14 +24,14 @@ No retries in v1; the timeout is explicit.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, ClassVar, Final
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import httpx
 
 from neosian._foundation.conversation.base import ConversationStore
 from neosian._foundation.llm.codec import message_to_json
 from neosian._foundation.memory.base import MemoryStore
-from neosian._foundation.memory.journal import since_window
+from neosian._foundation.server.remote_pageable import RemotePageable, ledger_payload
 from neosian._foundation.server.remote_portable import RemotePortable
 from neosian._foundation.server.wire import (
     WIRE_VERSION,
@@ -43,7 +43,6 @@ from neosian._foundation.server.wire import (
     decode_turn,
     decode_version,
     encode_projection,
-    encode_timestamp,
 )
 from neosian._foundation.shared.exceptions import ConfigurationError
 
@@ -64,15 +63,8 @@ if TYPE_CHECKING:
         MemoryVersion,
     )
 
-# How many turns (or projection entries) one request carries when the
-# caller asked for more than that (IN-14). Not a limit on the answer —
-# the caller still gets every row, one tuple, the same one FileStore
-# returns; only the wire is chunked, and the daemon builds a page at a
-# time instead of a conversation at a time.
-_PAGE: Final = 500
 
-
-class RemoteStore(MemoryStore, ConversationStore, RemotePortable):
+class RemoteStore(MemoryStore, ConversationStore, RemotePortable, RemotePageable):
     """Both storage ABCs over HTTP, against a running `neosian serve`.
 
     Construct with `await RemoteStore.connect(url, token=...)` — the
@@ -97,6 +89,9 @@ class RemoteStore(MemoryStore, ConversationStore, RemotePortable):
         # Who the server makes this connection (§20), learned at `connect`;
         # every write through it records `<client>[/<actor>]`.
         self.client: str | None = None
+        # Whether the backend pages (`Pageable`), learned at `connect`;
+        # the page methods refuse until the handshake says so.
+        self._pageable = False
         if not url.startswith(("http://", "https://")):
             raise ConfigurationError(f"RemoteStore url must be http(s), got {url!r}")
         if not token:
@@ -186,6 +181,7 @@ class RemoteStore(MemoryStore, ConversationStore, RemotePortable):
             await probe.aclose()
             probe = target(url, token=token, timeout=timeout, transport=transport)
         probe.client = client if isinstance(client, str) else None
+        probe._pageable = capabilities.get("pageable") is True
         return probe
 
     async def capabilities(self) -> dict[str, Any]:
@@ -261,18 +257,24 @@ class RemoteStore(MemoryStore, ConversationStore, RemotePortable):
     async def list_documents(
         self, scope: str, *, prefix: str = ""
     ) -> tuple[MemoryEntry, ...]:
-        data = await self._call(
-            "memory/list_documents", {"scope": scope, "prefix": prefix}
+        rows = await self._follow(
+            "memory/list_documents",
+            {"scope": scope, "prefix": prefix, "cursor": None, "limit": None},
+            "entries",
+            after=False,
         )
-        return tuple(decode_entry(entry) for entry in data["entries"])
+        return tuple(decode_entry(entry) for entry in rows)
 
     async def versions(
         self, scope: str, path: str, *, limit: int = 50
     ) -> tuple[MemoryVersion, ...]:
-        data = await self._call(
-            "memory/versions", {"scope": scope, "path": path, "limit": limit}
+        rows = await self._follow(
+            "memory/versions",
+            {"scope": scope, "path": path, "cursor": None, "limit": limit},
+            "versions",
+            after=False,
         )
-        return tuple(decode_version(row) for row in data["versions"])
+        return tuple(decode_version(row) for row in rows)
 
     async def redact(
         self, scope: str, *, path: str | None = None, actor: str | None = None
@@ -289,16 +291,9 @@ class RemoteStore(MemoryStore, ConversationStore, RemotePortable):
         since: datetime | None = None,
         limit: int | None = None,
     ) -> tuple[MemoryVersion, ...]:
-        since_window(since, limit)  # naive `since` never crosses (C4)
-        data = await self._call(
-            "memory/history",
-            {
-                "scope": scope,
-                "since": None if since is None else encode_timestamp(since),
-                "limit": limit,
-            },
-        )
-        return tuple(decode_version(row) for row in data["versions"])
+        payload = ledger_payload(scope, since, None, limit)
+        rows = await self._follow("memory/history", payload, "versions", after=False)
+        return tuple(decode_version(row) for row in rows)
 
     async def redactions(
         self,
@@ -307,16 +302,11 @@ class RemoteStore(MemoryStore, ConversationStore, RemotePortable):
         since: datetime | None = None,
         limit: int | None = None,
     ) -> tuple[MemoryRedaction, ...]:
-        since_window(since, limit)
-        data = await self._call(
-            "memory/redactions",
-            {
-                "scope": scope,
-                "since": None if since is None else encode_timestamp(since),
-                "limit": limit,
-            },
+        payload = ledger_payload(scope, since, None, limit)
+        acts = await self._follow(
+            "memory/redactions", payload, "redactions", after=False
         )
-        return tuple(decode_redaction(act) for act in data["redactions"])
+        return tuple(decode_redaction(act) for act in acts)
 
     # ConversationStore -----------------------------------------------------
 
@@ -340,32 +330,13 @@ class RemoteStore(MemoryStore, ConversationStore, RemotePortable):
     async def read_turns(
         self, conversation_id: str, *, after: int = 0, limit: int | None = None
     ) -> tuple[ConversationTurn, ...]:
-        """Every turn the caller asked for, fetched a page at a time.
-
-        The paging is invisible (IN-14): the caller gets one tuple, the
-        same one FileStore returns, and neither side ever builds the whole
-        of a long conversation in memory at once. `after` is a real
-        cursor, which is why this call can do it and the four listings
-        without one must wait for their own protocol.
-        """
-        if after < 0 or (limit is not None and limit < 0):
-            raise ValueError("after and limit must be >= 0")
-        turns: list[ConversationTurn] = []
-        cursor, remaining = after, limit
-        while remaining is None or remaining > 0:
-            size = _PAGE if remaining is None else min(_PAGE, remaining)
-            data = await self._call(
-                "conversation/read_turns",
-                {"conversation_id": conversation_id, "after": cursor, "limit": size},
-            )
-            page = [decode_turn(turn) for turn in data["turns"]]
-            turns.extend(page)
-            if len(page) < size:
-                break
-            cursor = page[-1].turn
-            if remaining is not None:
-                remaining -= len(page)
-        return tuple(turns)
+        rows = await self._follow(
+            "conversation/read_turns",
+            {"conversation_id": conversation_id, "after": after, "limit": limit},
+            "turns",
+            after=True,
+        )
+        return tuple(decode_turn(turn) for turn in rows)
 
     async def last_turn_number(self, conversation_id: str) -> int:
         data = await self._call(
@@ -387,43 +358,13 @@ class RemoteStore(MemoryStore, ConversationStore, RemotePortable):
     async def read_projections(
         self, conversation_id: str, *, after: int = 0, limit: int | None = None
     ) -> tuple[ConversationProjection, ...]:
-        """As `read_turns`, but pages stop on whole-turn boundaries.
-
-        `after` filters `turn > after` and several entries may share one
-        turn, so only entries below the page's last turn are committed —
-        re-asking from `boundary - 1` re-reads that turn complete. A full
-        page holding a single turn cannot be split at all, so the page
-        widens instead of advancing, which is what keeps this exact rather
-        than nearly right.
-        """
-        if after < 0 or (limit is not None and limit < 0):
-            raise ValueError("after and limit must be >= 0")
-        if limit is not None and limit <= _PAGE:
-            return await self._projection_page(conversation_id, after, limit)
-        entries: list[ConversationProjection] = []
-        cursor, size = after, _PAGE
-        while limit is None or len(entries) < limit:
-            page = await self._projection_page(conversation_id, cursor, size)
-            if len(page) < size:
-                entries.extend(page)
-                break
-            boundary = page[-1].turn
-            complete = [entry for entry in page if entry.turn < boundary]
-            if not complete:
-                size *= 2  # one turn does not fit a page: widen, re-read
-                continue
-            entries.extend(complete)
-            cursor, size = boundary - 1, _PAGE
-        return tuple(entries) if limit is None else tuple(entries[:limit])
-
-    async def _projection_page(
-        self, conversation_id: str, after: int, limit: int | None
-    ) -> tuple[ConversationProjection, ...]:
-        data = await self._call(
+        rows = await self._follow(
             "conversation/read_projections",
             {"conversation_id": conversation_id, "after": after, "limit": limit},
+            "entries",
+            after=True,
         )
-        return tuple(decode_projection(entry) for entry in data["entries"])
+        return tuple(decode_projection(entry) for entry in rows)
 
 
 class _OptimisticRemoteStore(RemoteStore):
