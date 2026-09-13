@@ -153,7 +153,10 @@ any store (files, Postgres, the state process) to a directory that is
 itself a FileStore root, history included, and `neosian import DIR`
 restores it verbatim into any other (`neosian docs cli`). In Python the
 same move is `transfer(source, target)` over the `Portable` protocol
-the three shipped stores implement.
+the three shipped stores implement. Beside it, `Pageable` reads the four
+listings a page at a time (`list_documents_page`, `versions_page`,
+`history_page`, `redactions_page`, each returning `Page(items,
+next_cursor)`); a host store needs neither.
 
 ## Five transports, one dispatcher
 

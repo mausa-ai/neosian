@@ -116,6 +116,25 @@ exactly where `FileStore` does. Agents speak MCP over streamable HTTP
 at `/mcp` when the server is started with mounts (`--scope` or
 `--mount`).
 
+Every listing crosses the wire a page at a time. A route answers at most
+500 rows and names what to send back: `next_cursor` for the memory
+listings, `next_after` for a conversation's turns and projections.
+`RemoteStore` follows the pages for you, so `history(scope)` still
+returns every row. To page yourself, the three shipped stores implement
+`Pageable`: `await store.history_page(scope, cursor=None, limit=100)`
+returns `Page(items, next_cursor)`, where the cursor is opaque and valid
+only with the same arguments.
+
+**Serving your own store.** `build_app(store)` accepts any store that
+implements both storage ABCs. If yours does not also implement
+`Pageable`, its listings answer whole, in one response with
+`next_cursor: null`, and a page or a cursor sent to it is refused by
+name. That response holds the entire listing in the process's memory.
+At the KB scale memory is built for this is harmless, but a scope with
+millions of version rows can exhaust the process, exactly as the same
+call would inside your own application. Implement the four `*_page`
+methods to bound it. `neosian serve` only opens stores that do.
+
 ## Who wrote what
 
 The state process asserts identity (DESIGN §20): `NEOSIAN_SERVE_TOKEN`

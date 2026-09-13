@@ -8,8 +8,19 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [1.0.0rc8] - 2026-09-13
+
 ### Added
 
+- **`Pageable` reads the four memory listings a page at a time.** A
+  protocol beside the ABCs, in the `Portable` shape: `list_documents_page`,
+  `versions_page`, `history_page` and `redactions_page` each return
+  `Page(items, next_cursor)`, and the pages concatenated equal the
+  listing. The cursor is an opaque string the store mints over the
+  listing's own order, so a write between two pages neither repeats nor
+  skips a row. FileStore, PostgresStore and RemoteStore implement it; a
+  host store pays nothing. `Page` and `Pageable` are exported from
+  `neosian` and `neosian.memory` (DESIGN §8, ledger #244).
 - **A token can say what it reaches, not only who it is.** An actor in
   `NEOSIAN_SERVE_TOKEN` may carry an allowance —
   `client:alice@user:alice+alice-=tok` fences memory scopes to the prefix
@@ -42,12 +53,19 @@ phase close names the version.
   and hidden behind `ToolCallGenerationError`. The Anthropic client no
   longer retries at all: it has no coded generation failure, so its
   retry only ever repeated a bad request (ledger #236).
-- **A long conversation crosses the wire a page at a time.**
-  `RemoteStore.read_turns` and `read_projections` fetch 500 rows per
-  request instead of asking for a whole conversation at once. Callers see
-  no difference — the same tuple, the same ordering — but neither the
-  daemon nor the client builds the whole of a long history in memory
-  (ledger #235).
+- **Every listing crosses the wire a page at a time, and `WIRE_VERSION` is
+  4.** The four memory listings and a conversation's turns and
+  projections answer at most 500 rows per response and name what to send
+  back (`next_cursor` for memory, `next_after` for a conversation). A
+  request with `limit` of 500 or less gets exactly the answer it got
+  before. `RemoteStore` follows the pages, so its callers see the same
+  tuple as ever, and neither end builds a long listing whole. The
+  handshake refuses a client and server one version apart, so upgrade
+  both ends together. The capabilities answer gains `pageable`. A host
+  store served with `build_app` that does not implement `Pageable`
+  answers its listings whole, as before, and refuses a page or a cursor
+  by name; `neosian docs topology` says what that costs (ledger #235,
+  #245, #246).
 - **FileStore refuses a case collision instead of merging.** On a
   case-folding filesystem (APFS, NTFS) `user:A` and `user:a` shared one
   directory and one version counter. A write to the folded name now
@@ -1202,7 +1220,8 @@ pre-release — pin it explicitly; the API stability promise rides v1.0.0.
 - Both entry points share one `_validate_run`, so neither can skip a
   guard.
 
-[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc7...HEAD
+[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc8...HEAD
+[1.0.0rc8]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc7...v1.0.0rc8
 [1.0.0rc7]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc6...v1.0.0rc7
 [1.0.0rc6]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc5...v1.0.0rc6
 [1.0.0rc5]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc4...v1.0.0rc5
