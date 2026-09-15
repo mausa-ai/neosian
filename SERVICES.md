@@ -43,7 +43,7 @@ self-skips. A green row is promoted into the table above (the way
 `MOONSHOT_API_KEY` on 2026-09-15); a red one exits whole (DeepSeek and
 Alibaba Model Studio did, 2026-09-02 — BASELINES.md keeps their runs;
 both re-entered under NW1, ledger #211 — the lanes below, their first
-boards owed to NW1's dispatch).
+boards read on dispatch #16 and their second owed to NW3's dispatch).
 
 | Key | Suite | Serving stack |
 |---|---|---|

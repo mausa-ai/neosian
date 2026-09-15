@@ -170,7 +170,7 @@ its key is set (asking for an unavailable model raises
 | Provider | Env var | Models |
 |---|---|---|
 | A registered door | the door's `api_key_env` | The day-one door for any model neosian has not shipped: any OpenAI-compatible endpoint via `register_model` (`neosian docs quickstart`) |
-| OpenAI | `OPENAI_API_KEY` | `gpt-5.6-sol` (default), `gpt-5.6-terra`, `gpt-5.6-luna` (reasoning, `max` effort), `gpt-5.1` |
+| OpenAI | `OPENAI_API_KEY` | `gpt-5.6-sol` (default), `gpt-5.6-terra`, `gpt-5.6-luna` (reasoning, `max` effort; a call with tools runs with reasoning off until the Responses wire), `gpt-5.1` |
 | Anthropic | `ANTHROPIC_API_KEY` | `claude-fable-5-1`, `claude-opus-5`, `claude-sonnet-5` (default); vision/PDF input, prompt caching, adaptive thinking |
 | Cerebras | `CEREBRAS_API_KEY` | Default provider: `gpt-oss-120b`, `qwen-3.8-27b` |
 | xAI | `XAI_API_KEY` | `grok-4.6` — a shipped door row (`Model.GROK_4_6`) |

@@ -234,8 +234,8 @@ five on 2026-09-02 (ledger #124); NW1 re-entered two on 2026-09-10
 | DeepSeek | deepseek-v4-pro | `deepseek` | `DEEPSEEK_API_KEY` | 2026-09-01 | 21, 21, 21 (structured output, every run) | **exited**: one deterministic cause, no `json_schema` on the endpoint; re-entry is a `json_object` dialect knob (§19.7) |
 | Alibaba Model Studio (Singapore, token plan) | qwen3.8-max | `qwen` | `DASHSCOPE_API_KEY` | 2026-09-01 | 21, 23, 20 | **exited**: behavior reds in every run, the `forbidden` pin fired twice, the reasoning-echo class red on the round trip |
 | Moonshot | kimi-k3 | `kimi` | `MOONSHOT_API_KEY` | 2026-09-01 | 24, 21 (429s, harness), 22, 23, 24 (a probe miss, the probe's own), 37 (#16) | **shipped**: `KIMI_K3`, on the user's ruling (#124, 2026-09-15); run 3 was the door's own (schema misses, §19.7); run 5 a clean board with the metering probe wrong about whole-prompt cache hits; dispatches #6–#8 green on the nine-scenario pack, #12–#15 unmeasured at the paced tier |
-| DeepSeek | deepseek-flash | `deepseek` | `DEEPSEEK_API_KEY` | 2026-09-10 | 36 (#16) | **candidate again** (ledger #211) with two door knobs, each a documented fact: `json_mode="json_object"` (the schema in the prompt, validation ours) and `echo_reasoning` (the documented 400 in tool loops); first board owed to NW1's dispatch |
-| Alibaba Model Studio (Singapore, token plan) | qwen3.8-max | `qwen` | `DASHSCOPE_API_KEY` | 2026-09-10 | 30 (#16; `maintenance` the thinking mode's, #254) | **candidate again** (ledger #211): the echo knob only (`json_schema` is documented on the 3.8 series); the `forbidden` pin stays real signal; `qwen-3.8-27b` on Cerebras is a separate, measured row |
+| DeepSeek | deepseek-flash | `deepseek` | `DEEPSEEK_API_KEY` | 2026-09-10 | 36 (#16) | **candidate again** (ledger #211) with two door knobs, each a documented fact: `json_mode="json_object"` (the schema in the prompt, validation ours) and `echo_reasoning` (the documented 400 in tool loops); no deterministic red on its first board, the second owed to NW3's dispatch |
+| Alibaba Model Studio (Singapore, token plan) | qwen3.8-max | `qwen` | `DASHSCOPE_API_KEY` | 2026-09-10 | 30 (#16; `maintenance` the thinking mode's, #254) | **candidate again** (ledger #211): the echo knob only (`json_schema` is documented on the 3.8 series); the `forbidden` pin stays real signal; kept on #16 with the thinking switch owed to its door in NW3 (#254), the second board after it; `qwen-3.8-27b` on Cerebras is a separate, measured row |
 
 An exited row's data leaves the tree (the lane, the marker, the CI
 column, the secret, its SERVICES.md row) and its measured runs stay
@@ -269,8 +269,9 @@ evidence. Each stays measured every dispatch; none is tuned around
   and "unfiled" wordings were read off the failure line; the bytes say
   filed, in the wrong mount. A mount-routing miss, stochastic per
   column, exactly the discipline the scenario measures.
-- **`skills` written without frontmatter** (Gemini on every column,
-  gpt-oss and Sonnet's axis run intermittently): the guide's
+- **`skills` written without frontmatter** (gemini-3.7-flash on every
+  column through #15, where 3.8 was clean on its first board; gpt-oss,
+  Sonnet's axis run, kimi-k3 and gpt-5.6-sol intermittently, #16): the guide's
   `description` key never reaches a writer that skips `list_skills`,
   ruled at NK (the store truth stays the pin).
 
