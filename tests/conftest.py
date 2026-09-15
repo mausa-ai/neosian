@@ -7,7 +7,7 @@ key, so it carries every suite's marker. Selection is by marker —
 addopts exclude `external` by default. The addopts ceiling (60 s, TP-12)
 is the unit tier's hang detector over fakes; an external item carries
 its own — a real-API baseline runs minutes (the Kimi lane most of an
-hour), so its ceiling is an hour per test, inside the job's 180.
+hour), so its ceiling is an hour per test, inside the job's 300.
 """
 
 import os

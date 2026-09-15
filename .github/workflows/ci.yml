@@ -221,7 +221,9 @@ jobs:
   external:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
-    timeout-minutes: 180
+    # A paced lane splits into four boards of up to 3000 s each (board.py):
+    # past 180 minutes before its probes and link cells.
+    timeout-minutes: 300
     strategy:
       fail-fast: false
       matrix:
