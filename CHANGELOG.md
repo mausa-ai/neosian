@@ -8,6 +8,8 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [1.0.0rc10] - 2026-09-15
+
 ### Fixed
 
 - A tool-using agent on `gpt-5.6-sol`, `gpt-5.6-terra` or `gpt-5.6-luna`
@@ -1248,7 +1250,8 @@ pre-release — pin it explicitly; the API stability promise rides v1.0.0.
 - Both entry points share one `_validate_run`, so neither can skip a
   guard.
 
-[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc9...HEAD
+[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc10...HEAD
+[1.0.0rc10]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc9...v1.0.0rc10
 [1.0.0rc9]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc8...v1.0.0rc9
 [1.0.0rc8]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc7...v1.0.0rc8
 [1.0.0rc7]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc6...v1.0.0rc7
