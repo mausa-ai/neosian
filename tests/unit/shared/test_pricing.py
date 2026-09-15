@@ -29,7 +29,6 @@ _USD_RATE_CARD: dict[Model, tuple[str, str, str | None, str | None]] = {
     Model.CLAUDE_FABLE_5_1: ("10.00", "50.00", "0.25", "12.50"),
     Model.CLAUDE_OPUS_5: ("5.00", "25.00", "0.50", "6.25"),
     Model.CLAUDE_SONNET_5: ("2.00", "10.00", "0.20", "2.50"),
-    Model.CLAUDE_HAIKU_4_5: ("1.00", "5.00", "0.10", "1.25"),
     Model.CEREBRAS_GPT_OSS_120B: ("0.25", "0.69", None, None),
     Model.CEREBRAS_QWEN_3_8_27B: ("0.99", "1.49", None, None),
     Model.GROK_4_6: ("2.00", "6.00", "0.50", None),

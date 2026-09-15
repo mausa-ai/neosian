@@ -110,7 +110,7 @@ def _guardrails(**overrides: object) -> GuardrailsConfig:
         "input_mode": GuardrailMode.POLICY_ONLY,
         "input_policy": _POLICY,
         "block_on_input": True,
-        "model": Model.CLAUDE_HAIKU_4_5,
+        "model": Model.CLAUDE_SONNET_5,
     }
     defaults.update(overrides)
     return GuardrailsConfig(**defaults)  # type: ignore[arg-type]
@@ -127,7 +127,7 @@ class TestAgentGuardrailsInit:
             guard_turns=(FakeTurn(content=_SAFE_JSON),),
             guardrails=_guardrails(),
         )
-        assert agent._guardrail_model is Model.CLAUDE_HAIKU_4_5
+        assert agent._guardrail_model is Model.CLAUDE_SONNET_5
         await agent.run([Message(role=Role.USER, content="Hello")], stream=False)
         assert len(guard_fake.calls) == 1
         assert _POLICY in str(guard_fake.calls[0].messages[-1].content)
@@ -690,7 +690,7 @@ class TestGuardSpendAccounting:
     run's usage and its per-model split carry it on both paths."""
 
     _MESSAGES = [Message(role=Role.USER, content="Hello")]
-    _GUARD = Model.CLAUDE_HAIKU_4_5.value
+    _GUARD = Model.CLAUDE_SONNET_5.value
 
     def _agent(self, verdict: str, **kwargs: Any) -> tuple[Agent, FakeClient]:
         agent, _agent_fake, guard_fake = _guarded_agent(

@@ -222,10 +222,9 @@ def validate_content_support(
 ) -> None:
     """Raise if messages carry content blocks the model cannot handle.
 
-    All currently registered Claude models support both images and
-    documents; this gate future-proofs against text-only entries. The
-    compaction gates are live today: Haiku 4.5 is Anthropic and
-    outside the compact-2026-01-12 support set.
+    All currently registered Claude models support both images, documents
+    and the compact-2026-01-12 beta; these gates future-proof against a
+    row outside either set.
 
     Raises:
         UnsupportedContentError: If a required capability is missing.

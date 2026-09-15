@@ -38,7 +38,7 @@ def _clocks() -> list[tuple[Model, str, date]]:
 @pytest.mark.unit
 class TestCatalogClock:
     def test_the_clock_is_data_on_the_rows_it_names(self) -> None:
-        assert Model.CLAUDE_HAIKU_4_5.spec.retires == date(2026, 10, 15)
+        assert Model.CLAUDE_SONNET_5.spec.retires == date(2027, 6, 30)
         assert Model.GEMINI_3_8_FLASH.spec.card_until == date(2026, 12, 31)
         assert Model.GPT_5_6_SOL.spec.retires is None
         assert Model.FAKE.spec.retires is None and Model.FAKE.spec.card_until is None

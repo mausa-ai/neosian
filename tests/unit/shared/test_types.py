@@ -90,7 +90,6 @@ class TestModelEnum:
         assert Model.CLAUDE_OPUS_5.max_output_tokens == 128_000
         assert Model.CLAUDE_FABLE_5_1.max_output_tokens == 128_000
         assert Model.CLAUDE_SONNET_5.max_output_tokens == 128_000
-        assert Model.CLAUDE_HAIKU_4_5.max_output_tokens == 64_000
 
     def test_model_spec_property(self) -> None:
         """Model.spec should return the ModelSpec for that model."""
@@ -117,11 +116,10 @@ class TestModelEnum:
         assert Model.GPT_5_6_LUNA.context_window == 1_050_000
         assert Model.GPT_5_1.context_window == 400_000
 
-        # Anthropic: 1M except Haiku (200k)
+        # Anthropic: 1M
         assert Model.CLAUDE_OPUS_5.context_window == 1_000_000
         assert Model.CLAUDE_SONNET_5.context_window == 1_000_000
-        assert Model.CLAUDE_OPUS_5.context_window == 1_000_000
-        assert Model.CLAUDE_HAIKU_4_5.context_window == 200_000
+        assert Model.CLAUDE_FABLE_5_1.context_window == 1_000_000
 
 
 @pytest.mark.unit
@@ -217,12 +215,12 @@ class TestAgentConfigReasoningEffort:
         with pytest.raises(UnsupportedParameterError) as exc_info:
             AgentConfig(
                 system_prompt="You are helpful.",
-                model=Model.CLAUDE_HAIKU_4_5,
+                model=Model.FAKE,
                 reasoning_effort=ReasoningEffort.HIGH,
             )
 
         error_msg = str(exc_info.value)
-        assert "claude-haiku-4-5-20251001" in error_msg
+        assert "Model 'fake'" in error_msg
 
     def test_reasoning_effort_with_openai_model_accepted(self) -> None:
         """AgentConfig should accept reasoning_effort with OpenAI GPT-5 models."""
@@ -232,20 +230,6 @@ class TestAgentConfigReasoningEffort:
             reasoning_effort=ReasoningEffort.LOW,
         )
         assert config.reasoning_effort == ReasoningEffort.LOW
-
-    def test_reasoning_effort_with_non_reasoning_anthropic_model_raises_error(
-        self,
-    ) -> None:
-        """AgentConfig should raise error for reasoning_effort with non-reasoning Anthropic models."""
-        with pytest.raises(UnsupportedParameterError) as exc_info:
-            AgentConfig(
-                system_prompt="You are helpful.",
-                model=Model.CLAUDE_HAIKU_4_5,
-                reasoning_effort=ReasoningEffort.HIGH,
-            )
-
-        error_msg = str(exc_info.value)
-        assert "claude-haiku-4-5" in error_msg
 
     def test_reasoning_effort_with_claude_opus_accepted(self) -> None:
         """AgentConfig should accept reasoning_effort with Claude Opus 4.6."""
@@ -270,15 +254,13 @@ class TestAgentConfigReasoningEffort:
         with pytest.raises(UnsupportedParameterError) as exc_info:
             AgentConfig(
                 system_prompt="You are helpful.",
-                model=Model.CLAUDE_HAIKU_4_5,
+                model=Model.FAKE,
                 reasoning_effort=ReasoningEffort.HIGH,
             )
 
-        error_msg = str(exc_info.value)
-        for member in Model:
-            if member.supports_reasoning:
-                assert f"Model.{member.name}" in error_msg
-        assert "Model.CLAUDE_HAIKU_4_5" not in error_msg
+        supported = str(exc_info.value).split("Supported models: ")[1].split(", ")
+        assert supported == [f"Model.{m.name}" for m in Model if m.supports_reasoning]
+        assert "Model.FAKE" not in supported
 
 
 @pytest.mark.unit
@@ -391,12 +373,10 @@ class TestFakeModels:
 
 class TestCompactionCapability:
     def test_support_set(self) -> None:
-        """The compact beta's support set — a provider check would be
-        wrong: Haiku 4.5 is Anthropic and explicitly outside it."""
+        """The compact beta's support set is a row fact, not a provider's."""
         assert Model.CLAUDE_OPUS_5.supports_compaction_blocks
         assert Model.CLAUDE_FABLE_5_1.supports_compaction_blocks
         assert Model.CLAUDE_SONNET_5.supports_compaction_blocks
-        assert not Model.CLAUDE_HAIKU_4_5.supports_compaction_blocks
 
     def test_non_anthropic_models_are_unsupported(self) -> None:
         assert not Model.FAKE.supports_compaction_blocks

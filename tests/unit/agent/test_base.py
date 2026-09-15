@@ -357,7 +357,7 @@ class TestAgentReasoningEffort:
                 system_prompt="You are helpful.",
                 model=Model.CEREBRAS_GPT_OSS_120B,  # Supports reasoning
                 reasoning_effort=ReasoningEffort.HIGH,
-                fallback=FallbackConfig(model=Model.CLAUDE_HAIKU_4_5),  # No reasoning
+                fallback=FallbackConfig(model=Model.FAKE),  # No reasoning
                 enable_todo=False,
             )
             agent = Agent(config=config)

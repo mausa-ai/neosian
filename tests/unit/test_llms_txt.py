@@ -45,6 +45,7 @@ _RETIRED = (
     "gpt-5-pro-2025-10-06",
     "gemma-4-31b",
     "claude-opus-4-6",
+    "claude-haiku-4-5",
 )
 
 

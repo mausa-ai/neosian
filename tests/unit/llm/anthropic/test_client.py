@@ -408,17 +408,20 @@ class TestAnthropicReasoningEffort:
 
     @pytest.mark.asyncio
     async def test_reasoning_effort_raises_for_non_reasoning_model(
-        self, client: AnthropicClient, sample_messages: list[Message]
+        self,
+        client: AnthropicClient,
+        sample_messages: list[Message],
+        plain_sonnet: Model,
     ) -> None:
         """Verify UnsupportedParameterError for non-reasoning Anthropic models."""
         with pytest.raises(UnsupportedParameterError) as exc_info:
             await client.complete(
                 messages=sample_messages,
-                model=Model.CLAUDE_HAIKU_4_5,
+                model=plain_sonnet,
                 reasoning_effort=ReasoningEffort.HIGH,
             )
 
-        assert "claude-haiku-4-5" in str(exc_info.value)
+        assert "claude-sonnet-5" in str(exc_info.value)
 
     @pytest.mark.asyncio
     async def test_reasoning_effort_none_omits_temperature_by_default(
@@ -462,13 +465,13 @@ class TestAnthropicReasoningEffort:
         mock_response.usage = MagicMock(
             spec=SPEC["usage"], input_tokens=10, output_tokens=5
         )
-        mock_response.model = "claude-haiku-4-5"
+        mock_response.model = "claude-sonnet-5"
 
         mock_complete(client, mock_response)
 
         await client.complete(
             messages=sample_messages,
-            model=Model.CLAUDE_HAIKU_4_5,
+            model=Model.CLAUDE_SONNET_5,
             temperature=0.3,
         )
 
@@ -495,7 +498,7 @@ class TestAnthropicReasoningEffort:
 
         async for _ in client.stream(
             messages=sample_messages,
-            model=Model.CLAUDE_HAIKU_4_5,
+            model=Model.CLAUDE_SONNET_5,
             temperature=0.3,
         ):
             pass
@@ -536,13 +539,16 @@ class TestAnthropicReasoningEffort:
 
     @pytest.mark.asyncio
     async def test_reasoning_effort_stream_raises_for_non_reasoning_model(
-        self, client: AnthropicClient, sample_messages: list[Message]
+        self,
+        client: AnthropicClient,
+        sample_messages: list[Message],
+        plain_sonnet: Model,
     ) -> None:
         """Verify stream raises UnsupportedParameterError for non-reasoning models."""
         with pytest.raises(UnsupportedParameterError):
             async for _ in client.stream(
                 messages=sample_messages,
-                model=Model.CLAUDE_HAIKU_4_5,
+                model=plain_sonnet,
                 reasoning_effort=ReasoningEffort.HIGH,
             ):
                 pass
@@ -926,23 +932,26 @@ class TestServerCompaction:
         assert chunks[-1].compaction == (CompactionBlock(content="the full summary"),)
 
     @pytest.mark.asyncio
-    async def test_flag_on_haiku_raises(
-        self, client: AnthropicClient, sample_messages: list[Message]
+    async def test_flag_outside_the_support_set_raises(
+        self,
+        client: AnthropicClient,
+        sample_messages: list[Message],
+        plain_sonnet: Model,
     ) -> None:
         with pytest.raises(UnsupportedParameterError):
             await client.complete(
                 messages=sample_messages,
-                model=Model.CLAUDE_HAIKU_4_5,
+                model=plain_sonnet,
                 server_compaction=True,
             )
 
     @pytest.mark.asyncio
-    async def test_compaction_history_on_haiku_raises(
-        self, client: AnthropicClient
+    async def test_compaction_history_outside_the_support_set_raises(
+        self, client: AnthropicClient, plain_sonnet: Model
     ) -> None:
         messages = [
             Message(role=Role.USER, content="hi"),
             Message(role=Role.ASSISTANT, content=[CompactionBlock(content="summary")]),
         ]
         with pytest.raises(UnsupportedContentError):
-            await client.complete(messages=messages, model=Model.CLAUDE_HAIKU_4_5)
+            await client.complete(messages=messages, model=plain_sonnet)

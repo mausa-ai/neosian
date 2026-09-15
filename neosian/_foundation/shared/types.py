@@ -332,7 +332,7 @@ class AgentConfig:
     native_memory: bool = False
     # Anthropic server-side compaction (compact beta), threaded per-call
     # like cache_conversation; other providers ignore it. Validated at
-    # the client (Haiku 4.5 is Anthropic yet unsupported), not here —
+    # the client (support is the row's, not the provider's), not here —
     # under fallback the answering model may not be `model`.
     server_compaction: bool = False
     # The tool-approval gate (DESIGN §17): every tool call passes through

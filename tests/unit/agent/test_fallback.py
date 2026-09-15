@@ -290,9 +290,6 @@ class TestCompactionFallbackGate:
 
     def test_unsupported_target_reports_compaction(self) -> None:
         assert unsupported_content_types(Model.FAKE, self._bearing()) == ["compaction"]
-        assert unsupported_content_types(Model.CLAUDE_HAIKU_4_5, self._bearing()) == [
-            "compaction"
-        ]
 
     def test_supported_target_reports_nothing(self) -> None:
         assert unsupported_content_types(Model.CLAUDE_SONNET_5, self._bearing()) == []

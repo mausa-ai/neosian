@@ -42,9 +42,9 @@ class TestTheModel:
             resolve_chat_model("nope", {})
 
     def test_the_config_file_is_next(self) -> None:
-        set_value("chat", "model", "claude-haiku-4-5-20251001")
+        set_value("chat", "model", "claude-sonnet-5")
         assert (
-            resolve_chat_model(None, {"OPENAI_API_KEY": "k"}) is Model.CLAUDE_HAIKU_4_5
+            resolve_chat_model(None, {"OPENAI_API_KEY": "k"}) is Model.CLAUDE_SONNET_5
         )
         set_value("chat", "model", "nope")
         with pytest.raises(ChatUsageError):

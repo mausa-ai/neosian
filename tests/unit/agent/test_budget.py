@@ -190,7 +190,7 @@ class TestTheLedgerIsTheRightPlace:
                 guardrails=GuardrailsConfig(
                     input_mode=GuardrailMode.POLICY_ONLY,
                     input_policy="No unsafe content.",
-                    model=Model.CLAUDE_HAIKU_4_5,
+                    model=Model.CLAUDE_SONNET_5,
                 ),
                 client_factory=lambda m: (
                     guard if m.provider is Provider.ANTHROPIC else agent_fake
@@ -207,7 +207,7 @@ class TestTheLedgerIsTheRightPlace:
         assert info.value.spent > _TURN_COST
         assert {u.model for u in info.value.usage_by_model} == {
             Model.FAKE.value,
-            Model.CLAUDE_HAIKU_4_5.value,
+            Model.CLAUDE_SONNET_5.value,
         }
 
 

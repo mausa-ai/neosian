@@ -385,10 +385,10 @@ class TestNeosianErrorContract:
 
     def test_context_window_exceeded_fields(self) -> None:
         error = ContextWindowExceededError(
-            "claude-haiku-4-5", context_window=200_000, provider="anthropic"
+            "claude-sonnet-5", context_window=1_000_000, provider="anthropic"
         )
-        assert error.model == "claude-haiku-4-5"
-        assert error.context_window == 200_000
+        assert error.model == "claude-sonnet-5"
+        assert error.context_window == 1_000_000
         assert error.provider == "anthropic"
         assert error.retryable is False
 

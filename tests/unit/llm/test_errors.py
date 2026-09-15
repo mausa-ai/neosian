@@ -109,16 +109,16 @@ class TestWrapProviderError:
     )
     def test_context_signature_at_400_with_model(self, signature: str) -> None:
         exc = _StatusError(f"error: {signature}", status_code=400)
-        wrapped = wrap_provider_error("anthropic", exc, model=Model.CLAUDE_HAIKU_4_5)
+        wrapped = wrap_provider_error("anthropic", exc, model=Model.CLAUDE_SONNET_5)
         assert isinstance(wrapped, ContextWindowExceededError)
-        assert wrapped.model == Model.CLAUDE_HAIKU_4_5.value
-        assert wrapped.context_window == Model.CLAUDE_HAIKU_4_5.context_window
+        assert wrapped.model == Model.CLAUDE_SONNET_5.value
+        assert wrapped.context_window == Model.CLAUDE_SONNET_5.context_window
         assert wrapped.provider == "anthropic"
 
     def test_context_signature_at_413_with_model(self) -> None:
         """A door that rejects an oversize prompt as 413 is still an overflow."""
         exc = _StatusError("context_length_exceeded", status_code=413)
-        wrapped = wrap_provider_error("gemini", exc, model=Model.CLAUDE_HAIKU_4_5)
+        wrapped = wrap_provider_error("gemini", exc, model=Model.CLAUDE_SONNET_5)
         assert isinstance(wrapped, ContextWindowExceededError)
 
     def test_a_429_request_too_large_is_not_retryable(self) -> None:
@@ -134,7 +134,7 @@ class TestWrapProviderError:
 
     def test_context_signature_at_500_stays_provider_error(self) -> None:
         exc = _StatusError("prompt is too long", status_code=500)
-        wrapped = wrap_provider_error("anthropic", exc, model=Model.CLAUDE_HAIKU_4_5)
+        wrapped = wrap_provider_error("anthropic", exc, model=Model.CLAUDE_SONNET_5)
         assert isinstance(wrapped, ProviderError)
 
     def test_context_signature_without_model_stays_provider_error(self) -> None:

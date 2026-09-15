@@ -20,7 +20,6 @@ _MODEL_NOTES: dict[Model, str] = {
     Model.CLAUDE_FABLE_5_1: "most capable",
     Model.CLAUDE_OPUS_5: "capable",
     Model.CLAUDE_SONNET_5: "balanced",
-    Model.CLAUDE_HAIKU_4_5: "fastest",
     Model.CEREBRAS_GPT_OSS_120B: "fastest 120B",
     Model.CEREBRAS_QWEN_3_8_27B: "reasoning 27B",
 }

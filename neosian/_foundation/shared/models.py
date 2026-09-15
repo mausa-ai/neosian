@@ -107,8 +107,8 @@ class ModelSpec:
     supports_images: bool = False
     supports_documents: bool = False
     supports_max_effort: bool = False
-    # Anthropic's compact-2026-01-12 beta — a provider check would be
-    # wrong: Haiku 4.5 is Anthropic and outside the support set (N4).
+    # Anthropic's compact-2026-01-12 beta — a capability of the row, never
+    # inferred from the provider (N4).
     supports_compaction_blocks: bool = False
     pricing: ModelPricing | None = None
     # The door a compat row is served through (DESIGN §31): set on the
@@ -156,7 +156,6 @@ class Model(str, Enum):
     CLAUDE_FABLE_5_1 = "claude-fable-5-1"
     CLAUDE_OPUS_5 = "claude-opus-5"
     CLAUDE_SONNET_5 = "claude-sonnet-5"
-    CLAUDE_HAIKU_4_5 = "claude-haiku-4-5-20251001"
 
     # Cerebras
     CEREBRAS_GPT_OSS_120B = "gpt-oss-120b"
@@ -318,20 +317,6 @@ _MODEL_SPECS[Model.CLAUDE_SONNET_5.value] = _CLAUDE_5(
     ),
     retires=date(2027, 6, 30),
 )
-_MODEL_SPECS[Model.CLAUDE_HAIKU_4_5.value] = ModelSpec(
-    provider=Provider.ANTHROPIC,
-    context_window=200_000,
-    max_output_tokens=64_000,
-    supports_images=True,
-    supports_documents=True,
-    pricing=ModelPricing(
-        input_per_mtok=1_000_000,
-        output_per_mtok=5_000_000,
-        cache_read_per_mtok=100_000,
-        cache_write_per_mtok=1_250_000,
-    ),
-    retires=date(2026, 10, 15),
-)
 
 # Cerebras (inference-docs.cerebras.ai/models, 2026-09-10): the public
 # catalog is these two; the paid tier's limits. Served through the door
@@ -462,4 +447,4 @@ def _prices_fingerprint() -> str:
     return hashlib.sha256("\n".join(lines).encode("ascii")).hexdigest()
 
 
-PRICES_FINGERPRINT = "2933a70ba5b3fba4e114cecd21fac80bea66955b8817ade83e90c5b949b2e6b9"
+PRICES_FINGERPRINT = "4c0c1c37b9d0490a6d28f80fc496c4caba878d2e2d2b4b2425785a83e6a428e4"

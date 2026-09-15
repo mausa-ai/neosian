@@ -99,7 +99,7 @@ class TestAnthropicMultimodal:
 
         response = await anthropic_client.complete(
             messages=messages,
-            model=Model.CLAUDE_HAIKU_4_5,
+            model=Model.CLAUDE_SONNET_5,
         )
 
         assert _SENTINEL in text_of(response.message)
@@ -118,7 +118,7 @@ class TestAnthropicMultimodal:
             "Output only the transcribed text.",
             tools=[],
             enable_todo=False,
-            model=Model.CLAUDE_HAIKU_4_5,
+            model=Model.CLAUDE_SONNET_5,
             cache_conversation=False,
         )
         agent = Agent(config=config)
@@ -176,7 +176,7 @@ class TestAnthropicStructuredOutputNested:
                     ),
                 )
             ],
-            model=Model.CLAUDE_HAIKU_4_5,
+            model=Model.CLAUDE_SONNET_5,
             response_format=ResponseFormat(schema=_Quiz),
             max_tokens=2000,
         )
@@ -198,7 +198,7 @@ class TestAnthropicStructuredOutputNested:
                     content="Write exactly 1 quiz question about MSE, 3 options.",
                 )
             ],
-            model=Model.CLAUDE_HAIKU_4_5,
+            model=Model.CLAUDE_SONNET_5,
             response_format=ResponseFormat(schema=_Quiz, strict=False),
             max_tokens=1000,
         )
@@ -235,7 +235,7 @@ class TestAnthropicCacheTtl:
 
         response = await anthropic_client.complete(
             messages=messages,
-            model=Model.CLAUDE_HAIKU_4_5,
+            model=Model.CLAUDE_SONNET_5,
             cache_ttl="1h",
             max_tokens=16,
         )

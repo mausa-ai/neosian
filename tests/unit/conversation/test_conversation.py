@@ -213,7 +213,7 @@ class TestSendPersistence:
                 input_mode=GuardrailMode.POLICY_ONLY,
                 input_policy="no bad content",
                 block_on_input=True,
-                model=Model.CLAUDE_HAIKU_4_5,
+                model=Model.CLAUDE_SONNET_5,
             ),
         )
         convo = Conversation(config, store=store, conversation_id="t1")

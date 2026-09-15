@@ -8,6 +8,14 @@ phase close names the version.
 
 ## [Unreleased]
 
+### Removed
+
+- `Model.CLAUDE_HAIKU_4_5`: its alarm fired on 2026-09-15, 30 days
+  before Anthropic's retirement floor of 2026-10-15, and it leaves now
+  rather than wait for the floor. `Model.CLAUDE_SONNET_5` is the smallest
+  Claude row. A retired id leaves in the next release after its
+  provider's date (README, Stability).
+
 ## [1.0.0rc8] - 2026-09-13
 
 ### Added

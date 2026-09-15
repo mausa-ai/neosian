@@ -842,7 +842,7 @@ class TestAnthropicMultimodal:
 
         monkeypatch.setitem(
             _MODEL_SPECS,
-            Model.CLAUDE_HAIKU_4_5.value,
+            Model.CLAUDE_SONNET_5.value,
             ModelSpec(
                 provider=Provider.ANTHROPIC,
                 context_window=200_000,
@@ -861,7 +861,7 @@ class TestAnthropicMultimodal:
         ]
 
         with pytest.raises(UnsupportedContentError, match="document"):
-            await client.complete(messages=messages, model=Model.CLAUDE_HAIKU_4_5)
+            await client.complete(messages=messages, model=Model.CLAUDE_SONNET_5)
 
         sdk(client).messages.stream.assert_not_called()
 

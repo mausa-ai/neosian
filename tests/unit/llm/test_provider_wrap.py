@@ -261,7 +261,7 @@ class TestOverflowBeforeToolRetry:
         with pytest.raises(ContextWindowExceededError):
             await client.complete(
                 messages=[Message(role=Role.USER, content="Hi")],
-                model=Model.CLAUDE_HAIKU_4_5,
+                model=Model.CLAUDE_SONNET_5,
                 tools=_TOOLS,
             )
         assert stream.call_count == 1
@@ -280,7 +280,7 @@ class TestAnthropicWrap:
         with pytest.raises(ProviderError) as exc_info:
             await client.complete(
                 messages=[Message(role=Role.USER, content="Hi")],
-                model=Model.CLAUDE_HAIKU_4_5,
+                model=Model.CLAUDE_SONNET_5,
             )
         assert exc_info.value.provider == "anthropic"
         assert exc_info.value.status == 529
@@ -298,7 +298,7 @@ class TestAnthropicWrap:
         with pytest.raises(ProviderError) as exc_info:
             async for _ in client.stream(
                 messages=[Message(role=Role.USER, content="Hi")],
-                model=Model.CLAUDE_HAIKU_4_5,
+                model=Model.CLAUDE_SONNET_5,
             ):
                 pass
         assert exc_info.value.provider == "anthropic"
