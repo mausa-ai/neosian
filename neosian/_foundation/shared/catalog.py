@@ -119,6 +119,17 @@ GEMINI = OpenAICompatible(
 )
 
 
+KIMI = OpenAICompatible(
+    # Always reasons; the docs say "do not set temperature", and
+    # reasoning_content goes back on assistant turns in tool loops.
+    name="kimi",
+    api_key_env="MOONSHOT_API_KEY",
+    base_url="https://api.moonshot.ai/v1",
+    reasoning_field="reasoning_content",
+    echo_reasoning=True,
+)
+
+
 CEREBRAS = OpenAICompatible(
     # On the OpenAI door since NC7 (ledger #218): `parsed` keeps thoughts in
     # `reasoning`, and a tool-call 400 retries at 0.3 (LL-15).

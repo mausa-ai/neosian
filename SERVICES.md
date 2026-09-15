@@ -23,6 +23,7 @@ raises `MissingAPIKeyError` (`agent_missing_api_key`).
 | `CEREBRAS_API_KEY` | Cerebras (default provider; `gpt-oss-120b`, `qwen-3.8-27b` — shipped door rows on the OpenAI wire since #218) | The rows stay listed but their first call raises `MissingAPIKeyError` naming the var; `external_cerebras` self-skips |
 | `XAI_API_KEY` | xAI (`grok-4.6`, a shipped door row — `Model.GROK_4_6`, DESIGN §31) | The row stays listed but its first call raises `MissingAPIKeyError` naming the var; `external_xai` self-skips |
 | `GEMINI_API_KEY` | Google Gemini API, OpenAI-compatible endpoint (`gemini-3.8-flash` and `gemini-3.7-flash`, shipped door rows) | As above; `external_gemini` self-skips |
+| `MOONSHOT_API_KEY` | Moonshot (`kimi-k3`, a shipped door row: `Model.KIMI_K3`) | As above; `external_kimi` self-skips |
 
 With **no** keys set, the library still imports, constructs, runs (on
 FakeProvider), and passes its full default test tier.
@@ -38,14 +39,14 @@ keys.
 Nothing in the library reads these. Each drives one lane of NW's gate
 (`tests/external/lanes.py`, DESIGN §19.7); off means that suite
 self-skips. A green row is promoted into the table above (the way
-`XAI_API_KEY` and `GEMINI_API_KEY` were, 2026-09-02); a red one exits
-whole (DeepSeek and Alibaba Model Studio did, the same day — BASELINES.md
-keeps their runs; both re-entered under NW1, ledger #211 — the lanes
-below, their first boards owed to NW1's dispatch).
+`XAI_API_KEY` and `GEMINI_API_KEY` were, 2026-09-02, and
+`MOONSHOT_API_KEY` on 2026-09-15); a red one exits whole (DeepSeek and
+Alibaba Model Studio did, 2026-09-02 — BASELINES.md keeps their runs;
+both re-entered under NW1, ledger #211 — the lanes below, their first
+boards owed to NW1's dispatch).
 
 | Key | Suite | Serving stack |
 |---|---|---|
-| `MOONSHOT_API_KEY` | `kimi` | Moonshot (`kimi-k3`) |
 | `DEEPSEEK_API_KEY` | `deepseek` | DeepSeek (`deepseek-flash`; `json_mode="json_object"` + the reasoning echo) |
 | `DASHSCOPE_API_KEY` | `qwen` | Alibaba Model Studio, Singapore, the token plan (`qwen3.8-max`; the reasoning echo) |
 

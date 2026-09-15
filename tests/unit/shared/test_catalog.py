@@ -21,6 +21,7 @@ from neosian._foundation.llm.router import ProviderRouter
 from neosian._foundation.shared.catalog import (
     CEREBRAS,
     GEMINI,
+    KIMI,
     XAI,
     OpenAICompatible,
 )
@@ -31,6 +32,7 @@ DOOR_ROWS = {
     Model.GROK_4_6: XAI,
     Model.GEMINI_3_8_FLASH: GEMINI,
     Model.GEMINI_3_7_FLASH: GEMINI,
+    Model.KIMI_K3: KIMI,
 }
 
 

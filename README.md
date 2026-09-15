@@ -175,6 +175,7 @@ its key is set (asking for an unavailable model raises
 | Cerebras | `CEREBRAS_API_KEY` | Default provider: `gpt-oss-120b`, `qwen-3.8-27b` |
 | xAI | `XAI_API_KEY` | `grok-4.6` — a shipped door row (`Model.GROK_4_6`) |
 | Google Gemini API | `GEMINI_API_KEY` | `gemini-3.8-flash`, `gemini-3.7-flash` on the OpenAI-compatible endpoint (`Model.GEMINI_3_8_FLASH`; the introductory card through 2026-12-31) |
+| Moonshot | `MOONSHOT_API_KEY` | `kimi-k3`: a shipped door row (`Model.KIMI_K3`), always reasoning |
 | Fake | — | Keyless, deterministic, always available (`Model.FAKE`) |
 
 Every shipped row is a `Model` member and answers to its wire id too

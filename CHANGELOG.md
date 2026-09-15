@@ -8,6 +8,13 @@ phase close names the version.
 
 ## [Unreleased]
 
+### Added
+
+- `Model.KIMI_K3` (`kimi-k3`): Moonshot's model ships as a door row
+  through `MOONSHOT_API_KEY`. It always reasons and its reasoning is
+  echoed back in tool loops. The card is $3/$15 per MTok, cache read
+  $0.30; `PRICES_AS_OF` is 2026-09-15.
+
 ### Removed
 
 - `Model.CLAUDE_HAIKU_4_5`: its alarm fired on 2026-09-15, 30 days

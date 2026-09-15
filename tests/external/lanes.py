@@ -89,20 +89,8 @@ GEMINI = Lane(
 )
 
 KIMI = Lane(
-    # Always reasons; the docs say "do not set temperature".
-    model=_candidate(
-        "kimi-k3",
-        OpenAICompatible(
-            name="kimi",
-            api_key_env="MOONSHOT_API_KEY",
-            base_url="https://api.moonshot.ai/v1",
-            reasoning_field="reasoning_content",
-            echo_reasoning=True,  # asks for reasoning_content back in tool loops
-        ),
-        context_window=1_048_576,
-        max_output_tokens=131_072,  # unpublished — a conservative ceiling
-        supports_reasoning=True,
-    ),
+    # Shipped on the user's ruling (ledger #124, 2026-09-15).
+    model=Model.KIMI_K3,
     requests_per_minute=3,  # the organisation's tier (probed 2026-09-01)
 )
 

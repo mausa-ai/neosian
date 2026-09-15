@@ -50,7 +50,7 @@ document), never the file name.
   tier pins (`_PROVIDER_CASES` and `LANES`): `claude-sonnet-5`,
   `gpt-5.6-sol`, `gpt-oss-120b` **and** `qwen-3.8-27b` (two rows on the
   Cerebras adapter; a row is provider+model, so neither says anything
-  about the other), `gemini-3.8-flash`, `grok-4.6`. Every other shipped
+  about the other), `gemini-3.8-flash`, `grok-4.6`, `kimi-k3`. Every other shipped
   row rides the catalog probe on every dispatch, and each row carries its
   provider's lifecycle as data (`ModelSpec.retires` / `card_until`,
   DESIGN §31, the 30-day alarm in `make test`). History: OpenAI's row
@@ -233,7 +233,7 @@ five on 2026-09-02 (ledger #124); NW1 re-entered two on 2026-09-10
 | Google Gemini API (OpenAI-compatible endpoint) | gemini-3.7-flash | `gemini` | `GEMINI_API_KEY` | 2026-09-01 | 24, 24 | **shipped**: `GEMINI_3_7_FLASH`; two clean boards, every probe green, no provider error on the funded project |
 | DeepSeek | deepseek-v4-pro | `deepseek` | `DEEPSEEK_API_KEY` | 2026-09-01 | 21, 21, 21 (structured output, every run) | **exited**: one deterministic cause, no `json_schema` on the endpoint; re-entry is a `json_object` dialect knob (§19.7) |
 | Alibaba Model Studio (Singapore, token plan) | qwen3.8-max | `qwen` | `DASHSCOPE_API_KEY` | 2026-09-01 | 21, 23, 20 | **exited**: behavior reds in every run, the `forbidden` pin fired twice, the reasoning-echo class red on the round trip |
-| Moonshot | kimi-k3 | `kimi` | `MOONSHOT_API_KEY` | 2026-09-01 | 24, 21 (429s, harness), 22, 23, 24 (a probe miss, the probe's own) | **stays a candidate**: run 3 was the door's own (schema misses, §19.7); run 5 a clean board with the metering probe wrong about whole-prompt cache hits; ships on the user's ruling (#124) |
+| Moonshot | kimi-k3 | `kimi` | `MOONSHOT_API_KEY` | 2026-09-01 | 24, 21 (429s, harness), 22, 23, 24 (a probe miss, the probe's own) | **shipped**: `KIMI_K3`, on the user's ruling (#124, 2026-09-15); run 3 was the door's own (schema misses, §19.7); run 5 a clean board with the metering probe wrong about whole-prompt cache hits; dispatches #6–#8 green on the nine-scenario pack, #12–#15 unmeasured at the paced tier |
 | DeepSeek | deepseek-flash | `deepseek` | `DEEPSEEK_API_KEY` | 2026-09-10 | — | **candidate again** (ledger #211) with two door knobs, each a documented fact: `json_mode="json_object"` (the schema in the prompt, validation ours) and `echo_reasoning` (the documented 400 in tool loops); first board owed to NW1's dispatch |
 | Alibaba Model Studio (Singapore, token plan) | qwen3.8-max | `qwen` | `DASHSCOPE_API_KEY` | 2026-09-10 | — | **candidate again** (ledger #211): the echo knob only (`json_schema` is documented on the 3.8 series); the `forbidden` pin stays real signal; `qwen-3.8-27b` on Cerebras is a separate, measured row |
 

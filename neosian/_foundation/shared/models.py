@@ -12,7 +12,13 @@ from enum import Enum
 from functools import partial
 from typing import Final
 
-from neosian._foundation.shared.catalog import CEREBRAS, GEMINI, XAI, OpenAICompatible
+from neosian._foundation.shared.catalog import (
+    CEREBRAS,
+    GEMINI,
+    KIMI,
+    XAI,
+    OpenAICompatible,
+)
 
 # =============================================================================
 # Provider and Model Enums
@@ -32,7 +38,7 @@ class Provider(str, Enum):
 
 
 # Date the pricing table below was last verified against provider price lists.
-PRICES_AS_OF = "2026-09-10"
+PRICES_AS_OF = "2026-09-15"
 
 # Integer micro-USD per USD — money is int µ$ everywhere (ECOSYSTEM §4);
 # floats exist only at display edges (format_micro_usd).
@@ -166,6 +172,7 @@ class Model(str, Enum):
     GROK_4_6 = "grok-4.6"
     GEMINI_3_8_FLASH = "gemini-3.8-flash"
     GEMINI_3_7_FLASH = "gemini-3.7-flash"
+    KIMI_K3 = "kimi-k3"
 
     # Fake (deterministic, keyless — public surface in neosian.fake)
     FAKE = "fake"
@@ -413,6 +420,20 @@ _GEMINI_FLASH = partial(
 )
 _MODEL_SPECS[Model.GEMINI_3_8_FLASH.value] = _GEMINI_FLASH()
 _MODEL_SPECS[Model.GEMINI_3_7_FLASH.value] = _GEMINI_FLASH()
+# Moonshot (platform.kimi.ai/docs/pricing/chat, 2026-09-15): one flat card
+# across the window; 131,072 is the documented default completion ceiling.
+_MODEL_SPECS[Model.KIMI_K3.value] = ModelSpec(
+    provider=Provider.OPENAI_COMPATIBLE,
+    context_window=1_048_576,
+    max_output_tokens=131_072,
+    supports_reasoning=True,
+    pricing=ModelPricing(
+        input_per_mtok=3_000_000,
+        output_per_mtok=15_000_000,
+        cache_read_per_mtok=300_000,
+    ),
+    door=KIMI,
+)
 
 # Default models per provider
 DEFAULT_MODELS: dict[Provider, Model] = {
@@ -447,4 +468,4 @@ def _prices_fingerprint() -> str:
     return hashlib.sha256("\n".join(lines).encode("ascii")).hexdigest()
 
 
-PRICES_FINGERPRINT = "4c0c1c37b9d0490a6d28f80fc496c4caba878d2e2d2b4b2425785a83e6a428e4"
+PRICES_FINGERPRINT = "06ebeb836279f00f73f3b2e7ae5cbf03c45546ae49abc467809c347d2babc539"
