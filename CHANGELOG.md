@@ -1237,7 +1237,8 @@ pre-release — pin it explicitly; the API stability promise rides v1.0.0.
 - Both entry points share one `_validate_run`, so neither can skip a
   guard.
 
-[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc8...HEAD
+[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc9...HEAD
+[1.0.0rc9]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc8...v1.0.0rc9
 [1.0.0rc8]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc7...v1.0.0rc8
 [1.0.0rc7]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc6...v1.0.0rc7
 [1.0.0rc6]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc5...v1.0.0rc6
