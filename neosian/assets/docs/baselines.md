@@ -233,9 +233,9 @@ five on 2026-09-02 (ledger #124); NW1 re-entered two on 2026-09-10
 | Google Gemini API (OpenAI-compatible endpoint) | gemini-3.7-flash | `gemini` | `GEMINI_API_KEY` | 2026-09-01 | 24, 24 | **shipped**: `GEMINI_3_7_FLASH`; two clean boards, every probe green, no provider error on the funded project |
 | DeepSeek | deepseek-v4-pro | `deepseek` | `DEEPSEEK_API_KEY` | 2026-09-01 | 21, 21, 21 (structured output, every run) | **exited**: one deterministic cause, no `json_schema` on the endpoint; re-entry is a `json_object` dialect knob (§19.7) |
 | Alibaba Model Studio (Singapore, token plan) | qwen3.8-max | `qwen` | `DASHSCOPE_API_KEY` | 2026-09-01 | 21, 23, 20 | **exited**: behavior reds in every run, the `forbidden` pin fired twice, the reasoning-echo class red on the round trip |
-| Moonshot | kimi-k3 | `kimi` | `MOONSHOT_API_KEY` | 2026-09-01 | 24, 21 (429s, harness), 22, 23, 24 (a probe miss, the probe's own) | **shipped**: `KIMI_K3`, on the user's ruling (#124, 2026-09-15); run 3 was the door's own (schema misses, §19.7); run 5 a clean board with the metering probe wrong about whole-prompt cache hits; dispatches #6–#8 green on the nine-scenario pack, #12–#15 unmeasured at the paced tier |
-| DeepSeek | deepseek-flash | `deepseek` | `DEEPSEEK_API_KEY` | 2026-09-10 | — | **candidate again** (ledger #211) with two door knobs, each a documented fact: `json_mode="json_object"` (the schema in the prompt, validation ours) and `echo_reasoning` (the documented 400 in tool loops); first board owed to NW1's dispatch |
-| Alibaba Model Studio (Singapore, token plan) | qwen3.8-max | `qwen` | `DASHSCOPE_API_KEY` | 2026-09-10 | — | **candidate again** (ledger #211): the echo knob only (`json_schema` is documented on the 3.8 series); the `forbidden` pin stays real signal; `qwen-3.8-27b` on Cerebras is a separate, measured row |
+| Moonshot | kimi-k3 | `kimi` | `MOONSHOT_API_KEY` | 2026-09-01 | 24, 21 (429s, harness), 22, 23, 24 (a probe miss, the probe's own), 37 (#16) | **shipped**: `KIMI_K3`, on the user's ruling (#124, 2026-09-15); run 3 was the door's own (schema misses, §19.7); run 5 a clean board with the metering probe wrong about whole-prompt cache hits; dispatches #6–#8 green on the nine-scenario pack, #12–#15 unmeasured at the paced tier |
+| DeepSeek | deepseek-flash | `deepseek` | `DEEPSEEK_API_KEY` | 2026-09-10 | 36 (#16) | **candidate again** (ledger #211) with two door knobs, each a documented fact: `json_mode="json_object"` (the schema in the prompt, validation ours) and `echo_reasoning` (the documented 400 in tool loops); first board owed to NW1's dispatch |
+| Alibaba Model Studio (Singapore, token plan) | qwen3.8-max | `qwen` | `DASHSCOPE_API_KEY` | 2026-09-10 | 30 (#16; `maintenance` the thinking mode's, #254) | **candidate again** (ledger #211): the echo knob only (`json_schema` is documented on the 3.8 series); the `forbidden` pin stays real signal; `qwen-3.8-27b` on Cerebras is a separate, measured row |
 
 An exited row's data leaves the tree (the lane, the marker, the CI
 column, the secret, its SERVICES.md row) and its measured runs stay
@@ -275,6 +275,114 @@ evidence. Each stays measured every dispatch; none is tuned around
   ruled at NK (the store truth stays the pin).
 
 ## Results
+
+### 2026-09-15: The catalog before the promise, measured (NW1's close, dispatch #16)
+
+Measured by one dispatched run:
+run 34999960182
+(on master at 89fe01f, `1.0.0rc9`: the pack at `70f8fa0a…` and the
+memory prompt at `0ae69cc2…`, both unchanged since #15; Haiku 4.5 gone,
+`kimi-k3` shipped, the probe reaching every door row, the job cap at
+300 minutes). Every cell named from the CI log; every red's bytes in it.
+The OpenAI row was re-measured the same day on the key file after the
+fix its 400 called for (39c0438), and that board is the second line.
+
+| Provider | Model | function | cli | http | mcp | native | door probes | link |
+|---|---|---|---|---|---|---|---|---|
+| Anthropic | claude-sonnet-5 | 9/10 | 10/10 | 10/10 | 10/10 | 9/10 | — | re-typed |
+| OpenAI | gpt-5.6-sol | *400* 1/10 | *400* 1/10 | *400* 1/10 | *400* 1/10 | n/a | — | *400* |
+| OpenAI (key file, 39c0438) | gpt-5.6-sol | 9/10 | 10/10 | 10/10 | 10/10 | n/a | — | re-typed |
+| Cerebras | gpt-oss-120b | 9/10 | 10/10 | 8/10 | 9/10 † | n/a | 7/7 | re-typed |
+| Cerebras | qwen-3.8-27b | 10/10 | 8/10 | 9/10 | 8/10 | n/a | 7/7 | handle |
+| xAI | grok-4.6 | 9/10 | 9/10 | 9/10 | 10/10 | n/a | 7/7 | handle |
+| Gemini | gemini-3.8-flash | 10/10 | 10/10 | 10/10 | 10/10 | n/a | 6/6 | handle |
+| Moonshot | kimi-k3 | 10/10 | 8/10 | 10/10 | 9/10 | n/a | 6/6 | handle |
+| DeepSeek (candidate) | deepseek-flash | 9/10 | 9/10 | 10/10 | 8/10 | n/a | 6/6 | re-typed |
+| Model Studio, token plan (candidate) | qwen3.8-max | 8/10 | 8/10 | 6/10 | 8/10 | n/a | 6/6 | handle |
+
+Findings, recorded as found:
+
+- **OpenAI did not measure on the dispatch: the adapter's wire, not the
+  model.** Every tool call on gpt-5.6-sol answered 400: `Function tools
+  with reasoning_effort are not supported for gpt-5.6-sol in
+  /v1/chat/completions. To use function tools, use /v1/responses or set
+  reasoning_effort to 'none'.` One line, 36 red cells; `maintenance`
+  passed on all four columns because the gardener's call carries no
+  tools. OpenAI's own page says it: since GPT-5.4, Chat Completions
+  calls tools only at `none`, and Responses is recommended. Probed live
+  the same day: Sol, Terra and Luna 400 with tools at any other effort,
+  the parameter's absence included; gpt-5.1 calls tools at any effort.
+  The four catalog probes passed (no tools). The fix sends `none` beside
+  tools on the 5.6 rows (ledger #249); the key-file board after it reads
+  39/40, the one red `skills` on function without frontmatter
+  (`/project/skills/release: '# Release project\n\nReusable procedure
+  for releasing this project.…'`), the link re-typed. Reasoning inside
+  tool loops waits for the Responses wire (NW3).
+- **Sonnet 38/40 and the axis 19/20, both reds `skills`.** On function
+  the `write` session filed nothing (`no document under /project/skills/
+  matching contains 'description:' (live: none)`); on native_memory the
+  Known-limits class, `/project/skills/release.md` a `# Release Process`
+  heading with no `description:` key. The link re-typed, as every run.
+- **gpt-oss 36/40 (†).** function `skills` without frontmatter (`# Release
+  Project Skill\n\n## Description…`); http `skills` the rewrite-on-load
+  face of #15 (`session 'use': … expected 1 version rows, got 2 (actions:
+  created, modified)`, frontmatter present); http `write-discipline` the
+  first-tool pin, the harness's (`expected first tool 'memory', got
+  'list_skills'`, the store truth intact).
+- **† Cerebras's hourly cap took the same last cell as in #15**: mcp ×
+  `skills` at 18:03:36 UTC, `Error code: 429 … 'Requests per hour limit
+  exceeded'`, the harness level, so mcp reads 9/10 on the nine that ran.
+  qwen-3.8-27b's board ran straight after with no 429: the cap reads per
+  model.
+- **qwen-3.8-27b's first board: 35/40.** `skills` on cli, http and mcp
+  with the frontmatter present and one version row too many each (`expected
+  2 version rows, got 3 (actions: created, modified, modified)`); cli
+  `correct-wrong-memory` the `forbidden` pin's real signal (the note
+  deleted, then a tombstone `We are NOT migrating to MongoDB.…` written
+  back); mcp `long-horizon-recall` the memory-worthiness class (`expected
+  tool 'memory', no tool called`).
+- **xAI measured again, 37/40**, after the 403s of #14 and #15 (the
+  account funded). Every red is `long-horizon-recall` at
+  `distractor-one` on function, cli and http: `no document under /project
+  matching contains '60 requests'`, only the cat filed. The
+  memory-worthiness class. mcp 10/10, probes 7/7, the handle.
+- **gemini-3.8-flash: 40/40 on its first board**, split per transport,
+  probes 6/6, the handle; the frontmatter-less `skills` that took every
+  3.7 column did not appear. `gemini-3.7-flash` answered the catalog
+  probe it had never reached before this run.
+- **Kimi measured, 37/40, shipped the same day (ledger #248).** Its first
+  board since #11 and its first on mcp: the per-transport split at 3 rpm
+  finished inside its budget (the lane 1:14 h), no cut, no 429. `skills`
+  without frontmatter on cli and mcp (`# Release Skill\n\nReusable
+  procedure for cutting a release…`); cli `cross-client` the reading
+  session wrote, the class of dispatch #9 (`expected 1 document(s) under
+  /project, got 2 (fetch-retry, sessions/cc-7f3a)`). Nothing the door's
+  or the harness's.
+- **DeepSeek Flash's first board: 36/40, both knobs holding** (no
+  degraded structured call; `reflection-close` and `maintenance` green
+  on every column). `cross-client` on cli and mcp, the reading session
+  writing the ticket; on mcp the answer named the note's path for the
+  digits. function `correct-wrong-memory` stopped at `record`
+  (`/project/database: expected 1 version rows, got 2`, the note amended
+  in the session); mcp `skills` one version row too many. No
+  deterministic red: the lane stays for a second board.
+- **Qwen3.8-max's first board back: 30/40, `maintenance` red on every
+  column, and not deterministic.** function, http and mcp read the same
+  bytes (`no document under /user matching contains 'Europe/Paris'`,
+  `/project/timezone` left where it was seeded, dedup and prune done);
+  cli folded the timezone into `/user/coffee`. Replaying the gardener's
+  exact request against the endpoint the same day, 18 calls per setting:
+  thinking off (`enable_thinking: false`) promoted it 17 times; thinking
+  on 6; the door's default (the switch unsent) 11, the rest an empty
+  operation list, and once through the library a runaway reply that
+  created and deleted `/user/timezone` until the call degraded. The
+  thinking mode's class, not the model's inability: the door gains the
+  switch in NW3 and the lane stays a candidate (ledger #254). Its other
+  reds: `skills` with extra version rows (function `got 6`), cli and http
+  `cross-client` reading-writes, http `contradiction` the first-tool pin.
+- **Noise, no cell**: `Task exception was never retrieved` (anthropic,
+  cerebras, kimi) is `AsyncClient.aclose()` after the loop closed,
+  printed after every board line.
 
 ### 2026-09-10: The final pin measured; the reds read whole (NZ /ship, dispatch #15)
 
