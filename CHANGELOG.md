@@ -8,6 +8,17 @@ phase close names the version.
 
 ## [Unreleased]
 
+### Fixed
+
+- A tool-using agent on `gpt-5.6-sol`, `gpt-5.6-terra` or `gpt-5.6-luna`
+  no longer fails with a 400. OpenAI's Chat Completions calls tools on
+  GPT-5.4 and later only at `reasoning_effort="none"`, so those rows now
+  send `none` beside tools; an effort set explicitly with tools raises
+  `UnsupportedParameterError` naming the model. Calls without tools
+  keep their effort. `ModelSpec.tools_without_reasoning` carries the
+  fact. The Responses wire, which keeps reasoning inside tool loops, is
+  the next phase.
+
 ## [1.0.0rc9] - 2026-09-15
 
 ### Added

@@ -116,6 +116,10 @@ class ModelSpec:
     # Anthropic's compact-2026-01-12 beta — a capability of the row, never
     # inferred from the provider (N4).
     supports_compaction_blocks: bool = False
+    # Chat Completions calls tools on this row only at reasoning_effort
+    # "none" (OpenAI, GPT-5.4 and later; ledger #249): a stopgap row fact
+    # until the Responses wire carries reasoning through tool loops.
+    tools_without_reasoning: bool = False
     pricing: ModelPricing | None = None
     # The door a compat row is served through (DESIGN §31): set on the
     # shipped door rows and on every registered model, None on a provider
@@ -245,6 +249,7 @@ _GPT_5_6 = partial(
     max_output_tokens=128_000,
     supports_reasoning=True,
     supports_max_effort=True,
+    tools_without_reasoning=True,
 )
 _MODEL_SPECS[Model.GPT_5_6_SOL.value] = _GPT_5_6(
     pricing=ModelPricing(

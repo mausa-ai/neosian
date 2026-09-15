@@ -4,9 +4,9 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import aclosing
 from dataclasses import replace
-from typing import Any, Final
+from typing import Any, Final, Literal
 
-from openai import NOT_GIVEN, AsyncOpenAI, BadRequestError, omit
+from openai import NOT_GIVEN, AsyncOpenAI, BadRequestError, Omit, omit
 from openai.types.chat import (
     ChatCompletion,
     ChatCompletionMessageParam,
@@ -154,7 +154,7 @@ class OpenAICompatibleClient(BaseLLMClient):
             "response_format": (
                 openai_response_format if openai_response_format else omit
             ),
-            "reasoning_effort": effective_effort.value if effective_effort else omit,
+            "reasoning_effort": self._effort_body(model, effective_effort, tools),
             "extra_body": self._extra_body(effective_effort),
         }
         for attempt in range(LLMDefaults.MAX_TOOL_CALL_RETRIES + 1):
@@ -208,6 +208,24 @@ class OpenAICompatibleClient(BaseLLMClient):
         if effort is None or self._door.reasoning_format is None:
             return None
         return {"reasoning_format": self._door.reasoning_format}
+
+    def _effort_body(
+        self,
+        model: AnyModel,
+        effort: ReasoningEffort | None,
+        tools: list[ToolDefinition] | None,
+    ) -> Literal["none", "low", "medium", "high", "max"] | Omit:
+        """The body's effort: a row that calls tools only without reasoning
+        sends "none" beside them, and refuses an effort asked for (#249)."""
+        if not (tools and model.spec.tools_without_reasoning):
+            return effort.value if effort else omit
+        if effort is not None:
+            raise UnsupportedParameterError(
+                f"reasoning_effort={effort.value} with tools is not supported for "
+                f"{model.value!r} on Chat Completions; leave it unset for tool "
+                "calls (reasoning off) or call without tools"
+            )
+        return "none"
 
     def _resolve_reasoning_effort(
         self, model: AnyModel, reasoning_effort: ReasoningEffort | None
@@ -349,7 +367,7 @@ class OpenAICompatibleClient(BaseLLMClient):
                 temperature=temperature if temperature is not None else omit,
                 stream=True,
                 stream_options=stream_opts,
-                reasoning_effort=effective_effort.value if effective_effort else omit,
+                reasoning_effort=self._effort_body(model, effective_effort, tools),
                 extra_body=self._extra_body(effective_effort),
             )
 

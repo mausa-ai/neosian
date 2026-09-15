@@ -1,6 +1,7 @@
 """Constants and configuration values.
 
-All magic numbers and hardcoded strings are centralized here.
+Shared magic numbers and hardcoded strings live here; module-local
+bounds stay with their validators (e.g. the memory grammar limits).
 Add constants as needed, not speculatively.
 """
 
