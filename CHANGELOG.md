@@ -8,6 +8,8 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [1.0.0rc9] - 2026-09-15
+
 ### Added
 
 - `Model.KIMI_K3` (`kimi-k3`): Moonshot's model ships as a door row
