@@ -17,6 +17,7 @@ from neosian import (
     lookup_model,
     register_model,
 )
+from neosian._foundation.llm.openai import OPENAI_DOOR
 from neosian._foundation.llm.router import ProviderRouter
 from neosian._foundation.shared.catalog import (
     CEREBRAS,
@@ -101,3 +102,30 @@ def test_the_dialect_knobs_are_validated() -> None:
         json_mode="json_object",
     )
     assert door.echo_reasoning and door.json_mode == "json_object"
+
+
+@pytest.mark.unit
+def test_the_wire_and_the_thinking_switch_are_validated() -> None:
+    """§31.5: the wire is a door fact (#251), the switch a chat knob (#258),
+    and the fields that name Chat Completions' own are refused on
+    `responses` (#257)."""
+    door = OpenAICompatible(name="d", api_key_env="D_KEY")
+    assert door.wire == "chat" and door.thinking_switch is None
+    assert OPENAI_DOOR.wire == XAI.wire == "responses"
+    assert {d.wire for d in (GEMINI, KIMI, CEREBRAS)} == {"chat"}
+    with pytest.raises(ConfigurationError, match="wire"):
+        OpenAICompatible(name="d", api_key_env="D_KEY", wire="grpc")  # type: ignore[arg-type]
+    with pytest.raises(ConfigurationError, match="thinking_switch"):
+        OpenAICompatible(
+            name="d", api_key_env="D_KEY", thinking_switch="enable thinking"
+        )
+    chat_only: list[dict[str, object]] = [
+        {"reasoning_field": "reasoning_content"},
+        {"reasoning_field": "reasoning_content", "echo_reasoning": True},
+        {"reasoning_format": "parsed"},
+        {"thinking_switch": "enable_thinking"},
+        {"json_mode": "json_object"},
+    ]
+    for knob in chat_only:
+        with pytest.raises(ConfigurationError, match="Chat Completions"):
+            OpenAICompatible(name="d", api_key_env="D_KEY", wire="responses", **knob)  # type: ignore[arg-type]

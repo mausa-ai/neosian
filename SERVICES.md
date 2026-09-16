@@ -19,9 +19,9 @@ raises `MissingAPIKeyError` (`agent_missing_api_key`).
 | Key | Provider | Off means |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | Anthropic (Claude; vision/PDF, prompt caching, adaptive thinking) | Claude models leave the router; `external_anthropic` self-skips; playground hides the Anthropic menu |
-| `OPENAI_API_KEY` | OpenAI (the GPT-5.6 family and `gpt-5.1`, reasoning) | GPT models leave the router; `external_openai` self-skips; playground hides the OpenAI menu |
+| `OPENAI_API_KEY` | OpenAI (`gpt-6-astra`, the GPT-5.6 family and `gpt-5.1`, reasoning; the Responses API) | GPT models leave the router; `external_openai` self-skips; playground hides the OpenAI menu |
 | `CEREBRAS_API_KEY` | Cerebras (default provider; `gpt-oss-120b`, `qwen-3.8-27b` — shipped door rows on the OpenAI wire since #218) | The rows stay listed but their first call raises `MissingAPIKeyError` naming the var; `external_cerebras` self-skips |
-| `XAI_API_KEY` | xAI (`grok-4.6`, a shipped door row — `Model.GROK_4_6`, DESIGN §31) | The row stays listed but its first call raises `MissingAPIKeyError` naming the var; `external_xai` self-skips |
+| `XAI_API_KEY` | xAI (`grok-4.6`, a shipped door row — `Model.GROK_4_6`, DESIGN §31; the Responses API) | The row stays listed but its first call raises `MissingAPIKeyError` naming the var; `external_xai` self-skips |
 | `GEMINI_API_KEY` | Google Gemini API, OpenAI-compatible endpoint (`gemini-3.8-flash` and `gemini-3.7-flash`, shipped door rows) | As above; `external_gemini` self-skips |
 | `MOONSHOT_API_KEY` | Moonshot (`kimi-k3`, a shipped door row: `Model.KIMI_K3`) | As above; `external_kimi` self-skips |
 

@@ -22,6 +22,7 @@ from neosian._foundation.shared.models import _prices_fingerprint
 # price exactly. Order: (input, output, cache_read, cache_write). The door
 # rows (DESIGN §19.5, §31) sit on the same card, standard tier.
 _USD_RATE_CARD: dict[Model, tuple[str, str, str | None, str | None]] = {
+    Model.GPT_6_ASTRA: ("10.00", "50.00", "1.00", None),
     Model.GPT_5_6_SOL: ("4.00", "20.00", "0.40", None),
     Model.GPT_5_6_TERRA: ("2.00", "12.00", "0.20", None),
     Model.GPT_5_6_LUNA: ("0.20", "1.20", "0.02", None),

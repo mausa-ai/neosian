@@ -38,7 +38,16 @@ class OpenAICompatible:
     `extra_body` beside a sent `reasoning_effort` (Cerebras's `parsed`
     keeps thoughts in `reasoning_field`); `retry_temperature` is the
     value resent on a tool-call 400 when a temperature was in play
-    (ledger #218).
+    (ledger #218). `wire` names the endpoint the door speaks (§31.5,
+    ledger #251): `"chat"` is Chat Completions, `"responses"` the
+    Responses API run stateless (`store: false`, encrypted reasoning
+    items replayed from `Message.extra["openai"]`, #252); the fields
+    that name Chat Completions' own (`reasoning_field`, `echo_reasoning`,
+    `reasoning_format`, `json_mode="json_object"`, `thinking_switch`)
+    are refused on it. `thinking_switch` names a provider's boolean
+    thinking parameter (`enable_thinking` on Model Studio), sent in
+    `extra_body` as on when a `reasoning_effort` was asked and off when
+    none was (ledger #254, #258).
     """
 
     name: str
@@ -52,6 +61,8 @@ class OpenAICompatible:
     echo_reasoning: bool = False
     reasoning_format: str | None = None
     retry_temperature: float | None = None
+    wire: Literal["chat", "responses"] = "chat"
+    thinking_switch: str | None = None
 
     def __post_init__(self) -> None:
         if not _DOOR_NAME.match(self.name):
@@ -99,14 +110,42 @@ class OpenAICompatible:
                 f"door {self.name!r}: retry_temperature {self.retry_temperature!r} "
                 "needs temperature=True and a value between 0.0 and 2.0"
             )
+        if self.thinking_switch is not None and not self.thinking_switch.isidentifier():
+            raise ConfigurationError(
+                f"door {self.name!r}: thinking_switch {self.thinking_switch!r} must "
+                "be a request parameter name such as 'enable_thinking'"
+            )
+        if self.wire not in ("chat", "responses"):
+            raise ConfigurationError(
+                f"door {self.name!r}: wire {self.wire!r} must be 'chat' (Chat "
+                "Completions) or 'responses' (the Responses API)"
+            )
+        if self.wire == "responses":
+            chat_only = {
+                "reasoning_field": self.reasoning_field,
+                "echo_reasoning": self.echo_reasoning or None,
+                "reasoning_format": self.reasoning_format,
+                "thinking_switch": self.thinking_switch,
+                "json_mode": (
+                    self.json_mode if self.json_mode != "json_schema" else None
+                ),
+            }
+            for knob, value in chat_only.items():
+                if value is not None:
+                    raise ConfigurationError(
+                        f"door {self.name!r}: {knob} names a Chat Completions field "
+                        "and is not sent on the 'responses' wire"
+                    )
 
 
 XAI = OpenAICompatible(
+    # Responses is "the preferred way" and Chat Completions deprecated on
+    # docs.x.ai (ledger #250); reasoning rides the items, no field.
     name="xai",
     api_key_env="XAI_API_KEY",
     base_url="https://api.x.ai/v1",
     temperature=True,
-    reasoning_field="reasoning_content",
+    wire="responses",
 )
 
 

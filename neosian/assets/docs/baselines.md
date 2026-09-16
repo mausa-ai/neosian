@@ -53,7 +53,10 @@ document), never the file name.
   about the other), `gemini-3.8-flash`, `grok-4.6`, `kimi-k3`. Every other shipped
   row rides the catalog probe on every dispatch, and each row carries its
   provider's lifecycle as data (`ModelSpec.retires` / `card_until`,
-  DESIGN §31, the 30-day alarm in `make test`). History: OpenAI's row
+  DESIGN §31, the 30-day alarm in `make test`). Since NW3 (2026-09-16,
+  ledger #250) OpenAI's row and `grok-4.6` are measured over the
+  Responses API, stateless; every other row over Chat Completions
+  (DESIGN §31.5). History: OpenAI's row
   moved `gpt-5-mini` → `gpt-5.1` on 2026-08-22 (the flagship rule) and
   `gpt-5.1` → `gpt-5.6-sol` on 2026-09-10 (NW1, ledger #210); Gemini's
   from 3.7 to 3.8 the same day; earlier tables name the model they
@@ -234,8 +237,8 @@ five on 2026-09-02 (ledger #124); NW1 re-entered two on 2026-09-10
 | DeepSeek | deepseek-v4-pro | `deepseek` | `DEEPSEEK_API_KEY` | 2026-09-01 | 21, 21, 21 (structured output, every run) | **exited**: one deterministic cause, no `json_schema` on the endpoint; re-entry is a `json_object` dialect knob (§19.7) |
 | Alibaba Model Studio (Singapore, token plan) | qwen3.8-max | `qwen` | `DASHSCOPE_API_KEY` | 2026-09-01 | 21, 23, 20 | **exited**: behavior reds in every run, the `forbidden` pin fired twice, the reasoning-echo class red on the round trip |
 | Moonshot | kimi-k3 | `kimi` | `MOONSHOT_API_KEY` | 2026-09-01 | 24, 21 (429s, harness), 22, 23, 24 (a probe miss, the probe's own), 37 (#16) | **shipped**: `KIMI_K3`, on the user's ruling (#124, 2026-09-15); run 3 was the door's own (schema misses, §19.7); run 5 a clean board with the metering probe wrong about whole-prompt cache hits; dispatches #6–#8 green on the nine-scenario pack, #12–#15 unmeasured at the paced tier |
-| DeepSeek | deepseek-flash | `deepseek` | `DEEPSEEK_API_KEY` | 2026-09-10 | 36 (#16) | **candidate again** (ledger #211) with two door knobs, each a documented fact: `json_mode="json_object"` (the schema in the prompt, validation ours) and `echo_reasoning` (the documented 400 in tool loops); no deterministic red on its first board, the second owed to NW3's dispatch |
-| Alibaba Model Studio (Singapore, token plan) | qwen3.8-max | `qwen` | `DASHSCOPE_API_KEY` | 2026-09-10 | 30 (#16; `maintenance` the thinking mode's, #254) | **candidate again** (ledger #211): the echo knob only (`json_schema` is documented on the 3.8 series); the `forbidden` pin stays real signal; kept on #16 with the thinking switch owed to its door in NW3 (#254), the second board after it; `qwen-3.8-27b` on Cerebras is a separate, measured row |
+| DeepSeek | deepseek-flash | `deepseek` | `DEEPSEEK_API_KEY` | 2026-09-10 | 36 (#16), 37 (NW3, key file) | **candidate again** (ledger #211) with two door knobs, each a documented fact: `json_mode="json_object"` (the schema in the prompt, validation ours) and `echo_reasoning` (the documented 400 in tool loops); two boards without a deterministic red, the reds in the shipped rows' classes; **kept** (ledger #259): the /ship dispatch on master is the third board, a board in the same classes ships it, a deterministic red exits |
+| Alibaba Model Studio (Singapore, token plan) | qwen3.8-max | `qwen` | `DASHSCOPE_API_KEY` | 2026-09-10 | 30 (#16; `maintenance` the thinking mode's, #254), 39 (NW3, key file, the switch) | **candidate again** (ledger #211): the echo knob and, since NW3, `thinking_switch="enable_thinking"` (#258; `json_schema` is documented on the 3.8 series); the `forbidden` pin stays real signal; the switch settled `maintenance` on every column, the one red a `skills` clarifying turn; **kept** (ledger #259): the /ship dispatch is the third board, same rule as DeepSeek's; `qwen-3.8-27b` on Cerebras is a separate, measured row |
 
 An exited row's data leaves the tree (the lane, the marker, the CI
 column, the secret, its SERVICES.md row) and its measured runs stay
@@ -277,6 +280,56 @@ evidence. Each stays measured every dispatch; none is tuned around
 
 ## Results
 
+### 2026-09-16: The two wires (NW3's close, the key files)
+
+Measured locally from the key files, one lane at a time, on the NW3 tree
+(`1.0.0rc11`; the pack and the memory prompt unchanged since #16): the
+four lanes the phase re-wired or re-armed. OpenAI's row and `grok-4.6`
+over the Responses API, stateless (DESIGN §31.5); `qwen3.8-max` with the
+thinking switch declared (off on every board cell, since the harness
+asks no effort); `deepseek-flash`'s second board. Every cell read from
+the lane log. The dispatch over every lane rides the next /ship.
+
+| Provider | Model | function | cli | http | mcp | native | door probes | link |
+|---|---|---|---|---|---|---|---|---|
+| OpenAI (Responses) | gpt-5.6-sol | 10/10 | 10/10 | 9/10 | 10/10 | n/a | — | re-typed |
+| xAI (Responses) | grok-4.6 | 9/10 | 9/10 | 9/10 | 9/10 | n/a | 7/7 | handle |
+| DeepSeek (candidate) | deepseek-flash | 9/10 | 9/10 | 9/10 | 10/10 | n/a | 6/6 | re-typed |
+| Model Studio, token plan (candidate) | qwen3.8-max | 10/10 | 10/10 | 10/10 | 9/10 | n/a | 7/7 | re-typed |
+
+Findings, recorded as found:
+
+- **OpenAI measures again: 39/40 on Responses.** Dispatch #16's 36 wire
+  reds are gone; every tool call carried its reasoning at the effort
+  asked, nothing stored at the provider. The one red is `skills` on
+  http: asked to use the release skill, the model answered `What target
+  version should I release? For example, 1.2.3.` instead of naming the
+  test step: a clarifying question where the scenario expects the
+  procedure to start. The fallback and link-handle suites passed on the
+  wire too.
+- **grok-4.6 on Responses: 36/40, one class.** `long-horizon-recall`'s
+  `distractor-one` session on all four columns (three of four on #16,
+  the shipped rows' class): the `60 requests` fact was not filed
+  (function, cli, mcp read `no document under /project matching`; http
+  read `no tool called`). Every door probe passed, the reasoning
+  summary the path now that the door has no `reasoning_field`; the
+  probe was widened to `responses` doors in the same session.
+- **qwen3.8-max with the switch: 39/40, from 30/40.** `maintenance` is
+  green on every column: the thinking mode's class of #254 is what the
+  switch settles. The one red is `skills` on mcp, the same clarifying
+  turn as OpenAI's (`I've loaded the release skill. Let's follow the
+  process step by step. Step 1: Bump the version…` without the test
+  step).
+- **deepseek-flash's second board: 37/40 (36 on #16).**
+  `correct-wrong-memory` on function stored the disavowed fact (a
+  `no-mongodb-migration` document under /project, the class
+  `qwen-3.8-27b` showed on http at NC7); `skills` on cli and http wrote
+  extra version rows (four and five where two are expected), the class
+  `qwen-3.8-27b` showed on mcp. No deterministic red; both candidates are kept
+  and the /ship dispatch on master is their third board (ledger #259).
+- **Links:** grok-4.6 reused the handle; gpt-5.6-sol, deepseek-flash
+  and qwen3.8-max re-typed the URL.
+
 ### 2026-09-15: The catalog before the promise, measured (NW1's close, dispatch #16)
 
 Measured by one dispatched run:
@@ -317,8 +370,10 @@ Findings, recorded as found:
   tools on the 5.6 rows (ledger #249); the key-file board after it reads
   39/40, the one red `skills` on function without frontmatter
   (`/project/skills/release: '# Release project\n\nReusable procedure
-  for releasing this project.…'`), the link re-typed. Reasoning inside
-  tool loops waits for the Responses wire (NW3).
+  for releasing this project.…'`), the link re-typed. Settled at NW3
+  (2026-09-16): OpenAI's rows speak the Responses API, reasoning stays
+  inside the tool loop and the stopgap row fact is gone; the board
+  below is the measurement.
 - **Sonnet 38/40 and the axis 19/20, both reds `skills`.** On function
   the `write` session filed nothing (`no document under /project/skills/
   matching contains 'description:' (live: none)`); on native_memory the

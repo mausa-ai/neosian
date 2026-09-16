@@ -228,9 +228,9 @@ class TestReasoning:
         assert [c.content for c in chunks] == ["Hi", "!"]
 
     async def test_a_door_without_a_reasoning_field_ignores_one(self) -> None:
-        client = OpenAIClient(api_key="test-key")
+        client = _client(replace(XAI, reasoning_field=None))
         _mock_complete(client, _response(reasoning_content="leaked?"))
-        response = await client.complete(_USER, model=Model.GPT_5_6_LUNA)
+        response = await client.complete(_USER, model=_grok())
         assert response.message.reasoning is None
 
 
@@ -455,3 +455,96 @@ class TestDoorDialects:
         )
         assert create.call_args.kwargs["response_format"]["type"] == "json_schema"
         assert [m["role"] for m in create.call_args.kwargs["messages"]] == ["user"]
+
+
+QWEN = OpenAICompatible(
+    # Model Studio's shape (ledger #254, #258): no effort parameter, a
+    # boolean switch in the body, reasoning echoed on assistant turns.
+    name="qwen",
+    api_key_env="DASHSCOPE_API_KEY",
+    base_url="https://q.example/v1",
+    temperature=True,
+    reasoning_effort=False,
+    reasoning_field="reasoning_content",
+    echo_reasoning=True,
+    thinking_switch="enable_thinking",
+)
+
+
+def _qwen() -> RegisteredModel:
+    return register_model(
+        "qwen-x",
+        provider=QWEN,
+        context_window=131_072,
+        max_output_tokens=16_384,
+        supports_reasoning=True,
+    )
+
+
+@pytest.mark.unit
+class TestThinkingSwitch:
+    """The switch is computed from the effort asked, before the door drops
+    the level: unset means off, any effort means on (#258)."""
+
+    async def test_unset_effort_sends_the_switch_off(self) -> None:
+        client = _client(QWEN)
+        create = _mock_complete(client, _response())
+        await client.complete(_USER, model=_qwen())
+        assert create.call_args.kwargs["extra_body"] == {"enable_thinking": False}
+        assert create.call_args.kwargs["reasoning_effort"] is omit
+
+    async def test_an_effort_turns_it_on_without_a_dropped_warning(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        client = _client(QWEN)
+        create = _mock_complete(client, _response())
+        with caplog.at_level(logging.WARNING):
+            await client.complete(
+                _USER, model=_qwen(), reasoning_effort=ReasoningEffort.HIGH
+            )
+        assert create.call_args.kwargs["extra_body"] == {"enable_thinking": True}
+        assert create.call_args.kwargs["reasoning_effort"] is omit
+        assert "dropped" not in caplog.text
+
+    async def test_on_the_stream_path(self) -> None:
+        client = _client(QWEN)
+        create = _mock_stream(client, [_chunk("Hi")])
+        async for _ in client.stream(
+            _USER, model=_qwen(), reasoning_effort=ReasoningEffort.LOW
+        ):
+            pass
+        assert create.call_args.kwargs["extra_body"] == {"enable_thinking": True}
+
+    async def test_beside_an_effort_parameter_and_a_format(self) -> None:
+        door = replace(
+            QWEN, reasoning_effort=True, reasoning_format="parsed", echo_reasoning=False
+        )
+        client = _client(door)
+        create = _mock_complete(client, _response())
+        await client.complete(
+            _USER, model=_qwen(), reasoning_effort=ReasoningEffort.LOW
+        )
+        assert create.call_args.kwargs["reasoning_effort"] == "low"
+        assert create.call_args.kwargs["extra_body"] == {
+            "reasoning_format": "parsed",
+            "enable_thinking": True,
+        }
+
+    async def test_a_chat_door_without_the_switch_is_byte_unchanged(self) -> None:
+        """The request a chat door sent before NW3, key for key."""
+        client = _client()
+        create = _mock_complete(client, _response())
+        await client.complete(_USER, model=_grok(), temperature=0.1)
+        kwargs = create.call_args.kwargs
+        assert set(kwargs) == {
+            "model",
+            "messages",
+            "tools",
+            "max_completion_tokens",
+            "temperature",
+            "response_format",
+            "reasoning_effort",
+            "extra_body",
+        }
+        assert kwargs["extra_body"] is None
+        assert kwargs["tools"] is omit and kwargs["response_format"] is omit

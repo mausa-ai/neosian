@@ -120,12 +120,20 @@ config = AgentConfig(system_prompt="Be concise.", model=ACME_LARGE)
 
 Cost in µ$, the context policy, capability-aware fallback and the
 playground picker treat it like a shipped model; a missing `XAI_API_KEY`
-fails naming it. The door's dialect knobs default to OpenAI's wire:
-`temperature`, `reasoning_effort`, `reasoning_field`, `strict_schemas`,
-`json_mode="json_object"` (structured output as the plain JSON mode, the
-schema in the system prompt: DeepSeek) and `echo_reasoning` (the
-reasoning field sent back on assistant turns: a 400 in tool loops
-without it on DeepSeek, Qwen and Kimi).
+fails naming it. The door's `wire` names the endpoint it speaks:
+`"chat"` (Chat Completions, the default, what most compatible endpoints
+serve) or `"responses"` (the Responses API, the wire OpenAI and xAI
+recommend; run stateless, with the model's encrypted reasoning carried
+on the message between tool calls and nothing stored at the provider).
+The dialect knobs default to OpenAI's behaviour: `temperature`,
+`reasoning_effort`, `strict_schemas`, and on `"chat"` also
+`reasoning_field`, `json_mode="json_object"` (structured output as the
+plain JSON mode, the schema in the system prompt: DeepSeek),
+`echo_reasoning` (the reasoning field sent back on assistant turns: a
+400 in tool loops without it on DeepSeek, Qwen and Kimi) and
+`thinking_switch` (the endpoint's boolean thinking parameter, such as
+Model Studio's `enable_thinking`: off unless a `reasoning_effort` is
+asked).
 
 ## Where to go next
 

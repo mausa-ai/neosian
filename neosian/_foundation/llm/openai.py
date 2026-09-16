@@ -1,12 +1,19 @@
-"""The OpenAI-compatible client, and OpenAI's own instance of it (DESIGN §19)."""
+"""The OpenAI-compatible client, and OpenAI's own instance of it (DESIGN §19).
+
+One client, two wires (§31.5, ledger #251): a door's `wire` picks Chat
+Completions (`openai_convert.py`, `openai_stream.py`) or the Responses API
+(`openai_responses.py`, `openai_responses_stream.py`); the dialect knobs,
+the retry loop and the error wrapping are shared.
+"""
 
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import aclosing
 from dataclasses import replace
-from typing import Any, Final, Literal
+from functools import partial
+from typing import Any, Final
 
-from openai import NOT_GIVEN, AsyncOpenAI, BadRequestError, Omit, omit
+from openai import NOT_GIVEN, AsyncOpenAI, BadRequestError, omit
 from openai.types.chat import (
     ChatCompletion,
     ChatCompletionMessageParam,
@@ -40,6 +47,8 @@ from neosian._foundation.llm.openai_convert import (
     tool_choice_body,
     usage_of,
 )
+from neosian._foundation.llm.openai_responses import parse_response, request_kwargs
+from neosian._foundation.llm.openai_responses_stream import iter_events
 from neosian._foundation.llm.openai_stream import iter_chunks, reasoning_of
 from neosian._foundation.shared.constants import ErrorMessages, LLMDefaults
 from neosian._foundation.shared.exceptions import (
@@ -61,8 +70,11 @@ from neosian._foundation.shared.types import (
 
 logger = logging.getLogger(__name__)
 
-# OpenAI's own door: the SDK's endpoint (or OPENAI_BASE_URL), OpenAI's dialect.
-OPENAI_DOOR: Final = OpenAICompatible(name="openai", api_key_env="OPENAI_API_KEY")
+# OpenAI's own door: the SDK's endpoint (or OPENAI_BASE_URL), OpenAI's
+# dialect, on the wire OpenAI recommends (ledger #250).
+OPENAI_DOOR: Final = OpenAICompatible(
+    name="openai", api_key_env="OPENAI_API_KEY", wire="responses"
+)
 
 
 class OpenAICompatibleClient(BaseLLMClient):
@@ -134,33 +146,48 @@ class OpenAICompatibleClient(BaseLLMClient):
             ToolCallGenerationError: If tool call generation fails after retries.
         """
         self._check_temperature(temperature)
-        effective_effort = self._resolve_reasoning_effort(model, reasoning_effort)
+        effort = self._resolve_reasoning_effort(model, reasoning_effort)
 
-        if response_format and self._door.json_mode == "json_object":
-            messages = schema_in_prompt(messages, response_format)
-        openai_messages = self._convert_messages(messages)
-        openai_tools = self._convert_tools(tools) if tools else None
-        openai_response_format: OpenAIResponseFormat | None = (
-            self._convert_response_format(response_format) if response_format else None
-        )
+        create: Callable[..., Awaitable[Any]]
+        parse: Callable[[Any], CompletionResponse]
+        if self._door.wire == "responses":
+            kwargs = request_kwargs(
+                model=model,
+                messages=messages,
+                tools=tools,
+                tool_choice=tool_choice,
+                temperature=temperature,
+                response_format=response_format,
+                effort=effort,
+                max_tokens=max_tokens,
+                door=self._door,
+            )
+            create = self._client.responses.create
+            parse = partial(parse_response, door=self._door)
+        else:
+            if response_format and self._door.json_mode == "json_object":
+                messages = schema_in_prompt(messages, response_format)
+            kwargs = self._chat_request(
+                messages,
+                model,
+                tools,
+                tool_choice,
+                temperature,
+                reasoning_effort,
+                effort,
+                max_tokens,
+            )
+            kwargs["response_format"] = (
+                self._convert_response_format(response_format)
+                if response_format
+                else omit
+            )
+            create = self._client.chat.completions.create
+            parse = self._parse_response
 
-        kwargs: dict[str, Any] = {
-            "model": model.value,
-            "messages": openai_messages,
-            "tools": openai_tools if openai_tools else omit,
-            **tool_choice_body(openai_tools, tool_choice),
-            "max_completion_tokens": max_tokens,
-            "temperature": temperature if temperature is not None else omit,
-            "response_format": (
-                openai_response_format if openai_response_format else omit
-            ),
-            "reasoning_effort": self._effort_body(model, effective_effort, tools),
-            "extra_body": self._extra_body(effective_effort),
-        }
         for attempt in range(LLMDefaults.MAX_TOOL_CALL_RETRIES + 1):
             try:
-                response = await self._client.chat.completions.create(**kwargs)
-                return self._parse_response(response)
+                return parse(await create(**kwargs))
 
             except BadRequestError as e:
                 # An overflow is classified before the tool retry (LL-4).
@@ -185,6 +212,30 @@ class OpenAICompatibleClient(BaseLLMClient):
         # Should not reach here, but satisfy type checker
         raise ToolCallGenerationError(retries=LLMDefaults.MAX_TOOL_CALL_RETRIES)
 
+    def _chat_request(
+        self,
+        messages: list[Message],
+        model: AnyModel,
+        tools: list[ToolDefinition] | None,
+        tool_choice: ToolChoice | None,
+        temperature: float | None,
+        requested: ReasoningEffort | None,
+        effort: ReasoningEffort | None,
+        max_tokens: int,
+    ) -> dict[str, Any]:
+        """The Chat Completions body both paths share."""
+        openai_tools = self._convert_tools(tools) if tools else None
+        return {
+            "model": model.value,
+            "messages": self._convert_messages(messages),
+            "tools": openai_tools if openai_tools else omit,
+            **tool_choice_body(openai_tools, tool_choice),
+            "max_completion_tokens": max_tokens,
+            "temperature": temperature if temperature is not None else omit,
+            "reasoning_effort": effort.value if effort else omit,
+            "extra_body": self._extra_body(requested, effort),
+        }
+
     def _check_temperature(self, temperature: float | None) -> None:
         if temperature is None or self._door.temperature:
             return
@@ -200,32 +251,20 @@ class OpenAICompatibleClient(BaseLLMClient):
     def _is_tool_call_error(self, error: BadRequestError) -> bool:
         return is_tool_call_error(error.body)
 
-    def _extra_body(self, effort: ReasoningEffort | None) -> dict[str, str] | None:
-        """The door's `reasoning_format`, riding beside a sent effort (#218).
+    def _extra_body(
+        self, requested: ReasoningEffort | None, effort: ReasoningEffort | None
+    ) -> dict[str, Any] | None:
+        """The door's `reasoning_format` beside a sent effort (#218), and its
+        thinking switch — on when an effort was asked, off otherwise (#258).
 
         `None`, not `omit`: the SDK merges `extra_body` as a mapping.
         """
-        if effort is None or self._door.reasoning_format is None:
-            return None
-        return {"reasoning_format": self._door.reasoning_format}
-
-    def _effort_body(
-        self,
-        model: AnyModel,
-        effort: ReasoningEffort | None,
-        tools: list[ToolDefinition] | None,
-    ) -> Literal["none", "low", "medium", "high", "max"] | Omit:
-        """The body's effort: a row that calls tools only without reasoning
-        sends "none" beside them, and refuses an effort asked for (#249)."""
-        if not (tools and model.spec.tools_without_reasoning):
-            return effort.value if effort else omit
-        if effort is not None:
-            raise UnsupportedParameterError(
-                f"reasoning_effort={effort.value} with tools is not supported for "
-                f"{model.value!r} on Chat Completions; leave it unset for tool "
-                "calls (reasoning off) or call without tools"
-            )
-        return "none"
+        body: dict[str, Any] = {}
+        if effort is not None and self._door.reasoning_format is not None:
+            body["reasoning_format"] = self._door.reasoning_format
+        if self._door.thinking_switch is not None:
+            body[self._door.thinking_switch] = requested is not None
+        return body or None
 
     def _resolve_reasoning_effort(
         self, model: AnyModel, reasoning_effort: ReasoningEffort | None
@@ -234,7 +273,8 @@ class OpenAICompatibleClient(BaseLLMClient):
 
         Handles:
         - Validation: raises UnsupportedParameterError for non-reasoning models.
-        - A door without the parameter: dropped with a warning.
+        - A door without the parameter: dropped with a warning — silently
+          when a thinking switch expresses the ask instead (#258).
         - MAX downgrade: a model whose spec does not allow MAX gets HIGH.
 
         Args:
@@ -256,11 +296,12 @@ class OpenAICompatibleClient(BaseLLMClient):
             )
 
         if not self._door.reasoning_effort:
-            logger.warning(
-                "reasoning_effort=%s dropped: the %r door has no such parameter",
-                reasoning_effort.value,
-                self._door.name,
-            )
+            if self._door.thinking_switch is None:
+                logger.warning(
+                    "reasoning_effort=%s dropped: the %r door has no such parameter",
+                    reasoning_effort.value,
+                    self._door.name,
+                )
             return None
 
         # MAX passes through where the spec allows it (§31); else HIGH.
@@ -351,27 +392,41 @@ class OpenAICompatibleClient(BaseLLMClient):
                 without it, or reasoning_effort used with an unsupported model.
         """
         self._check_temperature(temperature)
-        effective_effort = self._resolve_reasoning_effort(model, reasoning_effort)
+        effort = self._resolve_reasoning_effort(model, reasoning_effort)
 
-        openai_messages = self._convert_messages(messages)
-        openai_tools = self._convert_tools(tools) if tools else None
-
-        stream_opts: ChatCompletionStreamOptionsParam = {"include_usage": True}
-        try:
-            stream = await self._client.chat.completions.create(
-                model=model.value,
-                messages=openai_messages,
-                tools=openai_tools if openai_tools else omit,
-                **tool_choice_body(openai_tools, tool_choice),
-                max_completion_tokens=max_tokens,
-                temperature=temperature if temperature is not None else omit,
-                stream=True,
-                stream_options=stream_opts,
-                reasoning_effort=self._effort_body(model, effective_effort, tools),
-                extra_body=self._extra_body(effective_effort),
+        create: Callable[..., Awaitable[Any]]
+        reader: Callable[[Any, OpenAICompatible], AsyncIterator[StreamChunk]]
+        if self._door.wire == "responses":
+            kwargs = request_kwargs(
+                model=model,
+                messages=messages,
+                tools=tools,
+                tool_choice=tool_choice,
+                temperature=temperature,
+                response_format=None,
+                effort=effort,
+                max_tokens=max_tokens,
+                door=self._door,
             )
+            create, reader = self._client.responses.create, iter_events
+        else:
+            kwargs = self._chat_request(
+                messages,
+                model,
+                tools,
+                tool_choice,
+                temperature,
+                reasoning_effort,
+                effort,
+                max_tokens,
+            )
+            stream_opts: ChatCompletionStreamOptionsParam = {"include_usage": True}
+            kwargs["stream_options"] = stream_opts
+            create, reader = self._client.chat.completions.create, iter_chunks
 
-            async with aclosing(iter_chunks(stream, self._door)) as chunks:
+        try:
+            stream = await create(**kwargs, stream=True)
+            async with aclosing(reader(stream, self._door)) as chunks:
                 async for chunk in chunks:
                     yield chunk
         except NeosianError:

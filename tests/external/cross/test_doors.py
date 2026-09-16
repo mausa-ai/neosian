@@ -142,10 +142,14 @@ class TestDoors:
     async def test_reasoning_arrives_on_a_path(self, door: Door) -> None:
         """A wrong `reasoning_field` name reads as `None` by contract
         (§19.3), so a reasoning model on a door with a field must show
-        reasoning on one path or the other — or the name is wrong."""
+        reasoning on one path or the other — or the name is wrong. A
+        `responses` door has no field: the summary is the path (§31.5)."""
         model, client = door
         assert model.door is not None
-        if model.door.reasoning_field is None or not model.supports_reasoning:
+        readable = (
+            model.door.reasoning_field is not None or model.door.wire == "responses"
+        )
+        if not readable or not model.supports_reasoning:
             pytest.skip(f"the {model.door.name} door exposes no reasoning to read")
         response = await client.complete(
             messages=_THINK, model=model, reasoning_effort=ReasoningEffort.HIGH

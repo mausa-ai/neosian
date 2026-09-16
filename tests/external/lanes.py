@@ -117,8 +117,10 @@ DEEPSEEK = Lane(
 
 QWEN = Lane(
     # Model Studio's token plan (Singapore): the fixed host (§19.7). Back
-    # under #211 with the echo knob only — json_schema is documented on the
-    # 3.8 series; thinking rides extra_body, not reasoning_effort.
+    # under #211 with the echo knob — json_schema is documented on the 3.8
+    # series — and, since #254, the thinking switch: `enable_thinking`
+    # rides extra_body, off unless an effort is asked (the maintenance
+    # replay promoted 17/18 with thinking off, 6/18 on).
     model=_candidate(
         "qwen3.8-max",
         OpenAICompatible(
@@ -131,9 +133,11 @@ QWEN = Lane(
             reasoning_effort=False,
             reasoning_field="reasoning_content",
             echo_reasoning=True,
+            thinking_switch="enable_thinking",
         ),
         context_window=1_000_000,
         max_output_tokens=131_072,
+        supports_reasoning=True,
     ),
 )
 

@@ -1,5 +1,6 @@
 """Tests for OpenAI LLM client."""
 
+from dataclasses import replace
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
@@ -19,7 +20,11 @@ from neosian._foundation.llm.base import (
     Usage,
     normalize_stop_reason,
 )
-from neosian._foundation.llm.openai import OpenAIClient
+from neosian._foundation.llm.openai import (
+    OPENAI_DOOR,
+    OpenAIClient,
+    OpenAICompatibleClient,
+)
 from neosian._foundation.llm.openai_convert import convert_tool_choice
 from neosian._foundation.shared.constants import LLMDefaults
 from neosian._foundation.shared.exceptions import (
@@ -36,8 +41,16 @@ from neosian._foundation.shared.types import (
 )
 from tests.unit.llm.sdk_specs import OPENAI as SPEC, autospec
 
+# OpenAI's door on Chat Completions: the wire OpenAI's own rows left at
+# NW3 (§31.5), kept here as the byte-identical pin for every chat door.
+CHAT_DOOR = replace(OPENAI_DOOR, wire="chat")
 
-def _sdk(client: OpenAIClient) -> Any:
+
+def _chat_client() -> OpenAICompatibleClient:
+    return OpenAICompatibleClient(api_key="test-key", door=CHAT_DOOR)
+
+
+def _sdk(client: OpenAICompatibleClient) -> Any:
     """The underlying SDK client, untyped for mock wiring and inspection."""
     return client._client
 
@@ -66,7 +79,7 @@ class TestOpenAIClientMessageConversion:
 
     def test_convert_system_message(self) -> None:
         """System messages should convert correctly."""
-        client = OpenAIClient(api_key="test-key")
+        client = _chat_client()
         messages = [Message(role=Role.SYSTEM, content="You are helpful.")]
 
         result = client._convert_messages(messages)
@@ -77,7 +90,7 @@ class TestOpenAIClientMessageConversion:
 
     def test_convert_user_message(self) -> None:
         """User messages should convert correctly."""
-        client = OpenAIClient(api_key="test-key")
+        client = _chat_client()
         messages = [Message(role=Role.USER, content="Hello")]
 
         result = client._convert_messages(messages)
@@ -88,7 +101,7 @@ class TestOpenAIClientMessageConversion:
 
     def test_convert_assistant_message(self) -> None:
         """Assistant messages should convert correctly."""
-        client = OpenAIClient(api_key="test-key")
+        client = _chat_client()
         messages = [Message(role=Role.ASSISTANT, content="Hi there!")]
 
         result = client._convert_messages(messages)
@@ -104,7 +117,7 @@ class TestOpenAIClientToolConversion:
 
     def test_convert_tool_definition(self) -> None:
         """Tool definitions should convert correctly."""
-        client = OpenAIClient(api_key="test-key")
+        client = _chat_client()
         tools = [
             ToolDefinition(
                 name=ToolName("search"),
@@ -128,7 +141,7 @@ class TestOpenAIClientToolConversion:
 
     def test_a_strict_tool_is_sent_strict(self) -> None:
         """`strict=True` reaches the wire in the strict-mode shape (TG-9)."""
-        client = OpenAIClient(api_key="test-key")
+        client = _chat_client()
         tool = ToolDefinition(
             name=ToolName("search"),
             description="Search",
@@ -184,7 +197,7 @@ class TestOpenAIArgumentFragments:
 
     @pytest.mark.asyncio
     async def test_each_delta_is_forwarded_and_still_assembled(self) -> None:
-        client = OpenAIClient(api_key="test-key")
+        client = _chat_client()
         first = self._chunk('{"location":', call_id="call_1", finish=None)
         # The wire announces the id once; a later fragment still carries it.
         second = self._chunk(' "Paris"}', call_id=None, finish=None)
@@ -213,7 +226,7 @@ class TestOpenAIArgumentFragments:
 
     @pytest.mark.asyncio
     async def test_a_content_chunk_carries_no_fragments(self) -> None:
-        client = OpenAIClient(api_key="test-key")
+        client = _chat_client()
         chunk = autospec(SPEC["chunk"])
         chunk.choices = [autospec(SPEC["chunk_choice"])]
         chunk.choices[0].delta.content = "hi"
@@ -276,7 +289,7 @@ class TestOpenAIToolChoice:
 
     @pytest.mark.asyncio
     async def test_the_choice_reaches_the_body_beside_the_tools(self) -> None:
-        client = OpenAIClient(api_key="test-key")
+        client = _chat_client()
         mock_create = AsyncMock(return_value=self._mock_response())
         _sdk(client).chat.completions.create = mock_create
 
@@ -294,7 +307,7 @@ class TestOpenAIToolChoice:
     @pytest.mark.asyncio
     async def test_the_parallel_default_sends_no_flag(self) -> None:
         """Only a False says something the wire's default does not."""
-        client = OpenAIClient(api_key="test-key")
+        client = _chat_client()
         mock_create = AsyncMock(return_value=self._mock_response())
         _sdk(client).chat.completions.create = mock_create
 
@@ -309,7 +322,7 @@ class TestOpenAIToolChoice:
 
     @pytest.mark.asyncio
     async def test_without_tools_no_choice_is_sent(self) -> None:
-        client = OpenAIClient(api_key="test-key")
+        client = _chat_client()
         mock_create = AsyncMock(return_value=self._mock_response())
         _sdk(client).chat.completions.create = mock_create
 
@@ -328,7 +341,7 @@ class TestOpenAIClientToolCallError:
 
     def test_is_tool_call_error_true_invalid_tool_call(self) -> None:
         """Should detect invalid_tool_call error code."""
-        client = OpenAIClient(api_key="test-key")
+        client = _chat_client()
 
         error = BadRequestError(
             message="Invalid tool call",
@@ -346,7 +359,7 @@ class TestOpenAIClientToolCallError:
     ) -> None:
         """LL-6 (#236): only the code decides — a tool named
         `search_functions` must not make every 400 a tool failure."""
-        client = OpenAIClient(api_key="test-key")
+        client = _chat_client()
 
         error = BadRequestError(
             message=message,
@@ -358,7 +371,7 @@ class TestOpenAIClientToolCallError:
 
     def test_is_tool_call_error_false_different_code(self) -> None:
         """Should return False for other error codes."""
-        client = OpenAIClient(api_key="test-key")
+        client = _chat_client()
 
         error = BadRequestError(
             message="Invalid request",
@@ -370,7 +383,7 @@ class TestOpenAIClientToolCallError:
 
     def test_is_tool_call_error_false_no_body(self) -> None:
         """Should return False when body is None."""
-        client = OpenAIClient(api_key="test-key")
+        client = _chat_client()
 
         error = BadRequestError(
             message="Error",
@@ -382,7 +395,7 @@ class TestOpenAIClientToolCallError:
 
     def test_is_tool_call_error_false_non_dict_error(self) -> None:
         """Should return False when error field is not a dict."""
-        client = OpenAIClient(api_key="test-key")
+        client = _chat_client()
 
         error = BadRequestError(
             message="Error",
@@ -394,7 +407,7 @@ class TestOpenAIClientToolCallError:
 
     def test_is_tool_call_error_false_missing_error_field(self) -> None:
         """Should return False when error field is missing."""
-        client = OpenAIClient(api_key="test-key")
+        client = _chat_client()
 
         error = BadRequestError(
             message="Error",
@@ -412,7 +425,7 @@ class TestOpenAIClientRetry:
     @pytest.mark.asyncio
     async def test_retry_on_tool_call_failure(self) -> None:
         """Should retry on tool call failure."""
-        client = OpenAIClient(api_key="test-key")
+        client = _chat_client()
 
         # Mock the internal client
         mock_create = AsyncMock()
@@ -455,7 +468,7 @@ class TestOpenAIClientRetry:
     @pytest.mark.asyncio
     async def test_raises_after_max_retries(self) -> None:
         """Should raise ToolCallGenerationError after max retries."""
-        client = OpenAIClient(api_key="test-key")
+        client = _chat_client()
 
         mock_create = AsyncMock()
         _sdk(client).chat.completions.create = mock_create
@@ -491,7 +504,7 @@ class TestOpenAIClientRetry:
     @pytest.mark.asyncio
     async def test_no_retry_without_tools(self) -> None:
         """Should not retry tool errors when no tools provided."""
-        client = OpenAIClient(api_key="test-key")
+        client = _chat_client()
 
         mock_create = AsyncMock()
         _sdk(client).chat.completions.create = mock_create
@@ -518,7 +531,7 @@ class TestOpenAIClientRetry:
     async def test_non_tool_error_reraises_immediately(self) -> None:
         """A 400 without the code is re-raised at once — even one whose
         message names a tool, which a re-send would only repeat (#236)."""
-        client = OpenAIClient(api_key="test-key")
+        client = _chat_client()
 
         mock_create = AsyncMock()
         _sdk(client).chat.completions.create = mock_create
@@ -559,7 +572,7 @@ class TestOpenAIClientTemperature:
     @pytest.mark.asyncio
     async def test_temperature_raises_error(self) -> None:
         """Should raise UnsupportedParameterError when temperature is provided."""
-        client = OpenAIClient(api_key="test-key")
+        client = _chat_client()
 
         with pytest.raises(UnsupportedParameterError) as exc_info:
             await client.complete(
@@ -573,7 +586,7 @@ class TestOpenAIClientTemperature:
     @pytest.mark.asyncio
     async def test_no_temperature_works(self) -> None:
         """Should work when temperature is not provided."""
-        client = OpenAIClient(api_key="test-key")
+        client = _chat_client()
 
         mock_create = AsyncMock()
         _sdk(client).chat.completions.create = mock_create
@@ -615,7 +628,7 @@ class TestOpenAIClientReasoningEffort:
     @pytest.mark.asyncio
     async def test_reasoning_effort_passed_to_api(self) -> None:
         """reasoning_effort HIGH should be passed to the API."""
-        client = OpenAIClient(api_key="test-key")
+        client = _chat_client()
         mock_create = AsyncMock(return_value=self._mock_response())
         _sdk(client).chat.completions.create = mock_create
 
@@ -631,7 +644,7 @@ class TestOpenAIClientReasoningEffort:
     @pytest.mark.asyncio
     async def test_reasoning_effort_low_passed(self) -> None:
         """reasoning_effort LOW should be passed for GPT-5 models."""
-        client = OpenAIClient(api_key="test-key")
+        client = _chat_client()
         mock_create = AsyncMock(return_value=self._mock_response())
         _sdk(client).chat.completions.create = mock_create
 
@@ -648,7 +661,7 @@ class TestOpenAIClientReasoningEffort:
         """reasoning_effort=None should pass the omit sentinel to the API."""
         from openai import omit
 
-        client = OpenAIClient(api_key="test-key")
+        client = _chat_client()
         mock_create = AsyncMock(return_value=self._mock_response())
         _sdk(client).chat.completions.create = mock_create
 
@@ -662,7 +675,7 @@ class TestOpenAIClientReasoningEffort:
     @pytest.mark.asyncio
     async def test_reasoning_effort_max_downgraded_to_high(self) -> None:
         """reasoning_effort MAX should be downgraded to HIGH for OpenAI models."""
-        client = OpenAIClient(api_key="test-key")
+        client = _chat_client()
         mock_create = AsyncMock(return_value=self._mock_response())
         _sdk(client).chat.completions.create = mock_create
 
@@ -681,7 +694,7 @@ class TestOpenAIClientReasoningEffort:
         """A warning should be logged when MAX is downgraded to HIGH."""
         import logging
 
-        client = OpenAIClient(api_key="test-key")
+        client = _chat_client()
         mock_create = AsyncMock(return_value=self._mock_response())
         _sdk(client).chat.completions.create = mock_create
 
@@ -697,7 +710,7 @@ class TestOpenAIClientReasoningEffort:
     @pytest.mark.asyncio
     async def test_max_passes_through_where_the_spec_allows(self) -> None:
         """A row with supports_max_effort sends `max` as is (§31)."""
-        client = OpenAIClient(api_key="test-key")
+        client = _chat_client()
         mock_create = AsyncMock(return_value=self._mock_response("gpt-5.6-sol"))
         _sdk(client).chat.completions.create = mock_create
 
@@ -712,7 +725,7 @@ class TestOpenAIClientReasoningEffort:
     @pytest.mark.asyncio
     async def test_reasoning_effort_in_stream(self) -> None:
         """reasoning_effort should be passed in stream() method."""
-        client = OpenAIClient(api_key="test-key")
+        client = _chat_client()
         mock_create = AsyncMock()
         _sdk(client).chat.completions.create = mock_create
 
@@ -745,7 +758,7 @@ class TestOpenAIClientReasoningEffort:
     @pytest.mark.asyncio
     async def test_reasoning_effort_max_in_stream_downgraded(self) -> None:
         """reasoning_effort MAX in stream() should be downgraded to HIGH."""
-        client = OpenAIClient(api_key="test-key")
+        client = _chat_client()
         mock_create = AsyncMock()
         _sdk(client).chat.completions.create = mock_create
 
@@ -799,7 +812,7 @@ class TestOpenAIPromptCaching:
     @pytest.mark.asyncio
     async def test_parse_response_extracts_cached_tokens(self) -> None:
         """Should extract cached tokens and normalize input_tokens."""
-        client = OpenAIClient(api_key="test-key")
+        client = _chat_client()
         mock_create = AsyncMock(
             return_value=self._mock_response(
                 prompt_tokens=1000, completion_tokens=50, cached_tokens=800
@@ -821,7 +834,7 @@ class TestOpenAIPromptCaching:
     @pytest.mark.asyncio
     async def test_parse_response_no_cache_details(self) -> None:
         """Should handle None prompt_tokens_details gracefully."""
-        client = OpenAIClient(api_key="test-key")
+        client = _chat_client()
         mock_create = AsyncMock(
             return_value=self._mock_response(
                 prompt_tokens=500, completion_tokens=20, cached_tokens=None
@@ -840,7 +853,7 @@ class TestOpenAIPromptCaching:
     @pytest.mark.asyncio
     async def test_parse_response_cached_tokens_none(self) -> None:
         """Should handle cached_tokens=None in prompt_tokens_details."""
-        client = OpenAIClient(api_key="test-key")
+        client = _chat_client()
         mock_resp = self._mock_response(prompt_tokens=500, completion_tokens=20)
         mock_resp.usage.prompt_tokens_details = MagicMock(spec_set=SPEC["details"])
         mock_resp.usage.prompt_tokens_details.cached_tokens = None
@@ -858,7 +871,7 @@ class TestOpenAIPromptCaching:
     @pytest.mark.asyncio
     async def test_parse_response_total_tokens_correct_with_cache(self) -> None:
         """total_tokens should equal prompt_tokens + completion_tokens after normalization."""
-        client = OpenAIClient(api_key="test-key")
+        client = _chat_client()
         mock_create = AsyncMock(
             return_value=self._mock_response(
                 prompt_tokens=1000, completion_tokens=50, cached_tokens=600
@@ -877,7 +890,7 @@ class TestOpenAIPromptCaching:
     @pytest.mark.asyncio
     async def test_stream_extracts_cached_tokens(self) -> None:
         """Streaming should extract cached tokens from usage-only chunk."""
-        client = OpenAIClient(api_key="test-key")
+        client = _chat_client()
         mock_create = AsyncMock()
         _sdk(client).chat.completions.create = mock_create
 
@@ -921,7 +934,7 @@ class TestOpenAIPromptCaching:
     @pytest.mark.asyncio
     async def test_stream_no_cache_details(self) -> None:
         """Streaming should handle missing prompt_tokens_details gracefully."""
-        client = OpenAIClient(api_key="test-key")
+        client = _chat_client()
         mock_create = AsyncMock()
         _sdk(client).chat.completions.create = mock_create
 
@@ -962,7 +975,7 @@ class TestOpenAIPromptCaching:
     @pytest.mark.asyncio
     async def test_stream_chunks_carry_api_model(self) -> None:
         """Every chunk carries the API-reported model, usage-only included."""
-        client = OpenAIClient(api_key="test-key")
+        client = _chat_client()
         mock_create = AsyncMock()
         _sdk(client).chat.completions.create = mock_create
 
@@ -1011,7 +1024,7 @@ class TestOpenAIPromptCaching:
 
     async def test_a_refusal_is_the_content_and_the_stop_reason(self) -> None:
         """OpenAI's `refusal` field reads into content_filter (LL-14)."""
-        client = OpenAIClient(api_key="test-key")
+        client = _chat_client()
         mock_response = autospec(SPEC["completion"])
         mock_response.choices = [autospec(SPEC["choice"])]
         mock_response.choices[0].message.content = None
@@ -1033,7 +1046,7 @@ class TestOpenAIPromptCaching:
     async def test_a_streamed_refusal_names_the_terminal_chunk(self) -> None:
         """Refusal deltas are content; the chunk that ends the turn says
         `refusal`, whatever the wire's own finish reason (LL-14)."""
-        client = OpenAIClient(api_key="test-key")
+        client = _chat_client()
         first = autospec(SPEC["chunk"])
         first.choices = [autospec(SPEC["chunk_choice"])]
         first.choices[0].delta.content = None
@@ -1066,7 +1079,7 @@ class TestOpenAIPromptCaching:
     async def test_usage_on_a_content_chunk_is_read(self) -> None:
         """A door that attaches usage to its final content chunk is not
         billed at zero (LL-12)."""
-        client = OpenAIClient(api_key="test-key")
+        client = _chat_client()
         chunk = autospec(SPEC["chunk"])
         chunk.choices = [autospec(SPEC["chunk_choice"])]
         chunk.choices[0].delta.content = "Hi"
@@ -1093,7 +1106,7 @@ class TestOpenAIPromptCaching:
 
     async def test_a_truncated_tool_call_names_the_stop_reason(self) -> None:
         """Arguments cut off at `length` raise naming that reason (LL-7)."""
-        client = OpenAIClient(api_key="test-key")
+        client = _chat_client()
 
         partial = autospec(SPEC["chunk"])
         partial.choices = [autospec(SPEC["chunk_choice"])]
@@ -1140,7 +1153,7 @@ class TestOpenAIMultimodalRejected:
         from neosian._foundation.llm.base import DocumentBlock, TextBlock
         from neosian._foundation.shared.exceptions import UnsupportedContentError
 
-        client = OpenAIClient(api_key="test-key")
+        client = _chat_client()
         messages = [
             Message(
                 role=Role.USER,
@@ -1171,7 +1184,7 @@ class TestOpenAINestedSchema:
         class Quiz(BaseModel):
             questions: list[Question]
 
-        client = OpenAIClient(api_key="test-key")
+        client = _chat_client()
         payload = client._convert_response_format(ResponseFormat(schema=Quiz))
         schema = cast(Any, payload)["json_schema"]["schema"]
 

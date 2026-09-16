@@ -17,6 +17,8 @@ EXAMPLE = OpenAICompatible(
     api_key_env="EXAMPLE_API_KEY",
     base_url="https://api.example.com/v1",
     temperature=True,
+    # wire="responses" for an endpoint that serves the Responses API
+    # (DESIGN §31.5); "chat", Chat Completions, is the default.
 )
 
 EXAMPLE_LARGE = register_model(

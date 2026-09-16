@@ -4,6 +4,7 @@ Raw SDK exceptions must never escape complete() or stream(); they surface
 as ProviderError (or ContextWindowExceededError) with `__cause__` intact.
 """
 
+from dataclasses import replace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -16,7 +17,7 @@ from neosian._foundation.llm.base import (
     Role,
     ToolDefinition,
 )
-from neosian._foundation.llm.openai import OpenAIClient, OpenAICompatibleClient
+from neosian._foundation.llm.openai import OPENAI_DOOR, OpenAICompatibleClient
 from neosian._foundation.shared.catalog import CEREBRAS
 from neosian._foundation.shared.exceptions import (
     ContextWindowExceededError,
@@ -73,11 +74,17 @@ def _cerebras_client(api_key: str) -> OpenAICompatibleClient:
     return OpenAICompatibleClient(api_key, door=CEREBRAS)
 
 
-# (client factory, provider name, model) for the OpenAI-compatible wire:
-# Cerebras on its shipped door, OpenAI on its door, a registered door.
+def _openai_chat_client(api_key: str) -> OpenAICompatibleClient:
+    # OpenAI's door on Chat Completions; its Responses wire is wrapped the
+    # same way and pinned in test_openai_responses.py (§31.5).
+    return OpenAICompatibleClient(api_key, door=replace(OPENAI_DOOR, wire="chat"))
+
+
+# (client factory, provider name, model) for the Chat Completions wire:
+# Cerebras on its shipped door, OpenAI's door on chat, a registered door.
 _OPENAI_COMPAT = [
     (_cerebras_client, "cerebras", Model.CEREBRAS_GPT_OSS_120B),
-    (OpenAIClient, "openai", Model.GPT_5_6_LUNA),
+    (_openai_chat_client, "openai", Model.GPT_5_6_LUNA),
     (_xai_client, "xai", Model.GPT_5_6_LUNA),
 ]
 
@@ -224,7 +231,7 @@ class TestOverflowBeforeToolRetry:
     async def test_openai(self) -> None:
         from openai import BadRequestError
 
-        client = OpenAIClient(api_key="test-key")
+        client = _openai_chat_client(api_key="test-key")
         original = BadRequestError(
             message=self._MESSAGE,
             body={

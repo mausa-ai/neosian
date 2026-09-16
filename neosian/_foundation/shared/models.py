@@ -38,7 +38,7 @@ class Provider(str, Enum):
 
 
 # Date the pricing table below was last verified against provider price lists.
-PRICES_AS_OF = "2026-09-15"
+PRICES_AS_OF = "2026-09-16"
 
 # Integer micro-USD per USD — money is int µ$ everywhere (ECOSYSTEM §4);
 # floats exist only at display edges (format_micro_usd).
@@ -116,10 +116,6 @@ class ModelSpec:
     # Anthropic's compact-2026-01-12 beta — a capability of the row, never
     # inferred from the provider (N4).
     supports_compaction_blocks: bool = False
-    # Chat Completions calls tools on this row only at reasoning_effort
-    # "none" (OpenAI, GPT-5.4 and later; ledger #249): a stopgap row fact
-    # until the Responses wire carries reasoning through tool loops.
-    tools_without_reasoning: bool = False
     pricing: ModelPricing | None = None
     # The door a compat row is served through (DESIGN §31): set on the
     # shipped door rows and on every registered model, None on a provider
@@ -157,6 +153,7 @@ class Model(str, Enum):
     """Supported LLM models."""
 
     # OpenAI
+    GPT_6_ASTRA = "gpt-6-astra"
     GPT_5_6_SOL = "gpt-5.6-sol"
     GPT_5_6_TERRA = "gpt-5.6-terra"
     GPT_5_6_LUNA = "gpt-5.6-luna"
@@ -239,18 +236,27 @@ class Model(str, Enum):
         return _MODEL_SPECS[self.value].door
 
 
-# OpenAI — the GPT-5.6 family (developers.openai.com/api/docs/pricing,
-# 2026-09-10): standard tier sealed; input above 272K bills at 2× in and
-# 1.5× out. Every 5.6 row takes `reasoning_effort=max`.
-_GPT_5_6 = partial(
+# OpenAI (developers.openai.com/api/docs/pricing, /models/gpt-6-astra,
+# 2026-09-16), on the Responses wire (§31.5): standard tier sealed; input
+# above 272K bills at 2× in and 1.5× out. Every row takes
+# `reasoning_effort=max`; Astra, the recommended model, has no `none`
+# rung and rides the catalog probe (ledger #256).
+_GPT_6 = partial(
     ModelSpec,
     provider=Provider.OPENAI,
     context_window=1_050_000,
     max_output_tokens=128_000,
     supports_reasoning=True,
     supports_max_effort=True,
-    tools_without_reasoning=True,
 )
+_MODEL_SPECS[Model.GPT_6_ASTRA.value] = _GPT_6(
+    pricing=ModelPricing(
+        input_per_mtok=10_000_000,
+        output_per_mtok=50_000_000,
+        cache_read_per_mtok=1_000_000,
+    ),
+)
+_GPT_5_6 = _GPT_6
 _MODEL_SPECS[Model.GPT_5_6_SOL.value] = _GPT_5_6(
     pricing=ModelPricing(
         input_per_mtok=4_000_000,
@@ -473,4 +479,4 @@ def _prices_fingerprint() -> str:
     return hashlib.sha256("\n".join(lines).encode("ascii")).hexdigest()
 
 
-PRICES_FINGERPRINT = "06ebeb836279f00f73f3b2e7ae5cbf03c45546ae49abc467809c347d2babc539"
+PRICES_FINGERPRINT = "80a23da37deb0fec5c7a0404941513ad9915b724c174a9b3c498c0eba7f075f1"

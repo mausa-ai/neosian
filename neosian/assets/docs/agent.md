@@ -22,7 +22,7 @@ quickstart (`neosian docs quickstart`) is the tour.
 | `fallback` | `None` | `FallbackConfig(model=…)` or `FallbackConfig(models=[…])`: one rung or a ladder, capability-aware and sticky within a session. Below. |
 | `enable_todo` | `True` | The builtin `update_todo` tool. |
 | `guardrails` | `None` | `GuardrailsConfig`: below. |
-| `reasoning_effort` | `None` | `ReasoningEffort` on models that support it; refused otherwise. On the GPT-5.6 rows a call with tools runs with reasoning off, and an effort set beside tools is refused (Chat Completions' limit until the Responses wire). |
+| `reasoning_effort` | `None` | `ReasoningEffort` on models that support it; refused otherwise. OpenAI's rows and xAI run on the Responses API, where reasoning stays inside the tool loop: the encrypted reasoning items ride `Message.extra["openai"]` and are replayed on the next call, with nothing stored at the provider. |
 | `max_output_tokens` | the model's default | Output cap per completion, bounded by the model. |
 | `max_parallel_tools` | `10` | Tool calls executed concurrently per batch. |
 | `max_retries` | `2` | Transport-level SDK retries (429/5xx/connection). |

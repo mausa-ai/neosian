@@ -13,6 +13,7 @@ import anthropic.types as at
 import anthropic.types.beta as ab
 import openai.types.chat.chat_completion as oc
 import openai.types.chat.chat_completion_chunk as ok
+import openai.types.responses as orp
 from anthropic.types.raw_message_delta_event import Delta
 from openai.types.chat import ChatCompletionMessage
 from openai.types.completion_usage import CompletionUsage, PromptTokensDetails
@@ -132,4 +133,108 @@ OPENAI: dict[str, Any] = {
         object="chat.completion.chunk",
         usage=_oa_usage,
     ),
+}
+
+# The Responses wire (§31.5): the response, its output items, and the
+# events the reader keys on.
+_r_usage = orp.ResponseUsage(
+    input_tokens=1,
+    input_tokens_details=orp.response_usage.InputTokensDetails(
+        cache_write_tokens=0, cached_tokens=0
+    ),
+    output_tokens=1,
+    output_tokens_details=orp.response_usage.OutputTokensDetails(reasoning_tokens=0),
+    total_tokens=2,
+)
+_r_text = orp.ResponseOutputText(annotations=[], text="", type="output_text")
+_r_refusal = orp.ResponseOutputRefusal(refusal="", type="refusal")
+_r_message = orp.ResponseOutputMessage(
+    id="msg", content=[_r_text], role="assistant", status="completed", type="message"
+)
+_r_call = orp.ResponseFunctionToolCall(
+    arguments="{}", call_id="call", name="f", type="function_call", id="fc"
+)
+_r_reasoning = orp.ResponseReasoningItem(
+    id="rs",
+    summary=[orp.response_reasoning_item.Summary(text="", type="summary_text")],
+    type="reasoning",
+    encrypted_content="",
+)
+_r_response = orp.Response(
+    id="resp",
+    created_at=0,
+    model="m",
+    object="response",
+    output=[_r_message],
+    parallel_tool_calls=True,
+    tool_choice="auto",
+    tools=[],
+    usage=_r_usage,
+)
+
+RESPONSES: dict[str, Any] = {
+    "response": _r_response,
+    "usage": _r_usage,
+    "message": _r_message,
+    "text": _r_text,
+    "refusal": _r_refusal,
+    "function_call": _r_call,
+    "reasoning": _r_reasoning,
+    "created": orp.ResponseCreatedEvent(
+        response=_r_response, sequence_number=0, type="response.created"
+    ),
+    "text_delta": orp.ResponseTextDeltaEvent(
+        content_index=0,
+        delta="",
+        item_id="msg",
+        logprobs=[],
+        output_index=0,
+        sequence_number=0,
+        type="response.output_text.delta",
+    ),
+    "refusal_delta": orp.ResponseRefusalDeltaEvent(
+        content_index=0,
+        delta="",
+        item_id="msg",
+        output_index=0,
+        sequence_number=0,
+        type="response.refusal.delta",
+    ),
+    "summary_delta": orp.ResponseReasoningSummaryTextDeltaEvent(
+        delta="",
+        item_id="rs",
+        output_index=0,
+        sequence_number=0,
+        summary_index=0,
+        type="response.reasoning_summary_text.delta",
+    ),
+    "item_added": orp.ResponseOutputItemAddedEvent(
+        item=_r_call,
+        output_index=0,
+        sequence_number=0,
+        type="response.output_item.added",
+    ),
+    "item_done": orp.ResponseOutputItemDoneEvent(
+        item=_r_call,
+        output_index=0,
+        sequence_number=0,
+        type="response.output_item.done",
+    ),
+    "arguments_delta": orp.ResponseFunctionCallArgumentsDeltaEvent(
+        delta="",
+        item_id="fc",
+        output_index=0,
+        sequence_number=0,
+        type="response.function_call_arguments.delta",
+    ),
+    "completed": orp.ResponseCompletedEvent(
+        response=_r_response, sequence_number=0, type="response.completed"
+    ),
+    "incomplete": orp.ResponseIncompleteEvent(
+        response=_r_response, sequence_number=0, type="response.incomplete"
+    ),
+    "failed": orp.ResponseFailedEvent(
+        response=_r_response, sequence_number=0, type="response.failed"
+    ),
+    "error": orp.ResponseErrorEvent(message="", sequence_number=0, type="error"),
 }

@@ -8,6 +8,43 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [1.0.0rc11] - 2026-09-16
+
+### Added
+
+- **`OpenAICompatible(wire="chat" | "responses")`.** A door names the
+  endpoint it speaks. `"chat"` is Chat Completions, the default and what
+  most compatible endpoints serve; `"responses"` is the Responses API,
+  run stateless: `store: false` on every request, the model's encrypted
+  reasoning items carried on `Message.extra["openai"]` and replayed on
+  the next call, so reasoning stays inside a tool loop with nothing
+  stored at the provider. The fields that name Chat Completions' own
+  (`reasoning_field`, `echo_reasoning`, `reasoning_format`,
+  `json_mode="json_object"`, `thinking_switch`) are refused on it
+  (DESIGN §31.5, ledger #251, #252, #255, #257).
+- **`OpenAICompatible(thinking_switch=...)`.** The endpoint's boolean
+  thinking parameter (Model Studio's `enable_thinking`), sent in the
+  body as on when a `reasoning_effort` was asked and off when none was
+  (ledger #254, #258).
+- `Model.GPT_6_ASTRA` (`gpt-6-astra`): OpenAI's recommended model, $10/$50
+  per MTok, cache read $1.00, 1,050,000 in / 128,000 out, `max` effort;
+  it rides the catalog probe while `gpt-5.6-sol` stays the default and
+  measured row. `PRICES_AS_OF` is 2026-09-16 (ledger #256).
+
+### Changed
+
+- OpenAI's rows and the xAI door speak the Responses API, the wire each
+  provider recommends. Structured output rides `text.format`,
+  `tool_choice` its four modes and `parallel_tool_calls`; a reasoning
+  summary is requested and lands on `Message.reasoning`. The Chat
+  Completions doors send byte-identical requests, plus the switch where
+  one is declared (ledger #250).
+
+### Removed
+
+- `ModelSpec.tools_without_reasoning`, rc10's stopgap: the GPT-5.6 rows
+  call tools with reasoning at any effort again, over Responses.
+
 ## [1.0.0rc10] - 2026-09-15
 
 ### Fixed
@@ -1251,6 +1288,7 @@ pre-release — pin it explicitly; the API stability promise rides v1.0.0.
   guard.
 
 [Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc10...HEAD
+[1.0.0rc11]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc10...v1.0.0rc11
 [1.0.0rc10]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc9...v1.0.0rc10
 [1.0.0rc9]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc8...v1.0.0rc9
 [1.0.0rc8]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc7...v1.0.0rc8
