@@ -1,6 +1,6 @@
 [project]
 name = "neosian"
-version = "1.0.0rc11"
+version = "1.0.0rc12"
 description = "Async-only library for LLM agents: tools, orchestration, streaming, guardrails — with opt-in conversation, memory, and compaction layers over a stateless core."
 readme = "README.md"
 license = "Apache-2.0"
@@ -96,9 +96,8 @@ markers = [
     "external_cerebras: Real Cerebras API calls",
     "external_xai: Real xAI API calls (shipped door)",
     "external_gemini: Real Gemini API calls (shipped door)",
-    "external_kimi: Real Moonshot API calls (candidate door)",
-    "external_deepseek: Real DeepSeek API calls (candidate door)",
-    "external_qwen: Real Alibaba Model Studio API calls (candidate door)",
+    "external_kimi: Real Moonshot API calls (a shipped door row)",
+    "external_qwen: Real Alibaba Model Studio API calls (a shipped door row)",
     "external_postgres: A real PostgreSQL server (DSN env var, not an API key)",
     "external_server: A running state-process container (URL env var, not an API key)",
 ]

@@ -237,8 +237,8 @@ five on 2026-09-02 (ledger #124); NW1 re-entered two on 2026-09-10
 | DeepSeek | deepseek-v4-pro | `deepseek` | `DEEPSEEK_API_KEY` | 2026-09-01 | 21, 21, 21 (structured output, every run) | **exited**: one deterministic cause, no `json_schema` on the endpoint; re-entry is a `json_object` dialect knob (§19.7) |
 | Alibaba Model Studio (Singapore, token plan) | qwen3.8-max | `qwen` | `DASHSCOPE_API_KEY` | 2026-09-01 | 21, 23, 20 | **exited**: behavior reds in every run, the `forbidden` pin fired twice, the reasoning-echo class red on the round trip |
 | Moonshot | kimi-k3 | `kimi` | `MOONSHOT_API_KEY` | 2026-09-01 | 24, 21 (429s, harness), 22, 23, 24 (a probe miss, the probe's own), 37 (#16) | **shipped**: `KIMI_K3`, on the user's ruling (#124, 2026-09-15); run 3 was the door's own (schema misses, §19.7); run 5 a clean board with the metering probe wrong about whole-prompt cache hits; dispatches #6–#8 green on the nine-scenario pack, #12–#15 unmeasured at the paced tier |
-| DeepSeek | deepseek-flash | `deepseek` | `DEEPSEEK_API_KEY` | 2026-09-10 | 36 (#16), 37 (NW3, key file) | **candidate again** (ledger #211) with two door knobs, each a documented fact: `json_mode="json_object"` (the schema in the prompt, validation ours) and `echo_reasoning` (the documented 400 in tool loops); two boards without a deterministic red, the reds in the shipped rows' classes; **kept** (ledger #259): the /ship dispatch on master is the third board, a board in the same classes ships it, a deterministic red exits |
-| Alibaba Model Studio (Singapore, token plan) | qwen3.8-max | `qwen` | `DASHSCOPE_API_KEY` | 2026-09-10 | 30 (#16; `maintenance` the thinking mode's, #254), 39 (NW3, key file, the switch) | **candidate again** (ledger #211): the echo knob and, since NW3, `thinking_switch="enable_thinking"` (#258; `json_schema` is documented on the 3.8 series); the `forbidden` pin stays real signal; the switch settled `maintenance` on every column, the one red a `skills` clarifying turn; **kept** (ledger #259): the /ship dispatch is the third board, same rule as DeepSeek's; `qwen-3.8-27b` on Cerebras is a separate, measured row |
+| DeepSeek | deepseek-flash | `deepseek` | `DEEPSEEK_API_KEY` | 2026-09-10 | 36 (#16), 37 (NW3, key file), 34 (#17) | **exited** 2026-09-16 (ledger #261): its third board read `skills` red on all four columns, the over-writing class, #259's deterministic red; the two door knobs it earned (`json_mode="json_object"`, `echo_reasoning`) stay on the door for whoever registers it |
+| Alibaba Model Studio (Singapore, token plan) | qwen3.8-max | `qwen` | `DASHSCOPE_API_KEY` | 2026-09-10 | 30 (#16; `maintenance` the thinking mode's, #254), 39 (NW3, key file, the switch), 39 (#17) | **shipped** 2026-09-16 (ledger #260): `Model.QWEN_3_8_MAX` on the `QWEN` door (the echo knob and `thinking_switch="enable_thinking"`, #258); $2/$6, no sealed cache rate (the console alone publishes it); `qwen-3.8-27b` on Cerebras is a separate, measured row |
 
 An exited row's data leaves the tree (the lane, the marker, the CI
 column, the secret, its SERVICES.md row) and its measured runs stay
@@ -279,6 +279,65 @@ evidence. Each stays measured every dispatch; none is tuned around
   ruled at NK (the store truth stays the pin).
 
 ## Results
+
+### 2026-09-16: Every row on its wire; the candidates' third boards (the NW3 /ship, dispatch #17)
+
+Measured by one dispatched run:
+run 35147456125
+(on master at 5179ac4, `1.0.0rc11`: the pack at `70f8fa0a…` and the
+memory prompt at `0ae69cc2…`, unchanged since #15; OpenAI's row and
+`grok-4.6` over the Responses API, `qwen3.8-max` with the thinking
+switch, the job cap at 300 minutes). Every cell named from the CI log;
+every red's bytes in it. The two candidates' third boards ruled their
+membership under ledger #259: `qwen3.8-max` shipped (`Model.QWEN_3_8_MAX`,
+#260), `deepseek-flash` exited (#261), both in `1.0.0rc12`.
+
+| Provider | Model | function | cli | http | mcp | native | door probes | link |
+|---|---|---|---|---|---|---|---|---|
+| Anthropic | claude-sonnet-5 | 10/10 | 10/10 | 10/10 | 9/10 | 9/10 | — | re-typed |
+| OpenAI (Responses) | gpt-5.6-sol | 10/10 | 10/10 | 10/10 | 10/10 | n/a | — | re-typed |
+| Cerebras | gpt-oss-120b | 9/10 | 7/10 | 9/10 | 8/10 | n/a | 7/7 | re-typed |
+| Cerebras | qwen-3.8-27b | 10/10 | 10/10 | 10/10 | 9/10 | n/a | 7/7 | handle |
+| xAI (Responses) | grok-4.6 | 10/10 | 9/10 | 9/10 | 9/10 | n/a | 7/7 | handle |
+| Google | gemini-3.8-flash | 10/10 | 10/10 | 9/10 | 9/10 | n/a | 6/6 | handle |
+| Moonshot | kimi-k3 | 9/10 | 8/10 | 9/10 | 10/10 | n/a | 6/6 | handle |
+| Model Studio, token plan (shipped on this board, #260) | qwen3.8-max | 10/10 | 10/10 | 10/10 | 9/10 | n/a | 7/7 | re-typed |
+| DeepSeek (exited on this board, #261) | deepseek-flash | 7/10 | 9/10 | 9/10 | 9/10 | n/a | 6/6 | re-typed |
+
+Findings, recorded as found:
+
+- **OpenAI 40/40 on Responses.** The first fully green OpenAI board
+  since the pack reached ten scenarios; #16's 36 wire reds and the
+  key-file board's one clarifying turn are both gone.
+- **`skills` is the one class on most rows.** Sonnet (mcp and native
+  wrote the skill without `description:`, the NK class), Gemini (http
+  and mcp: extra version rows on `write`, three and two where one is
+  expected), gpt-oss (function, cli, http without frontmatter, named
+  `release_project`; mcp an extra row), qwen-3.8-27b (mcp an extra row
+  on `revise`), grok (mcp an extra row on `revise`), qwen3.8-max (mcp,
+  the clarifying turn of its key-file board). Every one the store-truth
+  pin ruled at NK.
+- **gpt-oss-120b 33/40**, the widest board: beside `skills`, cli
+  `long-horizon-recall` and mcp `recall-next-session` called
+  `list_skills` before `memory` (the first-tool pin of NK's ruling), and
+  cli `cross-client` filed a second document beside the sessions record.
+- **grok-4.6 37/40 on Responses** (36 on the key file): the
+  `distractor-one` session on cli (no tool called) and http (the fact
+  not filed), the shipped rows' class, two columns now; probes 7/7 with
+  the reasoning summary as the path.
+- **qwen3.8-max 39/40 again**, cell for cell its key-file board;
+  `maintenance` green on every column, the switch's settlement (#254)
+  held on a second board, and the row shipped (#260).
+- **deepseek-flash 34/40**, its third board: `skills` red on all four
+  columns (three and four version rows where two are expected) and
+  `contradiction` and `cross-client` on function in the same
+  over-writing class. #259's deterministic red; the lane exited (#261).
+- **kimi-k3 36/40** (37 on #16): `skills` without frontmatter on
+  function and http and an extra row on cli, cli `cross-client` a
+  second document beside the sessions record; mcp clean, its four
+  paced boards inside the budget (74 min).
+- **Links:** grok-4.6, gemini-3.8-flash, qwen-3.8-27b and kimi-k3 reused
+  the handle; the rest re-typed the URL.
 
 ### 2026-09-16: The two wires (NW3's close, the key files)
 

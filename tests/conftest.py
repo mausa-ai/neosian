@@ -24,7 +24,6 @@ _PROVIDERS = (
     "xai",
     "gemini",
     "kimi",
-    "deepseek",
     "qwen",
 )
 _TESTS_DIR = Path(__file__).parent

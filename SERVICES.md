@@ -24,6 +24,7 @@ raises `MissingAPIKeyError` (`agent_missing_api_key`).
 | `XAI_API_KEY` | xAI (`grok-4.6`, a shipped door row — `Model.GROK_4_6`, DESIGN §31; the Responses API) | The row stays listed but its first call raises `MissingAPIKeyError` naming the var; `external_xai` self-skips |
 | `GEMINI_API_KEY` | Google Gemini API, OpenAI-compatible endpoint (`gemini-3.8-flash` and `gemini-3.7-flash`, shipped door rows) | As above; `external_gemini` self-skips |
 | `MOONSHOT_API_KEY` | Moonshot (`kimi-k3`, a shipped door row: `Model.KIMI_K3`) | As above; `external_kimi` self-skips |
+| `DASHSCOPE_API_KEY` | Alibaba Model Studio, Singapore, the token plan (`qwen3.8-max`, a shipped door row: `Model.QWEN_3_8_MAX`; the reasoning echo and the `enable_thinking` switch) | As above; `external_qwen` self-skips |
 
 With **no** keys set, the library still imports, constructs, runs (on
 FakeProvider), and passes its full default test tier.
@@ -39,16 +40,17 @@ keys.
 Nothing in the library reads these. Each drives one lane of NW's gate
 (`tests/external/lanes.py`, DESIGN §19.7); off means that suite
 self-skips. A green row is promoted into the table above (the way
-`XAI_API_KEY` and `GEMINI_API_KEY` were, 2026-09-02, and
-`MOONSHOT_API_KEY` on 2026-09-15); a red one exits whole (DeepSeek and
-Alibaba Model Studio did, 2026-09-02 — BASELINES.md keeps their runs;
-both re-entered under NW1, ledger #211 — the lanes below, their first
-boards read on dispatch #16 and their second owed to NW3's dispatch).
+`XAI_API_KEY` and `GEMINI_API_KEY` were, 2026-09-02, `MOONSHOT_API_KEY`
+on 2026-09-15 and `DASHSCOPE_API_KEY` on 2026-09-16); a red one exits
+whole (DeepSeek and Alibaba Model Studio did, 2026-09-02, both
+re-entered under NW1, ledger #211; DeepSeek left again on 2026-09-16
+after its third board, ledger #261 — `baselines.md` keeps every run).
+No candidate lane is open today; the next enters through NC2's recipe
+(DESIGN §19.7).
 
 | Key | Suite | Serving stack |
 |---|---|---|
-| `DEEPSEEK_API_KEY` | `deepseek` | DeepSeek (`deepseek-flash`; `json_mode="json_object"` + the reasoning echo) |
-| `DASHSCOPE_API_KEY` | `qwen` | Alibaba Model Studio, Singapore, the token plan (`qwen3.8-max`; the reasoning echo) |
+| (none) | | |
 
 Where an account tier caps requests per minute, the lane — shipped or
 candidate — is paced on our side (`requests_per_minute` in
@@ -57,7 +59,7 @@ longer, never runs fewer cells.
 
 ## The external suites
 
-`make test-external provider=<openai|anthropic|cerebras|xai|gemini|kimi|deepseek|qwen>`
+`make test-external provider=<openai|anthropic|cerebras|xai|gemini|kimi|qwen>`
 runs that suite's real-API tests (`-m external_<provider>`).
 
 - `file=<envfile>` routes through `scripts/external_env.py`:

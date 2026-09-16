@@ -23,6 +23,7 @@ from neosian._foundation.shared.catalog import (
     CEREBRAS,
     GEMINI,
     KIMI,
+    QWEN,
     XAI,
     OpenAICompatible,
 )
@@ -34,6 +35,7 @@ DOOR_ROWS = {
     Model.GEMINI_3_8_FLASH: GEMINI,
     Model.GEMINI_3_7_FLASH: GEMINI,
     Model.KIMI_K3: KIMI,
+    Model.QWEN_3_8_MAX: QWEN,
 }
 
 

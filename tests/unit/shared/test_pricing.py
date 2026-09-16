@@ -36,6 +36,7 @@ _USD_RATE_CARD: dict[Model, tuple[str, str, str | None, str | None]] = {
     Model.GEMINI_3_8_FLASH: ("0.75", "3.75", "0.075", None),
     Model.GEMINI_3_7_FLASH: ("0.75", "3.75", "0.075", None),
     Model.KIMI_K3: ("3.00", "15.00", "0.30", None),
+    Model.QWEN_3_8_MAX: ("2.00", "6.00", None, None),
 }
 
 

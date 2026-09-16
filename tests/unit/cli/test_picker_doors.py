@@ -18,6 +18,7 @@ CATALOG = [
     Model.GEMINI_3_8_FLASH,
     Model.GEMINI_3_7_FLASH,
     Model.KIMI_K3,
+    Model.QWEN_3_8_MAX,
 ]
 
 

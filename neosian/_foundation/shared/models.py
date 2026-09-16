@@ -16,6 +16,7 @@ from neosian._foundation.shared.catalog import (
     CEREBRAS,
     GEMINI,
     KIMI,
+    QWEN,
     XAI,
     OpenAICompatible,
 )
@@ -174,6 +175,7 @@ class Model(str, Enum):
     GEMINI_3_8_FLASH = "gemini-3.8-flash"
     GEMINI_3_7_FLASH = "gemini-3.7-flash"
     KIMI_K3 = "kimi-k3"
+    QWEN_3_8_MAX = "qwen3.8-max"
 
     # Fake (deterministic, keyless — public surface in neosian.fake)
     FAKE = "fake"
@@ -445,6 +447,18 @@ _MODEL_SPECS[Model.KIMI_K3.value] = ModelSpec(
     ),
     door=KIMI,
 )
+# Alibaba Model Studio, Singapore (alibabacloud.com/help/en/model-studio/
+# model-pricing, 2026-09-16): $2/$6 flat across the 1M window; the cache-hit
+# rate is published only in the console, so none is sealed (the input rate
+# is the conservative fallback); 131,072 the documented output ceiling.
+_MODEL_SPECS[Model.QWEN_3_8_MAX.value] = ModelSpec(
+    provider=Provider.OPENAI_COMPATIBLE,
+    context_window=1_000_000,
+    max_output_tokens=131_072,
+    supports_reasoning=True,
+    pricing=ModelPricing(input_per_mtok=2_000_000, output_per_mtok=6_000_000),
+    door=QWEN,
+)
 
 # Default models per provider
 DEFAULT_MODELS: dict[Provider, Model] = {
@@ -479,4 +493,4 @@ def _prices_fingerprint() -> str:
     return hashlib.sha256("\n".join(lines).encode("ascii")).hexdigest()
 
 
-PRICES_FINGERPRINT = "80a23da37deb0fec5c7a0404941513ad9915b724c174a9b3c498c0eba7f075f1"
+PRICES_FINGERPRINT = "41bb1a120cfc86774a5066aac4c5a937c6d4604ca7dd5fb83915f136c717442a"

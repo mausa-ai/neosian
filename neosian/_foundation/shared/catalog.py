@@ -2,7 +2,7 @@
 
 An `OpenAICompatible` door names where an OpenAI-compatible endpoint
 lives, which environment variable signs requests to it, and the dialect
-quirks its wire has. The three doors neosian ships live here beside the
+quirks its wire has. The doors neosian ships live here beside the
 class; the rows on them are `Model` members whose spec carries the door
 (`models.py`), sealed by the fingerprint like every shipped row. A row is
 earned by NW's gate — green over dispatched runs of the shipped pack
@@ -166,6 +166,22 @@ KIMI = OpenAICompatible(
     base_url="https://api.moonshot.ai/v1",
     reasoning_field="reasoning_content",
     echo_reasoning=True,
+)
+
+
+QWEN = OpenAICompatible(
+    # Model Studio's token plan (Singapore), shipped on the user's ruling
+    # (ledger #259, 2026-09-16) after three boards: json_schema documented,
+    # reasoning_content echoed on assistant turns, and thinking a body
+    # switch (#254, #258) off unless an effort is asked.
+    name="qwen",
+    api_key_env="DASHSCOPE_API_KEY",
+    base_url="https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1",
+    temperature=True,
+    reasoning_effort=False,
+    reasoning_field="reasoning_content",
+    echo_reasoning=True,
+    thinking_switch="enable_thinking",
 )
 
 

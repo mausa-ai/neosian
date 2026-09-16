@@ -8,6 +8,25 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [1.0.0rc12] - 2026-09-16
+
+### Added
+
+- `Model.QWEN_3_8_MAX` (`qwen3.8-max`): Alibaba Model Studio's model
+  ships as a door row through `DASHSCOPE_API_KEY` (the Singapore token
+  plan), $2/$6 per MTok with no sealed cache rate (the console alone
+  publishes it); its reasoning is echoed in tool loops and thinking is
+  on only when a `reasoning_effort` is asked. Shipped after three boards
+  (ledger #259, #260).
+
+### Removed
+
+- The DeepSeek candidate lane (`deepseek-flash`, `DEEPSEEK_API_KEY`,
+  `external_deepseek`): its third board repeated the over-writing class
+  on every column, the exit #259 named (ledger #261). Registering the
+  model through `OpenAICompatible` keeps working; the door's knobs it
+  earned stay.
+
 ## [1.0.0rc11] - 2026-09-16
 
 ### Added
@@ -1288,6 +1307,7 @@ pre-release — pin it explicitly; the API stability promise rides v1.0.0.
   guard.
 
 [Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc10...HEAD
+[1.0.0rc12]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc11...v1.0.0rc12
 [1.0.0rc11]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc10...v1.0.0rc11
 [1.0.0rc10]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc9...v1.0.0rc10
 [1.0.0rc9]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc8...v1.0.0rc9

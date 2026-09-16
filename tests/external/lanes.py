@@ -94,52 +94,11 @@ KIMI = Lane(
     requests_per_minute=3,  # the organisation's tier (probed 2026-09-01)
 )
 
-DEEPSEEK = Lane(
-    # Back as a candidate under ledger #211 with the two knobs its docs
-    # earn: json_object only, and reasoning_content echoed or a 400 in tool
-    # loops. Thinking is on by default and ignores temperature; effort is
-    # low/high/max (MAX downgrades — supports_max_effort stays False).
-    model=_candidate(
-        "deepseek-flash",
-        OpenAICompatible(
-            name="deepseek",
-            api_key_env="DEEPSEEK_API_KEY",
-            base_url="https://api.deepseek.com",
-            reasoning_field="reasoning_content",
-            json_mode="json_object",
-            echo_reasoning=True,
-        ),
-        context_window=1_000_000,
-        max_output_tokens=384_000,
-        supports_reasoning=True,
-    ),
-)
-
 QWEN = Lane(
-    # Model Studio's token plan (Singapore): the fixed host (§19.7). Back
-    # under #211 with the echo knob — json_schema is documented on the 3.8
-    # series — and, since #254, the thinking switch: `enable_thinking`
-    # rides extra_body, off unless an effort is asked (the maintenance
-    # replay promoted 17/18 with thinking off, 6/18 on).
-    model=_candidate(
-        "qwen3.8-max",
-        OpenAICompatible(
-            name="qwen",
-            api_key_env="DASHSCOPE_API_KEY",
-            base_url=(
-                "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1"
-            ),
-            temperature=True,
-            reasoning_effort=False,
-            reasoning_field="reasoning_content",
-            echo_reasoning=True,
-            thinking_switch="enable_thinking",
-        ),
-        context_window=1_000_000,
-        max_output_tokens=131_072,
-        supports_reasoning=True,
-    ),
+    # Shipped on the user's ruling (ledger #259, 2026-09-16) after its
+    # third board; the switch is the door's (#258).
+    model=Model.QWEN_3_8_MAX,
 )
 
-LANES: tuple[Lane, ...] = (CEREBRAS, XAI, GEMINI, KIMI, DEEPSEEK, QWEN)
+LANES: tuple[Lane, ...] = (CEREBRAS, XAI, GEMINI, KIMI, QWEN)
 BOARD_LANES: tuple[Lane, ...] = tuple(lane for lane in LANES if lane is not CEREBRAS)

@@ -227,7 +227,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        provider: [openai, anthropic, cerebras, xai, gemini, kimi, deepseek, qwen]
+        provider: [openai, anthropic, cerebras, xai, gemini, kimi, qwen]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
@@ -244,5 +244,4 @@ jobs:
           XAI_API_KEY: ${{ matrix.provider == 'xai' && secrets.XAI_API_KEY || '' }}
           GEMINI_API_KEY: ${{ matrix.provider == 'gemini' && secrets.GEMINI_API_KEY || '' }}
           MOONSHOT_API_KEY: ${{ matrix.provider == 'kimi' && secrets.MOONSHOT_API_KEY || '' }}
-          DEEPSEEK_API_KEY: ${{ matrix.provider == 'deepseek' && secrets.DEEPSEEK_API_KEY || '' }}
           DASHSCOPE_API_KEY: ${{ matrix.provider == 'qwen' && secrets.DASHSCOPE_API_KEY || '' }}
