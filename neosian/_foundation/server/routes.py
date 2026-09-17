@@ -73,12 +73,17 @@ def _refused(what: str) -> Response:
     )
 
 
-def _allowed(client: Client, payload: dict[str, Any]) -> Response | None:
+def _allowed(
+    client: Client, payload: dict[str, Any], *, whole_store: bool
+) -> Response | None:
     """One gate for every route: the parameter a request names is the
-    thing the allowance is checked against. A route naming neither is
-    whole-store and refuses a constrained client outright."""
+    thing the allowance is checked against. A whole-store route (the
+    four `store/*`, which move or restore verbatim) refuses a constrained
+    client outright, whatever its body names (§18.4)."""
     if not client.constrained:
         return None
+    if whole_store:
+        return _refused("the whole store")
     named = False
     scope = payload.get("scope")
     if isinstance(scope, str):
@@ -95,6 +100,8 @@ def _allowed(client: Client, payload: dict[str, Any]) -> Response | None:
 
 def endpoint(
     handler: Callable[[dict[str, Any], str], Awaitable[dict[str, Any]]],
+    *,
+    whole_store: bool = False,
 ) -> Callable[[Request], Awaitable[Response]]:
     async def endpoint(request: Request) -> Response:
         try:
@@ -103,7 +110,7 @@ def endpoint(
             return envelope("request body must be JSON")
         if not isinstance(payload, dict):
             return envelope("request body must be an object")
-        refusal = _allowed(request.state.client, payload)
+        refusal = _allowed(request.state.client, payload, whole_store=whole_store)
         if refusal is not None:
             return refusal
         try:

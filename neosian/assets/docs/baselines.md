@@ -65,7 +65,7 @@ document), never the file name.
 - Transports axis (ledger #64): `function` (the plain function tool),
   `cli` (the `neosian memory` engine in-process), and `http` (the same
   function tool over `RemoteStore` against an in-process state
-  process, where every command's store I/O crosses the twelve-route wire,
+  process, where every command's store I/O crosses the eighteen-route wire,
   DESIGN §18/ledger #113), and `mcp` (the memory server consumed through
   `McpServer` over the official MCP client, where every tool call crosses the
   MCP wire, DESIGN §25) run for every provider; `native_memory`

@@ -32,6 +32,7 @@ _TOPICS: Final = (
     "mcp",
     "agents",
     "topology",
+    "wire",
     "baselines",
 )
 _REQUIRED_KEYS: Final = ("title", "summary")

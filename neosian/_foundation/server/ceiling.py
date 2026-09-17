@@ -1,7 +1,7 @@
 """One request-body ceiling for every surface (DESIGN §18, IN-3).
 
 A body over `MAX_REQUEST_BYTES` is 413 in the §18 envelope before the
-app reads a byte it cannot hold — the twelve store routes and `/mcp`
+app reads a byte it cannot hold — the eighteen store routes and `/mcp`
 alike, one middleware inside the bearer gate so an unauthenticated
 oversize body stays a 401. A declared Content-Length over the ceiling
 is refused outright; a chunked body is counted as it streams and cut

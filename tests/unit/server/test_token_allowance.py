@@ -177,18 +177,36 @@ class TestTheGate:
         assert response.status_code == 403
 
     @pytest.mark.parametrize(
-        "route",
-        ["store/scopes", "store/conversations"],
+        ("route", "payload"),
+        [
+            ("store/scopes", {}),
+            ("store/conversations", {}),
+            # Named inside alice's own allowance: the restore routes are
+            # refused for what they do, not for what they name (ND).
+            (
+                "store/restore_scope",
+                {
+                    "scope": "user:alice",
+                    "documents": [],
+                    "versions": [],
+                    "redactions": [],
+                },
+            ),
+            (
+                "store/restore_conversation",
+                {"conversation_id": "alice-1", "turns": [], "projections": []},
+            ),
+        ],
     )
-    async def test_the_export_routes_refuse_a_constrained_token(
-        self, http: httpx.AsyncClient, route: str
+    async def test_the_store_routes_refuse_a_constrained_token(
+        self, http: httpx.AsyncClient, route: str, payload: Mapping[str, object]
     ) -> None:
         # Whole-store by construction, and restores are verbatim under the
         # archive's own actors (#166) — the trust an allowance withdraws.
-        refused = await _post(http, route, "tok-alice", {})
+        refused = await _post(http, route, "tok-alice", payload)
         assert refused.status_code == 403
         assert "the whole store" in refused.json()["error"]["message"]
-        assert (await _post(http, route, "tok-ops", {})).status_code == 200
+        assert (await _post(http, route, "tok-ops", payload)).status_code == 200
 
     async def test_an_unconstrained_token_is_byte_identical_to_before(
         self, http: httpx.AsyncClient

@@ -50,6 +50,7 @@ from neosian._foundation.shared.exceptions import (
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
+    from neosian._foundation.conversation.types import ProjectionKind
     from neosian._foundation.memory.types import MemoryAction
 
 WIRE_VERSION: Final = 4  # NC4: the four store/* routes; NQ2: every listing pages
@@ -253,13 +254,14 @@ def encode_projection(entry: ConversationProjection) -> dict[str, Any]:
 
 
 def decode_projection(data: Mapping[str, Any]) -> ConversationProjection:
-    # __post_init__ validates turn/span/kind — invalid wire values raise
-    # the same ValueError the in-process constructor raises.
+    # Typed at the door like a top-level parameter (ND); __post_init__
+    # then validates turn/span/kind as the in-process constructor does.
+    span = optional_int(data, "span")
     return ConversationProjection(
-        turn=data["turn"],
-        kind=data["kind"],
-        text=data["text"],
-        span=data.get("span", 1),
+        turn=require_int(data, "turn"),
+        kind=cast("ProjectionKind", require_str(data, "kind")),
+        text=require_str(data, "text"),
+        span=1 if span is None else span,
     )
 
 

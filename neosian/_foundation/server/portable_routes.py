@@ -61,6 +61,6 @@ def portable_routes(store: object) -> list[Route]:
         "store/restore_conversation": restore_conversation,
     }
     return [
-        Route(f"/v1/{name}", endpoint(handler), methods=["POST"])
+        Route(f"/v1/{name}", endpoint(handler, whole_store=True), methods=["POST"])
         for name, handler in handlers.items()
     ]

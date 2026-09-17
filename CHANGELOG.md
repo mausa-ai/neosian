@@ -8,6 +8,42 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [1.0.0rc13] - 2026-09-18
+
+### Added
+
+- **`neosian docs wire`**: the state process's HTTP contract as a shipped
+  page, for a client in any language: the handshake's six keys, the
+  eighteen `/v1/` routes with their request and response keys, the error
+  envelope and its two wire-local codes, the 401 and 403 shapes, paging,
+  the body ceiling, the JSON shapes including the message object, and
+  `WIRE_VERSION`'s history. Every literal on the page is pinned by tests
+  that drive the server with raw JSON and never through `RemoteStore`
+  (ledger #263, #264; DESIGN §18.8).
+
+### Fixed
+
+- A token carrying an allowance was admitted to `store/restore_scope`
+  and `store/restore_conversation` when the archive named a scope or
+  conversation inside its prefix, although the documented rule refuses a
+  constrained token all four `store/*` routes (they restore verbatim
+  under the archive's own actors). Both now answer 403 `forbidden`, as
+  `store/scopes` and `store/conversations` already did.
+- Nested parameters are typed at the door like top-level ones: a
+  projection entry's `turn`, `kind` and `text` must be the right type and
+  `span` an integer or absent (a `null` reads as absent), and a tool
+  call's `id` and `name` must be strings and its `arguments` an object.
+  Each mis-typed field is now 400 `value_error` naming it; before, a
+  `span: null` or `turn: "1"` was a bare 500 and a tool call whose
+  `arguments` arrived as a JSON string was stored as one.
+  `message_from_json` raises `ValueError` on the same inputs.
+  `WIRE_VERSION` stays 4: a narrowing, never a shape change.
+
+### Changed
+
+- README's Stability names the eighteen `/v1/` routes; the four docstrings
+  and the baselines page that still said twelve or fourteen say eighteen.
+
 ## [1.0.0rc12] - 2026-09-16
 
 ### Added
@@ -1307,6 +1343,7 @@ pre-release — pin it explicitly; the API stability promise rides v1.0.0.
   guard.
 
 [Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc10...HEAD
+[1.0.0rc13]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc12...v1.0.0rc13
 [1.0.0rc12]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc11...v1.0.0rc12
 [1.0.0rc11]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc10...v1.0.0rc11
 [1.0.0rc10]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc9...v1.0.0rc10

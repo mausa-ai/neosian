@@ -3,7 +3,7 @@
 An http cell's memory tool is the standard function tool over a
 `MemoryConfig` whose store is a `RemoteStore`: every command's store
 I/O — and the session's index render, reflection, and maintenance —
-crosses the twelve-route wire (codec, §5 error round-trip) against an
+crosses the eighteen-route wire (codec, §5 error round-trip) against an
 in-process state process (`build_app` on `httpx.ASGITransport`),
 keyless and port-free. The model-visible surface is identical on every
 transport (#50), so the cells measure the owned wire under live

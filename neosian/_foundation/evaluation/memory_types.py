@@ -30,7 +30,7 @@ class Transport(str, Enum):
     is informative only on Anthropic runs); the shell surface —
     `neosian memory`'s engine executed in-process (ledger #78); or the
     state process's store wire — the same function tool over a
-    `RemoteStore`, every command's store I/O crossing the twelve-route
+    `RemoteStore`, every command's store I/O crossing the eighteen-route
     HTTP API against an in-process server (ledger #113); or the MCP
     door — the in-process memory server consumed through `McpServer`
     over the official client, every tool call crossing the MCP wire

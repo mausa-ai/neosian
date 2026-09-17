@@ -112,9 +112,10 @@ store = await RemoteStore.connect("http://localhost:6367", token="change-me")
 
 `RemoteStore` implements both storage ABCs over httpx alone (no
 serving stack loaded), so it drops into `Conversation` and `MemoryConfig`
-exactly where `FileStore` does. Agents speak MCP over streamable HTTP
-at `/mcp` when the server is started with mounts (`--scope` or
-`--mount`).
+exactly where `FileStore` does. A client in another language
+implements the contract `neosian docs wire` states. Agents speak MCP
+over streamable HTTP at `/mcp` when the server is started with mounts
+(`--scope` or `--mount`).
 
 Every listing crosses the wire a page at a time. A route answers at most
 500 rows and names what to send back: `next_cursor` for the memory

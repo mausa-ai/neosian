@@ -20,7 +20,7 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
 
 - `neosian docs`: list the shipped topics (they travel in the wheel, so
   they always describe the installed version).
-- `neosian docs quickstart | agent | tools | memory | skills | cli | mcp | agents | topology`
+- `neosian docs quickstart | agent | tools | memory | skills | cli | mcp | agents | topology | wire`
   prints one page, markdown on stdout, pipe-safe.
 - `neosian docs topology`: who runs neosian code x where the bytes live;
   one writer per FileStore root.
@@ -129,6 +129,9 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
   does. Listings cross in pages of at most 500 rows, followed for you;
   `Pageable` pages them yourself. `neosian docs topology` carries the
   full shape.
+- `neosian docs wire` is the HTTP contract a client in any language
+  implements: the eighteen /v1/ routes, the envelope, paging, the JSON
+  shapes, WIRE_VERSION.
 
 ## Bring an OpenAI-compatible model
 
@@ -153,7 +156,7 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
 
 ## Install
 
-- `uv add "neosian==1.0.0rc12"`: one package, the library and its
+- `uv add "neosian==1.0.0rc13"`: one package, the library and its
   provider SDKs, the `neosian` shell, the MCP server and client, the
   state process and OpenTelemetry spans (about 70 MB; nothing loaded
   until used). On PyPI as a pre-release until v1.0.0: pin it explicitly,
@@ -164,11 +167,11 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
 - `curl -fsS https://neosian.com/install | bash` puts uv and neosian on a
   machine with nothing on it; the script says what it installs first.
 - The appliance: `docker run -d -e NEOSIAN_SERVE_TOKEN=… -p 6367:6367
-  -v neosian-state:/data ghcr.io/mausa-ai/neosian:1.0.0rc12`, the state
+  -v neosian-state:/data ghcr.io/mausa-ai/neosian:1.0.0rc13`, the state
   process on a volume, `/health` the one open route.
 
 ## Docs
 
-- https://github.com/mausa-ai/neosian/blob/v1.0.0rc12/README.md: install and quickstart.
-- https://github.com/mausa-ai/neosian/blob/v1.0.0rc12/SERVICES.md: every environment key and what turning it off means.
+- https://github.com/mausa-ai/neosian/blob/v1.0.0rc13/README.md: install and quickstart.
+- https://github.com/mausa-ai/neosian/blob/v1.0.0rc13/SERVICES.md: every environment key and what turning it off means.
 - `neosian docs baselines`: the published per-provider memory numbers.

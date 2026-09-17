@@ -128,40 +128,6 @@ async def _health(request: Request) -> Response:  # noqa: ARG001 - route shape
     return JSONResponse({"status": "ok"})
 
 
-def _unconstrained(app: ASGIApp) -> ASGIApp:
-    """`/mcp` for tokens with no allowance only (§18.4, IN-4).
-
-    The surface's reach is its **mounts** — operator config chosen at
-    serve time, not a parameter a request names — so there is nothing for
-    a scope prefix to match against and no honest way to fence it per
-    token. Refusing is the allowlist rule applied: what an allowance does
-    not name, it does not reach.
-    """
-
-    async def guarded(scope: Scope, receive: Receive, send: Send) -> None:
-        client: Client = scope["state"]["client"]
-        if client.constrained:
-            response = JSONResponse(
-                {
-                    "error": {
-                        "code": FORBIDDEN_CODE,
-                        "message": (
-                            "this token's allowance does not reach /mcp — the "
-                            "surface serves the operator's mounts, which no "
-                            "prefix can fence"
-                        ),
-                        "details": {},
-                    }
-                },
-                status_code=403,
-            )
-            await response(scope, receive, send)
-            return
-        await app(scope, receive, send)
-
-    return guarded
-
-
 def _capabilities(
     store: MemoryStore,
 ) -> Callable[[Request], Awaitable[Response]]:

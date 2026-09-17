@@ -8,6 +8,7 @@ fixed literal — auth is exercised, never bypassed.
 
 from collections.abc import AsyncIterator
 from pathlib import Path
+from typing import Any
 
 import httpx
 import pytest
@@ -19,6 +20,43 @@ from tests.support.clock import ManualClock
 
 TOKEN = "unit-test-token"
 BASE_URL = "http://state-process"
+
+
+class RawWire:
+    """The app over ASGITransport with one bare token and no `RemoteStore`
+    in the loop: literal JSON in, literal JSON out (ND, the wire's contract).
+    A handler that leaks past the envelope is observed as its status, never
+    as an exception in the test."""
+
+    def __init__(self, http: httpx.AsyncClient, backing: FileStore) -> None:
+        self.http = http
+        self.backing = backing
+
+    async def post(self, route: str, body: object) -> tuple[int, Any]:
+        response = await self.http.post(f"/v1/{route}", json=body)
+        return response.status_code, response.json()
+
+    async def send(self, route: str, content: bytes, **headers: str) -> tuple[int, str]:
+        response = await self.http.post(
+            f"/v1/{route}", content=content, headers=headers
+        )
+        return response.status_code, response.text
+
+    async def get(self, path: str) -> tuple[int, Any]:
+        response = await self.http.get(path)
+        return response.status_code, response.json()
+
+
+@pytest.fixture
+async def raw_wire(tmp_path: Path, manual_clock: ManualClock) -> AsyncIterator[RawWire]:
+    backing = FileStore(tmp_path / "backing", clock=manual_clock)
+    app = await build_app(backing, token=TOKEN)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app, raise_app_exceptions=False),
+        base_url=BASE_URL,
+        headers={"Authorization": f"Bearer {TOKEN}"},
+    ) as http:
+        yield RawWire(http, backing)
 
 
 @pytest.fixture

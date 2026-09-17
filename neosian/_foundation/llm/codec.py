@@ -94,22 +94,42 @@ def message_to_json(message: Message) -> dict[str, Any]:
     return encoded
 
 
+def _tool_call_from_json(tc: dict[str, Any]) -> ToolCall:
+    """`id` and `name` are strings and `arguments` an object or absent:
+    the JSON text OpenAI's wire carries is parsed before it gets here,
+    and a call that slipped through as a string would be stored as one.
+
+    Raises:
+        ValueError: On a mis-typed field, naming it.
+    """
+    arguments = tc.get("arguments")
+    if not isinstance(tc["id"], str):
+        raise ValueError("tool call parameter 'id' must be a string")
+    if not isinstance(tc["name"], str):
+        raise ValueError("tool call parameter 'name' must be a string")
+    if arguments is not None and not isinstance(arguments, dict):
+        raise ValueError("tool call parameter 'arguments' must be an object")
+    return ToolCall(
+        id=ToolCallId(tc["id"]),
+        name=ToolName(tc["name"]),
+        arguments=arguments or {},
+        extra=tc.get("extra"),
+    )
+
+
 def message_from_json(data: dict[str, Any]) -> Message:
-    """Inverse of `message_to_json`; absent optional keys decode to defaults."""
+    """Inverse of `message_to_json`; absent optional keys decode to defaults.
+
+    Raises:
+        ValueError: On an unknown content block type or a mis-typed tool
+            call field (`id`, `name`, `arguments`).
+    """
     tool_call_id = data.get("tool_call_id")
     return Message(
         role=Role(data["role"]),
         content=content_from_json(data.get("content")),
         reasoning=data.get("reasoning"),
-        tool_calls=[
-            ToolCall(
-                id=ToolCallId(tc["id"]),
-                name=ToolName(tc["name"]),
-                arguments=tc.get("arguments") or {},
-                extra=tc.get("extra"),
-            )
-            for tc in data.get("tool_calls") or []
-        ],
+        tool_calls=[_tool_call_from_json(tc) for tc in data.get("tool_calls") or []],
         tool_call_id=ToolCallId(tool_call_id) if tool_call_id else None,
         extra=data.get("extra"),
     )
