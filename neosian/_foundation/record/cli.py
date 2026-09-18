@@ -11,7 +11,10 @@ we left off" — every other event stays silent in text mode. Exit tiers
 under a hook's semantics (Claude Code reads 2 as "block"): 2 only for
 argv — nothing constructed — and 1 for everything after it (bad stdin,
 an unreachable store, a corrupt spool), so a broken store never blocks
-the agent.
+the agent. Registered once per machine (§22.6), the verb derives the
+layout per session: from `--project` (the client's stable project
+directory; its cwd moves with a `cd`), else the working directory, and a
+directory with no name records to the user mount alone.
 """
 
 from __future__ import annotations
@@ -47,7 +50,11 @@ from neosian._foundation.record.span import (
     sessions_path,
 )
 from neosian._foundation.record.spool import Spool
-from neosian._foundation.shared.exceptions import MemoryStoreError, NeosianError
+from neosian._foundation.shared.exceptions import (
+    ConfigurationError,
+    MemoryStoreError,
+    NeosianError,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -91,9 +98,18 @@ async def run(
         help="one JSON envelope on stdout (text mode prints nothing there, "
         "except SessionStart's context)",
     )
+    parser.add_argument(
+        "--project",
+        type=Path,
+        default=None,
+        help="the directory whose layout is the default mounts (default: the "
+        "working directory, which a client's `cd` moves)",
+    )
     try:
         args = parser.parse_args(list(argv))
-        settings = resolve_record_settings(parser, args, env, layout=Path.cwd())
+        settings = resolve_record_settings(
+            parser, args, env, layout=args.project or Path.cwd(), degrade=True
+        )
     except SystemExit as exc:  # argparse: usage already on the streams
         if exc.code is None:
             return 0
@@ -101,6 +117,9 @@ async def run(
     except MemoryStoreError as exc:  # Mount() scope/path validation
         err.write(f"error: [{exc.code}] {exc.message}\n")
         return 2
+    except ConfigurationError as exc:  # no login to derive a scope from
+        err.write(f"error: {exc.message}\nhint: {_HINT}\n")
+        return 1  # the environment's, never argv's: 2 would block the prompt
     try:
         envelope = await record_payload(settings, stdin.read())
     except (NeosianError, httpx.HTTPError, OSError, ValueError) as exc:

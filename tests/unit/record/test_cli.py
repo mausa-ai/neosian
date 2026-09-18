@@ -13,7 +13,7 @@ import pytest
 
 from neosian._foundation.llm.base import Role
 from neosian._foundation.memory.file import FileStore
-from neosian._foundation.memory.home import HOME_ENV
+from neosian._foundation.memory.home import HOME_ENV, project_scope, user_scope
 from neosian._foundation.memory.mounts import Mount
 from neosian._foundation.record.cli import run
 from neosian._foundation.record.settings import sessions_mount
@@ -96,6 +96,59 @@ class TestTheHome:
         assert sessions_mount((user,)) is user  # the first read-write one
         assert sessions_mount((user, frozen)) is user  # /project must be writable
         assert sessions_mount((frozen,)) is None
+
+
+class TestTheAnchor:
+    """Registered once per machine (§22.6): the layout is each session's."""
+
+    @staticmethod
+    def _argv(tmp_path: Path, *extra: str) -> list[str]:
+        root, spool = str(tmp_path / "mem"), str(tmp_path / "spool")
+        return ["--root", root, "--spool", spool, "--json", *extra]
+
+    async def test_the_project_beats_the_working_directory(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        project = tmp_path / "the-app"
+        project.mkdir()
+        monkeypatch.chdir(tmp_path)  # a client's `cd` moved the hook's cwd
+        results = await _span(self._argv(tmp_path, "--project", str(project)))
+        envelope = json.loads(results[-1].out)
+        assert envelope["document"] == f"/project/sessions/{SESSION}"
+        store = FileStore(tmp_path / "mem")
+        assert await store.read(str(project_scope(project)), f"sessions/{SESSION}")
+
+    async def test_an_empty_project_is_the_working_directory(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # An unset `$CLAUDE_PROJECT_DIR` expands to "" in the hook line.
+        monkeypatch.chdir(tmp_path)
+        await _span(self._argv(tmp_path, "--project", ""))
+        store = FileStore(tmp_path / "mem")
+        assert await store.read(str(project_scope(tmp_path)), f"sessions/{SESSION}")
+
+    async def test_a_nameless_directory_records_to_the_user_mount(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.chdir(Path("/"))
+        results = await _span(self._argv(tmp_path))
+        assert [r.code for r in results] == [0, 0, 0]  # never 2: that blocks
+        envelope = json.loads(results[-1].out)
+        assert envelope["document"] == f"/user/sessions/{SESSION}"
+        store = FileStore(tmp_path / "mem")
+        assert await store.read(str(user_scope()), f"sessions/{SESSION}")
+
+    async def test_an_unreadable_login_is_tier_one(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def no_login() -> str:
+            raise OSError("no passwd entry")
+
+        monkeypatch.setattr("getpass.getuser", no_login)
+        result = await _run(self._argv(tmp_path), prompt())
+        assert result.code == 1  # the environment's, never argv's
+        assert "login" in result.err and "hint:" in result.err
+        assert not (tmp_path / "mem").exists()
 
 
 class TestTheSpan:

@@ -18,7 +18,10 @@ from neosian._foundation.mcp.server import create_memory_server, serve_stdio
 from neosian._foundation.mcp.settings import ServerSettings, parse_args
 from neosian._foundation.memory.mounts import MemoryConfig
 from neosian._foundation.memory.store_lifetime import open_store
-from neosian._foundation.shared.exceptions import MemoryStoreError
+from neosian._foundation.shared.exceptions import (
+    ConfigurationError,
+    MemoryStoreError,
+)
 
 
 async def _run(settings: ServerSettings) -> None:
@@ -62,7 +65,7 @@ def main(argv: list[str] | None = None, *, prog: str = "neosian mcp") -> int:
             return 130
     try:
         settings = parse_args(args, os.environ, prog=prog)
-    except MemoryStoreError as exc:
+    except (MemoryStoreError, ConfigurationError) as exc:
         print(f"error: [{exc.code}] {exc.message}", file=sys.stderr)
         return 2
     try:

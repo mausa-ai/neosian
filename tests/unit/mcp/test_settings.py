@@ -12,6 +12,7 @@ from neosian._foundation.mcp.settings import (
 from neosian._foundation.memory.home import HOME_ENV
 from neosian._foundation.memory.settings import SCOPE_ENV
 from neosian._foundation.shared.exceptions import (
+    ConfigurationError,
     MemoryPathInvalidError,
     MemoryScopeInvalidError,
 )
@@ -134,13 +135,24 @@ class TestMounts:
         mounted = parse_args(["--mount", "scope=user:m,path=p"], env)
         assert [m.scope for m in mounted.mounts] == ["user:m"]
 
-    def test_a_nameless_directory_still_exits_2(
+    def test_a_nameless_directory_serves_the_user_mount_alone(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """§22.6: a client spawns this server wherever its session runs (a
+        GUI client at `/`), so no name to derive is no reason to refuse."""
         monkeypatch.chdir(Path("/"))
-        with pytest.raises(SystemExit) as excinfo:
+        (mount,) = parse_args(["--root", "m"], _ENV).mounts
+        assert mount.mount_path == "user" and mount.scope.startswith("user:")
+
+    def test_an_unreadable_login_is_not_degraded_away(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def no_login() -> str:
+            raise OSError("no passwd entry")
+
+        monkeypatch.setattr("getpass.getuser", no_login)
+        with pytest.raises(ConfigurationError, match="login"):
             parse_args(["--root", "m"], _ENV)
-        assert excinfo.value.code == 2
 
     @pytest.mark.parametrize(
         "token",

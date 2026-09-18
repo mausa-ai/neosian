@@ -89,18 +89,24 @@ def project_scope(cwd: Path | None = None, *, login: str | None = None) -> Scope
     return parse_scope(f"{user_scope(login=login)}/{PROJECT_KIND}:{slug}")
 
 
+def user_mount(*, login: str | None = None) -> Mount:
+    """The user's durable facts at `/user`: half of every layout, and the
+    whole of it where a directory has no name to derive a project from."""
+    return Mount(
+        scope=user_scope(login=login),
+        mount_path=USER_MOUNT_PATH,
+        description="durable facts about the user: preferences, identity, "
+        "standing constraints",
+    )
+
+
 def project_mounts(
     cwd: Path | None = None, *, login: str | None = None
 ) -> tuple[Mount, Mount]:
     """The canonical two-mount layout: the user's durable facts at
     `/user`, this project's at `/project` — both read-write."""
     return (
-        Mount(
-            scope=user_scope(login=login),
-            mount_path=USER_MOUNT_PATH,
-            description="durable facts about the user: preferences, identity, "
-            "standing constraints",
-        ),
+        user_mount(login=login),
         Mount(
             scope=project_scope(cwd, login=login),
             mount_path=PROJECT_MOUNT_PATH,

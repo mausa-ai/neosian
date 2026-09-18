@@ -56,4 +56,6 @@ def parse_args(
     )
     add_store_arguments(parser, default_actor=DEFAULT_ACTOR)
     args = parser.parse_args(list(argv))
-    return resolve_store_settings(parser, args, env, layout=Path.cwd())
+    # A client spawns this server wherever its session runs (§22.6): a
+    # directory with no name serves the user mount, never a refusal.
+    return resolve_store_settings(parser, args, env, layout=Path.cwd(), degrade=True)

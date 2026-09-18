@@ -239,6 +239,18 @@ class TestArgvTier:
             _parsed(["view", "--root", "m", "--mount", "scope=user:me,path=a/b"])
 
 
+class TestTheLayout:
+    def test_a_nameless_directory_still_exits_2(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A person at a shell gets the refusal naming `--scope`; only the
+        two doors a client spawns degrade to the user mount (§22.6)."""
+        monkeypatch.chdir(Path("/"))
+        with pytest.raises(SystemExit) as excinfo:
+            _parsed(["view", "--root", "m"])
+        assert excinfo.value.code == 2
+
+
 class TestTheDaemonUrl:
     """NL: `--url` is the third store; its token rides the environment."""
 

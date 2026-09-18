@@ -56,6 +56,21 @@ class TestErrorPaths:
         assert code == 2
         assert "[memory_scope_invalid]" in capsys.readouterr().err
 
+    def test_an_unreadable_login_exits_2_without_a_traceback(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        def no_login() -> str:
+            raise OSError("no passwd entry")
+
+        monkeypatch.delenv("NEOSIAN_POSTGRES_DSN", raising=False)
+        monkeypatch.setattr("getpass.getuser", no_login)
+        assert main(["--root", str(tmp_path / "m")]) == 2
+        assert "login" in capsys.readouterr().err
+        assert not (tmp_path / "m").exists()  # nothing constructed
+
     def test_keyboard_interrupt_exits_130(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

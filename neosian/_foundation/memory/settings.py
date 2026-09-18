@@ -27,7 +27,12 @@ if TYPE_CHECKING:
     from _typeshed import SupportsWrite
 
 from neosian._foundation.memory.actor import parse_actor
-from neosian._foundation.memory.home import HOME_ENV, home, project_mounts
+from neosian._foundation.memory.home import (
+    HOME_ENV,
+    home,
+    project_mounts,
+    user_mount,
+)
 from neosian._foundation.memory.mounts import Mount
 from neosian._foundation.shared.exceptions import (
     ConfigurationError,
@@ -253,6 +258,7 @@ def resolve_mounts(
     *,
     required: bool = True,
     layout: Path | None = None,
+    degrade: bool = False,
 ) -> tuple[Mount, ...]:
     """Resolve the mount half of the grammar: the flags, else `NEOSIAN_SCOPE`
     (the sugar mount), else `layout`'s project layout (§22.2, flipped at
@@ -261,6 +267,10 @@ def resolve_mounts(
 
     `required=False` is the state process's relaxation (DESIGN §18): its
     store-shaped API needs no mounts — only the MCP surface does.
+    `degrade=True` is the two doors a client spawns (`neosian record`,
+    `neosian mcp`, §22.6): registered once per machine, they meet
+    directories nobody chose, so a nameless one serves the user mount
+    alone instead of refusing — a hook's exit 2 blocks the prompt.
     """
     if args.scope is not None and args.mount:
         parser.error("--scope is the single-mount sugar; use --mount for multi-mount")
@@ -273,6 +283,8 @@ def resolve_mounts(
         try:
             return project_mounts(layout)
         except ConfigurationError as exc:
+            if degrade:
+                return (user_mount(),)  # raises too when the login is unreadable
             if required:
                 parser.error(exc.message)
             return ()  # §18's relaxation: no layout to derive, no mounts
@@ -288,17 +300,19 @@ def resolve_store_settings(
     env: Mapping[str, str],
     *,
     layout: Path | None = None,
+    degrade: bool = False,
 ) -> StoreSettings:
     """Resolve parsed store flags against `env`; construct no store.
 
     Shape errors exit 2 via `parser.error`; scope and mount-path
     validation is structural (`Mount` raises `MemoryScopeInvalidError` /
     `MemoryPathInvalidError`, which the entry point renders). `layout`
-    is `resolve_mounts`'s: the directory whose project layout is the
-    default mount set.
+    and `degrade` are `resolve_mounts`'s: the directory whose project
+    layout is the default mount set, and a client-spawned door's rule
+    for one with no name.
     """
     selection = resolve_store_selection(parser, args, env)
-    mounts = resolve_mounts(parser, args, env, layout=layout)
+    mounts = resolve_mounts(parser, args, env, layout=layout, degrade=degrade)
     return StoreSettings(
         mounts=mounts,
         root=selection.root,
