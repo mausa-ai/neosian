@@ -183,7 +183,7 @@ two project directories, each session in its own `proj:` scope.
 |---|---|---|---|---|
 | Claude Code | ✓ user scope through `claude mcp add-json` | ✓ walkthrough green 2026-09-02 | ✓ 2026-09-19 (2.1.278): the server is spawned in the session's directory, the hook line's project directory expands | ✓ `SessionStart`, stdout as context (2026-09-03) |
 | Codex | ✓ through `codex mcp add` | ✓ walkthrough green 2026-09-03 (`codex exec`) | ✓ 2026-09-19 (0.154.0): the same, user-level hooks with no project trust step | ✓ the same event and `source` values (its reference, 2026-09-03) |
-| OpenCode | ✓ | ✓ walkthrough green 2026-09-03 (`opencode run`, a plugin) | pinned keylessly; its real run is owed | — (an experimental per-call door only; not wired) |
+| OpenCode | ✓ | ✓ walkthrough green 2026-09-03 (`opencode run`, a plugin) | ✓ 2026-09-19 (1.18.30, a free model): the same, the plugin passing the directory it was opened with | — (an experimental per-call door only; not wired) |
 | Claude Desktop | ✓ | no hooks surface | one file by nature; no project, so `/user` alone | — |
 | Cursor | ✓ | not yet: its hooks are read (their own payload shape, a mapping of its own); next | | — |
 | Muse Code | not yet | not yet: hooks in Claude Code's shape; next | | |
