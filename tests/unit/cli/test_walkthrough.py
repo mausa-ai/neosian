@@ -643,16 +643,52 @@ class TestConsole:
         text = _run(["status"], cwd=project, env=env)
         assert text.returncode == 0 and text.stdout.startswith("neosian ")
 
-    def test_setup_prints_first_then_writes_both_files(self, tmp_path: Path) -> None:
-        env = _env(tmp_path)
-        (tmp_path / ".claude").mkdir()  # HOME is tmp_path — Claude Code's evidence
+    @staticmethod
+    def _no_client_cli(env: Mapping[str, str]) -> dict[str, str]:
+        # `setup --write` runs a client's own CLI when it is on PATH: cut PATH
+        # to the venv, so no real `claude` or `codex` is ever spawned, the
+        # same on a developer's machine and in CI.
+        return {**env, "PATH": str(Path(sys.executable).parent)}
+
+    def test_setup_wires_the_machine_once(self, tmp_path: Path) -> None:
+        env = self._no_client_cli(_env(tmp_path))
+        config_dir = tmp_path / ".config" / "opencode"
+        config_dir.mkdir(parents=True)  # HOME is tmp_path: OpenCode's evidence
         project = tmp_path / "setup proj"
         project.mkdir()
         printed = _run(["setup"], cwd=project, env=env)
         assert printed.returncode == 0, printed.stderr
         assert "would write" in printed.stdout
-        assert not (project / ".mcp.json").exists()  # print mode writes nothing
+        assert not (config_dir / "opencode.json").exists()  # print mode writes nothing
         written = _run(["setup", "--write", "--json"], cwd=project, env=env)
+        assert written.returncode == 0, written.stderr
+        (row,) = json.loads(written.stdout)["clients"]
+        assert row["client"] == "opencode" and row["mcp"]["level"] == "user"
+        assert (config_dir / "opencode.json").is_file()
+        assert (config_dir / "plugins" / "neosian-record.js").is_file()
+        assert list(project.iterdir()) == []  # nothing per project
+
+    def test_setup_leaves_the_clients_own_cli_line_when_it_is_off_path(
+        self, tmp_path: Path
+    ) -> None:
+        env = self._no_client_cli(_env(tmp_path))
+        (tmp_path / ".claude").mkdir()
+        project = tmp_path / "setup proj"
+        project.mkdir()
+        result = _run(["setup", "--write"], cwd=project, env=env)
+        assert result.returncode == 1  # something is left for the user
+        assert "claude is not on PATH" in result.stdout
+        assert "run: claude mcp add-json --scope user neosian-memory" in result.stdout
+        assert (tmp_path / ".claude" / "settings.json").is_file()  # the hooks landed
+
+    def test_setup_at_the_project_level_writes_both_files(self, tmp_path: Path) -> None:
+        env = self._no_client_cli(_env(tmp_path))
+        (tmp_path / ".claude").mkdir()
+        project = tmp_path / "setup proj"
+        project.mkdir()
+        written = _run(
+            ["setup", "--level", "project", "--write", "--json"], cwd=project, env=env
+        )
         assert written.returncode == 0, written.stderr
         (row,) = json.loads(written.stdout)["clients"]
         assert row["client"] == "claude-code"

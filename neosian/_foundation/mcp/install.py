@@ -108,6 +108,13 @@ class RegistrationEntry:
         return shlex.join(self.apply_argv(name, cli))
 
 
+def remove_argv(name: str, cli: str) -> list[str]:
+    """The client's own CLI forgetting a server: what lets an entry be
+    applied over one that is already there."""
+    scope = ["--scope", "user"] if cli == "claude" else []
+    return [cli, "mcp", "remove", *scope, name]
+
+
 def build_entry(settings: StoreSettings, *, executable: str) -> RegistrationEntry:
     """The resolved settings re-rendered as the server invocation.
 

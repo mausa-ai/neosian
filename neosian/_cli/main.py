@@ -175,7 +175,8 @@ def setup(ctx: typer.Context) -> None:
     """Wire the installed agents to this store: MCP and the hooks.
 
     A thin pass-through to the one grammar (`neosian setup --help`):
-    prints what would land for every client found, `--write` applies it,
+    prints what would land for every client found, once per machine,
+    `--write` applies it, `--url` points them all at the state process,
     `--client C` narrows, `--json` one object.
     """
     from pathlib import Path
