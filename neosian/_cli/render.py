@@ -129,13 +129,14 @@ def render_status(status: dict[str, Any], console: Console) -> None:
     )
     table.add_row("update", f"mode {status['update_mode']}")
     console.print(table)
-    clients = _table("client", "installed", "mcp", "hooks", "interpreter")
+    clients = _table("client", "installed", "mcp", "hooks", "level", "interpreter")
     for c in status["clients"]:
         clients.add_row(
             c["client"],
             "yes" if c["installed"] else "no",
             "registered" if c["mcp_registered"] else "-",
             "present" if c["hooks_present"] else "-",
+            c["level"] or "-",
             (
                 "-"
                 if c["interpreter_resolves"] is None
@@ -147,5 +148,5 @@ def render_status(status: dict[str, Any], console: Console) -> None:
             ),
         )
     console.print(clients)
-    for note in status["one_writer"]:
+    for note in (*status["double_fire"], *status["one_writer"]):
         console.print(f"note: {note}", style="dim")

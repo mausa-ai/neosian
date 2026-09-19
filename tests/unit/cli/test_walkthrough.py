@@ -667,6 +667,13 @@ class TestConsole:
         assert (config_dir / "opencode.json").is_file()
         assert (config_dir / "plugins" / "neosian-record.js").is_file()
         assert list(project.iterdir()) == []  # nothing per project
+        other = tmp_path / "another proj"
+        other.mkdir()
+        for directory in (project, other):  # registered once: green anywhere
+            status = _run(["status", "--json"], cwd=directory, env=env)
+            opencode = json.loads(status.stdout)["clients"][2]
+            assert opencode["mcp_registered"] and opencode["hooks_present"]
+            assert opencode["level"] == "user" and opencode["interpreter_resolves"]
 
     def test_setup_leaves_the_clients_own_cli_line_when_it_is_off_path(
         self, tmp_path: Path

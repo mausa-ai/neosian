@@ -167,6 +167,8 @@ class TestTheProjections:
                         "installed": True,
                         "mcp_registered": True,
                         "hooks_present": False,
+                        "level": "user",
+                        "hook_files": [],
                         "interpreter": "/venv/bin/python",
                         "interpreter_resolves": False,
                         "root": None,
@@ -174,6 +176,7 @@ class TestTheProjections:
                 ],
                 "last_session": None,
                 "one_writer": ["claude-code: both write /h"],
+                "double_fire": ["claude-code: the hooks are installed at both levels"],
                 "update_mode": "off",
             },
             console,
@@ -181,7 +184,9 @@ class TestTheProjections:
         text = buffer.getvalue()
         assert "1.0.0rc3" in text and "openai (env)" in text
         assert "registered" in text and "missing: /venv/bin/python" in text
-        assert "note: claude-code" in text
+        assert "level" in text and "user" in text
+        assert "note: claude-code: both write" in text
+        assert "note: claude-code: the hooks are installed at both levels" in text
 
 
 class TestThePicker:

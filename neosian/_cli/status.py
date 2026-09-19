@@ -3,10 +3,11 @@
 The home and whether it exists; the config and which providers have a key
 (names and sources, never values); this directory's two scopes; per
 client, whether it is installed, registered for MCP, carrying the hooks,
-and whether the interpreter those files name still resolves (the
-moved-venv failure, silent until now); the last recorded session; the
-one-writer note; the installation shape with its upgrade line; the
-update knob. Exit 0 whenever it ran — findings are data. Pure over an
+at which level (once per machine, or this directory's files — §22.6), and
+whether the interpreter those files name still resolves (the moved-venv
+failure, silent until now); the last recorded session; the one-writer
+note, and the double-fire note when a client carries the hooks at both
+levels; the installation shape with its upgrade line; the update knob. Exit 0 whenever it ran — findings are data. Pure over an
 injected `Environment`; the only store access is one read of the home,
 and only when the home exists.
 """
@@ -40,7 +41,7 @@ from neosian._foundation.record.targets import (
     installed_argv,
     resolve_target as hook_target,
 )
-from neosian._foundation.shared.client_config import Environment
+from neosian._foundation.shared.client_config import LEVELS, Environment
 from neosian._foundation.shared.exceptions import ConfigurationError, NeosianError
 
 if TYPE_CHECKING:
@@ -51,7 +52,13 @@ CLIENTS: Final = ("claude-code", "codex", "opencode")
 _DEFAULT_MODE: Final = "off"
 _ONE_WRITER: Final = (
     "{client}: the hooks and the MCP server both write {root} directly — one "
-    "writer per root (DESIGN §8): run `neosian serve` and install both with --url"
+    "writer per root (DESIGN §8): run `neosian serve`, then `neosian setup "
+    "--url URL --write`"
+)
+_DOUBLE_FIRE: Final = (
+    "{client}: the hooks are installed at both levels ({user} and {project}), "
+    "and the client runs both: every span lands twice. Run `neosian setup "
+    "--write` here to keep the one per machine"
 )
 
 
@@ -62,6 +69,8 @@ class ClientStatus:
     installed: bool
     mcp_registered: bool
     hooks_present: bool
+    level: str | None  # user, project, both; None when nothing is registered
+    hook_files: tuple[str, ...]  # every file carrying our hooks: two is a finding
     interpreter: str | None  # the command the files name, when they name one
     interpreter_resolves: bool | None
     root: str | None  # the --root both entries name, for the one-writer note
@@ -81,6 +90,7 @@ class Status:
     clients: tuple[ClientStatus, ...]
     last_session: dict[str, str] | None
     one_writer: tuple[str, ...]
+    double_fire: tuple[str, ...]
     shape: str
     upgrade: str
     update_mode: str
@@ -98,21 +108,43 @@ def _resolves(command: str) -> bool:
     return path.is_file() if path.is_absolute() else shutil.which(command) is not None
 
 
+_Found = dict[str, tuple[str, list[str]]]  # the file -> (its level, our argv in it)
+
+
+def _at(found: _Found, level: str) -> list[str] | None:
+    return next((argv for at, argv in found.values() if at == level), None)
+
+
 def client_status(client: str, context: Environment) -> ClientStatus:
-    mcp = mcp_target(client, context, "project")
-    hooks = hook_target(client, context, "project")
-    installed = mcp.evidence_dir.is_dir()
-    server_argv = registered_argv(mcp)
-    hook_argv = installed_argv(hooks)
+    """One client across both levels. The argv reported is the one the
+    client acts on: for MCP the project's entry beats the user's; the hooks
+    are merged, so a second file is a finding, not an override."""
+    servers: _Found = {}
+    hooks: _Found = {}
+    for (
+        level
+    ) in LEVELS:  # keyed by file: run from the client's home, two levels are one
+        mcp = mcp_target(client, context, level)
+        if (argv := registered_argv(mcp)) is not None:
+            servers.setdefault(str(mcp.config_path), (mcp.level, argv))
+        hook = hook_target(client, context, level)
+        if (argv := installed_argv(hook)) is not None:
+            hooks.setdefault(str(hook.config_path), (hook.level, argv))
+    found = {level for level, _ in (*servers.values(), *hooks.values())}
+    server_argv = _at(servers, "project") or _at(servers, "user")
+    hook_argv = _at(hooks, "user") or _at(hooks, "project")
     interpreter = next((a[0] for a in (server_argv, hook_argv) if a), None)
     roots = {_root_of(server_argv), _root_of(hook_argv)}
     root = roots.pop() if len(roots) == 1 and None not in roots else None
+    target = mcp_target(client, context)
     return ClientStatus(
         client=client,
-        label=mcp.label,
-        installed=installed,
+        label=target.label,
+        installed=target.evidence_dir.is_dir(),
         mcp_registered=server_argv is not None,
         hooks_present=hook_argv is not None,
+        level="both" if len(found) == 2 else next(iter(found), None),
+        hook_files=tuple(hooks),
         interpreter=interpreter,
         interpreter_resolves=None if interpreter is None else _resolves(interpreter),
         root=root,
@@ -193,6 +225,13 @@ async def collect(context: Environment, env: Mapping[str, str]) -> Status:
             for c in clients
             if c.mcp_registered and c.hooks_present and c.root is not None
         ),
+        double_fire=tuple(
+            _DOUBLE_FIRE.format(
+                client=c.client, user=c.hook_files[0], project=c.hook_files[1]
+            )
+            for c in clients
+            if len(c.hook_files) == 2
+        ),
         shape=shape.kind,
         upgrade=Shape(shape.kind).upgrade_line("<version>"),
         update_mode=str(mode),
@@ -205,6 +244,7 @@ def _client_line(client: ClientStatus) -> str:
     cells = [
         "mcp registered" if client.mcp_registered else "mcp -",
         "hooks present" if client.hooks_present else "hooks -",
+        f"level {client.level or '-'}",
     ]
     if client.interpreter_resolves is False:
         cells.append(f"interpreter missing: {client.interpreter}")
@@ -237,7 +277,7 @@ def render_text(status: Status) -> str:
         )
     else:
         lines.append("session   none recorded")
-    for note in status.one_writer:
+    for note in (*status.double_fire, *status.one_writer):
         lines.append(f"note      {note}")
     lines.append(f"update    mode {status.update_mode}")
     return "\n".join(lines) + "\n"

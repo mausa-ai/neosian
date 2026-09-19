@@ -118,6 +118,7 @@ class TestCollect:
         claude = status.clients[0]
         assert claude.installed and claude.mcp_registered and not claude.hooks_present
         assert claude.interpreter == gone and claude.interpreter_resolves is False
+        assert claude.level == "project"
         assert status.one_writer == ()  # hooks absent: one writer already
 
     async def test_hooks_and_a_registration_on_one_root_get_the_note(
@@ -164,7 +165,75 @@ class TestCollect:
         assert claude.hooks_present and claude.interpreter_resolves is True
         assert claude.root == "/r"
         (note,) = status.one_writer
-        assert note.startswith("claude-code:") and "--url" in note
+        assert note.startswith("claude-code:")
+        assert "neosian setup --url URL --write" in note  # the fix is one command
+        assert status.double_fire == ()  # one level, however many writers
+
+    @staticmethod
+    def _hooks(python: str, anchor: str = "") -> str:
+        line = f"{python} -m neosian.record --root /r --spool /s{anchor}"
+        return json.dumps(
+            {"hooks": {"Stop": [{"hooks": [{"type": "command", "command": line}]}]}}
+        )
+
+    async def test_a_machine_registered_once_is_green_in_any_directory(
+        self, tmp_path: Path
+    ) -> None:
+        # §22.6: the user level. Claude Code's user scope is the top-level
+        # `mcpServers` of `~/.claude.json`; a project's own table under
+        # `projects` is its local scope, not ours to read.
+        (tmp_path / ".claude").mkdir()
+        python = tmp_path / "python"
+        python.write_text("")
+        ours = {"command": str(python), "args": ["-m", "neosian.mcp", "--root", "/r"]}
+        state = {
+            "mcpServers": {"neosian-memory": ours},
+            "projects": {"/elsewhere": {"mcpServers": {"neosian-memory": {}}}},
+        }
+        (tmp_path / ".claude.json").write_text(json.dumps(state))
+        (tmp_path / ".claude" / "settings.json").write_text(
+            self._hooks(str(python), ' --project "$CLAUDE_PROJECT_DIR"')
+        )
+        for name in ("one", "two"):  # no file in either directory
+            directory = tmp_path / name
+            directory.mkdir()
+            context = Environment(
+                home=tmp_path,
+                cwd=directory,
+                platform="darwin",
+                env={},
+                executable="/venv/bin/python",
+            )
+            claude = (await collect(context, _env(tmp_path))).clients[0]
+            assert claude.mcp_registered and claude.hooks_present
+            assert claude.level == "user" and claude.interpreter_resolves is True
+            assert list(directory.iterdir()) == []
+
+    async def test_hooks_at_both_levels_are_a_finding(self, tmp_path: Path) -> None:
+        context = _context(tmp_path)
+        (tmp_path / ".claude").mkdir()
+        (context.cwd / ".claude").mkdir()
+        user = tmp_path / ".claude" / "settings.json"
+        project = context.cwd / ".claude" / "settings.json"
+        for file in (user, project):
+            file.write_text(self._hooks("/py"))
+        status = await collect(context, _env(tmp_path))
+        assert status.clients[0].level == "both"
+        (note,) = status.double_fire
+        assert str(user) in note and str(project) in note
+        assert "every span lands twice" in note and "neosian setup --write" in note
+
+    async def test_run_from_the_clients_home_the_levels_are_one_file(
+        self, tmp_path: Path
+    ) -> None:
+        # `claude` started in `~`: `./.claude/settings.json` IS the user file.
+        (tmp_path / ".claude").mkdir()
+        (tmp_path / ".claude" / "settings.json").write_text(self._hooks("/py"))
+        context = Environment(
+            home=tmp_path, cwd=tmp_path, platform="darwin", env={}, executable="/py"
+        )
+        status = await collect(context, _env(tmp_path))
+        assert status.clients[0].level == "user" and status.double_fire == ()
 
     async def test_the_opencode_plugin_counts_as_hooks(self, tmp_path: Path) -> None:
         context = _context(tmp_path)
