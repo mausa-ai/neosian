@@ -166,7 +166,8 @@ Each line is one page in the wheel — `neosian docs <topic>`.
 
 API keys are read from environment variables; a provider is available when
 its key is set (asking for an unavailable model raises
-`MissingAPIKeyError`).
+`MissingAPIKeyError`). For the shell, `neosian configure` stores any of
+them under the home and loads them where the environment has none.
 
 | Provider | Env var | Models |
 |---|---|---|

@@ -46,6 +46,10 @@ phase close names the version.
   agent's `cd`.
 - `CLAUDE_CONFIG_DIR` is honoured like `CODEX_HOME` and
   `OPENCODE_CONFIG_DIR`.
+- `neosian configure --env NAME --key -` (and `--delete --env NAME`)
+  stores a key for a door by the env var it lives in: one the shell
+  cannot list because an agent file registers it. `--list` shows such a
+  key as a row by its env name.
 
 ### Fixed
 
@@ -60,6 +64,13 @@ phase close names the version.
   created a second config; it is refused, as the docs always said.
 - `setup` printed `refused: usage` for a grammar-tier refusal; it prints
   the message.
+- `neosian chat` with only a shipped door's key (`XAI_API_KEY`,
+  `GEMINI_API_KEY`, `MOONSHOT_API_KEY`, `DASHSCOPE_API_KEY`) exited 1 with
+  "no provider key found", although `configure` stored the key and
+  `status` listed it. It opens on that door's first model.
+- A key stored for a door that an agent or eval file registers was never
+  exported: the shell loaded keys by its table before that file ran. The
+  loader exports every stored key.
 
 ## [1.0.0rc13] - 2026-09-18
 

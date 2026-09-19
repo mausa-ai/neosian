@@ -60,6 +60,33 @@ class TestTheModel:
             Model.CEREBRAS_GPT_OSS_120B
         )
 
+    @pytest.mark.parametrize(
+        ("env_name", "model"),
+        [
+            ("XAI_API_KEY", Model.GROK_4_6),
+            ("GEMINI_API_KEY", Model.GEMINI_3_8_FLASH),  # the door's first row
+            ("MOONSHOT_API_KEY", Model.KIMI_K3),
+            ("DASHSCOPE_API_KEY", Model.QWEN_3_8_MAX),
+        ],
+    )
+    def test_then_a_shipped_door_row_with_a_key(
+        self, env_name: str, model: Model
+    ) -> None:
+        # `configure` stores it, the loader exports it, `status` lists it:
+        # a machine holding only this key opens a chat instead of exiting 1.
+        assert resolve_chat_model(None, {env_name: "k"}) is model
+
+    def test_a_shipped_door_comes_after_the_three_and_before_a_registered_one(
+        self,
+    ) -> None:
+        door = OpenAICompatible(name="acme", api_key_env="ACME_API_KEY")
+        register_model("acme-1", provider=door, context_window=9, max_output_tokens=9)
+        env = {"XAI_API_KEY": "x", "ACME_API_KEY": "a"}
+        assert resolve_chat_model(None, env) is Model.GROK_4_6
+        assert resolve_chat_model(None, {**env, "CEREBRAS_API_KEY": "c"}) is (
+            Model.CEREBRAS_GPT_OSS_120B
+        )
+
     def test_then_a_registered_door_with_a_key(self) -> None:
         door = OpenAICompatible(name="acme", api_key_env="ACME_API_KEY")
         acme = register_model(

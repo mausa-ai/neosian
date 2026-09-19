@@ -3,8 +3,9 @@
 
 Model: `--model` (a shipped id, a registered door's id, `fake`), else
 `[chat] model` in config.toml, else the first provider with a key in the
-order Anthropic, OpenAI, Cerebras, registered doors; none exits 1 naming
-`neosian configure`. A PROMPT argument or a non-terminal stdin runs one
+order Anthropic, OpenAI, Cerebras, the shipped door rows (each door's
+first model, enum order), registered doors; none exits 1 naming `neosian
+configure`. A PROMPT argument or a non-terminal stdin runs one
 turn and prints the answer — `--json` the response envelope — so an
 agent or a script can use the resident agent; otherwise the playground's
 loop opens on the same Conversation. Every turn persists under the home.
@@ -37,7 +38,12 @@ from neosian._foundation.shared.registry import (
     registered_models,
     resolve_model,
 )
-from neosian._foundation.shared.types import DEFAULT_MODELS, AgentConfig, Provider
+from neosian._foundation.shared.types import (
+    DEFAULT_MODELS,
+    AgentConfig,
+    Model,
+    Provider,
+)
 
 if TYPE_CHECKING:
     from neosian._foundation.agent.response import AgentResponse
@@ -82,6 +88,9 @@ def resolve_chat_model(flag: str | None, env: Mapping[str, str]) -> AnyModel:
         row = find_provider(provider.value)
         if row is not None and env.get(row.env):
             return DEFAULT_MODELS[provider]
+    for shipped in Model:  # a door's first row, enum order: xAI, Gemini, ...
+        if shipped.door is not None and env.get(shipped.door.api_key_env):
+            return shipped
     for registered in registered_models():
         if env.get(registered.door.api_key_env):
             return registered

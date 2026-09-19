@@ -41,8 +41,9 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
   a file it owns (`claude mcp add-json`, `codex mcp add`) when on PATH,
   else prints the line and exits 1. `--url URL` moves every client to the
   state process in one run.
-- `neosian configure --list | --provider NAME --key - | --delete`: keys
-  under `<home>/config.toml`, read from stdin, never argv.
+- `neosian configure --list | --provider NAME --key - | --env NAME --key - |
+  --delete`: keys under `<home>/config.toml`, read from stdin, never argv;
+  `--env` names a door by its key's env var (one an agent file registers).
 - `neosian chat [PROMPT] [--model M] [--json]`: the resident agent that
   knows neosian (a `docs` tool over these pages) on the same memory;
   a PROMPT or piped stdin is one turn, `--model fake` keyless. Bare

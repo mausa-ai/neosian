@@ -17,7 +17,7 @@ identical.
 ```
 neosian status [--json]                  # is this machine set up?
 neosian setup [--client C]… [--write]    # wire the installed agents to this store
-neosian configure [--list | --provider NAME --key - | --delete]
+neosian configure [--list | --provider NAME --key - | --env NAME --key - | --delete]
 neosian chat [PROMPT] [--model M] [--agent FILE] [--resume ID] [--json]
 neosian update [--check | --write] [--mode off|notify|auto]
 neosian                                  # on a terminal: chat; under a pipe: the help
@@ -43,15 +43,19 @@ neosian                                  # on a terminal: chat; under a pipe: th
   client on the machine to the state process in one run.
 - **`configure`**: keys under `<home>/config.toml`, one row per
   provider the catalog knows (shipped, door rows, registered doors);
-  `--provider NAME --key -` reads the key from stdin, never argv;
-  bare on a terminal prompts for each.
+  `--provider NAME --key -` reads the key from stdin, never argv; `--env
+  NAME --key -` names a door by the env var its key lives in, for one the
+  shell has not loaded (an agent file registers it); bare on a terminal
+  prompts for each. Every stored key reaches the environment before a
+  model is built, a door registered later included.
 - **`chat`**: the resident agent. It knows neosian (the `docs` tool
   reads the shipped pages on demand), writes to `/user` and `/project`
   on the home and loads the skills your other agents wrote. A PROMPT or
   piped stdin runs one turn; `--json` the envelope (text, tool calls,
   usage, µ$); `--model fake` is keyless. The model: `--model`, else
   `[chat] model` in `config.toml`, else the first provider with a key
-  (Anthropic, OpenAI, Cerebras, registered doors).
+  (Anthropic, OpenAI, Cerebras, the shipped door rows by each door's
+  first model, registered doors).
 - **`update`**: checks PyPI's simple index; `[update] mode` is `off`
   (default), `notify` (one stderr line on the human verbs, once per
   24 h) or `auto` (applies a uv tool install within the major, never a

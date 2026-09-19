@@ -4,10 +4,12 @@
 Forms: `--list` (the default under a pipe) names every provider the
 table knows and where its key comes from — never the value; `--provider
 NAME --key -` reads one key from stdin (a literal value is refused:
-secrets never in argv); `--delete [--provider NAME]` drops one key or the
-file; bare on a terminal prompts for each provider in turn. `--json` on
-every form; exit 2 for an unknown provider or a malformed form, nothing
-written.
+secrets never in argv); `--env NAME` names a door by the environment
+variable its key lives in instead, for one the shell has not loaded (a
+door an agent file registers); `--delete [--provider NAME | --env NAME]`
+drops one key or the file; bare on a terminal prompts for each provider
+in turn. `--json` on every form; exit 2 for an unknown provider or a
+malformed form, nothing written.
 """
 
 from __future__ import annotations
@@ -24,6 +26,7 @@ from neosian._cli.config import (
     set_api_key,
 )
 from neosian._cli.providers import (
+    ENV_NAME,
     ProviderKey,
     find_provider,
     key_source,
@@ -122,12 +125,18 @@ def run_configure(
     parser.bind(out, err)
     parser.add_argument("--provider", help="the provider (see --list)")
     parser.add_argument(
+        "--env",
+        metavar="NAME",
+        help="a door by the environment variable its key lives in: one the "
+        "shell has not loaded (registered in an agent file)",
+    )
+    parser.add_argument(
         "--key", help="'-' reads the key from stdin (the only accepted value)"
     )
     parser.add_argument(
         "--delete",
         action="store_true",
-        help="drop --provider's key, or the whole file without --provider",
+        help="drop --provider's or --env's key, or the whole file without one",
     )
     parser.add_argument(
         "--list", action="store_true", dest="listing", help="every provider and source"
@@ -138,17 +147,27 @@ def run_configure(
     try:
         args = parser.parse_args(list(argv))
         row: ProviderKey | None = None
+        if args.provider is not None and args.env is not None:
+            parser.error("--provider and --env name the same thing: pass one")
         if args.provider is not None:
             row = find_provider(args.provider)
             if row is None:
                 known = ", ".join(r.name for r in provider_keys())
                 parser.error(f"unknown provider {args.provider!r}; known: {known}")
+        if args.env is not None:
+            if not ENV_NAME.match(args.env):
+                parser.error(
+                    f"--env {args.env!r}: an environment variable name "
+                    "(uppercase letters, digits, '_')"
+                )
+            tabled = (r for r in provider_keys() if r.env == args.env)
+            row = next(tabled, ProviderKey(args.env, args.env))
         if args.key is not None and args.key != _STDIN:
             parser.error("a key is read from stdin: pass --key - and pipe the value")
         if args.key is not None and row is None:
-            parser.error("--key needs --provider")
+            parser.error("--key needs --provider or --env")
         if row is not None and args.key is None and not args.delete:
-            parser.error("--provider needs --key - or --delete")
+            parser.error("--provider and --env need --key - or --delete")
     except SystemExit as exc:  # argparse: usage already on the streams
         if exc.code is None:
             return 0

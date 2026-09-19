@@ -1,6 +1,7 @@
 """`neosian configure` (DESIGN §30): catalog-driven, non-interactive, keys
 from stdin only, `--json` on every form; the provider table behind it
-and the key loader that iterates it."""
+and the key loader, which exports what is stored so a door the shell has
+not loaded yet still finds its key."""
 
 import io
 import json
@@ -8,7 +9,12 @@ from collections.abc import Mapping
 
 import pytest
 
-from neosian._cli.config import get_all_credentials, get_config_path, set_api_key
+from neosian._cli.config import (
+    get_all_credentials,
+    get_config_path,
+    set_api_key,
+    set_value,
+)
 from neosian._cli.configure import run_configure
 from neosian._cli.providers import (
     find_provider,
@@ -78,6 +84,30 @@ class TestTheTable:
         load_keys_into_env(env)
         assert env == {"OPENAI_API_KEY": "sk-env", "XAI_API_KEY": "xai-file"}
 
+    def test_the_loader_exports_a_key_for_a_door_not_loaded_yet(self) -> None:
+        # The agent file that registers `acme` loads AFTER the loader runs
+        # (chat, playground, eval): its key has to be there already.
+        assert find_provider("acme") is None  # no such door in this process
+        set_api_key("acme_api_key", "acme-file")
+        set_value("credentials", "not an env name", "junk")  # hand-edited
+        env: dict[str, str] = {}
+        load_keys_into_env(env)
+        assert env == {"ACME_API_KEY": "acme-file"}
+
+    def test_a_stored_key_outside_the_table_is_a_row_by_its_env_name(self) -> None:
+        set_api_key("acme_api_key", "acme-file")
+        (row,) = [r for r in provider_keys() if r.env == "ACME_API_KEY"]
+        assert row.name == "ACME_API_KEY" and key_source(row, {}) == "file"
+        assert [r.env for r in provider_keys()].count("XAI_API_KEY") == 1
+
+    def test_a_broken_file_adds_no_rows_and_does_not_raise(self) -> None:
+        # `status` reports a broken config as a finding and still lists keys.
+        path = get_config_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("[credentials\n")
+        names = [r.name for r in provider_keys()]
+        assert names[:3] == ["openai", "anthropic", "cerebras"]
+
 
 class TestForms:
     def test_list_is_the_default_under_a_pipe(self) -> None:
@@ -114,6 +144,37 @@ class TestForms:
     def test_an_empty_stdin_exits_1(self) -> None:
         result = _run(["--provider", "xai", "--key", "-"], stdin="\n")
         assert result.code == 1 and "empty key" in result.err
+
+    def test_a_door_the_shell_has_not_loaded_is_named_by_its_env(self) -> None:
+        saved = _run(["--env", "ACME_API_KEY", "--key", "-", "--json"], stdin="k-1\n")
+        assert saved.code == 0 and json.loads(saved.out)["env"] == "ACME_API_KEY"
+        assert get_all_credentials()["acme_api_key"] == "k-1"
+        listed = json.loads(_run(["--list", "--json"]).out)["providers"]
+        ours = {"name": "ACME_API_KEY", "env": "ACME_API_KEY", "source": "file"}
+        assert ours in listed
+        assert "k-1" not in _run(["--list"]).out  # never the value
+        dropped = _run(["--delete", "--env", "ACME_API_KEY", "--json"])
+        assert json.loads(dropped.out) == {"deleted": "ACME_API_KEY", "existed": True}
+        assert "acme_api_key" not in get_all_credentials()
+
+    def test_an_env_the_table_knows_is_that_provider(self) -> None:
+        saved = _run(["--env", "XAI_API_KEY", "--key", "-", "--json"], stdin="x\n")
+        assert json.loads(saved.out)["saved"] == "xai"
+
+    @pytest.mark.parametrize(
+        "argv",
+        [
+            ["--env", "acme_api_key", "--key", "-"],  # not an env name
+            ["--env", "ACME_API_KEY", "--provider", "xai", "--key", "-"],
+            ["--env", "ACME_API_KEY"],  # neither --key - nor --delete
+            ["--env", "ACME_API_KEY", "--key", "k-in-argv"],
+        ],
+    )
+    def test_a_malformed_env_form_exits_2_and_writes_nothing(
+        self, argv: list[str]
+    ) -> None:
+        assert _run(argv, stdin="k\n").code == 2
+        assert not get_config_path().exists()
 
     def test_an_unknown_provider_exits_2_naming_the_table(self) -> None:
         result = _run(["--provider", "nope", "--key", "-"], stdin="x")

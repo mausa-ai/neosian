@@ -32,8 +32,12 @@ FakeProvider), and passes its full default test tier.
 A registered door (`register_model`, DESIGN §19) reads its own key from the
 env var the door names — `OpenAICompatible(api_key_env=...)` — env only,
 never argv; a missing one fails at the first call naming it, and guardrails
-on a door need it at construction. `neosian configure` does not manage door
-keys.
+on a door need it at construction. `neosian configure` manages every key:
+the shipped providers and the shipped door rows by name (`--provider xai`),
+and any other door by the env var its key lives in (`--env ACME_API_KEY
+--key -`), since the shell loads no agent file and cannot know a door one
+registers. The shell's loader exports every stored key where the
+environment has none, so such a door finds its key when its file loads.
 
 ### Candidate doors — the external suites only, until a row is green
 
