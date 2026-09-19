@@ -16,10 +16,8 @@ import io
 import json
 from typing import TYPE_CHECKING, Any, Final, TextIO
 
-from neosian._foundation.mcp.install import (
-    resolve_target as mcp_target,
-    run_install as mcp_install,
-)
+from neosian._foundation.mcp.install import run_install as mcp_install
+from neosian._foundation.mcp.targets import resolve_target as mcp_target
 from neosian._foundation.memory.settings import StreamParser
 from neosian._foundation.record.install import run_install as hooks_install
 
@@ -48,10 +46,16 @@ def present_clients(context: Environment) -> list[str]:
 
 
 def _installer(
-    run: Any, client: str, *, write: bool, env: Mapping[str, str], context: Environment
+    run: Any,
+    client: str,
+    *,
+    write: bool,
+    extra: Sequence[str] = (),
+    env: Mapping[str, str],
+    context: Environment,
 ) -> dict[str, Any]:
     out, err = io.StringIO(), io.StringIO()
-    argv = ["--client", client, "--json", *(["--write"] if write else [])]
+    argv = ["--client", client, "--json", *extra, *(["--write"] if write else [])]
     code = run(argv, env, context=context, out=out, err=err)
     if code != 0 and not out.getvalue():
         return {"success": False, "error": err.getvalue().strip(), "hint": None}
@@ -111,12 +115,18 @@ def run_setup(
         return 1
     rows: list[dict[str, Any]] = []
     for client in clients:
+        mcp = mcp_target(client, context, "project")  # a one-file row stays user
         rows.append(
             {
                 "client": client,
-                "label": mcp_target(client, context).label,
+                "label": mcp.label,
                 "mcp": _installer(
-                    mcp_install, client, write=args.write, env=env, context=context
+                    mcp_install,
+                    client,
+                    write=args.write,
+                    extra=("--level", mcp.level),
+                    env=env,
+                    context=context,
                 ),
                 "hooks": _installer(
                     hooks_install, client, write=args.write, env=env, context=context

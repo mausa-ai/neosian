@@ -8,23 +8,30 @@ file keeps its mode and a new one is born private; a file that is not a
 JSON object is refused, never rewritten. Pure over an injected
 `Environment`: path resolution reads no ambient state, which keeps the
 suites monkeypatch-free.
+
+A registration has a **level** (§22.6): `user`, the client's own config,
+written once per machine with the layout derived per session, or
+`project`, this directory's files with its layout written into the line.
 """
 
 from __future__ import annotations
 
 import json
+import tomllib
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
 
 from neosian._foundation.shared.fileio import PRIVATE_FILE, atomic_write
 
 if TYPE_CHECKING:
+    import argparse
     from collections.abc import Mapping
-    from pathlib import Path
 
 FIX_BY_HAND: Final = (
     "fix it by hand, or re-run without --write and paste the entry yourself"
 )
+LEVELS: Final = ("user", "project")
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,6 +43,37 @@ class Environment:
     platform: str
     env: Mapping[str, str]
     executable: str
+
+
+def add_level_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--level",
+        choices=LEVELS,
+        default="user",
+        help="user: the client's own config, once per machine, the layout "
+        "derived per session (default); project: this directory's files, its "
+        "layout written into the line",
+    )
+
+
+def claude_home(context: Environment) -> Path:
+    """`$CLAUDE_CONFIG_DIR` moves Claude Code's files; the default is
+    `~/.claude`."""
+    override = context.env.get("CLAUDE_CONFIG_DIR")
+    return Path(override) if override else context.home / ".claude"
+
+
+def codex_home(context: Environment) -> Path:
+    """`$CODEX_HOME` moves every Codex file; the default is `~/.codex`."""
+    override = context.env.get("CODEX_HOME")
+    return Path(override) if override else context.home / ".codex"
+
+
+def opencode_config_dir(context: Environment) -> Path:
+    """`$OPENCODE_CONFIG_DIR` moves OpenCode's config; the default is
+    `~/.config/opencode`."""
+    override = context.env.get("OPENCODE_CONFIG_DIR")
+    return Path(override) if override else context.home / ".config" / "opencode"
 
 
 class InstallError(Exception):
@@ -55,6 +93,19 @@ def ensure_evidence(label: str, evidence_dir: Path) -> None:
             "install the client first — neosian never creates another "
             "program's config directory",
         )
+
+
+def read_document(path: Path) -> dict[str, Any] | None:
+    """A client's config for a reader that never repairs: JSON, or TOML by
+    suffix; None when it is missing or not a document."""
+    if not path.is_file():
+        return None
+    try:
+        text = path.read_text(encoding="utf-8")
+        raw: Any = tomllib.loads(text) if path.suffix == ".toml" else json.loads(text)
+    except (OSError, ValueError):
+        return None
+    return raw if isinstance(raw, dict) else None
 
 
 def load_document(path: Path) -> dict[str, Any]:

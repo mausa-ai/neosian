@@ -32,6 +32,7 @@ from neosian._foundation.memory.home import (
     home,
     project_mounts,
     user_mount,
+    user_scope,
 )
 from neosian._foundation.memory.mounts import Mount
 from neosian._foundation.shared.exceptions import (
@@ -262,8 +263,9 @@ def resolve_mounts(
 ) -> tuple[Mount, ...]:
     """Resolve the mount half of the grammar: the flags, else `NEOSIAN_SCOPE`
     (the sugar mount), else `layout`'s project layout (§22.2, flipped at
-    NY: the same two mounts the installers render, now every shell verb's
-    default — a directory with no derived name refuses at exit 2).
+    NY: every shell verb's default — a directory with no derived name
+    refuses at exit 2). No `layout` derives nothing: a per-machine
+    registration names no mount, the layout is each session's (§22.6).
 
     `required=False` is the state process's relaxation (DESIGN §18): its
     store-shaped API needs no mounts — only the MCP surface does.
@@ -279,19 +281,16 @@ def resolve_mounts(
         return tuple(parse_mount(parser, token) for token in args.mount)
     if scope is not None:
         return (Mount(scope=scope, mount_path=SUGAR_MOUNT_PATH),)
-    if layout is not None:
-        try:
-            return project_mounts(layout)
-        except ConfigurationError as exc:
-            if degrade:
-                return (user_mount(),)  # raises too when the login is unreadable
-            if required:
-                parser.error(exc.message)
-            return ()  # §18's relaxation: no layout to derive, no mounts
-    if required:
-        parser.error("memory needs a scope: pass --scope or --mount")
-        raise AssertionError  # pragma: no cover - parser.error exits
-    return ()
+    if layout is None:
+        return ()
+    try:
+        return project_mounts(layout)
+    except ConfigurationError as exc:
+        if degrade:
+            return (user_mount(),)  # raises too when the login is unreadable
+        if required:
+            parser.error(exc.message)
+        return ()  # §18's relaxation: no layout to derive, no mounts
 
 
 def resolve_store_settings(
@@ -322,6 +321,16 @@ def resolve_store_settings(
         url=selection.url,
         client_token=selection.client_token,
     )
+
+
+def check_login(parser: argparse.ArgumentParser) -> None:
+    """A registration that names no mount leaves the layout to each
+    session, and every layout starts at `user:<login>`: an unreadable
+    login is refused here, at install time (exit 2), not inside a hook."""
+    try:
+        user_scope()
+    except ConfigurationError as exc:
+        parser.error(exc.message)
 
 
 def resolve_actor(parser: argparse.ArgumentParser, actor: str) -> str:

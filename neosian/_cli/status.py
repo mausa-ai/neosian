@@ -18,7 +18,6 @@ import re
 import shlex
 import shutil
 import sys
-import tomllib
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, TextIO
@@ -32,12 +31,15 @@ from neosian._cli.config import (
 )
 from neosian._cli.providers import key_source, provider_keys
 from neosian._cli.shape import Shape, detect_shape
-from neosian._foundation.mcp.install import SERVER_NAME, resolve_target as mcp_target
+from neosian._foundation.mcp.targets import (
+    registered_argv,
+    resolve_target as mcp_target,
+)
 from neosian._foundation.memory.home import home, project_mounts
 from neosian._foundation.memory.settings import StreamParser
 from neosian._foundation.record.install import resolve_target as hook_target
 from neosian._foundation.record.span import SESSIONS_DIR
-from neosian._foundation.shared.client_config import Environment
+from neosian._foundation.shared.client_config import Environment, read_document
 from neosian._foundation.shared.exceptions import ConfigurationError, NeosianError
 
 if TYPE_CHECKING:
@@ -85,33 +87,6 @@ class Status:
     update_mode: str
 
 
-def _load(path: Path) -> dict[str, Any] | None:
-    """A client's config as a dict — JSON or TOML by suffix; None when it
-    is missing or not a document (status reports, never repairs)."""
-    if not path.is_file():
-        return None
-    try:
-        text = path.read_text(encoding="utf-8")
-        raw: Any = tomllib.loads(text) if path.suffix == ".toml" else json.loads(text)
-    except (OSError, ValueError):
-        return None
-    return raw if isinstance(raw, dict) else None
-
-
-def _argv_of(entry: Any) -> list[str] | None:
-    """The registered server's argv: `{command, args}` or OpenCode's
-    `{command: [...]}`."""
-    if not isinstance(entry, dict):
-        return None
-    command = entry.get("command")
-    if isinstance(command, list):
-        return [str(part) for part in command]
-    if isinstance(command, str):
-        args = entry.get("args", [])
-        return [command, *(str(a) for a in args)] if isinstance(args, list) else None
-    return None
-
-
 def _hook_argv(document: dict[str, Any]) -> list[str] | None:
     hooks = document.get("hooks")
     if not isinstance(hooks, dict):
@@ -153,18 +128,14 @@ def _resolves(command: str) -> bool:
 
 
 def client_status(client: str, context: Environment) -> ClientStatus:
-    mcp = mcp_target(client, context)
+    mcp = mcp_target(client, context, "project")
     hooks = hook_target(client, context)
     installed = mcp.evidence_dir.is_dir()
-    document = _load(mcp.config_path)
-    servers = document.get(mcp.servers_key) if document is not None else None
-    server_argv = (
-        _argv_of(servers.get(SERVER_NAME)) if isinstance(servers, dict) else None
-    )
+    server_argv = registered_argv(mcp)
     if hooks.plugin:
         hook_argv = _plugin_argv(hooks.config_path)
     else:
-        hooks_document = _load(hooks.config_path)
+        hooks_document = read_document(hooks.config_path)
         hook_argv = _hook_argv(hooks_document) if hooks_document is not None else None
     interpreter = next((a[0] for a in (server_argv, hook_argv) if a), None)
     roots = {_root_of(server_argv), _root_of(hook_argv)}

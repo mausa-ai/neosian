@@ -1,4 +1,6 @@
-"""`neosian mcp install` — targets, entry, merge, tiers (DESIGN §14.5)."""
+"""`neosian mcp install` — targets, entry, merge, tiers (DESIGN §14.5), and
+the level: once per machine by default, this directory's file on request
+(§22.6)."""
 
 import io
 import json
@@ -9,14 +11,16 @@ from pathlib import Path
 import pytest
 
 from neosian._foundation.mcp.install import (
-    CLIENT_CHOICES,
-    SERVER_NAME,
     Environment,
     RegistrationEntry,
     build_entry,
     merge_entry,
-    resolve_target,
     run_install,
+)
+from neosian._foundation.mcp.targets import (
+    CLIENT_CHOICES,
+    SERVER_NAME,
+    resolve_target,
 )
 from neosian._foundation.memory.home import HOME_ENV
 from neosian._foundation.memory.mounts import Mount
@@ -58,6 +62,8 @@ def _run(
 _WRITE_ARGV = (
     "--client",
     "claude-code",
+    "--level",
+    "project",  # the file neosian merges; the user level is Claude Code's CLI's
     "--root",
     "m",
     "--scope",
@@ -90,7 +96,7 @@ class TestTargets:
         target = resolve_target("codex", context)
         assert target.config_path == context.home / ".codex" / "config.toml"
         assert target.evidence_dir == context.home / ".codex"
-        assert target.toml
+        assert target.cli == "codex" and target.level == "user"
         moved = Environment(
             home=context.home,
             cwd=context.cwd,
@@ -100,12 +106,43 @@ class TestTargets:
         )
         assert resolve_target("codex", moved).evidence_dir == tmp_path / "ch"
 
-    def test_claude_code_is_the_project_file(self, tmp_path: Path) -> None:
+    def test_claude_code_is_the_project_file_at_the_project_level(
+        self, tmp_path: Path
+    ) -> None:
         context = _context(tmp_path)
-        target = resolve_target("claude-code", context)
+        target = resolve_target("claude-code", context, "project")
         assert target.config_path == context.cwd / ".mcp.json"
         assert target.evidence_dir == context.home / ".claude"
         assert target.servers_key == "mcpServers"
+        assert target.cli is None and target.level == "project"
+
+    def test_claude_code_is_its_own_clis_file_at_the_user_level(
+        self, tmp_path: Path
+    ) -> None:
+        context = _context(tmp_path)
+        target = resolve_target("claude-code", context)
+        assert target.config_path == context.home / ".claude.json"
+        assert target.evidence_dir == context.home / ".claude"
+        assert target.cli == "claude" and target.level == "user"
+        moved = Environment(
+            home=context.home,
+            cwd=context.cwd,
+            platform="darwin",
+            env={"CLAUDE_CONFIG_DIR": str(tmp_path / "cc")},
+            executable=_EXECUTABLE,
+        )
+        sandboxed = resolve_target("claude-code", moved)
+        assert sandboxed.config_path == tmp_path / "cc" / ".claude.json"
+        assert sandboxed.evidence_dir == tmp_path / "cc"
+
+    @pytest.mark.parametrize("client", ["codex", "cursor", "claude-desktop"])
+    def test_a_one_file_client_is_always_the_user_level(
+        self, tmp_path: Path, client: str
+    ) -> None:
+        context = _context(tmp_path)
+        asked = resolve_target(client, context, "project")
+        assert asked.level == "user"
+        assert asked.config_path == resolve_target(client, context).config_path
 
     def test_cursor_is_the_user_file(self, tmp_path: Path) -> None:
         context = _context(tmp_path)
@@ -259,6 +296,8 @@ class TestExitTiers:
             [
                 "--client",
                 "claude-code",
+                "--level",
+                "project",
                 "--root",
                 "m",
                 "--scope",
@@ -281,6 +320,8 @@ class TestExitTiers:
             [
                 "--client",
                 "claude-code",
+                "--level",
+                "project",
                 "--root",
                 "m",
                 "--scope",
@@ -331,6 +372,8 @@ class TestExitTiers:
             [
                 "--client",
                 "claude-code",
+                "--level",
+                "project",
                 "--root",
                 "m",
                 "--scope",
@@ -353,6 +396,8 @@ class TestExitTiers:
             [
                 "--client",
                 "claude-code",
+                "--level",
+                "project",
                 "--root",
                 "m",
                 "--scope",
@@ -378,16 +423,30 @@ class TestExitTiers:
         assert code == 2
         assert "claude-code" in err  # choices named in the argparse error
 
-    def test_no_flags_render_the_home_and_the_derived_layout(
-        self, tmp_path: Path
-    ) -> None:
-        # DESIGN §22: the registration names the home and this directory's
-        # two-mount layout — the scope explicit in the file, its spelling
-        # derived; print mode builds nothing.
+    def test_no_flags_render_the_home_and_no_mount(self, tmp_path: Path) -> None:
+        # DESIGN §22.6: once per machine, the line names the home and no
+        # mount; the server derives each session's layout where the client
+        # spawns it. Print mode builds nothing.
         context = _context(tmp_path)
         (context.home / ".claude").mkdir()
         code, out, _ = _run(
             ["--client", "claude-code"], context, {HOME_ENV: str(tmp_path / "nh")}
+        )
+        assert code == 0
+        args = json.loads(out)["mcpServers"]["neosian-memory"]["args"]
+        assert args[args.index("--root") + 1] == str(tmp_path / "nh")
+        assert "--mount" not in args and "--project" not in args
+        assert not (tmp_path / "nh").exists()
+
+    def test_the_project_level_renders_the_derived_layout(self, tmp_path: Path) -> None:
+        # DESIGN §22.2: this directory's two-mount layout, the scope explicit
+        # in the file, its spelling derived.
+        context = _context(tmp_path)
+        (context.home / ".claude").mkdir()
+        code, out, _ = _run(
+            ["--client", "claude-code", "--level", "project"],
+            context,
+            {HOME_ENV: str(tmp_path / "nh")},
         )
         assert code == 0
         args = json.loads(out)["mcpServers"]["neosian-memory"]["args"]
@@ -511,7 +570,7 @@ class TestCodex:
         (context.home / ".codex").mkdir()
         code, out, err = _run([*self._ARGV, "--write"], context)
         assert code == 1 and out == ""
-        assert "owns its TOML" in err and "codex mcp add" in err
+        assert "own CLI writes" in err and "codex mcp add" in err
         assert not (context.home / ".codex" / "config.toml").exists()
 
     def test_json_envelope_carries_the_apply_line(self, tmp_path: Path) -> None:
@@ -533,15 +592,129 @@ class TestCodex:
         assert code == 0 and json.loads(out)["apply"] is None
 
 
+class TestLevel:
+    """§22.6: the user level is the default; a one-file client has no other."""
+
+    @pytest.mark.parametrize("client", ["codex", "cursor", "claude-desktop"])
+    def test_the_project_level_is_refused_on_a_one_file_client(
+        self, tmp_path: Path, client: str
+    ) -> None:
+        code, out, err = _run(
+            ["--client", client, "--level", "project", "--root", "m"],
+            _context(tmp_path),
+        )
+        assert code == 2 and out == ""
+        assert "keeps one file for every project" in err
+
+    def test_an_explicit_scope_is_rendered_at_the_user_level(
+        self, tmp_path: Path
+    ) -> None:
+        context = _context(tmp_path)
+        (context.home / ".cursor").mkdir()
+        code, out, _ = _run(
+            ["--client", "cursor", "--root", "m", "--scope", "user:me"], context
+        )
+        assert code == 0
+        args = json.loads(out)["mcpServers"][SERVER_NAME]["args"]
+        assert args[args.index("--mount") + 1] == "scope=user:me,path=memories"
+
+    def test_a_one_file_client_no_longer_carries_one_projects_scope(
+        self, tmp_path: Path
+    ) -> None:
+        # The defect the ruling fixed: ~/.cursor/mcp.json serves every project,
+        # and used to carry the scope of wherever the installer ran.
+        context = _context(tmp_path)
+        (context.home / ".cursor").mkdir()
+        code, out, _ = _run(["--client", "cursor", "--root", "m"], context)
+        assert code == 0
+        assert "--mount" not in json.loads(out)["mcpServers"][SERVER_NAME]["args"]
+
+    def test_a_nameless_directory_is_fine_at_the_user_level(
+        self, tmp_path: Path
+    ) -> None:
+        context = _context(tmp_path)
+        (context.home / ".cursor").mkdir()
+        rootless = Environment(
+            home=context.home,
+            cwd=Path("/"),
+            platform="darwin",
+            env={},
+            executable=_EXECUTABLE,
+        )
+        code, _, err = _run(["--client", "cursor", "--root", "m"], rootless)
+        assert code == 0, err
+
+    def test_an_unreadable_login_is_caught_at_install_time(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def no_login() -> str:
+            raise OSError("no passwd entry")
+
+        monkeypatch.setattr("getpass.getuser", no_login)
+        context = _context(tmp_path)
+        (context.home / ".cursor").mkdir()
+        code, _, err = _run(["--client", "cursor", "--root", "m"], context)
+        assert code == 2 and "login" in err  # not inside a hook, later
+
+
+class TestClaudeCodeUser:
+    """Claude Code's user scope lives in `~/.claude.json`, which its own CLI
+    writes: print mode renders the entry and the `claude mcp add-json` line;
+    --write is refused with that line (Codex's shape, #135)."""
+
+    _ARGV = ["--client", "claude-code", "--root", "m"]
+
+    def test_print_mode_renders_the_fragment_and_the_apply_line(
+        self, tmp_path: Path
+    ) -> None:
+        context = _context(tmp_path)
+        (context.home / ".claude").mkdir()
+        code, out, err = _run(self._ARGV, context)
+        assert code == 0, err
+        entry = json.loads(out)["mcpServers"][SERVER_NAME]
+        assert entry["command"] == _EXECUTABLE
+        prefix = f"hint: apply it with: claude mcp add-json --scope user {SERVER_NAME} "
+        (line,) = [ln for ln in err.splitlines() if ln.startswith(prefix)]
+        import shlex
+
+        assert json.loads(
+            shlex.split(line.removeprefix("hint: apply it with: "))[-1]
+        ) == (entry)
+        assert "re-run with --write" not in err
+
+    def test_write_is_refused_with_the_apply_line(self, tmp_path: Path) -> None:
+        context = _context(tmp_path)
+        (context.home / ".claude").mkdir()
+        code, out, err = _run([*self._ARGV, "--write"], context)
+        assert code == 1 and out == ""
+        assert "own CLI writes" in err and "claude mcp add-json" in err
+        assert not (context.home / ".claude.json").exists()
+
+    def test_the_envelope_carries_the_level_and_the_apply_line(
+        self, tmp_path: Path
+    ) -> None:
+        context = _context(tmp_path)
+        (context.home / ".claude").mkdir()
+        payload = json.loads(_run([*self._ARGV, "--json"], context)[1])
+        assert payload["level"] == "user"
+        assert payload["apply"].startswith("claude mcp add-json --scope user ")
+        assert payload["config_path"] == str(context.home / ".claude.json")
+
+
 class TestOpenCode:
-    """OpenCode's MCP config is JSON under `mcp` in the project's
-    opencode.json, the entry in its own shape."""
+    """OpenCode's MCP config is JSON under `mcp`, the entry in its own
+    shape: its own config directory once per machine, the project's
+    opencode.json at the project level."""
 
     _ARGV = ["--client", "opencode", "--root", "m", "--scope", "user:me"]
 
     def test_the_target_and_the_entry_shape(self, tmp_path: Path) -> None:
         context = _context(tmp_path)
-        target = resolve_target("opencode", context)
+        config_dir = context.home / ".config" / "opencode"
+        assert resolve_target("opencode", context).config_path == (
+            config_dir / "opencode.json"
+        )
+        target = resolve_target("opencode", context, "project")
         assert target.config_path == context.cwd / "opencode.json"
         assert target.evidence_dir == context.home / ".config" / "opencode"
         assert target.servers_key == "mcp" and target.style == "opencode"
@@ -561,12 +734,38 @@ class TestOpenCode:
             '{"$schema": "https://opencode.ai/config.json", '
             '"mcp": {"other": {"type": "remote", "url": "x"}}}\n'
         )
-        code, out, _ = _run([*self._ARGV, "--write"], context)
+        code, out, _ = _run([*self._ARGV, "--level", "project", "--write"], context)
         assert code == 0 and out == f"updated {config}\n"
         written = json.loads(config.read_text())
         assert written["$schema"].startswith("https://")
         assert written["mcp"]["other"]["url"] == "x"
         assert written["mcp"][SERVER_NAME]["type"] == "local"
+
+    def test_the_user_level_writes_its_own_config_directory(
+        self, tmp_path: Path
+    ) -> None:
+        context = _context(tmp_path)
+        config_dir = context.home / ".config" / "opencode"
+        config_dir.mkdir(parents=True)
+        code, out, err = _run([*self._ARGV, "--write"], context)
+        assert code == 0, err
+        assert out == f"created {config_dir / 'opencode.json'}\n"
+        assert not (context.cwd / "opencode.json").exists()  # nothing per project
+
+    def test_a_commented_config_beside_it_is_refused(self, tmp_path: Path) -> None:
+        # OpenCode reads opencode.jsonc too: writing opencode.json beside it
+        # would be a second config, and merging into it would lose comments.
+        context = _context(tmp_path)
+        config_dir = context.home / ".config" / "opencode"
+        config_dir.mkdir(parents=True)
+        commented = config_dir / "opencode.jsonc"
+        commented.write_text('{\n  // mine\n  "mcp": {}\n}\n')
+        code, out, err = _run([*self._ARGV, "--write"], context)
+        assert code == 1 and out == ""
+        assert "comments" in err and "paste" in err
+        assert not (config_dir / "opencode.json").exists()
+        assert "// mine" in commented.read_text()  # untouched
+        assert _run(self._ARGV, context)[0] == 0  # print mode still prints
 
 
 class TestTheClientActor:

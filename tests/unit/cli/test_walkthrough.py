@@ -348,18 +348,29 @@ class TestUpgrade:
     def test_no_flags_render_the_home_and_the_project_layout(
         self, tmp_path: Path
     ) -> None:
-        """DESIGN §22: a fresh machine, no store flags — the registration
-        names the home and this directory's two-mount layout, visibly."""
+        """DESIGN §22: a fresh machine, no store flags. Once per machine
+        (§22.6) the registration names the home and no mount, the layout
+        each session's; `--level project` spells this directory's two-mount
+        layout into the line, visibly."""
         env = _env(tmp_path)
         (tmp_path / ".claude").mkdir()
         project = tmp_path / "demo proj"
         project.mkdir()
-        result = _run(
+        machine = _run(
             ["mcp", "install", "--client", "claude-code"], cwd=project, env=env
+        )
+        assert machine.returncode == 0, machine.stderr
+        args = json.loads(machine.stdout)["mcpServers"]["neosian-memory"]["args"]
+        assert args[args.index("--root") + 1] == str(tmp_path / "home")
+        assert "--mount" not in args
+        assert "claude mcp add-json --scope user neosian-memory" in machine.stderr
+        result = _run(
+            ["mcp", "install", "--client", "claude-code", "--level", "project"],
+            cwd=project,
+            env=env,
         )
         assert result.returncode == 0, result.stderr
         args = json.loads(result.stdout)["mcpServers"]["neosian-memory"]["args"]
-        assert args[args.index("--root") + 1] == str(tmp_path / "home")
         tokens = [args[i + 1] for i, a in enumerate(args) if a == "--mount"]
         assert [t.split(",")[1] for t in tokens] == ["path=user", "path=project"]
         assert tokens[1].split(",")[0].endswith("/proj:demo-proj")

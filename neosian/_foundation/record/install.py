@@ -37,8 +37,10 @@ from neosian._foundation.shared.client_config import (
     FIX_BY_HAND,
     Environment,
     InstallError,
+    codex_home,
     ensure_evidence,
     load_document,
+    opencode_config_dir,
     write_document,
     write_text,
 )
@@ -90,12 +92,6 @@ def _claude_code(context: Environment) -> HookTarget:
     )
 
 
-def codex_home(context: Environment) -> Path:
-    """`$CODEX_HOME` moves every Codex file; the default is `~/.codex`."""
-    override = context.env.get("CODEX_HOME")
-    return Path(override) if override else context.home / ".codex"
-
-
 def _codex(context: Environment) -> HookTarget:
     return HookTarget(
         client="codex",
@@ -108,13 +104,6 @@ def _codex(context: Environment) -> HookTarget:
         f'[projects."{context.cwd}"] trust_level = "trusted" in its config.toml, '
         "or accept the trust prompt on first run",
     )
-
-
-def opencode_config_dir(context: Environment) -> Path:
-    """`$OPENCODE_CONFIG_DIR` moves OpenCode's config; the default is
-    `~/.config/opencode`."""
-    override = context.env.get("OPENCODE_CONFIG_DIR")
-    return Path(override) if override else context.home / ".config" / "opencode"
 
 
 def _opencode(context: Environment) -> HookTarget:

@@ -1,10 +1,15 @@
-"""`neosian mcp install` — self-setup (DESIGN §14.5).
+"""`neosian mcp install` — self-setup (DESIGN §14.5, §22.6).
 
 Prints the exact client registration by default; applies it only with
 --write, merging key-preserving into the client's config file and
 refusing — never creating — a missing config home (the shared rules live
-in `shared/client_config.py`, beside the hook installer's). Pure over an
-injected `Environment`. Never imports the MCP SDK — install never
+in `shared/client_config.py`, beside the hook installer's; the clients'
+rows in `targets.py`). Once per machine by default: the user-level entry
+names the store and no mount, so the server derives each session's layout
+from the directory the client spawns it in; `--level project` writes this
+directory's file with its layout in the line. A file the client's own CLI
+writes is print-only, with that command as the way to apply it. Pure over
+an injected `Environment`. Never imports the MCP SDK — install never
 serves.
 """
 
@@ -12,12 +17,18 @@ from __future__ import annotations
 
 import json
 import shlex
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Final, TextIO
 
 from neosian._foundation.mcp.server import DEFAULT_ACTOR
+from neosian._foundation.mcp.targets import (
+    CLIENT_CHOICES,
+    SERVER_NAME,
+    ClientTarget,
+    resolve_target,
+)
 from neosian._foundation.memory.settings import (
     CLIENT_TOKEN_ENV,
     DEFAULT_SCHEMA,
@@ -25,6 +36,7 @@ from neosian._foundation.memory.settings import (
     StoreSettings,
     StreamParser,
     add_store_arguments,
+    check_login,
     format_mount,
     resolve_store_settings,
 )
@@ -32,6 +44,7 @@ from neosian._foundation.shared.client_config import (
     FIX_BY_HAND,
     Environment,
     InstallError,
+    add_level_argument,
     ensure_evidence,
     load_document,
     write_document,
@@ -40,36 +53,16 @@ from neosian._foundation.shared.exceptions import MemoryStoreError
 
 __all__ = ["Environment"]  # re-exported: the entry point and the suite name it here
 
-SERVER_NAME: Final = "neosian-memory"
 _SERVER_ARGV: Final = ("-m", "neosian.mcp")  # the one place the module path lives
-_SERVERS_KEY: Final = "mcpServers"
 _DEFAULT_ACTOR: Final = DEFAULT_ACTOR
 _DESCRIPTION: Final = "Print or apply an MCP client registration for neosian memory."
 _EPILOG: Final = (
-    "Print mode (the default) puts the paste-able JSON fragment on stdout "
-    "and guidance on stderr; --write merges it into the client's config, "
+    "Print mode (the default) puts the paste-able fragment on stdout and "
+    "guidance on stderr; --write merges it into the client's config, "
     "preserving every other key. A missing client config directory is "
     "refused, never created. Postgres: set NEOSIAN_POSTGRES_DSN in the "
     "client's own environment — a DSN is never written into a registration."
 )
-
-
-@dataclass(frozen=True, slots=True)
-class ClientTarget:
-    """One client's registration surface — a row, so reversals are cheap."""
-
-    client: str
-    label: str
-    config_path: Path
-    evidence_dir: Path  # must already exist; NEVER created
-    servers_key: str
-    scope_note: str
-    # A TOML client (Codex) is print-only: its own CLI writes its config,
-    # so --write is refused with that command as the fix.
-    toml: bool = False
-    # The entry's shape: `mcpServers` ({command, args}) or OpenCode's
-    # ({type: local, command: [...], enabled}).
-    style: str = "mcpServers"
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,96 +95,16 @@ class RegistrationEntry:
             f"args = [{args}]\n"
         )
 
-    def apply_line(self, name: str) -> str:
-        """Codex's own writer for its TOML: `codex mcp add`."""
-        return shlex.join(["codex", "mcp", "add", name, "--", self.command, *self.args])
+    def apply_argv(self, name: str, cli: str) -> list[str]:
+        """The client's own writer for the file it owns: Claude Code takes
+        the entry as JSON at its user scope, Codex the argv after `--`."""
+        if cli == "claude":
+            entry = json.dumps(self.to_json())
+            return [cli, "mcp", "add-json", "--scope", "user", name, entry]
+        return [cli, "mcp", "add", name, "--", self.command, *self.args]
 
-
-def _claude_code(context: Environment) -> ClientTarget:
-    return ClientTarget(
-        client="claude-code",
-        label="Claude Code",
-        config_path=context.cwd / ".mcp.json",
-        evidence_dir=context.home / ".claude",
-        servers_key=_SERVERS_KEY,
-        scope_note="project scope — .mcp.json travels with this directory's repo",
-    )
-
-
-def _claude_desktop(context: Environment) -> ClientTarget:
-    if context.platform == "darwin":
-        base = context.home / "Library" / "Application Support" / "Claude"
-    elif context.platform == "win32":
-        appdata = context.env.get("APPDATA")
-        roaming = Path(appdata) if appdata else context.home / "AppData" / "Roaming"
-        base = roaming / "Claude"
-    else:
-        base = context.home / ".config" / "Claude"
-    return ClientTarget(
-        client="claude-desktop",
-        label="Claude Desktop",
-        config_path=base / "claude_desktop_config.json",
-        evidence_dir=base,
-        servers_key=_SERVERS_KEY,
-        scope_note="user scope — applies to every Claude Desktop conversation",
-    )
-
-
-def _cursor(context: Environment) -> ClientTarget:
-    base = context.home / ".cursor"
-    return ClientTarget(
-        client="cursor",
-        label="Cursor",
-        config_path=base / "mcp.json",
-        evidence_dir=base,
-        servers_key=_SERVERS_KEY,
-        scope_note="user scope — applies to every Cursor project",
-    )
-
-
-def _codex(context: Environment) -> ClientTarget:
-    override = context.env.get("CODEX_HOME")
-    base = Path(override) if override else context.home / ".codex"
-    return ClientTarget(
-        client="codex",
-        label="Codex",
-        config_path=base / "config.toml",
-        evidence_dir=base,
-        servers_key="mcp_servers",
-        scope_note="user scope — applies to every Codex project; Codex's own "
-        "CLI writes its TOML",
-        toml=True,
-    )
-
-
-def _opencode(context: Environment) -> ClientTarget:
-    override = context.env.get("OPENCODE_CONFIG_DIR")
-    base = Path(override) if override else context.home / ".config" / "opencode"
-    return ClientTarget(
-        client="opencode",
-        label="OpenCode",
-        config_path=context.cwd / "opencode.json",
-        evidence_dir=base,
-        servers_key="mcp",
-        scope_note="project scope — opencode.json travels with this directory's "
-        "repo (a project on opencode.jsonc is refused: comments do not merge)",
-        style="opencode",
-    )
-
-
-_TARGETS: Final[dict[str, Callable[[Environment], ClientTarget]]] = {
-    "claude-code": _claude_code,
-    "claude-desktop": _claude_desktop,
-    "cursor": _cursor,
-    "codex": _codex,
-    "opencode": _opencode,
-}
-CLIENT_CHOICES: Final = tuple(_TARGETS)
-
-
-def resolve_target(client: str, context: Environment) -> ClientTarget:
-    """The registration surface for one `--client` token."""
-    return _TARGETS[client](context)
+    def apply_line(self, name: str, cli: str) -> str:
+        return shlex.join(self.apply_argv(name, cli))
 
 
 def build_entry(settings: StoreSettings, *, executable: str) -> RegistrationEntry:
@@ -253,12 +166,13 @@ def _render_success(
     out: TextIO,
     err: TextIO,
 ) -> int:
-    apply = entry.apply_line(SERVER_NAME) if target.toml else None
+    apply = entry.apply_line(SERVER_NAME, target.cli) if target.cli else None
     if json_output:
         payload = {
             "success": True,
             "client": target.client,
             "label": target.label,
+            "level": target.level,
             "config_path": str(target.config_path),
             "servers_key": target.servers_key,
             "server_name": SERVER_NAME,
@@ -269,9 +183,13 @@ def _render_success(
         }
         out.write(json.dumps(payload, ensure_ascii=False) + "\n")
         return 0
+    fragment = {target.servers_key: {SERVER_NAME: entry.render(target.style)}}
     if apply is not None:
-        # stdout is only the paste-able fragment — here the TOML table.
-        out.write(entry.to_toml(servers_key=target.servers_key, name=SERVER_NAME))
+        # stdout is only the paste-able fragment: the table for a TOML file.
+        if target.config_path.suffix == ".toml":
+            out.write(entry.to_toml(servers_key=target.servers_key, name=SERVER_NAME))
+        else:
+            out.write(json.dumps(fragment, indent=2) + "\n")
         err.write(f"{target.label}: {target.scope_note}\n")
         err.write(f"target: {target.config_path}\n")
         err.write(f"hint: apply it with: {apply}\n")
@@ -285,7 +203,6 @@ def _render_success(
             )
     else:
         # stdout is only the paste-able fragment: `> snippet.json` stays valid.
-        fragment = {target.servers_key: {SERVER_NAME: entry.render(target.style)}}
         out.write(json.dumps(fragment, indent=2) + "\n")
         err.write(f"{target.label}: {target.scope_note}\n")
         err.write(f"target: {target.config_path}\n")
@@ -355,10 +272,22 @@ def run_install(
         dest="json_output",
         help="print one JSON envelope on stdout",
     )
+    add_level_argument(parser)
     add_store_arguments(parser, default_actor=_DEFAULT_ACTOR)
     try:
         args = parser.parse_args(list(argv))
-        settings = resolve_store_settings(parser, args, env, layout=context.cwd)
+        target = resolve_target(args.client, context, args.level)
+        if target.level != args.level:
+            parser.error(
+                f"--level {args.level}: {target.label} keeps one file for every "
+                f"project ({target.config_path}); it registers at the user level"
+            )
+        # Per machine the line names no mount: the server derives each
+        # session's layout where the client spawns it (§22.6).
+        layout = context.cwd if args.level == "project" else None
+        settings = resolve_store_settings(parser, args, env, layout=layout)
+        if not settings.mounts:
+            check_login(parser)
     except SystemExit as exc:  # argparse: usage already on the streams
         if exc.code is None:
             return 0
@@ -367,7 +296,6 @@ def run_install(
         err.write(f"error: [{exc.code}] {exc.message}\n")
         return 2
 
-    target = resolve_target(args.client, context)
     if settings.actor == _DEFAULT_ACTOR:
         # The installer knows the client; the stdio default does not.
         settings = replace(settings, actor=f"mcp:{args.client}")
@@ -375,10 +303,18 @@ def run_install(
     created = False
     try:
         ensure_evidence(target.label, target.evidence_dir)
-        if args.write and target.toml:
+        if args.write and target.cli is not None:
             raise InstallError(
-                f"{target.label} owns its TOML config; --write is not offered",
-                f"apply it with: {entry.apply_line(SERVER_NAME)}",
+                f"{target.label}'s own CLI writes {target.config_path}; --write "
+                "is not offered",
+                f"apply it with: {entry.apply_line(SERVER_NAME, target.cli)}",
+            )
+        commented = target.config_path.with_suffix(".jsonc")
+        if args.write and target.style == "opencode" and commented.is_file():
+            raise InstallError(
+                f"{commented} carries comments a merge would lose; refusing to "
+                "write a second config beside it",
+                "re-run without --write and paste the entry into it yourself",
             )
         if args.write:
             document = load_document(target.config_path)
