@@ -61,40 +61,59 @@ store as `conversations=` adds `recall_turn` beside `memory`.
 and applies it only when you ask:
 
 ```bash
-neosian mcp install --client claude-code                 # the home, this project's layout
-neosian mcp install --client claude-code --root ~/.my-agent/memory --scope user:me
-neosian mcp install --client claude-desktop ... --write
+neosian mcp install --client claude-code                 # once per machine: the home, no mount
+neosian mcp install --client opencode --write
+neosian mcp install --client claude-code --level project --scope user:me --write
 ```
 
-- Print mode (the default) puts the paste-able `mcpServers` JSON
-  fragment on stdout and the target path plus guidance on stderr.
-- `--write` merges the entry into the client's config file,
-  preserving every other key. Targets: `claude-code` → the project's
-  `./.mcp.json`; `claude-desktop` → its platform config file;
-  `cursor` → `~/.cursor/mcp.json`; `codex` → `~/.codex/config.toml`
-  (TOML, print-only: stdout is the `[mcp_servers.neosian-memory]`
-  table and stderr the `codex mcp add …` line that applies it:
-  Codex's own CLI is the writer, so `--write` is refused); `opencode` →
-  the project's `opencode.json`, the entry under `mcp` in OpenCode's own
-  shape (`type: local`, one `command` array).
+- **Once per machine** (`--level user`, the default): the entry lands
+  in the client's own config and names the home (`~/.neosian`, or
+  `$NEOSIAN_HOME`) and no mount. The client spawns the server in the
+  session's directory, and the server derives that session's layout
+  there: `user:<login>` at `/user`, `user:<login>/proj:<slug>` at
+  `/project` (`neosian docs agents`). Where the directory has no name
+  to derive a project from (a desktop client spawns at `/`), the server
+  serves `/user` alone. `--scope` and `--mount` are written into the
+  line at either level.
+- **`--level project`** writes this directory's file, with its
+  two-mount layout spelled into the line. Claude Desktop, Cursor and
+  Codex keep one file for every project, so they have the user level
+  alone, and asking them for `--level project` is refused (exit 2).
+- Print mode (the default) puts the paste-able fragment on stdout and
+  the target path plus guidance on stderr.
+- `--write` merges the entry into the client's config file, preserving
+  every other key. Targets, user level then project level:
+  `opencode` → `opencode.json` in its config directory
+  (`~/.config/opencode`, or `$OPENCODE_CONFIG_DIR`), or the project's
+  `opencode.json`, the entry under `mcp` in OpenCode's own shape
+  (`type: local`, one `command` array; an `opencode.jsonc` beside it is
+  refused); `claude-desktop` → its platform config file; `cursor` →
+  `~/.cursor/mcp.json`; `claude-code` at the project level → the
+  project's `./.mcp.json`.
+- **A file the client's own CLI writes is print-only.** Claude Code's
+  user scope lives in `~/.claude.json` (under `$CLAUDE_CONFIG_DIR` when
+  set), which Claude Code rewrites as it runs, and Codex's
+  `~/.codex/config.toml` is TOML: stdout is the fragment (JSON, or the
+  `[mcp_servers.neosian-memory]` table), stderr the line that applies
+  it (`claude mcp add-json --scope user …`, `codex mcp add …`), and
+  `--write` is refused with that line. `neosian setup --write` runs it
+  for you when the client's binary is on PATH. Both lines are POSIX
+  shell quoting; `setup` itself uses no shell.
+- A project's entry shadows the user's (a client connects a name once,
+  from the nearest level), so a user-level `--write` removes this
+  directory's old entry, ours only, and says so.
 - A client whose config directory does not exist is refused (exit 1):
   neosian never creates another program's config home. Install the
   client first.
-- With no flags the registration names the home (`~/.neosian`, or
-  `$NEOSIAN_HOME`) and this directory's two-mount layout
-  (`user:<login>` at `/user`, `user:<login>/proj:<slug>` at `/project`)
-  spelled out so the scope stays explicit (`neosian docs agents`).
-- The registration embeds the resolved settings: an absolute `--root`
-  (clients spawn servers from arbitrary directories), mounts in
-  canonical `--mount` form, and the current interpreter's absolute
-  path (GUI clients do not inherit your shell's PATH). A Postgres
-  registration never contains the DSN: set `NEOSIAN_POSTGRES_DSN` in
-  the client's own environment.
+- The registration embeds the resolved settings: an absolute `--root`,
+  any mounts you named in canonical `--mount` form, and the current
+  interpreter's absolute path (GUI clients do not inherit your shell's
+  PATH). A Postgres registration never contains the DSN: set
+  `NEOSIAN_POSTGRES_DSN` in the client's own environment.
 - `--json` prints one machine-readable envelope instead.
 
 The record half, a foreign agent's hooks, is `neosian record install`,
-which renders the same mount layout from the same flags
-(`neosian docs agents`).
+which takes the same flags and the same level (`neosian docs agents`).
 
 ## Consume a server
 
@@ -151,5 +170,7 @@ embedding application at the same time: reads are fine, concurrent
 writers are not arbitrated on files. The home is one root for every
 project, so two projects' servers on it are two writers. Multi-writer
 needs route to `PostgresStore` or to the state process (`neosian
-serve`, no flags), where one process owns the root for every client. The full rule:
+serve`, no flags), where one process owns the root for every client;
+`neosian setup --url URL --write` moves every client there in one run.
+The full rule, and what two projects on one home actually share:
 `neosian docs topology`.

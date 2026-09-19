@@ -17,65 +17,93 @@ payloads are the import path.
 ## Install
 
 ```bash
-neosian setup --write                                             # every client found: MCP + hooks
-neosian record install --client claude-code                       # the home, this project
-neosian record install --client claude-code --url http://127.0.0.1:6367 --write
+neosian setup --write                                             # every client found, once per machine
+neosian setup --url http://127.0.0.1:6367 --write                 # the same, behind the state process
+neosian record install --client claude-code                       # print the user-level hooks
 neosian record install --client codex --write
-neosian record install --client opencode --root ~/.my-agent/state --scope user:me --write
+neosian record install --client opencode --level project --scope user:me --write
 ```
 
 - **`neosian setup`** runs this installer and `mcp install` for every
   client it finds (their config directories are the evidence), prints
   first and applies with `--write`; `neosian status` shows each client
-  green afterwards and names an interpreter that stopped resolving.
-- **No flags is the home and this project.** With no store flag the
-  line names `~/.neosian` (or `$NEOSIAN_HOME`); with no mount flag it
-  names this directory's layout: `user:<login>` at `/user`,
-  `user:<login>/proj:<slug>` at `/project`, the slug the directory's
-  name, spelled out in the config so the scope stays explicit. A
+  green afterwards, at which level, and names an interpreter that
+  stopped resolving.
+- **Once per machine.** By default the hooks land in the client's own
+  settings (`--level user`) and serve every project: with no store flag
+  the line names `~/.neosian` (or `$NEOSIAN_HOME`) and no mount, and the
+  verb derives each session's layout where it runs: `user:<login>` at
+  `/user`, `user:<login>/proj:<slug>` at `/project`, the slug the
+  project directory's name. Nothing is written into a project. A
   neosian agent lands in the same place with `FileStore(home())` and
   `project_scope()` (`neosian docs quickstart`).
+- **`--level project`** writes this directory's file instead, with its
+  layout spelled into the line: a scope of your own for one project
+  (`--scope`, `--mount`), or recording only where you ask for it. A
+  lighter per-project override needs no second registration: set
+  `NEOSIAN_SCOPE` in that project's environment for the client.
+- **One level per client.** Every client merges its hook sources, so
+  ours at two levels would run twice and land each span twice. A
+  user-level `--write` removes this directory's project-level entry
+  (ours only, by its command; every other hook and key survives) and
+  says so; a project-level install beside user-level hooks is refused.
+  A project that still carries hooks from an earlier install shows
+  `level both` in `neosian status`, with the fix: run `neosian setup
+  --write` there. Inside a repository that commits those hooks, that
+  edits the committed file.
+- **Which project.** Claude Code runs a hook in a working directory
+  that moves when the agent runs `cd`, so its line ends on `--project
+  "$CLAUDE_PROJECT_DIR"`, the directory the session started in, which
+  stays put. Codex runs hooks in the session's directory and needs
+  nothing; the OpenCode plugin passes the directory it was opened with.
+  A directory with no name to derive a project from (`/`) records to
+  `/user` alone; a hook never exits 2, which Claude Code reads as
+  "block the prompt".
 - Print mode (the default) puts the paste-able `hooks` fragment on
   stdout (the one command on `UserPromptSubmit`, `PostToolUse`, `Stop`
   and `SessionStart`) and guidance on stderr.
-- `--write` merges it into the project's `.claude/settings.json`
-  (`.mcp.json`'s scope), preserving every other key, event and hook; a
-  group carrying our command is replaced, so a re-run is idempotent.
-  `~/.claude` must exist: neosian never creates another program's
-  config home.
-- The same store flags as `mcp install` render the same mount layout;
-  the hook line adds `--spool` (absolute) and `--agent` when not the
-  default. A DSN is never written into a hook line; `--url` carries the
-  token through `NEOSIAN_CLIENT_TOKEN` in the client's own environment.
+- `--write` merges it into `~/.claude/settings.json` (under
+  `$CLAUDE_CONFIG_DIR` when set), preserving every other key, event and
+  hook; a group carrying our command is replaced, so a re-run is
+  idempotent. `~/.claude` must exist: neosian never creates another
+  program's config home.
+- The store flags are `mcp install`'s; the hook line adds `--spool`
+  (absolute) and `--agent` when not the default. A DSN is never written
+  into a hook line; `--url` carries the token through
+  `NEOSIAN_CLIENT_TOKEN` in the client's own environment, which is now
+  a setting for the machine, not for one project.
 - Hooks beside an MCP server on one FileStore root are **two writers**,
   and the home is one root for every project on the machine: run
   `neosian serve` (no flags: it serves the home; `neosian docs
-  topology` has the per-user service recipe) and install with `--url`,
-  or use Postgres.
-- **Codex** takes the same fragment at the project's `.codex/hooks.json`
-  (`~/.codex`, or `$CODEX_HOME`, must exist). Codex loads project hooks
-  only for a trusted project, and reviews each new hook once in its
-  `/hooks` command; automation that has vetted them runs
-  `codex exec --dangerously-bypass-hook-trust`. The hook line carries
-  `--agent codex`, so the writer is `codex:<thread_id>`; Codex's `Stop`
-  hook expects JSON on stdout, and the verb answers `{}` there. The
-  memory half is TOML Codex's own CLI writes: `neosian mcp install
-  --client codex` prints the `[mcp_servers.neosian-memory]` table and
-  the `codex mcp add …` line; `--write` is refused with that line as
-  the fix.
+  topology` has the per-user service recipe), then `neosian setup --url
+  URL --write` moves every client there in one run. Or use Postgres.
+- **Codex** takes the same fragment at `~/.codex/hooks.json` (`~/.codex`,
+  or `$CODEX_HOME`, must exist). At the user level there is no project
+  trust step, but Codex runs a new hook only once you have reviewed it
+  in its `/hooks` command; automation that has vetted them runs `codex
+  exec --dangerously-bypass-hook-trust`. At `--level project` it is the
+  project's `.codex/hooks.json`, loaded only for a trusted project. The
+  hook line carries `--agent codex`, so the writer is
+  `codex:<thread_id>`; Codex's `Stop` hook expects JSON on stdout, and
+  the verb answers `{}` there. The memory half is TOML Codex's own CLI
+  writes: `neosian mcp install --client codex` prints the
+  `[mcp_servers.neosian-memory]` table and the `codex mcp add …` line,
+  and `neosian setup --write` runs that line for you.
 - **OpenCode** has no shell hooks; it has a plugin API. The same command
-  writes a small plugin file, `.opencode/plugins/neosian-record.js`
-  (`~/.config/opencode`, or `$OPENCODE_CONFIG_DIR`, must exist), that
-  maps `chat.message`, `tool.execute.after` and `session.idle` onto the
-  verb's three write payloads and pipes them in: ours whole,
-  overwritten on re-run, never merged; print mode prints its source.
-  The writer is `opencode:<session_id>`. OpenCode's only context door
-  is an experimental per-call hook, so its row is write-only: the read
-  side below is not wired there. The memory half is JSON: `neosian mcp install
-  --client opencode` merges `{"mcp": {"neosian-memory": {"type":
-  "local", …}}}` into the project's `opencode.json` (a `.jsonc` with
-  comments is refused; paste the fragment). Any model OpenCode can run
-  works, its free models included.
+  writes a small plugin file, `plugins/neosian-record.js` in OpenCode's
+  own config directory (`~/.config/opencode`, or `$OPENCODE_CONFIG_DIR`,
+  which must exist; `.opencode/plugins/` in the project at `--level
+  project`), that maps `chat.message`, `tool.execute.after` and
+  `session.idle` onto the verb's three write payloads and pipes them in:
+  ours whole, overwritten on re-run, never merged; print mode prints
+  its source. The writer is `opencode:<session_id>`. OpenCode's only
+  context door is an experimental per-call hook, so its row is
+  write-only: the read side below is not wired there. The memory half
+  is JSON: `neosian mcp install --client opencode` merges `{"mcp":
+  {"neosian-memory": {"type": "local", …}}}` into `opencode.json` in the
+  same directory (an `opencode.jsonc` beside it is refused, since
+  comments do not survive a merge; paste the fragment). Any model
+  OpenCode can run works, its free models included.
 
 ## What a span becomes
 
@@ -147,12 +175,15 @@ neosian audit --scope user:me --actor claude-code:<session_id> --url http://127.
 
 ## The client table
 
-A row exists only while its walkthrough is green on a real install.
+A row exists only while its walkthrough is green on a real install. "Per
+machine" is the default registration: one run of `neosian setup --write`,
+two project directories, each session in its own `proj:` scope.
 
-| client | memory (`mcp install`) | record (`record install`) | session start |
-|---|---|---|---|
-| Claude Code | ✓ | ✓ walkthrough green 2026-09-02 | ✓ `SessionStart`, stdout as context (2026-09-03) |
-| Codex | ✓ print + `codex mcp add` | ✓ walkthrough green 2026-09-03 (`codex exec`) | ✓ the same event and `source` values (its reference, 2026-09-03) |
-| OpenCode | ✓ | ✓ walkthrough green 2026-09-03 (`opencode run`, a plugin) | — (an experimental per-call door only; not wired) |
-| Claude Desktop | ✓ | no hooks surface | — |
-| Cursor | ✓ | not yet; enters on a verified hook surface | — |
+| client | memory (`mcp install`) | record (`record install`) | per machine | session start |
+|---|---|---|---|---|
+| Claude Code | ✓ user scope through `claude mcp add-json` | ✓ walkthrough green 2026-09-02 | ✓ 2026-09-19 (2.1.278): the server is spawned in the session's directory, the hook line's project directory expands | ✓ `SessionStart`, stdout as context (2026-09-03) |
+| Codex | ✓ through `codex mcp add` | ✓ walkthrough green 2026-09-03 (`codex exec`) | ✓ 2026-09-19 (0.154.0): the same, user-level hooks with no project trust step | ✓ the same event and `source` values (its reference, 2026-09-03) |
+| OpenCode | ✓ | ✓ walkthrough green 2026-09-03 (`opencode run`, a plugin) | pinned keylessly; its real run is owed | — (an experimental per-call door only; not wired) |
+| Claude Desktop | ✓ | no hooks surface | one file by nature; no project, so `/user` alone | — |
+| Cursor | ✓ | not yet: its hooks are read (their own payload shape, a mapping of its own); next | | — |
+| Muse Code | not yet | not yet: hooks in Claude Code's shape; next | | |

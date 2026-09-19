@@ -8,6 +8,59 @@ phase close names the version.
 
 ## [Unreleased]
 
+### Changed
+
+- **A machine is registered once.** `neosian setup --write`, `neosian mcp
+  install` and `neosian record install` now write each client's own
+  user-level config by default (`--level user`): Claude Code's
+  `~/.claude/settings.json` and user-scope MCP, Codex's `~/.codex`,
+  OpenCode's config directory. The line names the store and no mount,
+  and each session derives its layout where it runs, so every project
+  gets its own `proj:` scope with no file of its own and a new project
+  needs nothing. `--level project` keeps the former shape: this
+  directory's files, its layout written into the line (ledger #265;
+  DESIGN §22.6). **Migrating:** clients merge their hook sources, so a
+  project that still carries hooks from an earlier install would record
+  each span twice beside the user-level ones. `neosian status` there
+  reports `level both` with the fix: run `neosian setup --write` in that
+  project, which removes the project's entry (ours only).
+- `neosian setup --write` runs the client's own CLI for a file that CLI
+  owns (`claude mcp add-json --scope user`, `codex mcp add`) when the
+  binary is on PATH, and prints the line and exits 1 otherwise; Codex's
+  MCP half is no longer a standing refusal (ledger #267).
+- `neosian status` reports each client's level (`user`, `project`,
+  `both`) and names hooks installed at both levels; its one-writer note
+  names `neosian setup --url URL --write`.
+
+### Added
+
+- `--level user|project` on `setup` and both installers; `--root` and
+  `--url` on `setup`, forwarded to both installers: `neosian setup --url
+  URL --write` moves every client on the machine to the state process in
+  one run, the one-writer rule's answer for many projects on one home
+  (ledger #266). `neosian docs topology` states what two projects on one
+  home share and what a same-document race costs.
+- `neosian record --project DIR`: the directory whose layout is the
+  default. Claude Code's once-per-machine hook line passes
+  `"$CLAUDE_PROJECT_DIR"`, since a hook's working directory moves with the
+  agent's `cd`.
+- `CLAUDE_CONFIG_DIR` is honoured like `CODEX_HOME` and
+  `OPENCODE_CONFIG_DIR`.
+
+### Fixed
+
+- `mcp install` for Codex, Cursor and Claude Desktop writes one file for
+  every project, yet carried the scope of whichever directory the
+  installer ran in. A user-level entry carries no derived mount.
+- `neosian record` and `neosian mcp` no longer refuse a directory with no
+  name to derive a project from; they serve `/user` alone. A hook's exit
+  2 blocks the prompt in Claude Code, and a desktop client spawns the
+  server at `/`.
+- `mcp install --client opencode --write` beside an `opencode.jsonc`
+  created a second config; it is refused, as the docs always said.
+- `setup` printed `refused: usage` for a grammar-tier refusal; it prints
+  the message.
+
 ## [1.0.0rc13] - 2026-09-18
 
 ### Added

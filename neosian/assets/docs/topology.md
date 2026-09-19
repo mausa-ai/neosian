@@ -63,13 +63,15 @@ token refuses to start; TLS terminates at a reverse proxy.
 
 `~/.neosian` (or `$NEOSIAN_HOME`) is the store every command and the
 playground use when no flag names one, and the root a neosian agent
-reaches through `home()`. Per project is a scope, not a root:
-`neosian record install` and `neosian mcp install` spell this
-directory's layout into the client's config (`user:<login>` at
-`/user`, `user:<login>/proj:<slug>` at `/project`), and
-`project_scope()` spells the same for a `Conversation`. One `neosian
-audit --scope user:<login>/proj:<slug>` then lists every agent's work
-in the project.
+reaches through `home()`. Per project is a scope, not a root, and a
+machine is registered once: `neosian setup --write` writes each client's
+own config, which names the home and no mount, and every session
+derives its layout where it runs (`user:<login>` at `/user`,
+`user:<login>/proj:<slug>` at `/project`); `project_scope()` spells the
+same for a `Conversation`. No project carries a file, and a new project
+needs nothing. One `neosian audit` inside a project then lists every
+agent's work in it. (`--level project` still writes one directory's own
+files: `neosian docs agents`.)
 
 Many projects and agents on one home is the multi-writer shape, so the
 answer is the state process on the home: one process owning the files,
@@ -98,9 +100,17 @@ Restart=on-failure
 WantedBy=default.target
 ```
 
-Then `launchctl load` / `systemctl --user enable --now neosian`, and
-every install on the machine takes `--url http://127.0.0.1:6367` with
-`NEOSIAN_CLIENT_TOKEN` in the client's own environment.
+Then `launchctl load` / `systemctl --user enable --now neosian`, and one
+run moves every client on the machine behind it:
+
+```bash
+NEOSIAN_CLIENT_TOKEN=change-me neosian setup --url http://127.0.0.1:6367 --write
+```
+
+The token is never written into a registration or a hook line: set
+`NEOSIAN_CLIENT_TOKEN` in each client's own environment (for Claude Code,
+the `env` block of `~/.claude/settings.json`; for a shell-launched client,
+your shell profile).
 
 Python clients speak the store wire:
 
@@ -173,6 +183,21 @@ store. Multi-writer needs route to `PostgresStore`, which arbitrates
 on the version-row primary key, or to the state process, where one
 `neosian serve` owns the files and every client speaks to it over
 `RemoteStore`.
+
+**What two projects on one home share.** A machine registered once runs
+a hook process and an MCP server per session, all on the home, so it is
+worth being exact about the rule's reach. Different scopes are disjoint
+files: each scope's documents, version sidecars and redaction trail live
+in its own directory, and a conversation is one directory per id, so
+two projects, or two sessions, never write the same file by writing
+their own. The shared surface is the scope every project mounts,
+`/user`, and two sessions of the same project. There a race needs two
+writers on the same document at the same moment; what it costs is an
+edit lost (last writer wins) and, in the sidecar, a version number
+given twice, since both read the last number before either appends.
+Nothing tears: appends are whole lines and a document is replaced
+whole. If that window matters to you, the state process closes it, and
+moving a machine there is the one `neosian setup --url` run above.
 
 ## Choosing
 

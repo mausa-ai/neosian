@@ -23,9 +23,9 @@ Two doors, one store:
   `Conversation` wraps into a durable, memory-bearing thread.
 - **Give your agent state.** Claude Code, Codex, Cursor or OpenCode get
   memory and skills over MCP and every session recorded through hooks —
-  `neosian setup --write` wires every client it finds; `neosian status`
-  says whether the machine is set up; bare `neosian` opens a chat with
-  an agent that knows neosian, on the same memory.
+  `neosian setup --write` wires every client it finds, once per machine;
+  `neosian status` says whether the machine is set up; bare `neosian`
+  opens a chat with an agent that knows neosian, on the same memory.
 
 <p align="center">
 <img src="https://raw.githubusercontent.com/mausa-ai/neosian/v1.0.0rc13/branding/readme/record.gif" alt="neosian record install writes the hooks; one headless Claude Code session lands as a recorded turn; neosian audit names it" width="720">
@@ -148,7 +148,8 @@ Each line is one page in the wheel — `neosian docs <topic>`.
   spells the hooks that land a prompt-to-stop span as one turn by
   `claude-code:<session>` (Codex and OpenCode too), plus a sessions
   document; `SessionStart` prints the index and "where we left off" into
-  the next window. A neosian `Conversation` on the same home shares the
+  the next window. Registered once per machine, every project gets its
+  own scope with no file of its own. A neosian `Conversation` on the same home shares the
   scope, so one `audit` names both.
 - **The state process** (`topology`). `neosian serve` puts memory and
   conversations on a port (the shipped Dockerfile is the appliance) — reach, not capability; `RemoteStore` drops in where

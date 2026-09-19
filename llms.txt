@@ -31,11 +31,16 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
 
 - `neosian status [--json]`: is this machine set up? The home, which
   providers have a key (never values), this directory's two scopes, per
-  client installed / MCP registered / hooks present / interpreter
-  resolving, the last recorded session, the install shape. Exit 0
-  always; findings are data.
-- `neosian setup [--write]`: wire every installed client (Claude Code,
-  Codex, OpenCode) to the home: MCP + the record hooks; print first.
+  client installed / MCP registered / hooks present / level (user,
+  project, both) / interpreter resolving, the last recorded session, the
+  install shape. Exit 0 always; findings are data.
+- `neosian setup [--write] [--level user|project] [--root DIR | --url URL]`:
+  wire every installed client (Claude Code, Codex, OpenCode) to the home,
+  once per machine: MCP + the record hooks in the client's own config, no
+  file per project; print first. `--write` runs the client's own CLI for
+  a file it owns (`claude mcp add-json`, `codex mcp add`) when on PATH,
+  else prints the line and exits 1. `--url URL` moves every client to the
+  state process in one run.
 - `neosian configure --list | --provider NAME --key - | --delete`: keys
   under `<home>/config.toml`, read from stdin, never argv.
 - `neosian chat [PROMPT] [--model M] [--json]`: the resident agent that
@@ -80,8 +85,14 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
 
 - `neosian mcp install --client claude-code|claude-desktop|cursor|codex|opencode`
   prints the exact registration; `--write` applies it (refused when the
-  client is not installed; Codex is print-only, so apply with the printed
-  `codex mcp add` line).
+  client is not installed). Once per machine by default: the entry names
+  the store and no mount, the server derives each session's layout from
+  the directory the client spawns it in (/user alone where that has no
+  name); `--level project` writes this directory's file with its layout in
+  the line (not for claude-desktop, cursor, codex: one file each). Claude
+  Code's user scope and Codex are print-only, their own CLIs write those
+  files: apply with the printed `claude mcp add-json --scope user` /
+  `codex mcp add` line, or let `neosian setup --write` run it.
 - `python -m neosian.mcp --root DIR --scope user:me` serves the same
   store over stdio: the `memory` tool, `list_skills` and
   `load_skill` over the mounts' skills (each skill also an MCP prompt, a
@@ -96,14 +107,19 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
 ## Record a foreign agent
 
 - `neosian record install --client claude-code|codex|opencode` prints
-  the four hooks. No flags: the home and this directory's layout,
-  `user:<login>` at /user and `user:<login>/proj:<slug>` at /project,
-  spelled into the line; `--root DIR --scope S` override (the events:
-  UserPromptSubmit, PostToolUse, Stop, SessionStart); for OpenCode, a
-  plugin file; `--write` merges them into
-  ./.claude/settings.json or ./.codex/hooks.json, every other hook
-  preserved, or writes ./.opencode/plugins/neosian-record.js (Codex: a
-  trusted project, hooks reviewed in /hooks).
+  the four hooks (UserPromptSubmit, PostToolUse, Stop, SessionStart; for
+  OpenCode, a plugin file). Once per machine by default: the line names
+  the home and no mount, and each session gets `user:<login>` at /user
+  and `user:<login>/proj:<slug>` at /project, derived from the client's
+  project directory (Claude Code: `--project "$CLAUDE_PROJECT_DIR"`);
+  `--write` merges them into ~/.claude/settings.json or
+  ~/.codex/hooks.json, every other hook preserved, or writes
+  plugins/neosian-record.js in OpenCode's config directory (Codex reviews
+  a new hook once in /hooks). `--level project` writes this directory's
+  file with its layout in the line; `--root DIR --scope S` override at
+  either level. One level per client: clients merge hook sources, so a
+  user-level `--write` removes this directory's old entry and a
+  project-level install beside user-level hooks is refused.
 - The hooks call `python -m neosian.record` with the payload on stdin; a
   prompt-to-stop span lands as one turn by `claude-code:<session_id>` in
   the conversation the session id names, plus a sessions document at
@@ -112,7 +128,8 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
   index and "where we left off" (the recent sessions, log-projected):
   the client adds a hook's stdout to the model's context.
 - Hooks beside an MCP server are two writers: use `--url` (the state
-  process) or Postgres. `neosian docs agents` carries the client table.
+  process; `neosian setup --url URL --write` moves the whole machine) or
+  Postgres. `neosian docs agents` carries the client table.
 
 ## Reach it over the network
 

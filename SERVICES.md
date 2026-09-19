@@ -124,10 +124,25 @@ by a stamp under the home; silent when offline. `NEOSIAN_INSTALL`
 `NEOSIAN_SCOPE` is `--scope`'s environment twin (DESIGN §30): read by
 the same argv entry points, it names the single read-write mount at
 `/memories` when no flag does (`audit` reads it as the raw scope). Unset,
-the shell verbs resolve the working directory's project layout — the
-`user:<login>` + `user:<login>/proj:<slug>` pair the installers render —
-and a directory with no derived name refuses at exit 2. An explicit
-`--scope` or `--mount` always wins.
+the shell verbs resolve the working directory's project layout (the
+`user:<login>` + `user:<login>/proj:<slug>` pair), and a directory with
+no derived name refuses at exit 2 (the two doors a client spawns,
+`neosian mcp` and `neosian record`, serve the user mount alone there). An
+explicit `--scope` or `--mount` always wins. Under a registration that is
+once per machine (DESIGN §22.6) this is the per-project override that
+needs no second registration: set it in that project's environment for
+the client (Claude Code: the `env` block of the project's
+`.claude/settings.json`).
+
+## The clients' own homes
+
+`CLAUDE_CONFIG_DIR`, `CODEX_HOME` and `OPENCODE_CONFIG_DIR` are the
+clients' variables, not neosian's: the installers, `setup` and `status`
+honour each to find that client's config (`~/.claude`, `~/.codex`,
+`~/.config/opencode` when unset), so a sandboxed client is registered and
+reported where it actually reads. `CLAUDE_PROJECT_DIR` is Claude Code's:
+its once-per-machine hook line passes it as `--project`, because a hook's
+working directory moves with the agent's `cd` and that variable does not.
 
 ## The MCP server — a DSN, not an API key
 

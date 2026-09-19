@@ -26,13 +26,21 @@ neosian                                  # on a terminal: chat; under a pipe: th
 - **`status`**: the home and whether it exists; the config and which
   providers have a key (names and sources, never values); this
   directory's two scopes; per client (Claude Code, Codex, OpenCode)
-  installed / MCP registered / hooks present / the interpreter those
-  files name still resolving; the last recorded session; the one-writer
-  note; the installation shape with its upgrade line; the update knob.
-  Exit 0 whenever it ran; findings are data.
+  installed / MCP registered / hooks present / at which level (`user`,
+  `project`, or `both`) / the interpreter those files name still
+  resolving; the last recorded session; the one-writer note, and a note
+  when a client carries the hooks at both levels (they would run twice);
+  the installation shape with its upgrade line; the update knob. Exit 0
+  whenever it ran; findings are data.
 - **`setup`**: detects the clients present and runs both installers
-  for each (`mcp install` and `record install`, the home and this
-  directory's layout). It prints what would land; `--write` applies it.
+  for each (`mcp install` and `record install`), once per machine:
+  each client's own config, the home, no mount (`--level project` for
+  this directory's files). It prints what would land; `--write` applies
+  it, and runs the client's own CLI for a file that CLI owns (`claude
+  mcp add-json`, `codex mcp add`) when it is on PATH, printing the line
+  otherwise (exit 1: something is left to do). `--root` and `--url`
+  reach both installers: `neosian setup --url URL --write` moves every
+  client on the machine to the state process in one run.
 - **`configure`**: keys under `<home>/config.toml`, one row per
   provider the catalog knows (shipped, door rows, registered doors);
   `--provider NAME --key -` reads the key from stdin, never argv;
@@ -51,9 +59,9 @@ neosian                                  # on a terminal: chat; under a pipe: th
 
 **No flags means this project.** Every verb below resolves the working
 directory's layout (`user:<login>` at `/user`, `user:<login>/proj:<slug>`
-at `/project`, the same pair the installers write) when no `--scope`
-or `--mount` names a mount; `NEOSIAN_SCOPE` is `--scope`'s environment
-twin. The store is the home unless `--root`, `--url` or the DSN names
+at `/project`, the same pair a registered agent's sessions get) when no
+`--scope` or `--mount` names a mount; `NEOSIAN_SCOPE` is `--scope`'s
+environment twin. The store is the home unless `--root`, `--url` or the DSN names
 one.
 
 ## Memory from the shell
@@ -98,7 +106,7 @@ EOF
 | `--url URL` | the state process instead of a root; its token in `NEOSIAN_CLIENT_TOKEN` |
 | `--scope SCOPE` | single read-write mount of SCOPE at `/memories` (the sugar); `NEOSIAN_SCOPE` is its environment twin |
 | `--mount scope=...,path=...` | explicit mount; repeatable; append `,ro` (read-only) or `,eo` (edit-only) |
-| *(neither)* | this directory's project layout: `user:<login>` at `/user`, `user:<login>/proj:<slug>` at `/project`, the pair the installers render; a directory with no name refuses at exit 2 |
+| *(neither)* | this directory's project layout: `user:<login>` at `/user`, `user:<login>/proj:<slug>` at `/project`, the pair `--level project` installs render; a directory with no name refuses at exit 2 (the two doors a client spawns, `neosian mcp` and `neosian record`, serve `/user` alone there instead) |
 | `--actor NAME` | who writes, `<kind>:<id>` (default `cli:local`; `cli:<host>` names the agent driving the shell) |
 | `--schema NAME` | Postgres schema (Postgres only) |
 
@@ -218,12 +226,16 @@ on stdin per event, `hook_event_name` saying which. `UserPromptSubmit`
 opens a span, `PostToolUse` adds a tool round, `Stop` lands it as one
 turn by `<agent>:<session_id>` in the conversation the session id names
 and writes the scope's sessions document. It takes the store and mount
-flags above plus `--agent KIND` (default `claude-code`) and `--spool
-DIR` (default `spool/` under the home, never the store). The sessions
-document lands in the mount at `/project` when there is one, else the
-first read-write mount. `neosian record
-install --client claude-code|codex|opencode [--write]` renders or applies the hooks,
-the `mcp install` twin (`neosian docs agents`). The exit tiers bend once
+flags above plus `--agent KIND` (default `claude-code`), `--spool
+DIR` (default `spool/` under the home, never the store) and `--project
+DIR`, the directory whose layout is the default (the working directory
+when absent; a once-per-machine Claude Code hook line passes
+`"$CLAUDE_PROJECT_DIR"`, since a hook's working directory moves with the
+agent's `cd`). The sessions document lands in the mount at `/project`
+when there is one, else the first read-write mount. `neosian record
+install --client claude-code|codex|opencode [--level user|project]
+[--write]` renders or applies the hooks, the `mcp install` twin
+(`neosian docs agents`). The exit tiers bend once
 for the hook's sake: 2 only for argv, 1 for everything after, so a
 broken store never blocks the agent; stdout is silent unless `--json`
 (`{"event", "session_id", "actor", "disposition", "conversation_id",
