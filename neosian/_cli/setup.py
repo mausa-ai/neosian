@@ -129,7 +129,12 @@ def run_setup(
                     context=context,
                 ),
                 "hooks": _installer(
-                    hooks_install, client, write=args.write, env=env, context=context
+                    hooks_install,
+                    client,
+                    write=args.write,
+                    extra=("--level", "project"),
+                    env=env,
+                    context=context,
                 ),
             }
         )

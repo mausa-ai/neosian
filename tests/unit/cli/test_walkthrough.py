@@ -374,8 +374,19 @@ class TestUpgrade:
         tokens = [args[i + 1] for i, a in enumerate(args) if a == "--mount"]
         assert [t.split(",")[1] for t in tokens] == ["path=user", "path=project"]
         assert tokens[1].split(",")[0].endswith("/proj:demo-proj")
+        anchored = _run(
+            ["record", "install", "--client", "claude-code", "--json"],
+            cwd=project,
+            env=env,
+        )
+        assert anchored.returncode == 0, anchored.stderr
+        command = json.loads(anchored.stdout)["command"]
+        assert "--mount" not in command
+        assert command.endswith(' --project "$CLAUDE_PROJECT_DIR"')
         hooks = _run(
-            ["record", "install", "--client", "claude-code"], cwd=project, env=env
+            ["record", "install", "--client", "claude-code", "--level", "project"],
+            cwd=project,
+            env=env,
         )
         assert hooks.returncode == 0, hooks.stderr
         assert "/proj:demo-proj,path=project" in hooks.stdout
@@ -536,6 +547,80 @@ class TestRecord:
             :2
         ] == ["-m", "neosian.mcp"]
         assert "codex mcp add neosian-memory --" in result.stderr
+
+
+class TestOncePerMachine:
+    """NU2 (DESIGN §22.6): the hook line `record install` writes into the
+    client's own settings, run the way the client runs it — through a
+    shell, which is what expands the project directory."""
+
+    @staticmethod
+    def _installed_line(tmp_path: Path, env: Mapping[str, str]) -> str:
+        (tmp_path / ".claude").mkdir()
+        written = _run(
+            ["record", "install", "--client", "claude-code", "--write"],
+            cwd=tmp_path,
+            env=env,
+        )
+        assert written.returncode == 0, written.stderr
+        settings = json.loads((tmp_path / ".claude" / "settings.json").read_text())
+        line: str = settings["hooks"]["Stop"][0]["hooks"][0]["command"]
+        return line
+
+    @staticmethod
+    def _hook(
+        line: str, payload: object, *, cwd: Path, env: Mapping[str, str]
+    ) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(  # noqa: S602 - the client runs a hook in a shell
+            line,
+            shell=True,
+            input=json.dumps(payload),
+            capture_output=True,
+            text=True,
+            cwd=cwd,
+            env=dict(env),
+            timeout=60,
+            check=False,
+        )
+
+    def test_one_line_serves_the_project_the_client_names(self, tmp_path: Path) -> None:
+        if sys.platform == "win32":
+            pytest.skip("a POSIX shell expands the variable")
+        env = _env(tmp_path)
+        line = self._installed_line(tmp_path, env)
+        assert "--mount" not in line  # nothing per project in the one file
+        project, elsewhere = tmp_path / "the-app", tmp_path / "the-app" / "src"
+        elsewhere.mkdir(parents=True)
+        claude = {**env, "CLAUDE_PROJECT_DIR": str(project)}
+        for payload in (prompt("hello"), tool(), stop("done")):
+            # The agent ran `cd src`: the hook's cwd moved, the project did not.
+            result = self._hook(line, payload, cwd=elsewhere, env=claude)
+            assert result.returncode == 0, result.stderr
+        ledger = _run(["audit", "--json"], cwd=project, env=env)
+        assert ledger.returncode == 0, ledger.stderr
+        entries = json.loads(ledger.stdout)["entries"]
+        assert [e["path"] for e in entries] == [f"sessions/{SESSION}"]
+        stray = _run(["audit", "--json"], cwd=elsewhere, env=env)
+        assert json.loads(stray.stdout)["entries"] == []  # no `proj:src` scope
+
+    def test_a_nameless_directory_never_blocks_the_prompt(self, tmp_path: Path) -> None:
+        if sys.platform == "win32":
+            pytest.skip("a POSIX shell expands the variable")
+        env = _env(tmp_path)
+        line = self._installed_line(tmp_path, env)
+        session = "00000000-0000-4000-8000-000000000001"
+        bare = {k: v for k, v in env.items() if k != "CLAUDE_PROJECT_DIR"}
+        for payload in (prompt("hi", session=session), stop("ok", session=session)):
+            result = self._hook(line, payload, cwd=Path("/"), env=bare)
+            assert result.returncode == 0, result.stderr  # 2 would drop the prompt
+        user = json.loads(_run(["status", "--json"], cwd=tmp_path, env=env).stdout)
+        ledger = _run(
+            ["audit", "--scope", user["scopes"]["/user"], "--json"],
+            cwd=tmp_path,
+            env=env,
+        )
+        paths = [e["path"] for e in json.loads(ledger.stdout)["entries"]]
+        assert paths == [f"sessions/{session}"]
 
 
 class TestConsole:

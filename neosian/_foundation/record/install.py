@@ -1,23 +1,24 @@
-"""`neosian record install` — the hook installer (DESIGN §20.9).
+"""`neosian record install` — the hook installer (DESIGN §20.9, §22.6).
 
 The `mcp install` twin for a foreign agent's hooks: prints the exact
 hooks fragment by default, applies it only with --write, merging
 key-preserving into the client's settings — every other hook survives,
-ours is replaced, so a re-run is idempotent. It renders the same mount
-layout from the same flags as `mcp install`; hooks are a second writer
-beside the agent's MCP server, so the full record rides the state
-process (`--url`) or Postgres (§8's one-writer rule). Claude Code first,
-walkthrough-gated: a client row exists only while its walkthrough is
-green.
+ours is replaced, so a re-run is idempotent. Once per machine by default:
+the user-level line names the store and no mount, and the verb derives
+each session's layout from the client's project directory (`--project`,
+where the client has a stable one) or its working directory; `--level
+project` writes this directory's file with its layout in the line. Hooks
+are a second writer beside the agent's MCP server, so the full record
+rides the state process (`--url`) or Postgres (§8's one-writer rule). A
+client row (`targets.py`) exists only while its walkthrough is green.
 """
 
 from __future__ import annotations
 
 import json
 import shlex
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from importlib import resources
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, TextIO
 
 from neosian._foundation.memory.settings import (
@@ -25,6 +26,7 @@ from neosian._foundation.memory.settings import (
     DEFAULT_SCHEMA,
     POSTGRES_DSN_ENV,
     StreamParser,
+    check_login,
     format_mount,
 )
 from neosian._foundation.record.settings import (
@@ -33,26 +35,31 @@ from neosian._foundation.record.settings import (
     add_record_arguments,
     resolve_record_settings,
 )
+from neosian._foundation.record.targets import (
+    CLIENT_CHOICES,
+    RECORD_ARGV,
+    HookTarget,
+    is_ours,
+    resolve_target,
+)
 from neosian._foundation.shared.client_config import (
     FIX_BY_HAND,
     Environment,
     InstallError,
-    codex_home,
+    add_level_argument,
     ensure_evidence,
     load_document,
-    opencode_config_dir,
     write_document,
     write_text,
 )
 from neosian._foundation.shared.exceptions import MemoryStoreError
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping, Sequence
+    from collections.abc import Mapping, Sequence
+    from pathlib import Path
 
 HOOK_EVENTS: Final = ("UserPromptSubmit", "PostToolUse", "Stop", "SessionStart")
 HOOKS_KEY: Final = "hooks"
-_RECORD_ARGV: Final = ("-m", "neosian.record")  # the one place the module path lives
-_MARKER: Final = " ".join(_RECORD_ARGV)  # how ours is recognised in a merge
 _PLUGIN_ASSET: Final = "clients/opencode-record.js"
 _PLUGIN_ARGV_SLOT: Final = "__NEOSIAN_RECORD_ARGV__"
 _DESCRIPTION: Final = "Print or apply a foreign agent's hooks for neosian record."
@@ -66,78 +73,14 @@ _EPILOG: Final = (
 )
 
 
-@dataclass(frozen=True, slots=True)
-class HookTarget:
-    """One client's hooks surface — a row, so reversals are cheap."""
-
-    client: str
-    label: str
-    config_path: Path
-    evidence_dir: Path  # must already exist; NEVER created
-    scope_note: str
-    trust_hint: str | None = None  # what the client needs before it loads the file
-    # A plugin client (OpenCode) has no shell hooks: the file is ours whole
-    # — a rendered plugin, written and overwritten, never merged.
-    plugin: bool = False
-
-
-def _claude_code(context: Environment) -> HookTarget:
-    return HookTarget(
-        client="claude-code",
-        label="Claude Code",
-        config_path=context.cwd / ".claude" / "settings.json",
-        evidence_dir=context.home / ".claude",
-        scope_note="project scope — .claude/settings.json travels with this "
-        "directory's repo",
-    )
-
-
-def _codex(context: Environment) -> HookTarget:
-    return HookTarget(
-        client="codex",
-        label="Codex",
-        config_path=context.cwd / ".codex" / "hooks.json",
-        evidence_dir=codex_home(context),
-        scope_note="project scope — .codex/hooks.json travels with this "
-        "directory's repo",
-        trust_hint="Codex loads project hooks only for a trusted project: "
-        f'[projects."{context.cwd}"] trust_level = "trusted" in its config.toml, '
-        "or accept the trust prompt on first run",
-    )
-
-
-def _opencode(context: Environment) -> HookTarget:
-    return HookTarget(
-        client="opencode",
-        label="OpenCode",
-        config_path=context.cwd / ".opencode" / "plugins" / "neosian-record.js",
-        evidence_dir=opencode_config_dir(context),
-        scope_note="project scope — .opencode/plugins/neosian-record.js travels "
-        "with this directory's repo",
-        plugin=True,
-    )
-
-
-_TARGETS: Final[dict[str, Callable[[Environment], HookTarget]]] = {
-    "claude-code": _claude_code,
-    "codex": _codex,
-    "opencode": _opencode,
-}
-CLIENT_CHOICES: Final = tuple(_TARGETS)
-
-
-def resolve_target(client: str, context: Environment) -> HookTarget:
-    """The hooks surface for one `--client` token."""
-    return _TARGETS[client](context)
-
-
 def build_argv(settings: RecordSettings, *, executable: str) -> list[str]:
     """The resolved settings re-rendered as the verb's argv — the same
-    layout `mcp install` renders (absolute root, canonical mounts, the
-    URL verbatim, never the DSN), plus the agent's kind and an absolute
-    spool (hooks run in the project's cwd, worktrees included)."""
+    layout `mcp install` renders (absolute root, the mounts that were
+    named in canonical form, the URL verbatim, never the DSN), plus the
+    agent's kind and an absolute spool (hooks run wherever the session
+    does, worktrees included)."""
     store = settings.store
-    args: list[str] = [executable, *_RECORD_ARGV]
+    args: list[str] = [executable, *RECORD_ARGV]
     if store.root is not None:
         args += ["--root", str(store.root.expanduser().resolve())]
     if store.url is not None:
@@ -152,9 +95,16 @@ def build_argv(settings: RecordSettings, *, executable: str) -> list[str]:
     return args
 
 
-def build_command(settings: RecordSettings, *, executable: str) -> str:
-    """`build_argv` as one shell line — what a hooks file carries."""
-    return shlex.join(build_argv(settings, executable=executable))
+def build_command(
+    settings: RecordSettings, *, executable: str, project_token: str | None = None
+) -> str:
+    """`build_argv` as one shell line — what a hooks file carries. A line
+    that names no mount ends on the client's project expression, raw:
+    quoting it (as `shlex.join` would) stops the shell expanding it."""
+    line = shlex.join(build_argv(settings, executable=executable))
+    if project_token is not None and not settings.store.mounts:
+        return f"{line} {project_token}"
+    return line
 
 
 def render_plugin(argv: Sequence[str]) -> str:
@@ -175,15 +125,6 @@ def hook_fragment(command: str) -> dict[str, Any]:
             for event in HOOK_EVENTS
         }
     }
-
-
-def _is_ours(group: object) -> bool:
-    if not isinstance(group, dict) or not isinstance(group.get("hooks"), list):
-        return False
-    return any(
-        isinstance(hook, dict) and _MARKER in str(hook.get("command", ""))
-        for hook in group["hooks"]
-    )
 
 
 def merge_hooks(
@@ -207,7 +148,7 @@ def merge_hooks(
                 "refusing to rewrite it",
                 FIX_BY_HAND,
             )
-        hooks[event] = [g for g in current if not _is_ours(g)] + list(groups)
+        hooks[event] = [g for g in current if not is_ours(g)] + list(groups)
     merged[HOOKS_KEY] = hooks
     return merged
 
@@ -216,6 +157,7 @@ def _render_success(
     *,
     target: HookTarget,
     argv: Sequence[str],
+    command: str,
     settings: RecordSettings,
     written: bool,
     created: bool,
@@ -223,7 +165,6 @@ def _render_success(
     out: TextIO,
     err: TextIO,
 ) -> int:
-    command = shlex.join(argv)
     fragment = hook_fragment(command)
     plugin = render_plugin(argv) if target.plugin else None
     if json_output:
@@ -231,6 +172,7 @@ def _render_success(
             "success": True,
             "client": target.client,
             "label": target.label,
+            "level": target.level,
             "config_path": str(target.config_path),
             "hooks": None if target.plugin else fragment[HOOKS_KEY],
             "plugin": plugin,
@@ -323,10 +265,16 @@ def run_install(
         dest="json_output",
         help="print one JSON envelope on stdout",
     )
+    add_level_argument(parser)
     add_record_arguments(parser)
     try:
         args = parser.parse_args(list(argv))
-        settings = resolve_record_settings(parser, args, env, layout=context.cwd)
+        # Per machine the line names no mount: the verb derives each
+        # session's layout from the client's project directory (§22.6).
+        layout = context.cwd if args.level == "project" else None
+        settings = resolve_record_settings(parser, args, env, layout=layout)
+        if not settings.store.mounts:
+            check_login(parser)
     except SystemExit as exc:  # argparse: usage already on the streams
         if exc.code is None:
             return 0
@@ -335,25 +283,29 @@ def run_install(
         err.write(f"error: [{exc.code}] {exc.message}\n")
         return 2
 
-    target = resolve_target(args.client, context)
+    target = resolve_target(args.client, context, args.level)
     if settings.agent == DEFAULT_AGENT:
         # The installer knows the client; the verb's default does not.
         settings = replace(settings, agent=args.client)
     argv = build_argv(settings, executable=context.executable)
+    command = build_command(
+        settings, executable=context.executable, project_token=target.project_token
+    )
     created = False
     try:
         ensure_evidence(target.label, target.evidence_dir)
         if args.write:
             created = not target.config_path.exists()
-            # The project's own config directory, like `.mcp.json`'s parent —
-            # not the client's home, which is refused above.
+            # The project's own config directory, or `plugins/` inside the
+            # client's: never the client's home itself, refused above.
             target.config_path.parent.mkdir(parents=True, exist_ok=True)
             if target.plugin:
                 write_text(target.config_path, render_plugin(argv))
             else:
                 document = load_document(target.config_path)
-                fragment = hook_fragment(shlex.join(argv))
-                merged = merge_hooks(document, fragment, path=target.config_path)
+                merged = merge_hooks(
+                    document, hook_fragment(command), path=target.config_path
+                )
                 write_document(target.config_path, merged)
     except InstallError as exc:
         return _render_failure(
@@ -362,6 +314,7 @@ def run_install(
     return _render_success(
         target=target,
         argv=argv,
+        command=command,
         settings=settings,
         written=args.write,
         created=created,

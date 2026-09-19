@@ -1,9 +1,12 @@
-"""`neosian record install` — target, command, merge, tiers (§20.9)."""
+"""`neosian record install` — target, command, merge, tiers (§20.9), and
+the level: the client's own settings once per machine by default, this
+directory's file on request (§22.6)."""
 
 from __future__ import annotations
 
 import io
 import json
+import shlex
 import sys
 from collections.abc import Sequence
 from dataclasses import replace
@@ -16,15 +19,14 @@ from neosian._foundation.memory.home import HOME_ENV
 from neosian._foundation.memory.mounts import Mount
 from neosian._foundation.memory.settings import StoreSettings
 from neosian._foundation.record.install import (
-    CLIENT_CHOICES,
     HOOK_EVENTS,
     build_command,
     hook_fragment,
     merge_hooks,
-    resolve_target,
     run_install,
 )
 from neosian._foundation.record.settings import RecordSettings
+from neosian._foundation.record.targets import CLIENT_CHOICES, resolve_target
 from neosian._foundation.shared.client_config import Environment
 
 _EXECUTABLE = "/venv/bin/python3"
@@ -53,7 +55,8 @@ def _settings(
     store = StoreSettings(
         mounts=mounts, root=root, dsn=dsn, schema="neosian", actor="cli:record", url=url
     )
-    return RecordSettings(store=store, mount=mounts[0], agent=agent, spool=spool)
+    mount = mounts[0] if mounts else None
+    return RecordSettings(store=store, mount=mount, agent=agent, spool=spool)
 
 
 def _run(
@@ -65,6 +68,11 @@ def _run(
 
 
 def _settings_file(context: Environment) -> Path:
+    """Claude Code's own settings: where the hooks land once per machine."""
+    return context.home / ".claude" / "settings.json"
+
+
+def _project_file(context: Environment) -> Path:
     return context.cwd / ".claude" / "settings.json"
 
 
@@ -75,11 +83,29 @@ class TestTarget:
         target = resolve_target("claude-code", context)
         assert target.config_path == _settings_file(context)
         assert target.evidence_dir == context.home / ".claude"
-        assert target.trust_hint is None
+        assert target.trust_hint is None and target.level == "user"
+        assert target.project_token == '--project "$CLAUDE_PROJECT_DIR"'
+        project = resolve_target("claude-code", context, "project")
+        assert project.config_path == _project_file(context)
+        assert project.project_token is None and project.level == "project"
+
+    def test_claude_config_dir_moves_the_user_file(self, tmp_path: Path) -> None:
+        moved = replace(_context(tmp_path), env={"CLAUDE_CONFIG_DIR": str(tmp_path)})
+        target = resolve_target("claude-code", moved)
+        assert target.config_path == tmp_path / "settings.json"
+        assert target.evidence_dir == tmp_path
+
+    def test_codex_is_its_own_hooks_file_reviewed_once(self, tmp_path: Path) -> None:
+        context = _context(tmp_path)
+        target = resolve_target("codex", context)
+        assert target.config_path == context.home / ".codex" / "hooks.json"
+        assert target.evidence_dir == context.home / ".codex"
+        assert target.trust_hint is not None and "/hooks" in target.trust_hint
+        assert target.project_token is None  # Codex runs hooks in the session cwd
 
     def test_codex_is_the_project_hooks_file_under_trust(self, tmp_path: Path) -> None:
         context = _context(tmp_path)
-        target = resolve_target("codex", context)
+        target = resolve_target("codex", context, "project")
         assert target.config_path == context.cwd / ".codex" / "hooks.json"
         assert target.evidence_dir == context.home / ".codex"
         assert target.trust_hint is not None and "trusted" in target.trust_hint
@@ -117,6 +143,18 @@ class TestCommand:
         assert dsn not in build_command(
             _settings(root=None, dsn=dsn), executable=_EXECUTABLE
         )
+
+    def test_the_project_token_rides_raw_on_a_line_without_mounts(self) -> None:
+        token = '--project "$CLAUDE_PROJECT_DIR"'
+        bare = build_command(
+            _settings(mounts=()), executable=_EXECUTABLE, project_token=token
+        )
+        # Raw: `shlex.join` would single-quote the variable and the shell
+        # would never expand it.
+        assert bare.endswith(f" {token}") and "'$CLAUDE" not in bare
+        assert shlex.split(bare)[-2:] == ["--project", "$CLAUDE_PROJECT_DIR"]
+        named = build_command(_settings(), executable=_EXECUTABLE, project_token=token)
+        assert "--project" not in named  # the mounts were named: nothing to derive
 
     def test_the_line_is_shell_quoted(self) -> None:
         command = build_command(
@@ -169,7 +207,6 @@ class TestMerge:
     ) -> None:
         context = _context(tmp_path)
         (context.home / ".claude").mkdir()
-        _settings_file(context).parent.mkdir()
         _settings_file(context).write_text(json.dumps(document))
         code, _, err = _run([*_ARGV, "--write"], context)
         assert code == 1 and "refusing to rewrite" in err
@@ -192,27 +229,37 @@ class TestExitTiers:
         (context.home / ".claude").mkdir()
         code, out, err = _run(_ARGV, context)
         assert code == 0
+        assert not _settings_file(context).exists()
         assert not (context.cwd / ".claude").exists()
         fragment = json.loads(out)  # stdout is valid JSON on its own
         assert tuple(fragment["hooks"]) == HOOK_EVENTS
         assert "hint: re-run with --write" in err and "one writer" in err
 
-    def test_write_creates_the_project_file_privately(self, tmp_path: Path) -> None:
+    def test_write_creates_the_user_file_privately(self, tmp_path: Path) -> None:
         context = _context(tmp_path)
         (context.home / ".claude").mkdir()
         code, out, _ = _run([*_ARGV, "--write"], context)
         assert code == 0
         assert out == f"created {_settings_file(context)}\n"
+        assert not (context.cwd / ".claude").exists()  # nothing per project
         written = json.loads(_settings_file(context).read_text())
         command = written["hooks"]["Stop"][0]["hooks"][0]["command"]
         assert command.startswith(f"{_EXECUTABLE} -m neosian.record ")
         if sys.platform != "win32":
             assert _settings_file(context).stat().st_mode & 0o777 == 0o600
 
+    def test_the_project_level_writes_this_directorys_file(
+        self, tmp_path: Path
+    ) -> None:
+        context = _context(tmp_path)
+        (context.home / ".claude").mkdir()
+        code, out, _ = _run([*_ARGV, "--level", "project", "--write"], context)
+        assert code == 0 and out == f"created {_project_file(context)}\n"
+        assert not _settings_file(context).exists()
+
     def test_write_updates_an_existing_file(self, tmp_path: Path) -> None:
         context = _context(tmp_path)
         (context.home / ".claude").mkdir()
-        _settings_file(context).parent.mkdir()
         _settings_file(context).write_text('{"keep": 1, "hooks": {"Stop": []}}\n')
         code, out, _ = _run([*_ARGV, "--write"], context)
         assert code == 0
@@ -223,7 +270,6 @@ class TestExitTiers:
     def test_unparseable_json_is_refused_and_untouched(self, tmp_path: Path) -> None:
         context = _context(tmp_path)
         (context.home / ".claude").mkdir()
-        _settings_file(context).parent.mkdir()
         _settings_file(context).write_text("{not json")
         code, _, err = _run([*_ARGV, "--write"], context)
         assert code == 1 and "not valid JSON" in err
@@ -244,19 +290,54 @@ class TestExitTiers:
 
 
 class TestTheHome:
-    """DESIGN §22: no store flags — the home is the root, the project
-    layout the mounts, both rendered visibly into the hook line."""
+    """DESIGN §22: no store flags — the home is the root. Once per machine
+    (§22.6) the line names no mount and ends on the client's project
+    directory; at the project level this directory's layout is rendered
+    visibly into it."""
 
-    def test_no_flags_render_the_home_and_the_derived_layout(
+    def test_no_flags_render_the_home_and_the_project_anchor(
         self, tmp_path: Path
     ) -> None:
         context = _context(tmp_path)
         (context.home / ".claude").mkdir()
         env = {HOME_ENV: str(tmp_path / "nh")}
-        code, out, err = _run(["--client", "claude-code"], context, env)
+        code, out, err = _run(["--client", "claude-code", "--json"], context, env)
+        assert code == 0, err
+        command = json.loads(out)["command"]
+        assert f"--root {tmp_path / 'nh'}" in command and "--mount" not in command
+        assert f"--spool {tmp_path / 'nh' / 'spool'}" in command
+        assert command.endswith(' --project "$CLAUDE_PROJECT_DIR"')
+        assert not (tmp_path / "nh").exists()  # print mode builds nothing
+
+    def test_a_nameless_directory_is_fine_once_per_machine(
+        self, tmp_path: Path
+    ) -> None:
+        context = replace(_context(tmp_path), cwd=Path("/"))
+        (context.home / ".claude").mkdir()
+        assert _run(["--client", "claude-code"], context)[0] == 0
+
+    def test_an_unreadable_login_is_caught_at_install_time(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def no_login() -> str:
+            raise OSError("no passwd entry")
+
+        monkeypatch.setattr("getpass.getuser", no_login)
+        context = _context(tmp_path)
+        (context.home / ".claude").mkdir()
+        code, _, err = _run(["--client", "claude-code"], context)
+        assert code == 2 and "login" in err  # not inside the hook, later
+
+    def test_the_project_level_renders_the_derived_layout(self, tmp_path: Path) -> None:
+        context = _context(tmp_path)
+        (context.home / ".claude").mkdir()
+        env = {HOME_ENV: str(tmp_path / "nh")}
+        code, out, err = _run(
+            ["--client", "claude-code", "--level", "project"], context, env
+        )
         assert code == 0, err
         command = out  # the hooks fragment carries the one shell line
-        assert f"--root {tmp_path / 'nh'}" in command
+        assert f"--root {tmp_path / 'nh'}" in command and "--project" not in command
         assert "--mount scope=user:" in command
         assert ",path=user " in command
         assert "/proj:proj,path=project" in command  # the cwd's name, slugged
@@ -276,9 +357,13 @@ class TestTheHome:
             "scope=user:me,path=memories" in command and "path=project" not in command
         )
 
-    def test_a_nameless_directory_exits_2(self, tmp_path: Path) -> None:
+    def test_a_nameless_directory_exits_2_at_the_project_level(
+        self, tmp_path: Path
+    ) -> None:
         context = replace(_context(tmp_path), cwd=Path("/"))
-        code, out, err = _run(["--client", "claude-code"], context)
+        code, out, err = _run(
+            ["--client", "claude-code", "--level", "project"], context
+        )
         assert code == 2 and out == ""
         assert "--scope" in err
 
@@ -292,9 +377,11 @@ class TestCodex:
         code, out, err = _run(self._ARGV, context)
         assert code == 0, err
         command = json.loads(out)["hooks"]["Stop"][0]["hooks"][0]["command"]
-        assert "--agent codex" in command
+        assert "--agent codex" in command and "--project" not in command
+        assert "hint: Codex runs a new hook once you have reviewed it" in err
+        assert not (context.home / ".codex" / "hooks.json").exists()  # print mode
+        _, _, err = _run([*self._ARGV, "--level", "project"], context)
         assert "hint: Codex loads project hooks only for a trusted project" in err
-        assert not (context.cwd / ".codex").exists()  # print mode
 
     def test_an_explicit_agent_wins(self, tmp_path: Path) -> None:
         context = _context(tmp_path)
@@ -306,12 +393,16 @@ class TestCodex:
             in json.loads(out)["hooks"]["Stop"][0]["hooks"][0]["command"]
         )
 
-    def test_write_lands_the_project_hooks_file(self, tmp_path: Path) -> None:
+    @pytest.mark.parametrize("level", ["user", "project"])
+    def test_write_lands_the_levels_hooks_file(
+        self, tmp_path: Path, level: str
+    ) -> None:
         context = _context(tmp_path)
         (context.home / ".codex").mkdir()
-        code, out, _ = _run([*self._ARGV, "--write"], context)
+        code, out, _ = _run([*self._ARGV, "--level", level, "--write"], context)
         assert code == 0
-        target = context.cwd / ".codex" / "hooks.json"
+        where = context.home if level == "user" else context.cwd
+        target = where / ".codex" / "hooks.json"
         assert out == f"created {target}\n"
         assert set(json.loads(target.read_text())["hooks"]) == set(HOOK_EVENTS)
 
@@ -327,9 +418,13 @@ class TestOpenCode:
 
     _ARGV = ["--client", "opencode", "--root", "m", "--scope", "user:me"]
 
-    def test_the_target_is_the_project_plugin_file(self, tmp_path: Path) -> None:
+    def test_the_target_is_the_plugin_file_at_its_level(self, tmp_path: Path) -> None:
         context = _context(tmp_path)
-        target = resolve_target("opencode", context)
+        config_dir = context.home / ".config" / "opencode"
+        assert resolve_target("opencode", context).config_path == (
+            config_dir / "plugins" / "neosian-record.js"
+        )
+        target = resolve_target("opencode", context, "project")
         assert (
             target.config_path
             == context.cwd / ".opencode" / "plugins" / "neosian-record.js"
@@ -356,6 +451,10 @@ class TestOpenCode:
         argv = json.loads(out.split("const ARGV = ", 1)[1].split(";", 1)[0])
         assert argv[:3] == [_EXECUTABLE, "-m", "neosian.record"]
         assert argv[argv.index("--agent") + 1] == "opencode"
+        # One plugin serves every project: it hands the verb the directory
+        # OpenCode opened (the argv itself names no mount once per machine).
+        assert "async ({ client, $, directory })" in out
+        assert '[...ARGV, "--project", directory]' in out
         assert "hint: re-run with --write" in err
         assert not (context.cwd / ".opencode").exists()
 
@@ -363,8 +462,11 @@ class TestOpenCode:
         context = _context(tmp_path)
         (context.home / ".config" / "opencode").mkdir(parents=True)
         code, out, _ = _run([*self._ARGV, "--write"], context)
-        target = context.cwd / ".opencode" / "plugins" / "neosian-record.js"
+        # `plugins/` is created inside OpenCode's own config directory, which
+        # had to exist already; nothing lands in the project.
+        target = context.home / ".config" / "opencode" / "plugins" / "neosian-record.js"
         assert code == 0 and out == f"created {target}\n"
+        assert not (context.cwd / ".opencode").exists()
         assert "export const NeosianRecord" in target.read_text()
         code, out, _ = _run([*self._ARGV, "--agent", "oc", "--write"], context)
         assert code == 0 and out == f"updated {target}\n"

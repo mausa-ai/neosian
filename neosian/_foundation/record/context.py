@@ -108,6 +108,7 @@ async def render_session_start(
     source: str,
 ) -> str:
     """What the hook prints: the index, then where we left off."""
+    assert settings.mount is not None  # the verb's layout always yields one
     index = await generate_memory_index(memory, settings.store.mounts)
     left_off = await render_left_off(
         memory, conversations, settings.mount.scope, own=session_id, source=source

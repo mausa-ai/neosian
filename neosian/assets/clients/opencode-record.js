@@ -5,14 +5,15 @@
 // configuration. OpenCode has no shell hooks; its plugin hooks are mapped
 // here onto the three payloads `neosian record` reads (a prompt, a tool
 // round, a stop), so the verb and the record are identical across
-// clients (neosian docs agents).
+// clients (neosian docs agents). One plugin serves every project: the
+// verb derives the layout from the directory OpenCode opened.
 const ARGV = __NEOSIAN_RECORD_ARGV__;
 
-export const NeosianRecord = async ({ client, $ }) => {
+export const NeosianRecord = async ({ client, $, directory }) => {
   const record = async (payload) => {
     const body = new Response(JSON.stringify(payload));
     // Quiet and never throwing: a broken store never blocks the agent.
-    await $`${ARGV} < ${body}`.quiet().nothrow();
+    await $`${[...ARGV, "--project", directory]} < ${body}`.quiet().nothrow();
   };
   const text = (parts) =>
     parts

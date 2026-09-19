@@ -41,10 +41,12 @@ JSON_STOP_AGENTS: Final = frozenset({"codex"})
 @dataclass(frozen=True, slots=True)
 class RecordSettings:
     """Everything the verb needs: the store, where the sessions document
-    lands (`sessions_mount`), the agent's kind, the spool."""
+    lands (`sessions_mount`), the agent's kind, the spool. `mount` is None
+    only in a per-machine rendering, which names no mount (§22.6): the
+    verb itself always resolves one."""
 
     store: StoreSettings
-    mount: Mount
+    mount: Mount | None
     agent: str
     spool: Path
 
@@ -98,9 +100,8 @@ def resolve_record_settings(
     selection = resolve_store_selection(parser, args, env)
     mounts = resolve_mounts(parser, args, env, layout=layout, degrade=degrade)
     mount = sessions_mount(mounts)
-    if mount is None:
+    if mounts and mount is None:
         parser.error("the sessions document needs a read-write mount (no ,ro or ,eo)")
-        raise AssertionError  # pragma: no cover - parser.error exits
     try:
         validate_agent_kind(args.agent)
     except MemoryActorInvalidError as exc:

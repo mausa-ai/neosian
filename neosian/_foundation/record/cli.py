@@ -191,6 +191,7 @@ async def record_payload(settings: RecordSettings, text: str) -> dict[str, Any]:
         spool.clear(session_id)
         envelope["disposition"] = "empty"
         return envelope
+    assert settings.mount is not None  # the verb's layout always yields one
     async with open_store(settings.store) as memory:
         turns = _conversations(memory)
         turn = await turns.append_turn(session_id, messages, actor=actor)

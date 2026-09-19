@@ -14,13 +14,11 @@ and only when the home exists.
 from __future__ import annotations
 
 import json
-import re
-import shlex
 import shutil
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Final, TextIO
+from typing import TYPE_CHECKING, Final, TextIO
 
 from neosian import __version__
 from neosian._cli.config import (
@@ -37,9 +35,12 @@ from neosian._foundation.mcp.targets import (
 )
 from neosian._foundation.memory.home import home, project_mounts
 from neosian._foundation.memory.settings import StreamParser
-from neosian._foundation.record.install import resolve_target as hook_target
 from neosian._foundation.record.span import SESSIONS_DIR
-from neosian._foundation.shared.client_config import Environment, read_document
+from neosian._foundation.record.targets import (
+    installed_argv,
+    resolve_target as hook_target,
+)
+from neosian._foundation.shared.client_config import Environment
 from neosian._foundation.shared.exceptions import ConfigurationError, NeosianError
 
 if TYPE_CHECKING:
@@ -47,8 +48,6 @@ if TYPE_CHECKING:
 
 _DESCRIPTION: Final = "Is this machine set up? The home, the keys, the clients."
 CLIENTS: Final = ("claude-code", "codex", "opencode")
-_RECORD_MARKER: Final = "-m neosian.record"
-_PLUGIN_ARGV: Final = re.compile(r'\[[^\[\]]*"-m", "neosian\.record"[^\[\]]*\]')
 _DEFAULT_MODE: Final = "off"
 _ONE_WRITER: Final = (
     "{client}: the hooks and the MCP server both write {root} directly — one "
@@ -87,34 +86,6 @@ class Status:
     update_mode: str
 
 
-def _hook_argv(document: dict[str, Any]) -> list[str] | None:
-    hooks = document.get("hooks")
-    if not isinstance(hooks, dict):
-        return None
-    for groups in hooks.values():
-        if not isinstance(groups, list):
-            continue
-        for group in groups:
-            for hook in group.get("hooks", []) if isinstance(group, dict) else []:
-                command = hook.get("command", "") if isinstance(hook, dict) else ""
-                if _RECORD_MARKER in str(command):
-                    return shlex.split(str(command))
-    return None
-
-
-def _plugin_argv(path: Path) -> list[str] | None:
-    if not path.is_file():
-        return None
-    match = _PLUGIN_ARGV.search(path.read_text(encoding="utf-8"))
-    if match is None:
-        return None
-    try:
-        parsed: Any = json.loads(match.group(0))
-    except ValueError:
-        return None
-    return [str(p) for p in parsed] if isinstance(parsed, list) else None
-
-
 def _root_of(argv: Sequence[str] | None) -> str | None:
     if argv is None or "--root" not in argv:
         return None
@@ -129,14 +100,10 @@ def _resolves(command: str) -> bool:
 
 def client_status(client: str, context: Environment) -> ClientStatus:
     mcp = mcp_target(client, context, "project")
-    hooks = hook_target(client, context)
+    hooks = hook_target(client, context, "project")
     installed = mcp.evidence_dir.is_dir()
     server_argv = registered_argv(mcp)
-    if hooks.plugin:
-        hook_argv = _plugin_argv(hooks.config_path)
-    else:
-        hooks_document = read_document(hooks.config_path)
-        hook_argv = _hook_argv(hooks_document) if hooks_document is not None else None
+    hook_argv = installed_argv(hooks)
     interpreter = next((a[0] for a in (server_argv, hook_argv) if a), None)
     roots = {_root_of(server_argv), _root_of(hook_argv)}
     root = roots.pop() if len(roots) == 1 and None not in roots else None
