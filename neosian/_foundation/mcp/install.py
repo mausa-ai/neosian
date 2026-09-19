@@ -27,6 +27,7 @@ from neosian._foundation.mcp.targets import (
     CLIENT_CHOICES,
     SERVER_NAME,
     ClientTarget,
+    registered_argv,
     resolve_target,
 )
 from neosian._foundation.memory.settings import (
@@ -155,11 +156,30 @@ def merge_entry(
     return merged
 
 
+def displace(target: ClientTarget, *, write: bool) -> str | None:
+    """One level per client (§22.6). A name connects once, so two entries
+    never fire twice — but the project's entry shadows the user's, and a
+    stale one (a moved venv) would win. Remove ours from `target`; the path
+    it sat in, None when it was not there. `write=False` only names it."""
+    if registered_argv(target) is None:
+        return None
+    if write:
+        document = load_document(target.config_path)
+        servers = {
+            name: entry
+            for name, entry in document[target.servers_key].items()
+            if name != SERVER_NAME
+        }
+        write_document(target.config_path, {**document, target.servers_key: servers})
+    return str(target.config_path)
+
+
 def _render_success(
     *,
     target: ClientTarget,
     entry: RegistrationEntry,
     settings: StoreSettings,
+    displaced: str | None,
     written: bool,
     created: bool,
     json_output: bool,
@@ -177,6 +197,7 @@ def _render_success(
             "servers_key": target.servers_key,
             "server_name": SERVER_NAME,
             "entry": entry.render(target.style),
+            "displaced": displaced,
             "written": written,
             "created": created,
             "apply": apply,
@@ -195,6 +216,8 @@ def _render_success(
         err.write(f"hint: apply it with: {apply}\n")
     elif written:
         out.write(f"{'created' if created else 'updated'} {target.config_path}\n")
+        if displaced is not None:
+            out.write(f"removed ours from {displaced}\n")
         if settings.root is not None:
             err.write(
                 "hint: one writer per FileStore root (DESIGN §8) — nothing else "
@@ -207,6 +230,11 @@ def _render_success(
         err.write(f"{target.label}: {target.scope_note}\n")
         err.write(f"target: {target.config_path}\n")
         err.write(f"hint: re-run with --write to apply this to {target.config_path}\n")
+    if displaced is not None and not written:
+        err.write(
+            f"hint: this directory's {displaced} still carries ours and shadows "
+            "the user level; applying the registration removes it\n"
+        )
     if settings.dsn is not None:
         err.write(
             f"hint: set {POSTGRES_DSN_ENV} in the client's own environment — "
@@ -301,8 +329,14 @@ def run_install(
         settings = replace(settings, actor=f"mcp:{args.client}")
     entry = build_entry(settings, executable=context.executable)
     created = False
+    displaced: str | None = None
+    project = resolve_target(args.client, context, "project")
     try:
         ensure_evidence(target.label, target.evidence_dir)
+        if args.level == "user" and project.config_path != target.config_path:
+            # A file the client's CLI writes is applied by `neosian setup`,
+            # which removes the shadow once that succeeds; here it is named.
+            displaced = displace(project, write=args.write and target.cli is None)
         if args.write and target.cli is not None:
             raise InstallError(
                 f"{target.label}'s own CLI writes {target.config_path}; --write "
@@ -336,6 +370,7 @@ def run_install(
         target=target,
         entry=entry,
         settings=settings,
+        displaced=displaced,
         written=args.write,
         created=created,
         json_output=args.json_output,

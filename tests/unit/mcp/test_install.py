@@ -768,6 +768,67 @@ class TestOpenCode:
         assert _run(self._ARGV, context)[0] == 0  # print mode still prints
 
 
+class TestDisplace:
+    """§22.6: a name connects once, so two entries never fire twice — but
+    the project's entry shadows the user's, and a stale one would win."""
+
+    _ARGV = ["--client", "opencode", "--root", "m"]
+
+    def _registered_in_the_project(self, tmp_path: Path) -> Environment:
+        context = _context(tmp_path)
+        (context.home / ".config" / "opencode").mkdir(parents=True)
+        (context.cwd / "opencode.json").write_text(
+            '{"theme": "dark", "mcp": {"other": {"type": "remote", "url": "x"}}}'
+        )
+        assert _run([*self._ARGV, "--level", "project", "--write"], context)[0] == 0
+        return context
+
+    def test_a_user_level_write_removes_the_shadow(self, tmp_path: Path) -> None:
+        context = self._registered_in_the_project(tmp_path)
+        project = context.cwd / "opencode.json"
+        code, out, _ = _run([*self._ARGV, "--write"], context)
+        assert code == 0 and f"removed ours from {project}" in out
+        left = json.loads(project.read_text())
+        assert left == {
+            "theme": "dark",
+            "mcp": {"other": {"type": "remote", "url": "x"}},
+        }
+        user = context.home / ".config" / "opencode" / "opencode.json"
+        assert SERVER_NAME in json.loads(user.read_text())["mcp"]
+
+    def test_print_mode_names_it_and_touches_nothing(self, tmp_path: Path) -> None:
+        context = self._registered_in_the_project(tmp_path)
+        before = (context.cwd / "opencode.json").read_text()
+        code, out, err = _run([*self._ARGV, "--json"], context)
+        assert code == 0
+        assert json.loads(out)["displaced"] == str(context.cwd / "opencode.json")
+        assert (context.cwd / "opencode.json").read_text() == before
+        assert "shadows the user level" in _run(self._ARGV, context)[2]
+        assert err == ""
+
+    def test_a_file_the_clients_cli_writes_only_names_the_shadow(
+        self, tmp_path: Path
+    ) -> None:
+        # Claude Code's user scope is applied by `neosian setup` through
+        # `claude`; the installer never removes what it has not replaced.
+        context = _context(tmp_path)
+        (context.home / ".claude").mkdir()
+        argv = ["--client", "claude-code", "--root", "m"]
+        assert _run([*argv, "--level", "project", "--write"], context)[0] == 0
+        before = (context.cwd / ".mcp.json").read_text()
+        payload = json.loads(_run([*argv, "--json"], context)[1])
+        assert payload["displaced"] == str(context.cwd / ".mcp.json")
+        assert (context.cwd / ".mcp.json").read_text() == before
+
+    def test_nothing_to_displace_is_none(self, tmp_path: Path) -> None:
+        context = _context(tmp_path)
+        (context.home / ".cursor").mkdir()
+        payload = json.loads(
+            _run(["--client", "cursor", "--root", "m", "--json"], context)[1]
+        )
+        assert payload["displaced"] is None  # a one-file client has one level
+
+
 class TestTheClientActor:
     def test_the_default_actor_names_the_client(self, tmp_path: Path) -> None:
         """DESIGN §20: the installer knows the client, the stdio default does

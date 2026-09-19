@@ -39,6 +39,7 @@ from neosian._foundation.record.targets import (
     CLIENT_CHOICES,
     RECORD_ARGV,
     HookTarget,
+    installed_argv,
     is_ours,
     resolve_target,
 )
@@ -153,12 +154,44 @@ def merge_hooks(
     return merged
 
 
+def strip_hooks(document: dict[str, Any]) -> dict[str, Any]:
+    """`document` without our groups; an event left with none goes too."""
+    hooks = document.get(HOOKS_KEY)
+    if not isinstance(hooks, dict):
+        return document
+    kept = {
+        event: (
+            [g for g in groups if not is_ours(g)]
+            if isinstance(groups, list)
+            else groups
+        )
+        for event, groups in hooks.items()
+    }
+    return {**document, HOOKS_KEY: {e: g for e, g in kept.items() if g != []}}
+
+
+def displace(target: HookTarget, *, write: bool) -> str | None:
+    """One level per client (§22.6): every client merges its hook sources,
+    so ours at two levels fires twice and lands each span twice. Remove ours
+    from `target` (the plugin file is ours whole); the path it sat in, None
+    when it was not there. `write=False` only names it."""
+    if installed_argv(target) is None:
+        return None
+    if write and target.plugin:
+        target.config_path.unlink()
+    elif write:
+        document = load_document(target.config_path)
+        write_document(target.config_path, strip_hooks(document))
+    return str(target.config_path)
+
+
 def _render_success(
     *,
     target: HookTarget,
     argv: Sequence[str],
     command: str,
     settings: RecordSettings,
+    displaced: str | None,
     written: bool,
     created: bool,
     json_output: bool,
@@ -177,6 +210,7 @@ def _render_success(
             "hooks": None if target.plugin else fragment[HOOKS_KEY],
             "plugin": plugin,
             "command": command,
+            "displaced": displaced,
             "written": written,
             "created": created,
         }
@@ -184,6 +218,8 @@ def _render_success(
         return 0
     if written:
         out.write(f"{'created' if created else 'updated'} {target.config_path}\n")
+        if displaced is not None:
+            out.write(f"removed ours from {displaced}\n")
     else:
         # stdout is only the paste-able artifact: the fragment, or the
         # plugin source — `> file` stays valid either way.
@@ -193,6 +229,11 @@ def _render_success(
         err.write(f"{target.label}: {target.scope_note}\n")
         err.write(f"target: {target.config_path}\n")
         err.write(f"hint: re-run with --write to apply this to {target.config_path}\n")
+        if displaced is not None:
+            err.write(
+                f"hint: --write also removes ours from {displaced}: one level "
+                "per client, or every span lands twice\n"
+            )
     if target.trust_hint is not None:
         err.write(f"hint: {target.trust_hint}\n")
     if settings.store.root is not None:
@@ -292,8 +333,24 @@ def run_install(
         settings, executable=context.executable, project_token=target.project_token
     )
     created = False
+    displaced: str | None = None
+    other = resolve_target(
+        args.client, context, "project" if args.level == "user" else "user"
+    )
     try:
         ensure_evidence(target.label, target.evidence_dir)
+        if other.config_path == target.config_path:
+            pass  # run from the client's own home: the two levels are one file
+        elif args.level == "user":
+            displaced = displace(other, write=args.write)
+        elif installed_argv(other) is not None:
+            # Refused in print mode too: it must not promise a refused write.
+            raise InstallError(
+                f"{target.label} already carries the neosian hooks at the user "
+                f"level ({other.config_path}); both would fire",
+                "keep them and name this project's scope with NEOSIAN_SCOPE in "
+                f"the client's environment, or remove ours from {other.config_path}",
+            )
         if args.write:
             created = not target.config_path.exists()
             # The project's own config directory, or `plugins/` inside the
@@ -316,6 +373,7 @@ def run_install(
         argv=argv,
         command=command,
         settings=settings,
+        displaced=displaced,
         written=args.write,
         created=created,
         json_output=args.json_output,

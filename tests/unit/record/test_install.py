@@ -24,6 +24,7 @@ from neosian._foundation.record.install import (
     hook_fragment,
     merge_hooks,
     run_install,
+    strip_hooks,
 )
 from neosian._foundation.record.settings import RecordSettings
 from neosian._foundation.record.targets import CLIENT_CHOICES, resolve_target
@@ -366,6 +367,96 @@ class TestTheHome:
         )
         assert code == 2 and out == ""
         assert "--scope" in err
+
+
+class TestOneLevel:
+    """§22.6: every client merges its hook sources, so ours at two levels
+    fires twice and lands each span twice. One level per client."""
+
+    @staticmethod
+    def _theirs() -> dict[str, Any]:
+        return {"hooks": [{"type": "command", "command": "their-linter"}]}
+
+    def test_a_user_level_write_removes_this_directorys_entry(
+        self, tmp_path: Path
+    ) -> None:
+        context = _context(tmp_path)
+        (context.home / ".claude").mkdir()
+        assert _run([*_ARGV, "--level", "project", "--write"], context)[0] == 0
+        project = json.loads(_project_file(context).read_text())
+        project["hooks"]["Stop"].insert(0, self._theirs())
+        project["model"] = "sonnet"
+        _project_file(context).write_text(json.dumps(project))
+        # The user level arrives: the project's entry would now fire beside it.
+        code, out, _ = _run([*_ARGV, "--write", "--json"], context)
+        assert code == 0
+        assert json.loads(out)["displaced"] == str(_project_file(context))
+        left = json.loads(_project_file(context).read_text())
+        assert left["model"] == "sonnet"  # every other key survives
+        assert left["hooks"] == {"Stop": [self._theirs()]}  # theirs kept, ours gone
+        assert "neosian.record" in _settings_file(context).read_text()
+
+    def test_print_mode_names_it_and_touches_nothing(self, tmp_path: Path) -> None:
+        context = _context(tmp_path)
+        (context.home / ".claude").mkdir()
+        assert _run([*_ARGV, "--level", "project", "--write"], context)[0] == 0
+        before = _project_file(context).read_text()
+        code, _, err = _run(_ARGV, context)
+        assert code == 0
+        assert f"--write also removes ours from {_project_file(context)}" in err
+        assert _project_file(context).read_text() == before
+
+    def test_the_project_plugin_is_ours_whole_and_is_unlinked(
+        self, tmp_path: Path
+    ) -> None:
+        context = _context(tmp_path)
+        (context.home / ".config" / "opencode").mkdir(parents=True)
+        argv = ["--client", "opencode", "--root", "m"]
+        assert _run([*argv, "--level", "project", "--write"], context)[0] == 0
+        plugin = context.cwd / ".opencode" / "plugins" / "neosian-record.js"
+        assert plugin.is_file()
+        code, out, _ = _run([*argv, "--write"], context)
+        assert code == 0 and f"removed ours from {plugin}" in out
+        assert not plugin.exists()
+
+    @pytest.mark.parametrize("write", [[], ["--write"]])
+    def test_the_project_level_is_refused_beside_user_level_hooks(
+        self, tmp_path: Path, write: list[str]
+    ) -> None:
+        context = _context(tmp_path)
+        (context.home / ".claude").mkdir()
+        assert _run([*_ARGV, "--write"], context)[0] == 0
+        # In print mode too: it never promises a write that would be refused.
+        code, out, err = _run([*_ARGV, "--level", "project", *write], context)
+        assert code == 1 and out == ""
+        assert "both would fire" in err and str(_settings_file(context)) in err
+        assert "NEOSIAN_SCOPE" in err  # the override that needs no second hook
+        assert not _project_file(context).exists()
+
+    def test_a_user_level_rerun_is_idempotent(self, tmp_path: Path) -> None:
+        context = _context(tmp_path)
+        (context.home / ".claude").mkdir()
+        assert _run([*_ARGV, "--write"], context)[0] == 0
+        code, out, _ = _run([*_ARGV, "--write", "--json"], context)
+        assert code == 0 and json.loads(out)["displaced"] is None
+
+    def test_run_from_the_clients_home_the_levels_are_one_file(
+        self, tmp_path: Path
+    ) -> None:
+        # `claude` started in `~`: `./.claude/settings.json` IS the user file.
+        context = replace(_context(tmp_path), cwd=tmp_path / "home")
+        (context.home / ".claude").mkdir()
+        assert _run([*_ARGV, "--write"], context)[0] == 0
+        code, out, _ = _run(
+            [*_ARGV, "--level", "project", "--write", "--json"], context
+        )
+        assert code == 0 and json.loads(out)["displaced"] is None  # not refused
+
+    def test_strip_hooks_drops_an_emptied_event_and_keeps_the_rest(self) -> None:
+        ours = hook_fragment("/py -m neosian.record")["hooks"]
+        document = {"hooks": {**ours, "Stop": [self._theirs(), *ours["Stop"]]}, "k": 1}
+        assert strip_hooks(document) == {"hooks": {"Stop": [self._theirs()]}, "k": 1}
+        assert strip_hooks({"hooks": "not an object"}) == {"hooks": "not an object"}
 
 
 class TestCodex:
