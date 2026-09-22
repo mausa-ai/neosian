@@ -41,7 +41,12 @@ if TYPE_CHECKING:
     # The client's own CLI, run: (exit code, stderr), or None off PATH.
     Runner = Callable[[Sequence[str], Mapping[str, str]], tuple[int, str] | None]
 
-CLIENTS: Final = ("claude-code", "codex", "opencode")  # both installers' rows
+CLIENTS: Final = (
+    "claude-code",
+    "codex",
+    "opencode",
+    "muse-code",
+)  # both installers' rows
 _DESCRIPTION: Final = "Wire the installed agents to this store: MCP and the hooks."
 _EPILOG: Final = (
     "Print mode (the default) says what would land where; --write applies "
@@ -137,6 +142,8 @@ def _line(kind: str, envelope: dict[str, Any], *, write: bool) -> str:
         why = envelope["apply_error"] or f"{shlex.split(apply)[0]} is not on PATH"
         return f"  {kind:<6}{path}  not applied ({why}); run: {apply}"
     if write:
+        if not envelope.get("applied"):
+            return f"  {kind:<6}{path}  not applied (preflight failed)"
         return (
             f"  {kind:<6}{path}  {'created' if envelope.get('created') else 'updated'}"
         )
@@ -192,6 +199,16 @@ def run_setup(
     rows: list[dict[str, Any]] = []
     for client in clients:
         target = mcp_target(client, context, args.level)
+        if client == "muse-code" and args.write:
+            previews = {
+                kind: _installer(
+                    run, client, write=False, extra=extra, env=env, context=context
+                )
+                for kind, run in (("mcp", mcp_install), ("hooks", hooks_install))
+            }
+            if any(not item.get("success") for item in previews.values()):
+                rows.append({"client": client, "label": target.label, **previews})
+                continue
         # A file the client's CLI writes is rendered, then applied here.
         ours = target.cli is None or target.level != args.level
         mcp = _installer(
@@ -234,6 +251,12 @@ def run_setup(
             out.write(f"{row['label']}\n")
             out.write(_line("mcp", row["mcp"], write=args.write) + "\n")
             out.write(_line("hooks", row["hooks"], write=args.write) + "\n")
+            if shadow := row["mcp"].get("mcp_shadowed_by"):
+                err.write(
+                    f"note: preserved shared {shadow}; it overrides Muse's user registration\n"
+                )
+            if (files := row["hooks"].get("files")) and not args.write:
+                out.write(json.dumps(files, indent=2) + "\n")
         if not args.write:
             err.write("hint: re-run with --write to apply\n")
     err.write((_TOKEN if args.url else _ONE_WRITER) + "\n")

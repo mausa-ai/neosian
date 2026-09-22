@@ -332,6 +332,19 @@ def run_install(
     command = build_command(
         settings, executable=context.executable, project_token=target.project_token
     )
+    if args.client == "muse-code":
+        from neosian._foundation.record.muse import run_install as muse_install
+
+        return muse_install(
+            context,
+            settings,
+            level=args.level,
+            command=command,
+            write=args.write,
+            json_output=args.json_output,
+            out=out,
+            err=err,
+        )
     created = False
     displaced: str | None = None
     other = resolve_target(

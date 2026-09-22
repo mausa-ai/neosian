@@ -15,7 +15,7 @@ import json
 import re
 import shlex
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Final
 
@@ -26,6 +26,7 @@ from neosian._foundation.shared.client_config import (
     opencode_config_dir,
     read_document,
 )
+from neosian._foundation.shared.muse_config import config_dir as muse_config_dir
 
 RECORD_ARGV: Final = ("-m", "neosian.record")  # the one place the module path lives
 MARKER: Final = " ".join(RECORD_ARGV)  # how ours is recognised in a file
@@ -120,10 +121,31 @@ def _opencode(context: Environment, level: str) -> HookTarget:
     )
 
 
+def _muse(context: Environment, level: str) -> HookTarget:
+    base = muse_config_dir(context)
+    return HookTarget(
+        client="muse-code",
+        label="Muse Code",
+        level=level,
+        config_path=(
+            context.cwd / ".muse" / "hooks.json"
+            if level == "project"
+            else base / "settings.json"
+        ),
+        evidence_dir=base,
+        scope_note=(
+            "project level: trusted Muse workspace"
+            if level == "project"
+            else "user level: every Muse Code session on this machine"
+        ),
+    )
+
+
 _TARGETS: Final[dict[str, Callable[[Environment, str], HookTarget]]] = {
     "claude-code": _claude_code,
     "codex": _codex,
     "opencode": _opencode,
+    "muse-code": _muse,
 }
 CLIENT_CHOICES: Final = tuple(_TARGETS)
 
@@ -178,3 +200,19 @@ def installed_argv(target: HookTarget) -> list[str] | None:
         return _plugin_argv(target.config_path)
     document = read_document(target.config_path)
     return _hook_argv(document) if document is not None else None
+
+
+def active_targets(
+    client: str, context: Environment, level: str
+) -> tuple[HookTarget, ...]:
+    """Every active hook file at a level, including Muse's managed source."""
+    target = resolve_target(client, context, level)
+    if client != "muse-code" or level != "user":
+        return (target,)
+    from neosian._foundation.shared.muse_config import managed_path
+
+    document = read_document(target.config_path) or {}
+    managed = managed_path(document, target.config_path)
+    if managed is None or managed == target.config_path:
+        return (target,)
+    return (replace(target, config_path=managed), target)

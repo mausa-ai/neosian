@@ -25,13 +25,15 @@ neosian                                  # on a terminal: chat; under a pipe: th
 
 - **`status`**: the home and whether it exists; the config and which
   providers have a key (names and sources, never values); this
-  directory's two scopes; per client (Claude Code, Codex, OpenCode)
+  directory's two scopes; per client (Claude Code, Codex, OpenCode, Muse Code)
   installed / MCP registered / hooks present / at which level (`user`,
   `project`, or `both`) / the interpreter those files name still
   resolving; the last recorded session; the one-writer note, and a note
   when a client carries the hooks at both levels (they would run twice);
   the installation shape with its upgrade line; the update knob. Exit 0
-  whenever it ran; findings are data.
+  whenever it ran; findings are data. For Muse, managed hooks count as
+  user level; `mcp_shadowed_by` names a preserved shared project MCP entry
+  that overrides the user registration.
 - **`setup`**: detects the clients present and runs both installers
   for each (`mcp install` and `record install`), once per machine:
   each client's own config, the home, no mount (`--level project` for

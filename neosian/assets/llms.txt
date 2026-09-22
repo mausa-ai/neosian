@@ -35,7 +35,7 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
   project, both) / interpreter resolving, the last recorded session, the
   install shape. Exit 0 always; findings are data.
 - `neosian setup [--write] [--level user|project] [--root DIR | --url URL]`:
-  wire every installed client (Claude Code, Codex, OpenCode) to the home,
+  wire every installed client (Claude Code, Codex, OpenCode, Muse Code) to the home,
   once per machine: MCP + the record hooks in the client's own config, no
   file per project; print first. `--write` runs the client's own CLI for
   a file it owns (`claude mcp add-json`, `codex mcp add`) when on PATH,
@@ -142,6 +142,15 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
   unauthenticated. Shell clients: `--url URL` + NEOSIAN_CLIENT_TOKEN.
 - The shipped Dockerfile is the appliance: `docker run -e
   NEOSIAN_SERVE_TOKEN=... -p 6367:6367 -v state:/data neosian`.
+- Muse Code: `--client muse-code`; user MCP and hooks share
+  $XDG_CONFIG_HOME/muse/settings.json (default ~/.config/muse), schema_version
+  1; project MCP uses shared .mcp.json, hooks .muse/hooks.json (workspace
+  trust required). Muse clears child environments: --url/Postgres hooks
+  require user-level managed neosian-hooks.json and pass credential names
+  through managed_hooks_env_vars; MCP uses ${NAME} env references. Another
+  managed pointer is refused, never replaced. Shared project MCP survives
+  user install; mcp_shadowed_by reports its override. Hook print mode is a
+  files change map, with no unrelated settings. Actor muse-code:<session>.
 - Python clients: `await RemoteStore.connect(url, token=...)` carries both
   storage ABCs over the wire, core install, drops in where FileStore
   does. Listings cross in pages of at most 500 rows, followed for you;

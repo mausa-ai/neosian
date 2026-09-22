@@ -133,7 +133,13 @@ async def run(
     if args.json_output:
         out.write(json.dumps(envelope) + "\n")
     elif envelope["context"] is not None:
-        out.write(envelope["context"] + "\n")  # SessionStart: stdout is the context
+        context_text = str(envelope["context"])
+        if settings.agent == "muse-code":
+            # Muse kills a hook above 16 KiB, including the final newline.
+            context_text = context_text.encode("utf-8")[:16_382].decode(
+                "utf-8", "ignore"
+            )
+        out.write(context_text + "\n")
     elif envelope["event"] == STOP_EVENT and settings.agent in JSON_STOP_AGENTS:
         out.write("{}\n")  # the client wants a JSON decision; this is none
     return 0

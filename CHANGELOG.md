@@ -34,6 +34,15 @@ phase close names the version.
 
 ### Added
 
+- Muse Code (`--client muse-code`) in both installers, `setup` and
+  `status`: user settings and trusted project files, `muse-code` actors,
+  and startup context bounded to Muse's stdout limit. `XDG_CONFIG_HOME`
+  locates its configuration. Remote/Postgres credentials stay environment
+  references; their hooks use a user-level managed file, with foreign
+  managed pointers refused. Shared project MCP entries survive a Muse
+  user install; `mcp_shadowed_by` reports their override. Muse hook
+  previews expose a `files` change map, and `setup` preflights both halves.
+
 - `--level user|project` on `setup` and both installers; `--root` and
   `--url` on `setup`, forwarded to both installers: `neosian setup --url
   URL --write` moves every client on the machine to the state process in

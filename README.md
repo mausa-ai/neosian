@@ -21,7 +21,7 @@ Two doors, one store:
 - **Build an agent.** An async-only, stateless `Agent` (tools,
   streaming, fallback, guardrails, structured output) that a
   `Conversation` wraps into a durable, memory-bearing thread.
-- **Give your agent state.** Claude Code, Codex, Cursor or OpenCode get
+- **Give your agent state.** Claude Code, Codex, Cursor, OpenCode or Muse Code get
   memory and skills over MCP and every session recorded through hooks —
   `neosian setup --write` wires every client it finds, once per machine;
   `neosian status` says whether the machine is set up; bare `neosian`
@@ -146,7 +146,7 @@ Each line is one page in the wheel — `neosian docs <topic>`.
   in-band, the approval gate and hooks unchanged.
 - **The agent you already use** (`agents`). `neosian record install`
   spells the hooks that land a prompt-to-stop span as one turn by
-  `claude-code:<session>` (Codex and OpenCode too), plus a sessions
+  `claude-code:<session>` (Codex, OpenCode and Muse Code too), plus a sessions
   document; `SessionStart` prints the index and "where we left off" into
   the next window. Registered once per machine, every project gets its
   own scope with no file of its own. A neosian `Conversation` on the same home shares the

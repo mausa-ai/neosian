@@ -23,6 +23,7 @@ from neosian._foundation.shared.client_config import (
     opencode_config_dir,
     read_document,
 )
+from neosian._foundation.shared.muse_config import config_dir as muse_config_dir
 
 SERVER_NAME: Final = "neosian-memory"
 _SERVERS_KEY: Final = "mcpServers"
@@ -141,12 +142,32 @@ def _opencode(context: Environment, level: str) -> ClientTarget:
     )
 
 
+def _muse(context: Environment, level: str) -> ClientTarget:
+    base = muse_config_dir(context)
+    return ClientTarget(
+        client="muse-code",
+        label="Muse Code",
+        level=level,
+        config_path=(
+            context.cwd / ".mcp.json" if level == "project" else base / "settings.json"
+        ),
+        evidence_dir=base,
+        servers_key=_SERVERS_KEY,
+        scope_note=(
+            "project level: trusted Muse workspace"
+            if level == "project"
+            else "user level: every Muse Code session on this machine"
+        ),
+    )
+
+
 _TARGETS: Final[dict[str, Callable[[Environment, str], ClientTarget]]] = {
     "claude-code": _claude_code,
     "claude-desktop": _claude_desktop,
     "cursor": _cursor,
     "codex": _codex,
     "opencode": _opencode,
+    "muse-code": _muse,
 }
 CLIENT_CHOICES: Final = tuple(_TARGETS)
 

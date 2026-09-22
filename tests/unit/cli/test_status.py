@@ -82,7 +82,7 @@ class TestCollect:
         assert all(p["source"] is None for p in status.providers)
         assert status.scopes is not None
         assert status.scopes["/project"].endswith("/proj:demo-proj")
-        assert [c.installed for c in status.clients] == [False, False, False]
+        assert [c.installed for c in status.clients] == [False, False, False, False]
         assert status.last_session is None and status.one_writer == ()
         assert status.update_mode == "off"
         assert not (tmp_path / "home").exists()  # status creates nothing
@@ -221,7 +221,10 @@ class TestCollect:
         assert status.clients[0].level == "both"
         (note,) = status.double_fire
         assert str(user) in note and str(project) in note
-        assert "every span lands twice" in note and "neosian setup --write" in note
+        assert (
+            "each span can land more than once" in note
+            and "neosian setup --write" in note
+        )
 
     async def test_run_from_the_clients_home_the_levels_are_one_file(
         self, tmp_path: Path

@@ -51,6 +51,7 @@ from neosian._foundation.shared.client_config import (
     write_document,
 )
 from neosian._foundation.shared.exceptions import MemoryStoreError
+from neosian._foundation.shared.muse_config import credential_names, settings_document
 
 __all__ = ["Environment"]  # re-exported: the entry point and the suite name it here
 
@@ -72,9 +73,13 @@ class RegistrationEntry:
 
     command: str
     args: tuple[str, ...]
+    env_names: tuple[str, ...] = ()
 
     def to_json(self) -> dict[str, Any]:
-        return {"command": self.command, "args": list(self.args)}
+        entry: dict[str, Any] = {"command": self.command, "args": list(self.args)}
+        if self.env_names:
+            entry["env"] = {name: "${" + name + "}" for name in self.env_names}
+        return entry
 
     def render(self, style: str) -> dict[str, Any]:
         """The entry in a client's own shape."""
@@ -187,6 +192,7 @@ def _render_success(
     entry: RegistrationEntry,
     settings: StoreSettings,
     displaced: str | None,
+    mcp_shadowed_by: str | None,
     written: bool,
     created: bool,
     json_output: bool,
@@ -205,13 +211,22 @@ def _render_success(
             "server_name": SERVER_NAME,
             "entry": entry.render(target.style),
             "displaced": displaced,
+            "mcp_shadowed_by": mcp_shadowed_by,
             "written": written,
             "created": created,
             "apply": apply,
         }
         out.write(json.dumps(payload, ensure_ascii=False) + "\n")
         return 0
-    fragment = {target.servers_key: {SERVER_NAME: entry.render(target.style)}}
+    fragment: dict[str, Any] = {
+        target.servers_key: {SERVER_NAME: entry.render(target.style)}
+    }
+    if target.client == "muse-code" and target.level == "user":
+        fragment["schema_version"] = 1
+    if mcp_shadowed_by is not None:
+        err.write(
+            f"note: preserved shared {mcp_shadowed_by}; it overrides Muse's user registration\n"
+        )
     if apply is not None:
         # stdout is only the paste-able fragment: the table for a TOML file.
         if target.config_path.suffix == ".toml":
@@ -335,12 +350,36 @@ def run_install(
         # The installer knows the client; the stdio default does not.
         settings = replace(settings, actor=f"mcp:{args.client}")
     entry = build_entry(settings, executable=context.executable)
+    if args.client == "muse-code":
+        entry = replace(entry, env_names=credential_names(settings))
     created = False
+    mcp_shadowed_by: str | None = None
     displaced: str | None = None
     project = resolve_target(args.client, context, "project")
     try:
         ensure_evidence(target.label, target.evidence_dir)
-        if args.level == "user" and project.config_path != target.config_path:
+        merged: dict[str, Any] | None = None
+        if args.client == "muse-code":
+            document = (
+                settings_document(target.config_path)
+                if args.level == "user"
+                else load_document(target.config_path)
+            )
+            if "mcp_servers" in document:
+                raise InstallError(
+                    "Muse settings use legacy mcp_servers",
+                    "rename it to mcpServers before installing",
+                )
+            merged = merge_entry(
+                document,
+                servers_key=target.servers_key,
+                name=SERVER_NAME,
+                entry=entry,
+                path=target.config_path,
+            )
+            if args.level == "user" and registered_argv(project) is not None:
+                mcp_shadowed_by = str(project.config_path)
+        elif args.level == "user" and project.config_path != target.config_path:
             # A file the client's CLI writes is applied by `neosian setup`,
             # which removes the shadow once that succeeds; here it is named.
             displaced = displace(project, write=args.write and target.cli is None)
@@ -358,16 +397,16 @@ def run_install(
                 "re-run without --write and paste the entry into it yourself",
             )
         if args.write:
-            document = load_document(target.config_path)
             created = not target.config_path.exists()
-            merged = merge_entry(
-                document,
-                servers_key=target.servers_key,
-                name=SERVER_NAME,
-                entry=entry,
-                path=target.config_path,
-                style=target.style,
-            )
+            if merged is None:
+                merged = merge_entry(
+                    load_document(target.config_path),
+                    servers_key=target.servers_key,
+                    name=SERVER_NAME,
+                    entry=entry,
+                    path=target.config_path,
+                    style=target.style,
+                )
             write_document(target.config_path, merged)
     except InstallError as exc:
         return _render_failure(
@@ -378,6 +417,7 @@ def run_install(
         entry=entry,
         settings=settings,
         displaced=displaced,
+        mcp_shadowed_by=mcp_shadowed_by,
         written=args.write,
         created=created,
         json_output=args.json_output,

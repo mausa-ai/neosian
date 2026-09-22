@@ -79,7 +79,7 @@ def _project_file(context: Environment) -> Path:
 
 class TestTarget:
     def test_the_rows_come_from_the_table(self, tmp_path: Path) -> None:
-        assert CLIENT_CHOICES == ("claude-code", "codex", "opencode")
+        assert CLIENT_CHOICES == ("claude-code", "codex", "opencode", "muse-code")
         context = _context(tmp_path)
         target = resolve_target("claude-code", context)
         assert target.config_path == _settings_file(context)

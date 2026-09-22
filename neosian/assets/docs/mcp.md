@@ -6,7 +6,7 @@ summary: memory, skills and recall_turn over stdio; mcp install; McpServer consu
 # The MCP server
 
 The same stores, served to any MCP client (Claude Code, Claude
-Desktop, Cursor, Codex, OpenCode) over stdio; the MCP SDK ships in
+Desktop, Cursor, Codex, OpenCode, Muse Code) over stdio; the MCP SDK ships in
 the install and loads at first use. For MCP over the network, the state
 process mounts this same factory's server at `/mcp`: `neosian serve`
 with mounts (`neosian docs topology`).
@@ -90,6 +90,12 @@ neosian mcp install --client claude-code --level project --scope user:me --write
   refused); `claude-desktop` → its platform config file; `cursor` →
   `~/.cursor/mcp.json`; `claude-code` at the project level → the
   project's `./.mcp.json`.
+- `muse-code` uses `$XDG_CONFIG_HOME/muse/settings.json` (default
+  `~/.config/muse/settings.json`) at user level, or the shared `.mcp.json`
+  at project level. New user settings include `schema_version: 1`.
+  Credential variables are forwarded by `${NAME}` references in the
+  server's `env`, since Muse clears its child environment. The hooks
+  half needs managed hooks for credentials (`neosian docs agents`).
 - **A file the client's own CLI writes is print-only.** Claude Code's
   user scope lives in `~/.claude.json` (under `$CLAUDE_CONFIG_DIR` when
   set), which Claude Code rewrites as it runs, and Codex's
@@ -101,7 +107,9 @@ neosian mcp install --client claude-code --level project --scope user:me --write
   shell quoting; `setup` itself uses no shell.
 - A project's entry shadows the user's (a client connects a name once,
   from the nearest level), so a user-level `--write` removes this
-  directory's old entry, ours only, and says so.
+  directory's old entry, ours only, and says so. Muse preserves the shared
+  `.mcp.json` entry and reports `mcp_shadowed_by` instead: Claude Code
+  reads that same file.
 - A client whose config directory does not exist is refused (exit 1):
   neosian never creates another program's config home. Install the
   client first.

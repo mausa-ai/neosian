@@ -38,8 +38,8 @@ from neosian._foundation.memory.home import home, project_mounts
 from neosian._foundation.memory.settings import StreamParser
 from neosian._foundation.record.span import SESSIONS_DIR
 from neosian._foundation.record.targets import (
+    active_targets,
     installed_argv,
-    resolve_target as hook_target,
 )
 from neosian._foundation.shared.client_config import LEVELS, Environment
 from neosian._foundation.shared.exceptions import ConfigurationError, NeosianError
@@ -48,7 +48,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
 _DESCRIPTION: Final = "Is this machine set up? The home, the keys, the clients."
-CLIENTS: Final = ("claude-code", "codex", "opencode")
+CLIENTS: Final = ("claude-code", "codex", "opencode", "muse-code")
 _DEFAULT_MODE: Final = "off"
 _ONE_WRITER: Final = (
     "{client}: the hooks and the MCP server both write {root} directly — one "
@@ -56,8 +56,8 @@ _ONE_WRITER: Final = (
     "--url URL --write`"
 )
 _DOUBLE_FIRE: Final = (
-    "{client}: the hooks are installed at both levels ({user} and {project}), "
-    "and the client runs both: every span lands twice. Run `neosian setup "
+    "{client}: the hooks are installed in multiple sources ({user} and {project}), "
+    "and each span can land more than once. Run `neosian setup "
     "--write` here to keep the one per machine"
 )
 
@@ -73,6 +73,7 @@ class ClientStatus:
     hook_files: tuple[str, ...]  # every file carrying our hooks: two is a finding
     interpreter: str | None  # the command the files name, when they name one
     interpreter_resolves: bool | None
+    mcp_shadowed_by: str | None
     root: str | None  # the --root both entries name, for the one-writer note
 
 
@@ -127,9 +128,9 @@ def client_status(client: str, context: Environment) -> ClientStatus:
         mcp = mcp_target(client, context, level)
         if (argv := registered_argv(mcp)) is not None:
             servers.setdefault(str(mcp.config_path), (mcp.level, argv))
-        hook = hook_target(client, context, level)
-        if (argv := installed_argv(hook)) is not None:
-            hooks.setdefault(str(hook.config_path), (hook.level, argv))
+        for hook in active_targets(client, context, level):
+            if (argv := installed_argv(hook)) is not None:
+                hooks.setdefault(str(hook.config_path), (hook.level, argv))
     found = {level for level, _ in (*servers.values(), *hooks.values())}
     server_argv = _at(servers, "project") or _at(servers, "user")
     hook_argv = _at(hooks, "user") or _at(hooks, "project")
@@ -148,6 +149,14 @@ def client_status(client: str, context: Environment) -> ClientStatus:
         interpreter=interpreter,
         interpreter_resolves=None if interpreter is None else _resolves(interpreter),
         root=root,
+        mcp_shadowed_by=(
+            next(
+                (path for path, (level, _) in servers.items() if level == "project"),
+                None,
+            )
+            if client == "muse-code" and _at(servers, "user")
+            else None
+        ),
     )
 
 
@@ -230,7 +239,7 @@ async def collect(context: Environment, env: Mapping[str, str]) -> Status:
                 client=c.client, user=c.hook_files[0], project=c.hook_files[1]
             )
             for c in clients
-            if len(c.hook_files) == 2
+            if len(c.hook_files) >= 2
         ),
         shape=shape.kind,
         upgrade=Shape(shape.kind).upgrade_line("<version>"),
@@ -246,6 +255,8 @@ def _client_line(client: ClientStatus) -> str:
         "hooks present" if client.hooks_present else "hooks -",
         f"level {client.level or '-'}",
     ]
+    if client.mcp_shadowed_by:
+        cells.append(f"user MCP overridden by shared {client.mcp_shadowed_by}")
     if client.interpreter_resolves is False:
         cells.append(f"interpreter missing: {client.interpreter}")
     elif client.interpreter_resolves:

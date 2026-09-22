@@ -41,7 +41,8 @@ neosian record install --client opencode --level project --scope user:me --write
   layout spelled into the line: a scope of your own for one project
   (`--scope`, `--mount`), or recording only where you ask for it. A
   lighter per-project override needs no second registration: set
-  `NEOSIAN_SCOPE` in that project's environment for the client.
+  `NEOSIAN_SCOPE` in that project's environment for the client. Muse clears
+  this variable at launch; name its scope explicitly when installing.
 - **One level per client.** Every client merges its hook sources, so
   ours at two levels would run twice and land each span twice. A
   user-level `--write` removes this directory's project-level entry
@@ -60,7 +61,7 @@ neosian record install --client opencode --level project --scope user:me --write
   `/user` alone; a hook never exits 2, which Claude Code reads as
   "block the prompt".
 - Print mode (the default) puts the paste-able `hooks` fragment on
-  stdout (the one command on `UserPromptSubmit`, `PostToolUse`, `Stop`
+  stdout (Muse shows its multi-file change preview instead; the one command on `UserPromptSubmit`, `PostToolUse`, `Stop`
   and `SessionStart`) and guidance on stderr.
 - `--write` merges it into `~/.claude/settings.json` (under
   `$CLAUDE_CONFIG_DIR` when set), preserving every other key, event and
@@ -173,6 +174,49 @@ neosian audit --scope user:me --conversation <session_id> --root ~/.my-agent/sta
 neosian audit --scope user:me --actor claude-code:<session_id> --url http://127.0.0.1:6367
 ```
 
+## Muse Code
+
+`neosian setup --client muse-code --write` installs both halves. Muse's
+configuration directory must already exist: `$XDG_CONFIG_HOME/muse`, or
+`~/.config/muse`. Its user `settings.json` holds both `mcpServers` and
+`hooks`; a new file includes `schema_version: 1`. Existing malformed or
+unsupported settings are refused, and other settings survive a merge.
+The writer is `muse-code:<session_id>`.
+
+FileStore hooks use this user settings file, or `.muse/hooks.json` with
+`--level project`. Project hooks require a trusted workspace, such as
+`muse exec --trust-workspace`. Muse runs lifecycle hooks in the session's
+workspace and tool hooks in the tool's effective directory; the stop
+lands the shared spool in the session's scope. Startup context is plain
+text, capped below Muse's 16 KiB stdout limit without splitting UTF-8.
+
+Muse clears the environment of hooks and MCP processes. For `--url` or
+Postgres, the installer therefore uses **user-level managed hooks**:
+`neosian-hooks.json` beside settings, named by `managed_hooks_path`.
+`managed_hooks_env_vars` gains only `NEOSIAN_CLIENT_TOKEN` or
+`NEOSIAN_POSTGRES_DSN`. MCP entries reference the same variable with
+`${NAME}`; values are never written to a registration or printed.
+Credential-backed project hooks are refused: use `--level user`.
+An existing managed pointer to another file is preserved and automatic
+installation is refused with a manual merge explanation.
+
+Switching stores removes only neosian's displaced hook groups. `status`
+reads ordinary, managed and project hooks, and reports duplicates.
+Muse hook print mode shows a path-keyed change preview: `merge`,
+`remove_neosian_hooks`, and `add_managed_hooks_env_vars` name the edits;
+it does not print unrelated settings. `setup` validates both halves
+before writing either. Its JSON hook envelope includes this `files` map.
+
+Muse and Claude Code share the project MCP file `.mcp.json`. Installing
+Muse at user level preserves its existing neosian entry, which overrides
+Muse's user registration. Both the installer and `status` report its
+path as `mcp_shadowed_by`; change the shared entry deliberately when
+moving stores.
+
+References: Muse's [hooks](https://meta-models.github.io/muse-code-sdk/next/guides/extend/hooks/)
+and [MCP configuration](https://meta-models.github.io/muse-code-sdk/next/guides/extend/mcp-servers/),
+verified against Muse Code 1.3.0.
+
 ## The client table
 
 A row exists only while its walkthrough is green on a real install. "Per
@@ -186,4 +230,4 @@ two project directories, each session in its own `proj:` scope.
 | OpenCode | ✓ | ✓ walkthrough green 2026-09-03 (`opencode run`, a plugin) | ✓ 2026-09-19 (1.18.30, a free model): the same, the plugin passing the directory it was opened with | — (an experimental per-call door only; not wired) |
 | Claude Desktop | ✓ | no hooks surface | one file by nature; no project, so `/user` alone | — |
 | Cursor | ✓ | not yet: its hooks are read (their own payload shape, a mapping of its own); next | | — |
-| Muse Code | not yet | not yet: hooks in Claude Code's shape; next | | |
+| Muse Code | ✓ user settings or shared project `.mcp.json` | ✓ walkthrough green 2026-09-22 (`muse exec`, 1.3.0) | ✓ two projects, one user registration; authenticated managed hooks and MCP on the state process | ✓ `SessionStart`, plain stdout; prior turn recalled over MCP |

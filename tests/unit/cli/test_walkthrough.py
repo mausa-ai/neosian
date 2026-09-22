@@ -39,6 +39,7 @@ def _env(home: Path) -> dict[str, str]:
     # HOME is overridden so install can never touch the developer's real
     # client configs.
     env = {k: v for k, v in os.environ.items() if k != "NEOSIAN_POSTGRES_DSN"}
+    env["XDG_CONFIG_HOME"] = str(home / ".config")
     env["HOME"] = str(home)
     env["NEOSIAN_HOME"] = str(home / "home")  # the default store (DESIGN §22)
     env["NO_COLOR"] = "1"
@@ -491,6 +492,7 @@ class TestRecord:
             ("claude-code", ".claude"),
             ("codex", ".codex"),
             ("opencode", ".config/opencode"),
+            ("muse-code", ".config/muse"),
         ],
     )
     def test_install_prints_the_hooks(
@@ -517,7 +519,11 @@ class TestRecord:
             assert "export const NeosianRecord" in result.stdout
             assert not (tmp_path / ".opencode").exists()  # print mode
             return
-        hooks = json.loads(result.stdout)["hooks"]
+        document = json.loads(result.stdout)
+        if client == "muse-code":
+            document = document[str(tmp_path / ".config/muse/settings.json")]["merge"]
+            assert not (tmp_path / ".config/muse/settings.json").exists()
+        hooks = document["hooks"]
         assert set(hooks) == {"UserPromptSubmit", "PostToolUse", "Stop", "SessionStart"}
         assert "-m neosian.record" in hooks["Stop"][0]["hooks"][0]["command"]
         assert not (tmp_path / ".claude" / "settings.json").exists()  # print mode
@@ -637,7 +643,7 @@ class TestConsole:
         assert payload["home"] == str(tmp_path / "home")
         assert payload["home_exists"] is False
         assert payload["scopes"]["/project"].endswith("/proj:fresh-proj")
-        assert [c["installed"] for c in payload["clients"]] == [False] * 3
+        assert [c["installed"] for c in payload["clients"]] == [False] * 4
         assert payload["update_mode"] == "off"
         assert not (tmp_path / "home").exists()  # status creates nothing
         text = _run(["status"], cwd=project, env=env)

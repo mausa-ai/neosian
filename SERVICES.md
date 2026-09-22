@@ -138,9 +138,16 @@ needs no second registration: set it in that project's environment for
 the client (Claude Code: the `env` block of the project's
 `.claude/settings.json`).
 
+Muse clears custom environment variables for hooks and MCP children.
+For remote stores or Postgres, its installers forward the credential by
+name: an MCP `${NAME}` reference, and `managed_hooks_env_vars` for the
+user-level managed hooks. The client itself must inherit the value.
+Project credential-backed hooks are refused (`neosian docs agents`).
+
 ## The clients' own homes
 
-`CLAUDE_CONFIG_DIR`, `CODEX_HOME` and `OPENCODE_CONFIG_DIR` are the
+`XDG_CONFIG_HOME` (Muse), `CLAUDE_CONFIG_DIR`, `CODEX_HOME` and
+`OPENCODE_CONFIG_DIR` are the
 clients' variables, not neosian's: the installers, `setup` and `status`
 honour each to find that client's config (`~/.claude`, `~/.codex`,
 `~/.config/opencode` when unset), so a sandboxed client is registered and

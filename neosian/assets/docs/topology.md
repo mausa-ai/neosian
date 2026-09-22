@@ -110,7 +110,11 @@ NEOSIAN_CLIENT_TOKEN=change-me neosian setup --url http://127.0.0.1:6367 --write
 The token is never written into a registration or a hook line: set
 `NEOSIAN_CLIENT_TOKEN` in each client's own environment (for Claude Code,
 the `env` block of `~/.claude/settings.json`; for a shell-launched client,
-your shell profile).
+your shell profile). Muse clears child environments: its MCP entry
+forwards the token by an environment reference, and `setup --url` configures
+managed hooks to receive that variable by name. This requires user-level
+hooks; an existing foreign managed file requires a manual merge
+(`neosian docs agents`).
 
 Python clients speak the store wire:
 
