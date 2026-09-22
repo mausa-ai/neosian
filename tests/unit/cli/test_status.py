@@ -82,7 +82,13 @@ class TestCollect:
         assert all(p["source"] is None for p in status.providers)
         assert status.scopes is not None
         assert status.scopes["/project"].endswith("/proj:demo-proj")
-        assert [c.installed for c in status.clients] == [False, False, False, False]
+        assert [c.installed for c in status.clients] == [
+            False,
+            False,
+            False,
+            False,
+            False,
+        ]
         assert status.last_session is None and status.one_writer == ()
         assert status.update_mode == "off"
         assert not (tmp_path / "home").exists()  # status creates nothing

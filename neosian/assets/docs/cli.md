@@ -25,7 +25,7 @@ neosian                                  # on a terminal: chat; under a pipe: th
 
 - **`status`**: the home and whether it exists; the config and which
   providers have a key (names and sources, never values); this
-  directory's two scopes; per client (Claude Code, Codex, OpenCode, Muse Code)
+  directory's two scopes; per client (Claude Code, Codex, OpenCode, Muse Code, Cursor)
   installed / MCP registered / hooks present / at which level (`user`,
   `project`, or `both`) / the interpreter those files name still
   resolving; the last recorded session; the one-writer note, and a note
@@ -239,13 +239,15 @@ when absent; a once-per-machine Claude Code hook line passes
 `"$CLAUDE_PROJECT_DIR"`, since a hook's working directory moves with the
 agent's `cd`). The sessions document lands in the mount at `/project`
 when there is one, else the first read-write mount. `neosian record
-install --client claude-code|codex|opencode [--level user|project]
+install --client claude-code|codex|opencode|muse-code|cursor [--level user|project]
 [--write]` renders or applies the hooks, the `mcp install` twin
 (`neosian docs agents`). The exit tiers bend once
 for the hook's sake: 2 only for argv, 1 for everything after, so a
-broken store never blocks the agent; stdout is silent unless `--json`
+broken store never blocks the agent. Startup context is printed on stdout;
+Cursor returns it as JSON `additional_context` and returns `{}` for other
+successful hooks. `--json` prints the diagnostic envelope
 (`{"event", "session_id", "actor", "disposition", "conversation_id",
-"turn", "document", "client"}`).
+"turn", "document", "client", "context"}`).
 
 ## One writer per root
 

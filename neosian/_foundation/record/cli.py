@@ -7,7 +7,8 @@ one turn with the foreign actor `<agent>:<session_id>` in the
 conversation the session id names, and writes the scope's sessions
 document. `SessionStart` is the read side: the client injects a hook's
 stdout as context, so that one event prints the memory index and "where
-we left off" — every other event stays silent in text mode. Exit tiers
+we left off". Cursor wraps that context in JSON additional_context and
+answers other successful hooks with an empty JSON object. Exit tiers
 under a hook's semantics (Claude Code reads 2 as "block"): 2 only for
 argv — nothing constructed — and 1 for everything after it (bad stdin,
 an unreachable store, a corrupt spool), so a broken store never blocks
@@ -20,6 +21,7 @@ directory with no name records to the user mount alone.
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TextIO
 
@@ -34,11 +36,13 @@ from neosian._foundation.record.context import (
     SESSION_START_EVENT,
     render_session_start,
 )
+from neosian._foundation.record.locking import session_lock
 from neosian._foundation.record.settings import (
     JSON_STOP_AGENTS,
     RecordSettings,
     add_record_arguments,
     resolve_record_settings,
+    sessions_mount,
 )
 from neosian._foundation.record.span import (
     STOP_EVENT,
@@ -95,8 +99,8 @@ async def run(
         "--json",
         action="store_true",
         dest="json_output",
-        help="one JSON envelope on stdout (text mode prints nothing there, "
-        "except SessionStart's context)",
+        help="one diagnostic JSON envelope on stdout (otherwise the client's "
+        "hook response, including startup context)",
     )
     parser.add_argument(
         "--project",
@@ -121,7 +125,36 @@ async def run(
         err.write(f"error: {exc.message}\nhint: {_HINT}\n")
         return 1  # the environment's, never argv's: 2 would block the prompt
     try:
-        envelope = await record_payload(settings, stdin.read())
+        payload = parse_payload(stdin.read(), agent=settings.agent)
+        if settings.agent == "cursor" and args.project is None:
+            from neosian._foundation.memory.settings import resolve_mounts
+
+            roots = payload.get("workspace_roots")
+            project = (
+                Path(roots[0])
+                if isinstance(roots, list)
+                and len(roots) == 1
+                and isinstance(roots[0], str)
+                and Path(roots[0]).is_absolute()
+                else Path("/")
+            )
+            mounts = resolve_mounts(parser, args, env, layout=project, degrade=True)
+            settings = replace(
+                settings,
+                store=replace(settings.store, mounts=mounts),
+                mount=sessions_mount(mounts),
+            )
+            if (
+                project == Path("/")
+                and not args.scope
+                and not args.mount
+                and not env.get("NEOSIAN_SCOPE")
+            ):
+                err.write(
+                    "hint: Cursor has no unambiguous project; using /user. "
+                    "Set --project, --scope or --mount to select one.\n"
+                )
+        envelope = await _record_payload(settings, payload)
     except (NeosianError, httpx.HTTPError, OSError, ValueError) as exc:
         message = getattr(exc, "message", None) or str(exc)
         code = getattr(exc, "code", None)
@@ -134,6 +167,9 @@ async def run(
         out.write(json.dumps(envelope) + "\n")
     elif envelope["context"] is not None:
         context_text = str(envelope["context"])
+        if settings.agent == "cursor":
+            out.write(json.dumps({"additional_context": context_text}) + "\n")
+            return 0
         if settings.agent == "muse-code":
             # Muse kills a hook above 16 KiB, including the final newline.
             context_text = context_text.encode("utf-8")[:16_382].decode(
@@ -142,6 +178,8 @@ async def run(
         out.write(context_text + "\n")
     elif envelope["event"] == STOP_EVENT and settings.agent in JSON_STOP_AGENTS:
         out.write("{}\n")  # the client wants a JSON decision; this is none
+    elif settings.agent == "cursor":
+        out.write("{}\n")
     return 0
 
 
@@ -155,7 +193,12 @@ def _conversations(store: MemoryStore) -> ConversationStore:
 
 async def record_payload(settings: RecordSettings, text: str) -> dict[str, Any]:
     """One payload in, the envelope out (the harness replays through here)."""
-    payload = parse_payload(text)
+    return await _record_payload(settings, parse_payload(text, agent=settings.agent))
+
+
+async def _record_payload(
+    settings: RecordSettings, payload: dict[str, Any]
+) -> dict[str, Any]:
     session_id = parse_conversation_id(payload["session_id"])
     actor = parse_actor(f"{settings.agent}:{session_id}")
     event = str(payload.get("hook_event_name"))
@@ -188,10 +231,39 @@ async def record_payload(settings: RecordSettings, text: str) -> dict[str, Any]:
     if record is None:
         return envelope
     spool = Spool(settings.spool)
+    async with session_lock(settings.spool, session_id):
+        return await _land(settings, spool, record, envelope)
+
+
+async def _land(
+    settings: RecordSettings,
+    spool: Spool,
+    record: dict[str, Any],
+    envelope: dict[str, Any],
+) -> dict[str, Any]:
+    session_id, actor, event = (
+        envelope["session_id"],
+        envelope["actor"],
+        envelope["event"],
+    )
     spool.append(session_id, record)  # spool first: a failed landing loses nothing
-    if event != STOP_EVENT:
+    if event != STOP_EVENT and not (
+        settings.agent == "cursor" and event == "AssistantResponse"
+    ):
         return envelope
     records = spool.read(session_id)
+    if settings.agent == "cursor":
+        stops = [row for row in records if row.get("kind") == "stop"]
+        if not stops:
+            return envelope
+        # The interactive CLI emits stop before afterAgentResponse. Keep the
+        # turn whole regardless of which arrives first; failed turns lack text.
+        if (
+            stops[-1].get("status") == "completed"
+            and not any(row.get("kind") == "assistant" for row in records)
+            and messages_of(records)
+        ):
+            return envelope
     messages = messages_of(records)
     if not messages:
         spool.clear(session_id)

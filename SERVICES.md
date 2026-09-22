@@ -138,6 +138,12 @@ needs no second registration: set it in that project's environment for
 the client (Claude Code: the `env` block of the project's
 `.claude/settings.json`).
 
+Cursor hooks inherit `NEOSIAN_CLIENT_TOKEN`. Its MCP children receive
+credential variables through `${env:NAME}` references in the registration,
+because Cursor otherwise clears custom MCP environment variables.
+Its full recording walkthrough uses the interactive CLI and the existing
+Cursor account login; `--print` omits essential lifecycle hooks.
+
 Muse clears custom environment variables for hooks and MCP children.
 For remote stores or Postgres, its installers forward the credential by
 name: an MCP `${NAME}` reference, and `managed_hooks_env_vars` for the

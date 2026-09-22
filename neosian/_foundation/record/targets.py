@@ -141,11 +141,30 @@ def _muse(context: Environment, level: str) -> HookTarget:
     )
 
 
+def _cursor(context: Environment, level: str) -> HookTarget:
+    base = context.home / ".cursor"
+    return HookTarget(
+        client="cursor",
+        label="Cursor",
+        level=level,
+        config_path=(context.cwd / ".cursor" if level == "project" else base)
+        / "hooks.json",
+        evidence_dir=base,
+        scope_note=f"{level} level: Cursor's native hooks",
+        trust_hint=(
+            "Cursor loads project hooks only in a trusted workspace"
+            if level == "project"
+            else None
+        ),
+    )
+
+
 _TARGETS: Final[dict[str, Callable[[Environment, str], HookTarget]]] = {
     "claude-code": _claude_code,
     "codex": _codex,
     "opencode": _opencode,
     "muse-code": _muse,
+    "cursor": _cursor,
 }
 CLIENT_CHOICES: Final = tuple(_TARGETS)
 
@@ -159,7 +178,11 @@ def resolve_target(
 
 def is_ours(group: object) -> bool:
     """A hooks group that carries our command."""
-    if not isinstance(group, dict) or not isinstance(group.get("hooks"), list):
+    if not isinstance(group, dict):
+        return False
+    if MARKER in str(group.get("command", "")):
+        return True
+    if not isinstance(group.get("hooks"), list):
         return False
     return any(
         isinstance(hook, dict) and MARKER in str(hook.get("command", ""))
@@ -173,6 +196,8 @@ def _hook_argv(document: dict[str, Any]) -> list[str] | None:
         return None
     for groups in hooks.values():
         for group in groups if isinstance(groups, list) else []:
+            if isinstance(group, dict) and MARKER in str(group.get("command", "")):
+                return shlex.split(str(group["command"]))
             for hook in group.get("hooks", []) if isinstance(group, dict) else []:
                 command = hook.get("command", "") if isinstance(hook, dict) else ""
                 if MARKER in str(command):

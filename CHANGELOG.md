@@ -8,6 +8,8 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [1.0.0rc14] - 2026-09-22
+
 ### Changed
 
 - **A machine is registered once.** `neosian setup --write`, `neosian mcp
@@ -33,6 +35,18 @@ phase close names the version.
   names `neosian setup --url URL --write`.
 
 ### Added
+
+- Cursor (`--client cursor`) in the recorder, `setup` and `status`:
+  native version-1 hooks, workspace-derived project scopes, `cursor`
+  actors and JSON startup context. Completed turns wait for both stop
+  and response events, independent of arrival order; a per-session spool
+  lock prevents concurrent hooks from landing the same span twice. Imported
+  Claude recorder invocations are ignored when marked as Cursor. The supported
+  walkthrough is the interactive CLI; this version's `--print` mode omits
+  essential recording events. JSON slash escaping preserves daemon URLs
+  through Cursor's hook configuration reader. MCP credential variables
+  are forwarded by `${env:NAME}` reference through its cleared child
+  environment.
 
 - Muse Code (`--client muse-code`) in both installers, `setup` and
   `status`: user settings and trusted project files, `muse-code` actors,
@@ -1415,7 +1429,8 @@ pre-release — pin it explicitly; the API stability promise rides v1.0.0.
 - Both entry points share one `_validate_run`, so neither can skip a
   guard.
 
-[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc10...HEAD
+[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc14...HEAD
+[1.0.0rc14]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc13...v1.0.0rc14
 [1.0.0rc13]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc12...v1.0.0rc13
 [1.0.0rc12]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc11...v1.0.0rc12
 [1.0.0rc11]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc10...v1.0.0rc11

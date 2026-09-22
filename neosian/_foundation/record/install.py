@@ -345,6 +345,20 @@ def run_install(
             out=out,
             err=err,
         )
+    if args.client == "cursor":
+        from neosian._foundation.record.cursor_install import (
+            run_install as cursor_install,
+        )
+
+        return cursor_install(
+            target,
+            context,
+            command=command,
+            write=args.write,
+            json_output=args.json_output,
+            out=out,
+            err=err,
+        )
     created = False
     displaced: str | None = None
     other = resolve_target(

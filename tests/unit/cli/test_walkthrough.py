@@ -643,7 +643,7 @@ class TestConsole:
         assert payload["home"] == str(tmp_path / "home")
         assert payload["home_exists"] is False
         assert payload["scopes"]["/project"].endswith("/proj:fresh-proj")
-        assert [c["installed"] for c in payload["clients"]] == [False] * 4
+        assert [c["installed"] for c in payload["clients"]] == [False] * 5
         assert payload["update_mode"] == "off"
         assert not (tmp_path / "home").exists()  # status creates nothing
         text = _run(["status"], cwd=project, env=env)

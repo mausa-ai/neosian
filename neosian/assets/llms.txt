@@ -35,7 +35,7 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
   project, both) / interpreter resolving, the last recorded session, the
   install shape. Exit 0 always; findings are data.
 - `neosian setup [--write] [--level user|project] [--root DIR | --url URL]`:
-  wire every installed client (Claude Code, Codex, OpenCode, Muse Code) to the home,
+  wire every installed client (Claude Code, Codex, OpenCode, Muse Code, Cursor) to the home,
   once per machine: MCP + the record hooks in the client's own config, no
   file per project; print first. `--write` runs the client's own CLI for
   a file it owns (`claude mcp add-json`, `codex mcp add`) when on PATH,
@@ -107,9 +107,9 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
 
 ## Record a foreign agent
 
-- `neosian record install --client claude-code|codex|opencode` prints
-  the four hooks (UserPromptSubmit, PostToolUse, Stop, SessionStart; for
-  OpenCode, a plugin file). Once per machine by default: the line names
+- `neosian record install --client claude-code|codex|opencode|muse-code|cursor` prints
+  the client hooks (UserPromptSubmit, PostToolUse, Stop, SessionStart;
+  Cursor has five native events below; OpenCode has a plugin file). Once per machine by default: the line names
   the home and no mount, and each session gets `user:<login>` at /user
   and `user:<login>/proj:<slug>` at /project, derived from the client's
   project directory (Claude Code: `--project "$CLAUDE_PROJECT_DIR"`);
@@ -142,6 +142,14 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
   unauthenticated. Shell clients: `--url URL` + NEOSIAN_CLIENT_TOKEN.
 - The shipped Dockerfile is the appliance: `docker run -e
   NEOSIAN_SERVE_TOKEN=... -p 6367:6367 -v state:/data neosian`.
+- Cursor: `setup --client cursor --write` adds native version-1 hooks at
+  ~/.cursor/hooks.json beside user MCP. Interactive CLI 2026.09.10-fd3934a
+  records as cursor:<conversation_id>; --print lacks the full event stream.
+  Completed turns wait for stop and afterAgentResponse in either order.
+  sessionStart returns JSON additional_context. One workspace root selects
+  /project; ambiguous roots use /user unless a project or scope is named.
+  Imported Claude recorder calls carrying cursor_version are ignored.
+  MCP credentials use ${env:NAME} references; hooks inherit the environment.
 - Muse Code: `--client muse-code`; user MCP and hooks share
   $XDG_CONFIG_HOME/muse/settings.json (default ~/.config/muse), schema_version
   1; project MCP uses shared .mcp.json, hooks .muse/hooks.json (workspace
@@ -183,7 +191,7 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
 
 ## Install
 
-- `uv add "neosian==1.0.0rc13"`: one package, the library and its
+- `uv add "neosian==1.0.0rc14"`: one package, the library and its
   provider SDKs, the `neosian` shell, the MCP server and client, the
   state process and OpenTelemetry spans (about 70 MB; nothing loaded
   until used). On PyPI as a pre-release until v1.0.0: pin it explicitly,
@@ -194,11 +202,11 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
 - `curl -fsS https://neosian.com/install | bash` puts uv and neosian on a
   machine with nothing on it; the script says what it installs first.
 - The appliance: `docker run -d -e NEOSIAN_SERVE_TOKEN=… -p 6367:6367
-  -v neosian-state:/data ghcr.io/mausa-ai/neosian:1.0.0rc13`, the state
+  -v neosian-state:/data ghcr.io/mausa-ai/neosian:1.0.0rc14`, the state
   process on a volume, `/health` the one open route.
 
 ## Docs
 
-- https://github.com/mausa-ai/neosian/blob/v1.0.0rc13/README.md: install and quickstart.
-- https://github.com/mausa-ai/neosian/blob/v1.0.0rc13/SERVICES.md: every environment key and what turning it off means.
+- https://github.com/mausa-ai/neosian/blob/v1.0.0rc14/README.md: install and quickstart.
+- https://github.com/mausa-ai/neosian/blob/v1.0.0rc14/SERVICES.md: every environment key and what turning it off means.
 - `neosian docs baselines`: the published per-provider memory numbers.

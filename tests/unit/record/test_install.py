@@ -79,7 +79,13 @@ def _project_file(context: Environment) -> Path:
 
 class TestTarget:
     def test_the_rows_come_from_the_table(self, tmp_path: Path) -> None:
-        assert CLIENT_CHOICES == ("claude-code", "codex", "opencode", "muse-code")
+        assert CLIENT_CHOICES == (
+            "claude-code",
+            "codex",
+            "opencode",
+            "muse-code",
+            "cursor",
+        )
         context = _context(tmp_path)
         target = resolve_target("claude-code", context)
         assert target.config_path == _settings_file(context)
@@ -280,7 +286,7 @@ class TestExitTiers:
         "argv",
         [
             ["--root", "m", "--scope", "user:me"],  # no client
-            ["--client", "cursor", "--root", "m", "--scope", "user:me"],
+            ["--client", "unknown", "--root", "m", "--scope", "user:me"],
             ["--client", "claude-code", "--root", "m", "--url", "http://x"],
             ["--client", "claude-code", "--root", "m", "--scope", "NOT A SCOPE"],
         ],

@@ -74,11 +74,14 @@ class RegistrationEntry:
     command: str
     args: tuple[str, ...]
     env_names: tuple[str, ...] = ()
+    env_prefix: str = ""
 
     def to_json(self) -> dict[str, Any]:
         entry: dict[str, Any] = {"command": self.command, "args": list(self.args)}
         if self.env_names:
-            entry["env"] = {name: "${" + name + "}" for name in self.env_names}
+            entry["env"] = {
+                name: "${" + self.env_prefix + name + "}" for name in self.env_names
+            }
         return entry
 
     def render(self, style: str) -> dict[str, Any]:
@@ -352,6 +355,8 @@ def run_install(
     entry = build_entry(settings, executable=context.executable)
     if args.client == "muse-code":
         entry = replace(entry, env_names=credential_names(settings))
+    elif args.client == "cursor":
+        entry = replace(entry, env_names=credential_names(settings), env_prefix="env:")
     created = False
     mcp_shadowed_by: str | None = None
     displaced: str | None = None
@@ -379,6 +384,14 @@ def run_install(
             )
             if args.level == "user" and registered_argv(project) is not None:
                 mcp_shadowed_by = str(project.config_path)
+        elif args.client == "cursor":
+            merged = merge_entry(
+                load_document(target.config_path),
+                servers_key=target.servers_key,
+                name=SERVER_NAME,
+                entry=entry,
+                path=target.config_path,
+            )
         elif args.level == "user" and project.config_path != target.config_path:
             # A file the client's CLI writes is applied by `neosian setup`,
             # which removes the shadow once that succeeds; here it is named.

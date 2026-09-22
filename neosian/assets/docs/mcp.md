@@ -88,8 +88,9 @@ neosian mcp install --client claude-code --level project --scope user:me --write
   `opencode.json`, the entry under `mcp` in OpenCode's own shape
   (`type: local`, one `command` array; an `opencode.jsonc` beside it is
   refused); `claude-desktop` → its platform config file; `cursor` →
-  `~/.cursor/mcp.json`; `claude-code` at the project level → the
-  project's `./.mcp.json`.
+  `~/.cursor/mcp.json` (credential environment variables are forwarded as
+  `${env:NAME}` references because Cursor clears custom MCP environment);
+  `claude-code` at the project level → the project's `./.mcp.json`.
 - `muse-code` uses `$XDG_CONFIG_HOME/muse/settings.json` (default
   `~/.config/muse/settings.json`) at user level, or the shared `.mcp.json`
   at project level. New user settings include `schema_version: 1`.

@@ -37,7 +37,7 @@ SESSIONS_DIR: Final = "sessions"
 Record = dict[str, Any]
 
 
-def parse_payload(text: str) -> dict[str, Any]:
+def parse_payload(text: str, *, agent: str = "claude-code") -> dict[str, Any]:
     """One hook payload; the failure names what was wrong with it."""
     try:
         raw: Any = json.loads(text)
@@ -45,11 +45,40 @@ def parse_payload(text: str) -> dict[str, Any]:
         raise ValueError(f"stdin is not JSON: {exc}") from None
     if not isinstance(raw, dict):
         raise ValueError("stdin is not a JSON object")
+    if agent == "cursor":
+        raw = cursor_payload(raw)
+    elif agent == "claude-code" and isinstance(raw.get("cursor_version"), str):
+        # Cursor imports Claude hooks too. Only its native recorder owns a span.
+        raw = {
+            **raw,
+            "session_id": raw.get("conversation_id"),
+            "hook_event_name": "CursorImported",
+        }
     session = raw.get("session_id")
     if not isinstance(session, str) or not session:
         raise ValueError("the payload carries no session_id")
     payload: dict[str, Any] = raw
     return payload
+
+
+def cursor_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Cursor's native hook vocabulary, reduced to the recorder's events."""
+    events = {
+        "beforeSubmitPrompt": PROMPT_EVENT,
+        "postToolUse": TOOL_EVENT,
+        "afterAgentResponse": "AssistantResponse",
+        "stop": STOP_EVENT,
+        "sessionStart": "SessionStart",
+    }
+    event = payload.get("hook_event_name")
+    return {
+        **payload,
+        "session_id": payload.get("conversation_id"),
+        "hook_event_name": events.get(str(event), event),
+        "tool_response": payload.get("tool_output"),
+        "last_assistant_message": "",
+        "status": payload.get("status") or "completed",
+    }
 
 
 def reduce_payload(payload: Mapping[str, Any]) -> tuple[str, Record | None]:
@@ -77,7 +106,15 @@ def reduce_payload(payload: Mapping[str, Any]) -> tuple[str, Record | None]:
         }
     if event == STOP_EVENT:
         text = payload.get("last_assistant_message") or ""
+        if "status" in payload:
+            return "spooled", {
+                "kind": "stop",
+                "text": str(text),
+                "status": str(payload.get("status") or "completed"),
+            }
         return "spooled", {"kind": "stop", "text": str(text)}
+    if event == "AssistantResponse":
+        return "spooled", {"kind": "assistant", "text": str(payload.get("text") or "")}
     return "ignored", None
 
 
@@ -120,7 +157,7 @@ def messages_of(records: Sequence[Record]) -> list[Message]:
                     tool_call_id=call_id,
                 )
             )
-        elif kind == "stop" and record.get("text"):
+        elif kind in ("stop", "assistant") and record.get("text"):
             messages.append(Message(role=Role.ASSISTANT, content=str(record["text"])))
     return messages
 

@@ -32,7 +32,7 @@ saying what it installs first.
 
 On your own machine, three commands and no Python: `neosian status`
 says whether it is set up, `neosian setup --write` wires every installed
-agent (Claude Code, Codex, OpenCode, Muse Code) to the home once per machine, so a
+agent (Claude Code, Codex, OpenCode, Muse Code, Cursor) to the home once per machine, so a
 new project needs nothing, and bare `neosian` opens a chat with an agent
 that knows neosian and writes to the same memory (`neosian docs cli`).
 

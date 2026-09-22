@@ -1,6 +1,6 @@
 ---
 title: "Any agent: the record through hooks"
-summary: Claude Code, Codex and OpenCode hooks call neosian record; SessionStart reads it back
+summary: Agent hooks record sessions; startup context and MCP recall read them back
 ---
 
 # Any agent
@@ -42,7 +42,8 @@ neosian record install --client opencode --level project --scope user:me --write
   (`--scope`, `--mount`), or recording only where you ask for it. A
   lighter per-project override needs no second registration: set
   `NEOSIAN_SCOPE` in that project's environment for the client. Muse clears
-  this variable at launch; name its scope explicitly when installing.
+  this variable at launch, as does Cursor for MCP children; name their
+  scopes explicitly when installing.
 - **One level per client.** Every client merges its hook sources, so
   ours at two levels would run twice and land each span twice. A
   user-level `--write` removes this directory's project-level entry
@@ -57,6 +58,7 @@ neosian record install --client opencode --level project --scope user:me --write
   "$CLAUDE_PROJECT_DIR"`, the directory the session started in, which
   stays put. Codex runs hooks in the session's directory and needs
   nothing; the OpenCode plugin passes the directory it was opened with.
+  Cursor uses the payload's workspace roots; see its section below.
   A directory with no name to derive a project from (`/`) records to
   `/user` alone; a hook never exits 2, which Claude Code reads as
   "block the prompt".
@@ -126,7 +128,7 @@ Exit tiers bend once, for the hook's sake: Claude Code reads a hook's
 exit 2 as "block", so the verb exits 2 only for a bad invocation
 (caught at install time) and 1 for everything after (a broken store
 never blocks the agent) and prints nothing on stdout unless `--json`,
-except on `SessionStart`.
+except on `SessionStart`. Cursor uses JSON hook responses, described below.
 
 ## Session start: where we left off
 
@@ -217,6 +219,56 @@ References: Muse's [hooks](https://meta-models.github.io/muse-code-sdk/next/guid
 and [MCP configuration](https://meta-models.github.io/muse-code-sdk/next/guides/extend/mcp-servers/),
 verified against Muse Code 1.3.0.
 
+## Cursor
+
+`neosian setup --client cursor --url URL --write` installs user MCP at
+`~/.cursor/mcp.json` and native version-1 hooks at `~/.cursor/hooks.json`.
+Cursor clears custom environment variables for MCP children; the entry
+forwards credential names as `${env:NAME}` references, never their values.
+Hooks inherit the client environment. The `.cursor` directory must exist.
+Both halves are checked before setup writes; unrelated configuration
+survives, and reinstall is idempotent.
+`record install --client cursor --level project` writes trusted project
+hooks instead. Cursor's MCP installer remains user-level only.
+
+User hooks run from `~/.cursor`, so the recorder derives `/project` from
+one absolute `workspace_roots` entry in the payload. Missing or multiple
+roots use `/user` alone, with a diagnostic. Supply `--project DIR` on the
+record command or explicit `--scope`/`--mount` at installation to select a
+project; `NEOSIAN_SCOPE` also takes precedence. Tool cwd changes do not
+change the session's project.
+
+`beforeSubmitPrompt` supplies the prompt, `postToolUse` the tool round
+(including its JSON-string output, capped at 4096 characters), and
+`afterAgentResponse` the assistant text. A completed turn lands once both
+`stop` and `afterAgentResponse` have arrived, in either order. Cursor's
+interactive CLI can send the stop first. Aborted or failed turns can land
+without assistant text. The actor is `cursor:<conversation_id>`.
+A per-session advisory spool lock serializes concurrent hook processes
+through the store write; it is released if a process exits. Its small
+hidden lock file stays in the spool to keep
+waiting processes on the same lock. This does not permit multiple direct
+writers to a FileStore root.
+`sessionStart` returns the same index and recent sessions through JSON
+`additional_context`; other successful hooks return `{}`. `--json`
+continues to return the recorder's diagnostic envelope.
+
+Cursor can also load Claude Code hooks. The Claude recorder ignores
+payloads carrying Cursor's version marker, leaving recording and startup
+context to the native Cursor registration. Both configurations stay in
+place. This CLI imports Claude configurations containing a matcher;
+matcherless groups alone did not load in the probe.
+
+The measured target is the interactive Cursor CLI `2026.09.10-fd3934a`.
+Its `--print` mode emitted startup and tool hooks, but omitted prompt,
+response and stop events: full recording is unavailable there. Use the
+interactive CLI for recording. Transcript parsing is not a fallback.
+The installer escapes JSON slashes so this version's comment reader
+preserves daemon URLs inside hook commands.
+
+References: Cursor's [hooks](https://cursor.com/docs/hooks) and
+[third-party hooks](https://cursor.com/docs/reference/third-party-hooks).
+
 ## The client table
 
 A row exists only while its walkthrough is green on a real install. "Per
@@ -229,5 +281,5 @@ two project directories, each session in its own `proj:` scope.
 | Codex | ✓ through `codex mcp add` | ✓ walkthrough green 2026-09-03 (`codex exec`) | ✓ 2026-09-19 (0.154.0): the same, user-level hooks with no project trust step | ✓ the same event and `source` values (its reference, 2026-09-03) |
 | OpenCode | ✓ | ✓ walkthrough green 2026-09-03 (`opencode run`, a plugin) | ✓ 2026-09-19 (1.18.30, a free model): the same, the plugin passing the directory it was opened with | — (an experimental per-call door only; not wired) |
 | Claude Desktop | ✓ | no hooks surface | one file by nature; no project, so `/user` alone | — |
-| Cursor | ✓ | not yet: its hooks are read (their own payload shape, a mapping of its own); next | | — |
+| Cursor | ✓ user MCP, credential names forwarded | ✓ interactive CLI 2026.09.10-fd3934a; `--print` lacks full recording | ✓ one user registration, payload workspace roots | ✓ `sessionStart`, JSON `additional_context` |
 | Muse Code | ✓ user settings or shared project `.mcp.json` | ✓ walkthrough green 2026-09-22 (`muse exec`, 1.3.0) | ✓ two projects, one user registration; authenticated managed hooks and MCP on the state process | ✓ `SessionStart`, plain stdout; prior turn recalled over MCP |

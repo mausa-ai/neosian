@@ -46,6 +46,7 @@ CLIENTS: Final = (
     "codex",
     "opencode",
     "muse-code",
+    "cursor",
 )  # both installers' rows
 _DESCRIPTION: Final = "Wire the installed agents to this store: MCP and the hooks."
 _EPILOG: Final = (
@@ -199,7 +200,7 @@ def run_setup(
     rows: list[dict[str, Any]] = []
     for client in clients:
         target = mcp_target(client, context, args.level)
-        if client == "muse-code" and args.write:
+        if client in {"muse-code", "cursor"} and args.write:
             previews = {
                 kind: _installer(
                     run, client, write=False, extra=extra, env=env, context=context
