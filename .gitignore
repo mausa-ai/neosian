@@ -60,7 +60,8 @@ Thumbs.db
 .ruff_cache/
 .import_linter_cache/
 
-# The record (roadmap, design, the tour, the agent procedures) lives in a
-# private sibling repository — never here.
+# The record (roadmap, design, the tour, the protocol) lives in record/,
+# in the checkout but never committed (ledger #272).
+/record/
 /docs/
 /.claude/

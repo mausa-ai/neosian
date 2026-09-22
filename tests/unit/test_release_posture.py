@@ -79,9 +79,13 @@ def test_the_sdist_leaves_the_planning_surface_out() -> None:
         excluded = tomllib.load(f)["tool"]["hatch"]["build"]["targets"]["sdist"][
             "exclude"
         ]
-    assert {"/docs/", "/.claude/", "/.github/", "/.import_linter_cache/"} <= set(
-        excluded
-    )
+    assert {
+        "/docs/",
+        "/record/",
+        "/.claude/",
+        "/.github/",
+        "/.import_linter_cache/",
+    } <= set(excluded)
 
 
 _RELEASE = _ROOT / ".github" / "workflows" / "release.yml"

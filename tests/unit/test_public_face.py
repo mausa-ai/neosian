@@ -40,11 +40,19 @@ def test_security_names_the_channel_and_the_address() -> None:
 
 @pytest.mark.unit
 def test_the_record_is_not_here() -> None:
-    # The roadmap, the design record, the tour and the agent procedures
-    # live in a private sibling repository (ledger #198, #200); the public
+    # The roadmap, the design record, the tour and the protocol live in
+    # record/, ignored and never tracked (ledger #198, #272); the public
     # tree carries AGENTS.md and a CLAUDE.md that only defers to it.
-    assert not (_ROOT / "docs").exists()
-    assert not (_ROOT / ".claude" / "commands").exists()
+    assert "/record/" in (_ROOT / ".gitignore").read_text(encoding="utf-8").split()
+    if (_ROOT / ".git").exists():
+        tracked = subprocess.run(
+            ["git", "ls-files", "record", "docs", ".claude/commands"],
+            cwd=_ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+        assert not tracked
     assert (_ROOT / "CLAUDE.md").read_text(encoding="utf-8") == "@AGENTS.md\n"
     agents = (_ROOT / "AGENTS.md").read_text(encoding="utf-8")
     assert agents.strip() and not any(ln.startswith("@") for ln in agents.splitlines())

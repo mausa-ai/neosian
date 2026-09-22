@@ -378,5 +378,6 @@ exclude = [
     "/.github/",
     "/.import_linter_cache/",
     "/docs/",
+    "/record/",
     "/branding/",
 ]
