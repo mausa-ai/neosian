@@ -85,8 +85,8 @@ made with [VHS](https://github.com/charmbracelet/vhs): `record.tape` — a
 Claude Code session landing as a recorded turn that `neosian audit`
 names (tour beat 09) — and `left-off.tape` — the next session opening on
 "where we left off" (beat 12/13). The tape is the source: re-render with
-`vhs <name>.tape` instead of re-recording (it needs `neosian` with the
-`[cli]` extra and a logged-in `claude` on PATH, and writes `~/demo/`).
+`vhs <name>.tape` instead of re-recording (it needs `neosian` and a
+logged-in `claude` on PATH, and writes `~/demo/`).
 The GIF and MP4 sit beside each tape; README embeds the GIFs by absolute
 URL at the release tag (PyPI renders the README), and the sdist's
 `branding/` exclusion keeps them out of the wheel.

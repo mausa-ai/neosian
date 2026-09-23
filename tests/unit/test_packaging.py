@@ -2,8 +2,8 @@
 
 One package carries every door but one (ledger #206) — the shell, the MCP
 SDK, the serving stack and the OTel API are core; the Postgres driver is
-the one extra with `all` as its alias, and the four former extras are
-empty aliases for one release; the two provider SDKs
+the one extra with `all` as its alias (the four empty aliases of rc3 left
+at rc16, NX2); the two provider SDKs
 are capped at their next major (TP-1); `import neosian` loads no provider
 SDK (EC-5); and a missing library still answers with a reinstall hint,
 never a traceback — each pinned here, keylessly, in a subprocess where
@@ -28,7 +28,6 @@ _DOORS = {
     "typer",
     "uvicorn",
 }
-_ALIASES = {"cli", "mcp", "otel", "server"}
 _SDKS = ("anthropic", "openai")
 
 
@@ -56,10 +55,9 @@ def test_the_core_carries_every_door_but_the_driver() -> None:
     assert names >= _DOORS and "psycopg" not in names
     extras = project["optional-dependencies"]
     assert isinstance(extras, dict)
-    assert set(extras) == _ALIASES | {"postgres", "all"}
+    assert set(extras) == {"postgres", "all"}
     assert [_name(s) for s in extras["postgres"]] == ["psycopg"]
     assert extras["all"] == ["neosian[postgres]"]
-    assert all(extras[name] == [] for name in _ALIASES), extras
 
 
 @pytest.mark.unit

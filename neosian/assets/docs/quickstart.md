@@ -25,8 +25,7 @@ process and OpenTelemetry spans, about 70 MB, none of it loaded
 until used. Keyless to start: `Model.FAKE` needs no account and
 `FileStore` is a directory. The one extra is the Postgres driver for
 `PostgresStore`, `uv add "neosian[postgres]==<X.Y.Z>"`, with `[all]` as
-its alias; the former `[cli]`, `[mcp]`, `[otel]` and `[server]` resolve
-for one release and add nothing. On a machine with nothing on it,
+its alias. On a machine with nothing on it,
 `curl -fsS https://neosian.com/install | bash` lands uv and neosian,
 saying what it installs first.
 

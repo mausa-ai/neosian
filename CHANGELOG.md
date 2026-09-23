@@ -8,6 +8,17 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [1.0.0rc16] - 2026-09-23
+
+### Removed
+
+- The four empty alias extras `cli`, `mcp`, `otel` and `server`, kept
+  since 1.0.0rc3 so pinned lines would still resolve (ledger #206's one
+  release). **Migrating:** `uv add "neosian[cli]==…"` becomes `uv add
+  "neosian==…"`; `[postgres]` and its alias `[all]` are unchanged. A
+  resolver treats an extra a package does not provide as a warning, never
+  an error, so an old line still installs the package.
+
 ## [1.0.0rc15] - 2026-09-23
 
 ### Changed
@@ -1494,7 +1505,8 @@ pre-release — pin it explicitly; the API stability promise rides v1.0.0.
 - Both entry points share one `_validate_run`, so neither can skip a
   guard.
 
-[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc15...HEAD
+[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc16...HEAD
+[1.0.0rc16]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc15...v1.0.0rc16
 [1.0.0rc15]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc14...v1.0.0rc15
 [1.0.0rc14]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc13...v1.0.0rc14
 [1.0.0rc13]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc12...v1.0.0rc13

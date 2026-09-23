@@ -1,6 +1,6 @@
 [project]
 name = "neosian"
-version = "1.0.0rc15"
+version = "1.0.0rc16"
 description = "Async-only library for LLM agents: tools, orchestration, streaming, guardrails — with opt-in conversation, memory, and compaction layers over a stateless core."
 readme = "README.md"
 license = "Apache-2.0"
@@ -42,16 +42,11 @@ dependencies = [
 
 # The one extra: the Postgres driver, a 20 MB binary wheel that matters
 # only beside a server you already run (psycopg 3.2.10 is the first
-# wheel for 3.14); `all` is its alias. `cli`, `mcp`, `otel` and `server`
-# are empty aliases for one release so pinned `neosian[extra]==…` lines
-# still resolve (#206).
+# wheel for 3.14); `all` is its alias (#206; the four empty aliases that
+# let rc3's pinned `neosian[cli]==…` lines resolve left at rc16, NX2).
 [project.optional-dependencies]
 postgres = ["psycopg[binary,pool]>=3.2.10"]
 all = ["neosian[postgres]"]
-cli = []
-mcp = []
-otel = []
-server = []
 
 [project.urls]
 Homepage = "https://github.com/mausa-ai/neosian"

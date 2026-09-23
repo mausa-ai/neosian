@@ -1,5 +1,5 @@
 # neosian README — a Claude Code session landing as a recorded turn.
-# Needs `neosian` ([cli] extra) and `claude` on PATH; a logged-in Claude
+# Needs `neosian` and `claude` on PATH; a logged-in Claude
 # Code. Re-render with `vhs record.tape` (https://github.com/charmbracelet/vhs).
 Output record.gif
 Output record.mp4

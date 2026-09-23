@@ -1,7 +1,7 @@
 # neosian README — the next Claude Code session opens on "where we left
 # off": the SessionStart hook prints the scope's index and the recorded
 # sessions, and the model answers from them. The hidden preamble records
-# one session first. Needs `neosian` ([cli] extra) and `claude` on PATH;
+# one session first. Needs `neosian` and `claude` on PATH;
 # a logged-in Claude Code. Re-render with `vhs left-off.tape`.
 Output left-off.gif
 Output left-off.mp4

@@ -959,7 +959,7 @@ wheels = [
 
 [[package]]
 name = "neosian"
-version = "1.0.0rc15"
+version = "1.0.0rc16"
 source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
@@ -1019,7 +1019,7 @@ requires-dist = [
     { name = "typer", specifier = ">=0.27.1" },
     { name = "uvicorn", specifier = ">=0.52.4" },
 ]
-provides-extras = ["postgres", "all", "cli", "mcp", "otel", "server"]
+provides-extras = ["postgres", "all"]
 
 [package.metadata.requires-dev]
 dev = [
