@@ -119,7 +119,7 @@ config = AgentConfig(system_prompt="Be concise.", model=ACME_LARGE)
 ```
 
 Cost in µ$, the context policy, capability-aware fallback and the
-playground picker treat it like a shipped model; a missing `XAI_API_KEY`
+playground picker treat it like a shipped model; a missing `ACME_API_KEY`
 fails naming it. The door's `wire` names the endpoint it speaks:
 `"chat"` (Chat Completions, the default, what most compatible endpoints
 serve) or `"responses"` (the Responses API, the wire OpenAI and xAI

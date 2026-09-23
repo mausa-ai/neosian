@@ -45,10 +45,6 @@ class ErrorMessages:
         "Supported models: {supported_models}"
     )
 
-    # Playground errors
-    OPENAI_API_KEY_MISSING: str = "OPENAI_API_KEY environment variable not set"
-    ANTHROPIC_API_KEY_MISSING: str = "ANTHROPIC_API_KEY environment variable not set"
-
     # OpenAI specific errors
     OPENAI_TEMPERATURE_NOT_SUPPORTED: str = (
         "Temperature parameter is not supported for OpenAI GPT-5 models"
