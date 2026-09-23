@@ -1,8 +1,9 @@
-"""The --menu and arena config rebuilds carry every field (N2 slice C).
+"""The playground's model override carries every field (N2 slice C).
 
-The hand-rolled rebuilds this pins against dropped nine AgentConfig
-fields, silently resetting them to defaults — the characterization is
-`replace(base, model=...)`, nothing hand-copied.
+The hand-rolled rebuild this pins against dropped nine AgentConfig
+fields, silently resetting them to defaults. The characterization is
+`replace(base, model=...)`, nothing hand-copied; `--model` and `--menu`
+both ride it (DESIGN §14.6).
 """
 
 import dataclasses
@@ -11,8 +12,7 @@ from pathlib import Path
 import pytest
 
 from neosian import AgentConfig, Model
-from neosian._cli.arena import arena_config
-from neosian._cli.playground import menu_config
+from neosian._cli.playground import with_model
 from neosian._foundation.agent.hooks import AgentHooks
 from neosian._foundation.llm.fake import FakeClient, FakeScript
 from neosian._foundation.memory.file import FileStore
@@ -58,28 +58,17 @@ def _loaded_base(tmp_path: Path) -> AgentConfig:
 
 
 @pytest.mark.unit
-class TestMenuConfig:
+class TestWithModel:
     def test_is_exactly_replace_with_the_model(self, tmp_path: Path) -> None:
         base = _loaded_base(tmp_path)
-        assert menu_config(base, Model.FAKE_REASONING) == dataclasses.replace(
+        assert with_model(base, Model.FAKE_REASONING) == dataclasses.replace(
             base, model=Model.FAKE_REASONING
         )
 
     def test_every_previously_dropped_field_survives(self, tmp_path: Path) -> None:
         base = _loaded_base(tmp_path)
-        rebuilt = menu_config(base, Model.FAKE_REASONING)
+        rebuilt = with_model(base, Model.FAKE_REASONING)
         assert rebuilt.model is Model.FAKE_REASONING
         for name in _DROPPED:
             assert getattr(rebuilt, name) == getattr(base, name), name
         assert rebuilt.memory is base.memory
-
-
-@pytest.mark.unit
-class TestArenaConfig:
-    def test_memory_is_dropped_everything_else_survives(self, tmp_path: Path) -> None:
-        base = _loaded_base(tmp_path)
-        rebuilt = arena_config(base, Model.FAKE_REASONING)
-        assert rebuilt.model is Model.FAKE_REASONING
-        assert rebuilt.memory is None  # arena stays memory-less, deliberately
-        for name in _DROPPED:
-            assert getattr(rebuilt, name) == getattr(base, name), name

@@ -29,7 +29,10 @@ class AgentResponse:
     Attributes:
         message: The assistant's response message.
         tool_calls_made: List of tool calls made during execution.
-        tool_results: Results from tool executions.
+        tool_results: Results from tool executions, one per call in
+            `tool_calls_made`, by position: `tool_results[i]` answers
+            `tool_calls_made[i]` whatever order the calls finished in
+            (both drivers append in submission order).
         usage: Token usage statistics.
         blocked: True if content was blocked by guardrails.
         guardrail_result: Detailed guardrail check results (if guardrails enabled).

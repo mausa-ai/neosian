@@ -5,6 +5,7 @@ streaming, tool loop, fallback, sessions) with zero API keys and zero
 ad-hoc mocks.
 """
 
+import asyncio
 import dataclasses
 import os
 from typing import Any
@@ -276,6 +277,49 @@ class TestSessionWithFake:
         async with agent.session() as session:
             await session.run(_USER, stream=False)
         assert fake.closed is True
+
+
+@pytest.mark.unit
+class TestResultsPairWithCalls:
+    """EC-17: `tool_results[i]` answers `tool_calls_made[i]` whatever order
+    parallel calls finish in; both drivers append in submission order."""
+
+    @pytest.mark.parametrize("in_session", [False, True])
+    async def test_the_first_call_finishing_last_keeps_its_place(
+        self, in_session: bool
+    ) -> None:
+        fast_done = asyncio.Event()
+        finished: list[str] = []
+
+        @Tool(name="slow", description="Waits for fast.")
+        async def slow() -> ToolResult[str]:
+            await fast_done.wait()
+            finished.append("slow")
+            return ToolResult.ok("slow-result")
+
+        @Tool(name="fast", description="Returns at once.")
+        async def fast() -> ToolResult[str]:
+            finished.append("fast")
+            fast_done.set()
+            return ToolResult.ok("fast-result")
+
+        calls = (
+            ToolCall(id=ToolCallId("c1"), name=ToolName("slow"), arguments={}),
+            ToolCall(id=ToolCallId("c2"), name=ToolName("fast"), arguments={}),
+        )
+        fake = FakeClient(
+            FakeScript(turns=(FakeTurn(tool_calls=calls), FakeTurn(content="done")))
+        )
+        agent = Agent(_config(tools=[slow, fast], client_factory=lambda _: fake))
+        if in_session:
+            async with agent.session() as session:
+                response = await session.run(_USER, stream=False)
+        else:
+            response = await agent.run(_USER, stream=False)
+
+        assert finished == ["fast", "slow"]
+        assert [call.name for call in response.tool_calls_made] == ["slow", "fast"]
+        assert [r.data for r in response.tool_results] == ["slow-result", "fast-result"]
 
 
 def _greet_script() -> FakeScript:

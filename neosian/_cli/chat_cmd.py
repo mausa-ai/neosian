@@ -1,5 +1,6 @@
-"""`neosian chat` — the resident agent, one shot or a session (DESIGN
-§30.2).
+"""`neosian chat`: the resident agent, one shot or a session (DESIGN
+§30.2). `run_conversation` is the run tier `neosian playground` shares
+with it (§14.6).
 
 Model: `--model` (a shipped id, a registered door's id, `fake`), else
 `[chat] model` in config.toml, else the first provider with a key in the
@@ -7,8 +8,8 @@ order Anthropic, OpenAI, Cerebras, the shipped door rows (each door's
 first model, enum order), registered doors; none exits 1 naming `neosian
 configure`. A PROMPT argument or a non-terminal stdin runs one
 turn and prints the answer — `--json` the response envelope — so an
-agent or a script can use the resident agent; otherwise the playground's
-loop opens on the same Conversation. Every turn persists under the home.
+agent or a script can use the resident agent; otherwise the session loop
+opens on the same Conversation. Every turn persists under the home.
 """
 
 from __future__ import annotations
@@ -21,11 +22,13 @@ from collections.abc import Mapping
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any, Final, TextIO
 
+from rich.console import Console
+
 from neosian._cli.chat import (
-    chat_config,
     new_conversation_id,
     open_chat,
     resolve_resume,
+    run_chat,
 )
 from neosian._cli.chat_agent import RESIDENT_NAME, resident_config, with_chat_tools
 from neosian._cli.config import get_section
@@ -54,6 +57,10 @@ _NO_KEY: Final = (
     "no provider key found: run `neosian configure`, or pass --model fake "
     "to try the chat keyless"
 )
+_EMPTY_TURN: Final = "nothing to say: the turn is empty"
+_JSON_NEEDS_A_TURN: Final = (
+    "--json answers one turn: pipe it on stdin, or pass chat a PROMPT"
+)
 
 
 class ChatUsageError(Exception):
@@ -69,13 +76,18 @@ class ChatError(Exception):
         self.hint = hint
 
 
+def model_from_flag(flag: str) -> AnyModel:
+    """`--model`: a shipped id, a registered door's id or `fake`."""
+    model = lookup_model(flag)
+    if model is None:
+        raise ChatUsageError(f"unknown model {flag!r} (see `neosian docs agent`)")
+    return model
+
+
 def resolve_chat_model(flag: str | None, env: Mapping[str, str]) -> AnyModel:
     """The flag, else `[chat] model`, else the first keyed provider."""
     if flag is not None:
-        model = lookup_model(flag)
-        if model is None:
-            raise ChatUsageError(f"unknown model {flag!r} (see `neosian docs agent`)")
-        return model
+        return model_from_flag(flag)
     configured = get_section("chat").get("model")
     if isinstance(configured, str):
         model = lookup_model(configured)
@@ -145,7 +157,7 @@ async def one_shot(
     """One turn on a persisted Conversation; the answer on stdout. No
     reflection at close: a script's call is not a session boundary."""
     convo = open_chat(
-        chat_config_of(config),
+        config,
         conversation_id=conversation_id,
         reflection=ReflectionConfig(enabled=False),
     )
@@ -158,13 +170,21 @@ async def one_shot(
         out.write(text_of(response.message) + "\n")
 
 
-def chat_config_of(config: AgentConfig) -> AgentConfig:
-    """The playground's derivation: memory on the home when the config
-    names none (the resident agent already does)."""
-    from neosian._foundation.memory.file import FileStore
-    from neosian._foundation.memory.home import home
+def usage(message: str, *, json_output: bool, out: TextIO, err: TextIO) -> int:
+    """Tier 2 (§14.1): the invocation was wrong; with `--json`, the one
+    usage object as well (#213)."""
+    if json_output:
+        out.write(json.dumps({"error": "usage", "hint": message}) + "\n")
+    err.write(f"error: {message}\n")
+    return 2
 
-    return chat_config(config, FileStore(home()))
+
+def failed(message: str, *, json_output: bool, out: TextIO, err: TextIO) -> int:
+    """Tier 1: the command ran and failed; with `--json`, one error object."""
+    if json_output:
+        out.write(json.dumps({"error": message, "hint": None}) + "\n")
+    err.write(f"error: {message}\n")
+    return 1
 
 
 def run_chat_command(
@@ -178,75 +198,90 @@ def run_chat_command(
     out: TextIO | None = None,
     err: TextIO | None = None,
 ) -> int:
-    """The verb's run tier: owns the loop, the streams and the tiers."""
+    """The verb's run tier: the resident agent (or an agent file with
+    chat's tools), then the tier chat and playground share."""
     stdin = sys.stdin if stdin is None else stdin
     out = sys.stdout if out is None else out
     err = sys.stderr if err is None else err
     load_keys_into_env()
     try:
         config, name = build_config(model, agent, os.environ)
+    except ChatUsageError as exc:
+        return usage(str(exc), json_output=json_output, out=out, err=err)
+    except ChatError as exc:
+        return failed(exc.message, json_output=json_output, out=out, err=err)
+    except Exception as exc:  # the agent file failed to load
+        return failed(str(exc), json_output=json_output, out=out, err=err)
+    return run_conversation(
+        config,
+        name,
+        prompt=prompt,
+        resume=resume,
+        json_output=json_output,
+        stdin=stdin,
+        out=out,
+        err=err,
+    )
+
+
+def run_conversation(
+    config: AgentConfig,
+    name: str,
+    *,
+    prompt: str | None,
+    resume: str | None,
+    json_output: bool,
+    stdin: TextIO,
+    out: TextIO,
+    err: TextIO,
+) -> int:
+    """The run tier chat and playground share (DESIGN §14.6): one turn
+    from a PROMPT or a piped stdin prints the answer (`--json`: the
+    envelope); a terminal opens the session loop. `--json` never opens a
+    session: it promises one JSON object, which a session cannot keep."""
+    try:
         conversation_id = (
             resolve_resume(resume) if resume is not None else new_conversation_id(name)
         )
-    except (ChatUsageError, ValueError, NeosianError) as exc:
-        text = getattr(exc, "message", None) or str(exc)
+    except (ValueError, NeosianError) as exc:
+        return usage(str(exc), json_output=json_output, out=out, err=err)
+    turn = prompt
+    if turn is None and not stdin.isatty():
+        turn = stdin.read()
+    if turn is None:
         if json_output:
-            out.write(json.dumps({"error": "usage", "hint": text}) + "\n")
-        err.write(f"error: {text}\n")
-        return 2
-    except ChatError as exc:
-        return _fail(exc.message, json_output=json_output, out=out, err=err)
-    except Exception as exc:  # the agent file failed to load
-        return _fail(str(exc), json_output=json_output, out=out, err=err)
-
-    one_turn = prompt if prompt is not None else None
-    if one_turn is None and not stdin.isatty():
-        one_turn = stdin.read()
-    if one_turn is not None:
-        if not one_turn.strip():
-            err.write("error: nothing to say — pass a PROMPT or pipe one on stdin\n")
-            return 2
+            return usage(_JSON_NEEDS_A_TURN, json_output=True, out=out, err=err)
+        console = Console()
         try:
             asyncio.run(
-                one_shot(
+                run_chat(
+                    console,
                     config,
-                    one_turn.strip(),
+                    name,
                     conversation_id=conversation_id,
-                    json_output=json_output,
-                    out=out,
+                    resumed=resume is not None,
                 )
             )
         except KeyboardInterrupt:
+            console.print()
             return 130
-        except Exception as exc:
-            return _fail(str(exc), json_output=json_output, out=out, err=err)
+        except SystemExit as exc:
+            return exc.code if isinstance(exc.code, int) else 1
         return 0
-
-    from rich.console import Console
-
-    from neosian._cli.chat import run_chat
-
-    console = Console()
+    if not turn.strip():
+        return usage(_EMPTY_TURN, json_output=json_output, out=out, err=err)
     try:
         asyncio.run(
-            run_chat(
-                console,
+            one_shot(
                 config,
-                name,
+                turn.strip(),
                 conversation_id=conversation_id,
-                resumed=resume is not None,
+                json_output=json_output,
+                out=out,
             )
         )
     except KeyboardInterrupt:
-        console.print()
         return 130
-    except SystemExit as exc:
-        return exc.code if isinstance(exc.code, int) else 1
+    except Exception as exc:
+        return failed(str(exc), json_output=json_output, out=out, err=err)
     return 0
-
-
-def _fail(message: str, *, json_output: bool, out: TextIO, err: TextIO) -> int:
-    if json_output:
-        out.write(json.dumps({"error": message, "hint": None}) + "\n")
-    err.write(f"error: {message}\n")
-    return 1

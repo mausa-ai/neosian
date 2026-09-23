@@ -4,9 +4,12 @@ persistence under the home, the tiers — on the shipped fake."""
 import io
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
+from typer.testing import CliRunner
 
+import neosian._cli.chat_cmd as chat_cmd
 from neosian._cli.chat_cmd import (
     ChatError,
     ChatUsageError,
@@ -16,6 +19,7 @@ from neosian._cli.chat_cmd import (
     run_chat_command,
 )
 from neosian._cli.config import set_value
+from neosian._cli.main import app
 from neosian._foundation.llm.fake import FakeClient, FakeScript, FakeTurn
 from neosian._foundation.memory.file import FileStore
 from neosian._foundation.shared.catalog import OpenAICompatible
@@ -205,3 +209,108 @@ class TestRunTier:
     def test_an_unknown_model_exits_2(self) -> None:
         code, out, err = self._run("hi", model="nope", json_output=True)
         assert code == 2 and json.loads(out)["error"] == "usage" and "nope" in err
+
+
+class _Terminal(io.StringIO):
+    """A stdin that is a terminal: no piped turn, so a session opens."""
+
+    def isatty(self) -> bool:
+        return True
+
+
+def _run_on(
+    stdin: io.StringIO, prompt: str | None = None, **flags: Any
+) -> tuple[int, str, str]:
+    out, err = io.StringIO(), io.StringIO()
+    code = run_chat_command(
+        prompt,
+        model=flags.get("model", "fake"),
+        agent=flags.get("agent"),
+        resume=flags.get("resume"),
+        json_output=bool(flags.get("json_output", False)),
+        stdin=stdin,
+        out=out,
+        err=err,
+    )
+    return code, out.getvalue(), err.getvalue()
+
+
+class TestTheSharedTier:
+    """`run_conversation`, the tier chat and playground share (§14.6)."""
+
+    def _session(
+        self, monkeypatch: pytest.MonkeyPatch, raises: BaseException | None = None
+    ) -> list[dict[str, Any]]:
+        opened: list[dict[str, Any]] = []
+
+        async def run_chat(
+            _console: object, _config: object, name: str, **kw: Any
+        ) -> None:
+            opened.append({"name": name, **kw})
+            if raises is not None:
+                raise raises
+
+        monkeypatch.setattr(chat_cmd, "run_chat", run_chat)
+        return opened
+
+    def test_a_terminal_opens_the_session(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        opened = self._session(monkeypatch)
+        code, out, _ = _run_on(_Terminal())
+        assert code == 0 and out == ""
+        assert [(o["name"], o["resumed"]) for o in opened] == [("neosian", False)]
+
+    @pytest.mark.parametrize(
+        ("raises", "code"), [(KeyboardInterrupt(), 130), (SystemExit(1), 1)]
+    )
+    def test_a_session_that_stops_keeps_its_tier(
+        self, monkeypatch: pytest.MonkeyPatch, raises: BaseException, code: int
+    ) -> None:
+        self._session(monkeypatch, raises)
+        assert _run_on(_Terminal())[0] == code
+
+    def test_json_never_opens_a_session(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        opened = self._session(monkeypatch)
+        code, out, err = _run_on(_Terminal(), json_output=True)
+        assert code == 2 and opened == []
+        assert json.loads(out)["error"] == "usage" and "--json" in err
+
+    def test_a_bad_resume_id_is_grammar(self) -> None:
+        code, _, err = _run_on(io.StringIO("hi"), resume="bad id!")
+        assert code == 2 and "bad id!" in err
+
+    @pytest.mark.parametrize(
+        ("raises", "code"), [(KeyboardInterrupt(), 130), (RuntimeError("down"), 1)]
+    )
+    def test_a_turn_that_stops_keeps_its_tier(
+        self, monkeypatch: pytest.MonkeyPatch, raises: BaseException, code: int
+    ) -> None:
+        async def one_shot(*_args: object, **_kwargs: object) -> None:
+            raise raises
+
+        monkeypatch.setattr(chat_cmd, "one_shot", one_shot)
+        assert _run_on(io.StringIO("hi"))[0] == code
+
+    def test_a_failed_turn_names_why_in_both_streams(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        async def one_shot(*_args: object, **_kwargs: object) -> None:
+            raise RuntimeError("provider down")
+
+        monkeypatch.setattr(chat_cmd, "one_shot", one_shot)
+        code, out, err = _run_on(io.StringIO("hi"), json_output=True)
+        assert code == 1 and json.loads(out)["error"] == "provider down"
+        assert err == "error: provider down\n"
+
+    def test_an_agent_file_that_cannot_load_exits_1(self, tmp_path: Path) -> None:
+        code, _, err = _run_on(io.StringIO("hi"), agent=str(tmp_path / "absent.py"))
+        assert code == 1 and "absent.py" in err
+
+
+def test_the_verb_forwards_its_flags() -> None:
+    result = CliRunner().invoke(
+        app, ["chat", "--model", "fake", "--json"], input="hi\n"
+    )
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout)["text"] == "fake response"

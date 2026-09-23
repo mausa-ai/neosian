@@ -8,6 +8,30 @@ phase close names the version.
 
 ## [Unreleased]
 
+### Changed
+
+- `neosian playground AGENT_FILE` runs the file under chat's run tier
+  (ledger #279; DESIGN §14.6): `--model M` beside `--menu` (never both;
+  the menu needs a terminal), piped stdin runs one turn and prints the
+  answer, `--json` prints the envelope `neosian chat` prints, `--resume
+  ID` as before, and an interrupt exits 130. The file runs as written:
+  `neosian chat --agent FILE` is the path that adds the `docs` tool.
+- `neosian chat` and `neosian playground` refuse `--json` when there is
+  no turn to answer (exit 2): `--json` prints one object, which a
+  session cannot keep. An agent file that fails to load exits 1 (it was
+  2 under `chat --agent`).
+
+### Removed
+
+- `neosian playground --arena` and its saved-session JSON. Comparing
+  models side by side is `neosian eval`'s `models:` axis, which scores
+  every cell and writes an artifact.
+
+### Fixed
+
+- A streamed session names the call each tool result and progress line
+  belongs to, so parallel calls that finish out of order read right.
+
 ## [1.0.0rc14] - 2026-09-22
 
 ### Changed

@@ -1,14 +1,11 @@
-"""Model and provider pickers for the CLI, derived from the Model registry."""
+"""The model picker (`playground --menu`, DESIGN §14.6), derived from the
+Model registry."""
 
 from rich.console import Console
 
 from neosian._cli.ui import pick
-from neosian._foundation.shared.constants import ArenaUI
 from neosian._foundation.shared.registry import provider_label, registered_models
 from neosian._foundation.shared.types import DEFAULT_MODELS, AnyModel, Model, Provider
-
-# Models hidden from the interactive picker (special-purpose).
-_HIDDEN_MODELS: frozenset[Model] = frozenset()
 
 # Optional flavor text appended to a model's display name. The "(default)"
 # marker is derived from DEFAULT_MODELS, not baked in here.
@@ -60,9 +57,7 @@ def get_models_for_provider(
     models: list[AnyModel] = [
         m
         for m in Model
-        if m.provider is provider
-        and m not in _HIDDEN_MODELS
-        and (not require_reasoning or m.supports_reasoning)
+        if m.provider is provider and (not require_reasoning or m.supports_reasoning)
     ]
     if provider is Provider.OPENAI_COMPATIBLE:
         models += [
@@ -142,83 +137,3 @@ def select_provider_and_model(
 
         selected_model: AnyModel = models[model_choice][0]
         return selected_model
-
-
-def select_provider_and_model_labeled(
-    console: Console, label: str, *, require_reasoning: bool = False
-) -> AnyModel | None:
-    """Show interactive menu to select provider and model with a label.
-
-    Args:
-        console: Rich console for output.
-        label: Label to show (e.g., "Model 1").
-        require_reasoning: If True, only show models that support reasoning.
-
-    Returns:
-        Selected Model or None if cancelled.
-    """
-    providers = get_available_providers(require_reasoning=require_reasoning)
-    if not providers:
-        return None
-
-    while True:
-        provider_choice = pick(
-            console,
-            ArenaUI.SELECT_PROVIDER.format(label=label),
-            [p[1] for p in providers],
-        )
-        if provider_choice is None:
-            return None
-
-        selected_provider = providers[provider_choice][0]
-
-        models = get_models_for_provider(
-            selected_provider, require_reasoning=require_reasoning
-        )
-        if not models:
-            return None
-
-        model_names = [m[1] for m in models] + ["← Back"]
-        model_choice = pick(
-            console,
-            ArenaUI.SELECT_MODEL.format(label=label, provider=selected_provider.value),
-            model_names,
-        )
-        if model_choice is None or model_choice == len(models):
-            # Back to provider selection
-            continue
-
-        labeled_model: AnyModel = models[model_choice][0]
-        return labeled_model
-
-
-def select_arena_models(
-    console: Console, *, require_reasoning: bool = False
-) -> list[AnyModel] | None:
-    """Select models for arena mode.
-
-    Args:
-        console: Rich console for output.
-        require_reasoning: If True, only show models that support reasoning.
-
-    Returns:
-        List of Model enums or None if cancelled.
-    """
-    count_choice = pick(console, ArenaUI.SELECT_COUNT, list(ArenaUI.COUNT_OPTIONS))
-    if count_choice is None:
-        return None
-
-    model_count = int(ArenaUI.COUNT_OPTIONS[count_choice])
-
-    # Select each model
-    selections: list[AnyModel] = []
-    for i in range(model_count):
-        label = ArenaUI.MODEL_LABEL.format(n=i + 1)
-        selection = select_provider_and_model_labeled(
-            console, label, require_reasoning=require_reasoning
-        )
-        if selection is None:
-            return None
-        selections.append(selection)
-
-    return selections

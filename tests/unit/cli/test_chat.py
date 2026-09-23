@@ -1,24 +1,36 @@
-"""The conversation-backed chat helpers (N2 slice C). Zero keys."""
+"""The conversation-backed chat helpers and the session loop chat and
+playground share (N2 slice C; DESIGN §14.6). Zero keys."""
 
+import io
 from datetime import UTC, datetime, tzinfo
 from pathlib import Path
-from typing import Self
+from typing import Any, Literal, Self
 
 import pytest
+from rich.console import Console
 
+import neosian._cli.chat as chat_module
 from neosian import AgentConfig, Model
 from neosian._cli.chat import (
+    _render_response,
     chat_config,
     describe_memory,
     new_conversation_id,
     open_chat,
     resolve_resume,
+    run_chat,
+    turn_title,
 )
+from neosian._foundation.agent.response import AgentResponse
 from neosian._foundation.conversation.ids import parse_conversation_id
+from neosian._foundation.llm.base import Message, Role, ToolCall
 from neosian._foundation.llm.fake import FakeClient, FakeScript, FakeTurn
 from neosian._foundation.memory.file import FileStore
 from neosian._foundation.memory.mounts import MemoryConfig, Mount
 from neosian._foundation.shared.exceptions import ConversationIdInvalidError
+from neosian._foundation.shared.guardrail_types import GuardrailResult, PolicyResult
+from neosian._foundation.shared.types import ToolCallId, ToolName
+from neosian._foundation.tools.base import ToolResult
 
 _SYSTEM = "You are a test agent."
 _NOW = datetime(2026, 8, 20, 14, 32, 7)
@@ -150,3 +162,153 @@ class TestOpenChat:
         await convo.send("hi")
         assert config.system_prompt == _SYSTEM
         assert config.memory is memory
+
+
+def _console() -> tuple[Console, io.StringIO]:
+    out = io.StringIO()
+    return Console(file=out, width=120, no_color=True), out
+
+
+@pytest.mark.unit
+class TestTheSessionLoop:
+    """`run_chat` reads the operator's lines on stdin, here a piped one."""
+
+    @pytest.fixture(autouse=True)
+    def _project(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.chdir(tmp_path)
+
+    async def _session(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        lines: str,
+        *,
+        conversation_id: str = "s1",
+        resumed: bool = False,
+    ) -> str:
+        monkeypatch.setattr("sys.stdin", io.StringIO(lines))
+        console, out = _console()
+        await run_chat(
+            console,
+            _config(),
+            "probe",
+            conversation_id=conversation_id,
+            resumed=resumed,
+        )
+        return out.getvalue()
+
+    async def test_a_turn_persists_and_quit_ends_the_session(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        text = await self._session(monkeypatch, "hi\n\n/quit\n")
+        assert "Agent: probe" in text and "Conversation: s1" in text
+        assert "ok" in text
+        turns = await FileStore(tmp_path / "home").read_turns("s1")
+        assert len(turns) == 1
+
+    async def test_end_of_input_ends_the_session(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        await self._session(monkeypatch, "")
+        assert await FileStore(tmp_path / "home").read_turns("s1") == ()
+
+    async def test_a_resumed_id_names_what_it_found(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        text = await self._session(monkeypatch, "", conversation_id="s2", resumed=True)
+        assert "No turns stored under s2 yet" in text
+        await open_chat(_config(), conversation_id="s3").send("hi")
+        text = await self._session(monkeypatch, "", conversation_id="s3", resumed=True)
+        assert "Resumed 2 messages from s3" in text
+
+    async def test_a_failed_turn_is_shown_and_the_session_goes_on(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        said: list[str] = []
+
+        async def stream_turn(
+            _console: Console, _convo: object, message: str, **_: Any
+        ) -> None:
+            said.append(message)
+            if message == "one":
+                raise RuntimeError("provider down")
+
+        monkeypatch.setattr(chat_module, "stream_turn", stream_turn)
+        text = await self._session(monkeypatch, "one\ntwo\n/quit\n")
+        assert said == ["one", "two"] and "Error: provider down" in text
+
+    async def test_output_guardrails_take_the_blocking_path(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(chat_module, "streams", lambda _config: False)
+        text = await self._session(monkeypatch, "hi\n/quit\n")
+        assert "ok" in text and "Response time" in text
+
+    async def test_a_conversation_that_cannot_start_exits_1(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def broken(_config: AgentConfig, **_: Any) -> None:
+            raise RuntimeError("no home")
+
+        monkeypatch.setattr(chat_module, "open_chat", broken)
+        console, out = _console()
+        with pytest.raises(SystemExit) as excinfo:
+            await run_chat(console, _config(), "p", conversation_id="s", resumed=False)
+        assert excinfo.value.code == 1
+        assert "Error starting conversation: no home" in out.getvalue()
+
+
+def _call(call_id: str, name: str) -> ToolCall:
+    return ToolCall(id=ToolCallId(call_id), name=ToolName(name), arguments={"q": 1})
+
+
+@pytest.mark.unit
+class TestTheBlockingRender:
+    """The finished turn, panel by panel, when a turn cannot stream."""
+
+    def _render(self, response: AgentResponse) -> str:
+        console, out = _console()
+        _render_response(console, response, turn_title(_config()), 1.5)
+        return out.getvalue()
+
+    def test_each_call_beside_the_result_it_answers(self) -> None:
+        response = AgentResponse(
+            message=Message(role=Role.ASSISTANT, content="done", reasoning="hmm"),
+            tool_calls_made=(_call("a", "greet"), _call("b", "lookup")),
+            tool_results=(ToolResult.ok("Hello ada"), ToolResult.fail("no row")),
+        )
+        text = self._render(response)
+        order = [text.index(s) for s in ("greet(", "Hello ada", "lookup(", "no row")]
+        assert order == sorted(order)
+        assert "hmm" in text and "done" in text and "Response time: 1.50s" in text
+
+    @pytest.mark.parametrize(("safe", "verdict"), [(True, "safe"), (False, "flagged")])
+    def test_the_guards_verdict(self, safe: bool, verdict: str) -> None:
+        response = AgentResponse(
+            message=Message(role=Role.ASSISTANT, content="fine"),
+            guardrail_result=GuardrailResult(
+                safe=safe,
+                output_policy=PolicyResult(safe=safe, rationale="policy P2"),
+            ),
+        )
+        text = self._render(response)
+        assert verdict in text and "fine" in text
+        assert ("policy P2" in text) is not safe
+
+    @pytest.mark.parametrize(
+        ("where", "label"), [("input", "Input blocked"), ("output", "Output blocked")]
+    )
+    def test_a_blocked_turn_shows_why_and_nothing_else(
+        self, where: Literal["input", "output"], label: str
+    ) -> None:
+        response = AgentResponse(
+            message=Message(role=Role.ASSISTANT, content="never shown"),
+            blocked=True,
+            guardrail_result=GuardrailResult(
+                safe=False,
+                flagged_at=where,
+                input_policy=PolicyResult(safe=False, rationale="policy P1"),
+            ),
+        )
+        text = self._render(response)
+        assert label in text and "policy P1" in text
+        assert "never shown" not in text

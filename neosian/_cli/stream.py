@@ -37,7 +37,8 @@ _STILL_RUNNING = "still running"
 
 
 class _Renderer:
-    """One turn's console state: whether a text line is open."""
+    """One turn's console state: whether a text line is open, and the
+    name of each call by its id."""
 
     def __init__(self, console: Console, model: AnyModel, title: Text) -> None:
         self._console = console
@@ -45,6 +46,9 @@ class _Renderer:
         self._title = title
         self._started = time.perf_counter()
         self._midline = False
+        # Parallel calls finish in any order: a result or a progress frame
+        # names its call by the frame's id (EC-17).
+        self._calls: dict[str, str] = {}
 
     def _line(self, renderable: RenderableType) -> None:
         if self._midline:
@@ -56,25 +60,34 @@ class _Renderer:
         self._console.print(text, end="", style=style, markup=False, highlight=False)
         self._midline = True
 
+    def _name(self, call_id: str) -> str:
+        return self._calls.get(call_id, call_id)
+
     def render(self, event: AgentEvent) -> None:
         if isinstance(event, ContentEvent):
             self._delta(event.content, "")
         elif isinstance(event, ReasoningEvent):
             self._delta(event.reasoning, "dim")
         elif isinstance(event, ToolCallEvent):
+            self._calls[event.id] = event.name
             text = Text("→ ", style="dim")
             text.append(event.name, style="yellow")
             text.append(f"({format_args(dict(event.arguments))})", style="dim")
             self._line(text)
         elif isinstance(event, ToolResultEvent):
             text = Text("  ← ", style="dim")
+            text.append(self._name(event.tool_call_id), style="yellow")
+            text.append(": ", style="dim")
             if event.success:
                 text.append(str(event.data), style="green")
             else:
                 text.append(str(event.error), style="red")
             self._line(text)
         elif isinstance(event, ToolProgressEvent):
-            self._line(Text(f"  … {_STILL_RUNNING} {event.elapsed_ms} ms", style="dim"))
+            name = self._name(event.tool_call_id)
+            self._line(
+                Text(f"  … {name} {_STILL_RUNNING} {event.elapsed_ms} ms", style="dim")
+            )
         elif isinstance(event, MemoryWriteEvent):
             text = Text("  ✎ ", style="dim")
             text.append(_MEMORY_WRITE, style="magenta")

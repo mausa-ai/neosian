@@ -1,6 +1,6 @@
 ---
 title: "The shell: one CLI for humans and agents"
-summary: status, setup, chat, configure; then the memory grammar, --json, exit tiers 0/1/2/130
+summary: status, setup, chat, configure, playground, eval; the memory grammar, --json, exit tiers
 ---
 
 # The shell
@@ -54,7 +54,8 @@ neosian                                  # on a terminal: chat; under a pipe: th
   reads the shipped pages on demand), writes to `/user` and `/project`
   on the home and loads the skills your other agents wrote. A PROMPT or
   piped stdin runs one turn; `--json` the envelope (text, tool calls,
-  usage, µ$); `--model fake` is keyless. The model: `--model`, else
+  usage, µ$), refused with no turn (exit 2) since a session cannot print
+  one object; `--model fake` is keyless. The model: `--model`, else
   `[chat] model` in `config.toml`, else the first provider with a key
   (Anthropic, OpenAI, Cerebras, the shipped door rows by each door's
   first model, registered doors).
@@ -69,6 +70,33 @@ at `/project`, the same pair a registered agent's sessions get) when no
 `--scope` or `--mount` names a mount; `NEOSIAN_SCOPE` is `--scope`'s
 environment twin. The store is the home unless `--root`, `--url` or the DSN names
 one.
+
+## Try an agent: playground and eval
+
+```
+neosian playground AGENT_FILE [--model M | --menu] [--resume ID] [--json]
+neosian eval SUITE [--json]
+```
+
+- **`playground`**: your agent file (it exports `configuration`, an
+  `AgentConfig`) under chat's run tier, exactly as written: its tools
+  and its prompt, without the resident agent's `docs` tool (`neosian chat
+  --agent FILE` is the path that adds it). The model is `--model`, else
+  the file's own; `--menu` picks it from a menu on a terminal, never
+  beside `--model` and never without a terminal (exit 2). Piped stdin
+  runs one turn and prints the answer, `--json` the envelope `chat`
+  prints; a terminal opens a session. Turns persist under the home, and
+  a file that names no memory gets this directory's layout.
+- **`eval`**: runs a YAML suite over its matrix and exits 1 when a case
+  fails, so it gates CI; `--json` prints the artifact's document.
+  Comparing models side by side is the suite's `models:` axis.
+
+**Every prompt has a flag.** A menu or a prompt is a terminal's
+convenience over a flag that exists: `--menu` picks what `--model`
+names, `configure` prompts for what `--provider NAME --key -` takes, a
+session's turns are what a PROMPT or piped stdin carries. `--json`
+never opens a prompt: it prints one object, so `chat` and `playground`
+refuse it with no turn (exit 2) and bare `configure` lists.
 
 ## Memory from the shell
 

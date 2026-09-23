@@ -740,3 +740,36 @@ class TestConsole:
         assert ledger.returncode == 0, ledger.stderr
         events = [e["event"] for e in json.loads(ledger.stdout)["entries"]]
         assert "turn" in events
+
+    def test_a_piped_playground_turn_and_the_menus_refusal(
+        self, tmp_path: Path
+    ) -> None:
+        """NC8 (§14.6): `echo hi | neosian playground FILE --model fake
+        --json` runs the file as written, keyless; `--menu` with no
+        terminal is grammar, and nothing runs."""
+        env = _env(tmp_path)
+        project = tmp_path / "play proj"
+        project.mkdir()
+        agent = project / "my_agent.py"
+        agent.write_text(
+            "from neosian import AgentConfig, Model\n"
+            "configuration = AgentConfig(\n"
+            "    system_prompt='x', model=Model.FAKE, enable_todo=False\n"
+            ")\n"
+        )
+        result = _run(
+            ["playground", str(agent), "--model", "fake", "--json"],
+            cwd=project,
+            env=env,
+            stdin="hi\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.count("\n") == 1
+        payload = json.loads(result.stdout)
+        assert payload["text"] == "fake response"
+        assert payload["conversation_id"].endswith("-my_agent")
+        refused = _run(  # a pipe, never the terminal pytest may run in
+            ["playground", str(agent), "--menu"], cwd=project, env=env, stdin=""
+        )
+        assert refused.returncode == 2 and refused.stdout == ""
+        assert "--menu needs a terminal" in refused.stderr

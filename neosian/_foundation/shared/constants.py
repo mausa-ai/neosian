@@ -243,22 +243,13 @@ class AgentLoader:
 
 
 class PlaygroundUI:
-    """Constants for playground CLI interface."""
+    """Constants for the session loop chat and playground share."""
 
-    TITLE: str = "neosian playground"
     AGENT_LOADED: str = "Agent: {name}"
     SESSION_START: str = "Type /exit or /quit to end session."
     USER_PROMPT: str = "You"
-    ASSISTANT_LABEL: str = "Assistant"
     TOOL_CALL_LABEL: str = "Tool Call"
-    TOOL_RESULT_LABEL: str = "Tool Result"
     EXIT_COMMANDS: tuple[str, ...] = ("/exit", "/quit", "/q")
-    SAVE_MENU_TITLE: str = "Save conversation?"
-    SAVE_OPTION_YES: str = "Yes, save to file"
-    SAVE_OPTION_NO: str = "No, discard"
-    SESSION_SAVED: str = "Session saved: {path}"
-    SESSION_DISCARDED: str = "Session discarded."
-    GOODBYE: str = "Goodbye!"
     THINKING: str = "Thinking..."
 
     # Guardrail display
@@ -283,18 +274,6 @@ class EnvVars:
     OPENAI_API_KEY: str = "OPENAI_API_KEY"
     ANTHROPIC_API_KEY: str = "ANTHROPIC_API_KEY"
     CEREBRAS_API_KEY: str = "CEREBRAS_API_KEY"
-
-
-class ArenaUI:
-    """Constants for arena mode interface."""
-
-    SELECT_COUNT: str = "How many models to compare?"
-    COUNT_OPTIONS: tuple[str, ...] = ("2", "3")
-    MODEL_LABEL: str = "Model {n}"
-    SELECT_PROVIDER: str = "{label} - Select Provider:"
-    SELECT_MODEL: str = "{label} - Select Model ({provider}):"
-    THINKING: str = "Running {label}..."
-    COLORS: tuple[str, ...] = ("cyan", "magenta", "green")
 
 
 class Guardrails:

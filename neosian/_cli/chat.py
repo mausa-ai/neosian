@@ -1,4 +1,5 @@
-"""Conversation-backed chat for the playground (N2 slice C).
+"""The session loop `neosian chat` and `neosian playground` share (N2
+slice C; DESIGN §14.6).
 
 The chat loop rides `Conversation` + `FileStore`: every turn persists as
 it completes (a crash or ^C loses nothing), resume is `--resume <id>`,
@@ -168,7 +169,8 @@ async def _chat_loop(
         # Get user input
         try:
             user_input = Prompt.ask(
-                f"[bold green]{PlaygroundUI.USER_PROMPT}[/bold green]"
+                f"[bold green]{PlaygroundUI.USER_PROMPT}[/bold green]",
+                console=console,
             )
         except EOFError:
             break

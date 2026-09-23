@@ -1,103 +1,92 @@
-"""Playground command for interactive agent testing.
+"""`neosian playground`: an agent file under chat's run tier (DESIGN §14.6).
 
-Provides a Rich-based chat interface for testing agent definitions.
-Chat rides `Conversation` + `FileStore` (persist-per-send, resume by
-id); arena mode stays in-memory in `arena.py`.
+The file runs as written, its tools and its prompt; chat's `docs` tool
+belongs to the resident agent and is never added here. The model is
+`--model`, or `--menu` (the picker a terminal offers over the same
+choice), else the file's own. Piped stdin runs one turn and prints the
+answer (`--json`: the envelope); a terminal opens the session loop. Every
+turn persists under the home (DESIGN §22).
 """
 
-import asyncio
+from __future__ import annotations
+
 import dataclasses
+import sys
+from typing import Final, TextIO
 
-from rich.console import Console
-
-from neosian._cli.arena import run_arena_mode
-from neosian._cli.chat import new_conversation_id, resolve_resume, run_chat
-from neosian._cli.models import select_provider_and_model
+from neosian._cli.chat_cmd import (
+    ChatUsageError,
+    failed,
+    model_from_flag,
+    run_conversation,
+    usage,
+)
+from neosian._cli.providers import load_keys_into_env
 from neosian._foundation.agent.loader import load_agent_config
-from neosian._foundation.shared.constants import PlaygroundUI
-from neosian._foundation.shared.exceptions import ConversationIdInvalidError
 from neosian._foundation.shared.types import AgentConfig, AnyModel
 
+_MENU_AND_MODEL: Final = "--menu and --model are exclusive: the menu picks the model"
+_MENU_NEEDS_A_TERMINAL: Final = "--menu needs a terminal: pass --model instead"
+_CANCELLED: Final = "cancelled: nothing ran"
 
-def menu_config(base: AgentConfig, model: AnyModel) -> AgentConfig:
-    """Model override only. `replace()` re-runs `__post_init__` and
-    carries every other field — the hand-rolled rebuild this replaces
-    dropped nine (fallback, max_parallel_tools, max_retries,
-    cache_conversation, skill_dir, the since-retired blackboard,
-    client_factory,
-    hooks, context_policy)."""
-    return dataclasses.replace(base, model=model)
+
+def with_model(config: AgentConfig, model: AnyModel) -> AgentConfig:
+    """The model override, from `--model` or `--menu`: `replace()` carries
+    every other field (the hand-rolled rebuild it replaced dropped nine)."""
+    return dataclasses.replace(config, model=model)
 
 
 def run_playground(
     agent_path: str,
-    menu: bool = False,
-    arena: bool = False,
-    resume: str | None = None,
-) -> None:
-    """Run the playground with the given agent file.
-
-    Args:
-        agent_path: Path to the agent Python file.
-        menu: Show interactive menu to select provider and model.
-        arena: Run in arena mode with multiple models side-by-side.
-        resume: Conversation id to resume (as printed at chat start).
-    """
-    console = Console()
-
-    # The library reads keys from the environment only; loading them from
-    # the config file is the shell's job, done here before any client.
-    from neosian._cli.providers import load_keys_into_env
-
-    load_keys_into_env()
-
-    # Load agent configuration
+    *,
+    model: str | None,
+    menu: bool,
+    resume: str | None,
+    json_output: bool,
+    stdin: TextIO | None = None,
+    out: TextIO | None = None,
+    err: TextIO | None = None,
+) -> int:
+    """The verb's run tier: the grammar, the file, the model, then the
+    tier chat and playground share."""
+    stdin = sys.stdin if stdin is None else stdin
+    out = sys.stdout if out is None else out
+    err = sys.stderr if err is None else err
+    if menu and model is not None:
+        return usage(_MENU_AND_MODEL, json_output=json_output, out=out, err=err)
+    if menu and not stdin.isatty():
+        return usage(_MENU_NEEDS_A_TERMINAL, json_output=json_output, out=out, err=err)
+    load_keys_into_env()  # before the file: a door it registers finds its key
     try:
-        base_config, agent_name = load_agent_config(agent_path)
-    except Exception as e:
-        console.print(f"[red]Error: {e}[/red]")
-        raise SystemExit(1) from e
+        config, name = load_agent_config(agent_path)
+    except Exception as exc:
+        return failed(str(exc), json_output=json_output, out=out, err=err)
+    chosen: AnyModel | None = None
+    if model is not None:  # after the file: it may register the door named
+        try:
+            chosen = model_from_flag(model)
+        except ChatUsageError as exc:
+            return usage(str(exc), json_output=json_output, out=out, err=err)
+    elif menu:
+        from rich.console import Console
 
-    # Arena mode
-    if arena:
-        run_arena_mode(console, base_config, agent_name)
-        return
+        from neosian._cli.models import select_provider_and_model
 
-    # Interactive menu override
-    config = base_config
-    if menu:
-        require_reasoning = base_config.reasoning_effort is not None
-        selected_model = select_provider_and_model(
-            console, require_reasoning=require_reasoning
+        chosen = select_provider_and_model(
+            Console(), require_reasoning=config.reasoning_effort is not None
         )
-        if selected_model is None:
-            console.print("[dim]Cancelled.[/dim]")
-            return
-        config = menu_config(base_config, selected_model)
-
-    # Resume by id, or open a fresh conversation
-    try:
-        if resume is not None:
-            conversation_id = resolve_resume(resume)
-        else:
-            conversation_id = new_conversation_id(agent_name)
-    except (ValueError, ConversationIdInvalidError) as e:
-        console.print(f"[red]Error: {e}[/red]")
-        raise SystemExit(1) from e
-
-    # Run chat loop — the store is constructed inside, in this one event
-    # loop, so --help/arena/cancel paths never create the home.
-    try:
-        asyncio.run(
-            run_chat(
-                console,
-                config,
-                agent_name,
-                conversation_id=conversation_id,
-                resumed=resume is not None,
-            )
-        )
-    except KeyboardInterrupt:
-        console.print()  # New line after ^C
-
-    console.print(f"[dim]{PlaygroundUI.GOODBYE}[/dim]")
+        if chosen is None:
+            err.write(f"{_CANCELLED}\n")
+            return 0
+    if chosen is not None:
+        config = with_model(config, chosen)
+    return run_conversation(
+        config,
+        name,
+        prompt=None,
+        resume=resume,
+        json_output=json_output,
+        stdin=stdin,
+        out=out,
+        err=err,
+    )

@@ -9,8 +9,6 @@ from typing import Annotated
 
 import typer
 
-from neosian._cli.playground import run_playground
-
 # The operator and agent verbs are verbatim pass-throughs to their own
 # argparse grammars (§14.2's shape): every argument, --help included.
 _PASS_THROUGH = {
@@ -108,41 +106,45 @@ def playground(
         str,
         typer.Argument(help="Path to the agent Python file"),
     ],
+    model: Annotated[
+        str | None,
+        typer.Option(
+            "--model", help="A model id instead of the file's (`fake`: keyless)"
+        ),
+    ] = None,
     menu: Annotated[
         bool,
-        typer.Option(
-            "--menu",
-            help="Pick provider and model from a menu",
-        ),
-    ] = False,
-    arena: Annotated[
-        bool,
-        typer.Option(
-            "--arena",
-            help="Arena mode: several models side by side",
-        ),
+        typer.Option("--menu", help="Pick the model from a menu (a terminal only)"),
     ] = False,
     resume: Annotated[
         str | None,
-        typer.Option(
-            "--resume",
-            help="Resume a conversation by id (see .neosian/conversations/)",
-        ),
+        typer.Option("--resume", help="Resume a conversation by id"),
     ] = None,
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="One-shot mode: the response envelope"),
+    ] = False,
 ) -> None:
-    """Start an interactive playground session with an agent.
+    """Try an agent file: a session on a terminal, one turn from a pipe.
 
-    The agent file must define:
-        - system_prompt: str
-        - tools: list[ToolFunction]
+    The file exports `configuration`, an AgentConfig, and runs as written
+    on its own model unless --model or --menu picks another. Piped stdin
+    runs one turn and prints the answer (--json: the envelope). Every turn
+    persists under the home.
 
     Example:
         neosian playground my_agent.py
         neosian playground my_agent.py --menu
-        neosian playground my_agent.py --arena
+        echo hi | neosian playground my_agent.py --model fake --json
         neosian playground my_agent.py --resume 20260820-143207-my_agent
     """
-    run_playground(agent_file, menu=menu, arena=arena, resume=resume)
+    from neosian._cli.playground import run_playground
+
+    raise typer.Exit(
+        run_playground(
+            agent_file, model=model, menu=menu, resume=resume, json_output=json_output
+        )
+    )
 
 
 @app.command(
