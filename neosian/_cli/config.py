@@ -3,7 +3,8 @@
 One TOML document under the home (`~/.neosian`, or `NEOSIAN_HOME`):
 `[credentials]` holds an API key per provider under the provider's
 environment variable name lowercased (`openai_api_key`), `[chat]` the
-resident agent's model, `[update]` the update knob. The file holds
+resident agent's model and its `[[chat.mcp]]` server tables (`chat_mcp`),
+`[update]` the update knob. The file holds
 secrets: it is born 0600 in a 0700 directory and both are tightened on
 every write. The library reads keys from the environment only; loading
 them from here is the shell's job (`providers.load_keys_into_env`).

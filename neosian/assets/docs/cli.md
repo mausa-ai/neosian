@@ -64,6 +64,34 @@ neosian                                  # on a terminal: chat; under a pipe: th
   24 h) or `auto` (applies a uv tool install within the major, never a
   pre-release over a stable, then re-executes itself).
 
+**Chat's MCP servers.** `[[chat.mcp]]` tables in `config.toml` name the
+servers `chat` opens for the session (one turn or the loop) and adds as
+tools, each mirroring `McpServer` (`neosian docs mcp`): `name`, then
+`command` + `args` + `env` (a subprocess) or `url` + `headers`
+(streamable HTTP), and `prefix` for names that clash. Values are
+literal: the file is 0600.
+
+```toml
+[[chat.mcp]]
+name = "github"
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-github"]
+env = { GITHUB_TOKEN = "ghp_..." }
+prefix = "gh"                        # gh__search_issues, ...
+
+[[chat.mcp]]
+name = "state"
+url = "http://127.0.0.1:8765/mcp"
+headers = { Authorization = "Bearer ..." }
+```
+
+A malformed table is grammar (exit 2, nothing spawned); a server that
+cannot be reached exits 1 naming it; a tool named like one chat already
+has (`docs`, `memory`, the skills pair, `recall_turn`) is refused until
+the table sets `prefix`. `playground` runs the agent file as written and
+reads no table; `chat --agent FILE` adds the servers. The session banner
+names each server and its tool count.
+
 **No flags means this project.** Every verb below resolves the working
 directory's layout (`user:<login>` at `/user`, `user:<login>/proj:<slug>`
 at `/project`, the same pair a registered agent's sessions get) when no

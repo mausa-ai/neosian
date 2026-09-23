@@ -11,7 +11,10 @@ CI test matrix carries no secrets at all, and that absence is the assertion.
 Keys are read from the process environment at client construction (never at
 import). `<home>/config.toml` (written by `neosian configure`) fills in for
 the shell's verbs, with env vars taking precedence; library code and the
-examples read the environment only (ledger #280). A provider is
+examples read the environment only (ledger #280). The same file's
+`[[chat.mcp]]` tables carry literal `env` and `headers` values for the
+MCP servers `neosian chat` opens (the file is 0600; the shell's alone,
+ledger #282). A provider is
 available exactly when its key is set; asking for an unavailable provider
 raises `MissingAPIKeyError` (`agent_missing_api_key`).
 

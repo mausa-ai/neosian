@@ -9,7 +9,10 @@ first model, enum order), registered doors; none exits 1 naming `neosian
 configure`. A PROMPT argument or a non-terminal stdin runs one
 turn and prints the answer — `--json` the response envelope — so an
 agent or a script can use the resident agent; otherwise the session loop
-opens on the same Conversation. Every turn persists under the home.
+opens on the same Conversation. Every turn persists under the home. The
+`[[chat.mcp]]` tables of config.toml name MCP servers chat opens for the
+session's lifetime, their tools added (`chat_mcp`; playground runs the
+file as written).
 """
 
 from __future__ import annotations
@@ -18,7 +21,7 @@ import asyncio
 import json
 import os
 import sys
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any, Final, TextIO
 
@@ -31,6 +34,7 @@ from neosian._cli.chat import (
     run_chat,
 )
 from neosian._cli.chat_agent import RESIDENT_NAME, resident_config, with_chat_tools
+from neosian._cli.chat_mcp import chat_servers, serving
 from neosian._cli.config import get_section
 from neosian._cli.providers import find_provider, load_keys_into_env
 from neosian._foundation.conversation.reflection import ReflectionConfig
@@ -50,6 +54,7 @@ from neosian._foundation.shared.types import (
 
 if TYPE_CHECKING:
     from neosian._foundation.agent.response import AgentResponse
+    from neosian._foundation.mcp.client import McpServer
     from neosian._foundation.shared.types import AnyModel
 
 PROVIDER_ORDER: Final = (Provider.ANTHROPIC, Provider.OPENAI, Provider.CEREBRAS)
@@ -153,17 +158,19 @@ async def one_shot(
     conversation_id: str,
     json_output: bool,
     out: TextIO,
+    servers: Sequence[McpServer] = (),
 ) -> None:
     """One turn on a persisted Conversation; the answer on stdout. No
     reflection at close: a script's call is not a session boundary."""
-    convo = open_chat(
-        config,
-        conversation_id=conversation_id,
-        reflection=ReflectionConfig(enabled=False),
-    )
-    await convo.start()
-    async with convo:
-        response = await convo.send(text)
+    async with serving(servers, config) as config:
+        convo = open_chat(
+            config,
+            conversation_id=conversation_id,
+            reflection=ReflectionConfig(enabled=False),
+        )
+        await convo.start()
+        async with convo:
+            response = await convo.send(text)
     if json_output:
         out.write(envelope(response, conversation_id, resolve_model(config.model)))
     else:
@@ -204,6 +211,10 @@ def run_chat_command(
     out = sys.stdout if out is None else out
     err = sys.stderr if err is None else err
     load_keys_into_env()
+    try:  # grammar first: an agent file's own ValueError is tier 1 below
+        servers = chat_servers(get_section("chat"))
+    except ValueError as exc:
+        return usage(str(exc), json_output=json_output, out=out, err=err)
     try:
         config, name = build_config(model, agent, os.environ)
     except ChatUsageError as exc:
@@ -221,6 +232,7 @@ def run_chat_command(
         stdin=stdin,
         out=out,
         err=err,
+        servers=servers,
     )
 
 
@@ -234,11 +246,13 @@ def run_conversation(
     stdin: TextIO,
     out: TextIO,
     err: TextIO,
+    servers: Sequence[McpServer] = (),
 ) -> int:
     """The run tier chat and playground share (DESIGN §14.6): one turn
     from a PROMPT or a piped stdin prints the answer (`--json`: the
     envelope); a terminal opens the session loop. `--json` never opens a
-    session: it promises one JSON object, which a session cannot keep."""
+    session: it promises one JSON object, which a session cannot keep.
+    `servers` are open for the turn or the session (chat's tables)."""
     try:
         conversation_id = (
             resolve_resume(resume) if resume is not None else new_conversation_id(name)
@@ -260,6 +274,7 @@ def run_conversation(
                     name,
                     conversation_id=conversation_id,
                     resumed=resume is not None,
+                    servers=servers,
                 )
             )
         except KeyboardInterrupt:
@@ -267,6 +282,8 @@ def run_conversation(
             return 130
         except SystemExit as exc:
             return exc.code if isinstance(exc.code, int) else 1
+        except NeosianError as exc:  # a server refused before the session
+            return failed(str(exc), json_output=json_output, out=out, err=err)
         return 0
     if not turn.strip():
         return usage(_EMPTY_TURN, json_output=json_output, out=out, err=err)
@@ -278,6 +295,7 @@ def run_conversation(
                 conversation_id=conversation_id,
                 json_output=json_output,
                 out=out,
+                servers=servers,
             )
         )
     except KeyboardInterrupt:

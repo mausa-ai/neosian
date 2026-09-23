@@ -170,6 +170,9 @@ async with McpServer.stdio(
 - **Everything else applies unchanged.** The approval gate, hooks,
   `Conversation` (pass the tools in the base config), link handles in
   tool arguments: a bridged tool is an ordinary tool.
+- **The shell does the same.** `[[chat.mcp]]` tables in `config.toml`
+  (`neosian docs cli`) name servers `neosian chat` opens for a session,
+  their tools added, `prefix` for a name chat already has.
 
 ## One writer per root
 

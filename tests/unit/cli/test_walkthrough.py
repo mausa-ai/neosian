@@ -20,6 +20,7 @@ from collections.abc import Mapping
 from pathlib import Path
 
 import pytest
+import tomli_w
 
 from neosian._foundation.memory.file import FileStore
 from tests.unit.record.payloads import SESSION, prompt, session_start, stop, tool
@@ -773,3 +774,29 @@ class TestConsole:
         )
         assert refused.returncode == 2 and refused.stdout == ""
         assert "--menu needs a terminal" in refused.stderr
+
+    def test_a_chat_turn_through_an_mcp_server_from_config(
+        self, tmp_path: Path
+    ) -> None:
+        """NC8 slice B: a `[[chat.mcp]]` table at `python -m neosian.mcp`
+        under `prefix = "mem"`: the literal binary spawns the server and
+        answers the piped turn, keyless."""
+        env = _env(tmp_path)
+        home = Path(env["NEOSIAN_HOME"])
+        home.mkdir(parents=True)
+        args = ["-m", "neosian.mcp", "--root", str(tmp_path / "mem"), "--scope", "u:d"]
+        table = {
+            "name": "mem",
+            "command": sys.executable,
+            "args": args,
+            "prefix": "mem",
+        }
+        (home / "config.toml").write_text(tomli_w.dumps({"chat": {"mcp": [table]}}))
+        project = tmp_path / "mcp proj"
+        project.mkdir()
+        result = _run(
+            ["chat", "--model", "fake", "--json"], cwd=project, env=env, stdin="hi\n"
+        )
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.count("\n") == 1
+        assert json.loads(result.stdout)["text"] == "fake response"

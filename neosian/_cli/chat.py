@@ -9,6 +9,7 @@ project's layout, the same place the hooks write.
 """
 
 import time
+from collections.abc import Sequence
 from dataclasses import replace
 from datetime import UTC, datetime
 
@@ -18,6 +19,7 @@ from rich.panel import Panel
 from rich.prompt import Prompt
 from rich.text import Text
 
+from neosian._cli.chat_mcp import serving
 from neosian._cli.stream import stream_turn
 from neosian._cli.ui import format_args, format_elapsed_time, print_header
 from neosian._foundation.agent.response import AgentResponse
@@ -25,6 +27,7 @@ from neosian._foundation.conversation.core import Conversation
 from neosian._foundation.conversation.ids import parse_conversation_id
 from neosian._foundation.conversation.reflection import ReflectionConfig
 from neosian._foundation.llm.base import text_of
+from neosian._foundation.mcp.client import McpServer
 from neosian._foundation.memory.file import FileStore
 from neosian._foundation.memory.home import home, project_mounts
 from neosian._foundation.memory.mounts import MemoryConfig
@@ -109,39 +112,46 @@ async def run_chat(
     *,
     conversation_id: str,
     resumed: bool,
+    servers: Sequence[McpServer] = (),
 ) -> None:
     """Construct the store, start the conversation, run the loop.
 
     Everything shares one event loop: a store's internal lock binds to
     the first loop that awaits it, so the store is constructed and used
     inside the same `asyncio.run` — and nothing under the home is created
-    before this point.
+    before this point. The MCP servers open first and outlive the loop;
+    one that refuses raises before any of that (the run tier answers).
     """
-    try:
-        convo = open_chat(config, conversation_id=conversation_id)
-        await convo.start()
-    except Exception as e:
-        console.print(f"[red]Error starting conversation: {e}[/red]")
-        raise SystemExit(1) from e
+    async with serving(servers, config) as config:
+        try:
+            convo = open_chat(config, conversation_id=conversation_id)
+            await convo.start()
+        except Exception as e:
+            console.print(f"[red]Error starting conversation: {e}[/red]")
+            raise SystemExit(1) from e
 
-    print_header(console, agent_name)
-    if resumed and convo.messages:
+        print_header(console, agent_name)
+        if resumed and convo.messages:
+            console.print(
+                f"[dim]Resumed {len(convo.messages)} messages from "
+                f"{conversation_id}[/dim]"
+            )
+        elif resumed:
+            console.print(
+                f"[dim]No turns stored under {conversation_id} yet — "
+                f"starting fresh.[/dim]"
+            )
         console.print(
-            f"[dim]Resumed {len(convo.messages)} messages from "
-            f"{conversation_id}[/dim]"
+            f"[dim]Conversation: {conversation_id}  "
+            f"(resume: --resume {conversation_id})[/dim]"
         )
-    elif resumed:
-        console.print(
-            f"[dim]No turns stored under {conversation_id} yet — "
-            f"starting fresh.[/dim]"
-        )
-    console.print(
-        f"[dim]Conversation: {conversation_id}  "
-        f"(resume: --resume {conversation_id})[/dim]"
-    )
-    console.print(f"[dim]Home: {home()}  memory: {describe_memory(config)}[/dim]\n")
-    async with convo:
-        await _chat_loop(console, convo, config)
+        console.print(f"[dim]Home: {home()}  memory: {describe_memory(config)}[/dim]")
+        if servers:
+            served = ", ".join(f"{s.name} ({len(s.tools)} tools)" for s in servers)
+            console.print(f"[dim]MCP: {served}[/dim]")
+        console.print()
+        async with convo:
+            await _chat_loop(console, convo, config)
 
 
 def turn_title(config: AgentConfig) -> Text:

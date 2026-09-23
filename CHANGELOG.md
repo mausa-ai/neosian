@@ -42,6 +42,17 @@ phase close names the version.
 
 ### Added
 
+- `[[chat.mcp]]` tables in `<home>/config.toml`: MCP servers `neosian
+  chat` opens for a turn or a session and adds as tools, each mirroring
+  `McpServer` (`name`, then `command`/`args`/`env` or `url`/`headers`,
+  an optional `prefix`; literal values, the file being 0600). A
+  malformed table is grammar (exit 2, nothing spawned); a server that
+  cannot be reached exits 1 naming it; a tool named like one chat
+  already has (`docs`, `memory`, the skills pair, `recall_turn`) is
+  refused until the table sets `prefix`. `playground` runs the agent
+  file as written; `chat --agent FILE` adds the servers. The session
+  banner names each server and its tool count (ledger #282; DESIGN
+  §30.2).
 - `neosian eval --output DIR`: the directory the artifact lands in
   (`.neosian/evals` by default).
 
