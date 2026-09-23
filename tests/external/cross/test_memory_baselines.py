@@ -104,7 +104,7 @@ class TestMemoryBaselines:
         key = request.getfixturevalue(lane.key_fixture)  # skips when unset
         board = Board(_scriptless(lane.registered(), split))
         pacer = Pacer.of(lane)
-        with patch.dict(os.environ, {lane.door.api_key_env: key}, clear=True):
+        with patch.dict(os.environ, lane.env_patch(key), clear=True):
             report = await board.run(
                 lane.budget_seconds,
                 store_root=tmp_path / "stores",

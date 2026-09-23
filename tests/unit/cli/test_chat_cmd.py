@@ -98,6 +98,15 @@ class TestTheModel:
         )
         assert resolve_chat_model(None, {"ACME_API_KEY": "k"}) is acme
 
+    def test_a_keyless_registered_door_opens_with_nothing_set(self) -> None:
+        door = OpenAICompatible(
+            name="local", api_key_env=None, base_url="http://127.0.0.1:8080/v1"
+        )
+        gemma = register_model(
+            "gemma-4-e4b-it", provider=door, context_window=9, max_output_tokens=9
+        )
+        assert resolve_chat_model(None, {}) is gemma
+
     def test_no_key_names_configure(self) -> None:
         with pytest.raises(ChatError) as excinfo:
             resolve_chat_model(None, {})
@@ -310,6 +319,30 @@ class TestTheSharedTier:
         assert code == 1
         assert "ANTHROPIC_API_KEY environment variable not set" in err
         assert "ANTHROPIC_API_KEY" in json.loads(out)["error"]
+
+    def test_an_agent_file_on_a_keyless_door_opens_without_a_key(
+        self, tmp_path: Path
+    ) -> None:
+        """NW2's shell path: the file registers a door that signs nothing,
+        so no variable is asked for (§31.6); the fake stands in for the
+        local server."""
+        agent = tmp_path / "local_agent.py"
+        agent.write_text(
+            "from neosian import AgentConfig, OpenAICompatible, register_model\n"
+            "from neosian.fake import FakeClient, FakeScript, FakeTurn\n"
+            "door = OpenAICompatible(name='local', api_key_env=None,"
+            " base_url='http://127.0.0.1:8080/v1')\n"
+            "gemma = register_model('gemma-4-e4b-it', provider=door,"
+            " context_window=32_768, max_output_tokens=8_192)\n"
+            "fake = FakeClient(FakeScript(turns=(FakeTurn(content='served'),)))\n"
+            "configuration = AgentConfig(system_prompt='x', model=gemma,"
+            " client_factory=lambda _: fake)\n"
+        )
+        code, out, err = _run_on(
+            io.StringIO("hi"), agent=str(agent), model=None, json_output=True
+        )
+        assert code == 0 and err == ""
+        assert json.loads(out)["text"] == "served"
 
     def test_an_agent_file_that_cannot_load_exits_1(self, tmp_path: Path) -> None:
         code, _, err = _run_on(io.StringIO("hi"), agent=str(tmp_path / "absent.py"))

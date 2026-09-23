@@ -36,7 +36,10 @@ FakeProvider), and passes its full default test tier.
 A registered door (`register_model`, DESIGN §19) reads its own key from the
 env var the door names — `OpenAICompatible(api_key_env=...)` — env only,
 never argv; a missing one fails at the first call naming it, and guardrails
-on a door need it at construction. `neosian configure` manages every key:
+on a door need it at construction. A keyless door (`api_key_env=None`, a
+local llama-server or Ollama; DESIGN §31.6) reads nothing: the SDK gets a
+placeholder in place of a key, never `OPENAI_API_KEY`, and `configure` and
+`status` list no row for it. `neosian configure` manages every key:
 the shipped providers and the shipped door rows by name (`--provider xai`),
 and any other door by the env var its key lives in (`--env ACME_API_KEY
 --key -`), since the shell loads no agent file and cannot know a door one
@@ -53,12 +56,13 @@ on 2026-09-15 and `DASHSCOPE_API_KEY` on 2026-09-16); a red one exits
 whole (DeepSeek and Alibaba Model Studio did, 2026-09-02, both
 re-entered under NW1, ledger #211; DeepSeek left again on 2026-09-16
 after its third board, ledger #261 — `baselines.md` keeps every run).
-No candidate lane is open today; the next enters through NC2's recipe
-(DESIGN §19.7).
+One candidate lane is open, and it is a candidate by construction: a
+local row has no card to seal and no fixed endpoint, so it never becomes
+a `Model` member (NW2, ledger #285); its credential is a URL, not a key.
 
 | Key | Suite | Serving stack |
 |---|---|---|
-| (none) | | |
+| `NEOSIAN_TEST_LOCAL_URL` | `local` | a llama-server on the OpenAI wire, `gemma-4-e4b-it` (see below) |
 
 Where an account tier caps requests per minute, the lane — shipped or
 candidate — is paced on our side (`requests_per_minute` in
@@ -67,7 +71,7 @@ longer, never runs fewer cells.
 
 ## The external suites
 
-`make test-external provider=<openai|anthropic|cerebras|xai|gemini|kimi|qwen>`
+`make test-external provider=<openai|anthropic|cerebras|xai|gemini|kimi|qwen|local>`
 runs that suite's real-API tests (`-m external_<provider>`).
 
 - `file=<envfile>` routes through `scripts/external_env.py`:
@@ -254,10 +258,33 @@ runs both legs on every push, no secret; the registry push is
 `release.yml`'s, on a release tag (DESIGN §29 — ledger #114's
 built-and-smoked posture ended at NX).
 
+## The local lane: a URL, not an API key
+
+The `external_local` suite measures a local model on the shipped pack
+(NW2, DESIGN §31.6): the door signs nothing, so its one key is where the
+server listens.
+
+- `NEOSIAN_TEST_LOCAL_URL`: the OpenAI-compatible base URL of a running
+  llama-server (`http://127.0.0.1:8080/v1`) serving the lane's model,
+  `ggml-org/gemma-4-E4B-it-GGUF:Q4_0` with `--jinja -c 32768`.
+  `scripts/local_server.sh` starts one in docker and waits for it; with
+  llama.cpp installed, `llama-server -hf ggml-org/gemma-4-E4B-it-GGUF:Q4_0
+  --jinja -c 32768` is the same server (the model's default thinking on,
+  the measured shape). Unset means every test in the lane self-skips
+  per test (falsiness).
+- `NEOSIAN_TEST_LOCAL_MODEL`: the server's name for the weights when
+  it is not `gemma-4-e4b-it`: `gemma4:e4b` probes the Ollama recipe
+  through the same lane. Optional.
+
+**Off means the lane self-skips whole.** CI's `local` matrix entry sets
+the URL after the script, with no secret; a CPU runner is slow, so the
+cells its budget cuts are recorded `timeout` reds, never a hang. The
+measured board in `baselines.md` was read from a machine with a GPU.
+
 ## CI secrets
 
 One secret per key, named exactly like the env key — the three adapters'
-keys plus the door lanes' three. The dispatch-only `external` job
+keys plus the door lanes' four; the local lane has none. The dispatch-only `external` job
 runs a `provider` matrix, one lane per suite, and injects only that lane's
 secrets as env (no schedule — real-API runs are deliberate acts, ledger
 #89); until a secret exists its lane passes vacuously via the empty-string

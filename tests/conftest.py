@@ -25,6 +25,7 @@ _PROVIDERS = (
     "gemini",
     "kimi",
     "qwen",
+    "local",  # a llama-server: credentialed by a URL, not a key (§31.6)
 )
 _TESTS_DIR = Path(__file__).parent
 _EXTERNAL_TIMEOUT_SECONDS = 3600

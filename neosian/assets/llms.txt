@@ -20,7 +20,7 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
 
 - `neosian docs`: list the shipped topics (they travel in the wheel, so
   they always describe the installed version).
-- `neosian docs quickstart | agent | tools | memory | skills | cli | mcp | agents | topology | wire`
+- `neosian docs quickstart | agent | local | tools | memory | skills | cli | mcp | agents | topology | wire`
   prints one page, markdown on stdout, pipe-safe.
 - `neosian docs topology`: who runs neosian code x where the bytes live;
   one writer per FileStore root.
@@ -182,6 +182,15 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
   message between tool calls, nothing stored at the provider); the chat
   dialect knobs and `thinking_switch` beside it. `neosian docs
   quickstart` carries the snippet.
+- A local server is the same door declared keyless:
+  `OpenAICompatible(name="local", api_key_env=None,
+  base_url="http://127.0.0.1:8080/v1")` reads no variable and sends the
+  SDK a placeholder, never a key of yours; price it on a zero card
+  (`ModelPricing(input_per_mtok=0, output_per_mtok=0)`, priced at zero
+  rather than unknown). `neosian docs local` carries the llama.cpp and
+  Ollama recipes (`llama-server -hf ggml-org/gemma-4-E4B-it-GGUF:Q4_0
+  --jinja`, `ollama pull gemma4:e4b`) and the measured local row;
+  `examples/local_agent.py` is the runnable form.
 - Every shipped row is a `Model` member, the door rows too:
   `Model.GROK_4_6` (xAI `XAI_API_KEY`), `Model.GEMINI_3_8_FLASH` (Gemini
   `GEMINI_API_KEY`), `Model.KIMI_K3` (Moonshot `MOONSHOT_API_KEY`),
@@ -194,7 +203,7 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
 
 ## Install
 
-- `uv add "neosian==1.0.0rc16"`: one package, the library and its
+- `uv add "neosian==1.0.0rc17"`: one package, the library and its
   provider SDKs, the `neosian` shell, the MCP server and client, the
   state process and OpenTelemetry spans (about 70 MB; nothing loaded
   until used). On PyPI as a pre-release until v1.0.0: pin it explicitly,
@@ -204,11 +213,11 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
 - `curl -fsS https://neosian.com/install | bash` puts uv and neosian on a
   machine with nothing on it; the script says what it installs first.
 - The appliance: `docker run -d -e NEOSIAN_SERVE_TOKEN=… -p 6367:6367
-  -v neosian-state:/data ghcr.io/mausa-ai/neosian:1.0.0rc16`, the state
+  -v neosian-state:/data ghcr.io/mausa-ai/neosian:1.0.0rc17`, the state
   process on a volume, `/health` the one open route.
 
 ## Docs
 
-- https://github.com/mausa-ai/neosian/blob/v1.0.0rc16/README.md: install and quickstart.
-- https://github.com/mausa-ai/neosian/blob/v1.0.0rc16/SERVICES.md: every environment key and what turning it off means.
+- https://github.com/mausa-ai/neosian/blob/v1.0.0rc17/README.md: install and quickstart.
+- https://github.com/mausa-ai/neosian/blob/v1.0.0rc17/SERVICES.md: every environment key and what turning it off means.
 - `neosian docs baselines`: the published per-provider memory numbers.

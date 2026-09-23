@@ -32,7 +32,7 @@ from neosian import (
     ToolChoice,
     ToolDefinition,
 )
-from neosian._foundation.llm.openai import OpenAICompatibleClient
+from neosian._foundation.llm.router import ProviderRouter
 from neosian._foundation.shared.constants import LLMDefaults
 from neosian._foundation.shared.exceptions import ProviderError
 from tests.external.lanes import Lane
@@ -153,7 +153,11 @@ class PacedClient(BaseLLMClient):
         await self._inner.close()
 
 
-def door_client(lane: Lane, api_key: str, pacer: Pacer | None) -> BaseLLMClient:
-    """The lane's client, paced when its account states a limit."""
-    client = OpenAICompatibleClient(api_key=api_key, door=lane.door)
+def door_client(lane: Lane, credential: str, pacer: Pacer | None) -> BaseLLMClient:
+    """The lane's client, paced when its account states a limit; built by
+    the router so a keyless lane gets the placeholder the library sends
+    (its credential is the server's URL, never a bearer)."""
+    client = ProviderRouter().create_client_for(
+        lane.registered(), api_key=None if lane.keyless else credential
+    )
     return client if pacer is None else PacedClient(client, pacer)

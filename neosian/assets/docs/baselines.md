@@ -234,7 +234,9 @@ below, and green over dispatched runs ships the row first-party (a
 `Model` member with its sealed card, DESIGN §31); red exits, the way the
 fourth provider did. Cadence is the operator's (ledger #89). B2 ruled the
 five on 2026-09-02 (ledger #124); NW1 re-entered two on 2026-09-10
-(ledger #211):
+(ledger #211); NW2 wired the local row on 2026-09-23 (ledger #285), a
+candidate by construction: no card to seal and no fixed endpoint, so it
+never ships as a `Model` member and its lane stays:
 
 | Serving stack | Model | Suite | Keys | Wired | Runs | Ruled |
 |---|---|---|---|---|---|---|
@@ -245,6 +247,7 @@ five on 2026-09-02 (ledger #124); NW1 re-entered two on 2026-09-10
 | Moonshot | kimi-k3 | `kimi` | `MOONSHOT_API_KEY` | 2026-09-01 | 24, 21 (429s, harness), 22, 23, 24 (a probe miss, the probe's own), 37 (#16) | **shipped**: `KIMI_K3`, on the user's ruling (#124, 2026-09-15); run 3 was the door's own (schema misses, §19.7); run 5 a clean board with the metering probe wrong about whole-prompt cache hits; dispatches #6–#8 green on the nine-scenario pack, #12–#15 unmeasured at the paced tier |
 | DeepSeek | deepseek-flash | `deepseek` | `DEEPSEEK_API_KEY` | 2026-09-10 | 36 (#16), 37 (NW3, key file), 34 (#17) | **exited** 2026-09-16 (ledger #261): its third board read `skills` red on all four columns, the over-writing class, #259's deterministic red; the two door knobs it earned (`json_mode="json_object"`, `echo_reasoning`) stay on the door for whoever registers it |
 | Alibaba Model Studio (Singapore, token plan) | qwen3.8-max | `qwen` | `DASHSCOPE_API_KEY` | 2026-09-10 | 30 (#16; `maintenance` the thinking mode's, #254), 39 (NW3, key file, the switch), 39 (#17) | **shipped** 2026-09-16 (ledger #260): `Model.QWEN_3_8_MAX` on the `QWEN` door (the echo knob and `thinking_switch="enable_thinking"`, #258); $2/$6, no sealed cache rate (the console alone publishes it); `qwen-3.8-27b` on Cerebras is a separate, measured row |
+| llama.cpp, a local llama-server (keyless door) | gemma-4-e4b-it (`ggml-org/gemma-4-E4B-it-GGUF:Q4_0`) | `local` | `NEOSIAN_TEST_LOCAL_URL` (a URL, not a key) | 2026-09-23 | 35 (NW2, a laptop with a GPU; thinking on) | **candidate by construction** (ledger #285): the lane is the row; CI's `local` matrix entry runs it on a CPU-only runner, whose cut cells are the recorded limit; Ollama over the same weights answers the probes but not structured output (below) |
 
 An exited row's data leaves the tree (the lane, the marker, the CI
 column, the secret, its SERVICES.md row) and its measured runs stay
@@ -280,11 +283,71 @@ evidence. Each stays measured every dispatch; none is tuned around
   column, exactly the discipline the scenario measures.
 - **`skills` written without frontmatter** (gemini-3.7-flash on every
   column through #15, where 3.8 was clean on its first board; gpt-oss,
-  Sonnet's axis run, kimi-k3 and gpt-5.6-sol intermittently, #16): the guide's
-  `description` key never reaches a writer that skips `list_skills`,
-  ruled at NK (the store truth stays the pin).
+  Sonnet's axis run, kimi-k3 and gpt-5.6-sol intermittently, #16; the
+  local candidate gemma-4-e4b-it on every transport of its first board,
+  NW2): the guide's `description` key never reaches a writer that skips
+  `list_skills`, ruled at NK (the store truth stays the pin).
 
 ## Results
+
+### 2026-09-23: The local row (NW2, a laptop with a GPU)
+
+Measured locally, the `local` lane alone, on the NW2 tree (`1.0.0rc17`;
+the pack and the memory prompt unchanged since #16): Gemma 4 E4B-it
+Q4_0 (`ggml-org/gemma-4-E4B-it-GGUF:Q4_0`) under llama.cpp 0.4.1 (build
+10964, Homebrew) on an Apple M4 with Metal, `llama-server --jinja
+-c 32768 -np 1`, the model's default thinking on, through the keyless
+door (`api_key_env=None`, DESIGN §31.6); no key in the environment. One
+board per transport under the lane's 3000 s budget, none cut: function
+5 min 46 s, cli 5 min 16 s, http 6 min 38 s, mcp 5 min 53 s. Every cell
+read from the lane log.
+
+| Provider | Model | function | cli | http | mcp | native | door probes | link |
+|---|---|---|---|---|---|---|---|---|
+| llama.cpp (candidate, keyless) | gemma-4-e4b-it | 9/10 | 8/10 | 9/10 | 9/10 | n/a | 5/5 | handle |
+
+Findings, recorded as found:
+
+- **`skills` red on every transport, the frontmatter class.** Asked to
+  write a skill, the model created the document with the steps and no
+  `description:` frontmatter (function, cli, mcp: `/project/skills/release`
+  holding the three steps alone; cli under a `## Description` heading
+  instead); on http it wrote the frontmatter correctly and then failed
+  to use the skill it had written. A 4B model follows the steps and
+  drops the shape.
+- **`dedup` red on cli**: the second fact replaced the first
+  (`/user/allergies: 'Shellfish'`, the peanut allergy gone) rather than
+  merging, the over-writing class the exited candidates showed; green on
+  the other three transports.
+- **Thinking earns its tokens.** The same board on the function
+  transport with the template's switch off (`--chat-template-kwargs
+  '{"enable_thinking": false}'`) ran in 100 s and scored 4/10: six cells
+  the one class "expected tool 'memory', no tool called", the model
+  answering instead of writing. Thinking on costs about five minutes a
+  board on this laptop and is the measured shape; `--reasoning-budget 0`
+  is not a switch (it drops the tags and the thinking becomes prose in
+  the answer).
+- **Speed.** Alone on Metal the server does about 70 prompt and 25
+  generation tokens a second; on the server's default four slots the
+  first attempt had one turn written after fifteen minutes and was
+  stopped for `-np 1`. A CPU-only runner is slower by an order of
+  magnitude: CI's `local` matrix entry records what its budget cuts.
+- **Door probes 5/5** (system prompt, tool round trip, streamed content,
+  streamed tool call, `json_schema` structured output); reasoning and
+  temperature skipped by the door's declaration (`reasoning_effort=False`,
+  `temperature=False`). Thoughts arrive as `reasoning_content`, checked
+  by hand. **Link: handle** (`handle_used=True`, the log line at 202
+  characters, the answer read from the fetched document).
+- **Ollama over the same weights** (`gemma4:e4b`, its Q4_K_M, 9.6 GB as
+  Ollama packs it; Ollama 0.34.3, `OLLAMA_CONTEXT_LENGTH=32768`, probed
+  through the same lane with `NEOSIAN_TEST_LOCAL_MODEL`): system prompt,
+  tool round trip, streamed content, streamed tool call and the catalog
+  probe green; **structured output red**: its OpenAI endpoint ignored
+  `response_format` for this model on both `json_schema` and
+  `json_object` and returned a fenced ```` ```json ```` block with the
+  wrong keys, which the validator refuses. The pack's `reflect:` and
+  `maintain:` need `json_schema`, so the Ollama recipe is chat and tools,
+  never boarded, until Ollama honours the format on this model.
 
 ### 2026-09-16: Every row on its wire; the candidates' third boards (the NW3 /ship, dispatch #17)
 

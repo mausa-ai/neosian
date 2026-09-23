@@ -69,6 +69,15 @@ class TestTheTable:
         register_model("acme-1", provider=door, context_window=1, max_output_tokens=1)
         assert [r.env for r in provider_keys() if r.name == "acme"] == ["ACME_API_KEY"]
 
+    def test_a_keyless_door_has_no_row(self) -> None:
+        door = OpenAICompatible(
+            name="local", api_key_env=None, base_url="http://127.0.0.1:8080/v1"
+        )
+        register_model(
+            "gemma-4-e4b-it", provider=door, context_window=1, max_output_tokens=1
+        )
+        assert "local" not in [row.name for row in provider_keys()]
+
     def test_key_source_names_env_over_file_never_the_value(self) -> None:
         row = find_provider("openai")
         assert row is not None

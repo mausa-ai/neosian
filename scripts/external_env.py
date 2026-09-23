@@ -25,6 +25,8 @@ KEY_ALLOWLIST: dict[str, tuple[str, ...]] = {
     "gemini": ("GEMINI_API_KEY",),
     "kimi": ("MOONSHOT_API_KEY",),
     "qwen": ("DASHSCOPE_API_KEY",),
+    # The local lane's credential is the server's URL (DESIGN §31.6).
+    "local": ("NEOSIAN_TEST_LOCAL_URL",),
 }
 
 

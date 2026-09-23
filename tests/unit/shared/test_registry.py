@@ -61,6 +61,7 @@ class TestDoor:
             {"name": "1st"},
             {"api_key_env": "lower_key"},
             {"api_key_env": "X-KEY"},
+            {"api_key_env": None},  # keyless needs a base_url (§31.6)
             {"base_url": "ftp://api.x.ai"},
             {"base_url": "api.x.ai/v1"},
             {"reasoning_field": "not a field"},
@@ -71,6 +72,12 @@ class TestDoor:
         with pytest.raises(ConfigurationError) as exc_info:
             OpenAICompatible(**{**kwargs, **override})
         assert next(iter(override)) in str(exc_info.value)
+
+    def test_a_keyless_door_names_its_endpoint(self) -> None:
+        door = OpenAICompatible(
+            name="local", api_key_env=None, base_url="http://127.0.0.1:8080/v1"
+        )
+        assert door.api_key_env is None and door.reasoning_effort is True
 
     def test_frozen(self) -> None:
         with pytest.raises(FrozenInstanceError):

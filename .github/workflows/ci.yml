@@ -39,7 +39,7 @@ jobs:
       - run: make lint
       - run: make typecheck
       - run: make size
-      - run: shellcheck scripts/install.sh
+      - run: shellcheck scripts/install.sh scripts/local_server.sh
 
   # No secrets here — that absence is the keyless-boot assertion (DESIGN §11).
   # UV_PYTHON names the interpreter each leg runs; `python -V` prints it.
@@ -217,7 +217,9 @@ jobs:
   # are paced to the account's rate limit (tests/external/pacing.py) and
   # run under an in-loop ceiling (tests/external/board.py): a paced lane
   # splits per transport, and a cut cell is a recorded `timeout` red,
-  # never an idle runner (dispatch #14).
+  # never an idle runner (dispatch #14). The `local` lane needs no secret:
+  # scripts/local_server.sh starts llama.cpp's server image on the runner
+  # (CPU only, so its cut cells are the recorded limit; DESIGN §31.6).
   external:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
@@ -227,7 +229,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        provider: [openai, anthropic, cerebras, xai, gemini, kimi, qwen]
+        provider: [openai, anthropic, cerebras, xai, gemini, kimi, qwen, local]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
@@ -236,6 +238,8 @@ jobs:
           enable-cache: true
       - run: uv python install 3.12
       - run: make install
+      - if: matrix.provider == 'local'
+        run: scripts/local_server.sh
       - run: uv run pytest -m external_${{ matrix.provider }} -v -s
         env:
           OPENAI_API_KEY: ${{ matrix.provider == 'openai' && secrets.OPENAI_API_KEY || '' }}
@@ -245,3 +249,4 @@ jobs:
           GEMINI_API_KEY: ${{ matrix.provider == 'gemini' && secrets.GEMINI_API_KEY || '' }}
           MOONSHOT_API_KEY: ${{ matrix.provider == 'kimi' && secrets.MOONSHOT_API_KEY || '' }}
           DASHSCOPE_API_KEY: ${{ matrix.provider == 'qwen' && secrets.DASHSCOPE_API_KEY || '' }}
+          NEOSIAN_TEST_LOCAL_URL: ${{ matrix.provider == 'local' && 'http://127.0.0.1:8080/v1' || '' }}

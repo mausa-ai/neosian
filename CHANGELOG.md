@@ -8,6 +8,23 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [1.0.0rc17] - 2026-09-23
+
+### Added
+
+- Keyless doors: `OpenAICompatible(api_key_env=None)` declares an endpoint
+  that signs nothing (a local llama-server or Ollama). The router hands
+  the SDK a placeholder and reads no environment variable, so no key of
+  yours reaches a local server; such a door must name its `base_url`.
+  Guardrails on it need no key; `configure` and `status` list no row for
+  it; an agent file on one opens `neosian chat --agent` with nothing set.
+- `neosian docs local`: the llama.cpp and Ollama recipes on the door, the
+  zero card (a card priced at zero, never unpriced), the measured local
+  row. `examples/local_agent.py` is the runnable form.
+- The `local` external lane (`make test-external provider=local`,
+  `NEOSIAN_TEST_LOCAL_URL`, `scripts/local_server.sh`): Gemma 4 E4B on a
+  llama-server measured on the shipped pack, a candidate by construction.
+
 ## [1.0.0rc16] - 2026-09-23
 
 ### Removed
@@ -1505,7 +1522,8 @@ pre-release — pin it explicitly; the API stability promise rides v1.0.0.
 - Both entry points share one `_validate_run`, so neither can skip a
   guard.
 
-[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc16...HEAD
+[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc17...HEAD
+[1.0.0rc17]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc16...v1.0.0rc17
 [1.0.0rc16]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc15...v1.0.0rc16
 [1.0.0rc15]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc14...v1.0.0rc15
 [1.0.0rc14]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc13...v1.0.0rc14

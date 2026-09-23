@@ -36,7 +36,7 @@ from neosian._cli.chat import (
 from neosian._cli.chat_agent import RESIDENT_NAME, resident_config, with_chat_tools
 from neosian._cli.chat_mcp import chat_servers, serving
 from neosian._cli.config import get_section
-from neosian._cli.providers import find_provider, load_keys_into_env
+from neosian._cli.providers import find_provider, keyed, load_keys_into_env
 from neosian._foundation.conversation.reflection import ReflectionConfig
 from neosian._foundation.llm.base import text_of
 from neosian._foundation.shared.exceptions import NeosianError
@@ -90,7 +90,8 @@ def model_from_flag(flag: str) -> AnyModel:
 
 
 def resolve_chat_model(flag: str | None, env: Mapping[str, str]) -> AnyModel:
-    """The flag, else `[chat] model`, else the first keyed provider."""
+    """The flag, else `[chat] model`, else the first provider `env` opens
+    (a keyless door needs nothing)."""
     if flag is not None:
         return model_from_flag(flag)
     configured = get_section("chat").get("model")
@@ -106,10 +107,10 @@ def resolve_chat_model(flag: str | None, env: Mapping[str, str]) -> AnyModel:
         if row is not None and env.get(row.env):
             return DEFAULT_MODELS[provider]
     for shipped in Model:  # a door's first row, enum order: xAI, Gemini, ...
-        if shipped.door is not None and env.get(shipped.door.api_key_env):
+        if shipped.door is not None and keyed(shipped.door, env):
             return shipped
     for registered in registered_models():
-        if env.get(registered.door.api_key_env):
+        if keyed(registered.door, env):
             return registered
     raise ChatError(_NO_KEY)
 

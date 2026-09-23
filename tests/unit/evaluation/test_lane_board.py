@@ -16,7 +16,7 @@ from neosian._foundation.llm.base import CompletionResponse, StreamChunk
 from neosian.evaluation import EvalReport, Transport, run_evaluation
 from neosian.fake import FakeClient
 from tests.external.board import Board, assert_board, board_id, boards, scriptless
-from tests.external.lanes import GEMINI, KIMI, LANES, XAI
+from tests.external.lanes import GEMINI, KIMI, LANES, LOCAL, XAI
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _PACK = _REPO_ROOT / "examples" / "eval_memory_baseline.yaml"
@@ -76,6 +76,13 @@ def test_a_paced_lane_splits_per_transport_and_an_unpaced_one_does_not() -> None
     ]
     assert GEMINI.split_transports and not XAI.split_transports
     assert all(lane.budget_seconds < 3600 for lane in LANES)  # inside the outer mark
+    # The local lane splits too (a CPU runner is slow, not rate-limited) and
+    # is credentialed by a URL, never a key (§31.6).
+    assert (
+        LOCAL.split_transports and LOCAL.keyless and LOCAL.requests_per_minute is None
+    )
+    assert LOCAL.key_fixture == "local_url" and LOCAL.env_patch("http://x") == {}
+    assert KIMI.env_patch("k") == {"MOONSHOT_API_KEY": "k"}
 
 
 @pytest.mark.unit

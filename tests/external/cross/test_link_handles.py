@@ -44,7 +44,7 @@ _PROVIDER_CASES = [
 
 
 async def _measure(
-    model: AnyModel, key: str, env_name: str, lane: Lane | None, root: Path
+    model: AnyModel, key: str, env: dict[str, str], lane: Lane | None, root: Path
 ) -> None:
     fetched: list[str] = []
 
@@ -65,7 +65,7 @@ async def _measure(
             None if lane is None else (lambda _p: door_client(lane, key, pacer))
         ),
     )
-    with patch.dict(os.environ, {env_name: key}, clear=True):
+    with patch.dict(os.environ, env, clear=True):
         async with Conversation(
             config,
             store=FileStore(root),
@@ -105,7 +105,7 @@ class TestLinkHandles:
         tmp_path: Path,
     ) -> None:
         key = request.getfixturevalue(fixture)  # skips when the env var is unset
-        await _measure(model, key, env_name, None, tmp_path / "store")
+        await _measure(model, key, {env_name: key}, None, tmp_path / "store")
 
     @pytest.mark.parametrize("lane", BOARD_LANES, ids=lambda lane: lane.name)
     async def test_a_door_reuses_a_link_by_handle(
@@ -113,5 +113,5 @@ class TestLinkHandles:
     ) -> None:
         key = request.getfixturevalue(lane.key_fixture)  # skips when unset
         await _measure(
-            lane.registered(), key, lane.door.api_key_env, lane, tmp_path / "store"
+            lane.registered(), key, lane.env_patch(key), lane, tmp_path / "store"
         )

@@ -119,7 +119,10 @@ config = AgentConfig(system_prompt="Be concise.", model=ACME_LARGE)
 
 Cost in µ$, the context policy, capability-aware fallback and the
 playground picker treat it like a shipped model; a missing `ACME_API_KEY`
-fails naming it. The door's `wire` names the endpoint it speaks:
+fails naming it. An endpoint that signs nothing (a local llama-server or
+Ollama) is `api_key_env=None`: no variable is read, no key of yours is
+sent, and the recipes are on `neosian docs local`. The door's `wire`
+names the endpoint it speaks:
 `"chat"` (Chat Completions, the default, what most compatible endpoints
 serve) or `"responses"` (the Responses API, the wire OpenAI and xAI
 recommend; run stateless, with the model's encrypted reasoning carried

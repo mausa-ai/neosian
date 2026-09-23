@@ -2,7 +2,8 @@
 by their `EnvVars` name, every shipped door row and every registered
 door by its `api_key_env` — so xAI and Gemini appear in `configure` and
 `status` without a code change, and a door registered in an agent file
-appears the moment the file is loaded. A key stored for a door the shell
+appears the moment the file is loaded (a keyless door has nothing to
+store and no row; `keyed` says it opens). A key stored for a door the shell
 has not loaded (`configure --env NAME`) is a row by its env name, and the
 loader exports what is stored, not what the table knows: a door that
 registers after it ran still finds its key.
@@ -19,7 +20,7 @@ from typing import Final
 from neosian._cli.config import ConfigFileError, get_all_credentials
 from neosian._foundation.shared.constants import EnvVars
 from neosian._foundation.shared.registry import registered_models
-from neosian._foundation.shared.types import Model, Provider
+from neosian._foundation.shared.types import Model, OpenAICompatible, Provider
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,12 +54,18 @@ def provider_keys() -> tuple[ProviderKey, ...]:
     doors = [m.door for m in Model if m.door is not None]
     doors += [m.door for m in registered_models()]
     for door in doors:
-        if door.name not in names:
+        if door.api_key_env is not None and door.name not in names:
             names.add(door.name)
             rows.append(ProviderKey(door.name, door.api_key_env))
     tabled = {row.env for row in rows}
     rows += [ProviderKey(env, env) for env in _stored_envs() if env not in tabled]
     return tuple(rows)
+
+
+def keyed(door: OpenAICompatible, env: Mapping[str, str]) -> bool:
+    """Whether `env` opens the door: a keyless door always (DESIGN §31.6),
+    a keyed one when its variable is set."""
+    return door.api_key_env is None or bool(env.get(door.api_key_env))
 
 
 def _stored_envs() -> list[str]:

@@ -28,7 +28,11 @@ class OpenAICompatible:
     `name` is the provider label wherever one is rendered for a model on
     this door — errors, the ready frame, the picker. `base_url=None`
     keeps the SDK's own endpoint (OpenAI's, or `OPENAI_BASE_URL`), which
-    is how a fine-tuned OpenAI id the enum lacks gets registered. The
+    is how a fine-tuned OpenAI id the enum lacks gets registered.
+    `api_key_env=None` declares an endpoint that signs nothing (a local
+    llama-server or Ollama, §31.6): the router hands the SDK a placeholder
+    in place of a key, never `OPENAI_API_KEY`, and asks the environment
+    for nothing; such a door must name its `base_url`. The
     dialect knobs default to OpenAI's behavior; a knob is earned by a
     measured need. `json_mode="json_object"` sends structured output as
     the plain JSON mode with the schema in the system prompt (DeepSeek);
@@ -51,7 +55,7 @@ class OpenAICompatible:
     """
 
     name: str
-    api_key_env: str
+    api_key_env: str | None
     base_url: str | None = None
     temperature: bool = False
     reasoning_effort: bool = True
@@ -70,10 +74,17 @@ class OpenAICompatible:
                 f"door name {self.name!r}: use lowercase letters, digits, '-' or "
                 "'_', starting with a letter (at most 64 characters)"
             )
-        if not _ENV_NAME.match(self.api_key_env):
+        if self.api_key_env is None:
+            if self.base_url is None:
+                raise ConfigurationError(
+                    f"door {self.name!r}: api_key_env=None (a keyless door) needs a "
+                    "base_url; the SDK's own endpoint is never keyless"
+                )
+        elif not _ENV_NAME.match(self.api_key_env):
             raise ConfigurationError(
                 f"door {self.name!r}: api_key_env {self.api_key_env!r} must be an "
-                "environment variable name (uppercase letters, digits, '_')"
+                "environment variable name (uppercase letters, digits, '_'), or "
+                "None for an endpoint that signs nothing"
             )
         if self.base_url is not None and not self.base_url.startswith(
             ("http://", "https://")

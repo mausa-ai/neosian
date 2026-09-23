@@ -5,7 +5,9 @@ lazily, so this suite is what makes a malformed shipped page fail the
 gate instead of a user's `neosian docs` call.
 """
 
+import re
 from importlib import resources
+from pathlib import Path
 
 from neosian._foundation.shared.docs_assets import (
     _SUMMARY_MAX,
@@ -29,6 +31,22 @@ class TestTheShippedPages:
 
     def test_topology_is_always_shipped(self) -> None:
         assert "topology" in {page.topic for page in list_topics()}
+
+    def test_every_hand_written_topic_list_is_the_manifest(self) -> None:
+        """The chat tool's description, its parameter, the resident prompt,
+        README and llms.txt each name the topics by hand: a page the wheel
+        gains is named in all of them (NW2 found `wire` missing from two)."""
+        root = Path(__file__).resolve().parents[3]
+        prompts = resources.files("neosian.assets").joinpath("prompts")
+        listings = {
+            "tools.yaml": prompts.joinpath("tools.yaml").read_text(encoding="utf-8"),
+            "chat.yaml": prompts.joinpath("chat.yaml").read_text(encoding="utf-8"),
+            "README.md": (root / "README.md").read_text(encoding="utf-8"),
+            "llms.txt": (root / "llms.txt").read_text(encoding="utf-8"),
+        }
+        for name, text in listings.items():
+            for topic in _TOPICS:
+                assert re.search(rf"\b{topic}\b", text), f"{name} lacks {topic}"
 
     def test_summaries_are_one_line_and_short(self) -> None:
         for page in list_topics():

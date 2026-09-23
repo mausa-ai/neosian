@@ -7,6 +7,7 @@ a subprocess test.
 """
 
 import os
+from typing import Final
 
 from neosian._foundation.llm.base import BaseLLMClient
 from neosian._foundation.llm.fake import FakeClient
@@ -17,6 +18,11 @@ from neosian._foundation.shared.constants import (
 )
 from neosian._foundation.shared.exceptions import MissingAPIKeyError
 from neosian._foundation.shared.types import AnyModel, Provider
+
+# A keyless door (DESIGN §31.6) still hands the SDK a key: `AsyncOpenAI`
+# refuses an empty one and reads `OPENAI_API_KEY` for None, which would send
+# that key to a local server.
+_KEYLESS_API_KEY: Final = "keyless"
 
 
 class ProviderRouter:
@@ -134,18 +140,23 @@ class ProviderRouter:
         Adapter rows route by provider exactly as `create_client`; a door
         row's — shipped or registered — names the endpoint and the env var
         that signs requests to it — absence is loud, naming the variable.
+        A keyless door (`api_key_env=None`) takes the placeholder instead
+        and reads no environment at all.
         """
         door = model.door
         if door is None:
             return self.create_client(model.provider, api_key)
         from neosian._foundation.llm.openai import OpenAICompatibleClient
 
-        key = api_key or os.environ.get(door.api_key_env, "")
-        if not key:
-            raise MissingAPIKeyError(
-                f"{door.api_key_env} environment variable not set "
-                f"(the key for the {door.name!r} door)"
-            )
+        if door.api_key_env is None:
+            key = api_key or _KEYLESS_API_KEY
+        else:
+            key = api_key or os.environ.get(door.api_key_env, "")
+            if not key:
+                raise MissingAPIKeyError(
+                    f"{door.api_key_env} environment variable not set "
+                    f"(the key for the {door.name!r} door)"
+                )
         return OpenAICompatibleClient(
             api_key=key, door=door, max_retries=self._max_retries, timeout=self._timeout
         )

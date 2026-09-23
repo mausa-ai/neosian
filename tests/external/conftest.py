@@ -64,6 +64,12 @@ def qwen_api_key() -> str:
 
 
 @pytest.fixture
+def local_url() -> str:
+    """A running local llama-server: a URL, not an API key (SERVICES.md)."""
+    return _key_or_skip("NEOSIAN_TEST_LOCAL_URL")
+
+
+@pytest.fixture
 def postgres_dsn() -> str:
     """A live PostgreSQL server — a DSN, not an API key (SERVICES.md)."""
     return _key_or_skip("NEOSIAN_TEST_POSTGRES_DSN")

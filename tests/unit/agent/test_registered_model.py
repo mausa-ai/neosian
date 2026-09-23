@@ -42,8 +42,12 @@ XAI = OpenAICompatible(
 DEEPSEEK = OpenAICompatible(
     name="deepseek", api_key_env="DEEPSEEK_API_KEY", base_url="https://api.deepseek.com"
 )
+LOCAL = OpenAICompatible(  # signs nothing (§31.6)
+    name="local", api_key_env=None, base_url="http://127.0.0.1:8080/v1"
+)
 # 3 µ$ per input token, 15 µ$ per output token — hand-computable.
 PRICING = ModelPricing(input_per_mtok=3_000_000, output_per_mtok=15_000_000)
+ZERO_CARD = ModelPricing(input_per_mtok=0, output_per_mtok=0)  # priced at zero
 _SYSTEM = "You are a test agent."
 _USER = [Message(role=Role.USER, content="Hi")]
 _USAGE = Usage(input_tokens=10, output_tokens=5)
@@ -59,6 +63,16 @@ def _grok(value: str = "grok-4", **overrides: object) -> RegisteredModel:
     }
     kwargs.update(overrides)
     return register_model(value, **kwargs)  # type: ignore[arg-type]
+
+
+def _gemma() -> RegisteredModel:
+    return register_model(
+        "gemma-4-e4b-it",
+        provider=LOCAL,
+        context_window=32_768,
+        max_output_tokens=8_192,
+        pricing=ZERO_CARD,
+    )
 
 
 def _fake(*turns: FakeTurn) -> FakeClient:
@@ -110,6 +124,21 @@ class TestTheQuickstart:
         assert isinstance(done, DoneEvent)
         assert done.usage is not None
         assert done.usage.cost_micro_usd(grok) == 10 * 3 + 5 * 15
+
+    async def test_a_keyless_door_runs_the_quickstart_on_a_zero_card(self) -> None:
+        """NW2's done-when, keyless: no variable set, a card priced at zero
+        (never unpriced: ECOSYSTEM §4), the door's name on the frame."""
+        gemma = _gemma()
+        fake = _fake()
+        with patch.dict(os.environ, {}, clear=True):
+            agent = Agent(_config(model=gemma, client_factory=lambda _: fake))
+            response = await agent.run(_USER, stream=False)
+            events = [event async for event in await agent.run(_USER, stream=True)]
+        assert response.message.content == "scripted"
+        assert response.usage is not None
+        assert response.usage.cost_micro_usd(gemma) == 0
+        ready = events[0]
+        assert isinstance(ready, ReadyEvent) and ready.provider == "local"
 
     async def test_conversation_quickstart(self, tmp_path: Path) -> None:
         grok = _grok()
@@ -237,6 +266,13 @@ class TestKeysAndConfig:
         Agent(
             _config(model=grok, guardrails=guardrails, client_factory=lambda _: _fake())
         )
+
+    def test_guardrails_on_a_keyless_door_need_no_key(self) -> None:
+        guardrails = GuardrailsConfig(
+            input_mode=GuardrailMode.POLICY_ONLY, input_policy="Be kind."
+        )
+        with patch.dict(os.environ, {}, clear=True):
+            Agent(_config(model=_gemma(), guardrails=guardrails))
 
     def test_invalid_model_text_lists_registered_ids(self) -> None:
         grok = _grok()
