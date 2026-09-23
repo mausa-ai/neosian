@@ -8,6 +8,8 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [1.0.0rc15] - 2026-09-23
+
 ### Changed
 
 - `neosian playground AGENT_FILE` runs the file under chat's run tier
@@ -1492,7 +1494,8 @@ pre-release — pin it explicitly; the API stability promise rides v1.0.0.
 - Both entry points share one `_validate_run`, so neither can skip a
   guard.
 
-[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc14...HEAD
+[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc15...HEAD
+[1.0.0rc15]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc14...v1.0.0rc15
 [1.0.0rc14]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc13...v1.0.0rc14
 [1.0.0rc13]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc12...v1.0.0rc13
 [1.0.0rc12]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc11...v1.0.0rc12
