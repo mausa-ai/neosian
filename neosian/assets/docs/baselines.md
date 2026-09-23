@@ -144,7 +144,13 @@ fails when any gated file changes without this section being updated:
   vocabulary as memory/reflection; first measured cells arrive with the
   maintenance scenario in this same batch.)*
 - `examples/eval_memory_baseline.yaml`: sha256
-  `70f8fa0ae776e22dbc6e69699ae080f6aefbb382a1f9cc71128a2482160831a7`
+  `8dda87157f3378690e0c95780105dacab2f26631432c14136a79842c4674265a`
+  *(NC8, 2026-09-23, a suite's paths resolve beside the suite file
+  (EC-9, ledger #281), so the pack names its agent `eval_memory_agent.py`
+  rather than `examples/eval_memory_agent.py`. No scenario, turn, pin or
+  prompt moved and nothing reaches a model, so no dispatch is owed: the
+  next dispatch measures it, the NK post-close precedent. Prior:
+  `70f8fa0a…`.)*
   *(NZ, 2026-09-10, the recorded reds settled: two pins of the NV
   wordform class widened, no scenario, turn or count moved.
   `long-horizon-recall`'s `distractor-two` pinned "main" within 24

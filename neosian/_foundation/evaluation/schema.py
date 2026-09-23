@@ -1,11 +1,14 @@
 """Kind-neutral suite parsing primitives (DESIGN §13).
 
 Every kind's loader shares the strict-key discipline, the `models:`
-axis, and tool-name lists; the per-kind shapes stay in their own
-loaders.
+axis, tool-name lists, the paths a suite names (resolved beside the
+suite, never against the working directory) and the values it carries
+into the artifact (JSON's, or refused at load); the per-kind shapes stay
+in their own loaders.
 """
 
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any
 
 from neosian._foundation.shared.exceptions import (
@@ -78,5 +81,28 @@ def parse_models(data: Any, path_str: str) -> tuple[AnyModel, ...]:
         model = lookup_model(value)
         if model is None:
             raise EvalModelUnknownError(entry, path_str)
+        if model in models:  # a second column would mirror the first (EC-22)
+            raise EvalConfigInvalidYAMLError(
+                path_str, f"duplicate model '{entry}' on the 'models' axis"
+            )
         models.append(model)
     return tuple(models)
+
+
+def beside(suite: str, path: str) -> str:
+    """A path the suite names, resolved against the suite file's directory
+    (EC-9): the suite runs from any working directory."""
+    return str(Path(suite).parent / path)
+
+
+def json_value(value: Any) -> bool:
+    """True when JSON holds `value` as it is. YAML also yields dates, sets
+    and non-string keys, which the artifact could only store rewritten
+    (EC-21), so the loaders refuse them."""
+    if value is None or isinstance(value, str | int | float | bool):
+        return True
+    if isinstance(value, list):
+        return all(json_value(item) for item in value)
+    if isinstance(value, dict):
+        return all(isinstance(k, str) and json_value(v) for k, v in value.items())
+    return False

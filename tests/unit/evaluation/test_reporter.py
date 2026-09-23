@@ -2,13 +2,17 @@
 
 import json
 import re
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pytest
 from rich.console import Console
 
-from neosian._foundation.evaluation.reporter import print_report, save_report
+from neosian._foundation.evaluation.reporter import (
+    print_report,
+    report_dict,
+    save_report,
+)
 from neosian._foundation.evaluation.results import (
     CaseResult,
     EvalReport,
@@ -113,6 +117,41 @@ class TestArtifact:
 
         bad = data["results"][1]
         assert bad["turns"][0]["failures"] == ["expected no tool call, got 'draw'"]
+
+    def test_nothing_is_coerced_on_the_way_out(self, tmp_path: Path) -> None:
+        """EC-21: the loaders refuse what JSON cannot hold, so the writer
+        needs no fallback, and a value that got past them fails loudly
+        instead of landing rewritten as a string."""
+        document = report_dict(_report(), now=datetime.now(UTC))
+        assert json.loads(json.dumps(document)) == document
+        dated = CaseResult(
+            case="dated",
+            variant="base",
+            model="fake",
+            passed=True,
+            turns=(
+                TurnResult(
+                    index=0,
+                    passed=True,
+                    expectation=Expectation(
+                        params={
+                            "day": ValueMatcher(
+                                mode=MatchMode.EQUALS, value=date(2026, 9, 23)
+                            )
+                        }
+                    ),
+                ),
+            ),
+        )
+        report = EvalReport(
+            suite="s",
+            variants=("base",),
+            models=("fake",),
+            cases=("dated",),
+            results=(dated,),
+        )
+        with pytest.raises(TypeError, match="date"):
+            save_report(report, output_dir=str(tmp_path))
 
     def test_timestamp_is_aware_utc(self, tmp_path: Path) -> None:
         """The artifact's clock is tz-aware UTC, and the filename rides the

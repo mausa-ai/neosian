@@ -37,7 +37,6 @@ async def test_a_registered_model_rides_every_transport(tmp_path: Path) -> None:
     assert isinstance(config, MemoryEvalConfig)
     config = dataclasses.replace(
         config,
-        agent=str(_REPO_ROOT / config.agent),
         models=(model,),
         scenarios=config.scenarios[:1],
     )

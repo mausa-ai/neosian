@@ -202,7 +202,9 @@ root; many workers on one Postgres.
 
 `neosian eval suite.yaml` runs YAML suites and exits nonzero on failure —
 an agent suite over variants × models × cases, and `kind: memory`, which
-scores store truth across scripted sessions on every transport. The
+scores store truth across scripted sessions on every transport. A suite
+names its agent file relative to itself, so it runs from any directory;
+`--json` prints the artifact and `--output DIR` places it. The
 shipped memory pack is all-green on `models: [fake]`, and the same pack
 against the real providers produces the
 [baselines page](https://github.com/mausa-ai/neosian/blob/v1.0.0rc14/neosian/assets/docs/baselines.md),

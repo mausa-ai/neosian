@@ -7,7 +7,7 @@ discipline is identical.
 from typing import Any
 
 from neosian._foundation.evaluation.expectations import parse_expectation
-from neosian._foundation.evaluation.schema import parse_names
+from neosian._foundation.evaluation.schema import json_value, parse_names
 from neosian._foundation.evaluation.types import EvalCase, EvalTurn
 from neosian._foundation.llm.base import ToolCall
 from neosian._foundation.llm.fake import FakeTurn
@@ -144,17 +144,22 @@ def parse_script(data: Any, case_name: str) -> tuple[FakeTurn, ...] | None:
             )
         tool_calls: list[ToolCall] = []
         for call_idx, call_data in enumerate(turn_data.get("tool_calls") or []):
+            where = f"script turn {turn_idx + 1} tool_call {call_idx + 1}"
             if not isinstance(call_data, dict) or "name" not in call_data:
                 raise EvalCaseInvalidError(
+                    case_name, f"{where} must be a mapping with a 'name'"
+                )
+            arguments = call_data.get("arguments") or {}
+            if not json_value(arguments):  # a model's arguments are JSON (EC-21)
+                raise EvalCaseInvalidError(
                     case_name,
-                    f"script turn {turn_idx + 1} tool_call {call_idx + 1} "
-                    "must be a mapping with a 'name'",
+                    f"{where}: arguments must be JSON values; quote a date",
                 )
             tool_calls.append(
                 ToolCall(
                     id=ToolCallId(f"script_{turn_idx}_{call_idx}"),
                     name=ToolName(call_data["name"]),
-                    arguments=call_data.get("arguments") or {},
+                    arguments=arguments,
                 )
             )
         turns.append(

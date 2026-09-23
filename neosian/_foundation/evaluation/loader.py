@@ -3,7 +3,9 @@
 Strict keys at every level: an unknown key is an error, never silently
 carried. Retired v1 keys (`prompts:`, `mock_response:`) fail with a
 targeted migration hint. Models are validated here, so a typo fails the
-suite instantly instead of surfacing inside every case result.
+suite instantly instead of surfacing inside every case result. The
+paths a suite names (`agent:`, a variant's `prompt:`) resolve against
+the suite file's directory.
 """
 
 from pathlib import Path
@@ -14,6 +16,7 @@ import yaml
 from neosian._foundation.evaluation.cases import parse_cases
 from neosian._foundation.evaluation.memory_loader import parse_memory_suite
 from neosian._foundation.evaluation.schema import (
+    beside,
     check_keys,
     parse_models,
     parse_names,
@@ -105,7 +108,7 @@ def load_eval_config(path: str | Path) -> EvalConfig:
     variants = _parse_variants(data.get("variants"), path_str)
     return AgentEvalConfig(
         name=name,
-        agent=agent,
+        agent=beside(path_str, agent),
         models=parse_models(data["models"], path_str),
         cases=parse_cases(data["cases"], path_str),
         variants=variants if variants is not None else (BASE_VARIANT,),
@@ -146,5 +149,5 @@ def _parse_variants(data: Any, path_str: str) -> tuple[Variant, ...] | None:
                 path_str, f"duplicate variant name '{variant_name}'"
             )
         seen.add(variant_name)
-        variants.append(load_variant(variant_name, entry["prompt"]))
+        variants.append(load_variant(variant_name, beside(path_str, entry["prompt"])))
     return tuple(variants)

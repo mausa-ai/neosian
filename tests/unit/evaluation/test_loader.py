@@ -51,7 +51,7 @@ class TestSuiteLevel:
         config = _load_agent(tmp_path, MINIMAL)
         assert config.kind is EvalKind.AGENT
         assert config.name == "suite"
-        assert config.agent == "agent.py"
+        assert config.agent == str(tmp_path / "agent.py")  # beside the suite
         assert config.models == (Model.FAKE,)
         assert config.variants == (BASE_VARIANT,)
         assert config.execute_tools == frozenset()
@@ -59,6 +59,24 @@ class TestSuiteLevel:
         assert config.stop_on_failure is True
         assert config.throttle_ms == 500
         assert len(config.cases) == 1
+
+    def test_paths_resolve_beside_the_suite(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """EC-9: `agent:` and a variant's `prompt:` resolve against the
+        suite file's directory, whatever the working directory."""
+        suites = tmp_path / "suites"
+        (suites / "prompts").mkdir(parents=True)
+        (suites / "prompts" / "terse.yaml").write_text("system_prompt: Be terse.\n")
+        body = MINIMAL + "variants:\n  - {name: terse, prompt: prompts/terse.yaml}\n"
+        suite = _write(suites, body)
+        elsewhere = tmp_path / "elsewhere"
+        elsewhere.mkdir()
+        monkeypatch.chdir(elsewhere)
+        config = load_eval_config(suite)
+        assert isinstance(config, AgentEvalConfig)
+        assert config.agent == str(suites / "agent.py")
+        assert config.variants[0].system_prompt == "Be terse."
 
     def test_explicit_kind_agent_is_accepted(self, tmp_path: Path) -> None:
         config = load_eval_config(_write(tmp_path, "kind: agent" + MINIMAL))
@@ -136,14 +154,22 @@ class TestModelsAxis:
     def test_provider_prefixed_and_bare_forms(self, tmp_path: Path) -> None:
         body = MINIMAL.replace(
             "models: [fake]",
-            "models: [cerebras:gpt-oss-120b, gpt-oss-120b, fake-small]",
+            "models: [cerebras:gpt-oss-120b, qwen-3.8-27b, fake-small]",
         )
         config = load_eval_config(_write(tmp_path, body))
         assert config.models == (
             Model.CEREBRAS_GPT_OSS_120B,
-            Model.CEREBRAS_GPT_OSS_120B,
+            Model.CEREBRAS_QWEN_3_8_27B,
             Model.FAKE_SMALL,
         )
+
+    def test_one_model_twice_is_refused_in_any_spelling(self, tmp_path: Path) -> None:
+        """EC-22: a second column would mirror the first."""
+        body = MINIMAL.replace(
+            "models: [fake]", "models: [cerebras:gpt-oss-120b, gpt-oss-120b]"
+        )
+        with pytest.raises(EvalConfigInvalidYAMLError, match="duplicate model"):
+            load_eval_config(_write(tmp_path, body))
 
     def test_unknown_model_fails_at_load(self, tmp_path: Path) -> None:
         body = MINIMAL.replace("models: [fake]", "models: [gpt-99]")
@@ -280,6 +306,37 @@ class TestCases:
         body = "name: s\nagent: a.py\nmodels: [fake]\ncases:\n" + case_yaml + "\n"
         with pytest.raises(EvalCaseInvalidError, match=message):
             load_eval_config(_write(tmp_path, body))
+
+    @pytest.mark.parametrize(
+        "literal", ["2026-09-23", "{equals: 2026-09-23}", "[1, 2026-09-23]", "{1: a}"]
+    )
+    def test_a_value_json_cannot_hold_is_refused(
+        self, tmp_path: Path, literal: str
+    ) -> None:
+        """EC-21: an unquoted date, or a key JSON would turn into a string,
+        could never match an argument and could not reach the artifact as
+        written."""
+        body = MINIMAL.replace(
+            "expect: {no_tool: true}", f"expect: {{tool: t, params: {{d: {literal}}}}}"
+        )
+        with pytest.raises(EvalCaseInvalidError, match="not a JSON value"):
+            load_eval_config(_write(tmp_path, body))
+
+    def test_a_date_in_a_scripted_call_is_refused(self, tmp_path: Path) -> None:
+        body = MINIMAL + (
+            "    script:\n"
+            "      - tool_calls:\n"
+            "          - {name: t, arguments: {day: 2026-09-23}}\n"
+        )
+        with pytest.raises(EvalCaseInvalidError, match="arguments must be JSON"):
+            load_eval_config(_write(tmp_path, body))
+
+    def test_quoted_it_is_a_string(self, tmp_path: Path) -> None:
+        body = MINIMAL.replace(
+            "expect: {no_tool: true}", "expect: {tool: t, params: {d: '2026-09-23'}}"
+        )
+        config = _load_agent(tmp_path, body)
+        assert config.cases[0].turns[0].expect.params["d"].value == "2026-09-23"
 
     def test_duplicate_case_names_fail(self, tmp_path: Path) -> None:
         body = MINIMAL + "  - name: c\n    input: yo\n    expect: {no_tool: true}\n"

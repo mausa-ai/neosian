@@ -254,19 +254,36 @@ def evaluate(
         bool,
         typer.Option("--json", help="Print the report as one JSON object on stdout"),
     ] = False,
+    output: Annotated[
+        str | None,
+        typer.Option(
+            "--output", help="The artifact's directory (default .neosian/evals)"
+        ),
+    ] = None,
 ) -> None:
     """Run an eval suite: variants × models × cases over one agent.
 
     Results are displayed in the terminal and saved to JSON. Exits
     nonzero when any case fails, so the command works as a CI gate;
     --json prints the saved artifact's document instead of the table.
+    The paths a suite names resolve beside the suite file; the progress
+    tree is live on a terminal only.
 
     Example:
         neosian eval eval_suite.yaml
+        neosian eval eval_suite.yaml --json --output reports/
     """
     from neosian._cli.eval_cmd import run_eval
+    from neosian._cli.render import rendered
 
-    raise typer.Exit(run_eval(config_file, json_output=json_output))
+    raise typer.Exit(
+        run_eval(
+            config_file,
+            json_output=json_output,
+            output=output,
+            live=rendered(sys.stdout, os.environ),
+        )
+    )
 
 
 @app.command(

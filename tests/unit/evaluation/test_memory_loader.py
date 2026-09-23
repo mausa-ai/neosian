@@ -64,6 +64,7 @@ class TestSuiteLevel:
         config = _load(tmp_path, MINIMAL)
         assert config.kind is EvalKind.MEMORY
         assert config.name == "suite"
+        assert config.agent == str(tmp_path / "agent.py")  # beside the suite (EC-9)
         assert config.mounts == (Mount(scope="user:eval", mount_path="user"),)
         assert config.transports == (Transport.FUNCTION,)
         assert config.stop_on_failure is True
@@ -117,6 +118,11 @@ class TestSuiteLevel:
     def test_unknown_transport(self, tmp_path: Path) -> None:
         with pytest.raises(EvalConfigInvalidYAMLError, match="unknown transport 'sse'"):
             load_eval_config(_write(tmp_path, MINIMAL + "transports: [sse]\n"))
+
+    def test_duplicate_model(self, tmp_path: Path) -> None:
+        body = MINIMAL.replace("models: [fake]", "models: [fake, fake]")
+        with pytest.raises(EvalConfigInvalidYAMLError, match="duplicate model"):
+            _load(tmp_path, body)
 
     def test_duplicate_transport(self, tmp_path: Path) -> None:
         with pytest.raises(EvalConfigInvalidYAMLError, match="duplicate transport"):

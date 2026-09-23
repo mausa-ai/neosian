@@ -178,11 +178,9 @@ class TestParsersResolveRegisteredIds:
         from neosian._foundation.evaluation.schema import parse_models
 
         grok = _grok()
-        assert parse_models(["grok-4", "xai:grok-4", "fake"], "p.yaml") == (
-            grok,
-            grok,
-            Model.FAKE,
-        )
+        # Both spellings resolve; one axis refuses the same model twice (EC-22).
+        assert parse_models(["grok-4", "fake"], "p.yaml") == (grok, Model.FAKE)
+        assert parse_models(["xai:grok-4"], "p.yaml") == (grok,)
 
     def test_memory_cli_model_flag(self) -> None:
         from neosian._foundation.memory.cli_grammar import parse_model

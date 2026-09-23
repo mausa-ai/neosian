@@ -9,15 +9,15 @@
 
 name: Media Agent Prompt Comparison
 
-agent: examples/media_agent.py
+agent: media_agent.py
 
 variants:
   - name: minimal
-    prompt: examples/prompts/minimal.yaml
+    prompt: prompts/minimal.yaml
   - name: verbose
-    prompt: examples/prompts/verbose.yaml
+    prompt: prompts/verbose.yaml
   - name: with_hints
-    prompt: examples/prompts/with_hints.yaml
+    prompt: prompts/with_hints.yaml
 
 models:
   - cerebras:gpt-oss-120b

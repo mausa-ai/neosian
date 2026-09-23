@@ -75,7 +75,7 @@ one.
 
 ```
 neosian playground AGENT_FILE [--model M | --menu] [--resume ID] [--json]
-neosian eval SUITE [--json]
+neosian eval SUITE [--json] [--output DIR]
 ```
 
 - **`playground`**: your agent file (it exports `configuration`, an
@@ -88,7 +88,12 @@ neosian eval SUITE [--json]
   prints; a terminal opens a session. Turns persist under the home, and
   a file that names no memory gets this directory's layout.
 - **`eval`**: runs a YAML suite over its matrix and exits 1 when a case
-  fails, so it gates CI; `--json` prints the artifact's document.
+  fails, so it gates CI; `--json` prints the artifact's document and
+  `--output DIR` names the directory it lands in (`.neosian/evals` by
+  default). The paths a suite names (`agent:`, a variant's `prompt:`)
+  resolve beside the suite file, so it runs from any directory; a model
+  listed twice, or a YAML value JSON cannot hold (an unquoted date), is
+  refused at load. The progress tree draws on a terminal only.
   Comparing models side by side is the suite's `models:` axis.
 
 **Every prompt has a flag.** A menu or a prompt is a terminal's

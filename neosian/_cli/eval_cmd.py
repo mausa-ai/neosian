@@ -9,9 +9,14 @@ from datetime import UTC, datetime
 from rich.console import Console
 
 
-def run_eval(config_file: str, *, json_output: bool) -> int:
+def run_eval(
+    config_file: str, *, json_output: bool, output: str | None, live: bool
+) -> int:
     """Run one suite; the table on the console or the artifact's document
-    as one JSON object; the exit code is the gate (1 when a case failed)."""
+    as one JSON object; the exit code is the gate (1 when a case failed).
+    `output` is the artifact's directory. The progress tree is live only
+    where it can be (`live`: a terminal without NO_COLOR), never under
+    `--json` (EC-10)."""
     from neosian._cli.providers import load_keys_into_env
     from neosian._foundation.evaluation.reporter import report_dict
     from neosian.evaluation import (
@@ -35,7 +40,7 @@ def run_eval(config_file: str, *, json_output: bool) -> int:
         console.print(f"[red]Error loading config: {e}[/red]")
         return 1
 
-    progress = EvalProgress(config) if not json_output else None
+    progress = EvalProgress(config) if live and not json_output else None
     try:
         if progress is not None:
             progress.start()
@@ -57,9 +62,9 @@ def run_eval(config_file: str, *, json_output: bool) -> int:
         console.print(f"[red]Evaluation failed: {e}[/red]")
         return 1
 
-    output_path = save_report(report)
+    output_path = save_report(report, output)
     if json_output:
-        print(json.dumps(report_dict(report, now=datetime.now(UTC)), default=str))
+        print(json.dumps(report_dict(report, now=datetime.now(UTC))))
         return 1 if report.failed else 0
     console.print()
     print_report(report, console)

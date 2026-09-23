@@ -22,7 +22,7 @@ kind: memory
 name: Memory Baseline
 
 # An AgentConfig WITHOUT memory= — this suite owns the store and mounts.
-agent: examples/eval_memory_agent.py
+agent: eval_memory_agent.py
 
 models: [fake]
 

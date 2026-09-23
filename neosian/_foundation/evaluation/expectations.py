@@ -9,6 +9,7 @@ pattern fails the config, never a run.
 import re
 from typing import Any
 
+from neosian._foundation.evaluation.schema import json_value
 from neosian._foundation.evaluation.types import (
     Expectation,
     MatchMode,
@@ -85,10 +86,10 @@ def _parse_matcher(value: Any, case_name: str, where: str) -> ValueMatcher:
     if value == _EXISTS_SUGAR:
         return ValueMatcher(mode=MatchMode.EXISTS)
     if not (isinstance(value, dict) and len(value) == 1):
-        return ValueMatcher(mode=MatchMode.EQUALS, value=value)
+        return _equals(value, case_name, where)
     key, inner = next(iter(value.items()))
     if key not in _MATCHER_KEYS:
-        return ValueMatcher(mode=MatchMode.EQUALS, value=value)
+        return _equals(value, case_name, where)
     mode = MatchMode(key)
     if mode is MatchMode.EXISTS:
         if inner is not True:
@@ -97,7 +98,7 @@ def _parse_matcher(value: Any, case_name: str, where: str) -> ValueMatcher:
             )
         return ValueMatcher(mode=MatchMode.EXISTS)
     if mode is MatchMode.EQUALS:
-        return ValueMatcher(mode=MatchMode.EQUALS, value=inner)
+        return _equals(inner, case_name, where)
     if not isinstance(inner, str):
         raise EvalCaseInvalidError(
             case_name, f"{where}: '{key}' takes a string, got {type(inner).__name__}"
@@ -107,6 +108,18 @@ def _parse_matcher(value: Any, case_name: str, where: str) -> ValueMatcher:
             mode=MatchMode.REGEX, value=_compile(inner, case_name, where)
         )
     return ValueMatcher(mode=MatchMode.CONTAINS, value=inner)
+
+
+def _equals(value: Any, case_name: str, where: str) -> ValueMatcher:
+    """A literal compares with typed equality against JSON arguments, so a
+    value JSON cannot hold (a YAML date, a set) could never match and the
+    artifact could not hold it as written (EC-21): refused here."""
+    if not json_value(value):
+        raise EvalCaseInvalidError(
+            case_name,
+            f"{where}: {value!r} is not a JSON value; quote it if it is a date",
+        )
+    return ValueMatcher(mode=MatchMode.EQUALS, value=value)
 
 
 def _parse_sequence(

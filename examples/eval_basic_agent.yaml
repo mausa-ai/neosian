@@ -5,11 +5,11 @@
 
 name: Basic Agent Evaluation
 
-agent: examples/basic_agent.py
+agent: basic_agent.py
 
 models:
   - cerebras:gpt-oss-120b
-  - cerebras:gpt-oss-120b
+  - cerebras:qwen-3.8-27b
 
 # The agent keeps its todo builtin; hide it from matchers rather than
 # changing the agent under test.

@@ -46,7 +46,6 @@ def _config(*, scripted: bool) -> MemoryEvalConfig:
         )
     return dataclasses.replace(
         config,
-        agent=str(_REPO_ROOT / config.agent),
         models=(model,),
         scenarios=(scenario,),
         transports=(Transport.FUNCTION,),

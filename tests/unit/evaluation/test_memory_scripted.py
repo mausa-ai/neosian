@@ -69,7 +69,9 @@ class TestShippedPack:
     async def test_the_baseline_pack_is_all_green(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.chdir(_REPO_ROOT)
+        # Run from a directory that is not the repository's: the pack names
+        # its agent file beside itself (EC-9), so no directory is special.
+        monkeypatch.chdir(tmp_path)
         report = await _run(
             _REPO_ROOT / "examples" / "eval_memory_baseline.yaml",
             tmp_path / "stores",

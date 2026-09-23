@@ -51,7 +51,6 @@ def scriptless(
     )
     return dataclasses.replace(
         config,
-        agent=str(pack.parents[1] / config.agent),
         models=(model,),
         scenarios=scenarios,
         transports=transports if transports is not None else config.transports,

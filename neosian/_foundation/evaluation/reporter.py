@@ -4,12 +4,15 @@ Rich tables to the terminal, a schema-2 JSON artifact to
 `.neosian/evals/<ts>.json`. Everything renders from EvalReport alone —
 presentation never needs the config type. Rich is imported at use (NF,
 TP-2): `import neosian.evaluation` never loads it, and the terminal
-rendering answers a missing rich with the reinstall hint.
+rendering answers a missing rich with the reinstall hint. The artifact
+is JSON-native by construction: the loaders refuse what JSON cannot
+hold, so nothing is coerced on the way out (EC-21).
 """
 
 from __future__ import annotations
 
 import json
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -158,7 +161,7 @@ def save_report(report: EvalReport, output_dir: str | None = None) -> Path:
     now = datetime.now(UTC)
     filepath = output_path / f"{now.strftime('%Y-%m-%d_%H-%M-%S')}.json"
     with open(filepath, "w", encoding="utf-8") as f:
-        json.dump(report_dict(report, now=now), f, indent=2, default=str)
+        json.dump(report_dict(report, now=now), f, indent=2)
     return filepath
 
 
@@ -239,7 +242,7 @@ def _expectation_to_dict(expectation: Expectation) -> dict[str, Any]:
 
 def _matcher_to_dict(matcher: ValueMatcher) -> dict[str, Any]:
     value = matcher.value
-    if hasattr(value, "pattern"):  # compiled regex
+    if isinstance(value, re.Pattern):  # compiled at load; the artifact keeps its text
         value = value.pattern
     return {"mode": matcher.mode.value, "value": value}
 

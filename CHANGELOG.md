@@ -20,6 +20,26 @@ phase close names the version.
   no turn to answer (exit 2): `--json` prints one object, which a
   session cannot keep. An agent file that fails to load exits 1 (it was
   2 under `chat --agent`).
+- **A suite's paths resolve beside the suite file** (ledger #281):
+  `agent:` and each variant's `prompt:` are read relative to the YAML
+  file, so `neosian eval` runs a suite from any directory. **Migrating:**
+  a suite that named its files relative to the working directory names
+  them relative to itself (the three example suites moved). The memory
+  pack's fingerprint re-pinned for its `agent:` line, nothing a model
+  sees having changed.
+- A suite that lists one model twice, in any spelling, is refused at
+  load: the second column only mirrored the first.
+- A suite value JSON cannot hold (an unquoted YAML date, a set, a
+  non-string key) is refused at load with the fix, in a matcher literal
+  or a scripted call's arguments: it could never match a JSON argument,
+  and the artifact no longer rewrites what it cannot hold into a string.
+- `neosian eval` draws its live progress tree only on a terminal
+  without `NO_COLOR`, never under a pipe or `--json`.
+
+### Added
+
+- `neosian eval --output DIR`: the directory the artifact lands in
+  (`.neosian/evals` by default).
 
 ### Removed
 

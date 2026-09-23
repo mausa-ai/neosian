@@ -24,6 +24,7 @@ from neosian._foundation.evaluation.memory_types import (
     Transport,
 )
 from neosian._foundation.evaluation.schema import (
+    beside,
     check_keys,
     parse_models,
     parse_names,
@@ -104,7 +105,7 @@ def parse_memory_suite(data: Mapping[str, Any], path_str: str) -> MemoryEvalConf
     mount_paths = frozenset(m.mount_path for m in mounts)
     return MemoryEvalConfig(
         name=name,
-        agent=agent,
+        agent=beside(path_str, agent),
         models=parse_models(data["models"], path_str),
         mounts=mounts,
         scenarios=_parse_scenarios(data["scenarios"], mount_paths, path_str),
