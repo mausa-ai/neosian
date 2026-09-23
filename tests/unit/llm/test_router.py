@@ -6,6 +6,7 @@ from unittest.mock import patch
 import pytest
 
 from neosian._foundation.llm.router import ProviderRouter
+from neosian._foundation.shared.exceptions import MissingAPIKeyError
 from neosian._foundation.shared.types import Model, Provider
 
 
@@ -89,6 +90,24 @@ class TestProviderRouter:
             router = ProviderRouter()
             client = router.create_client(Provider.ANTHROPIC)
             assert client is not None
+
+    @pytest.mark.parametrize(
+        ("provider", "env_var"),
+        [
+            (Provider.OPENAI, "OPENAI_API_KEY"),
+            (Provider.ANTHROPIC, "ANTHROPIC_API_KEY"),
+        ],
+    )
+    def test_a_missing_key_is_refused_naming_it(
+        self, provider: Provider, env_var: str
+    ) -> None:
+        """DESIGN §19: absence is loud before any SDK is built, as a door
+        row's already was; an empty key once reached the SDK, which failed
+        at the first call (OpenAI's over the network)."""
+        with patch.dict(os.environ, {}, clear=True):
+            with pytest.raises(MissingAPIKeyError, match=env_var):
+                ProviderRouter().create_client(provider)
+            assert ProviderRouter().create_client(provider, api_key="k") is not None
 
 
 class TestModelEnum:

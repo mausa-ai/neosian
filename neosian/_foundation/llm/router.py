@@ -98,17 +98,19 @@ class ProviderRouter:
         if provider == Provider.OPENAI:
             from neosian._foundation.llm.openai import OpenAIClient
 
-            key = api_key or os.environ.get(EnvVars.OPENAI_API_KEY, "")
             return OpenAIClient(
-                api_key=key, max_retries=self._max_retries, timeout=self._timeout
+                api_key=_key(api_key, EnvVars.OPENAI_API_KEY),
+                max_retries=self._max_retries,
+                timeout=self._timeout,
             )
 
         if provider == Provider.ANTHROPIC:
             from neosian._foundation.llm.anthropic import AnthropicClient
 
-            key = api_key or os.environ.get(EnvVars.ANTHROPIC_API_KEY, "")
             return AnthropicClient(
-                api_key=key, max_retries=self._max_retries, timeout=self._timeout
+                api_key=_key(api_key, EnvVars.ANTHROPIC_API_KEY),
+                max_retries=self._max_retries,
+                timeout=self._timeout,
             )
 
         if provider == Provider.FAKE:
@@ -147,3 +149,12 @@ class ProviderRouter:
         return OpenAICompatibleClient(
             api_key=key, door=door, max_retries=self._max_retries, timeout=self._timeout
         )
+
+
+def _key(api_key: str | None, env_var: str) -> str:
+    """The key, given or from the environment; absence is loud, naming the
+    variable, before any SDK is built (DESIGN §19)."""
+    key = api_key or os.environ.get(env_var, "")
+    if not key:
+        raise MissingAPIKeyError(f"{env_var} environment variable not set")
+    return key

@@ -55,6 +55,10 @@ phase close names the version.
 
 - A streamed session names the call each tool result and progress line
   belongs to, so parallel calls that finish out of order read right.
+- A shipped OpenAI or Anthropic model with no key is refused before its
+  SDK is built, `MissingAPIKeyError` naming the variable, as a door
+  row's already was (DESIGN §19). An empty key used to reach the SDK and
+  fail at the first call, OpenAI's over the network.
 
 ## [1.0.0rc14] - 2026-09-22
 

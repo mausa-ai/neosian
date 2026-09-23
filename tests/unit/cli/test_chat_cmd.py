@@ -303,6 +303,14 @@ class TestTheSharedTier:
         assert code == 1 and json.loads(out)["error"] == "provider down"
         assert err == "error: provider down\n"
 
+    def test_a_model_without_its_key_exits_1_naming_the_variable(self) -> None:
+        code, out, err = _run_on(
+            io.StringIO("hi"), model="claude-sonnet-5", json_output=True
+        )
+        assert code == 1
+        assert "ANTHROPIC_API_KEY environment variable not set" in err
+        assert "ANTHROPIC_API_KEY" in json.loads(out)["error"]
+
     def test_an_agent_file_that_cannot_load_exits_1(self, tmp_path: Path) -> None:
         code, _, err = _run_on(io.StringIO("hi"), agent=str(tmp_path / "absent.py"))
         assert code == 1 and "absent.py" in err
