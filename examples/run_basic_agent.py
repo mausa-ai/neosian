@@ -3,11 +3,13 @@
 This script demonstrates how to use an existing agent configuration.
 
 Usage:
-    python examples/run_basic_agent.py
+    ANTHROPIC_API_KEY=... python examples/run_basic_agent.py
+
+The library reads keys from the environment only; `neosian configure`
+stores keys for the shell's verbs, never for scripts.
 """
 
 import asyncio
-import os
 import sys
 from pathlib import Path
 
@@ -18,28 +20,8 @@ from examples.basic_agent import configuration  # noqa: E402
 from neosian import Agent, Message, Role  # noqa: E402
 
 
-def _load_credentials_from_config() -> None:
-    """Load API keys from ~/.neosian/config.toml if not already in environment."""
-    import tomllib
-
-    config_path = Path.home() / ".neosian" / "config.toml"
-    if not config_path.exists():
-        return
-
-    with open(config_path, "rb") as f:
-        config = tomllib.load(f)
-
-    credentials = config.get("credentials", {})
-
-    if not os.environ.get("CEREBRAS_API_KEY") and (
-        cerebras_key := credentials.get("cerebras_api_key")
-    ):
-        os.environ["CEREBRAS_API_KEY"] = cerebras_key
-
-
 async def main() -> None:
     """Run the basic_agent with a simple query."""
-    _load_credentials_from_config()
     # Create the agent from the imported configuration
     agent = Agent(config=configuration)
 

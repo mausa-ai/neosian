@@ -5,48 +5,17 @@ This script demonstrates the latency difference between:
 2. Session mode: HTTP client reused across requests
 
 Usage:
-    python examples/session_benchmark.py
+    CEREBRAS_API_KEY=... python examples/session_benchmark.py
 
-    Or with explicit API key:
-    CEREBRAS_API_KEY=gsk_xxx python examples/session_benchmark.py
+The library reads keys from the environment only; `neosian configure`
+stores keys for the shell's verbs, never for scripts.
 """
 
 import asyncio
-import os
 import time
 from dataclasses import dataclass
-from pathlib import Path
 
 from neosian import Agent, AgentConfig, Message, Model, Role
-
-
-def _load_credentials_from_config() -> None:
-    """Load API keys from ~/.neosian/config.toml if not already in environment."""
-    import tomllib
-
-    config_path = Path.home() / ".neosian" / "config.toml"
-    if not config_path.exists():
-        return
-
-    with open(config_path, "rb") as f:
-        config = tomllib.load(f)
-
-    credentials = config.get("credentials", {})
-
-    if not os.environ.get("CEREBRAS_API_KEY") and (
-        cerebras_key := credentials.get("cerebras_api_key")
-    ):
-        os.environ["CEREBRAS_API_KEY"] = cerebras_key
-
-    if not os.environ.get("OPENAI_API_KEY") and (
-        openai_key := credentials.get("openai_api_key")
-    ):
-        os.environ["OPENAI_API_KEY"] = openai_key
-
-    if not os.environ.get("ANTHROPIC_API_KEY") and (
-        anthropic_key := credentials.get("anthropic_api_key")
-    ):
-        os.environ["ANTHROPIC_API_KEY"] = anthropic_key
 
 
 @dataclass
@@ -175,8 +144,6 @@ def print_comparison(stateless: BenchmarkResult, session: BenchmarkResult) -> No
 
 async def main() -> None:
     """Run the benchmark."""
-    # Load credentials from config file if not in environment
-    _load_credentials_from_config()
 
     print("\nNeosian Session vs Stateless Benchmark")
     print("=" * 50)

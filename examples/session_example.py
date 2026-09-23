@@ -4,33 +4,15 @@ AgentSession caches LLM clients across multiple runs, eliminating the
 connection overhead (~50-200ms) that occurs when creating new clients.
 
 Usage:
-    python examples/session_example.py
+    CEREBRAS_API_KEY=... python examples/session_example.py
+
+The library reads keys from the environment only; `neosian configure`
+stores keys for the shell's verbs, never for scripts.
 """
 
 import asyncio
-import os
-from pathlib import Path
 
 from neosian import Agent, AgentConfig, Message, Model, Role
-
-
-def _load_credentials_from_config() -> None:
-    """Load API keys from ~/.neosian/config.toml if not already in environment."""
-    import tomllib
-
-    config_path = Path.home() / ".neosian" / "config.toml"
-    if not config_path.exists():
-        return
-
-    with open(config_path, "rb") as f:
-        config = tomllib.load(f)
-
-    credentials = config.get("credentials", {})
-
-    if not os.environ.get("CEREBRAS_API_KEY") and (
-        cerebras_key := credentials.get("cerebras_api_key")
-    ):
-        os.environ["CEREBRAS_API_KEY"] = cerebras_key
 
 
 async def example_stateless() -> None:
@@ -132,7 +114,6 @@ async def example_chat_loop() -> None:
 
 async def main() -> None:
     """Run all examples."""
-    _load_credentials_from_config()
 
     print("=" * 50)
     print("  AgentSession Examples")

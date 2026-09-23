@@ -35,3 +35,11 @@ def test_examples_import_only_the_public_api() -> None:
         p.name for p in _EXAMPLES if "neosian._foundation" in p.read_text("utf-8")
     ]
     assert offenders == []
+
+
+@pytest.mark.unit
+def test_examples_read_keys_from_the_environment_only() -> None:
+    """EC-12: `config.toml` is the shell's file (`neosian configure`); a
+    script that read it would depend on the shell's private format."""
+    offenders = [p.name for p in _EXAMPLES if "config.toml" in p.read_text("utf-8")]
+    assert offenders == []

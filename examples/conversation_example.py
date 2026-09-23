@@ -10,13 +10,15 @@ directory, so `neosian audit --scope "$(python -c 'import neosian;
 print(neosian.project_scope())')"` lists both.
 
 Usage:
-    python examples/conversation_example.py
+    CEREBRAS_API_KEY=... python examples/conversation_example.py
+
+The library reads keys from the environment only; `neosian configure`
+stores keys for the shell's verbs, never for scripts.
 """
 
 import asyncio
 import os
 from datetime import UTC, datetime
-from pathlib import Path
 
 from neosian import AgentConfig, Conversation, FileStore, Model, home, project_scope
 
@@ -27,25 +29,6 @@ configuration = AgentConfig(
     model=Model.CEREBRAS_GPT_OSS_120B,
     enable_todo=False,
 )
-
-
-def _load_credentials_from_config() -> None:
-    """Load API keys from ~/.neosian/config.toml if not already in environment."""
-    import tomllib
-
-    config_path = Path.home() / ".neosian" / "config.toml"
-    if not config_path.exists():
-        return
-
-    with open(config_path, "rb") as f:
-        config = tomllib.load(f)
-
-    credentials = config.get("credentials", {})
-
-    if not os.environ.get("CEREBRAS_API_KEY") and (
-        cerebras_key := credentials.get("cerebras_api_key")
-    ):
-        os.environ["CEREBRAS_API_KEY"] = cerebras_key
 
 
 async def example_quickstart(conversation_id: str) -> None:
@@ -106,7 +89,6 @@ async def example_memory_scope(stamp: str) -> None:
 
 
 async def main() -> None:
-    _load_credentials_from_config()
     if not os.environ.get("CEREBRAS_API_KEY"):
         print("CEREBRAS_API_KEY not set — run `neosian configure` first.")
         return

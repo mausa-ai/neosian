@@ -12,6 +12,7 @@ relay pattern: typed events → SSE, with the keepalive comment and the
 error frame owned by the host (this app), never the library.
 
 Usage:
+    export CEREBRAS_API_KEY=...
     docker run --rm -d -p 5432:5432 -e POSTGRES_PASSWORD=postgres postgres:17
     export NEOSIAN_EXAMPLE_POSTGRES_DSN=postgresql://postgres:postgres@localhost/postgres
     uv run python -m neosian.schemas postgres | psql "$NEOSIAN_EXAMPLE_POSTGRES_DSN"
@@ -27,7 +28,6 @@ import logging
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import FastAPI, Path as PathParam
@@ -69,27 +69,7 @@ class UndoBody(BaseModel):
     version: int
 
 
-def _load_credentials_from_config() -> None:
-    """Load API keys from ~/.neosian/config.toml if not already in environment."""
-    import tomllib
-
-    config_path = Path.home() / ".neosian" / "config.toml"
-    if not config_path.exists():
-        return
-
-    with open(config_path, "rb") as f:
-        config = tomllib.load(f)
-
-    credentials = config.get("credentials", {})
-
-    if not os.environ.get("CEREBRAS_API_KEY") and (
-        cerebras_key := credentials.get("cerebras_api_key")
-    ):
-        os.environ["CEREBRAS_API_KEY"] = cerebras_key
-
-
 def _default_configuration() -> AgentConfig:
-    _load_credentials_from_config()
     return AgentConfig(
         system_prompt=(
             "You are a concise assistant for this tenant's workspace. "
@@ -200,7 +180,7 @@ def create_app(
         if owned and not os.environ.get(_DSN_ENV):
             _log.warning("%s not set — see the Usage block.", _DSN_ENV)
         if agent_config is None and not os.environ.get("CEREBRAS_API_KEY"):
-            _log.warning("CEREBRAS_API_KEY not set — run `neosian configure` first.")
+            _log.warning("CEREBRAS_API_KEY not set: export it before starting the app.")
         yield
         if owned:
             await active.aclose()

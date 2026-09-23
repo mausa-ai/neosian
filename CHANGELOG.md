@@ -35,6 +35,10 @@ phase close names the version.
   and the artifact no longer rewrites what it cannot hold into a string.
 - `neosian eval` draws its live progress tree only on a terminal
   without `NO_COLOR`, never under a pipe or `--json`.
+- The examples read keys from the environment only (ledger #280): five
+  private copies of a `config.toml` reader are gone, and each example's
+  Usage names the key it needs. `neosian configure` stores keys for the
+  shell's verbs.
 
 ### Added
 
