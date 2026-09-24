@@ -8,6 +8,26 @@ phase close names the version.
 
 ## [Unreleased]
 
+### Added
+
+- `tool_definition(tool)`: the definition any decorated tool sends to the
+  model (name, description, JSON Schema), as a copy the caller owns, so a
+  neosian tool can be hosted under another framework; the tool itself is
+  the executor and `ToolResult.to_json()` the string to hand back.
+- `neosian docs interop`: neosian memory under a pydantic-ai or OpenAI
+  Agents SDK agent through that definition, the MCP form for any
+  language, and the data-ownership story. `examples/interop_pydantic_ai.py`
+  and `examples/interop_openai_agents.py` are the runnable forms, driven
+  keylessly in the unit tier by each framework's own scripted model; the
+  two frameworks join the `examples` dependency group, never the wheel.
+- `neosian docs stores`: the certification story. The two storage ABCs
+  and their constraints in plain words, the shipped conformance kits as
+  the standard (`MemoryStoreContract` 42 tests, `ConversationStoreContract`
+  29; their docstrings said "~25" and "~26"), what certified means, and
+  the certified-stores table. `examples/sqlite_store.py` is the worked
+  third substrate: one SQLite file passing both kits in the unit tier
+  with nothing skipped, community custody, never in the wheel.
+
 ## [1.0.0rc17] - 2026-09-23
 
 ### Added

@@ -20,7 +20,7 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
 
 - `neosian docs`: list the shipped topics (they travel in the wheel, so
   they always describe the installed version).
-- `neosian docs quickstart | agent | local | tools | memory | skills | cli | mcp | agents | topology | wire`
+- `neosian docs quickstart | agent | local | tools | memory | skills | stores | cli | mcp | agents | interop | topology | wire`
   prints one page, markdown on stdout, pipe-safe.
 - `neosian docs topology`: who runs neosian code x where the bytes live;
   one writer per FileStore root.
@@ -107,6 +107,11 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
   gives the server's tools as `AgentConfig(tools=[*s.tools])`, schema
   verbatim, `is_error` in-band, `prefix=` for two servers that clash;
   the gate and hooks apply unchanged (`neosian docs mcp`).
+- Under your own agent: `tool_definition(memory_tool)` is the definition
+  any framework can carry (name, description, JSON Schema) and the tool
+  itself the executor; `examples/interop_pydantic_ai.py` and
+  `examples/interop_openai_agents.py` run it under pydantic-ai and the
+  OpenAI Agents SDK, keyless in the unit tier (`neosian docs interop`).
 
 ## Record a foreign agent
 

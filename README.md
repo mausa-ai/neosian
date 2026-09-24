@@ -194,8 +194,9 @@ plain directory), `PostgresStore` (the `postgres` extra; schema by
 `python -m neosian.schemas postgres | psql "$DSN"`) and `RemoteStore`
 (the state process's wire) implement both; a host may implement its own,
 kept honest by the shipped `MemoryStoreContract` /
-`ConversationStoreContract` conformance kits. One writer per FileStore
-root; many workers on one Postgres.
+`ConversationStoreContract` conformance kits (`neosian docs stores`: the
+contract, the kits, a worked SQLite example that passes both). One
+writer per FileStore root; many workers on one Postgres.
 
 ## Evaluation
 
@@ -252,9 +253,10 @@ departure from documented behaviour; the public API is pinned by
 
 - `neosian docs <topic>` — the shipped pages, from the wheel: `quickstart`,
   `agent`, `local` (llama.cpp and Ollama on the door), `tools`, `memory`,
-  `skills`, `cli`, `mcp`, `agents`, `topology`,
-  `wire` (the state process's HTTP contract), `baselines` (the published
-  per-provider memory numbers); the same pages
+  `skills`, `stores` (author and certify your own store), `cli`, `mcp`,
+  `agents`, `interop` (memory under pydantic-ai or the Agents SDK),
+  `topology`, `wire` (the state process's HTTP contract), `baselines`
+  (the published per-provider memory numbers); the same pages
   online at [docs.neosian.com](https://docs.neosian.com), rendered from the
   wheel at the current release.
 - [SERVICES.md](https://github.com/mausa-ai/neosian/blob/v1.0.0rc17/SERVICES.md) — every env key and what turning it off means.

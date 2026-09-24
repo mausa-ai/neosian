@@ -146,7 +146,8 @@ spend rides the result.
   `NEOSIAN_POSTGRES_DSN` environment variable, never an argv flag.
 
 Both implement the same `MemoryStore` ABC; a host may implement its
-own, kept honest by the shipped `MemoryStoreContract` conformance kit.
+own, kept honest by the shipped `MemoryStoreContract` conformance kit
+(`neosian docs stores`: the contract, the kits, a worked SQLite example).
 
 Leave with your data, in every direction: `neosian export DIR` writes
 any store (files, Postgres, the state process) to a directory that is
