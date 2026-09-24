@@ -122,3 +122,12 @@ code=…)`; the JSON envelope is what the model reads. The `tool_` codes
 and the agent-side knobs (`max_parallel_tools`, `max_tool_iterations`,
 `max_tool_result_chars`, which caps the model's copy of a big result,
 the approval gate) are on the `agent` page (`neosian docs agent`).
+
+## Under another framework
+
+`tool_definition(tool)` returns the definition any decorated tool sends
+to the model (its name, description and JSON Schema), as a copy the
+caller owns; the tool itself is the executor, called with the arguments
+the framework parsed, and `ToolResult.to_json()` is the string to hand
+back. That is how the memory tool runs under a pydantic-ai or OpenAI
+Agents SDK agent (`neosian docs interop`): one definition, any loop.

@@ -201,7 +201,7 @@ from neosian._foundation.shared.types import (
     lookup_model,
     register_model,
 )
-from neosian._foundation.tools.base import Tool, ToolResult
+from neosian._foundation.tools.base import Tool, ToolResult, tool_definition
 
 __version__ = _pkg_version("neosian")
 
@@ -233,6 +233,7 @@ __all__ = [
     "ToolCall",
     "ToolCallId",
     "ToolResult",
+    "tool_definition",
     # Tool Constraints
     "Desc",
     "Min",

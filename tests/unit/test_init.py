@@ -66,6 +66,7 @@ def test_public_api_exports() -> None:
         message_from_json,
         message_to_json,
         sse_stream,
+        tool_definition,
     )
 
     # Verify all imports are accessible
@@ -87,6 +88,7 @@ def test_public_api_exports() -> None:
     assert DoneEvent is not None
     assert ErrorEvent is not None
     assert sse_stream is not None
+    assert tool_definition is not None
     assert Message is not None
     assert Role is not None
     assert message_to_json is not None
@@ -158,6 +160,7 @@ def test_all_list_matches_exports() -> None:
         "ToolCall",
         "ToolCallId",
         "ToolResult",
+        "tool_definition",
         # Tool Constraints
         "Desc",
         "Min",

@@ -6,7 +6,8 @@ validator behind it live in `tools/schema.py`, `ToolResult` in
 """
 
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from copy import deepcopy
+from dataclasses import dataclass, replace
 from typing import Any
 
 from pydantic import BaseModel
@@ -104,6 +105,28 @@ def get_tool_definition(func: Callable[..., Any]) -> ToolDefinition | None:
     """Get tool definition from a decorated function."""
     metadata = get_tool_metadata(func)
     return metadata.definition if metadata else None
+
+
+def tool_definition(tool: Callable[..., Any]) -> ToolDefinition:
+    """The definition a tool sends to the model, as a copy the caller owns.
+
+    Public (NC3, ledger #286): the memory tool, a skill tool or any
+    `@Tool` function can be hosted under another framework by handing it
+    this definition and calling the function with the arguments the
+    framework parsed. A copy, never the live object: the agent sends
+    that one on every request and library factories mark it in place.
+
+    Raises:
+        ValueError: If the callable is not decorated with @Tool.
+    """
+    definition = get_tool_definition(tool)
+    if definition is None:
+        raise ValueError(
+            ErrorMessages.FUNCTION_NOT_DECORATED.format(
+                func_name=getattr(tool, "__name__", repr(tool))
+            )
+        )
+    return replace(definition, parameters=deepcopy(definition.parameters))
 
 
 def attach_tool_metadata(

@@ -30,6 +30,7 @@ from neosian._foundation.tools.base import (
     get_tool_definition,
     get_tool_metadata,
     set_native_type,
+    tool_definition,
 )
 from neosian._foundation.tools.result import FAILED_ENVELOPE_PREFIX
 
@@ -255,6 +256,29 @@ class TestGetToolHelpers:
             return "hello"
 
         assert get_tool_definition(regular_func) is None
+
+    def test_tool_definition_is_a_copy_of_the_decorated_definition(self) -> None:
+        """The public reader hands out the definition the model gets, as
+        a copy: a host that rewrites it never changes what the agent sends."""
+
+        @Tool(name="probe", description="A probe")
+        async def probe(query: str) -> ToolResult[str]:
+            return ToolResult.ok(query)
+
+        definition = tool_definition(probe)
+        live = get_tool_definition(probe)
+        assert definition == live
+        assert definition is not live
+        definition.parameters["properties"]["query"]["type"] = "integer"
+        assert live is not None
+        assert live.parameters["properties"]["query"]["type"] == "string"
+
+    def test_tool_definition_requires_decoration(self) -> None:
+        async def regular_func() -> str:
+            return "hello"
+
+        with pytest.raises(ValueError, match="not decorated"):
+            tool_definition(regular_func)
 
     def test_set_native_type_requires_decoration(self) -> None:
         async def regular_func() -> ToolResult[str]:
