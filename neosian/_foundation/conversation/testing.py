@@ -11,8 +11,9 @@ runtime.
 
 The `store` fixture must be function-scoped, empty and isolated —
 `test_store_starts_empty` fails loudly when it leaks state. Override
-`plant_raw_turn` to enable the two substrate-planting tests (format
-refusal, malformed-row raise); by default they skip. Two ids differing
+`plant_raw_turn` and `plant_raw_projection` to enable the four
+substrate-planting tests (format refusal and a malformed row, for turns
+and for projections); by default they skip. Two ids differing
 only in case are never used (case-insensitive filesystems are a legal
 substrate).
 """
@@ -88,7 +89,7 @@ _ROUND_TRIP: tuple[tuple[Message, ...], ...] = (
 
 
 class ConversationStoreContract:
-    """Inherit ~26 conformance tests; provide a `store` fixture."""
+    """Inherit the 29 conformance tests (41 collected items); provide a `store` fixture."""
 
     @pytest.fixture
     def conversation_id(self) -> str:

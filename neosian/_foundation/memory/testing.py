@@ -73,7 +73,7 @@ _ROUND_TRIP = ("", "x", "x\n", "\n", "a\r\nb", "---\ntitle: t\n---\nbody", "cafÃ
 
 
 class MemoryStoreContract(LedgerContract, ConcurrencyContract):
-    """Inherit ~25 conformance tests; provide a `store` fixture."""
+    """Inherit the 42 conformance tests (68 collected items); provide a `store` fixture."""
 
     @pytest.fixture
     def scope(self) -> Scope:
