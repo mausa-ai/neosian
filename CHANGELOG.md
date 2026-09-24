@@ -8,6 +8,8 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [1.0.0rc18] - 2026-09-24
+
 ### Added
 
 - `tool_definition(tool)`: the definition any decorated tool sends to the
@@ -1542,7 +1544,8 @@ pre-release — pin it explicitly; the API stability promise rides v1.0.0.
 - Both entry points share one `_validate_run`, so neither can skip a
   guard.
 
-[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc17...HEAD
+[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc18...HEAD
+[1.0.0rc18]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc17...v1.0.0rc18
 [1.0.0rc17]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc16...v1.0.0rc17
 [1.0.0rc16]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc15...v1.0.0rc16
 [1.0.0rc15]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc14...v1.0.0rc15
