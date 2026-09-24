@@ -8,6 +8,14 @@ phase close names the version.
 
 ## [Unreleased]
 
+### Fixed
+
+- The OpenCode record plugin kept every MCP tool result, neosian's own
+  memory calls included, as an empty string: OpenCode hands a plugin an
+  MCP tool's raw result, not the `output` a native tool carries. The
+  plugin now records its text blocks. Re-run `neosian setup --write`
+  (or `neosian record install --client opencode --write`) to pick it up.
+
 ## [1.0.0rc18] - 2026-09-24
 
 ### Added

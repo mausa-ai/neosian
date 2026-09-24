@@ -37,7 +37,8 @@ export const NeosianRecord = async ({ client, $, directory }) => {
         tool_name: input.tool,
         tool_input: input.args,
         tool_use_id: input.callID,
-        tool_response: output.output,
+        // An MCP tool hands back its raw result: the text is its content.
+        tool_response: output.output ?? text(output.content ?? []),
       });
     },
     event: async ({ event }) => {

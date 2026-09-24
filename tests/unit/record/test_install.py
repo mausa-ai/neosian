@@ -552,6 +552,9 @@ class TestOpenCode:
         # OpenCode opened (the argv itself names no mount once per machine).
         assert "async ({ client, $, directory })" in out
         assert '[...ARGV, "--project", directory]' in out
+        # A native tool's result is `output.output`; an MCP tool's the raw
+        # result, whose text blocks were once recorded as "".
+        assert "output.output ?? text(output.content ?? [])" in out
         assert "hint: re-run with --write" in err
         assert not (context.cwd / ".opencode").exists()
 
