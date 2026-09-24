@@ -71,6 +71,8 @@ dev = [
 ]
 examples = [
     "fastapi>=0.141.1",
+    "openai-agents>=0.22",
+    "pydantic-ai-slim>=2.48",
 ]
 
 [tool.coverage.run]
