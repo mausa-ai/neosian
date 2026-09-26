@@ -63,18 +63,20 @@ def _two_cells() -> Board:
 
 @pytest.mark.unit
 def test_a_paced_lane_splits_per_transport_and_an_unpaced_one_does_not() -> None:
-    split = boards((XAI, KIMI), _TRANSPORTS)
+    split = boards((XAI, GEMINI), _TRANSPORTS)
     assert split == [
         (XAI, None),
-        (KIMI, (Transport.FUNCTION,)),
-        (KIMI, (Transport.CLI,)),
+        (GEMINI, (Transport.FUNCTION,)),
+        (GEMINI, (Transport.CLI,)),
     ]
     assert [board_id(lane, s) for lane, s in split] == [
         "xai",
-        "kimi-function",
-        "kimi-cli",
+        "gemini-function",
+        "gemini-cli",
     ]
     assert GEMINI.split_transports and not XAI.split_transports
+    # Kimi is paced at its recharged tier (100 rpm) and no longer splits.
+    assert KIMI.requests_per_minute == 100 and not KIMI.split_transports
     assert all(lane.budget_seconds < 3600 for lane in LANES)  # inside the outer mark
     # The local lane splits too (a CPU runner is slow, not rate-limited) and
     # is credentialed by a URL, never a key (§31.6).

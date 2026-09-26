@@ -314,6 +314,7 @@ link column reads `green` where the cell passed.
 | Gemini | gemini-3.8-flash | 9/10 | 9/10 | 10/10 | 10/10 | n/a | 7/7 | green |
 | Model Studio, token plan | qwen3.8-max | 10/10 | 10/10 | 10/10 | 9/10 | n/a | 7/7 | green |
 | Moonshot | kimi-k3 | *429* 0/10 | *429* 0/10 | *429* 0/10 | *429* 0/10 | n/a | *429* | *429* |
+| Moonshot (key file, after recharge, 100 rpm) | kimi-k3 | 9/10 | 9/10 | 10/10 | 9/10 | n/a | 6/6 | green |
 | local (the hosted runner, CPU) | gemma-4-e4b-it | 9/10 | 9/10 | 9/10 | 8/10 | n/a | 5/5 | green |
 
 Findings, recorded as found:
@@ -349,9 +350,18 @@ Findings, recorded as found:
   the pacer reads as a rate limit and retries, so the door probes, the
   catalog probe, the link cell and each of the four boards ran to their
   3000 s cut: 4 h 08 min for nothing, the lane's whole budget. The
-  account's fact; the row stays, and the lane is owed a run from the key
-  file once the account is funded. A 429 whose body names the balance
+  account's fact; the row stays. A 429 whose body names the balance
   could end the lane at once instead of at the cut; recorded, not built.
+  **Recharged the same day, the lane ran from the key file: 37/40 in 24
+  minutes.** The 3 rpm the lane was paced at since 2026-09-01 was
+  Moonshot's Tier 0 (the $1 activation, concurrency 1); a recharged
+  account is Tier 1 or above, 100 rpm at concurrency 15 on the
+  provider's limits page, probed at 48 calls in 9 s without a 429, so
+  the lane is paced at 100 rpm and no longer splits per transport. The
+  reds are `cross-client` on function and cli (a second document, the
+  sessions record, written beside the fact where one is expected) and
+  `long-horizon-recall` on mcp: 37/40, the count of its #16 board; the
+  six probes, the catalog probe and the link cell green.
 - **Links:** every link cell green on every lane that answered.
 
 ### 2026-09-26: The GPT-6 family and Opus 5.5 (NW4's close, the key files)

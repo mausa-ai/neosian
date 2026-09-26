@@ -85,7 +85,7 @@ def test_of_is_one_clock_per_door() -> None:
     assert Pacer.of(XAI) is None  # no tier stated, no pacing
     kimi = Pacer.of(KIMI)
     assert kimi is not None and kimi is Pacer.of(KIMI)
-    assert kimi.interval == 22.0  # 60 / 3, plus the tenth
+    assert kimi.interval == pytest.approx(0.66)  # 60 / 100, plus the tenth
 
 
 @pytest.mark.unit

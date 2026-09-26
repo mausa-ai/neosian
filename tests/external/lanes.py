@@ -102,10 +102,13 @@ GEMINI = Lane(
 )
 
 KIMI = Lane(
-    # Shipped on the user's ruling (ledger #124, 2026-09-15).
+    # Shipped on the user's ruling (ledger #124, 2026-09-15). The 3 rpm
+    # probed on 2026-09-01 was Moonshot's Tier 0 (the $1 activation); a
+    # recharged account is Tier 1 or above, 100 rpm at concurrency 15
+    # (platform.kimi.ai/docs/pricing/limits, 2026-09-26; 48 calls in 9 s
+    # without a 429), so the board no longer splits per transport.
     model=Model.KIMI_K3,
-    requests_per_minute=3,  # the organisation's tier (probed 2026-09-01)
-    split_transports=True,
+    requests_per_minute=100,
 )
 
 QWEN = Lane(
