@@ -223,6 +223,57 @@ class TestTheChoiceReachesTheWire:
 
 
 @pytest.mark.unit
+class TestARowThatTakesNoForcedChoice:
+    """Opus 5.5 and Fable 5.1 answer `any` and `tool` with a 400, so the
+    scope refuses a forced choice on such a row before any spend, on both
+    entry points; `auto` and `none` pass (NW4, ledger #292)."""
+
+    @staticmethod
+    def _on(model: Model, client: FakeClient) -> Agent:
+        return Agent(
+            AgentConfig(
+                system_prompt="You are a test agent.",
+                model=model,
+                tools=[ping],
+                enable_todo=False,
+                client_factory=lambda _m: client,
+            )
+        )
+
+    @pytest.mark.parametrize("stream", [False, True])
+    @pytest.mark.parametrize(
+        "choice", [ToolChoice.required(), ToolChoice.tool("ping")], ids=["any", "tool"]
+    )
+    async def test_refused_before_spend(self, stream: bool, choice: ToolChoice) -> None:
+        client = FakeClient(_text())
+        with pytest.raises(UnsupportedParameterError) as info:
+            await _run(
+                self._on(Model.CLAUDE_OPUS_5_5, client),
+                stream=stream,
+                tool_choice=choice,
+            )
+        assert "claude-opus-5-5" in str(info.value)
+        assert client.calls == []
+
+    async def test_auto_and_none_pass(self) -> None:
+        client = FakeClient(
+            FakeScript(
+                turns=(FakeTurn(content="done", usage=_USAGE),), repeat_last=True
+            )
+        )
+        agent = self._on(Model.CLAUDE_FABLE_5_1, client)
+        await _run(agent, stream=False, tool_choice=ToolChoice.auto())
+        await _run(agent, stream=False, tool_choice=ToolChoice.none())
+        assert len(client.calls) == 2
+
+    def test_the_row_fact(self) -> None:
+        assert not Model.CLAUDE_OPUS_5_5.supports_forced_tool_choice
+        assert not Model.CLAUDE_FABLE_5_1.supports_forced_tool_choice
+        assert Model.CLAUDE_SONNET_5.supports_forced_tool_choice
+        assert Model.GPT_6_SOL.supports_forced_tool_choice
+
+
+@pytest.mark.unit
 class TestTheLastResortCall:
     """Once the tool budget is spent the last call sends no real tools, so
     a forced choice must not ride it — that would be a deadlock, the
@@ -331,19 +382,17 @@ class TestTheSchemaRidesAFinalTool:
         assert client.calls[0].response_format is not None
         assert isinstance(response.parsed, Answer)
 
-    async def test_the_last_resort_call_still_forces_the_answer(self) -> None:
+    async def test_the_last_resort_call_puts_the_schema_on_the_wire(self) -> None:
         """A typed run that spends its tool budget returns its type, not
-        prose: the final tool stays on the last call, forced."""
+        prose: with no tools left the wire carries the schema itself, so
+        nothing is forced on a row that takes no forced choice (#292)."""
         ping_call = ToolCall(id=ToolCallId("c1"), name=ToolName("ping"), arguments={})
         client = FakeClient(
             FakeScript(
                 turns=(
                     FakeTurn(tool_calls=(ping_call,), usage=_USAGE),
                     FakeTurn(tool_calls=(ping_call,), usage=_USAGE),
-                    FakeTurn(
-                        tool_calls=(_answer_call(text="last", confidence=2),),
-                        usage=_USAGE,
-                    ),
+                    FakeTurn(content='{"text": "last", "confidence": 2}', usage=_USAGE),
                 )
             )
         )
@@ -361,8 +410,9 @@ class TestTheSchemaRidesAFinalTool:
             _USER, stream=False, response_format=ResponseFormat(schema=Answer)
         )
         last = client.calls[-1]
-        assert [tool.name for tool in last.tools] == [FINAL_TOOL]
-        assert last.tool_choice == ToolChoice.tool(FINAL_TOOL)
+        assert last.tools == ()
+        assert last.tool_choice is None
+        assert last.response_format is not None
         assert isinstance(response.parsed, Answer)
         assert response.parsed.text == "last"
 

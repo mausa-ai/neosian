@@ -190,8 +190,8 @@ async def execute_with_client(
             )
 
     # Max iterations reached: the last call sends no real tools, so the
-    # model must answer — a schema's final tool stays, forced, so a typed
-    # run still returns its type (#225).
+    # model must answer; a schema rides the wire itself there (#225), never
+    # a forced final tool (#292).
     last = scope.last_resort()
     call_started = time.monotonic()
     try:

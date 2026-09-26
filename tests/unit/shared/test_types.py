@@ -58,7 +58,7 @@ class TestModelEnum:
         """Model enum should have expected values."""
         assert Model.CEREBRAS_GPT_OSS_120B.value == "gpt-oss-120b"
         assert Model.CEREBRAS_QWEN_3_8_27B.value == "qwen-3.8-27b"
-        assert Model.GPT_5_6_LUNA.value == "gpt-5.6-luna"
+        assert Model.GPT_6_LUNA.value == "gpt-6-luna"
         assert Model.CLAUDE_FABLE_5_1.value == "claude-fable-5-1"
         assert Model.CLAUDE_SONNET_5.value == "claude-sonnet-5"
 
@@ -73,7 +73,7 @@ class TestModelEnum:
         """Model should have provider property."""
         assert Model.CEREBRAS_GPT_OSS_120B.provider == Provider.CEREBRAS
         assert Model.CEREBRAS_QWEN_3_8_27B.provider == Provider.CEREBRAS
-        assert Model.GPT_5_6_LUNA.provider == Provider.OPENAI
+        assert Model.GPT_6_LUNA.provider == Provider.OPENAI
         assert Model.CLAUDE_SONNET_5.provider == Provider.ANTHROPIC
 
     def test_model_max_output_tokens_property(self) -> None:
@@ -83,11 +83,11 @@ class TestModelEnum:
         assert Model.CEREBRAS_QWEN_3_8_27B.max_output_tokens == 40_960
 
         # OpenAI
-        assert Model.GPT_5_6_LUNA.max_output_tokens == 128_000
+        assert Model.GPT_6_LUNA.max_output_tokens == 128_000
         assert Model.GPT_5_1.max_output_tokens == 128_000
 
         # Anthropic
-        assert Model.CLAUDE_OPUS_5.max_output_tokens == 128_000
+        assert Model.CLAUDE_OPUS_5_5.max_output_tokens == 128_000
         assert Model.CLAUDE_FABLE_5_1.max_output_tokens == 128_000
         assert Model.CLAUDE_SONNET_5.max_output_tokens == 128_000
 
@@ -113,11 +113,11 @@ class TestModelEnum:
         assert Model.CEREBRAS_QWEN_3_8_27B.context_window == 131_072
 
         # OpenAI: 400k
-        assert Model.GPT_5_6_LUNA.context_window == 1_050_000
+        assert Model.GPT_6_LUNA.context_window == 1_050_000
         assert Model.GPT_5_1.context_window == 400_000
 
         # Anthropic: 1M
-        assert Model.CLAUDE_OPUS_5.context_window == 1_000_000
+        assert Model.CLAUDE_OPUS_5_5.context_window == 1_000_000
         assert Model.CLAUDE_SONNET_5.context_window == 1_000_000
         assert Model.CLAUDE_FABLE_5_1.context_window == 1_000_000
 
@@ -226,7 +226,7 @@ class TestAgentConfigReasoningEffort:
         """AgentConfig should accept reasoning_effort with OpenAI GPT-5 models."""
         config = AgentConfig(
             system_prompt="You are helpful.",
-            model=Model.GPT_5_6_LUNA,
+            model=Model.GPT_6_LUNA,
             reasoning_effort=ReasoningEffort.LOW,
         )
         assert config.reasoning_effort == ReasoningEffort.LOW
@@ -235,7 +235,7 @@ class TestAgentConfigReasoningEffort:
         """AgentConfig should accept reasoning_effort with Claude Opus 4.6."""
         config = AgentConfig(
             system_prompt="You are helpful.",
-            model=Model.CLAUDE_OPUS_5,
+            model=Model.CLAUDE_OPUS_5_5,
             reasoning_effort=ReasoningEffort.HIGH,
         )
         assert config.reasoning_effort == ReasoningEffort.HIGH
@@ -244,7 +244,7 @@ class TestAgentConfigReasoningEffort:
         """AgentConfig should accept reasoning_effort MAX with supported models."""
         config = AgentConfig(
             system_prompt="You are helpful.",
-            model=Model.CLAUDE_OPUS_5,
+            model=Model.CLAUDE_OPUS_5_5,
             reasoning_effort=ReasoningEffort.MAX,
         )
         assert config.reasoning_effort == ReasoningEffort.MAX
@@ -374,7 +374,7 @@ class TestFakeModels:
 class TestCompactionCapability:
     def test_support_set(self) -> None:
         """The compact beta's support set is a row fact, not a provider's."""
-        assert Model.CLAUDE_OPUS_5.supports_compaction_blocks
+        assert Model.CLAUDE_OPUS_5_5.supports_compaction_blocks
         assert Model.CLAUDE_FABLE_5_1.supports_compaction_blocks
         assert Model.CLAUDE_SONNET_5.supports_compaction_blocks
 

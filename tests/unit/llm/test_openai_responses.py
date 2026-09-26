@@ -22,6 +22,7 @@ from neosian import (
     ReasoningEffort,
     Tool,
     ToolResult,
+    Usage,
     register_model,
 )
 from neosian._foundation.llm.base import (
@@ -138,13 +139,14 @@ def _reasoning(encrypted: str | None = _SECRET, *summary: str) -> Any:
 def _response(*output: Any, incomplete: str | None = None) -> Any:
     response = autospec(SPEC["response"])
     response.output = list(output) or [_text()]
-    response.model = "gpt-5.6-sol"
+    response.model = "gpt-6-sol"
     response.incomplete_details = (
         None if incomplete is None else MagicMock(reason=incomplete)
     )
     response.usage.input_tokens = 12
     response.usage.output_tokens = 5
     response.usage.input_tokens_details.cached_tokens = 2
+    response.usage.input_tokens_details.cache_write_tokens = 0
     return response
 
 
@@ -178,7 +180,7 @@ def _mock_stream(
 
 
 async def _collect(client: OpenAICompatibleClient, **kwargs: Any) -> list[StreamChunk]:
-    return [chunk async for chunk in client.stream(_USER, Model.GPT_5_6_SOL, **kwargs)]
+    return [chunk async for chunk in client.stream(_USER, Model.GPT_6_SOL, **kwargs)]
 
 
 @pytest.mark.unit
@@ -198,12 +200,12 @@ class TestTheRequest:
     async def test_the_body_is_stateless(self) -> None:
         client = OpenAIClient(api_key="k")
         create = _mock_complete(client, _response())
-        await client.complete(_USER, Model.GPT_5_6_SOL)
+        await client.complete(_USER, Model.GPT_6_SOL)
         kwargs = create.call_args.kwargs
         assert kwargs["store"] is False
         assert kwargs["include"] == list(INCLUDE) == ["reasoning.encrypted_content"]
         assert "previous_response_id" not in kwargs
-        assert kwargs["model"] == "gpt-5.6-sol"
+        assert kwargs["model"] == "gpt-6-sol"
         assert kwargs["input"] == [{"role": "user", "content": "Hi"}]
         assert kwargs["max_output_tokens"] == LLMDefaults.MAX_OUTPUT_TOKENS
         for absent in ("tools", "tool_choice", "reasoning", "text", "temperature"):
@@ -218,7 +220,7 @@ class TestTheRequest:
         )
         client = OpenAIClient(api_key="k")
         create = _mock_complete(client, _response())
-        await client.complete(_USER, Model.GPT_5_6_SOL, tools=[_TOOL, strict])
+        await client.complete(_USER, Model.GPT_6_SOL, tools=[_TOOL, strict])
         plain, tight = create.call_args.kwargs["tools"]
         assert plain == {
             "type": "function",
@@ -250,9 +252,7 @@ class TestTheRequest:
     ) -> None:
         client = OpenAIClient(api_key="k")
         create = _mock_complete(client, _response())
-        await client.complete(
-            _USER, Model.GPT_5_6_SOL, tools=[_TOOL], tool_choice=choice
-        )
+        await client.complete(_USER, Model.GPT_6_SOL, tools=[_TOOL], tool_choice=choice)
         assert create.call_args.kwargs["tool_choice"] == expected
         assert "parallel_tool_calls" not in create.call_args.kwargs
 
@@ -260,20 +260,16 @@ class TestTheRequest:
         client = OpenAIClient(api_key="k")
         create = _mock_complete(client, _response())
         serial = ToolChoice.auto(parallel=False)
-        await client.complete(
-            _USER, Model.GPT_5_6_SOL, tools=[_TOOL], tool_choice=serial
-        )
+        await client.complete(_USER, Model.GPT_6_SOL, tools=[_TOOL], tool_choice=serial)
         assert create.call_args.kwargs["parallel_tool_calls"] is False
-        await client.complete(
-            _USER, Model.GPT_5_6_SOL, tool_choice=ToolChoice.required()
-        )
+        await client.complete(_USER, Model.GPT_6_SOL, tool_choice=ToolChoice.required())
         assert "tool_choice" not in create.call_args.kwargs
 
     async def test_the_schema_rides_the_text_format(self) -> None:
         client = OpenAIClient(api_key="k")
         create = _mock_complete(client, _response())
         await client.complete(
-            _USER, Model.GPT_5_6_SOL, response_format=ResponseFormat(schema=_Out)
+            _USER, Model.GPT_6_SOL, response_format=ResponseFormat(schema=_Out)
         )
         fmt = create.call_args.kwargs["text"]["format"]
         assert fmt["type"] == "json_schema" and fmt["name"] == "_Out"
@@ -293,7 +289,7 @@ class TestTheRequest:
         create = _mock_complete(client, _response())
         await client.complete(
             _USER,
-            Model.GPT_5_6_SOL,
+            Model.GPT_6_SOL,
             tools=[_TOOL],
             reasoning_effort=ReasoningEffort.HIGH,
         )
@@ -317,7 +313,7 @@ class TestTheRequest:
         client = OpenAIClient(api_key="k")
         create = _mock_complete(client, _response())
         with pytest.raises(UnsupportedParameterError):
-            await client.complete(_USER, Model.GPT_5_6_SOL, temperature=0.2)
+            await client.complete(_USER, Model.GPT_6_SOL, temperature=0.2)
         create.assert_not_called()
         warm = OpenAICompatibleClient(api_key="k", door=DOOR)
         create = _mock_complete(warm, _response())
@@ -373,7 +369,7 @@ class TestTheRequest:
         with pytest.raises(UnsupportedContentError):
             await client.complete(
                 [Message(role=Role.USER, content=[TextBlock(text="hi")])],
-                Model.GPT_5_6_SOL,
+                Model.GPT_6_SOL,
             )
         create.assert_not_called()
 
@@ -383,12 +379,12 @@ class TestTheParse:
     async def test_text_usage_and_model(self) -> None:
         client = OpenAIClient(api_key="k")
         _mock_complete(client, _response(_text("Hello")))
-        response = await client.complete(_USER, Model.GPT_5_6_SOL)
+        response = await client.complete(_USER, Model.GPT_6_SOL)
         assert response.message.content == "Hello"
         assert response.message.tool_calls == []
         assert response.message.extra is None
         assert response.stop_reason == "stop"
-        assert response.model == "gpt-5.6-sol"
+        assert response.model == "gpt-6-sol"
         assert (response.usage.input_tokens, response.usage.cache_read_tokens) == (
             10,
             2,
@@ -400,7 +396,7 @@ class TestTheParse:
         _mock_complete(
             client, _response(_reasoning(), _call(arguments='{"tz": "UTC"}'))
         )
-        response = await client.complete(_USER, Model.GPT_5_6_SOL, tools=[_TOOL])
+        response = await client.complete(_USER, Model.GPT_6_SOL, tools=[_TOOL])
         assert response.message.content is None
         assert response.message.tool_calls == [
             ToolCall(
@@ -416,14 +412,14 @@ class TestTheParse:
     async def test_an_item_without_encrypted_content_is_not_replayable(self) -> None:
         client = OpenAIClient(api_key="k")
         _mock_complete(client, _response(_reasoning(None, "a", "b"), _text()))
-        response = await client.complete(_USER, Model.GPT_5_6_SOL)
+        response = await client.complete(_USER, Model.GPT_6_SOL)
         assert response.message.extra is None
         assert response.message.reasoning == "a\n\nb"
 
     async def test_a_refusal_is_the_content_and_the_stop_reason(self) -> None:
         client = OpenAIClient(api_key="k")
         _mock_complete(client, _response(_refusal("No.")))
-        response = await client.complete(_USER, Model.GPT_5_6_SOL)
+        response = await client.complete(_USER, Model.GPT_6_SOL)
         assert response.message.content == "No."
         assert response.stop_reason == "refusal"
 
@@ -436,7 +432,7 @@ class TestTheParse:
     ) -> None:
         client = OpenAIClient(api_key="k")
         _mock_complete(client, _response(_text("Hel"), incomplete=reason))
-        response = await client.complete(_USER, Model.GPT_5_6_SOL)
+        response = await client.complete(_USER, Model.GPT_6_SOL)
         assert response.stop_reason == stop
 
     async def test_no_usage_is_zero(self) -> None:
@@ -444,7 +440,19 @@ class TestTheParse:
         response = _response()
         response.usage = None
         _mock_complete(client, response)
-        assert (await client.complete(_USER, Model.GPT_5_6_SOL)).usage.input_tokens == 0
+        assert (await client.complete(_USER, Model.GPT_6_SOL)).usage.input_tokens == 0
+
+    async def test_cache_writes_are_their_own_class(self) -> None:
+        """The wire's input count includes the written tokens; they leave
+        it for the write class, which the card bills at 1.25× (NW4)."""
+        client = OpenAIClient(api_key="k")
+        response = _response()
+        response.usage.input_tokens_details.cache_write_tokens = 3
+        _mock_complete(client, response)
+        usage = (await client.complete(_USER, Model.GPT_6_SOL)).usage
+        assert usage == Usage(
+            input_tokens=7, output_tokens=5, cache_read_tokens=2, cache_write_tokens=3
+        )
 
 
 class _Error(Exception):
@@ -467,7 +475,7 @@ class TestRetryAndWrap:
         create = AsyncMock(side_effect=self._bad_request("invalid_tool_call"))
         _sdk(client).responses.create = create
         with pytest.raises(ToolCallGenerationError):
-            await client.complete(_USER, Model.GPT_5_6_SOL, tools=[_TOOL])
+            await client.complete(_USER, Model.GPT_6_SOL, tools=[_TOOL])
         assert create.call_count == LLMDefaults.MAX_TOOL_CALL_RETRIES + 1
 
     async def test_an_overflow_is_classified_before_the_retry(self) -> None:
@@ -475,7 +483,7 @@ class TestRetryAndWrap:
         create = AsyncMock(side_effect=self._bad_request("context_length_exceeded"))
         _sdk(client).responses.create = create
         with pytest.raises(ContextWindowExceededError):
-            await client.complete(_USER, Model.GPT_5_6_SOL, tools=[_TOOL])
+            await client.complete(_USER, Model.GPT_6_SOL, tools=[_TOOL])
         assert create.call_count == 1
 
     async def test_a_server_error_wraps_with_the_door_name(self) -> None:
@@ -505,7 +513,7 @@ class TestTheStream:
         assert create.call_args.kwargs["stream"] is True
         assert create.call_args.kwargs["store"] is False
         assert [c.content for c in chunks] == ["Hel", "lo", None]
-        assert {c.model for c in chunks} == {"gpt-5.6-sol"}
+        assert {c.model for c in chunks} == {"gpt-6-sol"}
         last = chunks[-1]
         assert last.finish_reason == "stop"
         assert last.usage is not None and last.usage.output_tokens == 5
@@ -596,14 +604,14 @@ class TestTheStream:
         _mock_stream(client, _events(_event("text_delta", delta="Hel"), error=died))
         received: list[StreamChunk] = []
         with pytest.raises(ProviderError):
-            async for chunk in client.stream(_USER, Model.GPT_5_6_SOL):
+            async for chunk in client.stream(_USER, Model.GPT_6_SOL):
                 received.append(chunk)
         assert [c.content for c in received] == ["Hel"]
         _mock_stream(
             client,
             _events(_event("text_delta", delta="a"), _event("text_delta", delta="b")),
         )
-        async for _ in client.stream(_USER, Model.GPT_5_6_SOL):
+        async for _ in client.stream(_USER, Model.GPT_6_SOL):
             break
 
 
@@ -622,7 +630,7 @@ class TestTheLoop:
         return Agent(
             AgentConfig(
                 system_prompt="You are a test agent.",
-                model=Model.GPT_5_6_SOL,
+                model=Model.GPT_6_SOL,
                 tools=[_get_time],
                 enable_todo=False,
                 reasoning_effort=ReasoningEffort.HIGH,

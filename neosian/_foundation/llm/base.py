@@ -165,8 +165,9 @@ class Usage:
     input_tokens always means non-cached input. Cache fields are populated
     by providers with prompt caching:
     - Anthropic: cache_write_tokens + cache_read_tokens
-    - The OpenAI wire (OpenAI, the doors): cache_read_tokens only
-      (automatic caching, no write concept)
+    - The OpenAI wire (OpenAI, the doors): cache_read_tokens, and
+      cache_write_tokens where the endpoint reports them (automatic
+      caching; GPT-5.6 and later bill a write at 1.25× input, NW4)
 
     total_tokens = input + output + cache_read + cache_write.
     """

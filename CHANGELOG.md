@@ -8,6 +8,45 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [1.0.0rc19] - 2026-09-26
+
+### Added
+
+- `Model.GPT_6_SOL` (`gpt-6-sol`, the OpenAI default and measured row),
+  `Model.GPT_6_LUNA` (`gpt-6-luna`) and `Model.CLAUDE_OPUS_5_5`
+  (`claude-opus-5-5`, on the catalog probe), each with its sealed card
+  from the providers' pages of 2026-09-26 (NW4, ledger #290, #291).
+- `ModelSpec.supports_forced_tool_choice` (and the `Model` /
+  `RegisteredModel` property): `False` on Opus 5.5 and Fable 5.1, which
+  answer `tool_choice` `any` / `tool` with a 400. A forced choice on
+  such a main model is refused before any call
+  (`UnsupportedParameterError`); a fallback ladder skips such a rung
+  when the run forces a call (#292).
+- OpenAI's cache writes are their own token class: both wires read
+  `cache_write_tokens` out of the input count, and every GPT-6 row's
+  card carries the 1.25× write rate, so a write is never billed at the
+  input rate (ECOSYSTEM §4).
+
+### Changed
+
+- `DEFAULT_MODELS[Provider.OPENAI]` is `Model.GPT_6_SOL`; the measured
+  OpenAI row moves with it. `PRICES_AS_OF` is 2026-09-26.
+- The call made once `max_tool_iterations` is spent no longer forces the
+  synthetic `final_response` tool: it sends no tools, so the schema rides
+  the wire itself there (#225's own rule), and a typed run returns its
+  type on every row.
+- The Anthropic client refuses an explicit `temperature` on every row
+  (Claude 4.7 and later reject a non-default sampling parameter; SDK 1.x
+  dropped the keyword), not only on Opus 5.
+
+### Removed
+
+- `Model.GPT_5_6_SOL`, `GPT_5_6_TERRA`, `GPT_5_6_LUNA` (off OpenAI's
+  lineup page; alias ids with no snapshot) and `Model.CLAUDE_OPUS_5`
+  (legacy at Anthropic), ahead of any provider date, while the removal is
+  free (ledger #210's rule). `register_model` remains the door for anyone
+  still on them.
+
 ### Fixed
 
 - The OpenCode record plugin kept every MCP tool result, neosian's own
@@ -1552,7 +1591,8 @@ pre-release — pin it explicitly; the API stability promise rides v1.0.0.
 - Both entry points share one `_validate_run`, so neither can skip a
   guard.
 
-[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc18...HEAD
+[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc19...HEAD
+[1.0.0rc19]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc18...v1.0.0rc19
 [1.0.0rc18]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc17...v1.0.0rc18
 [1.0.0rc17]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc16...v1.0.0rc17
 [1.0.0rc16]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc15...v1.0.0rc16

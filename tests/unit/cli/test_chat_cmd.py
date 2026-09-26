@@ -39,7 +39,7 @@ def _keyless(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
 class TestTheModel:
     def test_the_flag_wins(self) -> None:
         assert resolve_chat_model("fake", {"ANTHROPIC_API_KEY": "k"}) is Model.FAKE
-        assert resolve_chat_model("gpt-5.6-sol", {}) is Model.GPT_5_6_SOL
+        assert resolve_chat_model("gpt-6-sol", {}) is Model.GPT_6_SOL
 
     def test_an_unknown_flag_is_grammar(self) -> None:
         with pytest.raises(ChatUsageError):
@@ -56,7 +56,7 @@ class TestTheModel:
 
     def test_then_the_first_keyed_provider_in_order(self) -> None:
         env = {"CEREBRAS_API_KEY": "c", "OPENAI_API_KEY": "o"}
-        assert resolve_chat_model(None, env) is Model.GPT_5_6_SOL
+        assert resolve_chat_model(None, env) is Model.GPT_6_SOL
         assert resolve_chat_model(None, {**env, "ANTHROPIC_API_KEY": "a"}) is (
             Model.CLAUDE_SONNET_5
         )

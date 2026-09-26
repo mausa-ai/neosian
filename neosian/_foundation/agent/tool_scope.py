@@ -21,6 +21,7 @@ from neosian._foundation.llm.base import ToolCall, ToolDefinition
 from neosian._foundation.shared.exceptions import (
     ConfigurationError,
     StructuredOutputToolsError,
+    UnsupportedParameterError,
 )
 from neosian._foundation.shared.types import (
     ResponseFormat,
@@ -49,6 +50,10 @@ _FORCED_WITHOUT_TOOLS = (
 )
 _FORCED_OUTSIDE_SCOPE = (
     "tool_choice names {name!r}, which this run does not send. It sends: {sent}"
+)
+_FORCED_UNSUPPORTED = (
+    "tool_choice forces a call ({mode}), which {model!r} does not take: "
+    "it accepts auto or none"
 )
 _FINAL_TOOL_TAKEN = (
     "A registered tool is named {name!r}, which is the name a schema's "
@@ -92,15 +97,12 @@ class ToolScope:
     def last_resort(self) -> ToolScope:
         """The shape of the call made once the tool budget is spent.
 
-        No real tools, so the model must answer. A schema still has to
-        land somewhere: its final tool stays, forced, rather than the run
-        returning prose where the caller asked for a type.
+        No real tools, so the model must answer. With no tools in play the
+        wire carries the schema itself (#225), so the final tool leaves
+        with the rest: a typed run still returns its type, and nothing is
+        forced on a row that takes no forced choice (NW4, #292).
         """
-        if self.final_tool is None:
-            return replace(self, definitions=(), choice=None)
-        return replace(
-            self, definitions=(), choice=ToolChoice.tool(self.final_tool.name)
-        )
+        return replace(self, definitions=(), choice=None, final_tool=None)
 
     def final_call(self, calls: list[ToolCall]) -> ToolCall | None:
         """The answer-carrying call among this turn's, if the model made it."""
@@ -182,6 +184,12 @@ def resolve_scope(
         if tool_choice.forces_a_call and not definitions:
             raise ConfigurationError(
                 _FORCED_WITHOUT_TOOLS.format(mode=tool_choice.mode)
+            )
+        if tool_choice.forces_a_call and not agent._model.supports_forced_tool_choice:
+            raise UnsupportedParameterError(
+                _FORCED_UNSUPPORTED.format(
+                    mode=tool_choice.mode, model=agent._model.value
+                )
             )
         if tool_choice.mode == "tool" and tool_choice.name not in {
             definition.name for definition in definitions

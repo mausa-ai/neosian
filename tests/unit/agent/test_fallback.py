@@ -28,6 +28,7 @@ from neosian._foundation.shared.types import (
     FallbackConfig,
     Model,
     Provider,
+    ToolChoice,
 )
 from tests.unit.agent.mocks import create_mock_router
 
@@ -116,6 +117,37 @@ class TestCapabilityAwareFallback:
             fallback_client.complete.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_fallback_skipped_when_the_rung_takes_no_forced_choice(self) -> None:
+        """A run that forces a tool call never lands on Opus 5.5 or Fable
+        5.1, which answer `any`/`tool` with a 400 (NW4, ledger #292)."""
+        from neosian._foundation.shared.exceptions import ModelFailedError
+
+        main_client = AsyncMock(spec=BaseLLMClient)
+        main_client.complete.side_effect = RuntimeError("rate limited")
+        mock_router = MagicMock()
+        mock_router.has_provider.return_value = True
+        mock_router.create_client_for.return_value = main_client
+
+        with patch(
+            "neosian._foundation.agent.base.ProviderRouter",
+            return_value=mock_router,
+        ):
+            agent = Agent(
+                AgentConfig(
+                    system_prompt="You plan.",
+                    model=Model.CLAUDE_SONNET_5,
+                    fallback=FallbackConfig(model=Model.CLAUDE_OPUS_5_5),
+                )
+            )
+            with pytest.raises(ModelFailedError):
+                await agent.run(
+                    [Message(role=Role.USER, content="Plan.")],
+                    stream=False,
+                    tool_choice=ToolChoice.required(),
+                )
+        assert main_client.complete.await_count == 1
+
+    @pytest.mark.asyncio
     async def test_unsupported_content_error_bypasses_wrapping_without_fallback(
         self,
     ) -> None:
@@ -135,7 +167,7 @@ class TestCapabilityAwareFallback:
                 system_prompt="You are helpful.",
                 tools=[],
                 enable_todo=False,
-                model=Model.GPT_5_6_LUNA,
+                model=Model.GPT_6_LUNA,
             )
             agent = Agent(config=config)
 
@@ -177,7 +209,7 @@ class TestCapabilityAwareFallback:
                 system_prompt="You transcribe PDFs.",
                 tools=[],
                 enable_todo=False,
-                model=Model.GPT_5_6_LUNA,
+                model=Model.GPT_6_LUNA,
                 fallback=FallbackConfig(model=Model.CLAUDE_SONNET_5),
             )
             agent = Agent(config=config)

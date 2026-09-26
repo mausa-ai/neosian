@@ -64,9 +64,9 @@ class TestKeys:
 class TestSections:
     def test_other_sections_ride_beside_the_credentials(self) -> None:
         set_api_key("openai_api_key", "sk_test")
-        set_value("chat", "model", "gpt-5.6-sol")
+        set_value("chat", "model", "gpt-6-sol")
         set_value("update", "mode", "notify")
-        assert get_section("chat") == {"model": "gpt-5.6-sol"}
+        assert get_section("chat") == {"model": "gpt-6-sol"}
         assert get_section("update") == {"mode": "notify"}
         assert get_section("nothing") == {}
         assert get_api_key("openai_api_key") == "sk_test"

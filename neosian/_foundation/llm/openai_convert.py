@@ -44,13 +44,20 @@ _TOOL_CALL_FAILURE_CODES = frozenset({"invalid_tool_call", "tool_use_failed"})
 
 
 def usage_of(usage: CompletionUsage) -> Usage:
-    """Token counts off a usage block; a door may leave a count null (#218)."""
+    """Token counts off a usage block; a door may leave a count null (#218).
+
+    The wire's prompt count includes the cached and the cache-written
+    tokens (GPT-5.6 and later bill a write at 1.25× input), so the
+    non-cached count is what is left after both (ECOSYSTEM §3, NW4).
+    """
     details = getattr(usage, "prompt_tokens_details", None)
     cached_tokens = getattr(details, "cached_tokens", 0) or 0
+    written_tokens = getattr(details, "cache_write_tokens", 0) or 0
     return Usage(
-        input_tokens=(usage.prompt_tokens or 0) - cached_tokens,
+        input_tokens=(usage.prompt_tokens or 0) - cached_tokens - written_tokens,
         output_tokens=usage.completion_tokens or 0,
         cache_read_tokens=cached_tokens,
+        cache_write_tokens=written_tokens,
     )
 
 

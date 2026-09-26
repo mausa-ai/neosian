@@ -11,12 +11,11 @@ from neosian._foundation.shared.types import DEFAULT_MODELS, AnyModel, Model, Pr
 # marker is derived from DEFAULT_MODELS, not baked in here.
 _MODEL_NOTES: dict[Model, str] = {
     Model.GPT_6_ASTRA: "flagship",
-    Model.GPT_5_6_SOL: "most capable 5.6",
-    Model.GPT_5_6_TERRA: "balanced",
-    Model.GPT_5_6_LUNA: "fastest",
+    Model.GPT_6_SOL: "balanced",
+    Model.GPT_6_LUNA: "fastest",
     Model.GPT_5_1: "previous flagship",
     Model.CLAUDE_FABLE_5_1: "most capable",
-    Model.CLAUDE_OPUS_5: "capable",
+    Model.CLAUDE_OPUS_5_5: "capable",
     Model.CLAUDE_SONNET_5: "balanced",
     Model.CEREBRAS_GPT_OSS_120B: "fastest 120B",
     Model.CEREBRAS_QWEN_3_8_27B: "reasoning 27B",

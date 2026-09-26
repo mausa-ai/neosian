@@ -102,7 +102,7 @@ env var that signs requests, and the dialect quirks the wire has. The
 door rows neosian ships are `Model` members like every other row:
 `Model.GROK_4_6` (xAI, `XAI_API_KEY`), `Model.GEMINI_3_8_FLASH` (Gemini,
 `GEMINI_API_KEY`), `Model.KIMI_K3` (Moonshot, `MOONSHOT_API_KEY`), `Model.QWEN_3_8_MAX` (Alibaba Model Studio, `DASHSCOPE_API_KEY`). Every shipped or registered row answers to its
-wire id: `AgentConfig(model="gpt-5.6-sol")` builds the same agent as the
+wire id: `AgentConfig(model="gpt-6-sol")` builds the same agent as the
 member.
 
 ```python

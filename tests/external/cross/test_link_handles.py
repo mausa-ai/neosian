@@ -24,7 +24,7 @@ from tests.external.pacing import Pacer, door_client
 
 _PROVIDER_CASES = [
     # The measured set of DESIGN §31.2 — the baselines' rows, here too.
-    pytest.param(Model.GPT_5_6_SOL, "openai_api_key", "OPENAI_API_KEY", id="openai"),
+    pytest.param(Model.GPT_6_SOL, "openai_api_key", "OPENAI_API_KEY", id="openai"),
     pytest.param(
         Model.CLAUDE_SONNET_5, "anthropic_api_key", "ANTHROPIC_API_KEY", id="anthropic"
     ),

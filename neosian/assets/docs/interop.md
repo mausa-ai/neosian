@@ -98,8 +98,8 @@ A real model is named on the command line and found through the
 environment alone:
 
 ```bash
-OPENAI_API_KEY=... uv run python examples/interop_pydantic_ai.py "Remember that I take my tea without milk." openai:gpt-5.6-sol
-OPENAI_API_KEY=... uv run python examples/interop_openai_agents.py "Remember that I take my tea without milk." gpt-5.6-sol
+OPENAI_API_KEY=... uv run python examples/interop_pydantic_ai.py "Remember that I take my tea without milk." openai:gpt-6-sol
+OPENAI_API_KEY=... uv run python examples/interop_openai_agents.py "Remember that I take my tea without milk." gpt-6-sol
 ```
 
 A local server takes `OPENAI_BASE_URL=http://127.0.0.1:8080/v1` with a

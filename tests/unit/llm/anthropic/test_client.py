@@ -365,13 +365,13 @@ class TestAnthropicReasoningEffort:
         mock_response.usage = MagicMock(
             spec=SPEC["usage"], input_tokens=10, output_tokens=5
         )
-        mock_response.model = "claude-opus-5"
+        mock_response.model = "claude-opus-5-5"
 
         mock_complete(client, mock_response)
 
         await client.complete(
             messages=sample_messages,
-            model=Model.CLAUDE_OPUS_5,
+            model=Model.CLAUDE_OPUS_5_5,
             reasoning_effort=ReasoningEffort.HIGH,
         )
 
@@ -393,13 +393,13 @@ class TestAnthropicReasoningEffort:
         mock_response.usage = MagicMock(
             spec=SPEC["usage"], input_tokens=10, output_tokens=5
         )
-        mock_response.model = "claude-opus-5"
+        mock_response.model = "claude-opus-5-5"
 
         mock_complete(client, mock_response)
 
         await client.complete(
             messages=sample_messages,
-            model=Model.CLAUDE_OPUS_5,
+            model=Model.CLAUDE_OPUS_5_5,
             reasoning_effort=ReasoningEffort.MAX,
         )
 
@@ -454,57 +454,31 @@ class TestAnthropicReasoningEffort:
         assert "output_config" not in call_kwargs
 
     @pytest.mark.asyncio
-    async def test_explicit_temperature_is_sent(
+    async def test_explicit_temperature_is_refused(
         self, client: AnthropicClient, sample_messages: list[Message]
     ) -> None:
-        """An explicitly provided temperature still reaches the API."""
-        mock_response = MagicMock(spec_set=SPEC["message"])
-        mock_response.content = [
-            MagicMock(spec_set=SPEC["text"], type="text", text="Answer")
-        ]
-        mock_response.usage = MagicMock(
-            spec=SPEC["usage"], input_tokens=10, output_tokens=5
-        )
-        mock_response.model = "claude-sonnet-5"
-
-        mock_complete(client, mock_response)
-
-        await client.complete(
-            messages=sample_messages,
-            model=Model.CLAUDE_SONNET_5,
-            temperature=0.3,
-        )
-
-        call_kwargs = sdk(client).messages.stream.call_args.kwargs
-        assert call_kwargs["extra_body"] == {"temperature": 0.3}
+        """Every Claude row refuses a sampling parameter before the request:
+        4.7 and later 400 on a non-default value (NW4, #292)."""
+        with pytest.raises(UnsupportedParameterError) as exc_info:
+            await client.complete(
+                messages=sample_messages,
+                model=Model.CLAUDE_SONNET_5,
+                temperature=0.3,
+            )
+        assert "claude-sonnet-5" in str(exc_info.value)
 
     @pytest.mark.asyncio
-    async def test_explicit_temperature_is_sent_in_stream(
+    async def test_explicit_temperature_is_refused_in_stream(
         self, client: AnthropicClient, sample_messages: list[Message]
     ) -> None:
-        """The stream path sends an explicit temperature the same way."""
-        mock_event = MagicMock(spec_set=SPEC["message_stop"])
-        mock_event.type = "message_stop"
-
-        async def mock_stream_events() -> AsyncIterator[Any]:
-            yield mock_event
-
-        mock_stream = MagicMock()
-        mock_stream.__aenter__ = AsyncMock(return_value=mock_stream)
-        mock_stream.__aexit__ = AsyncMock(return_value=None)
-        mock_stream.__aiter__ = lambda _: mock_stream_events()
-
-        stub_stream(client, mock_stream)
-
-        async for _ in client.stream(
-            messages=sample_messages,
-            model=Model.CLAUDE_SONNET_5,
-            temperature=0.3,
-        ):
-            pass
-
-        call_kwargs = sdk(client).messages.stream.call_args.kwargs
-        assert call_kwargs["extra_body"] == {"temperature": 0.3}
+        """The stream path refuses it the same way."""
+        with pytest.raises(UnsupportedParameterError):
+            async for _ in client.stream(
+                messages=sample_messages,
+                model=Model.CLAUDE_OPUS_5_5,
+                temperature=0.3,
+            ):
+                pass
 
     @pytest.mark.asyncio
     async def test_reasoning_effort_in_stream_passes_thinking_kwargs(
@@ -527,7 +501,7 @@ class TestAnthropicReasoningEffort:
         chunks = []
         async for chunk in client.stream(
             messages=sample_messages,
-            model=Model.CLAUDE_OPUS_5,
+            model=Model.CLAUDE_OPUS_5_5,
             reasoning_effort=ReasoningEffort.MEDIUM,
         ):
             chunks.append(chunk)
@@ -579,31 +553,6 @@ class TestAnthropicReasoningEffort:
         assert call_kwargs["thinking"] == {"type": "adaptive"}
         assert call_kwargs["output_config"] == {"effort": "high"}
         assert "temperature" not in call_kwargs
-
-    @pytest.mark.asyncio
-    async def test_temperature_rejected_for_opus_5(
-        self, client: AnthropicClient, sample_messages: list[Message]
-    ) -> None:
-        """Verify explicit temperature raises for models rejecting sampling params."""
-        with pytest.raises(UnsupportedParameterError):
-            await client.complete(
-                messages=sample_messages,
-                model=Model.CLAUDE_OPUS_5,
-                temperature=0.5,
-            )
-
-    @pytest.mark.asyncio
-    async def test_temperature_rejected_for_opus_5_stream(
-        self, client: AnthropicClient, sample_messages: list[Message]
-    ) -> None:
-        """Verify explicit temperature raises in the stream path too."""
-        with pytest.raises(UnsupportedParameterError):
-            async for _ in client.stream(
-                messages=sample_messages,
-                model=Model.CLAUDE_OPUS_5,
-                temperature=0.5,
-            ):
-                pass
 
     @pytest.mark.asyncio
     async def test_max_effort_passed_through_for_sonnet(
@@ -673,13 +622,13 @@ class TestAnthropicReasoningEffort:
         mock_response.usage = MagicMock(
             spec=SPEC["usage"], input_tokens=10, output_tokens=5
         )
-        mock_response.model = "claude-opus-5"
+        mock_response.model = "claude-opus-5-5"
 
         mock_complete(client, mock_response)
 
         await client.complete(
             messages=sample_messages,
-            model=Model.CLAUDE_OPUS_5,
+            model=Model.CLAUDE_OPUS_5_5,
             reasoning_effort=ReasoningEffort.MAX,
         )
 

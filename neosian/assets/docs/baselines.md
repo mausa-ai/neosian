@@ -48,7 +48,7 @@ document), never the file name.
   construction.
 - One measured model per serving stack, the set the library's external
   tier pins (`_PROVIDER_CASES` and `LANES`): `claude-sonnet-5`,
-  `gpt-5.6-sol`, `gpt-oss-120b` **and** `qwen-3.8-27b` (two rows on the
+  `gpt-6-sol`, `gpt-oss-120b` **and** `qwen-3.8-27b` (two rows on the
   Cerebras adapter; a row is provider+model, so neither says anything
   about the other), `gemini-3.8-flash`, `grok-4.6`, `kimi-k3`. Every other shipped
   row rides the catalog probe on every dispatch, and each row carries its
@@ -58,7 +58,8 @@ document), never the file name.
   Responses API, stateless; every other row over Chat Completions
   (DESIGN §31.5). History: OpenAI's row
   moved `gpt-5-mini` → `gpt-5.1` on 2026-08-22 (the flagship rule) and
-  `gpt-5.1` → `gpt-5.6-sol` on 2026-09-10 (NW1, ledger #210); Gemini's
+  `gpt-5.1` → `gpt-5.6-sol` on 2026-09-10 (NW1, ledger #210) and
+  `gpt-5.6-sol` → `gpt-6-sol` on 2026-09-26 (NW4, ledger #291); Gemini's
   from 3.7 to 3.8 the same day; earlier tables name the model they
   measured. The 2026-08-21 tables also carry a fourth, since-removed
   provider; see the historical note under the table.
@@ -289,6 +290,41 @@ evidence. Each stays measured every dispatch; none is tuned around
   `list_skills`, ruled at NK (the store truth stays the pin).
 
 ## Results
+
+### 2026-09-26: The GPT-6 family and Opus 5.5 (NW4's close, the key files)
+
+Measured locally from the key files on the NW4 tree (`1.0.0rc19`; the
+pack and the memory prompt unchanged since #16): the rows the phase
+entered and the seat that moved. `gpt-6-sol` took `gpt-5.6-sol`'s seat as
+the OpenAI default and measured row (ledger #291) and ran the whole
+board over the Responses API, stateless; `claude-opus-5-5` entered on the
+catalog probe beside Fable 5.1 (the #256 shape); the 5.6 trio and Opus 5
+left the catalog (#290). The catalog probe ran over every OpenAI and
+Anthropic member; the dispatch over every lane rides the next /ship.
+
+| Provider | Model | function | cli | http | mcp | native | door probes | link |
+|---|---|---|---|---|---|---|---|---|
+| OpenAI (Responses) | gpt-6-sol | 10/10 | 10/10 | 10/10 | 10/10 | n/a | — | green |
+
+Findings, recorded as found:
+
+- **gpt-6-sol: 40/40 on its first board.** Every cell green on every
+  transport (the `skills` clarifying-question class that cost 5.6-sol
+  its one cell on 2026-09-16 did not appear); the fallback suite passed
+  on the wire with Luna as the cheap rung and the link cell passed (a
+  green cell's print is captured, so whether the handle or the URL was
+  used was not read).
+- **The catalog probe:** `gpt-6-astra`, `gpt-6-sol`, `gpt-6-luna` and
+  `gpt-5.1` answered over Responses; `claude-fable-5-1`,
+  `claude-opus-5-5` and `claude-sonnet-5` answered, so the new row's
+  adaptive-thinking default and the adapter's request shape (no
+  `thinking` field without an effort, no sampling parameter) are
+  compatible on the wire of the day. Opus 5.5 is on the probe only: its
+  board is a ruling away (#291), at about twice a Sonnet board's cost.
+- **Not measured here:** Sonnet 5's board (the pack is unchanged since
+  #16, so nothing on its row moved) and every door lane; both ride the
+  /ship dispatch, which is also the first dispatched board on
+  `gpt-6-sol`.
 
 ### 2026-09-23: The local row (NW2, a laptop with a GPU)
 

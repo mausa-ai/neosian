@@ -202,13 +202,13 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
   `Model.QWEN_3_8_MAX` (Alibaba Model Studio `DASHSCOPE_API_KEY`): first-party, fingerprinted, no client of their own;
   each earned by green dispatched runs of the memory baselines and
   carrying its provider's clock (`spec.retires`, `spec.card_until`).
-  OpenAI's rows (`gpt-5.6-sol` the default, `gpt-6-astra`) and xAI's
+  OpenAI's rows (`gpt-6-sol` the default, `gpt-6-astra`) and xAI's
   speak the Responses API. A config takes the wire id too:
-  `AgentConfig(model="gpt-5.6-sol")`.
+  `AgentConfig(model="gpt-6-sol")`.
 
 ## Install
 
-- `uv add "neosian==1.0.0rc18"`: one package, the library and its
+- `uv add "neosian==1.0.0rc19"`: one package, the library and its
   provider SDKs, the `neosian` shell, the MCP server and client, the
   state process and OpenTelemetry spans (about 70 MB; nothing loaded
   until used). On PyPI as a pre-release until v1.0.0: pin it explicitly,
@@ -218,11 +218,11 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
 - `curl -fsS https://neosian.com/install | bash` puts uv and neosian on a
   machine with nothing on it; the script says what it installs first.
 - The appliance: `docker run -d -e NEOSIAN_SERVE_TOKEN=… -p 6367:6367
-  -v neosian-state:/data ghcr.io/mausa-ai/neosian:1.0.0rc18`, the state
+  -v neosian-state:/data ghcr.io/mausa-ai/neosian:1.0.0rc19`, the state
   process on a volume, `/health` the one open route.
 
 ## Docs
 
-- https://github.com/mausa-ai/neosian/blob/v1.0.0rc18/README.md: install and quickstart.
-- https://github.com/mausa-ai/neosian/blob/v1.0.0rc18/SERVICES.md: every environment key and what turning it off means.
+- https://github.com/mausa-ai/neosian/blob/v1.0.0rc19/README.md: install and quickstart.
+- https://github.com/mausa-ai/neosian/blob/v1.0.0rc19/SERVICES.md: every environment key and what turning it off means.
 - `neosian docs baselines`: the published per-provider memory numbers.

@@ -113,7 +113,7 @@ from neosian import AgentConfig, Model
 configuration = AgentConfig(
     system_prompt="You are helpful.",
     tools=[],
-    model=Model.GPT_5_6_LUNA,
+    model=Model.GPT_6_LUNA,
 )
 """
         with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
@@ -122,7 +122,7 @@ configuration = AgentConfig(
 
             config, _ = load_agent_config(f.name)
 
-            assert config.model == Model.GPT_5_6_LUNA
+            assert config.model == Model.GPT_6_LUNA
 
 
 @pytest.mark.unit

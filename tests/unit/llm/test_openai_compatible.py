@@ -155,7 +155,7 @@ class TestTemperature:
         strict = OpenAICompatible(name="strict", api_key_env="STRICT_KEY")
         with pytest.raises(UnsupportedParameterError, match="'strict'"):
             await _client(strict).complete(
-                _USER, model=Model.GPT_5_6_LUNA, temperature=0.3
+                _USER, model=Model.GPT_6_LUNA, temperature=0.3
             )
 
 
@@ -197,7 +197,7 @@ class TestReasoning:
         )
         client = _client(door)
         create = _mock_complete(client, _response())
-        for model in (Model.GPT_5_6_SOL, allows):
+        for model in (Model.GPT_6_SOL, allows):
             await client.complete(
                 _USER, model=model, reasoning_effort=ReasoningEffort.MAX
             )
@@ -208,7 +208,7 @@ class TestReasoning:
         assert create.call_args.kwargs["reasoning_effort"] == "high"
         stream = _mock_stream(client, [_chunk("ok")])
         async for _ in client.stream(
-            _USER, model=Model.GPT_5_6_SOL, reasoning_effort=ReasoningEffort.MAX
+            _USER, model=Model.GPT_6_SOL, reasoning_effort=ReasoningEffort.MAX
         ):
             pass
         assert stream.call_args.kwargs["reasoning_effort"] == "max"
@@ -425,7 +425,7 @@ class TestDoorDialects:
         ]
         await client.complete(
             history,
-            model=Model.GPT_5_6_LUNA,
+            model=Model.GPT_6_LUNA,
             response_format=ResponseFormat(schema=_Out),
         )
         assert create.call_args.kwargs["response_format"] == {"type": "json_object"}
@@ -441,7 +441,7 @@ class TestDoorDialects:
         client = _client(_OBJECT)
         create = _mock_complete(client, _response())
         await client.complete(
-            _USER, model=Model.GPT_5_6_LUNA, response_format=ResponseFormat(schema=_Out)
+            _USER, model=Model.GPT_6_LUNA, response_format=ResponseFormat(schema=_Out)
         )
         sent = create.call_args.kwargs["messages"]
         assert [m["role"] for m in sent] == ["system", "user"]
@@ -451,7 +451,7 @@ class TestDoorDialects:
         client = _client()
         create = _mock_complete(client, _response())
         await client.complete(
-            _USER, model=Model.GPT_5_6_LUNA, response_format=ResponseFormat(schema=_Out)
+            _USER, model=Model.GPT_6_LUNA, response_format=ResponseFormat(schema=_Out)
         )
         assert create.call_args.kwargs["response_format"]["type"] == "json_schema"
         assert [m["role"] for m in create.call_args.kwargs["messages"]] == ["user"]

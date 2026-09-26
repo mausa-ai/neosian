@@ -573,13 +573,13 @@ class TestAnthropicStructuredOutput:
         mock_response.usage = MagicMock(
             spec=SPEC["usage"], input_tokens=5, output_tokens=3
         )
-        mock_response.model = "claude-opus-5"
+        mock_response.model = "claude-opus-5-5"
 
         mock_complete(client, mock_response)
 
         await client.complete(
             messages=sample_messages,
-            model=Model.CLAUDE_OPUS_5,
+            model=Model.CLAUDE_OPUS_5_5,
             response_format=ResponseFormat(schema=Out),
             reasoning_effort=ReasoningEffort.HIGH,
         )

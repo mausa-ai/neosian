@@ -39,7 +39,7 @@ class Provider(str, Enum):
 
 
 # Date the pricing table below was last verified against provider price lists.
-PRICES_AS_OF = "2026-09-16"
+PRICES_AS_OF = "2026-09-26"
 
 # Integer micro-USD per USD — money is int µ$ everywhere (ECOSYSTEM §4);
 # floats exist only at display edges (format_micro_usd).
@@ -114,6 +114,8 @@ class ModelSpec:
     supports_images: bool = False
     supports_documents: bool = False
     supports_max_effort: bool = False
+    # A forced `tool_choice` on the wire: False on the Claude 5 flagships (#292).
+    supports_forced_tool_choice: bool = True
     # Anthropic's compact-2026-01-12 beta — a capability of the row, never
     # inferred from the provider (N4).
     supports_compaction_blocks: bool = False
@@ -136,12 +138,9 @@ _MODEL_SPECS: dict[str, ModelSpec] = {}
 class ReasoningEffort(str, Enum):
     """Reasoning effort level for supported models.
 
-    Controls how many reasoning tokens the model uses.
-    Supported by GPT-OSS models (Cerebras), GPT-5 models (OpenAI),
-    and reasoning-capable Claude models (Anthropic).
-    Note: MAX is only passed through for models whose spec sets
-    supports_max_effort; every client downgrades it to HIGH with a
-    warning otherwise.
+    Controls how many reasoning tokens the model uses. MAX is passed
+    through only where the spec sets supports_max_effort; every client
+    downgrades it to HIGH with a warning otherwise.
     """
 
     LOW = "low"
@@ -155,14 +154,13 @@ class Model(str, Enum):
 
     # OpenAI
     GPT_6_ASTRA = "gpt-6-astra"
-    GPT_5_6_SOL = "gpt-5.6-sol"
-    GPT_5_6_TERRA = "gpt-5.6-terra"
-    GPT_5_6_LUNA = "gpt-5.6-luna"
+    GPT_6_SOL = "gpt-6-sol"
+    GPT_6_LUNA = "gpt-6-luna"
     GPT_5_1 = "gpt-5.1-2025-11-13"
 
     # Anthropic
     CLAUDE_FABLE_5_1 = "claude-fable-5-1"
-    CLAUDE_OPUS_5 = "claude-opus-5"
+    CLAUDE_OPUS_5_5 = "claude-opus-5-5"
     CLAUDE_SONNET_5 = "claude-sonnet-5"
 
     # Cerebras
@@ -223,6 +221,11 @@ class Model(str, Enum):
         return _MODEL_SPECS[self.value].supports_max_effort
 
     @property
+    def supports_forced_tool_choice(self) -> bool:
+        """Check if this model accepts a forced tool_choice (required / tool)."""
+        return _MODEL_SPECS[self.value].supports_forced_tool_choice
+
+    @property
     def supports_compaction_blocks(self) -> bool:
         """Check if this model supports Anthropic server-side compaction."""
         return _MODEL_SPECS[self.value].supports_compaction_blocks
@@ -238,11 +241,12 @@ class Model(str, Enum):
         return _MODEL_SPECS[self.value].door
 
 
-# OpenAI (developers.openai.com/api/docs/pricing, /models/gpt-6-astra,
-# 2026-09-16), on the Responses wire (§31.5): standard tier sealed; input
-# above 272K bills at 2× in and 1.5× out. Every row takes
-# `reasoning_effort=max`; Astra, the recommended model, has no `none`
-# rung and rides the catalog probe (ledger #256).
+# OpenAI (developers.openai.com/api/docs/pricing, /models/gpt-6-sol,
+# 2026-09-26), on the Responses wire (§31.5): the standard tier sealed
+# (above 272K input: 2× in, cached and write, 1.5× out); a write bills
+# 1.25× input and the codecs split it out of the input count. Every row
+# takes `reasoning_effort=max`; Astra rides the probe (#256), Sol is the
+# default and the measured row (NW4, #291).
 _GPT_6 = partial(
     ModelSpec,
     provider=Provider.OPENAI,
@@ -256,31 +260,26 @@ _MODEL_SPECS[Model.GPT_6_ASTRA.value] = _GPT_6(
         input_per_mtok=10_000_000,
         output_per_mtok=50_000_000,
         cache_read_per_mtok=1_000_000,
+        cache_write_per_mtok=12_500_000,
     ),
 )
-_GPT_5_6 = _GPT_6
-_MODEL_SPECS[Model.GPT_5_6_SOL.value] = _GPT_5_6(
-    pricing=ModelPricing(
-        input_per_mtok=4_000_000,
-        output_per_mtok=20_000_000,
-        cache_read_per_mtok=400_000,
-    ),
-)
-_MODEL_SPECS[Model.GPT_5_6_TERRA.value] = _GPT_5_6(
+_MODEL_SPECS[Model.GPT_6_SOL.value] = _GPT_6(
     pricing=ModelPricing(
         input_per_mtok=2_000_000,
-        output_per_mtok=12_000_000,
+        output_per_mtok=10_000_000,
         cache_read_per_mtok=200_000,
+        cache_write_per_mtok=2_500_000,
     ),
 )
-_MODEL_SPECS[Model.GPT_5_6_LUNA.value] = _GPT_5_6(
+_MODEL_SPECS[Model.GPT_6_LUNA.value] = _GPT_6(
     pricing=ModelPricing(
-        input_per_mtok=200_000,
-        output_per_mtok=1_200_000,
-        cache_read_per_mtok=20_000,
+        input_per_mtok=100_000,
+        output_per_mtok=500_000,
+        cache_read_per_mtok=10_000,
+        cache_write_per_mtok=125_000,
     ),
 )
-# Not on OpenAI's deprecation list (2026-09-10); rides the catalog probe.
+# No deprecation notice (2026-09-26) and no cache-write charge; on the probe.
 _MODEL_SPECS[Model.GPT_5_1.value] = ModelSpec(
     provider=Provider.OPENAI,
     context_window=400_000,
@@ -294,8 +293,8 @@ _MODEL_SPECS[Model.GPT_5_1.value] = ModelSpec(
 )
 
 # Anthropic (platform.claude.com/docs/en/about-claude/pricing and
-# /model-deprecations, 2026-09-10): `retires` is the published
-# not-sooner-than floor.
+# /model-deprecations, 2026-09-26): `retires` is the not-sooner-than
+# floor; Opus 5.5 and Fable 5.1 take no forced `tool_choice` (#292).
 _CLAUDE_5 = partial(
     ModelSpec,
     provider=Provider.ANTHROPIC,
@@ -315,16 +314,19 @@ _MODEL_SPECS[Model.CLAUDE_FABLE_5_1.value] = _CLAUDE_5(
         cache_read_per_mtok=250_000,
         cache_write_per_mtok=12_500_000,
     ),
+    supports_forced_tool_choice=False,
     retires=date(2027, 9, 1),
 )
-_MODEL_SPECS[Model.CLAUDE_OPUS_5.value] = _CLAUDE_5(
+_MODEL_SPECS[Model.CLAUDE_OPUS_5_5.value] = _CLAUDE_5(
+    # Its own cache-read rate: 0.05× of input.
     pricing=ModelPricing(
-        input_per_mtok=5_000_000,
-        output_per_mtok=25_000_000,
-        cache_read_per_mtok=500_000,
-        cache_write_per_mtok=6_250_000,
+        input_per_mtok=4_000_000,
+        output_per_mtok=20_000_000,
+        cache_read_per_mtok=200_000,
+        cache_write_per_mtok=5_000_000,
     ),
-    retires=date(2027, 7, 24),
+    supports_forced_tool_choice=False,
+    retires=date(2027, 9, 22),
 )
 _MODEL_SPECS[Model.CLAUDE_SONNET_5.value] = _CLAUDE_5(
     # The announced 2026-09-01 rise to $3/$15 did not occur (re-verified
@@ -462,7 +464,7 @@ _MODEL_SPECS[Model.QWEN_3_8_MAX.value] = ModelSpec(
 
 # Default models per provider
 DEFAULT_MODELS: dict[Provider, Model] = {
-    Provider.OPENAI: Model.GPT_5_6_SOL,
+    Provider.OPENAI: Model.GPT_6_SOL,
     Provider.ANTHROPIC: Model.CLAUDE_SONNET_5,
     Provider.CEREBRAS: Model.CEREBRAS_GPT_OSS_120B,
     Provider.FAKE: Model.FAKE,
@@ -473,11 +475,9 @@ def _prices_fingerprint() -> str:
     """Canonical sha256 of the shipped rate card + its as-of date.
 
     The card is the enum's one table — every shipped row, door rows
-    included (§31).
-
-    A unit test recomputes this against PRICES_FINGERPRINT, so any price
-    edit fails CI until the fingerprint (and, with it, PRICES_AS_OF) is
-    bumped in the same commit — a gate, not a promise.
+    included (§31). A unit test recomputes this against PRICES_FINGERPRINT,
+    so any price edit fails CI until the fingerprint (and, with it,
+    PRICES_AS_OF) is bumped in the same commit — a gate, not a promise.
     """
     lines = [f"as_of:{PRICES_AS_OF}"]
     for model_id in sorted(_MODEL_SPECS):
@@ -493,4 +493,4 @@ def _prices_fingerprint() -> str:
     return hashlib.sha256("\n".join(lines).encode("ascii")).hexdigest()
 
 
-PRICES_FINGERPRINT = "41bb1a120cfc86774a5066aac4c5a937c6d4604ca7dd5fb83915f136c717442a"
+PRICES_FINGERPRINT = "2708788a8799ce43d23edd7d9c14963a32484657d64d40b6b4e552ecaa86dc4a"

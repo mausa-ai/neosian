@@ -234,13 +234,17 @@ def request_kwargs(
 
 def usage_of(usage: ResponseUsage) -> Usage:
     """Token counts off a usage block; `input_tokens` includes the cached
-    ones, so the non-cached count is the difference (ECOSYSTEM §3)."""
+    and the cache-written ones (GPT-5.6 and later bill a write at 1.25×
+    input), so the non-cached count is what is left after both
+    (ECOSYSTEM §3, NW4)."""
     details = getattr(usage, "input_tokens_details", None)
     cached = getattr(details, "cached_tokens", 0) or 0
+    written = getattr(details, "cache_write_tokens", 0) or 0
     return Usage(
-        input_tokens=(usage.input_tokens or 0) - cached,
+        input_tokens=(usage.input_tokens or 0) - cached - written,
         output_tokens=usage.output_tokens or 0,
         cache_read_tokens=cached,
+        cache_write_tokens=written,
     )
 
 

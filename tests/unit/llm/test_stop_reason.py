@@ -52,9 +52,9 @@ class TestUsageCostMicroUsd:
             cache_read_tokens=1_000_000,
             cache_write_tokens=1_000_000,
         )
-        # Opus 5: $5 in, $25 out, $0.50 cache read, $6.25 cache write
-        cost = usage.cost_micro_usd(Model.CLAUDE_OPUS_5)
-        assert cost == 5_000_000 + 25_000_000 + 500_000 + 6_250_000
+        # Opus 5.5: $4 in, $20 out, $0.20 cache read, $5 cache write
+        cost = usage.cost_micro_usd(Model.CLAUDE_OPUS_5_5)
+        assert cost == 4_000_000 + 20_000_000 + 200_000 + 5_000_000
 
     def test_cost_cache_falls_back_to_input_rate(self) -> None:
         """Providers without cache rates price cache tokens at input rate."""

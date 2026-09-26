@@ -39,8 +39,9 @@ _TRANSPORTS = scriptless(_PACK, Model.FAKE).transports  # the pack's axis
 
 _PROVIDER_CASES = [
     # One measured model per serving stack, the flagship rule: OpenAI's row
-    # moved gpt-5-mini -> gpt-5.1 (2026-08-22) -> gpt-5.6-sol (NW1, #210).
-    pytest.param(Model.GPT_5_6_SOL, "openai_api_key", "OPENAI_API_KEY", id="openai"),
+    # moved gpt-5-mini -> gpt-5.1 (2026-08-22) -> gpt-5.6-sol (NW1, #210) ->
+    # gpt-6-sol (NW4, #291).
+    pytest.param(Model.GPT_6_SOL, "openai_api_key", "OPENAI_API_KEY", id="openai"),
     pytest.param(
         Model.CLAUDE_SONNET_5,
         "anthropic_api_key",

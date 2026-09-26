@@ -84,8 +84,8 @@ def _openai_chat_client(api_key: str) -> OpenAICompatibleClient:
 # Cerebras on its shipped door, OpenAI's door on chat, a registered door.
 _OPENAI_COMPAT = [
     (_cerebras_client, "cerebras", Model.CEREBRAS_GPT_OSS_120B),
-    (_openai_chat_client, "openai", Model.GPT_5_6_LUNA),
-    (_xai_client, "xai", Model.GPT_5_6_LUNA),
+    (_openai_chat_client, "openai", Model.GPT_6_LUNA),
+    (_xai_client, "xai", Model.GPT_6_LUNA),
 ]
 
 
@@ -245,7 +245,7 @@ class TestOverflowBeforeToolRetry:
         with pytest.raises(ContextWindowExceededError):
             await client.complete(
                 messages=[Message(role=Role.USER, content="Hi")],
-                model=Model.GPT_5_6_LUNA,
+                model=Model.GPT_6_LUNA,
                 tools=_TOOLS,
             )
         assert create.call_count == 1

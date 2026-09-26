@@ -82,8 +82,8 @@ rather than money and fires on every model, priced or not.
 `FallbackConfig` takes either one rung or several, never both:
 
 ```python
-FallbackConfig(model=Model.GPT_5_6_SOL)                    # one rung
-FallbackConfig(models=[Model.GPT_5_6_SOL,                  # a ladder
+FallbackConfig(model=Model.GPT_6_SOL)                    # one rung
+FallbackConfig(models=[Model.GPT_6_SOL,                  # a ladder
                        Model.CEREBRAS_GPT_OSS_120B],
                retry_main_after=5)
 ```
@@ -146,6 +146,13 @@ every fallback rung. The last call, the one made after
 a forced choice would leave the model required to call what it was not
 given, and is dropped with them.
 
+Two Claude rows take no forced choice at all: Opus 5.5 and Fable 5.1
+answer `required()` and `tool(...)` with a 400 (`auto` and `none` are
+their whole vocabulary). The scope refuses a forced choice on such a
+main model before any call is made (`UnsupportedParameterError`), and a
+fallback ladder skips such a rung when the run forces a call. The fact
+is on the row: `Model.CLAUDE_OPUS_5_5.supports_forced_tool_choice`.
+
 ## A schema with tools
 
 Structured output and tools work together (they did not before 1.0):
@@ -169,7 +176,10 @@ drop `response_format`).
 
 With no tools in play, nothing changes: the schema goes on the wire and
 the reply is parsed from the text. `tool_choice=ToolChoice.none()` is
-that same case, since nothing will be called.
+that same case, since nothing will be called, and so is the last call
+after `max_tool_iterations`: it sends no tools, so the schema rides the
+wire there rather than a forced `final_response`, and a typed run still
+returns its type on a row that takes no forced choice.
 
 Two shapes are still refused. `stream=True` with a schema raises
 `StructuredOutputStreamingError`: validation needs the whole reply.
@@ -196,7 +206,12 @@ and loses whenever it is not.
 `usage.cache_write_tokens` is priced at whichever rate the run asked
 for, so `max_cost_micro_usd` and the cost on every response already
 reflect the choice. Providers without explicit breakpoints ignore the
-setting, as they ignore `cache_conversation`.
+setting, as they ignore `cache_conversation`. OpenAI's automatic cache
+reports its writes too, and GPT-5.6 and later bill them at 1.25 times
+input: the card carries that column, so an OpenAI row's
+`cache_write_tokens` are priced at it under the default lifetime, and at
+the derived hour rate under `"1h"` (an overcount, never an undercount;
+the setting is Anthropic's).
 
 ## The cap on a tool result
 
@@ -330,3 +345,12 @@ field names. Anthropic keeps a turn's thinking blocks with their
 signatures under `extra["anthropic"]`, so a reasoning turn that called
 tools replays whole. The codec persists it; only the wire that wrote it
 reads it.
+
+On Opus 5.5 and Fable 5.1 those blocks are tied to the model that wrote
+them (a fallback onto another row runs the turn without them), and they
+arrive empty at the wire's default display: the `reasoning` frame
+carries nothing there unless the provider summarizes, and the text the
+model writes between tool calls lands in those blocks too. Adaptive
+thinking is always on for both rows, so an effort is the one control.
+No Claude row takes a sampling parameter any more: an explicit
+`temperature` is an `UnsupportedParameterError` before the request.

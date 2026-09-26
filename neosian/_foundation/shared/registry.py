@@ -64,6 +64,10 @@ class RegisteredModel:
         return self.spec.supports_max_effort
 
     @property
+    def supports_forced_tool_choice(self) -> bool:
+        return self.spec.supports_forced_tool_choice
+
+    @property
     def supports_compaction_blocks(self) -> bool:
         return self.spec.supports_compaction_blocks
 

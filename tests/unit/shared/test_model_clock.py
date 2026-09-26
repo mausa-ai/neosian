@@ -40,7 +40,8 @@ class TestCatalogClock:
     def test_the_clock_is_data_on_the_rows_it_names(self) -> None:
         assert Model.CLAUDE_SONNET_5.spec.retires == date(2027, 6, 30)
         assert Model.GEMINI_3_8_FLASH.spec.card_until == date(2026, 12, 31)
-        assert Model.GPT_5_6_SOL.spec.retires is None
+        assert Model.GPT_6_SOL.spec.retires is None
+        assert Model.CLAUDE_OPUS_5_5.spec.retires == date(2027, 9, 22)
         assert Model.FAKE.spec.retires is None and Model.FAKE.spec.card_until is None
 
     @pytest.mark.parametrize(

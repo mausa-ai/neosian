@@ -72,7 +72,7 @@ async def run(model: Model | str, prompt: str, *, root: Path) -> str:
 
 async def main(argv: list[str]) -> None:
     prompt = argv[1] if len(argv) > 1 else "Remember that I take my tea without milk."
-    model = argv[2] if len(argv) > 2 else "openai:gpt-5.6-sol"
+    model = argv[2] if len(argv) > 2 else "openai:gpt-6-sol"
     print(await run(model, prompt, root=Path("memory")))
 
 

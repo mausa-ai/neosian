@@ -39,7 +39,6 @@ from neosian._foundation.shared.exceptions import (
 from neosian._foundation.shared.types import (
     AnyModel,
     CacheTtl,
-    Model,
     ReasoningEffort,
     ResponseFormat,
     ToolChoice,
@@ -52,9 +51,6 @@ logger = logging.getLogger(__name__)
 # verbatim — see CompactionBlock.
 _COMPACT_BETA = "compact-2026-01-12"
 _COMPACT_EDIT = "compact_20260112"
-
-
-_SAMPLING_REJECTED_MODELS: frozenset[Model] = frozenset({Model.CLAUDE_OPUS_5})
 
 
 class AnthropicClient(BaseLLMClient):
@@ -87,17 +83,16 @@ class AnthropicClient(BaseLLMClient):
     def _validate_temperature_support(
         self, model: AnyModel, temperature: float | None
     ) -> None:
-        """Reject explicit temperature on models that removed sampling params.
+        """Refuse an explicit temperature on every row.
 
-        Args:
-            model: Target model.
-            temperature: Requested temperature, if any.
+        Claude 4.7 and later take no sampling parameter (a non-default
+        value is a 400) and SDK 1.x dropped the keyword; the API's default
+        applies to every call (NW4, ledger #292).
 
         Raises:
-            UnsupportedParameterError: If temperature was explicitly provided
-                for a model whose API rejects sampling parameters.
+            UnsupportedParameterError: If temperature was explicitly provided.
         """
-        if temperature is not None and model in _SAMPLING_REJECTED_MODELS:
+        if temperature is not None:
             raise UnsupportedParameterError(
                 ErrorMessages.ANTHROPIC_TEMPERATURE_NOT_SUPPORTED.format(
                     model=model.value
@@ -196,16 +191,11 @@ class AnthropicClient(BaseLLMClient):
             "max_tokens": max_tokens,
         }
 
-        # Thinking mode: add adaptive thinking + effort, omit temperature.
-        # Otherwise temperature is sent only when explicitly requested: newer
-        # Claude models (e.g. Sonnet 5) reject non-default sampling parameters
-        # with a 400. It rides extra_body: SDK 1.x dropped the keyword, the
-        # wire still takes it.
+        # Thinking mode: adaptive thinking + effort. No sampling parameter
+        # is ever sent (an explicit temperature was refused above).
         if effective_effort is not None:
             kwargs["thinking"] = {"type": "adaptive"}
             kwargs["output_config"] = {"effort": effective_effort.value}
-        elif temperature is not None:
-            kwargs["extra_body"] = {"temperature": temperature}
 
         if cached_system:
             kwargs["system"] = cached_system
@@ -322,16 +312,11 @@ class AnthropicClient(BaseLLMClient):
             "max_tokens": max_tokens,
         }
 
-        # Thinking mode: add adaptive thinking + effort, omit temperature.
-        # Temperature is only sent when explicitly requested: newer Claude
-        # models (e.g. Sonnet 5) reject non-default sampling parameters.
-        # It rides extra_body: SDK 1.x dropped the keyword, the wire still
-        # takes it.
+        # Thinking mode: adaptive thinking + effort. No sampling parameter
+        # is ever sent (an explicit temperature was refused above).
         if effective_effort is not None:
             kwargs["thinking"] = {"type": "adaptive"}
             kwargs["output_config"] = {"effort": effective_effort.value}
-        elif temperature is not None:
-            kwargs["extra_body"] = {"temperature": temperature}
 
         if cached_system:
             kwargs["system"] = cached_system

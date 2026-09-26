@@ -44,7 +44,7 @@ class TestDoorRouting:
         from neosian._foundation.llm.openai import OpenAIClient
 
         with patch.dict(os.environ, {"OPENAI_API_KEY": "k"}, clear=True):
-            client = ProviderRouter().create_client_for(Model.GPT_5_6_LUNA)
+            client = ProviderRouter().create_client_for(Model.GPT_6_LUNA)
         assert isinstance(client, OpenAIClient)
 
     def test_the_cerebras_rows_ride_the_shipped_door(self) -> None:

@@ -248,7 +248,9 @@ class TestUsage:
     async def test_cached_tokens_split_the_input(self) -> None:
         client = _client()
         response = _response(prompt_tokens=1000, completion_tokens=50)
-        response.usage.prompt_tokens_details = MagicMock(cached_tokens=600)
+        response.usage.prompt_tokens_details = MagicMock(
+            cached_tokens=600, cache_write_tokens=None
+        )
         _mock_complete(client, response)
         result = await client.complete(_ASK, model=_MODEL)
         assert result.usage == Usage(

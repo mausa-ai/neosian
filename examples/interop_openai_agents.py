@@ -87,7 +87,7 @@ async def run(model: Model | str, prompt: str, *, root: Path) -> str:
 
 async def main(argv: list[str]) -> None:
     prompt = argv[1] if len(argv) > 1 else "Remember that I take my tea without milk."
-    model: Model | str = argv[2] if len(argv) > 2 else "gpt-5.6-sol"
+    model: Model | str = argv[2] if len(argv) > 2 else "gpt-6-sol"
     if os.environ.get("OPENAI_BASE_URL"):  # a compatible server speaks Chat Completions
         model = OpenAIChatCompletionsModel(
             model=str(model), openai_client=AsyncOpenAI()

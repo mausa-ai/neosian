@@ -88,6 +88,7 @@ def build_plan(ctx: RunContext, messages: list[Message]) -> Plan:
     agent = ctx.agent
     state = ctx.fallback_state
     ladder = agent._fallback_models
+    forced = ctx.scope.choice is not None and ctx.scope.choice.forces_a_call
     main = Leg(agent._model, LegOutcome.MAIN_OK, index=0)
     preamble: Switch | None = None
     if state is not None and state.using_fallback and agent._should_retry_main(state):
@@ -118,7 +119,7 @@ def build_plan(ctx: RunContext, messages: list[Message]) -> Plan:
         # model as the last resort — a sticky rung that fails keeps
         # walking down before giving the main model another try.
         start = min(state.fallback_index, len(ladder) - 1)
-        rungs = _viable(ladder[start:], messages, offset=start + 1)
+        rungs = _viable(ladder[start:], messages, offset=start + 1, forced=forced)
         # The sticky rung answering again is a different outcome from a
         # lower rung taking over: the first increments the run of
         # successes, the second starts a new one.
@@ -127,7 +128,7 @@ def build_plan(ctx: RunContext, messages: list[Message]) -> Plan:
         return Plan(legs=(*rungs, main))
     if not ladder:
         return Plan(legs=(main,), preamble=preamble)
-    rungs = _viable(ladder, messages, offset=1)
+    rungs = _viable(ladder, messages, offset=1, forced=forced)
     return Plan(legs=(main, *rungs), preamble=preamble)
 
 
@@ -138,19 +139,26 @@ def _rung(ladder: tuple[AnyModel, ...], index: int) -> AnyModel:
 
 
 def _viable(
-    ladder: tuple[AnyModel, ...], messages: list[Message], *, offset: int
+    ladder: tuple[AnyModel, ...],
+    messages: list[Message],
+    *,
+    offset: int,
+    forced: bool,
 ) -> tuple[Leg, ...]:
     """The rungs that can carry this conversation's content, as legs.
 
     Media is never downgraded onto a model that cannot handle it, so a
     rung that cannot is dropped from the ladder rather than attempted —
     the same gate `ensure_fallback_viable` applies per hop, moved up to
-    where the whole ladder is known (DESIGN §2).
+    where the whole ladder is known (DESIGN §2). A run that forces a tool
+    call (`forced`) drops the rungs that take no forced choice the same
+    way (NW4, ledger #292).
     """
     return tuple(
         Leg(model, LegOutcome.FALLBACK_OK, index=offset + position)
         for position, model in enumerate(ladder)
         if not unsupported_content_types(model, messages)
+        and (model.supports_forced_tool_choice or not forced)
     )
 
 

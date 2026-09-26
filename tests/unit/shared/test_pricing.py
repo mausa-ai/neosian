@@ -22,13 +22,12 @@ from neosian._foundation.shared.models import _prices_fingerprint
 # price exactly. Order: (input, output, cache_read, cache_write). The door
 # rows (DESIGN §19.5, §31) sit on the same card, standard tier.
 _USD_RATE_CARD: dict[Model, tuple[str, str, str | None, str | None]] = {
-    Model.GPT_6_ASTRA: ("10.00", "50.00", "1.00", None),
-    Model.GPT_5_6_SOL: ("4.00", "20.00", "0.40", None),
-    Model.GPT_5_6_TERRA: ("2.00", "12.00", "0.20", None),
-    Model.GPT_5_6_LUNA: ("0.20", "1.20", "0.02", None),
+    Model.GPT_6_ASTRA: ("10.00", "50.00", "1.00", "12.50"),
+    Model.GPT_6_SOL: ("2.00", "10.00", "0.20", "2.50"),
+    Model.GPT_6_LUNA: ("0.10", "0.50", "0.01", "0.125"),
     Model.GPT_5_1: ("1.25", "10.00", "0.125", None),
     Model.CLAUDE_FABLE_5_1: ("10.00", "50.00", "0.25", "12.50"),
-    Model.CLAUDE_OPUS_5: ("5.00", "25.00", "0.50", "6.25"),
+    Model.CLAUDE_OPUS_5_5: ("4.00", "20.00", "0.20", "5.00"),
     Model.CLAUDE_SONNET_5: ("2.00", "10.00", "0.20", "2.50"),
     Model.CEREBRAS_GPT_OSS_120B: ("0.25", "0.69", None, None),
     Model.CEREBRAS_QWEN_3_8_27B: ("0.99", "1.49", None, None),
@@ -101,6 +100,13 @@ class TestCostGoldenVectors:
         # suite had no cost vector covering a cache write before NC9.
         usage = Usage(input_tokens=0, output_tokens=0, cache_write_tokens=100_000)
         assert usage.cost_micro_usd(Model.CLAUDE_SONNET_5) == 250_000
+
+    def test_an_openai_write_bills_its_carded_rate(self) -> None:
+        # 100k cache-write on gpt-6-sol at 2.50 $/MTok = 250_000 µ$: OpenAI
+        # bills a write at 1.25× input on GPT-5.6 and later (NW4), and the
+        # card carries the column rather than falling back to input.
+        usage = Usage(input_tokens=0, output_tokens=0, cache_write_tokens=100_000)
+        assert usage.cost_micro_usd(Model.GPT_6_SOL) == 250_000
 
     def test_an_hour_long_write_bills_twice_base(self) -> None:
         # The same 100k at 2x input (4.00 $/MTok) = 400_000 µ$ (#227).
