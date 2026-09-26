@@ -44,6 +44,23 @@ def test_rendered_ddl_names_every_table_and_index() -> None:
 
 
 @pytest.mark.unit
+def test_generation_three_adds_the_search_text_column() -> None:
+    # N5 (§32): the column is in the CREATE for a fresh schema and in an
+    # idempotent ALTER for a generation-2 one; the optional trigram index
+    # is a comment, so the DDL ships no extension.
+    ddl = schema_sql()
+    assert (
+        'ALTER TABLE "neosian".turns ADD COLUMN IF NOT EXISTS search_text text;' in ddl
+    )
+    turns = ddl.split('CREATE TABLE IF NOT EXISTS "neosian".turns')[1].split(";")[0]
+    assert "search_text     text" in turns
+    assert "gin_trgm_ops" in ddl
+    assert "CREATE EXTENSION" not in "\n".join(
+        line for line in ddl.splitlines() if not line.lstrip().startswith("--")
+    )
+
+
+@pytest.mark.unit
 def test_rendered_ddl_is_idempotent_by_construction() -> None:
     ddl = schema_sql()
     creates = [line for line in ddl.splitlines() if line.lstrip().startswith("CREATE")]
@@ -61,7 +78,7 @@ def test_rendered_ddl_stamps_the_schema_version() -> None:
         in ddl
     )
     assert "ON CONFLICT (singleton) DO UPDATE" in ddl
-    assert SCHEMA_VERSION == 2  # bumping is a deliberate, reviewed diff (NL)
+    assert SCHEMA_VERSION == 3  # bumping is a deliberate, reviewed diff (NL, N5)
 
 
 @pytest.mark.unit

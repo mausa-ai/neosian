@@ -8,6 +8,31 @@ phase close names the version.
 
 ## [Unreleased]
 
+### Added
+
+- `ConversationStore.search_turns(query, *, conversations=None, limit=50)`,
+  the sixth abstract method (N5, ledger #297): the turns whose searchable
+  text holds every whitespace-split term as a case-insensitive
+  substring, newest first, at most `limit`; `conversations=None` is the
+  whole store, a sequence narrows. Every shipped store implements it
+  (FileStore scans, PostgresStore's schema generation 3 adds a
+  `search_text` column written at append and at restore, `RemoteStore`
+  is one POST), and both conformance kits pin it (`SearchContract`,
+  exported from `neosian.conversation.testing`).
+- `POST /v1/conversation/search_turns` at `WIRE_VERSION` 5; a
+  constrained token's `conversations` list is checked id by id and a
+  search naming no list is refused as the whole store. `neosian docs
+  wire` states the route; `neosian docs stores` the semantics.
+- `turn_text`, `parse_query` and `match_terms` on `neosian.conversation`:
+  the one search rule a host store applies.
+- `examples/sqlite_store.py` searches the same column and converges a
+  generation-1 file on open.
+
+### Changed
+
+- The Postgres schema generation is 3; a turn written before it holds no
+  search text and never matches until an export and import re-renders it.
+
 ## [1.0.0rc19] - 2026-09-26
 
 ### Added

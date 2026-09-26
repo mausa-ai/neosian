@@ -43,7 +43,9 @@ Cross-implementation invariants (pinned by `testing.MemoryStoreContract`):
   in-process and says False because files cannot arbitrate between
   processes. A store that drops the keyword fails the kit.
 
-**Reserved for a 1.x minor** (NQ2, ledger #230) — neosian will not claim
+**Reserved for a 1.x minor** (NQ2, ledger #230; the turn side arrived
+at N5 as `ConversationStore.search_turns`, DESIGN §32, while the memory
+criteria below stand) — neosian will not claim
 this name for anything else, so a host may implement it early:
 
     async def search(

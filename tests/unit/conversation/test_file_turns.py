@@ -159,3 +159,54 @@ class TestRefusals:
         )
         with pytest.raises(ConversationFormatUnsupportedError):
             await store.read_turns("thread-1")
+
+
+@pytest.mark.unit
+class TestSearchScan:
+    """The file substrate's search (DESIGN §32): the raw-line prefilter
+    decodes only candidates, so a malformed line lacking every term is
+    invisible to a search while reads still refuse it."""
+
+    async def test_a_non_candidate_line_is_never_decoded(
+        self, store: FileStore
+    ) -> None:
+        await store.append_turn("c1", (Message(role=Role.USER, content="pelican"),))
+        with _turns_file(store, "c1").open("a", encoding="utf-8") as handle:
+            handle.write("{broken\n")
+        (hit,) = await store.search_turns("pelican")
+        assert hit.turn == 1
+        with pytest.raises(ConversationFormatUnsupportedError):
+            await store.read_turns("c1")
+
+    async def test_a_candidate_malformed_line_raises_as_a_read_does(
+        self, store: FileStore
+    ) -> None:
+        await store.append_turn("c1", (Message(role=Role.USER, content="pelican"),))
+        with _turns_file(store, "c1").open("a", encoding="utf-8") as handle:
+            handle.write("{broken pelican\n")
+        with pytest.raises(ConversationFormatUnsupportedError):
+            await store.search_turns("pelican")
+
+    async def test_terms_the_file_escapes_skip_the_prefilter(
+        self, store: FileStore
+    ) -> None:
+        content = 'say "hi" to café \\x'
+        await store.append_turn("c1", (Message(role=Role.USER, content=content),))
+        raw = _turns_file(store, "c1").read_text(encoding="utf-8")
+        assert "caf\\u00e9" in raw  # the file holds the escape, not the letter
+        for term in ('"hi"', "café", "\\x", "CAFÉ"):
+            assert len(await store.search_turns(term)) == 1, term
+
+    async def test_the_whole_store_walk_skips_foreign_directories(
+        self, store: FileStore
+    ) -> None:
+        await store.append_turn("c1", (Message(role=Role.USER, content="osprey"),))
+        foreign = store._root / "conversations" / "a b"  # noqa: SLF001
+        foreign.mkdir(parents=True)
+        (foreign / "turns.jsonl").write_text("{broken osprey\n", encoding="utf-8")
+        found = await store.search_turns("osprey")
+        assert [(t.conversation_id, t.turn) for t in found] == [("c1", 1)]
+
+    async def test_a_missing_log_is_no_hit(self, store: FileStore) -> None:
+        assert await store.search_turns("anything", conversations=["never"]) == ()
+        assert await store.search_turns("anything") == ()

@@ -113,6 +113,7 @@ CREATE TABLE IF NOT EXISTS {{schema}}.turns (
     created_at      timestamptz NOT NULL,
     neosian_format  integer     NOT NULL DEFAULT 1,
     actor           text,
+    search_text     text,
     PRIMARY KEY (conversation_id, turn)
 );
 
@@ -120,6 +121,17 @@ CREATE TABLE IF NOT EXISTS {{schema}}.turns (
 -- generation-1 rows read back as `actor=None`; the ALTER converges a
 -- schema created before the column existed.
 ALTER TABLE {{schema}}.turns ADD COLUMN IF NOT EXISTS actor text;
+
+-- Generation 3 (N5, DESIGN §32): a turn's searchable text, rendered by
+-- neosian (conversation/search.py, `turn_text`) at append and at
+-- restore — never by SQL, so every substrate answers one rule. NULL on
+-- a row written before this generation: such a row never matches a
+-- search until re-rendered (`neosian export`, then `import`). No index
+-- ships; an operator may add one without changing any answer:
+--     CREATE EXTENSION IF NOT EXISTS pg_trgm;
+--     CREATE INDEX turns_search ON {{schema}}.turns
+--         USING gin (search_text gin_trgm_ops);
+ALTER TABLE {{schema}}.turns ADD COLUMN IF NOT EXISTS search_text text;
 
 -- `id` realizes insertion order: read order is (turn, span, id), the
 -- tie-to-last-appended rule of §9.6. No unique key by design — entries

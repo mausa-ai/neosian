@@ -6,8 +6,9 @@ from pathlib import Path
 import pytest
 
 from neosian._foundation.memory.file import FileStore
-from neosian.conversation.testing import ConversationStoreContract
+from neosian.conversation.testing import ConversationStoreContract, SearchContract
 from tests.support.clock import ManualClock
+from tests.unit.memory.paging import FrozenClock
 
 
 class TestFileStoreConversationContract(ConversationStoreContract):
@@ -40,3 +41,12 @@ def _plant(store: FileStore, conversation_id: str, filename: str, line: str) -> 
     file.parent.mkdir(parents=True, exist_ok=True)
     with file.open("a", encoding="utf-8", newline="") as handle:
         handle.write(line + "\n")
+
+
+class TestFileStoreSearchOnTies(SearchContract):
+    """The search slice again under a frozen clock: every stamp ties, so
+    the total order's id and turn tiebreaks are a real check (§32)."""
+
+    @pytest.fixture
+    def store(self, tmp_path: Path) -> FileStore:
+        return FileStore(tmp_path / "ties", clock=FrozenClock())

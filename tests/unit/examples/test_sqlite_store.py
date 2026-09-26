@@ -14,10 +14,11 @@ from typing import Any
 import pytest
 
 from examples.sqlite_store import SqliteStore
-from neosian.conversation.testing import ConversationStoreContract
+from neosian.conversation.testing import ConversationStoreContract, SearchContract
 from neosian.memory import MemoryConflictError, MemoryFormatUnsupportedError
 from neosian.memory.testing import MemoryStoreContract
 from tests.support.clock import ManualClock
+from tests.unit.memory.paging import FrozenClock
 
 _PLANT_TS = "2026-01-01T00:00:00.000000Z"
 _SCOPE = "user:sqlite"
@@ -226,3 +227,55 @@ class TestSqliteStoreSpecifics:
             assert (document.content, document.version) == ("kept", 1)
         finally:
             second.close()
+
+
+class TestSqliteSearchOnTies(SearchContract):
+    """The search slice again under a frozen clock: the `COLLATE BINARY`
+    tiebreak is a real check (DESIGN §32)."""
+
+    @pytest.fixture
+    def manual_clock(self) -> FrozenClock:
+        return FrozenClock()
+
+
+@pytest.mark.unit
+class TestSearchConvergence:
+    async def test_an_older_file_gains_the_search_column_on_open(
+        self, tmp_path: Path
+    ) -> None:
+        # A generation-1 copy of the example: `turns` without the column.
+        # Opening converges it; the planted row reads but never matches.
+        file = tmp_path / "old.sqlite"
+        with closing(sqlite3.connect(file)) as connection, connection:
+            connection.executescript(
+                "CREATE TABLE neosian_schema (singleton INTEGER PRIMARY KEY"
+                " CHECK (singleton = 1), version INTEGER NOT NULL);"
+                "INSERT INTO neosian_schema (singleton, version) VALUES (1, 1);"
+                "CREATE TABLE turns (conversation_id TEXT NOT NULL,"
+                " turn INTEGER NOT NULL, messages TEXT NOT NULL,"
+                " created_at TEXT NOT NULL, neosian_format INTEGER NOT NULL"
+                " DEFAULT 1, actor TEXT, PRIMARY KEY (conversation_id, turn));"
+            )
+            connection.execute(
+                "INSERT INTO turns (conversation_id, turn, messages, created_at)"
+                " VALUES ('old', 1, ?, ?)",
+                (json.dumps([{"role": "user", "content": "pelican"}]), _PLANT_TS),
+            )
+        store = SqliteStore(file)
+        try:
+            columns = {
+                row[1]
+                for row in store._db.execute("PRAGMA table_info(turns)")  # noqa: SLF001
+            }
+            assert "search_text" in columns
+            (version,) = store._db.execute(  # noqa: SLF001
+                "SELECT version FROM neosian_schema"
+            ).fetchone()
+            assert version == 2
+            (turn,) = await store.read_turns("old")
+            assert turn.turn == 1
+            assert await store.search_turns("pelican") == ()
+            await store.append_turn("old", turn.messages)
+            assert len(await store.search_turns("pelican")) == 1
+        finally:
+            store.close()

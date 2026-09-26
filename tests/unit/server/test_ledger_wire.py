@@ -35,8 +35,8 @@ class TestRedactionCodec:
 
     def test_the_step(self) -> None:
         assert (
-            WIRE_VERSION == 4
-        )  # NL: two reads + the turn author; NC4: store/*; NQ2: pages
+            WIRE_VERSION == 5
+        )  # NL: two reads + the turn author; NC4: store/*; NQ2: pages; N5: search
 
 
 @pytest.fixture

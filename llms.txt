@@ -173,7 +173,7 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
   `Pageable` pages them yourself. `neosian docs topology` carries the
   full shape.
 - `neosian docs wire` is the HTTP contract a client in any language
-  implements: the eighteen /v1/ routes, the envelope, paging, the JSON
+  implements: the nineteen /v1/ routes, the envelope, paging, the JSON
   shapes, WIRE_VERSION.
 
 ## Bring an OpenAI-compatible model

@@ -26,6 +26,11 @@ from neosian._foundation.conversation.reflection import (
     ReflectionResult,
     ReflectionWrite,
 )
+from neosian._foundation.conversation.search import (
+    match_terms,
+    parse_query,
+    turn_text,
+)
 from neosian._foundation.conversation.types import (
     CONVERSATION_FORMAT_VERSION,
     ConversationProjection,
@@ -75,7 +80,10 @@ __all__ = [
     "ReflectionWrite",
     "RemoteStore",
     "create_recall_turn_tool",
+    "match_terms",
     "message_from_json",
     "message_to_json",
     "parse_conversation_id",
+    "parse_query",
+    "turn_text",
 ]

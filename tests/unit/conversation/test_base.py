@@ -10,6 +10,7 @@ _METHODS = (
     "append_turn",
     "read_turns",
     "last_turn_number",
+    "search_turns",
     "append_projections",
     "read_projections",
 )
@@ -20,7 +21,7 @@ class TestConversationStoreABC:
         with pytest.raises(TypeError):
             ConversationStore()  # type: ignore[abstract]
 
-    def test_declares_exactly_the_five_methods(self) -> None:
+    def test_declares_exactly_the_six_methods(self) -> None:
         assert set(ConversationStore.__abstractmethods__) == set(_METHODS)
 
     def test_every_method_is_an_async_def(self) -> None:

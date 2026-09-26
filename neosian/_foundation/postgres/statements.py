@@ -31,6 +31,7 @@ class Statements:
     append_turn: str
     read_turns: str
     last_turn_number: str
+    search_turns: str
     append_projections: str
     read_projections: str
 
@@ -291,9 +292,10 @@ def build_statements(schema: str) -> Statements:
             FROM {s}.turns WHERE conversation_id = %(conversation_id)s
         )
         INSERT INTO {s}.turns
-            (conversation_id, turn, messages, created_at, neosian_format, actor)
+            (conversation_id, turn, messages, created_at, neosian_format, actor,
+             search_text)
         SELECT %(conversation_id)s, next.turn, %(messages)s::jsonb,
-               %(now)s, %(format)s, %(actor)s
+               %(now)s, %(format)s, %(actor)s, %(search_text)s
         FROM next
         RETURNING turn
     """
@@ -309,6 +311,20 @@ def build_statements(schema: str) -> Statements:
     last_turn_number = f"""
         SELECT COALESCE(MAX(turn), 0)
         FROM {s}.turns WHERE conversation_id = %(conversation_id)s
+    """
+
+    # Search (N5, §32): `search_text` is rendered in Python at append and
+    # restore, every term arrives as an ILIKE pattern escaped in Python
+    # under the default `\\` escape, the ids narrow when given, and
+    # COLLATE "C" keeps the tiebreak in codepoint order (ledger #37). A
+    # NULL column (a generation-2 row) never matches.
+    search_turns = f"""
+        SELECT conversation_id, turn, messages, created_at, neosian_format, actor
+        FROM {s}.turns
+        WHERE search_text ILIKE ALL(%(patterns)s::text[])
+          AND (%(all)s::boolean OR conversation_id = ANY(%(ids)s::text[]))
+        ORDER BY created_at DESC, conversation_id COLLATE "C" DESC, turn DESC
+        LIMIT %(limit)s
     """
 
     # WITH ORDINALITY keeps batch order, so the identity column realizes
@@ -353,6 +369,7 @@ def build_statements(schema: str) -> Statements:
         append_turn=append_turn,
         read_turns=read_turns,
         last_turn_number=last_turn_number,
+        search_turns=search_turns,
         append_projections=append_projections,
         read_projections=read_projections,
     )

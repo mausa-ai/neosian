@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from neosian._foundation.conversation.file_turns import (
+from neosian._foundation.conversation.file_rows import (
     CONVERSATIONS,
     PROJECTIONS,
     TURNS,

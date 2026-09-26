@@ -5,9 +5,12 @@ import json
 from datetime import UTC, datetime
 from typing import Any
 
+import pytest
+
 from neosian import PostgresStore
-from neosian.conversation.testing import ConversationStoreContract
+from neosian.conversation.testing import ConversationStoreContract, SearchContract
 from tests.support.postgres import plant_sql, store_schema
+from tests.unit.memory.paging import FrozenClock
 
 _PLANT_TS = datetime(2026, 1, 1, tzinfo=UTC)
 
@@ -97,3 +100,12 @@ class TestPostgresConversationContract(ConversationStoreContract):
             "VALUES (%(cid)s, %(turn)s, %(kind)s, %(text)s, %(span)s, %(fmt)s)",
             {"cid": conversation_id, **fields},
         )
+
+
+class TestPostgresSearchOnTies(SearchContract):
+    """The search slice again under a frozen clock: `COLLATE "C"` is a
+    real check (DESIGN §32)."""
+
+    @pytest.fixture
+    def manual_clock(self) -> FrozenClock:
+        return FrozenClock()

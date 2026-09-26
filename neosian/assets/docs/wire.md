@@ -1,13 +1,13 @@
 ---
 title: "The wire: the state process's HTTP contract"
-summary: The eighteen /v1/ routes, the envelope, paging, the JSON shapes and WIRE_VERSION
+summary: The nineteen /v1/ routes, the envelope, paging, the JSON shapes and WIRE_VERSION
 ---
 
 # The wire
 
 `neosian serve` puts the two storage ABCs on a port. This page is the
 contract a client in any language can be written against: the
-handshake, the eighteen `/v1/` routes with their request and response
+handshake, the nineteen `/v1/` routes with their request and response
 keys, the error envelope, paging, the JSON shapes, and the history of
 `WIRE_VERSION`. Every literal here is pinned by a test that drives the
 server with raw JSON and never through `RemoteStore`
@@ -27,7 +27,7 @@ any store call.
 `GET /v1/capabilities`, authenticated, answers six keys:
 
 ```json
-{"wire_version": 4, "neosian_version": "<installed>", "backend": "FileStore",
+{"wire_version": 5, "neosian_version": "<installed>", "backend": "FileStore",
  "supports_optimistic_concurrency": false, "pageable": true,
  "client": "client:default"}
 ```
@@ -47,9 +47,11 @@ with `WWW-Authenticate: Bearer` and no JSON body.
 
 An actor may carry an allowance, `client:alice@user:alice+alice-=tok`:
 two literal prefixes matched with `startswith` against the `scope` and
-`conversation_id` a request names. A request outside them is `403` in
-the envelope under the code `forbidden`. A constrained token is refused
-`/mcp` and all four `store/*` routes outright, whatever its body names.
+`conversation_id` a request names, and against every id in a search's
+`conversations` list. A request outside them is `403` in the envelope
+under the code `forbidden`. A constrained token is refused `/mcp` and
+all four `store/*` routes outright, whatever its body names, and a
+search that names no `conversations` (the whole store) the same way.
 A token with no allowance reaches everything.
 
 ## Requests
@@ -116,8 +118,20 @@ whose `path` is `null`. `versions` and `history` answer newest first.
 | `conversation/append_turn` | `conversation_id`, `messages` req; `actor` | `turn` |
 | `conversation/read_turns` | `conversation_id` req; `after`, `limit` | `turns`, `next_after` |
 | `conversation/last_turn_number` | `conversation_id` req | `turn` (int, 0 when none) |
+| `conversation/search_turns` | `query` req; `conversations` (a list of ids), `limit` (default 50, at most 500) | `turns` |
 | `conversation/append_projections` | `conversation_id`, `entries` req | `{}` |
 | `conversation/read_projections` | `conversation_id` req; `after`, `limit` | `entries`, `next_after` |
+
+`search_turns` (`WIRE_VERSION` 5) answers the turns whose text holds
+every whitespace-split term of `query` as a case-insensitive substring,
+newest first: a turn's text is its messages' text, each tool call as
+its name and compact JSON arguments, and its tool results, with no role
+labels. `conversations` absent or `null` is every conversation the
+store holds; a list narrows to those ids and `[]` answers `[]`. The
+answer is bounded and never pages: `limit` above 500 is `value_error`
+("a search answers at most 500 turns; narrow the query"), `limit: 0`
+and a blank `query` are `value_error` too. Each turn is the
+`read_turns` shape.
 
 ### Store
 
@@ -145,6 +159,8 @@ no continuation; a negative `limit` or `after` is `value_error`. A
 `read_projections` page ends on a whole turn. A host store served
 without `Pageable` answers whole with `next_cursor: null` and refuses a
 `cursor` by name; the handshake's `pageable` says which.
+`conversation/search_turns` is not a listing and does not page: its
+`limit` is a bound, 500 at most.
 
 ## The JSON shapes
 
@@ -195,6 +211,7 @@ dropped, not stored.
 | 2 | 0.83.0 | `memory/history`, `memory/redactions`, the turn `actor`, the handshake's `client` |
 | 3 | 0.89.0 | the four `store/*` routes |
 | 4 | 1.0.0rc8 | every listing answers a page; the handshake's `pageable` |
+| 5 | 1.0.0rc20 | `conversation/search_turns`; a constrained token's `conversations` list |
 
 A narrowing (a parameter refused that was once let through) never moves
 the version; a new route or a new key does. `RemoteStore.connect`

@@ -4,5 +4,6 @@ pytest-asyncio, which neosian does not depend on at runtime.
 """
 
 from neosian._foundation.conversation.testing import ConversationStoreContract
+from neosian._foundation.conversation.testing_search import SearchContract
 
-__all__ = ["ConversationStoreContract"]
+__all__ = ["ConversationStoreContract", "SearchContract"]

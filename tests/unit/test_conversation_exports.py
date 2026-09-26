@@ -38,9 +38,12 @@ def test_conversation_all_is_pinned() -> None:
         "ReflectionWrite",
         "RemoteStore",
         "create_recall_turn_tool",
+        "match_terms",
         "message_from_json",
         "message_to_json",
         "parse_conversation_id",
+        "parse_query",
+        "turn_text",
     ]
     for name in neosian.conversation.__all__:
         assert getattr(neosian.conversation, name) is not None
@@ -50,7 +53,10 @@ def test_conversation_all_is_pinned() -> None:
 def test_conversation_testing_exports_the_contract_kit() -> None:
     import neosian.conversation.testing
 
-    assert neosian.conversation.testing.__all__ == ["ConversationStoreContract"]
+    assert neosian.conversation.testing.__all__ == [
+        "ConversationStoreContract",
+        "SearchContract",
+    ]
 
 
 @pytest.mark.unit

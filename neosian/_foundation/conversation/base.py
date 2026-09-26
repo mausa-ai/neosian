@@ -16,8 +16,20 @@ Cross-implementation invariants (pinned by
 - `read_turns` returns turns with number > `after`, ascending; `limit`
   takes the oldest N after the cursor; `limit=0` and unknown
   conversations yield `()`.
-- `read_turns(after=n-1, limit=1)` is the recall lookup — there is no
-  sixth method.
+- `read_turns(after=n-1, limit=1)` is the recall lookup; the sixth
+  method, `search_turns` (N5, DESIGN §32), finds turns by content and
+  never replaces it.
+- `search_turns` splits the query on whitespace into lowercased terms and
+  answers the turns whose searchable text (`search.turn_text`: message
+  text, tool calls as name + compact JSON arguments, tool results, no
+  role labels) holds every term as a case-insensitive substring — ASCII
+  folding pinned, beyond ASCII the substrate's — newest first under one
+  total order (`created_at`, `conversation_id`, `turn`, each descending,
+  the id in codepoint order), at most `limit`. `conversations=None` is
+  the whole store, a sequence narrows to those ids, `()` answers `()`; a
+  blank query or `limit < 1` is a programmer error (ValueError). A
+  substrate that stores the rendered text may hold rows written before
+  it did; they never match until re-rendered (an export and import).
 - `last_turn_number` returns the highest number ever assigned, 0 for an
   unknown conversation.
 - Projections are append-only, returned ordered by (turn, span,
@@ -31,7 +43,8 @@ usage/model/cost, capability ClassVars. Frozen for hosts since the
 2026-08-21 amendment (ECOSYSTEM §10); DESIGN §9 carries the rationale and
 the CS1-CS7 rulings. NL added one thing, additively:
 `append_turn(..., actor=)` and `ConversationTurn.actor` — who appended a
-turn, opaque to the store (DESIGN §20).
+turn, opaque to the store (DESIGN §20). N5 added `search_turns` before
+the promise, the seam test's sort (ledger #297).
 
 **Reserved for a 1.x minor** (NQ2, ledger #229) — neosian will not claim
 this name for anything else, so a host may implement it early:
@@ -91,6 +104,19 @@ class ConversationStore(ABC):
     @abstractmethod
     async def last_turn_number(self, conversation_id: str) -> int:
         """The highest turn number assigned, 0 for an unknown conversation."""
+
+    @abstractmethod
+    async def search_turns(
+        self,
+        query: str,
+        *,
+        conversations: Sequence[str] | None = None,
+        limit: int = 50,
+    ) -> tuple[ConversationTurn, ...]:
+        """Turns whose searchable text holds every whitespace-split term
+        of `query` as a case-insensitive substring, newest first, at most
+        `limit` (DESIGN §32). `conversations=None` is the whole store; a
+        sequence narrows to those ids; `()` answers `()`."""
 
     @abstractmethod
     async def append_projections(

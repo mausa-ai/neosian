@@ -5,7 +5,11 @@ CS3 rides `COALESCE(MAX(turn),0)+1` under `UNIQUE(conversation_id,
 turn)`: two workers computing the same number collide on the primary key
 and the loser retries with a fresh snapshot — numbers stay per-
 conversation, monotonic, gapless, never reused. Messages are stored as
-the public codec's JSON (CS5), verbatim in and out.
+the public codec's JSON (CS5), verbatim in and out. Search (§32) reads
+the `search_text` column the append renders through the one shared
+rule: `ILIKE` folds ASCII as the kit pins and beyond ASCII as the
+server's collation does; a generation-2 row holds NULL and never
+matches until an export and import re-renders it.
 """
 
 from __future__ import annotations
@@ -15,6 +19,12 @@ from typing import TYPE_CHECKING
 
 from neosian._foundation.conversation.base import ConversationStore
 from neosian._foundation.conversation.ids import parse_conversation_id
+from neosian._foundation.conversation.search import (
+    check_limit,
+    messages_text,
+    parse_conversations,
+    parse_query,
+)
 from neosian._foundation.conversation.types import (
     CONVERSATION_FORMAT_VERSION,
     ConversationTurn,
@@ -41,6 +51,13 @@ def _check_cursor(after: int, limit: int | None) -> None:
         raise ValueError(f"after must be >= 0, got {after}")
     if limit is not None and limit < 0:
         raise ValueError(f"limit must be >= 0, got {limit}")
+
+
+def like_pattern(term: str) -> str:
+    """The term as an `ILIKE` substring pattern under the default `\\`
+    escape: a literal backslash, percent or underscore stays literal."""
+    escaped = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
 
 
 class PostgresTurnStore(ConversationStore):
@@ -74,6 +91,7 @@ class PostgresTurnStore(ConversationStore):
                 "now": created_at,
                 "format": CONVERSATION_FORMAT_VERSION,
                 "actor": actor,
+                "search_text": messages_text(messages),
             },
         )
         return ConversationTurn(
@@ -101,6 +119,29 @@ class PostgresTurnStore(ConversationStore):
             self._sql.last_turn_number, {"conversation_id": conversation_id}
         )
         return int(row[0])
+
+    async def search_turns(
+        self,
+        query: str,
+        *,
+        conversations: Sequence[str] | None = None,
+        limit: int = 50,
+    ) -> tuple[ConversationTurn, ...]:
+        terms = parse_query(query)
+        ids = parse_conversations(conversations)
+        check_limit(limit)
+        if ids == ():
+            return ()
+        rows = await self._pool.fetch(
+            self._sql.search_turns,
+            {
+                "patterns": [like_pattern(term) for term in terms],
+                "all": ids is None,
+                "ids": list(ids or ()),
+                "limit": limit,
+            },
+        )
+        return tuple(conversation_turn(str(row[0]), row[1:]) for row in rows)
 
     async def append_projections(
         self, conversation_id: str, entries: Sequence[ConversationProjection]

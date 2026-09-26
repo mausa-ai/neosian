@@ -12,44 +12,49 @@ every scope component carries a `%3A`, so `conversations/` never collides:
 Pure appends — no rewrite path; the file's last line is the numbering's
 source of truth, never a line count. A malformed or newer row raises,
 never skips: skipping would silently drop a turn and corrupt the
-numbering. Deliberately self-contained: `memory/journal.py` stays
+numbering. The row codec and the layout names live in `file_rows.py`,
+the search scan in `file_search.py` (a worker thread, like the memory
+listings). Deliberately self-contained: `memory/journal.py` stays
 MemoryVersion-typed, and importing it here would point an import edge
 against `memory.file → conversation.file_turns`.
 """
 
 from __future__ import annotations
 
-import json
-from datetime import datetime
-from typing import TYPE_CHECKING, Any, cast
+import asyncio
+from typing import TYPE_CHECKING
 
 from neosian._foundation.conversation.base import ConversationStore
+from neosian._foundation.conversation.file_rows import (
+    CONVERSATIONS,
+    PROJECTIONS,
+    TURNS,
+    parse_projection,
+    parse_turn,
+    render_projection,
+    render_turn,
+)
+from neosian._foundation.conversation.file_search import search_files
 from neosian._foundation.conversation.ids import parse_conversation_id
+from neosian._foundation.conversation.search import (
+    check_limit,
+    parse_conversations,
+    parse_query,
+)
 from neosian._foundation.conversation.types import (
-    CONVERSATION_FORMAT_VERSION,
     ConversationProjection,
     ConversationTurn,
-    ProjectionKind,
 )
-from neosian._foundation.llm.codec import message_from_json, message_to_json
-from neosian._foundation.shared.exceptions import (
-    ConversationFormatUnsupportedError,
-    ConversationIdInvalidError,
-)
+from neosian._foundation.shared.exceptions import ConversationIdInvalidError
 from neosian._foundation.shared.fileio import append_line, private_mkdir
 
 if TYPE_CHECKING:
-    import asyncio
     from collections.abc import Sequence
+    from datetime import datetime
     from pathlib import Path
 
     from neosian._foundation.llm.base import Message
     from neosian._foundation.shared.clock import Clock
-
-CONVERSATIONS = "conversations"
-TURNS = "turns.jsonl"
-PROJECTIONS = "projections.jsonl"
-_KINDS = ("log", "digest", "epoch")
 
 
 class FileTurnStore(ConversationStore):
@@ -97,6 +102,22 @@ class FileTurnStore(ConversationStore):
         conversation_id = parse_conversation_id(conversation_id)
         return self._last_number(conversation_id, self._turns_file(conversation_id))
 
+    async def search_turns(
+        self,
+        query: str,
+        *,
+        conversations: Sequence[str] | None = None,
+        limit: int = 50,
+    ) -> tuple[ConversationTurn, ...]:
+        terms = parse_query(query)
+        ids = parse_conversations(conversations)
+        check_limit(limit)
+        if ids == ():
+            return ()
+        return await asyncio.to_thread(
+            search_files, self._root / CONVERSATIONS, ids, terms, limit
+        )
+
     async def append_projections(
         self, conversation_id: str, entries: Sequence[ConversationProjection]
     ) -> None:
@@ -118,7 +139,7 @@ class FileTurnStore(ConversationStore):
         if file.is_file():
             with file.open(encoding="utf-8", newline="") as handle:
                 for number, line in enumerate(handle, start=1):
-                    rows.append(_parse_projection(line, number, conversation_id))
+                    rows.append(parse_projection(line, number, conversation_id))
         # Stable sort: insertion order breaks (turn, span) ties.
         rows.sort(key=lambda entry: (entry.turn, entry.span))
         selected = [entry for entry in rows if entry.turn > after]
@@ -151,7 +172,7 @@ class FileTurnStore(ConversationStore):
         turns: list[ConversationTurn] = []
         with file.open(encoding="utf-8", newline="") as handle:
             for number, line in enumerate(handle, start=1):
-                turns.append(_parse_turn(line, number, conversation_id))
+                turns.append(parse_turn(line, number, conversation_id))
         return turns
 
     def _last_number(self, conversation_id: str, turns_file: Path) -> int:
@@ -165,7 +186,7 @@ class FileTurnStore(ConversationStore):
                 last_number += 1
         if not last_line:
             return 0
-        return _parse_turn(last_line, last_number, conversation_id).turn
+        return parse_turn(last_line, last_number, conversation_id).turn
 
 
 def _check_cursor(after: int, limit: int | None) -> None:
@@ -173,119 +194,3 @@ def _check_cursor(after: int, limit: int | None) -> None:
         raise ValueError(f"after must be >= 0, got {after}")
     if limit is not None and limit < 0:
         raise ValueError(f"limit must be >= 0, got {limit}")
-
-
-def render_turn(record: ConversationTurn) -> str:
-    data = {
-        "neosian_format": CONVERSATION_FORMAT_VERSION,
-        "turn": record.turn,
-        "created_at": record.created_at.isoformat().replace("+00:00", "Z"),
-        "messages": [message_to_json(message) for message in record.messages],
-        "actor": record.actor,
-    }
-    return json.dumps(data, ensure_ascii=True, separators=(",", ":")) + "\n"
-
-
-def render_projection(entry: ConversationProjection) -> str:
-    data = {
-        "neosian_format": CONVERSATION_FORMAT_VERSION,
-        "turn": entry.turn,
-        "span": entry.span,
-        "kind": entry.kind,
-        "text": entry.text,
-    }
-    return json.dumps(data, ensure_ascii=True, separators=(",", ":")) + "\n"
-
-
-def _parse_object(line: str, where: str, conversation_id: str) -> dict[str, Any]:
-    try:
-        data: Any = json.loads(line)
-    except json.JSONDecodeError as exc:
-        raise ConversationFormatUnsupportedError(
-            conversation_id, f"malformed {where}"
-        ) from exc
-    if not isinstance(data, dict):
-        raise ConversationFormatUnsupportedError(
-            conversation_id, f"{where} is not an object"
-        )
-    declared = data.get("neosian_format")
-    if not isinstance(declared, int) or isinstance(declared, bool) or declared < 1:
-        raise ConversationFormatUnsupportedError(
-            conversation_id, f"{where} missing format"
-        )
-    if declared > CONVERSATION_FORMAT_VERSION:
-        raise ConversationFormatUnsupportedError(
-            conversation_id, f"{where} format {declared} is newer than supported"
-        )
-    return cast("dict[str, Any]", data)
-
-
-def _parse_turn(line: str, number: int, conversation_id: str) -> ConversationTurn:
-    where = f"turn-log line {number}"
-    data = _parse_object(line, where, conversation_id)
-    turn = data.get("turn")
-    created_raw = data.get("created_at")
-    encoded = data.get("messages")
-    actor = data.get("actor")  # absent on pre-NL rows: None
-    if (
-        not isinstance(turn, int)
-        or isinstance(turn, bool)
-        or turn < 1
-        or not isinstance(created_raw, str)
-        or not isinstance(encoded, list)
-        or not encoded
-        or not (actor is None or isinstance(actor, str))
-    ):
-        raise ConversationFormatUnsupportedError(
-            conversation_id, f"{where} has invalid fields"
-        )
-    try:
-        created_at = datetime.fromisoformat(created_raw)
-    except ValueError as exc:
-        raise ConversationFormatUnsupportedError(
-            conversation_id, f"{where} has an unreadable timestamp"
-        ) from exc
-    if created_at.tzinfo is None:
-        raise ConversationFormatUnsupportedError(
-            conversation_id, f"{where} has a naive timestamp"
-        )
-    try:
-        messages = tuple(message_from_json(item) for item in encoded)
-    except (KeyError, TypeError, ValueError) as exc:
-        raise ConversationFormatUnsupportedError(
-            conversation_id, f"{where} has an undecodable message"
-        ) from exc
-    return ConversationTurn(
-        conversation_id=conversation_id,
-        turn=turn,
-        messages=messages,
-        created_at=created_at,
-        actor=actor,
-    )
-
-
-def _parse_projection(
-    line: str, number: int, conversation_id: str
-) -> ConversationProjection:
-    where = f"projection line {number}"
-    data = _parse_object(line, where, conversation_id)
-    turn = data.get("turn")
-    span = data.get("span")
-    kind = data.get("kind")
-    text = data.get("text")
-    if (
-        not isinstance(turn, int)
-        or isinstance(turn, bool)
-        or turn < 1
-        or not isinstance(span, int)
-        or isinstance(span, bool)
-        or not 1 <= span <= turn
-        or kind not in _KINDS
-        or not isinstance(text, str)
-    ):
-        raise ConversationFormatUnsupportedError(
-            conversation_id, f"{where} has invalid fields"
-        )
-    return ConversationProjection(
-        turn=turn, kind=cast(ProjectionKind, kind), text=text, span=span
-    )

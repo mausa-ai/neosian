@@ -168,6 +168,41 @@ class TestTheGate:
         assert theirs.status_code == 403
         assert "bob-s1" in theirs.json()["error"]["message"]
 
+    async def test_a_fenced_token_searches_only_its_conversations(
+        self, http: httpx.AsyncClient
+    ) -> None:
+        # N5 (§32): the list is checked id by id, and a search naming no
+        # list is the whole store — refused for what it reaches.
+        inside = await _post(
+            http,
+            "conversation/search_turns",
+            "tok-alice",
+            {"query": "hi", "conversations": ["alice-s1"]},
+        )
+        assert inside.status_code == 200
+        outside = await _post(
+            http,
+            "conversation/search_turns",
+            "tok-alice",
+            {"query": "hi", "conversations": ["alice-s1", "bob-s1"]},
+        )
+        assert outside.status_code == 403
+        assert "bob-s1" in outside.json()["error"]["message"]
+        whole = await _post(
+            http, "conversation/search_turns", "tok-alice", {"query": "hi"}
+        )
+        assert whole.status_code == 403
+        assert "the whole store" in whole.json()["error"]["message"]
+        reader = await _post(
+            http,
+            "conversation/search_turns",
+            "tok-reader",
+            {"query": "hi", "conversations": ["alice-s1"]},
+        )
+        assert reader.status_code == 403
+        ops = await _post(http, "conversation/search_turns", "tok-ops", {"query": "hi"})
+        assert ops.status_code == 200
+
     async def test_naming_scopes_only_denies_every_conversation(
         self, http: httpx.AsyncClient
     ) -> None:

@@ -228,7 +228,7 @@ stability promise: `Agent`, `Conversation`, `MemoryStore`, and the
 `neosian.evaluation` facade stable under SemVer, the ecosystem
 seams (scope grammar, token classes, integer
 micro-USD, event vocabulary, error codes) SemVer-guaranteed — a seam break
-only at a major — and the state process's wire (the eighteen `/v1/`
+only at a major — and the state process's wire (the nineteen `/v1/`
 routes and their envelope, `neosian docs wire`, versioned by
 `WIRE_VERSION`) stable under the same promise: one promise covering library, seams, and wire. Until then the seams are append-only by convention, and error
 codes are already append-only forever. Consumers pin a release

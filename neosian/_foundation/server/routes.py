@@ -1,6 +1,6 @@
 """The store-shaped routes — the wire mirrors the ABCs 1:1 (DESIGN §18).
 
-Fourteen POST endpoints under `/v1/`, one per storage-ABC method (the
+Fifteen POST endpoints under `/v1/`, one per storage-ABC method (the
 four `store/*` routes of NC4 live in `portable_routes.py`). Handlers
 are thin: decode the parameters by name through the typed readers in
 `wire.py`, await the store, encode the return value under one key.
@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any
 
 from neosian._foundation.llm.codec import message_from_json
 from neosian._foundation.server.paging import (
+    PAGE,
     memory_page,
     projections_page,
     turns_page,
@@ -40,6 +41,7 @@ from neosian._foundation.server.wire import (
     encode_version,
     optional_int,
     optional_str,
+    optional_strs,
     optional_timestamp,
     require_objects,
     require_str,
@@ -77,9 +79,10 @@ def _allowed(
     client: Client, payload: dict[str, Any], *, whole_store: bool
 ) -> Response | None:
     """One gate for every route: the parameter a request names is the
-    thing the allowance is checked against. A whole-store route (the
-    four `store/*`, which move or restore verbatim) refuses a constrained
-    client outright, whatever its body names (§18.4)."""
+    thing the allowance is checked against — a search's `conversations`
+    list id by id. A whole-store route (the four `store/*`, which move or
+    restore verbatim) refuses a constrained client outright, whatever
+    its body names (§18.4); so does a search that names no list."""
     if not client.constrained:
         return None
     if whole_store:
@@ -95,6 +98,12 @@ def _allowed(
         named = True
         if not client.may_reach_conversation(conversation_id):
             return _refused(f"conversation {conversation_id!r}")
+    conversations = payload.get("conversations")
+    if isinstance(conversations, list):
+        named = True
+        for item in conversations:
+            if isinstance(item, str) and not client.may_reach_conversation(item):
+                return _refused(f"conversation {item!r}")
     return None if named else _refused("the whole store")
 
 
@@ -128,7 +137,8 @@ def endpoint(
 
 
 def store_routes(memory: MemoryStore, conversation: ConversationStore) -> list[Route]:
-    """The fourteen wire endpoints over one both-seams store (§18.2; NL added two)."""
+    """The fifteen wire endpoints over one both-seams store (§18.2; NL
+    added two, N5 the search)."""
 
     async def read(payload: dict[str, Any], client: str) -> dict[str, Any]:
         del client  # a read records nobody
@@ -263,6 +273,20 @@ def store_routes(memory: MemoryStore, conversation: ConversationStore) -> list[R
         )
         return {"turn": number}
 
+    async def search_turns(payload: dict[str, Any], client: str) -> dict[str, Any]:
+        del client  # a read records nobody
+        # Bounded by construction, never a page: a limit past the page is
+        # the caller's error, in the ABC's own envelope (§32).
+        limit = optional_int(payload, "limit")
+        if limit is not None and limit > PAGE:
+            raise ValueError(f"a search answers at most {PAGE} turns; narrow the query")
+        turns = await conversation.search_turns(
+            require_str(payload, "query"),
+            conversations=optional_strs(payload, "conversations"),
+            limit=50 if limit is None else limit,
+        )
+        return {"turns": [encode_turn(turn) for turn in turns]}
+
     async def append_projections(
         payload: dict[str, Any], client: str
     ) -> dict[str, Any]:
@@ -294,6 +318,7 @@ def store_routes(memory: MemoryStore, conversation: ConversationStore) -> list[R
         "conversation/append_turn": append_turn,
         "conversation/read_turns": read_turns,
         "conversation/last_turn_number": last_turn_number,
+        "conversation/search_turns": search_turns,
         "conversation/append_projections": append_projections,
         "conversation/read_projections": read_projections,
     }

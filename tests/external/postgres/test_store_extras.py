@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 import psycopg
 import pytest
 
-from neosian import PostgresStore
+from neosian import ConversationTurn, Message, PostgresStore, Role
 from neosian._foundation.shared.exceptions import (
     ConversationFormatUnsupportedError,
     MemoryFormatUnsupportedError,
@@ -107,3 +107,58 @@ async def test_nul_content_raises_the_driver_error(store: PostgresStore) -> None
     substrate exception to §8's byte-exact round-trip."""
     with pytest.raises(psycopg.Error):
         await store.write(_SCOPE, "doc", "a\x00b")
+
+
+async def test_search_text_is_rendered_at_append(store: PostgresStore) -> None:
+    """N5 (§32): the column holds the one rule's rendering, never SQL's."""
+    from neosian.conversation import turn_text
+
+    appended = await store.append_turn(
+        "searched", [Message(role=Role.USER, content="the pelican ate a mackerel")]
+    )
+    schema = store_schema(store)
+    rows = await fetch_sql(
+        store,
+        f'SELECT search_text FROM "{schema}".turns WHERE conversation_id = %(cid)s',
+        {"cid": "searched"},
+    )
+    assert [row[0] for row in rows] == [turn_text(appended)]
+
+
+async def test_a_generation_two_row_never_matches_a_search(
+    store: PostgresStore,
+) -> None:
+    schema = store_schema(store)
+    await plant_sql(
+        store,
+        f'INSERT INTO "{schema}".conversations (conversation_id, created_at) '
+        "VALUES ('older', %(ts)s)",
+        {"ts": _TS},
+    )
+    await plant_sql(
+        store,
+        f'INSERT INTO "{schema}".turns '
+        "(conversation_id, turn, messages, created_at, neosian_format) "
+        "VALUES ('older', 1, %(messages)s::jsonb, %(ts)s, 1)",
+        {"messages": '[{"role": "user", "content": "pelican"}]', "ts": _TS},
+    )
+    (turn,) = await store.read_turns("older")
+    assert turn.turn == 1
+    assert await store.search_turns("pelican") == ()
+
+
+async def test_a_restore_re_renders_the_search_text(store: PostgresStore) -> None:
+    from neosian import ConversationArchive
+
+    turn = ConversationTurn(
+        conversation_id="restored",
+        turn=1,
+        messages=(Message(role=Role.USER, content="a kittiwake"),),
+        created_at=_TS,
+        actor="archive:me",
+    )
+    await store.restore_conversation(
+        ConversationArchive(conversation_id="restored", turns=(turn,), projections=())
+    )
+    (hit,) = await store.search_turns("kittiwake")
+    assert (hit.conversation_id, hit.turn, hit.actor) == ("restored", 1, "archive:me")

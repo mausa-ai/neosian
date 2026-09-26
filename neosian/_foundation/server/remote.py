@@ -344,6 +344,25 @@ class RemoteStore(MemoryStore, ConversationStore, RemotePortable, RemotePageable
         )
         return int(data["turn"])
 
+    async def search_turns(
+        self,
+        query: str,
+        *,
+        conversations: Sequence[str] | None = None,
+        limit: int = 50,
+    ) -> tuple[ConversationTurn, ...]:
+        # One POST, never a page: a search is bounded by construction, and
+        # the server refuses a limit above its page as the ABC's ValueError.
+        data = await self._call(
+            "conversation/search_turns",
+            {
+                "query": query,
+                "conversations": None if conversations is None else list(conversations),
+                "limit": limit,
+            },
+        )
+        return tuple(decode_turn(turn) for turn in data["turns"])
+
     async def append_projections(
         self, conversation_id: str, entries: Sequence[ConversationProjection]
     ) -> None:

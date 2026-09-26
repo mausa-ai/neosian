@@ -16,7 +16,10 @@ FileStore precedent). The schema is the shipped Postgres one in SQLite
 terms, applied idempotently at construction: the reference stores apply
 theirs by an explicit act, a one-file example opens ready. Timestamps
 are fixed-width ISO-8601 `Z` strings so that text order is time order,
-flags are integers, `extra` and `messages` are JSON text.
+flags are integers, `extra` and `messages` are JSON text. History
+search (DESIGN §32) matches the `search_text` column the append renders
+through neosian's one rule, `instr(lower(...))` per term; a file from
+before the column gains it on open.
 
 `supports_optimistic_concurrency` is True for a reason of SQLite's own:
 `BEGIN IMMEDIATE` takes the database's single writer lock across
@@ -50,6 +53,8 @@ from neosian.conversation import (
     message_from_json,
     message_to_json,
     parse_conversation_id,
+    parse_query,
+    turn_text,
 )
 from neosian.memory import (
     MEMORY_FORMAT_VERSION,
@@ -93,6 +98,7 @@ CREATE TABLE IF NOT EXISTS memory_redactions (
 CREATE TABLE IF NOT EXISTS turns (
     conversation_id TEXT NOT NULL, turn INTEGER NOT NULL, messages TEXT NOT NULL,
     created_at TEXT NOT NULL, neosian_format INTEGER NOT NULL DEFAULT 1, actor TEXT,
+    search_text TEXT,
     PRIMARY KEY (conversation_id, turn));
 CREATE TABLE IF NOT EXISTS projections (
     id INTEGER PRIMARY KEY, conversation_id TEXT NOT NULL, turn INTEGER NOT NULL,
@@ -144,6 +150,23 @@ def _window(since: datetime | None, limit: int | None) -> None:
         raise ValueError("limit must be >= 0")
 
 
+_SCHEMA_VERSION = 2
+
+
+def _converge(db: sqlite3.Connection) -> None:
+    """Generation 2 (search, DESIGN §32): a file created by generation 1
+    lacks the column, and SQLite has no ADD COLUMN IF NOT EXISTS, so
+    table_info guards the ALTER; then the stamp, monotonic. A row from
+    before the column reads but never matches a search until it is
+    re-written (an export and import re-renders it)."""
+    columns = {row[1] for row in db.execute("PRAGMA table_info(turns)")}
+    if "search_text" not in columns:
+        db.execute("ALTER TABLE turns ADD COLUMN search_text TEXT")
+    db.execute(
+        "UPDATE neosian_schema SET version = max(version, ?)", (_SCHEMA_VERSION,)
+    )
+
+
 def _cursor(after: int, limit: int | None) -> None:
     if after < 0:
         raise ValueError(f"after must be >= 0, got {after}")
@@ -164,6 +187,7 @@ class SqliteStore(MemoryStore, ConversationStore):
         self.path = Path(path)
         self._db = sqlite3.connect(self.path, isolation_level=None, timeout=5.0)
         self._db.executescript(_SCHEMA)
+        _converge(self._db)
         self._clock = clock if clock is not None else SystemClock()
         self._lock = asyncio.Lock()
 
@@ -414,27 +438,27 @@ class SqliteStore(MemoryStore, ConversationStore):
         encoded = _dump([message_to_json(message) for message in messages])
         async with self._lock:
             with self._transaction():
-                turn = self._last_turn(conversation_id) + 1
-                created_at = self._now()
+                record = ConversationTurn(
+                    conversation_id=conversation_id,
+                    turn=self._last_turn(conversation_id) + 1,
+                    messages=tuple(messages),
+                    created_at=self._now(),
+                    actor=actor,
+                )
                 self._db.execute(
                     "INSERT INTO turns (conversation_id, turn, messages, created_at,"
-                    " neosian_format, actor) VALUES (?, ?, ?, ?, ?, ?)",
+                    " neosian_format, actor, search_text) VALUES (?, ?, ?, ?, ?, ?, ?)",
                     (
                         conversation_id,
-                        turn,
+                        record.turn,
                         encoded,
-                        _stamp(created_at),
+                        _stamp(record.created_at),
                         CONVERSATION_FORMAT_VERSION,
                         actor,
+                        turn_text(record),
                     ),
                 )
-        return ConversationTurn(
-            conversation_id=conversation_id,
-            turn=turn,
-            messages=tuple(messages),
-            created_at=created_at,
-            actor=actor,
-        )
+        return record
 
     async def read_turns(
         self, conversation_id: str, *, after: int = 0, limit: int | None = None
@@ -450,6 +474,39 @@ class SqliteStore(MemoryStore, ConversationStore):
 
     async def last_turn_number(self, conversation_id: str) -> int:
         return self._last_turn(parse_conversation_id(conversation_id))
+
+    async def search_turns(
+        self,
+        query: str,
+        *,
+        conversations: Sequence[str] | None = None,
+        limit: int = 50,
+    ) -> tuple[ConversationTurn, ...]:
+        """Every term a substring of the rendered `search_text`, newest
+        first (DESIGN §32). Stock SQLite's `lower()` folds ASCII only —
+        exactly what the kit pins; a NULL column never matches."""
+        terms = parse_query(query)
+        ids = (
+            None
+            if conversations is None
+            else tuple(map(parse_conversation_id, conversations))
+        )
+        if limit < 1:
+            raise ValueError(f"limit must be >= 1, got {limit}")
+        if ids == ():
+            return ()
+        where = " AND ".join("instr(lower(search_text), ?) > 0" for _ in terms)
+        params: list[Any] = list(terms)
+        if ids is not None:
+            where += f" AND conversation_id IN ({', '.join('?' for _ in ids)})"
+            params.extend(ids)
+        rows = self._db.execute(
+            "SELECT conversation_id, turn, messages, created_at, neosian_format, actor"
+            f" FROM turns WHERE {where} ORDER BY created_at DESC,"
+            " conversation_id COLLATE BINARY DESC, turn DESC LIMIT ?",
+            (*params, limit),
+        ).fetchall()
+        return tuple(self._turn(row[0], row[1:]) for row in rows)
 
     async def append_projections(
         self, conversation_id: str, entries: Sequence[ConversationProjection]

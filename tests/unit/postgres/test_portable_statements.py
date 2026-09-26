@@ -19,6 +19,7 @@ def test_statements_are_schema_qualified_and_gated() -> None:
         assert statement.count("WHERE (SELECT empty FROM gate)") >= 2
         assert statement.rstrip().endswith("SELECT empty FROM gate")
     assert "WITH ORDINALITY" in sql.restore_scope
+    assert "t.value ->> 'search_text'" in sql.restore_conversation  # N5, §32
     assert 'ORDER BY scope COLLATE "C"' in sql.list_scopes
     assert 'ORDER BY conversation_id COLLATE "C"' in sql.list_conversations
 

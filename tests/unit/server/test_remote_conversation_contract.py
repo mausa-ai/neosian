@@ -6,7 +6,8 @@ from collections.abc import AsyncIterator
 import pytest
 
 from neosian import RemoteStore
-from neosian.conversation.testing import ConversationStoreContract
+from neosian.conversation.testing import ConversationStoreContract, SearchContract
+from tests.unit.memory.paging import FrozenClock
 
 from .conftest import RemoteOverFile
 
@@ -47,3 +48,17 @@ class TestRemoteConversationContract(ConversationStoreContract):
         file.parent.mkdir(parents=True, exist_ok=True)
         with file.open("a", encoding="utf-8", newline="") as handle:
             handle.write(line + "\n")
+
+
+class TestRemoteSearchOnTies(SearchContract):
+    """The search slice over the wire under a frozen clock (§32)."""
+
+    @pytest.fixture
+    def manual_clock(self) -> FrozenClock:
+        return FrozenClock()
+
+    @pytest.fixture
+    async def store(
+        self, remote_over_file: RemoteOverFile
+    ) -> AsyncIterator[RemoteStore]:
+        yield remote_over_file.remote

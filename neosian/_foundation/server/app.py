@@ -2,7 +2,7 @@
 
 One neosian-owned Starlette composes four surfaces: `/health`
 (unauthenticated — a container healthcheck needs no token), the
-authenticated `/v1/capabilities` handshake, the fourteen store-shaped
+authenticated `/v1/capabilities` handshake, the fifteen store-shaped
 routes plus the four `store/*` routes (NC4), and — when mounts are given — MCP over streamable HTTP at
 `/mcp`, built from the same `create_memory_server` factory the stdio
 transport uses, so all five transports execute one dispatcher.

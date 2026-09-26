@@ -101,10 +101,11 @@ def build_portable_statements(schema: str) -> PortableStatements:
             ON CONFLICT (conversation_id) DO NOTHING
         ), rows AS (
             INSERT INTO {s}.turns
-                (conversation_id, turn, messages, created_at, neosian_format, actor)
+                (conversation_id, turn, messages, created_at, neosian_format,
+                 actor, search_text)
             SELECT %(conversation_id)s, (t.value ->> 'turn')::integer,
                    t.value -> 'messages', (t.value ->> 'created_at')::timestamptz,
-                   %(format)s, t.value ->> 'actor'
+                   %(format)s, t.value ->> 'actor', t.value ->> 'search_text'
             FROM jsonb_array_elements(%(turns)s::jsonb) AS t(value)
             WHERE (SELECT empty FROM gate)
             RETURNING 1

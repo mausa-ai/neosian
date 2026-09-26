@@ -82,6 +82,19 @@ _WRONG_TYPES: list[tuple[str, dict[str, Any], str]] = [
         "entries",
     ),
     ("conversation/read_projections", {"conversation_id": "c1", "after": "0"}, "after"),
+    ("conversation/search_turns", {"query": 5}, "query"),
+    (
+        "conversation/search_turns",
+        {"query": "x", "conversations": "c1"},
+        "conversations",
+    ),
+    (
+        "conversation/search_turns",
+        {"query": "x", "conversations": [1]},
+        "conversations",
+    ),
+    ("conversation/search_turns", {"query": "x", "limit": "5"}, "limit"),
+    ("conversation/search_turns", {"query": "x", "limit": True}, "limit"),
     (
         "store/restore_scope",
         {"scope": 1, "documents": [], "versions": [], "redactions": []},

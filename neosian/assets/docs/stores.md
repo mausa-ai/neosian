@@ -15,7 +15,7 @@ example on SQLite that passes both.
 
 ## The contract
 
-Two abstract classes, fourteen methods, no constructor of neosian's:
+Two abstract classes, fifteen methods, no constructor of neosian's:
 
 ```python
 class MemoryStore(ABC):
@@ -34,6 +34,7 @@ class ConversationStore(ABC):
     async def append_turn(conversation_id, messages, *, actor=None) -> ConversationTurn
     async def read_turns(conversation_id, *, after=0, limit=None) -> tuple[ConversationTurn, ...]
     async def last_turn_number(conversation_id) -> int
+    async def search_turns(query, *, conversations=None, limit=50) -> tuple[ConversationTurn, ...]
     async def append_projections(conversation_id, entries) -> None
     async def read_projections(conversation_id, *, after=0, limit=None) -> tuple[ConversationProjection, ...]
 ```
@@ -74,10 +75,29 @@ projections in `(turn, span, insertion)` order, the same format marker,
 and no interpretation: the store never checks that a projected turn
 exists, never trims, never invents an id.
 
+`search_turns` is one rule on every substrate, and the kit pins it: the
+query splits on whitespace into lowercased terms; a turn matches when
+every term is a case-insensitive substring of its searchable text, which
+is `turn_text` from `neosian.conversation` (each message's text, each
+tool call as its name and compact JSON arguments, tool results, joined
+by newlines, no role labels, so "user" matches nothing); hits come
+newest first under one total order, `created_at`, then
+`conversation_id` in codepoint order, then `turn`, each descending; the
+answer holds at most `limit` turns; `conversations=None` is the whole
+store, a sequence narrows, `()` answers `()`; a blank query or `limit`
+below 1 is a `ValueError`. ASCII folding is pinned; beyond ASCII a
+substrate folds as its engine does. A store may render the text at read
+(FileStore scans its turn log) or keep it in a column written at append
+(PostgresStore's schema generation 3, the SQLite example); a row written
+before such a column holds nothing and never matches until an export
+and import re-renders it. `parse_query` and `match_terms` are public for
+a store that scans.
+
 Two names are reserved and must not be claimed: `MemoryStore.search`
 and `ConversationStore.list_conversations`, each a 1.x additive that
 arrives only by a recorded decision; a store may implement either
-early. Two protocols beside the ABCs are optional and cost a host
+early (`search_turns` arrived by exactly that route at N5). Two
+protocols beside the ABCs are optional and cost a host
 nothing: `Pageable`, four `*_page` listings behind an opaque cursor,
 which is what `neosian serve` requires of a store it opens; and
 `Portable`, which `neosian export` and `import` need (`neosian docs
@@ -121,7 +141,10 @@ class TestMyStoreConversations(ConversationStoreContract):
 `MemoryStoreContract` carries 42 tests (68 items once parametrised over
 seven round-trip payloads, ten bad scopes and twelve bad paths), the
 ledger reads and the concurrency contract included; `ConversationStoreContract`
-carries 29 (41 items). The `store` fixture must start empty on every
+carries 44 (56 items), the fifteen of its search slice
+(`SearchContract`, also exported alone: run it a second time under a
+clock that never advances and the total order's tiebreak becomes a real
+check). The `store` fixture must start empty on every
 test, and `test_store_starts_empty` fails loudly when it leaks; the
 `scope` and `conversation_id` fixtures are overridable for a substrate
 that is not thrown away between tests. The planting hooks write one raw
@@ -151,7 +174,7 @@ hands, the contract ours.
 
 `examples/sqlite_store.py` is a third substrate that passes both kits in
 neosian's own unit tier (`uv run pytest tests/unit/examples/test_sqlite_store.py`,
-115 passed, none skipped) and is never shipped in the wheel: SQLite
+146 passed, none skipped) and is never shipped in the wheel: SQLite
 stays community custody, so copy the file, it imports the two public
 facades and nothing else.
 
@@ -163,7 +186,12 @@ ISO-8601 `Z` text so text order is time order (a stamp without its
 microseconds would sort after one with them), flags are integers, and
 `extra` and `messages` are JSON text. Listings use `substr` rather than
 `LIKE`, which is case-insensitive and needs escaping, and order `COLLATE
-BINARY`, the codepoint order the reference stores pin.
+BINARY`, the codepoint order the reference stores pin. Search matches
+the `search_text` column the append renders with `turn_text`, one
+`instr(lower(...))` per term (stock SQLite's `lower()` folds ASCII only,
+which is what the kit pins), and a file from before the column gains it
+on open through a `PRAGMA table_info` guard, the converge-by-ALTER story
+the Postgres asset tells.
 
 `supports_optimistic_concurrency` is True for a reason of SQLite's own:
 `BEGIN IMMEDIATE` takes the file's single writer lock across processes,

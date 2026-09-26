@@ -34,6 +34,7 @@ _POSTS = {
     "/v1/conversation/append_turn",
     "/v1/conversation/read_turns",
     "/v1/conversation/last_turn_number",
+    "/v1/conversation/search_turns",
     "/v1/conversation/append_projections",
     "/v1/conversation/read_projections",
     "/v1/store/scopes",
@@ -76,7 +77,7 @@ _TURN_1 = {
 
 
 class TestTheRouteSet:
-    async def test_eighteen_posts_and_two_gets(self, tmp_path: Any) -> None:
+    async def test_nineteen_posts_and_two_gets(self, tmp_path: Any) -> None:
         app = await build_app(FileStore(tmp_path / "s"), token=TOKEN)
         routes = [route for route in app.routes if isinstance(route, Route)]
         by_method: dict[str, set[str]] = {"POST": set(), "GET": set()}
@@ -86,7 +87,7 @@ class TestTheRouteSet:
                     by_method[method].add(route.path)
         assert by_method["POST"] == _POSTS
         assert by_method["GET"] == {"/health", "/v1/capabilities"}
-        assert len(routes) == 20
+        assert len(routes) == 21
 
     async def test_an_unknown_route_and_a_wrong_method_are_plain(
         self, raw_wire: RawWire
@@ -102,7 +103,7 @@ class TestTheHandshake:
         assert await raw_wire.get("/v1/capabilities") == (
             200,
             {
-                "wire_version": 4,
+                "wire_version": 5,
                 "neosian_version": metadata.version("neosian"),
                 "backend": "FileStore",
                 "supports_optimistic_concurrency": False,
@@ -300,6 +301,32 @@ class TestConversationGolden:
         )
 
 
+class TestSearchGolden:
+    async def test_the_search_exchange(self, raw_wire: RawWire) -> None:
+        # N5 (§32): one POST, the turn shape of every other read, never a
+        # page; the query folds case, a role label matches nothing, an
+        # empty list of conversations answers an empty list.
+        await raw_wire.post(
+            "conversation/append_turn",
+            {"conversation_id": "c1", "messages": [{"role": "user", "content": "hi"}]},
+        )
+        assert await raw_wire.post("conversation/search_turns", {"query": "HI"}) == (
+            200,
+            {"turns": [_TURN_1]},
+        )
+        assert await raw_wire.post(
+            "conversation/search_turns",
+            {"query": "hi", "conversations": ["c1"], "limit": 1},
+        ) == (200, {"turns": [_TURN_1]})
+        assert await raw_wire.post(
+            "conversation/search_turns", {"query": "hi", "conversations": []}
+        ) == (200, {"turns": []})
+        assert await raw_wire.post("conversation/search_turns", {"query": "user"}) == (
+            200,
+            {"turns": []},
+        )
+
+
 class TestStoreGolden:
     async def test_the_listings(self, raw_wire: RawWire) -> None:
         await raw_wire.post(
@@ -382,4 +409,4 @@ class TestThePage:
         body = page.body
         for path in _POSTS:
             assert f"`{path.removeprefix('/v1/')}`" in body, path
-        assert "eighteen" in body and "`WIRE_VERSION`" in body
+        assert "nineteen" in body and "`WIRE_VERSION`" in body

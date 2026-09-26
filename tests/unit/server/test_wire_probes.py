@@ -398,3 +398,32 @@ class TestBodyShapes:
             **{"Content-Type": "text/plain"},
         )
         assert (status, text) == (200, '{"document":null}')
+
+
+class TestSearchShapes:
+    async def test_the_bounds_and_the_optionals(self, raw_wire: RawWire) -> None:
+        # N5 (§32): a search never pages, so a limit past the page and a
+        # limit of zero are the caller's errors (a read answers an empty
+        # page at zero); null and absent are one thing.
+        await _turn(raw_wire, {"role": "user", "content": "hi"})
+        search = "conversation/search_turns"
+        assert await raw_wire.post(search, {"query": "hi", "limit": 501}) == (
+            400,
+            _error(
+                "value_error", "a search answers at most 500 turns; narrow the query"
+            ),
+        )
+        assert await raw_wire.post(search, {"query": "hi", "limit": 0}) == (
+            400,
+            _error("value_error", "limit must be >= 1, got 0"),
+        )
+        assert await raw_wire.post(search, {"query": "   "}) == (
+            400,
+            _error("value_error", "query must contain at least one term"),
+        )
+        _, bare = await raw_wire.post(search, {"query": "hi"})
+        _, nulls = await raw_wire.post(
+            search, {"query": "hi", "conversations": None, "limit": None}
+        )
+        assert nulls == bare
+        assert len(bare["turns"]) == 1

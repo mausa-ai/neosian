@@ -16,6 +16,7 @@ import json
 from typing import TYPE_CHECKING, Any
 
 from neosian._foundation.conversation.ids import parse_conversation_id
+from neosian._foundation.conversation.search import turn_text
 from neosian._foundation.conversation.types import CONVERSATION_FORMAT_VERSION
 from neosian._foundation.llm.codec import message_to_json
 from neosian._foundation.memory.scope import parse_scope
@@ -108,6 +109,7 @@ class PostgresPortableStore:
                         "messages": [message_to_json(m) for m in t.messages],
                         "created_at": _stamp(t.created_at),
                         "actor": t.actor,
+                        "search_text": turn_text(t),  # a restore re-renders (§32)
                     }
                     for t in archive.turns
                 ),

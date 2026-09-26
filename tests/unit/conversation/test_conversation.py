@@ -17,6 +17,12 @@ from neosian._foundation.conversation.base import ConversationStore
 from neosian._foundation.conversation.compaction import CompactionConfig
 from neosian._foundation.conversation.core import Conversation
 from neosian._foundation.conversation.links import LinkRegistry
+from neosian._foundation.conversation.search import (
+    match_terms,
+    newest_first,
+    parse_query,
+    turn_text,
+)
 from neosian._foundation.conversation.types import (
     ConversationProjection,
     ConversationTurn,
@@ -99,6 +105,18 @@ class _ProbeStore(ConversationStore):
     async def last_turn_number(self, conversation_id: str) -> int:
         del conversation_id
         return len(self.turns)
+
+    async def search_turns(
+        self,
+        query: str,
+        *,
+        conversations: Sequence[str] | None = None,
+        limit: int = 50,
+    ) -> tuple[ConversationTurn, ...]:
+        del conversations
+        terms = parse_query(query)
+        hits = (t for t in self.turns if match_terms(turn_text(t), terms))
+        return newest_first(hits)[:limit]
 
     async def append_projections(
         self, conversation_id: str, entries: Sequence[ConversationProjection]

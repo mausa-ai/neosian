@@ -15,7 +15,9 @@ The `store` fixture must be function-scoped, empty and isolated —
 substrate-planting tests (format refusal and a malformed row, for turns
 and for projections); by default they skip. Two ids differing
 only in case are never used (case-insensitive filesystems are a legal
-substrate).
+substrate). The search slice (`testing_search.SearchContract`, DESIGN
+§32) is inherited here and may be run again on its own under a frozen
+clock, where the total order's tiebreak becomes a real check.
 """
 
 from __future__ import annotations
@@ -25,6 +27,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from neosian._foundation.conversation.testing_search import SearchContract
 from neosian._foundation.conversation.types import ConversationProjection
 from neosian._foundation.llm.base import (
     ImageBlock,
@@ -88,13 +91,8 @@ _ROUND_TRIP: tuple[tuple[Message, ...], ...] = (
 )
 
 
-class ConversationStoreContract:
-    """Inherit the 29 conformance tests (41 collected items); provide a `store` fixture."""
-
-    @pytest.fixture
-    def conversation_id(self) -> str:
-        """The conversation under test; override to exercise another."""
-        return "contract-kit"
+class ConversationStoreContract(SearchContract):
+    """Inherit the 44 conformance tests (56 collected items); provide a `store` fixture."""
 
     def stamped(self, store: ConversationStore, actor: str) -> str:
         """What the store records for a turn appended as `actor` — identity
@@ -117,13 +115,6 @@ class ConversationStoreContract:
         bypassing the store. Override per substrate; the default skips."""
         del store, conversation_id, line
         pytest.skip("plant_raw_projection not implemented for this substrate")
-
-    @staticmethod
-    def _exchange(text: str) -> tuple[Message, ...]:
-        return (
-            Message(role=Role.USER, content=text),
-            Message(role=Role.ASSISTANT, content=f"re: {text}"),
-        )
 
     # Turns ----------------------------------------------------------------
 
@@ -307,6 +298,8 @@ class ConversationStoreContract:
             )
         with pytest.raises(ConversationIdInvalidError):
             await store.read_projections(bad_id)
+        with pytest.raises(ConversationIdInvalidError):
+            await store.search_turns("x", conversations=[bad_id])
 
     # Projections ----------------------------------------------------------
 
