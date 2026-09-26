@@ -291,6 +291,69 @@ evidence. Each stays measured every dispatch; none is tuned around
 
 ## Results
 
+### 2026-09-26: Dispatch #18, every lane at rc19; Sol's first dispatched board (the NW4 /ship)
+
+Dispatch #18 (run 36249951585 on 043887d: `1.0.0rc19` plus the two
+Dependabot meta commits; the pack and the memory prompt unchanged since
+#16), the first dispatch since #17 on 2026-09-16, over every lane:
+`gpt-6-sol`'s first dispatched board, the `local` lane's first run in
+the matrix (NW2), and every door's board. Cerebras answered `402
+payment_required` on every call of the run, and from the key file too
+(the account, not the rows); the account was funded the same day and the
+lane ran from the key file, read here beside the run's lanes. Every cell
+read from the lane logs; a green cell's link print is captured, so the
+link column reads `green` where the cell passed.
+
+| Provider | Model | function | cli | http | mcp | native | door probes | link |
+|---|---|---|---|---|---|---|---|---|
+| OpenAI (Responses) | gpt-6-sol | 9/10 | 10/10 | 10/10 | 10/10 | n/a | — | green |
+| Anthropic | claude-sonnet-5 | 8/10 | 10/10 | 9/10 | 10/10 | 10/10 | — | green |
+| Cerebras (key file, after funding) | gpt-oss-120b | 10/10 | 9/10 | 9/10 | 8/10 | n/a | 7/7 | green |
+| Cerebras (key file, after funding) | qwen-3.8-27b | 10/10 | 9/10 | 10/10 | 9/10 | n/a | — | green |
+| xAI (Responses) | grok-4.6 | 9/10 | 9/10 | 8/10 | 9/10 | n/a | 7/7 | green |
+| Gemini | gemini-3.8-flash | 9/10 | 9/10 | 10/10 | 10/10 | n/a | 7/7 | green |
+| Model Studio, token plan | qwen3.8-max | 10/10 | 10/10 | 10/10 | 9/10 | n/a | 7/7 | green |
+| Moonshot | kimi-k3 | *429* 0/10 | *429* 0/10 | *429* 0/10 | *429* 0/10 | n/a | *429* | *429* |
+| local (the hosted runner, CPU) | gemma-4-e4b-it | 9/10 | 9/10 | 9/10 | 8/10 | n/a | 5/5 | green |
+
+Findings, recorded as found:
+
+- **gpt-6-sol's first dispatched board: 39/40** (40/40 from the key file
+  the same morning). The red is `dedup` on function: the second allergy
+  filed as its own document (`/user/shellfish-allergy` beside
+  `/user/peanut-allergy`) where one document carrying both is expected,
+  the duplication class. Every tool call carried its reasoning over
+  Responses; the probe, fallback and link cells green.
+- **Sonnet 5: 37/40, the native axis 10/10.** `correct-wrong-memory` on
+  function and http (the disavowed fact kept where no document is
+  expected) and `skills` on function, the classes #16 recorded.
+- **grok-4.6: 35/40** (36 at #17): `long-horizon-recall`'s distractor on
+  function, cli and http (its recorded class), `skills` on http,
+  `contradiction` on mcp.
+- **gemini-3.8-flash: 38/40** (40 at #16): `skills` on function and cli.
+- **qwen3.8-max: 39/40**, the same `skills` cell on mcp as #17.
+- **Cerebras from the key file, after funding: gpt-oss-120b 36/40,
+  qwen-3.8-27b 38/40.** `skills` on cli, http and mcp for gpt-oss (the
+  skill written without its `description:` frontmatter; on cli an extra
+  version row, three where two are expected) and `write-discipline` on
+  mcp; `skills` on cli and mcp for qwen-3.8-27b. The run's 402 on every
+  call is the account's fact, so both rows stay.
+- **The local lane on the hosted runner: 35/40 in 50 minutes, no cell
+  cut** (NW2 read 35/40 on an M4): `skills` on every transport (the
+  frontmatter class) and `write-discipline` on mcp. The CPU runner
+  finished every board inside the 3000 s budget, so the lane's cost is
+  now known: about fifty minutes a dispatch.
+- **kimi-k3: no measurement.** Every call over four hours answered
+  `429 exceeded_current_quota_error`, the Moonshot account suspended for
+  insufficient balance. Moonshot spells an empty balance as a 429, which
+  the pacer reads as a rate limit and retries, so the door probes, the
+  catalog probe, the link cell and each of the four boards ran to their
+  3000 s cut: 4 h 08 min for nothing, the lane's whole budget. The
+  account's fact; the row stays, and the lane is owed a run from the key
+  file once the account is funded. A 429 whose body names the balance
+  could end the lane at once instead of at the cut; recorded, not built.
+- **Links:** every link cell green on every lane that answered.
+
 ### 2026-09-26: The GPT-6 family and Opus 5.5 (NW4's close, the key files)
 
 Measured locally from the key files on the NW4 tree (`1.0.0rc19`; the
