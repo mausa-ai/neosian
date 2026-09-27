@@ -8,6 +8,14 @@ phase close names the version.
 
 ## [Unreleased]
 
+### Changed
+
+- The docs live at https://neosian.com/docs and `llms.txt` at
+  https://neosian.com/llms.txt: one domain (NC11, ledger #300).
+  `project.urls` Documentation, the README badge and `llms.txt` point
+  there; `docs.neosian.com/*` is a permanent redirect to the same path
+  under `/docs`.
+
 ## [1.0.0rc20] - 2026-09-27
 
 ### Added

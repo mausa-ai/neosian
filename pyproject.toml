@@ -51,7 +51,7 @@ all = ["neosian[postgres]"]
 [project.urls]
 Homepage = "https://github.com/mausa-ai/neosian"
 Repository = "https://github.com/mausa-ai/neosian"
-Documentation = "https://docs.neosian.com"
+Documentation = "https://neosian.com/docs"
 Changelog = "https://github.com/mausa-ai/neosian/blob/master/CHANGELOG.md"
 Issues = "https://github.com/mausa-ai/neosian/issues"
 

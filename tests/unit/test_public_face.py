@@ -88,6 +88,22 @@ def test_the_installer_pins_uv_to_the_dockerfile() -> None:
 
 
 @pytest.mark.unit
+def test_the_docs_are_on_the_one_domain() -> None:
+    # One domain (NC11, ledger #300): the docs at neosian.com/docs and
+    # llms.txt at the root, never the retired subdomain.
+    with (_ROOT / "pyproject.toml").open("rb") as f:
+        urls = tomllib.load(f)["project"]["urls"]
+    assert urls["Documentation"] == "https://neosian.com/docs"
+    readme = (_ROOT / "README.md").read_text(encoding="utf-8")
+    assert "](https://neosian.com/docs)" in readme
+    llms = (_ROOT / "llms.txt").read_text(encoding="utf-8")
+    assert "https://neosian.com/docs" in llms
+    assert "https://neosian.com/llms.txt" in llms
+    for text in (readme, llms, (_ROOT / "pyproject.toml").read_text(encoding="utf-8")):
+        assert "docs.neosian.com" not in text
+
+
+@pytest.mark.unit
 def test_no_funding_file() -> None:
     # Ruled an explicit no (ledger #187); a FUNDING.yml is a decision, not a drop-in.
     assert not (_ROOT / ".github" / "FUNDING.yml").exists()

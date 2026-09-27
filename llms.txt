@@ -22,12 +22,12 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
 
 - `neosian docs`: list the shipped topics (they travel in the wheel, so
   they always describe the installed version).
-- `neosian docs quickstart | agent | local | tools | memory | skills | stores | cli | mcp | agents | interop | topology | wire`
+- `neosian docs quickstart | agent | local | tools | memory | skills | stores | cli | mcp | agents | interop | topology | wire | baselines`
   prints one page, markdown on stdout, pipe-safe.
 - `neosian docs topology`: who runs neosian code x where the bytes live;
   one writer per FileStore root.
 - The same pages online, rendered from the wheel at the current release:
-  https://docs.neosian.com (this file at https://docs.neosian.com/llms.txt).
+  https://neosian.com/docs (this file at https://neosian.com/llms.txt).
 
 ## Set up from the shell (the human path)
 
