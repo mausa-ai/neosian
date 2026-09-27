@@ -306,6 +306,126 @@ evidence. Each stays measured every dispatch; none is tuned around
 
 ## Results
 
+### 2026-09-27: Dispatch #20, the corrected pin on every row (the N5 /ship)
+
+Dispatch #20 (run 36309771204 on 7b4dae8: `1.0.0rc20` plus the TTL pin
+widened to grouped digits, the pack at `6024174f…`), the settling
+dispatch of #19's pin class, over every lane; every cell read from the
+lane logs, no cell cut, the door probes and link cells green on every
+lane but one probe on Anthropic's (below).
+
+| Provider | Model | function | cli | http | mcp | native | old-turn-search | lane |
+|---|---|---|---|---|---|---|---|---|
+| OpenAI (Responses) | gpt-6-sol | 10/11 | 10/11 | 11/11 | 11/11 | n/a | green ×4 | 5 min 53 s |
+| Anthropic | claude-sonnet-5 | 11/11 | 11/11 | 11/11 | 11/11 | 11/11 | green ×4 | 11 min 30 s |
+| Cerebras | gpt-oss-120b | 10/11 | 11/11 | 10/11 | 10/11 | n/a | green ×4 | 3 min 31 s |
+| Cerebras | qwen-3.8-27b | 11/11 | 11/11 | 10/11 | 9/11 | n/a | green ×4 | (same lane) |
+| xAI (Responses) | grok-4.6 | 10/11 | 10/11 | 10/11 | 11/11 | n/a | green ×4 | 7 min 57 s |
+| Gemini | gemini-3.8-flash | 11/11 | 11/11 | 11/11 | 11/11 | n/a | green ×4 | 52 min 37 s |
+| Model Studio, token plan | qwen3.8-max | 11/11 | 11/11 | 11/11 | 11/11 | n/a | green ×4 | 7 min 12 s |
+| Moonshot (100 rpm) | kimi-k3 | 11/11 | 11/11 | 9/11 | 10/11 | n/a | red ×1 (the model's) | 28 min 56 s |
+| local (the hosted runner, CPU) | gemma-4-e4b-it | 9/11 | 9/11 | 10/11 | 9/11 | n/a | green ×4 | 97 min, no cell cut |
+
+Findings, recorded as found:
+
+- **The eleventh scenario reads green on every transport of every
+  row** once the pin takes grouped digits: 35 of 36 cells, the one red
+  kimi-k3 on http, the class #19 recorded (the reading session filed
+  the fact into `/project` after finding it; five documents where four
+  are expected). The N5 done-when (an agent finds a fact that lives only
+  in an old turn, on every shipped store and transport) is measured on
+  nine rows over four transports.
+- **Three whole boards: Sonnet 5 44/44 with the native axis 11/11,
+  gemini-3.8-flash 44/44, qwen3.8-max 44/44.** gpt-6-sol 42/44
+  (`skills` on function and cli, the description-frontmatter class;
+  http and mcp whole). grok-4.6 41/44, `long-horizon-recall`'s
+  distractor on function, cli and http, its standing class, and mcp
+  whole. gpt-oss-120b 41/44 (`skills` ×3), qwen-3.8-27b 41/44
+  (`correct-wrong-memory` on http and mcp, `skills` on mcp). kimi-k3
+  41/44 (`skills` on http and mcp, the write above).
+- **The local lane ran every cell:** gemma-4-e4b-it 37/44 in 97
+  minutes on the CPU runner, no cut cell (`skills` on all four, the
+  frontmatter class; `maintenance` on function and cli; `dedup` on mcp),
+  and `old-turn-search` green on all four: the search and the recall
+  reach a 4B model on a CPU.
+- **Anthropic's account, not its row:** after the board and the native
+  axis had finished green, the catalog probe
+  `test_model_answers_minimal_completion[claude-sonnet-5]` answered 400
+  `credit balance is too low` (09:45 UTC): the day's two dispatches and
+  the tour run drained the balance. The row stands as measured; the
+  probe re-runs on the next dispatch after funding.
+- **Teardown noise** (`Event loop is closed` on an SDK client's
+  `aclose()` task): the Cerebras lane twice and the local lane once this
+  time, none on Anthropic or Gemini; no cell affected. The class of #19's
+  finding, a harness client-lifetime item.
+
+### 2026-09-27: Dispatch #19, the eleventh scenario on every row; the pin's reds (the N5 /ship)
+
+Dispatch #19 (run 36305573959 on b1c479f: `1.0.0rc20`, the pack at
+`288934f7…` with `old-turn-search` and the digits-only TTL pin) over
+every lane, the first dispatch on the eleven-scenario pack. Seven rows
+measured whole; the `local` lane was cancelled at 09:34 UTC by dispatch
+#20 (the workflow's concurrency group cancels an in-progress dispatch,
+and the shipping session dispatched #20 on a watcher that had returned
+early; `local` is read from #20 below). Every cell read from the lane
+logs; the door probes and the link cells green on every lane.
+
+| Provider | Model | function | cli | http | mcp | native | old-turn-search | lane |
+|---|---|---|---|---|---|---|---|---|
+| OpenAI (Responses) | gpt-6-sol | 10/11 | 10/11 | 9/11 | 10/11 | n/a | *pin* ×4 | 5 min 42 s |
+| Anthropic | claude-sonnet-5 | 11/11 | 11/11 | 11/11 | 10/11 | 11/11 | green ×4 | 10 min 56 s |
+| Cerebras | gpt-oss-120b | 8/11 | 10/11 | 7/11 | 9/11 | n/a | *pin* ×4 | 3 min 47 s |
+| Cerebras | qwen-3.8-27b | 9/11 | 9/11 | 10/11 | 9/11 | n/a | red ×2 (the model's) | (same lane) |
+| xAI (Responses) | grok-4.6 | 10/11 | 10/11 | 10/11 | 10/11 | n/a | green ×4 | 7 min 30 s |
+| Gemini | gemini-3.8-flash | 10/11 | 10/11 | 9/11 | 9/11 | n/a | *pin* ×4 | 51 min 16 s |
+| Model Studio, token plan | qwen3.8-max | 10/11 | 10/11 | 10/11 | 9/11 | n/a | *pin* ×4 | 7 min 15 s |
+| Moonshot (100 rpm) | kimi-k3 | 10/11 | 9/11 | 9/11 | 10/11 | n/a | red ×2 (the model's) | 27 min 34 s |
+| local (the hosted runner, CPU) | gemma-4-e4b-it | cancelled | cancelled | cancelled | cancelled | n/a | — | (#20) |
+
+Findings, recorded as found:
+
+- **Every model found the turn.** On all seven rows the reading session
+  called `search_history`, got the hit, and answered the TTL; the
+  scenario's claim (an unfiled fact in an old turn, found on every
+  transport) reads true on every door measured. The reds on it split
+  into two classes.
+- ***pin*: the harness's, sixteen cells.** gpt-6-sol, qwen3.8-max and
+  gemini-3.8-flash wrote `86,400 seconds`, gpt-oss-120b `86 400` with a
+  narrow no-break space (U+202F), each on an answer that named the turn
+  and the ticket; the pin `contains: "86400"` refused them. The pack's
+  comment said no model restyles a number; four of seven do, by digit
+  grouping. Settled the same day as the NZ wordform class was: the pin
+  is the regex `86[\s,.]?400`, the fingerprint moved to `6024174f…`
+  (the section above), and dispatch #20 measured it (the block above).
+  Sonnet 5 and grok-4.6 wrote the plain digits and were green on all
+  four transports.
+- **The model's: the reading session that files.** qwen-3.8-27b
+  (function) and kimi-k3 (function) wrote the fact into `/project` as
+  a memory document after finding it (five documents where the four
+  sessions documents are expected); qwen-3.8-27b (cli) and kimi-k3
+  (http) answered with a note about the save and without the number.
+  The store truth (reading never writes) and the response pin stand,
+  the `cross-client` precedent: kimi-k3 also wrote on both
+  `cross-client` cells it lost (cli, http), the same class.
+- **gpt-6-sol: 39/44, 43 with the pin corrected** (`skills` on http,
+  the description-frontmatter class). **Sonnet 5: 43/44**, only `skills`
+  on mcp, where no document landed at all (`live: none`). **grok-4.6:
+  40/44**, `long-horizon-recall`'s distractor on function, cli and http
+  (its recorded class) and `dedup` on mcp (`list_skills` first).
+  **gemini-3.8-flash: 38/44**, the pin on four and `skills` on http and
+  mcp (two version rows where one is expected). **qwen3.8-max: 39/44**,
+  the pin on four and `skills` on mcp. **gpt-oss-120b: 34/44**: beyond
+  the pin, `skills` on function, http and mcp, `long-horizon-recall`
+  (function), `write-discipline` and `recall-next-session` (http), the
+  recorded classes. **qwen-3.8-27b: 37/44.** **kimi-k3: 38/44** in 27
+  minutes at 100 rpm, `skills` on cli and mcp beside the writes above.
+- **Teardown noise, new since #18:** the Anthropic and Gemini lanes
+  logged `Task exception was never retrieved` three and more times at
+  the end of a board, `RuntimeError('Event loop is closed')` from an SDK
+  client's `aclose()` task (httpx2) after the loop had closed; no cell
+  affected, the assertion already taken. A harness client-lifetime item,
+  recorded here, not fixed in a ship.
+
 ### 2026-09-27: History search: the eleventh scenario, keyless (N5)
 
 The pack gained `old-turn-search` (DESIGN §32) and its fingerprint
