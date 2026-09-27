@@ -80,13 +80,34 @@ neutrals: only the hue tells the siblings apart.
 
 ## README media (`readme/`)
 
-Two terminal recordings, each under 15 s at 900 px and an 18 px font,
-made with [VHS](https://github.com/charmbracelet/vhs): `record.tape` — a
-Claude Code session landing as a recorded turn that `neosian audit`
-names (tour beat 09) — and `left-off.tape` — the next session opening on
-"where we left off" (beat 12/13). The tape is the source: re-render with
-`vhs <name>.tape` instead of re-recording (it needs `neosian` and a
-logged-in `claude` on PATH, and writes `~/demo/`).
-The GIF and MP4 sit beside each tape; README embeds the GIFs by absolute
-URL at the release tag (PyPI renders the README), and the sdist's
-`branding/` exclusion keeps them out of the wheel.
+Four terminal recordings, each under 15 seconds at 900 px and an 18 px
+font, made with [VHS](https://github.com/charmbracelet/vhs):
+
+- `many-agents.tape`: Claude Code records a project fact; Codex opens a
+  new session and answers from the same store through its startup hook.
+- `memory-write.tape`: Claude Code writes `/project/deploy` through
+  MCP; `neosian memory view` renders the saved markdown.
+- `record.tape`: setup, a Claude Code turn, and its entry in the ledger.
+- `left-off.tape`: the next Claude Code session recalls the recorded work.
+
+Run `make readme-media` from the checkout after `make install`. It needs
+`vhs`, `ffmpeg`, `ffprobe`, `ttyd`, `claude` and `codex` on PATH, with
+`ANTHROPIC_API_KEY` and `OPENAI_API_KEY` supplied in the environment.
+The script reads no key files. This checkout's `.venv/bin/neosian` is
+first on PATH; each tape gets fresh temporary client configurations, a
+store and a project, removed on exit. Personal client settings and stores
+are untouched. The tapes source `scripts/readme_demo.sh`: Claude uses
+Haiku and Codex uses GPT-6 Luna; Codex's reviewed local hooks are enabled
+for these invocations, with diagnostics checked outside the frame.
+
+These are real API calls, with their normal cost and variable latency.
+Playback is twice the captured speed; setup and seed sessions are hidden.
+The recorder clears inherited `NO_COLOR` so terminal views render.
+The script verifies the recorded actors, recalled facts and saved file,
+checks GIF and MP4 durations, and replaces the four pairs only when every
+check passes. A slow run fails the duration gate; it never silently
+publishes an overlong recording.
+
+The tape is the source: re-render, never re-record. Each GIF and MP4 sits
+beside its tape. README embeds the GIFs by absolute URL at the release
+tag so PyPI renders them, and the sdist excludes `branding/`.

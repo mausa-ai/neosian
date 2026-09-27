@@ -8,6 +8,18 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [1.0.0rc21] - 2026-09-27
+
+### Added
+
+- Two README hero recordings: Claude Code records a project fact and Codex
+  recalls it from the same store; Claude Code writes a project memory and
+  `neosian memory view` renders the saved markdown.
+- `make readme-media` renders all four GIF and MP4 pairs from their VHS
+  tapes using this checkout, isolated temporary homes and caller-supplied
+  API keys. Recorded content and the under-15-second limit are checked
+  before replacing the assets.
+
 ### Changed
 
 - The docs live at https://neosian.com/docs and `llms.txt` at
@@ -15,6 +27,12 @@ phase close names the version.
   `project.urls` Documentation, the README badge and `llms.txt` point
   there; `docs.neosian.com/*` is a permanent redirect to the same path
   under `/docs`.
+
+### Fixed
+
+- Codex's session-start hook receives its context in a valid JSON hook
+  response. Codex interprets the memory frame's leading `[` as JSON and
+  rejected the previous plain-text output, losing the recalled context.
 
 ## [1.0.0rc20] - 2026-09-27
 
@@ -1655,7 +1673,8 @@ pre-release — pin it explicitly; the API stability promise rides v1.0.0.
 - Both entry points share one `_validate_run`, so neither can skip a
   guard.
 
-[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc20...HEAD
+[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc21...HEAD
+[1.0.0rc21]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc20...v1.0.0rc21
 [1.0.0rc20]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc19...v1.0.0rc20
 [1.0.0rc19]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc18...v1.0.0rc19
 [1.0.0rc18]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc17...v1.0.0rc18

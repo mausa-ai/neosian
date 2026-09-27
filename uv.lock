@@ -1121,7 +1121,7 @@ wheels = [
 
 [[package]]
 name = "neosian"
-version = "1.0.0rc20"
+version = "1.0.0rc21"
 source = { editable = "." }
 dependencies = [
     { name = "anthropic" },

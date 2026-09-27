@@ -285,10 +285,35 @@ class TestSessionStart:
         assert envelope["disposition"] == "context" and envelope["turn"] is None
         assert "[1] USER: second" in envelope["context"]
 
-    async def test_every_agent_gets_plain_text(self, tmp_path: Path) -> None:
-        """Codex's JSON rule is Stop-only: SessionStart stdout is context."""
-        result = await _run(_flags(tmp_path, "--agent", "codex"), session_start())
-        assert result.out.startswith("[neosian memory")
+    @pytest.mark.parametrize("source", ["startup", "compact"])
+    async def test_codex_receives_context_as_valid_hook_json(
+        self, tmp_path: Path, source: str
+    ) -> None:
+        # A leading '[' makes Codex parse plain context as invalid JSON.
+        await _two_sessions(tmp_path)
+        payload = session_start(source, session="s-one")
+        plain = await _run(_flags(tmp_path), payload)
+        result = await _run(_flags(tmp_path, "--agent", "codex"), payload)
+        assert result.code == 0 and result.err == ""
+        assert json.loads(result.out) == {
+            "hookSpecificOutput": {
+                "hookEventName": "SessionStart",
+                "additionalContext": plain.out.rstrip("\n"),
+            }
+        }
+        assert "[1] USER: first" in result.out
+        assert ("[1] USER: second" in result.out) == (source == "startup")
+        assert not (tmp_path / "spool" / "s-one.jsonl").exists()
+
+    async def test_codex_empty_scope_and_diagnostic_json(self, tmp_path: Path) -> None:
+        flags = _flags(tmp_path, "--agent", "codex")
+        result = await _run(flags, session_start())
+        context = json.loads(result.out)["hookSpecificOutput"]["additionalContext"]
+        assert get_prompt("context.start_empty") in context
+        diagnostic = await _run([*flags, "--json"], session_start())
+        envelope = json.loads(diagnostic.out)
+        assert envelope["context"] == context
+        assert envelope["disposition"] == "context"
 
     async def test_an_unreachable_store_is_tier_one_and_silent(self) -> None:
         argv = ["--url", "http://127.0.0.1:1", "--scope", "user:me"]

@@ -1,7 +1,7 @@
 # neosian development targets — `make help` (DESIGN §11)
 
 .DEFAULT_GOAL := help
-.PHONY: help install lint format typecheck test test-external test-postgres test-container size release phase-tag
+.PHONY: help install lint format typecheck test test-external test-postgres test-container size release phase-tag readme-media
 
 help: ## List targets
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z_-]+:.*?##/ {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2} /^##@/ {printf "\n%s\n", substr($$0, 5)}' $(MAKEFILE_LIST)
@@ -58,6 +58,9 @@ ifdef notes
 else
 	git tag -a "v$(v)" -m "release v$(v)"
 endif
+
+readme-media: ## Re-render the four README recordings from their tapes (vhs; ANTHROPIC_API_KEY + OPENAI_API_KEY in the environment; isolated temporary homes)
+	scripts/readme_media.sh
 
 phase-tag: ## Cut annotated phase tag: id=<phase id> (clean tree)
 ifndef id

@@ -169,6 +169,21 @@ async def run(
         out.write(json.dumps(envelope) + "\n")
     elif envelope["context"] is not None:
         context_text = str(envelope["context"])
+        if settings.agent == "codex":
+            # Our context starts with '['; Codex treats that as JSON, so
+            # plain output is rejected instead of injected into the session.
+            out.write(
+                json.dumps(
+                    {
+                        "hookSpecificOutput": {
+                            "hookEventName": SESSION_START_EVENT,
+                            "additionalContext": context_text,
+                        }
+                    }
+                )
+                + "\n"
+            )
+            return 0
         if settings.agent == "cursor":
             out.write(json.dumps({"additional_context": context_text}) + "\n")
             return 0

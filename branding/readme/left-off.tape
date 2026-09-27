@@ -1,29 +1,39 @@
-# neosian README — the next Claude Code session opens on "where we left
-# off": the SessionStart hook prints the scope's index and the recorded
-# sessions, and the model answers from them. The hidden preamble records
-# one session first. Needs `neosian` and `claude` on PATH;
-# a logged-in Claude Code. Re-render with `vhs left-off.tape`.
+# A fresh Claude Code session recalls the recorded work.
+# Render with make readme-media; isolated homes and real API calls.
 Output left-off.gif
 Output left-off.mp4
 Set Shell bash
 Set FontSize 18
 Set Width 900
-Set Height 200
+Set Height 220
 Set Padding 16
-Set TypingSpeed 35ms
-Set PlaybackSpeed 1.5
+Set TypingSpeed 25ms
+Set PlaybackSpeed 2
 
 Hide
-Type "rm -rf ~/demo/the-app ~/demo/home && mkdir -p ~/demo/the-app ~/demo/home && cd ~/demo/the-app && export NEOSIAN_HOME=~/demo/home && printf '# the-app\n\nA small app that keeps its state in neosian.\n' > README.md && neosian record install --client claude-code --write 2>/dev/null"
+Type `source "$NEOSIAN_DEMO_HELPERS" && demo_setup`
 Enter
-Type `claude -p "Read README.md and tell me its title in one short sentence." --allowedTools Read && clear`
+Sleep 500ms
+Wait+Line@90s /^>\s*$/
+Type `claude -p "Read README.md. Reply with its exact H1 title, nothing else." --allowedTools Read`
 Enter
-Wait+Line@60s /^>\s*$/
+Sleep 500ms
+Wait+Line@90s /^>\s*$/
+Sleep 500ms
+Type "clear"
+Enter
 Sleep 500ms
 Show
 
 Type `claude -p "Where did we leave off? Answer in one sentence."`
 Enter
-Sleep 1s
-Wait+Line@30s /^>\s*$/
-Sleep 3s
+Sleep 500ms
+Wait+Line@90s /^>\s*$/
+Sleep 4s
+
+Hide
+Type `demo_check left-off`
+Enter
+Sleep 500ms
+Wait+Line@90s /^>\s*$/
+Sleep 100ms

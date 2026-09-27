@@ -158,6 +158,10 @@ neosian `Conversation` uses to page its own history, and
 by its words, listed or not. Bodies stay behind tools; the block is a
 table of contents, not the transcript. An
 empty scope still prints the frame, so the agent knows the door exists.
+For Codex, the text is carried in the hook response's
+`hookSpecificOutput.additionalContext` JSON field: its parser treats the
+frame's leading `[` as JSON, so a plain-text response would be rejected.
+`--json` still selects neosian's diagnostic envelope.
 A store that cannot be reached exits 1 with nothing on stdout:
 `SessionStart` never blocks.
 
@@ -282,7 +286,7 @@ two project directories, each session in its own `proj:` scope.
 | client | memory (`mcp install`) | record (`record install`) | per machine | session start |
 |---|---|---|---|---|
 | Claude Code | ✓ user scope through `claude mcp add-json` | ✓ walkthrough green 2026-09-02 | ✓ 2026-09-19 (2.1.278): the server is spawned in the session's directory, the hook line's project directory expands | ✓ `SessionStart`, stdout as context (2026-09-03) |
-| Codex | ✓ through `codex mcp add` | ✓ walkthrough green 2026-09-03 (`codex exec`) | ✓ 2026-09-19 (0.154.0): the same, user-level hooks with no project trust step | ✓ the same event and `source` values (its reference, 2026-09-03) |
+| Codex | ✓ through `codex mcp add` | ✓ walkthrough green 2026-09-03 (`codex exec`) | ✓ 2026-09-19 (0.154.0): the same, user-level hooks with no project trust step | ✓ JSON `additionalContext`; cross-client recall verified on 0.157.1 (2026-09-27) |
 | OpenCode | ✓ | ✓ walkthrough green 2026-09-03 (`opencode run`, a plugin) | ✓ 2026-09-19 (1.18.30, a free model): the same, the plugin passing the directory it was opened with | — (an experimental per-call door only; not wired) |
 | Claude Desktop | ✓ | no hooks surface | one file by nature; no project, so `/user` alone | — |
 | Cursor | ✓ user MCP, credential names forwarded | ✓ interactive CLI 2026.09.10-fd3934a; `--print` lacks full recording | ✓ one user registration, payload workspace roots | ✓ `sessionStart`, JSON `additional_context` |
