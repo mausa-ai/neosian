@@ -14,7 +14,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
 from neosian._foundation.memory.actor import parse_actor
-from neosian._foundation.memory.home import PROJECT_MOUNT_PATH, SPOOL_DIR_NAME, home
+from neosian._foundation.memory.home import SPOOL_DIR_NAME, home
+from neosian._foundation.memory.sessions import sessions_mount
 from neosian._foundation.memory.settings import (
     StoreSettings,
     add_mount_arguments,
@@ -72,17 +73,6 @@ def add_record_arguments(parser: argparse.ArgumentParser) -> None:
 def validate_agent_kind(agent: str) -> None:
     """A foreign agent's kind must make `<agent>:<session_id>` an actor."""
     parse_actor(f"{agent}:session")
-
-
-def sessions_mount(mounts: tuple[Mount, ...]) -> Mount | None:
-    """Where the sessions document lands (§22): the mount at `/project`
-    when present, else the first read-write one; None when no mount
-    can take it."""
-    writable = [m for m in mounts if not m.read_only and not m.edit_only]
-    for mount in writable:
-        if mount.mount_path == PROJECT_MOUNT_PATH:
-            return mount
-    return writable[0] if writable else None
 
 
 def resolve_record_settings(

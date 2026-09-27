@@ -19,7 +19,7 @@ from neosian._foundation.conversation.compaction import CompactionConfig
 from neosian._foundation.conversation.links import LinkRegistry
 from neosian._foundation.conversation.views import project_conversation
 from neosian._foundation.memory.index import INDEX_BUDGET_CHARS, generate_memory_index
-from neosian._foundation.record.span import SESSIONS_DIR
+from neosian._foundation.memory.sessions import SESSIONS_PREFIX
 from neosian._foundation.shared.prompt_assets import get_prompt, render
 
 if TYPE_CHECKING:
@@ -34,7 +34,6 @@ SESSION_START_EVENT: Final = "SessionStart"
 COMPACT_SOURCE: Final = "compact"
 RECENT_SESSIONS: Final = 3
 LEFT_OFF_BUDGET_CHARS: Final = INDEX_BUDGET_CHARS
-_PREFIX: Final = f"{SESSIONS_DIR}/"
 
 
 def choose_sessions(
@@ -48,11 +47,11 @@ def choose_sessions(
     after a compaction (when it is recorded), else the `limit` most
     recently written sessions documents — a redacted one never."""
     listed = sorted(
-        (e for e in entries if e.path.startswith(_PREFIX) and not e.redacted),
+        (e for e in entries if e.path.startswith(SESSIONS_PREFIX) and not e.redacted),
         key=lambda e: e.updated_at,
         reverse=True,
     )
-    ids = [e.path[len(_PREFIX) :] for e in listed]
+    ids = [e.path[len(SESSIONS_PREFIX) :] for e in listed]
     if source == COMPACT_SOURCE and own in ids:
         return [own]
     return ids[:limit]
@@ -70,7 +69,7 @@ async def render_left_off(
     """The "where we left off" block: every chosen session as log lines
     under an even share of `budget_chars` (the fold line says what is
     hidden), framed so the model knows the door and the recall call."""
-    entries = await memory.list_documents(scope, prefix=_PREFIX)
+    entries = await memory.list_documents(scope, prefix=SESSIONS_PREFIX)
     chosen = choose_sessions(entries, own=own, source=source)
     widths = CompactionConfig()
     share = max(budget_chars // max(len(chosen), 1), 1)

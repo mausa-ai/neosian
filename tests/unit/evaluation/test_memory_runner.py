@@ -527,4 +527,5 @@ class TestCrossClient:
             "list_skills",
             "load_skill",
             "recall_turn",
+            "search_history",
         ]

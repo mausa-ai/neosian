@@ -2,30 +2,75 @@
 
 Every log entry carries its turn-ref; this tool re-hydrates the verbatim
 turn via the documented recall lookup, ``read_turns(after=turn-1,
-limit=1)`` — there is no sixth store method. Registered lazily by
-Conversation once projections exist (ledger #28), independent of memory,
-and eagerly when it carries views (§21): `conversation=` addresses a
-viewed conversation, `None` this one; anything else fails correctively
-naming the addressable ids (ledger #138). The MCP server's twin
-(`create_recall_any_tool`, §21.7) has no own conversation, so there
-`conversation` is required and any id the store holds is addressable —
-which conversations are shareable is the host's duty (ledger #139).
+limit=1)`` — the sixth store method is search (§32), never recall.
+Registered by Conversation with `search_history` as a pair (§32):
+`conversation=` addresses a conversation in reach, `None` this one;
+anything else fails correctively naming the addressable ids (ledger
+#138). The reach is read when a call names a conversation, so a session
+listed after the tool was built is reachable at once, and the ids never
+enter the tool's description (the cached tool block stays stable). The
+MCP server's twin (`create_recall_any_tool`, §21.7) has no own
+conversation, so there `conversation` is required and any id the store
+holds is addressable — which conversations are shareable is the host's
+duty (ledger #139).
 
 This module deliberately has no `from __future__ import annotations`:
 the @Tool decorator resolves the signature's hints at decoration time.
 """
 
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from typing import Final
 
 from neosian._foundation.conversation.base import ConversationStore
 from neosian._foundation.conversation.projection import render_turn
-from neosian._foundation.shared.exceptions import ConversationStoreError
+from neosian._foundation.shared.exceptions import (
+    ConversationStoreError,
+    MemoryStoreError,
+)
 from neosian._foundation.shared.prompt_assets import get_prompt, get_prompt_params
 from neosian._foundation.shared.types import ToolFunction
 from neosian._foundation.tools.base import Tool, ToolResult
 
 _TOOL_NAME: Final = "recall_turn"
+# A reminder lists the reach; a project's sessions can be hundreds.
+_REMINDER_IDS: Final = 12
+VIEWS_REACH: Final = "this conversation and the ones shown as views"
+
+Reach = Callable[[], Awaitable[Sequence[str]]]
+
+
+def static_reach(ids: Sequence[str]) -> Reach:
+    frozen = tuple(ids)
+
+    async def reach() -> Sequence[str]:
+        return frozen
+
+    return reach
+
+
+def reach_reminder(tool: str, where: str, ids: Sequence[str]) -> str:
+    shown = ", ".join(repr(i) for i in ids[:_REMINDER_IDS])
+    more = len(ids) - _REMINDER_IDS
+    return f"{tool} reaches {where}: {shown}{f' and {more} more' if more > 0 else ''}."
+
+
+async def in_reach(
+    reach: Reach, conversation: str | None, *, tool: str, where: str
+) -> tuple[str, ...] | ToolResult[str]:
+    """The ids a call may address: every one for `None`, the one named
+    when it is in reach, else the corrective failure naming the reach."""
+    try:
+        ids = tuple(await reach())
+    except (ConversationStoreError, MemoryStoreError) as exc:
+        return ToolResult.fail(f"[{exc.code}] {exc.message}")
+    if conversation is None:
+        return ids
+    if conversation in ids:
+        return (conversation,)
+    return ToolResult.fail(
+        f"Conversation {conversation!r} is not addressable from here",
+        system_reminder=reach_reminder(tool, where, ids),
+    )
 
 
 async def recall(
@@ -54,15 +99,11 @@ async def recall(
         return ToolResult.fail(f"[{exc.code}] {exc.message}")
 
 
-def create_recall_turn_tool(
-    store: ConversationStore,
-    conversation_id: str,
-    *,
-    addressable: Sequence[str] = (),
+def recall_turn_tool(
+    store: ConversationStore, conversation_id: str, reach: Reach, *, where: str
 ) -> ToolFunction:
-    """Create the `recall_turn` tool bound to one conversation's history
-    plus the `addressable` ones its views name."""
-    ids = (conversation_id, *addressable)
+    """`recall_turn` over one conversation's history plus the `reach`
+    a call may name, `where` describing it in the reminder."""
 
     @Tool(
         name=_TOOL_NAME,
@@ -72,21 +113,28 @@ def create_recall_turn_tool(
     async def recall_turn(
         turn: int, conversation: str | None = None
     ) -> ToolResult[str]:
-        if conversation is not None and conversation not in ids:
-            return ToolResult.fail(
-                f"Conversation {conversation!r} is not addressable from here",
-                system_reminder=(
-                    "recall_turn reaches this conversation and the ones shown "
-                    "as views: " + ", ".join(repr(i) for i in ids) + "."
-                ),
-            )
         if conversation is None:
             return await recall(store, conversation_id, turn, label="This conversation")
+        ids = await in_reach(reach, conversation, tool=_TOOL_NAME, where=where)
+        if isinstance(ids, ToolResult):
+            return ids
         return await recall(
             store, conversation, turn, label=f"Conversation {conversation!r}"
         )
 
     return recall_turn
+
+
+def create_recall_turn_tool(
+    store: ConversationStore,
+    conversation_id: str,
+    *,
+    addressable: Sequence[str] = (),
+) -> ToolFunction:
+    """Create the `recall_turn` tool bound to one conversation's history
+    plus the `addressable` ones its views name."""
+    reach = static_reach((conversation_id, *addressable))
+    return recall_turn_tool(store, conversation_id, reach, where=VIEWS_REACH)
 
 
 def create_recall_any_tool(store: ConversationStore) -> ToolFunction:

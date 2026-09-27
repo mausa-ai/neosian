@@ -191,7 +191,7 @@ class TestTheVerb:
 
 class TestTheHumanDoor:
     @pytest.mark.parametrize(
-        "verb", ["record", "mcp", "memory", "audit", "serve", "export"]
+        "verb", ["record", "mcp", "memory", "audit", "search", "serve", "export"]
     )
     def test_an_agent_verb_never_checks(self, verb: str) -> None:
         assert human_door(verb, on_terminal=True, argv=["neosian", verb]) is False

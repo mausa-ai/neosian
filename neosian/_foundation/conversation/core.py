@@ -31,11 +31,15 @@ from neosian._foundation.conversation.compaction import (
 from neosian._foundation.conversation.ids import parse_conversation_id
 from neosian._foundation.conversation.links import LinkRegistry
 from neosian._foundation.conversation.projection import render_view
-from neosian._foundation.conversation.recall import create_recall_turn_tool
 from neosian._foundation.conversation.reflection import (
     ReflectionConfig,
     ReflectionResult,
     run_reflection,
+)
+from neosian._foundation.conversation.search_history import history_tools
+from neosian._foundation.conversation.sessions import (
+    project_sessions,
+    record_session,
 )
 from neosian._foundation.conversation.views import (
     ConversationView,
@@ -54,6 +58,7 @@ from neosian._foundation.conversation.wiring import (
 from neosian._foundation.llm.base import Message, Role
 from neosian._foundation.memory.actor import parse_actor
 from neosian._foundation.memory.index import memory_system_section
+from neosian._foundation.memory.sessions import project_mount
 from neosian._foundation.shared.context_policy import ContextPolicy
 from neosian._foundation.shared.registry import resolve_model
 
@@ -308,15 +313,19 @@ class Conversation:
             self._store, self._views, config=self._compaction
         )
         extra_tools: list[ToolFunction] = []
-        if self._compaction.recall_tool and (self._projections or self._views):
-            # Lazy registration (ledger #28): the tool appears in the
-            # same request as the first log block that references it —
-            # a view is such a block from the first send.
-            extra_tools.append(
-                create_recall_turn_tool(
+        if self._compaction.recall_tool and (
+            self._projections or self._views or project_mount(self._memory_config)
+        ):
+            # Lazy registration (ledger #28): the pair appears in the same
+            # request as the first log block that references it — a view
+            # is such a block from the first send, and so is the index of
+            # a project whose sessions are listed (§32).
+            extra_tools.extend(
+                history_tools(
                     self._store,
                     self._conversation_id,
-                    addressable=[view.conversation_id for view in self._views],
+                    views=[view.conversation_id for view in self._views],
+                    sessions=project_sessions(self._memory_config),
                 )
             )
         derived = derive_config(
@@ -436,6 +445,7 @@ class Conversation:
         )
         self._turns.append(turn)
         self._reflect_pending.append(turn)
+        await record_session(self._memory_config, self._turns, user, actor=self._actor)
 
     async def _send_blocking(self, user: Message) -> AgentResponse:
         async with self._lock:

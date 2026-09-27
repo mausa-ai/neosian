@@ -23,7 +23,13 @@ from neosian._foundation.tools.base import get_tool_metadata
 # What the Conversation registers over `config.tools` (§9.6, §24):
 # checked up front because `recall_turn` registers lazily, at the first
 # compaction, where a collision would surface mid-session.
-RESIDENT_TOOLS: Final = ("memory", "list_skills", "load_skill", "recall_turn")
+RESIDENT_TOOLS: Final = (
+    "memory",
+    "list_skills",
+    "load_skill",
+    "recall_turn",
+    "search_history",
+)
 
 _STDIO_KEYS: Final = frozenset({"command", "args", "env"})
 _HTTP_KEYS: Final = frozenset({"url", "headers"})

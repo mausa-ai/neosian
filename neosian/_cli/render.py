@@ -17,6 +17,7 @@ from typing import Any, TextIO
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.table import Table
+from rich.text import Text
 from rich.tree import Tree
 
 from neosian._cli.ui import BRAND_ACCENT
@@ -42,7 +43,7 @@ def run_rendered(
     """Run the engine on the real streams — or, on a terminal without
     `--json`, run it with `--json` into a buffer and render the envelope.
     A non-zero exit renders nothing: the engine's stderr text stands."""
-    if "--json" in argv or not rendered(out, env):
+    if "--json" in argv or "--" in argv or not rendered(out, env):
         return engine(argv)
     buffer = io.StringIO()
     with contextlib.redirect_stdout(buffer):
@@ -79,6 +80,23 @@ def render_audit(envelope: dict[str, Any], console: Console) -> None:
     if not envelope["entries"]:
         console.print(f"no ledger entries for scope {envelope['scope']!r}")
         return
+    console.print(table)
+
+
+def render_search(envelope: dict[str, Any], console: Console) -> None:
+    """The hits as a table; cell text is literal (a snippet may hold
+    `[link 3]`, which Rich would read as markup)."""
+    if not envelope["hits"]:
+        console.print(f"no turn matches every term of {envelope['query']!r}")
+        return
+    table = _table("where", "when", "actor", "snippet")
+    for hit in envelope["hits"]:
+        table.add_row(
+            f"{hit['conversation_id']} #{hit['turn']}",
+            hit["created_at"],
+            hit["actor"] or "-",
+            Text(hit["snippet"]),
+        )
     console.print(table)
 
 

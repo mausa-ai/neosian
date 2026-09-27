@@ -153,7 +153,7 @@ class TestLazyRegistration:
         await convo.compact()
         await convo.send("what was turn 1?")
         names = _last_tool_names(fake)
-        assert names == ["recall_turn"]
+        assert names == ["recall_turn", "search_history"]
 
     async def test_recall_tool_false_never_registers(self, store: FileStore) -> None:
         config, fake = _config(_replies(3))

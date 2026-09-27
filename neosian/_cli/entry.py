@@ -4,7 +4,7 @@
 environment missing them answers with the reinstall hint, never a
 traceback. The `python -m` doors — `neosian.memory`,
 `neosian.record`, `neosian.mcp`, `neosian.server`, `neosian.ledger`,
-`neosian.mobility` — are argparse and need none of them.
+`neosian.mobility`, `neosian.search` — are argparse and need none of them.
 """
 
 import json

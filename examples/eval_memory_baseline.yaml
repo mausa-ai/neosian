@@ -1,12 +1,12 @@
 # Memory eval baseline (kind: memory, schema v2) — DESIGN §13.12.
 #
-# Ten scenarios, one per measured behavior: write discipline,
+# Eleven scenarios, one per measured behavior: write discipline,
 # recall-in-next-session, dedup, contradiction handling, long-horizon
 # recall, correcting a wrong memory, reflection at the session boundary
 # (§15), maintenance over a seeded store (§16), the cross-client
 # switch — a foreign agent's hook-fed session recalled by a neosian
-# agent (§21.7) — and skills written, loaded and revised as documents in
-# a mount (§24). Every agent session is scripted, so the pack runs
+# agent (§21.7) — skills written, loaded and revised as documents in
+# a mount (§24), and history search over an old, unfiled turn (§32). Every agent session is scripted, so the pack runs
 # keylessly on FakeProvider and is all-green by construction — a red
 # run is a regression. Turn expectations stay loose (they must survive
 # a real provider); the store truth carries the strictness.
@@ -585,3 +585,85 @@ scenarios:
               content: {contains: "follow-tags"}
               versions: 2
               actions: [created, modified]
+
+  # OLD-TURN-SEARCH — history search (§32, N5): a fact that lives only
+  # in an old, unfiled turn. Four Claude Code sessions land through the
+  # record verb's engine; the first carries the fact deep in its final
+  # text (past the log line's 200-char digest, in no document and in no
+  # prompt), and the three that follow push it outside the three
+  # sessions "where we left off" shows. Nothing in the reading session's
+  # prefix can answer: the agent must find the turn by content
+  # (`search_history`, store-wide on the server) and re-read it
+  # (`recall_turn`). The pin is the TTL's digits; store truth pins the
+  # four sessions documents and that reading never writes.
+  - name: old-turn-search
+    sessions:
+      - name: claude-code-tunes-the-cache
+        record:
+          agent: claude-code
+          session_id: cc-old-1
+          prompt: "Tune the response cache for the catalog service."
+          tools:
+            - name: Edit
+              input: {file_path: src/catalog/cache.py}
+              response: "ok"
+              id: toolu_01cache
+          stop: >-
+            Tuned the catalog cache: entries are keyed by the normalized
+            request path plus the accept header, the size ceiling stays at
+            ten thousand entries with least-recently-used eviction, and a
+            miss now records the upstream latency so the dashboard can
+            show the hit ratio beside it. While there I fixed the
+            stale-while-revalidate path, which was serving expired entries
+            for a full minute. The entry TTL is set to 86400 seconds,
+            tracked as CACHE7731.
+        expect_store:
+          documents:
+            - path: /project/sessions/cc-old-1
+              content: {contains: "claude-code"}
+              versions: 1
+      - name: claude-code-renames-billing
+        record:
+          agent: claude-code
+          session_id: cc-new-2
+          prompt: "Rename the billing module."
+          stop: "Renamed billing to invoicing across the package and its tests."
+        expect_store:
+          counts: {/project: 2}
+      - name: claude-code-adds-a-health-endpoint
+        record:
+          agent: claude-code
+          session_id: cc-new-3
+          prompt: "Add a health endpoint."
+          stop: "Added GET /healthz returning the build id and the uptime."
+        expect_store:
+          counts: {/project: 3}
+      - name: claude-code-bumps-the-linter
+        record:
+          agent: claude-code
+          session_id: cc-new-4
+          prompt: "Bump the linter."
+          stop: "Bumped ruff and fixed the two new findings it raised."
+        expect_store:
+          counts: {/project: 4}
+      - name: neosian-finds-by-content
+        session_start: true
+        turns:
+          - user: >-
+              What TTL did an earlier Claude Code session set on the
+              catalog cache? The sessions shown do not say; search the
+              history if you have to.
+            expect:
+              response: {contains: "86400"}  # the digits: no model restyles them
+        script:
+          - tool_calls:
+              - name: search_history
+                arguments: {query: "cache TTL"}
+          - tool_calls:
+              - name: recall_turn
+                arguments: {turn: 1, conversation: cc-old-1}
+          - content: "The catalog cache TTL is 86400 seconds (CACHE7731)."
+        # Reading never writes: the four sessions documents are the only
+        # live documents under /project.
+        expect_store:
+          counts: {/project: 4}

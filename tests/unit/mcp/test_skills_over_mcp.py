@@ -23,7 +23,13 @@ class TestTools:
         async with Client(server) as client:
             result = await client.list_tools()
         names = [tool.name for tool in result.tools]
-        assert names == ["memory", "list_skills", "load_skill", "recall_turn"]
+        assert names == [
+            "memory",
+            "list_skills",
+            "load_skill",
+            "recall_turn",
+            "search_history",
+        ]
         listing = result.tools[1]
         assert listing.description == get_prompt("tools.skill_list")
         assert listing.annotations is not None

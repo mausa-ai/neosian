@@ -741,6 +741,13 @@ class TestConsole:
         assert ledger.returncode == 0, ledger.stderr
         events = [e["event"] for e in json.loads(ledger.stdout)["entries"]]
         assert "turn" in events
+        # N5: the same turn found by content, and the chat session listed
+        # under the project's sessions (the sessions document is created).
+        found = _run(["search", "fake", "response", "--json"], cwd=project, env=env)
+        assert found.returncode == 0, found.stderr
+        hits = json.loads(found.stdout)["hits"]
+        assert [h["conversation_id"] for h in hits] == [payload["conversation_id"]]
+        assert "created" in events
 
     def test_a_piped_playground_turn_and_the_menus_refusal(
         self, tmp_path: Path

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
 
 import pytest
 
@@ -14,8 +13,6 @@ from neosian._foundation.record.span import (
     messages_of,
     parse_payload,
     reduce_payload,
-    sessions_document,
-    sessions_path,
 )
 from tests.unit.record.payloads import SESSION, prompt, stop, tool
 
@@ -113,32 +110,3 @@ class TestMessages:
         records = [{"kind": "prompt", "text": "one"}, {"kind": "prompt", "text": "two"}]
         assert last_prompt(records) == "two"
         assert last_prompt([{"kind": "stop", "text": "x"}]) is None
-
-
-class TestSessionsDocument:
-    def test_the_document_is_small_and_first_line_only(self) -> None:
-        started = datetime(2026, 9, 2, 10, 0, tzinfo=UTC)
-        text = sessions_document(
-            agent="claude-code",
-            session_id=SESSION,
-            started=started,
-            last_prompt="first line\nsecond line",
-            turns=3,
-        )
-        assert text.startswith(f"# claude-code session {SESSION}\n")
-        assert "- started: 2026-09-02T10:00:00Z\n" in text
-        assert "- last prompt: first line\n" in text and "second" not in text
-        assert text.endswith("- turns: 3\n")
-
-    def test_no_prompt_is_a_dash(self) -> None:
-        text = sessions_document(
-            agent="a",
-            session_id="s",
-            started=datetime.now(UTC),
-            last_prompt=None,
-            turns=1,
-        )
-        assert "- last prompt: -\n" in text
-
-    def test_the_path_is_under_sessions(self) -> None:
-        assert sessions_path(SESSION) == f"sessions/{SESSION}"

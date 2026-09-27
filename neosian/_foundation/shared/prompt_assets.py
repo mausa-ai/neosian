@@ -51,6 +51,9 @@ _TOOL_KEYS: Final = (
     "skill_guide",
     "recall_turn",
     "recall_turn_any",
+    "search_history",
+    "search_history_any",
+    "search_history_footer",
     "docs",
     "json_object",
 )
@@ -60,6 +63,8 @@ _TOOL_PARAM_KEYS: Final = (
     "skill_load_params",
     "recall_turn_params",
     "recall_turn_any_params",
+    "search_history_params",
+    "search_history_any_params",
     "docs_params",
 )
 _MEMORY_PARAM_KEYS: Final = ("params",)

@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING, Any, Final
 
 from pydantic import ValidationError
 
-from neosian._foundation.conversation.recall import create_recall_any_tool
+from neosian._foundation.conversation.search_history import history_any_tools
 from neosian._foundation.mcp.sdk import Sdk, load_sdk
 from neosian._foundation.memory.dispatch import dispatch
 from neosian._foundation.memory.index import memory_system_section
@@ -170,7 +170,7 @@ async def create_memory_server(
     handlers: dict[str, Handler] = {memory.name: call_memory}
     readers = list(create_skill_tools((), config))
     if conversations is not None:
-        readers.append(create_recall_any_tool(conversations))
+        readers.extend(history_any_tools(conversations))
     for reader in readers:
         served, call = _read_only(sdk, reader)
         tools.append(served)

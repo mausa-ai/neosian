@@ -35,7 +35,7 @@ from neosian._foundation.evaluation.memory_cli import create_cli_memory_tool
 from neosian._foundation.evaluation.memory_http import open_http_memory
 from neosian._foundation.evaluation.memory_mcp import open_mcp_tools
 from neosian._foundation.evaluation.memory_record import (
-    recall_any_tool,
+    history_any_tools,
     replay_record,
     session_start_section,
 )
@@ -229,8 +229,8 @@ async def _run_cell(
         # A cli or mcp cell registers its transport's tools via extra_tools
         # instead — passing memory_config too would put two `memory`
         # tools on the wire; a session_start cell adds the server's
-        # recall_turn over the cell's own store handle (the mcp server
-        # serves its own).
+        # recall_turn and search_history over the cell's own store
+        # handle (the mcp server serves its own).
         extra_tools: list[ToolFunction] = []
         if transport is Transport.CLI:
             extra_tools.append(
@@ -248,7 +248,7 @@ async def _run_cell(
                 )
             )
         if session.session_start and transport is not Transport.MCP:
-            extra_tools.append(recall_any_tool(memory_config))
+            extra_tools.extend(history_any_tools(memory_config))
         derived = derive_config(
             staged,
             section=section,

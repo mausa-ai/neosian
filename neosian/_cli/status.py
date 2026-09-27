@@ -35,8 +35,8 @@ from neosian._foundation.mcp.targets import (
     resolve_target as mcp_target,
 )
 from neosian._foundation.memory.home import home, project_mounts
+from neosian._foundation.memory.sessions import SESSIONS_PREFIX
 from neosian._foundation.memory.settings import StreamParser
-from neosian._foundation.record.span import SESSIONS_DIR
 from neosian._foundation.record.targets import (
     active_targets,
     installed_argv,
@@ -169,7 +169,7 @@ async def last_session(root: Path, scope: str) -> dict[str, str] | None:
 
     store = FileStore(root)
     try:
-        entries = await store.list_documents(scope, prefix=f"{SESSIONS_DIR}/")
+        entries = await store.list_documents(scope, prefix=SESSIONS_PREFIX)
         live = [e for e in entries if not e.redacted]
         if not live:
             return None
@@ -182,7 +182,7 @@ async def last_session(root: Path, scope: str) -> dict[str, str] | None:
         if line.startswith("- agent: "):
             agent = line.removeprefix("- agent: ").strip()
     return {
-        "conversation": newest.path.removeprefix(f"{SESSIONS_DIR}/"),
+        "conversation": newest.path.removeprefix(SESSIONS_PREFIX),
         "agent": agent,
         "updated_at": newest.updated_at.isoformat().replace("+00:00", "Z"),
         "path": newest.path,

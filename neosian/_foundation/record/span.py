@@ -24,15 +24,12 @@ from neosian._foundation.shared.types import ToolCallId, ToolName
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
-    from datetime import datetime
 
 PROMPT_EVENT: Final = "UserPromptSubmit"
 TOOL_EVENT: Final = "PostToolUse"
 STOP_EVENT: Final = "Stop"
 # The record, not the transcript: a tool's output is kept to its head.
 TOOL_OUTPUT_CHARS: Final = 4096
-PROMPT_LINE_CHARS: Final = 200
-SESSIONS_DIR: Final = "sessions"
 
 Record = dict[str, Any]
 
@@ -165,30 +162,3 @@ def messages_of(records: Sequence[Record]) -> list[Message]:
 def last_prompt(records: Sequence[Record]) -> str | None:
     prompts = [str(r["text"]) for r in records if r.get("kind") == "prompt"]
     return prompts[-1] if prompts else None
-
-
-def sessions_path(session_id: str) -> str:
-    return f"{SESSIONS_DIR}/{session_id}"
-
-
-def sessions_document(
-    *,
-    agent: str,
-    session_id: str,
-    started: datetime,
-    last_prompt: str | None,
-    turns: int,
-) -> str:
-    """The scope's per-session document — the listing the next agent
-    finds in its index (memory documents, never a store method)."""
-    first_line = (last_prompt or "").strip().splitlines()
-    prompt = first_line[0][:PROMPT_LINE_CHARS] if first_line else "-"
-    stamp = started.isoformat().replace("+00:00", "Z")
-    return (
-        f"# {agent} session {session_id}\n\n"
-        f"- agent: {agent}\n"
-        f"- conversation: {session_id}\n"
-        f"- started: {stamp}\n"
-        f"- last prompt: {prompt}\n"
-        f"- turns: {turns}\n"
-    )

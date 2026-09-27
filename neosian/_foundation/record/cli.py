@@ -30,6 +30,11 @@ import httpx
 from neosian._foundation.conversation.base import ConversationStore
 from neosian._foundation.conversation.ids import parse_conversation_id
 from neosian._foundation.memory.actor import parse_actor
+from neosian._foundation.memory.sessions import (
+    sessions_document,
+    sessions_mount,
+    sessions_path,
+)
 from neosian._foundation.memory.settings import StreamParser
 from neosian._foundation.memory.store_lifetime import open_store
 from neosian._foundation.record.context import (
@@ -42,7 +47,6 @@ from neosian._foundation.record.settings import (
     RecordSettings,
     add_record_arguments,
     resolve_record_settings,
-    sessions_mount,
 )
 from neosian._foundation.record.span import (
     STOP_EVENT,
@@ -50,8 +54,6 @@ from neosian._foundation.record.span import (
     messages_of,
     parse_payload,
     reduce_payload,
-    sessions_document,
-    sessions_path,
 )
 from neosian._foundation.record.spool import Spool
 from neosian._foundation.shared.exceptions import (

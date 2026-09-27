@@ -41,13 +41,19 @@ class TestListTools:
         server = await create_memory_server(config, conversations=store)
         async with Client(server) as client:
             result = await client.list_tools()
-        memory, *_, recall = result.tools
+        memory, *_, recall, search = result.tools
         assert memory.name == "memory" and recall.name == "recall_turn"
         assert recall.description == get_prompt("tools.recall_turn_any")
         assert set(recall.input_schema["required"]) == {"turn", "conversation"}
         assert recall.annotations is not None
         assert recall.annotations.read_only_hint is True
         assert recall.annotations.destructive_hint is False
+        # N5 (§32): the search twin beside it, store-wide, `query` alone required.
+        assert search.name == "search_history"
+        assert search.description == get_prompt("tools.search_history_any")
+        assert set(search.input_schema["required"]) == {"query"}
+        assert search.annotations is not None
+        assert search.annotations.read_only_hint is True
 
     async def test_instructions_reach_the_client(self, config: MemoryConfig) -> None:
         await config.store.write("user:demo", "prefs", "dark mode")

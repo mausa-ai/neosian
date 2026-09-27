@@ -31,6 +31,9 @@ from neosian._foundation.conversation.search import (
     parse_query,
     turn_text,
 )
+from neosian._foundation.conversation.search_history import (
+    create_search_history_tool,
+)
 from neosian._foundation.conversation.types import (
     CONVERSATION_FORMAT_VERSION,
     ConversationProjection,
@@ -80,6 +83,7 @@ __all__ = [
     "ReflectionWrite",
     "RemoteStore",
     "create_recall_turn_tool",
+    "create_search_history_tool",
     "match_terms",
     "message_from_json",
     "message_to_json",

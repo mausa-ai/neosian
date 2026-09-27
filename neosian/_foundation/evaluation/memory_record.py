@@ -17,12 +17,15 @@ import json
 from typing import TYPE_CHECKING, Any
 
 from neosian._foundation.conversation.base import ConversationStore
-from neosian._foundation.conversation.recall import create_recall_any_tool
+from neosian._foundation.conversation.search_history import (
+    history_any_tools as _history_any_tools,
+)
 from neosian._foundation.memory.index import memory_system_section
+from neosian._foundation.memory.sessions import sessions_mount
 from neosian._foundation.memory.settings import DEFAULT_SCHEMA, StoreSettings
 from neosian._foundation.record.cli import record_payload
 from neosian._foundation.record.context import render_left_off
-from neosian._foundation.record.settings import RecordSettings, sessions_mount
+from neosian._foundation.record.settings import RecordSettings
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -114,7 +117,7 @@ async def session_start_section(config: MemoryConfig, *, own: str) -> str:
     return f"{await memory_system_section(config)}\n\n{left_off}"
 
 
-def recall_any_tool(config: MemoryConfig) -> ToolFunction:
-    """The server's `recall_turn` over the cell's own store handle — on
-    the http transport the recall crosses the wire."""
-    return create_recall_any_tool(_conversations(config))
+def history_any_tools(config: MemoryConfig) -> tuple[ToolFunction, ToolFunction]:
+    """The server's `recall_turn` and `search_history` over the cell's
+    own store handle — on the http transport both cross the wire."""
+    return _history_any_tools(_conversations(config))

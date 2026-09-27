@@ -10,6 +10,7 @@ from mcp.types import CallToolResult
 from pydantic import ValidationError
 
 from neosian._foundation.conversation.recall import create_recall_any_tool
+from neosian._foundation.conversation.search_history import create_search_any_tool
 from neosian._foundation.llm.base import Message, Role
 from neosian._foundation.mcp.server import create_memory_server
 from neosian._foundation.memory.file import FileStore
@@ -127,6 +128,16 @@ _RECALL_CASES: list[dict[str, object]] = [
 ]
 
 
+_SEARCH_CASES: list[dict[str, object]] = [
+    {"query": "hello"},
+    {"query": "hello", "conversation": "cc-1"},
+    {"query": "absent"},
+    {"query": "  "},
+    {"query": "hello", "limit": 0},
+    {"query": "hello", "conversation": "bad/id"},
+]
+
+
 async def _seed_turn(root: Path) -> FileStore:
     store = FileStore(root)
     await store.append_turn(
@@ -154,6 +165,29 @@ async def test_recall_turn_agrees_on_both_transports(
     )
     async with Client(server) as client:
         mcp_result = await client.call_tool("recall_turn", arguments)
+
+    assert mcp_result.is_error == (not fn_result.success)
+    expected_text = fn_result.data if fn_result.success else fn_result.error
+    expected = ["" if expected_text is None else str(expected_text)]
+    if fn_result.system_reminder is not None:
+        expected.append(fn_result.system_reminder)
+    assert _blocks(mcp_result) == expected
+
+
+@pytest.mark.parametrize("arguments", _SEARCH_CASES, ids=lambda a: str(a))
+async def test_search_history_agrees_on_both_transports(
+    tmp_path: Path, arguments: dict[str, object]
+) -> None:
+    """The search twin (§32): hits, the empty answer and every corrective
+    failure, block for block."""
+    store = await _seed_turn(tmp_path / "s")
+    fn_result = await _call(create_search_any_tool(store), arguments)
+
+    server = await create_memory_server(
+        MemoryConfig(store=store, mounts=_MOUNTS), conversations=store
+    )
+    async with Client(server) as client:
+        mcp_result = await client.call_tool("search_history", arguments)
 
     assert mcp_result.is_error == (not fn_result.success)
     expected_text = fn_result.data if fn_result.success else fn_result.error

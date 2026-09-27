@@ -317,6 +317,28 @@ def memory(ctx: typer.Context) -> None:
 
 
 @app.command(
+    name="search",
+    rich_help_panel=_OPERATE,
+    context_settings=_PASS_THROUGH,
+)
+def search(ctx: typer.Context) -> None:
+    """Find the turns holding every term, newest first (DESIGN §32).
+
+    A thin pass-through: every argument goes verbatim to the one grammar
+    (`neosian search --help`). Store-wide, `--conversation` narrows;
+    answers the same on a FileStore root, Postgres, or the state process.
+    """
+    from neosian._cli.render import render_search, run_rendered
+    from neosian.search import main as search_main
+
+    raise typer.Exit(
+        run_rendered(
+            search_main, list(ctx.args), render_search, out=sys.stdout, env=os.environ
+        )
+    )
+
+
+@app.command(
     name="audit",
     rich_help_panel=_OPERATE,
     context_settings=_PASS_THROUGH,

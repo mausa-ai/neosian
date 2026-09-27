@@ -15,8 +15,8 @@ from neosian._foundation.llm.base import Role
 from neosian._foundation.memory.file import FileStore
 from neosian._foundation.memory.home import HOME_ENV, project_scope, user_scope
 from neosian._foundation.memory.mounts import Mount
+from neosian._foundation.memory.sessions import sessions_mount
 from neosian._foundation.record.cli import run
-from neosian._foundation.record.settings import sessions_mount
 from neosian._foundation.server.app import build_app
 from neosian._foundation.shared.prompt_assets import get_prompt
 from tests.unit.record.payloads import SESSION, prompt, session_start, stop, tool

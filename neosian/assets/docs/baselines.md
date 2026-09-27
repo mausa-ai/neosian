@@ -16,7 +16,7 @@ yardstick (candidate: LongMemEval) is roadmapped as NC6.
 
 ## What is measured
 
-The shipped pack `examples/eval_memory_baseline.yaml`, ten scenarios,
+The shipped pack `examples/eval_memory_baseline.yaml`, eleven scenarios,
 one per behavior:
 
 | Scenario | Behavior |
@@ -31,6 +31,7 @@ one per behavior:
 | maintenance | The §16 gardener over a seeded, polluted store (`seed:`, NG): byte-dupes and empty docs fall deterministically, the misfiled user-durable fact is promoted cross-mount, the fresh document survives the deletion floor with counts, promoted content by prefix, and the pollution's absence pinned, never the promoted name |
 | cross-client | **The switching claim** (VISION; §21.7, NB): a Claude Code session lands through the record verb's engine (`record:`, its hooks' three payloads, no model in the room), then the agent under test starts the way a hook-fed agent starts (`session_start:` the index plus "where we left off" in its prefix) and must recall the foreign turn verbatim through the server's `recall_turn` (conversation required); the sessions document the record wrote and a reading session that never writes are the store truth |
 | skills | **Skills as documents** (§24, NK): the agent saves a reusable procedure as `skills/<name>` through the memory tool, with the frontmatter `description` the guide names is the store truth then loads it by name in the next session (`load_skill`, and loading never writes), then revises it in place: one document under `/project/skills/`, `[created, modified]`, the new step in the live text |
+| old-turn-search | **History search** (§32, N5): four Claude Code sessions land through the record verb's engine, the first carrying a fact deep in its final text (past the log line's 200-char digest, in no document and in no prompt) and the three that follow pushing it outside the three sessions "where we left off" shows; the agent under test must find the turn by content (`search_history`, store-wide on the server) and re-read it (`recall_turn`); the pin is the TTL's digits, the store truth the four sessions documents and a reading session that never writes |
 
 Scoring is **store truth** (DESIGN §13.12): after each session the
 harness re-reads the actual files through a freshly constructed store.
@@ -145,7 +146,13 @@ fails when any gated file changes without this section being updated:
   vocabulary as memory/reflection; first measured cells arrive with the
   maintenance scenario in this same batch.)*
 - `examples/eval_memory_baseline.yaml`: sha256
-  `8dda87157f3378690e0c95780105dacab2f26631432c14136a79842c4674265a`
+  `288934f79d9bccdf00be0562877137917b770daa511fee175b061856fb44bfa8`
+  *(N5, 2026-09-27, the pack gained `old-turn-search`, the eleventh
+  scenario (DESIGN §32): four recorded sessions and a reading session
+  that searches before it recalls. No existing scenario, turn, pin or
+  prompt moved; the pack is 44 cells keyless (the dated block under
+  Results); every real row's re-run rides the /ship after `n5-done`,
+  the NK precedent. Prior: `8dda8715…`.)*
   *(NC8, 2026-09-23, a suite's paths resolve beside the suite file
   (EC-9, ledger #281), so the pack names its agent `eval_memory_agent.py`
   rather than `examples/eval_memory_agent.py`. No scenario, turn, pin or
@@ -290,6 +297,22 @@ evidence. Each stays measured every dispatch; none is tuned around
   `list_skills`, ruled at NK (the store truth stays the pin).
 
 ## Results
+
+### 2026-09-27: History search: the eleventh scenario, keyless (N5)
+
+The pack gained `old-turn-search` (DESIGN §32) and its fingerprint
+moved (the section above). The keyless row, at the close: **44/44** on
+FakeProvider across function, cli, http and mcp
+(`tests/unit/evaluation/test_memory_scripted.py`), the new scenario
+green on all four columns: the function and cli columns carrying
+`search_history` beside `recall_turn` through `extra_tools`, the http
+column searching over the wire (`POST /v1/conversation/search_turns`),
+the mcp column served by the state set's fifth tool. A per-transport pin
+(`test_old_turn_search.py`) reads the captures, since the fake replays a
+script whether or not the tool is served, and reads the prefix: the
+fact's session is listed in the index and outside the three shown, and
+the digits reach the model only through the recall. The real rows
+follow on the next dispatch, the /ship after `n5-done`.
 
 ### 2026-09-26: Dispatch #18, every lane at rc19; Sol's first dispatched board (the NW4 /ship)
 

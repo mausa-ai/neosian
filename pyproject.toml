@@ -297,6 +297,10 @@ source_modules = [
     "neosian._foundation.conversation.compaction",
     "neosian._foundation.conversation.reflection",
     "neosian._foundation.conversation.recall",
+    "neosian._foundation.conversation.search",
+    "neosian._foundation.conversation.hits",
+    "neosian._foundation.conversation.search_history",
+    "neosian._foundation.conversation.sessions",
     "neosian._foundation.postgres",
 ]
 forbidden_modules = ["neosian._foundation.agent"]

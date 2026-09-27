@@ -13,6 +13,7 @@ from neosian._cli.render import (
     render_audit,
     render_docs,
     render_index,
+    render_search,
     render_status,
     rendered,
     run_rendered,
@@ -126,6 +127,22 @@ class TestTheProjections:
         console, buffer = _console()
         render_audit({"scope": "user:me", "entries": []}, console)
         assert "no ledger entries" in buffer.getvalue()
+
+    def test_search_is_a_table_with_literal_snippets(self) -> None:
+        console, buffer = _console()
+        hit = {
+            "conversation_id": "cc-1",
+            "turn": 2,
+            "created_at": "2026-09-27T10:00:00Z",
+            "actor": None,
+            "snippet": "see [link 3] for the cache TTL",
+        }
+        render_search({"query": "ttl", "hits": [hit]}, console)
+        text = buffer.getvalue()
+        assert "where" in text and "cc-1 #2" in text and "[link 3]" in text
+        console, buffer = _console()
+        render_search({"query": "ttl", "hits": []}, console)
+        assert "no turn matches every term of 'ttl'" in buffer.getvalue()
 
     def test_the_index_is_a_tree(self) -> None:
         console, buffer = _console()

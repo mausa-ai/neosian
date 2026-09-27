@@ -22,7 +22,7 @@ from neosian._cli.shape import (
 from neosian._cli.status import collect, run
 from neosian._foundation.memory.file import FileStore
 from neosian._foundation.memory.home import project_mounts
-from neosian._foundation.record.span import sessions_document, sessions_path
+from neosian._foundation.memory.sessions import sessions_document, sessions_path
 from neosian._foundation.shared.client_config import Environment
 from tests.unit.record.payloads import SESSION
 
