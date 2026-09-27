@@ -594,8 +594,9 @@ scenarios:
   # sessions "where we left off" shows. Nothing in the reading session's
   # prefix can answer: the agent must find the turn by content
   # (`search_history`, store-wide on the server) and re-read it
-  # (`recall_turn`). The pin is the TTL's digits; store truth pins the
-  # four sessions documents and that reading never writes.
+  # (`recall_turn`). The pin is the TTL, its digits grouped or not;
+  # store truth pins the four sessions documents and that reading never
+  # writes.
   - name: old-turn-search
     sessions:
       - name: claude-code-tunes-the-cache
@@ -654,7 +655,10 @@ scenarios:
               catalog cache? The sessions shown do not say; search the
               history if you have to.
             expect:
-              response: {contains: "86400"}  # the digits: no model restyles them
+              # The TTL, grouped or not: dispatch #19 read 86,400 (Sol,
+              # qwen3.8-max) and 86 400 with a narrow no-break space
+              # (gpt-oss-120b) on right answers the digits-only pin missed.
+              response: {regex: '86[\s,.]?400'}
         script:
           - tool_calls:
               - name: search_history

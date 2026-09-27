@@ -31,7 +31,7 @@ one per behavior:
 | maintenance | The §16 gardener over a seeded, polluted store (`seed:`, NG): byte-dupes and empty docs fall deterministically, the misfiled user-durable fact is promoted cross-mount, the fresh document survives the deletion floor with counts, promoted content by prefix, and the pollution's absence pinned, never the promoted name |
 | cross-client | **The switching claim** (VISION; §21.7, NB): a Claude Code session lands through the record verb's engine (`record:`, its hooks' three payloads, no model in the room), then the agent under test starts the way a hook-fed agent starts (`session_start:` the index plus "where we left off" in its prefix) and must recall the foreign turn verbatim through the server's `recall_turn` (conversation required); the sessions document the record wrote and a reading session that never writes are the store truth |
 | skills | **Skills as documents** (§24, NK): the agent saves a reusable procedure as `skills/<name>` through the memory tool, with the frontmatter `description` the guide names is the store truth then loads it by name in the next session (`load_skill`, and loading never writes), then revises it in place: one document under `/project/skills/`, `[created, modified]`, the new step in the live text |
-| old-turn-search | **History search** (§32, N5): four Claude Code sessions land through the record verb's engine, the first carrying a fact deep in its final text (past the log line's 200-char digest, in no document and in no prompt) and the three that follow pushing it outside the three sessions "where we left off" shows; the agent under test must find the turn by content (`search_history`, store-wide on the server) and re-read it (`recall_turn`); the pin is the TTL's digits, the store truth the four sessions documents and a reading session that never writes |
+| old-turn-search | **History search** (§32, N5): four Claude Code sessions land through the record verb's engine, the first carrying a fact deep in its final text (past the log line's 200-char digest, in no document and in no prompt) and the three that follow pushing it outside the three sessions "where we left off" shows; the agent under test must find the turn by content (`search_history`, store-wide on the server) and re-read it (`recall_turn`); the pin is the TTL, its digits grouped or not, the store truth the four sessions documents and a reading session that never writes |
 
 Scoring is **store truth** (DESIGN §13.12): after each session the
 harness re-reads the actual files through a freshly constructed store.
@@ -146,7 +146,15 @@ fails when any gated file changes without this section being updated:
   vocabulary as memory/reflection; first measured cells arrive with the
   maintenance scenario in this same batch.)*
 - `examples/eval_memory_baseline.yaml`: sha256
-  `288934f79d9bccdf00be0562877137917b770daa511fee175b061856fb44bfa8`
+  `6024174fdb6014ffad05f1a315058d739d13ade95eb18ab56d770132ea4eaeee`
+  *(N5 /ship, 2026-09-27, one pin widened, no scenario, turn or count
+  moved: `old-turn-search`'s response pin was the TTL's digits, `86400`,
+  on the belief that no model restyles a number; dispatch #19 read
+  `86,400` from gpt-6-sol and qwen3.8-max and `86 400` with a narrow
+  no-break space from gpt-oss-120b on answers that had found the turn,
+  the NZ wordform class. The pin is now the regex `86[\s,.]?400`, the
+  value grouped or not. Dispatch #20 measures it, the block under
+  Results. Prior: `288934f7…`.)*
   *(N5, 2026-09-27, the pack gained `old-turn-search`, the eleventh
   scenario (DESIGN §32): four recorded sessions and a reading session
   that searches before it recalls. No existing scenario, turn, pin or
