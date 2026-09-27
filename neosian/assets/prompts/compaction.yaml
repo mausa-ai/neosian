@@ -35,7 +35,8 @@ log_header: >-
   numbers in square brackets are turn references]
 
 log_footer: >-
-  [end of log — call recall_turn(n) to re-read turn n verbatim; [link N]
+  [end of log — call recall_turn(n) to re-read turn n verbatim, or
+  search_history(query) to find a turn by its words; [link N]
   stands for a URL, path or id from this conversation: use it as written
   in any tool call and it is expanded before the tool runs, or recall its
   turn to read it]

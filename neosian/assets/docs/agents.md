@@ -1,6 +1,6 @@
 ---
 title: "Any agent: the record through hooks"
-summary: Agent hooks record sessions; startup context and MCP recall read them back
+summary: Agent hooks record sessions; startup context, MCP recall and search read them back
 ---
 
 # Any agent
@@ -120,7 +120,9 @@ neosian record install --client opencode --level project --scope user:me --write
 The sessions document lives at `sessions/<session_id>` in the mount at
 `/project` (else the first read-write mount) with agent, conversation,
 started, last prompt and turn count, so the next agent finds the listing
-in its index. Between the prompt and the stop the span waits in a
+in its index; a neosian `Conversation` with a writable `/project` mount
+writes its own after each turn, so the listing names every session of
+the project, foreign or neosian. Between the prompt and the stop the span waits in a
 per-session spool (`spool/` under the home; `--spool DIR`), never the store; a
 failed landing keeps it, and the next stop carries the whole span.
 
@@ -151,8 +153,10 @@ nothing:
 The block names every turn it shows, and the footer names the call
 that re-reads one: `recall_turn(n, conversation="<id>")` on the
 `neosian-memory` MCP server (`neosian docs mcp`), the same tool a
-neosian `Conversation` uses to page its own history. Bodies stay
-behind tools; the block is a table of contents, not the transcript. An
+neosian `Conversation` uses to page its own history, and
+`search_history(query)` on the same server finds a turn of any session
+by its words, listed or not. Bodies stay behind tools; the block is a
+table of contents, not the transcript. An
 empty scope still prints the frame, so the agent knows the door exists.
 A store that cannot be reached exits 1 with nothing on stdout:
 `SessionStart` never blocks.

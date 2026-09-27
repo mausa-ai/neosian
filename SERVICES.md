@@ -111,7 +111,7 @@ warning; requests fail at first pool use.
 ## The home — `NEOSIAN_HOME`
 
 `NEOSIAN_HOME` moves the home (DESIGN §22): the FileStore every argv
-entry point — `neosian memory`, `audit`, `mcp`, `record`, both
+entry point — `neosian memory`, `audit`, `search`, `mcp`, `record`, both
 installers, `serve` — and the playground use when `--root`, `--url` and
 the DSN are all absent, and where `neosian record` spools. Unset, the
 home is `~/.neosian`. An explicit flag always wins; the unit tier points
@@ -126,7 +126,7 @@ an environment variable: the check contacts PyPI's simple index and
 the opt-in is the asking (DESIGN §30.3, ledger #214). It runs only on
 the human door — bare `neosian`, `chat`, `status`, `playground`,
 `configure`, on a terminal, never under `--json` — never on `memory`,
-`audit`, `export`, `import`, `record`, `mcp` or `serve`; once per 24 h
+`audit`, `search`, `export`, `import`, `record`, `mcp` or `serve`; once per 24 h
 by a stamp under the home; silent when offline. `NEOSIAN_INSTALL`
 (set to `container` by the image) names the installation shape
 `status` and `update` report — `auto` applies only the uv tool shape.
@@ -219,7 +219,7 @@ it did before** — nothing existing changes.
 
 `NEOSIAN_CLIENT_TOKEN` is the **client's** side: read only by the argv
 entry points when `--url` names a state process (`neosian memory`,
-`neosian mcp`, `neosian audit`), never by the library
+`neosian mcp`, `neosian audit`, `neosian search`), never by the library
 (`RemoteStore.connect(url, token=…)` takes it explicitly). A distinct
 key because one machine runs both; `--url` without it refuses at the
 grammar tier. Off means no daemon store from the shell.

@@ -1,6 +1,6 @@
 ---
 title: "The shell: one CLI for humans and agents"
-summary: status, setup, chat, configure, playground, eval; the memory grammar, --json, exit tiers
+summary: status, setup, chat, search, audit, eval; the memory grammar, --json, exit tiers
 ---
 
 # The shell
@@ -87,7 +87,7 @@ headers = { Authorization = "Bearer ..." }
 
 A malformed table is grammar (exit 2, nothing spawned); a server that
 cannot be reached exits 1 naming it; a tool named like one chat already
-has (`docs`, `memory`, the skills pair, `recall_turn`) is refused until
+has (`docs`, `memory`, the skills pair, `recall_turn`, `search_history`) is refused until
 the table sets `prefix`. `playground` runs the agent file as written and
 reads no table; `chat --agent FILE` adds the servers. The session banner
 names each server and its tool count.
@@ -254,6 +254,25 @@ prior content comes back) and the revert *appends* a new version row,
 never rewriting history. Its `--json` envelope is the write receipt's
 fields (`command`, `path`, `version`, `previous_path`).
 
+## Search the history: `neosian search`
+
+`neosian search TERMS... [--conversation ID]... [--limit N] [--json]`
+answers "where was this said" across every conversation the store
+holds, newest first: a turn matches when it holds every term as a
+case-insensitive substring (message text, tool calls and their
+arguments, tool results; DESIGN §32, the one rule `neosian docs stores`
+states). The words are the terms, so no quoting is needed; `--conversation`
+narrows to one conversation and repeats; `--limit` is the newest N, 1 to
+500 (default 20). Each hit is one line, `[<id> #<turn>] <stamp> <actor>
+<snippet>`, and `--json` carries `{query, conversations, limit, client,
+hits: [{conversation_id, turn, created_at, actor, snippet}]}`; on a
+terminal the hits render as a table. It takes the store selection above
+(`--root`, `--url`, or the DSN) and answers identically on every
+substrate; there is no `--scope`, since turns carry none. Exit tiers
+hold: no term, a bad id or a limit outside the range is grammar (exit
+2, nothing constructed); no hit is an answer (exit 0). Inside an agent
+the same search is the `search_history` tool (`neosian docs memory`).
+
 ## The ledger: `neosian audit`
 
 `neosian audit [--scope SCOPE] [--conversation ID] [--actor A] [--since T]
@@ -299,7 +318,9 @@ DIR`, the directory whose layout is the default (the working directory
 when absent; a once-per-machine Claude Code hook line passes
 `"$CLAUDE_PROJECT_DIR"`, since a hook's working directory moves with the
 agent's `cd`). The sessions document lands in the mount at `/project`
-when there is one, else the first read-write mount. `neosian record
+when there is one, else the first read-write mount; a neosian
+`Conversation` with a writable `/project` mount writes its own the same
+way, so the listing is complete. `neosian record
 install --client claude-code|codex|opencode|muse-code|cursor [--level user|project]
 [--write]` renders or applies the hooks, the `mcp install` twin
 (`neosian docs agents`). The exit tiers bend once

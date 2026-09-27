@@ -1,6 +1,6 @@
 ---
 title: "MCP: the same state, served to any client"
-summary: memory, skills and recall_turn over stdio; mcp install; McpServer consumes any server
+summary: memory, skills, recall and search over stdio; mcp install; McpServer consumes any server
 ---
 
 # The MCP server
@@ -14,7 +14,7 @@ with mounts (`neosian docs topology`).
 ## The state set
 
 The memory server becomes the state server one tool at a time. Today it
-serves four:
+serves five:
 
 - **`memory`**: the six commands over the mounts (`neosian docs
   memory`), the same definition the function tool carries.
@@ -33,6 +33,14 @@ serves four:
   which conversations are shareable is the host's decision, never the
   library's. The ids are in the memory index under `sessions/` and in
   the "where we left off" block a `SessionStart` hook prints.
+- **`search_history(query, conversation=None, limit=10)`**: the turns of
+  any recorded conversation holding every term of `query` (whitespace-
+  separated, case-insensitive substrings of the message text, the tool
+  calls and their arguments, the tool results), newest first, at most
+  50; `conversation` narrows to one. A hit is `[<id> #<turn>] <stamp>
+  <actor>` and a snippet around the match, and the footer names the
+  `recall_turn` call that re-reads it: search finds, recall opens. What
+  is searchable is the host's decision, as with recall.
 
 ## Serve
 
@@ -49,11 +57,13 @@ defaults to `mcp`
 `NEOSIAN_POSTGRES_DSN`, never an argv flag. The server's
 instructions carry the same memory index and prompt pack the function
 tool uses; the index refreshes per connection. Every shipped store
-keeps conversations too, so `recall_turn` is always on the list.
+keeps conversations too, so `recall_turn` and `search_history` are always
+on the list.
 
 Hosts that embed the server in their own transport use
 `create_memory_server` from `neosian.mcp`; passing their conversation
-store as `conversations=` adds `recall_turn` beside `memory`.
+store as `conversations=` adds `recall_turn` and `search_history` beside
+`memory`.
 
 ## Register a client
 

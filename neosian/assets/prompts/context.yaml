@@ -17,9 +17,10 @@ view_header: >-
 
 view_footer: >-
   [end of view — call recall_turn(n, conversation="{{conversation_id}}")
-  to re-read its turn n verbatim; [link {{conversation_id}}:N] stands for
-  a URL, path or id of its turns: use it as written in any tool call, or
-  recall the turn to read it]
+  to re-read its turn n verbatim, or search_history(query,
+  conversation="{{conversation_id}}") to find one by its words; [link
+  {{conversation_id}}:N] stands for a URL, path or id of its turns: use it
+  as written in any tool call, or recall the turn to read it]
 
 view_fold: >-
   [{{first}}-{{last}}] {{count}} earlier turns not shown
@@ -46,7 +47,8 @@ start_session: >-
 
 start_footer: >-
   [end — call recall_turn(n, conversation="<id>") on the neosian-memory
-  server to re-read a listed turn verbatim; [link <id>:N] stands for a
+  server to re-read a listed turn verbatim, or search_history(query) there
+  to find a turn of any session by its words; [link <id>:N] stands for a
   URL, path or id of that conversation — recall the turn to read it]
 
 start_empty: >-

@@ -8,8 +8,34 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [1.0.0rc20] - 2026-09-27
+
 ### Added
 
+- `search_history(query, conversation=None, limit=10)`: the search tool
+  (N5, ledger #298, DESIGN §32). On a `Conversation` it registers with
+  `recall_turn` as a pair (from the first send when a mount at
+  `/project` exists, else at the first compaction or with views;
+  `CompactionConfig.recall_tool=False` removes both, ledger #299) and
+  reaches this conversation, its views and the project's listed
+  sessions, never the whole store; on the MCP server it is the state
+  set's fifth tool, store-wide with `conversation` narrowing. A hit is
+  `[<id> #<turn>] <stamp> <actor>` and a snippet around the match,
+  newest first, at most 50, and the footer names the `recall_turn` call
+  that re-reads it. `create_search_history_tool` on
+  `neosian.conversation` beside `create_recall_turn_tool`.
+- `neosian search TERMS... [--conversation ID]... [--limit N] [--json]`
+  (and `python -m neosian.search`): the turns holding every term,
+  newest first, across every conversation the store holds, identical on
+  a root, Postgres or the state process; a table on a terminal.
+- A `Conversation` with a writable mount at `/project` writes its own
+  `sessions/<conversation_id>` document after each persisted turn
+  (agent `neosian`, by `<actor>#<turn>`; a failing store is logged,
+  never raised), so a project's `sessions/` lists foreign and neosian
+  sessions alike and "where we left off" sees both (ledger #294).
+- The memory pack's eleventh scenario, `old-turn-search`: a fact that
+  lives only in an old, unfiled turn, found by content on every
+  transport; 44 cells keyless.
 - `ConversationStore.search_turns(query, *, conversations=None, limit=50)`,
   the sixth abstract method (N5, ledger #297): the turns whose searchable
   text holds every whitespace-split term as a case-insensitive
@@ -30,6 +56,11 @@ phase close names the version.
 
 ### Changed
 
+- `recall_turn` inside a `Conversation` reaches the project's listed
+  sessions as well as its views (ledger #138 amended), read live per
+  call; the corrective reminder lists at most twelve ids.
+- The prompt footers (`compaction.log_footer`, `context.view_footer`,
+  `context.start_footer`) name `search_history` beside `recall_turn`.
 - The Postgres schema generation is 3; a turn written before it holds no
   search text and never matches until an export and import re-renders it.
 
@@ -1616,7 +1647,8 @@ pre-release — pin it explicitly; the API stability promise rides v1.0.0.
 - Both entry points share one `_validate_run`, so neither can skip a
   guard.
 
-[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc19...HEAD
+[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc20...HEAD
+[1.0.0rc20]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc19...v1.0.0rc20
 [1.0.0rc19]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc18...v1.0.0rc19
 [1.0.0rc18]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc17...v1.0.0rc18
 [1.0.0rc17]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc16...v1.0.0rc17

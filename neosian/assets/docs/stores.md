@@ -91,7 +91,9 @@ substrate folds as its engine does. A store may render the text at read
 (PostgresStore's schema generation 3, the SQLite example); a row written
 before such a column holds nothing and never matches until an export
 and import re-renders it. `parse_query` and `match_terms` are public for
-a store that scans.
+a store that scans. Over the method sit the `search_history` tool
+(`neosian docs memory`, `neosian docs mcp`) and the `neosian search`
+verb (`neosian docs cli`).
 
 Two names are reserved and must not be claimed: `MemoryStore.search`
 and `ConversationStore.list_conversations`, each a 1.x additive that

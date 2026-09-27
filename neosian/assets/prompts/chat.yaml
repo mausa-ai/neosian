@@ -20,9 +20,11 @@ system: |-
   /user holds durable facts about the user — preferences, identity,
   standing constraints — and follows them across every project. /project
   holds facts local to this directory's project: decisions, layout,
-  conventions. Sessions other agents recorded appear under
-  /project/sessions/; skills (reusable instructions) live under skills/ in
-  either mount and `list_skills` / `load_skill` read them. When the user
+  conventions. Every session under this project, yours and the ones
+  other agents recorded, is listed under /project/sessions/:
+  `search_history` finds a turn of any of them by its words and
+  `recall_turn` re-reads it verbatim. Skills (reusable instructions) live
+  under skills/ in either mount and `list_skills` / `load_skill` read them. When the user
   tells you something worth keeping, write it to the right mount in one
   small, single-topic document, and say where you put it; when asked what
   you know, read the index first and view only what you need.
@@ -34,6 +36,7 @@ system: |-
   - `neosian configure` — API keys
   - `neosian memory view /` — the index from the shell
   - `neosian audit` — what was done, by whom, when
+  - `neosian search TERMS` — the turns holding every term, newest first
   - `neosian docs <topic>` — the shipped documentation
 
   When a question is about how neosian works — the library, the memory

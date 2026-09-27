@@ -10,7 +10,9 @@ layers. One memory dispatcher serves five transports: the function tool,
 Anthropic's native declaration, an MCP stdio server, the shell, and the
 state process's HTTP wire. Agents share context by config: a `board`
 mount on a task scope, and read-only `ConversationView`s of another
-conversation with cross-conversation `recall_turn`. Long URLs, paths and
+conversation with cross-conversation `search_history` and `recall_turn`;
+a Conversation with a `/project` mount lists itself under `sessions/`, so
+one search covers a project's sessions, foreign and neosian alike. Long URLs, paths and
 ids in aged turns become `[link N]` handles, expanded at the tool boundary.
 Skills are documents under `skills/` in a mount: versioned, curated by
 the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
@@ -75,6 +77,9 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
 - `neosian audit --scope S [--conversation C] [--actor A] [--since T]
   [--json]`, the ledger: what was done, by whom, when, newest first,
   identical on a root, Postgres, or the state process (`--url`).
+- `neosian search TERMS... [--conversation ID]... [--limit N] [--json]`:
+  the turns holding every term, newest first, across every conversation
+  the store holds; identical on every substrate.
 - `neosian export DIR` / `neosian import DIR`: a store moves whole,
   history included, any substrate to any other; DIR is a FileStore root.
   An import needs every scope and conversation empty in the target.
@@ -100,8 +105,10 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
 - `python -m neosian.mcp --root DIR --scope user:me` serves the same
   store over stdio: the `memory` tool, `list_skills` and
   `load_skill` over the mounts' skills (each skill also an MCP prompt, a
-  slash command in Claude Code), and `recall_turn(turn, conversation)` for
-  any recorded turn of any agent's session, verbatim.
+  slash command in Claude Code), `recall_turn(turn, conversation)` for
+  any recorded turn of any agent's session, verbatim, and
+  `search_history(query, conversation=)` for the turns holding every term,
+  newest first.
 - The other direction: `async with McpServer.stdio(cmd, args) as s:`
   (or `.http(url, headers=)`, `.in_process(server)`) from `neosian.mcp`
   gives the server's tools as `AgentConfig(tools=[*s.tools])`, schema
@@ -132,7 +139,7 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
 - The hooks call `python -m neosian.record` with the payload on stdin; a
   prompt-to-stop span lands as one turn by `claude-code:<session_id>` in
   the conversation the session id names, plus a sessions document at
-  /memories/sessions/<session_id>. Read it back: `neosian audit --scope S
+  sessions/<session_id> in the mount at /project. Read it back: `neosian audit --scope S
   --conversation <session_id>`. On SessionStart the verb prints the memory
   index and "where we left off" (the recent sessions, log-projected):
   the client adds a hook's stdout to the model's context.
@@ -208,7 +215,7 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
 
 ## Install
 
-- `uv add "neosian==1.0.0rc19"`: one package, the library and its
+- `uv add "neosian==1.0.0rc20"`: one package, the library and its
   provider SDKs, the `neosian` shell, the MCP server and client, the
   state process and OpenTelemetry spans (about 70 MB; nothing loaded
   until used). On PyPI as a pre-release until v1.0.0: pin it explicitly,
@@ -218,11 +225,11 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
 - `curl -fsS https://neosian.com/install | bash` puts uv and neosian on a
   machine with nothing on it; the script says what it installs first.
 - The appliance: `docker run -d -e NEOSIAN_SERVE_TOKEN=… -p 6367:6367
-  -v neosian-state:/data ghcr.io/mausa-ai/neosian:1.0.0rc19`, the state
+  -v neosian-state:/data ghcr.io/mausa-ai/neosian:1.0.0rc20`, the state
   process on a volume, `/health` the one open route.
 
 ## Docs
 
-- https://github.com/mausa-ai/neosian/blob/v1.0.0rc19/README.md: install and quickstart.
-- https://github.com/mausa-ai/neosian/blob/v1.0.0rc19/SERVICES.md: every environment key and what turning it off means.
+- https://github.com/mausa-ai/neosian/blob/v1.0.0rc20/README.md: install and quickstart.
+- https://github.com/mausa-ai/neosian/blob/v1.0.0rc20/SERVICES.md: every environment key and what turning it off means.
 - `neosian docs baselines`: the published per-provider memory numbers.

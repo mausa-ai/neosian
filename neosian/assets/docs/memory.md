@@ -67,6 +67,21 @@ verbatim; its long URLs, paths and ids render as `[link conv-a:N]`
 handles the model passes as written in tool calls. Which conversations
 are shareable is your decision: ids carry no scope.
 
+History is searchable as well as pageable (DESIGN §32).
+`search_history(query, conversation=None, limit=10)` registers with
+`recall_turn` as a pair (from the first send when a mount at `/project`
+exists, else at the first compaction or with views; `recall_tool=False`
+removes both) and finds the turns holding every term of `query`, newest
+first, across this conversation, its views and the project's listed
+sessions: a `Conversation` with a writable `/project` mount writes its
+own `sessions/<id>` document after each turn, beside the ones foreign
+agents' hooks write, so one search covers the project and never the
+whole store. A hit names the turn and shows a snippet; `recall_turn`
+opens it. A search's own arguments persist in the turn that made it,
+so a later search for the same words finds that turn too. The same
+search is `neosian search` in the shell and `search_history` on the MCP
+server, store-wide there.
+
 ## The six commands
 
 One `memory` tool carries the whole vocabulary, on every transport:

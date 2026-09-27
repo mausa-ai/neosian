@@ -163,9 +163,9 @@ on any substrate, and `--url` reads it through the process.
 The agent door reads as well as writes. A foreign agent's `SessionStart`
 hook prints the memory index and "where we left off" (the scope's
 recent sessions, log-projected) into its own window, and its MCP
-client calls `recall_turn(turn, conversation)` on `/mcp` (or the stdio
-server) to re-read any recorded turn verbatim: one client writes, a
-different client recalls, on the same store (`neosian docs agents`,
+client calls `search_history(query)` and `recall_turn(turn, conversation)`
+on `/mcp` (or the stdio server) to find and re-read any recorded turn
+verbatim: one client writes, a different client recalls, on the same store (`neosian docs agents`,
 `neosian docs mcp`).
 
 ## One writer per root
