@@ -306,6 +306,69 @@ evidence. Each stays measured every dispatch; none is tuned around
 
 ## Results
 
+### 2026-09-28: Dispatch #21, rc21 and the funded Anthropic probe (the NC11 /ship)
+
+[Dispatch #21](https://github.com/mausa-ai/neosian/actions/runs/36382496849)
+(on 51539e4, `1.0.0rc21`, the unchanged pack at `6024174f…`) completed
+all eight lanes. Every board ran all eleven cells on each transport,
+with no timeout or cut cell. The dispatch concludes `failure` on the
+behavioral assertions below; all catalog and applicable door probes pass.
+The three Anthropic catalog probes pass after the account was funded:
+Fable 5.1, Opus 5.5 and Sonnet 5.
+The earlier funding failure is discharged. Behavioral failures below are
+recorded from the job logs; no prompt or assertion changed for this run.
+Lane elapsed includes setup and probes, not just the memory board.
+
+| Provider | Model | function | cli | http | mcp | native | lane elapsed |
+|---|---|---|---|---|---|---|---|
+| OpenAI (Responses) | gpt-6-sol | 9/11 | 11/11 | 11/11 | 11/11 | n/a | 7 min 4 s |
+| Anthropic | claude-sonnet-5 | 10/11 | 11/11 | 11/11 | 11/11 | 11/11 | 11 min 58 s |
+| Cerebras | gpt-oss-120b | 10/11 | 9/11 | 10/11 | 8/11 | n/a | 4 min 31 s |
+| Cerebras | qwen-3.8-27b | 11/11 | 11/11 | 10/11 | 10/11 | n/a | (same lane) |
+| xAI (Responses) | grok-4.6 | 10/11 | 11/11 | 10/11 | 10/11 | n/a | 9 min 7 s |
+| Gemini | gemini-3.8-flash | 11/11 | 11/11 | 10/11 | 11/11 | n/a | 52 min 54 s |
+| Model Studio, token plan | qwen3.8-max | 11/11 | 11/11 | 11/11 | 10/11 | n/a | 7 min 14 s |
+| Moonshot (100 rpm) | kimi-k3 | 10/11 | 10/11 | 10/11 | 11/11 | n/a | 28 min 45 s |
+| local (the hosted runner, CPU) | gemma-4-e4b-it | 10/11 | 9/11 | 10/11 | 9/11 | n/a | 125 min 54 s |
+
+Findings, recorded as found:
+
+- **Sonnet 5: 43/44**, leaving a project document after disavowing the
+  fact in `correct-wrong-memory` on function. Its separate transport-axis
+  run is 11/11 on function and 11/11 on native memory. All three shipped
+  Anthropic model IDs pass the catalog probe.
+- **Sol: 42/44**, both reds on function: two allergy documents where
+  `dedup` expects one, and an extra skill write in the use session.
+- **gpt-oss-120b: 37/44.** `skills` on function, http and mcp (extra
+  writes or missing frontmatter); cli misses the requested view in
+  `recall-next-session` and calls `list_skills` first in
+  `correct-wrong-memory`; mcp misses the view in `long-horizon-recall`
+  and files an extra document in `cross-client`.
+- **Cerebras Qwen: 42/44**, an extra skill revision on http and an extra
+  document in `cross-client` on mcp. **grok-4.6: 41/44**, the distractor
+  project fact missing on function/http and an extra skill revision on
+  mcp. **qwen3.8-max: 43/44**, missing description frontmatter on mcp.
+- **gemini-3.8-flash: 43/44**, an extra skill write on http; the other
+  three transport boards are whole. Both shipped Gemini IDs pass their
+  catalog probes.
+- **kimi-k3: 41/44**, an extra document on function in `cross-client`,
+  and the fact filed after recall in `old-turn-search` on cli and http:
+  five project documents where four are expected. The mcp board is whole.
+- **gemma-4-e4b-it: 38/44**, with every cell measured on the CPU runner.
+  `skills` misses description frontmatter on all four transports; cli
+  retains the disavowed MongoDB fact in `correct-wrong-memory`; mcp calls
+  no memory tool in `write-discipline`. Its `old-turn-search` cells all
+  pass. Across the nine rows, that scenario passes 34/36 cells; the two
+  misses are Kimi's extra writes described above.
+- **Link recall: eight rows pass; local fails.** The local model sends
+  `link 1` without brackets, so the tool receives that string instead of
+  the original URL. The successful rows report `handle_used=True` for
+  Sol, Grok, Gemini, qwen3.8-max and Kimi; `False` for Sonnet and both
+  Cerebras rows. These are separate cells from the memory board.
+- **Teardown noise:** the Cerebras, Gemini and local logs contain an SDK
+  client's `aclose()` task reporting `Event loop is closed`; the failing
+  assertions above report model behavior, not that teardown message.
+
 ### 2026-09-27: Dispatch #20, the corrected pin on every row (the N5 /ship)
 
 Dispatch #20 (run 36309771204 on 7b4dae8: `1.0.0rc20` plus the TTL pin
@@ -353,7 +416,7 @@ Findings, recorded as found:
   `test_model_answers_minimal_completion[claude-sonnet-5]` answered 400
   `credit balance is too low` (09:45 UTC): the day's two dispatches and
   the tour run drained the balance. The row stands as measured; the
-  probe re-runs on the next dispatch after funding.
+  probe passed after funding on dispatch #21 (2026-09-28, above).
 - **Teardown noise** (`Event loop is closed` on an SDK client's
   `aclose()` task): the Cerebras lane twice and the local lane once this
   time, none on Anthropic or Gemini; no cell affected. The class of #19's
