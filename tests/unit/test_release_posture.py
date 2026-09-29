@@ -98,6 +98,13 @@ def test_the_release_publishes_by_trust_alone() -> None:
     # environment — no long-lived secret is referenced anywhere.
     text = _RELEASE.read_text(encoding="utf-8")
     release = _workflow(_RELEASE)
+    build = release["jobs"]["build"]
+    commands = [step.get("run", "") for step in build["steps"]]
+    assert commands.index("uv audit --locked") < next(
+        i for i, command in enumerate(commands) if command.startswith("uv build ")
+    )
+    assert release["jobs"]["pypi"]["needs"] == "build"
+    assert release["jobs"]["image"]["needs"] == "build"
     triggers = release[True]
     assert triggers["push"]["tags"] == ["v*"]
     assert "workflow_dispatch" in triggers

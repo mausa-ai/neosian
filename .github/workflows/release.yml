@@ -49,6 +49,7 @@ jobs:
         run: test "$GITHUB_REF_NAME" = "v${{ steps.version.outputs.version }}"
       - run: uv python install 3.12
       - run: make install
+      - run: uv audit --locked
       - run: make lint
       - run: make typecheck
       - run: make test

@@ -8,6 +8,21 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-09-29
+
+### Security
+
+- Require PyJWT >= 2.14.0, including when installed through MCP, and
+  update the appliance lockfile. This excludes versions affected by
+  [GHSA-w6j9-cwv2-h6wq](https://github.com/advisories/GHSA-w6j9-cwv2-h6wq),
+  where a malformed RSA JWK can abort parsing of an entire JWK set.
+  The dependency audit reported the advisory during the 1.0.0 ship.
+  Its wheel and sdist had reached PyPI when publication was cancelled;
+  the container manifest was not published. Use 1.0.1 for both installs
+  and the state-process image. The v1.0.0 declaration tag is unchanged.
+- Release publication now waits for its own dependency audit, so an
+  advisory cannot be bypassed by CI and Release running independently.
+
 ## [1.0.0] - 2026-09-29
 
 ### Changed
@@ -1688,7 +1703,8 @@ pre-release — pin it explicitly; the API stability promise rides v1.0.0.
 - Both entry points share one `_validate_run`, so neither can skip a
   guard.
 
-[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/mausa-ai/neosian/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc21...v1.0.0
 [1.0.0rc21]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc20...v1.0.0rc21
 [1.0.0rc20]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc19...v1.0.0rc20
