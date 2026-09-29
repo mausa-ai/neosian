@@ -24,9 +24,8 @@ UV_INSTALLER="https://astral.sh/uv/${UV_VERSION}/install.sh"
 PACKAGE="neosian"
 # The release this script shipped with — the default pin. A unit test keeps
 # it equal to pyproject's version; the site serves the script from master.
-# Explicit because uv refuses an unpinned pre-release while any final
-# release exists on the index, yanked or not (ledger #205).
-NEOSIAN_RELEASE="1.0.0rc21"
+# Explicit so the installer resolves the release it describes.
+NEOSIAN_RELEASE="1.0.0"
 
 find_links="${NEOSIAN_INSTALL_FIND_LINKS:-}"
 version="${NEOSIAN_VERSION:-$NEOSIAN_RELEASE}"

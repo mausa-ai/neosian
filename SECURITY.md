@@ -16,10 +16,9 @@ state process), and a reproduction.
 
 ## Supported versions
 
-The newest annotated `v<X.Y.Z>` release tag receives fixes. Once
-`v1.0.0` carries the stability promise (README, "Stability"), the
-newest 1.x release is the supported line; earlier 0.x tags are not
-patched.
+The newest 1.x release is the supported line and receives fixes, under
+the stability promise carried by `v1.0.0` (README, "Stability"). Earlier
+0.x tags and release candidates are not patched.
 
 The neosian.com service publishes its own policy and addresses; a
 report that concerns both is welcome here.

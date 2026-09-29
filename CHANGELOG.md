@@ -8,6 +8,21 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-09-29
+
+### Changed
+
+- The v1.0.0 stability promise is declared: `Agent`, `Conversation`,
+  `MemoryStore`, and `neosian.evaluation`, the ecosystem seams, and the
+  state process's HTTP wire are stable under SemVer. Breaking changes
+  require a major version; error codes remain append-only. Model IDs
+  follow their documented provider lifecycles.
+- Package metadata now declares Production/Stable. Install examples and
+  the installer pin v1.0.0; the newest 1.x release is the supported line.
+- The published baselines include September 28 dispatch #21, with every
+  catalog probe passing and behavioral failures recorded as measured.
+  The declaration changes no runtime API or wire version.
+
 ## [1.0.0rc21] - 2026-09-27
 
 ### Added
@@ -1673,7 +1688,8 @@ pre-release — pin it explicitly; the API stability promise rides v1.0.0.
 - Both entry points share one `_validate_run`, so neither can skip a
   guard.
 
-[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc21...HEAD
+[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc21...v1.0.0
 [1.0.0rc21]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc20...v1.0.0rc21
 [1.0.0rc20]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc19...v1.0.0rc20
 [1.0.0rc19]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc18...v1.0.0rc19

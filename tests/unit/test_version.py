@@ -94,7 +94,7 @@ def test_nothing_reader_facing_calls_the_repository_private() -> None:
 def test_the_declaration_is_all_or_nothing() -> None:
     # A final 1.x release flips the classifier and README's Stability tense
     # in the same commit, or this goes red — neither flip is gated otherwise.
-    # A pre-release (1.0.0rc1) is the kit's test vehicle, not the declaration.
+    # A release candidate does not carry the final release's promise.
     version = neosian.__version__
     declared = bool(_FINAL.fullmatch(version)) and int(version.split(".")[0]) >= 1
     classifiers = _pyproject()["project"]["classifiers"]
