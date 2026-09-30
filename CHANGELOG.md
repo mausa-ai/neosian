@@ -8,6 +8,27 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-10-01
+
+### Changed
+
+- The reading order leads with the state layer. `neosian docs` lists
+  quickstart, memory, skills, stores, agents, cli, mcp, interop, agent,
+  tools, local, topology, wire, baselines; the quickstart opens on the
+  agent you already use before the keyless Agent; llms.txt and the README
+  follow, with the README's two doors swapped so "Give your agent state"
+  comes first.
+- The four README recordings render in a real terminal: the Calm-Dark
+  profile, JetBrainsMono Nerd Font and a trimmed starship prompt kept
+  beside the tapes (`branding/readme/starship.toml`), each clip ending on
+  a rendered verb (`neosian audit`, `neosian search`, `neosian memory
+  view`). `neosian setup` runs off-frame. `make readme-media` prints a
+  failed tape's logs instead of leaving an empty screen.
+- On a terminal, `neosian audit` and `neosian search` show times to the
+  minute and a session id as its first eight hex digits, and fold a long
+  cell instead of cutting it to an ellipsis. `--json` output is
+  unchanged.
+
 ## [1.0.1] - 2026-09-29
 
 ### Security
@@ -1703,7 +1724,8 @@ pre-release — pin it explicitly; the API stability promise rides v1.0.0.
 - Both entry points share one `_validate_run`, so neither can skip a
   guard.
 
-[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.0.2...HEAD
+[1.0.2]: https://github.com/mausa-ai/neosian/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/mausa-ai/neosian/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc21...v1.0.0
 [1.0.0rc21]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc20...v1.0.0rc21

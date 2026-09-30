@@ -1,6 +1,6 @@
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/mausa-ai/neosian/v1.0.1/branding/logo-dark.svg">
-  <img src="https://raw.githubusercontent.com/mausa-ai/neosian/v1.0.1/branding/logo-light.svg" alt="neosian" width="280">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/mausa-ai/neosian/v1.0.2/branding/logo-dark.svg">
+  <img src="https://raw.githubusercontent.com/mausa-ai/neosian/v1.0.2/branding/logo-light.svg" alt="neosian" width="280">
 </picture>
 
 # neosian
@@ -8,8 +8,8 @@
 [![PyPI](https://img.shields.io/pypi/v/neosian.svg?include_prereleases&color=6d6d32)](https://pypi.org/project/neosian/)
 [![Docs](https://img.shields.io/badge/docs-neosian.com%2Fdocs-6d6d32.svg)](https://neosian.com/docs)
 [![CI](https://github.com/mausa-ai/neosian/actions/workflows/ci.yml/badge.svg)](https://github.com/mausa-ai/neosian/actions/workflows/ci.yml)
-[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-6d6d32.svg)](https://github.com/mausa-ai/neosian/blob/v1.0.1/LICENSE)
-[![Python 3.12 | 3.13 | 3.14](https://img.shields.io/badge/python-3.12%20%7C%203.13%20%7C%203.14-6d6d32.svg)](https://github.com/mausa-ai/neosian/blob/v1.0.1/pyproject.toml)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-6d6d32.svg)](https://github.com/mausa-ai/neosian/blob/v1.0.2/LICENSE)
+[![Python 3.12 | 3.13 | 3.14](https://img.shields.io/badge/python-3.12%20%7C%203.13%20%7C%203.14-6d6d32.svg)](https://github.com/mausa-ai/neosian/blob/v1.0.2/pyproject.toml)
 
 **The state layer for LLM agents**: durable conversations, agent-curated
 memory, skills, a shared board and a ledger of who did what, on storage
@@ -29,16 +29,16 @@ Two doors, one store:
   `Conversation` wraps into a durable, memory-bearing thread.
 
 <p align="center">
-<img src="https://raw.githubusercontent.com/mausa-ai/neosian/v1.0.1/branding/readme/record.gif" alt="A headless Claude Code session lands as a recorded turn; neosian audit names it" width="720">
+<img src="https://raw.githubusercontent.com/mausa-ai/neosian/v1.0.2/branding/readme/record.gif" alt="A headless Claude Code session lands as a recorded turn; neosian audit names it" width="720">
 <br>
-<img src="https://raw.githubusercontent.com/mausa-ai/neosian/v1.0.1/branding/readme/left-off.gif" alt="The next Claude Code session opens on where we left off; neosian search finds the turn by its words" width="720">
+<img src="https://raw.githubusercontent.com/mausa-ai/neosian/v1.0.2/branding/readme/left-off.gif" alt="The next Claude Code session opens on where we left off; neosian search finds the turn by its words" width="720">
 </p>
 
 *Set up once per machine, every session lands in the ledger: `neosian
 audit` names the turn, the next session opens on where we left off, and
 `neosian search` finds it by its words.*
 
-Agents read this repository too: [llms.txt](https://github.com/mausa-ai/neosian/blob/v1.0.1/llms.txt) is the machine
+Agents read this repository too: [llms.txt](https://github.com/mausa-ai/neosian/blob/v1.0.2/llms.txt) is the machine
 front door, `neosian docs` prints the shipped docs pages from the wheel
 (version-true), and every shell verb has `--json` and exit tiers — one
 CLI for humans and agents (`neosian docs cli`).
@@ -55,7 +55,7 @@ response = await convo.send("Where did we leave off?")
 Requires Python >= 3.12. One package, everything in it. Pin the release:
 
 ```bash
-uv add "neosian==1.0.1"
+uv add "neosian==1.0.2"
 ```
 
 The install brings the library with its two provider SDKs (OpenAI and
@@ -64,11 +64,11 @@ shell, the MCP server and client, the state process and OpenTelemetry
 spans: about 70 MB on disk, none of it loaded until used. Nothing in
 it needs an account or a server to start — `Model.FAKE` runs keylessly
 and `FileStore` is a directory. The one extra is the Postgres driver,
-`uv add "neosian[postgres]==1.0.1"`, for a `PostgresStore` against a
+`uv add "neosian[postgres]==1.0.2"`, for a `PostgresStore` against a
 server you already run; `[all]` is its alias.
 
 For a machine with nothing on it, the one-liner is
-[scripts/install.sh](https://github.com/mausa-ai/neosian/blob/v1.0.1/scripts/install.sh): it says what it
+[scripts/install.sh](https://github.com/mausa-ai/neosian/blob/v1.0.2/scripts/install.sh): it says what it
 installs, finds uv or installs it from a pinned release, runs `uv tool
 install neosian`, checks the PATH and prints the registration command.
 It is the same two commands, spelled out beside it:
@@ -77,7 +77,7 @@ It is the same two commands, spelled out beside it:
 curl -fsS https://neosian.com/install | bash
 # or, by hand:
 curl -LsSf https://astral.sh/uv/install.sh | sh
-uv tool install "neosian==1.0.1"
+uv tool install "neosian==1.0.2"
 ```
 
 To work on neosian itself, `uv sync --all-groups` then `uv run neosian
@@ -90,9 +90,9 @@ Their hooks record each session into one store, so any of them picks up
 where another stopped, and one ledger names them all.
 
 <p align="center">
-<img src="https://raw.githubusercontent.com/mausa-ai/neosian/v1.0.1/branding/readme/many-agents.gif" alt="Claude Code records a deployment fact; Codex recalls it from the same neosian store in a new session; one audit names both" width="720">
+<img src="https://raw.githubusercontent.com/mausa-ai/neosian/v1.0.2/branding/readme/many-agents.gif" alt="Claude Code records a deployment fact; Codex recalls it from the same neosian store in a new session; one audit names both" width="720">
 <br>
-<img src="https://raw.githubusercontent.com/mausa-ai/neosian/v1.0.1/branding/readme/memory-write.gif" alt="Claude Code saves a project memory through MCP; the memory index lists it and neosian memory view shows the saved markdown file" width="720">
+<img src="https://raw.githubusercontent.com/mausa-ai/neosian/v1.0.2/branding/readme/memory-write.gif" alt="Claude Code saves a project memory through MCP; the memory index lists it and neosian memory view shows the saved markdown file" width="720">
 </p>
 
 *Claude Code records the work, Codex picks it up, one audit names both.
@@ -129,7 +129,7 @@ asyncio.run(main())
 
 Set a key and name a real model (`model=Model.CLAUDE_SONNET_5`, the
 providers table below); tools are decorated functions whose signature is
-the schema (`neosian docs tools`). [examples/](https://github.com/mausa-ai/neosian/tree/v1.0.1/examples) has one runnable
+the schema (`neosian docs tools`). [examples/](https://github.com/mausa-ai/neosian/tree/v1.0.2/examples) has one runnable
 file per feature, every one importing keylessly.
 
 ## What is in the box
@@ -235,7 +235,7 @@ names its agent file relative to itself, so it runs from any directory;
 `--json` prints the artifact and `--output DIR` places it. The
 shipped memory pack is all-green on `models: [fake]`, and the same pack
 against the real providers produces the
-[baselines page](https://github.com/mausa-ai/neosian/blob/v1.0.1/neosian/assets/docs/baselines.md),
+[baselines page](https://github.com/mausa-ai/neosian/blob/v1.0.2/neosian/assets/docs/baselines.md),
 fingerprint-gated so a prompt change without a recorded re-run fails
 `make test`.
 
@@ -274,7 +274,7 @@ Origin](https://developercertificate.org/) and licensed as the project
 is, Apache-2.0 — there is no CLA. Open an issue before a feature or a
 departure from documented behaviour; the public API is pinned by
 `tests/unit/test_init.py`, so an export change is a reviewed diff.
-[SECURITY.md](https://github.com/mausa-ai/neosian/blob/v1.0.1/SECURITY.md) is where vulnerabilities go, never an issue.
+[SECURITY.md](https://github.com/mausa-ai/neosian/blob/v1.0.2/SECURITY.md) is where vulnerabilities go, never an issue.
 
 ## Documents
 
@@ -286,10 +286,10 @@ departure from documented behaviour; the public API is pinned by
   `baselines` (the published per-provider memory numbers); the same pages
   online at [neosian.com/docs](https://neosian.com/docs), rendered from the
   wheel at the current release.
-- [SERVICES.md](https://github.com/mausa-ai/neosian/blob/v1.0.1/SERVICES.md) — every env key and what turning it off means.
-- [CHANGELOG.md](https://github.com/mausa-ai/neosian/blob/v1.0.1/CHANGELOG.md) — Keep a Changelog, one section per release.
-- [SECURITY.md](https://github.com/mausa-ai/neosian/blob/v1.0.1/SECURITY.md) — where to report, and the supported line.
-- [llms.txt](https://github.com/mausa-ai/neosian/blob/v1.0.1/llms.txt) — the machine-readable front door (byte-identical
+- [SERVICES.md](https://github.com/mausa-ai/neosian/blob/v1.0.2/SERVICES.md) — every env key and what turning it off means.
+- [CHANGELOG.md](https://github.com/mausa-ai/neosian/blob/v1.0.2/CHANGELOG.md) — Keep a Changelog, one section per release.
+- [SECURITY.md](https://github.com/mausa-ai/neosian/blob/v1.0.2/SECURITY.md) — where to report, and the supported line.
+- [llms.txt](https://github.com/mausa-ai/neosian/blob/v1.0.2/llms.txt) — the machine-readable front door (byte-identical
   twin ships in the wheel).
 
 ---
