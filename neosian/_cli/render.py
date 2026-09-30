@@ -4,6 +4,9 @@ table — restrained Rich, one accent, no panels or boxes inside verbs.
 Under a pipe, `NO_COLOR` or `--json` the engine writes its own bytes to
 the real streams, byte-identical to before: the rendering is a
 projection of the verb's `--json` envelope, never a second code path.
+The projection shortens what the envelope carries whole: a session id to
+its first eight hex digits, a timestamp to the minute; a narrow terminal
+folds a cell, never cuts it.
 """
 
 from __future__ import annotations
@@ -11,8 +14,9 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import re
 from collections.abc import Callable, Mapping
-from typing import Any, TextIO
+from typing import Any, Final, TextIO
 
 from rich.console import Console
 from rich.markdown import Markdown
@@ -24,6 +28,9 @@ from neosian._cli.ui import BRAND_ACCENT
 
 Engine = Callable[[list[str]], int]
 Render = Callable[[dict[str, Any], Console], None]
+_UUID: Final = re.compile(
+    r"\b([0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b"
+)
 
 
 def rendered(out: TextIO, env: Mapping[str, str]) -> bool:
@@ -57,8 +64,16 @@ def run_rendered(
 def _table(*columns: str) -> Table:
     table = Table(box=None, header_style=f"bold {BRAND_ACCENT}", pad_edge=False)
     for column in columns:
-        table.add_column(column)
+        table.add_column(column, overflow="fold")
     return table
+
+
+def _short(text: str) -> str:
+    return _UUID.sub(r"\1", text)
+
+
+def _minute(created_at: str) -> str:
+    return created_at[:16].replace("T", " ")
 
 
 def render_docs(page: dict[str, Any], console: Console) -> None:
@@ -76,7 +91,12 @@ def render_audit(envelope: dict[str, Any], console: Console) -> None:
         else:
             marker = " (redacted)" if entry["redacted"] else ""
             what = f"/{entry['path']} v{entry['version']}{marker}"
-        table.add_row(entry["created_at"], entry["actor"] or "-", entry["event"], what)
+        table.add_row(
+            _minute(entry["created_at"]),
+            _short(entry["actor"] or "-"),
+            entry["event"],
+            _short(what),
+        )
     if not envelope["entries"]:
         console.print(f"no ledger entries for scope {envelope['scope']!r}")
         return
@@ -92,9 +112,9 @@ def render_search(envelope: dict[str, Any], console: Console) -> None:
     table = _table("where", "when", "actor", "snippet")
     for hit in envelope["hits"]:
         table.add_row(
-            f"{hit['conversation_id']} #{hit['turn']}",
-            hit["created_at"],
-            hit["actor"] or "-",
+            _short(f"{hit['conversation_id']} #{hit['turn']}"),
+            _minute(hit["created_at"]),
+            _short(hit["actor"] or "-"),
             Text(hit["snippet"]),
         )
     console.print(table)

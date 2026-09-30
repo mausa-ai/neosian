@@ -144,6 +144,78 @@ class TestTheProjections:
         render_search({"query": "ttl", "hits": []}, console)
         assert "no turn matches every term of 'ttl'" in buffer.getvalue()
 
+    def test_ids_and_times_are_shortened_in_the_projection(self) -> None:
+        session = "3065a350-dd0e-4c2a-9b1f-0f9d8c7b6a51"
+        console, buffer = _console()
+        render_audit(
+            {
+                "scope": "user:me",
+                "entries": [
+                    {
+                        "created_at": "2026-09-27T21:30:14.123456+00:00",
+                        "actor": f"claude-code:{session}",
+                        "event": "turn",
+                        "path": None,
+                        "version": None,
+                        "redacted": False,
+                        "count": None,
+                        "conversation_id": session,
+                        "turn": 1,
+                    }
+                ],
+            },
+            console,
+        )
+        text = buffer.getvalue()
+        assert "2026-09-27 21:30" in text and "21:30:14" not in text
+        assert "claude-code:3065a350" in text and "3065a350 turn 1" in text
+        assert session not in text
+        console, buffer = _console()
+        render_search(
+            {
+                "query": "title",
+                "hits": [
+                    {
+                        "conversation_id": session,
+                        "turn": 2,
+                        "created_at": "2026-09-27T21:31:00Z",
+                        "actor": f"claude-code:{session}",
+                        "snippet": "its exact H1 title",
+                    }
+                ],
+            },
+            console,
+        )
+        text = buffer.getvalue()
+        assert "3065a350 #2" in text and "2026-09-27 21:31" in text
+        assert session not in text
+
+    def test_a_narrow_terminal_folds_a_cell_instead_of_cutting_it(self) -> None:
+        buffer = io.StringIO()
+        console = Console(file=buffer, force_terminal=False, width=48)
+        render_audit(
+            {
+                "scope": "user:me",
+                "entries": [
+                    {
+                        "created_at": "2026-09-27T21:30:14Z",
+                        "actor": "cli:local",
+                        "event": "created",
+                        "path": "project/sessions/a-very-long-document-name",
+                        "version": 1,
+                        "redacted": False,
+                        "count": None,
+                        "conversation_id": None,
+                        "turn": None,
+                    }
+                ],
+            },
+            console,
+        )
+        text = buffer.getvalue()
+        assert "\u2026" not in text
+        assert "a-very-long-document-name" in "".join(text.split())
+
     def test_the_index_is_a_tree(self) -> None:
         console, buffer = _console()
         render_index(

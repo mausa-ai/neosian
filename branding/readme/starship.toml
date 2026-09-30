@@ -1,0 +1,58 @@
+"$schema" = 'https://starship.rs/config-schema.json'
+# The recordings' prompt: the maintainer's terminal (civitcio-terminal-theme,
+# Calm-Dark, palette calm_white), trimmed to the OS mark, the directory and
+# the git branch. No username, no clock: a public recording carries nothing
+# personal or dated. The tapes' Wait lines match the arrow (U+F432).
+
+format = """
+[](color_orange)\
+$os\
+[](bg:color_yellow fg:color_orange)\
+$directory\
+[](fg:color_yellow bg:color_aqua)\
+$git_branch\
+$git_status\
+[ ](fg:color_aqua)\
+$line_break$character"""
+
+palette = 'calm_white'
+
+[palettes.calm_white]
+color_fg0 = '#44403c'
+color_bg1 = '#fafaf9'
+color_bg3 = '#e7e5e4'
+color_blue = '#d6d3d1'
+color_aqua = '#e7e5e4'
+color_green = '#87a087'
+color_orange = '#ffffff'
+color_purple = '#a8a29e'
+color_red = '#bc9b8d'
+color_yellow = '#f5f5f4'
+
+[os]
+disabled = false
+style = "bg:color_orange fg:color_fg0"
+format = '[ $symbol ]($style)'
+
+[os.symbols]
+Macos = "󰀵"
+Linux = "󰌽"
+Unknown = "󰌽"
+
+[directory]
+style = "fg:color_fg0 bg:color_yellow"
+format = "[ $path ]($style)"
+truncation_length = 1
+
+[git_branch]
+symbol = ""
+style = "bg:color_aqua"
+format = '[[ $symbol $branch ](fg:color_fg0 bg:color_aqua)]($style)'
+
+[git_status]
+style = "bg:color_aqua"
+format = '[[($all_status$ahead_behind )](fg:color_fg0 bg:color_aqua)]($style)'
+
+[character]
+success_symbol = '[](bold fg:color_green)'
+error_symbol = '[](bold fg:color_red)'

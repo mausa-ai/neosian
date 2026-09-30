@@ -4,7 +4,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-for tool in vhs ffmpeg ffprobe ttyd claude codex; do
+for tool in vhs ffmpeg ffprobe ttyd starship git claude codex; do
     command -v "$tool" >/dev/null || { echo "Missing tool: $tool"; exit 1; }
 done
 : "${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY is required}"
@@ -29,9 +29,14 @@ for tape in record left-off many-agents memory-write; do
             CLAUDE_CONFIG_DIR="$NEOSIAN_DEMO_ROOT/claude" \
             CODEX_HOME="$NEOSIAN_DEMO_ROOT/codex" \
             vhs "$repo/branding/readme/$tape.tape"
-    )
+    ) || echo "vhs failed: $tape"
     test -f "$NEOSIAN_DEMO_ROOT/complete" || {
-        echo "Recording failed its content checks: $tape"; exit 1;
+        echo "Recording failed its content checks: $tape"
+        for log in setup.log claude-answer codex-answer codex.log audit.json; do
+            test -s "$NEOSIAN_DEMO_ROOT/$log" || continue
+            echo "--- $log"; tail -c 1200 "$NEOSIAN_DEMO_ROOT/$log"; echo
+        done
+        exit 1
     }
     for format in gif mp4; do
         seconds=$(ffprobe -v error -show_entries format=duration \

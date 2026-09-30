@@ -80,33 +80,46 @@ neutrals: only the hue tells the siblings apart.
 
 ## README media (`readme/`)
 
-Four terminal recordings, each under 15 seconds at 900 px and an 18 px
-font, made with [VHS](https://github.com/charmbracelet/vhs):
+Four terminal recordings, each under 15 seconds at 900 px, made with
+[VHS](https://github.com/charmbracelet/vhs). They look like the
+maintainer's terminal, not a recorder's default: the Calm-Dark profile
+(background `#1c1917`, text `#e7e5e4`, cursor `#d6d3d1`, Terminal.app's
+sixteen ANSI colours), JetBrainsMono Nerd Font at 17 px, and the starship
+pill prompt in `readme/starship.toml` beside the tapes (the OS mark, the
+directory, the git branch, then the arrow; no username, no clock). Each
+tape's `Set Theme` and `Set FontFamily` lines carry the look; the tapes'
+`Wait` lines match the prompt's arrow (U+F432).
 
+- `record.tape`: a Claude Code turn lands as a recorded turn; `neosian
+  audit` names it (setup runs off-frame).
+- `left-off.tape`: the next Claude Code session recalls the recorded
+  work; `neosian search` finds the turn by its words.
 - `many-agents.tape`: Claude Code records a project fact; Codex opens a
-  new session and answers from the same store through its startup hook.
-- `memory-write.tape`: Claude Code writes `/project/deploy` through
-  MCP; `neosian memory view` renders the saved markdown.
-- `record.tape`: setup, a Claude Code turn, and its entry in the ledger.
-- `left-off.tape`: the next Claude Code session recalls the recorded work.
+  new session and answers from the same store through its startup hook;
+  one `neosian audit` names both.
+- `memory-write.tape`: Claude Code writes `/project/deploy` through MCP;
+  `neosian memory view /` lists it and `neosian memory view
+  /project/deploy` shows the saved markdown.
 
 Run `make readme-media` from the checkout after `make install`. It needs
-`vhs`, `ffmpeg`, `ffprobe`, `ttyd`, `claude` and `codex` on PATH, with
-`ANTHROPIC_API_KEY` and `OPENAI_API_KEY` supplied in the environment.
-The script reads no key files. This checkout's `.venv/bin/neosian` is
-first on PATH; each tape gets fresh temporary client configurations, a
-store and a project, removed on exit. Personal client settings and stores
-are untouched. The tapes source `scripts/readme_demo.sh`: Claude uses
-Haiku and Codex uses GPT-6 Luna; Codex's reviewed local hooks are enabled
-for these invocations, with diagnostics checked outside the frame.
+`vhs`, `ffmpeg`, `ffprobe`, `ttyd`, `starship`, `git`, `claude` and
+`codex` on PATH, with `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` supplied
+in the environment. The script reads no key files. This checkout's
+`.venv/bin/neosian` is first on PATH; each tape gets fresh temporary
+client configurations, a store and a project (a one-commit git
+repository, so the branch pill reads `main`), removed on exit. Personal
+client settings and stores are untouched. The tapes source
+`scripts/readme_demo.sh`: Claude uses Haiku and Codex uses GPT-6 Luna;
+Codex's reviewed local hooks are enabled for these invocations, with
+diagnostics checked outside the frame.
 
 These are real API calls, with their normal cost and variable latency.
 Playback is twice the captured speed; setup and seed sessions are hidden.
-The recorder clears inherited `NO_COLOR` so terminal views render.
-The script verifies the recorded actors, recalled facts and saved file,
-checks GIF and MP4 durations, and replaces the four pairs only when every
-check passes. A slow run fails the duration gate; it never silently
-publishes an overlong recording.
+The recorder clears inherited `NO_COLOR` so the rendered verbs show.
+The script verifies the recorded actors, recalled facts, the search hit,
+the index entry and the saved file, checks GIF and MP4 durations, and
+replaces the four pairs only when every check passes. A slow run fails
+the duration gate; it never silently publishes an overlong recording.
 
 The tape is the source: re-render, never re-record. Each GIF and MP4 sits
 beside its tape. README embeds the GIFs by absolute URL at the release
