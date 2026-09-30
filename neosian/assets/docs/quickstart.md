@@ -1,14 +1,16 @@
 ---
-title: "Quickstart: the stateless core and the opt-in layers"
-summary: Install, boot keylessly, run an agent, wrap it in a Conversation
+title: "Quickstart: state for the agent you use, then the one you build"
+summary: Install, set up the agent you use, boot keylessly, wrap an agent in a Conversation
 ---
 
 # Quickstart
 
-neosian is an async-only Python library (>= 3.12) for LLM agents:
-tools, orchestration, streaming, fallback, guardrails, structured
-output, all over a stateless core, with durable conversations and
-agent-curated memory as opt-in layers.
+neosian is the state layer for LLM agents: durable conversations,
+agent-curated memory, skills, a shared board and a ledger of who did
+what, on storage you own (a directory, your Postgres, or one small state
+process). It serves the agent you already use (Claude Code, Codex,
+OpenCode, Muse Code, Cursor) over MCP and hooks, and the agent you build
+on its async-only, stateless Python core (>= 3.12).
 
 ## Install
 
@@ -29,11 +31,21 @@ its alias. On a machine with nothing on it,
 `curl -fsS https://neosian.com/install | bash` lands uv and neosian,
 saying what it installs first.
 
-On your own machine, three commands and no Python: `neosian status`
-says whether it is set up, `neosian setup --write` wires every installed
-agent (Claude Code, Codex, OpenCode, Muse Code, Cursor) to the home once per machine, so a
-new project needs nothing, and bare `neosian` opens a chat with an agent
-that knows neosian and writes to the same memory (`neosian docs cli`).
+## The agent you already use
+
+Three commands and no Python. `neosian status` says whether this machine
+is set up. `neosian setup --write` wires every installed agent (Claude
+Code, Codex, OpenCode, Muse Code, Cursor) to the home once per machine:
+memory and skills over MCP, every session recorded through the client's
+own hooks, so a new project needs nothing. Bare `neosian` opens a chat
+with an agent that knows neosian and writes to the same memory
+(`neosian docs cli`).
+
+From then on each session lands as a turn the ledger names (`neosian
+audit`), the next session opens on where you left off, and `neosian
+search <words>` finds any turn by its words. A memory the agent writes is
+a markdown file under the home you can read, version and revert
+(`neosian docs agents`, `neosian docs memory`).
 
 ## Keyless boot
 
@@ -141,5 +153,6 @@ asked).
 ## Where to go next
 
 - `neosian docs memory`: how the memory layer thinks.
+- `neosian docs agents`: the record through hooks, client by client.
 - `neosian docs cli`: operate memory from the shell, no Python needed.
 - `neosian docs topology`: who runs neosian code, where the bytes live.

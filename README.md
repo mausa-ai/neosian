@@ -12,30 +12,31 @@
 [![Python 3.12 | 3.13 | 3.14](https://img.shields.io/badge/python-3.12%20%7C%203.13%20%7C%203.14-6d6d32.svg)](https://github.com/mausa-ai/neosian/blob/v1.0.1/pyproject.toml)
 
 **The state layer for LLM agents**: durable conversations, agent-curated
-memory, skills, a shared board and a ledger of who did what — on storage
+memory, skills, a shared board and a ledger of who did what, on storage
 you own (a directory, your Postgres, or one small state process), for
 the agent you already use or the one you build.
 
 Two doors, one store:
 
+- **Give your agent state.** Claude Code, Codex, OpenCode, Muse Code or
+  interactive Cursor get memory and skills over MCP and every session
+  recorded through hooks: `neosian setup --write` wires every client it
+  finds, once per machine; `neosian status` says whether the machine is
+  set up; bare `neosian` opens a chat with an agent that knows neosian,
+  on the same memory.
 - **Build an agent.** An async-only, stateless `Agent` (tools,
   streaming, fallback, guardrails, structured output) that a
   `Conversation` wraps into a durable, memory-bearing thread.
-- **Give your agent state.** Claude Code, Codex, OpenCode, Muse Code or
-  interactive Cursor get memory and skills over MCP and every session recorded through hooks —
-  `neosian setup --write` wires every client it finds, once per machine;
-  `neosian status` says whether the machine is set up; bare `neosian`
-  opens a chat with an agent that knows neosian, on the same memory.
 
 <p align="center">
-<img src="https://raw.githubusercontent.com/mausa-ai/neosian/v1.0.1/branding/readme/many-agents.gif" alt="Claude Code records a deployment fact; Codex recalls it from the same neosian store in a new session" width="720">
+<img src="https://raw.githubusercontent.com/mausa-ai/neosian/v1.0.1/branding/readme/record.gif" alt="A headless Claude Code session lands as a recorded turn; neosian audit names it" width="720">
 <br>
-<img src="https://raw.githubusercontent.com/mausa-ai/neosian/v1.0.1/branding/readme/memory-write.gif" alt="Claude Code saves a project memory through MCP; neosian memory view renders the saved markdown file" width="720">
+<img src="https://raw.githubusercontent.com/mausa-ai/neosian/v1.0.1/branding/readme/left-off.gif" alt="The next Claude Code session opens on where we left off; neosian search finds the turn by its words" width="720">
 </p>
 
-*One store under many agents: Claude Code records the work and Codex
-picks it up. A memory write becomes a plain markdown document you can
-read, version and revert.*
+*Set up once per machine, every session lands in the ledger: `neosian
+audit` names the turn, the next session opens on where we left off, and
+`neosian search` finds it by its words.*
 
 Agents read this repository too: [llms.txt](https://github.com/mausa-ai/neosian/blob/v1.0.1/llms.txt) is the machine
 front door, `neosian docs` prints the shipped docs pages from the wheel
@@ -82,22 +83,23 @@ uv tool install "neosian==1.0.1"
 To work on neosian itself, `uv sync --all-groups` then `uv run neosian
 version` (the Development section has the gates).
 
-## Give your agent state
+## One store under many agents
 
 `neosian setup --write` connects your installed clients to the home once.
-Their hooks record each session; the next session reads where you left off.
+Their hooks record each session into one store, so any of them picks up
+where another stopped, and one ledger names them all.
 
 <p align="center">
-<img src="https://raw.githubusercontent.com/mausa-ai/neosian/v1.0.1/branding/readme/record.gif" alt="neosian setup writes the hooks; one headless Claude Code session lands as a recorded turn; neosian audit names it" width="720">
+<img src="https://raw.githubusercontent.com/mausa-ai/neosian/v1.0.1/branding/readme/many-agents.gif" alt="Claude Code records a deployment fact; Codex recalls it from the same neosian store in a new session; one audit names both" width="720">
 <br>
-<img src="https://raw.githubusercontent.com/mausa-ai/neosian/v1.0.1/branding/readme/left-off.gif" alt="The next Claude Code session opens on where we left off and answers from the record" width="720">
+<img src="https://raw.githubusercontent.com/mausa-ai/neosian/v1.0.1/branding/readme/memory-write.gif" alt="Claude Code saves a project memory through MCP; the memory index lists it and neosian memory view shows the saved markdown file" width="720">
 </p>
 
-*A Claude Code session landing as a recorded turn that `neosian audit`
-names, and the next session opening on where we left off, using the same
-home and project scope.*
+*Claude Code records the work, Codex picks it up, one audit names both.
+A memory write becomes a plain markdown document you can read, version
+and revert.*
 
-## Quickstart
+## Build an agent
 
 Keyless boot is an invariant: `Model.FAKE` is always available, so an
 install verifies with no account. The fake is scripted through the
@@ -277,11 +279,11 @@ departure from documented behaviour; the public API is pinned by
 ## Documents
 
 - `neosian docs <topic>` — the shipped pages, from the wheel: `quickstart`,
-  `agent`, `local` (llama.cpp and Ollama on the door), `tools`, `memory`,
-  `skills`, `stores` (author and certify your own store), `cli`, `mcp`,
-  `agents`, `interop` (memory under pydantic-ai or the Agents SDK),
-  `topology`, `wire` (the state process's HTTP contract), `baselines`
-  (the published per-provider memory numbers); the same pages
+  `memory`, `skills`, `stores` (author and certify your own store),
+  `agents`, `cli`, `mcp`, `interop` (memory under pydantic-ai or the
+  Agents SDK), `agent`, `tools`, `local` (llama.cpp and Ollama on the
+  door), `topology`, `wire` (the state process's HTTP contract),
+  `baselines` (the published per-provider memory numbers); the same pages
   online at [neosian.com/docs](https://neosian.com/docs), rendered from the
   wheel at the current release.
 - [SERVICES.md](https://github.com/mausa-ai/neosian/blob/v1.0.1/SERVICES.md) — every env key and what turning it off means.

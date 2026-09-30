@@ -21,19 +21,20 @@ _PACKAGE: Final = "neosian.assets"
 _DOCS_DIR: Final = "docs"
 # The curated reading order — and the manifest: a page on disk that is
 # not listed here, or a listed page missing from the wheel, fails at
-# import instead of becoming invisible.
+# import instead of becoming invisible. The state leads, then the agent
+# you already use, then the agent you build, then the reference.
 _TOPICS: Final = (
     "quickstart",
-    "agent",
-    "local",
-    "tools",
     "memory",
     "skills",
     "stores",
+    "agents",
     "cli",
     "mcp",
-    "agents",
     "interop",
+    "agent",
+    "tools",
+    "local",
     "topology",
     "wire",
     "baselines",

@@ -4,9 +4,13 @@
 > agent-curated file-shaped memory, and context lifecycle, on storage the
 > product owns. Keyless to boot; Python >= 3.12.
 
-A stateless `Agent` core (tools, orchestration, streaming, fallback,
-guardrails, structured output) with opt-in `Conversation` and memory
-layers. One memory dispatcher serves five transports: the function tool,
+The state layer under the agent you already use, and around the one you
+build. Claude Code, Codex, OpenCode, Muse Code and Cursor get memory and
+skills over MCP and every session recorded through their own hooks
+(`neosian setup --write`, once per machine); a stateless `Agent` core
+(tools, orchestration, streaming, fallback, guardrails, structured
+output) takes the same `Conversation` and memory layers opt-in. One
+memory dispatcher serves five transports: the function tool,
 Anthropic's native declaration, an MCP stdio server, the shell, and the
 state process's HTTP wire. Agents share context by config: a `board`
 mount on a task scope, and read-only `ConversationView`s of another
@@ -22,7 +26,7 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
 
 - `neosian docs`: list the shipped topics (they travel in the wheel, so
   they always describe the installed version).
-- `neosian docs quickstart | agent | local | tools | memory | skills | stores | cli | mcp | agents | interop | topology | wire | baselines`
+- `neosian docs quickstart | memory | skills | stores | agents | cli | mcp | interop | agent | tools | local | topology | wire | baselines`
   prints one page, markdown on stdout, pipe-safe.
 - `neosian docs topology`: who runs neosian code x where the bytes live;
   one writer per FileStore root.
