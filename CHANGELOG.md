@@ -8,6 +8,19 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [1.0.3] - 2026-10-01
+
+### Security
+
+- Require PyJWT >= 2.15.0, which fixes
+  [GHSA-42vr-xj54-vc7v](https://github.com/advisories/GHSA-42vr-xj54-vc7v)
+  (CVE-2026-101918), an unauthenticated RecursionError in the
+  pre-verification payload parse, and update the lockfile. The advisory
+  landed between the 1.0.2 tag and its publication; the release's own
+  audit stopped that run before any artifact was built, so nothing at
+  1.0.2 reached PyPI or GHCR. The v1.0.2 tag stays as cut; 1.0.3 is the
+  release that carries 1.0.2's changes below.
+
 ## [1.0.2] - 2026-10-01
 
 ### Changed
@@ -1724,7 +1737,8 @@ pre-release — pin it explicitly; the API stability promise rides v1.0.0.
 - Both entry points share one `_validate_run`, so neither can skip a
   guard.
 
-[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.0.2...HEAD
+[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.0.3...HEAD
+[1.0.3]: https://github.com/mausa-ai/neosian/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/mausa-ai/neosian/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/mausa-ai/neosian/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/mausa-ai/neosian/compare/v1.0.0rc21...v1.0.0
