@@ -11,6 +11,7 @@ Never imports the MCP SDK.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -140,7 +141,7 @@ def _opencode(context: Environment, level: str) -> ClientTarget:
     base = opencode_config_dir(context)
     where = context.cwd if level == "project" else base
     note = (
-        "project level: opencode.json travels with this directory's repo"
+        "project level: the config travels with this directory's repo"
         if level == "project"
         else "user level: every OpenCode project on this machine"
     )
@@ -148,13 +149,26 @@ def _opencode(context: Environment, level: str) -> ClientTarget:
         client="opencode",
         label="OpenCode",
         level=level,
-        config_path=where / "opencode.json",
+        config_path=opencode_config_file(where),
         evidence_dir=base,
         servers_key="mcp",
-        scope_note=f"{note} (an opencode.jsonc beside it is refused: comments "
-        "do not merge)",
+        scope_note=f"{note} (OpenCode reads opencode.json and opencode.jsonc "
+        "and merges them, the .jsonc last)",
         style="opencode",
     )
+
+
+def opencode_config_file(directory: Path) -> Path:
+    """OpenCode's one file to write in `directory` (§33): `opencode.jsonc`
+    when it stands there holding plain JSON (the user's one file stays
+    one file), else `opencode.json` — beside a commented `.jsonc`, which
+    OpenCode merges with it, nothing lost."""
+    commented = directory / "opencode.jsonc"
+    try:
+        plain = isinstance(json.loads(commented.read_text("utf-8")), dict)
+    except (OSError, ValueError):
+        plain = False
+    return commented if plain else directory / "opencode.json"
 
 
 def _muse(context: Environment, level: str) -> ClientTarget:

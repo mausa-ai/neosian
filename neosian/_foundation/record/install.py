@@ -213,6 +213,7 @@ def _render_success(
             "displaced": displaced,
             "written": written,
             "created": created,
+            "trust_hint": target.trust_hint,
         }
         out.write(json.dumps(payload, ensure_ascii=False) + "\n")
         return 0

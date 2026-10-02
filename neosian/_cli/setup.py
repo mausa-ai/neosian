@@ -252,6 +252,13 @@ def run_setup(
             out.write(f"{row['label']}\n")
             out.write(_line("mcp", row["mcp"], write=args.write) + "\n")
             out.write(_line("hooks", row["hooks"], write=args.write) + "\n")
+            # What the client itself still asks of the user before a hook
+            # runs (Codex's one /hooks review), and what stands beside a
+            # file we wrote: said here, never left to the installer's
+            # stderr this command swallows (§33).
+            for note in (row["mcp"].get("note"), row["hooks"].get("trust_hint")):
+                if note:
+                    out.write(f"  note  {note}\n")
             if shadow := row["mcp"].get("mcp_shadowed_by"):
                 err.write(
                     f"note: preserved shared {shadow}; it overrides Muse's user registration\n"

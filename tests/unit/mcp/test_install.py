@@ -753,20 +753,48 @@ class TestOpenCode:
         assert out == f"created {config_dir / 'opencode.json'}\n"
         assert not (context.cwd / "opencode.json").exists()  # nothing per project
 
-    def test_a_commented_config_beside_it_is_refused(self, tmp_path: Path) -> None:
-        # OpenCode reads opencode.jsonc too: writing opencode.json beside it
-        # would be a second config, and merging into it would lose comments.
+    def test_a_plain_json_jsonc_is_the_one_file_written(self, tmp_path: Path) -> None:
+        """§33: OpenCode's own init leaves an `opencode.jsonc` holding plain
+        JSON; the entry lands in it and nothing is created beside it."""
+        context = _context(tmp_path)
+        config_dir = context.home / ".config" / "opencode"
+        config_dir.mkdir(parents=True)
+        plain = config_dir / "opencode.jsonc"
+        plain.write_text('{\n  "$schema": "https://opencode.ai/config.json"\n}\n')
+        code, out, err = _run([*self._ARGV, "--write"], context)
+        assert code == 0, err
+        assert out == f"updated {plain}\n"
+        written = json.loads(plain.read_text())
+        assert written["$schema"].startswith("https://")
+        assert written["mcp"][SERVER_NAME]["type"] == "local"
+        assert not (config_dir / "opencode.json").exists()
+        assert resolve_target("opencode", context, "user").config_path == plain
+
+    def test_a_commented_jsonc_gets_opencode_json_beside_it(
+        self, tmp_path: Path
+    ) -> None:
+        """§33: OpenCode reads both files and merges them (the `.jsonc`
+        last), so the entry lands beside the commented file, which stays
+        untouched, and the note says so, and when the `.jsonc` names the
+        server itself, that its entry wins."""
         context = _context(tmp_path)
         config_dir = context.home / ".config" / "opencode"
         config_dir.mkdir(parents=True)
         commented = config_dir / "opencode.jsonc"
         commented.write_text('{\n  // mine\n  "mcp": {}\n}\n')
         code, out, err = _run([*self._ARGV, "--write"], context)
-        assert code == 1 and out == ""
-        assert "comments" in err and "paste" in err
-        assert not (config_dir / "opencode.json").exists()
+        assert code == 0, err
+        assert out == f"created {config_dir / 'opencode.json'}\n"
+        assert "note: opencode.jsonc beside it carries comments" in err
+        assert "merges them, the .jsonc last" in err and "wins" not in err
         assert "// mine" in commented.read_text()  # untouched
-        assert _run(self._ARGV, context)[0] == 0  # print mode still prints
+        commented.write_text('{\n  // mine\n  "mcp": {"neosian-memory": {}}\n}\n')
+        code, out, err = _run([*self._ARGV, "--write", "--json"], context)
+        assert code == 0
+        note = json.loads(out)["note"]
+        assert note.endswith(
+            "(it names neosian-memory itself: that entry wins; remove it)"
+        )
 
 
 class TestDisplace:

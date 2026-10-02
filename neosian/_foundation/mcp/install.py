@@ -201,6 +201,7 @@ def _render_success(
     json_output: bool,
     out: TextIO,
     err: TextIO,
+    note: str | None = None,
 ) -> int:
     apply = entry.apply_line(SERVER_NAME, target.cli) if target.cli else None
     if json_output:
@@ -218,9 +219,12 @@ def _render_success(
             "written": written,
             "created": created,
             "apply": apply,
+            "note": note,
         }
         out.write(json.dumps(payload, ensure_ascii=False) + "\n")
         return 0
+    if note is not None:
+        err.write(f"note: {note}\n")
     fragment: dict[str, Any] = {
         target.servers_key: {SERVER_NAME: entry.render(target.style)}
     }
@@ -402,13 +406,6 @@ def run_install(
                 "is not offered",
                 f"apply it with: {entry.apply_line(SERVER_NAME, target.cli)}",
             )
-        commented = target.config_path.with_suffix(".jsonc")
-        if args.write and target.style == "opencode" and commented.is_file():
-            raise InstallError(
-                f"{commented} carries comments a merge would lose; refusing to "
-                "write a second config beside it",
-                "re-run without --write and paste the entry into it yourself",
-            )
         if args.write:
             created = not target.config_path.exists()
             if merged is None:
@@ -436,4 +433,26 @@ def run_install(
         json_output=args.json_output,
         out=out,
         err=err,
+        note=_beside(target),
     )
+
+
+def _beside(target: ClientTarget) -> str | None:
+    """What stands beside the file we write (§33): OpenCode's commented
+    `opencode.jsonc`, which it merges with ours, the `.jsonc` last — so a
+    `neosian-memory` entry left in it by hand would shadow this one."""
+    commented = target.config_path.with_suffix(".jsonc")
+    if target.style != "opencode" or target.config_path == commented:
+        return None
+    try:
+        text = commented.read_text("utf-8")
+    except OSError:
+        return None
+    note = (
+        f"{commented.name} beside it carries comments, so the entry lands in "
+        f"{target.config_path.name}; OpenCode reads both and merges them, "
+        "the .jsonc last"
+    )
+    if SERVER_NAME in text:
+        note += f" (it names {SERVER_NAME} itself: that entry wins; remove it)"
+    return note

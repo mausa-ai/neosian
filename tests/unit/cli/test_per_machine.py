@@ -55,6 +55,11 @@ class TestOneMachineEveryProject:
     ) -> None:
         home = tmp_path / "home"
         (home / ".claude").mkdir(parents=True)
+        # OpenCode too, with the `opencode.jsonc` its own init leaves (§33):
+        # every client green, exit 0, the entry in that file.
+        (home / ".config" / "opencode").mkdir(parents=True)
+        jsonc = home / ".config" / "opencode" / "opencode.jsonc"
+        jsonc.write_text('{"$schema": "https://opencode.ai/config.json"}\n')
         projects = {name: tmp_path / name for name in _SESSIONS}
         for directory in projects.values():
             directory.mkdir()
@@ -99,7 +104,13 @@ class TestOneMachineEveryProject:
                 assert code == 0
 
         # --- once: the client's own files, nothing per project
-        setup(env=env)
+        wired = {row["client"]: row for row in setup(env=env)["clients"]}
+        assert set(wired) == {"claude-code", "opencode"}
+        assert wired["opencode"]["mcp"]["config_path"] == str(jsonc)
+        assert "neosian-memory" in json.loads(jsonc.read_text())["mcp"]
+        assert all(
+            row[half]["applied"] for row in wired.values() for half in ("mcp", "hooks")
+        )
         hooks = resolve_target("claude-code", context, "user")
         line = installed_argv(hooks)
         assert line is not None and "--mount" not in line

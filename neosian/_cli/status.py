@@ -51,7 +51,7 @@ _DESCRIPTION: Final = "Is this machine set up? The home, the keys, the clients."
 CLIENTS: Final = ("claude-code", "codex", "opencode", "muse-code", "cursor")
 _DEFAULT_MODE: Final = "off"
 _ONE_WRITER: Final = (
-    "{client}: the hooks and the MCP server both write {root} directly — one "
+    "{clients}: the hooks and the MCP server write {root} directly — one "
     "writer per root (DESIGN §8): run `neosian serve`, then `neosian setup "
     "--url URL --write`"
 )
@@ -230,9 +230,8 @@ async def collect(context: Environment, env: Mapping[str, str]) -> Status:
         clients=clients,
         last_session=session,
         one_writer=tuple(
-            _ONE_WRITER.format(client=c.client, root=c.root)
-            for c in clients
-            if c.mcp_registered and c.hooks_present and c.root is not None
+            _ONE_WRITER.format(clients=", ".join(names), root=root)
+            for root, names in _writers(clients).items()
         ),
         double_fire=tuple(
             _DOUBLE_FIRE.format(
@@ -245,6 +244,16 @@ async def collect(context: Environment, env: Mapping[str, str]) -> Status:
         upgrade=Shape(shape.kind).upgrade_line("<version>"),
         update_mode=str(mode),
     )
+
+
+def _writers(clients: Sequence[ClientStatus]) -> dict[str, list[str]]:
+    """The clients whose hooks and MCP server both write a root directly,
+    by root: one note per root, never one per client (§33)."""
+    by_root: dict[str, list[str]] = {}
+    for c in clients:
+        if c.mcp_registered and c.hooks_present and c.root is not None:
+            by_root.setdefault(c.root, []).append(c.client)
+    return by_root
 
 
 def _client_line(client: ClientStatus) -> str:

@@ -171,6 +171,32 @@ class TestOncePerMachine:
         assert cli.calls[0][:5] == ["codex", "mcp", "add", "neosian-memory", "--"]
         assert "applied: codex mcp add neosian-memory" in out
         assert (tmp_path / ".codex" / "hooks.json").is_file()
+        # §33: the one act Codex still asks of the user is said here, not
+        # left on the installer's stderr this command swallows.
+        assert "  note  Codex runs a new hook once you have reviewed it" in out
+        code, out, _ = _run(
+            tmp_path, ["--client", "codex", "--write", "--json"], runner=cli
+        )
+        hooks = json.loads(out)["clients"][0]["hooks"]
+        assert hooks["trust_hint"].startswith("Codex runs a new hook once")
+
+    def test_opencode_with_a_jsonc_present_is_green(self, tmp_path: Path) -> None:
+        """§33: the real-use failure — setup exits 1 over a comment-free
+        `opencode.jsonc` — is gone: the entry lands in that file."""
+        config_dir = tmp_path / ".config" / "opencode"
+        config_dir.mkdir(parents=True)
+        plain = config_dir / "opencode.jsonc"
+        plain.write_text('{"$schema": "https://opencode.ai/config.json"}\n')
+        code, out, err = _run(tmp_path, ["--client", "opencode", "--write"])
+        assert code == 0, err
+        assert f"  mcp   {plain}  updated\n" in out
+        assert "neosian-memory" in json.loads(plain.read_text())["mcp"]
+        assert not (config_dir / "opencode.json").exists()
+        plain.write_text('{\n  // kept\n  "theme": "dark"\n}\n')
+        code, out, _ = _run(tmp_path, ["--client", "opencode", "--write"])
+        assert code == 0
+        assert f"  mcp   {config_dir / 'opencode.json'}  created\n" in out
+        assert "  note  opencode.jsonc beside it carries comments" in out
 
     def test_the_projects_shadow_goes_once_the_apply_succeeds(
         self, tmp_path: Path

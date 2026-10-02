@@ -28,6 +28,23 @@ phase close names the version.
 
 ### Changed
 
+- Session start reaches every client once, under its ceiling. The MCP
+  server's instructions carry the write discipline alone for a client
+  whose `SessionStart` hook prints the index (Claude Code, Codex, Cursor,
+  Muse Code: the doubled index is gone), and the index, the pending
+  handoff note and "where we left off" for a client with no start hook
+  (OpenCode, Claude Desktop), which OpenCode shows whole. The hook's
+  block is bounded per client (Claude Code 10,000 chars, Codex 2,500
+  tokens, Muse 16 KiB) and counted exactly, frames and fold lines
+  included. Cursor's hooks gain `afterMCPExecution`, the event its MCP
+  tool calls fire.
+- `neosian setup --write` and `neosian mcp install --client opencode` no
+  longer refuse an `opencode.jsonc`: one holding plain JSON is the file
+  written; beside a commented one the entry lands in `opencode.json`,
+  which OpenCode merges with it, and the report says so. `setup` prints
+  the one act a client still asks of the user (Codex reviews a new hook
+  once in `/hooks`) as a `note` line, and `status` says the one-writer
+  note once per root rather than once per client.
 - A foreign agent's tool results are recorded whole up to 1 MiB each, the
   head and tail kept above that with a marker naming the omitted count,
   instead of cut to a 4096-character head. `recall_turn` shows each result's
