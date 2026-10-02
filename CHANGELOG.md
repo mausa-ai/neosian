@@ -8,6 +8,15 @@ phase close names the version.
 
 ## [Unreleased]
 
+### Changed
+
+- A foreign agent's tool results are recorded whole up to 1 MiB each, the
+  head and tail kept above that with a marker naming the omitted count,
+  instead of cut to a 4096-character head. `recall_turn` shows each result's
+  head and tail at 4096 characters and takes `call=<tool_call_id>`, as the
+  marker names it, to read one result whole, on the Conversation and on the
+  MCP server alike.
+
 ## [1.0.3] - 2026-10-01
 
 ### Security

@@ -9,9 +9,11 @@ from neosian import ToolResult
 from neosian._foundation.conversation.links import LinkRegistry
 from neosian._foundation.conversation.projection import (
     agent_prose,
+    call_ids,
     entry_line,
     log_line,
     needs_distillation,
+    render_call,
     render_turn,
     render_view,
     select,
@@ -258,3 +260,28 @@ class TestRenderTurn:
         text = render_turn(_exchange(1, "u" * 5000, "a" * 5000))
         assert "u" * 5000 in text
         assert "a" * 5000 in text
+
+    def test_a_long_result_pages_naming_its_call(self) -> None:
+        call = ToolCall(id=ToolCallId("c9"), name=ToolName("Bash"), arguments={})
+        turn = _turn(
+            3,
+            Message(role=Role.ASSISTANT, content=None, tool_calls=[call]),
+            Message(
+                role=Role.TOOL, content="q" * 3000 + "z" * 3000, tool_call_id=call.id
+            ),
+        )
+        paged = render_turn(turn, result_chars=4000)
+        assert (
+            "TOOL Bash → " + "q" * 2000 + ' … [2000 chars omitted; pass call="c9" '
+            "to recall_turn to read this result whole] … " + "z" * 2000
+        ) in paged
+        assert render_turn(turn, result_chars=6000).endswith("z" * 3000)
+
+    def test_render_call_opens_one_result_whole(self) -> None:
+        turn = _tool_round(7)
+        assert call_ids(turn) == ("c1",)
+        text = render_call(turn, "c1")
+        assert text is not None and text.startswith("Turn 7, call c1 (verbatim):")
+        assert 'AGENT calls echo({"text":"hi"})' in text and "echo: hi" in text
+        assert "USER:" not in text and "AGENT: done" not in text
+        assert render_call(turn, "nope") is None

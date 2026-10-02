@@ -21,11 +21,13 @@ from neosian._foundation.conversation.types import (
     ConversationProjection,
     ConversationTurn,
 )
-from neosian._foundation.llm.base import Message, Role, text_of
+from neosian._foundation.llm.base import Message, Role, ToolCall, text_of
 from neosian._foundation.shared.prompt_assets import get_prompt
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+    from neosian._foundation.shared.types import ToolCallId
 
 # Tool segments of a log line: the args digest and the result head/tail
 # are bounded independently of digest_chars — they exist to identify the
@@ -34,6 +36,13 @@ _ARGS_CHARS: Final = 80
 _RESULT_HEAD: Final = 100
 _RESULT_TAIL: Final = 40
 _SEPARATOR: Final = " | "
+# A recalled result pages (§9.6, N6): head and tail at `RESULT_CHARS`, the
+# marker naming the call that `render_call` opens whole.
+RESULT_CHARS: Final = 4096
+_OMITTED: Final = (
+    ' … [{omitted} chars omitted; pass call="{call}" to recall_turn to read '
+    "this result whole] … "
+)
 
 
 def one_line(
@@ -220,9 +229,11 @@ def _head_tail(text: str, links: LinkRegistry) -> str:
     return flat[:head].rstrip() + " … " + flat[tail:].lstrip()
 
 
-def render_turn(turn: ConversationTurn) -> str:
-    """The verbatim role-labeled turn for recall_turn — full text, no
-    clipping (reasoning is model-internal and omitted)."""
+def render_turn(turn: ConversationTurn, *, result_chars: int = RESULT_CHARS) -> str:
+    """The verbatim role-labeled turn for recall_turn — prose unclipped
+    (reasoning is model-internal and omitted); a tool result over
+    `result_chars` shows its head and tail, the marker naming the call that
+    `render_call` opens whole."""
     names = {
         call.id: call.name for message in turn.messages for call in message.tool_calls
     }
@@ -235,10 +246,53 @@ def render_turn(turn: ConversationTurn) -> str:
             if prose:
                 lines.append(f"AGENT: {prose}")
             for call in message.tool_calls:
-                args = json.dumps(call.arguments, separators=(",", ":"))
-                lines.append(f"AGENT calls {call.name}({args})")
+                lines.append(f"AGENT calls {call.name}({_args(call)})")
         elif message.role is Role.TOOL:
             call_id = message.tool_call_id
             name = names.get(call_id, "tool") if call_id is not None else "tool"
-            lines.append(f"TOOL {name} → {text_of(message)}")
+            lines.append(
+                f"TOOL {name} → {_paged(text_of(message), call_id, result_chars)}"
+            )
     return "\n".join(lines)
+
+
+def _args(call: ToolCall) -> str:
+    return json.dumps(call.arguments, separators=(",", ":"))
+
+
+def _paged(text: str, call: ToolCallId | None, limit: int) -> str:
+    """Head and tail (half of `limit` each) around the marker; a result
+    with no call id cannot be opened whole, so it stays whole here."""
+    if len(text) <= limit or call is None:
+        return text
+    half = limit // 2
+    marker = _OMITTED.format(omitted=len(text) - 2 * half, call=call)
+    return f"{text[:half]}{marker}{text[-half:]}"
+
+
+def call_ids(turn: ConversationTurn) -> tuple[str, ...]:
+    """The ids of the turn's tool calls, in order."""
+    return tuple(
+        str(call.id) for message in turn.messages for call in message.tool_calls
+    )
+
+
+def render_call(turn: ConversationTurn, call: str) -> str | None:
+    """One call of the turn and its result, whole — None when the turn made
+    no such call."""
+    results = {
+        message.tool_call_id: text_of(message)
+        for message in turn.messages
+        if message.role is Role.TOOL
+    }
+    for message in turn.messages:
+        for made in message.tool_calls:
+            if str(made.id) == call:
+                return "\n".join(
+                    [
+                        f"Turn {turn.turn}, call {call} (verbatim):",
+                        f"AGENT calls {made.name}({_args(made)})",
+                        f"TOOL {made.name} → {results.get(made.id, '?')}",
+                    ]
+                )
+    return None

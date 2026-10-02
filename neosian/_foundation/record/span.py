@@ -28,8 +28,11 @@ if TYPE_CHECKING:
 PROMPT_EVENT: Final = "UserPromptSubmit"
 TOOL_EVENT: Final = "PostToolUse"
 STOP_EVENT: Final = "Stop"
-# The record, not the transcript: a tool's output is kept to its head.
-TOOL_OUTPUT_CHARS: Final = 4096
+# The record keeps a result whole below the ceiling and its head and tail
+# above it (N6): the tail is where a build log fails, and a span must stay
+# under the wire's request ceiling. The read side pages (§9.6).
+TOOL_RESULT_CHARS: Final = 1 << 20
+_OMITTED: Final = "\n… [{omitted} chars omitted of {total}] …\n"
 
 Record = dict[str, Any]
 
@@ -124,10 +127,17 @@ def _render_response(value: object) -> str:
         text = ""
     else:
         text = json.dumps(value, ensure_ascii=False, sort_keys=True)
-    if len(text) <= TOOL_OUTPUT_CHARS:
+    return head_and_tail(text, TOOL_RESULT_CHARS)
+
+
+def head_and_tail(text: str, limit: int) -> str:
+    """`text` whole when it fits `limit`, else half of `limit` from each
+    end around a marker naming what the record does not hold."""
+    if len(text) <= limit:
         return text
-    dropped = len(text) - TOOL_OUTPUT_CHARS
-    return f"{text[:TOOL_OUTPUT_CHARS]}\n… [truncated {dropped} chars]"
+    half = limit // 2
+    marker = _OMITTED.format(omitted=len(text) - 2 * half, total=len(text))
+    return f"{text[:half]}{marker}{text[-half:]}"
 
 
 def messages_of(records: Sequence[Record]) -> list[Message]:

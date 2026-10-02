@@ -136,13 +136,13 @@ async def test_explicit_selection_wins(tmp_path: Path, override: str) -> None:
     assert await FileStore(tmp_path / "store").read(scope, "sessions/cursor-session")
 
 
-def test_cursor_output_remains_bounded_and_subagents_are_skipped(
+def test_cursor_output_is_kept_whole_and_subagents_are_skipped(
     tmp_path: Path,
 ) -> None:
     data = payload("postToolUse", tmp_path, tool_output="x" * 5000)
     normalized = parse_payload(json.dumps(data), agent="cursor")
     reduced = reduce_payload(normalized)[1]
-    assert reduced and reduced["response"].endswith("[truncated 904 chars]")
+    assert reduced and reduced["response"] == "x" * 5000
     assert reduce_payload({**normalized, "agent_id": "child"}) == ("skipped", None)
 
 

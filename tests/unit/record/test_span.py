@@ -8,7 +8,7 @@ import pytest
 
 from neosian._foundation.llm.base import Role
 from neosian._foundation.record.span import (
-    TOOL_OUTPUT_CHARS,
+    TOOL_RESULT_CHARS,
     last_prompt,
     messages_of,
     parse_payload,
@@ -60,11 +60,19 @@ class TestReducePayload:
         _, record = reduce_payload(tool(response="plain"))
         assert record is not None and record["response"] == "plain"
 
-    def test_a_long_response_keeps_its_head(self) -> None:
-        _, record = reduce_payload(tool(response="x" * (TOOL_OUTPUT_CHARS + 10)))
+    def test_a_response_is_whole_up_to_the_ceiling(self) -> None:
+        text = "q" * TOOL_RESULT_CHARS
+        _, record = reduce_payload(tool(response=text))
+        assert record is not None and record["response"] == text
+
+    def test_a_response_above_it_keeps_its_head_and_tail(self) -> None:
+        half = TOOL_RESULT_CHARS // 2
+        _, record = reduce_payload(tool(response="q" * half + "w" * 10 + "z" * half))
         assert record is not None
-        assert record["response"].startswith("x" * TOOL_OUTPUT_CHARS)
-        assert record["response"].endswith("[truncated 10 chars]")
+        assert record["response"].startswith("q" * half)
+        assert record["response"].endswith("z" * half)
+        assert f"[10 chars omitted of {TOOL_RESULT_CHARS + 10}]" in record["response"]
+        assert "w" not in record["response"]
 
     def test_a_subagents_round_is_skipped(self) -> None:
         assert reduce_payload(tool(agent_id="agent-7")) == ("skipped", None)

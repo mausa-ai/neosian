@@ -22,7 +22,11 @@ from collections.abc import Awaitable, Callable, Sequence
 from typing import Final
 
 from neosian._foundation.conversation.base import ConversationStore
-from neosian._foundation.conversation.projection import render_turn
+from neosian._foundation.conversation.projection import (
+    call_ids,
+    render_call,
+    render_turn,
+)
 from neosian._foundation.shared.exceptions import (
     ConversationStoreError,
     MemoryStoreError,
@@ -74,10 +78,16 @@ async def in_reach(
 
 
 async def recall(
-    store: ConversationStore, target: str, turn: int, *, label: str
+    store: ConversationStore,
+    target: str,
+    turn: int,
+    *,
+    label: str,
+    call: str | None = None,
 ) -> ToolResult[str]:
-    """Turn `turn` of conversation `target`, verbatim — or the corrective
-    failure, with `label` naming the conversation in the reminder."""
+    """Turn `turn` of conversation `target`, verbatim (one call of it whole
+    when `call` names it) — or the corrective failure, with `label` naming
+    the conversation in the reminder."""
     if turn < 1:
         return ToolResult.fail(
             f"Turn numbers start at 1; got {turn}",
@@ -94,7 +104,15 @@ async def recall(
                 f"Turn {turn} does not exist",
                 system_reminder=f"{label} has turns 1-{last}.",
             )
-        return ToolResult.ok(render_turn(turns[0]))
+        if call is None:
+            return ToolResult.ok(render_turn(turns[0]))
+        text = render_call(turns[0], call)
+        if text is None:
+            return ToolResult.fail(
+                f"Turn {turn} made no call {call!r}",
+                system_reminder=f"Its calls: {', '.join(call_ids(turns[0])) or 'none'}.",
+            )
+        return ToolResult.ok(text)
     except ConversationStoreError as exc:
         return ToolResult.fail(f"[{exc.code}] {exc.message}")
 
@@ -111,15 +129,17 @@ def recall_turn_tool(
         params=get_prompt_params("tools.recall_turn_params"),
     )
     async def recall_turn(
-        turn: int, conversation: str | None = None
+        turn: int, conversation: str | None = None, call: str | None = None
     ) -> ToolResult[str]:
         if conversation is None:
-            return await recall(store, conversation_id, turn, label="This conversation")
+            return await recall(
+                store, conversation_id, turn, label="This conversation", call=call
+            )
         ids = await in_reach(reach, conversation, tool=_TOOL_NAME, where=where)
         if isinstance(ids, ToolResult):
             return ids
         return await recall(
-            store, conversation, turn, label=f"Conversation {conversation!r}"
+            store, conversation, turn, label=f"Conversation {conversation!r}", call=call
         )
 
     return recall_turn
@@ -146,9 +166,11 @@ def create_recall_any_tool(store: ConversationStore) -> ToolFunction:
         description=get_prompt("tools.recall_turn_any"),
         params=get_prompt_params("tools.recall_turn_any_params"),
     )
-    async def recall_turn(turn: int, conversation: str) -> ToolResult[str]:
+    async def recall_turn(
+        turn: int, conversation: str, call: str | None = None
+    ) -> ToolResult[str]:
         return await recall(
-            store, conversation, turn, label=f"Conversation {conversation!r}"
+            store, conversation, turn, label=f"Conversation {conversation!r}", call=call
         )
 
     return recall_turn

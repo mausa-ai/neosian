@@ -12,9 +12,10 @@ from neosian._foundation.conversation.recall import (
     create_recall_any_tool,
     create_recall_turn_tool,
 )
-from neosian._foundation.llm.base import Message, Role
+from neosian._foundation.llm.base import Message, Role, ToolCall
 from neosian._foundation.llm.fake import FakeClient, FakeScript, FakeTurn
 from neosian._foundation.memory.file import FileStore
+from neosian._foundation.shared.types import ToolCallId, ToolName
 
 _SYSTEM = "You are a test agent."
 
@@ -48,6 +49,20 @@ async def _seed(store: FileStore, texts: list[str]) -> None:
 
 def _last_tool_names(fake: FakeClient) -> list[str]:
     return [str(tool.name) for tool in fake.calls[-1].tools]
+
+
+async def _seed_long_result(store: FileStore) -> None:
+    """One turn whose tool result is 8000 chars: longer than a recall shows."""
+    call = ToolCall(id=ToolCallId("c1"), name=ToolName("Bash"), arguments={})
+    await store.append_turn(
+        "t1",
+        (
+            Message(role=Role.USER, content="build"),
+            Message(role=Role.ASSISTANT, content=None, tool_calls=[call]),
+            Message(role=Role.TOOL, content="log " * 2000, tool_call_id=call.id),
+            Message(role=Role.ASSISTANT, content="it failed at the tail"),
+        ),
+    )
 
 
 @pytest.mark.unit
@@ -199,3 +214,20 @@ class TestRecallAny:
         result = await create_recall_any_tool(store)(turn=1, conversation="a/b")
         assert not result.success and result.error is not None
         assert "conversation_id_invalid" in result.error
+
+    async def test_a_long_result_pages_and_call_opens_it_whole(
+        self, store: FileStore
+    ) -> None:
+        await _seed_long_result(store)
+        tool = create_recall_any_tool(store)
+        paged = await tool(turn=1, conversation="t1")
+        assert paged.success and paged.data is not None
+        assert paged.data.count("log ") < 2000 and 'pass call="c1"' in paged.data
+        whole = await tool(turn=1, conversation="t1", call="c1")
+        assert whole.success and whole.data is not None
+        assert whole.data.count("log ") == 2000
+        own = await create_recall_turn_tool(store, "t1")(turn=1, call="c1")
+        assert own.data == whole.data
+        missing = await tool(turn=1, conversation="t1", call="c2")
+        assert not missing.success and missing.error == "Turn 1 made no call 'c2'"
+        assert missing.system_reminder == "Its calls: c1."

@@ -113,7 +113,7 @@ neosian record install --client opencode --level project --scope user:me --write
 | hook | the record |
 |---|---|
 | `UserPromptSubmit` | the `USER` message that opens the turn (spooled) |
-| `PostToolUse` | an `ASSISTANT` tool call + its `TOOL` result, the output kept to its head (4096 chars); a subagent's rounds (`agent_id`) are skipped |
+| `PostToolUse` | an `ASSISTANT` tool call + its `TOOL` result, whole up to 1 MiB (its head and tail above that); a subagent's rounds (`agent_id`) are skipped |
 | `Stop` | the final `ASSISTANT` text (`last_assistant_message`); the span lands as one `append_turn` by `claude-code:<session_id>`, and the sessions document is written by `claude-code:<session_id>#<turn>` |
 | `SessionStart` | nothing written: the verb prints the context (below), which the client adds to the model's window |
 
@@ -247,7 +247,7 @@ project; `NEOSIAN_SCOPE` also takes precedence. Tool cwd changes do not
 change the session's project.
 
 `beforeSubmitPrompt` supplies the prompt, `postToolUse` the tool round
-(including its JSON-string output, capped at 4096 characters), and
+(including its JSON-string output, whole up to 1 MiB), and
 `afterAgentResponse` the assistant text. A completed turn lands once both
 `stop` and `afterAgentResponse` have arrived, in either order. Cursor's
 interactive CLI can send the stop first. Aborted or failed turns can land
