@@ -8,6 +8,24 @@ phase close names the version.
 
 ## [Unreleased]
 
+### Added
+
+- The handoff: a session another agent continues (DESIGN §33). On arrival
+  one call, `continue_session(conversation=None)`, delivers a recorded
+  conversation whole within a budget (every user prompt and final answer
+  verbatim, tool rounds one line each, older turns as log lines) and marks
+  its handoff note picked up; on departure `handoff(note)` writes the
+  note, one baton per scope at `/project/handoff`, shown in full at the
+  next session start until a session picks it up and never deleted. Both
+  tools stand on the MCP server (the sixth and seventh of the state set)
+  and on a `Conversation` with a writable `/project` mount. A handoff is
+  declared, never assumed: a session that calls neither is a new session.
+- Lineage: a sessions document carries `- continues: <id>` for every
+  session its turns continued, read back from the record itself.
+- The wheel's own `handoff` skill (`assets/skills/handoff.md`), served by
+  the MCP server as a prompt beside the mounts' skills: a slash command
+  in the clients that render prompts.
+
 ### Changed
 
 - A foreign agent's tool results are recorded whole up to 1 MiB each, the

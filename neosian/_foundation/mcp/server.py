@@ -27,15 +27,18 @@ from typing import TYPE_CHECKING, Any, Final
 
 from pydantic import ValidationError
 
+from neosian._foundation.conversation.handoff import handoff_tools
 from neosian._foundation.conversation.search_history import history_any_tools
 from neosian._foundation.mcp.sdk import Sdk, load_sdk
 from neosian._foundation.memory.dispatch import dispatch
 from neosian._foundation.memory.index import memory_system_section
 from neosian._foundation.memory.mounts import MemoryConfig
+from neosian._foundation.memory.sessions import sessions_mount
 from neosian._foundation.memory.skills import (
     create_skill_tools,
     list_skills,
     load_skill,
+    shipped_skills,
 )
 from neosian._foundation.memory.tools import create_memory_tool
 from neosian._foundation.shared.constants import ErrorMessages
@@ -101,9 +104,11 @@ def _validated(
         return rejection(metadata.name, exc)
 
 
-def _read_only(sdk: Sdk, tool: ToolFunction) -> tuple[McpTool, Handler]:
-    """A read-only tool served verbatim, its handler validating then
-    calling it by keyword."""
+def _served(
+    sdk: Sdk, tool: ToolFunction, *, read_only: bool = True, destructive: bool = False
+) -> tuple[McpTool, Handler]:
+    """A function tool served verbatim, its handler validating then
+    calling it by keyword; read-only unless said otherwise."""
     metadata = _metadata(tool)
     definition = metadata.definition
 
@@ -118,9 +123,9 @@ def _read_only(sdk: Sdk, tool: ToolFunction) -> tuple[McpTool, Handler]:
         description=definition.description,
         input_schema=definition.parameters,
         annotations=sdk.tool_annotations(
-            read_only_hint=True,
-            destructive_hint=False,
-            idempotent_hint=True,
+            read_only_hint=read_only,
+            destructive_hint=destructive,
+            idempotent_hint=read_only,
             open_world_hint=False,
         ),
     )
@@ -168,11 +173,22 @@ async def create_memory_server(
         )
     ]
     handlers: dict[str, Handler] = {memory.name: call_memory}
-    readers = list(create_skill_tools((), config))
+    shipped = shipped_skills()
+    served_tools = [
+        (reader, True, False) for reader in create_skill_tools(shipped, config)
+    ]
+    mount = sessions_mount(config.mounts)
     if conversations is not None:
-        readers.extend(history_any_tools(conversations))
-    for reader in readers:
-        served, call = _read_only(sdk, reader)
+        served_tools.extend((t, True, False) for t in history_any_tools(conversations))
+        if mount is not None:
+            # The handoff (§33): continue_session marks the baton picked
+            # up, handoff replaces the standing note — both write.
+            continuing, departing = handoff_tools(
+                conversations, config.store, mount.scope, actor=actor
+            )
+            served_tools.extend([(continuing, False, False), (departing, False, True)])
+    for tool, read_only, destructive in served_tools:
+        served, call = _served(sdk, tool, read_only=read_only, destructive=destructive)
         tools.append(served)
         handlers[served.name] = call
 
@@ -183,12 +199,13 @@ async def create_memory_server(
         return sdk.list_tools_result(tools=tools)
 
     # Skills as prompts, listed live: one written this session is a
-    # command in the next request (§24.3).
+    # command in the next request (§24.3); the wheel's own skills (the
+    # `handoff` prompt, §33) are listed after the mounts' as a directory.
     async def on_list_prompts(
         ctx: ServerRequestContext[None, Any],  # noqa: ARG001 - SDK handler shape
         params: PaginatedRequestParams | None,  # noqa: ARG001 - no paging
     ) -> ListPromptsResult:
-        entries = await list_skills(config, ())
+        entries = await list_skills(config, shipped)
         return sdk.list_prompts_result(
             prompts=[
                 sdk.prompt(name=entry.name, description=entry.skill.description)
@@ -201,7 +218,7 @@ async def create_memory_server(
         ctx: ServerRequestContext[None, Any],  # noqa: ARG001 - SDK handler shape
         params: GetPromptRequestParams,
     ) -> GetPromptResult:
-        entry = await load_skill(config, (), params.name)
+        entry = await load_skill(config, shipped, params.name)
         if entry is None or entry.skill is None:
             raise sdk.error(
                 code=sdk.invalid_params,

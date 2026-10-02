@@ -24,6 +24,16 @@ search_history: "Search the full history of this conversation, the viewed conver
 
 search_history_footer: "[newest first, at most {{shown}}; call recall_turn(n, conversation=\"<id>\") to re-read a hit verbatim]"
 
+continue_session: "Continue a recorded conversation: the one call to make when the user says to continue, carry on, pick up or resume where another session (any agent) left off. Delivers that conversation whole, within a budget: every user prompt and final answer verbatim, tool rounds as one line each, the older turns as one-line log entries; its handoff note first when one is pending, which this call picks up. Omit conversation to continue the session the pending note names, else the most recent session listed in the memory index under sessions/; pass conversation=<id> to continue that one. Afterwards carry on as the same work. Never call it for new work: a session that continues nothing is a new session."
+
+continue_session_params:
+  conversation: "The conversation id to continue, as the sessions/ document or the handoff note names it; omit for the pending note's session, else the most recent one listed."
+
+handoff: "Write the handoff note for whoever continues this work next, in any agent: call it when the user says to hand off, wrap up for the next session, or leave a note for later. The note is shown in full at the next session start in this scope until a session picks it up with continue_session. Under 2048 characters: what was being done and for whom, what is done (the paths, ids and commands that matter), what is next (the first step precisely), what is open or blocked; name turns as [n] instead of repeating them. One note stands per scope: a new one replaces it (the old one stays as a version)."
+
+handoff_params:
+  note: "The note, under 2048 characters: what was being done, what is done, what is next, what is open."
+
 recall_turn: "Re-read one earlier turn verbatim. Compacted turns appear in the conversation log — and in any view of another conversation — as one-line entries labeled with turn numbers in square brackets, e.g. [7] or [3-6]. Pass a turn number to get that turn's full original text, including complete tool calls and results; pass conversation=<id> to read a turn of a viewed conversation (omit it for this one). A long tool result shows its head and tail with a marker naming its call: pass call=<id> to read that one result whole. Use it whenever a log entry mentions something you need the details of. A [link N] handle in an entry stands for a URL, path or id: pass it as written in any tool call and it is expanded before the tool runs, or recall the turn to read it."
 
 # Parameter prose by parameter name (DESIGN §27.9): what each builtin's

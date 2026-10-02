@@ -17,6 +17,7 @@ import json
 from typing import TYPE_CHECKING, Any
 
 from neosian._foundation.conversation.base import ConversationStore
+from neosian._foundation.conversation.handoff import handoff_tools
 from neosian._foundation.conversation.search_history import (
     history_any_tools as _history_any_tools,
 )
@@ -117,7 +118,17 @@ async def session_start_section(config: MemoryConfig, *, own: str) -> str:
     return f"{await memory_system_section(config)}\n\n{left_off}"
 
 
-def history_any_tools(config: MemoryConfig) -> tuple[ToolFunction, ToolFunction]:
-    """The server's `recall_turn` and `search_history` over the cell's
-    own store handle — on the http transport both cross the wire."""
-    return _history_any_tools(_conversations(config))
+def state_tools(config: MemoryConfig, *, actor: str) -> tuple[ToolFunction, ...]:
+    """The server's state set over the cell's own store handle — `recall_turn`,
+    `search_history`, then `continue_session` and `handoff` over the sessions
+    mount (§33) — so on the http transport every one crosses the wire."""
+    conversations = _conversations(config)
+    return (
+        *_history_any_tools(conversations),
+        *handoff_tools(
+            conversations,
+            config.store,
+            first_writable(config.mounts).scope,
+            actor=actor,
+        ),
+    )

@@ -113,7 +113,12 @@ class TestRegistration:
         config, fake = _config(1)
         convo = Conversation(config, store=store, conversation_id="t1", mounts=MOUNTS)
         await convo.send("hi")
-        assert _tools(fake)[-2:] == ["recall_turn", "search_history"]
+        assert _tools(fake)[-4:] == [
+            "recall_turn",
+            "search_history",
+            "continue_session",
+            "handoff",
+        ]
 
     async def test_lazy_on_a_bare_scope(self, store: FileStore) -> None:
         config, fake = _config(1)

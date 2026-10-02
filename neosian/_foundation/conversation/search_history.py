@@ -126,6 +126,19 @@ def create_search_any_tool(store: ConversationStore) -> ToolFunction:
     return search_history
 
 
+def project_reach(
+    conversation_id: str, views: Sequence[str], sessions: Reach | None
+) -> tuple[Reach, str]:
+    """The Conversation's one reach and its name: this conversation, its
+    views, then the project's listed sessions read live when given."""
+
+    async def reach() -> Sequence[str]:
+        listed = () if sessions is None else await sessions()
+        return tuple(dict.fromkeys((conversation_id, *views, *listed)))
+
+    return reach, (VIEWS_REACH if sessions is None else PROJECT_REACH)
+
+
 def history_tools(
     store: ConversationStore,
     conversation_id: str,
@@ -133,15 +146,9 @@ def history_tools(
     views: Sequence[str] = (),
     sessions: Reach | None = None,
 ) -> tuple[ToolFunction, ToolFunction]:
-    """The Conversation's pair, `(recall_turn, search_history)`, over one
-    reach: this conversation, its views, then the project's listed
-    sessions read live when `sessions` is given."""
-    where = VIEWS_REACH if sessions is None else PROJECT_REACH
-
-    async def reach() -> Sequence[str]:
-        listed = () if sessions is None else await sessions()
-        return tuple(dict.fromkeys((conversation_id, *views, *listed)))
-
+    """The Conversation's pair, `(recall_turn, search_history)`, over the
+    project reach."""
+    reach, where = project_reach(conversation_id, views, sessions)
     return (
         recall_turn_tool(store, conversation_id, reach, where=where),
         search_history_tool(store, reach, where=where),

@@ -43,6 +43,16 @@ _CONTEXT_KEYS: Final = (
     "start_session",
     "start_footer",
     "start_empty",
+    "start_note",
+    "start_note_end",
+    "start_note_line",
+    "continue_header",
+    "continue_continues",
+    "continue_note",
+    "continue_note_end",
+    "continue_footer",
+    "handoff_recorded",
+    "handoff_guide",
 )
 _TOOL_KEYS: Final = (
     "todo",
@@ -54,6 +64,8 @@ _TOOL_KEYS: Final = (
     "search_history",
     "search_history_any",
     "search_history_footer",
+    "continue_session",
+    "handoff",
     "docs",
     "json_object",
 )
@@ -65,6 +77,8 @@ _TOOL_PARAM_KEYS: Final = (
     "recall_turn_any_params",
     "search_history_params",
     "search_history_any_params",
+    "continue_session_params",
+    "handoff_params",
     "docs_params",
 )
 _MEMORY_PARAM_KEYS: Final = ("params",)

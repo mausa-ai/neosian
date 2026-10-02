@@ -528,4 +528,6 @@ class TestCrossClient:
             "load_skill",
             "recall_turn",
             "search_history",
+            "continue_session",
+            "handoff",
         ]

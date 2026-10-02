@@ -185,19 +185,19 @@ def log_line(
                     override_spliced = True
             for call in message.tool_calls:
                 segments.append(
-                    _tool_segment(
-                        call.name, call.arguments, results.get(call.id), links
-                    )
+                    tool_segment(call.name, call.arguments, results.get(call.id), links)
                 )
     return _SEPARATOR.join(segments)
 
 
-def _tool_segment(
+def tool_segment(
     name: str,
     arguments: dict[str, object],
     result: Message | None,
     links: LinkRegistry,
 ) -> str:
+    """One tool round as a line: ``TOOL name(args digest) → result
+    head/tail`` — the round identified, never carried (recall carries it)."""
     args = one_line(
         json.dumps(arguments, separators=(",", ":")), _ARGS_CHARS, links=links
     )

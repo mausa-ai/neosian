@@ -15,8 +15,10 @@ No `from __future__ import annotations`: @Tool resolves the signature's
 hints at decoration time.
 """
 
+import functools
 from collections.abc import Sequence
 from dataclasses import dataclass
+from importlib import resources
 from typing import Any, Final
 
 from neosian._foundation.memory.dispatch import corrective
@@ -29,6 +31,22 @@ from neosian._foundation.shared.types import Skill, ToolFunction
 from neosian._foundation.tools.base import Tool, ToolResult
 
 SKILLS_PREFIX: Final = "skills/"
+_SHIPPED_DIR: Final = "skills"
+
+
+@functools.cache
+def shipped_skills() -> tuple[Skill, ...]:
+    """The wheel's own skills (`assets/skills/*.md`, the `handoff` prompt
+    of §33): a directory source the MCP server lists after the mounts',
+    never seeded into a store — the wheel owns them."""
+    directory = resources.files("neosian.assets").joinpath(_SHIPPED_DIR)
+    return tuple(
+        skill_from_document(
+            entry.name.removesuffix(".md"), entry.read_text("utf-8"), str(entry)
+        )
+        for entry in sorted(directory.iterdir(), key=lambda e: e.name)
+        if entry.name.endswith(".md")
+    )
 
 
 @dataclass(frozen=True, slots=True)

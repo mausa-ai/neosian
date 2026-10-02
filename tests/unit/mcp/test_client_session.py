@@ -41,8 +41,17 @@ class TestListTools:
         server = await create_memory_server(config, conversations=store)
         async with Client(server) as client:
             result = await client.list_tools()
-        memory, *_, recall, search = result.tools
+        memory, *_, recall, search, continuing, departing = result.tools
         assert memory.name == "memory" and recall.name == "recall_turn"
+        # N6 (§33): the handoff pair last, both writers; handoff replaces
+        # a standing note, continue_session only marks one picked up.
+        assert continuing.name == "continue_session" and departing.name == "handoff"
+        assert continuing.annotations is not None and departing.annotations is not None
+        assert continuing.annotations.read_only_hint is False
+        assert continuing.annotations.destructive_hint is False
+        assert departing.annotations.destructive_hint is True
+        assert set(departing.input_schema["required"]) == {"note"}
+        assert continuing.input_schema.get("required", []) == []
         assert recall.description == get_prompt("tools.recall_turn_any")
         assert set(recall.input_schema["required"]) == {"turn", "conversation"}
         assert recall.annotations is not None

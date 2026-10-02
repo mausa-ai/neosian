@@ -85,4 +85,6 @@ async def test_an_agent_writes_loads_and_revises_a_skill(tmp_path: Path) -> None
         "load_skill",
         "recall_turn",
         "search_history",
+        "continue_session",
+        "handoff",
     ]

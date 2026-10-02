@@ -174,6 +174,8 @@ class TestDoneWhen:
                 "load_skill",
                 "recall_turn",
                 "search_history",
+                "continue_session",
+                "handoff",
             ]
             create = {"command": "create", "path": "/memories/a", "content": "b"}
             response = await _agent(s.tools, _script("memory", create)).run(

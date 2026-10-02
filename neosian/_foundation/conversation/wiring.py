@@ -22,9 +22,16 @@ from typing import TYPE_CHECKING, Any, Final
 from neosian._foundation.agent.events import BlockedEvent, DoneEvent
 from neosian._foundation.agent.hooks import AgentHooks
 from neosian._foundation.conversation.compaction import merge_usage
+from neosian._foundation.conversation.handoff import handoff_tools
+from neosian._foundation.conversation.search_history import (
+    history_tools,
+    project_reach,
+)
+from neosian._foundation.conversation.sessions import project_sessions
 from neosian._foundation.llm.base import Message, Role
 from neosian._foundation.memory.base import MemoryStore
 from neosian._foundation.memory.mounts import MemoryConfig, Mount
+from neosian._foundation.memory.sessions import project_mount
 from neosian._foundation.memory.skills import create_skill_tools
 from neosian._foundation.memory.tools import create_memory_tool
 from neosian._foundation.shared.exceptions import ConfigurationError
@@ -182,6 +189,42 @@ def derive_config(
         skill_dir=skill_dir,
         hooks=_compose_hooks(base.hooks, capture),
     )
+
+
+def resident_tools(
+    store: ConversationStore,
+    conversation_id: str,
+    *,
+    memory: MemoryConfig | None,
+    views: Sequence[str],
+    actor: Callable[[], str],
+) -> list[ToolFunction]:
+    """The conversation-owned tools beyond memory: the recall and search
+    pair over the project reach (§32), then `continue_session` and
+    `handoff` when the mount at `/project` is writable (§33) — the
+    Conversation knows its own id, so the baton it writes is linked and
+    its own session is never the default."""
+    sessions = project_sessions(memory)
+    tools = list(history_tools(store, conversation_id, views=views, sessions=sessions))
+    mount = project_mount(memory)
+    if (
+        memory is not None
+        and mount is not None
+        and not (mount.read_only or mount.edit_only)
+    ):
+        reach, where = project_reach(conversation_id, views, sessions)
+        tools.extend(
+            handoff_tools(
+                store,
+                memory.store,
+                mount.scope,
+                actor=actor,
+                own=conversation_id,
+                reach=reach,
+                where=where,
+            )
+        )
+    return tools
 
 
 def _expanding(

@@ -53,3 +53,55 @@ start_footer: >-
 
 start_empty: >-
   (no sessions recorded in this scope yet)
+
+# The handoff (§33, N6). `start_note` frames a pending note shown in
+# full at session start, `start_note_line` the one line a stale one
+# gets; the `continue_*` keys frame what continue_session delivers;
+# `handoff_recorded` is the ack a handoff call answers (the record reads
+# it back) and `handoff_guide` the reminder on a refused note.
+
+start_note: >-
+  [handoff note — written {{written}} by {{actor}}; a session that says
+  "continue" picks it up: call continue_session({{argument}}) to receive
+  that conversation whole; a session that does not is new work and
+  leaves it standing]
+
+start_note_end: >-
+  [end of note]
+
+start_note_line: >-
+  [a handoff note from {{actor}} ({{written}}) is still pending:
+  continue_session({{argument}}) picks it up; view /{{mount}}/handoff
+  reads it]
+
+continue_header: >-
+  [continuing conversation {{conversation_id}} — written by {{actor}},
+  {{turns}} turns, {{first}} to {{last}}{{continues}}; every user prompt
+  and final answer verbatim, tool rounds one line each;
+  recall_turn(n, conversation="{{conversation_id}}") re-reads any turn
+  whole]
+
+continue_continues: >-
+  , itself continuing {{ids}}
+
+continue_note: >-
+  [its handoff note, written {{written}} by {{actor}}]
+
+continue_note_end: >-
+  [end of note]
+
+continue_footer: >-
+  [end — you are continuing this conversation: carry on from its last
+  answer as the same work, in the same voice; the user's next message is
+  its next turn]
+
+handoff_recorded: >-
+  [handoff note recorded — the next session in this scope sees it at
+  start, and continue_session() there delivers this conversation]
+
+handoff_guide: >-
+  Say what the next agent needs, not a summary of the chat: what was
+  being done and for whom, what is done (the paths, ids and commands
+  that matter), what is next (the first step precisely), what is open
+  or blocked. The record holds every turn: name turns as [n] rather than
+  repeating them.

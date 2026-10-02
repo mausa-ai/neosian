@@ -104,6 +104,8 @@ class TestMcpOverHttp:
             "load_skill",
             "recall_turn",
             "search_history",
+            "continue_session",
+            "handoff",
         ]
 
     async def test_the_mcp_surface_is_behind_the_bearer_gate(

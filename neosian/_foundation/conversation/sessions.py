@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Final
 
 from neosian._foundation.llm.base import text_of
 from neosian._foundation.memory.sessions import (
+    continued_ids,
     project_mount,
     session_ids,
     sessions_document,
@@ -59,7 +60,8 @@ async def record_session(
     actor: str,
 ) -> None:
     """Write the conversation's sessions document after `turns[-1]`
-    landed, when a writable mount at `/project` exists; log, never raise."""
+    landed, when a writable mount at `/project` exists; log, never raise.
+    The lineage is read back from the turns themselves (§33)."""
     mount = project_mount(memory)
     if memory is None or mount is None or mount.read_only or mount.edit_only:
         return
@@ -70,6 +72,7 @@ async def record_session(
         started=turns[0].created_at,
         last_prompt=text_of(user),
         turns=turn.turn,
+        continues=continued_ids([m for t in turns for m in t.messages]),
     )
     try:
         await memory.store.write(

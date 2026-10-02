@@ -29,6 +29,8 @@ RESIDENT_TOOLS: Final = (
     "load_skill",
     "recall_turn",
     "search_history",
+    "continue_session",
+    "handoff",
 )
 
 _STDIO_KEYS: Final = frozenset({"command", "args", "env"})

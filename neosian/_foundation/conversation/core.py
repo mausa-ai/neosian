@@ -36,11 +36,7 @@ from neosian._foundation.conversation.reflection import (
     ReflectionResult,
     run_reflection,
 )
-from neosian._foundation.conversation.search_history import history_tools
-from neosian._foundation.conversation.sessions import (
-    project_sessions,
-    record_session,
-)
+from neosian._foundation.conversation.sessions import record_session
 from neosian._foundation.conversation.views import (
     ConversationView,
     render_views,
@@ -52,6 +48,7 @@ from neosian._foundation.conversation.wiring import (
     derive_config,
     fold_event,
     fold_response,
+    resident_tools,
     resolve_memory,
     warn_server_compaction,
 )
@@ -316,17 +313,16 @@ class Conversation:
         if self._compaction.recall_tool and (
             self._projections or self._views or project_mount(self._memory_config)
         ):
-            # Lazy registration (ledger #28): the pair appears in the same
-            # request as the first log block that references it — a view
+            # Lazy registration (ledger #28): the tools appear in the same
+            # request as the first log block that references them — a view
             # is such a block from the first send, and so is the index of
-            # a project whose sessions are listed (§32).
-            extra_tools.extend(
-                history_tools(
-                    self._store,
-                    self._conversation_id,
-                    views=[view.conversation_id for view in self._views],
-                    sessions=project_sessions(self._memory_config),
-                )
+            # a project whose sessions are listed (§32, §33).
+            extra_tools = resident_tools(
+                self._store,
+                self._conversation_id,
+                memory=self._memory_config,
+                views=[view.conversation_id for view in self._views],
+                actor=self._turn_actor,
             )
         derived = derive_config(
             self._base_config,

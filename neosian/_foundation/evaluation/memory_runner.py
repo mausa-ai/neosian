@@ -35,9 +35,9 @@ from neosian._foundation.evaluation.memory_cli import create_cli_memory_tool
 from neosian._foundation.evaluation.memory_http import open_http_memory
 from neosian._foundation.evaluation.memory_mcp import open_mcp_tools
 from neosian._foundation.evaluation.memory_record import (
-    history_any_tools,
     replay_record,
     session_start_section,
+    state_tools,
 )
 from neosian._foundation.evaluation.memory_score import check_store
 from neosian._foundation.evaluation.memory_types import (
@@ -248,7 +248,7 @@ async def _run_cell(
                 )
             )
         if session.session_start and transport is not Transport.MCP:
-            extra_tools.extend(history_any_tools(memory_config))
+            extra_tools.extend(state_tools(memory_config, actor=actor))
         derived = derive_config(
             staged,
             section=section,

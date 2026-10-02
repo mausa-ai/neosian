@@ -29,6 +29,8 @@ class TestTools:
             "load_skill",
             "recall_turn",
             "search_history",
+            "continue_session",
+            "handoff",
         ]
         listing = result.tools[1]
         assert listing.description == get_prompt("tools.skill_list")
@@ -67,16 +69,21 @@ class TestPrompts:
     ) -> None:
         server = await create_memory_server(config)
         async with Client(server) as client:
-            assert (await client.list_prompts()).prompts == []
+            # The wheel's own `handoff` prompt (§33) stands even on an
+            # empty store, after the mounts' skills.
+            shipped = (await client.list_prompts()).prompts
+            assert [p.name for p in shipped] == ["handoff"]
             await store.write("user:demo", "skills/release", RELEASE)
             await store.write("user:demo", "skills/broken", "no frontmatter")
-            (prompt,) = (await client.list_prompts()).prompts
-            assert prompt.name == "release"
+            prompt, handoff = (await client.list_prompts()).prompts
+            assert prompt.name == "release" and handoff.name == "handoff"
             assert prompt.description == "Release this project"
             got = await client.get_prompt("release")
+            departure = await client.get_prompt("handoff")
             with pytest.raises(Exception, match="'nope' not found"):
                 await client.get_prompt("nope")
         assert got.description == "Release this project"
+        assert "`handoff` tool" in departure.messages[0].content.text  # type: ignore[union-attr]
         (message,) = got.messages
         assert message.role == "user"
         assert message.content.text == "1. bump\n2. tag"  # type: ignore[union-attr]
@@ -113,6 +120,6 @@ class TestASecondAgentReadsOnly:
             )
         assert loaded.is_error is False
         assert loaded.content[1].text == "/ref/skills/release (version 1)"  # type: ignore[union-attr]
-        assert [p.name for p in prompts.prompts] == ["release"]
+        assert [p.name for p in prompts.prompts] == ["release", "handoff"]
         assert refused.is_error is True
         assert "memory_read_only_mount" in refused.content[0].text  # type: ignore[union-attr]
