@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import replace
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TextIO
 
@@ -246,6 +247,7 @@ async def _record_payload(
                     settings,
                     session_id=session_id,
                     source=str(payload.get("source") or ""),
+                    now=datetime.now(UTC),
                 ),
             )
         return envelope

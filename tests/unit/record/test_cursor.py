@@ -136,6 +136,25 @@ async def test_explicit_selection_wins(tmp_path: Path, override: str) -> None:
     assert await FileStore(tmp_path / "store").read(scope, "sessions/cursor-session")
 
 
+def test_an_mcp_round_arrives_through_after_mcp_execution(tmp_path: Path) -> None:
+    """§33: Cursor fires afterMCPExecution, not postToolUse, for an MCP
+    tool; its result_json is the round's response."""
+    data = payload(
+        "afterMCPExecution",
+        tmp_path,
+        tool_name="continue_session",
+        tool_input={},
+        mcp_server_name="neosian-memory",
+        result_json="[continuing conversation cc-1 — written by claude-code:cc-1]",
+        duration=12,
+    )
+    normalized = parse_payload(json.dumps(data), agent="cursor")
+    disposition, reduced = reduce_payload(normalized)
+    assert disposition == "spooled" and reduced is not None
+    assert reduced["name"] == "continue_session"
+    assert reduced["response"].startswith("[continuing conversation cc-1")
+
+
 def test_cursor_output_is_kept_whole_and_subagents_are_skipped(
     tmp_path: Path,
 ) -> None:

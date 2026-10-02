@@ -14,7 +14,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, Literal
 
 from neosian._foundation.shared.client_config import (
     Environment,
@@ -46,6 +46,21 @@ class ClientTarget:
     # The entry's shape: `mcpServers` ({command, args}) or OpenCode's
     # ({type: local, command: [...], enabled}).
     style: str = "mcpServers"
+
+
+# The start door per client (§33): a client whose SessionStart hook
+# prints the index, the note and "where we left off" gets instructions
+# carrying the write discipline alone, so one window holds one copy; any
+# other client (OpenCode, Claude Desktop, a hand-written entry) gets the
+# whole block in the instructions. The server learns its client from the
+# actor the installer rendered (`mcp:<client>`).
+SessionStartDoor = Literal["hook", "instructions"]
+HOOKED_CLIENTS: Final = frozenset({"claude-code", "codex", "cursor", "muse-code"})
+
+
+def session_start_door(actor: str | None) -> SessionStartDoor:
+    client = actor.removeprefix("mcp:") if actor is not None else ""
+    return "hook" if client in HOOKED_CLIENTS else "instructions"
 
 
 def _claude_code(context: Environment, level: str) -> ClientTarget:

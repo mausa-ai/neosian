@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Final
 
 from pydantic import ValidationError
@@ -30,8 +31,8 @@ from pydantic import ValidationError
 from neosian._foundation.conversation.handoff import handoff_tools
 from neosian._foundation.conversation.search_history import history_any_tools
 from neosian._foundation.mcp.sdk import Sdk, load_sdk
+from neosian._foundation.mcp.targets import SessionStartDoor
 from neosian._foundation.memory.dispatch import dispatch
-from neosian._foundation.memory.index import memory_system_section
 from neosian._foundation.memory.mounts import MemoryConfig
 from neosian._foundation.memory.sessions import sessions_mount
 from neosian._foundation.memory.skills import (
@@ -41,7 +42,9 @@ from neosian._foundation.memory.skills import (
     shipped_skills,
 )
 from neosian._foundation.memory.tools import create_memory_tool
+from neosian._foundation.record.context import render_instructions
 from neosian._foundation.shared.constants import ErrorMessages
+from neosian._foundation.shared.prompt_assets import get_prompt
 from neosian._foundation.tools.base import ToolMetadata, ToolResult, get_tool_metadata
 from neosian._foundation.tools.schema import rejection, validate_arguments
 
@@ -138,18 +141,28 @@ async def create_memory_server(
     actor: str | None = DEFAULT_ACTOR,
     name: str = _SERVER_NAME,
     conversations: ConversationStore | None = None,
+    session_start: SessionStartDoor = "instructions",
 ) -> Server[None]:
     """Build an MCP server serving `config`'s mounts over the `memory`
     tool, its skills over `list_skills`/`load_skill` and as prompts —
-    and, given `conversations`, `recall_turn` over its turns.
+    and, given `conversations`, the state set over its turns.
 
-    Async because the server's `instructions` are
-    `memory_system_section(config)` — the prompt pack plus the live index,
-    read from the store. They are rendered here and again per connection
-    in the SDK lifespan: the per-session analogue of the
-    frozen-index-per-conversation rule (ledger #51).
+    Async because the server's `instructions` are read from the store:
+    the prompt pack plus the live index, the pending handoff note and
+    "where we left off" for a client whose start door they are (§33), or
+    the write discipline alone when the client's SessionStart hook prints
+    the rest (`session_start="hook"`: one window, one copy). They are
+    rendered here and again per connection in the SDK lifespan: the
+    per-session analogue of the frozen-index-per-conversation rule
+    (ledger #51).
     """
     sdk = load_sdk()
+
+    async def instructions() -> str:
+        if session_start == "hook":
+            return get_prompt("context.start_instructions")
+        return await render_instructions(config, conversations, now=datetime.now(UTC))
+
     memory_metadata = _metadata(create_memory_tool(config, actor=actor))
     memory = memory_metadata.definition
 
@@ -269,12 +282,12 @@ async def create_memory_server(
     async def lifespan(server: Server[None]) -> AsyncIterator[None]:
         # One session per stdio process; `run()` enters this before any
         # request, so `server/discover` reports this session's index.
-        server.instructions = await memory_system_section(config)
+        server.instructions = await instructions()
         yield None
 
     return sdk.server_class(
         name,
-        instructions=await memory_system_section(config),
+        instructions=await instructions(),
         lifespan=lifespan,
         on_list_tools=on_list_tools,
         on_call_tool=on_call_tool,

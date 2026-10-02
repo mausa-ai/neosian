@@ -66,6 +66,7 @@ def cursor_payload(payload: dict[str, Any]) -> dict[str, Any]:
     events = {
         "beforeSubmitPrompt": PROMPT_EVENT,
         "postToolUse": TOOL_EVENT,
+        "afterMCPExecution": TOOL_EVENT,  # an MCP tool's round (§33)
         "afterAgentResponse": "AssistantResponse",
         "stop": STOP_EVENT,
         "sessionStart": "SessionStart",
@@ -75,7 +76,7 @@ def cursor_payload(payload: dict[str, Any]) -> dict[str, Any]:
         **payload,
         "session_id": payload.get("conversation_id"),
         "hook_event_name": events.get(str(event), event),
-        "tool_response": payload.get("tool_output"),
+        "tool_response": payload.get("tool_output", payload.get("result_json")),
         "last_assistant_message": "",
         "status": payload.get("status") or "completed",
     }

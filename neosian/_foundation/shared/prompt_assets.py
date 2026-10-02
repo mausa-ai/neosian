@@ -43,6 +43,7 @@ _CONTEXT_KEYS: Final = (
     "start_session",
     "start_footer",
     "start_empty",
+    "start_instructions",
     "start_note",
     "start_note_end",
     "start_note_line",

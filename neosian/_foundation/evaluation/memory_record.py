@@ -14,6 +14,7 @@ writes, a different one recalls — never asserted.
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from neosian._foundation.conversation.base import ConversationStore
@@ -21,11 +22,10 @@ from neosian._foundation.conversation.handoff import handoff_tools
 from neosian._foundation.conversation.search_history import (
     history_any_tools as _history_any_tools,
 )
-from neosian._foundation.memory.index import memory_system_section
 from neosian._foundation.memory.sessions import sessions_mount
 from neosian._foundation.memory.settings import DEFAULT_SCHEMA, StoreSettings
 from neosian._foundation.record.cli import record_payload
-from neosian._foundation.record.context import render_left_off
+from neosian._foundation.record.context import render_instructions
 from neosian._foundation.record.settings import RecordSettings
 
 if TYPE_CHECKING:
@@ -106,16 +106,12 @@ def _conversations(config: MemoryConfig) -> ConversationStore:
 
 
 async def session_start_section(config: MemoryConfig, *, own: str) -> str:
-    """The reading session's prefix: the memory section, then the
-    hook's "where we left off" over the scope's sessions documents."""
-    left_off = await render_left_off(
-        config.store,
-        _conversations(config),
-        first_writable(config.mounts).scope,
-        own=own,
-        source="startup",
+    """The reading session's prefix: the memory section, then the pending
+    handoff note and "where we left off" over the scope's sessions."""
+    first_writable(config.mounts)  # a record session needs the mount
+    return await render_instructions(
+        config, _conversations(config), now=datetime.now(UTC), own=own
     )
-    return f"{await memory_system_section(config)}\n\n{left_off}"
 
 
 def state_tools(config: MemoryConfig, *, actor: str) -> tuple[ToolFunction, ...]:

@@ -60,6 +60,34 @@ start_empty: >-
 # `handoff_recorded` is the ack a handoff call answers (the record reads
 # it back) and `handoff_guide` the reminder on a refused note.
 
+start_instructions: |-
+  Your persistent memory is the `memory` tool: its index arrived at
+  session start (or `view /` lists it); read a document with `view`
+  before answering questions about earlier work, and record what you
+  will want later. Document bodies are never in context: read them when
+  you need them, and only then.
+
+  Write discipline:
+  - Check the index before creating; update the existing document instead
+    of writing a duplicate.
+  - Prefer `str_replace` edits over rewriting whole documents.
+  - Delete or correct anything that proved wrong — stale memory is worse
+    than none.
+  - Keep documents small and single-topic; split rather than grow.
+  - Never store secrets, credentials, API keys, or tokens — not even to
+    note that one exists — nor anything the user asked to forget. When a
+    message contains one, keep it out of every document you write.
+
+  Mount routing: each top-level directory of the index is a separate
+  mount. Durable facts about the user belong in the user-level mount;
+  facts tied to one project belong in that project's mount; read-only
+  mounts are reference material. Skills — reusable instructions — are
+  the documents under `skills/` in a mount; `list_skills` and
+  `load_skill` read them. Sessions are recorded under `sessions/`:
+  `search_history` finds a turn by its words, `recall_turn` re-reads
+  one, `continue_session` carries on a session another agent left, and
+  `handoff` leaves the note the next one reads.
+
 start_note: >-
   [handoff note — written {{written}} by {{actor}}; a session that says
   "continue" picks it up: call continue_session({{argument}}) to receive

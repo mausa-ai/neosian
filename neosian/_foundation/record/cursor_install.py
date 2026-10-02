@@ -26,6 +26,7 @@ EVENTS: Final = (
     "sessionStart",
     "beforeSubmitPrompt",
     "postToolUse",
+    "afterMCPExecution",  # MCP tools fire this, not postToolUse (§33)
     "afterAgentResponse",
     "stop",
 )

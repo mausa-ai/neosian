@@ -113,13 +113,20 @@ def project_conversation(
         kept += 1
     if kept == len(lines):
         return [line for _, _, line in lines]
-    folded = lines[: len(lines) - kept]
-    fold = render(
-        get_prompt("context.view_fold"),
-        first=str(folded[0][0]),
-        last=str(folded[-1][1]),
-        count=str(folded[-1][1] - folded[0][0] + 1),
-    )
+    while True:
+        # The fold line counts too (§33: the block is at most its budget);
+        # it displaces the oldest kept line until the whole fits.
+        folded = lines[: len(lines) - kept]
+        fold = render(
+            get_prompt("context.view_fold"),
+            first=str(folded[0][0]),
+            last=str(folded[-1][1]),
+            count=str(folded[-1][1] - folded[0][0] + 1),
+        )
+        if kept == 0 or used + len(fold) + 1 <= budget_chars:
+            break
+        used -= len(lines[len(lines) - kept][2]) + 1
+        kept -= 1
     return [fold, *(line for _, _, line in lines[len(lines) - kept :])]
 
 

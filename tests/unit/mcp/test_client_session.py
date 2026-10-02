@@ -1,13 +1,17 @@
 """An in-process MCP client against the memory server: the wire behaves
 like the function tool (DESIGN §8, ledger #50/#52)."""
 
+from datetime import UTC, datetime
+
 from mcp.client import Client
 
 from neosian._foundation.conversation.projection import render_turn
 from neosian._foundation.llm.base import Message, Role
 from neosian._foundation.mcp.server import create_memory_server
+from neosian._foundation.mcp.targets import session_start_door
 from neosian._foundation.memory.file import FileStore
 from neosian._foundation.memory.mounts import MemoryConfig
+from neosian._foundation.memory.sessions import HANDOFF_PATH, handoff_document
 from neosian._foundation.memory.tools import create_memory_tool
 from neosian._foundation.shared.prompt_assets import get_prompt
 from neosian._foundation.tools.base import get_tool_definition
@@ -70,6 +74,39 @@ class TestListTools:
         async with Client(server) as client:
             assert client.instructions is not None
             assert "prefs" in client.instructions
+
+    async def test_the_start_door_decides_what_the_instructions_carry(
+        self, config: MemoryConfig, store: FileStore
+    ) -> None:
+        """§33: a hooked client's SessionStart hook prints the index, the
+        note and the sessions, so its instructions carry the discipline
+        alone; a client with no hook (OpenCode) gets everything there."""
+        await store.write("user:demo", "prefs", "dark mode")
+        await store.write(
+            "user:demo",
+            HANDOFF_PATH,
+            handoff_document(
+                actor="mcp:claude-code", written=datetime.now(UTC), note="n"
+            ),
+        )
+        hooked = await create_memory_server(
+            config, conversations=store, session_start="hook"
+        )
+        async with Client(hooked) as client:
+            assert client.instructions == get_prompt("context.start_instructions")
+            assert (
+                client.instructions is not None and "prefs" not in client.instructions
+            )
+        door = await create_memory_server(config, conversations=store)
+        async with Client(door) as client:
+            text = client.instructions or ""
+        assert text.startswith("## Memory") and "- /memories/prefs" in text
+        assert "[handoff note —" in text and get_prompt("context.start_header") in text
+        assert session_start_door("mcp:claude-code") == "hook"
+        assert session_start_door("mcp:codex") == "hook"
+        assert session_start_door("mcp:opencode") == "instructions"
+        assert session_start_door("mcp:stdio") == "instructions"
+        assert session_start_door(None) == "instructions"
 
 
 class TestCallTool:

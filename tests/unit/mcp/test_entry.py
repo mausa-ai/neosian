@@ -96,6 +96,7 @@ class TestErrorPaths:
             *,
             actor: object = None,  # noqa: ARG001 - fake
             conversations: object = None,  # noqa: ARG001 - fake
+            session_start: object = None,  # noqa: ARG001 - fake
         ) -> object:
             raise ImportError("reinstall: uv add neosian")
 
@@ -126,6 +127,7 @@ class TestStoreSelection:
             *,
             actor: object = None,  # noqa: ARG001 - fake
             conversations: object = None,  # noqa: ARG001 - fake
+            session_start: object = None,  # noqa: ARG001 - fake
         ) -> object:
             return object()
 

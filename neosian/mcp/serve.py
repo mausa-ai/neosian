@@ -16,6 +16,7 @@ from pathlib import Path
 from neosian._foundation.conversation.base import ConversationStore
 from neosian._foundation.mcp.server import create_memory_server, serve_stdio
 from neosian._foundation.mcp.settings import ServerSettings, parse_args
+from neosian._foundation.mcp.targets import session_start_door
 from neosian._foundation.memory.mounts import MemoryConfig
 from neosian._foundation.memory.store_lifetime import open_store
 from neosian._foundation.shared.exceptions import (
@@ -34,6 +35,7 @@ async def _run(settings: ServerSettings) -> None:
             # Every shipped store keeps conversations too: `recall_turn`
             # joins the tool list (§21.7).
             conversations=store if isinstance(store, ConversationStore) else None,
+            session_start=session_start_door(settings.actor),
         )
         await serve_stdio(server)
 

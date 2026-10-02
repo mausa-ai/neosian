@@ -111,12 +111,18 @@ class TestProjectConversation:
         await _seed(store, "a", "one", "two", "three")
         turns = await store.read_turns("a")
         lines = project_conversation(
-            turns, (), digest_chars=200, user_chars=800, budget_chars=40, links=_LINKS
+            turns, (), digest_chars=200, user_chars=800, budget_chars=80, links=_LINKS
         )
+        # The fold line counts against the budget too (§33): 68 of 80.
         assert lines == [
             "[1-2] 2 earlier turns not shown",
             "[3] USER: three | AGENT: re: three",
         ]
+        assert sum(len(line) + 1 for line in lines) <= 80
+        only_fold = project_conversation(
+            turns, (), digest_chars=200, user_chars=800, budget_chars=40, links=_LINKS
+        )
+        assert only_fold == ["[1-3] 3 earlier turns not shown"]
 
 
 @pytest.mark.unit
