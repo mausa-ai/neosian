@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Final, Literal
 
 from neosian._foundation.llm.base import Message, Role, text_of
 from neosian._foundation.memory.home import PROJECT_MOUNT_PATH
+from neosian._foundation.shared.exceptions import MemoryConflictError
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -206,6 +207,34 @@ def project_mount(config: MemoryConfig | None) -> Mount | None:
         if mount.mount_path == PROJECT_MOUNT_PATH:
             return mount
     return None
+
+
+async def link_handoff(
+    store: MemoryStore, scope: str, conversation: str, *, actor: str
+) -> bool:
+    """The record linking the pending, unlinked baton to the session whose
+    span wrote it — the hooks know the session, the tool did not. Against
+    the version read; a conflict means the pickup landed first and knows
+    the target already, so nothing is written. True when it linked."""
+    document = await store.read(scope, HANDOFF_PATH)
+    if document is None or document.redacted:
+        return False
+    baton = parse_handoff(document.content)
+    if baton is None or not baton.pending or baton.conversation is not None:
+        return False
+    content = handoff_document(
+        actor=baton.actor,
+        written=baton.written,
+        note=baton.note,
+        conversation=conversation,
+    )
+    try:
+        await store.write(
+            scope, HANDOFF_PATH, content, actor=actor, expected_version=document.version
+        )
+    except MemoryConflictError:
+        return False
+    return True
 
 
 async def session_ids(store: MemoryStore, scope: str) -> tuple[str, ...]:

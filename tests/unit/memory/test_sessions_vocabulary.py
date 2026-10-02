@@ -13,11 +13,13 @@ from neosian._foundation.llm.base import Message, Role, ToolCall
 from neosian._foundation.memory.file import FileStore
 from neosian._foundation.memory.mounts import MemoryConfig, Mount
 from neosian._foundation.memory.sessions import (
+    HANDOFF_PATH,
     SESSIONS_PREFIX,
     continued_ids,
     handoff_declared,
     handoff_document,
     handoff_tier,
+    link_handoff,
     parse_handoff,
     parse_sessions_document,
     project_mount,
@@ -164,6 +166,21 @@ class TestHandoff:
         )
         naive = "# x\n\n- from: a\n- written: 2026-10-02T10:14:00\n- status: pending\n"
         assert parse_handoff(naive) is None
+
+    async def test_link_handoff_links_an_unlinked_pending_baton_once(
+        self, tmp_path: Path
+    ) -> None:
+        store = FileStore(tmp_path)
+        assert not await link_handoff(store, SCOPE, "s", actor="a#1")
+        await store.write(
+            SCOPE, HANDOFF_PATH, handoff_document(actor="a", written=WRITTEN, note="n")
+        )
+        assert await link_handoff(store, SCOPE, "s", actor="a#1")
+        assert not await link_handoff(store, SCOPE, "other", actor="a#2")
+        document = await store.read(SCOPE, HANDOFF_PATH)
+        assert document is not None and document.version == 2
+        baton = parse_handoff(document.content)
+        assert baton is not None and baton.pending and baton.conversation == "s"
 
     def test_the_tiers(self) -> None:
         pending = parse_handoff(handoff_document(actor="a", written=WRITTEN, note="n"))

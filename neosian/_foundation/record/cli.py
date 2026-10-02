@@ -31,6 +31,10 @@ from neosian._foundation.conversation.base import ConversationStore
 from neosian._foundation.conversation.ids import parse_conversation_id
 from neosian._foundation.memory.actor import parse_actor
 from neosian._foundation.memory.sessions import (
+    continued_ids,
+    handoff_declared,
+    link_handoff,
+    parse_sessions_document,
     sessions_document,
     sessions_mount,
     sessions_path,
@@ -287,11 +291,20 @@ async def _land(
         envelope["disposition"] = "empty"
         return envelope
     assert settings.mount is not None  # the verb's layout always yields one
+    scope = settings.mount.scope
     async with open_store(settings.store) as memory:
         turns = _conversations(memory)
         turn = await turns.append_turn(session_id, messages, actor=actor)
+        # The lineage (§33): what this span declared, after what the
+        # document already says — it is rewritten whole at every Stop.
+        listed = await memory.read(scope, sessions_path(session_id))
+        carried = () if listed is None else parse_sessions_document(listed.content)
+        continues = dict.fromkeys(
+            (*(carried.continues if carried else ()), *continued_ids(messages))
+        )
+        stamp = f"{actor}#{turn.turn}"
         document = await memory.write(
-            settings.mount.scope,
+            scope,
             sessions_path(session_id),
             sessions_document(
                 agent=settings.agent,
@@ -299,9 +312,12 @@ async def _land(
                 started=(await turns.read_turns(session_id, limit=1))[0].created_at,
                 last_prompt=last_prompt(records),
                 turns=turn.turn,
+                continues=tuple(continues),
             ),
-            actor=f"{actor}#{turn.turn}",
+            actor=stamp,
         )
+        if handoff_declared(messages):
+            await link_handoff(memory, scope, session_id, actor=stamp)
         envelope.update(
             disposition="recorded",
             conversation_id=turn.conversation_id,

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import io
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -15,7 +16,12 @@ from neosian._foundation.llm.base import Role
 from neosian._foundation.memory.file import FileStore
 from neosian._foundation.memory.home import HOME_ENV, project_scope, user_scope
 from neosian._foundation.memory.mounts import Mount
-from neosian._foundation.memory.sessions import sessions_mount
+from neosian._foundation.memory.sessions import (
+    HANDOFF_PATH,
+    handoff_document,
+    parse_handoff,
+    sessions_mount,
+)
 from neosian._foundation.record.cli import run
 from neosian._foundation.server.app import build_app
 from neosian._foundation.shared.prompt_assets import get_prompt
@@ -187,6 +193,69 @@ class TestTheSpan:
         assert "- last prompt: second\n" in document.content
         started = turns[0].created_at.isoformat().replace("+00:00", "Z")
         assert f"- started: {started}\n" in document.content
+
+    async def test_a_continue_call_writes_the_lineage_and_every_stop_keeps_it(
+        self, tmp_path: Path
+    ) -> None:
+        """§33: the span's continue_session call, paired with the header
+        its result begins with (Claude Code hands MCP results over as a
+        list of blocks), becomes a `continues:` line the next rewrite of
+        the document carries forward."""
+        argv = _flags(tmp_path)
+        header = "[continuing conversation cc-0001 — written by claude-code:cc-0001]"
+        await _run(argv, prompt("continue where we left off"))
+        await _run(
+            argv,
+            tool(
+                name="mcp__neosian-memory__continue_session",
+                tool_input={},
+                response=[{"type": "text", "text": header}],
+            ),
+        )
+        await _run(argv, stop("carrying on"))
+        store = FileStore(tmp_path / "mem")
+        document = await store.read("user:me", f"sessions/{SESSION}")
+        assert document is not None and "- continues: cc-0001\n" in document.content
+        await _span(argv, prompt_text="more")
+        document = await store.read("user:me", f"sessions/{SESSION}")
+        assert document is not None and document.version == 2
+        assert document.content.endswith("- turns: 2\n- continues: cc-0001\n")
+
+    async def test_a_handoff_call_links_the_pending_baton_to_this_session(
+        self, tmp_path: Path
+    ) -> None:
+        store = FileStore(tmp_path / "mem")
+        await store.write(
+            "user:me",
+            HANDOFF_PATH,
+            handoff_document(
+                actor="mcp:claude-code", written=datetime.now(UTC), note="next: gates"
+            ),
+            actor="mcp:claude-code",
+        )
+        argv = _flags(tmp_path)
+        await _run(argv, prompt("hand off"))
+        await _run(
+            argv,
+            tool(
+                name="mcp__neosian-memory__handoff",
+                tool_input={"note": "next: gates"},
+                response=[
+                    {"type": "text", "text": get_prompt("context.handoff_recorded")}
+                ],
+            ),
+        )
+        await _run(argv, stop("noted"))
+        baton = await store.read("user:me", HANDOFF_PATH)
+        assert baton is not None and baton.version == 2
+        linked = parse_handoff(baton.content)
+        assert linked is not None and linked.pending
+        assert linked.conversation == SESSION
+        newest, _ = await store.versions("user:me", HANDOFF_PATH)
+        assert newest.actor == f"claude-code:{SESSION}#1"
+        await _span(argv)  # a later span leaves the linked baton alone
+        later = await store.read("user:me", HANDOFF_PATH)
+        assert later is not None and later.version == 2
 
     async def test_the_json_envelopes(self, tmp_path: Path) -> None:
         argv = _flags(tmp_path, "--json")
