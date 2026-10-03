@@ -133,9 +133,9 @@ class TestContainerFileConversationContract(ConversationStoreContract):
 
 
 class TestFileBackendCapability:
-    async def test_the_wire_reports_no_arbitration(self, file_leg: FileLeg) -> None:
-        # Transmitted, never claimed (§18.5): files do not arbitrate.
-        assert type(file_leg.remote).supports_optimistic_concurrency is False
+    async def test_the_wire_reports_local_arbitration(self, file_leg: FileLeg) -> None:
+        # The handshake carries FileStore's cross-process locking capability.
+        assert type(file_leg.remote).supports_optimistic_concurrency is True
         capabilities = await file_leg.remote.capabilities()
         assert capabilities["backend"] == "FileStore"
 

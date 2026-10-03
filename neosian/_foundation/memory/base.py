@@ -39,9 +39,9 @@ Cross-implementation invariants (pinned by `testing.MemoryStoreContract`):
   "version_mismatch") and on an absent document ("document_absent"), and
   accepts a *matching* version — on **every** store (NQ2, MC-14).
   `supports_optimistic_concurrency` declares whether that check is
-  race-safe across workers, never whether it happens: FileStore arbitrates
-  in-process and says False because files cannot arbitrate between
-  processes. A store that drops the keyword fails the kit.
+  race-safe across workers, never whether it happens. FileStore now arbitrates
+  cooperating local processes with a root lock; Postgres uses database
+  concurrency. A store that drops the keyword fails the kit.
 
 **Reserved for a 1.x minor** (NQ2, ledger #230; the turn side arrived
 at N5 as `ConversationStore.search_turns`, DESIGN §32, while the memory
@@ -85,8 +85,8 @@ class MemoryStore(ABC):
     """
 
     # True only where a version check is race-safe across workers
-    # (PostgresStore, N3). FileStore stays False: it checks in-process,
-    # but files cannot arbitrate between processes.
+    # FileStore uses a local interprocess lock; Postgres arbitrates in SQL.
+    # Host implementations default conservatively to False.
     supports_optimistic_concurrency: ClassVar[bool] = False
 
     @abstractmethod

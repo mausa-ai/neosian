@@ -33,6 +33,7 @@ from pydantic import BaseModel
 from neosian._foundation.memory.dispatch import dispatch
 from neosian._foundation.memory.mounts import MemoryConfig, Mount, resolve
 from neosian._foundation.memory.payload import new_fence, render_documents
+from neosian._foundation.memory.reserved import state_path
 from neosian._foundation.shared.clock import Clock, SystemClock
 from neosian._foundation.shared.exceptions import (
     ConfigurationError,
@@ -177,7 +178,7 @@ async def _deterministic_stage(
             continue
         by_content: dict[str, list[MemoryEntry]] = {}
         for entry in await config.store.list_documents(mount.scope):
-            if entry.redacted:
+            if entry.redacted or state_path(entry.path):
                 continue
             document = await config.store.read(mount.scope, entry.path)
             if document is None:
@@ -274,6 +275,8 @@ async def protection_reason(
     returns None so the dispatcher produces its corrective failure."""
     try:
         mount, doc_path = resolve(config, path)
+        if state_path(doc_path):
+            return "state document has its own lifecycle"
         document = await config.store.read(mount.scope, doc_path)
     except MemoryStoreError:
         return None

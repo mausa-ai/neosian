@@ -76,6 +76,8 @@ def render_status(status: dict[str, Any], console: Console) -> None:
             findings.append(f"{c['client']}: interpreter missing: {c['interpreter']}")
         if shadow := c.get("mcp_shadowed_by"):
             findings.append(f"{c['client']}: user MCP overridden by shared {shadow}")
+        if delivery := c.get("message_delivery"):
+            findings.append(f"{c['client']}: messages {', '.join(delivery)}")
     records(
         console, ("client", "installed", "mcp", "hooks", "level", "interpreter"), rows
     )

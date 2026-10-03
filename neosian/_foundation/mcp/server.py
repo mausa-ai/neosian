@@ -42,6 +42,9 @@ from neosian._foundation.memory.skills import (
     shipped_skills,
 )
 from neosian._foundation.memory.tools import create_memory_tool
+from neosian._foundation.messaging.core import Mailbox
+from neosian._foundation.messaging.history import augment_history
+from neosian._foundation.messaging.tools import create_messages_tool
 from neosian._foundation.record.context import render_instructions
 from neosian._foundation.shared.constants import ErrorMessages
 from neosian._foundation.shared.prompt_assets import get_prompt
@@ -190,14 +193,21 @@ async def create_memory_server(
     served_tools = [
         (reader, True, False) for reader in create_skill_tools(shipped, config)
     ]
+    mailbox = Mailbox(config, actor=actor or DEFAULT_ACTOR)
+    served_tools.append(
+        (create_messages_tool(config, actor=actor or DEFAULT_ACTOR), False, False)
+    )
     mount = sessions_mount(config.mounts)
     if conversations is not None:
-        served_tools.extend((t, True, False) for t in history_any_tools(conversations))
+        served_tools.extend(
+            (augment_history(t, conversations, mailbox), True, False)
+            for t in history_any_tools(conversations)
+        )
         if mount is not None:
             # The handoff (§33): continue_session marks the baton picked
             # up, handoff replaces the standing note — both write.
             continuing, departing = handoff_tools(
-                conversations, config.store, mount.scope, actor=actor
+                conversations, config.store, mount.scope, actor=actor, mailbox=mailbox
             )
             served_tools.extend([(continuing, False, False), (departing, False, True)])
     for tool, read_only, destructive in served_tools:

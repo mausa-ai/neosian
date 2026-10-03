@@ -99,7 +99,7 @@ class TestOncePerMachine:
             in out
         )
         assert f"  hooks {tmp_path / '.claude' / 'settings.json'}  would write" in out
-        assert "re-run with --write" in err and err.count("hint: one writer") == 1
+        assert "re-run with --write" in err and "one writer" not in err
         assert cli.calls == []  # print mode runs nothing
         assert not (tmp_path / ".claude" / "settings.json").exists()
 
@@ -271,7 +271,7 @@ class TestTheProjectLevel:
         assert claude.installed and claude.mcp_registered and claude.hooks_present
         assert claude.interpreter_resolves is True
         assert claude.root == str(tmp_path / "home")
-        assert len(status.one_writer) == 1  # hooks + MCP on one root, named
+        assert status.one_writer == ()  # local writers now coordinate
 
     def test_a_one_file_client_is_refused_by_name_not_as_usage(
         self, tmp_path: Path

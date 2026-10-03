@@ -88,6 +88,8 @@ def reduce_payload(payload: Mapping[str, Any]) -> tuple[str, Record | None]:
     session is not this span), `ignored` (an event the record does not
     track)."""
     event = payload.get("hook_event_name")
+    if event == "MailboxReceived":
+        return "spooled", {"kind": "context", "text": str(payload.get("text") or "")}
     if event == PROMPT_EVENT:
         text = payload.get("prompt") or payload.get("user_prompt") or ""
         return "spooled", {"kind": "prompt", "text": str(text)}
@@ -147,7 +149,7 @@ def messages_of(records: Sequence[Record]) -> list[Message]:
     rounds = 0
     for record in records:
         kind = record.get("kind")
-        if kind == "prompt":
+        if kind in ("prompt", "context"):
             messages.append(Message(role=Role.USER, content=str(record["text"])))
         elif kind == "tool":
             rounds += 1

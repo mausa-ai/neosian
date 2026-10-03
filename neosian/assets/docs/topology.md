@@ -1,6 +1,6 @@
 ---
 title: "Topology, not hierarchy: the four shapes"
-summary: Who runs neosian code, where the bytes live, and one writer per root
+summary: Who runs neosian code, where the bytes live, and cooperating local writers
 ---
 
 # Topology, not hierarchy
@@ -11,7 +11,7 @@ and the quickstart always begins embedded.
 
 |  | bytes on local files | bytes in a database |
 |---|---|---|
-| **your app runs neosian** | embed + `FileStore`: dev, local tools, single-writer agents | embed + `PostgresStore`: production, multi-worker |
+| **your app runs neosian** | embed + `FileStore`: dev, local tools, cooperating local agents | embed + `PostgresStore`: production, multi-worker |
 | **a separate process runs neosian** | the state process (`neosian serve`) owning a FileStore root | the state process over Postgres |
 
 ## Embed first
@@ -27,8 +27,7 @@ store.
 The state process (`neosian serve`) is the
 first-class answer when state is **shared across processes, apps, or
 languages**, including one container in a dev compose beside redis
-and minio, or when a FileStore root needs more than one writer: one
-process owns the files and every client speaks to it. It adds no
+and minio: one process owns the files and remote clients speak to it. It adds no
 capability the library lacks, only reach. `docker run` is never step
 one. And nothing is a one-way door: `neosian export DIR` writes any
 store (a root, Postgres, the daemon by `--url`) to a directory that
@@ -168,47 +167,24 @@ on `/mcp` (or the stdio server) to find and re-read any recorded turn
 verbatim: one client writes, a different client recalls, on the same store (`neosian docs agents`,
 `neosian docs mcp`).
 
-## One writer per root
+## Cooperating local writers
 
-FileStore's in-process lock serializes mutations inside one process;
-across processes, files cannot arbitrate: two writers on one root
-can interleave a read-modify-write and lose an edit. neosian
-documents the constraint instead of engineering around it: no lock
-files, no `flock`, no leases (they half-promise arbitration at the
-price of an NFS/Windows/containers portability matrix and a
-stale-lock failure mode, on the substrate whose entire value is that
-you can `cat` it).
+FileStore serializes cooperating local processes through a root-wide advisory
+lock. Hooks, MCP servers and embedding applications may share the same local
+home, including user memory and message claims. Restart every writer when
+upgrading: old implementations do not take the lock. The lock is released on
+process death; the private lock file remains to keep all waiters on one inode.
+See `neosian docs messaging` for the recorded concurrency decision and its
+cancellation tests. Cross-file crash behavior remains journal-first, not
+transactional. Network filesystems are outside this coordination guarantee.
 
-**A root is owned by one writer at a time**: an agent's shell
-(`neosian memory`), one MCP server process, or one embedding
-application. Any number of readers may run beside it; a
-concurrent reader is bounded to a stale read, never a corrupted
-store. Multi-writer needs route to `PostgresStore`, which arbitrates
-on the version-row primary key, or to the state process, where one
-`neosian serve` owns the files and every client speaks to it over
-`RemoteStore`.
-
-**What two projects on one home share.** A machine registered once runs
-a hook process and an MCP server per session, all on the home, so it is
-worth being exact about the rule's reach. Different scopes are disjoint
-files: each scope's documents, version sidecars and redaction trail live
-in its own directory, and a conversation is one directory per id, so
-two projects, or two sessions, never write the same file by writing
-their own. The shared surface is the scope every project mounts,
-`/user`, and two sessions of the same project. There a race needs two
-writers on the same document at the same moment; what it costs is an
-edit lost (last writer wins) and, in the sidecar, a version number
-given twice, since both read the last number before either appends.
-Nothing tears: appends are whole lines and a document is replaced
-whole. If that window matters to you, the state process closes it, and
-moving a machine there is the one `neosian setup --url` run above.
+The state process remains useful for remote access and clients in other
+languages. Postgres remains the substrate for distributed workers and scale.
 
 ## Choosing
 
 - One app, one machine, inspectable state → embed + `FileStore`.
 - One app, many workers or many machines → embed + `PostgresStore`.
-- Many apps or languages sharing one memory, or a FileStore root that
-  needs more than one writer (the home, once two projects' hooks or
-  servers write it) → the state process (`neosian serve`).
+- Many apps or languages sharing remote memory → the state process (`neosian serve`).
 - Changing your mind later → `neosian export` from the one, `neosian
   import` into the other; the archive is a FileStore root either way.

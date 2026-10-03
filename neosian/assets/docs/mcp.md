@@ -215,16 +215,21 @@ async with McpServer.stdio(
   (`neosian docs cli`) name servers `neosian chat` opens for a session,
   their tools added, `prefix` for a name chat already has.
 
-## One writer per root
+## Cooperating local writers
 
-An MCP server serving a FileStore root **owns** that root while it
-runs. Do not write to the same root with `neosian memory` or an
-embedding application at the same time: reads are fine, concurrent
-writers are not arbitrated on files. The home is one root for every
-project, so two projects' servers on it are two writers. Multi-writer
-needs route to `PostgresStore` or to the state process (`neosian
-serve`, no flags), where one process owns the root for every client;
-`neosian setup --url URL --write --yes` moves every detected client there
-in one run. Omit `--yes` on a terminal to select clients first.
-The full rule, and what two projects on one home actually share:
-`neosian docs topology`.
+MCP servers, hooks, shell commands and embedding applications can share a
+local FileStore root. Upgraded writers coordinate through its OS lock;
+restart every writer when upgrading. Postgres supports distributed workers,
+and the state process (`neosian serve`) provides remote access to either
+backend. `neosian setup --url URL --write --yes` moves every detected client
+to that process in one run. Omit `--yes` on a terminal to select clients first.
+See `neosian docs topology` for the storage and coordination guarantees.
+
+## Durable messages and reminders
+
+See `neosian docs messaging` for the shared `messages` tool, conversation and
+scope destinations, history annotations, explicit acknowledgment and claims.
+Reminders can be snoozed with a finding and a new due time on the same ID.
+Native conversations opt in with `mailbox=MailboxConfig()` from
+`neosian.messaging`. Regenerate client adapters after upgrading for automatic
+delivery. Pi and OpenCode also support wake requests while attached.

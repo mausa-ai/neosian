@@ -14,6 +14,11 @@ phase close names the version.
   invocation-only `--at CLIENT=DIR` overrides on setup/status with searched
   directory reporting. Explicit `--client` selections remain noninteractive.
 
+- Durable `messages` over MCP, Python and the CLI: scoped/session inboxes,
+  history annotations, explicit acknowledgment, fenced claims and reminders
+  that can be snoozed on the same ID with preserved findings.
+- Optional Conversation mailbox delivery, client context hooks and attached
+  Pi/OpenCode wake receivers. The messaging page records delivery guarantees.
 - Pi 1.0.1+ as a client in both installers, setup and status: native MCP,
   a session-recording extension, startup context and cross-client handoff.
   User and project registrations honor `PI_CODING_AGENT_DIR`; recording
@@ -23,7 +28,9 @@ phase close names the version.
 
 - Unattended `setup --write`, including JSON mode, now requires `--yes` or
   explicit clients. Print mode and JSON never prompt; choices are not saved.
-
+- FileStore coordinates upgraded local processes using a private root lock
+  and now advertises cross-worker optimistic concurrency. Restart all writers
+  together; the lock does not coordinate old implementations or network filesystems.
 - Session-start memory instructions require `continue_session` when
   resuming earlier work, even when the summary already contains the answer.
   Pi receives those instructions through its extension's bounded section.

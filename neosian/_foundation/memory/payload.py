@@ -18,6 +18,8 @@ from __future__ import annotations
 import secrets
 from typing import TYPE_CHECKING, Final
 
+from neosian._foundation.memory.reserved import state_path
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
@@ -77,6 +79,8 @@ async def render_documents(
         if not entries:
             add("(empty)")
         for entry in entries:
+            if state_path(entry.path):
+                continue
             name = f"### /{mount.mount_path}/{entry.path}"
             if entry.redacted:
                 add(f"{name} (redacted — protected, take no action)")

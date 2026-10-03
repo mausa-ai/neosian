@@ -100,7 +100,7 @@ class TestLearn:
         assert result.returncode == 0
         assert "who runs neosian code" in result.stdout
         assert "where the bytes live" in result.stdout
-        assert "one writer at a time" in result.stdout
+        assert "cooperating local processes" in result.stdout
 
     def test_an_unknown_topic_exits_2(self, tmp_path: Path) -> None:
         result = _run(["docs", "nope"], cwd=tmp_path, env=_env(tmp_path))

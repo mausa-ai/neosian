@@ -51,11 +51,6 @@ if TYPE_CHECKING:
 _DESCRIPTION: Final = "Is this machine set up? The home, the keys, the clients."
 CLIENTS: Final = ("claude-code", "codex", "opencode", "muse-code", "cursor", "pi")
 _DEFAULT_MODE: Final = "off"
-_ONE_WRITER: Final = (
-    "{clients}: the hooks and the MCP server write {root} directly — one "
-    "writer per root (DESIGN §8): run `neosian serve`, then `neosian setup "
-    "--url URL --write`"
-)
 _DOUBLE_FIRE: Final = (
     "{client}: the hooks are installed in multiple sources ({user} and {project}), "
     "and each span can land more than once. Run `neosian setup "
@@ -75,7 +70,8 @@ class ClientStatus:
     interpreter: str | None  # the command the files name, when they name one
     interpreter_resolves: bool | None
     mcp_shadowed_by: str | None
-    root: str | None  # the --root both entries name, for the one-writer note
+    root: str | None  # the --root both entries name
+    message_delivery: tuple[str, ...] = ()
     searched_directory: str = ""
 
 
@@ -152,6 +148,12 @@ def client_status(client: str, context: Environment) -> ClientStatus:
         interpreter=interpreter,
         interpreter_resolves=None if interpreter is None else _resolves(interpreter),
         root=root,
+        message_delivery=(
+            ("next_activity", "wake")
+            if client in ("pi", "opencode")
+            and any("MailboxPoll" in Path(path).read_text() for path in hooks)
+            else (("next_activity",) if hook_argv is not None else ())
+        ),
         mcp_shadowed_by=(
             next(
                 (path for path, (level, _) in servers.items() if level == "project"),
@@ -232,10 +234,7 @@ async def collect(context: Environment, env: Mapping[str, str]) -> Status:
         scopes_error=scopes_error,
         clients=clients,
         last_session=session,
-        one_writer=tuple(
-            _ONE_WRITER.format(clients=", ".join(names), root=root)
-            for root, names in _writers(clients).items()
-        ),
+        one_writer=(),  # retained JSON field; upgraded local writers coordinate
         double_fire=tuple(
             _DOUBLE_FIRE.format(
                 client=c.client, user=c.hook_files[0], project=c.hook_files[1]
@@ -247,16 +246,6 @@ async def collect(context: Environment, env: Mapping[str, str]) -> Status:
         upgrade=Shape(shape.kind).upgrade_line("<version>"),
         update_mode=str(mode),
     )
-
-
-def _writers(clients: Sequence[ClientStatus]) -> dict[str, list[str]]:
-    """The clients whose hooks and MCP server both write a root directly,
-    by root: one note per root, never one per client (§33)."""
-    by_root: dict[str, list[str]] = {}
-    for c in clients:
-        if c.mcp_registered and c.hooks_present and c.root is not None:
-            by_root.setdefault(c.root, []).append(c.client)
-    return by_root
 
 
 def _client_line(client: ClientStatus) -> str:
@@ -271,6 +260,8 @@ def _client_line(client: ClientStatus) -> str:
     ]
     if client.mcp_shadowed_by:
         cells.append(f"user MCP overridden by shared {client.mcp_shadowed_by}")
+    if client.message_delivery:
+        cells.append("messages " + ", ".join(client.message_delivery))
     if client.interpreter_resolves is False:
         cells.append(f"interpreter missing: {client.interpreter}")
     elif client.interpreter_resolves:

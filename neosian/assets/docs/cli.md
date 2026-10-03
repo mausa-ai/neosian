@@ -39,8 +39,7 @@ neosian                                  # on a terminal: chat; under a pipe: th
   directory's two scopes; per client (Claude Code, Codex, OpenCode, Muse Code, Cursor, Pi)
   installed / MCP registered / hooks present / at which level (`user`,
   `project`, or `both`) / the interpreter those files name still
-  resolving; the last recorded session; the one-writer note, once per
-  root, naming the clients whose hooks and MCP server both write it,
+  resolving; message delivery capabilities; the last recorded session;
   and a note when a client carries the hooks at both levels (they would
   run twice);
   the installation shape with its upgrade line; the update knob. Exit 0
@@ -382,12 +381,19 @@ successful hooks. `--json` prints the diagnostic envelope
 (`{"event", "session_id", "actor", "disposition", "conversation_id",
 "turn", "document", "client", "context"}`).
 
-## One writer per root
+## Cooperating writers per root
 
-A FileStore root is owned by one writer at a time. Do not run
-`neosian memory` writes against a root an MCP server, a `neosian
-serve` process, or an embedding application is serving: route
-multi-writer needs to Postgres or to the state process itself
-(`--url`, so the shell and an agent's MCP server both write through
-the one process that owns the files). The
-full rule: `neosian docs topology`.
+A FileStore root coordinates upgraded local writers through an OS lock.
+Hooks, shell commands, MCP servers and embedded applications can share that
+root. Restart all writers when upgrading; old versions do not take the lock.
+Use Postgres for distributed writers, or the state process (`--url`) for
+remote access. See `neosian docs topology` and `neosian docs messaging`.
+
+## Durable messages and reminders
+
+See `neosian docs messaging` for the shared `messages` tool, conversation and
+scope destinations, history annotations, explicit acknowledgment and claims.
+Reminders can be snoozed with a finding and a new due time on the same ID.
+Native conversations opt in with `mailbox=MailboxConfig()` from
+`neosian.messaging`. Regenerate client adapters after upgrading for automatic
+delivery. Pi and OpenCode also support wake requests while attached.

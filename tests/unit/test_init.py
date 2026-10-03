@@ -339,3 +339,20 @@ def test_no_export_is_shadowed_by_a_submodule() -> None:
         if isinstance(getattr(neosian, name), ModuleType)
     ]
     assert shadowed == []
+
+
+def test_messaging_facade_is_pinned() -> None:
+    import neosian.messaging as messaging
+
+    assert set(messaging.__all__) == {
+        "Mailbox",
+        "MailboxConfig",
+        "MessageTarget",
+        "InboxMessage",
+        "MessageReceipt",
+        "DeliveryMode",
+        "create_messages_tool",
+        "listen",
+        "receive_once",
+    }
+    assert all(hasattr(messaging, name) for name in messaging.__all__)

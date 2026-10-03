@@ -34,9 +34,9 @@ from neosian._foundation.shared.exceptions import (
     MemoryScopeInvalidError,
 )
 from neosian._foundation.shared.fileio import atomic_write, private_mkdir
+from neosian._foundation.shared.filelock import FileLock, locked
 
 if TYPE_CHECKING:
-    import asyncio
     from pathlib import Path
 
     from neosian._foundation.memory.portable import ConversationArchive, ScopeArchive
@@ -50,13 +50,15 @@ class FilePortableStore:
     class owns the two attributes below)."""
 
     _root: Path
-    _lock: asyncio.Lock
+    _lock: FileLock
 
+    @locked
     async def scopes(self) -> tuple[str, ...]:
         found: list[str] = []
         self._walk(self._root, (), found)
         return tuple(sorted(found))
 
+    @locked
     async def conversations(self) -> tuple[str, ...]:
         parent = self._root / CONVERSATIONS
         if not parent.is_dir():
@@ -71,56 +73,52 @@ class FilePortableStore:
                 found.append(conversation_id)
         return tuple(sorted(found))
 
+    @locked
     async def restore_scope(self, archive: ScopeArchive) -> None:
         scope = parse_scope(archive.scope)
         for path in {doc.path for doc in archive.documents} | {
             row.path for row in archive.versions
         }:
             validate_document_path(path)
-        async with self._lock:
-            scope_dir = layout.scope_dir(self._root, scope)
-            if _scope_occupied(scope_dir):
-                raise MemoryConflictError(scope, None, "target_occupied")
-            by_path: dict[str, list[MemoryVersion]] = {}
-            for row in archive.versions:
-                by_path.setdefault(row.path, []).append(row)
-            for path, rows in by_path.items():
-                rows.sort(key=lambda row: row.version)
-                journal.rewrite_rows(layout.journal_file(self._root, scope, path), rows)
-            if archive.redactions:
-                journal.write_redactions(
-                    scope_dir / layout.REDACTIONS, archive.redactions
-                )
-            for document in archive.documents:
-                envelope = Envelope(
-                    version=document.version,
-                    created_at=document.created_at,
-                    updated_at=document.updated_at,
-                    actor=document.actor,
-                    redacted=document.redacted,
-                    extra=document.extra,
-                )
-                journal.atomic_write(
-                    layout.doc_file(self._root, scope, document.path),
-                    render(envelope, document.content),
-                )
+        scope_dir = layout.scope_dir(self._root, scope)
+        if _scope_occupied(scope_dir):
+            raise MemoryConflictError(scope, None, "target_occupied")
+        by_path: dict[str, list[MemoryVersion]] = {}
+        for row in archive.versions:
+            by_path.setdefault(row.path, []).append(row)
+        for path, rows in by_path.items():
+            rows.sort(key=lambda row: row.version)
+            journal.rewrite_rows(layout.journal_file(self._root, scope, path), rows)
+        if archive.redactions:
+            journal.write_redactions(scope_dir / layout.REDACTIONS, archive.redactions)
+        for document in archive.documents:
+            envelope = Envelope(
+                version=document.version,
+                created_at=document.created_at,
+                updated_at=document.updated_at,
+                actor=document.actor,
+                redacted=document.redacted,
+                extra=document.extra,
+            )
+            journal.atomic_write(
+                layout.doc_file(self._root, scope, document.path),
+                render(envelope, document.content),
+            )
 
+    @locked
     async def restore_conversation(self, archive: ConversationArchive) -> None:
         conversation_id = parse_conversation_id(archive.conversation_id)
-        async with self._lock:
-            directory = self._root / CONVERSATIONS / conversation_id
-            if _conversation_occupied(directory):
-                raise ConversationConflictError(conversation_id, "target_occupied")
-            if archive.turns or archive.projections:
-                private_mkdir(directory)
-            if archive.turns:
-                text = "".join(render_turn(turn) for turn in archive.turns)
-                atomic_write(directory / TURNS, text, fsync=True)
-            if archive.projections:
-                text = "".join(
-                    render_projection(entry) for entry in archive.projections
-                )
-                atomic_write(directory / PROJECTIONS, text, fsync=True)
+        directory = self._root / CONVERSATIONS / conversation_id
+        if _conversation_occupied(directory):
+            raise ConversationConflictError(conversation_id, "target_occupied")
+        if archive.turns or archive.projections:
+            private_mkdir(directory)
+        if archive.turns:
+            text = "".join(render_turn(turn) for turn in archive.turns)
+            atomic_write(directory / TURNS, text, fsync=True)
+        if archive.projections:
+            text = "".join(render_projection(entry) for entry in archive.projections)
+            atomic_write(directory / PROJECTIONS, text, fsync=True)
 
     def _walk(self, directory: Path, parts: tuple[str, ...], found: list[str]) -> None:
         for child in directory.iterdir():

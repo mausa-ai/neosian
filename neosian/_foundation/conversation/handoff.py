@@ -49,6 +49,8 @@ from neosian._foundation.memory.sessions import (
     sessions_path,
 )
 from neosian._foundation.memory.types import MemoryDocument
+from neosian._foundation.messaging.core import Mailbox
+from neosian._foundation.messaging.history import continuation_context
 from neosian._foundation.shared.clock import Clock, SystemClock
 from neosian._foundation.shared.exceptions import (
     ConversationStoreError,
@@ -176,6 +178,7 @@ def handoff_tools(
     reach: Reach | None = None,
     where: str = "",
     clock: Clock = _WALL_CLOCK,
+    mailbox: Mailbox | None = None,
 ) -> tuple[ToolFunction, ToolFunction]:
     """`(continue_session, handoff)` over `scope`'s sessions and baton.
     `own` is the caller's conversation when it has one (never the default,
@@ -191,7 +194,11 @@ def handoff_tools(
         description=get_prompt("tools.continue_session"),
         params=get_prompt_params("tools.continue_session_params"),
     )
-    async def continue_session(conversation: str | None = None) -> ToolResult[str]:
+    async def continue_session(
+        conversation: str | None = None, session: str | None = None
+    ) -> ToolResult[str]:
+        if own is not None and session not in (None, own):
+            return ToolResult.fail("calling session differs from bound conversation")
         outcome = await continue_conversation(
             store,
             memory,
@@ -203,9 +210,21 @@ def handoff_tools(
             by=stamped(),
             clock=clock,
         )
-        return (
-            outcome if isinstance(outcome, ToolResult) else ToolResult.ok(outcome.text)
-        )
+        if isinstance(outcome, ToolResult):
+            return outcome
+        text = outcome.text
+        if mailbox is not None:
+            reader = Mailbox(
+                mailbox.memory,
+                session=own or session,
+                actor=mailbox.actor,
+                config=mailbox.config,
+                clock=mailbox.clock,
+            )
+            extra = await continuation_context(reader, scope, outcome.conversation)
+            if extra:
+                text += "\n\n" + extra
+        return ToolResult.ok(text)
 
     @Tool(
         name=HANDOFF_TOOL,

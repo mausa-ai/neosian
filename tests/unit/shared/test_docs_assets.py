@@ -78,7 +78,7 @@ class TestLookup:
 
 
 class TestTopologyContent:
-    """The mandatory page carries the 2x2 and the one-writer rule."""
+    """The mandatory page carries the 2x2 and local writer coordination."""
 
     def test_the_two_axes_are_stated(self) -> None:
         page = load_page("topology")
@@ -86,10 +86,10 @@ class TestTopologyContent:
         assert "who runs neosian code" in page.body
         assert "where the bytes live" in page.body
 
-    def test_the_one_writer_rule_is_stated(self) -> None:
+    def test_local_writer_coordination_is_stated(self) -> None:
         page = load_page("topology")
         assert page is not None
-        assert "one writer at a time" in page.body
+        assert "cooperating local processes" in page.body
 
     def test_the_appliance_quickstart_is_present(self) -> None:
         # NM shipped the state process: the unshipped marker is gone and

@@ -124,7 +124,7 @@ class TestOverTheWire:
     ) -> None:
         store = await RemoteStore.connect(served.url, token=_TOKEN)
         try:
-            assert type(store).supports_optimistic_concurrency is False
+            assert type(store).supports_optimistic_concurrency is True
             written = await store.write(
                 "user:smoke", "notes/hello", "over the wire", actor="serve:smoke"
             )

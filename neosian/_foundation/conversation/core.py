@@ -56,6 +56,8 @@ from neosian._foundation.llm.base import Message, Role
 from neosian._foundation.memory.actor import parse_actor
 from neosian._foundation.memory.index import memory_system_section
 from neosian._foundation.memory.sessions import project_mount
+from neosian._foundation.messaging.types import MailboxConfig
+from neosian._foundation.messaging.wiring import bind, messages_for_turn
 from neosian._foundation.shared.context_policy import ContextPolicy
 from neosian._foundation.shared.registry import resolve_model
 
@@ -78,39 +80,12 @@ logger = logging.getLogger(__name__)
 
 
 class Conversation:
-    """Append-only, resumable history with opt-in memory (DESIGN §9).
+    """Durable, async conversation with optional memory and mailbox layers.
 
-        store = FileStore(path)                # or PostgresStore(dsn), N3
-        convo = Conversation(agent, store=store,
-                             conversation_id="thread-829",
-                             memory_scope="user:1234")
-        resp = await convo.send("Where did we leave off?")
-
-    Construction is sync and does no I/O; the first `send()` (or an
-    explicit `await start()`) loads history and freezes the memory index.
-    The caller's `Agent`/`AgentConfig` is never mutated. One send is in
-    flight at a time; a raising or blocked send persists nothing.
-
-    Compaction is default-on (ledger #28); `CompactionConfig(enabled=
-    False)` disables the automatic trigger, `compact()` always runs.
-
-    Shared context (§21): `board="task:42"` mounts the task's board at
-    `/board` beside any memory — the live channel between agents on one
-    task; `context=[ConversationView("conv-a")]` injects another
-    conversation as a frozen, log-projected, read-only block and makes
-    its turns recallable (`recall_turn(n, conversation="conv-a")`).
-
-    Reflection (§15) is default-on the same way: a memory-bearing
-    `aclose()` distills what this instance's sends are worth keeping
-    into deliberate memory writes, and `reflect()` is the explicit
-    form. `ReflectionConfig(enabled=False)` disables the close rider.
-
-    One internal `AgentSession` backs every send *and* compaction's
-    distillation calls — one cached client per provider, and sticky
-    fallback state across sends (§9.5.14). `aclose()` releases the pool;
-    `async with conversation:` is the sugar. Not closing is safe: the
-    pool lives as long as the process, exactly like an unclosed
-    `AgentSession`.
+    The host owns storage. Sends serialize on this instance; the Agent remains
+    stateless. Context managers close the provider pool and reflect explicitly
+    configured memory. See the shipped memory and messaging pages for the
+    lifecycle, compaction, continuation and delivery contracts.
     """
 
     def __init__(
@@ -128,6 +103,7 @@ class Conversation:
         actor: str | None = None,
         board: str | None = None,
         context: Sequence[ConversationView] = (),
+        mailbox: MailboxConfig | None = None,
     ) -> None:
         self._conversation_id = str(parse_conversation_id(conversation_id))
         # Who this instance writes as (DESIGN §20): turns carry it whole,
@@ -146,6 +122,10 @@ class Conversation:
             memory_mount_path=memory_mount_path,
             board=board,
         )
+        self._mailbox = bind(
+            self._memory_config, mailbox, self._conversation_id, self._turn_actor
+        )
+        self._inbox_context: list[Message] = []
         self._views = validated_views(context, self._conversation_id)
         self._compaction = compaction if compaction is not None else CompactionConfig()
         self._reflection = reflection if reflection is not None else ReflectionConfig()
@@ -323,6 +303,16 @@ class Conversation:
                 memory=self._memory_config,
                 views=[view.conversation_id for view in self._views],
                 actor=self._turn_actor,
+                mailbox=self._mailbox,
+            )
+        if self._mailbox is not None and not extra_tools:
+            extra_tools = resident_tools(
+                self._store,
+                self._conversation_id,
+                memory=self._memory_config,
+                views=[v.conversation_id for v in self._views],
+                actor=self._turn_actor,
+                mailbox=self._mailbox,
             )
         derived = derive_config(
             self._base_config,
@@ -437,7 +427,9 @@ class Conversation:
         if captured is None or not captured.turn_messages:
             return
         turn = await self._store.append_turn(
-            self._conversation_id, (user, *captured.turn_messages), actor=self._actor
+            self._conversation_id,
+            (*self._inbox_context, user, *captured.turn_messages),
+            actor=self._actor,
         )
         self._turns.append(turn)
         self._reflect_pending.append(turn)
@@ -452,8 +444,9 @@ class Conversation:
                 view = self._view()
             assert self._agent is not None
             self._captured = None
+            self._inbox_context = await messages_for_turn(self._mailbox)
             response = await self._session_for_run().run(
-                [*self._context, *view, user], stream=False
+                [*self._context, *view, *self._inbox_context, user], stream=False
             )
             await self._persist(user)
             return fold_response(response, compacted)
@@ -467,8 +460,9 @@ class Conversation:
                 view = self._view()
             assert self._agent is not None
             self._captured = None
+            self._inbox_context = await messages_for_turn(self._mailbox)
             events = await self._session_for_run().run(
-                [*self._context, *view, user], stream=True
+                [*self._context, *view, *self._inbox_context, user], stream=True
             )
             # Closed with this generator (AG-14): a consumer that stops
             # iterating reaches the run's streams and tools synchronously.

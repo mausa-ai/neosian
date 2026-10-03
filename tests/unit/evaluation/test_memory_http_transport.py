@@ -148,7 +148,7 @@ class TestHttpTransport:
     async def test_every_session_client_is_closed(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """One remote client per session, each closed when the cell ends."""
+        """Each session closes its handshake probe and optimistic client."""
         closes = 0
         real_aclose = RemoteStore.aclose
 
@@ -185,7 +185,7 @@ class TestHttpTransport:
             store_root=tmp_path / "store",
         )
         assert result.passed, [f for t in result.turns for f in t.failures]
-        assert closes == 2
+        assert closes == 4
 
     async def test_function_and_http_produce_identical_store_state(
         self, tmp_path: Path

@@ -137,6 +137,15 @@ providers table below); tools are decorated functions whose signature is
 the schema (`neosian docs tools`). [examples/](https://github.com/mausa-ai/neosian/tree/v1.1.1/examples) has one runnable
 file per feature, every one importing keylessly.
 
+## Durable messages and reminders
+
+See `neosian docs messaging` for the shared `messages` tool, conversation and
+scope destinations, history annotations, explicit acknowledgment and claims.
+Reminders can be snoozed with a finding and a new due time on the same ID.
+Native conversations opt in with `mailbox=MailboxConfig()` from
+`neosian.messaging`. Regenerate client adapters after upgrading for automatic
+delivery. Pi and OpenCode also support wake requests while attached.
+
 ## What is in the box
 
 Each line is one page in the wheel — `neosian docs <topic>`.

@@ -38,6 +38,7 @@ from neosian._foundation.mcp.client import McpServer
 from neosian._foundation.memory.file import FileStore
 from neosian._foundation.memory.home import home, project_mounts
 from neosian._foundation.memory.mounts import MemoryConfig
+from neosian._foundation.messaging.types import MailboxConfig
 from neosian._foundation.shared.constants import PlaygroundUI
 from neosian._foundation.shared.registry import provider_label, resolve_model
 from neosian._foundation.shared.types import AgentConfig
@@ -103,6 +104,7 @@ def open_chat(
         store=store,
         conversation_id=conversation_id,
         reflection=reflection,
+        mailbox=MailboxConfig(),
     )
 
 

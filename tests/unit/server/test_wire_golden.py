@@ -106,7 +106,7 @@ class TestTheHandshake:
                 "wire_version": 5,
                 "neosian_version": metadata.version("neosian"),
                 "backend": "FileStore",
-                "supports_optimistic_concurrency": False,
+                "supports_optimistic_concurrency": True,
                 "pageable": True,
                 "client": "client:default",
             },

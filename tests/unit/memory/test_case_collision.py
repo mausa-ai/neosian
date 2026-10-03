@@ -97,7 +97,7 @@ class TestFileStoreRefusesAFold:
         row = json.loads(planted.read_text().splitlines()[0])
         assert row["path"] == "notes/API"
 
-    async def test_a_scope_is_verified_once_per_instance(
+    async def test_a_scope_is_reverified_under_each_root_lock(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         store = FileStore(tmp_path)
@@ -113,11 +113,11 @@ class TestFileStoreRefusesAFold:
         monkeypatch.setattr(layout, "scope_case_collision", counting)
         await store.write("user:a", "notes/api", "second")
         await store.read("user:a", "notes/api")
-        assert calls == 0
-        # An unseen scope is checked once, then remembered.
+        assert calls == 2
+        # Every access checks again: another process can introduce a scope.
         await store.write("user:b", "notes/api", "first")
         await store.read("user:b", "notes/api")
-        assert calls == 1
+        assert calls == 4
 
 
 class TestScopeWalksRunOffTheLoop:

@@ -330,7 +330,8 @@ class TestSessionStart:
         )
         assert second < first  # newest first
         assert "[conversation s-two — written by claude-code:s-two]" in result.out
-        assert result.out.rstrip().endswith(get_prompt("context.start_footer"))
+        assert get_prompt("context.start_footer") in result.out
+        assert "neosian session identity: s-3" in result.out
         assert not (tmp_path / "spool" / "s-3.jsonl").exists()  # a read, never spooled
 
     async def test_compact_projects_the_own_session_alone(self, tmp_path: Path) -> None:

@@ -249,12 +249,6 @@ def _render_success(
         out.write(f"{'created' if created else 'updated'} {target.config_path}\n")
         if displaced is not None:
             out.write(f"removed ours from {displaced}\n")
-        if settings.root is not None:
-            err.write(
-                "hint: one writer per FileStore root (DESIGN §8) — nothing else "
-                f"writes to {settings.root} while this server runs; for more "
-                "than one writer run `neosian serve` and register --url\n"
-            )
     else:
         # stdout is only the paste-able fragment: `> snippet.json` stays valid.
         out.write(json.dumps(fragment, indent=2) + "\n")

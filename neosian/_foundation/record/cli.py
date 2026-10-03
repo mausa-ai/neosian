@@ -21,6 +21,7 @@ directory with no name records to the user mount alone.
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -47,6 +48,7 @@ from neosian._foundation.record.context import (
     render_session_start,
 )
 from neosian._foundation.record.locking import session_lock
+from neosian._foundation.record.mailbox import hook_mailbox
 from neosian._foundation.record.settings import (
     JSON_STOP_AGENTS,
     RecordSettings,
@@ -82,7 +84,7 @@ _EPILOG = (
     "memory index and where we left off (the client injects it as context). "
     "`neosian record install --client claude-code` renders the hooks; the "
     "store flags are the memory grammar's (hooks beside an MCP server are two "
-    "writers — use --url or Postgres)."
+    "cooperating writers on the same local root)."
 )
 _HINT = (
     "the record never blocks the agent — fix the cause and the next Stop "
@@ -174,14 +176,16 @@ async def run(
         out.write(json.dumps(envelope) + "\n")
     elif envelope["context"] is not None:
         context_text = str(envelope["context"])
-        if settings.agent == "codex":
+        if settings.agent == "codex" or (
+            settings.agent == "claude-code" and envelope["event"] != SESSION_START_EVENT
+        ):
             # Our context starts with '['; Codex treats that as JSON, so
             # plain output is rejected instead of injected into the session.
             out.write(
                 json.dumps(
                     {
                         "hookSpecificOutput": {
-                            "hookEventName": SESSION_START_EVENT,
+                            "hookEventName": envelope["event"],
                             "additionalContext": context_text,
                         }
                     }
@@ -236,6 +240,10 @@ async def _record_payload(
         "client": None,
         "context": None,
     }
+    if event in ("MailboxPoll", "MailboxDelivery", "MailboxContext"):
+        async with open_store(settings.store) as store:
+            envelope.update(await hook_mailbox(store, settings, payload))
+        return envelope
     if event == SESSION_START_EVENT:
         async with open_store(settings.store) as store:
             envelope.update(
@@ -255,7 +263,18 @@ async def _record_payload(
         return envelope
     spool = Spool(settings.spool)
     async with session_lock(settings.spool, session_id):
-        return await _land(settings, spool, record, envelope)
+        landed = await _land(settings, spool, record, envelope)
+    if event in ("UserPromptSubmit", "PostToolUse"):
+        try:
+            async with open_store(settings.store) as store:
+                update = await hook_mailbox(store, settings, payload)
+                if settings.agent == "claude-code":
+                    landed.update(update)
+        except (NeosianError, httpx.HTTPError, OSError, ValueError):
+            logging.getLogger(__name__).warning(
+                "mailbox unavailable; recording remains spooled"
+            )
+    return landed
 
 
 async def _land(

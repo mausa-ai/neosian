@@ -216,3 +216,12 @@ for a network filesystem, where SQLite's locking is unreliable.
 
 A community store joins the table by pull request naming its
 repository, the neosian version its run pinned, and the green run.
+
+## Durable messages and reminders
+
+See `neosian docs messaging` for the shared `messages` tool, conversation and
+scope destinations, history annotations, explicit acknowledgment and claims.
+Reminders can be snoozed with a finding and a new due time on the same ID.
+Native conversations opt in with `mailbox=MailboxConfig()` from
+`neosian.messaging`. Regenerate client adapters after upgrading for automatic
+delivery. Pi and OpenCode also support wake requests while attached.

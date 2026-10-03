@@ -106,7 +106,7 @@ class TestOnDiskLayout:
     ) -> None:
         assert await store.read("user:ghost", "doc") is None
         assert await store.list_documents("user:ghost") == ()
-        assert list((tmp_path / "memory").iterdir()) == []
+        assert [p.name for p in (tmp_path / "memory").iterdir()] == [".store.lock"]
 
     async def test_symlink_escape_is_refused(
         self, store: FileStore, tmp_path: Path
@@ -122,13 +122,11 @@ class TestOnDiskLayout:
         assert list(outside.iterdir()) == []
 
 
-class TestExpectedVersionBestEffort:
-    """FileStore declares supports_optimistic_concurrency=False yet still
-    honors expected_version in-process; the contract kit gates these on
-    the ClassVar, so the reference behavior is pinned here."""
+class TestExpectedVersionAcrossProcesses:
+    """Expected-version checks now arbitrate across cooperating processes."""
 
-    async def test_the_classvar_stays_false(self) -> None:
-        assert FileStore.supports_optimistic_concurrency is False
+    async def test_the_classvar_promises_cross_process_arbitration(self) -> None:
+        assert FileStore.supports_optimistic_concurrency is True
 
     async def test_mismatch_raises_conflict_with_both_versions(
         self, store: FileStore
@@ -239,7 +237,7 @@ class TestRedactionTrail:
         self, store: FileStore, tmp_path: Path
     ) -> None:
         assert await store.redact("user:ghost") == 0
-        assert list((tmp_path / "memory").iterdir()) == []
+        assert [p.name for p in (tmp_path / "memory").iterdir()] == [".store.lock"]
 
 
 class TestClockDiscipline:

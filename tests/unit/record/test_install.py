@@ -241,7 +241,7 @@ class TestExitTiers:
         assert not (context.cwd / ".claude").exists()
         fragment = json.loads(out)  # stdout is valid JSON on its own
         assert tuple(fragment["hooks"]) == HOOK_EVENTS
-        assert "hint: re-run with --write" in err and "one writer" in err
+        assert "hint: re-run with --write" in err and "one writer" not in err
 
     def test_write_creates_the_user_file_privately(self, tmp_path: Path) -> None:
         context = _context(tmp_path)
@@ -350,7 +350,7 @@ class TestTheHome:
         assert ",path=user " in command
         assert "/proj:proj,path=project" in command  # the cwd's name, slugged
         assert f"--spool {tmp_path / 'nh' / 'spool'}" in command
-        assert "one root shared by every project" in err  # the one-writer hint
+        assert "one writer" not in err
         assert not (tmp_path / "nh").exists()  # print mode builds nothing
 
     def test_explicit_mounts_win(self, tmp_path: Path) -> None:

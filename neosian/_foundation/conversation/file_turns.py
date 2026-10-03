@@ -47,6 +47,7 @@ from neosian._foundation.conversation.types import (
 )
 from neosian._foundation.shared.exceptions import ConversationIdInvalidError
 from neosian._foundation.shared.fileio import append_line, private_mkdir
+from neosian._foundation.shared.filelock import FileLock, locked
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -63,8 +64,9 @@ class FileTurnStore(ConversationStore):
 
     _root: Path
     _clock: Clock
-    _lock: asyncio.Lock
+    _lock: FileLock
 
+    @locked
     async def append_turn(
         self,
         conversation_id: str,
@@ -75,21 +77,21 @@ class FileTurnStore(ConversationStore):
         conversation_id = parse_conversation_id(conversation_id)
         if not messages:
             raise ValueError("a turn must carry at least one message")
-        async with self._lock:
-            turns_file = self._turns_file(conversation_id)
-            turn = self._last_number(conversation_id, turns_file) + 1
-            created_at = self._turn_now()
-            record = ConversationTurn(
-                conversation_id=conversation_id,
-                turn=turn,
-                messages=tuple(messages),
-                created_at=created_at,
-                actor=actor,
-            )
-            private_mkdir(turns_file.parent)
-            append_line(turns_file, render_turn(record))
-            return record
+        turns_file = self._turns_file(conversation_id)
+        turn = self._last_number(conversation_id, turns_file) + 1
+        created_at = self._turn_now()
+        record = ConversationTurn(
+            conversation_id=conversation_id,
+            turn=turn,
+            messages=tuple(messages),
+            created_at=created_at,
+            actor=actor,
+        )
+        private_mkdir(turns_file.parent)
+        append_line(turns_file, render_turn(record))
+        return record
 
+    @locked
     async def read_turns(
         self, conversation_id: str, *, after: int = 0, limit: int | None = None
     ) -> tuple[ConversationTurn, ...]:
@@ -98,10 +100,12 @@ class FileTurnStore(ConversationStore):
         turns = [turn for turn in self._all_turns(conversation_id) if turn.turn > after]
         return tuple(turns if limit is None else turns[:limit])
 
+    @locked
     async def last_turn_number(self, conversation_id: str) -> int:
         conversation_id = parse_conversation_id(conversation_id)
         return self._last_number(conversation_id, self._turns_file(conversation_id))
 
+    @locked
     async def search_turns(
         self,
         query: str,
@@ -118,17 +122,18 @@ class FileTurnStore(ConversationStore):
             search_files, self._root / CONVERSATIONS, ids, terms, limit
         )
 
+    @locked
     async def append_projections(
         self, conversation_id: str, entries: Sequence[ConversationProjection]
     ) -> None:
         conversation_id = parse_conversation_id(conversation_id)
         if not entries:
             return
-        async with self._lock:
-            file = self._projections_file(conversation_id)
-            private_mkdir(file.parent)
-            append_line(file, "".join(render_projection(entry) for entry in entries))
+        file = self._projections_file(conversation_id)
+        private_mkdir(file.parent)
+        append_line(file, "".join(render_projection(entry) for entry in entries))
 
+    @locked
     async def read_projections(
         self, conversation_id: str, *, after: int = 0, limit: int | None = None
     ) -> tuple[ConversationProjection, ...]:

@@ -34,6 +34,9 @@ from neosian._foundation.memory.mounts import MemoryConfig, Mount
 from neosian._foundation.memory.sessions import project_mount
 from neosian._foundation.memory.skills import create_skill_tools
 from neosian._foundation.memory.tools import create_memory_tool
+from neosian._foundation.messaging.core import Mailbox
+from neosian._foundation.messaging.history import augment_history
+from neosian._foundation.messaging.tools import create_messages_tool
 from neosian._foundation.shared.exceptions import ConfigurationError
 from neosian._foundation.shared.prompt_assets import get_prompt
 
@@ -198,6 +201,7 @@ def resident_tools(
     memory: MemoryConfig | None,
     views: Sequence[str],
     actor: Callable[[], str],
+    mailbox: Mailbox | None = None,
 ) -> list[ToolFunction]:
     """The conversation-owned tools beyond memory: the recall and search
     pair over the project reach (§32), then `continue_session` and
@@ -206,6 +210,17 @@ def resident_tools(
     its own session is never the default."""
     sessions = project_sessions(memory)
     tools = list(history_tools(store, conversation_id, views=views, sessions=sessions))
+    if mailbox is not None:
+        reach, _ = project_reach(conversation_id, views, sessions)
+        tools = [augment_history(t, store, mailbox, reach=reach) for t in tools]
+        tools.append(
+            create_messages_tool(
+                mailbox.memory,
+                session=conversation_id,
+                actor=actor,
+                config=mailbox.config,
+            )
+        )
     mount = project_mount(memory)
     if (
         memory is not None
@@ -222,6 +237,7 @@ def resident_tools(
                 own=conversation_id,
                 reach=reach,
                 where=where,
+                mailbox=mailbox,
             )
         )
     return tools

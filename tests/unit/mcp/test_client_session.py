@@ -29,7 +29,7 @@ class TestListTools:
         # memory first; the skill readers follow (§24), no recall_turn
         # without a conversation store.
         tool, *readers = result.tools
-        assert [r.name for r in readers] == ["list_skills", "load_skill"]
+        assert [r.name for r in readers] == ["list_skills", "load_skill", "messages"]
         assert tool.name == definition.name
         assert tool.description == definition.description
         assert tool.input_schema == definition.parameters

@@ -29,6 +29,7 @@ from neosian._foundation.memory.index import (
     generate_memory_index,
     memory_system_section,
 )
+from neosian._foundation.memory.mounts import MemoryConfig
 from neosian._foundation.memory.sessions import (
     HANDOFF_PATH,
     SESSIONS_PREFIX,
@@ -36,6 +37,8 @@ from neosian._foundation.memory.sessions import (
     parse_handoff,
     sessions_mount,
 )
+from neosian._foundation.messaging.core import Mailbox
+from neosian._foundation.messaging.delivery import context as mailbox_context
 from neosian._foundation.shared.prompt_assets import get_prompt, render
 
 if TYPE_CHECKING:
@@ -203,6 +206,16 @@ async def render_session_start(
     index up to three eighths, the note and recent sessions under the rest."""
     assert settings.mount is not None  # the verb's layout always yields one
     budget = CONTEXT_CHARS.get(settings.agent, DEFAULT_CONTEXT_CHARS)
+    identity = render(get_prompt("messages.identity"), session=session_id).rstrip()
+    inbox = await mailbox_context(
+        Mailbox(
+            MemoryConfig(store=memory, mounts=settings.store.mounts),
+            session=session_id,
+            actor=f"{settings.agent}:{session_id}",
+        )
+    )
+    tail = "\n\n".join(part for part in (identity, inbox) if part)
+    budget -= len(tail) + 2
     # Pi's direct MCP tools do not inject the server's instructions.
     instructions = (
         f"{get_prompt('context.start_instructions')}\n\n"
@@ -225,7 +238,7 @@ async def render_session_start(
         now=now,
         budget_chars=max(budget - len(head) - 2, 1),
     )
-    return f"{head}\n\n{rest}"
+    return f"{head}\n\n{rest}\n\n{tail}"
 
 
 async def render_instructions(
@@ -240,6 +253,9 @@ async def render_instructions(
     budgets — the MCP server's instructions, where the session is unknown
     and none is the own one; the harness's prefix, where it is known."""
     section = await memory_system_section(config)
+    inbox = await mailbox_context(Mailbox(config, session=own or None))
+    if inbox:
+        section = f"{section}\n\n{inbox}"
     mount = sessions_mount(config.mounts)
     if conversations is None or mount is None:
         return section

@@ -8,8 +8,8 @@ the user-level line names the store and no mount, and the verb derives
 each session's layout from the client's project directory (`--project`,
 where the client has a stable one) or its working directory; `--level
 project` writes this directory's file with its layout in the line. Hooks
-are a second writer beside the agent's MCP server, so the full record
-rides the state process (`--url`) or Postgres (§8's one-writer rule). A
+are a second writer beside the agent's MCP server; both coordinate through
+the local FileStore lock, state process (`--url`) or Postgres. A
 client row (`targets.py`) exists only while its walkthrough is green.
 """
 
@@ -235,13 +235,6 @@ def _render_success(
             )
     if target.trust_hint is not None:
         err.write(f"hint: {target.trust_hint}\n")
-    if settings.store.root is not None:
-        err.write(
-            "hint: one writer per FileStore root (DESIGN §8) — the home is one "
-            "root shared by every project's hooks and MCP servers; for more "
-            "than one writer run `neosian serve` and install with --url, or "
-            "use Postgres\n"
-        )
     if settings.store.dsn is not None:
         err.write(
             f"hint: set {POSTGRES_DSN_ENV} in the client's own environment — "

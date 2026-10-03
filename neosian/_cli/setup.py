@@ -64,11 +64,6 @@ _EPILOG: Final = (
     "runs. `neosian mcp install` / `neosian record install` print the exact "
     "fragments and take every store flag."
 )
-_ONE_WRITER: Final = (
-    "hint: one writer per FileStore root (DESIGN §8): the home is one root "
-    "for every project on this machine; for more than one writer run "
-    "`neosian serve` and re-run `neosian setup --url URL --write`"
-)
 _TOKEN: Final = (
     f"hint: set {CLIENT_TOKEN_ENV} in each client's own environment: the "
     "token is never written into a registration or a hook line"
@@ -316,5 +311,6 @@ def run_setup(
         if not args.write:
             err.write("hint: re-run with --write to apply\n")
         out.write(discovery_text(searched))
-    err.write((_TOKEN if args.url else _ONE_WRITER) + "\n")
+    if args.url:
+        err.write(_TOKEN + "\n")
     return 1 if failed else 0

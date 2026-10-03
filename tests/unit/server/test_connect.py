@@ -34,7 +34,7 @@ def _capabilities_app(payload: dict[str, Any]) -> httpx.MockTransport:
 
 
 class TestCapabilityMirroring:
-    async def test_filestore_backend_mirrors_false_on_the_class(
+    async def test_filestore_backend_mirrors_true_on_the_class(
         self, tmp_path: Path
     ) -> None:
         app = await build_app(FileStore(tmp_path / "mem"), token=TOKEN)
@@ -43,7 +43,7 @@ class TestCapabilityMirroring:
         )
         try:
             # `type(store)` is what the conformance kits read.
-            assert type(store).supports_optimistic_concurrency is False
+            assert type(store).supports_optimistic_concurrency is True
         finally:
             await store.aclose()
 

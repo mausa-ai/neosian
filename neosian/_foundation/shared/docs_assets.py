@@ -27,6 +27,7 @@ _TOPICS: Final = (
     "quickstart",
     "memory",
     "skills",
+    "messaging",
     "stores",
     "agents",
     "cli",

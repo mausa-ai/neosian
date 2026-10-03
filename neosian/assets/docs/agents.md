@@ -369,3 +369,12 @@ two project directories, each session in its own `proj:` scope.
 | Cursor | ✓ user MCP, credential names forwarded | ✓ interactive CLI 2026.09.10-fd3934a; `--print` lacks full recording; MCP rounds through `afterMCPExecution` | ✓ one user registration, payload workspace roots | ✓ `sessionStart`, JSON `additional_context` |
 | Muse Code | ✓ user settings or shared project `.mcp.json` | ✓ walkthrough green 2026-09-22 (`muse exec`, 1.3.0); headless `muse exec` can stall on a shell approval no one can give, so a handoff leg says "no shell commands" | ✓ two projects, one user registration; authenticated managed hooks and MCP on the state process | ✓ `SessionStart`, plain stdout; prior turn recalled over MCP; continued and handed off for real 2026-10-03 (1.4.2) |
 | Pi | ✓ native MCP, direct tools (1.0.1) | ✓ print-mode walkthrough green 2026-10-03; extension commits at final settlement | ✓ two projects through one user registration and the state process; `PI_CODING_AGENT_DIR` honored | ✓ named system section, startup and compaction; Claude Code → Pi → Claude Code → Pi with all continuation links verified |
+
+## Durable messages and reminders
+
+See `neosian docs messaging` for the shared `messages` tool, conversation and
+scope destinations, history annotations, explicit acknowledgment and claims.
+Reminders can be snoozed with a finding and a new due time on the same ID.
+Native conversations opt in with `mailbox=MailboxConfig()` from
+`neosian.messaging`. Regenerate client adapters after upgrading for automatic
+delivery. Pi and OpenCode also support wake requests while attached.

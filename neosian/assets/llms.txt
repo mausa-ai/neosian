@@ -26,10 +26,10 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
 
 - `neosian docs`: list the shipped topics (they travel in the wheel, so
   they always describe the installed version).
-- `neosian docs quickstart | memory | skills | stores | agents | cli | mcp | interop | agent | tools | local | topology | wire | baselines`
+- `neosian docs quickstart | memory | skills | messaging | stores | agents | cli | mcp | interop | agent | tools | local | topology | wire | baselines`
   prints one page, markdown on stdout, pipe-safe.
 - `neosian docs topology`: who runs neosian code x where the bytes live;
-  one writer per FileStore root.
+  cooperating local FileStore writers share an interprocess root lock.
 - The same pages online, rendered from the wheel at the current release:
   https://neosian.com/docs (this file at https://neosian.com/llms.txt).
 
@@ -259,3 +259,15 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
 - https://github.com/mausa-ai/neosian/blob/v1.1.1/docs/README.md: install and quickstart.
 - https://github.com/mausa-ai/neosian/blob/v1.1.1/docs/SERVICES.md: every environment key and what turning it off means.
 - `neosian docs baselines`: the published per-provider memory numbers.
+
+## Messages and reminders
+
+- `neosian docs messaging`: the durable inbox, history annotations, claims and
+  resettable reminders. MCP exposes `messages`; hooks provide exact session IDs.
+- `neosian messages send|list|view|ack|claim|renew|release|complete|snooze|cancel`
+  shares the tool dispatcher; `--json` gives its envelope.
+- Python: `neosian.messaging.Mailbox`, `MailboxConfig`, `MessageTarget`;
+  `Conversation(..., mailbox=MailboxConfig())` opts in.
+- Local FileStore writers coordinate through an interprocess root lock; restart
+  all old writer processes when upgrading. Wake works only in attached capable
+  receivers; ordinary unread delivery waits for the next supported activity.

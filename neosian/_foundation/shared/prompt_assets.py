@@ -26,6 +26,7 @@ _REFLECTION_FILE: Final = "prompts/reflection.yaml"
 _MAINTENANCE_FILE: Final = "prompts/maintenance.yaml"
 _CONTEXT_FILE: Final = "prompts/context.yaml"
 _CHAT_FILE: Final = "prompts/chat.yaml"
+_MESSAGES_FILE: Final = "prompts/messages.yaml"
 _POLICY_KEYS: Final = ("name", "code", "description", "violates", "safe")
 _MEMORY_KEYS: Final = ("tool", "system_section")
 _COMPACTION_KEYS: Final = ("distill", "epoch", "log_header", "log_footer")
@@ -154,6 +155,10 @@ def _load() -> (
     for key in _CONTEXT_KEYS:
         prompts[f"context.{key}"] = str(_require(context, key, _CONTEXT_FILE))
     chat = _load_yaml(_CHAT_FILE)
+    messages = _load_yaml(_MESSAGES_FILE)
+    for key in ("tool", "context", "identity", "index", "annotations", "wake"):
+        prompts[f"messages.{key}"] = str(_require(messages, key, _MESSAGES_FILE))
+    params["messages.params"] = _require_params(messages, "params", _MESSAGES_FILE)
     for key in _CHAT_KEYS:
         prompts[f"chat.{key}"] = str(_require(chat, key, _CHAT_FILE))
     policies = tuple(_require(guardrails, "policies", _GUARDRAILS_FILE))

@@ -28,7 +28,7 @@ any store call.
 
 ```json
 {"wire_version": 5, "neosian_version": "<installed>", "backend": "FileStore",
- "supports_optimistic_concurrency": false, "pageable": true,
+ "supports_optimistic_concurrency": true, "pageable": true,
  "client": "client:default"}
 ```
 

@@ -532,7 +532,7 @@ class TestRendering:
         assert "secret" not in out
         assert "NEOSIAN_POSTGRES_DSN" in err
 
-    def test_the_write_hint_names_the_one_writer_rule(self, tmp_path: Path) -> None:
+    def test_local_writers_need_no_single_writer_warning(self, tmp_path: Path) -> None:
         context = _context(tmp_path)
         (context.home / ".cursor").mkdir()
         code, _, err = _run(
@@ -540,7 +540,7 @@ class TestRendering:
             context,
         )
         assert code == 0
-        assert "one writer per FileStore root" in err
+        assert "one writer per FileStore root" not in err
 
 
 class TestCodex:

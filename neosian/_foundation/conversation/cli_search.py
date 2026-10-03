@@ -18,7 +18,6 @@ from typing import TYPE_CHECKING, Final, TextIO
 import httpx
 
 from neosian._foundation.conversation.base import ConversationStore
-from neosian._foundation.conversation.hits import hit_json, hit_line
 from neosian._foundation.conversation.ids import parse_conversation_id
 from neosian._foundation.conversation.search import parse_query
 from neosian._foundation.memory.settings import (
@@ -28,6 +27,7 @@ from neosian._foundation.memory.settings import (
     resolve_store_selection,
 )
 from neosian._foundation.memory.store_lifetime import open_store
+from neosian._foundation.messaging.cli_history import search_hits
 from neosian._foundation.shared.exceptions import (
     ConversationIdInvalidError,
     NeosianError,
@@ -110,6 +110,9 @@ async def run(
             turns = await store.search_turns(
                 query, conversations=args.conversations, limit=args.limit
             )
+            hits = await search_hits(
+                store, turns, terms, args.conversations, args.limit
+            )
             client = getattr(store, "client", None)
     except (NeosianError, httpx.HTTPError, OSError, ValueError) as exc:
         message = getattr(exc, "message", None) or str(exc)
@@ -125,13 +128,21 @@ async def run(
             "conversations": args.conversations,
             "limit": args.limit,
             "client": client,
-            "hits": [hit_json(turn, terms) for turn in turns],
+            "hits": hits,
         }
         out.write(json.dumps(envelope) + "\n")
         return 0
-    if not turns:
+    if not hits:
         out.write(f"no turn matches every term of {query!r}\n")
         return 0
-    for turn in turns:
-        out.write(hit_line(turn, terms) + "\n")
+    for hit in hits:
+        if hit.get("type") == "message":
+            out.write(f"{hit['annotation']}\n  {hit['snippet']}\n")
+        else:
+            out.write(
+                f"[{hit['conversation_id']} #{hit['turn']}] {hit['created_at']} "
+                f"{hit['actor'] or '-'}  {hit['snippet']}\n"
+            )
+            for note in hit.get("annotations", []):
+                out.write(note + "\n")
     return 0

@@ -25,6 +25,7 @@ from neosian._foundation.memory.pageable import (
     paged,
 )
 from neosian._foundation.memory.paths import validate_document_path
+from neosian._foundation.shared.filelock import FileLock, locked
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -44,6 +45,7 @@ class FilePageableStore:
 
     if TYPE_CHECKING:
         _root: Path
+        _lock: FileLock
 
         def _scope(self, scope: str) -> Scope: ...
 
@@ -57,6 +59,7 @@ class FilePageableStore:
             self, scope: Scope, since: datetime | None, limit: int | None
         ) -> tuple[MemoryVersion, ...]: ...
 
+    @locked
     async def list_documents_page(
         self, scope: str, *, prefix: str = "", cursor: str | None = None, limit: int
     ) -> Page[MemoryEntry]:
@@ -67,6 +70,7 @@ class FilePageableStore:
         rows = [entry for entry in entries if after is None or entry.path > after]
         return paged(rows[: limit + 1], limit, lambda e: encode_cursor("list", e.path))
 
+    @locked
     async def versions_page(
         self, scope: str, path: str, *, cursor: str | None = None, limit: int
     ) -> Page[MemoryVersion]:
@@ -83,6 +87,7 @@ class FilePageableStore:
             rows[: limit + 1], limit, lambda r: encode_cursor("versions", r.version)
         )
 
+    @locked
     async def history_page(
         self,
         scope: str,
@@ -99,6 +104,7 @@ class FilePageableStore:
         after = [row for row in rows if key is None or _follows(row, key)]
         return paged(after[: limit + 1], limit, history_cursor)
 
+    @locked
     async def redactions_page(
         self,
         scope: str,

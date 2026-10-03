@@ -64,7 +64,7 @@ class TestBearerGate:
         payload = response.json()
         assert payload["wire_version"] == WIRE_VERSION
         assert payload["backend"] == "FileStore"
-        assert payload["supports_optimistic_concurrency"] is False
+        assert payload["supports_optimistic_concurrency"] is True
         assert payload["pageable"] is True  # §18.2: the listings page
         assert payload["client"] == "client:default"  # a bare token's client
 

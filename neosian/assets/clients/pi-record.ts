@@ -11,17 +11,22 @@ export default function neosianRecord(pi: ExtensionAPI) {
   let compacted = false;
   let pending = false;
   let answer = "";
+  let generation = 0;
+  let timer: ReturnType<typeof setInterval> | undefined;
+  let polling = false;
+  const delivered = new Set<string>();
 
   // Capture identity before queuing: a switch must not move an old event
   // into a new session. The pipe keeps payloads out of argv and shell syntax.
-  const record = (ctx: ExtensionContext, payload: Record<string, unknown>) => {
+  const record = (ctx: ExtensionContext, payload: Record<string, unknown>, json = false,
+    session = ctx.sessionManager.getSessionId()) => {
     const body = JSON.stringify({
       ...payload,
-      session_id: ctx.sessionManager.getSessionId(),
+      session_id: session,
     });
     const cwd = ctx.cwd;
     queue = queue.then(() => new Promise<string>((resolve) => {
-      const child = spawn(ARGV[0], [...ARGV.slice(1), "--project", cwd], {
+      const child = spawn(ARGV[0], [...ARGV.slice(1), "--project", cwd, ...(json ? ["--json"] : [])], {
         cwd, stdio: ["pipe", "pipe", "ignore"], timeout: 30_000,
       });
       let output = "";
@@ -53,18 +58,50 @@ export default function neosianRecord(pi: ExtensionAPI) {
     await record(ctx, { hook_event_name: "Stop", last_assistant_message: last });
   };
 
+  const poll = async (ctx: ExtensionContext, epoch: number) => {
+    if (polling || epoch !== generation) return;
+    polling = true;
+    const session = ctx.sessionManager.getSessionId();
+    try {
+      const output = await record(ctx, { hook_event_name: "MailboxPoll" }, true);
+      const items = output ? JSON.parse(output).messages ?? [] : [];
+      for (const item of items) {
+        const key = `${item.id}:${item.occurrence}`;
+        const valid = epoch === generation;
+        if (valid && !delivered.has(key)) {
+          pi.sendMessage({ customType: "neosian-message", content: item.text,
+            display: true, details: { id: item.id, occurrence: item.occurrence } },
+            { triggerTurn: true, deliverAs: "followUp" });
+          delivered.add(key);
+        }
+        await record(ctx, { hook_event_name: "MailboxDelivery", scope: item.scope,
+          message_id: item.id, occurrence: item.occurrence, token: item.token,
+          accepted: valid }, true, session);
+      }
+    } catch { /* Pending messages survive receiver/transport failures. */ }
+    finally { polling = false; }
+  };
+
   pi.on("session_start", async (event, ctx) => {
+    generation++;
+    if (timer) clearInterval(timer);
+    const epoch = generation;
     pending = false;
     answer = "";
     compacted = false;
     await refresh(ctx, event.reason);
+    if (epoch !== generation) return;
+    timer = setInterval(() => { void poll(ctx, epoch); }, 5000);
+    timer.unref();
   });
   pi.on("session_compact", async (_event, ctx) => {
     await refresh(ctx, "compact");
     compacted = true;
   });
-  pi.on("before_agent_start", (event) => {
-    event.systemPromptOptions.sections.neosian = context;
+  pi.on("before_agent_start", async (event, ctx) => {
+    const inbox = await record(ctx, { hook_event_name: "MailboxContext" });
+    const base = context.split("[neosian session identity:")[0].trimEnd();
+    event.systemPromptOptions.sections.neosian = [base, inbox].filter(Boolean).join("\n\n");
     compacted = false;
   });
   // Automatic compaction can retry without before_agent_start. Replace
@@ -89,6 +126,10 @@ export default function neosianRecord(pi: ExtensionAPI) {
       pending = true;
       answer = "";
       await record(ctx, { hook_event_name: "UserPromptSubmit", prompt: text(message.content) });
+    } else if (message.role === "custom" && message.customType === "neosian-message") {
+      pending = true;
+      answer = "";
+      await record(ctx, { hook_event_name: "MailboxReceived", text: text(message.content) });
     } else if (message.role === "assistant") {
       answer = text(message.content);
     }
@@ -111,6 +152,9 @@ export default function neosianRecord(pi: ExtensionAPI) {
   // the boundary that commits one span, including nested MCP results.
   pi.on("agent_settled", async (_event, ctx) => { await finish(ctx); });
   pi.on("session_shutdown", async (_event, ctx) => {
+    generation++;
+    if (timer) clearInterval(timer);
+    timer = undefined;
     await finish(ctx);
     await queue;
   });

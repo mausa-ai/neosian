@@ -27,6 +27,7 @@ search_history_footer: "[newest first, at most {{shown}}; call recall_turn(n, co
 continue_session: "Continue a recorded conversation: the one call to make when the user says to continue, carry on, pick up or resume where another session (any agent) left off. Delivers that conversation whole, within a budget: every user prompt and final answer verbatim, tool rounds as one line each, the older turns as one-line log entries; its handoff note first when one is pending, which this call picks up. Omit conversation to continue the session the pending note names, else the most recent session listed in the memory index under sessions/; pass conversation=<id> to continue that one. Afterwards carry on as the same work. Never call it for new work: a session that continues nothing is a new session."
 
 continue_session_params:
+  session: "Your exact current session ID from the session hook, for immediate continuation routing."
   conversation: "The conversation id to continue, as the sessions/ document or the handoff note names it; omit for the pending note's session, else the most recent one listed."
 
 handoff: "Write the handoff note for whoever continues this work next, in any agent: call it when the user says to hand off, wrap up for the next session, or leave a note for later. The note is shown in full at the next session start in this scope until a session picks it up with continue_session. Under 2048 characters: what was being done and for whom, what is done (the paths, ids and commands that matter), what is next (the first step precisely), what is open or blocked; name turns as [n] instead of repeating them. One note stands per scope: a new one replaces it (the old one stays as a version)."
@@ -65,10 +66,10 @@ search_history_any_params:
   conversation: "The id of one conversation to search, as the sessions/ document names it; omit for every recorded conversation."
   limit: "How many of the newest hits to return (default 10, at most 50)."
 
-docs: "Read one page of neosian's own documentation, shipped with this version. Topics: quickstart, agent, local, tools, memory, skills, stores, cli, mcp, agents, interop, topology, wire, baselines. Call it whenever a question is about how neosian works and answer from the page."
+docs: "Read one page of neosian's own documentation, shipped with this version. Topics: quickstart, agent, local, tools, memory, skills, messaging, stores, cli, mcp, agents, interop, topology, wire, baselines. Call it whenever a question is about how neosian works and answer from the page."
 
 docs_params:
-  topic: "The page to read: one of quickstart, agent, local, tools, memory, skills, stores, cli, mcp, agents, interop, topology, wire, baselines."
+  topic: "The page to read: one of quickstart, agent, local, tools, memory, skills, messaging, stores, cli, mcp, agents, interop, topology, wire, baselines."
 
 # The json_object door dialect (DESIGN §31.4): an endpoint with no
 # json_schema mode gets the schema in the system prompt; the word "json"

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Final
 
+from neosian._foundation.memory.reserved import state_path
 from neosian._foundation.shared.prompt_assets import get_prompt, render
 
 if TYPE_CHECKING:
@@ -44,12 +45,32 @@ async def generate_memory_index(
     never a knapsack. The floor — every mount collapsed to its total —
     is returned even if it still exceeds the budget.
     """
-    listings = [(mount, await store.list_documents(mount.scope)) for mount in mounts]
+    raw = [(mount, await store.list_documents(mount.scope)) for mount in mounts]
+    mailbox_lines = [
+        render(
+            get_prompt("messages.index"), mount=mount.mount_path, count=str(count)
+        ).rstrip()
+        for mount, entries in raw
+        if (
+            count := sum(
+                e.path.startswith("messages/") and not e.redacted for e in entries
+            )
+        )
+    ]
+    suffix = "\n" + "\n".join(mailbox_lines) if mailbox_lines else ""
+    budget_chars -= len(suffix)
+    listings = [
+        (
+            mount,
+            tuple(e for e in entries if not state_path(e.path)),
+        )
+        for mount, entries in raw
+    ]
     full = _render(listings, hot=None)
     if len(full) <= budget_chars:
-        return full
+        return full + suffix
     tiered = _tiered(listings, budget_chars)
-    return tiered if tiered is not None else _render_floor(listings)
+    return (tiered if tiered is not None else _render_floor(listings)) + suffix
 
 
 async def memory_system_section(

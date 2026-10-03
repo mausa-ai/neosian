@@ -171,9 +171,8 @@ class TestCollect:
         claude = status.clients[0]
         assert claude.hooks_present and claude.interpreter_resolves is True
         assert claude.root == "/r"
-        (note,) = status.one_writer
-        assert note.startswith("claude-code:")
-        assert "neosian setup --url URL --write" in note  # the fix is one command
+        assert status.one_writer == ()  # upgraded local processes arbitrate
+        assert claude.message_delivery == ("next_activity",)
         assert status.double_fire == ()  # one level, however many writers
 
     @staticmethod

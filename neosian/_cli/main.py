@@ -445,6 +445,14 @@ def docs(
     )
 
 
+@app.command(name="messages", rich_help_panel=_OPERATE, context_settings=_PASS_THROUGH)
+def messages(ctx: typer.Context) -> None:
+    """Send, read, acknowledge and reschedule durable messages."""
+    from neosian._cli.messages import main
+
+    raise typer.Exit(main(list(ctx.args)))
+
+
 def main() -> None:
     """Main entry point for the CLI."""
     app()

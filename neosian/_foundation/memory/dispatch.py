@@ -21,7 +21,8 @@ from collections.abc import Mapping
 from typing import Any, Final
 
 from neosian._foundation.memory import commands
-from neosian._foundation.memory.mounts import MemoryConfig
+from neosian._foundation.memory.mounts import MemoryConfig, resolve
+from neosian._foundation.memory.reserved import state_path
 from neosian._foundation.shared.exceptions import MemoryStoreError
 from neosian._foundation.tools.base import ToolResult
 
@@ -97,6 +98,15 @@ async def dispatch(
         )
     path = arguments.get("path")
     try:
+        if command != "view":
+            for key in ("path", "old_path", "new_path"):
+                value = arguments.get(key)
+                if isinstance(value, str):
+                    _, document_path = resolve(config, value)
+                    if state_path(document_path):
+                        return ToolResult.fail(
+                            "Use messages for mailbox lifecycle changes; operator redaction remains available."
+                        )
         if command == "view":
             return await commands.view(
                 config,

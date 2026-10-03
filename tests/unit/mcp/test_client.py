@@ -172,6 +172,7 @@ class TestDoneWhen:
                 "memory",
                 "list_skills",
                 "load_skill",
+                "messages",
                 "recall_turn",
                 "search_history",
                 "continue_session",
