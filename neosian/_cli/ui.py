@@ -6,7 +6,7 @@ from typing import TextIO
 from rich.console import Console
 from rich.text import Text
 
-from neosian._foundation.shared.constants import Assets, PlaygroundUI
+from neosian._foundation.shared.constants import Assets
 
 # The brand colours (branding/README.md), at the dark-theme lightness the
 # kit's clamp derives — terminals are dark far more often than not, and Rich
@@ -47,22 +47,6 @@ def load_header() -> Text:
         return header
     except Exception:
         return Text()
-
-
-def print_header(console: Console, agent_name: str) -> None:
-    """Print the playground header with ASCII art."""
-    header = load_header()
-    if header.plain and max(map(len, header.plain.splitlines())) <= console.width:
-        console.print(header)
-        console.print()
-
-    console.print(
-        Text(
-            PlaygroundUI.AGENT_LOADED.format(name=agent_name),
-            style=f"bold {BRAND_ACCENT}",
-        )
-    )
-    console.print(Text(PlaygroundUI.SESSION_START + "\n", style="dim"))
 
 
 def pick(
@@ -148,14 +132,3 @@ def turn_footer(title: Text, seconds: float, cost: int | None) -> Text:
     if cost is not None:
         footer.append(f"  {format_micro_usd(cost)}", style="dim")
     return footer
-
-
-def tool_result(name: str, success: bool, data: object) -> Text:
-    from rich.pretty import pretty_repr
-
-    text = Text("  ← ", style="dim")
-    text.append(name, style=BRAND_ACCENT)
-    text.append(": ", style="dim")
-    value = pretty_repr(data) if isinstance(data, (dict, list, tuple)) else str(data)
-    text.append(value, style="default" if success else "red")
-    return text

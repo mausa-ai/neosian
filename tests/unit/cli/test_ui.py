@@ -1,5 +1,5 @@
 """The shell's small Rich helpers (DESIGN §30.3): the numbered menu, the
-header, the two formatters. The menu reads a piped stdin here."""
+header art, the two formatters. The menu reads a piped stdin here."""
 
 import io
 
@@ -11,7 +11,6 @@ from neosian._cli.ui import (
     format_elapsed_time,
     load_header,
     pick,
-    print_header,
 )
 
 
@@ -56,12 +55,6 @@ class TestPick:
 class TestHeader:
     def test_the_art_ships_in_the_wheel(self) -> None:
         assert load_header().plain.strip()
-
-    def test_the_header_names_the_agent_and_the_way_out(self) -> None:
-        console, out = _console()
-        print_header(console, "my_agent")
-        text = out.getvalue()
-        assert "Agent: my_agent" in text and "/quit" in text
 
 
 @pytest.mark.unit
