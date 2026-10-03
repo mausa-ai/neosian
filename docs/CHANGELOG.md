@@ -21,6 +21,14 @@ phase close names the version.
   resuming earlier work, even when the summary already contains the answer.
   Pi receives those instructions through its extension's bounded section.
 
+- The shell uses consistent terminal sections, tables and narrow-screen
+  records for status and operator reports, with shared chat and evaluation
+  formatting. `NO_COLOR` now removes color while retaining terminal layout;
+  piped output and JSON envelopes keep their existing formats. Status shows
+  MCP overrides and the last session's document path. Terminal help no
+  longer enters JSON report parsing, and partial setup and maintenance
+  reports remain visible at exit 1.
+
 - Record the first twelve-scenario external memory baseline, dispatch #22,
   including handoff results, provider access failures and response wording
   limitations. The measured scores are unchanged.

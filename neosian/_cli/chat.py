@@ -20,8 +20,15 @@ from rich.prompt import Prompt
 from rich.text import Text
 
 from neosian._cli.chat_mcp import serving
+from neosian._cli.display import fields
 from neosian._cli.stream import stream_turn
-from neosian._cli.ui import format_args, format_elapsed_time, print_header
+from neosian._cli.ui import (
+    BRAND_ACCENT,
+    format_args,
+    print_header,
+    tool_result,
+    turn_footer,
+)
 from neosian._foundation.agent.response import AgentResponse
 from neosian._foundation.conversation.core import Conversation
 from neosian._foundation.conversation.ids import parse_conversation_id
@@ -127,28 +134,43 @@ async def run_chat(
             convo = open_chat(config, conversation_id=conversation_id)
             await convo.start()
         except Exception as e:
-            console.print(f"[red]Error starting conversation: {e}[/red]")
+            console.print(Text(f"Error starting conversation: {e}", style="red"))
             raise SystemExit(1) from e
 
         print_header(console, agent_name)
         if resumed and convo.messages:
             console.print(
-                f"[dim]Resumed {len(convo.messages)} messages from "
-                f"{conversation_id}[/dim]"
+                Text(
+                    f"Resumed {len(convo.messages)} messages from {conversation_id}",
+                    style="dim",
+                )
             )
         elif resumed:
             console.print(
-                f"[dim]No turns stored under {conversation_id} yet — "
-                f"starting fresh.[/dim]"
+                Text(
+                    f"No turns stored under {conversation_id} yet — starting fresh.",
+                    style="dim",
+                )
             )
-        console.print(
-            f"[dim]Conversation: {conversation_id}  "
-            f"(resume: --resume {conversation_id})[/dim]"
+        fields(
+            console,
+            [
+                ("Conversation", conversation_id),
+                ("Resume", f"--resume {conversation_id}"),
+                ("Home", str(home())),
+                ("Memory", describe_memory(config)),
+            ],
         )
-        console.print(f"[dim]Home: {home()}  memory: {describe_memory(config)}[/dim]")
         if servers:
-            served = ", ".join(f"{s.name} ({len(s.tools)} tools)" for s in servers)
-            console.print(f"[dim]MCP: {served}[/dim]")
+            fields(
+                console,
+                [
+                    (
+                        "MCP",
+                        ", ".join(f"{s.name} ({len(s.tools)} tools)" for s in servers),
+                    )
+                ],
+            )
         console.print()
         async with convo:
             await _chat_loop(console, convo, config)
@@ -158,9 +180,9 @@ def turn_title(config: AgentConfig) -> Text:
     """`provider/model`, the provider labeled by its door (DESIGN §19.2)."""
     model = resolve_model(config.model)
     title = Text()
-    title.append(provider_label(model), style="cyan")
+    title.append(provider_label(model), style=BRAND_ACCENT)
     title.append("/", style="dim")
-    title.append(model.value, style="blue")
+    title.append(model.value, style=BRAND_ACCENT)
     return title
 
 
@@ -179,7 +201,7 @@ async def _chat_loop(
         # Get user input
         try:
             user_input = Prompt.ask(
-                f"[bold green]{PlaygroundUI.USER_PROMPT}[/bold green]",
+                Text(PlaygroundUI.USER_PROMPT, style=f"bold {BRAND_ACCENT}"),
                 console=console,
             )
         except EOFError:
@@ -204,16 +226,27 @@ async def _chat_loop(
                 )
                 console.print()
                 continue
-            with console.status(f"[dim]{PlaygroundUI.THINKING}[/dim]"):
+            with console.status(Text(PlaygroundUI.THINKING, style="dim")):
                 response = await convo.send(user_input)
         except Exception as e:
-            console.print(f"[red]Error: {e}[/red]")
+            console.print(Text(f"Error: {e}", style="red"))
             continue
-        _render_response(console, response, title, time.perf_counter() - start_time)
+        _render_response(
+            console,
+            response,
+            title,
+            time.perf_counter() - start_time,
+            cost=response.usage.cost_micro_usd(resolve_model(config.model)),
+        )
 
 
 def _render_response(
-    console: Console, response: AgentResponse, title: Text, elapsed_time: float
+    console: Console,
+    response: AgentResponse,
+    title: Text,
+    elapsed_time: float,
+    *,
+    cost: int | None = None,
 ) -> None:
     """The blocking path's rendering: the finished turn, panel by panel."""
     # Display guardrail result if present (shows parallel execution)
@@ -261,7 +294,7 @@ def _render_response(
                 border_style="red",
             )
         )
-        console.print(format_elapsed_time(elapsed_time), style="dim")
+        console.print(turn_footer(title, elapsed_time, cost))
         console.print()
 
         # Blocked turns persist nothing (§9.5.5) — the panel is the log.
@@ -269,26 +302,18 @@ def _render_response(
 
     # Display tool calls if any
     for i, tool_call in enumerate(response.tool_calls_made):
-        tool_text = Text()
-        tool_text.append(f"{tool_call.name}", style="yellow")
+        tool_text = Text(f"→ {tool_call.name}", style=BRAND_ACCENT)
         tool_text.append(f"({format_args(tool_call.arguments)})", style="dim")
-
+        console.print(tool_text)
         if i < len(response.tool_results):
             result = response.tool_results[i]
-            if result.success:
-                tool_text.append(" → ", style="dim")
-                tool_text.append(str(result.data), style="green")
-            else:
-                tool_text.append(" → ", style="dim")
-                tool_text.append(str(result.error), style="red")
-
-        console.print(
-            Panel(
-                tool_text,
-                title=PlaygroundUI.TOOL_CALL_LABEL,
-                border_style="yellow",
+            console.print(
+                tool_result(
+                    tool_call.name,
+                    result.success,
+                    result.data if result.success else result.error,
+                )
             )
-        )
 
     # Display reasoning if present
     if response.message.reasoning:
@@ -307,10 +332,10 @@ def _render_response(
             Panel(
                 Markdown(assistant_text),
                 title=title,
-                border_style="blue",
+                border_style=BRAND_ACCENT,
             )
         )
 
     # Display response time
-    console.print(format_elapsed_time(elapsed_time), style="dim")
+    console.print(turn_footer(title, elapsed_time, cost))
     console.print()

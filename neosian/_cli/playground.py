@@ -68,12 +68,11 @@ def run_playground(
         except ChatUsageError as exc:
             return usage(str(exc), json_output=json_output, out=out, err=err)
     elif menu:
-        from rich.console import Console
-
+        from neosian._cli.display import console_for
         from neosian._cli.models import select_provider_and_model
 
         chosen = select_provider_and_model(
-            Console(), require_reasoning=config.reasoning_effort is not None
+            console_for(out), require_reasoning=config.reasoning_effort is not None
         )
         if chosen is None:
             err.write(f"{_CANCELLED}\n")

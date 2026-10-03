@@ -9,8 +9,19 @@ One `neosian` for two readers: the operator console for the state your
 agents already write, and the agent-facing grammar underneath it:
 every verb with `--json` and exit tiers, so a script or an agent uses
 the same doors. On a terminal the verbs render (a table, a tree,
-markdown); under a pipe, `NO_COLOR` or `--json` the bytes are plain and
-identical.
+markdown). `NO_COLOR` removes color while keeping terminal layouts readable;
+under a pipe or `--json`, the existing output is unchanged. Reports use
+section headings and lightly ruled tables; below 80 columns, wide tables
+become labeled records. Paths, identifiers and findings wrap without being
+cut off or interpreted as formatting.
+
+`status` groups installation details, provider keys and their sources,
+scopes, clients, the last session and actionable findings. Setup results,
+`configure --list`, version history, maintenance and store transfers use
+the same presentation. One-shot chat answers render Markdown on a terminal;
+streamed answers remain immediate, with tool events and write receipts
+shown as they arrive. Document bodies, continued transcripts, configuration
+previews and protocol output retain their original content.
 
 ## Set up and talk
 

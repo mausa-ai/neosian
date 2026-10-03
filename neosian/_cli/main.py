@@ -183,26 +183,9 @@ def setup(ctx: typer.Context) -> None:
     `--write` applies it, `--url` points them all at the state process,
     `--client C` narrows, `--json` one object.
     """
-    from pathlib import Path
+    from neosian._cli.shell_reports import setup as run_setup
 
-    from neosian._cli.setup import run_setup
-    from neosian._foundation.shared.client_config import Environment
-
-    raise typer.Exit(
-        run_setup(
-            list(ctx.args),
-            os.environ,
-            context=Environment(
-                home=Path.home(),
-                cwd=Path.cwd(),
-                platform=sys.platform,
-                env=os.environ,
-                executable=sys.executable,
-            ),
-            out=sys.stdout,
-            err=sys.stderr,
-        )
-    )
+    raise typer.Exit(run_setup(list(ctx.args)))
 
 
 @app.command(name="update", rich_help_panel=_OPERATE, context_settings=_PASS_THROUGH)
@@ -232,18 +215,9 @@ def configure(ctx: typer.Context) -> None:
     `--list`, `--provider NAME --key -` (stdin), `--delete`, `--json`;
     bare on a terminal prompts for each provider in turn.
     """
-    from neosian._cli.configure import run_configure
+    from neosian._cli.shell_reports import configure as run_configure
 
-    raise typer.Exit(
-        run_configure(
-            list(ctx.args),
-            os.environ,
-            stdin=sys.stdin,
-            out=sys.stdout,
-            err=sys.stderr,
-            tty=sys.stdin.isatty() and sys.stdout.isatty(),
-        )
-    )
+    raise typer.Exit(run_configure(list(ctx.args)))
 
 
 @app.command(name="eval", rich_help_panel=_TALK)
@@ -300,20 +274,9 @@ def memory(ctx: typer.Context) -> None:
     (`neosian memory --help`). The six commands ride the shared memory
     dispatcher; --json prints the memory tool's envelope.
     """
-    from neosian._cli.render import render_index, run_rendered
-    from neosian.memory.cli import main as memory_main
+    from neosian._cli.shell_reports import memory as run_memory
 
-    args = list(ctx.args)
-    if args[:1] == ["view"] and (
-        len(args) == 1 or args[1] in ("/", "--json") or args[1].startswith("--")
-    ):
-        # The index as a tree on a terminal; a document stays plain.
-        raise typer.Exit(
-            run_rendered(
-                memory_main, args, render_index, out=sys.stdout, env=os.environ
-            )
-        )
-    raise typer.Exit(memory_main(args))
+    raise typer.Exit(run_memory(list(ctx.args)))
 
 
 @app.command(
@@ -377,7 +340,7 @@ def export(ctx: typer.Context) -> None:
     A thin pass-through to the one grammar (`neosian export --help`); the
     archive is a FileStore root you can read, serve or import anywhere.
     """
-    from neosian.mobility import main as mobility_main
+    from neosian._cli.shell_reports import transfer as mobility_main
 
     raise typer.Exit(mobility_main(["export", *ctx.args]))
 
@@ -389,7 +352,7 @@ def import_(ctx: typer.Context) -> None:
     A thin pass-through to the one grammar (`neosian import --help`);
     every unit must be empty in the store — nothing merges.
     """
-    from neosian.mobility import main as mobility_main
+    from neosian._cli.shell_reports import transfer as mobility_main
 
     raise typer.Exit(mobility_main(["import", *ctx.args]))
 
@@ -471,9 +434,6 @@ def docs(
     """
     from neosian._cli.docs import run_docs
     from neosian._cli.render import render_docs, run_rendered
-
-    if topic is None:  # the listing stays the engine's bytes everywhere
-        raise typer.Exit(run_docs(None, json_output=json_output))
 
     def engine(argv: list[str]) -> int:
         return run_docs(topic, json_output="--json" in argv)

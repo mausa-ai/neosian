@@ -1,13 +1,4 @@
-"""The rendered verbs (DESIGN §30.3, ledger #204): on a terminal `docs
-<topic>` is markdown, `audit` a table, `memory view /` a tree, `status` a
-table — restrained Rich, one accent, no panels or boxes inside verbs.
-Under a pipe, `NO_COLOR` or `--json` the engine writes its own bytes to
-the real streams, byte-identical to before: the rendering is a
-projection of the verb's `--json` envelope, never a second code path.
-The projection shortens what the envelope carries whole: a session id to
-its first eight hex digits, a timestamp to the minute; a narrow terminal
-folds a cell, never cuts it.
-"""
+"""Terminal projections of existing JSON reports; pipes keep engine bytes."""
 
 from __future__ import annotations
 
@@ -15,15 +6,17 @@ import contextlib
 import io
 import json
 import re
+import sys
 from collections.abc import Callable, Mapping
 from typing import Any, Final, TextIO
 
 from rich.console import Console
 from rich.markdown import Markdown
-from rich.table import Table
 from rich.text import Text
 from rich.tree import Tree
 
+from neosian._cli.display import console_for, records, section, terminal
+from neosian._cli.render_status import render_status as render_status
 from neosian._cli.ui import BRAND_ACCENT
 
 Engine = Callable[[list[str]], int]
@@ -34,9 +27,9 @@ _UUID: Final = re.compile(
 
 
 def rendered(out: TextIO, env: Mapping[str, str]) -> bool:
-    """A terminal, and no `NO_COLOR`: the only place a verb renders."""
-    isatty = getattr(out, "isatty", None)
-    return bool(isatty and isatty()) and not env.get("NO_COLOR")
+    """Layout depends on the stream; NO_COLOR controls only colour."""
+    del env
+    return terminal(out)
 
 
 def run_rendered(
@@ -46,26 +39,34 @@ def run_rendered(
     *,
     out: TextIO,
     env: Mapping[str, str],
+    partial: bool = False,
 ) -> int:
-    """Run the engine on the real streams — or, on a terminal without
-    `--json`, run it with `--json` into a buffer and render the envelope.
-    A non-zero exit renders nothing: the engine's stderr text stands."""
-    if "--json" in argv or "--" in argv or not rendered(out, env):
+    """Execute once, projecting reports while preserving stderr and exit tiers.
+
+    Partial reports opt in; error envelopes stay on the engine's stderr.
+    Help and literal arguments bypass projection. Unexpected non-JSON output
+    is replayed verbatim, never obtained by running an operation again.
+    """
+    if any(arg in argv for arg in ("--json", "--", "--help", "-h")) or not rendered(
+        out, env
+    ):
         return engine(argv)
     buffer = io.StringIO()
     with contextlib.redirect_stdout(buffer):
         code = engine([*argv, "--json"])
-    if code != 0:
+    raw = buffer.getvalue()
+    try:
+        envelope = json.loads(raw)
+    except ValueError:
+        out.write(raw)
         return code
-    render(json.loads(buffer.getvalue()), Console(file=out))
-    return 0
-
-
-def _table(*columns: str) -> Table:
-    table = Table(box=None, header_style=f"bold {BRAND_ACCENT}", pad_edge=False)
-    for column in columns:
-        table.add_column(column, overflow="fold")
-    return table
+    if (
+        isinstance(envelope, dict)
+        and "error" not in envelope
+        and (code == 0 or (partial and code == 1))
+    ):
+        render(envelope, console_for(out, env))
+    return code
 
 
 def _short(text: str) -> str:
@@ -73,15 +74,25 @@ def _short(text: str) -> str:
 
 
 def _minute(created_at: str) -> str:
-    return created_at[:16].replace("T", " ")
+    return created_at[:16].replace("T", " ") + " UTC"
 
 
 def render_docs(page: dict[str, Any], console: Console) -> None:
-    console.print(Markdown(str(page["body"])))
+    if "body" in page:
+        console.print(Markdown(str(page["body"])))
+        return
+    section(console, "Documentation")
+    records(
+        console,
+        ("Topic", "Summary"),
+        [(p["topic"], p["summary"]) for p in page["topics"]],
+    )
+    sys.stderr.write("hint: neosian docs <topic> prints a page\n")
 
 
 def render_audit(envelope: dict[str, Any], console: Console) -> None:
-    table = _table("when", "actor", "event", "what")
+    section(console, "Audit")
+    rows = []
     for entry in envelope["entries"]:
         if entry["event"] == "turn":
             what = f"{entry['conversation_id']} turn {entry['turn']}"
@@ -91,102 +102,50 @@ def render_audit(envelope: dict[str, Any], console: Console) -> None:
         else:
             marker = " (redacted)" if entry["redacted"] else ""
             what = f"/{entry['path']} v{entry['version']}{marker}"
-        if entry.get("continues"):  # a sessions document's lineage (§33)
+        if entry.get("continues"):
             what += f" continues {', '.join(entry['continues'])}"
-        table.add_row(
-            _minute(entry["created_at"]),
-            _short(entry["actor"] or "-"),
-            entry["event"],
-            _short(what),
+        rows.append(
+            (
+                _minute(entry["created_at"]),
+                _short(entry["actor"] or "-"),
+                entry["event"],
+                _short(what),
+            )
         )
-    if not envelope["entries"]:
-        console.print(f"no ledger entries for scope {envelope['scope']!r}")
+    if not rows:
+        console.print(Text(f"no ledger entries for scope {envelope['scope']!r}"))
         return
-    console.print(table)
+    records(console, ("when", "actor", "event", "what"), rows)
 
 
 def render_search(envelope: dict[str, Any], console: Console) -> None:
-    """The hits as a table; cell text is literal (a snippet may hold
-    `[link 3]`, which Rich would read as markup)."""
+    section(console, "Search")
     if not envelope["hits"]:
-        console.print(f"no turn matches every term of {envelope['query']!r}")
+        console.print(Text(f"no turn matches every term of {envelope['query']!r}"))
         return
-    table = _table("where", "when", "actor", "snippet")
-    for hit in envelope["hits"]:
-        table.add_row(
-            _short(f"{hit['conversation_id']} #{hit['turn']}"),
-            _minute(hit["created_at"]),
-            _short(hit["actor"] or "-"),
-            Text(hit["snippet"]),
-        )
-    console.print(table)
+    records(
+        console,
+        ("where", "when", "actor", "snippet"),
+        [
+            (
+                _short(f"{hit['conversation_id']} #{hit['turn']}"),
+                _minute(hit["created_at"]),
+                _short(hit["actor"] or "-"),
+                hit["snippet"],
+            )
+            for hit in envelope["hits"]
+        ],
+    )
 
 
 def render_index(envelope: dict[str, Any], console: Console) -> None:
-    """The memory index as a tree: a `## /mount — description` line opens
-    a branch, a `- /path` line is a leaf under it."""
-    tree = Tree("memory", style=BRAND_ACCENT, guide_style="dim")
+    tree = Tree(Text("memory", style=BRAND_ACCENT), guide_style="dim")
     branch = tree
     for line in str(envelope.get("data", "")).splitlines():
         if line.startswith("## "):
-            branch = tree.add(line[3:], style="bold")
+            branch = tree.add(Text(line[3:], style="bold"))
         elif line.startswith("- "):
-            branch.add(line[2:], style="default")
+            branch.add(Text(line[2:]))
         elif line.strip():
-            branch.add(line.strip(), style="dim")
+            branch.add(Text(line.strip(), style="dim"))
     console.print(tree)
-
-
-def render_status(status: dict[str, Any], console: Console) -> None:
-    table = _table("", "")
-    table.add_row("neosian", f"{status['version']}  ({status['shape']})")
-    table.add_row("upgrade", status["upgrade"])
-    table.add_row(
-        "home",
-        f"{status['home']}  ({'exists' if status['home_exists'] else 'missing'})",
-    )
-    table.add_row(
-        "config",
-        f"{status['config_path']}  "
-        f"({status['config_error'] or ('exists' if status['config_exists'] else 'missing')})",
-    )
-    keyed = [f"{p['name']} ({p['source']})" for p in status["providers"] if p["source"]]
-    table.add_row("keys", ", ".join(keyed) if keyed else "none — neosian configure")
-    if status["scopes"]:
-        table.add_row(
-            "scopes", "  ".join(f"{k} = {v}" for k, v in status["scopes"].items())
-        )
-    else:
-        table.add_row("scopes", str(status["scopes_error"]))
-    session = status["last_session"]
-    table.add_row(
-        "session",
-        (
-            f"{session['agent']} {session['conversation']}  {session['updated_at']}"
-            if session
-            else "none recorded"
-        ),
-    )
-    table.add_row("update", f"mode {status['update_mode']}")
-    console.print(table)
-    clients = _table("client", "installed", "mcp", "hooks", "level", "interpreter")
-    for c in status["clients"]:
-        clients.add_row(
-            c["client"],
-            "yes" if c["installed"] else "no",
-            "registered" if c["mcp_registered"] else "-",
-            "present" if c["hooks_present"] else "-",
-            c["level"] or "-",
-            (
-                "-"
-                if c["interpreter_resolves"] is None
-                else (
-                    "ok"
-                    if c["interpreter_resolves"]
-                    else f"missing: {c['interpreter']}"
-                )
-            ),
-        )
-    console.print(clients)
-    for note in (*status["double_fire"], *status["one_writer"]):
-        console.print(f"note: {note}", style="dim")

@@ -200,7 +200,7 @@ class TestTheSessionLoop:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         text = await self._session(monkeypatch, "hi\n\n/quit\n")
-        assert "Agent: probe" in text and "Conversation: s1" in text
+        assert "Agent: probe" in text and "Conversation s1" in " ".join(text.split())
         assert "ok" in text
         turns = await FileStore(tmp_path / "home").read_turns("s1")
         assert len(turns) == 1

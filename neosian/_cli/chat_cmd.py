@@ -25,7 +25,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any, Final, TextIO
 
-from rich.console import Console
+from rich.markdown import Markdown
 
 from neosian._cli.chat import (
     new_conversation_id,
@@ -36,6 +36,7 @@ from neosian._cli.chat import (
 from neosian._cli.chat_agent import RESIDENT_NAME, resident_config, with_chat_tools
 from neosian._cli.chat_mcp import chat_servers, serving
 from neosian._cli.config import get_section
+from neosian._cli.display import console_for, terminal
 from neosian._cli.providers import find_provider, keyed, load_keys_into_env
 from neosian._foundation.conversation.reflection import ReflectionConfig
 from neosian._foundation.llm.base import text_of
@@ -174,6 +175,8 @@ async def one_shot(
             response = await convo.send(text)
     if json_output:
         out.write(envelope(response, conversation_id, resolve_model(config.model)))
+    elif terminal(out):
+        console_for(out).print(Markdown(text_of(response.message)))
     else:
         out.write(text_of(response.message) + "\n")
 
@@ -266,7 +269,7 @@ def run_conversation(
     if turn is None:
         if json_output:
             return usage(_JSON_NEEDS_A_TURN, json_output=True, out=out, err=err)
-        console = Console()
+        console = console_for(out)
         try:
             asyncio.run(
                 run_chat(

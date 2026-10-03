@@ -4,9 +4,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 from datetime import UTC, datetime
 
 from rich.console import Console
+from rich.text import Text
+
+from neosian._cli.display import console_for, terminal
+from neosian._cli.render_eval import print_report as print_terminal_report
 
 
 def run_eval(
@@ -15,7 +20,7 @@ def run_eval(
     """Run one suite; the table on the console or the artifact's document
     as one JSON object; the exit code is the gate (1 when a case failed).
     `output` is the artifact's directory. The progress tree is live only
-    where it can be (`live`: a terminal without NO_COLOR), never under
+    where it can be (`live`: a terminal), never under
     `--json` (EC-10)."""
     from neosian._cli.providers import load_keys_into_env
     from neosian._foundation.evaluation.reporter import report_dict
@@ -31,16 +36,18 @@ def run_eval(
     # The library reads keys from the environment only; loading them from the
     # CLI config file is the CLI's job, done here before the run.
     load_keys_into_env()
-    console = Console(stderr=json_output)
+    console = console_for(sys.stderr if json_output else sys.stdout)
     try:
         config = load_eval_config(config_file)
     except Exception as e:
         if json_output:
             print(json.dumps({"error": f"loading config: {e}", "hint": None}))
-        console.print(f"[red]Error loading config: {e}[/red]")
+        console.print(Text(f"Error loading config: {e}", style="red"))
         return 1
 
     progress = EvalProgress(config) if live and not json_output else None
+    if progress is not None:
+        progress.console = console
     try:
         if progress is not None:
             progress.start()
@@ -59,7 +66,7 @@ def run_eval(
             progress.stop()
         if json_output:
             print(json.dumps({"error": f"evaluation failed: {e}", "hint": None}))
-        console.print(f"[red]Evaluation failed: {e}[/red]")
+        console.print(Text(f"Evaluation failed: {e}", style="red"))
         return 1
 
     output_path = save_report(report, output)
@@ -67,8 +74,11 @@ def run_eval(
         print(json.dumps(report_dict(report, now=datetime.now(UTC))))
         return 1 if report.failed else 0
     console.print()
-    print_report(report, console)
+    if terminal(sys.stdout):
+        print_terminal_report(report, console)
+    else:
+        print_report(report, Console())
     console.print()
-    console.print(f"[dim]{output_path}[/dim]")
+    console.print(Text(str(output_path), style="dim"))
     console.print(f"{report.passed}/{report.total} passed")
     return 1 if report.failed else 0

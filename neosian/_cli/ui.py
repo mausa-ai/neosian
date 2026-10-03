@@ -51,12 +51,17 @@ def load_header() -> Text:
 def print_header(console: Console, agent_name: str) -> None:
     """Print the playground header with ASCII art."""
     header = load_header()
-    if header.plain:
+    if header.plain and max(map(len, header.plain.splitlines())) <= console.width:
         console.print(header)
         console.print()
 
-    console.print(PlaygroundUI.AGENT_LOADED.format(name=agent_name), style="bold")
-    console.print(f"[dim]{PlaygroundUI.SESSION_START}[/dim]\n")
+    console.print(
+        Text(
+            PlaygroundUI.AGENT_LOADED.format(name=agent_name),
+            style=f"bold {BRAND_ACCENT}",
+        )
+    )
+    console.print(Text(PlaygroundUI.SESSION_START + "\n", style="dim"))
 
 
 def pick(
@@ -66,9 +71,10 @@ def pick(
     is platform-bound): the index chosen, None on EOF."""
     from rich.prompt import Prompt
 
-    console.print(f"\n[bold]{title}[/bold]")
+    console.print()
+    console.print(Text(title, style=f"bold {BRAND_ACCENT}"))
     for number, option in enumerate(options, start=1):
-        console.print(f"  {number}. {option}")
+        console.print(Text(f"  {number}. {option}"))
     choices = [str(n) for n in range(1, len(options) + 1)]
     try:
         answer = Prompt.ask(
@@ -103,3 +109,25 @@ def format_elapsed_time(seconds: float) -> str:
     minutes = int(seconds // 60)
     remaining_seconds = seconds % 60
     return f"Response time: {minutes}m {remaining_seconds:.2f}s"
+
+
+def turn_footer(title: Text, seconds: float, cost: int | None) -> Text:
+    """The same model, timing and integer-micro-dollar receipt in both paths."""
+    from neosian._foundation.shared.types import format_micro_usd
+
+    footer = title.copy()
+    footer.append(f"  {format_elapsed_time(seconds)}", style="dim")
+    if cost is not None:
+        footer.append(f"  {format_micro_usd(cost)}", style="dim")
+    return footer
+
+
+def tool_result(name: str, success: bool, data: object) -> Text:
+    from rich.pretty import pretty_repr
+
+    text = Text("  ← ", style="dim")
+    text.append(name, style=BRAND_ACCENT)
+    text.append(": ", style="dim")
+    value = pretty_repr(data) if isinstance(data, (dict, list, tuple)) else str(data)
+    text.append(value, style="default" if success else "red")
+    return text

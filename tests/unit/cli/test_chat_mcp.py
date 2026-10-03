@@ -397,7 +397,7 @@ class TestTheSessionLoop:
             resumed=False,
             servers=(McpServer.in_process(server),),
         )
-        assert "MCP: probe (2 tools)" in out.getvalue()
+        assert "MCP probe (2 tools)" in " ".join(out.getvalue().split())
         assert len(await FileStore(tmp_path / "home").read_turns("s1")) == 1
 
     async def test_a_refused_server_is_not_a_start_failure(

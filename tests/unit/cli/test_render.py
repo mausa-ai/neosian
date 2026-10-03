@@ -1,6 +1,6 @@
 """The rendered verbs (DESIGN §30.3, #204): a terminal gets markdown, a
 table or a tree projected from the verb's own `--json` envelope; a pipe,
-`NO_COLOR` or `--json` gets the engine's bytes untouched. The pickers on
+`--json` gets the engine's bytes untouched. The pickers on
 `rich.prompt`."""
 
 import io
@@ -32,9 +32,9 @@ def _console() -> tuple[Console, io.StringIO]:
 
 
 class TestTheGate:
-    def test_only_a_terminal_without_no_color(self) -> None:
+    def test_terminal_layout_survives_no_color(self) -> None:
         assert rendered(_Tty(), {}) is True
-        assert rendered(_Tty(), {"NO_COLOR": "1"}) is False
+        assert rendered(_Tty(), {"NO_COLOR": "1"}) is True
         assert rendered(io.StringIO(), {}) is False
 
     def test_a_pipe_runs_the_engine_on_the_real_streams(self) -> None:
@@ -232,7 +232,7 @@ class TestTheProjections:
         assert any(line.strip().endswith("/project/sessions/abc") for line in lines)
         assert lines.index(next(line for line in lines if "/user/prefs" in line)) > 1
 
-    def test_status_is_two_tables(self) -> None:
+    def test_status_groups_providers_clients_and_findings(self) -> None:
         console, buffer = _console()
         render_status(
             {
@@ -271,11 +271,16 @@ class TestTheProjections:
             console,
         )
         text = buffer.getvalue()
-        assert "1.0.0rc3" in text and "openai (env)" in text
+        assert (
+            "1.0.0rc3" in text
+            and "openai" in text
+            and "configured" in text
+            and "env" in text
+        )
         assert "registered" in text and "missing: /venv/bin/python" in text
         assert "level" in text and "user" in text
-        assert "note: claude-code: both write" in text
-        assert "note: claude-code: the hooks are installed at both levels" in text
+        assert "• claude-code: both write" in text
+        assert "• claude-code: the hooks are installed at both levels" in text
 
 
 class TestThePicker:

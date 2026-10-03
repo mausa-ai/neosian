@@ -4,6 +4,7 @@ install carries (NX, ledger #206)."""
 from __future__ import annotations
 
 import importlib.resources
+import sys
 from importlib.util import find_spec
 
 from rich.console import Console
@@ -11,6 +12,7 @@ from rich.markup import escape
 from rich.table import Table
 
 from neosian import __version__
+from neosian._cli.display import console_for, fields, section, terminal
 from neosian._cli.ui import BRAND_ACCENT
 from neosian._foundation.shared.constants import App, Assets
 
@@ -33,6 +35,23 @@ def _driver_line() -> str:
 
 
 def print_banner() -> None:
+    if terminal(sys.stdout):
+        console = console_for(sys.stdout)
+        section(console, "neosian")
+        fields(
+            console,
+            [
+                ("Version", f"v{__version__}"),
+                ("Python", App.PYTHON_VERSION),
+                (
+                    "Includes",
+                    "Agent + Conversation, shell, MCP server and client, "
+                    "state process, OpenTelemetry",
+                ),
+                ("Postgres", _driver_line()),
+            ],
+        )
+        return
     console = Console()
 
     # Load logo

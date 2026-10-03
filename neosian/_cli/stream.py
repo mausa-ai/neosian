@@ -15,7 +15,7 @@ from rich.console import Console, RenderableType
 from rich.panel import Panel
 from rich.text import Text
 
-from neosian._cli.ui import format_args, format_elapsed_time
+from neosian._cli.ui import BRAND_ACCENT, format_args, tool_result, turn_footer
 from neosian._foundation.agent.events import (
     AgentEvent,
     BlockedEvent,
@@ -29,7 +29,7 @@ from neosian._foundation.agent.events import (
 )
 from neosian._foundation.conversation.core import Conversation
 from neosian._foundation.shared.constants import PlaygroundUI
-from neosian._foundation.shared.types import AnyModel, format_micro_usd
+from neosian._foundation.shared.types import AnyModel
 
 _BLOCKED = "blocked"
 _MEMORY_WRITE = "memory_write"
@@ -71,18 +71,17 @@ class _Renderer:
         elif isinstance(event, ToolCallEvent):
             self._calls[event.id] = event.name
             text = Text("→ ", style="dim")
-            text.append(event.name, style="yellow")
+            text.append(event.name, style=BRAND_ACCENT)
             text.append(f"({format_args(dict(event.arguments))})", style="dim")
             self._line(text)
         elif isinstance(event, ToolResultEvent):
-            text = Text("  ← ", style="dim")
-            text.append(self._name(event.tool_call_id), style="yellow")
-            text.append(": ", style="dim")
-            if event.success:
-                text.append(str(event.data), style="green")
-            else:
-                text.append(str(event.error), style="red")
-            self._line(text)
+            self._line(
+                tool_result(
+                    self._name(event.tool_call_id),
+                    event.success,
+                    event.data if event.success else event.error,
+                )
+            )
         elif isinstance(event, ToolProgressEvent):
             name = self._name(event.tool_call_id)
             self._line(
@@ -90,7 +89,7 @@ class _Renderer:
             )
         elif isinstance(event, MemoryWriteEvent):
             text = Text("  ✎ ", style="dim")
-            text.append(_MEMORY_WRITE, style="magenta")
+            text.append(_MEMORY_WRITE, style=BRAND_ACCENT)
             text.append(f" {event.command} {event.path} v{event.version}")
             if event.previous_path is not None:
                 text.append(f" (was {event.previous_path})", style="dim")
@@ -109,14 +108,10 @@ class _Renderer:
                 )
             )
         elif isinstance(event, DoneEvent):
-            footer = Text()
-            footer.append_text(self._title)
-            elapsed = format_elapsed_time(time.perf_counter() - self._started)
-            footer.append(f"  {elapsed}", style="dim")
             cost = event.usage.cost_micro_usd(self._model) if event.usage else None
-            if cost is not None:
-                footer.append(f"  {format_micro_usd(cost)}", style="dim")
-            self._line(footer)
+            self._line(
+                turn_footer(self._title, time.perf_counter() - self._started, cost)
+            )
 
 
 async def stream_turn(

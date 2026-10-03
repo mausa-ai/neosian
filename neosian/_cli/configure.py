@@ -71,13 +71,15 @@ def _list(env: Mapping[str, str], *, json_output: bool, out: TextIO) -> int:
 
 
 def _rich_prompt(out: TextIO) -> Prompt:
-    from rich.console import Console
     from rich.prompt import Prompt as RichPrompt
+    from rich.text import Text
 
-    console = Console(file=out)
+    from neosian._cli.display import console_for
+
+    console = console_for(out)
 
     def ask(label: str) -> str:
-        return RichPrompt.ask(label, password=True, default="", console=console)
+        return RichPrompt.ask(Text(label), password=True, default="", console=console)
 
     return ask
 
