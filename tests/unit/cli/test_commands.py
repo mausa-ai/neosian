@@ -231,6 +231,14 @@ class TestNewAndResume:
             await send(pilot, "/resume 20260101-000000-probe")
             text = _text(app)
             assert app.session.convo.conversation_id == "20260101-000000-probe"
+            assert app.query_one(Prompt).has_focus
+            await pilot.press("tab", "enter")
+            call_view = app.query_one(ToolCall)
+            assert call_view.has_focus and call_view.expanded
+            # A session replacement can finish after focus leaves the prompt.
+            await app.reopen(conversation_id="another", resumed=False)
+            await pilot.pause()
+            assert app.query_one(Prompt).has_focus and not app.query(ToolCall)
         assert "Resumed" in text and "> look" in text and "it says two" in text
         assert "→ read()" in text and "← one  (+1 lines)" in text
 

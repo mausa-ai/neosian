@@ -8,6 +8,8 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-03
+
 ### Added
 
 - The chat session is a full-screen terminal app: `neosian chat`, bare
@@ -15,6 +17,10 @@ phase close names the version.
   show a tool call as one line with a one-line result until it is expanded
   (a click, or ctrl+o for all), interrupt a turn on esc and leave the
   `--resume` line behind. A PROMPT, a pipe and `--json` are unchanged.
+- Keyboard access to individual tool calls: tab and shift+tab move focus,
+  enter or space folds the focused call, and esc returns to the prompt.
+  The focus border remains visible without color; mouse folding preserves
+  prompt focus. Escape still interrupts a running turn.
 - The resident agent runs the shell's verbs through one `neosian` tool: a
   form that only reads runs at once; one that changes state waits for the
   user's `y` in the session and is declined in a one-shot turn; sessions,
@@ -24,7 +30,8 @@ phase close names the version.
   stored as `configure --key -` stores it, never shown to the model),
   `/model`, `/resume`, `/new`, `/compact` and `/exit`, offered as a menu
   that narrows as you type (tab completes, enter runs). A resumed
-  conversation draws its last ten turns again.
+  conversation draws its last ten turns again. `/model` changes only the
+  current session and preserves the configured default.
 
 ### Changed
 
@@ -1877,7 +1884,8 @@ pre-release — pin it explicitly; the API stability promise rides v1.0.0.
 - Both entry points share one `_validate_run`, so neither can skip a
   guard.
 
-[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/mausa-ai/neosian/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/mausa-ai/neosian/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/mausa-ai/neosian/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/mausa-ai/neosian/compare/v1.0.3...v1.1.0

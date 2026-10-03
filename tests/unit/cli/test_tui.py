@@ -11,6 +11,7 @@ import pytest
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.containers import Vertical
+from textual.geometry import Region
 from textual.pilot import Pilot
 from textual.widgets import Markdown, Static
 
@@ -247,6 +248,118 @@ class TestAToolCallFolds:
 
 
 @pytest.mark.unit
+class TestToolKeyboard:
+    def _config(self, *, long_reply: bool = False) -> AgentConfig:
+        @Tool(name="read", description="Reads.")
+        async def read() -> ToolResult[str]:
+            return ToolResult.ok("one\ntwo\nthree")
+
+        reply = (
+            "\n\n".join(f"paragraph {n}" for n in range(60)) if long_reply else "done"
+        )
+        return _config(
+            FakeTurn(tool_calls=(_call("c1", "read"), _call("c2", "read"))),
+            FakeTurn(content=reply),
+            FakeTurn(content="another turn"),
+            tools=(read,),
+        )
+
+    async def test_tab_walks_calls_and_toggles_only_the_focused_one(
+        self, tmp_path: Path
+    ) -> None:
+        app = _app(self._config())
+        async with app.run_test() as pilot:
+            await send(pilot, "go")
+            first, second = app.query(ToolCall)
+            prompt = app.query_one(Prompt)
+            prompt.text = "my draft"
+            await pilot.press("tab")
+            assert first.has_focus
+            await pilot.press("enter")
+            assert [call.expanded for call in (first, second)] == [True, False]
+            await pilot.press("tab", "space")
+            assert second.has_focus
+            assert [call.expanded for call in (first, second)] == [True, True]
+            await pilot.press("shift+tab", "space")
+            assert first.has_focus
+            assert [call.expanded for call in (first, second)] == [False, True]
+            await pilot.press("shift+tab")
+            assert prompt.has_focus and prompt.text == "my draft"
+            assert len(await FileStore(tmp_path / "home").read_turns("t1")) == 1
+            await pilot.press("shift+tab", "escape")
+            assert prompt.has_focus and prompt.text == "my draft"
+            await pilot.press("enter")
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            assert "another turn" in _text(app)
+
+    async def test_focus_scrolls_to_a_call_and_marks_it_without_hiding_text(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("NO_COLOR", "1")
+        app = _app(self._config(long_reply=True))
+        async with app.run_test(size=(80, 24)) as pilot:
+            await send(pilot, "go")
+            scroll = app.query_one("#scroll")
+            bottom = scroll.scroll_y
+            await pilot.press("tab")
+            await pilot.pause()
+            call = app.query_one(ToolCall)
+            assert call.has_focus and call.styles.border.left[0] == "thick"
+            assert scroll.scroll_y < bottom
+            assert scroll.content_region.contains_region(call.region)
+            drawn = "\n".join(
+                strip.text for strip in call.render_lines(Region(0, 0, *call.size))
+            )
+            assert "read()" in drawn and "one" in drawn
+
+    async def test_click_folds_without_stealing_prompt_focus(self) -> None:
+        app = _app(self._config())
+        async with app.run_test(size=(100, 40)) as pilot:
+            await send(pilot, "go")
+            first = app.query_one(ToolCall)
+            await pilot.click(first)
+            assert first.expanded and app.query_one(Prompt).has_focus
+            await pilot.press("d")
+            assert app.query_one(Prompt).text == "d"
+
+    async def test_no_calls_keeps_focus_and_the_menu_still_completes(self) -> None:
+        app = _app(self._config())
+        async with app.run_test() as pilot:
+            prompt = app.query_one(Prompt)
+            await pilot.press("tab", "shift+tab")
+            assert prompt.has_focus
+            await send(pilot, "go")
+            await pilot.press("/", "m", "tab")
+            assert prompt.has_focus and prompt.text == "/model "
+            await pilot.press("tab", "ctrl+o")
+            assert app.query_one(ToolCall).has_focus
+            assert all(call.expanded for call in app.query(ToolCall))
+            await pilot.press("ctrl+o")
+            assert all(not call.expanded for call in app.query(ToolCall))
+
+    @pytest.mark.parametrize("exit_keys", [("ctrl+d",), ("ctrl+c", "ctrl+c")])
+    async def test_ctrl_c_copies_then_clears_and_exit_works_from_a_call(
+        self, monkeypatch: pytest.MonkeyPatch, exit_keys: tuple[str, ...]
+    ) -> None:
+        app = _app(self._config())
+        async with app.run_test() as pilot:
+            await send(pilot, "go")
+            prompt = app.query_one(Prompt)
+            prompt.text = "my draft"
+            await pilot.press("tab")
+            assert app.query_one(ToolCall).has_focus
+            with monkeypatch.context() as patch:
+                patch.setattr(app.screen, "get_selected_text", lambda: "copied")
+                await pilot.press("ctrl+c")
+                assert app.clipboard == "copied" and prompt.text == "my draft"
+            await pilot.press("ctrl+c")
+            assert not prompt.text and app.is_running
+            await pilot.press(*exit_keys)
+            assert (app.is_running, app.return_code) == (False, 0)
+
+
+@pytest.mark.unit
 class TestTheFrames:
     async def test_progress_names_how_long_the_call_has_run(self) -> None:
         async with _view() as (view, host):
@@ -343,8 +456,9 @@ class TestTheSession:
             assert "two" in _text(app)
 
     @pytest.mark.parametrize("key", ["escape", "ctrl+c"])
+    @pytest.mark.parametrize("focus_call", [False, True])
     async def test_an_interrupt_stops_the_turn_and_nothing_is_saved(
-        self, tmp_path: Path, key: str
+        self, tmp_path: Path, key: str, focus_call: bool
     ) -> None:
         @Tool(name="hang", description="Never returns.")
         async def hang() -> ToolResult[str]:
@@ -363,11 +477,15 @@ class TestTheSession:
             await pilot.press("enter")
             await _until(pilot, lambda: bool(app.query(ToolCall)))
             assert app.query_one(Working).display
+            if focus_call:
+                await pilot.press("tab")
+                assert app.query_one(ToolCall).has_focus
             await pilot.press(key)
             await app.workers.wait_for_complete()
             await pilot.pause()
             assert "interrupted: the turn was not saved" in _text(app)
             assert not app.query_one(Working).display
+            assert app.query_one(Prompt).has_focus
             assert await store.read_turns("t1") == ()
             await send(pilot, "and now")  # the send lock was let go
             assert "back" in _text(app)

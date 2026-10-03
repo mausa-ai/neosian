@@ -74,6 +74,7 @@ class SessionApp(App[None]):
     """
     BINDINGS: ClassVar[list[BindingType]] = [
         Binding("ctrl+c", "cancel", show=False),  # wherever the focus is
+        Binding("ctrl+d", "quit", show=False),
         Binding("escape", "interrupt", show=False),
         Binding("ctrl+o", "unfold", show=False),
         Binding("pageup", "page(-1)", show=False, priority=True),
@@ -241,6 +242,7 @@ class SessionApp(App[None]):
         if conversation_id is not None:
             await self._transcript.remove_children()
             await self._open()
+            self.query_one(Prompt).focus()
 
     async def _stop(self) -> None:
         if self._turn is not None:
@@ -251,6 +253,7 @@ class SessionApp(App[None]):
     def action_interrupt(self) -> None:
         if self._turn is not None:
             self._turn.cancel()
+        self.query_one(Prompt).focus()
 
     async def action_cancel(self) -> None:
         """ctrl+c: copy a selection, else stop the turn, else clear the

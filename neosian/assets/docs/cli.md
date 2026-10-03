@@ -102,12 +102,15 @@ neosian                                  # on a terminal: chat; under a pipe: th
 `playground`) opens a full-screen session in the terminal's own colors:
 the reply streams as Markdown, and a tool call is one line with a
 one-line result until you expand it (click it, or ctrl+o for every
-call), so a large result costs nothing until it is asked for. Enter
-sends and ctrl+j breaks the line; up and down walk what you sent; a
-sent message is a full highlighted line. Esc interrupts a turn, which then saves nothing; ctrl+c copies a
-selection, else interrupts, else clears the prompt, else asks for a
-second ctrl+c to leave; ctrl+d and `/exit` leave at once; page up and
-page down scroll. The `--resume` line stays in the terminal after the
+call), so a large result costs nothing until it is asked for. Tab and
+shift+tab focus individual calls and the prompt; enter or space folds
+the focused call. A border marks focus, including with `NO_COLOR`.
+At the prompt, enter sends and ctrl+j breaks the line; up and down walk
+what you sent; a sent message is a full highlighted line. Esc returns
+to the prompt and interrupts a running turn, which then saves nothing;
+ctrl+c copies a selection, else interrupts, else clears the prompt,
+else asks for a second ctrl+c to leave; ctrl+d and `/exit` leave at
+once; page up and page down scroll. The `--resume` line stays in the terminal after the
 screen is restored. A PROMPT, a pipe and `--json` never open it.
 
 **Seven commands.** A line that begins with `/` is a command, and a
@@ -117,9 +120,10 @@ them and the keys. `/configure` picks a provider and takes its API key
 in a masked input: the key goes to `config.toml` as `configure --key -`
 would store it, and never to the transcript, a turn or the model.
 `/model` switches the model on the same conversation (a list of the
-models a key opens; `/model ID` names one). `/resume` continues an
-earlier session of this chat in this project (a list, newest first;
-`/resume ID` names one) and draws its last ten turns again, as
+models a key opens; `/model ID` names one). The choice lasts for this
+session; it does not change `[chat] model` in `config.toml`. `/resume`
+continues an earlier session of this chat in this project (a list,
+newest first; `/resume ID` names one) and draws its last ten turns again, as
 `--resume` does at the start. `/new` starts a fresh conversation,
 `/compact` folds the older turns now, `/exit` leaves. Typing `/` opens
 them as a menu above the prompt that narrows as you type: up and down

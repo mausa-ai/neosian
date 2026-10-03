@@ -145,10 +145,19 @@ def _one_line(text: Text) -> Text:
     return text
 
 
-class ToolCall(Static):
+class ToolCall(Static, can_focus=True):
     """One call: a line while it runs, a one-line summary once it lands.
     The arguments and the result are drawn whole only when expanded, so a
     large result costs nothing until it is asked for."""
+
+    FOCUS_ON_CLICK = False
+    DEFAULT_CSS = """
+    ToolCall { border-left: blank $primary; }
+    ToolCall:focus { border-left: thick $primary; }
+    """
+    BINDINGS: ClassVar[list[BindingType]] = [
+        Binding("enter,space", "fold", show=False),
+    ]
 
     def __init__(self, name: str, arguments: Mapping[str, Any]) -> None:
         super().__init__()
@@ -162,6 +171,9 @@ class ToolCall(Static):
         self._draw()
 
     def on_click(self) -> None:
+        self.action_fold()
+
+    def action_fold(self) -> None:
         self.fold(expanded=not self.expanded)
 
     def finish(self, success: bool, value: object) -> None:

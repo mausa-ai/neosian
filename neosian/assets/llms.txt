@@ -65,10 +65,12 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
   `<home>/config.toml` (`name`, then `command`/`args`/`env` or
   `url`/`headers`, `prefix`) are MCP servers it opens for the session,
   their tools added. Bare `neosian` on a terminal opens it: a full-screen
-  session where a tool call is one line until expanded (ctrl+o), esc
-  interrupts a turn, and seven commands cover what the agent cannot do
+  session where a tool call is one line until expanded (ctrl+o for all,
+  tab/shift+tab to focus one, enter/space to toggle it). Esc returns to
+  the prompt and interrupts a running turn. Seven commands cover what
+  the agent cannot do
   (`/help`, `/configure` for a key typed masked, `/model`, `/resume`,
-  `/new`, `/compact`, `/exit`).
+  `/new`, `/compact`, `/exit`); `/model` changes only this session.
 - `neosian update [--mode off|notify|auto]`: a PyPI check on the human
   verbs only, never on an agent verb; `auto` applies a uv tool install
   within the major.
@@ -248,7 +250,7 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
 
 ## Install
 
-- `uv add "neosian==1.2.0"`: one package, the library and its
+- `uv add "neosian==1.3.0"`: one package, the library and its
   provider SDKs, the `neosian` shell, the MCP server and client, the
   state process and OpenTelemetry spans (about 70 MB; nothing loaded
   until used). Pin a release for reproducible installs.
@@ -258,13 +260,13 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
 - `curl -fsS https://neosian.com/install | bash` puts uv and neosian on a
   machine with nothing on it; the script says what it installs first.
 - The appliance: `docker run -d -e NEOSIAN_SERVE_TOKEN=… -p 6367:6367
-  -v neosian-state:/data ghcr.io/mausa-ai/neosian:1.2.0`, the state
+  -v neosian-state:/data ghcr.io/mausa-ai/neosian:1.3.0`, the state
   process on a volume, `/health` the one open route.
 
 ## Docs
 
-- https://github.com/mausa-ai/neosian/blob/v1.2.0/docs/README.md: install and quickstart.
-- https://github.com/mausa-ai/neosian/blob/v1.2.0/docs/SERVICES.md: every environment key and what turning it off means.
+- https://github.com/mausa-ai/neosian/blob/v1.3.0/docs/README.md: install and quickstart.
+- https://github.com/mausa-ai/neosian/blob/v1.3.0/docs/SERVICES.md: every environment key and what turning it off means.
 - `neosian docs baselines`: the published per-provider memory numbers.
 
 ## Messages and reminders
