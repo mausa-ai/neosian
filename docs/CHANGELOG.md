@@ -8,6 +8,12 @@ phase close names the version.
 
 ## [Unreleased]
 
+### Changed
+
+- Record the first twelve-scenario external memory baseline, dispatch #22,
+  including handoff results, provider access failures and response wording
+  limitations. The measured scores are unchanged.
+
 ## [1.1.1] - 2026-10-03
 
 ### Fixed

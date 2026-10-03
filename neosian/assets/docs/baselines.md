@@ -153,8 +153,9 @@ fails when any gated file changes without this section being updated:
   lands after it, the next session continues in one call and recalls a
   long result's middle by its call, a fresh one sees no note. No
   existing scenario, turn, pin or prompt moved; the pack is 48 cells
-  keyless (the dated block under Results); every real row's re-run
-  rides the /ship after `n6-done`, the N5 precedent. Prior:
+  keyless (the dated block under Results); dispatch #22 measures the
+  real rows at the /ship after `n6-done`, including the account failures
+  reported below. Prior:
   `6024174f…`.)*
   *(N5 /ship, 2026-09-27, one pin widened, no scenario, turn or count
   moved: `old-turn-search`'s response pin was the TTL's digits, `86400`,
@@ -312,8 +313,92 @@ evidence. Each stays measured every dispatch; none is tuned around
   local candidate gemma-4-e4b-it on every transport of its first board,
   NW2): the guide's `description` key never reaches a writer that skips
   `list_skills`, ruled at NK (the store truth stays the pin).
+- **Handoff discipline** (dispatch #22, the first real twelve-scenario
+  board): some models leave the note pending, rewrite its status, or
+  write another departure note while continuing. Others save an extra
+  build document during the read. Sol and Grok pass all four handoff
+  cells; Sonnet, both Cerebras rows, Kimi and the local model have misses,
+  detailed below.
+  One gpt-oss response also exposes a scoring limit: a nonbreaking
+  hyphen in `BUILD‑7731` fails the ASCII-hyphen response regex. The
+  local model's cli and mcp answers correctly report no pending note
+  but fail the literal `picked up` response pin. The recorded scores
+  keep those failures; no assertion was changed.
 
 ## Results
+
+### 2026-10-03: Dispatch #22, the first handoff board (the N6 /ship)
+
+[Dispatch #22](https://github.com/mausa-ai/neosian/actions/runs/37104927831)
+on `1531496`, the `1.1.0` tag, measures the twelve-scenario pack at
+`5623d0d6…`. All eight lanes completed, with no timeout or cut cell.
+The dispatch concludes `failure`; the tables retain every recorded miss,
+including provider access errors and the response wording limits below.
+The source archive and container jobs failed on stale README paths,
+before publication; the packaging repair is 1.1.1 and changes no model
+prompt, scenario or assertion.
+
+Scores are passing cells out of twelve. Account errors count as failed
+cells in the raw board, but do not measure model behavior. Lane elapsed
+includes setup and probes.
+
+| Provider | Model | function | cli | http | mcp | native | lane elapsed |
+|---|---|---|---|---|---|---|---|
+| OpenAI (Responses) | gpt-6-sol | 12/12 | 12/12 | 11/12 | 11/12 | n/a | 6 min 40 s |
+| Anthropic | claude-sonnet-5 | 11/12 | 10/12 | 12/12 | 11/12 | 11/12 | 13 min 8 s |
+| Cerebras | gpt-oss-120b | 9/12 | 10/12 | 10/12 | 10/12 | n/a | 5 min 20 s |
+| Cerebras | qwen-3.8-27b | 10/12 | 11/12 | 11/12 | 10/12 | n/a | (same lane) |
+| xAI (Responses) | grok-4.6 | 10/12 | 11/12 | 11/12 | 12/12 | n/a | 11 min 47 s |
+| Gemini | gemini-3.8-flash | 12/12 | 3/12 (account) | 0/12 (account) | 0/12 (account) | n/a | 27 min 41 s |
+| Model Studio, token plan | qwen3.8-max | 0/12 (access) | 0/12 (access) | 0/12 (access) | 0/12 (access) | n/a | 1 min 1 s |
+| Moonshot (100 rpm) | kimi-k3 | 9/12 | 11/12 | 10/12 | 11/12 | n/a | 31 min 34 s |
+| local (the hosted runner, CPU) | gemma-4-e4b-it | 10/12 | 10/12 | 9/12 | 9/12 | n/a | 171 min 1 s |
+
+Findings, recorded as found:
+
+- **Sol: 46/48**, with `dedup` missing the combined allergy document on
+  http and mcp. **Grok: 44/48**, with `long-horizon-recall` missing the
+  project rate-limit fact on function, cli and http, plus a `skills`
+  miss on function. Both pass `handoff` on all four transports.
+- **Sonnet: 44/48.** The function handoff rewrites the note's status,
+  cli leaves it pending, and mcp writes no departure note. The other
+  miss is `correct-wrong-memory` on cli. Its separate transport-axis
+  run passes 12/12 on function and 11/12 on native memory, where the
+  handoff note remains pending.
+- **gpt-oss-120b: 39/48**, with `skills` and `handoff` red on every
+  transport and an extra document in `cross-client` on function. Three
+  handoff answers miss the build identifier; the mcp answer contains
+  `BUILD‑7731`, whose nonbreaking hyphen fails the response regex.
+- **Cerebras Qwen: 42/48.** Handoff adds an extra build document on
+  function and mcp, and leaves the wrong note status with an extra
+  version on http. The other misses are `skills` on function/cli and
+  `long-horizon-recall` on mcp. Its cli handoff passes.
+- **Kimi: 41/48.** Handoff writes a new departure note on function and
+  cli and an extra build document on http; mcp passes. The other reds
+  are `write-discipline` and `old-turn-search` on function, `skills`
+  on http and `cross-client` on mcp.
+- **Gemini: 15/48, account-limited.** All function cells and the first
+  three cli cells pass, including handoff on function. From cli's
+  `contradiction` onward, every remaining cell fails with HTTP 402,
+  `RESOURCE_EXHAUSTED`: prepaid credits depleted. Both Gemini catalog
+  probes then fail for the same reason. These 33 failures are provider
+  access failures, not evidence of memory behavior.
+- **Model Studio Qwen: no behavioral measurement.** All 48 cells, the
+  seven door probes, link recall and the catalog probe return HTTP 403,
+  `AccessDenied.Unpurchased`. Access must be restored before a rerun
+  can measure this row.
+- **Local Gemma: 38/48**, all cells completed on the CPU runner. Skills
+  lack description frontmatter on every transport. Handoff misses the
+  build identifier on function; cli and mcp correctly say no note is
+  pending but omit the response pin's literal `picked up`. Http handoff
+  passes. The other misses are `maintenance` and `cross-client` on http
+  (the timezone stays in the project mount; recall returns a session id
+  instead of the ticket) and `long-horizon-recall` on mcp (the deployment
+  branch fact is filed in the user mount).
+- All catalog and applicable door probes on the other lanes
+  pass. Link recall passes on those lanes and Gemini; Model Studio's
+  link cell fails with the same access error. The local link cell uses
+  the handle and passes, unlike dispatch #21.
 
 ### 2026-09-28: Dispatch #21, rc21 and the funded Anthropic probe (the NC11 /ship)
 
