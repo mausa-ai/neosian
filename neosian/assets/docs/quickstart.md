@@ -42,7 +42,9 @@ with an agent that knows neosian and writes to the same memory
 (`neosian docs cli`).
 
 From then on each session lands as a turn the ledger names (`neosian
-audit`), the next session opens on where you left off, and `neosian
+audit`), the next session opens on where you left off, "continue" in
+any of them carries the last session on in one call (ask the departing
+one to hand off and the next one starts with its note), and `neosian
 search <words>` finds any turn by its words. A memory the agent writes is
 a markdown file under the home you can read, version and revert
 (`neosian docs agents`, `neosian docs memory`).

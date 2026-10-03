@@ -99,14 +99,20 @@ neosian record install --client opencode --level project --scope user:me --write
   project`), that maps `chat.message`, `tool.execute.after` and
   `session.idle` onto the verb's three write payloads and pipes them in:
   ours whole, overwritten on re-run, never merged; print mode prints
-  its source. The writer is `opencode:<session_id>`. OpenCode's only
-  context door is an experimental per-call hook, so its row is
-  write-only: the read side below is not wired there. The memory half
-  is JSON: `neosian mcp install --client opencode` merges `{"mcp":
-  {"neosian-memory": {"type": "local", …}}}` into `opencode.json` in the
-  same directory (an `opencode.jsonc` beside it is refused, since
-  comments do not survive a merge; paste the fragment). Any model
-  OpenCode can run works, its free models included.
+  its source. The writer is `opencode:<session_id>`. OpenCode has no
+  start hook, but it shows an MCP server's instructions to the model
+  whole, so its read side is the server's instructions: the memory
+  index, the pending handoff note and "where we left off", rendered per
+  connection (DESIGN §33). The memory half is JSON: `neosian mcp
+  install --client opencode` merges `{"mcp": {"neosian-memory": {"type":
+  "local", …}}}` into OpenCode's config in the same directory: into
+  `opencode.jsonc` when that file stands there holding plain JSON (the
+  file OpenCode's own init leaves), else into `opencode.json`. OpenCode
+  reads both files and merges them, the `.jsonc` last, so beside a
+  commented `.jsonc` the entry lands in `opencode.json` and the report
+  says so (and warns when the `.jsonc` names `neosian-memory` itself,
+  since that entry would win). Any model OpenCode can run works, its
+  free models included.
 
 ## What a span becomes
 
@@ -134,30 +140,46 @@ except on `SessionStart`. Cursor uses JSON hook responses, described below.
 
 ## Session start: where we left off
 
-Claude Code and Codex add a `SessionStart` hook's stdout to the model's
-context, so on that event the verb prints two blocks and writes
-nothing:
+Claude Code, Codex, Cursor and Muse Code add a `SessionStart` hook's
+output to the model's context, so on that event the verb prints three
+blocks and writes nothing:
 
-1. **The memory index** of the scope: the same rendering the MCP
-   server's instructions carry, so the sessions documents are listed.
-2. **Where we left off**: the scope's recent sessions, log-projected
+1. **The memory index** of the scope, so the sessions documents are
+   listed (the MCP server's instructions then carry the write discipline
+   alone: one window, one copy).
+2. **The handoff note**, when one is pending (DESIGN §33): the note the
+   last departing agent wrote with `handoff`, in full, naming the
+   `continue_session` call that picks it up; one line once it is a week
+   old; nothing once a session picked it up.
+3. **Where we left off**: the scope's recent sessions, log-projected
    the way a conversation view is (`neosian docs memory`): one line per
-   turn, its number in square brackets, newest session first, under one
-   8192-character budget shared evenly (older turns fold into a count
-   line: paging, never deletion). Which sessions depends on `source`:
-   after a **compaction** (`source: compact`) the session's own record
-   comes back, the re-injection of what the client just paged out;
-   on `startup`, `resume`, `clear` or `fork` the three most recently
-   written sessions, the own one included when it is among them.
+   turn, its number in square brackets, newest session first (older
+   turns fold into a count line: paging, never deletion). Which sessions
+   depends on `source`: after a **compaction** (`source: compact`) the
+   session's own record comes back and no note, the re-injection of
+   what the client just paged out; on `startup`, `resume`, `clear` or
+   `fork` the three most recently written sessions, the own one
+   included when it is among them.
 
-The block names every turn it shows, and the footer names the call
-that re-reads one: `recall_turn(n, conversation="<id>")` on the
-`neosian-memory` MCP server (`neosian docs mcp`), the same tool a
-neosian `Conversation` uses to page its own history, and
-`search_history(query)` on the same server finds a turn of any session
-by its words, listed or not. Bodies stay behind tools; the block is a
-table of contents, not the transcript. An
-empty scope still prints the frame, so the agent knows the door exists.
+The three blocks share one budget, the client's own ceiling on what a
+hook may inject (Claude Code 10,000 characters, Codex 2,500 tokens,
+Cursor 10,000, Muse Code 16 KiB), counted exactly: the index up to
+three eighths of it, the note up to 2048, the sessions the rest, so a
+busy scope folds and never trips a client into a file-path preview. A
+client with no start hook, OpenCode, reads the same blocks from the MCP
+server's instructions, which it shows whole.
+
+A handoff is declared, never assumed. The block offers; a session that
+says nothing is new work. When the user says "continue", the agent makes
+one call, `continue_session()`, and receives the conversation whole: the
+note's session, else the most recent one listed. The block names every
+turn it shows, and the footer names the call that re-reads one:
+`recall_turn(n, conversation="<id>")` on the `neosian-memory` MCP server
+(`neosian docs mcp`), the same tool a neosian `Conversation` uses to page
+its own history, and `search_history(query)` on the same server finds a
+turn of any session by its words, listed or not. Bodies stay behind
+tools; the block is a table of contents, not the transcript. An empty
+scope still prints the frame, so the agent knows the door exists.
 For Codex, the text is carried in the hook response's
 `hookSpecificOutput.additionalContext` JSON field: its parser treats the
 frame's leading `[` as JSON, so a plain-text response would be rejected.
@@ -287,7 +309,7 @@ two project directories, each session in its own `proj:` scope.
 |---|---|---|---|---|
 | Claude Code | ✓ user scope through `claude mcp add-json` | ✓ walkthrough green 2026-09-02 | ✓ 2026-09-19 (2.1.278): the server is spawned in the session's directory, the hook line's project directory expands | ✓ `SessionStart`, stdout as context (2026-09-03) |
 | Codex | ✓ through `codex mcp add` | ✓ walkthrough green 2026-09-03 (`codex exec`) | ✓ 2026-09-19 (0.154.0): the same, user-level hooks with no project trust step | ✓ JSON `additionalContext`; cross-client recall verified on 0.157.1 (2026-09-27) |
-| OpenCode | ✓ | ✓ walkthrough green 2026-09-03 (`opencode run`, a plugin) | ✓ 2026-09-19 (1.18.30, a free model): the same, the plugin passing the directory it was opened with | — (an experimental per-call door only; not wired) |
+| OpenCode | ✓ (`opencode.jsonc` when it holds plain JSON, else `opencode.json`) | ✓ walkthrough green 2026-09-03 (`opencode run`, a plugin) | ✓ 2026-09-19 (1.18.30, a free model): the same, the plugin passing the directory it was opened with | ✓ the server's instructions (shown whole, 1.18.30+): the index, the note and the sessions per connection; no hook |
 | Claude Desktop | ✓ | no hooks surface | one file by nature; no project, so `/user` alone | — |
-| Cursor | ✓ user MCP, credential names forwarded | ✓ interactive CLI 2026.09.10-fd3934a; `--print` lacks full recording | ✓ one user registration, payload workspace roots | ✓ `sessionStart`, JSON `additional_context` |
+| Cursor | ✓ user MCP, credential names forwarded | ✓ interactive CLI 2026.09.10-fd3934a; `--print` lacks full recording; MCP rounds through `afterMCPExecution` | ✓ one user registration, payload workspace roots | ✓ `sessionStart`, JSON `additional_context` |
 | Muse Code | ✓ user settings or shared project `.mcp.json` | ✓ walkthrough green 2026-09-22 (`muse exec`, 1.3.0) | ✓ two projects, one user registration; authenticated managed hooks and MCP on the state process | ✓ `SessionStart`, plain stdout; prior turn recalled over MCP |

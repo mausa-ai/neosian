@@ -40,7 +40,26 @@ serves five:
   50; `conversation` narrows to one. A hit is `[<id> #<turn>] <stamp>
   <actor>` and a snippet around the match, and the footer names the
   `recall_turn` call that re-reads it: search finds, recall opens. What
-  is searchable is the host's decision, as with recall.
+  is searchable is the host's decision, as with recall. A long tool
+  result shows its head and tail; `recall_turn(..., call=<id>)`, the id
+  the marker names, reads that one result whole.
+- **`continue_session(conversation=None)`** (DESIGN §33): the one call
+  an agent makes when the user says to continue where another session
+  left off. It delivers that conversation whole within a budget (every
+  user prompt and final answer verbatim, tool rounds as one line each,
+  older turns as log lines), the pending handoff note first, and marks
+  the note picked up. A bare call means the note's session, else the
+  most recent session listed under `sessions/`; `conversation=<id>`
+  names one. A session that calls it is linked: its sessions document
+  says `continues: <id>`, and `neosian audit` shows it.
+- **`handoff(note)`**: the note a departing agent writes for whoever
+  continues next, in any agent: one baton per scope (`/project/handoff`),
+  shown in full at the next session start until a session picks it up,
+  never deleted (a newer note replaces it; versions keep the old). Under
+  2048 characters: what was being done, what is done, what is next, what
+  is open. The wheel's own `handoff` skill is served as a prompt
+  (`/mcp__neosian-memory__handoff` in Claude Code) beside the mounts'
+  skills, so the user can ask for the note with one command.
 
 ## Serve
 
@@ -55,15 +74,20 @@ is the single-mount sugar, `--mount scope=...,path=...` is repeatable
 defaults to `mcp`
 (convention `mcp:<host>`), and Postgres arrives only through
 `NEOSIAN_POSTGRES_DSN`, never an argv flag. The server's
-instructions carry the same memory index and prompt pack the function
-tool uses; the index refreshes per connection. Every shipped store
-keeps conversations too, so `recall_turn` and `search_history` are always
-on the list.
+instructions depend on the client's start door (DESIGN §33), which the
+server reads from the actor the installer rendered (`mcp:<client>`): a
+client whose `SessionStart` hook prints the index (Claude Code, Codex,
+Cursor, Muse Code) gets the write discipline alone, so one window holds
+one copy; any other client (OpenCode, Claude Desktop, a hand-written
+entry) gets the memory index, the pending handoff note and "where we
+left off" in the instructions, refreshed per connection. Every shipped
+store keeps conversations too, so the state set is always on the list:
+`recall_turn`, `search_history`, `continue_session` and `handoff`.
 
 Hosts that embed the server in their own transport use
 `create_memory_server` from `neosian.mcp`; passing their conversation
-store as `conversations=` adds `recall_turn` and `search_history` beside
-`memory`.
+store as `conversations=` adds the state set beside `memory`, and
+`session_start="hook"` says the host prints the start blocks itself.
 
 ## Register a client
 

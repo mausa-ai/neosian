@@ -87,7 +87,9 @@ version` (the Development section has the gates).
 
 `neosian setup --write` connects your installed clients to the home once.
 Their hooks record each session into one store, so any of them picks up
-where another stopped, and one ledger names them all.
+where another stopped: say "continue" and the agent receives that
+conversation in one call, with the note the last one left on departure;
+one ledger names them all, and which continued which.
 
 <p align="center">
 <img src="https://raw.githubusercontent.com/mausa-ai/neosian/v1.0.3/branding/readme/many-agents.gif" alt="Claude Code records a deployment fact; Codex recalls it from the same neosian store in a new session; one audit names both" width="720">
@@ -163,8 +165,12 @@ Each line is one page in the wheel — `neosian docs <topic>`.
 - **The agent you already use** (`agents`). `neosian record install`
   spells the hooks that land a prompt-to-stop span as one turn by
   `claude-code:<session>` (Codex, OpenCode, Muse Code and interactive Cursor
-  too), plus a sessions document; `SessionStart` prints the index and "where we left off" into
-  the next window. Registered once per machine, every project gets its
+  too), plus a sessions document; `SessionStart` prints the index, the
+  pending handoff note and "where we left off" into the next window
+  (OpenCode reads them from the server's instructions). A handoff is
+  declared, never assumed: `handoff` writes the note on departure,
+  `continue_session` carries a session on in one call, and the ledger
+  shows which continued which. Registered once per machine, every project gets its
   own scope with no file of its own. A neosian `Conversation` on the same home shares the
   scope, so one `audit` names both.
 - **The state process** (`topology`). `neosian serve` puts memory and

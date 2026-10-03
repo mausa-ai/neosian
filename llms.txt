@@ -145,8 +145,17 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
   the conversation the session id names, plus a sessions document at
   sessions/<session_id> in the mount at /project. Read it back: `neosian audit --scope S
   --conversation <session_id>`. On SessionStart the verb prints the memory
-  index and "where we left off" (the recent sessions, log-projected):
-  the client adds a hook's stdout to the model's context.
+  index, the pending handoff note and "where we left off" (the recent
+  sessions, log-projected) under the client's own ceiling: the client
+  adds a hook's stdout to the model's context; a client with no start
+  hook (OpenCode) reads the same blocks from the MCP server's
+  instructions. A handoff is declared, never assumed: `handoff(note)`
+  on the server writes the note on departure (one per scope,
+  `/project/handoff`, pending until picked up, never deleted), and
+  `continue_session(conversation=None)` delivers a recorded
+  conversation whole in one call and picks the note up; the sessions
+  document then says `continues: <id>`, and `neosian audit` shows it.
+  `neosian continue` prints the same text from the shell, as a read.
 - Hooks beside an MCP server are two writers: use `--url` (the state
   process; `neosian setup --url URL --write` moves the whole machine) or
   Postgres. `neosian docs agents` carries the client table.

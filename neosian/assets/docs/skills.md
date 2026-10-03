@@ -81,7 +81,12 @@ The MCP server (`neosian docs mcp`) serves `list_skills` and
 skills from the same store. Every skill is also an **MCP prompt**
 (`prompts/list`, `prompts/get`): clients that render prompts as
 commands (Claude Code shows `/mcp__neosian-memory__release`) get a
-skill written by one agent as a command in the next.
+skill written by one agent as a command in the next. The wheel ships
+one skill of its own, `handoff` (DESIGN §33), served as a prompt after
+the mounts' skills and never seeded into a store: it tells the agent to
+write the note the next session reads with the `handoff` tool
+(`/mcp__neosian-memory__handoff`); `list_skills` on the server lists it
+bare, with no path or version, like a directory skill.
 
 Serving an owner's skill scope over the network, versions and all, is
 the state process on that scope (`neosian serve`); a host operating it

@@ -28,8 +28,10 @@ neosian                                  # on a terminal: chat; under a pipe: th
   directory's two scopes; per client (Claude Code, Codex, OpenCode, Muse Code, Cursor)
   installed / MCP registered / hooks present / at which level (`user`,
   `project`, or `both`) / the interpreter those files name still
-  resolving; the last recorded session; the one-writer note, and a note
-  when a client carries the hooks at both levels (they would run twice);
+  resolving; the last recorded session; the one-writer note, once per
+  root, naming the clients whose hooks and MCP server both write it,
+  and a note when a client carries the hooks at both levels (they would
+  run twice);
   the installation shape with its upgrade line; the update knob. Exit 0
   whenever it ran; findings are data. For Muse, managed hooks count as
   user level; `mcp_shadowed_by` names a preserved shared project MCP entry
@@ -40,9 +42,14 @@ neosian                                  # on a terminal: chat; under a pipe: th
   this directory's files). It prints what would land; `--write` applies
   it, and runs the client's own CLI for a file that CLI owns (`claude
   mcp add-json`, `codex mcp add`) when it is on PATH, printing the line
-  otherwise (exit 1: something is left to do). `--root` and `--url`
-  reach both installers: `neosian setup --url URL --write` moves every
-  client on the machine to the state process in one run.
+  otherwise (exit 1: something is left to do). A `note` line under a
+  client says what the client itself still asks of the user (Codex
+  reviews a new hook once in its `/hooks` command before it runs) or
+  what stands beside a file written (OpenCode's commented
+  `opencode.jsonc`, merged by OpenCode with the `opencode.json` the
+  entry landed in). `--root` and `--url` reach both installers:
+  `neosian setup --url URL --write` moves every client on the machine
+  to the state process in one run.
 - **`configure`**: keys under `<home>/config.toml`, one row per
   provider the catalog knows (shipped, door rows, registered doors);
   `--provider NAME --key -` reads the key from stdin, never argv; `--env
@@ -272,6 +279,23 @@ substrate; there is no `--scope`, since turns carry none. Exit tiers
 hold: no term, a bad id or a limit outside the range is grammar (exit
 2, nothing constructed); no hit is an answer (exit 0). Inside an agent
 the same search is the `search_history` tool (`neosian docs memory`).
+
+## Continue a session: `neosian continue`
+
+`neosian continue [CONVERSATION] [--scope SCOPE] [--json]` prints a
+recorded conversation the way an agent's `continue_session` call
+delivers it (DESIGN §33): the header naming the session and its writer,
+the pending handoff note when it is that session's, every user prompt
+and final answer verbatim with tool rounds as one line each, the older
+turns as log lines under the budget. With no conversation it means what
+a bare call means in the scope (default: `NEOSIAN_SCOPE`, else this
+directory's project scope): the pending note's session, else the most
+recent one listed under `sessions/`. A read: a terminal is not a
+session, so the note stays pending and no lineage is written; the
+agent's own call does both. `--json` carries `{conversation, scope,
+note, client, text}`. It takes the store selection above and answers
+identically on every substrate. Exit tiers hold: a bad id or scope is
+grammar (exit 2); nothing to continue is exit 1 with the reason.
 
 ## The ledger: `neosian audit`
 

@@ -82,6 +82,20 @@ so a later search for the same words finds that turn too. The same
 search is `neosian search` in the shell and `search_history` on the MCP
 server, store-wide there.
 
+A session another agent continues is a **handoff**, declared and never
+assumed (DESIGN §33). With a writable `/project` mount two more tools
+register beside the pair: `handoff(note)` writes the note a departing
+agent leaves for whoever comes next, one baton per scope at
+`/project/handoff`, pending until picked up and never deleted; and
+`continue_session(conversation=None)` delivers a recorded conversation
+whole within a budget (every user prompt and final answer verbatim, tool
+rounds one line each, older turns as log lines), the pending note first,
+and marks it picked up. The next session start, in any client, shows the
+note in full until a session picks it up; the session that continues
+says `continues: <id>` in its own sessions document, which `neosian
+audit` shows. A session that calls neither is a new session with no
+link. `neosian continue` prints the same text from the shell, as a read.
+
 ## The six commands
 
 One `memory` tool carries the whole vocabulary, on every transport:
