@@ -13,7 +13,7 @@ from neosian import AgentConfig, Model
 from neosian._cli.chat_cmd import one_shot
 from neosian._cli.main import app
 from neosian._cli.render_eval import print_report
-from neosian._cli.ui import pick, tool_result
+from neosian._cli.ui import pick
 from neosian._foundation.evaluation.results import CaseResult, EvalReport, TurnResult
 from neosian._foundation.evaluation.types import Expectation
 from neosian.fake import FakeClient, FakeScript, FakeTurn
@@ -94,16 +94,16 @@ def test_eval_retains_every_case_failure_and_literal_name(width: int) -> None:
     assert max(len(line) for line in text.splitlines()) <= width
 
 
-def test_picker_and_tool_results_treat_brackets_as_data(
+def test_the_picker_treats_brackets_as_data(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """The session's tool lines hold the same rule (`test_tui.py`)."""
     monkeypatch.setattr("sys.stdin", io.StringIO("1\n"))
     out = io.StringIO()
     console = Console(file=out, width=100)
     assert pick(console, "Pick [blue]", ["model [red]"]) == 0
-    console.print(tool_result("tool [green]", True, {"key": ["[bold]", 3]}))
     text = out.getvalue()
-    for literal in ("Pick [blue]", "model [red]", "tool [green]", "[bold]"):
+    for literal in ("Pick [blue]", "model [red]"):
         assert literal in text
 
 

@@ -1,68 +1,40 @@
-"""Shared Rich helpers for the CLI: header art and small formatters."""
+"""Shared Rich helpers for the CLI: the brand art and small formatters."""
 
 import importlib.resources
+import textwrap
 from typing import TextIO
 
 from rich.console import Console
 from rich.text import Text
 
-from neosian._foundation.shared.constants import Assets, PlaygroundUI
+from neosian._foundation.shared.constants import Assets
 
 # The brand colours (branding/README.md), at the dark-theme lightness the
 # kit's clamp derives — terminals are dark far more often than not, and Rich
 # downgrades both to the nearest of 256 colours where truecolor is missing.
 BRAND_ACCENT = "#afaf73"  # maki: the wordmark art, the app name
 BRAND_SUPPORT = "#c6a850"  # maki sarısı: the mark
-_LOGO_DROP = 1  # rows the mark sits below the wordmark's i-dot, so their bases align
 
 
-def load_header() -> Text:
-    """Build the header: the mark in the support colour, the wordmark in the accent."""
+def load_art(name: str, style: str) -> Text:
+    """A shipped piece of ASCII art, flush left, in `style`; empty when the
+    asset cannot be read."""
     try:
         files = importlib.resources.files(Assets.PACKAGE)
-
-        # Load both files
-        logo_text = files.joinpath(Assets.LOGO_FILE).read_text(encoding="utf-8")
-        ascii_text = files.joinpath(Assets.ASCII_FILE).read_text(encoding="utf-8")
-
-        # Split into lines
-        logo_lines = [""] * _LOGO_DROP + logo_text.rstrip().split("\n")
-        ascii_lines = ascii_text.rstrip().split("\n")
-
-        # Pad to same height
-        max_lines = max(len(logo_lines), len(ascii_lines))
-        logo_width = max(len(line) for line in logo_lines) if logo_lines else 0
-
-        while len(logo_lines) < max_lines:
-            logo_lines.append("")
-        while len(ascii_lines) < max_lines:
-            ascii_lines.append("")
-
-        # Combine side by side, each column in its own colour
-        header = Text()
-        for logo_line, ascii_line in zip(logo_lines, ascii_lines, strict=True):
-            header.append(logo_line.ljust(logo_width), style=BRAND_SUPPORT)
-            header.append(f"{Assets.HEADER_SPACING}{ascii_line}\n", style=BRAND_ACCENT)
-        header.rstrip()
-        return header
+        art = files.joinpath(name).read_text(encoding="utf-8")
     except Exception:
         return Text()
+    return Text(textwrap.dedent(art).strip("\n"), style=style)
 
 
-def print_header(console: Console, agent_name: str) -> None:
-    """Print the playground header with ASCII art."""
-    header = load_header()
-    if header.plain and max(map(len, header.plain.splitlines())) <= console.width:
-        console.print(header)
-        console.print()
+def load_mark() -> Text:
+    """The mark, in the support colour."""
+    return load_art(Assets.LOGO_FILE, BRAND_SUPPORT)
 
-    console.print(
-        Text(
-            PlaygroundUI.AGENT_LOADED.format(name=agent_name),
-            style=f"bold {BRAND_ACCENT}",
-        )
-    )
-    console.print(Text(PlaygroundUI.SESSION_START + "\n", style="dim"))
+
+def load_wordmark() -> Text:
+    """The name in block letters, in the accent."""
+    return load_art(Assets.ASCII_FILE, BRAND_ACCENT)
 
 
 def pick(
@@ -148,14 +120,3 @@ def turn_footer(title: Text, seconds: float, cost: int | None) -> Text:
     if cost is not None:
         footer.append(f"  {format_micro_usd(cost)}", style="dim")
     return footer
-
-
-def tool_result(name: str, success: bool, data: object) -> Text:
-    from rich.pretty import pretty_repr
-
-    text = Text("  ← ", style="dim")
-    text.append(name, style=BRAND_ACCENT)
-    text.append(": ", style="dim")
-    value = pretty_repr(data) if isinstance(data, (dict, list, tuple)) else str(data)
-    text.append(value, style="default" if success else "red")
-    return text

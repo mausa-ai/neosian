@@ -239,17 +239,13 @@ class AgentLoader:
 
 
 class PlaygroundUI:
-    """Constants for the session loop chat and playground share."""
+    """Constants for the session chat and playground share."""
 
     AGENT_LOADED: str = "Agent: {name}"
-    SESSION_START: str = "Type /exit or /quit to end session."
-    USER_PROMPT: str = "You"
-    TOOL_CALL_LABEL: str = "Tool Call"
+    SESSION_START: str = "/help lists the commands; /exit leaves."
     EXIT_COMMANDS: tuple[str, ...] = ("/exit", "/quit", "/q")
-    THINKING: str = "Thinking..."
 
     # Guardrail display
-    GUARDRAIL_BLOCKED_LABEL: str = "Guardrail Blocked"
     GUARDRAIL_INPUT_BLOCKED: str = "Input blocked by safety guardrails"
     GUARDRAIL_OUTPUT_BLOCKED: str = "Output blocked by safety guardrails"
     GUARDRAIL_RATIONALE: str = "Reason: {rationale}"
@@ -261,7 +257,6 @@ class Assets:
     PACKAGE: str = "neosian.assets"
     LOGO_FILE: str = "logo_ascii_small.txt"
     ASCII_FILE: str = "ascii.txt"
-    HEADER_SPACING: str = "  "
 
 
 class EnvVars:

@@ -15,6 +15,8 @@ from typing import Any
 import pytest
 from mcp.server.mcpserver import MCPServer
 from rich.console import Console
+from textual.pilot import Pilot
+from textual.widgets import Static
 
 from neosian import (
     AgentConfig,
@@ -36,6 +38,7 @@ from neosian._foundation.memory.file import FileStore
 from neosian._foundation.shared.types import ToolCallId, ToolFunction, ToolName
 from neosian._foundation.tools.base import get_tool_metadata
 from neosian.mcp import McpServer
+from tests.unit.cli.piloting import piloted, plain, send
 
 _KEYS = ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "CEREBRAS_API_KEY")
 _NOPE = "definitely-not-a-binary-xyz"
@@ -218,8 +221,8 @@ class TestServing:
         server, _ = _probe()
         config = _config()
         async with serving((McpServer.in_process(server),), config) as served:
-            assert _names(served.tools) == ["docs", "add", "media"]
-        assert _names(config.tools) == ["docs"]  # never mutated
+            assert _names(served.tools) == ["docs", "neosian", "add", "media"]
+        assert _names(config.tools) == ["docs", "neosian"]  # never mutated
 
     async def test_a_name_chat_has_is_refused_with_the_hint(self) -> None:
         @Tool(name=ToolName("add"), description="local add")
@@ -382,28 +385,31 @@ class TestRunTier:
 
 
 @pytest.mark.unit
-class TestTheSessionLoop:
-    async def test_the_banner_names_the_servers(
+class TestTheSession:
+    async def test_the_opening_names_the_servers(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         server, _ = _probe()
-        monkeypatch.setattr("sys.stdin", io.StringIO("hi\n/quit\n"))
-        out = io.StringIO()
+        seen: list[str] = []
+
+        async def script(pilot: Pilot[None]) -> None:
+            seen.append(plain(pilot.app.query_one("#opening", Static).content))
+            await send(pilot, "hi")
+            await pilot.press("ctrl+d")
+
+        piloted(monkeypatch, script)
         await run_chat(
-            Console(file=out, width=120, no_color=True),
+            Console(file=io.StringIO(), width=120, no_color=True),
             _config(),
             "probe",
             conversation_id="s1",
             resumed=False,
             servers=(McpServer.in_process(server),),
         )
-        assert "MCP probe (2 tools)" in " ".join(out.getvalue().split())
+        assert "MCP probe (2 tools)" in " ".join(seen[0].split())
         assert len(await FileStore(tmp_path / "home").read_turns("s1")) == 1
 
-    async def test_a_refused_server_is_not_a_start_failure(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr("sys.stdin", io.StringIO("/quit\n"))
+    async def test_a_refused_server_is_not_a_start_failure(self) -> None:
         out = io.StringIO()
         with pytest.raises(McpConnectionError):
             await run_chat(

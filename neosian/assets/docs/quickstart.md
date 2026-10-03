@@ -38,7 +38,8 @@ is set up. `neosian setup --write` asks which installed agents to connect (Claud
 Code, Codex, OpenCode, Muse Code, Cursor, Pi) to the home once per machine:
 memory and skills over MCP, every session recorded through the client's
 own hooks, so a new project needs nothing. Bare `neosian` opens a chat
-with an agent that knows neosian and writes to the same memory
+with an agent that knows neosian, writes to the same memory and runs
+these verbs for you, asking before one that changes anything
 (`neosian docs cli`).
 
 From then on each session lands as a turn the ledger names (`neosian

@@ -8,6 +8,29 @@ phase close names the version.
 
 ## [Unreleased]
 
+### Added
+
+- The chat session is a full-screen terminal app: `neosian chat`, bare
+  `neosian` and `playground` on a terminal stream the reply as Markdown,
+  show a tool call as one line with a one-line result until it is expanded
+  (a click, or ctrl+o for all), interrupt a turn on esc and leave the
+  `--resume` line behind. A PROMPT, a pipe and `--json` are unchanged.
+- The resident agent runs the shell's verbs through one `neosian` tool: a
+  form that only reads runs at once; one that changes state waits for the
+  user's `y` in the session and is declined in a one-shot turn; sessions,
+  servers and the hook door are refused, and a key never passes through
+  the model.
+- Seven session commands: `/help`, `/configure` (an API key typed masked,
+  stored as `configure --key -` stores it, never shown to the model),
+  `/model`, `/resume`, `/new`, `/compact` and `/exit`, offered as a menu
+  that narrows as you type (tab completes, enter runs). A resumed
+  conversation draws its last ten turns again.
+
+### Changed
+
+- `textual` joins the base install (pure Python); the line-at-a-time
+  session loop it replaces is gone.
+
 ## [1.2.0] - 2026-10-03
 
 ### Added

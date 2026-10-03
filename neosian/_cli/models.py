@@ -1,8 +1,11 @@
-"""The model picker (`playground --menu`, DESIGN §14.6), derived from the
-Model registry."""
+"""The model picker (`playground --menu`, DESIGN §14.6; the session's
+`/model`, §35.4), derived from the Model registry."""
+
+from collections.abc import Mapping
 
 from rich.console import Console
 
+from neosian._cli.providers import find_provider, keyed
 from neosian._cli.ui import pick
 from neosian._foundation.shared.registry import provider_label, registered_models
 from neosian._foundation.shared.types import DEFAULT_MODELS, AnyModel, Model, Provider
@@ -94,6 +97,22 @@ def get_available_providers(
         for p, label in _ALL_PROVIDERS
         if get_models_for_provider(p, require_reasoning=require_reasoning)
     ]
+
+
+def keyed_models(env: Mapping[str, str]) -> list[tuple[AnyModel, str]]:
+    """Every model `env` can open, labelled: a door's rows when the door
+    is keyed, a provider's when its key is set."""
+    found = []
+    for provider, _ in _ALL_PROVIDERS:
+        for model, label in get_models_for_provider(provider):
+            if model.door is not None:
+                opens = keyed(model.door, env)
+            else:
+                row = find_provider(model.provider.value)
+                opens = row is not None and bool(env.get(row.env))
+            if opens:
+                found.append((model, label))
+    return found
 
 
 def select_provider_and_model(

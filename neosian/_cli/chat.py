@@ -1,39 +1,30 @@
-"""The session loop `neosian chat` and `neosian playground` share (N2
-slice C; DESIGN §14.6).
+"""The session `neosian chat` and `neosian playground` share (N2 slice C;
+DESIGN §14.6, §35).
 
-The chat loop rides `Conversation` + `FileStore`: every turn persists as
+The session rides `Conversation` + `FileStore`: every turn persists as
 it completes (a crash or ^C loses nothing), resume is `--resume <id>`,
 and turns live in the home — `~/.neosian/conversations/<id>/` (DESIGN
 §9.8, §22) — where an agent file that names no memory gets the
-project's layout, the same place the hooks write.
+project's layout, the same place the hooks write. The view is the
+Textual app in `_cli/tui`.
 """
 
-import time
 from collections.abc import Sequence
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
+from typing import Final
 
-from rich.console import Console
-from rich.markdown import Markdown
-from rich.panel import Panel
-from rich.prompt import Prompt
+from rich.console import Console, Group, RenderableType
+from rich.table import Table
 from rich.text import Text
 
 from neosian._cli.chat_mcp import serving
-from neosian._cli.display import fields
-from neosian._cli.stream import stream_turn
-from neosian._cli.ui import (
-    BRAND_ACCENT,
-    format_args,
-    print_header,
-    tool_result,
-    turn_footer,
-)
-from neosian._foundation.agent.response import AgentResponse
+from neosian._cli.chat_shell import Consent
+from neosian._cli.display import field_table
+from neosian._cli.ui import BRAND_ACCENT, load_mark, load_wordmark
 from neosian._foundation.conversation.core import Conversation
 from neosian._foundation.conversation.ids import parse_conversation_id
 from neosian._foundation.conversation.reflection import ReflectionConfig
-from neosian._foundation.llm.base import text_of
 from neosian._foundation.mcp.client import McpServer
 from neosian._foundation.memory.file import FileStore
 from neosian._foundation.memory.home import home, project_mounts
@@ -41,8 +32,9 @@ from neosian._foundation.memory.mounts import MemoryConfig
 from neosian._foundation.messaging.types import MailboxConfig
 from neosian._foundation.shared.constants import PlaygroundUI
 from neosian._foundation.shared.registry import provider_label, resolve_model
-from neosian._foundation.shared.types import AgentConfig
+from neosian._foundation.shared.types import AgentConfig, AnyModel
 
+_LOCKUP_GAP: Final = 3  # columns between the mark and what sits beside it
 _ID_STAMP = "%Y%m%d-%H%M%S"
 _ID_NAME_CHARS = 64
 _RESUME_IS_PATH = (
@@ -114,6 +106,103 @@ def describe_memory(config: AgentConfig) -> str:
     return ", ".join(f"/{m.mount_path} = {m.scope}" for m in mounts)
 
 
+def _columns(art: Text) -> int:
+    return max(map(len, art.plain.splitlines()), default=0)
+
+
+@dataclass(frozen=True, slots=True)
+class Opening:
+    """What the session says before the first turn."""
+
+    agent: str
+    facts: Sequence[tuple[str, str]]
+    notice: str | None = None
+
+    def render(self, width: int) -> RenderableType:
+        """The lockup (the mark, and beside it the wordmark over the
+        agent's lines), then the facts; the lines and the facts alone
+        where the lockup does not fit."""
+        lines: list[RenderableType] = [
+            Text(
+                PlaygroundUI.AGENT_LOADED.format(name=self.agent),
+                style=f"bold {BRAND_ACCENT}",
+            ),
+            Text(PlaygroundUI.SESSION_START, style="dim"),
+        ]
+        if self.notice is not None:
+            lines.append(Text(self.notice, style="dim"))
+        facts: list[RenderableType] = [Text(), field_table(self.facts)]
+        mark, wordmark = load_mark(), load_wordmark()
+        needed = _columns(mark) + _LOCKUP_GAP + _columns(wordmark)
+        if not (mark.plain and wordmark.plain) or width < needed:
+            return Group(*lines, *facts)
+        lockup = Table.grid(padding=(0, _LOCKUP_GAP))
+        lockup.add_column(no_wrap=True)
+        lockup.add_column()
+        lockup.add_row(mark, Group(wordmark, *lines))
+        return Group(lockup, *facts)
+
+
+@dataclass(frozen=True, slots=True)
+class Session:
+    """One Conversation as the app drives it, and what it shows first."""
+
+    convo: Conversation
+    opening: Opening
+    model: AnyModel
+    title: Text
+    streamed: bool
+
+
+def opening(
+    config: AgentConfig,
+    agent_name: str,
+    convo: Conversation,
+    *,
+    resumed: bool,
+    servers: Sequence[McpServer] = (),
+) -> Opening:
+    """What the session shows before the first turn: the agent, where its
+    turns and memory live, how to come back, the MCP servers it opened."""
+    conversation_id = convo.conversation_id
+    notice = None
+    if resumed and convo.messages:
+        notice = f"Resumed {len(convo.messages)} messages from {conversation_id}"
+    elif resumed:
+        notice = f"No turns stored under {conversation_id} yet — starting fresh."
+    facts = [
+        ("Conversation", conversation_id),
+        ("Resume", f"--resume {conversation_id}"),
+        ("Home", str(home())),
+        ("Memory", describe_memory(config)),
+    ]
+    if servers:
+        facts.append(
+            ("MCP", ", ".join(f"{s.name} ({len(s.tools)} tools)" for s in servers))
+        )
+    return Opening(agent_name, facts, notice)
+
+
+async def open_session(
+    config: AgentConfig,
+    agent_name: str,
+    *,
+    conversation_id: str,
+    resumed: bool,
+    servers: Sequence[McpServer] = (),
+) -> Session:
+    """The Conversation on the home, started, with what the app shows."""
+    convo = open_chat(config, conversation_id=conversation_id)
+    await convo.start()
+    return Session(
+        convo,
+        opening(config, agent_name, convo, resumed=resumed, servers=servers),
+        resolve_model(config.model),
+        turn_title(config),
+        streams(config),
+    )
+
+
 async def run_chat(
     console: Console,
     config: AgentConfig,
@@ -123,59 +212,42 @@ async def run_chat(
     resumed: bool,
     servers: Sequence[McpServer] = (),
 ) -> None:
-    """Construct the store, start the conversation, run the loop.
+    """Construct the store, start the conversation, open the session.
 
     Everything shares one event loop: a store's internal lock binds to
-    the first loop that awaits it, so the store is constructed and used
-    inside the same `asyncio.run` — and nothing under the home is created
-    before this point. The MCP servers open first and outlive the loop;
-    one that refuses raises before any of that (the run tier answers).
+    the first loop that awaits it, so the store is constructed and the
+    app runs inside the same `asyncio.run` — and nothing under the home
+    is created before this point. The MCP servers open first and outlive
+    the session; one that refuses raises before any of that (the run
+    tier answers). The app may move to another conversation (`/new`,
+    `/resume`): the resume line names the one it left on and prints once
+    the screen is restored, before the close reflects (§15).
     """
+    from neosian._cli.tui.app import SessionApp  # the app imports this module
+
     async with serving(servers, config) as config:
         try:
-            convo = open_chat(config, conversation_id=conversation_id)
-            await convo.start()
+            session = await open_session(
+                config,
+                agent_name,
+                conversation_id=conversation_id,
+                resumed=resumed,
+                servers=servers,
+            )
         except Exception as e:
             console.print(Text(f"Error starting conversation: {e}", style="red"))
             raise SystemExit(1) from e
 
-        print_header(console, agent_name)
-        if resumed and convo.messages:
-            console.print(
-                Text(
-                    f"Resumed {len(convo.messages)} messages from {conversation_id}",
-                    style="dim",
-                )
-            )
-        elif resumed:
-            console.print(
-                Text(
-                    f"No turns stored under {conversation_id} yet — starting fresh.",
-                    style="dim",
-                )
-            )
-        fields(
-            console,
-            [
-                ("Conversation", conversation_id),
-                ("Resume", f"--resume {conversation_id}"),
-                ("Home", str(home())),
-                ("Memory", describe_memory(config)),
-            ],
-        )
-        if servers:
-            fields(
-                console,
-                [
-                    (
-                        "MCP",
-                        ", ".join(f"{s.name} ({len(s.tools)} tools)" for s in servers),
-                    )
-                ],
-            )
-        console.print()
-        async with convo:
-            await _chat_loop(console, convo, config)
+        app = SessionApp(session, config=config, agent=agent_name, servers=servers)
+        gate = config.tool_gate
+        if gate is not None and isinstance(gate.approver, Consent):
+            gate.approver.ask = app.confirm  # the resident agent's writes ask here
+        try:
+            await app.run_async()
+            left_on = app.session.convo.conversation_id
+            console.print(Text(f"Resume: --resume {left_on}", style="dim"))
+        finally:
+            await app.session.convo.aclose()
 
 
 def turn_title(config: AgentConfig) -> Text:
@@ -191,153 +263,3 @@ def turn_title(config: AgentConfig) -> Text:
 def streams(config: AgentConfig) -> bool:
     """Streamed unless output guardrails demand the blocking path."""
     return config.guardrails is None or not config.guardrails.has_output_guardrails
-
-
-async def _chat_loop(
-    console: Console, convo: Conversation, config: AgentConfig
-) -> None:
-    """Run the main chat loop; persistence rides `Conversation.send`."""
-    title = turn_title(config)
-    streamed = streams(config)
-    while True:
-        # Get user input
-        try:
-            user_input = Prompt.ask(
-                Text(PlaygroundUI.USER_PROMPT, style=f"bold {BRAND_ACCENT}"),
-                console=console,
-            )
-        except EOFError:
-            break
-
-        # Check for exit commands
-        if user_input.lower() in PlaygroundUI.EXIT_COMMANDS:
-            break
-
-        if not user_input.strip():
-            continue
-
-        start_time = time.perf_counter()
-        try:
-            if streamed:
-                await stream_turn(
-                    console,
-                    convo,
-                    user_input,
-                    model=resolve_model(config.model),
-                    title=title,
-                )
-                console.print()
-                continue
-            with console.status(Text(PlaygroundUI.THINKING, style="dim")):
-                response = await convo.send(user_input)
-        except Exception as e:
-            console.print(Text(f"Error: {e}", style="red"))
-            continue
-        _render_response(
-            console,
-            response,
-            title,
-            time.perf_counter() - start_time,
-            cost=response.usage.cost_micro_usd(resolve_model(config.model)),
-        )
-
-
-def _render_response(
-    console: Console,
-    response: AgentResponse,
-    title: Text,
-    elapsed_time: float,
-    *,
-    cost: int | None = None,
-) -> None:
-    """The blocking path's rendering: the finished turn, panel by panel."""
-    # Display guardrail result if present (shows parallel execution)
-    if response.guardrail_result:
-        gr_result = response.guardrail_result
-        guard_text = Text()
-
-        if gr_result.safe:
-            guard_text.append("safe", style="green")
-        else:
-            guard_text.append("flagged", style="red")
-            if gr_result.policy_rationale:
-                guard_text.append(
-                    f" ({gr_result.policy_rationale})",
-                    style="yellow",
-                )
-
-        console.print(Panel(guard_text, title="Guard", border_style="dim"))
-
-    # Display guardrail blocked if applicable
-    if response.blocked and response.guardrail_result:
-        gr_result = response.guardrail_result
-        blocked_text = Text()
-
-        # Determine message based on where blocked
-        if gr_result.flagged_at == "input":
-            blocked_text.append(PlaygroundUI.GUARDRAIL_INPUT_BLOCKED, style="bold red")
-        else:
-            blocked_text.append(PlaygroundUI.GUARDRAIL_OUTPUT_BLOCKED, style="bold red")
-
-        # Add rationale if present
-        if gr_result.policy_rationale:
-            blocked_text.append("\n")
-            blocked_text.append(
-                PlaygroundUI.GUARDRAIL_RATIONALE.format(
-                    rationale=gr_result.policy_rationale
-                ),
-                style="dim",
-            )
-
-        console.print(
-            Panel(
-                blocked_text,
-                title=PlaygroundUI.GUARDRAIL_BLOCKED_LABEL,
-                border_style="red",
-            )
-        )
-        console.print(turn_footer(title, elapsed_time, cost))
-        console.print()
-
-        # Blocked turns persist nothing (§9.5.5) — the panel is the log.
-        return
-
-    # Display tool calls if any
-    for i, tool_call in enumerate(response.tool_calls_made):
-        tool_text = Text(f"→ {tool_call.name}", style=BRAND_ACCENT)
-        tool_text.append(f"({format_args(tool_call.arguments)})", style="dim")
-        console.print(tool_text)
-        if i < len(response.tool_results):
-            result = response.tool_results[i]
-            console.print(
-                tool_result(
-                    tool_call.name,
-                    result.success,
-                    result.data if result.success else result.error,
-                )
-            )
-
-    # Display reasoning if present
-    if response.message.reasoning:
-        console.print(
-            Panel(
-                Markdown(response.message.reasoning),
-                title="Reasoning",
-                border_style="dim",
-            )
-        )
-
-    # Display assistant response
-    assistant_text = text_of(response.message)
-    if assistant_text:
-        console.print(
-            Panel(
-                Markdown(assistant_text),
-                title=title,
-                border_style=BRAND_ACCENT,
-            )
-        )
-
-    # Display response time
-    console.print(turn_footer(title, elapsed_time, cost))
-    console.print()

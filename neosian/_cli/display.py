@@ -32,13 +32,17 @@ def section(console: Console, title: str) -> None:
     console.print(Text(title, style=f"bold {BRAND_ACCENT}"))
 
 
-def fields(console: Console, rows: Sequence[tuple[str, str]]) -> None:
+def field_table(rows: Sequence[tuple[str, str]]) -> Table:
     table = Table.grid(padding=(0, 2))
     table.add_column(style="bold", overflow="fold", max_width=16)
     table.add_column(overflow="fold")
     for label, value in rows:
         table.add_row(Text(label), Text(value))
-    console.print(table)
+    return table
+
+
+def fields(console: Console, rows: Sequence[tuple[str, str]]) -> None:
+    console.print(field_table(rows))
 
 
 def records(
