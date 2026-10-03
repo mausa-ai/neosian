@@ -1,6 +1,6 @@
 """The read side of `neosian record`: `SessionStart` (DESIGN §21.7, §33).
 
-Claude Code, Codex, Cursor and Muse add a SessionStart hook's output to
+Claude Code, Codex, Cursor, Muse and Pi add the SessionStart output to
 the model's context, so the verb answers with the memory index, the
 pending handoff note and "where we left off": the scope's recent
 sessions, log-projected the way a view is (§21.3) — one line per turn,
@@ -11,7 +11,8 @@ own history, so the own session's record is what comes back, and no
 note; every other source gets the most recently written sessions in the
 scope, newest first. One budget per client at the output edge
 (`CONTEXT_CHARS`, what the client injects whole), shared by the three
-blocks, so a busy scope never trips a client into a file-path preview.
+blocks (and Pi's memory instructions), so a busy scope never trips a
+client into a file-path preview.
 A client with no start hook gets the same blocks in the MCP server's
 instructions (`render_instructions`).
 """
@@ -60,6 +61,7 @@ CONTEXT_CHARS: Final = {
     "codex": 9_000,
     "cursor": 10_000,
     "muse-code": 16_382,
+    "pi": 10_000,  # neosian's conservative section budget, not a Pi limit
 }
 DEFAULT_CONTEXT_CHARS: Final = 10_000
 
@@ -197,14 +199,22 @@ async def render_session_start(
     source: str,
     now: datetime,
 ) -> str:
-    """What the hook prints under the client's ceiling: the index up to
-    three eighths of it, the note, where we left off under the rest."""
+    """What the hook prints under the client's ceiling: instructions and
+    index up to three eighths, the note and recent sessions under the rest."""
     assert settings.mount is not None  # the verb's layout always yields one
     budget = CONTEXT_CHARS.get(settings.agent, DEFAULT_CONTEXT_CHARS)
-    index = await generate_memory_index(
-        memory, settings.store.mounts, budget_chars=budget * 3 // 8
+    # Pi's direct MCP tools do not inject the server's instructions.
+    instructions = (
+        f"{get_prompt('context.start_instructions')}\n\n"
+        if settings.agent == "pi"
+        else ""
     )
-    head = f"{get_prompt('context.start_index')}\n{index}"
+    index = await generate_memory_index(
+        memory,
+        settings.store.mounts,
+        budget_chars=budget * 3 // 8 - len(instructions),
+    )
+    head = f"{instructions}{get_prompt('context.start_index')}\n{index}"
     rest = await render_start_context(
         memory,
         conversations,

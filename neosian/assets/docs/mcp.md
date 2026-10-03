@@ -6,7 +6,7 @@ summary: memory, skills, recall and search over stdio; mcp install; McpServer co
 # The MCP server
 
 The same stores, served to any MCP client (Claude Code, Claude
-Desktop, Cursor, Codex, OpenCode, Muse Code) over stdio; the MCP SDK ships in
+Desktop, Cursor, Codex, OpenCode, Muse Code, Pi) over stdio; the MCP SDK ships in
 the install and loads at first use. For MCP over the network, the state
 process mounts this same factory's server at `/mcp`: `neosian serve`
 with mounts (`neosian docs topology`).
@@ -14,7 +14,7 @@ with mounts (`neosian docs topology`).
 ## The state set
 
 The memory server becomes the state server one tool at a time. Today it
-serves five:
+serves seven:
 
 - **`memory`**: the six commands over the mounts (`neosian docs
   memory`), the same definition the function tool carries.
@@ -77,9 +77,10 @@ defaults to `mcp`
 instructions depend on the client's start door (DESIGN §33), which the
 server reads from the actor the installer rendered (`mcp:<client>`): a
 client whose `SessionStart` hook prints the index (Claude Code, Codex,
-Cursor, Muse Code) gets the write discipline alone, so one window holds
-one copy; any other client (OpenCode, Claude Desktop, a hand-written
-entry) gets the memory index, the pending handoff note and "where we
+Cursor, Muse Code, or Pi through its extension) gets the write discipline
+alone. Pi's extension includes that discipline because its direct MCP
+mode does not show server instructions. Any other client (OpenCode,
+Claude Desktop, a hand-written entry) gets the memory index, the pending handoff note and "where we
 left off" in the instructions, refreshed per connection. Every shipped
 store keeps conversations too, so the state set is always on the list:
 `recall_turn`, `search_history`, `continue_session` and `handoff`.
@@ -120,11 +121,17 @@ neosian mcp install --client claude-code --level project --scope user:me --write
   `opencode` → `opencode.json` in its config directory
   (`~/.config/opencode`, or `$OPENCODE_CONFIG_DIR`), or the project's
   `opencode.json`, the entry under `mcp` in OpenCode's own shape
-  (`type: local`, one `command` array; an `opencode.jsonc` beside it is
-  refused); `claude-desktop` → its platform config file; `cursor` →
+  (`type: local`, one `command` array; an `opencode.jsonc` holding plain
+  JSON is used instead, while a commented one is preserved with a note);
+  `claude-desktop` → its platform config file; `cursor` →
   `~/.cursor/mcp.json` (credential environment variables are forwarded as
   `${env:NAME}` references because Cursor clears custom MCP environment);
   `claude-code` at the project level → the project's `./.mcp.json`.
+- `pi` (Pi 1.0.1+) uses `~/.pi/agent/mcp.json`, relocated by
+  `PI_CODING_AGENT_DIR`, or `.pi/mcp.json` for a trusted project. The
+  entry uses native `mcpServers` with direct tool exposure; tokens are
+  inherited from the client environment. `setup --client pi --write`
+  installs its recording and startup extension too (`neosian docs agents`).
 - `muse-code` uses `$XDG_CONFIG_HOME/muse/settings.json` (default
   `~/.config/muse/settings.json`) at user level, or the shared `.mcp.json`
   at project level. New user settings include `schema_version: 1`.

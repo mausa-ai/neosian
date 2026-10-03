@@ -25,7 +25,7 @@ neosian                                  # on a terminal: chat; under a pipe: th
 
 - **`status`**: the home and whether it exists; the config and which
   providers have a key (names and sources, never values); this
-  directory's two scopes; per client (Claude Code, Codex, OpenCode, Muse Code, Cursor)
+  directory's two scopes; per client (Claude Code, Codex, OpenCode, Muse Code, Cursor, Pi)
   installed / MCP registered / hooks present / at which level (`user`,
   `project`, or `both`) / the interpreter those files name still
   resolving; the last recorded session; the one-writer note, once per
@@ -345,7 +345,7 @@ agent's `cd`). The sessions document lands in the mount at `/project`
 when there is one, else the first read-write mount; a neosian
 `Conversation` with a writable `/project` mount writes its own the same
 way, so the listing is complete. `neosian record
-install --client claude-code|codex|opencode|muse-code|cursor [--level user|project]
+install --client claude-code|codex|opencode|muse-code|cursor|pi [--level user|project]
 [--write]` renders or applies the hooks, the `mcp install` twin
 (`neosian docs agents`). The exit tiers bend once
 for the hook's sake: 2 only for argv, 1 for everything after, so a

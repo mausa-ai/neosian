@@ -5,7 +5,7 @@
 > product owns. Keyless to boot; Python >= 3.12.
 
 The state layer under the agent you already use, and around the one you
-build. Claude Code, Codex, OpenCode, Muse Code and Cursor get memory and
+build. Claude Code, Codex, OpenCode, Muse Code, Cursor and Pi get memory and
 skills over MCP and every session recorded through their own hooks
 (`neosian setup --write`, once per machine); a stateless `Agent` core
 (tools, orchestration, streaming, fallback, guardrails, structured
@@ -41,7 +41,7 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
   project, both) / interpreter resolving, the last recorded session, the
   install shape. Exit 0 always; findings are data.
 - `neosian setup [--write] [--level user|project] [--root DIR | --url URL]`:
-  wire every installed client (Claude Code, Codex, OpenCode, Muse Code, Cursor) to the home,
+  wire every installed client (Claude Code, Codex, OpenCode, Muse Code, Cursor, Pi) to the home,
   once per machine: MCP + the record hooks in the client's own config, no
   file per project; print first. `--write` runs the client's own CLI for
   a file it owns (`claude mcp add-json`, `codex mcp add`) when on PATH,
@@ -96,7 +96,7 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
 
 ## Upgrade to MCP
 
-- `neosian mcp install --client claude-code|claude-desktop|cursor|codex|opencode`
+- `neosian mcp install --client claude-code|claude-desktop|cursor|codex|opencode|muse-code|pi`
   prints the exact registration; `--write` applies it (refused when the
   client is not installed). Once per machine by default: the entry names
   the store and no mount, the server derives each session's layout from
@@ -126,7 +126,7 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
 
 ## Record a foreign agent
 
-- `neosian record install --client claude-code|codex|opencode|muse-code|cursor` prints
+- `neosian record install --client claude-code|codex|opencode|muse-code|cursor|pi` prints
   the client hooks (UserPromptSubmit, PostToolUse, Stop, SessionStart;
   Cursor has five native events below; OpenCode has a plugin file). Once per machine by default: the line names
   the home and no mount, and each session gets `user:<login>` at /user
@@ -187,6 +187,14 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
   managed pointer is refused, never replaced. Shared project MCP survives
   user install; mcp_shadowed_by reports its override. Hook print mode is a
   files change map, with no unrelated settings. Actor muse-code:<session>.
+- Pi (1.0.1+): `setup --client pi --write` installs user MCP at
+  ~/.pi/agent/mcp.json and extensions/neosian-record.ts; PI_CODING_AGENT_DIR
+  relocates both. Project level uses .pi/ (trust required). Native MCP
+  tools have direct exposure; interactive and print modes record as
+  pi:<session>. Startup and compaction refresh a bounded neosian prompt
+  section with memory instructions and the index, note and recent sessions.
+  Tool results, including nested MCP calls, are serialized;
+  agent_settled closes the span after retries. Credentials stay env-only.
 - Python clients: `await RemoteStore.connect(url, token=...)` carries both
   storage ABCs over the wire, core install, drops in where FileStore
   does. Listings cross in pages of at most 500 rows, followed for you;

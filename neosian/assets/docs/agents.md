@@ -299,6 +299,56 @@ preserves daemon URLs inside hook commands.
 References: Cursor's [hooks](https://cursor.com/docs/hooks) and
 [third-party hooks](https://cursor.com/docs/reference/third-party-hooks).
 
+## Pi
+
+`neosian setup --client pi --write` installs both halves for Pi 1.0.1 or
+later. The user registration is `~/.pi/agent/mcp.json`, with native
+`mcpServers` and direct tool exposure. The recorder is
+`~/.pi/agent/extensions/neosian-record.ts`. `PI_CODING_AGENT_DIR` relocates
+that agent directory; it must exist before installation. Project level
+uses `.pi/mcp.json` and `.pi/extensions/neosian-record.ts` and requires
+Pi's project trust. One recording level per client prevents duplicate
+spans. Re-running setup replaces our extension and preserves unrelated
+MCP entries.
+
+The extension runs in interactive and print modes. It sends actual user
+messages, completed tool rounds (including nested MCP calls and error
+results), and the final assistant text to `neosian record --agent pi`.
+Writes are serialized and each span lands at `agent_settled`, after
+automatic retries, rather than the earlier `agent_end`. Orderly shutdown
+drains an unfinished span. A killed process may leave a spool for the
+next stop; recorder failures never prevent Pi from continuing. The writer
+is `pi:<session_id>` and the project comes from Pi's extension context.
+No transcript files are parsed.
+
+Pi does not show a server's full instructions automatically. The
+extension reads the memory instructions and three startup blocks into a
+named `neosian` system-prompt section, preserving other sections. It
+refreshes after compaction, including a retry without a new user prompt. The section's
+10,000-character budget is neosian's conservative policy, not a claimed
+Pi limit. Resume, new-session and fork events reset the context and
+recording identity. Pi reads `AGENTS.md` natively.
+
+For shared recording, use `neosian setup --client pi --url URL --write`
+and set `NEOSIAN_CLIENT_TOKEN` in Pi's environment; the token is inherited
+by both subprocesses and never written to either configuration file.
+The extension requires Pi's built-in MCP support; an extension replacing
+`/mcp` can disable the native registration. Check `pi mcp list` and
+`neosian status` when diagnosing setup.
+
+Validation: Pi 1.0.1 passed a real Claude Code → Pi → Claude Code → Pi
+walkthrough on 2026-10-03 with Sonnet 5. Each arrival called
+`continue_session`, all three links landed in the recorded sessions,
+and the final handoff linked to the last Pi session. The shared memory
+instructions require the continue call even when a startup summary
+already contains the answer: reading it alone does not pick up the note
+or declare the continuation. A separate keyless runtime check exercises
+Pi's event pipeline; the adapter checks cover compaction and shutdown.
+
+References: Pi's [configuration](https://pi.dev/docs/latest/configuration),
+[MCP](https://pi.dev/docs/latest/mcp) and
+[extensions](https://pi.dev/docs/latest/extensions).
+
 ## The client table
 
 A row exists only while its walkthrough is green on a real install. "Per
@@ -313,3 +363,4 @@ two project directories, each session in its own `proj:` scope.
 | Claude Desktop | ✓ | no hooks surface | one file by nature; no project, so `/user` alone | — |
 | Cursor | ✓ user MCP, credential names forwarded | ✓ interactive CLI 2026.09.10-fd3934a; `--print` lacks full recording; MCP rounds through `afterMCPExecution` | ✓ one user registration, payload workspace roots | ✓ `sessionStart`, JSON `additional_context` |
 | Muse Code | ✓ user settings or shared project `.mcp.json` | ✓ walkthrough green 2026-09-22 (`muse exec`, 1.3.0); headless `muse exec` can stall on a shell approval no one can give, so a handoff leg says "no shell commands" | ✓ two projects, one user registration; authenticated managed hooks and MCP on the state process | ✓ `SessionStart`, plain stdout; prior turn recalled over MCP; continued and handed off for real 2026-10-03 (1.4.2) |
+| Pi | ✓ native MCP, direct tools (1.0.1) | ✓ print-mode walkthrough green 2026-10-03; extension commits at final settlement | ✓ two projects through one user registration and the state process; `PI_CODING_AGENT_DIR` honored | ✓ named system section, startup and compaction; Claude Code → Pi → Claude Code → Pi with all continuation links verified |

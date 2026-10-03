@@ -50,11 +50,13 @@ def _claude(
 
 
 class TestOneMachineEveryProject:
+    @pytest.mark.parametrize("client", ["claude-code", "pi"])
     async def test_registered_once_every_project_is_served(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, client: str
     ) -> None:
         home = tmp_path / "home"
         (home / ".claude").mkdir(parents=True)
+        (home / ".pi" / "agent").mkdir(parents=True)
         # OpenCode too, with the `opencode.jsonc` its own init leaves (§33):
         # every client green, exit 0, the entry in that file.
         (home / ".config" / "opencode").mkdir(parents=True)
@@ -105,20 +107,22 @@ class TestOneMachineEveryProject:
 
         # --- once: the client's own files, nothing per project
         wired = {row["client"]: row for row in setup(env=env)["clients"]}
-        assert set(wired) == {"claude-code", "opencode"}
+        assert set(wired) == {"claude-code", "opencode", "pi"}
         assert wired["opencode"]["mcp"]["config_path"] == str(jsonc)
         assert "neosian-memory" in json.loads(jsonc.read_text())["mcp"]
         assert all(
             row[half]["applied"] for row in wired.values() for half in ("mcp", "hooks")
         )
-        hooks = resolve_target("claude-code", context, "user")
+        hooks = resolve_target(client, context, "user")
         line = installed_argv(hooks)
         assert line is not None and "--mount" not in line
-        assert line[-2:] == ["--project", "$CLAUDE_PROJECT_DIR"]
+        if client == "claude-code":
+            assert line[-2:] == ["--project", "$CLAUDE_PROJECT_DIR"]
         assert all(list(directory.iterdir()) == [] for directory in projects.values())
 
         # --- every project: its own scope under the one home, /user shared
-        argv, span_env = line[3:-2], env  # the verb's argv, as the file carries it
+        argv = line[3:-2] if client == "claude-code" else line[3:]
+        span_env = env  # the verb's argv, as the file carries it
         store = FileStore(tmp_path / "nh")
         await store.write(
             str(user_scope()), "prefs", "tabs, never spaces", actor="cli:t"
@@ -146,9 +150,9 @@ class TestOneMachineEveryProject:
         # --- status: green from each, no file in either
         for name, directory in projects.items():
             status = await collect(replace(context, cwd=directory), env)
-            claude = status.clients[0]
-            assert claude.installed and claude.mcp_registered and claude.hooks_present
-            assert claude.level == "user" and status.double_fire == ()
+            row = next(c for c in status.clients if c.client == client)
+            assert row.installed and row.mcp_registered and row.hooks_present
+            assert row.level == "user" and status.double_fire == ()
             assert status.last_session is not None
             assert status.last_session["conversation"] == _SESSIONS[name]
 
@@ -171,13 +175,14 @@ class TestOneMachineEveryProject:
         line = installed_argv(hooks)
         assert line is not None and "--root" not in line
         assert line[line.index("--url") + 1] == "http://state-process"
-        argv, span_env = line[3:-2], daemon_env
+        argv = line[3:-2] if client == "claude-code" else line[3:]
+        span_env = daemon_env
         for name in projects:
             await span(argv, name, f"again from {name}")
         for name, directory in projects.items():
             turns = await store.read_turns(_SESSIONS[name])
             assert [t.turn for t in turns] == [1, 2]
-            assert (turns[1].actor or "").startswith("client:default/claude-code:")
+            assert (turns[1].actor or "").startswith(f"client:default/{client}:")
             rows = await store.versions(
                 str(project_scope(directory)), f"sessions/{_SESSIONS[name]}"
             )

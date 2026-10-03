@@ -22,6 +22,7 @@ from neosian._foundation.shared.client_config import (
     claude_home,
     codex_home,
     opencode_config_dir,
+    pi_home,
     read_document,
 )
 from neosian._foundation.shared.muse_config import config_dir as muse_config_dir
@@ -56,7 +57,7 @@ class ClientTarget:
 # whole block in the instructions. The server learns its client from the
 # actor the installer rendered (`mcp:<client>`).
 SessionStartDoor = Literal["hook", "instructions"]
-HOOKED_CLIENTS: Final = frozenset({"claude-code", "codex", "cursor", "muse-code"})
+HOOKED_CLIENTS: Final = frozenset({"claude-code", "codex", "cursor", "muse-code", "pi"})
 
 
 def session_start_door(actor: str | None) -> SessionStartDoor:
@@ -190,6 +191,24 @@ def _muse(context: Environment, level: str) -> ClientTarget:
     )
 
 
+def _pi(context: Environment, level: str) -> ClientTarget:
+    base = pi_home(context)
+    return ClientTarget(
+        client="pi",
+        label="Pi",
+        level=level,
+        config_path=(context.cwd / ".pi" if level == "project" else base) / "mcp.json",
+        evidence_dir=base,
+        servers_key=_SERVERS_KEY,
+        scope_note=(
+            "project level: trusted Pi workspace"
+            if level == "project"
+            else "user level: every Pi session on this machine"
+        ),
+        style="pi",
+    )
+
+
 _TARGETS: Final[dict[str, Callable[[Environment, str], ClientTarget]]] = {
     "claude-code": _claude_code,
     "claude-desktop": _claude_desktop,
@@ -197,6 +216,7 @@ _TARGETS: Final[dict[str, Callable[[Environment, str], ClientTarget]]] = {
     "codex": _codex,
     "opencode": _opencode,
     "muse-code": _muse,
+    "pi": _pi,
 }
 CLIENT_CHOICES: Final = tuple(_TARGETS)
 

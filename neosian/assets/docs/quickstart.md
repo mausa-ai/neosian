@@ -9,7 +9,7 @@ neosian is the state layer for LLM agents: durable conversations,
 agent-curated memory, skills, a shared board and a ledger of who did
 what, on storage you own (a directory, your Postgres, or one small state
 process). It serves the agent you already use (Claude Code, Codex,
-OpenCode, Muse Code, Cursor) over MCP and hooks, and the agent you build
+OpenCode, Muse Code, Cursor, Pi) over MCP and hooks, and the agent you build
 on its async-only, stateless Python core (>= 3.12).
 
 ## Install
@@ -35,7 +35,7 @@ saying what it installs first.
 
 Three commands and no Python. `neosian status` says whether this machine
 is set up. `neosian setup --write` wires every installed agent (Claude
-Code, Codex, OpenCode, Muse Code, Cursor) to the home once per machine:
+Code, Codex, OpenCode, Muse Code, Cursor, Pi) to the home once per machine:
 memory and skills over MCP, every session recorded through the client's
 own hooks, so a new project needs nothing. Bare `neosian` opens a chat
 with an agent that knows neosian and writes to the same memory

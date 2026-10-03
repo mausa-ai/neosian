@@ -88,6 +88,7 @@ class TestCollect:
             False,
             False,
             False,
+            False,
         ]
         assert status.last_session is None and status.one_writer == ()
         assert status.update_mode == "off"

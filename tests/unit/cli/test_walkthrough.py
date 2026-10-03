@@ -644,7 +644,7 @@ class TestConsole:
         assert payload["home"] == str(tmp_path / "home")
         assert payload["home_exists"] is False
         assert payload["scopes"]["/project"].endswith("/proj:fresh-proj")
-        assert [c["installed"] for c in payload["clients"]] == [False] * 5
+        assert [c["installed"] for c in payload["clients"]] == [False] * 6
         assert payload["update_mode"] == "off"
         assert not (tmp_path / "home").exists()  # status creates nothing
         text = _run(["status"], cwd=project, env=env)
@@ -657,30 +657,47 @@ class TestConsole:
         # same on a developer's machine and in CI.
         return {**env, "PATH": str(Path(sys.executable).parent)}
 
-    def test_setup_wires_the_machine_once(self, tmp_path: Path) -> None:
+    @pytest.mark.parametrize(
+        "client,home,config,plugin",
+        [
+            (
+                "opencode",
+                ".config/opencode",
+                "opencode.json",
+                "plugins/neosian-record.js",
+            ),
+            ("pi", ".pi/agent", "mcp.json", "extensions/neosian-record.ts"),
+        ],
+    )
+    def test_setup_wires_the_machine_once(
+        self, tmp_path: Path, client: str, home: str, config: str, plugin: str
+    ) -> None:
         env = self._no_client_cli(_env(tmp_path))
-        config_dir = tmp_path / ".config" / "opencode"
-        config_dir.mkdir(parents=True)  # HOME is tmp_path: OpenCode's evidence
+        config_dir = tmp_path / home
+        env.pop("PI_CODING_AGENT_DIR", None)
+        config_dir.mkdir(parents=True)  # HOME is tmp_path: client evidence
         project = tmp_path / "setup proj"
         project.mkdir()
         printed = _run(["setup"], cwd=project, env=env)
         assert printed.returncode == 0, printed.stderr
         assert "would write" in printed.stdout
-        assert not (config_dir / "opencode.json").exists()  # print mode writes nothing
+        assert not (config_dir / config).exists()  # print mode writes nothing
         written = _run(["setup", "--write", "--json"], cwd=project, env=env)
         assert written.returncode == 0, written.stderr
         (row,) = json.loads(written.stdout)["clients"]
-        assert row["client"] == "opencode" and row["mcp"]["level"] == "user"
-        assert (config_dir / "opencode.json").is_file()
-        assert (config_dir / "plugins" / "neosian-record.js").is_file()
+        assert row["client"] == client and row["mcp"]["level"] == "user"
+        assert (config_dir / config).is_file()
+        assert (config_dir / plugin).is_file()
         assert list(project.iterdir()) == []  # nothing per project
         other = tmp_path / "another proj"
         other.mkdir()
         for directory in (project, other):  # registered once: green anywhere
             status = _run(["status", "--json"], cwd=directory, env=env)
-            opencode = json.loads(status.stdout)["clients"][2]
-            assert opencode["mcp_registered"] and opencode["hooks_present"]
-            assert opencode["level"] == "user" and opencode["interpreter_resolves"]
+            row = next(
+                c for c in json.loads(status.stdout)["clients"] if c["client"] == client
+            )
+            assert row["mcp_registered"] and row["hooks_present"]
+            assert row["level"] == "user" and row["interpreter_resolves"]
 
     def test_setup_leaves_the_clients_own_cli_line_when_it_is_off_path(
         self, tmp_path: Path

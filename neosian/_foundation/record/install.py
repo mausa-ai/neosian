@@ -108,11 +108,9 @@ def build_command(
     return line
 
 
-def render_plugin(argv: Sequence[str]) -> str:
-    """The OpenCode plugin with the verb's argv in its one slot."""
-    template = (
-        resources.files("neosian.assets").joinpath(_PLUGIN_ASSET).read_text("utf-8")
-    )
+def render_plugin(argv: Sequence[str], asset: str = _PLUGIN_ASSET) -> str:
+    """A client's extension with the verb's argv in its one slot."""
+    template = resources.files("neosian.assets").joinpath(asset).read_text("utf-8")
     return template.replace(_PLUGIN_ARGV_SLOT, json.dumps(list(argv)))
 
 
@@ -199,7 +197,7 @@ def _render_success(
     err: TextIO,
 ) -> int:
     fragment = hook_fragment(command)
-    plugin = render_plugin(argv) if target.plugin else None
+    plugin = render_plugin(argv, target.plugin_asset) if target.plugin else None
     if json_output:
         payload = {
             "success": True,
@@ -385,7 +383,7 @@ def run_install(
             # client's: never the client's home itself, refused above.
             target.config_path.parent.mkdir(parents=True, exist_ok=True)
             if target.plugin:
-                write_text(target.config_path, render_plugin(argv))
+                write_text(target.config_path, render_plugin(argv, target.plugin_asset))
             else:
                 document = load_document(target.config_path)
                 merged = merge_hooks(

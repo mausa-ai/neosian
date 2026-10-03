@@ -85,6 +85,7 @@ class TestTarget:
             "opencode",
             "muse-code",
             "cursor",
+            "pi",
         )
         context = _context(tmp_path)
         target = resolve_target("claude-code", context)

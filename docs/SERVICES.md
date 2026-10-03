@@ -170,6 +170,12 @@ reported where it actually reads. `CLAUDE_PROJECT_DIR` is Claude Code's:
 its once-per-machine hook line passes it as `--project`, because a hook's
 working directory moves with the agent's `cd` and that variable does not.
 
+`PI_CODING_AGENT_DIR` moves Pi's agent directory (default `~/.pi/agent`),
+including its MCP registration and recording extension. Pi inherits
+`NEOSIAN_CLIENT_TOKEN` for both subprocesses; no credential is written
+into its registration. Pi 1.0.1 or later is required. Its interactive
+and print modes both run the extension.
+
 ## The MCP server — a DSN, not an API key
 
 `NEOSIAN_POSTGRES_DSN` (renamed from `NEOSIAN_MCP_POSTGRES_DSN` at NA,

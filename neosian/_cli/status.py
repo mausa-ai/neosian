@@ -48,7 +48,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
 _DESCRIPTION: Final = "Is this machine set up? The home, the keys, the clients."
-CLIENTS: Final = ("claude-code", "codex", "opencode", "muse-code", "cursor")
+CLIENTS: Final = ("claude-code", "codex", "opencode", "muse-code", "cursor", "pi")
 _DEFAULT_MODE: Final = "off"
 _ONE_WRITER: Final = (
     "{clients}: the hooks and the MCP server write {root} directly — one "

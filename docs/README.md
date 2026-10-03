@@ -18,7 +18,7 @@ the agent you already use or the one you build.
 
 Two doors, one store:
 
-- **Give your agent state.** Claude Code, Codex, OpenCode, Muse Code or
+- **Give your agent state.** Claude Code, Codex, OpenCode, Muse Code, Pi or
   interactive Cursor get memory and skills over MCP and every session
   recorded through hooks: `neosian setup --write` wires every client it
   finds, once per machine; `neosian status` says whether the machine is
@@ -164,7 +164,7 @@ Each line is one page in the wheel — `neosian docs <topic>`.
   in-band, the approval gate and hooks unchanged.
 - **The agent you already use** (`agents`). `neosian record install`
   spells the hooks that land a prompt-to-stop span as one turn by
-  `claude-code:<session>` (Codex, OpenCode, Muse Code and interactive Cursor
+  `claude-code:<session>` (Codex, OpenCode, Muse Code, Pi and interactive Cursor
   too), plus a sessions document; `SessionStart` prints the index, the
   pending handoff note and "where we left off" into the next window
   (OpenCode reads them from the server's instructions). A handoff is

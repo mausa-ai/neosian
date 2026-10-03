@@ -92,6 +92,8 @@ class RegistrationEntry:
                 "command": [self.command, *self.args],
                 "enabled": True,
             }
+        if style == "pi":
+            return {**self.to_json(), "exposure": "direct"}
         return self.to_json()
 
     def to_toml(self, *, servers_key: str, name: str) -> str:
@@ -388,14 +390,17 @@ def run_install(
             )
             if args.level == "user" and registered_argv(project) is not None:
                 mcp_shadowed_by = str(project.config_path)
-        elif args.client == "cursor":
+        elif args.client in {"cursor", "pi"}:
             merged = merge_entry(
                 load_document(target.config_path),
                 servers_key=target.servers_key,
                 name=SERVER_NAME,
                 entry=entry,
                 path=target.config_path,
+                style=target.style,
             )
+            if args.client == "pi" and args.level == "user":
+                displaced = displace(project, write=args.write)
         elif args.level == "user" and project.config_path != target.config_path:
             # A file the client's CLI writes is applied by `neosian setup`,
             # which removes the shadow once that succeeds; here it is named.
@@ -417,6 +422,8 @@ def run_install(
                     path=target.config_path,
                     style=target.style,
                 )
+            if args.client == "pi" and args.level == "project":
+                target.config_path.parent.mkdir(parents=True, exist_ok=True)
             write_document(target.config_path, merged)
     except InstallError as exc:
         return _render_failure(

@@ -88,6 +88,12 @@ start_instructions: |-
   one, `continue_session` carries on a session another agent left, and
   `handoff` leaves the note the next one reads.
 
+  When the user asks to continue, resume or pick up earlier work, call
+  `continue_session` before answering or handing off, even if the startup
+  summary already includes the answer. That call identifies which session
+  this work continues and picks up its note; reading the summary alone
+  does neither. New work does not call it.
+
 start_note: >-
   [handoff note — written {{written}} by {{actor}}; a session that says
   "continue" picks it up: call continue_session({{argument}}) to receive

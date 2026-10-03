@@ -24,6 +24,7 @@ from neosian._foundation.shared.client_config import (
     claude_home,
     codex_home,
     opencode_config_dir,
+    pi_home,
     read_document,
 )
 from neosian._foundation.shared.muse_config import config_dir as muse_config_dir
@@ -45,9 +46,10 @@ class HookTarget:
     evidence_dir: Path  # must already exist; NEVER created
     scope_note: str
     trust_hint: str | None = None  # what the client needs before it loads the file
-    # A plugin client (OpenCode) has no shell hooks: the file is ours whole
+    # A plugin client (OpenCode, Pi) has no shell hooks: the file is ours whole
     # — a rendered plugin, written and overwritten, never merged.
     plugin: bool = False
+    plugin_asset: str = "clients/opencode-record.js"
     # Appended raw to a line that names no mount: the client's own
     # expression for the session's project directory. Claude Code runs a
     # hook in a working directory its `cd` moves; this variable stays put.
@@ -159,12 +161,34 @@ def _cursor(context: Environment, level: str) -> HookTarget:
     )
 
 
+def _pi(context: Environment, level: str) -> HookTarget:
+    base = pi_home(context)
+    return HookTarget(
+        client="pi",
+        label="Pi",
+        level=level,
+        config_path=(context.cwd / ".pi" if level == "project" else base)
+        / "extensions"
+        / "neosian-record.ts",
+        evidence_dir=base,
+        scope_note=f"{level} level: Pi's session extension (Pi 1.0.1 or later)",
+        trust_hint=(
+            "Pi loads project extensions and MCP servers only in a trusted project"
+            if level == "project"
+            else None
+        ),
+        plugin=True,
+        plugin_asset="clients/pi-record.ts",
+    )
+
+
 _TARGETS: Final[dict[str, Callable[[Environment, str], HookTarget]]] = {
     "claude-code": _claude_code,
     "codex": _codex,
     "opencode": _opencode,
     "muse-code": _muse,
     "cursor": _cursor,
+    "pi": _pi,
 }
 CLIENT_CHOICES: Final = tuple(_TARGETS)
 

@@ -8,7 +8,18 @@ phase close names the version.
 
 ## [Unreleased]
 
+### Added
+
+- Pi 1.0.1+ as a client in both installers, setup and status: native MCP,
+  a session-recording extension, startup context and cross-client handoff.
+  User and project registrations honor `PI_CODING_AGENT_DIR`; recording
+  includes nested MCP calls and waits for final settlement after retries.
+
 ### Changed
+
+- Session-start memory instructions require `continue_session` when
+  resuming earlier work, even when the summary already contains the answer.
+  Pi receives those instructions through its extension's bounded section.
 
 - Record the first twelve-scenario external memory baseline, dispatch #22,
   including handoff results, provider access failures and response wording

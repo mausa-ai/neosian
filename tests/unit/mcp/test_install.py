@@ -90,6 +90,7 @@ class TestTargets:
             "codex",
             "opencode",
             "muse-code",
+            "pi",
         )
 
     def test_codex_is_its_home_toml_or_codex_home(self, tmp_path: Path) -> None:

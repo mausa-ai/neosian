@@ -76,6 +76,12 @@ def opencode_config_dir(context: Environment) -> Path:
     return Path(override) if override else context.home / ".config" / "opencode"
 
 
+def pi_home(context: Environment) -> Path:
+    """Pi's agent directory, including its own environment override."""
+    override = context.env.get("PI_CODING_AGENT_DIR")
+    return Path(override).expanduser() if override else context.home / ".pi" / "agent"
+
+
 class InstallError(Exception):
     """A tier-1 refusal: environment or config-file trouble, with its fix."""
 
