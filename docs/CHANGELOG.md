@@ -50,6 +50,12 @@ phase close names the version.
   including handoff results, provider access failures and response wording
   limitations. The measured scores are unchanged.
 
+### Fixed
+
+- Messaging commands derive the current project's user/project mounts when
+  no scope or mount is supplied. Bare `neosian messages list` works against
+  the home, and an untargeted send uses the current project.
+
 ## [1.1.1] - 2026-10-03
 
 ### Fixed

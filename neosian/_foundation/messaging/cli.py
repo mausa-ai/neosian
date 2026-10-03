@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from pathlib import Path
 from typing import TextIO
 
 import httpx
@@ -63,7 +64,7 @@ async def run(
     parser.add_argument("--json", action="store_true", dest="json_output")
     try:
         args = parser.parse_args(list(argv))
-        settings = resolve_store_settings(parser, args, env)
+        settings = resolve_store_settings(parser, args, env, layout=Path.cwd())
     except SystemExit as exc:
         return exc.code if isinstance(exc.code, int) else 2
     try:

@@ -118,6 +118,9 @@ neosian messages snooze --target /project --session SESSION --message-id UUID --
 
 `--scope`/`--mount`, `--root`, `--url` and the existing database/environment
 configuration select storage. `--target` selects a destination among mounts.
+With no scope or mount override, commands use the current directory's user
+and project mounts. `neosian messages list` reads both; an untargeted send
+uses the project mount. Storage defaults to the home.
 
 ## History and ownership
 
