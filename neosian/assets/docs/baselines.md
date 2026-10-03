@@ -16,7 +16,7 @@ yardstick (candidate: LongMemEval) is roadmapped as NC6.
 
 ## What is measured
 
-The shipped pack `examples/eval_memory_baseline.yaml`, eleven scenarios,
+The shipped pack `examples/eval_memory_baseline.yaml`, twelve scenarios,
 one per behavior:
 
 | Scenario | Behavior |
@@ -32,6 +32,7 @@ one per behavior:
 | cross-client | **The switching claim** (VISION; §21.7, NB): a Claude Code session lands through the record verb's engine (`record:`, its hooks' three payloads, no model in the room), then the agent under test starts the way a hook-fed agent starts (`session_start:` the index plus "where we left off" in its prefix) and must recall the foreign turn verbatim through the server's `recall_turn` (conversation required); the sessions document the record wrote and a reading session that never writes are the store truth |
 | skills | **Skills as documents** (§24, NK): the agent saves a reusable procedure as `skills/<name>` through the memory tool, with the frontmatter `description` the guide names is the store truth then loads it by name in the next session (`load_skill`, and loading never writes), then revises it in place: one document under `/project/skills/`, `[created, modified]`, the new step in the live text |
 | old-turn-search | **History search** (§32, N5): four Claude Code sessions land through the record verb's engine, the first carrying a fact deep in its final text (past the log line's 200-char digest, in no document and in no prompt) and the three that follow pushing it outside the three sessions "where we left off" shows; the agent under test must find the turn by content (`search_history`, store-wide on the server) and re-read it (`recall_turn`); the pin is the TTL, its digits grouped or not, the store truth the four sessions documents and a reading session that never writes |
+| handoff | **The handoff** (§33, N6): a session another agent continues, declared never assumed. The agent under test writes the note with `handoff` (one baton per scope, `/project/handoff`, pending); a Claude Code session then lands through the record verb's engine with a build log whose middle holds the fact (a result pages at read, its middle opens only by its call); the next agent starts the way a hook-fed agent starts, sees the note in full, continues in one call (`continue_session()`: the session landed after the note, delivered whole, the note first) and recalls the log's middle by its call (`recall_turn(..., call=)`); a fresh session after that sees no note. Store truth: the baton `pending` then `picked up` and linked to the delivered session, the two sessions documents the only other live documents under `/project` |
 
 Scoring is **store truth** (DESIGN §13.12): after each session the
 harness re-reads the actual files through a freshly constructed store.
@@ -146,7 +147,15 @@ fails when any gated file changes without this section being updated:
   vocabulary as memory/reflection; first measured cells arrive with the
   maintenance scenario in this same batch.)*
 - `examples/eval_memory_baseline.yaml`: sha256
-  `6024174fdb6014ffad05f1a315058d739d13ade95eb18ab56d770132ea4eaeee`
+  `5623d0d62b112364772d414d70717f59a2ccb7d26bd1ae99e973c304edb3ec71`
+  *(N6, 2026-10-03, the pack gained `handoff`, the twelfth scenario
+  (DESIGN §33): a neosian session writes the note, a recorded session
+  lands after it, the next session continues in one call and recalls a
+  long result's middle by its call, a fresh one sees no note. No
+  existing scenario, turn, pin or prompt moved; the pack is 48 cells
+  keyless (the dated block under Results); every real row's re-run
+  rides the /ship after `n6-done`, the N5 precedent. Prior:
+  `6024174f…`.)*
   *(N5 /ship, 2026-09-27, one pin widened, no scenario, turn or count
   moved: `old-turn-search`'s response pin was the TTL's digits, `86400`,
   on the belief that no model restyles a number; dispatch #19 read
@@ -488,6 +497,24 @@ Findings, recorded as found:
   client's `aclose()` task (httpx2) after the loop had closed; no cell
   affected, the assertion already taken. A harness client-lifetime item,
   recorded here, not fixed in a ship.
+
+### 2026-10-03: The handoff: the twelfth scenario, keyless (N6)
+
+The pack gained `handoff` (DESIGN §33) and its fingerprint moved (the
+section above). The keyless row, at the close: **48/48** on FakeProvider
+across function, cli, http and mcp
+(`tests/unit/evaluation/test_memory_scripted.py`), the new scenario
+green on all four columns: the function, cli and http columns carrying
+`continue_session` and `handoff` beside the recall and search pair
+through `extra_tools` (the http column's pickup and note crossing the
+wire as memory writes), the mcp column served by the state set's sixth
+and seventh tools. A per-transport pin (`test_handoff_scenario.py`)
+reads the captures and the prefixes, since the fake replays a script
+whether or not the note was shown: the continuing session's prefix
+carries the note in full and names the bare call, the fresh session's
+carries none, and the build id reaches the model only through the
+recall by call, never through the continuation's one-line tool round.
+The real rows follow on the next dispatch, the /ship after `n6-done`.
 
 ### 2026-09-27: History search: the eleventh scenario, keyless (N5)
 

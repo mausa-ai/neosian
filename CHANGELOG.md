@@ -25,6 +25,11 @@ phase close names the version.
 - The wheel's own `handoff` skill (`assets/skills/handoff.md`), served by
   the MCP server as a prompt beside the mounts' skills: a slash command
   in the clients that render prompts.
+- The shipped memory pack gains its twelfth scenario, `handoff`: a note
+  written, a recorded session landed after it, continued in one call
+  with a long result's middle recalled by its call, and a fresh session
+  that sees no note; 48 cells keyless on the four transports, the pack's
+  fingerprint re-pinned (`neosian docs baselines`).
 - `neosian continue [CONVERSATION] [--scope S] [--json]`, the shell twin:
   prints what `continue_session` would deliver from a scope (this
   directory's project scope by default), as a read: the note stays
