@@ -63,5 +63,4 @@ Thumbs.db
 # The record (roadmap, design, the tour, the protocol) lives in record/,
 # in the checkout but never committed (ledger #272).
 /record/
-/docs/
 /.claude/

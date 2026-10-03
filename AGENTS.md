@@ -3,7 +3,7 @@
 Async-only Python library: the state layer for LLM agents — a stateless
 `Agent` core (tools, orchestration, streaming, fallback, guardrails,
 structured output) with opt-in `Conversation` + memory layers around it,
-on storage the product owns. Read `README.md` first; `neosian docs
+on storage the product owns. Read `docs/README.md` first; `neosian docs
 <topic>` prints the shipped pages from the wheel.
 
 ## Hard rules
@@ -59,11 +59,11 @@ on storage the product owns. Read `README.md` first; `neosian docs
 | `make test` | unit tier — the default gate, zero API keys, the coverage floor |
 | `make size` | file-size gate (300/500) |
 | `make test-external provider=<p> [file=…]` | real-API suite for one provider; `file=` injects creds value-blind |
-| `make test-postgres` | PostgresStore suite; needs `NEOSIAN_TEST_POSTGRES_DSN` (`SERVICES.md`) |
+| `make test-postgres` | PostgresStore suite; needs `NEOSIAN_TEST_POSTGRES_DSN` (`docs/SERVICES.md`) |
 | `make test-container` | the state-process image against both conformance kits (docker) |
 
 All four default gates green, with no API key set, before every commit.
-`SERVICES.md` lists every environment key and what turning it off means.
+`docs/SERVICES.md` lists every environment key and what turning it off means.
 
 ## Versioning and releases
 
@@ -71,9 +71,9 @@ The version literal lives once, in `pyproject [project].version`;
 `__version__` derives via `importlib.metadata` (a unit test pins it).
 Release axis = annotated `v<X.Y.Z>` tags, cut by `make release v=X.Y.Z`
 on a clean tree with the version's `## [X.Y.Z]` section in
-`CHANGELOG.md`; pushing a `v*` tag runs `release.yml` (PyPI by trusted
+`docs/CHANGELOG.md`; pushing a `v*` tag runs `release.yml` (PyPI by trusted
 publishing, the image to GHCR). Bump on public-surface change, not per
-commit. `[Unreleased]` in `CHANGELOG.md` accumulates until the bump.
+commit. `[Unreleased]` in `docs/CHANGELOG.md` accumulates until the bump.
 
 ## Commits
 

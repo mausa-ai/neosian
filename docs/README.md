@@ -280,7 +280,7 @@ Origin](https://developercertificate.org/) and licensed as the project
 is, Apache-2.0 — there is no CLA. Open an issue before a feature or a
 departure from documented behaviour; the public API is pinned by
 `tests/unit/test_init.py`, so an export change is a reviewed diff.
-[SECURITY.md](https://github.com/mausa-ai/neosian/blob/v1.1.0/SECURITY.md) is where vulnerabilities go, never an issue.
+[SECURITY.md](https://github.com/mausa-ai/neosian/blob/v1.1.0/docs/SECURITY.md) is where vulnerabilities go, never an issue.
 
 ## Documents
 
@@ -292,9 +292,9 @@ departure from documented behaviour; the public API is pinned by
   `baselines` (the published per-provider memory numbers); the same pages
   online at [neosian.com/docs](https://neosian.com/docs), rendered from the
   wheel at the current release.
-- [SERVICES.md](https://github.com/mausa-ai/neosian/blob/v1.1.0/SERVICES.md) — every env key and what turning it off means.
-- [CHANGELOG.md](https://github.com/mausa-ai/neosian/blob/v1.1.0/CHANGELOG.md) — Keep a Changelog, one section per release.
-- [SECURITY.md](https://github.com/mausa-ai/neosian/blob/v1.1.0/SECURITY.md) — where to report, and the supported line.
+- [SERVICES.md](https://github.com/mausa-ai/neosian/blob/v1.1.0/docs/SERVICES.md) — every env key and what turning it off means.
+- [CHANGELOG.md](https://github.com/mausa-ai/neosian/blob/v1.1.0/docs/CHANGELOG.md) — Keep a Changelog, one section per release.
+- [SECURITY.md](https://github.com/mausa-ai/neosian/blob/v1.1.0/docs/SECURITY.md) — where to report, and the supported line.
 - [llms.txt](https://github.com/mausa-ai/neosian/blob/v1.1.0/llms.txt) — the machine-readable front door (byte-identical
   twin ships in the wheel).
 

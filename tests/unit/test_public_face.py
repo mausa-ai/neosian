@@ -15,7 +15,7 @@ import pytest
 import neosian
 
 _ROOT = Path(__file__).resolve().parents[2]
-_FLOOR = ("LICENSE", "README.md", "SECURITY.md")
+_FLOOR = ("LICENSE", "docs/README.md", "docs/SECURITY.md")
 _INSTALLER = _ROOT / "scripts" / "install.sh"
 _DOCKERFILE = _ROOT / "Dockerfile"
 
@@ -30,10 +30,10 @@ def test_the_floor_exists(name: str) -> None:
 def test_security_names_the_channel_and_the_address() -> None:
     # Private vulnerability reporting first, the one library address by
     # email (ledger #186, #199); the README carries conduct and the DCO.
-    policy = (_ROOT / "SECURITY.md").read_text(encoding="utf-8")
+    policy = (_ROOT / "docs" / "SECURITY.md").read_text(encoding="utf-8")
     assert "private vulnerability reporting" in policy
     assert "community@neosian.com" in policy
-    readme = (_ROOT / "README.md").read_text(encoding="utf-8")
+    readme = (_ROOT / "docs" / "README.md").read_text(encoding="utf-8")
     assert "git commit -s" in readme
     assert "community@neosian.com" in readme
 
@@ -95,7 +95,7 @@ def test_the_docs_are_on_the_one_domain() -> None:
     with (_ROOT / "pyproject.toml").open("rb") as f:
         urls = tomllib.load(f)["project"]["urls"]
     assert urls["Documentation"] == "https://neosian.com/docs"
-    readme = (_ROOT / "README.md").read_text(encoding="utf-8")
+    readme = (_ROOT / "docs" / "README.md").read_text(encoding="utf-8")
     assert "](https://neosian.com/docs)" in readme
     llms = (_ROOT / "llms.txt").read_text(encoding="utf-8")
     assert "https://neosian.com/docs" in llms

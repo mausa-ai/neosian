@@ -1,7 +1,8 @@
 # Services & keys
 
-> Companion to [CLAUDE.md](../CLAUDE.md) (conventions), [DESIGN.md](DESIGN.md)
-> §10–§11 (harness and CI), and [ECOSYSTEM.md](ECOSYSTEM.md) (frozen seams).
+> Companion to [AGENTS.md](../AGENTS.md) (conventions) and, in the
+> maintainer's record, DESIGN §10–§11 (harness and CI) and ECOSYSTEM
+> (frozen seams).
 
 **Keyless boot is the invariant**: `make lint`, `make typecheck` and
 `make test` need **zero third-party accounts**. FakeProvider

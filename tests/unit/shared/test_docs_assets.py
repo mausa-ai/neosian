@@ -41,7 +41,7 @@ class TestTheShippedPages:
         listings = {
             "tools.yaml": prompts.joinpath("tools.yaml").read_text(encoding="utf-8"),
             "chat.yaml": prompts.joinpath("chat.yaml").read_text(encoding="utf-8"),
-            "README.md": (root / "README.md").read_text(encoding="utf-8"),
+            "README.md": (root / "docs" / "README.md").read_text(encoding="utf-8"),
             "llms.txt": (root / "llms.txt").read_text(encoding="utf-8"),
         }
         for name, text in listings.items():

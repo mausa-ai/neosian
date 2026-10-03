@@ -20,7 +20,7 @@ import neosian
 
 PYPROJECT = Path(__file__).parents[2] / "pyproject.toml"
 _ROOT = PYPROJECT.parent
-_README = _ROOT / "README.md"
+_README = _ROOT / "docs" / "README.md"
 _READER_FACING = (
     _README,
     _ROOT / "llms.txt",

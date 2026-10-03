@@ -126,7 +126,7 @@ def test_the_changelog_names_the_version() -> None:
     # Keep a Changelog, kept by the gate (DESIGN §29): `[Unreleased]`
     # accumulates during a phase, the close names the version, and a bump
     # without its section goes red here before `make release` refuses it.
-    text = (_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    text = (_ROOT / "docs" / "CHANGELOG.md").read_text(encoding="utf-8")
     assert "\n## [Unreleased]\n" in text
     assert f"\n## [{neosian.__version__}] - " in text
     assert f"[{neosian.__version__}]: https://github.com/mausa-ai/neosian/" in text

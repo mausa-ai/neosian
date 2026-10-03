@@ -7,7 +7,7 @@
 #
 # The FileStore leg always runs. The Postgres leg runs when
 # NEOSIAN_TEST_POSTGRES_DSN is set (CI's service container, or the
-# SERVICES.md one-liner) and is skipped loudly otherwise. Needs a
+# docs/SERVICES.md one-liner) and is skipped loudly otherwise. Needs a
 # docker daemon; refuses without one.
 set -euo pipefail
 

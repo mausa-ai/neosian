@@ -65,7 +65,7 @@ def test_no_shipped_page_names_a_retired_id() -> None:
         for p in (_REPO_ROOT / "neosian" / "assets" / "docs").glob("*.md")
         if p.name != "baselines.md"
     ]
-    pages.append(_REPO_ROOT / "README.md")
+    pages.append(_REPO_ROOT / "docs" / "README.md")
     texts = {p.name: p.read_text(encoding="utf-8") for p in pages}
     texts["llms.txt"] = _packaged_copy().decode("utf-8")
     for name, text in texts.items():

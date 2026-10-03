@@ -243,6 +243,6 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
 
 ## Docs
 
-- https://github.com/mausa-ai/neosian/blob/v1.1.0/README.md: install and quickstart.
-- https://github.com/mausa-ai/neosian/blob/v1.1.0/SERVICES.md: every environment key and what turning it off means.
+- https://github.com/mausa-ai/neosian/blob/v1.1.0/docs/README.md: install and quickstart.
+- https://github.com/mausa-ai/neosian/blob/v1.1.0/docs/SERVICES.md: every environment key and what turning it off means.
 - `neosian docs baselines`: the published per-provider memory numbers.

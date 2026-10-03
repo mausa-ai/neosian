@@ -51,7 +51,7 @@ ifndef v
 endif
 	@git diff --quiet && git diff --cached --quiet || { echo "refusing: dirty tree"; exit 1; }
 	@grep -q '^version = "$(v)"$$' pyproject.toml || { echo "refusing: v$(v) is not pyproject [project].version"; exit 1; }
-	@grep -q '^## \[$(subst .,\.,$(v))\]' CHANGELOG.md || { echo "refusing: CHANGELOG.md has no '## [$(v)]' section"; exit 1; }
+	@grep -q '^## \[$(subst .,\.,$(v))\]' docs/CHANGELOG.md || { echo "refusing: docs/CHANGELOG.md has no '## [$(v)]' section"; exit 1; }
 ifdef notes
 	@test -s "$(notes)" || { echo "refusing: notes=$(notes) is missing or empty"; exit 1; }
 	git tag -a "v$(v)" --cleanup=whitespace -F "$(notes)"
