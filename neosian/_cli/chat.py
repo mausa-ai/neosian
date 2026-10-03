@@ -21,7 +21,7 @@ from rich.text import Text
 from neosian._cli.chat_mcp import serving
 from neosian._cli.chat_shell import Consent
 from neosian._cli.display import field_table
-from neosian._cli.ui import BRAND_ACCENT, load_mark
+from neosian._cli.ui import BRAND_ACCENT, load_mark, load_wordmark
 from neosian._foundation.conversation.core import Conversation
 from neosian._foundation.conversation.ids import parse_conversation_id
 from neosian._foundation.conversation.reflection import ReflectionConfig
@@ -34,7 +34,7 @@ from neosian._foundation.shared.constants import PlaygroundUI
 from neosian._foundation.shared.registry import provider_label, resolve_model
 from neosian._foundation.shared.types import AgentConfig, AnyModel
 
-_MARK_WIDTH: Final = 72  # the narrowest opening that seats the mark beside the text
+_LOCKUP_GAP: Final = 3  # columns between the mark and what sits beside it
 _ID_STAMP = "%Y%m%d-%H%M%S"
 _ID_NAME_CHARS = 64
 _RESUME_IS_PATH = (
@@ -106,6 +106,10 @@ def describe_memory(config: AgentConfig) -> str:
     return ", ".join(f"/{m.mount_path} = {m.scope}" for m in mounts)
 
 
+def _columns(art: Text) -> int:
+    return max(map(len, art.plain.splitlines()), default=0)
+
+
 @dataclass(frozen=True, slots=True)
 class Opening:
     """What the session says before the first turn."""
@@ -115,8 +119,10 @@ class Opening:
     notice: str | None = None
 
     def render(self, width: int) -> RenderableType:
-        """The mark beside the text; the text alone on a narrow terminal."""
-        parts: list[RenderableType] = [
+        """The lockup (the mark, and beside it the wordmark over the
+        agent's lines), then the facts; the lines and the facts alone
+        where the lockup does not fit."""
+        lines: list[RenderableType] = [
             Text(
                 PlaygroundUI.AGENT_LOADED.format(name=self.agent),
                 style=f"bold {BRAND_ACCENT}",
@@ -124,16 +130,17 @@ class Opening:
             Text(PlaygroundUI.SESSION_START, style="dim"),
         ]
         if self.notice is not None:
-            parts.append(Text(self.notice, style="dim"))
-        parts += [Text(), field_table(self.facts)]
-        mark = load_mark()
-        if not mark.plain or width < _MARK_WIDTH:
-            return Group(*parts)
-        seated = Table.grid(padding=(0, 3))
-        seated.add_column(no_wrap=True)
-        seated.add_column()
-        seated.add_row(mark, Group(*parts))
-        return seated
+            lines.append(Text(self.notice, style="dim"))
+        facts: list[RenderableType] = [Text(), field_table(self.facts)]
+        mark, wordmark = load_mark(), load_wordmark()
+        needed = _columns(mark) + _LOCKUP_GAP + _columns(wordmark)
+        if not (mark.plain and wordmark.plain) or width < needed:
+            return Group(*lines, *facts)
+        lockup = Table.grid(padding=(0, _LOCKUP_GAP))
+        lockup.add_column(no_wrap=True)
+        lockup.add_column()
+        lockup.add_row(mark, Group(wordmark, *lines))
+        return Group(lockup, *facts)
 
 
 @dataclass(frozen=True, slots=True)

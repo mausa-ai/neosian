@@ -1,5 +1,5 @@
 """The shell's small Rich helpers (DESIGN §30.3): the numbered menu, the
-mark, the two formatters. The menu reads a piped stdin here."""
+brand art, the two formatters. The menu reads a piped stdin here."""
 
 import io
 
@@ -10,6 +10,7 @@ from neosian._cli.ui import (
     format_args,
     format_elapsed_time,
     load_mark,
+    load_wordmark,
     pick,
 )
 
@@ -52,8 +53,13 @@ class TestPick:
 
 
 @pytest.mark.unit
-class TestTheMark:
-    def test_it_ships_in_the_wheel_flush_left(self) -> None:
+class TestTheArt:
+    def test_the_wordmark_is_four_rows_beside_a_six_row_mark(self) -> None:
+        lines = load_wordmark().plain.splitlines()
+        assert len(lines) == 4 and max(map(len, lines)) == 44
+        assert lines[0].strip() == "██"  # the i's dot
+
+    def test_the_mark_ships_in_the_wheel_flush_left(self) -> None:
         lines = load_mark().plain.splitlines()
         assert (
             len(lines) == 6

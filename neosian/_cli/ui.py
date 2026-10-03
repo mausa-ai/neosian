@@ -1,4 +1,4 @@
-"""Shared Rich helpers for the CLI: the mark and small formatters."""
+"""Shared Rich helpers for the CLI: the brand art and small formatters."""
 
 import importlib.resources
 import textwrap
@@ -16,15 +16,25 @@ BRAND_ACCENT = "#afaf73"  # maki: the wordmark art, the app name
 BRAND_SUPPORT = "#c6a850"  # maki sarısı: the mark
 
 
-def load_mark() -> Text:
-    """The mark in the support colour, flush left; empty when the asset
-    cannot be read."""
+def load_art(name: str, style: str) -> Text:
+    """A shipped piece of ASCII art, flush left, in `style`; empty when the
+    asset cannot be read."""
     try:
         files = importlib.resources.files(Assets.PACKAGE)
-        art = files.joinpath(Assets.LOGO_FILE).read_text(encoding="utf-8")
+        art = files.joinpath(name).read_text(encoding="utf-8")
     except Exception:
         return Text()
-    return Text(textwrap.dedent(art).strip("\n"), style=BRAND_SUPPORT)
+    return Text(textwrap.dedent(art).strip("\n"), style=style)
+
+
+def load_mark() -> Text:
+    """The mark, in the support colour."""
+    return load_art(Assets.LOGO_FILE, BRAND_SUPPORT)
+
+
+def load_wordmark() -> Text:
+    """The name in block letters, in the accent."""
+    return load_art(Assets.ASCII_FILE, BRAND_ACCENT)
 
 
 def pick(

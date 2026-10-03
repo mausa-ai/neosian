@@ -24,15 +24,15 @@ from textual import on
 from textual.app import App, ComposeResult
 from textual.binding import Binding, BindingType
 from textual.containers import Vertical, VerticalScroll
-from textual.widgets import Static, TextArea
+from textual.widgets import Static
 from textual.worker import Worker, WorkerCancelled
 
 from neosian._cli.chat import Session, open_session
 from neosian._cli.tui.asks import Confirm, Pick, Secret
-from neosian._cli.tui.commands import BY_NAME, NAMES, Command
+from neosian._cli.tui.commands import BY_NAME, MENU, Command
 from neosian._cli.tui.theme import THEME
 from neosian._cli.tui.turn import TurnView, replay
-from neosian._cli.tui.widgets import Prompt, ToolCall, Working
+from neosian._cli.tui.widgets import Menu, Prompt, ToolCall, Working
 from neosian._foundation.agent.lifetimes import closing
 from neosian._foundation.mcp.client import McpServer
 from neosian._foundation.shared.constants import PlaygroundUI
@@ -65,6 +65,7 @@ class SessionApp(App[None]):
     .blocked { border: round $error; padding: 0 1; }
     .error { color: $error; }
     #working { height: 1; padding: 0 1; display: none; }
+    #menu { height: auto; padding: 0 1; display: none; }
     #prompt, #prompt:focus {
         height: auto; max-height: 10; border: round $primary; padding: 0 1;
     }
@@ -102,7 +103,9 @@ class SessionApp(App[None]):
         with VerticalScroll(id="scroll", can_focus=False):  # the prompt keeps it
             yield Vertical(id="transcript")
         yield Working(_WORKING, id="working")
-        yield Prompt(id="prompt", placeholder=_PLACEHOLDER)
+        menu = Menu(MENU, id="menu")
+        yield menu
+        yield Prompt(menu, id="prompt", placeholder=_PLACEHOLDER)
         yield Static(id="footer")
 
     async def on_mount(self) -> None:
@@ -135,22 +138,11 @@ class SessionApp(App[None]):
         if self._leaving:
             self.query_one("#footer", Static).update(Text(_AGAIN, style="bold"))
             return
-        typed = self.query_one(Prompt).text
-        if typed.startswith("/") and " " not in typed:  # the commands it may be
-            hint = "   ".join(
-                f"/{name}" for name in NAMES if name.startswith(typed[1:])
-            )
-            self.query_one("#footer", Static).update(Text(hint, style="dim"))
-            return
         line = self.session.title.copy()
         if self._spent is not None:
             line.append(f"  {format_micro_usd(self._spent)}", style="dim")
         line.append(f"   {_KEYS}", style="dim")
         self.query_one("#footer", Static).update(line)
-
-    @on(TextArea.Changed)
-    def _typed(self) -> None:
-        self._footer()
 
     @on(Prompt.Submitted)
     async def _submitted(self, event: Prompt.Submitted) -> None:

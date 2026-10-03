@@ -539,10 +539,12 @@ class TestTheOpening:
         text = plain(Opening("my_agent", self._FACTS, "Resumed 2").render(100))
         assert "Agent: my_agent" in text and "/help" in text
         assert "Resumed 2" in text and "--resume s1" in text
-        assert "▀█▀" in text  # the mark sits beside them
-        assert len(text.splitlines()) <= 8
+        lines = text.splitlines()
+        assert "▀█▀" in lines[5] and "██▄▄██" in lines[2]  # the mark, the wordmark
+        assert "Agent: my_agent" in lines[4]  # under the wordmark, beside the mark
+        assert len(lines) == 10  # the lockup (seven with a notice), a blank, two facts
 
-    def test_a_narrow_terminal_drops_the_mark(self) -> None:
+    def test_a_narrow_terminal_drops_the_art(self) -> None:
         text = plain(Opening("my_agent", self._FACTS).render(60))
         assert "█" not in text and "Agent: my_agent" in text
 

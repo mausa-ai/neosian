@@ -1,18 +1,19 @@
-"""The session view's pieces: the prompt, a tool call that folds, the
-working line. Application data is literal `Text`, never markup."""
+"""The session view's pieces: the prompt and its command menu, a tool
+call that folds, the working line. Application data is literal `Text`,
+never markup."""
 
 from __future__ import annotations
 
 import shlex
 import time
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, ClassVar, Final
 
 from rich.console import Group, RenderableType
 from rich.pretty import pretty_repr
 from rich.text import Text
-from textual import events
+from textual import events, on
 from textual.binding import Binding, BindingType
 from textual.message import Message
 from textual.timer import Timer
@@ -27,10 +28,54 @@ _FRAMES: Final = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 _FRAME_SECONDS: Final = 0.1
 
 
+class Menu(Static):
+    """What a typed `/` may still become: a row per matching command, one
+    of them chosen. It follows the prompt's text and is gone once the
+    command is whole (a space) or matches nothing."""
+
+    def __init__(self, rows: Sequence[tuple[str, str]], *, id: str) -> None:
+        super().__init__(id=id)
+        self._rows = rows
+        self._matches: list[tuple[str, str]] = []
+        self._at = 0
+
+    @property
+    def chosen(self) -> str | None:
+        return self._matches[self._at][0] if self._matches else None
+
+    def offer(self, typed: str) -> None:
+        stem = typed[1:]
+        naming = typed.startswith("/") and not any(map(str.isspace, stem))
+        matches = [row for row in self._rows if naming and row[0].startswith(stem)]
+        if matches != self._matches:
+            self._matches, self._at = matches, 0
+        self._draw()
+
+    def move(self, step: int) -> None:
+        self._at = (self._at + step) % len(self._matches)
+        self._draw()
+
+    def _draw(self) -> None:
+        self.display = bool(self._matches)
+        width = max((len(name) for name, _ in self._matches), default=0) + 3
+        lines = Text()
+        for at, (name, summary) in enumerate(self._matches):
+            chosen = at == self._at
+            lines.append("› " if chosen else "  ", style=BRAND_ACCENT)
+            lines.append(
+                f"/{name}".ljust(width), style=f"bold {BRAND_ACCENT}" if chosen else ""
+            )
+            lines.append(f"{summary}\n", style="" if chosen else "dim")
+        lines.rstrip()
+        self.update(lines)
+
+
 class Prompt(TextArea):
     """Enter sends; ctrl+j breaks the line (shift+enter too, where the
     terminal reports it); up and down walk what this session sent, from
-    an empty prompt or a recalled line, never over a draft."""
+    an empty prompt or a recalled line, never over a draft. While the
+    menu is open the keys are its own: up and down choose, tab completes
+    the choice into the prompt, enter runs it, esc puts the menu away."""
 
     BINDINGS: ClassVar[list[BindingType]] = [
         Binding("ctrl+c", "app.cancel", show=False),
@@ -41,8 +86,9 @@ class Prompt(TextArea):
     class Submitted(Message):
         text: str
 
-    def __init__(self, *, id: str, placeholder: str) -> None:
+    def __init__(self, menu: Menu, *, id: str, placeholder: str) -> None:
         super().__init__(id=id, placeholder=placeholder)
+        self._menu = menu
         self._sent: list[str] = []
         self._at = 0  # len(_sent) is the empty line after the newest
 
@@ -58,18 +104,32 @@ class Prompt(TextArea):
         if not 0 <= at <= len(self._sent) or (self.text and not recalled):
             return False
         self._at = at
-        self.text = self._sent[at] if at < len(self._sent) else ""
-        self.move_cursor(self.document.end)
+        self._put(self._sent[at] if at < len(self._sent) else "")
         return True
 
+    def _put(self, text: str) -> None:
+        self.text = text
+        self.move_cursor(self.document.end)
+
+    @on(TextArea.Changed)
+    def _typed(self) -> None:
+        self._menu.offer(self.text)
+
     async def _on_key(self, event: events.Key) -> None:
-        if event.key == "enter":
-            self.post_message(self.Submitted(self.text))
-        elif event.key in _NEWLINE_KEYS:
+        key, chosen = event.key, self._menu.chosen
+        if chosen is not None and key in _HISTORY_KEYS:
+            self._menu.move(_HISTORY_KEYS[key])
+        elif chosen is not None and key == "tab":
+            self._put(f"/{chosen} ")
+        elif chosen is not None and key == "escape":
+            self._menu.offer("")
+        elif key == "enter":
+            self.post_message(
+                self.Submitted(self.text if chosen is None else f"/{chosen}")
+            )
+        elif key in _NEWLINE_KEYS:
             self.insert("\n")
-        elif not (
-            event.key in _HISTORY_KEYS and self._recall(_HISTORY_KEYS[event.key])
-        ):
+        elif not (key in _HISTORY_KEYS and self._recall(_HISTORY_KEYS[key])):
             return
         event.stop()
         event.prevent_default()

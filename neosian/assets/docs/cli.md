@@ -121,8 +121,10 @@ models a key opens; `/model ID` names one). `/resume` continues an
 earlier session of this chat in this project (a list, newest first;
 `/resume ID` names one) and draws its last ten turns again, as
 `--resume` does at the start. `/new` starts a fresh conversation,
-`/compact` folds the older turns now, `/exit` leaves. Typing `/` shows
-the commands in the footer. Everything else is a sentence to the agent.
+`/compact` folds the older turns now, `/exit` leaves. Typing `/` opens
+them as a menu above the prompt that narrows as you type: up and down
+choose, tab completes the choice so an argument can follow, enter runs
+it, esc puts the menu away. Everything else is a sentence to the agent.
 
 **The agent runs the verbs.** Ask "is this machine set up, any
 reminders waiting?" and the resident agent runs `status` and reads its

@@ -15,7 +15,7 @@ from neosian._cli.config import get_all_credentials, get_config_path
 from neosian._cli.tui.app import SessionApp
 from neosian._cli.tui.asks import Pick, Secret
 from neosian._cli.tui.commands import BY_NAME, COMMANDS, NAMES
-from neosian._cli.tui.widgets import Prompt, ToolCall
+from neosian._cli.tui.widgets import Menu, Prompt, ToolCall
 from neosian._foundation.llm.base import ToolCall as Call
 from neosian._foundation.llm.fake import FakeClient, FakeScript, FakeTurn
 from neosian._foundation.memory.file import FileStore
@@ -107,17 +107,6 @@ class TestTheSet:
             assert "no command /status: /help lists them" in _text(app)
         assert await FileStore(tmp_path / "home").read_turns("t1") == ()
 
-    async def test_a_slash_shows_the_commands_it_may_be(self) -> None:
-        app = session_app(_config())
-        async with app.run_test(size=(110, 30)) as pilot:
-            footer = app.query_one("#footer", Static)
-            await pilot.press("/")
-            assert plain(footer.content).split() == [f"/{name}" for name in NAMES]
-            await pilot.press("c", "o")
-            assert plain(footer.content).split() == ["/configure", "/compact"]
-            await pilot.press("backspace", "backspace", "backspace")
-            assert "fake/fake" in plain(footer.content)
-
     async def test_a_command_waits_for_the_running_turn(self) -> None:
         import asyncio
 
@@ -145,6 +134,71 @@ class TestTheSet:
             assert app.session.convo.conversation_id == "t1"
             release.set()
             await _settled(pilot)
+
+
+@pytest.mark.unit
+class TestTheMenu:
+    """A typed `/` opens the commands as a menu above the prompt."""
+
+    def _rows(self, app: SessionApp) -> list[str]:
+        menu = app.query_one("#menu", Menu)
+        return plain(menu.content).splitlines() if menu.display else []
+
+    async def test_it_follows_what_is_typed(self) -> None:
+        app = session_app(_config())
+        async with app.run_test(size=(110, 30)) as pilot:
+            assert self._rows(app) == []
+            await pilot.press("/")
+            rows = self._rows(app)
+            assert [row.split()[-0 if row[0] != "›" else 1] for row in rows] == [
+                f"/{name}" for name in NAMES
+            ]
+            assert (
+                rows[0].startswith("› /help") and "the commands and the keys" in rows[0]
+            )
+            await pilot.press("c", "o")
+            assert [row.split()[0:2] for row in self._rows(app)] == [
+                ["›", "/configure"],
+                ["/compact", "fold"],
+            ]
+            await pilot.press("x")  # nothing begins with /cox
+            assert self._rows(app) == []
+            await pilot.press("backspace", "backspace", "backspace", "backspace")
+            assert self._rows(app) == []
+
+    async def test_tab_completes_the_choice_and_leaves_room_for_an_argument(
+        self,
+    ) -> None:
+        app = session_app(_config())
+        async with app.run_test(size=(110, 30)) as pilot:
+            await pilot.press("/", "m", "tab")
+            prompt = app.query_one(Prompt)
+            assert prompt.text == "/model " and self._rows(app) == []
+            await pilot.press(*"fake-small", "enter")
+            await _settled(pilot)
+            assert app.session.model is Model.FAKE_SMALL
+
+    async def test_the_arrows_choose_and_enter_runs_the_choice(self) -> None:
+        app = session_app(_config())
+        async with app.run_test(size=(110, 30)) as pilot:
+            await send(pilot, "first")
+            await pilot.press("/", "down", "down")
+            assert self._rows(app)[2].startswith("› /model")
+            assert app.query_one(Prompt).text == "/"  # not the history
+            await pilot.press("up", "up", "up")  # wraps past the top
+            assert self._rows(app)[-1].startswith("› /exit")
+            await pilot.press("down", "enter")
+            await _settled(pilot)
+            assert "/configure" in _text(app) and "ask in words" in _text(app)
+            assert self._rows(app) == [] and app.query_one(Prompt).text == ""
+
+    async def test_esc_puts_it_away_and_keeps_the_text(self) -> None:
+        app = session_app(_config())
+        async with app.run_test(size=(110, 30)) as pilot:
+            await pilot.press("/", "n", "escape")
+            assert self._rows(app) == [] and app.query_one(Prompt).text == "/n"
+            await pilot.press("e")
+            assert self._rows(app)[0].startswith("› /new")
 
 
 @pytest.mark.unit

@@ -22,7 +22,8 @@ phase close names the version.
   the model.
 - Seven session commands: `/help`, `/configure` (an API key typed masked,
   stored as `configure --key -` stores it, never shown to the model),
-  `/model`, `/resume`, `/new`, `/compact` and `/exit`. A resumed
+  `/model`, `/resume`, `/new`, `/compact` and `/exit`, offered as a menu
+  that narrows as you type (tab completes, enter runs). A resumed
   conversation draws its last ten turns again.
 
 ### Changed

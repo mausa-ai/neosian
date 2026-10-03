@@ -42,6 +42,7 @@ _OWN_ID: Final = re.compile(r"\d{8}-\d{6}")  # the stamp a chat's own id begins 
 _LAST_PROMPT: Final = re.compile(r"^- last prompt: (.*)$", re.MULTILINE)
 _LISTED: Final = 20  # /resume offers this many of the newest
 _KEYS: Final = (
+    ("/", "the commands as a menu: up and down choose, tab completes, enter runs"),
     ("enter", "send"),
     ("ctrl+j", "a new line"),
     ("esc", "interrupt the turn: it is not saved"),
@@ -65,8 +66,7 @@ class Command:
 
 
 async def _help(app: SessionApp, _: str) -> None:
-    rows = [(f"/{command.name}", command.summary) for command in COMMANDS]
-    rows.append(("/exit", _EXIT))
+    rows = [(f"/{name}", summary) for name, summary in MENU]
     await app.say(
         Group(field_table(rows), Text(), field_table(_KEYS), Text(), Text(_ASK))
     )
@@ -192,4 +192,9 @@ COMMANDS: Final = (
     Command("compact", "fold the older turns now", _compact),
 )
 BY_NAME: Final = {command.name: command for command in COMMANDS}
-NAMES: Final = (*BY_NAME, "exit")
+# What the prompt's menu offers: the table and the way out.
+MENU: Final = (
+    *((command.name, command.summary) for command in COMMANDS),
+    ("exit", _EXIT),
+)
+NAMES: Final = tuple(name for name, _ in MENU)
