@@ -21,7 +21,9 @@ phase close names the version.
   and on a `Conversation` with a writable `/project` mount. A handoff is
   declared, never assumed: a session that calls neither is a new session.
 - Lineage: a sessions document carries `- continues: <id>` for every
-  session its turns continued, read back from the record itself.
+  session its turns continued, read back from the record itself;
+  `neosian audit` shows it on the document's row (`continues <id>`, the
+  `continues` list in `--json`; `AuditEntry.continues`, additive).
 - The wheel's own `handoff` skill (`assets/skills/handoff.md`), served by
   the MCP server as a prompt beside the mounts' skills: a slash command
   in the clients that render prompts.

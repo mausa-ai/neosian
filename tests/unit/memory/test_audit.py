@@ -7,6 +7,7 @@ import pytest
 from neosian._foundation.llm.base import Message, Role
 from neosian._foundation.memory.audit import audit
 from neosian._foundation.memory.file import FileStore
+from neosian._foundation.memory.sessions import sessions_document
 
 _SCOPE = "user:demo"
 
@@ -55,6 +56,31 @@ class TestAudit:
     ) -> None:
         await _seed(store)
         assert all(e.event != "turn" for e in await audit(store, _SCOPE))
+
+    async def test_a_sessions_row_says_which_sessions_it_continues(
+        self, store: FileStore
+    ) -> None:
+        """§33: the lineage is read from the row's own content, so the
+        ledger shows which session continued which; a redacted row and
+        any other document carry nothing."""
+        document = sessions_document(
+            agent="opencode",
+            session_id="ses_2",
+            started=datetime(2026, 10, 2, tzinfo=UTC),
+            last_prompt="continue",
+            turns=1,
+            continues=("s1",),
+        )
+        await store.write(_SCOPE, "sessions/ses_2", document, actor="opencode:ses_2#1")
+        await store.write(_SCOPE, "notes", "- continues: nope", actor="cli:local")
+        await store.write(_SCOPE, "sessions/gone", document, actor="opencode:gone#1")
+        await store.redact(_SCOPE, path="sessions/gone", actor="cli:local")
+        by_path = {
+            e.path: e for e in await audit(store, _SCOPE) if e.event == "created"
+        }
+        assert by_path["sessions/ses_2"].continues == ("s1",)
+        assert by_path["notes"].continues == ()
+        assert by_path["sessions/gone"].continues == ()
 
     async def test_the_actor_filter_is_a_prefix(self, store: FileStore) -> None:
         await _seed(store)

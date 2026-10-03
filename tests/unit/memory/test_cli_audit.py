@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import io
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
 from neosian._foundation.memory.cli_audit import run
 from neosian._foundation.memory.file import FileStore
+from neosian._foundation.memory.sessions import sessions_document
 
 
 class _Result:
@@ -48,6 +50,30 @@ class TestHappyPaths:
         assert envelope["scope"] == "user:me" and envelope["client"] is None
         assert [e["event"] for e in envelope["entries"]] == ["redacted", "created"]
         assert envelope["entries"][1]["created_at"].endswith("Z")
+        assert envelope["entries"][1]["continues"] == []
+
+    async def test_a_sessions_row_shows_its_lineage(self, tmp_path: Path) -> None:
+        store = FileStore(tmp_path)
+        await store.write(
+            "user:me",
+            "sessions/ses_2",
+            sessions_document(
+                agent="opencode",
+                session_id="ses_2",
+                started=datetime(2026, 10, 2, tzinfo=UTC),
+                last_prompt="continue",
+                turns=1,
+                continues=("s1", "s0"),
+            ),
+            actor="opencode:ses_2#1",
+        )
+        text = await _run(["--root", str(tmp_path), "--scope", "user:me"])
+        assert text.out.rstrip().endswith(
+            "created  /sessions/ses_2 v1  continues s1, s0"
+        )
+        as_json = await _run(["--root", str(tmp_path), "--scope", "user:me", "--json"])
+        (entry,) = json.loads(as_json.out)["entries"]
+        assert entry["continues"] == ["s1", "s0"]
 
     async def test_filters_ride_through(self, tmp_path: Path) -> None:
         await _seed(tmp_path)

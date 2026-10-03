@@ -91,6 +91,8 @@ def render_audit(envelope: dict[str, Any], console: Console) -> None:
         else:
             marker = " (redacted)" if entry["redacted"] else ""
             what = f"/{entry['path']} v{entry['version']}{marker}"
+        if entry.get("continues"):  # a sessions document's lineage (§33)
+            what += f" continues {', '.join(entry['continues'])}"
         table.add_row(
             _minute(entry["created_at"]),
             _short(entry["actor"] or "-"),

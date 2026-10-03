@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Literal
 
 from neosian._foundation.conversation.base import ConversationStore
 from neosian._foundation.memory.actor import actor_matches
+from neosian._foundation.memory.sessions import SESSIONS_PREFIX, parse_sessions_document
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -28,7 +29,8 @@ AuditEvent = Literal["created", "modified", "deleted", "redacted", "turn"]
 class AuditEntry:
     """One ledger line. Memory rows fill `path`/`version`; an erasure
     fills `path` (None scope-wide) and `count`; a turn fills
-    `conversation_id`/`turn`."""
+    `conversation_id`/`turn`; a sessions document's row carries the
+    sessions it says it continues (§33), read from the row's content."""
 
     created_at: datetime
     actor: str | None
@@ -39,6 +41,7 @@ class AuditEntry:
     count: int | None = None
     conversation_id: str | None = None
     turn: int | None = None
+    continues: tuple[str, ...] = ()
 
 
 async def audit(
@@ -60,6 +63,11 @@ async def audit(
             path=row.path,
             version=row.version,
             redacted=row.redacted,
+            continues=(
+                parse_sessions_document(row.content).continues
+                if row.path.startswith(SESSIONS_PREFIX) and not row.redacted
+                else ()
+            ),
         )
         for row in await store.history(scope, since=since)
     ]

@@ -164,6 +164,7 @@ def _to_json(entry: AuditEntry) -> dict[str, Any]:
         "count": entry.count,
         "conversation_id": entry.conversation_id,
         "turn": entry.turn,
+        "continues": list(entry.continues),
     }
 
 
@@ -178,4 +179,6 @@ def _line(entry: AuditEntry) -> str:
     else:
         marker = " (redacted)" if entry.redacted else ""
         target = f"/{entry.path} v{entry.version}{marker}"
+    if entry.continues:
+        target += f"  continues {', '.join(entry.continues)}"
     return f"{stamp}  {actor}  {entry.event}  {target}"
