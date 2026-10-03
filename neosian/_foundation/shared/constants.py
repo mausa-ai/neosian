@@ -256,8 +256,6 @@ class Assets:
 
     PACKAGE: str = "neosian.assets"
     LOGO_FILE: str = "logo_ascii_small.txt"
-    ASCII_FILE: str = "ascii.txt"
-    HEADER_SPACING: str = "  "
 
 
 class EnvVars:

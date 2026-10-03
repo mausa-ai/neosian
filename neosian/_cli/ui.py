@@ -1,6 +1,7 @@
-"""Shared Rich helpers for the CLI: header art and small formatters."""
+"""Shared Rich helpers for the CLI: the mark and small formatters."""
 
 import importlib.resources
+import textwrap
 from typing import TextIO
 
 from rich.console import Console
@@ -13,40 +14,17 @@ from neosian._foundation.shared.constants import Assets
 # downgrades both to the nearest of 256 colours where truecolor is missing.
 BRAND_ACCENT = "#afaf73"  # maki: the wordmark art, the app name
 BRAND_SUPPORT = "#c6a850"  # maki sarısı: the mark
-_LOGO_DROP = 1  # rows the mark sits below the wordmark's i-dot, so their bases align
 
 
-def load_header() -> Text:
-    """Build the header: the mark in the support colour, the wordmark in the accent."""
+def load_mark() -> Text:
+    """The mark in the support colour, flush left; empty when the asset
+    cannot be read."""
     try:
         files = importlib.resources.files(Assets.PACKAGE)
-
-        # Load both files
-        logo_text = files.joinpath(Assets.LOGO_FILE).read_text(encoding="utf-8")
-        ascii_text = files.joinpath(Assets.ASCII_FILE).read_text(encoding="utf-8")
-
-        # Split into lines
-        logo_lines = [""] * _LOGO_DROP + logo_text.rstrip().split("\n")
-        ascii_lines = ascii_text.rstrip().split("\n")
-
-        # Pad to same height
-        max_lines = max(len(logo_lines), len(ascii_lines))
-        logo_width = max(len(line) for line in logo_lines) if logo_lines else 0
-
-        while len(logo_lines) < max_lines:
-            logo_lines.append("")
-        while len(ascii_lines) < max_lines:
-            ascii_lines.append("")
-
-        # Combine side by side, each column in its own colour
-        header = Text()
-        for logo_line, ascii_line in zip(logo_lines, ascii_lines, strict=True):
-            header.append(logo_line.ljust(logo_width), style=BRAND_SUPPORT)
-            header.append(f"{Assets.HEADER_SPACING}{ascii_line}\n", style=BRAND_ACCENT)
-        header.rstrip()
-        return header
+        art = files.joinpath(Assets.LOGO_FILE).read_text(encoding="utf-8")
     except Exception:
         return Text()
+    return Text(textwrap.dedent(art).strip("\n"), style=BRAND_SUPPORT)
 
 
 def pick(

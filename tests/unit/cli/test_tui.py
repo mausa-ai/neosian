@@ -446,16 +446,53 @@ class TestTheSession:
             await send(pilot, leave)
             assert app.return_code == 0 and not app.is_running
 
-    async def test_ctrl_c_clears_the_prompt_then_leaves(self) -> None:
+    async def test_ctrl_c_clears_the_prompt_then_asks_twice_to_leave(self) -> None:
         app = _app(_config())
         async with app.run_test() as pilot:
             prompt = app.query_one(Prompt)
+            footer = app.query_one("#footer", Static)
             prompt.text = "half a thought"
             await pilot.press("ctrl+c")
-            assert prompt.text == "" and app.is_running
+            assert prompt.text == "" and "again" not in plain(footer.content)
+            await pilot.press("ctrl+c")
+            assert plain(footer.content).strip() == "ctrl+c again to quit"
+            assert app.is_running
             await pilot.press("ctrl+c")
             await pilot.pause()
             assert not app.is_running
+
+    async def test_a_lone_ctrl_c_wears_off(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr("neosian._cli.tui.app._AGAIN_SECONDS", 0.01)
+        app = _app(_config())
+        async with app.run_test() as pilot:
+            footer = app.query_one("#footer", Static)
+            await pilot.press("ctrl+c")
+            await _until(pilot, lambda: "again" not in plain(footer.content))
+            assert "fake/fake" in plain(footer.content) and app.is_running
+
+    async def test_a_click_on_the_transcript_leaves_the_prompt_in_charge(
+        self,
+    ) -> None:
+        """Without the focus, ctrl+c was Textual's own (its ctrl+q notice)
+        and typed keys went nowhere."""
+        app = _app(_config(FakeTurn(content="ok")))
+        async with app.run_test() as pilot:
+            await send(pilot, "hi")
+            await pilot.click("#scroll")
+            assert app.query_one(Prompt).has_focus
+            await pilot.press("ctrl+c")
+            footer = plain(app.query_one("#footer", Static).content)
+            assert footer.strip() == "ctrl+c again to quit"
+
+    async def test_a_sent_message_is_a_full_line(self) -> None:
+        app = _app(_config(FakeTurn(content="ok")))
+        async with app.run_test(size=(80, 24)) as pilot:
+            await send(pilot, "hi")
+            sent = app.query_one(".user", Static)
+            assert sent.region.width == app.query_one("#transcript").region.width
+            assert sent.styles.background.a == 1  # a bar, not bare text
 
     async def test_ctrl_c_copies_a_selection_first(
         self, monkeypatch: pytest.MonkeyPatch
@@ -500,10 +537,11 @@ class TestTheOpening:
         text = plain(Opening("my_agent", self._FACTS, "Resumed 2").render(100))
         assert "Agent: my_agent" in text and "/quit" in text
         assert "Resumed 2" in text and "--resume s1" in text
-        assert "█" in text  # the wordmark fits at this width
+        assert "▀█▀" in text  # the mark sits beside them
+        assert len(text.splitlines()) <= 8
 
-    def test_a_narrow_terminal_drops_the_art(self) -> None:
-        text = plain(Opening("my_agent", self._FACTS).render(40))
+    def test_a_narrow_terminal_drops_the_mark(self) -> None:
+        text = plain(Opening("my_agent", self._FACTS).render(60))
         assert "█" not in text and "Agent: my_agent" in text
 
     async def test_the_session_opens_on_it(self) -> None:

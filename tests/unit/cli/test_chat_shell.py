@@ -314,7 +314,7 @@ class TestAWriteWaitsForTheHuman:
         assert ran == [_WRITE]
         assert "→ neosian setup --write --yes" in line and "written" in line
 
-    @pytest.mark.parametrize("key", ["n", "escape"])
+    @pytest.mark.parametrize("key", ["n", "escape", "ctrl+c"])
     async def test_no_declines_it_in_band(self, ran: list[list[str]], key: str) -> None:
         app = _session(_resident(_calls(*_WRITE), FakeTurn(content="declined")))
         async with app.run_test() as pilot:

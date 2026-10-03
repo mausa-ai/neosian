@@ -103,11 +103,12 @@ neosian                                  # on a terminal: chat; under a pipe: th
 the reply streams as Markdown, and a tool call is one line with a
 one-line result until you expand it (click it, or ctrl+o for every
 call), so a large result costs nothing until it is asked for. Enter
-sends and ctrl+j breaks the line; esc interrupts a turn, which then
-saves nothing; ctrl+c copies a selection, else interrupts, else clears
-the prompt, else leaves; ctrl+d and `/exit` leave; page up and page down
-scroll. The `--resume` line stays in the terminal after the screen is
-restored. A PROMPT, a pipe and `--json` never open it.
+sends and ctrl+j breaks the line; a sent message is a full highlighted
+line. Esc interrupts a turn, which then saves nothing; ctrl+c copies a
+selection, else interrupts, else clears the prompt, else asks for a
+second ctrl+c to leave; ctrl+d and `/exit` leave at once; page up and
+page down scroll. The `--resume` line stays in the terminal after the
+screen is restored. A PROMPT, a pipe and `--json` never open it.
 
 **The agent runs the verbs.** Ask "is this machine set up, any
 reminders waiting?" and the resident agent runs `status` and reads its

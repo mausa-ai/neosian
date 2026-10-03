@@ -15,6 +15,7 @@ from dataclasses import dataclass, replace
 from typing import ClassVar, Final
 
 from rich.console import Group, RenderableType
+from rich.table import Table
 from rich.text import Text
 from textual import on
 from textual.app import App, ComposeResult
@@ -27,7 +28,7 @@ from textual.worker import Worker, WorkerCancelled
 from neosian._cli.display import field_table
 from neosian._cli.tui.turn import TurnView
 from neosian._cli.tui.widgets import Confirm, Prompt, ToolCall, Working
-from neosian._cli.ui import BRAND_ACCENT, BRAND_SUPPORT, load_header
+from neosian._cli.ui import BRAND_ACCENT, BRAND_SUPPORT, load_mark
 from neosian._foundation.agent.lifetimes import closing
 from neosian._foundation.conversation.core import Conversation
 from neosian._foundation.shared.constants import PlaygroundUI
@@ -54,6 +55,9 @@ _THEME: Final = replace(
 _PLACEHOLDER: Final = "enter sends, ctrl+j breaks the line"
 _WORKING: Final = "esc interrupts"
 _KEYS: Final = "ctrl+o tool calls   ctrl+d quit"
+_AGAIN: Final = "ctrl+c again to quit"
+_AGAIN_SECONDS: Final = 2.0  # how long the first ctrl+c stays armed
+_MARK_WIDTH: Final = 72  # the narrowest opening that seats the mark beside the text
 _BUSY: Final = "a turn is running: esc interrupts it"
 _INTERRUPTED: Final = "interrupted: the turn was not saved"
 _GUTTER: Final = 3  # the scroll's padding and its bar
@@ -68,21 +72,25 @@ class Opening:
     notice: str | None = None
 
     def render(self, width: int) -> RenderableType:
-        parts: list[RenderableType] = []
-        header = load_header()
-        if header.plain and max(map(len, header.plain.splitlines())) <= width:
-            parts += [header, Text()]
-        parts.append(
+        """The mark beside the text; the text alone on a narrow terminal."""
+        parts: list[RenderableType] = [
             Text(
                 PlaygroundUI.AGENT_LOADED.format(name=self.agent),
                 style=f"bold {BRAND_ACCENT}",
-            )
-        )
-        parts.append(Text(PlaygroundUI.SESSION_START, style="dim"))
+            ),
+            Text(PlaygroundUI.SESSION_START, style="dim"),
+        ]
         if self.notice is not None:
             parts.append(Text(self.notice, style="dim"))
         parts += [Text(), field_table(self.facts)]
-        return Group(*parts)
+        mark = load_mark()
+        if not mark.plain or width < _MARK_WIDTH:
+            return Group(*parts)
+        seated = Table.grid(padding=(0, 3))
+        seated.add_column(no_wrap=True)
+        seated.add_column()
+        seated.add_row(mark, Group(*parts))
+        return seated
 
 
 class SessionApp(App[None]):
@@ -90,9 +98,13 @@ class SessionApp(App[None]):
 
     ENABLE_COMMAND_PALETTE = False
     CSS = """
+    /* A sent message is a full line: the accent, dimmed, behind it. */
+    .user {
+        margin: 1 0; padding: 0 1; background: #34342a;
+        color: $primary; text-style: bold;
+    }
     #scroll { height: 1fr; padding: 0 1; scrollbar-size-vertical: 1; }
     #transcript { height: auto; min-height: 100%; }
-    .user { margin-top: 1; color: $primary; text-style: bold; }
     .reply { padding: 0; margin-top: 1; }
     .blocked { border: round $error; padding: 0 1; }
     .error { color: $error; }
@@ -103,6 +115,7 @@ class SessionApp(App[None]):
     #footer { height: 1; padding: 0 1; }
     """
     BINDINGS: ClassVar[list[BindingType]] = [
+        Binding("ctrl+c", "cancel", show=False),  # wherever the focus is
         Binding("escape", "interrupt", show=False),
         Binding("ctrl+o", "unfold", show=False),
         Binding("pageup", "page(-1)", show=False, priority=True),
@@ -126,11 +139,12 @@ class SessionApp(App[None]):
         self._streamed = streamed
         self._turn: Worker[None] | None = None
         self._spent: int | None = None
+        self._leaving = False  # a first ctrl+c, waiting for the second
 
     def compose(self) -> ComposeResult:
         # An anchored scroll pins short content to the bottom; the
         # transcript's minimum height keeps the first turns at the top.
-        with VerticalScroll(id="scroll"):
+        with VerticalScroll(id="scroll", can_focus=False):  # the prompt keeps it
             yield Vertical(id="transcript")
         yield Working(_WORKING, id="working")
         yield Prompt(id="prompt", placeholder=_PLACEHOLDER)
@@ -159,6 +173,9 @@ class SessionApp(App[None]):
         return self._turn is not None and self._turn.is_running
 
     def _footer(self) -> None:
+        if self._leaving:
+            self.query_one("#footer", Static).update(Text(_AGAIN, style="bold"))
+            return
         line = self._title.copy()
         if self._spent is not None:
             line.append(f"  {format_micro_usd(self._spent)}", style="dim")
@@ -221,7 +238,7 @@ class SessionApp(App[None]):
 
     async def action_cancel(self) -> None:
         """ctrl+c: copy a selection, else stop the turn, else clear the
-        prompt, else leave."""
+        prompt, else leave on the second press."""
         prompt = self.query_one(Prompt)
         if self.screen.get_selected_text():
             self.screen.action_copy_text()
@@ -229,8 +246,15 @@ class SessionApp(App[None]):
             self.action_interrupt()
         elif prompt.text:
             prompt.clear()
-        else:
+        elif self._leaving:
             await self.action_quit()
+        else:
+            self._arm(leaving=True)
+            self.set_timer(_AGAIN_SECONDS, self._arm)
+
+    def _arm(self, *, leaving: bool = False) -> None:
+        self._leaving = leaving
+        self._footer()
 
     async def action_quit(self) -> None:
         """Leave once the turn has let go of the conversation: its close

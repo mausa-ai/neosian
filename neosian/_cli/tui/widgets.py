@@ -184,7 +184,7 @@ class Confirm(ModalScreen[bool]):
     """
     BINDINGS: ClassVar[list[BindingType]] = [
         Binding("y", "answer(True)", show=False),
-        Binding("n,escape", "answer(False)", show=False),
+        Binding("n,escape,ctrl+c", "answer(False)", show=False),
     ]
 
     def __init__(self, command: str) -> None:
