@@ -124,5 +124,6 @@ scope=user:demo,path=user` reads it back with the same tool the agents
 used, and `neosian memory versions` the history. The store moves whole:
 `neosian export` writes a directory that is itself a FileStore root,
 `import` lands it in Postgres or behind the state process, and the
-reverse leg comes back byte for byte (`neosian docs memory`). One writer
-per root at a time, any number of readers (`neosian docs topology`).
+reverse leg comes back byte for byte (`neosian docs memory`). Cooperating
+local processes share a root lock; restart all writers when upgrading.
+Network filesystems are outside this guarantee (`neosian docs topology`).

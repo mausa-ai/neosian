@@ -30,8 +30,9 @@ from neosian._foundation.shared.types import AnyModel, Model
 _DESCRIPTION: Final = "Read and write neosian agent memory from the shell."
 _EPILOG: Final = (
     "Postgres: set NEOSIAN_POSTGRES_DSN instead of --root (a DSN never "
-    "belongs in argv; the key is shared with `neosian mcp`). One writer "
-    "per FileStore root (DESIGN §8). --json prints the memory tool's "
+    "belongs in argv; the key is shared with `neosian mcp`). FileStore "
+    "coordinates upgraded local processes; see `neosian docs topology`. "
+    "--json prints the memory tool's "
     "envelope verbatim; pass '-' to --content/--new-str/--insert-text "
     "to read the text from stdin."
 )

@@ -5,9 +5,10 @@ The home and whether it exists; the config and which providers have a key
 client, whether it is installed, registered for MCP, carrying the hooks,
 at which level (once per machine, or this directory's files — §22.6), and
 whether the interpreter those files name still resolves (the moved-venv
-failure, silent until now); the last recorded session; the one-writer
-note, and the double-fire note when a client carries the hooks at both
-levels; the installation shape with its upgrade line; the update knob. Exit 0 whenever it ran — findings are data. Pure over an
+failure, silent until now); the last recorded session; the double-fire
+note when a client carries the hooks at both levels; the installation
+shape with its upgrade line; the update knob. Exit 0 whenever it ran:
+findings are data. Pure over an
 injected `Environment`; the only store access is one read of the home,
 and only when the home exists.
 """

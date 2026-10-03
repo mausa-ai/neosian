@@ -57,6 +57,9 @@ for reminders that become due. No model checks anything before delivery.
 | OpenCode | Prompt and tool boundaries | Attached plugin, async session prompt |
 | MCP-only client | Explicit tool calls | No |
 
+Pi and OpenCode wake delivery is covered by keyless adapter harnesses;
+it has not yet been qualified with live model sessions.
+
 Re-run `neosian setup --write` to regenerate installed client adapters after
 upgrading. Pi receivers stop on session shutdown; OpenCode receivers track
 sessions observed by that plugin process, dropping deleted sessions. No

@@ -168,8 +168,9 @@ spend rides the result.
 ## Stores
 
 - `FileStore(root)`: a plain directory; markdown + frontmatter
-  documents, JSONL version sidecars. **One writer per root at a
-  time** (see `neosian docs topology`).
+  documents, JSONL version sidecars. Cooperating local processes share
+  a root lock; restart all writers when upgrading. Network filesystems
+  are outside this guarantee (see `neosian docs topology`).
 - `PostgresStore(dsn)`: the `postgres` extra; multi-worker safe
   (optimistic concurrency). The DSN arrives only through the
   `NEOSIAN_POSTGRES_DSN` environment variable, never an argv flag.

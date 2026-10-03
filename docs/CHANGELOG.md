@@ -8,6 +8,8 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-03
+
 ### Added
 
 - Setup client checklist, `--yes` for unattended all-client writes, and
@@ -18,7 +20,8 @@ phase close names the version.
   history annotations, explicit acknowledgment, fenced claims and reminders
   that can be snoozed on the same ID with preserved findings.
 - Optional Conversation mailbox delivery, client context hooks and attached
-  Pi/OpenCode wake receivers. The messaging page records delivery guarantees.
+  Pi/OpenCode wake receivers. The messaging page records delivery guarantees;
+  live model wake delivery remains unverified.
 - Pi 1.0.1+ as a client in both installers, setup and status: native MCP,
   a session-recording extension, startup context and cross-client handoff.
   User and project registrations honor `PI_CODING_AGENT_DIR`; recording
@@ -1845,7 +1848,8 @@ pre-release — pin it explicitly; the API stability promise rides v1.0.0.
 - Both entry points share one `_validate_run`, so neither can skip a
   guard.
 
-[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.1.1...HEAD
+[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/mausa-ai/neosian/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/mausa-ai/neosian/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/mausa-ai/neosian/compare/v1.0.3...v1.1.0
 [1.0.3]: https://github.com/mausa-ai/neosian/compare/v1.0.2...v1.0.3
