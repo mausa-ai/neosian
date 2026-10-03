@@ -103,12 +103,26 @@ neosian                                  # on a terminal: chat; under a pipe: th
 the reply streams as Markdown, and a tool call is one line with a
 one-line result until you expand it (click it, or ctrl+o for every
 call), so a large result costs nothing until it is asked for. Enter
-sends and ctrl+j breaks the line; a sent message is a full highlighted
-line. Esc interrupts a turn, which then saves nothing; ctrl+c copies a
+sends and ctrl+j breaks the line; up and down walk what you sent; a
+sent message is a full highlighted line. Esc interrupts a turn, which then saves nothing; ctrl+c copies a
 selection, else interrupts, else clears the prompt, else asks for a
 second ctrl+c to leave; ctrl+d and `/exit` leave at once; page up and
 page down scroll. The `--resume` line stays in the terminal after the
 screen is restored. A PROMPT, a pipe and `--json` never open it.
+
+**Seven commands.** A line that begins with `/` is a command, and a
+command exists only where asking the agent is impossible or wrong: a
+secret the model must never see, and the session itself. `/help` lists
+them and the keys. `/configure` picks a provider and takes its API key
+in a masked input: the key goes to `config.toml` as `configure --key -`
+would store it, and never to the transcript, a turn or the model.
+`/model` switches the model on the same conversation (a list of the
+models a key opens; `/model ID` names one). `/resume` continues an
+earlier session of this chat in this project (a list, newest first;
+`/resume ID` names one) and draws its last ten turns again, as
+`--resume` does at the start. `/new` starts a fresh conversation,
+`/compact` folds the older turns now, `/exit` leaves. Typing `/` shows
+the commands in the footer. Everything else is a sentence to the agent.
 
 **The agent runs the verbs.** Ask "is this machine set up, any
 reminders waiting?" and the resident agent runs `status` and reads its

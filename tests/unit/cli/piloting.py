@@ -1,5 +1,6 @@
-"""Drive `run_chat`'s session headless: Textual's autopilot in place of a
-terminal (NY2). The script leaves the app itself (`ctrl+d`)."""
+"""Drive the session headless (NY2): the app over a Conversation that has
+not started, and `run_chat` under Textual's autopilot in place of a
+terminal (the script leaves the app itself, `ctrl+d`)."""
 
 import io
 from collections.abc import Awaitable, Callable
@@ -8,10 +9,32 @@ import pytest
 from rich.console import Console
 from textual.pilot import Pilot
 
+from neosian import AgentConfig
+from neosian._cli.chat import Session, open_chat, opening, streams, turn_title
 from neosian._cli.tui.app import SessionApp
 from neosian._cli.tui.widgets import Prompt
+from neosian._foundation.shared.registry import resolve_model
 
 Script = Callable[[Pilot[None]], Awaitable[None]]
+
+
+def session_app(
+    config: AgentConfig,
+    conversation_id: str = "t1",
+    *,
+    streamed: bool | None = None,
+    agent: str = "probe",
+) -> SessionApp:
+    """`run_chat`'s app, minus the start: a first send starts the store."""
+    convo = open_chat(config, conversation_id=conversation_id)
+    session = Session(
+        convo,
+        opening(config, agent, convo, resumed=False),
+        resolve_model(config.model),
+        turn_title(config),
+        streams(config) if streamed is None else streamed,
+    )
+    return SessionApp(session, config=config, agent=agent)
 
 
 def plain(renderable: object) -> str:

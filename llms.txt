@@ -65,8 +65,10 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
   `<home>/config.toml` (`name`, then `command`/`args`/`env` or
   `url`/`headers`, `prefix`) are MCP servers it opens for the session,
   their tools added. Bare `neosian` on a terminal opens it: a full-screen
-  session where a tool call is one line until expanded (ctrl+o) and esc
-  interrupts a turn.
+  session where a tool call is one line until expanded (ctrl+o), esc
+  interrupts a turn, and seven commands cover what the agent cannot do
+  (`/help`, `/configure` for a key typed masked, `/model`, `/resume`,
+  `/new`, `/compact`, `/exit`).
 - `neosian update [--mode off|notify|auto]`: a PyPI check on the human
   verbs only, never on an agent verb; `auto` applies a uv tool install
   within the major.

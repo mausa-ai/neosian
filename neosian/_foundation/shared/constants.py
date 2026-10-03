@@ -242,7 +242,7 @@ class PlaygroundUI:
     """Constants for the session chat and playground share."""
 
     AGENT_LOADED: str = "Agent: {name}"
-    SESSION_START: str = "Type /exit or /quit to end session."
+    SESSION_START: str = "/help lists the commands; /exit leaves."
     EXIT_COMMANDS: tuple[str, ...] = ("/exit", "/quit", "/q")
 
     # Guardrail display

@@ -15,8 +15,8 @@ from textual.pilot import Pilot
 from textual.widgets import Markdown, Static
 
 from neosian import AgentConfig, Model
-from neosian._cli.chat import open_chat, opening, streams, turn_title
-from neosian._cli.tui.app import Opening, SessionApp
+from neosian._cli.chat import Opening
+from neosian._cli.tui.app import SessionApp
 from neosian._cli.tui.turn import TurnView
 from neosian._cli.tui.widgets import Prompt, ToolCall, Working
 from neosian._foundation.agent.events import (
@@ -33,7 +33,7 @@ from neosian._foundation.memory.mounts import MemoryConfig, Mount
 from neosian._foundation.shared.guardrail_types import GuardrailResult, PolicyResult
 from neosian._foundation.shared.types import ToolCallId, ToolFunction, ToolName
 from neosian._foundation.tools.base import Tool, ToolResult
-from tests.unit.cli.piloting import plain, send
+from tests.unit.cli.piloting import plain, send, session_app
 
 _SYSTEM = "You are a test agent."
 
@@ -57,14 +57,7 @@ def _config(
 def _app(
     config: AgentConfig, conversation_id: str = "t1", *, streamed: bool | None = None
 ) -> SessionApp:
-    convo = open_chat(config, conversation_id=conversation_id)
-    return SessionApp(
-        convo,
-        opening(config, "probe", convo, resumed=False),
-        model=Model.FAKE,
-        title=turn_title(config),
-        streamed=streams(config) if streamed is None else streamed,
-    )
+    return session_app(config, conversation_id, streamed=streamed)
 
 
 def _text(app: App[None]) -> str:
@@ -421,14 +414,8 @@ class TestTheSession:
             FakeTurn(content="back"),
             tools=(hang,),
         )
-        convo = open_chat(config, conversation_id="t1")
-        app = SessionApp(
-            convo,
-            opening(config, "probe", convo, resumed=False),
-            model=Model.FAKE,
-            title=turn_title(config),
-            streamed=True,
-        )
+        app = _app(config)
+        convo = app.session.convo
         async with app.run_test() as pilot:
             app.query_one(Prompt).text = "go"
             await pilot.press("enter")
@@ -513,6 +500,21 @@ class TestTheSession:
             assert app.query_one(Prompt).text == "a\nb"
             assert "> " not in _text(app)
 
+    async def test_up_and_down_walk_what_was_sent_never_over_a_draft(self) -> None:
+        app = _app(_config(FakeTurn(content="ok"), FakeTurn(content="ok")))
+        async with app.run_test() as pilot:
+            prompt = app.query_one(Prompt)
+            await send(pilot, "first")
+            await send(pilot, "second")
+            await pilot.press("up")
+            assert prompt.text == "second"
+            await pilot.press("up", "up")  # the oldest stays
+            assert prompt.text == "first"
+            await pilot.press("down", "down")
+            assert prompt.text == ""
+            await pilot.press("d", "up")  # a draft is not replaced
+            assert prompt.text == "d"
+
     async def test_the_page_keys_scroll_the_transcript(self) -> None:
         reply = "\n\n".join(f"paragraph {n}" for n in range(1, 60))
         app = _app(_config(FakeTurn(content=reply)))
@@ -535,7 +537,7 @@ class TestTheOpening:
 
     def test_it_names_the_agent_the_way_out_and_the_facts(self) -> None:
         text = plain(Opening("my_agent", self._FACTS, "Resumed 2").render(100))
-        assert "Agent: my_agent" in text and "/quit" in text
+        assert "Agent: my_agent" in text and "/help" in text
         assert "Resumed 2" in text and "--resume s1" in text
         assert "▀█▀" in text  # the mark sits beside them
         assert len(text.splitlines()) <= 8

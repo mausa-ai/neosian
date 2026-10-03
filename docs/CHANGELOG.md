@@ -20,6 +20,10 @@ phase close names the version.
   user's `y` in the session and is declined in a one-shot turn; sessions,
   servers and the hook door are refused, and a key never passes through
   the model.
+- Seven session commands: `/help`, `/configure` (an API key typed masked,
+  stored as `configure --key -` stores it, never shown to the model),
+  `/model`, `/resume`, `/new`, `/compact` and `/exit`. A resumed
+  conversation draws its last ten turns again.
 
 ### Changed
 

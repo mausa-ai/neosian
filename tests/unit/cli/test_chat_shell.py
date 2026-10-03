@@ -13,7 +13,7 @@ from textual.pilot import Pilot
 
 import neosian._cli.chat_shell as chat_shell
 from neosian import AgentConfig, Model
-from neosian._cli.chat import open_chat, opening, streams, turn_title
+from neosian._cli.chat import open_chat
 from neosian._cli.chat_agent import resident_config
 from neosian._cli.chat_cmd import one_shot
 from neosian._cli.chat_shell import (
@@ -25,14 +25,15 @@ from neosian._cli.chat_shell import (
     run,
 )
 from neosian._cli.tui.app import SessionApp
-from neosian._cli.tui.widgets import Confirm, Prompt, ToolCall
+from neosian._cli.tui.asks import Confirm
+from neosian._cli.tui.widgets import Prompt, ToolCall
 from neosian._foundation.agent.approval import ToolApprovalRequest
 from neosian._foundation.llm.base import ToolCall as Call
 from neosian._foundation.llm.fake import FakeClient, FakeScript, FakeTurn
 from neosian._foundation.shared.prompt_assets import get_prompt, get_prompt_params
 from neosian._foundation.shared.types import ToolCallId, ToolName
 from neosian._foundation.tools.base import ToolResult, get_tool_definition
-from tests.unit.cli.piloting import plain
+from tests.unit.cli.piloting import plain, session_app
 
 _WRITE = ["setup", "--write", "--yes"]
 
@@ -260,14 +261,7 @@ class TestTheResidentAgentRunsTheVerbs:
 
 def _session(config: AgentConfig) -> SessionApp:
     """`run_chat`'s wiring: the gate's question is the app's modal."""
-    convo = open_chat(config, conversation_id="w1")
-    app = SessionApp(
-        convo,
-        opening(config, "neosian", convo, resumed=False),
-        model=Model.FAKE,
-        title=turn_title(config),
-        streamed=streams(config),
-    )
+    app = session_app(config, "w1", agent="neosian")
     assert config.tool_gate is not None
     assert isinstance(config.tool_gate.approver, Consent)
     config.tool_gate.approver.ask = app.confirm

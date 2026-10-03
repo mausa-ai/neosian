@@ -11,7 +11,10 @@ widgets.
 
 from __future__ import annotations
 
+import json
 import time
+from collections.abc import Sequence
+from typing import Final
 
 from rich.text import Text
 from textual.widget import Widget
@@ -32,11 +35,16 @@ from neosian._foundation.agent.events import (
     ToolResultEvent,
 )
 from neosian._foundation.agent.response import AgentResponse
-from neosian._foundation.llm.base import Usage, text_of
+from neosian._foundation.llm.base import Message, Role, Usage, text_of
 from neosian._foundation.shared.constants import PlaygroundUI
 from neosian._foundation.shared.types import AnyModel
 
 _MEMORY_WRITE = "memory_write"
+_REPLAYED_TURNS: Final = 10  # a resumed conversation shows this many of its last
+_EARLIER: Final = (
+    "… {count} earlier turns are not drawn: `search_history` and "
+    "`recall_turn` reach them"
+)
 
 
 def _blocked(headline: str, rationale: str | None) -> Text:
@@ -164,3 +172,40 @@ class TurnView:
         self.cost = usage.cost_micro_usd(self._model) if usage else None
         elapsed = time.perf_counter() - self._started
         await self.note(turn_footer(self._title, elapsed, self.cost), "receipt")
+
+
+def _outcome(envelope: str) -> tuple[bool, object]:
+    """A stored tool result back to what the live frame carried."""
+    try:
+        result = json.loads(envelope)
+    except ValueError:
+        return True, envelope
+    if not isinstance(result, dict) or "success" not in result:
+        return True, envelope
+    return bool(result["success"]), result.get("data" if result["success"] else "error")
+
+
+async def replay(transcript: Widget, messages: Sequence[Message]) -> None:
+    """A resumed conversation's last turns, drawn as they were live: what
+    was asked, the reply, each call folded with its result."""
+    asked = [at for at, message in enumerate(messages) if message.role is Role.USER]
+    earlier = max(len(asked) - _REPLAYED_TURNS, 0)
+    widgets: list[Widget] = []
+    if earlier:
+        widgets.append(Static(Text(_EARLIER.format(count=earlier), style="dim")))
+    calls: dict[str, ToolCall] = {}
+    for message in messages[asked[earlier] :] if asked else ():
+        text = text_of(message)
+        if message.role is Role.USER:
+            widgets.append(Static(Text(f"> {text}"), classes="user"))
+        elif message.role is Role.TOOL:
+            if call := calls.get(str(message.tool_call_id)):
+                call.finish(*_outcome(text))
+        elif message.role is Role.ASSISTANT:
+            if text:
+                widgets.append(Markdown(text, classes="reply"))
+            for made in message.tool_calls:
+                calls[str(made.id)] = ToolCall(made.name, made.arguments)
+                widgets.append(calls[str(made.id)])
+    if widgets:
+        await transcript.mount(*widgets)

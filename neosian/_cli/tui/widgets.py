@@ -1,6 +1,5 @@
 """The session view's pieces: the prompt, a tool call that folds, the
-working line, the question a write waits on. Application data is literal
-`Text`, never markup."""
+working line. Application data is literal `Text`, never markup."""
 
 from __future__ import annotations
 
@@ -14,16 +13,15 @@ from rich.console import Group, RenderableType
 from rich.pretty import pretty_repr
 from rich.text import Text
 from textual import events
-from textual.app import ComposeResult
 from textual.binding import Binding, BindingType
 from textual.message import Message
-from textual.screen import ModalScreen
 from textual.timer import Timer
 from textual.widgets import Static, TextArea
 
 from neosian._cli.ui import BRAND_ACCENT, format_args
 
 _NEWLINE_KEYS: Final = ("shift+enter", "ctrl+j")
+_HISTORY_KEYS: Final = {"up": -1, "down": 1}
 _BODY_LINES: Final = 500  # an expanded result draws this many lines at most
 _FRAMES: Final = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 _FRAME_SECONDS: Final = 0.1
@@ -31,7 +29,8 @@ _FRAME_SECONDS: Final = 0.1
 
 class Prompt(TextArea):
     """Enter sends; ctrl+j breaks the line (shift+enter too, where the
-    terminal reports it)."""
+    terminal reports it); up and down walk what this session sent, from
+    an empty prompt or a recalled line, never over a draft."""
 
     BINDINGS: ClassVar[list[BindingType]] = [
         Binding("ctrl+c", "app.cancel", show=False),
@@ -42,15 +41,38 @@ class Prompt(TextArea):
     class Submitted(Message):
         text: str
 
+    def __init__(self, *, id: str, placeholder: str) -> None:
+        super().__init__(id=id, placeholder=placeholder)
+        self._sent: list[str] = []
+        self._at = 0  # len(_sent) is the empty line after the newest
+
+    def remember(self, sent: str) -> None:
+        """Take a sent line into the history and clear the prompt."""
+        self._sent.append(sent)
+        self._at = len(self._sent)
+        self.clear()
+
+    def _recall(self, step: int) -> bool:
+        at = self._at + step
+        recalled = self._at < len(self._sent) and self.text == self._sent[self._at]
+        if not 0 <= at <= len(self._sent) or (self.text and not recalled):
+            return False
+        self._at = at
+        self.text = self._sent[at] if at < len(self._sent) else ""
+        self.move_cursor(self.document.end)
+        return True
+
     async def _on_key(self, event: events.Key) -> None:
         if event.key == "enter":
-            event.stop()
-            event.prevent_default()
             self.post_message(self.Submitted(self.text))
         elif event.key in _NEWLINE_KEYS:
-            event.stop()
-            event.prevent_default()
             self.insert("\n")
+        elif not (
+            event.key in _HISTORY_KEYS and self._recall(_HISTORY_KEYS[event.key])
+        ):
+            return
+        event.stop()
+        event.prevent_default()
 
 
 def _literal(value: object) -> str:
@@ -95,7 +117,8 @@ class ToolCall(Static):
         self._draw()
 
     def _draw(self) -> None:
-        self.update(self._whole() if self.expanded else self._folded())
+        if self.is_attached:  # a replayed call takes its result before it mounts
+            self.update(self._whole() if self.expanded else self._folded())
 
     def _head(self, arguments: str) -> Text:
         head = Text("→ ", style="dim")
@@ -169,38 +192,3 @@ class Working(Static):
         line = Text(f"{frame} ", style=BRAND_ACCENT)
         line.append(f"{elapsed:.0f}s  {self._hint}", style="dim")
         self.update(line)
-
-
-class Confirm(ModalScreen[bool]):
-    """A command that changes state waits here for the human. Only `y`
-    says yes: an enter typed ahead for the prompt must never approve."""
-
-    DEFAULT_CSS = """
-    Confirm { align: center middle; }
-    Confirm > Static {
-        width: auto; max-width: 90%; height: auto;
-        border: round $primary; padding: 1 2;
-    }
-    """
-    BINDINGS: ClassVar[list[BindingType]] = [
-        Binding("y", "answer(True)", show=False),
-        Binding("n,escape,ctrl+c", "answer(False)", show=False),
-    ]
-
-    def __init__(self, command: str) -> None:
-        super().__init__()
-        self._command = command
-
-    def compose(self) -> ComposeResult:
-        yield Static(
-            Group(
-                Text("The agent wants to run a command that changes state:"),
-                Text(),
-                Text(f"  {self._command}", style=f"bold {BRAND_ACCENT}"),
-                Text(),
-                Text("y runs it   n declines", style="dim"),
-            )
-        )
-
-    def action_answer(self, approved: bool) -> None:
-        self.dismiss(approved)

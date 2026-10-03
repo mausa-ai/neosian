@@ -2,8 +2,12 @@
 
 A turn runs as a worker over `Conversation.send`; esc cancels it, which
 closes the stream with its consumer, so the turn persists nothing and
-the send lock is free for the next one (§9.5). The app draws in the
-terminal's own colours (`NO_COLOR` keeps the layout and drops them).
+the send lock is free for the next one (§9.5). A line that begins with
+`/` is one of the session's commands (`tui/commands.py`), run as the same
+worker. The app owns which Conversation it is on: `reopen` closes the
+current one and opens another, the same id on another model or another
+id altogether. It draws in the terminal's own colours (`NO_COLOR` keeps
+the layout and drops them).
 """
 
 from __future__ import annotations
@@ -11,90 +15,42 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Sequence
 from contextlib import suppress
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from typing import ClassVar, Final
 
-from rich.console import Group, RenderableType
-from rich.table import Table
+from rich.console import RenderableType
 from rich.text import Text
 from textual import on
 from textual.app import App, ComposeResult
 from textual.binding import Binding, BindingType
 from textual.containers import Vertical, VerticalScroll
-from textual.theme import BUILTIN_THEMES
-from textual.widgets import Static
+from textual.widgets import Static, TextArea
 from textual.worker import Worker, WorkerCancelled
 
-from neosian._cli.display import field_table
-from neosian._cli.tui.turn import TurnView
-from neosian._cli.tui.widgets import Confirm, Prompt, ToolCall, Working
-from neosian._cli.ui import BRAND_ACCENT, BRAND_SUPPORT, load_mark
+from neosian._cli.chat import Session, open_session
+from neosian._cli.tui.asks import Confirm, Pick, Secret
+from neosian._cli.tui.commands import BY_NAME, NAMES, Command
+from neosian._cli.tui.theme import THEME
+from neosian._cli.tui.turn import TurnView, replay
+from neosian._cli.tui.widgets import Prompt, ToolCall, Working
 from neosian._foundation.agent.lifetimes import closing
-from neosian._foundation.conversation.core import Conversation
+from neosian._foundation.mcp.client import McpServer
 from neosian._foundation.shared.constants import PlaygroundUI
-from neosian._foundation.shared.types import AnyModel, format_micro_usd
+from neosian._foundation.shared.types import AgentConfig, AnyModel, format_micro_usd
 
-_ANSI: Final = BUILTIN_THEMES["ansi-dark"]  # the terminal's own background
-_THEME: Final = replace(
-    _ANSI,
-    name="neosian",
-    primary=BRAND_ACCENT,
-    secondary=BRAND_SUPPORT,
-    variables={
-        **_ANSI.variables,
-        **{f"markdown-h{level}-color": BRAND_ACCENT for level in range(1, 7)},
-        "markdown-h2-text-style": "bold",
-        "scrollbar": "ansi_bright_black",
-        "scrollbar-hover": "ansi_white",
-        "scrollbar-active": "ansi_white",
-        "scrollbar-background": "ansi_default",
-        "scrollbar-background-hover": "ansi_default",
-        "scrollbar-background-active": "ansi_default",
-    },
-)
-_PLACEHOLDER: Final = "enter sends, ctrl+j breaks the line"
+_PLACEHOLDER: Final = "enter sends, ctrl+j breaks the line, / for commands"
 _WORKING: Final = "esc interrupts"
-_KEYS: Final = "ctrl+o tool calls   ctrl+d quit"
+_KEYS: Final = "ctrl+o tool calls   /help   ctrl+d quit"
 _AGAIN: Final = "ctrl+c again to quit"
 _AGAIN_SECONDS: Final = 2.0  # how long the first ctrl+c stays armed
-_MARK_WIDTH: Final = 72  # the narrowest opening that seats the mark beside the text
 _BUSY: Final = "a turn is running: esc interrupts it"
 _INTERRUPTED: Final = "interrupted: the turn was not saved"
+_UNKNOWN: Final = "no command /{name}: /help lists them"
 _GUTTER: Final = 3  # the scroll's padding and its bar
 
 
-@dataclass(frozen=True, slots=True)
-class Opening:
-    """What the session says before the first turn."""
-
-    agent: str
-    facts: Sequence[tuple[str, str]]
-    notice: str | None = None
-
-    def render(self, width: int) -> RenderableType:
-        """The mark beside the text; the text alone on a narrow terminal."""
-        parts: list[RenderableType] = [
-            Text(
-                PlaygroundUI.AGENT_LOADED.format(name=self.agent),
-                style=f"bold {BRAND_ACCENT}",
-            ),
-            Text(PlaygroundUI.SESSION_START, style="dim"),
-        ]
-        if self.notice is not None:
-            parts.append(Text(self.notice, style="dim"))
-        parts += [Text(), field_table(self.facts)]
-        mark = load_mark()
-        if not mark.plain or width < _MARK_WIDTH:
-            return Group(*parts)
-        seated = Table.grid(padding=(0, 3))
-        seated.add_column(no_wrap=True)
-        seated.add_column()
-        seated.add_row(mark, Group(*parts))
-        return seated
-
-
 class SessionApp(App[None]):
-    """One Conversation on the screen."""
+    """One Conversation on the screen, and the way to another."""
 
     ENABLE_COMMAND_PALETTE = False
     CSS = """
@@ -113,6 +69,7 @@ class SessionApp(App[None]):
         height: auto; max-height: 10; border: round $primary; padding: 0 1;
     }
     #footer { height: 1; padding: 0 1; }
+    .notice { margin-bottom: 1; }
     """
     BINDINGS: ClassVar[list[BindingType]] = [
         Binding("ctrl+c", "cancel", show=False),  # wherever the focus is
@@ -124,19 +81,17 @@ class SessionApp(App[None]):
 
     def __init__(
         self,
-        convo: Conversation,
-        opening: Opening,
+        session: Session,
         *,
-        model: AnyModel,
-        title: Text,
-        streamed: bool,
+        config: AgentConfig,
+        agent: str,
+        servers: Sequence[McpServer] = (),
     ) -> None:
         super().__init__()
-        self._convo = convo
-        self._opening = opening
-        self._model = model
-        self._title = title
-        self._streamed = streamed
+        self.session = session
+        self.config = config
+        self.agent = agent
+        self._servers = servers
         self._turn: Worker[None] | None = None
         self._spent: int | None = None
         self._leaving = False  # a first ctrl+c, waiting for the second
@@ -151,14 +106,18 @@ class SessionApp(App[None]):
         yield Static(id="footer")
 
     async def on_mount(self) -> None:
-        self.register_theme(_THEME)
-        self.theme = _THEME.name
-        await self._transcript.mount(
-            Static(self._opening.render(self.size.width - _GUTTER), id="opening")
-        )
-        self._scroll.anchor()
+        self.register_theme(THEME)
+        self.theme = THEME.name
+        await self._open()
         self.query_one(Prompt).focus()
         self._footer()
+
+    async def _open(self) -> None:
+        """The opening, then the last turns of a conversation that has any."""
+        opening = self.session.opening.render(self.size.width - _GUTTER)
+        await self._transcript.mount(Static(opening, id="opening"))
+        await replay(self._transcript, self.session.convo.messages)
+        self._scroll.anchor()
 
     @property
     def _scroll(self) -> VerticalScroll:
@@ -176,11 +135,22 @@ class SessionApp(App[None]):
         if self._leaving:
             self.query_one("#footer", Static).update(Text(_AGAIN, style="bold"))
             return
-        line = self._title.copy()
+        typed = self.query_one(Prompt).text
+        if typed.startswith("/") and " " not in typed:  # the commands it may be
+            hint = "   ".join(
+                f"/{name}" for name in NAMES if name.startswith(typed[1:])
+            )
+            self.query_one("#footer", Static).update(Text(hint, style="dim"))
+            return
+        line = self.session.title.copy()
         if self._spent is not None:
             line.append(f"  {format_micro_usd(self._spent)}", style="dim")
         line.append(f"   {_KEYS}", style="dim")
         self.query_one("#footer", Static).update(line)
+
+    @on(TextArea.Changed)
+    def _typed(self) -> None:
+        self._footer()
 
     @on(Prompt.Submitted)
     async def _submitted(self, event: Prompt.Submitted) -> None:
@@ -192,23 +162,38 @@ class SessionApp(App[None]):
         elif self._busy:
             self.notify(_BUSY)
         else:
-            self.query_one(Prompt).clear()
-            self._turn = self.run_worker(self._run(text), exit_on_error=False)
+            self.query_one(Prompt).remember(text)
+            await self._transcript.mount(Static(Text(f"> {text}"), classes="user"))
+            self._scroll.anchor()
+            work = self._command(text[1:]) if text.startswith("/") else self._run(text)
+            self._turn = self.run_worker(work, exit_on_error=False)
+
+    async def _command(self, line: str) -> None:
+        name, _, argument = line.partition(" ")
+        command: Command | None = BY_NAME.get(name.lower())
+        try:
+            if command is None:
+                await self.say(Text(_UNKNOWN.format(name=name)), "error")
+            else:
+                await command.run(self, argument.strip())
+        except Exception as exc:
+            await self.say(Text(f"Error: {exc}"), "error")
+        finally:
+            self._footer()
 
     async def _run(self, text: str) -> None:
         working = self.query_one(Working)
-        await self._transcript.mount(Static(Text(f"> {text}"), classes="user"))
-        self._scroll.anchor()
-        view = TurnView(self._transcript, self._model, self._title)
+        session = self.session
+        view = TurnView(self._transcript, session.model, session.title)
         working.start()
         try:
-            if self._streamed:
-                stream = await self._convo.send(text, stream=True)
+            if session.streamed:
+                stream = await session.convo.send(text, stream=True)
                 async with closing(stream) as events:
                     async for event in events:
                         await view.render(event)
             else:
-                await view.response(await self._convo.send(text))
+                await view.response(await session.convo.send(text))
         except asyncio.CancelledError:
             await view.note(Text(_INTERRUPTED, style="dim"), "interrupted")
             raise
@@ -225,6 +210,45 @@ class SessionApp(App[None]):
         """Ask the human whether `command` may run; the turn waits."""
         approved: bool = await self.push_screen_wait(Confirm(command))
         return approved
+
+    async def pick(self, title: str, options: Sequence[str]) -> int | None:
+        """One of `options` by its index, or None when the human backs out."""
+        choice: int | None = await self.push_screen_wait(Pick(title, options))
+        return choice
+
+    async def secret(self, title: str) -> str | None:
+        """A value typed masked: it reaches the caller and nothing else,
+        never the transcript, a turn or the model."""
+        value: str | None = await self.push_screen_wait(Secret(title))
+        return value
+
+    async def say(self, said: RenderableType, classes: str = "notice") -> None:
+        await self._transcript.mount(Static(said, classes=classes))
+
+    async def reopen(
+        self,
+        *,
+        model: AnyModel | None = None,
+        conversation_id: str | None = None,
+        resumed: bool = True,
+    ) -> None:
+        """Close this Conversation (it reflects, §15) and open another:
+        the same id on `model` or on a fresh client, with the transcript
+        kept; or `conversation_id`, whose own turns replace it."""
+        config = self.config if model is None else replace(self.config, model=model)
+        current = self.session.convo
+        await current.aclose()
+        self.session = await open_session(
+            config,
+            self.agent,
+            conversation_id=conversation_id or current.conversation_id,
+            resumed=resumed,
+            servers=self._servers,
+        )
+        self.config = config
+        if conversation_id is not None:
+            await self._transcript.remove_children()
+            await self._open()
 
     async def _stop(self) -> None:
         if self._turn is not None:
