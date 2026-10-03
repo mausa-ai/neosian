@@ -338,6 +338,16 @@ def search(ctx: typer.Context) -> None:
     )
 
 
+@app.command(name="continue", rich_help_panel=_OPERATE, context_settings=_PASS_THROUGH)
+def continue_(ctx: typer.Context) -> None:
+    """Print a recorded conversation as continue_session delivers it (§33):
+    a read (the note stays pending, no lineage written); every argument
+    goes verbatim to the one grammar (`neosian continue --help`)."""
+    from neosian.continuation import main as continue_main
+
+    raise typer.Exit(continue_main(list(ctx.args)))
+
+
 @app.command(
     name="audit",
     rich_help_panel=_OPERATE,

@@ -20,6 +20,7 @@ the @Tool decorator resolves the signature's hints at decoration time.
 """
 
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Final
 
@@ -191,50 +192,20 @@ def handoff_tools(
         params=get_prompt_params("tools.continue_session_params"),
     )
     async def continue_session(conversation: str | None = None) -> ToolResult[str]:
-        try:
-            document = await memory.read(scope, HANDOFF_PATH)
-            baton = _pending(document)
-            if conversation is None:
-                chosen = await _default_target(memory, scope, baton, own)
-                if isinstance(chosen, ToolResult):
-                    return chosen
-                target = chosen
-            else:
-                if reach is not None:
-                    ids = await in_reach(
-                        reach, conversation, tool=CONTINUE_TOOL, where=where
-                    )
-                    if isinstance(ids, ToolResult):
-                        return ids
-                target = conversation
-            turns = await store.read_turns(target)
-            if not turns:
-                return ToolResult.fail(f"Conversation {target!r} has no turns")
-            listed = await memory.read(scope, sessions_path(target))
-            continues = (
-                ()
-                if listed is None
-                else parse_sessions_document(listed.content).continues
-            )
-            delivered = (
-                baton
-                if _belongs(baton, target, named=conversation is not None)
-                else None
-            )
-            if document is not None and delivered is not None:
-                await _pick_up(
-                    memory, scope, document, delivered, target, stamped(), clock
-                )
-            return ToolResult.ok(
-                render_continuation(
-                    turns,
-                    await store.read_projections(target),
-                    continues=continues,
-                    note=delivered,
-                )
-            )
-        except (ConversationStoreError, MemoryStoreError) as exc:
-            return ToolResult.fail(f"[{exc.code}] {exc.message}")
+        outcome = await continue_conversation(
+            store,
+            memory,
+            scope,
+            conversation,
+            own=own,
+            reach=reach,
+            where=where,
+            by=stamped(),
+            clock=clock,
+        )
+        return (
+            outcome if isinstance(outcome, ToolResult) else ToolResult.ok(outcome.text)
+        )
 
     @Tool(
         name=HANDOFF_TOOL,
@@ -272,6 +243,72 @@ def handoff_tools(
         return ToolResult.ok(get_prompt("context.handoff_recorded"))
 
     return continue_session, handoff
+
+
+@dataclass(frozen=True, slots=True)
+class Continuation:
+    """What a continue call delivered: the conversation, the text, and
+    whether its pending note rode along."""
+
+    conversation: str
+    text: str
+    note: bool
+
+
+async def continue_conversation(
+    store: ConversationStore,
+    memory: MemoryStore,
+    scope: str,
+    conversation: str | None,
+    *,
+    own: str | None = None,
+    reach: Reach | None = None,
+    where: str = "",
+    by: str | None = None,
+    clock: Clock = _WALL_CLOCK,
+    pick_up: bool = True,
+) -> Continuation | ToolResult[str]:
+    """The continue call's work (§33): the target resolved, delivered with
+    its pending note, and the baton marked picked up by `by` — unless
+    `pick_up` is off, the shell's read (a terminal is not a session). A
+    corrective failure comes back as the `ToolResult` the tool returns."""
+    try:
+        document = await memory.read(scope, HANDOFF_PATH)
+        baton = _pending(document)
+        if conversation is None:
+            chosen = await _default_target(memory, scope, baton, own)
+            if isinstance(chosen, ToolResult):
+                return chosen
+            target = chosen
+        else:
+            if reach is not None:
+                ids = await in_reach(
+                    reach, conversation, tool=CONTINUE_TOOL, where=where
+                )
+                if isinstance(ids, ToolResult):
+                    return ids
+            target = conversation
+        turns = await store.read_turns(target)
+        if not turns:
+            return ToolResult.fail(f"Conversation {target!r} has no turns")
+        listed = await memory.read(scope, sessions_path(target))
+        continues = (
+            () if listed is None else parse_sessions_document(listed.content).continues
+        )
+        delivered = (
+            baton if _belongs(baton, target, named=conversation is not None) else None
+        )
+        if pick_up and document is not None and delivered is not None:
+            await _pick_up(memory, scope, document, delivered, target, by, clock)
+        text = render_continuation(
+            turns,
+            await store.read_projections(target),
+            continues=continues,
+            note=delivered,
+        )
+        return Continuation(target, text, delivered is not None)
+    except (ConversationStoreError, MemoryStoreError) as exc:
+        return ToolResult.fail(f"[{exc.code}] {exc.message}")
 
 
 def _pending(document: MemoryDocument | None) -> Handoff | None:

@@ -748,6 +748,13 @@ class TestConsole:
         hits = json.loads(found.stdout)["hits"]
         assert [h["conversation_id"] for h in hits] == [payload["conversation_id"]]
         assert "created" in events
+        # N6 (§33): the same session is what a bare `continue` delivers
+        # from this directory, as text an agent's call would receive.
+        carried = _run(["continue", "--json"], cwd=project, env=env)
+        assert carried.returncode == 0, carried.stderr
+        delivered = json.loads(carried.stdout)
+        assert delivered["conversation"] == payload["conversation_id"]
+        assert delivered["text"].startswith("[continuing conversation ")
 
     def test_a_piped_playground_turn_and_the_menus_refusal(
         self, tmp_path: Path

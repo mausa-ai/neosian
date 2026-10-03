@@ -25,6 +25,11 @@ phase close names the version.
 - The wheel's own `handoff` skill (`assets/skills/handoff.md`), served by
   the MCP server as a prompt beside the mounts' skills: a slash command
   in the clients that render prompts.
+- `neosian continue [CONVERSATION] [--scope S] [--json]`, the shell twin:
+  prints what `continue_session` would deliver from a scope (this
+  directory's project scope by default), as a read: the note stays
+  pending and no lineage is written. `python -m neosian.continuation` is
+  its PATH-free form.
 
 ### Changed
 
