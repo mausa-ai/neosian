@@ -5,8 +5,9 @@ Detects the clients present on this machine (each installer target's
 evidence directory) and runs both installers for each: the MCP
 registration and the record hooks, once per machine by default
 (`--level project` for this directory's files). It prints what would land
-and applies it with `--write`. A file the client's own CLI writes (Claude
-Code's user scope, Codex's TOML) is applied by running that CLI when it is
+and applies the selected clients with `--write`. A file the client's own
+CLI writes (Claude Code's user scope, Codex's TOML) is applied by running
+that CLI when it is
 on PATH, and reported as the line to run when it is not. `--root` and
 `--url` reach both installers, so moving every client on the machine to
 the state process is one run. `--client` narrows; `--json` one object with
@@ -23,6 +24,12 @@ import shutil
 import subprocess
 from typing import TYPE_CHECKING, Any, Final, TextIO
 
+from neosian._cli.client_selection import (
+    add_locations,
+    discovery,
+    discovery_text,
+    with_locations,
+)
 from neosian._foundation.mcp.install import (
     displace,
     remove_argv,
@@ -161,6 +168,8 @@ def run_setup(
     err: TextIO,
     prog: str = "neosian setup",
     runner: Runner = _spawn,
+    stdin: TextIO | None = None,
+    tty: bool = False,
 ) -> int:
     parser = StreamParser(prog=prog, description=_DESCRIPTION, epilog=_EPILOG)
     parser.bind(out, err)
@@ -178,23 +187,56 @@ def run_setup(
         "--json", action="store_true", dest="json_output", help="one JSON object"
     )
     add_level_argument(parser)
+    add_locations(parser)
+    parser.add_argument(
+        "--yes", action="store_true", help="connect all found clients without asking"
+    )
     parser.add_argument("--root", help="the FileStore root both installers name")
     parser.add_argument(
         "--url", help=f"the state process both installers name ({CLIENT_TOKEN_ENV})"
     )
     try:
         args = parser.parse_args(list(argv))
+        context = with_locations(parser, context, args.at, CLIENTS)
+        if (
+            args.write
+            and not args.client
+            and not args.yes
+            and (args.json_output or not tty)
+        ):
+            parser.error("unattended --write requires --yes or --client")
     except SystemExit as exc:  # argparse: usage already on the streams
         if exc.code is None:
             return 0
         return exc.code if isinstance(exc.code, int) else 2
-    clients = args.client or present_clients(context)
+    clients = list(dict.fromkeys(args.client or present_clients(context)))
+    searched = discovery(context, args.client or CLIENTS)
     if not clients:
         message = "no client found: none of " + ", ".join(CLIENTS) + " is installed"
         if args.json_output:
-            out.write(json.dumps({"error": message, "hint": None}) + "\n")
+            out.write(
+                json.dumps({"error": message, "hint": None, "searched": searched})
+                + "\n"
+            )
         err.write(f"error: {message}\n")
+        err.write(discovery_text(searched))
         return 1
+    if args.write and not args.client and not args.yes:
+        from rich.console import Console
+
+        from neosian._cli.ui import checklist
+
+        assert stdin is not None
+        selected = checklist(
+            Console(file=out), [mcp_target(c, context).label for c in clients], stdin
+        )
+        if selected is None:
+            err.write("setup cancelled; nothing written\n")
+            return 1
+        clients = [clients[index] for index in selected]
+        if not clients:
+            out.write("No clients selected; nothing written.\n")
+            return 0
     extra = ["--level", args.level]
     extra += ["--root", args.root] if args.root else []
     extra += ["--url", args.url] if args.url else []
@@ -246,7 +288,12 @@ def run_setup(
         for k in ("mcp", "hooks")
     )
     if args.json_output:
-        payload = {"written": args.write, "level": args.level, "clients": rows}
+        payload = {
+            "written": args.write,
+            "level": args.level,
+            "clients": rows,
+            "searched": searched,
+        }
         out.write(json.dumps(payload) + "\n")
     else:
         for row in rows:
@@ -268,5 +315,6 @@ def run_setup(
                 out.write(json.dumps(files, indent=2) + "\n")
         if not args.write:
             err.write("hint: re-run with --write to apply\n")
+        out.write(discovery_text(searched))
     err.write((_TOKEN if args.url else _ONE_WRITER) + "\n")
     return 1 if failed else 0

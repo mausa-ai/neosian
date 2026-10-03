@@ -178,6 +178,7 @@ def status(ctx: typer.Context) -> None:
 def setup(ctx: typer.Context) -> None:
     """Wire the installed agents to this store: MCP and the hooks.
 
+    Select clients on terminal writes; scripts use --yes or --client.
     A thin pass-through to the one grammar (`neosian setup --help`):
     prints what would land for every client found, once per machine,
     `--write` applies it, `--url` points them all at the state process,

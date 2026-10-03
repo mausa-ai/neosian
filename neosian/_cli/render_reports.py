@@ -20,11 +20,14 @@ def render_configure(payload: dict[str, Any], console: Console) -> None:
 
 def render_setup(payload: dict[str, Any], console: Console) -> None:
     # Reuse the engine's outcome wording, including CLI-owned registrations.
+    from neosian._cli.client_selection import discovery_text
     from neosian._cli.setup import _line
 
     written = payload["written"]
     section(console, "Setup results" if written else "Setup preview")
     fields(console, [("Level", payload["level"])])
+    if searched := discovery_text(payload.get("searched", [])):
+        console.print(Text(searched.rstrip()))
     for client in payload["clients"]:
         console.print()
         section(console, client["label"])

@@ -224,6 +224,7 @@ writers are not arbitrated on files. The home is one root for every
 project, so two projects' servers on it are two writers. Multi-writer
 needs route to `PostgresStore` or to the state process (`neosian
 serve`, no flags), where one process owns the root for every client;
-`neosian setup --url URL --write` moves every client there in one run.
+`neosian setup --url URL --write --yes` moves every detected client there
+in one run. Omit `--yes` on a terminal to select clients first.
 The full rule, and what two projects on one home actually share:
 `neosian docs topology`.

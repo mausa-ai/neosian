@@ -20,8 +20,8 @@ Two doors, one store:
 
 - **Give your agent state.** Claude Code, Codex, OpenCode, Muse Code, Pi or
   interactive Cursor get memory and skills over MCP and every session
-  recorded through hooks: `neosian setup --write` wires every client it
-  finds, once per machine; `neosian status` says whether the machine is
+  recorded through hooks: `neosian setup --write` lets you select the clients to
+  connect, once per machine; `neosian status` says whether the machine is
   set up; bare `neosian` opens a chat with an agent that knows neosian,
   on the same memory.
 - **Build an agent.** An async-only, stateless `Agent` (tools,
@@ -85,7 +85,10 @@ version` (the Development section has the gates).
 
 ## One store under many agents
 
-`neosian setup --write` connects your installed clients to the home once.
+`neosian setup --write` asks which installed clients to connect to the home.
+Use `--write --yes` for all detected clients in scripts, or repeated
+`--client C` for an explicit selection. Setup and status accept
+`--at CLIENT=DIR` for a custom client configuration directory, for one run.
 Their hooks record each session into one store, so any of them picks up
 where another stopped: say "continue" and the agent receives that
 conversation in one call, with the note the last one left on departure;

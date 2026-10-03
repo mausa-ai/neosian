@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Final, TextIO
 
 from neosian import __version__
+from neosian._cli.client_selection import add_locations, with_locations
 from neosian._cli.config import (
     ConfigFileError,
     get_config_path,
@@ -75,6 +76,7 @@ class ClientStatus:
     interpreter_resolves: bool | None
     mcp_shadowed_by: str | None
     root: str | None  # the --root both entries name, for the one-writer note
+    searched_directory: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -141,6 +143,7 @@ def client_status(client: str, context: Environment) -> ClientStatus:
     return ClientStatus(
         client=client,
         label=target.label,
+        searched_directory=str(target.evidence_dir),
         installed=target.evidence_dir.is_dir(),
         mcp_registered=server_argv is not None,
         hooks_present=hook_argv is not None,
@@ -258,7 +261,9 @@ def _writers(clients: Sequence[ClientStatus]) -> dict[str, list[str]]:
 
 def _client_line(client: ClientStatus) -> str:
     if not client.installed:
-        return f"  {client.client:<12}not installed"
+        return (
+            f"  {client.client:<12}not installed; searched {client.searched_directory}"
+        )
     cells = [
         "mcp registered" if client.mcp_registered else "mcp -",
         "hooks present" if client.hooks_present else "hooks -",
@@ -318,11 +323,13 @@ async def run(
 ) -> int:
     parser = StreamParser(prog=prog, description=_DESCRIPTION)
     parser.bind(out, err)
+    add_locations(parser)
     parser.add_argument(
         "--json", action="store_true", dest="json_output", help="one JSON object"
     )
     try:
         args = parser.parse_args(list(argv))
+        context = with_locations(parser, context, args.at, CLIENTS)
     except SystemExit as exc:  # argparse: usage already on the streams
         if exc.code is None:
             return 0

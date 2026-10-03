@@ -17,7 +17,7 @@ payloads are the import path.
 ## Install
 
 ```bash
-neosian setup --write                                             # every client found, once per machine
+neosian setup --write                                             # select clients, once per machine
 neosian setup --url http://127.0.0.1:6367 --write                 # the same, behind the state process
 neosian record install --client claude-code                       # print the user-level hooks
 neosian record install --client codex --write
@@ -26,7 +26,12 @@ neosian record install --client opencode --level project --scope user:me --write
 
 - **`neosian setup`** runs this installer and `mcp install` for every
   client it finds (their config directories are the evidence), prints
-  first and applies with `--write`; `neosian status` shows each client
+  first. On a terminal `--write` asks which clients to connect, all selected
+  initially. Scripts use `--write --yes` for all detected clients or repeated
+  `--client C` for an explicit selection. JSON never prompts. Both setup and
+  status accept invocation-only `--at CLIENT=DIR` overrides and report where
+  they searched; a missing client home is never created.
+  `neosian status` shows each selected client
   green afterwards, at which level, and names an interpreter that
   stopped resolving.
 - **Once per machine.** By default the hooks land in the client's own
@@ -79,7 +84,7 @@ neosian record install --client opencode --level project --scope user:me --write
   and the home is one root for every project on the machine: run
   `neosian serve` (no flags: it serves the home; `neosian docs
   topology` has the per-user service recipe), then `neosian setup --url
-  URL --write` moves every client there in one run. Or use Postgres.
+  URL --write --yes` moves every detected client there in one run. Or use Postgres.
 - **Codex** takes the same fragment at `~/.codex/hooks.json` (`~/.codex`,
   or `$CODEX_HOME`, must exist). At the user level there is no project
   trust step, but Codex runs a new hook only once you have reviewed it

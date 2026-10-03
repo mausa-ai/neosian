@@ -35,15 +35,20 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
 
 ## Set up from the shell (the human path)
 
-- `neosian status [--json]`: is this machine set up? The home, which
+- `neosian status [--at CLIENT=DIR]… [--json]`: is this machine set up? The home, which
   providers have a key (never values), this directory's two scopes, per
   client installed / MCP registered / hooks present / level (user,
   project, both) / interpreter resolving, the last recorded session, the
   install shape. Exit 0 always; findings are data.
-- `neosian setup [--write] [--level user|project] [--root DIR | --url URL]`:
+- `neosian setup [--write] [--yes] [--client C]… [--at C=DIR]…`:
   wire every installed client (Claude Code, Codex, OpenCode, Muse Code, Cursor, Pi) to the home,
   once per machine: MCP + the record hooks in the client's own config, no
-  file per project; print first. `--write` runs the client's own CLI for
+  file per project; print first. Terminal writes ask which clients to connect,
+  all selected initially. Unattended writes (including JSON) require `--yes`
+  or explicit `--client`; print/JSON never prompt. Setup and status report
+  searched directories and accept invocation-only `--at CLIENT=DIR` overrides;
+  missing client homes are never created. Selections are not saved.
+  `--level user|project` and `--root DIR | --url URL` reach both installers. `--write` runs the client's own CLI for
   a file it owns (`claude mcp add-json`, `codex mcp add`) when on PATH,
   else prints the line and exits 1. `--url URL` moves every client to the
   state process in one run.
@@ -157,7 +162,7 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
   document then says `continues: <id>`, and `neosian audit` shows it.
   `neosian continue` prints the same text from the shell, as a read.
 - Hooks beside an MCP server are two writers: use `--url` (the state
-  process; `neosian setup --url URL --write` moves the whole machine) or
+  process; `neosian setup --url URL --write --yes` moves the whole machine) or
   Postgres. `neosian docs agents` carries the client table.
 
 ## Reach it over the network

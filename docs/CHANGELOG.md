@@ -10,12 +10,19 @@ phase close names the version.
 
 ### Added
 
+- Setup client checklist, `--yes` for unattended all-client writes, and
+  invocation-only `--at CLIENT=DIR` overrides on setup/status with searched
+  directory reporting. Explicit `--client` selections remain noninteractive.
+
 - Pi 1.0.1+ as a client in both installers, setup and status: native MCP,
   a session-recording extension, startup context and cross-client handoff.
   User and project registrations honor `PI_CODING_AGENT_DIR`; recording
   includes nested MCP calls and waits for final settlement after retries.
 
 ### Changed
+
+- Unattended `setup --write`, including JSON mode, now requires `--yes` or
+  explicit clients. Print mode and JSON never prompt; choices are not saved.
 
 - Session-start memory instructions require `continue_session` when
   resuming earlier work, even when the summary already contains the answer.

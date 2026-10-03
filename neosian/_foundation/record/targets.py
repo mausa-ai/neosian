@@ -144,7 +144,7 @@ def _muse(context: Environment, level: str) -> HookTarget:
 
 
 def _cursor(context: Environment, level: str) -> HookTarget:
-    base = context.home / ".cursor"
+    base = context.client_dirs.get("cursor", context.home / ".cursor")
     return HookTarget(
         client="cursor",
         label="Cursor",

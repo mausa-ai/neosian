@@ -176,6 +176,12 @@ including its MCP registration and recording extension. Pi inherits
 into its registration. Pi 1.0.1 or later is required. Its interactive
 and print modes both run the extension.
 
+Setup and status also accept `--at CLIENT=DIR` to override a client
+configuration directory for one invocation. This takes precedence over the
+client variable, is never persisted, and never creates a missing client home.
+Use the same override when checking status. `setup --write` asks for client
+selection on a terminal; unattended writes require `--yes` or `--client`.
+
 ## The MCP server — a DSN, not an API key
 
 `NEOSIAN_POSTGRES_DSN` (renamed from `NEOSIAN_MCP_POSTGRES_DSN` at NA,

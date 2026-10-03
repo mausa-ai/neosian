@@ -682,7 +682,7 @@ class TestConsole:
         assert printed.returncode == 0, printed.stderr
         assert "would write" in printed.stdout
         assert not (config_dir / config).exists()  # print mode writes nothing
-        written = _run(["setup", "--write", "--json"], cwd=project, env=env)
+        written = _run(["setup", "--write", "--yes", "--json"], cwd=project, env=env)
         assert written.returncode == 0, written.stderr
         (row,) = json.loads(written.stdout)["clients"]
         assert row["client"] == client and row["mcp"]["level"] == "user"
@@ -706,7 +706,7 @@ class TestConsole:
         (tmp_path / ".claude").mkdir()
         project = tmp_path / "setup proj"
         project.mkdir()
-        result = _run(["setup", "--write"], cwd=project, env=env)
+        result = _run(["setup", "--write", "--yes"], cwd=project, env=env)
         assert result.returncode == 1  # something is left for the user
         assert "claude is not on PATH" in result.stdout
         assert "run: claude mcp add-json --scope user neosian-memory" in result.stdout
@@ -718,7 +718,9 @@ class TestConsole:
         project = tmp_path / "setup proj"
         project.mkdir()
         written = _run(
-            ["setup", "--level", "project", "--write", "--json"], cwd=project, env=env
+            ["setup", "--level", "project", "--write", "--yes", "--json"],
+            cwd=project,
+            env=env,
         )
         assert written.returncode == 0, written.stderr
         (row,) = json.loads(written.stdout)["clients"]

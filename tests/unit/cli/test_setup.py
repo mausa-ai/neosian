@@ -108,7 +108,7 @@ class TestOncePerMachine:
     ) -> None:
         (tmp_path / ".claude").mkdir()
         cli = _Cli(tmp_path)
-        code, out, err = _run(tmp_path, ["--write", "--json"], runner=cli)
+        code, out, err = _run(tmp_path, ["--write", "--yes", "--json"], runner=cli)
         assert code == 0, err
         payload = json.loads(out)
         assert payload["written"] is True and payload["level"] == "user"
@@ -136,7 +136,7 @@ class TestOncePerMachine:
     ) -> None:
         (tmp_path / ".claude").mkdir()
         cli = _Cli(tmp_path, exits=[1, 0, 0])  # add refuses, remove, add
-        code, out, _ = _run(tmp_path, ["--write", "--json"], runner=cli)
+        code, out, _ = _run(tmp_path, ["--write", "--yes", "--json"], runner=cli)
         assert code == 0 and json.loads(out)["clients"][0]["mcp"]["applied"]
         assert [call[2] for call in cli.calls] == ["add-json", "remove", "add-json"]
         assert cli.calls[1] == [
@@ -150,7 +150,9 @@ class TestOncePerMachine:
 
     def test_a_cli_off_path_leaves_the_line_to_the_user(self, tmp_path: Path) -> None:
         (tmp_path / ".claude").mkdir()
-        code, out, _ = _run(tmp_path, ["--write"])  # the default runner, no PATH
+        code, out, _ = _run(
+            tmp_path, ["--write", "--yes"]
+        )  # the default runner, no PATH
         assert code == 1  # something is left to do, and the exit says so
         assert "not applied (claude is not on PATH); run: claude mcp add-json" in out
         assert (tmp_path / ".claude" / "settings.json").is_file()  # the hooks landed
@@ -158,7 +160,7 @@ class TestOncePerMachine:
     def test_a_failing_cli_is_reported_with_its_own_words(self, tmp_path: Path) -> None:
         (tmp_path / ".claude").mkdir()
         cli = _Cli(tmp_path, exits=[1, 0, 1])
-        code, out, _ = _run(tmp_path, ["--write", "--json"], runner=cli)
+        code, out, _ = _run(tmp_path, ["--write", "--yes", "--json"], runner=cli)
         mcp = json.loads(out)["clients"][0]["mcp"]
         assert code == 1 and mcp["applied"] is False
         assert mcp["apply_error"] == "MCP server neosian-memory already exists"
@@ -203,13 +205,13 @@ class TestOncePerMachine:
     ) -> None:
         (tmp_path / ".claude").mkdir()
         context = _context(tmp_path)
-        assert _run(tmp_path, ["--level", "project", "--write"])[0] == 0
+        assert _run(tmp_path, ["--level", "project", "--write", "--yes"])[0] == 0
         assert "neosian-memory" in (context.cwd / ".mcp.json").read_text()
         (context.cwd / ".claude" / "settings.json").unlink()  # its hooks: another pin
         failing = _Cli(tmp_path, exits=[1, 0, 1])
-        _run(tmp_path, ["--write"], runner=failing)
+        _run(tmp_path, ["--write", "--yes"], runner=failing)
         assert "neosian-memory" in (context.cwd / ".mcp.json").read_text()  # kept
-        assert _run(tmp_path, ["--write"], runner=_Cli(tmp_path))[0] == 0
+        assert _run(tmp_path, ["--write", "--yes"], runner=_Cli(tmp_path))[0] == 0
         assert "neosian-memory" not in (context.cwd / ".mcp.json").read_text()
 
 
@@ -222,7 +224,7 @@ class TestTheStoreFlags:
         url = "http://127.0.0.1:6367"
         cli = _Cli(tmp_path)
         code, out, err = _run(
-            tmp_path, ["--url", url, "--write", "--json"], runner=cli, env=env
+            tmp_path, ["--url", url, "--write", "--yes", "--json"], runner=cli, env=env
         )
         assert code == 0, err
         for row in json.loads(out)["clients"]:
@@ -252,7 +254,9 @@ class TestTheProjectLevel:
     ) -> None:
         (tmp_path / ".claude").mkdir()
         context = _context(tmp_path)
-        code, out, err = _run(tmp_path, ["--level", "project", "--write", "--json"])
+        code, out, err = _run(
+            tmp_path, ["--level", "project", "--write", "--yes", "--json"]
+        )
         assert code == 0, err
         (row,) = json.loads(out)["clients"]
         assert row["mcp"]["written"] and row["hooks"]["written"]

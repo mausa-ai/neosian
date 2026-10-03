@@ -76,7 +76,9 @@ def _claude_code(context: Environment, level: str) -> ClientTarget:
             servers_key=_SERVERS_KEY,
             scope_note="project level: .mcp.json travels with this directory's repo",
         )
-    override = context.env.get("CLAUDE_CONFIG_DIR")
+    override = context.client_dirs.get("claude-code") or context.env.get(
+        "CLAUDE_CONFIG_DIR"
+    )
     return ClientTarget(
         client="claude-code",
         label="Claude Code",
@@ -111,7 +113,7 @@ def _claude_desktop(context: Environment, _level: str) -> ClientTarget:
 
 
 def _cursor(context: Environment, _level: str) -> ClientTarget:
-    base = context.home / ".cursor"
+    base = context.client_dirs.get("cursor", context.home / ".cursor")
     return ClientTarget(
         client="cursor",
         label="Cursor",

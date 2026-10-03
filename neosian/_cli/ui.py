@@ -1,6 +1,7 @@
 """Shared Rich helpers for the CLI: header art and small formatters."""
 
 import importlib.resources
+from typing import TextIO
 
 from rich.console import Console
 from rich.text import Text
@@ -83,6 +84,33 @@ def pick(
     except EOFError:
         return None
     return int(answer) - 1
+
+
+def checklist(console: Console, options: list[str], stdin: TextIO) -> list[int] | None:
+    """All selected initially; numbers toggle, Enter confirms, EOF cancels."""
+    selected = set(range(len(options)))
+    console.print(Text("Connect clients", style=f"bold {BRAND_ACCENT}"))
+    while True:
+        for index, option in enumerate(options):
+            mark = "x" if index in selected else " "
+            console.print(Text(f"  {index + 1}. [{mark}] {option}"))
+        console.print("Numbers toggle; Enter confirms; q cancels: ", end="")
+        try:
+            line = stdin.readline()
+        except KeyboardInterrupt:
+            return None
+        if not line or line.strip().lower() == "q":
+            return None
+        if not line.strip():
+            return sorted(selected)
+        try:
+            toggles = {int(number) - 1 for number in line.replace(",", " ").split()}
+            if not toggles <= set(range(len(options))):
+                raise ValueError
+        except ValueError:
+            console.print(Text("Enter numbers from the list.", style="red"))
+            continue
+        selected.symmetric_difference_update(toggles)
 
 
 def format_args(args: dict[str, object]) -> str:

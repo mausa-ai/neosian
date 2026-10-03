@@ -146,9 +146,9 @@ def test_setup_adapter_executes_once_even_on_partial_failure(
 
     monkeypatch.setattr(setup, "run_setup", run)
     monkeypatch.setattr("neosian._cli.render.rendered", lambda *_: True)
-    result = CliRunner().invoke(app, ["setup", "--write"])
+    result = CliRunner().invoke(app, ["setup", "--write", "--yes"])
     assert result.exit_code == 1
-    assert calls == [["--write", "--json"]]
+    assert calls == [["--write", "--yes", "--json"]]
     assert "Setup results" in result.stdout and "refused" in result.stdout
     assert result.stderr == "engine diagnostic\n"
 

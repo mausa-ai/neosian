@@ -59,6 +59,8 @@ def render_status(status: dict[str, Any], console: Console) -> None:
     rows = []
     findings = []
     for c in status["clients"]:
+        if not c["installed"] and c.get("searched_directory"):
+            findings.append(f"{c['client']}: searched {c['searched_directory']}")
         interpreter = c["interpreter_resolves"]
         rows.append(
             (

@@ -24,7 +24,9 @@ from neosian._foundation.shared.client_config import (
 
 def config_dir(context: Environment) -> Path:
     base = context.env.get("XDG_CONFIG_HOME")
-    return (Path(base) if base else context.home / ".config") / "muse"
+    return context.client_dirs.get(
+        "muse-code", (Path(base) if base else context.home / ".config") / "muse"
+    )
 
 
 def settings_document(path: Path) -> dict[str, Any]:

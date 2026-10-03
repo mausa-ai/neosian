@@ -78,7 +78,7 @@ class TestOneMachineEveryProject:
         def setup(*argv: str, env: Mapping[str, str]) -> dict[str, Any]:
             out = io.StringIO()
             code = run_setup(
-                [*argv, "--write", "--json"],
+                [*argv, "--write", "--yes", "--json"],
                 env,
                 context=context,
                 out=out,

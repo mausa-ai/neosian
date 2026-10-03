@@ -27,7 +27,7 @@ previews and protocol output retain their original content.
 
 ```
 neosian status [--json]                  # is this machine set up?
-neosian setup [--client C]… [--write]    # wire the installed agents to this store
+neosian setup [--client C]… [--at C=DIR]… [--write] [--yes]    # wire the installed agents to this store
 neosian configure [--list | --provider NAME --key - | --env NAME --key - | --delete]
 neosian chat [PROMPT] [--model M] [--agent FILE] [--resume ID] [--json]
 neosian update [--check | --write] [--mode off|notify|auto]
@@ -51,7 +51,13 @@ neosian                                  # on a terminal: chat; under a pipe: th
   for each (`mcp install` and `record install`), once per machine:
   each client's own config, the home, no mount (`--level project` for
   this directory's files). It prints what would land; `--write` applies
-  it, and runs the client's own CLI for a file that CLI owns (`claude
+  the selected clients. A terminal write without `--client` presents a
+  checklist, all detected clients selected initially. Numbers toggle; Enter
+  confirms; `q` or EOF cancels without writing. `--yes` selects all detected
+  clients without asking; repeated `--client C` selects explicitly.
+  Print mode and `--json` never prompt. Unattended writes, including JSON,
+  require `--yes` or explicit clients. Selections are never saved. It runs
+  the client's own CLI for a file that CLI owns (`claude
   mcp add-json`, `codex mcp add`) when it is on PATH, printing the line
   otherwise (exit 1: something is left to do). A `note` line under a
   client says what the client itself still asks of the user (Codex
@@ -60,7 +66,17 @@ neosian                                  # on a terminal: chat; under a pipe: th
   `opencode.jsonc`, merged by OpenCode with the `opencode.json` the
   entry landed in). `--root` and `--url` reach both installers:
   `neosian setup --url URL --write` moves every client on the machine
-  to the state process in one run.
+  to the state process in one run after selection.
+- **Client locations:** setup and status accept repeated `--at CLIENT=DIR`.
+  DIR is the client's user configuration directory, not a project root or
+  config filename; relative paths resolve from the current directory.
+  An explicit directory overrides that client's normal environment/default
+  location for this invocation only. Project-level files still belong to
+  the current project. Missing client homes are refused, never created.
+  Both reports name searched directories; JSON uses setup `searched` rows
+  and status `searched_directory` per client. For example:
+  `neosian setup --client pi --at pi=/opt/pi/agent --write`; inspect it with
+  `neosian status --at pi=/opt/pi/agent`.
 - **`configure`**: keys under `<home>/config.toml`, one row per
   provider the catalog knows (shipped, door rows, registered doors);
   `--provider NAME --key -` reads the key from stdin, never argv; `--env

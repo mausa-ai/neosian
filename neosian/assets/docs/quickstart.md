@@ -34,7 +34,7 @@ saying what it installs first.
 ## The agent you already use
 
 Three commands and no Python. `neosian status` says whether this machine
-is set up. `neosian setup --write` wires every installed agent (Claude
+is set up. `neosian setup --write` asks which installed agents to connect (Claude
 Code, Codex, OpenCode, Muse Code, Cursor, Pi) to the home once per machine:
 memory and skills over MCP, every session recorded through the client's
 own hooks, so a new project needs nothing. Bare `neosian` opens a chat

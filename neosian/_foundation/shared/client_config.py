@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import json
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
 
@@ -43,6 +43,7 @@ class Environment:
     platform: str
     env: Mapping[str, str]
     executable: str
+    client_dirs: Mapping[str, Path] = field(default_factory=dict)
 
 
 def add_level_argument(parser: argparse.ArgumentParser) -> None:
@@ -60,26 +61,36 @@ def claude_home(context: Environment) -> Path:
     """`$CLAUDE_CONFIG_DIR` moves Claude Code's files; the default is
     `~/.claude`."""
     override = context.env.get("CLAUDE_CONFIG_DIR")
-    return Path(override) if override else context.home / ".claude"
+    return context.client_dirs.get(
+        "claude-code", Path(override) if override else context.home / ".claude"
+    )
 
 
 def codex_home(context: Environment) -> Path:
     """`$CODEX_HOME` moves every Codex file; the default is `~/.codex`."""
     override = context.env.get("CODEX_HOME")
-    return Path(override) if override else context.home / ".codex"
+    return context.client_dirs.get(
+        "codex", Path(override) if override else context.home / ".codex"
+    )
 
 
 def opencode_config_dir(context: Environment) -> Path:
     """`$OPENCODE_CONFIG_DIR` moves OpenCode's config; the default is
     `~/.config/opencode`."""
     override = context.env.get("OPENCODE_CONFIG_DIR")
-    return Path(override) if override else context.home / ".config" / "opencode"
+    return context.client_dirs.get(
+        "opencode",
+        Path(override) if override else context.home / ".config" / "opencode",
+    )
 
 
 def pi_home(context: Environment) -> Path:
     """Pi's agent directory, including its own environment override."""
     override = context.env.get("PI_CODING_AGENT_DIR")
-    return Path(override).expanduser() if override else context.home / ".pi" / "agent"
+    return context.client_dirs.get(
+        "pi",
+        Path(override).expanduser() if override else context.home / ".pi" / "agent",
+    )
 
 
 class InstallError(Exception):

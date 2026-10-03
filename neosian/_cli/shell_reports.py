@@ -32,8 +32,18 @@ def setup(argv: list[str]) -> int:
             ),
             out=sys.stdout,
             err=sys.stderr,
+            stdin=sys.stdin,
+            tty=sys.stdin.isatty() and sys.stdout.isatty(),
         )
 
+    # Interactive selection must happen before JSON report capture, which
+    # deliberately makes the engine noninteractive.
+    if "--write" in argv and not any(
+        arg in ("--yes", "--json", "--help", "-h", "--client")
+        or arg.startswith("--client=")
+        for arg in argv
+    ):
+        return engine(argv)
     return run_rendered(
         engine, argv, render_setup, out=sys.stdout, env=os.environ, partial=True
     )
