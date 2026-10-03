@@ -19,7 +19,8 @@ FROM python:3.14-slim@sha256:cad9a2c871761c413caa6fdd6441c783451e740a48aaeba60ae
 COPY --from=ghcr.io/astral-sh/uv:0.12.10 /uv /usr/local/bin/uv
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never
 WORKDIR /app
-COPY pyproject.toml uv.lock README.md LICENSE ./
+COPY pyproject.toml uv.lock LICENSE ./
+COPY docs/README.md docs/README.md
 COPY neosian/ neosian/
 # The locked runtime set plus the one extra, never the dev group: the
 # appliance is NM's second backend, so it carries the driver (ledger #206).

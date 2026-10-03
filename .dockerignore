@@ -2,7 +2,9 @@
 *
 !pyproject.toml
 !uv.lock
-!README.md
+!docs/
+docs/*
+!docs/README.md
 !LICENSE
 !neosian/
 neosian/**/__pycache__/

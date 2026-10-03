@@ -8,6 +8,17 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-10-03
+
+### Fixed
+
+- Release packaging follows the README's move to `docs/`: the container
+  copies it at the metadata path, and the source archive checks require
+  that file while still excluding every other repository docs file and
+  the planning surface. The archive listing is read whole before checking
+  it, avoiding a broken pipe on the license check. These packaging checks
+  stopped 1.1.0 before publication; 1.1.1 carries its handoff changes below.
+
 ## [1.1.0] - 2026-10-03
 
 ### Added
@@ -1795,7 +1806,8 @@ pre-release — pin it explicitly; the API stability promise rides v1.0.0.
 - Both entry points share one `_validate_run`, so neither can skip a
   guard.
 
-[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/mausa-ai/neosian/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/mausa-ai/neosian/compare/v1.0.3...v1.1.0
 [1.0.3]: https://github.com/mausa-ai/neosian/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/mausa-ai/neosian/compare/v1.0.1...v1.0.2

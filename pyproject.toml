@@ -1,6 +1,6 @@
 [project]
 name = "neosian"
-version = "1.1.0"
+version = "1.1.1"
 description = "Async-only library for LLM agents: tools, orchestration, streaming, guardrails — with opt-in conversation, memory, and compaction layers over a stateless core."
 readme = "docs/README.md"
 license = "Apache-2.0"
@@ -376,6 +376,7 @@ build-backend = "hatchling.build"
 # examples, scripts, the Makefile, the Dockerfile. The planning documents,
 # the agent procedures, CI and the mark never ship (REVIEW TP-3, DESIGN
 # §29); hatchling already drops what .gitignore names.
+# Hatchling always includes docs/README.md as required project metadata.
 [tool.hatch.build.targets.sdist]
 exclude = [
     "/.claude/",
