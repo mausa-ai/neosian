@@ -71,6 +71,13 @@ docs: "Read one page of neosian's own documentation, shipped with this version. 
 docs_params:
   topic: "The page to read: one of quickstart, agent, local, tools, memory, skills, messaging, stores, cli, mcp, agents, interop, topology, wire, baselines."
 
+# The resident agent's shell tool (DESIGN §35.2): the verbs of the CLI it
+# lives in, run as the user would type them.
+neosian: "Run one verb of the neosian shell, exactly as the user would type it after `neosian`, and read its JSON report. Verbs: status (is this machine set up: the home, the keys by source, each client's registration and hooks, the last session), setup (what wiring the installed agents would write; with --write, write it), configure --list (which providers have a key, never a value), audit (what was done, by whom, when), search TERMS (the turns holding every term), continue (a recorded session as a handoff delivers it), memory (view, versions; the operator verbs maintain, redact, revert), messages (list, view; send, ack and the rest), update (check PyPI for a newer release), export DIR and import DIR (the whole store), docs, version. A form that only reads runs at once. A form that changes something (setup --write, update, export, import, a memory or messages write, configure --delete) first asks the user in the session and may come back declined; outside an interactive session it is declined and you tell the user the command. `<verb> --help` prints a verb's grammar. For your own memory, history and messages prefer the memory, search_history, recall_turn and messages tools: they are scoped to this session."
+
+neosian_params:
+  args: "The arguments after `neosian`, one string each, e.g. [\"status\"] or [\"audit\", \"--since\", \"2026-10-01\"]. --json is added for you."
+
 # The json_object door dialect (DESIGN §31.4): an endpoint with no
 # json_schema mode gets the schema in the system prompt; the word "json"
 # must appear (DeepSeek's rule). Validation stays neosian's.

@@ -85,7 +85,8 @@ neosian                                  # on a terminal: chat; under a pipe: th
   model is built, a door registered later included.
 - **`chat`**: the resident agent. It knows neosian (the `docs` tool
   reads the shipped pages on demand), writes to `/user` and `/project`
-  on the home and loads the skills your other agents wrote. A PROMPT or
+  on the home, loads the skills your other agents wrote, and runs the
+  verbs on this page for you (the `neosian` tool, below). A PROMPT or
   piped stdin runs one turn; `--json` the envelope (text, tool calls,
   usage, µ$), refused with no turn (exit 2) since a session cannot print
   one object; `--model fake` is keyless. The model: `--model`, else
@@ -97,8 +98,33 @@ neosian                                  # on a terminal: chat; under a pipe: th
   24 h) or `auto` (applies a uv tool install within the major, never a
   pre-release over a stable, then re-executes itself).
 
+**The session.** On a terminal `chat` (and bare `neosian`, and
+`playground`) opens a full-screen session in the terminal's own colors:
+the reply streams as Markdown, and a tool call is one line with a
+one-line result until you expand it (click it, or ctrl+o for every
+call), so a large result costs nothing until it is asked for. Enter
+sends and ctrl+j breaks the line; esc interrupts a turn, which then
+saves nothing; ctrl+c copies a selection, else interrupts, else clears
+the prompt, else leaves; ctrl+d and `/exit` leave; page up and page down
+scroll. The `--resume` line stays in the terminal after the screen is
+restored. A PROMPT, a pipe and `--json` never open it.
+
+**The agent runs the verbs.** Ask "is this machine set up, any
+reminders waiting?" and the resident agent runs `status` and reads its
+report, through one tool, `neosian`, that takes the arguments you would
+type. A form that only reads runs at once: `status`, `docs`, `version`,
+`search`, `audit`, `continue`, `memory view` and `versions`, `messages
+list` and `view`, `setup` without `--write`, `configure --list`. Every
+other form (`setup --write`, `update`, `export`, `import`, a memory or
+messages write, `configure --delete`) waits for your `y` in the session;
+`n` or esc declines it and the agent is told. In a one-shot turn there
+is no one to ask, so the form is declined and the agent names the
+command for you to run. `chat`, `playground`, `eval`, `mcp`, `record`
+and `serve` never run inside a chat, and a key never passes through the
+model: `configure` stays yours to run.
+
 **Chat's MCP servers.** `[[chat.mcp]]` tables in `config.toml` name the
-servers `chat` opens for the session (one turn or the loop) and adds as
+servers `chat` opens for the session (one turn or many) and adds as
 tools, each mirroring `McpServer` (`neosian docs mcp`): `name`, then
 `command` + `args` + `env` (a subprocess) or `url` + `headers`
 (streamable HTTP), and `prefix` for names that clash. Values are
@@ -120,10 +146,10 @@ headers = { Authorization = "Bearer ..." }
 
 A malformed table is grammar (exit 2, nothing spawned); a server that
 cannot be reached exits 1 naming it; a tool named like one chat already
-has (`docs`, `memory`, the skills pair, `recall_turn`, `search_history`) is refused until
+has (`docs`, `neosian`, `memory`, the skills pair, `recall_turn`, `search_history`) is refused until
 the table sets `prefix`. `playground` runs the agent file as written and
-reads no table; `chat --agent FILE` adds the servers. The session banner
-names each server and its tool count.
+reads no table; `chat --agent FILE` adds the servers. The session's
+opening names each server and its tool count.
 
 **No flags means this project.** Every verb below resolves the working
 directory's layout (`user:<login>` at `/user`, `user:<login>/proj:<slug>`
@@ -141,8 +167,9 @@ neosian eval SUITE [--json] [--output DIR]
 
 - **`playground`**: your agent file (it exports `configuration`, an
   `AgentConfig`) under chat's run tier, exactly as written: its tools
-  and its prompt, without the resident agent's `docs` tool (`neosian chat
-  --agent FILE` is the path that adds it). The model is `--model`, else
+  and its prompt, without the resident agent's tools (`neosian chat
+  --agent FILE` adds `docs`; the `neosian` tool stays the resident
+  agent's). The model is `--model`, else
   the file's own; `--menu` picks it from a menu on a terminal, never
   beside `--model` and never without a terminal (exit 2). Piped stdin
   runs one turn and prints the answer, `--json` the envelope `chat`

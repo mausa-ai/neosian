@@ -4,7 +4,7 @@ The file runs as written, its tools and its prompt; chat's `docs` tool
 belongs to the resident agent and is never added here. The model is
 `--model`, or `--menu` (the picker a terminal offers over the same
 choice), else the file's own. Piped stdin runs one turn and prints the
-answer (`--json`: the envelope); a terminal opens the session loop. Every
+answer (`--json`: the envelope); a terminal opens the session. Every
 turn persists under the home (DESIGN §22).
 """
 

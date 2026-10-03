@@ -17,6 +17,7 @@ from rich.console import Console
 from rich.text import Text
 
 from neosian._cli.chat_mcp import serving
+from neosian._cli.chat_shell import Consent
 from neosian._cli.tui.app import Opening, SessionApp
 from neosian._cli.ui import BRAND_ACCENT
 from neosian._foundation.conversation.core import Conversation
@@ -157,14 +158,18 @@ async def run_chat(
             console.print(Text(f"Error starting conversation: {e}", style="red"))
             raise SystemExit(1) from e
 
+        app = SessionApp(
+            convo,
+            opening(config, agent_name, convo, resumed=resumed, servers=servers),
+            model=resolve_model(config.model),
+            title=turn_title(config),
+            streamed=streams(config),
+        )
+        gate = config.tool_gate
+        if gate is not None and isinstance(gate.approver, Consent):
+            gate.approver.ask = app.confirm  # the resident agent's writes ask here
         async with convo:
-            await SessionApp(
-                convo,
-                opening(config, agent_name, convo, resumed=resumed, servers=servers),
-                model=resolve_model(config.model),
-                title=turn_title(config),
-                streamed=streams(config),
-            ).run_async()
+            await app.run_async()
             console.print(Text(f"Resume: --resume {conversation_id}", style="dim"))
 
 

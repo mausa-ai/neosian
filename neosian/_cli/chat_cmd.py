@@ -8,8 +8,9 @@ order Anthropic, OpenAI, Cerebras, the shipped door rows (each door's
 first model, enum order), registered doors; none exits 1 naming `neosian
 configure`. A PROMPT argument or a non-terminal stdin runs one
 turn and prints the answer — `--json` the response envelope — so an
-agent or a script can use the resident agent; otherwise the session loop
-opens on the same Conversation. Every turn persists under the home. The
+agent or a script can use the resident agent; otherwise the session (the
+Textual app, `_cli/tui`) opens on the same Conversation. Every turn
+persists under the home. The
 `[[chat.mcp]]` tables of config.toml name MCP servers chat opens for the
 session's lifetime, their tools added (`chat_mcp`; playground runs the
 file as written).
@@ -254,7 +255,7 @@ def run_conversation(
 ) -> int:
     """The run tier chat and playground share (DESIGN §14.6): one turn
     from a PROMPT or a piped stdin prints the answer (`--json`: the
-    envelope); a terminal opens the session loop. `--json` never opens a
+    envelope); a terminal opens the session. `--json` never opens a
     session: it promises one JSON object, which a session cannot keep.
     `servers` are open for the turn or the session (chat's tables)."""
     try:

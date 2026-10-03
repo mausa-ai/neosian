@@ -23,7 +23,8 @@ Two doors, one store:
   recorded through hooks: `neosian setup --write` lets you select the clients to
   connect, once per machine; `neosian status` says whether the machine is
   set up; bare `neosian` opens a chat with an agent that knows neosian,
-  on the same memory.
+  on the same memory, and runs the shell's verbs for you: ask it whether
+  the machine is set up.
 - **Build an agent.** An async-only, stateless `Agent` (tools,
   streaming, fallback, guardrails, structured output) that a
   `Conversation` wraps into a durable, memory-bearing thread.

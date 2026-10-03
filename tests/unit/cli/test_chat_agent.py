@@ -1,6 +1,7 @@
-"""The resident agent is data (DESIGN §30.2): the chat pack validated at
-import like the memory pack, the docs tool wired from `tools.yaml`, the
-config on the home and this directory's layout."""
+"""The resident agent is data (DESIGN §30.2, §35.2): the chat pack
+validated at import like the memory pack, the docs tool wired from
+`tools.yaml`, the config on the home and this directory's layout, the
+shell tool behind its consent gate (the tool's own pins: `test_chat_shell`)."""
 
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from neosian._cli.chat_agent import (
     resident_config,
     with_chat_tools,
 )
+from neosian._cli.chat_shell import Consent
 from neosian._foundation.shared.docs_assets import load_page
 from neosian._foundation.shared.prompt_assets import get_prompt, get_prompt_params
 from neosian._foundation.shared.types import AgentConfig, Model
@@ -24,6 +26,8 @@ class TestThePack:
         system = get_prompt("chat.system")
         assert "{{home}}" in system and "{{mounts}}" in system
         assert "neosian docs" in system and "/project" in system
+        said = " ".join(system.split())
+        assert "`neosian` tool" in said and "you never ask for a key" in said
 
     def test_the_docs_tool_is_wired_from_the_pack(self) -> None:
         definition = get_tool_definition(create_docs_tool())
@@ -68,7 +72,10 @@ class TestTheConfig:
         monkeypatch.chdir(tmp_path)
         config = resident_config(Model.FAKE)
         assert config.model is Model.FAKE and not config.enable_todo
-        assert [t.__name__ for t in config.tools] == ["docs"]
+        assert [t.__name__ for t in config.tools] == ["docs", "neosian"]
+        gate = config.tool_gate
+        assert gate is not None and isinstance(gate.approver, Consent)
+        assert gate.timeout_seconds is None  # a human answers without a clock
         assert config.memory is not None
         assert [m.mount_path for m in config.memory.mounts] == ["user", "project"]
         assert RESIDENT_NAME == "neosian"
@@ -77,4 +84,5 @@ class TestTheConfig:
         base = AgentConfig(system_prompt="x", model=Model.FAKE)
         derived = with_chat_tools(base)
         assert [t.__name__ for t in derived.tools] == ["docs"]
+        assert derived.tool_gate is None  # the shell tool stays the resident's
         assert base.tools == []  # never mutated

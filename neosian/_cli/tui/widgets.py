@@ -1,8 +1,10 @@
 """The session view's pieces: the prompt, a tool call that folds, the
-working line. Application data is literal `Text`, never markup."""
+working line, the question a write waits on. Application data is literal
+`Text`, never markup."""
 
 from __future__ import annotations
 
+import shlex
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -12,8 +14,10 @@ from rich.console import Group, RenderableType
 from rich.pretty import pretty_repr
 from rich.text import Text
 from textual import events
+from textual.app import ComposeResult
 from textual.binding import Binding, BindingType
 from textual.message import Message
+from textual.screen import ModalScreen
 from textual.timer import Timer
 from textual.widgets import Static, TextArea
 
@@ -96,11 +100,18 @@ class ToolCall(Static):
     def _head(self, arguments: str) -> Text:
         head = Text("→ ", style="dim")
         head.append(self._tool, style=BRAND_ACCENT)
-        head.append(f"({arguments})", style="dim")
+        head.append(arguments, style="dim")
         return head
 
+    def _call(self) -> str:
+        """An argv reads as the command line it is; the rest as a call."""
+        argv = self._arguments.get("args")
+        if len(self._arguments) == 1 and isinstance(argv, list):
+            return " " + shlex.join(map(str, argv))
+        return f"({format_args(self._arguments)})"
+
     def _folded(self) -> RenderableType:
-        head = self._head(format_args(self._arguments))
+        head = self._head(self._call())
         tail = Text("  ", style="dim")
         if self._outcome is None:
             tail.append("… running")
@@ -158,3 +169,38 @@ class Working(Static):
         line = Text(f"{frame} ", style=BRAND_ACCENT)
         line.append(f"{elapsed:.0f}s  {self._hint}", style="dim")
         self.update(line)
+
+
+class Confirm(ModalScreen[bool]):
+    """A command that changes state waits here for the human. Only `y`
+    says yes: an enter typed ahead for the prompt must never approve."""
+
+    DEFAULT_CSS = """
+    Confirm { align: center middle; }
+    Confirm > Static {
+        width: auto; max-width: 90%; height: auto;
+        border: round $primary; padding: 1 2;
+    }
+    """
+    BINDINGS: ClassVar[list[BindingType]] = [
+        Binding("y", "answer(True)", show=False),
+        Binding("n,escape", "answer(False)", show=False),
+    ]
+
+    def __init__(self, command: str) -> None:
+        super().__init__()
+        self._command = command
+
+    def compose(self) -> ComposeResult:
+        yield Static(
+            Group(
+                Text("The agent wants to run a command that changes state:"),
+                Text(),
+                Text(f"  {self._command}", style=f"bold {BRAND_ACCENT}"),
+                Text(),
+                Text("y runs it   n declines", style="dim"),
+            )
+        )
+
+    def action_answer(self, approved: bool) -> None:
+        self.dismiss(approved)

@@ -69,6 +69,7 @@ _TOOL_KEYS: Final = (
     "continue_session",
     "handoff",
     "docs",
+    "neosian",
     "json_object",
 )
 # Parameter prose by parameter name (NF §27.9): the builtins' `params=`.
@@ -82,6 +83,7 @@ _TOOL_PARAM_KEYS: Final = (
     "continue_session_params",
     "handoff_params",
     "docs_params",
+    "neosian_params",
 )
 _MEMORY_PARAM_KEYS: Final = ("params",)
 

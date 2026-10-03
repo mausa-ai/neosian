@@ -239,7 +239,7 @@ class AgentLoader:
 
 
 class PlaygroundUI:
-    """Constants for the session loop chat and playground share."""
+    """Constants for the session chat and playground share."""
 
     AGENT_LOADED: str = "Agent: {name}"
     SESSION_START: str = "Type /exit or /quit to end session."

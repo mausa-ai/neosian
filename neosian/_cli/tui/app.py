@@ -26,7 +26,7 @@ from textual.worker import Worker, WorkerCancelled
 
 from neosian._cli.display import field_table
 from neosian._cli.tui.turn import TurnView
-from neosian._cli.tui.widgets import Prompt, ToolCall, Working
+from neosian._cli.tui.widgets import Confirm, Prompt, ToolCall, Working
 from neosian._cli.ui import BRAND_ACCENT, BRAND_SUPPORT, load_header
 from neosian._foundation.agent.lifetimes import closing
 from neosian._foundation.conversation.core import Conversation
@@ -93,7 +93,7 @@ class SessionApp(App[None]):
     #scroll { height: 1fr; padding: 0 1; scrollbar-size-vertical: 1; }
     #transcript { height: auto; min-height: 100%; }
     .user { margin-top: 1; color: $primary; text-style: bold; }
-    .reply { padding: 0; }
+    .reply { padding: 0; margin-top: 1; }
     .blocked { border: round $error; padding: 0 1; }
     .error { color: $error; }
     #working { height: 1; padding: 0 1; display: none; }
@@ -203,6 +203,11 @@ class SessionApp(App[None]):
             if view.cost is not None:
                 self._spent = (self._spent or 0) + view.cost
             self._footer()
+
+    async def confirm(self, command: str) -> bool:
+        """Ask the human whether `command` may run; the turn waits."""
+        approved: bool = await self.push_screen_wait(Confirm(command))
+        return approved
 
     async def _stop(self) -> None:
         if self._turn is not None:

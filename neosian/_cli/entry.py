@@ -2,7 +2,9 @@
 
 `neosian` is the shell: typer and rich ship in the install, and an
 environment missing them answers with the reinstall hint, never a
-traceback. The `python -m` doors — `neosian.memory`,
+traceback. `python -m neosian._cli.entry` is the same shell on a named
+interpreter (the resident agent's shell tool spawns it, §35.2). The
+`python -m` doors — `neosian.memory`,
 `neosian.record`, `neosian.mcp`, `neosian.server`, `neosian.ledger`,
 `neosian.mobility`, `neosian.search` — are argparse and need none of them.
 """
@@ -27,9 +29,13 @@ def main() -> None:
     from neosian._cli.main import app
 
     try:
-        app()
+        app(prog_name="neosian")
     except ConfigFileError as exc:  # any verb that reads the keys (EC-11)
         if "--json" in sys.argv:
             print(json.dumps({"error": exc.message, "hint": None}))
         print(f"error: {exc.message}", file=sys.stderr)
         raise SystemExit(1) from None
+
+
+if __name__ == "__main__":
+    main()

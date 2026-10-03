@@ -221,8 +221,8 @@ class TestServing:
         server, _ = _probe()
         config = _config()
         async with serving((McpServer.in_process(server),), config) as served:
-            assert _names(served.tools) == ["docs", "add", "media"]
-        assert _names(config.tools) == ["docs"]  # never mutated
+            assert _names(served.tools) == ["docs", "neosian", "add", "media"]
+        assert _names(config.tools) == ["docs", "neosian"]  # never mutated
 
     async def test_a_name_chat_has_is_refused_with_the_hint(self) -> None:
         @Tool(name=ToolName("add"), description="local add")

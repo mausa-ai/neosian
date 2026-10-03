@@ -57,11 +57,16 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
   `--env` names a door by its key's env var (one an agent file registers).
 - `neosian chat [PROMPT] [--model M] [--agent FILE] [--resume ID] [--json]`:
   the resident agent that knows neosian (a `docs` tool over these pages)
-  on the same memory; a PROMPT or piped stdin is one turn, `--model fake`
-  keyless. `[[chat.mcp]]` tables in `<home>/config.toml` (`name`, then
-  `command`/`args`/`env` or `url`/`headers`, `prefix`) are MCP servers it
-  opens for the session, their tools added. Bare `neosian` on a terminal
-  opens it.
+  on the same memory, and runs these verbs itself through one `neosian`
+  tool: a form that only reads runs at once, one that changes state
+  waits for the user's `y` in the session and is declined in a one-shot
+  turn, a key never passes through it. A PROMPT or piped stdin is one
+  turn, `--model fake` keyless. `[[chat.mcp]]` tables in
+  `<home>/config.toml` (`name`, then `command`/`args`/`env` or
+  `url`/`headers`, `prefix`) are MCP servers it opens for the session,
+  their tools added. Bare `neosian` on a terminal opens it: a full-screen
+  session where a tool call is one line until expanded (ctrl+o) and esc
+  interrupts a turn.
 - `neosian update [--mode off|notify|auto]`: a PyPI check on the human
   verbs only, never on an agent verb; `auto` applies a uv tool install
   within the major.

@@ -1,8 +1,9 @@
-"""The resident agent (DESIGN §30.2): an agent that knows neosian, all as
-data — the `chat.system` asset rendered with the home and this
+"""The resident agent (DESIGN §30.2, §35.2): an agent that knows neosian,
+all as data — the `chat.system` asset rendered with the home and this
 directory's layout, a `docs` tool over the shipped pages (tools-only
-recall: no page body in the prefix), and the memory tool on the project
-layout, which brings the skills tools with it.
+recall: no page body in the prefix), the shell tool over the verbs behind
+its consent gate, and the memory tool on the project layout, which brings
+the skills tools with it.
 
 No `from __future__ import annotations`: @Tool resolves the signature's
 annotations at decoration time.
@@ -10,6 +11,8 @@ annotations at decoration time.
 
 from pathlib import Path
 
+from neosian._cli.chat_shell import Consent, create_shell_tool
+from neosian._foundation.agent.approval import ToolGateConfig
 from neosian._foundation.memory.file import FileStore
 from neosian._foundation.memory.home import home, project_mounts
 from neosian._foundation.memory.mounts import MemoryConfig
@@ -54,20 +57,23 @@ def render_system(cwd: Path | None = None) -> str:
 
 
 def resident_config(model: AnyModel, *, cwd: Path | None = None) -> AgentConfig:
-    """The resident agent on the home: the rendered prompt, the docs tool,
-    memory on this directory's layout (skills ride with it)."""
+    """The resident agent on the home: the rendered prompt, the docs and
+    shell tools, memory on this directory's layout (skills ride with it).
+    The gate waits on the human without a clock; with no session to ask,
+    `Consent` answers at once."""
     return AgentConfig(
         system_prompt=render_system(cwd),
-        tools=[create_docs_tool()],
+        tools=[create_docs_tool(), create_shell_tool()],
         model=model,
         enable_todo=False,
         memory=MemoryConfig(store=FileStore(home()), mounts=project_mounts(cwd)),
+        tool_gate=ToolGateConfig(approver=Consent(), timeout_seconds=None),
     )
 
 
 def with_chat_tools(config: AgentConfig) -> AgentConfig:
-    """An agent file's config with chat's tools added — the playground
-    path, plus the resident agent's doors."""
+    """An agent file's config with the docs tool added (`chat --agent`).
+    The shell tool stays the resident agent's: it comes with its gate."""
     from dataclasses import replace
 
     return replace(config, tools=[*config.tools, create_docs_tool()])
