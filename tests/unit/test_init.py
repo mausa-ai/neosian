@@ -148,6 +148,8 @@ def test_all_list_matches_exports() -> None:
         "Model",
         "ModelPricing",
         "ModelSpec",
+        "ModelSelector",
+        "ModelTransitionWarning",
         "OpenAICompatible",
         "RegisteredModel",
         "ModelUsage",

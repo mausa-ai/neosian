@@ -30,7 +30,7 @@ _ROOT = Path(__file__).resolve().parent.parent / ".neosian" / "tour"
 
 configuration = AgentConfig(
     system_prompt="You are a concise assistant. Answer in one sentence.",
-    model=Model.CLAUDE_SONNET_5,
+    model=Model.CLAUDE_SONNET_5_5,
     enable_todo=False,
 )
 
@@ -60,7 +60,7 @@ async def main() -> None:
         for entry in result.entries:
             print(f"  turn {entry.turn} ({entry.kind}): {entry.text}")
         if result.usage is not None:
-            spend = result.usage.cost_micro_usd(Model.CLAUDE_SONNET_5) or 0
+            spend = result.usage.cost_micro_usd(Model.CLAUDE_SONNET_5_5) or 0
             print(f"  spend: {format_micro_usd(spend)}")
 
         print("--- a question only the paged turn can answer")

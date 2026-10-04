@@ -15,6 +15,12 @@ from dataclasses import dataclass
 from neosian._foundation.shared.catalog import OpenAICompatible
 from neosian._foundation.shared.constants import ErrorMessages
 from neosian._foundation.shared.exceptions import ConfigurationError, InvalidModelError
+from neosian._foundation.shared.model_lifecycle import (
+    ModelSelector,
+    retired_notice,
+    selector_model,
+    warn_transition,
+)
 from neosian._foundation.shared.models import Model, ModelPricing, ModelSpec, Provider
 
 
@@ -64,6 +70,14 @@ class RegisteredModel:
         return self.spec.supports_max_effort
 
     @property
+    def supports_xhigh_effort(self) -> bool:
+        return self.spec.supports_xhigh_effort
+
+    @property
+    def supports_no_effort(self) -> bool:
+        return self.spec.supports_no_effort
+
+    @property
     def supports_forced_tool_choice(self) -> bool:
         return self.spec.supports_forced_tool_choice
 
@@ -97,6 +111,8 @@ def register_model(
     pricing: ModelPricing | None = None,
     supports_reasoning: bool = False,
     supports_max_effort: bool = False,
+    supports_xhigh_effort: bool = False,
+    supports_no_effort: bool = False,
 ) -> RegisteredModel:
     """Register a model served through an OpenAI-compatible door.
 
@@ -116,6 +132,12 @@ def register_model(
         raise ConfigurationError(
             f"model {value!r}: context_window and max_output_tokens must be positive"
         )
+    if value in ModelSelector._value2member_map_ or retired_notice(value):
+        raise ConfigurationError(f"model id {value!r} is reserved by the catalog")
+    if (supports_xhigh_effort or supports_no_effort) and (
+        not supports_reasoning or not provider.reasoning_effort
+    ):
+        raise ConfigurationError("new effort levels require a reasoning-effort door")
     shipped = _shipped(value)
     if shipped is not None:
         raise ConfigurationError(
@@ -127,6 +149,8 @@ def register_model(
         max_output_tokens=max_output_tokens,
         supports_reasoning=supports_reasoning,
         supports_max_effort=supports_max_effort,
+        supports_xhigh_effort=supports_xhigh_effort,
+        supports_no_effort=supports_no_effort,
         pricing=pricing,
         door=provider,
     )
@@ -149,8 +173,11 @@ def _register(model: RegisteredModel) -> RegisteredModel:
 
 def lookup_model(value: str) -> AnyModel | None:
     """The shipped or registered model with this wire id, if any."""
-    shipped = _shipped(value)
-    return shipped if shipped is not None else _REGISTRY.get(value)
+    shipped = selector_model(value) or _shipped(value)
+    if shipped is not None:
+        warn_transition(shipped.value)
+        return shipped
+    return _REGISTRY.get(value)
 
 
 def resolve_model(value: AnyModel | str) -> AnyModel:
@@ -158,14 +185,20 @@ def resolve_model(value: AnyModel | str) -> AnyModel:
     shipped/registered model a wire id names (§31). An unknown id, or any
     other type, raises `InvalidModelError` listing every known id."""
     # The object check comes first: `Model` is a `str` subclass.
-    if isinstance(value, (Model, RegisteredModel)):
+    if isinstance(value, Model):
+        warn_transition(value.value)
+        return value
+    if isinstance(value, RegisteredModel):
         return value
     model = lookup_model(value) if isinstance(value, str) else None
     if model is not None:
         return model
+    if isinstance(value, str) and (notice := retired_notice(value)):
+        raise InvalidModelError(notice, value)
     supported = ", ".join(
         [f"Model.{m.name} ({m.value!r})" for m in Model]
         + [repr(m.value) for m in registered_models()]
+        + [repr(s.value) for s in ModelSelector]
     )
     raise InvalidModelError(
         ErrorMessages.INVALID_MODEL.format(

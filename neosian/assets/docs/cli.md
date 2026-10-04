@@ -90,9 +90,11 @@ neosian                                  # on a terminal: chat; under a pipe: th
   piped stdin runs one turn; `--json` the envelope (text, tool calls,
   usage, µ$), refused with no turn (exit 2) since a session cannot print
   one object; `--model fake` is keyless. The model: `--model`, else
-  `[chat] model` in `config.toml`, else the first provider with a key
-  (Anthropic, OpenAI, Cerebras, the shipped door rows by each door's
-  first model, registered doors).
+  `[chat] model` in `config.toml`, else the latest Sonnet. This is the
+  resident agent's current choice, separate from library defaults.
+  Explicit model IDs and selectors (`anthropic:sonnet:latest`) are accepted.
+  Missing `ANTHROPIC_API_KEY` fails before inference; it never silently
+  selects a different provider.
 - **`update`**: checks PyPI's simple index; `[update] mode` is `off`
   (default), `notify` (one stderr line on the human verbs, once per
   24 h) or `auto` (applies a uv tool install within the major, never a

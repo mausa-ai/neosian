@@ -13,12 +13,17 @@ from pydantic import BaseModel
 
 from neosian._foundation.shared.catalog import OpenAICompatible as OpenAICompatible
 from neosian._foundation.shared.context_policy import ContextPolicy
+from neosian._foundation.shared.effort import validate_effort
 from neosian._foundation.shared.guardrail_types import (
     GuardrailErrorPolicy as GuardrailErrorPolicy,
     GuardrailMode as GuardrailMode,
     GuardrailResult as GuardrailResult,
     GuardrailsConfig as GuardrailsConfig,
     PolicyResult as PolicyResult,
+)
+from neosian._foundation.shared.model_lifecycle import (
+    ModelSelector as ModelSelector,
+    ModelTransitionWarning as ModelTransitionWarning,
 )
 from neosian._foundation.shared.models import (
     DEFAULT_MODELS as DEFAULT_MODELS,
@@ -124,7 +129,7 @@ class FallbackConfig:
             system_prompt="You are helpful.",
             model=Model.CLAUDE_OPUS_5_5,
             fallback=FallbackConfig(
-                models=[Model.GPT_6_SOL, Model.CEREBRAS_GPT_OSS_120B],
+                models=[Model.GPT_6_1_SOL, Model.CEREBRAS_GPT_OSS_120B],
                 retry_main_after=5,  # Try main again after 5 successful calls
             ),
         )
@@ -271,7 +276,7 @@ class AgentConfig:
         configuration = AgentConfig(
             system_prompt="You are helpful.",
             tools=[greet],
-            model=Model.CLAUDE_SONNET_5,
+            model=Model.CLAUDE_SONNET_5_5,
             fallback=FallbackConfig(
                 model=Model.CEREBRAS_GPT_OSS_120B,
                 retry_main_after=5,
@@ -370,6 +375,11 @@ class AgentConfig:
         # A wire id resolves once, here (§31); anything unknown raises.
         model = resolve_model(self.model)
         object.__setattr__(self, "model", model)
+
+        validate_effort(model.spec, self.reasoning_effort)
+        if self.fallback is not None:
+            for candidate in self.fallback.models:
+                validate_effort(resolve_model(candidate).spec, self.reasoning_effort)
 
         # Validate reasoning_effort is only used with models that support it
         if self.reasoning_effort is not None and not model.supports_reasoning:

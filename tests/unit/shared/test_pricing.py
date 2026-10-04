@@ -23,11 +23,13 @@ from neosian._foundation.shared.models import _prices_fingerprint
 # rows (DESIGN §19.5, §31) sit on the same card, standard tier.
 _USD_RATE_CARD: dict[Model, tuple[str, str, str | None, str | None]] = {
     Model.GPT_6_ASTRA: ("10.00", "50.00", "1.00", "12.50"),
+    Model.GPT_6_1_SOL: ("2.00", "10.00", "0.10", "2.50"),
     Model.GPT_6_SOL: ("2.00", "10.00", "0.20", "2.50"),
     Model.GPT_6_LUNA: ("0.10", "0.50", "0.01", "0.125"),
     Model.GPT_5_1: ("1.25", "10.00", "0.125", None),
     Model.CLAUDE_FABLE_5_1: ("10.00", "50.00", "0.25", "12.50"),
     Model.CLAUDE_OPUS_5_5: ("4.00", "20.00", "0.20", "5.00"),
+    Model.CLAUDE_SONNET_5_5: ("2.00", "10.00", "0.20", "2.50"),
     Model.CLAUDE_SONNET_5: ("2.00", "10.00", "0.20", "2.50"),
     Model.CEREBRAS_GPT_OSS_120B: ("0.25", "0.69", None, None),
     Model.CEREBRAS_QWEN_3_8_27B: ("0.99", "1.49", None, None),
@@ -89,6 +91,22 @@ class TestCostGoldenVectors:
             input_tokens=10_000, output_tokens=2_000, cache_read_tokens=50_000
         )
         assert usage.cost_micro_usd(Model.CLAUDE_SONNET_5) == 50_000
+
+    def test_sol_61_uses_the_lower_cache_read_card(self) -> None:
+        # 1M uncached + 1M read + 1M write + 1M output = $14.60.
+        usage = Usage(
+            input_tokens=1_000_000,
+            output_tokens=1_000_000,
+            cache_read_tokens=1_000_000,
+            cache_write_tokens=1_000_000,
+        )
+        assert usage.cost_micro_usd(Model.GPT_6_1_SOL) == 14_600_000
+        assert (
+            Usage(input_tokens=0, output_tokens=0, cache_read_tokens=1).cost_micro_usd(
+                Model.GPT_6_1_SOL
+            )
+            == 1
+        )
 
     def test_fractional_rounds_up(self) -> None:
         # 1234*250_000 + 567*690_000 = 699_730_000 → 699.73 µ$ → 700

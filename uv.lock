@@ -1147,7 +1147,7 @@ wheels = [
 
 [[package]]
 name = "neosian"
-version = "1.3.0"
+version = "1.4.0"
 source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
@@ -1196,7 +1196,7 @@ examples = [
 
 [package.metadata]
 requires-dist = [
-    { name = "anthropic", specifier = ">=0.122.0,<2" },
+    { name = "anthropic", specifier = ">=1.8.0,<2" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "mcp", specifier = ">=2,<3" },
     { name = "neosian", extras = ["postgres"], marker = "extra == 'all'" },

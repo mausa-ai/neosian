@@ -3,10 +3,9 @@
 with it (§14.6).
 
 Model: `--model` (a shipped id, a registered door's id, `fake`), else
-`[chat] model` in config.toml, else the first provider with a key in the
-order Anthropic, OpenAI, Cerebras, the shipped door rows (each door's
-first model, enum order), registered doors; none exits 1 naming `neosian
-configure`. A PROMPT argument or a non-terminal stdin runs one
+`[chat] model` in config.toml, else the latest qualified Sonnet. This is
+chat's current choice, independent of the library's provider defaults.
+Without its key the normal MissingAPIKeyError names ANTHROPIC_API_KEY. A PROMPT argument or a non-terminal stdin runs one
 turn and prints the answer — `--json` the response envelope — so an
 agent or a script can use the resident agent; otherwise the session (the
 Textual app, `_cli/tui`) opens on the same Conversation. Every turn
@@ -38,20 +37,17 @@ from neosian._cli.chat_agent import RESIDENT_NAME, resident_config, with_chat_to
 from neosian._cli.chat_mcp import chat_servers, serving
 from neosian._cli.config import get_section
 from neosian._cli.display import console_for, terminal
-from neosian._cli.providers import find_provider, keyed, load_keys_into_env
+from neosian._cli.providers import load_keys_into_env
 from neosian._foundation.conversation.reflection import ReflectionConfig
 from neosian._foundation.llm.base import text_of
 from neosian._foundation.shared.exceptions import NeosianError
 from neosian._foundation.shared.registry import (
     lookup_model,
-    registered_models,
     resolve_model,
 )
 from neosian._foundation.shared.types import (
-    DEFAULT_MODELS,
     AgentConfig,
-    Model,
-    Provider,
+    ModelSelector,
 )
 
 if TYPE_CHECKING:
@@ -59,11 +55,6 @@ if TYPE_CHECKING:
     from neosian._foundation.mcp.client import McpServer
     from neosian._foundation.shared.types import AnyModel
 
-PROVIDER_ORDER: Final = (Provider.ANTHROPIC, Provider.OPENAI, Provider.CEREBRAS)
-_NO_KEY: Final = (
-    "no provider key found: run `neosian configure`, or pass --model fake "
-    "to try the chat keyless"
-)
 _EMPTY_TURN: Final = "nothing to say: the turn is empty"
 _JSON_NEEDS_A_TURN: Final = (
     "--json answers one turn: pipe it on stdin, or pass chat a PROMPT"
@@ -91,9 +82,8 @@ def model_from_flag(flag: str) -> AnyModel:
     return model
 
 
-def resolve_chat_model(flag: str | None, env: Mapping[str, str]) -> AnyModel:
-    """The flag, else `[chat] model`, else the first provider `env` opens
-    (a keyless door needs nothing)."""
+def resolve_chat_model(flag: str | None, _env: Mapping[str, str]) -> AnyModel:
+    """The flag, else `[chat] model`, else latest Sonnet (the resident policy)."""
     if flag is not None:
         return model_from_flag(flag)
     configured = get_section("chat").get("model")
@@ -104,17 +94,7 @@ def resolve_chat_model(flag: str | None, env: Mapping[str, str]) -> AnyModel:
                 f"[chat] model = {configured!r} in config.toml is unknown"
             )
         return model
-    for provider in PROVIDER_ORDER:
-        row = find_provider(provider.value)
-        if row is not None and env.get(row.env):
-            return DEFAULT_MODELS[provider]
-    for shipped in Model:  # a door's first row, enum order: xAI, Gemini, ...
-        if shipped.door is not None and keyed(shipped.door, env):
-            return shipped
-    for registered in registered_models():
-        if keyed(registered.door, env):
-            return registered
-    raise ChatError(_NO_KEY)
+    return resolve_model(ModelSelector.CLAUDE_SONNET_LATEST)
 
 
 def build_config(

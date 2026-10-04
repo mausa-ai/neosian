@@ -77,8 +77,9 @@ def parse_models(data: Any, path_str: str) -> tuple[AnyModel, ...]:
                 path_str, "'models' entries must be strings"
             )
         # Accept both "provider:model" and the bare model value
-        value = entry.split(":", 1)[1] if ":" in entry else entry
-        model = lookup_model(value)
+        model = lookup_model(entry)
+        if model is None and ":" in entry:
+            model = lookup_model(entry.split(":", 1)[1])
         if model is None:
             raise EvalModelUnknownError(entry, path_str)
         if model in models:  # a second column would mirror the first (EC-22)

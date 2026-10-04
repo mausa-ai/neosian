@@ -41,7 +41,7 @@ _SHOWN = {"tool_call", "tool_result", "memory_write", "done"}
 
 configuration = AgentConfig(
     system_prompt="You are a concise assistant. Answer in one sentence.",
-    model=Model.CLAUDE_SONNET_5,
+    model=Model.CLAUDE_SONNET_5_5,
     enable_todo=False,
 )
 

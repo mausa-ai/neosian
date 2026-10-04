@@ -6,11 +6,9 @@ PRICES_AS_OF move in the same commit (DESIGN §4).
 """
 
 import hashlib
-from dataclasses import dataclass
 from datetime import date
 from enum import Enum
 from functools import partial
-from typing import Final
 
 from neosian._foundation.shared.catalog import (
     CEREBRAS,
@@ -24,129 +22,17 @@ from neosian._foundation.shared.catalog import (
 # =============================================================================
 # Provider and Model Enums
 # =============================================================================
+from neosian._foundation.shared.model_spec import (
+    MICRO_PER_USD as MICRO_PER_USD,
+    ModelPricing as ModelPricing,
+    ModelSpec as ModelSpec,
+    Provider as Provider,
+    ReasoningEffort as ReasoningEffort,
+    format_micro_usd as format_micro_usd,
+)
 
-
-class Provider(str, Enum):
-    """LLM Provider identifiers."""
-
-    OPENAI = "openai"
-    ANTHROPIC = "anthropic"
-    CEREBRAS = "cerebras"
-    # Registered models' shared row (DESIGN §19): a client is built from
-    # the model's door, never from this row alone.
-    OPENAI_COMPATIBLE = "openai_compatible"
-    FAKE = "fake"
-
-
-# Date the pricing table below was last verified against provider price lists.
-PRICES_AS_OF = "2026-09-26"
-
-# Integer micro-USD per USD — money is int µ$ everywhere (ECOSYSTEM §4);
-# floats exist only at display edges (format_micro_usd).
-MICRO_PER_USD: Final = 1_000_000
-
-
-def format_micro_usd(micro: int, *, places: int = 4) -> str:
-    """Render integer micro-USD as a dollar string — the display edge.
-
-    The one place a float touches money; it never re-enters the vocabulary.
-    """
-    return f"${micro / MICRO_PER_USD:.{places}f}"
-
-
-@dataclass(frozen=True, slots=True)
-class ModelPricing:
-    """List prices in integer micro-USD per million tokens (ECOSYSTEM §4).
-
-    Approximate, for observability/cost-tracking — not a billing source.
-    None cache rates mean "no separate published rate"; the effective_*
-    properties fall back to the input rate (conservative upper bound).
-    """
-
-    input_per_mtok: int
-    output_per_mtok: int
-    cache_read_per_mtok: int | None = None
-    cache_write_per_mtok: int | None = None
-
-    @property
-    def effective_cache_read_per_mtok(self) -> int:
-        """Cache-read rate, falling back to the input rate."""
-        if self.cache_read_per_mtok is not None:
-            return self.cache_read_per_mtok
-        return self.input_per_mtok
-
-    @property
-    def effective_cache_write_per_mtok(self) -> int:
-        """Cache-write rate, falling back to the input rate."""
-        if self.cache_write_per_mtok is not None:
-            return self.cache_write_per_mtok
-        return self.input_per_mtok
-
-    @property
-    def effective_cache_write_1h_per_mtok(self) -> int:
-        """Cache-write rate for an hour-long breakpoint (NC9, #227).
-
-        Derived rather than carded: the shipped rates bake in the 5m
-        premium as absolute figures, and the hour costs twice base where
-        five minutes cost 1.25x — a published multiple of a rate already
-        verified, so no new column enters the card and the fingerprint
-        keeps sealing what it sealed.
-        """
-        return 2 * self.input_per_mtok
-
-
-@dataclass(frozen=True)
-class ModelSpec:
-    """Immutable specification for a model's capabilities.
-
-    supports_images / supports_documents describe what neosian's converters
-    implement, not the raw provider capability (e.g. GPT-5 has vision
-    upstream, but neosian's OpenAI converter does not — so it stays False).
-
-    pricing is None for models without verified list prices;
-    Usage.cost_micro_usd() returns None for those.
-    """
-
-    provider: Provider
-    context_window: int
-    max_output_tokens: int
-    supports_reasoning: bool = False
-    supports_images: bool = False
-    supports_documents: bool = False
-    supports_max_effort: bool = False
-    # A forced `tool_choice` on the wire: False on the Claude 5 flagships (#292).
-    supports_forced_tool_choice: bool = True
-    # Anthropic's compact-2026-01-12 beta — a capability of the row, never
-    # inferred from the provider (N4).
-    supports_compaction_blocks: bool = False
-    pricing: ModelPricing | None = None
-    # The door a compat row is served through (DESIGN §31): set on the
-    # shipped door rows and on every registered model, None on a provider
-    # adapter's row. Not part of the rate card the fingerprint seals.
-    door: OpenAICompatible | None = None
-    # The catalog clock (DESIGN §31, ROADMAP §NW): the provider's shutdown
-    # or not-sooner-than date, and the date a stated card stops holding.
-    # A keyless test fails `make test` inside 30 days of either.
-    retires: date | None = None
-    card_until: date | None = None
-
-
-# Model specs registry (populated after Model enum is defined)
+PRICES_AS_OF = "2026-10-04"
 _MODEL_SPECS: dict[str, ModelSpec] = {}
-
-
-class ReasoningEffort(str, Enum):
-    """Reasoning effort level for supported models.
-
-    Controls how many reasoning tokens the model uses. MAX is passed
-    through only where the spec sets supports_max_effort; every client
-    downgrades it to HIGH with a warning otherwise.
-    """
-
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    MAX = "max"
 
 
 class Model(str, Enum):
@@ -154,6 +40,7 @@ class Model(str, Enum):
 
     # OpenAI
     GPT_6_ASTRA = "gpt-6-astra"
+    GPT_6_1_SOL = "gpt-6.1-sol"
     GPT_6_SOL = "gpt-6-sol"
     GPT_6_LUNA = "gpt-6-luna"
     GPT_5_1 = "gpt-5.1-2025-11-13"
@@ -161,6 +48,7 @@ class Model(str, Enum):
     # Anthropic
     CLAUDE_FABLE_5_1 = "claude-fable-5-1"
     CLAUDE_OPUS_5_5 = "claude-opus-5-5"
+    CLAUDE_SONNET_5_5 = "claude-sonnet-5-5"
     CLAUDE_SONNET_5 = "claude-sonnet-5"
 
     # Cerebras
@@ -221,6 +109,16 @@ class Model(str, Enum):
         return _MODEL_SPECS[self.value].supports_max_effort
 
     @property
+    def supports_xhigh_effort(self) -> bool:
+        """Whether this model accepts xhigh without translation."""
+        return self.spec.supports_xhigh_effort
+
+    @property
+    def supports_no_effort(self) -> bool:
+        """Whether explicit reasoning effort none is supported."""
+        return self.spec.supports_no_effort
+
+    @property
     def supports_forced_tool_choice(self) -> bool:
         """Check if this model accepts a forced tool_choice (required / tool)."""
         return _MODEL_SPECS[self.value].supports_forced_tool_choice
@@ -254,6 +152,7 @@ _GPT_6 = partial(
     max_output_tokens=128_000,
     supports_reasoning=True,
     supports_max_effort=True,
+    supports_xhigh_effort=True,
 )
 _MODEL_SPECS[Model.GPT_6_ASTRA.value] = _GPT_6(
     pricing=ModelPricing(
@@ -263,7 +162,11 @@ _MODEL_SPECS[Model.GPT_6_ASTRA.value] = _GPT_6(
         cache_write_per_mtok=12_500_000,
     ),
 )
+_MODEL_SPECS[Model.GPT_6_1_SOL.value] = _GPT_6(
+    pricing=ModelPricing(2_000_000, 10_000_000, 100_000, 2_500_000),
+)
 _MODEL_SPECS[Model.GPT_6_SOL.value] = _GPT_6(
+    supports_no_effort=True,
     pricing=ModelPricing(
         input_per_mtok=2_000_000,
         output_per_mtok=10_000_000,
@@ -272,6 +175,7 @@ _MODEL_SPECS[Model.GPT_6_SOL.value] = _GPT_6(
     ),
 )
 _MODEL_SPECS[Model.GPT_6_LUNA.value] = _GPT_6(
+    supports_no_effort=True,
     pricing=ModelPricing(
         input_per_mtok=100_000,
         output_per_mtok=500_000,
@@ -305,6 +209,7 @@ _CLAUDE_5 = partial(
     supports_documents=True,
     supports_max_effort=True,
     supports_compaction_blocks=True,
+    supports_xhigh_effort=True,
 )
 _MODEL_SPECS[Model.CLAUDE_FABLE_5_1.value] = _CLAUDE_5(
     # Its own cache-read rate: 0.025× of input, not the 0.1× of the rest.
@@ -327,6 +232,11 @@ _MODEL_SPECS[Model.CLAUDE_OPUS_5_5.value] = _CLAUDE_5(
     ),
     supports_forced_tool_choice=False,
     retires=date(2027, 9, 22),
+)
+_MODEL_SPECS[Model.CLAUDE_SONNET_5_5.value] = _CLAUDE_5(
+    pricing=ModelPricing(2_000_000, 10_000_000, 200_000, 2_500_000),
+    supports_forced_tool_choice=False,
+    retires=date(2027, 9, 28),
 )
 _MODEL_SPECS[Model.CLAUDE_SONNET_5.value] = _CLAUDE_5(
     # The announced 2026-09-01 rise to $3/$15 did not occur (re-verified
@@ -493,4 +403,4 @@ def _prices_fingerprint() -> str:
     return hashlib.sha256("\n".join(lines).encode("ascii")).hexdigest()
 
 
-PRICES_FINGERPRINT = "2708788a8799ce43d23edd7d9c14963a32484657d64d40b6b4e552ecaa86dc4a"
+PRICES_FINGERPRINT = "916bc097749a495d34a01fa470c898cc0d342fce74251feacf3cd2e73e909362"

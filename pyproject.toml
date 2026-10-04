@@ -1,6 +1,6 @@
 [project]
 name = "neosian"
-version = "1.3.0"
+version = "1.4.0"
 description = "Async-only library for LLM agents: tools, orchestration, streaming, guardrails — with opt-in conversation, memory, and compaction layers over a stateless core."
 readme = "docs/README.md"
 license = "Apache-2.0"
@@ -26,7 +26,7 @@ classifiers = [
 # it has not seen, and the `lowest` CI job resolves every declared floor
 # for real on both Python ends.
 dependencies = [
-    "anthropic>=0.122.0,<2",
+    "anthropic>=1.8.0,<2",
     "httpx>=0.28.1",
     "mcp>=2,<3",
     "openai>=3.2.0,<4",

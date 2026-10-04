@@ -16,6 +16,9 @@ def stub_stream(client: AnthropicClient, mock_stream: MagicMock) -> None:
     keyword the SDK dropped turns these suites red (TP-10)."""
     real = sdk(client).messages.stream
     sdk(client).messages.stream = create_autospec(real, return_value=mock_stream)
+    sdk(client).beta.messages.stream = create_autospec(
+        sdk(client).beta.messages.stream, return_value=mock_stream
+    )
 
 
 def mock_complete(client: AnthropicClient, mock_response: MagicMock) -> None:

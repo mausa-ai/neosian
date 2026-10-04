@@ -49,8 +49,8 @@ document), never the file name.
   keyless FakeProvider regression gate (`make test`), all-green by
   construction.
 - One measured model per serving stack, the set the library's external
-  tier pins (`_PROVIDER_CASES` and `LANES`): `claude-sonnet-5`,
-  `gpt-6-sol`, `gpt-oss-120b` **and** `qwen-3.8-27b` (two rows on the
+  tier pins (`_PROVIDER_CASES` and `LANES`): `claude-sonnet-5-5`,
+  `gpt-6.1-sol`, `gpt-oss-120b` **and** `qwen-3.8-27b` (two rows on the
   Cerebras adapter; a row is provider+model, so neither says anything
   about the other), `gemini-3.8-flash`, `grok-4.6`, `kimi-k3`. Every other shipped
   row rides the catalog probe on every dispatch, and each row carries its
@@ -326,6 +326,39 @@ evidence. Each stays measured every dispatch; none is tuned around
   keep those failures; no assertion was changed.
 
 ## Results
+
+### 2026-10-04: Sonnet 5.5 and GPT-6.1 Sol, local qualification
+
+Local runs on the uncommitted 1.4.0 implementation, twelve-scenario pack
+`5623d0d6…`, using the unchanged prompts and scoring rules. These are
+pre-publication measurements, not a CI dispatch or a claim of green memory
+qualification. Both main boards completed without provider or harness errors.
+
+| Provider | Model | function | cli | http | mcp | total |
+|---|---|---|---|---|---|---|
+| OpenAI (Responses) | gpt-6.1-sol | 10/12 | 10/12 | 10/12 | 11/12 | 41/48 |
+| Anthropic | claude-sonnet-5-5 | 12/12 | 12/12 | 11/12 | 11/12 | 46/48 |
+
+- **Sol:** `skills` modifies the skill during the read-only use session on
+  every transport (two versions instead of one). `handoff` adds an extra
+  modification on function, cli and http (three versions instead of two).
+  The mcp handoff passes. Every other cell passes. The main board took 521 s.
+- **Sonnet:** http `handoff` leaves the note pending (one version instead
+  of two); mcp `handoff` writes an extra `build-id` document (three project
+  documents instead of two). Every other cell passes.
+
+The separate Sonnet function/native-memory comparison passed **11/12 on
+each transport (22/24)**. Function `skills` makes two revision writes
+(three versions instead of two); native `handoff` leaves the note pending
+(one version instead of two). Other cells pass. Anthropic's combined main
+and transport-axis run took 745 s, with no provider or harness errors.
+
+The catalog probes passed for all four Claude rows and all five OpenAI
+rows, including predecessors retained during migration. The separate
+frontier suites passed 18 Claude tests and 16 OpenAI tests, covering effort
+acceptance, complete/stream continuation and bound-thinking replay. Unit
+tests additionally verify combined binding/compaction beta headers through
+the real Anthropic SDK. These API checks do not erase the memory failures.
 
 ### 2026-10-03: Dispatch #22, the first handoff board (the N6 /ship)
 

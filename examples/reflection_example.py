@@ -30,7 +30,7 @@ _SCOPE = "user:tour"
 
 configuration = AgentConfig(
     system_prompt="You are a concise assistant. Answer in one or two sentences.",
-    model=Model.CLAUDE_SONNET_5,
+    model=Model.CLAUDE_SONNET_5_5,
     enable_todo=False,
 )
 
@@ -65,7 +65,7 @@ async def main() -> None:
     for write in result.writes:
         print(f"  {write.command} {write.path} -> v{write.version}")
     if result.usage is not None:
-        spend = result.usage.cost_micro_usd(Model.CLAUDE_SONNET_5) or 0
+        spend = result.usage.cost_micro_usd(Model.CLAUDE_SONNET_5_5) or 0
         print(f"  spend: {format_micro_usd(spend)}")
 
     print("--- session 2: a fresh conversation on the same scope")

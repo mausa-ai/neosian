@@ -11,7 +11,6 @@ from typer.testing import CliRunner
 
 import neosian._cli.chat_cmd as chat_cmd
 from neosian._cli.chat_cmd import (
-    ChatError,
     ChatUsageError,
     build_config,
     one_shot,
@@ -54,63 +53,33 @@ class TestTheModel:
         with pytest.raises(ChatUsageError):
             resolve_chat_model(None, {})
 
-    def test_then_the_first_keyed_provider_in_order(self) -> None:
-        env = {"CEREBRAS_API_KEY": "c", "OPENAI_API_KEY": "o"}
-        assert resolve_chat_model(None, env) is Model.GPT_6_SOL
-        assert resolve_chat_model(None, {**env, "ANTHROPIC_API_KEY": "a"}) is (
-            Model.CLAUDE_SONNET_5
-        )
-        assert resolve_chat_model(None, {"CEREBRAS_API_KEY": "c"}) is (
-            Model.CEREBRAS_GPT_OSS_120B
-        )
-
     @pytest.mark.parametrize(
-        ("env_name", "model"),
+        "env",
         [
-            ("XAI_API_KEY", Model.GROK_4_6),
-            ("GEMINI_API_KEY", Model.GEMINI_3_8_FLASH),  # the door's first row
-            ("MOONSHOT_API_KEY", Model.KIMI_K3),
-            ("DASHSCOPE_API_KEY", Model.QWEN_3_8_MAX),
+            {},
+            {"OPENAI_API_KEY": "o"},
+            {"CEREBRAS_API_KEY": "c"},
+            {"ANTHROPIC_API_KEY": "a"},
         ],
     )
-    def test_then_a_shipped_door_row_with_a_key(
-        self, env_name: str, model: Model
+    def test_resident_always_defaults_to_latest_sonnet(
+        self, env: dict[str, str]
     ) -> None:
-        # `configure` stores it, the loader exports it, `status` lists it:
-        # a machine holding only this key opens a chat instead of exiting 1.
-        assert resolve_chat_model(None, {env_name: "k"}) is model
+        assert resolve_chat_model(None, env) is Model.CLAUDE_SONNET_5_5
 
-    def test_a_shipped_door_comes_after_the_three_and_before_a_registered_one(
-        self,
-    ) -> None:
-        door = OpenAICompatible(name="acme", api_key_env="ACME_API_KEY")
-        register_model("acme-1", provider=door, context_window=9, max_output_tokens=9)
-        env = {"XAI_API_KEY": "x", "ACME_API_KEY": "a"}
-        assert resolve_chat_model(None, env) is Model.GROK_4_6
-        assert resolve_chat_model(None, {**env, "CEREBRAS_API_KEY": "c"}) is (
-            Model.CEREBRAS_GPT_OSS_120B
-        )
+    def test_selectors_in_flag_and_config(self) -> None:
+        assert resolve_chat_model("openai:sol:latest", {}) is Model.GPT_6_1_SOL
+        set_value("chat", "model", "anthropic:sonnet:latest")
+        assert resolve_chat_model(None, {}) is Model.CLAUDE_SONNET_5_5
 
-    def test_then_a_registered_door_with_a_key(self) -> None:
-        door = OpenAICompatible(name="acme", api_key_env="ACME_API_KEY")
-        acme = register_model(
-            "acme-1", provider=door, context_window=9, max_output_tokens=9
-        )
-        assert resolve_chat_model(None, {"ACME_API_KEY": "k"}) is acme
-
-    def test_a_keyless_registered_door_opens_with_nothing_set(self) -> None:
+    def test_registered_models_remain_explicit_choices(self) -> None:
         door = OpenAICompatible(
             name="local", api_key_env=None, base_url="http://127.0.0.1:8080/v1"
         )
-        gemma = register_model(
-            "gemma-4-e4b-it", provider=door, context_window=9, max_output_tokens=9
+        model = register_model(
+            "local-chat", provider=door, context_window=9000, max_output_tokens=8192
         )
-        assert resolve_chat_model(None, {}) is gemma
-
-    def test_no_key_names_configure(self) -> None:
-        with pytest.raises(ChatError) as excinfo:
-            resolve_chat_model(None, {})
-        assert "neosian configure" in excinfo.value.message
+        assert resolve_chat_model("local-chat", {}) is model
 
 
 class TestTheConfig:
@@ -209,11 +178,11 @@ class TestRunTier:
         code, out, err = self._run(None, stdin="  \n", model="fake")
         assert code == 2 and out == "" and "nothing to say" in err
 
-    def test_no_key_exits_1_naming_configure(self) -> None:
+    def test_no_key_exits_1_naming_anthropic_key(self) -> None:
         code, out, err = self._run("hi", json_output=True)
         assert code == 1
-        assert "neosian configure" in json.loads(out)["error"]
-        assert "neosian configure" in err
+        assert "ANTHROPIC_API_KEY" in json.loads(out)["error"]
+        assert "ANTHROPIC_API_KEY" in err
 
     def test_an_unknown_model_exits_2(self) -> None:
         code, out, err = self._run("hi", model="nope", json_output=True)

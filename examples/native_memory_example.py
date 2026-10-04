@@ -47,7 +47,7 @@ async def main() -> None:
     agent = Agent(
         AgentConfig(
             system_prompt="You are a concise assistant.\n\n" + section,
-            model=Model.CLAUDE_SONNET_5,
+            model=Model.CLAUDE_SONNET_5_5,
             memory=_MEMORY,
             native_memory=True,
             enable_todo=False,

@@ -375,9 +375,10 @@ class TestAnthropicReasoningEffort:
             reasoning_effort=ReasoningEffort.HIGH,
         )
 
-        sdk(client).messages.stream.assert_called_once()
-        call_kwargs = sdk(client).messages.stream.call_args.kwargs
-        assert call_kwargs["thinking"] == {"type": "adaptive"}
+        sdk(client).beta.messages.stream.assert_called_once()
+        call_kwargs = sdk(client).beta.messages.stream.call_args.kwargs
+        assert call_kwargs["thinking"]["type"] == "adaptive"
+        assert call_kwargs["thinking"]["display"] == "summarized"
         assert call_kwargs["output_config"] == {"effort": "high"}
         assert "temperature" not in call_kwargs
 
@@ -403,7 +404,7 @@ class TestAnthropicReasoningEffort:
             reasoning_effort=ReasoningEffort.MAX,
         )
 
-        call_kwargs = sdk(client).messages.stream.call_args.kwargs
+        call_kwargs = sdk(client).beta.messages.stream.call_args.kwargs
         assert call_kwargs["output_config"] == {"effort": "max"}
 
     @pytest.mark.asyncio
@@ -506,8 +507,9 @@ class TestAnthropicReasoningEffort:
         ):
             chunks.append(chunk)
 
-        call_kwargs = sdk(client).messages.stream.call_args.kwargs
-        assert call_kwargs["thinking"] == {"type": "adaptive"}
+        call_kwargs = sdk(client).beta.messages.stream.call_args.kwargs
+        assert call_kwargs["thinking"]["type"] == "adaptive"
+        assert call_kwargs["thinking"]["display"] == "summarized"
         assert call_kwargs["output_config"] == {"effort": "medium"}
         assert "temperature" not in call_kwargs
 
@@ -632,7 +634,7 @@ class TestAnthropicReasoningEffort:
             reasoning_effort=ReasoningEffort.MAX,
         )
 
-        call_kwargs = sdk(client).messages.stream.call_args.kwargs
+        call_kwargs = sdk(client).beta.messages.stream.call_args.kwargs
         assert call_kwargs["output_config"] == {"effort": "max"}
 
     @pytest.mark.asyncio

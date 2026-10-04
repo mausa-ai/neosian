@@ -7,6 +7,7 @@ from rich.console import Console
 
 from neosian._cli.providers import find_provider, keyed
 from neosian._cli.ui import pick
+from neosian._foundation.shared.model_lifecycle import LATEST, transition_notice
 from neosian._foundation.shared.registry import provider_label, registered_models
 from neosian._foundation.shared.types import DEFAULT_MODELS, AnyModel, Model, Provider
 
@@ -15,11 +16,13 @@ from neosian._foundation.shared.types import DEFAULT_MODELS, AnyModel, Model, Pr
 _MODEL_NOTES: dict[Model, str] = {
     Model.GPT_6_ASTRA: "flagship",
     Model.GPT_6_SOL: "balanced",
+    Model.GPT_6_1_SOL: "balanced",
     Model.GPT_6_LUNA: "fastest",
     Model.GPT_5_1: "previous flagship",
     Model.CLAUDE_FABLE_5_1: "most capable",
     Model.CLAUDE_OPUS_5_5: "capable",
     Model.CLAUDE_SONNET_5: "balanced",
+    Model.CLAUDE_SONNET_5_5: "balanced",
     Model.CEREBRAS_GPT_OSS_120B: "fastest 120B",
     Model.CEREBRAS_QWEN_3_8_27B: "reasoning 27B",
 }
@@ -34,6 +37,10 @@ def display_name(model: AnyModel) -> str:
     notes: list[str] = []
     if DEFAULT_MODELS.get(model.provider) is model:
         notes.append("default")
+    if model in LATEST.values():
+        notes.append("latest")
+    if transition_notice(model.value):
+        notes.append("superseded; 30-day migration window")
     note = _MODEL_NOTES.get(model)
     if note is not None:
         notes.append(note)

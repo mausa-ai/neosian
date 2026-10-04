@@ -276,8 +276,9 @@ def parse_model(sub: StreamParser, value: str | None) -> AnyModel | None:
     unknown ids are grammar-tier errors — nothing is constructed."""
     if value is None:
         return None
-    bare = value.split(":", 1)[1] if ":" in value else value
-    model = lookup_model(bare)
+    model = lookup_model(value)
+    if model is None and ":" in value:
+        model = lookup_model(value.split(":", 1)[1])
     if model is not None:
         return model
     known = ", ".join([m.value for m in Model] + [m.value for m in registered_models()])

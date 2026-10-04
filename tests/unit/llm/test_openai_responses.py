@@ -197,6 +197,50 @@ class TestTheDoors:
 
 @pytest.mark.unit
 class TestTheRequest:
+    @pytest.mark.parametrize(
+        "model", [Model.GPT_6_1_SOL, Model.GPT_6_ASTRA, Model.GPT_6_LUNA]
+    )
+    @pytest.mark.parametrize(
+        "effort",
+        [
+            None,
+            ReasoningEffort.LOW,
+            ReasoningEffort.MEDIUM,
+            ReasoningEffort.HIGH,
+            ReasoningEffort.XHIGH,
+            ReasoningEffort.MAX,
+        ],
+    )
+    async def test_current_effort_levels_keep_stateless_responses(
+        self,
+        model: Model,
+        effort: ReasoningEffort | None,
+    ) -> None:
+        client = OpenAIClient(api_key="k")
+        create = _mock_complete(client, _response())
+        try:
+            await client.complete(_USER, model, reasoning_effort=effort)
+            body = create.call_args.kwargs
+            assert body["model"] == model.value
+            assert body["store"] is False
+            assert body["include"] == ["reasoning.encrypted_content"]
+            assert body["reasoning"] == (
+                {"effort": effort.value, "summary": "auto"} if effort else omit
+            )
+        finally:
+            await client.close()
+
+    async def test_luna_explicit_none_reaches_the_wire(self) -> None:
+        client = OpenAIClient(api_key="k")
+        create = _mock_complete(client, _response())
+        try:
+            await client.complete(
+                _USER, Model.GPT_6_LUNA, reasoning_effort=ReasoningEffort.NONE
+            )
+            assert create.call_args.kwargs["reasoning"]["effort"] == "none"
+        finally:
+            await client.close()
+
     async def test_the_body_is_stateless(self) -> None:
         client = OpenAIClient(api_key="k")
         create = _mock_complete(client, _response())

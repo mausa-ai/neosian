@@ -58,7 +58,7 @@ async def console_approver(request: ToolApprovalRequest) -> ToolDecision:
 agent = Agent(
     AgentConfig(
         system_prompt="You are a helpful assistant with tools. Use them when asked.",
-        model=Model.CLAUDE_SONNET_5,
+        model=Model.CLAUDE_SONNET_5_5,
         tools=[get_time, send_email],
         tool_gate=ToolGateConfig(approver=console_approver, timeout_seconds=None),
         enable_todo=False,

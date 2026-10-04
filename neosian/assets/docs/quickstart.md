@@ -118,7 +118,7 @@ env var that signs requests, and the dialect quirks the wire has. The
 door rows neosian ships are `Model` members like every other row:
 `Model.GROK_4_6` (xAI, `XAI_API_KEY`), `Model.GEMINI_3_8_FLASH` (Gemini,
 `GEMINI_API_KEY`), `Model.KIMI_K3` (Moonshot, `MOONSHOT_API_KEY`), `Model.QWEN_3_8_MAX` (Alibaba Model Studio, `DASHSCOPE_API_KEY`). Every shipped or registered row answers to its
-wire id: `AgentConfig(model="gpt-6-sol")` builds the same agent as the
+wire id: `AgentConfig(model="gpt-6.1-sol")` builds the same agent as the
 member.
 
 ```python
@@ -152,6 +152,12 @@ plain JSON mode, the schema in the system prompt: DeepSeek),
 `thinking_switch` (the endpoint's boolean thinking parameter, such as
 Model Studio's `enable_thinking`: off unless a `reasoning_effort` is
 asked).
+
+Use `ModelSelector.CLAUDE_SONNET_LATEST` or `"openai:sol:latest"` to follow a
+tier immediately, and its `DEFAULT` selector for the 30-day migration window.
+Explicit model IDs are supported until the announced catalog removal. Effort
+includes `XHIGH`; omitted effort preserves provider defaults. See
+`neosian docs agent` for the complete policy and capability rules.
 
 ## Where to go next
 

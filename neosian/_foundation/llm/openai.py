@@ -51,6 +51,7 @@ from neosian._foundation.llm.openai_responses import parse_response, request_kwa
 from neosian._foundation.llm.openai_responses_stream import iter_events
 from neosian._foundation.llm.openai_stream import iter_chunks, reasoning_of
 from neosian._foundation.shared.constants import ErrorMessages, LLMDefaults
+from neosian._foundation.shared.effort import validate_effort
 from neosian._foundation.shared.exceptions import (
     ContextWindowExceededError,
     NeosianError,
@@ -287,6 +288,7 @@ class OpenAICompatibleClient(BaseLLMClient):
         Raises:
             UnsupportedParameterError: If reasoning_effort used with non-reasoning model.
         """
+        validate_effort(model.spec, reasoning_effort)
         if reasoning_effort is None:
             return None
 

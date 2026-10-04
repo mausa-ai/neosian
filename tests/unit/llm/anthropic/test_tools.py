@@ -584,7 +584,7 @@ class TestAnthropicStructuredOutput:
             reasoning_effort=ReasoningEffort.HIGH,
         )
 
-        call_kwargs = sdk(client).messages.stream.call_args.kwargs
+        call_kwargs = sdk(client).beta.messages.stream.call_args.kwargs
         output_config = call_kwargs["output_config"]
         assert output_config["effort"] == "high"
         assert output_config["format"]["type"] == "json_schema"

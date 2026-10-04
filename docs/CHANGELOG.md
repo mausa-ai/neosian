@@ -8,6 +8,48 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [1.4.0] - Unreleased
+
+### Added
+
+- Current Sonnet 5.5 and GPT-6.1 Sol rows, with updated pricing, plus
+  per-tier default/latest `ModelSelector` choices (for example,
+  `ModelSelector.GPT_SOL_LATEST`) and matching string selectors.
+- A rolling 30-day catalog policy: visible `ModelTransitionWarning`
+  notices, independently aged replacements, release-time promotion and
+  removal. Explicit pins never silently redirect; recorded history stays
+  readable. This explicitly revises model membership's lifecycle promise;
+  library interfaces and the state-process wire retain their guarantees.
+- `ReasoningEffort.XHIGH` and explicit `NONE`, validated against model
+  capabilities; registration can declare support. Python `None` still
+  leaves effort to the provider. Existing MAX downgrades remain.
+
+### Changed
+
+- The resident chat agent defaults to latest Sonnet, regardless of which
+  other provider keys are present. Flags, saved choices and `/model`
+  override it; library provider defaults remain on the migration window.
+- Current Claude requests ask for summarized adaptive thinking and drop
+  prefix-incompatible signed blocks through the binding-controls beta,
+  combined with the existing compaction beta when requested. Sonnet 5.5
+  refuses forced tool choice before a provider request.
+- Anthropic SDK minimum is 1.8.0. GPT-6.1 Sol cache reads cost $0.10/MTok.
+
+### Deprecated
+
+- Sonnet 5, GPT-6 Sol and GPT-5.1 remain supported for the full 30-day
+  window starting at publication of this release. Its publication date is
+  pending; release tooling refuses to tag until the date is stamped.
+
+### Qualification
+
+- Local live catalog, effort and replay checks passed for Claude and OpenAI.
+  The new memory boards measured Sonnet 5.5 at 46/48 and GPT-6.1 Sol at
+  41/48; behavioral failures are preserved in the baselines page. Review
+  those findings and complete the normal external dispatch before publication.
+  See `docs/MODEL_AUDIT.md` for qualification details and the final audit
+  of other providers.
+
 ## [1.3.0] - 2026-10-03
 
 ### Added
@@ -1884,7 +1926,8 @@ pre-release — pin it explicitly; the API stability promise rides v1.0.0.
 - Both entry points share one `_validate_run`, so neither can skip a
   guard.
 
-[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/mausa-ai/neosian/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/mausa-ai/neosian/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/mausa-ai/neosian/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/mausa-ai/neosian/compare/v1.1.0...v1.1.1

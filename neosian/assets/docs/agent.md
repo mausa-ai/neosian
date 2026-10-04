@@ -12,6 +12,98 @@ eval harness and a `Conversation` all read the same fields. This page
 is the reference for those fields and for the seams around them; the
 quickstart (`neosian docs quickstart`) is the tour.
 
+## Model selection and the migration window
+
+`Model` members and wire IDs select concrete models. `ModelSelector` follows
+one tier across neosian package releases:
+
+```python
+from neosian import AgentConfig, Model, ModelSelector, ReasoningEffort
+
+config = AgentConfig(
+    system_prompt="Answer concisely.",
+    model=ModelSelector.CLAUDE_SONNET_LATEST,
+    reasoning_effort=ReasoningEffort.HIGH,
+)
+# String equivalent: model="anthropic:sonnet:latest"
+# Delayed track: ModelSelector.CLAUDE_SONNET_DEFAULT
+# Explicit pin: Model.CLAUDE_SONNET_5_5
+```
+
+| Tier | Default selector | Latest selector |
+|---|---|---|
+| Sonnet | `CLAUDE_SONNET_DEFAULT` | `CLAUDE_SONNET_LATEST` |
+| Opus | `CLAUDE_OPUS_DEFAULT` | `CLAUDE_OPUS_LATEST` |
+| Fable | `CLAUDE_FABLE_DEFAULT` | `CLAUDE_FABLE_LATEST` |
+| Sol | `GPT_SOL_DEFAULT` | `GPT_SOL_LATEST` |
+| Astra | `GPT_ASTRA_DEFAULT` | `GPT_ASTRA_LATEST` |
+| Luna | `GPT_LUNA_DEFAULT` | `GPT_LUNA_LATEST` |
+
+Strings use `anthropic:<tier>:default/latest` or `openai:<tier>:default/latest`.
+The shortcuts `ANTHROPIC_DEFAULT/LATEST` and `OPENAI_DEFAULT/LATEST` (strings
+`anthropic:default/latest`, `openai:default/latest`) follow Sonnet and Sol.
+They work in fallback, guardrails, reflection, compaction, eval YAML and CLI
+model arguments. Configuration resolves once to a concrete model, which is
+what requests, events and usage records name. A custom registration cannot
+shadow a selector. Registered and local models do not age out automatically.
+
+**Rolling catalog policy.** A replacement becomes latest when a qualified
+neosian release ships it. Each replacement has its own 30-day window, starting
+on that neosian release's UTC publication date. In the first release on or
+after its deadline, default advances to the newest eligible replacement and
+superseded IDs leave the supported catalog. New arrivals do not reset earlier
+windows. Package upgrades carry these changes: runtime resolution never reads
+the clock or fetches a catalog. If no replacement arrives, default and latest
+remain equal. Provider-controlled aliases and shutdowns are outside this
+package guarantee.
+
+`ModelTransitionWarning` (a visible `FutureWarning`) names the replacement,
+deadline and selector when a superseded ID or affected default is selected.
+Standard Python warning filters apply. During development, the warning names
+the pending release instead of inventing a publication date. Explicit pins
+remain supported for the window and then fail with migration guidance; they
+never redirect to a different model. Historical recorded model strings remain
+readable. Pinning a package preserves its catalog, not upstream availability.
+This policy explicitly revises model membership's old retirement-only promise;
+the remaining library and wire stability guarantees stand.
+
+For 1.4.0, latest is Sonnet 5.5 / GPT-6.1 Sol; library defaults remain Sonnet 5 /
+GPT-6 Sol through the window. GPT-5.1 also begins retirement in favor of
+GPT-6.1 Sol. Opus 5.5, Fable 5.1, Astra and Luna are both default and latest.
+The overall library default remains Cerebras. The **resident chat agent**
+currently chooses latest Sonnet; flags, saved selections and `/model` override
+it. This chat decision is separate from the library catalog policy.
+
+## Reasoning effort
+
+Use `ReasoningEffort.LOW`, `MEDIUM`, `HIGH`, `XHIGH` or `MAX` on the current
+Claude and GPT-6 tiers. `None` omits effort and preserves the provider default:
+Sonnet/Fable use high, Opus 5.5 and GPT-6.1 Sol/Luna use medium.
+`ReasoningEffort.NONE` explicitly requests no reasoning where supported
+(Luna and the transitioning GPT-6 Sol); Astra, GPT-6.1 Sol and Claude reject it.
+Low effort is not disabled thinking, and the same level can have different
+latency and cost across models. The output cap includes thinking tokens.
+
+New levels require declared capability: `supports_xhigh_effort` and
+`supports_no_effort` on `ModelSpec` and `register_model`. Unsupported new
+levels fail before network access, including on fallback rungs. Existing MAX
+requests on models without MAX support continue to downgrade to HIGH with a
+warning. A door's legacy thinking switch does not express explicit NONE.
+
+Current Claude uses adaptive thinking with summarized display; reasoning and
+progress reach the existing reasoning fields/events. Signed thinking remains
+on `Message.extra["anthropic"]`. The binding-controls beta requests dropping
+blocks invalidated by prefix edits, memory injection or compaction instead of
+failing the request; compatible signatures are replayed unchanged. Compaction
+combines both beta headers. Forced tool choice is unsupported on Sonnet 5.5,
+Opus 5.5 and Fable 5.1; use automatic tools or native structured output.
+
+Prices remain integer micro-USD at the standard tier. GPT-6.1 Sol is $2 input,
+$10 output, $0.10 cached input and $2.50 cache write per million tokens.
+The existing estimator does not apply long-context/tier/region premiums:
+above 272K GPT input tokens, published rates multiply input/cache by 2 and
+output by 1.5. Treat displayed costs as standard-tier estimates.
+
 ## AgentConfig, field by field
 
 | field | default | what it binds |
@@ -82,8 +174,8 @@ rather than money and fires on every model, priced or not.
 `FallbackConfig` takes either one rung or several, never both:
 
 ```python
-FallbackConfig(model=Model.GPT_6_SOL)                    # one rung
-FallbackConfig(models=[Model.GPT_6_SOL,                  # a ladder
+FallbackConfig(model=Model.GPT_6_1_SOL)                  # one rung
+FallbackConfig(models=[Model.GPT_6_1_SOL,                # a ladder
                        Model.CEREBRAS_GPT_OSS_120B],
                retry_main_after=5)
 ```

@@ -32,6 +32,7 @@ from neosian._foundation.shared.constants import (
     ErrorMessages,
     LLMDefaults,
 )
+from neosian._foundation.shared.effort import validate_effort
 from neosian._foundation.shared.exceptions import (
     NeosianError,
     UnsupportedParameterError,
@@ -39,6 +40,7 @@ from neosian._foundation.shared.exceptions import (
 from neosian._foundation.shared.types import (
     AnyModel,
     CacheTtl,
+    Model,
     ReasoningEffort,
     ResponseFormat,
     ToolChoice,
@@ -51,6 +53,36 @@ logger = logging.getLogger(__name__)
 # verbatim — see CompactionBlock.
 _COMPACT_BETA = "compact-2026-01-12"
 _COMPACT_EDIT = "compact_20260112"
+_BINDING_BETA = "thinking-binding-controls-2026-08-01"
+_BOUND_THINKING = {
+    Model.CLAUDE_SONNET_5_5,
+    Model.CLAUDE_OPUS_5_5,
+    Model.CLAUDE_FABLE_5_1,
+}
+
+
+def _thinking_options(
+    model: AnyModel, effort: ReasoningEffort | None
+) -> dict[str, Any]:
+    options: dict[str, Any] = {}
+    if model in _BOUND_THINKING:
+        options["thinking"] = {
+            "type": "adaptive",
+            "display": "summarized",
+            "block_binding": {"prefix_mismatch_behavior": "drop_block"},
+        }
+    elif effort is not None:
+        options["thinking"] = {"type": "adaptive"}
+    if effort is not None:
+        options["output_config"] = {"effort": effort.value}
+    return options
+
+
+def _validate_tool_choice(model: AnyModel, choice: ToolChoice | None) -> None:
+    if choice and choice.forces_a_call and not model.supports_forced_tool_choice:
+        raise UnsupportedParameterError(
+            f"{model.value} does not support forced tool choice; use auto or none"
+        )
 
 
 class AnthropicClient(BaseLLMClient):
@@ -111,6 +143,7 @@ class AnthropicClient(BaseLLMClient):
         Returns:
             The effort level to send to the API.
         """
+        validate_effort(model.spec, reasoning_effort)
         if reasoning_effort == ReasoningEffort.MAX and not model.supports_max_effort:
             logger.warning(
                 ErrorMessages.REASONING_EFFORT_MAX_DOWNGRADED_ANTHROPIC.format(
@@ -169,6 +202,7 @@ class AnthropicClient(BaseLLMClient):
                 ErrorMessages.REASONING_EFFORT_NOT_SUPPORTED.format(model=model.value)
             )
 
+        _validate_tool_choice(model, tool_choice)
         self._validate_temperature_support(model, temperature)
         validate_content_support(messages, model, server_compaction=server_compaction)
 
@@ -193,9 +227,7 @@ class AnthropicClient(BaseLLMClient):
 
         # Thinking mode: adaptive thinking + effort. No sampling parameter
         # is ever sent (an explicit temperature was refused above).
-        if effective_effort is not None:
-            kwargs["thinking"] = {"type": "adaptive"}
-            kwargs["output_config"] = {"effort": effective_effort.value}
+        kwargs.update(_thinking_options(model, effective_effort))
 
         if cached_system:
             kwargs["system"] = cached_system
@@ -235,13 +267,17 @@ class AnthropicClient(BaseLLMClient):
         unusable type, and the event handling is duck-typed regardless. The
         beta stream accepts every GA kwarg, so nothing else changes.
         """
+        betas = []
+        if kwargs["model"] in _BOUND_THINKING:
+            betas.append(_BINDING_BETA)
         if server_compaction:
+            betas.append(_COMPACT_BETA)
             kwargs = {
                 **kwargs,
-                "betas": [_COMPACT_BETA],
                 "context_management": {"edits": [{"type": _COMPACT_EDIT}]},
             }
-            return self._client.beta.messages.stream(**kwargs)
+        if betas:
+            return self._client.beta.messages.stream(**kwargs, betas=betas)
         return self._client.messages.stream(**kwargs)
 
     async def stream(
@@ -290,6 +326,7 @@ class AnthropicClient(BaseLLMClient):
                 ErrorMessages.REASONING_EFFORT_NOT_SUPPORTED.format(model=model.value)
             )
 
+        _validate_tool_choice(model, tool_choice)
         self._validate_temperature_support(model, temperature)
         validate_content_support(messages, model, server_compaction=server_compaction)
 
@@ -314,9 +351,7 @@ class AnthropicClient(BaseLLMClient):
 
         # Thinking mode: adaptive thinking + effort. No sampling parameter
         # is ever sent (an explicit temperature was refused above).
-        if effective_effort is not None:
-            kwargs["thinking"] = {"type": "adaptive"}
-            kwargs["output_config"] = {"effort": effective_effort.value}
+        kwargs.update(_thinking_options(model, effective_effort))
 
         if cached_system:
             kwargs["system"] = cached_system
