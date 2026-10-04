@@ -82,9 +82,9 @@ def chat(
     """Talk to your memory: the resident agent that knows neosian.
 
     Bare on a terminal opens a session; a PROMPT (or piped stdin) runs one
-    turn and prints the answer. The model is --model, else [chat] model in
+    turn and prints the answer. The model is --model, else \\[chat] model in
     config.toml, else a model a local llama-server or Ollama is running
-    ([chat] local adds base URLs), else the latest Sonnet; [[chat.mcp]]
+    (\\[chat] local adds base URLs), else the latest Sonnet; \\[\\[chat.mcp]]
     tables there are MCP servers chat opens for the session. Every turn
     persists under the home.
 

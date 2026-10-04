@@ -109,8 +109,11 @@ second, and with nothing answering chat takes the latest Sonnet.
 The resident agent's prompt (the docs and shell tools, the memory pack)
 is about 5,000 tokens before memory and the conversation, so serve the
 measured `-c 32768`: at `-c 8192` a session folds early and soon runs
-out of window. On Ollama, reflection at a session's close degrades:
-Ollama ignores `response_format`, so the turns stay pending.
+out of window. Reflection at a session's close runs on the chat's model
+and needs structured output: on a model whose endpoint ignores
+`response_format` (Gemma 4 under Ollama, above) it degrades to one
+stderr line and the turns stay pending; `qwen3:0.6b` on the same Ollama
+0.34.3 reflected.
 
 `neosian chat --agent FILE` and `neosian playground FILE` take the file's
 model, so a keyless door opens with nothing configured. A file registers
