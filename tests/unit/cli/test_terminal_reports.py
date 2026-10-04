@@ -2,6 +2,7 @@
 
 import io
 import json
+import logging
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -10,7 +11,7 @@ import pytest
 from rich.console import Console
 from typer.testing import CliRunner
 
-from neosian._cli.display import console_for
+from neosian._cli.display import console_for, one_line_warnings
 from neosian._cli.main import app
 from neosian._cli.render import render_status, run_rendered
 from neosian._cli.render_reports import (
@@ -330,3 +331,19 @@ def test_empty_reports_and_transfer_counts() -> None:
     text = out.getvalue()
     assert "no history" in text and "nothing to export" in text
     assert "2 documents" in text and "4 turns" in text and "No keys" in text
+
+
+def test_a_library_warning_is_one_line_while_open(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A degraded reflection at chat's close: the cause, not a traceback."""
+    logger = logging.getLogger("neosian._foundation.shared.structured")
+    with one_line_warnings():
+        try:
+            raise RuntimeError("Connection error.")
+        except RuntimeError:
+            logger.warning("%s failed; degrading", "Reflection", exc_info=True)
+    logger.warning("after the close")  # the handler left with the block
+    assert capsys.readouterr().err == (
+        "neosian: Reflection failed; degrading: RuntimeError: Connection error.\n"
+    )

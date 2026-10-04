@@ -20,7 +20,7 @@ from rich.text import Text
 
 from neosian._cli.chat_mcp import serving
 from neosian._cli.chat_shell import Consent
-from neosian._cli.display import field_table
+from neosian._cli.display import field_table, one_line_warnings
 from neosian._cli.ui import BRAND_ACCENT, load_mark, load_wordmark
 from neosian._foundation.conversation.core import Conversation
 from neosian._foundation.conversation.ids import parse_conversation_id
@@ -247,7 +247,8 @@ async def run_chat(
             left_on = app.session.convo.conversation_id
             console.print(Text(f"Resume: --resume {left_on}", style="dim"))
         finally:
-            await app.session.convo.aclose()
+            with one_line_warnings():  # the close reflects (§15); a failure is a line
+                await app.session.convo.aclose()
 
 
 def turn_title(config: AgentConfig) -> Text:

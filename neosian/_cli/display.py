@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 import os
-from collections.abc import Mapping, Sequence
+import sys
+from collections.abc import Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from typing import TextIO
 
 from rich import box
@@ -26,6 +29,31 @@ def console_for(out: TextIO, env: Mapping[str, str] | None = None) -> Console:
         markup=False,
         highlight=False,
     )
+
+
+class _OneLine(logging.Handler):
+    """A library warning as one stderr line: the message and its
+    exception's own summary, never the traceback."""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        line = record.getMessage()
+        if record.exc_info and record.exc_info[1] is not None:
+            error = record.exc_info[1]
+            line = f"{line}: {type(error).__name__}: {error}"
+        sys.stderr.write(f"neosian: {line}\n")  # the stream of the moment
+
+
+@contextmanager
+def one_line_warnings() -> Iterator[None]:
+    """While open, the library's warnings reach stderr one line each,
+    where Python's last resort would print a traceback."""
+    logger = logging.getLogger("neosian")
+    handler = _OneLine(logging.WARNING)
+    logger.addHandler(handler)
+    try:
+        yield
+    finally:
+        logger.removeHandler(handler)
 
 
 def section(console: Console, title: str) -> None:
