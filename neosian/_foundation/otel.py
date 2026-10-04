@@ -33,7 +33,10 @@ from neosian._foundation.agent.hooks import (
 
 if TYPE_CHECKING:
     from opentelemetry.trace import Tracer, TracerProvider
-    from opentelemetry.util.types import AttributeValue
+
+# The span attribute values neosian sets; OTel's own `AttributeValue` is a
+# chained assignment since 1.45, which a type checker refuses as an alias.
+type AttributeValue = str | int | bool
 
 _INSTALL_HINT = (
     "The neosian OTel exporter needs opentelemetry-api, which the neosian "
