@@ -67,9 +67,11 @@ readable. Pinning a package preserves its catalog, not upstream availability.
 This policy explicitly revises model membership's old retirement-only promise;
 the remaining library and wire stability guarantees stand.
 
-For 1.4.0, latest is Sonnet 5.5 / GPT-6.1 Sol; library defaults remain Sonnet 5 /
-GPT-6 Sol through the window. GPT-5.1 also begins retirement in favor of
-GPT-6.1 Sol. Opus 5.5, Fable 5.1, Astra and Luna are both default and latest.
+For 1.4.0 (published 2026-10-04), latest is Sonnet 5.5 / GPT-6.1 Sol;
+library defaults remain Sonnet 5 / GPT-6 Sol through the window, with
+promotion/removal eligible from 2026-11-03 UTC. GPT-5.1 also begins retirement
+in favor of GPT-6.1 Sol. Opus 5.5, Fable 5.1, Astra and Luna are both default
+and latest.
 The overall library default remains Cerebras. The **resident chat agent**
 currently chooses latest Sonnet; flags, saved selections and `/model` override
 it. This chat decision is separate from the library catalog policy.

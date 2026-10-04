@@ -48,9 +48,9 @@ class Transition:
     family: str
 
 
-# None is deliberate: publication has not happened. The release gate refuses
-# a tag until its UTC date is recorded here and in the changelog.
-RELEASE_DATES: dict[str, date | None] = {"1.4.0": None}
+# Use None until release preparation stamps the UTC publication date here
+# and in the changelog. The release gate refuses an unstamped tag.
+RELEASE_DATES: dict[str, date | None] = {"1.4.0": date(2026, 10, 4)}
 TRANSITIONS = (
     Transition("claude-sonnet-5", "claude-sonnet-5-5", "1.4.0", "anthropic:sonnet"),
     Transition("gpt-6-sol", "gpt-6.1-sol", "1.4.0", "openai:sol"),

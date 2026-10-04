@@ -8,7 +8,7 @@ phase close names the version.
 
 ## [Unreleased]
 
-## [1.4.0] - Unreleased
+## [1.4.0] - 2026-10-04
 
 ### Added
 
@@ -38,15 +38,17 @@ phase close names the version.
 ### Deprecated
 
 - Sonnet 5, GPT-6 Sol and GPT-5.1 remain supported for the full 30-day
-  window starting at publication of this release. Its publication date is
-  pending; release tooling refuses to tag until the date is stamped.
+  window starting at publication of this release. Default promotion and
+  predecessor removal become eligible in the first release on or after
+  2026-11-03 UTC; an installed package never switches by date.
 
 ### Qualification
 
 - Local live catalog, effort and replay checks passed for Claude and OpenAI.
   The new memory boards measured Sonnet 5.5 at 46/48 and GPT-6.1 Sol at
-  41/48; behavioral failures are preserved in the baselines page. Review
-  those findings and complete the normal external dispatch before publication.
+  41/48; behavioral failures are preserved in the baselines page. This
+  release uses those local live measurements and the green keyless CI;
+  a full external CI dispatch remains follow-up work.
   See `docs/MODEL_AUDIT.md` for qualification details and the final audit
   of other providers.
 

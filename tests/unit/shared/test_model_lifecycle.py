@@ -66,8 +66,9 @@ def test_evaluation_does_not_strip_selector_provider() -> None:
 
 @pytest.mark.parametrize("selection", [Model.GPT_6_SOL, "gpt-6-sol", "openai:default"])
 def test_notice_names_replacement_and_publication_window(
-    selection: Model | str,
+    selection: Model | str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setitem(lifecycle.RELEASE_DATES, "1.4.0", None)
     with pytest.warns(ModelTransitionWarning, match="gpt-6.1-sol") as caught:
         assert resolve_model(selection) is Model.GPT_6_SOL
     notice = str(caught[0].message)
@@ -120,6 +121,7 @@ def test_release_gate_requires_dates_and_due_promotions(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     start = date(2026, 10, 10)
+    monkeypatch.setitem(lifecycle.RELEASE_DATES, "1.4.0", None)
     assert lifecycle.release_errors(version="1.4.0", on=start)
     monkeypatch.setitem(lifecycle.RELEASE_DATES, "1.4.0", start)
     assert lifecycle.release_errors(version="1.4.0", on=start) == []

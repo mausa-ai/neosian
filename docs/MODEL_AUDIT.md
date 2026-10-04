@@ -66,18 +66,17 @@ main boards passed 46/48 cells for Sonnet and 41/48 for Sol, with extra
 writes and handoff pickup failures retained as behavioral failures.
 Sonnet's separate function/native-memory comparison passed 22/24 cells;
 its failures were an extra skill revision and missed handoff pickup.
-Local runs do not replace the dispatched release evidence.
+The maintainer requested publication after reviewing these findings. The
+1.4.0 release uses the local live evidence above and keyless CI; a full
+external CI dispatch remains follow-up work. Local measurements are not
+presented as dispatched evidence or a green memory board.
 
-Before publishing 1.4.0:
-
-1. Review the measured memory results and complete the normal external
-   dispatch on the release commit.
-2. Stamp the actual UTC publication date in `RELEASE_DATES` in
-   `neosian/_foundation/shared/model_lifecycle.py` and in the changelog's
-   1.4.0 heading. The pending date is intentional, not a guessed deadline.
-3. Run the default gates and `make release v=1.4.0`. Its model gate rejects
-   missing dates, early removals, stale predecessors and early/late default
-   promotion. Every later successor keeps its own publication date.
+The UTC publication date is 2026-10-04, recorded in `RELEASE_DATES` in
+`neosian/_foundation/shared/model_lifecycle.py` and the changelog. The first
+eligible promotion/removal release is on or after 2026-11-03. The
+`make release` gate rejects missing dates, early removals, stale predecessors
+and early/late default promotion. Every later successor keeps its own
+publication date.
 
 ## Other supported models — final audit
 
