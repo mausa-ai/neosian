@@ -48,7 +48,7 @@ machine you own. `examples/local_agent.py` is the file above.
 ```bash
 brew install llama.cpp        # or the release binaries at github.com/ggml-org/llama.cpp
 llama-server -hf ggml-org/gemma-4-E4B-it-GGUF:Q4_0 --jinja -c 32768
-neosian chat --agent examples/local_agent.py
+neosian chat                  # finds it; or --agent examples/local_agent.py
 ```
 
 `-hf` pulls the GGUF from Hugging Face into the local cache on first
@@ -72,7 +72,7 @@ pack's turns run to minutes.
 
 ```bash
 ollama pull gemma4:e4b
-neosian chat --agent examples/local_agent.py   # base_url="http://127.0.0.1:11434/v1"
+neosian chat                  # /model lists it; the default once it is loaded
 ```
 
 The same weights under Ollama's own HTTP layer (`/v1` is its
@@ -90,10 +90,31 @@ measured on llama-server alone (`neosian docs baselines`).
 
 ## The shell
 
+`neosian chat` finds a local server by itself (ledger #330). When it
+resolves its model, and again each time `/model` opens its list, it asks
+`127.0.0.1:8080` (llama-server), `127.0.0.1:11434` (Ollama) and any base
+URLs in `[chat] local = ["http://127.0.0.1:8081/v1"]` in `config.toml`.
+Each model the server lists registers on a keyless door named for the
+server, `llama-cpp` or `ollama`, on the zero card, at the window the
+server serves: llama-server's `n_ctx` (`/props`), a loaded Ollama
+model's `context_length` (`/api/ps`). A model running now is chat's
+default after `--model` and `[chat] model`: llama-server's, or an Ollama
+model in memory (`ollama ps`). An installed Ollama model is in the list
+at Ollama's default window, 4,096, until it is loaded; a window is read
+once per chat, so a server restarted with another `-c` is read at the
+next start. An id the catalog ships, or one an agent file registered,
+stays theirs. A refused port costs nothing, a server that hangs about a
+second, and with nothing answering chat takes the latest Sonnet.
+
+The resident agent's prompt (the docs and shell tools, the memory pack)
+is about 5,000 tokens before memory and the conversation, so serve the
+measured `-c 32768`: at `-c 8192` a session folds early and soon runs
+out of window. On Ollama, reflection at a session's close degrades:
+Ollama ignores `response_format`, so the turns stay pending.
+
 `neosian chat --agent FILE` and `neosian playground FILE` take the file's
-model, so a keyless door opens with nothing configured. The resident chat
-(`neosian chat` with no file) resolves its model before any file loads
-and so never reaches a registered door; name one in a file.
+model, so a keyless door opens with nothing configured. A file registers
+before the servers are asked, so its own definitions stand.
 
 vLLM, LM Studio and any other server on the wire enter the same way: the
 door's `wire="chat"` is what they serve, and their knobs are theirs to

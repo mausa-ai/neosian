@@ -90,11 +90,16 @@ neosian                                  # on a terminal: chat; under a pipe: th
   piped stdin runs one turn; `--json` the envelope (text, tool calls,
   usage, µ$), refused with no turn (exit 2) since a session cannot print
   one object; `--model fake` is keyless. The model: `--model`, else
-  `[chat] model` in `config.toml`, else the latest Sonnet. This is the
-  resident agent's current choice, separate from library defaults.
-  Explicit model IDs and selectors (`anthropic:sonnet:latest`) are accepted.
-  Missing `ANTHROPIC_API_KEY` fails before inference; it never silently
-  selects a different provider.
+  `[chat] model` in `config.toml`, else a model a local server is
+  running, else the latest Sonnet. This is the resident agent's current
+  choice, separate from library defaults. Explicit model IDs and
+  selectors (`anthropic:sonnet:latest`) are accepted. Chat looks for a
+  llama-server on `127.0.0.1:8080` and an Ollama on `127.0.0.1:11434`,
+  plus any base URLs in `[chat] local = ["http://127.0.0.1:8081/v1"]`
+  (`neosian docs local`): llama-server's model counts as running, and
+  so does an Ollama model loaded in memory. A local model needs no key
+  and the session's header names it (`llama-cpp/…`, `ollama/…`); with
+  none running, a missing `ANTHROPIC_API_KEY` fails before inference.
 - **`update`**: checks PyPI's simple index; `[update] mode` is `off`
   (default), `notify` (one stderr line on the human verbs, once per
   24 h) or `auto` (applies a uv tool install within the major, never a
@@ -122,8 +127,10 @@ them and the keys. `/configure` picks a provider and takes its API key
 in a masked input: the key goes to `config.toml` as `configure --key -`
 would store it, and never to the transcript, a turn or the model.
 `/model` switches the model on the same conversation (a list of the
-models a key opens; `/model ID` names one). The choice lasts for this
-session; it does not change `[chat] model` in `config.toml`. `/resume`
+models a key opens and the local servers serve, asked again each time so
+a server started since is there; `/model ID` names one). The choice
+lasts for this session; it does not change `[chat] model` in
+`config.toml`. `/resume`
 continues an earlier session of this chat in this project (a list,
 newest first; `/resume ID` names one) and draws its last ten turns again, as
 `--resume` does at the start. `/new` starts a fresh conversation,

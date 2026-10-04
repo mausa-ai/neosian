@@ -3,9 +3,11 @@
 with it (§14.6).
 
 Model: `--model` (a shipped id, a registered door's id, `fake`), else
-`[chat] model` in config.toml, else the latest qualified Sonnet. This is
-chat's current choice, independent of the library's provider defaults.
-Without its key the normal MissingAPIKeyError names ANTHROPIC_API_KEY. A PROMPT argument or a non-terminal stdin runs one
+`[chat] model` in config.toml, else a model a local server is running
+(`local_servers`, ledger #330), else the latest qualified Sonnet. This
+is chat's current choice, independent of the library's provider
+defaults. Without its key the normal MissingAPIKeyError names
+ANTHROPIC_API_KEY. A PROMPT argument or a non-terminal stdin runs one
 turn and prints the answer — `--json` the response envelope — so an
 agent or a script can use the resident agent; otherwise the session (the
 Textual app, `_cli/tui`) opens on the same Conversation. Every turn
@@ -19,9 +21,8 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import sys
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any, Final, TextIO
 
@@ -37,6 +38,7 @@ from neosian._cli.chat_agent import RESIDENT_NAME, resident_config, with_chat_to
 from neosian._cli.chat_mcp import chat_servers, serving
 from neosian._cli.config import get_section
 from neosian._cli.display import console_for, terminal
+from neosian._cli.local_servers import discover, local_urls
 from neosian._cli.providers import load_keys_into_env
 from neosian._foundation.conversation.reflection import ReflectionConfig
 from neosian._foundation.llm.base import text_of
@@ -82,8 +84,9 @@ def model_from_flag(flag: str) -> AnyModel:
     return model
 
 
-def resolve_chat_model(flag: str | None, _env: Mapping[str, str]) -> AnyModel:
-    """The flag, else `[chat] model`, else latest Sonnet (the resident policy)."""
+def resolve_chat_model(flag: str | None, running: Sequence[AnyModel]) -> AnyModel:
+    """The flag, else `[chat] model`, else the first running local model,
+    else latest Sonnet (the resident policy)."""
     if flag is not None:
         return model_from_flag(flag)
     configured = get_section("chat").get("model")
@@ -94,22 +97,27 @@ def resolve_chat_model(flag: str | None, _env: Mapping[str, str]) -> AnyModel:
                 f"[chat] model = {configured!r} in config.toml is unknown"
             )
         return model
+    if running:
+        return running[0]
     return resolve_model(ModelSelector.CLAUDE_SONNET_LATEST)
 
 
 def build_config(
-    model_flag: str | None, agent_file: str | None, env: Mapping[str, str]
+    model_flag: str | None, agent_file: str | None, urls: Sequence[str]
 ) -> tuple[AgentConfig, str]:
     """The agent and its name: the resident agent, or an agent file with
-    chat's tools added (the playground path)."""
+    chat's tools added (the playground path). The local servers at `urls`
+    register after the file, so its own registrations stand."""
     if agent_file is None:
-        return resident_config(resolve_chat_model(model_flag, env)), RESIDENT_NAME
+        running = asyncio.run(discover(urls))
+        return resident_config(resolve_chat_model(model_flag, running)), RESIDENT_NAME
     from neosian._foundation.agent.loader import load_agent_config
 
     base, name = load_agent_config(agent_file)
+    asyncio.run(discover(urls))
     config = with_chat_tools(base)
     if model_flag is not None:
-        config = replace(config, model=resolve_chat_model(model_flag, env))
+        config = replace(config, model=model_from_flag(model_flag))
     return config, name
 
 
@@ -197,11 +205,12 @@ def run_chat_command(
     err = sys.stderr if err is None else err
     load_keys_into_env()
     try:  # grammar first: an agent file's own ValueError is tier 1 below
-        servers = chat_servers(get_section("chat"))
+        chat = get_section("chat")
+        servers, urls = chat_servers(chat), local_urls(chat)
     except ValueError as exc:
         return usage(str(exc), json_output=json_output, out=out, err=err)
     try:
-        config, name = build_config(model, agent, os.environ)
+        config, name = build_config(model, agent, urls)
     except ChatUsageError as exc:
         return usage(str(exc), json_output=json_output, out=out, err=err)
     except ChatError as exc:

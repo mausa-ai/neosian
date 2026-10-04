@@ -20,8 +20,10 @@ from rich.console import Group
 from rich.text import Text
 
 from neosian._cli.chat import chat_config, new_conversation_id, resolve_resume
+from neosian._cli.config import get_section
 from neosian._cli.configure import run_configure
 from neosian._cli.display import field_table
+from neosian._cli.local_servers import discover, local_urls
 from neosian._cli.models import keyed_models
 from neosian._cli.providers import key_source, provider_keys
 from neosian._cli.tui.widgets import Working
@@ -55,7 +57,7 @@ _KEYS: Final = (
 _EXIT: Final = "leave (ctrl+d too)"
 _ASK: Final = "Anything else, ask in words: the agent runs the shell's verbs itself."
 _NOTHING_SAVED: Final = "no key entered: nothing was saved"
-_NO_KEYS: Final = "no provider has a key yet: /configure stores one"
+_NO_KEYS: Final = "no provider key and no local server: /configure stores a key"
 _NO_SESSIONS: Final = "no earlier session of this chat in this project"
 _NOTHING_TO_FOLD: Final = "nothing to fold yet: the recent turns stay whole"
 
@@ -105,6 +107,7 @@ async def _configure(app: SessionApp, _: str) -> None:
 
 
 async def _model(app: SessionApp, argument: str) -> None:
+    await discover(local_urls(get_section("chat")))  # a server started since shows too
     if argument:
         model = lookup_model(argument)
         if model is None:

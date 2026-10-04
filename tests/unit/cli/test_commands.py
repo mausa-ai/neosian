@@ -3,12 +3,14 @@ asking the agent is impossible or wrong, and a resumed conversation's
 turns drawn again. Zero keys."""
 
 import stat
+from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
 from textual.pilot import Pilot
 from textual.widgets import Markdown, Static
 
+import neosian._cli.tui.commands as commands
 from neosian import AgentConfig, Model
 from neosian._cli.chat import open_chat, open_session
 from neosian._cli.config import get_all_credentials, get_config_path
@@ -19,6 +21,8 @@ from neosian._cli.tui.widgets import Menu, Prompt, ToolCall
 from neosian._foundation.llm.base import ToolCall as Call
 from neosian._foundation.llm.fake import FakeClient, FakeScript, FakeTurn
 from neosian._foundation.memory.file import FileStore
+from neosian._foundation.shared.catalog import OpenAICompatible
+from neosian._foundation.shared.registry import RegisteredModel, register_model
 from neosian._foundation.shared.types import ToolCallId, ToolFunction, ToolName
 from neosian._foundation.tools.base import Tool, ToolResult
 from tests.unit.cli.piloting import plain, send, session_app
@@ -341,7 +345,39 @@ class TestModel:
         app = session_app(_config())
         async with app.run_test() as pilot:
             await send(pilot, "/model")
-            assert "no provider has a key yet: /configure" in _text(app)
+            assert "no provider key and no local server: /configure" in _text(app)
+
+    async def test_a_local_server_started_mid_session_is_offered_without_a_key(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        async def discover(_: Sequence[str]) -> tuple[RegisteredModel, ...]:
+            door = OpenAICompatible(
+                name="llama-cpp", api_key_env=None, base_url="http://127.0.0.1:8080/v1"
+            )
+            return (
+                register_model(
+                    "qwen-local",
+                    provider=door,
+                    context_window=8192,
+                    max_output_tokens=8192,
+                ),
+            )
+
+        app = session_app(_config())
+        async with app.run_test() as pilot:
+            monkeypatch.setattr(commands, "discover", discover)  # the server starts
+            await _type(pilot, "/model")
+            await _on(pilot, Pick)
+            options = app.screen.query_one("OptionList")
+            labels = [
+                plain(options.get_option_at_index(i).prompt)  # type: ignore[attr-defined]
+                for i in range(options.option_count)  # type: ignore[attr-defined]
+            ]
+            assert [label.strip() for label in labels] == ["llama-cpp/qwen-local"]
+            await pilot.press("enter")
+            await _settled(pilot)
+            assert app.session.model.value == "qwen-local"
+            assert "fake/fake → llama-cpp/qwen-local" in _text(app)
 
 
 @pytest.mark.unit

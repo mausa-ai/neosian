@@ -3,6 +3,7 @@ persistence under the home, the tiers — on the shipped fake."""
 
 import io
 import json
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -22,7 +23,11 @@ from neosian._cli.main import app
 from neosian._foundation.llm.fake import FakeClient, FakeScript, FakeTurn
 from neosian._foundation.memory.file import FileStore
 from neosian._foundation.shared.catalog import OpenAICompatible
-from neosian._foundation.shared.registry import register_model
+from neosian._foundation.shared.registry import (
+    RegisteredModel,
+    lookup_model,
+    register_model,
+)
 from neosian._foundation.shared.types import Model
 
 _KEYS = ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "CEREBRAS_API_KEY")
@@ -35,56 +40,55 @@ def _keyless(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.chdir(tmp_path)
 
 
+def _local(model_id: str = "qwen-local") -> RegisteredModel:
+    """A model a local server registered (what `discover` leaves behind)."""
+    door = OpenAICompatible(
+        name="llama-cpp", api_key_env=None, base_url="http://127.0.0.1:8080/v1"
+    )
+    return register_model(
+        model_id, provider=door, context_window=9000, max_output_tokens=8192
+    )
+
+
 class TestTheModel:
     def test_the_flag_wins(self) -> None:
-        assert resolve_chat_model("fake", {"ANTHROPIC_API_KEY": "k"}) is Model.FAKE
-        assert resolve_chat_model("gpt-6-sol", {}) is Model.GPT_6_SOL
+        assert resolve_chat_model("fake", (_local(),)) is Model.FAKE
+        assert resolve_chat_model("gpt-6-sol", ()) is Model.GPT_6_SOL
 
     def test_an_unknown_flag_is_grammar(self) -> None:
         with pytest.raises(ChatUsageError):
-            resolve_chat_model("nope", {})
+            resolve_chat_model("nope", ())
 
     def test_the_config_file_is_next(self) -> None:
         set_value("chat", "model", "claude-sonnet-5")
-        assert (
-            resolve_chat_model(None, {"OPENAI_API_KEY": "k"}) is Model.CLAUDE_SONNET_5
-        )
+        assert resolve_chat_model(None, (_local(),)) is Model.CLAUDE_SONNET_5
         set_value("chat", "model", "nope")
         with pytest.raises(ChatUsageError):
-            resolve_chat_model(None, {})
+            resolve_chat_model(None, ())
 
-    @pytest.mark.parametrize(
-        "env",
-        [
-            {},
-            {"OPENAI_API_KEY": "o"},
-            {"CEREBRAS_API_KEY": "c"},
-            {"ANTHROPIC_API_KEY": "a"},
-        ],
-    )
-    def test_resident_always_defaults_to_latest_sonnet(
-        self, env: dict[str, str]
-    ) -> None:
-        assert resolve_chat_model(None, env) is Model.CLAUDE_SONNET_5_5
+    def test_a_running_local_model_comes_before_sonnet(self) -> None:
+        local = _local()
+        assert resolve_chat_model(None, (local, _local("second"))) is local
+
+    def test_with_nothing_running_the_resident_takes_latest_sonnet(self) -> None:
+        assert resolve_chat_model(None, ()) is Model.CLAUDE_SONNET_5_5
 
     def test_selectors_in_flag_and_config(self) -> None:
-        assert resolve_chat_model("openai:sol:latest", {}) is Model.GPT_6_1_SOL
+        assert resolve_chat_model("openai:sol:latest", ()) is Model.GPT_6_1_SOL
         set_value("chat", "model", "anthropic:sonnet:latest")
-        assert resolve_chat_model(None, {}) is Model.CLAUDE_SONNET_5_5
+        assert resolve_chat_model(None, ()) is Model.CLAUDE_SONNET_5_5
 
-    def test_registered_models_remain_explicit_choices(self) -> None:
-        door = OpenAICompatible(
-            name="local", api_key_env=None, base_url="http://127.0.0.1:8080/v1"
-        )
-        model = register_model(
-            "local-chat", provider=door, context_window=9000, max_output_tokens=8192
-        )
-        assert resolve_chat_model("local-chat", {}) is model
+    def test_a_registered_model_that_is_not_running_is_an_explicit_choice(
+        self,
+    ) -> None:
+        model = _local("local-chat")
+        assert resolve_chat_model("local-chat", ()) is model
+        assert resolve_chat_model(None, ()) is Model.CLAUDE_SONNET_5_5
 
 
 class TestTheConfig:
     def test_the_resident_agent_by_default(self) -> None:
-        config, name = build_config("fake", None, {})
+        config, name = build_config("fake", None, ())
         assert name == "neosian" and config.model is Model.FAKE
 
     def test_an_agent_file_with_chats_tools_and_the_model_override(
@@ -95,10 +99,58 @@ class TestTheConfig:
             "from neosian import AgentConfig, Model\n"
             "configuration = AgentConfig(system_prompt='x', model=Model.FAKE_SMALL)\n"
         )
-        config, name = build_config(None, str(agent), {})
+        config, name = build_config(None, str(agent), ())
         assert name == "agent" and config.model is Model.FAKE_SMALL
         assert [t.__name__ for t in config.tools] == ["docs"]
-        assert build_config("fake", str(agent), {})[0].model is Model.FAKE
+        assert build_config("fake", str(agent), ())[0].model is Model.FAKE
+
+    def test_the_resident_takes_the_model_a_local_server_runs(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        probed: list[tuple[str, ...]] = []
+
+        async def discover(urls: Sequence[str]) -> tuple[RegisteredModel, ...]:
+            probed.append(tuple(urls))
+            return (_local(),)
+
+        monkeypatch.setattr(chat_cmd, "discover", discover)
+        config, _ = build_config(None, None, ("http://127.0.0.1:8080/v1",))
+        assert config.model is lookup_model("qwen-local")
+        assert probed == [("http://127.0.0.1:8080/v1",)]
+
+    def test_the_config_file_may_name_an_installed_local_model(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        async def discover(_: Sequence[str]) -> tuple[RegisteredModel, ...]:
+            _local("gemma4:e4b")  # installed, not loaded: listed, not running
+            return ()
+
+        monkeypatch.setattr(chat_cmd, "discover", discover)
+        set_value("chat", "model", "gemma4:e4b")
+        assert build_config(None, None, ())[0].model is lookup_model("gemma4:e4b")
+
+    def test_an_agent_file_registers_before_the_servers_and_keeps_its_model(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        agent = tmp_path / "agent.py"
+        agent.write_text(
+            "from neosian import AgentConfig, Model\n"
+            "configuration = AgentConfig(system_prompt='x', model=Model.FAKE_SMALL)\n"
+            "from neosian import OpenAICompatible, register_model\n"
+            "door = OpenAICompatible(name='local', api_key_env=None,"
+            " base_url='http://127.0.0.1:8081/v1')\n"
+            "register_model('file-model', provider=door, context_window=9000,"
+            " max_output_tokens=8192)\n"
+        )
+
+        async def discover(_: Sequence[str]) -> tuple[RegisteredModel, ...]:
+            assert lookup_model("file-model") is not None
+            return (_local(),)
+
+        monkeypatch.setattr(chat_cmd, "discover", discover)
+        assert build_config(None, str(agent), ())[0].model is Model.FAKE_SMALL
+        flagged, _ = build_config("qwen-local", str(agent), ())
+        assert flagged.model is lookup_model("qwen-local")
 
 
 def _fake_config() -> "object":
@@ -187,6 +239,12 @@ class TestRunTier:
     def test_an_unknown_model_exits_2(self) -> None:
         code, out, err = self._run("hi", model="nope", json_output=True)
         assert code == 2 and json.loads(out)["error"] == "usage" and "nope" in err
+
+    def test_a_bad_local_list_exits_2(self) -> None:
+        set_value("chat", "local", "http://127.0.0.1:8081/v1")  # a string, not a list
+        code, out, err = self._run("hi", model="fake", json_output=True)
+        assert code == 2 and json.loads(out)["error"] == "usage"
+        assert "[chat] local" in err
 
 
 class _Terminal(io.StringIO):

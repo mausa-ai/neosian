@@ -8,6 +8,21 @@ phase close names the version.
 
 ## [Unreleased]
 
+### Added
+
+- `neosian chat` finds a running llama-server (`127.0.0.1:8080`) or
+  Ollama (`127.0.0.1:11434`), plus any base URLs in a new `[chat] local`
+  list. Their models register on keyless doors (`llama-cpp`, `ollama`)
+  at the window the server serves, on a zero card, and `/model` lists
+  them, asking again each time it opens.
+
+### Changed
+
+- The resident chat agent defaults to a model a local server is running
+  (llama-server's, or an Ollama model loaded in memory) before latest
+  Sonnet; `--model` and `[chat] model` still come first. A local model
+  needs no key.
+
 ## [1.4.0] - 2026-10-04
 
 ### Added

@@ -87,3 +87,10 @@ def _isolated_model_registry() -> Iterator[None]:
     yield
     _REGISTRY.clear()
     _REGISTRY.update(before)
+
+
+@pytest.fixture(autouse=True)
+def _no_local_servers(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Chat probes loopback for a llama-server or an Ollama (ledger #330);
+    a test never meets the developer's, only the servers it names."""
+    monkeypatch.setattr("neosian._cli.local_servers.DEFAULT_URLS", ())

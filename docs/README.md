@@ -217,9 +217,9 @@ them under the home and loads them where the environment has none.
 | Provider | Env var | Models |
 |---|---|---|
 | A registered door | the door's `api_key_env` | The day-one door for any model neosian has not shipped: any OpenAI-compatible endpoint via `register_model` (`neosian docs quickstart`) |
-| Local (llama.cpp, Ollama) | none: `api_key_env=None` | A door that signs nothing, on a zero card; the llama.cpp and Ollama recipes and the measured local row (`neosian docs local`) |
+| Local (llama.cpp, Ollama) | none: `api_key_env=None` | A door that signs nothing, on a zero card; `neosian chat` finds a running llama-server or Ollama by itself and defaults to its model; the recipes and the measured local row (`neosian docs local`) |
 | OpenAI | `OPENAI_API_KEY` | `gpt-6.1-sol` (latest), `gpt-6-sol` (default during migration), `gpt-6-astra`, `gpt-6-luna`; `gpt-5.1` is superseded, on the Responses API with reasoning carried through tool loops and nothing stored at the provider |
-| Anthropic | `ANTHROPIC_API_KEY` | `claude-fable-5-1`, `claude-opus-5-5`, `claude-sonnet-5-5` (latest; chat default), `claude-sonnet-5` (library default during migration); vision/PDF input, prompt caching, adaptive thinking |
+| Anthropic | `ANTHROPIC_API_KEY` | `claude-fable-5-1`, `claude-opus-5-5`, `claude-sonnet-5-5` (latest; chat default with no local server running), `claude-sonnet-5` (library default during migration); vision/PDF input, prompt caching, adaptive thinking |
 | Cerebras | `CEREBRAS_API_KEY` | Default provider: `gpt-oss-120b`, `qwen-3.8-27b` |
 | xAI | `XAI_API_KEY` | `grok-4.6` — a shipped door row (`Model.GROK_4_6`), on the Responses API |
 | Google Gemini API | `GEMINI_API_KEY` | `gemini-3.8-flash`, `gemini-3.7-flash` on the OpenAI-compatible endpoint (`Model.GEMINI_3_8_FLASH`; the introductory card through 2026-12-31) |

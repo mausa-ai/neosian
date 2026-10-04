@@ -61,7 +61,10 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
   tool: a form that only reads runs at once, one that changes state
   waits for the user's `y` in the session and is declined in a one-shot
   turn, a key never passes through it. A PROMPT or piped stdin is one
-  turn, `--model fake` keyless. `[[chat.mcp]]` tables in
+  turn, `--model fake` keyless. Its model: `--model`, else `[chat]
+  model`, else a model a local server runs (a llama-server on :8080, an
+  Ollama model loaded on :11434, the base URLs in `[chat] local`; no key
+  needed), else latest Sonnet. `[[chat.mcp]]` tables in
   `<home>/config.toml` (`name`, then `command`/`args`/`env` or
   `url`/`headers`, `prefix`) are MCP servers it opens for the session,
   their tools added. Bare `neosian` on a terminal opens it: a full-screen
@@ -237,7 +240,9 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
   rather than unknown). `neosian docs local` carries the llama.cpp and
   Ollama recipes (`llama-server -hf ggml-org/gemma-4-E4B-it-GGUF:Q4_0
   --jinja`, `ollama pull gemma4:e4b`) and the measured local row;
-  `examples/local_agent.py` is the runnable form.
+  `examples/local_agent.py` is the runnable form. `neosian chat` finds a
+  running llama-server or Ollama itself, registers its models at the
+  served window and lists them in `/model`.
 - Every shipped row is a `Model` member, the door rows too:
   `Model.GROK_4_6` (xAI `XAI_API_KEY`), `Model.GEMINI_3_8_FLASH` (Gemini
   `GEMINI_API_KEY`), `Model.KIMI_K3` (Moonshot `MOONSHOT_API_KEY`),
@@ -253,8 +258,9 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
   and predecessors retire in the first release after a full 30-day window.
   Every successor ages independently; warnings name replacements and dates.
   Exact `Model` pins never silently redirect. Package releases, never the
-  wall clock, change installed routing. The resident chat agent currently
-  defaults to latest Sonnet (5.5), separately from library defaults.
+  wall clock, change installed routing. The resident chat agent defaults
+  to a model a local server runs, else latest Sonnet (5.5), separately
+  from library defaults.
 - Effort includes `XHIGH` and explicit `NONE` where supported (Luna);
   Python `None` leaves the provider default. Claude 5.5 preserves summarized
   thinking and asks the provider to drop prefix-incompatible signed blocks.
