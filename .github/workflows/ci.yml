@@ -23,7 +23,7 @@ concurrency:
 # The repository's one uv pin (ledger #185): the Dockerfile, the installer
 # and both workflows name the same release; a unit test keeps them equal.
 env:
-  UV_VERSION: "0.12.10"
+  UV_VERSION: "0.12.23"
 
 jobs:
   lint:

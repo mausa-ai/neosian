@@ -22,7 +22,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  UV_VERSION: "0.12.10"
+  UV_VERSION: "0.12.23"
   IMAGE: ghcr.io/mausa-ai/neosian
 
 jobs:

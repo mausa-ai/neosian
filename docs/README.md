@@ -190,7 +190,7 @@ Each line is one page in the wheel — `neosian docs <topic>`.
   conversations on a port (the shipped Dockerfile is the appliance) — reach, not capability; `RemoteStore` drops in where
   `FileStore` does, core install. Bearer tokens env-only, per-client
   when you want the ledger to know who wrote.
-- **The agent core** (`agent`, `tools`). `run(stream=True)` yields ten
+- **The agent core** (`agent`, `tools`). `run(stream=True)` yields eleven
   frozen `AgentEvent` dataclasses a host relays over SSE; `AgentHooks`
   observe every turn, call and tool; `ToolGateConfig` routes every tool
   call through one approver, and no decision is a denial; capability-

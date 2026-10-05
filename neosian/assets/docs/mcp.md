@@ -14,7 +14,7 @@ with mounts (`neosian docs topology`).
 ## The state set
 
 The memory server becomes the state server one tool at a time. Today it
-serves seven:
+serves eight:
 
 - **`memory`**: the six commands over the mounts (`neosian docs
   memory`), the same definition the function tool carries.
@@ -60,6 +60,10 @@ serves seven:
   is open. The wheel's own `handoff` skill is served as a prompt
   (`/mcp__neosian-memory__handoff` in Claude Code) beside the mounts'
   skills, so the user can ask for the note with one command.
+- **`messages`**: the durable inbox (`neosian docs messaging`): send to
+  a mounted scope or one conversation, list, view and acknowledge,
+  claims and resettable reminders. A caller the server has not bound to
+  a session passes the exact id its hooks print as `session`.
 
 ## Serve
 

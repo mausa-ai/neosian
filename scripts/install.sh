@@ -19,7 +19,7 @@
 # No sudo, no root writes, no binary matrix, no unpinned upstream.
 set -euo pipefail
 
-UV_VERSION="0.12.10"           # the same pin as the Dockerfile
+UV_VERSION="0.12.23"           # the same pin as the Dockerfile
 UV_INSTALLER="https://astral.sh/uv/${UV_VERSION}/install.sh"
 PACKAGE="neosian"
 # The release this script shipped with — the default pin. A unit test keeps

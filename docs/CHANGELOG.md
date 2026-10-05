@@ -8,6 +8,17 @@ phase close names the version.
 
 ## [Unreleased]
 
+### Changed
+
+- The repository's one uv pin (the Dockerfile, the installer and both
+  workflows) moves from 0.12.10 to 0.12.23.
+
+### Fixed
+
+- `neosian docs mcp` lists `messages` among the eight tools the server
+  serves, and the README counts eleven stream events; each count had
+  fallen one behind the code.
+
 ## [1.5.0] - 2026-10-04
 
 ### Added
