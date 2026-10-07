@@ -708,3 +708,28 @@ class TestToolResultCode:
     def test_uncoded_failure_and_success_carry_no_key(self) -> None:
         assert "code" not in json.loads(ToolResult.fail("bad").to_json())
         assert "code" not in json.loads(ToolResult.ok("fine").to_json())
+
+
+@pytest.mark.unit
+class TestToolTimeout:
+    """`@Tool(timeout_seconds=)` rides the metadata (N7, ledger #331)."""
+
+    def test_rides_the_metadata(self) -> None:
+        @Tool(name="t", description="d", timeout_seconds=2.5)
+        async def bounded() -> ToolResult[str]:
+            return ToolResult.ok("x")
+
+        metadata = get_tool_metadata(bounded)
+        assert metadata is not None and metadata.timeout_seconds == 2.5
+
+    def test_defaults_to_none(self) -> None:
+        @Tool(name="t", description="d")
+        async def unbounded() -> ToolResult[str]:
+            return ToolResult.ok("x")
+
+        metadata = get_tool_metadata(unbounded)
+        assert metadata is not None and metadata.timeout_seconds is None
+
+    def test_must_be_positive(self) -> None:
+        with pytest.raises(ValueError, match="timeout_seconds must be positive"):
+            Tool(name="t", description="d", timeout_seconds=0)

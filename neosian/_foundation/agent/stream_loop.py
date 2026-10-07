@@ -7,12 +7,14 @@ import time
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 
-from neosian._foundation.agent.context import merge_usage
+from neosian._foundation.agent.context import CURRENT_RUN, merge_usage
 from neosian._foundation.agent.emit import (
+    ToolTiming,
     blocked_response,
     emit_llm_call,
     emit_turn,
     stream_response,
+    tool_event,
 )
 from neosian._foundation.agent.events import (
     AgentEvent,
@@ -26,7 +28,6 @@ from neosian._foundation.agent.events import (
 from neosian._foundation.agent.guards import (
     check_guard_and_block,
 )
-from neosian._foundation.agent.hooks import ToolEvent
 from neosian._foundation.agent.lifetimes import closing
 from neosian._foundation.agent.stream_final import stream_final_with_client_and_guard
 from neosian._foundation.agent.tool_exec import format_tool_result, run_tool_stream
@@ -302,23 +303,29 @@ async def stream_with_client(
             #    sentinel via the shared counter (see _run_tool_stream).
             queue: asyncio.Queue[AgentEvent | None] = asyncio.Queue()
             results: dict[ToolCallId, ToolResult[Any]] = {}
-            durations: dict[ToolCallId, int] = {}
+            timings: dict[ToolCallId, ToolTiming] = {}
             counter = [len(accumulated_tool_calls)]
             semaphore = asyncio.Semaphore(agent._max_parallel_tools)
-            tasks = [
-                asyncio.create_task(
-                    run_tool_stream(
-                        agent,
-                        tc,
-                        queue,
-                        results,
-                        durations,
-                        counter,
-                        semaphore,
+            # Each task copies the context at creation, so the run's id is
+            # set only across the spawn (#333): nothing leaks to the consumer.
+            token = CURRENT_RUN.set(ctx.run_id)
+            try:
+                tasks = [
+                    asyncio.create_task(
+                        run_tool_stream(
+                            agent,
+                            tc,
+                            queue,
+                            results,
+                            timings,
+                            counter,
+                            semaphore,
+                        )
                     )
-                )
-                for tc in accumulated_tool_calls
-            ]
+                    for tc in accumulated_tool_calls
+                ]
+            finally:
+                CURRENT_RUN.reset(token)
 
             # 3. Drain queue. On early exit (a consumer disconnect) cancel
             #    the surviving wrappers and wait them out: each wrapper's
@@ -367,12 +374,11 @@ async def stream_with_client(
                     )
                 )
                 await ctx.hooks.tool(
-                    ToolEvent(
-                        call_id=tool_call.id,
-                        name=tool_call.name,
-                        arguments=tool_call.arguments,
-                        result=result,
-                        duration_ms=durations[tool_call.id],
+                    tool_event(
+                        ctx,
+                        tool_call,
+                        result,
+                        timing=timings[tool_call.id],
                         iteration=iteration,
                     )
                 )

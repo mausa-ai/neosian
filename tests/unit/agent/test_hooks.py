@@ -113,6 +113,9 @@ class TestHookRunner:
             "response",
             "streamed",
             "duration_ms",
+            "run_id",
+            "parent_run_id",
+            "conversation_id",
         }
 
 

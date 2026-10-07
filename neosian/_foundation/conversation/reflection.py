@@ -48,6 +48,7 @@ if TYPE_CHECKING:
     from neosian._foundation.conversation.types import ConversationTurn
     from neosian._foundation.llm.base import BaseLLMClient, Usage
     from neosian._foundation.memory.mounts import MemoryConfig
+    from neosian._foundation.shared.structured import Report
 
 logger = logging.getLogger(__name__)
 
@@ -135,10 +136,12 @@ async def run_reflection(
     actor: str | None,
     clock: Clock | None = None,
     min_age: timedelta = timedelta(days=MAINTENANCE_MIN_AGE_DAYS),
+    report: Report | None = None,
 ) -> ReflectionResult:
     """One reflection pass over the given turns; degrade-safe, except
     that a `ConfigurationError` from the lease propagates (the #84 rule).
-    Deletes respect the gardener's age floor from `clock` and `min_age`."""
+    Deletes respect the gardener's age floor from `clock` and `min_age`;
+    `report` receives the call's bill (N7, #332)."""
     if not turns:
         return ReflectionResult()
     fence = new_fence()
@@ -161,6 +164,7 @@ async def run_reflection(
         "\n\n".join((memory, transcript)),
         ReflectionBatch,
         "Reflection",
+        report=report,
     )
     if parsed is None:
         return ReflectionResult(degraded=degraded)

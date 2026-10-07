@@ -7,6 +7,12 @@ unless `strict=True` (an eval harness wants strict; production wants
 swallow). `HookRunner` is the internal dispatcher; hooks are awaited
 inline so blocking and streaming runs produce identical hook sequences —
 a slow hook therefore stalls the run it observes.
+
+Every event carries the run it belongs to (N7, ledger #333): `run_id`,
+minted per `Agent.run` call; `parent_run_id` when that run executes
+inside another run's tool; `conversation_id` when a `Conversation`
+drives it. A compaction or reflection call fires `on_llm_call` from the
+Conversation with the conversation and no run. All three default to None.
 """
 
 from __future__ import annotations
@@ -15,7 +21,8 @@ import inspect
 import logging
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from datetime import datetime
+from typing import TYPE_CHECKING, Any, Literal
 
 from neosian._foundation.llm.base import Usage
 from neosian._foundation.shared.types import Provider, ToolCallId, ToolName
@@ -26,14 +33,24 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Who made a billed call (N7, ledger #332): the agent loop (its final
+# toolless call included), the guardrail classifier, compaction's
+# distillation and epoch calls, or reflection at the session boundary.
+type CallPurpose = Literal["agent", "guardrail", "compaction", "reflection"]
+
 
 @dataclass(frozen=True, slots=True)
 class LlmCallEvent:
-    """One provider completion/stream call — maps 1:1 onto a host's metering.
+    """One billed model call — the metering seam, complete (ledger #332).
 
-    Fires after every call, success or failure (failed calls still bill
-    input tokens; `error_code` distinguishes). `model` is the API-reported
-    string, None when the call raised before reporting one.
+    Fires after every call the library bills, success or failure (failed
+    calls still bill input tokens; `error_code` distinguishes): the agent
+    loop's own calls, the guardrail classifier, compaction and reflection,
+    `purpose` naming which. Summing these events is the whole bill;
+    `TurnEvent.response.usage` is the agent's turn plus its guardrail
+    calls, never compaction or reflection. `model` is the API-reported
+    string, None when the call raised before reporting one; `started_at`
+    the wall-clock start (tz-aware UTC).
     """
 
     requested_model: str
@@ -45,6 +62,11 @@ class LlmCallEvent:
     stop_reason: str | None
     duration_ms: int
     error_code: str | None
+    purpose: CallPurpose = "agent"
+    started_at: datetime | None = None
+    run_id: str | None = None
+    parent_run_id: str | None = None
+    conversation_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,6 +84,10 @@ class ToolEvent:
     result: ToolResult[Any]
     duration_ms: int
     iteration: int
+    started_at: datetime | None = None
+    run_id: str | None = None
+    parent_run_id: str | None = None
+    conversation_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,6 +106,9 @@ class FallbackEvent:
     provider_status: int | None
     sticky: bool
     streamed: bool
+    run_id: str | None = None
+    parent_run_id: str | None = None
+    conversation_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,6 +123,9 @@ class TurnEvent:
     response: AgentResponse
     streamed: bool
     duration_ms: int
+    run_id: str | None = None
+    parent_run_id: str | None = None
+    conversation_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

@@ -79,6 +79,11 @@ class _InProcess:
 _Endpoint = _Stdio | _Http | _InProcess
 
 
+_TIMEOUT_INVALID = (
+    "MCP server '{name}': timeout_seconds must be positive or None, got {value}"
+)
+
+
 class McpServer:
     """One MCP server, consumed as tools for the lifetime of an `async with`.
 
@@ -93,15 +98,27 @@ class McpServer:
     core's `ConfigurationError` at Agent construction, which names this
     server. A per-call failure — a server error, a lost transport, a
     bad argument — is an in-band `ToolResult.fail` the model sees; only
-    connecting raises (`McpConnectionError`).
+    connecting raises (`McpConnectionError`). `timeout_seconds=` bounds
+    every call to this server (N7, #331): past it the model receives a
+    failed result coded `tool_timeout`; None waits as long as the server.
     """
 
     def __init__(
-        self, endpoint: _Endpoint, *, name: str | None, prefix: str | None
+        self,
+        endpoint: _Endpoint,
+        *,
+        name: str | None,
+        prefix: str | None,
+        timeout_seconds: float | None = None,
     ) -> None:
         self._endpoint = endpoint
         self._name = endpoint.label if name is None else name
+        if timeout_seconds is not None and timeout_seconds <= 0:
+            raise ValueError(
+                _TIMEOUT_INVALID.format(name=self._name, value=timeout_seconds)
+            )
         self._prefix = prefix
+        self._timeout = timeout_seconds
         self._stack: AsyncExitStack | None = None
         self._client: Any = None
         self._bridged: tuple[ToolFunction, ...] = ()
@@ -116,6 +133,7 @@ class McpServer:
         cwd: str | None = None,
         name: str | None = None,
         prefix: str | None = None,
+        timeout_seconds: float | None = None,
     ) -> McpServer:
         """A server spawned as a subprocess, spoken to over stdin/stdout.
 
@@ -125,7 +143,7 @@ class McpServer:
         command's basename.
         """
         endpoint = _Stdio(command, tuple(args), env, cwd)
-        return cls(endpoint, name=name, prefix=prefix)
+        return cls(endpoint, name=name, prefix=prefix, timeout_seconds=timeout_seconds)
 
     @classmethod
     def http(
@@ -135,21 +153,37 @@ class McpServer:
         headers: Mapping[str, str] | None = None,
         name: str | None = None,
         prefix: str | None = None,
+        timeout_seconds: float | None = None,
     ) -> McpServer:
         """A server at a streamable-HTTP endpoint (the daemon's `/mcp`,
         or any remote); `headers` carries a bearer token. The default
         `name` is the URL."""
-        return cls(_Http(url, headers), name=name, prefix=prefix)
+        return cls(
+            _Http(url, headers),
+            name=name,
+            prefix=prefix,
+            timeout_seconds=timeout_seconds,
+        )
 
     @classmethod
     def in_process(
-        cls, server: Any, *, name: str | None = None, prefix: str | None = None
+        cls,
+        server: Any,
+        *,
+        name: str | None = None,
+        prefix: str | None = None,
+        timeout_seconds: float | None = None,
     ) -> McpServer:
         """An SDK server object connected in-process — no socket, no
         subprocess: the keyless door (`create_memory_server`, a test
         server, the harness's `mcp` column). The default `name` is the
         server's."""
-        return cls(_InProcess(server), name=name, prefix=prefix)
+        return cls(
+            _InProcess(server),
+            name=name,
+            prefix=prefix,
+            timeout_seconds=timeout_seconds,
+        )
 
     @property
     def name(self) -> str:
@@ -197,7 +231,15 @@ class McpServer:
                 raise ValueError(_DUPLICATE_WIRE_NAME.format(name=tool.name))
             seen.add(tool.name)
             definition = bridge_definition(tool, prefix=self._prefix)
-            tools.append(bridge_tool(self._call, tool.name, definition, origin=origin))
+            tools.append(
+                bridge_tool(
+                    self._call,
+                    tool.name,
+                    definition,
+                    origin=origin,
+                    timeout_seconds=self._timeout,
+                )
+            )
         return tuple(tools)
 
     async def _call(self, wire_name: str, arguments: dict[str, Any]) -> Any:

@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
     from neosian._foundation.llm.base import BaseLLMClient, Usage
+    from neosian._foundation.shared.structured import Report
 
 # Epoch summaries carry a whole block, so they get twice the per-turn
 # digest budget (§9.6: length discipline comes from folding, not labels).
@@ -58,12 +59,19 @@ async def distill(
     acquire: Callable[[AnyModel], BaseLLMClient],
     model: AnyModel,
     digest_chars: int,
+    report: Report | None = None,
 ) -> tuple[dict[int, str], Usage | None, str | None]:
     """One line of digest per (turn, prose) item; {} on any failure."""
     payload = "\n\n".join(f"[{turn}]\n{prose}" for turn, prose in items)
     system = render(get_prompt("compaction.distill"), digest_chars=str(digest_chars))
     parsed, usage, api_model, _ = await structured_call(
-        acquire, model, system, payload, DigestBatch, "Compaction distillation"
+        acquire,
+        model,
+        system,
+        payload,
+        DigestBatch,
+        "Compaction distillation",
+        report=report,
     )
     if parsed is None:
         return {}, None, None
@@ -82,6 +90,7 @@ async def summarize_epochs(
     acquire: Callable[[AnyModel], BaseLLMClient],
     model: AnyModel,
     digest_chars: int,
+    report: Report | None = None,
 ) -> tuple[dict[int, str], Usage | None, str | None]:
     """One narrative summary per (last_turn, lines) block; {} on failure —
     an unfolded block is simply retried at the next boundary."""
@@ -92,7 +101,13 @@ async def summarize_epochs(
     )
     system = render(get_prompt("compaction.epoch"), epoch_chars=str(budget))
     parsed, usage, api_model, _ = await structured_call(
-        acquire, model, system, payload, EpochBatch, "Compaction epoch summarization"
+        acquire,
+        model,
+        system,
+        payload,
+        EpochBatch,
+        "Compaction epoch summarization",
+        report=report,
     )
     if parsed is None:
         return {}, None, None

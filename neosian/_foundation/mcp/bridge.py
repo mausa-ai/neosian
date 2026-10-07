@@ -69,14 +69,21 @@ def _render(block: Any) -> str:
 
 
 def bridge_tool(
-    call: WireCall, wire_name: str, definition: ToolDefinition, *, origin: str
+    call: WireCall,
+    wire_name: str,
+    definition: ToolDefinition,
+    *,
+    origin: str,
+    timeout_seconds: float | None = None,
 ) -> ToolFunction:
     """A tool function forwarding its keyword arguments verbatim to the wire.
 
     `**arguments` binds anything, so the core's local binding check is
     vacuous by design: the server validates and answers in-band. No
     `functools.wraps` — there is no wrapped signature to expose. `origin`
-    names the server in the core's duplicate-name message.
+    names the server in the core's duplicate-name message;
+    `timeout_seconds` is the server's bound on every call (N7, #331),
+    carried on the metadata so the core enforces it as a decorated tool's.
     """
 
     async def bridged(**arguments: Any) -> ToolResult[Any]:
@@ -84,4 +91,6 @@ def bridge_tool(
 
     bridged.__name__ = bridged.__qualname__ = str(definition.name)
     bridged.__doc__ = definition.description
-    return attach_tool_metadata(bridged, definition, origin=origin)
+    return attach_tool_metadata(
+        bridged, definition, origin=origin, timeout_seconds=timeout_seconds
+    )

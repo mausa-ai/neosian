@@ -123,6 +123,7 @@ output by 1.5. Treat displayed costs as standard-tier estimates.
 | `max_retries` | `2` | Transport-level SDK retries (429/5xx/connection). |
 | `max_tool_iterations` | `10` | Tool rounds before the toolless final call; that response says `iterations_exhausted=True`. |
 | `timeout_seconds` | `None` | Per-request deadline handed to the provider SDK; `None` keeps each SDK's own default. |
+| `tool_timeout_seconds` | `None` | The bound on one tool's execution: past it the model receives a failed result coded `tool_timeout` and the run goes on. `@Tool(timeout_seconds=)` overrides it per tool, `McpServer(..., timeout_seconds=)` per server; `None` waits. |
 | `max_cost_micro_usd` | `None` | The run's spend ceiling in integer micro-USD. Below. |
 | `max_total_tokens` | `None` | The run's token ceiling, all four token classes. Below. |
 | `cache_conversation` | `True` | Anthropic cache breakpoint on the last message; off for one-shot calls. |
@@ -363,6 +364,21 @@ they are what `run(stream=True)` yields, the frozen wire contract a host relays
 over SSE (`sse_stream`, `event_schemas`). `DoneEvent` and
 `AgentResponse` both carry `iterations_exhausted`.
 
+Every hook event names its run: `run_id`, one per `run()` call;
+`parent_run_id` when the run executes inside another run's tool (an
+`Agent` inside a `@Tool`); `conversation_id` when a `Conversation`
+drives it. `LlmCallEvent` fires for every billed model call, `purpose`
+naming which: `agent` (the loop and its final call), `guardrail` (the
+classifier), `compaction` and `reflection` (the Conversation's own
+calls, carrying the conversation id and no run). Summing `on_llm_call`
+is the whole bill; `TurnEvent.response.usage` is the agent's turn plus
+its guardrail calls, never compaction or reflection. `LlmCallEvent` and
+`ToolEvent` carry `started_at` (tz-aware UTC), so a parallel tool's span
+starts where the tool started. The OTel exporter (`neosian.otel.
+otel_hooks`) puts the ids and the purpose on every span
+(`neosian.run_id`, `neosian.parent_run_id`, `neosian.conversation_id`,
+`neosian.purpose`); its spans stay flat, grouped by those attributes.
+
 `ToolCallDeltaEvent` is the one frame you opt into:
 
 ```python
@@ -417,7 +433,10 @@ parsed was still billed. Output guardrails need `stream=False`.
 A tool returns `ToolResult.ok(data)` or `ToolResult.fail(error)`. When
 the failure is the library's to name, `code` carries a machine code
 from `ERROR_CODES`'s `tool_` family in-band: `tool_invalid_arguments`
-(the call did not bind), `tool_execution_failed` (the body raised).
+(the call did not bind), `tool_execution_failed` (the body raised),
+`tool_timeout` (the body ran past its bound: the tool's own
+`timeout_seconds`, else `tool_timeout_seconds`; heartbeats run until
+then, and a body blocking in a thread finishes on its own afterwards).
 The JSON the model sees includes it, so a bad call can be repaired
 on the next turn. `tool_mcp_connection_failed` is the one raised code
 of the family (`McpConnectionError`).

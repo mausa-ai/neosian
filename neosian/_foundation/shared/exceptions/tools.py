@@ -52,3 +52,20 @@ class ToolExecutionError(NeosianError):
             ),
             details={"tool_name": tool_name, "error": error},
         )
+
+
+_TIMED_OUT = "Tool '{tool_name}' timed out after {seconds:g}s"
+
+
+class ToolTimeoutError(NeosianError):
+    """The tool body ran past its bound (N7, ledger #331); never raised,
+    the `ToolResult` twin carries the code in-band so the model can retry
+    or route around it. The fourth code of the `tool_` family."""
+
+    code = "tool_timeout"
+
+    def __init__(self, tool_name: str, seconds: float) -> None:
+        super().__init__(
+            _TIMED_OUT.format(tool_name=tool_name, seconds=seconds),
+            details={"tool_name": tool_name, "seconds": seconds},
+        )

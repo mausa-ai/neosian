@@ -212,6 +212,11 @@ async with McpServer.stdio(
   after it fails in-band, naming the server. Only connecting raises
   `McpConnectionError` (`tool_mcp_connection_failed`), for a command
   that cannot spawn, a failed handshake, an unreachable URL.
+- **A bound.** `timeout_seconds=` on `stdio`, `http` or `in_process`
+  bounds every call to that server: past it the model receives a failed
+  result coded `tool_timeout` and the run goes on; `None`, the default,
+  waits as long as the server does. The agent-wide
+  `AgentConfig.tool_timeout_seconds` applies to a server without one.
 - **Everything else applies unchanged.** The approval gate, hooks,
   `Conversation` (pass the tools in the base config), link handles in
   tool arguments: a bridged tool is an ordinary tool.

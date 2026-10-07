@@ -118,10 +118,14 @@ parameters nullable (`T | None`). A registered door with
 ## Results
 
 `ToolResult.ok(data)` or `ToolResult.fail(error, system_reminder=…,
-code=…)`; the JSON envelope is what the model reads. The `tool_` codes
-and the agent-side knobs (`max_parallel_tools`, `max_tool_iterations`,
-`max_tool_result_chars`, which caps the model's copy of a big result,
-the approval gate) are on the `agent` page (`neosian docs agent`).
+code=…)`; the JSON envelope is what the model reads.
+`@Tool(..., timeout_seconds=5)` bounds one execution of the tool: past
+it the model reads a failure coded `tool_timeout` and the run goes on
+(the agent-wide default is `AgentConfig.tool_timeout_seconds`, `None`
+waits). The `tool_` codes and the other agent-side knobs
+(`max_parallel_tools`, `max_tool_iterations`, `max_tool_result_chars`,
+which caps the model's copy of a big result, the approval gate) are on
+the `agent` page (`neosian docs agent`).
 
 ## Under another framework
 

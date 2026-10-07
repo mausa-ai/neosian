@@ -6,9 +6,10 @@ import asyncio
 import dataclasses
 import logging
 import os
+import time
 from typing import TYPE_CHECKING, Literal
 
-from neosian._foundation.agent.emit import blocked_response, emit_turn
+from neosian._foundation.agent.emit import blocked_response, emit_llm_call, emit_turn
 from neosian._foundation.agent.events import BlockedEvent
 from neosian._foundation.agent.response import AgentResponse
 from neosian._foundation.guardrails.checker import check_with_policy
@@ -66,6 +67,31 @@ def _require_env(env_var: str | None) -> None:
         raise MissingAPIKeyError(f"{env_var} environment variable not set")
 
 
+async def _emit_classifier(
+    ctx: RunContext,
+    model: AnyModel,
+    started: float,
+    *,
+    api_model: str | None,
+    usage: Usage | None,
+    error: BaseException | None = None,
+) -> None:
+    """The classifier's call on the metering seam (N7, ledger #332): one
+    `on_llm_call` with `purpose="guardrail"`, success or parse failure."""
+    await emit_llm_call(
+        ctx,
+        model=model,
+        iteration=0,
+        streamed=False,
+        started=started,
+        api_model=api_model,
+        usage=usage,
+        stop_reason=None,
+        error=error,
+        purpose="guardrail",
+    )
+
+
 async def check_guardrails(
     ctx: RunContext,
     content: str,
@@ -107,6 +133,7 @@ async def check_guardrails(
     # Run policy check, bounded by the config's deadline: a hung
     # classifier is an error under `error_policy`, never a hung run.
     if policy is not None:
+        call_started = time.monotonic()
         try:
             outcome = await asyncio.wait_for(
                 check_with_policy(
@@ -127,7 +154,22 @@ async def check_guardrails(
                     exc.usage,
                     agent._guardrail_model,
                 )
+            await _emit_classifier(
+                ctx,
+                agent._guardrail_model,
+                call_started,
+                api_model=exc.api_model,
+                usage=exc.usage,
+                error=exc,
+            )
             raise
+        await _emit_classifier(
+            ctx,
+            agent._guardrail_model,
+            call_started,
+            api_model=outcome.api_model,
+            usage=outcome.usage,
+        )
         # The classifier's call is billed: it lands on the run's ledger
         # under its own API-reported model, so every terminal value the
         # run produces carries it — never undercount (TG-4).

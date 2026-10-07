@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 from pydantic import ValidationError
 
 from neosian._foundation.agent.approval import ToolApprovalRequest, gate_tool_call
+from neosian._foundation.agent.emit import ToolTiming
 from neosian._foundation.agent.events import (
     AgentEvent,
     MemoryWriteEvent,
@@ -22,7 +23,7 @@ from neosian._foundation.agent.events import (
 from neosian._foundation.agent.lifetimes import reap
 from neosian._foundation.llm.base import ToolCall
 from neosian._foundation.shared.constants import ErrorMessages, Streaming
-from neosian._foundation.shared.exceptions import ToolExecutionError
+from neosian._foundation.shared.exceptions import ToolExecutionError, ToolTimeoutError
 from neosian._foundation.shared.serialization import safe_json_dumps
 from neosian._foundation.shared.types import ToolCallId
 from neosian._foundation.tools.base import ToolResult, get_tool_metadata
@@ -78,15 +79,31 @@ async def execute_tool(agent: Agent, tool_call: ToolCall) -> ToolResult[Any]:
             arguments = dict(tool_call.arguments)
     except (ValidationError, TypeError, ValueError) as e:  # ValueError: no signature
         return rejection(tool_call.name, e)
+    # The bound (N7, ledger #331): the tool's own, else the agent's. A
+    # None bound never expires, so a body's own TimeoutError stays its
+    # failure; past the bound the model reads `tool_timeout` and goes on.
+    bound = (
+        metadata.timeout_seconds
+        if metadata is not None and metadata.timeout_seconds is not None
+        else agent.config.tool_timeout_seconds
+    )
     try:
-        return await tool_func(**arguments)
+        async with asyncio.timeout(bound) as deadline:
+            return await tool_func(**arguments)
+    except TimeoutError as e:
+        if bound is None or not deadline.expired():
+            return _execution_failed(tool_call.name, e)
+        timed_out = ToolTimeoutError(tool_call.name, bound)
+        return ToolResult.fail(str(timed_out), code=timed_out.code)
     except Exception as e:
-        return ToolResult.fail(
-            ErrorMessages.TOOL_EXECUTION_FAILED.format(
-                tool_name=tool_call.name, error=e
-            ),
-            code=ToolExecutionError.code,
-        )
+        return _execution_failed(tool_call.name, e)
+
+
+def _execution_failed(tool_name: str, error: BaseException) -> ToolResult[Any]:
+    return ToolResult.fail(
+        ErrorMessages.TOOL_EXECUTION_FAILED.format(tool_name=tool_name, error=error),
+        code=ToolExecutionError.code,
+    )
 
 
 async def execute_tool_with_heartbeats(
@@ -138,7 +155,7 @@ async def run_tool_stream(
     tool_call: ToolCall,
     queue: asyncio.Queue[AgentEvent | None],
     results: dict[ToolCallId, ToolResult[Any]],
-    durations: dict[ToolCallId, int],
+    timings: dict[ToolCallId, ToolTiming],
     counter: list[int],
     semaphore: asyncio.Semaphore,
 ) -> None:
@@ -147,7 +164,7 @@ async def run_tool_stream(
     Used by _stream_with_client to fan out N tool executions and fan in
     their events in completion order. Caller appends Tool messages
     to the attempt's messages in submission order using `results` keyed
-    by id, and fires on_tool with the wall time recorded in `durations`.
+    by id, and fires on_tool with the start and wall time in `timings`.
 
     The shared `counter` is decremented in `finally`; the last finisher
     pushes a single None sentinel to close the queue. `try/finally`
@@ -155,7 +172,7 @@ async def run_tool_stream(
     """
     try:
         async with semaphore:
-            tool_started = time.monotonic()
+            started = ToolTiming.start()
             async for result, progress in execute_tool_with_heartbeats(
                 agent, tool_call
             ):
@@ -163,9 +180,7 @@ async def run_tool_stream(
                     await queue.put(progress)
                 if result is not None:
                     results[tool_call.id] = result
-                    durations[tool_call.id] = int(
-                        (time.monotonic() - tool_started) * 1000
-                    )
+                    timings[tool_call.id] = ToolTiming.end(started)
                     await queue.put(
                         ToolResultEvent(
                             tool_call_id=tool_call.id,

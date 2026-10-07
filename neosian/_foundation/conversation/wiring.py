@@ -17,10 +17,17 @@ import dataclasses
 import functools
 import inspect
 import logging
+from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, Final
 
+from neosian._foundation.agent.context import CURRENT_CONVERSATION
 from neosian._foundation.agent.events import BlockedEvent, DoneEvent
-from neosian._foundation.agent.hooks import AgentHooks
+from neosian._foundation.agent.hooks import (
+    AgentHooks,
+    CallPurpose,
+    HookRunner,
+    LlmCallEvent,
+)
 from neosian._foundation.conversation.compaction import merge_usage
 from neosian._foundation.conversation.handoff import handoff_tools
 from neosian._foundation.conversation.search_history import (
@@ -41,7 +48,7 @@ from neosian._foundation.shared.exceptions import ConfigurationError
 from neosian._foundation.shared.prompt_assets import get_prompt
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable, Iterator, Sequence
 
     from neosian._foundation.agent.events import AgentEvent
     from neosian._foundation.agent.hooks import TurnEvent
@@ -49,6 +56,7 @@ if TYPE_CHECKING:
     from neosian._foundation.conversation.base import ConversationStore
     from neosian._foundation.conversation.compaction import CompactionResult
     from neosian._foundation.conversation.links import LinkRegistry
+    from neosian._foundation.shared.structured import Report, StructuredCallReport
     from neosian._foundation.shared.types import AgentConfig, ToolFunction
     from neosian._foundation.tools.base import ToolResult
 
@@ -282,6 +290,48 @@ def warn_server_compaction(config: AgentConfig) -> None:
             "boundary, paying for the same compaction repeatedly; "
             "Conversation's own paging is the supported path (§9.6)"
         )
+
+
+@contextmanager
+def driving(conversation_id: str) -> Iterator[None]:
+    """A run started inside names this conversation on its hook events
+    (#333); the var is reset on the way out, so nothing leaks upward."""
+    token = CURRENT_CONVERSATION.set(conversation_id)
+    try:
+        yield
+    finally:
+        CURRENT_CONVERSATION.reset(token)
+
+
+def llm_call_reporter(
+    hooks: HookRunner, conversation_id: str, purpose: CallPurpose
+) -> Report:
+    """The side calls' seat on the metering seam (N7, ledger #332).
+
+    A compaction or reflection call fires `on_llm_call` like the agent's
+    own, labelled by `purpose`, carrying the conversation and no run; the
+    compaction modules thread the callback blind (they import no agent).
+    """
+
+    async def report(call: StructuredCallReport) -> None:
+        await hooks.llm_call(
+            LlmCallEvent(
+                requested_model=call.requested_model,
+                model=call.model,
+                provider=call.provider,
+                iteration=0,
+                streamed=False,
+                usage=call.usage,
+                stop_reason=None,
+                duration_ms=call.duration_ms,
+                error_code=call.error_code,
+                purpose=purpose,
+                started_at=call.started_at,
+                conversation_id=conversation_id,
+            )
+        )
+
+    return report
 
 
 def _compose_hooks(

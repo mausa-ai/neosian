@@ -2,11 +2,15 @@
 
 `otel_hooks()` returns an `AgentHooks` whose four callbacks emit one
 span per observed event. Hooks fire after the work they observe has
-completed and carry its wall time, so spans are recorded post hoc:
-end = the hook's clock now, start = end - the event's `duration_ms`.
-The spans are flat and independent — the hook events carry no run
-identity, and fabricating parent links across them would misattribute;
-a fallback switch is a point-in-time span. Attribute names follow the
+completed, so spans are recorded post hoc: a call or tool event carries
+its `started_at` and the span starts there (N7, #333); otherwise end =
+the hook's clock now, start = end - the event's `duration_ms`. The
+spans are flat — a parent would have to be open before its children
+end, which a post-hoc observer cannot give without holding state (#83);
+instead every span carries the run, parent run and conversation ids
+(`neosian.run_id`, `neosian.parent_run_id`, `neosian.conversation_id`)
+and a call's `neosian.purpose`, so a backend groups them. A fallback
+switch is a point-in-time span. Attribute names follow the
 OpenTelemetry GenAI semantic conventions where one exists and the
 `neosian.*` namespace elsewhere. Spans carry names, models, token
 counts, and outcomes — never message content, tool arguments, or tool
@@ -21,6 +25,7 @@ from __future__ import annotations
 
 import importlib.metadata
 import time
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from neosian._foundation.agent.hooks import (
@@ -44,6 +49,7 @@ _INSTALL_HINT = (
 )
 
 _NS_PER_MS = 1_000_000
+_NS_PER_S = 1_000_000_000
 
 
 def otel_hooks(*, tracer_provider: TracerProvider | None = None) -> AgentHooks:
@@ -81,9 +87,14 @@ def otel_hooks(*, tracer_provider: TracerProvider | None = None) -> AgentHooks:
         attributes: dict[str, AttributeValue],
         *,
         error: str | None = None,
+        started_at: datetime | None = None,
     ) -> None:
-        end = time.time_ns()
-        start = end - duration_ms * _NS_PER_MS
+        if started_at is None:
+            end = time.time_ns()
+            start = end - duration_ms * _NS_PER_MS
+        else:
+            start = int(started_at.timestamp() * _NS_PER_S)
+            end = start + duration_ms * _NS_PER_MS
         span = tracer.start_span(name, start_time=start, attributes=attributes)
         if error is not None:
             span.set_status(error_code, error)
@@ -96,6 +107,8 @@ def otel_hooks(*, tracer_provider: TracerProvider | None = None) -> AgentHooks:
             "gen_ai.request.model": event.requested_model,
             "neosian.iteration": event.iteration,
             "neosian.streamed": event.streamed,
+            "neosian.purpose": event.purpose,
+            **_identity(event),
         }
         if event.model is not None:
             attributes["gen_ai.response.model"] = event.model
@@ -117,6 +130,7 @@ def otel_hooks(*, tracer_provider: TracerProvider | None = None) -> AgentHooks:
             event.duration_ms,
             attributes,
             error=event.error_code,
+            started_at=event.started_at,
         )
 
     def on_tool(event: ToolEvent) -> None:
@@ -126,12 +140,14 @@ def otel_hooks(*, tracer_provider: TracerProvider | None = None) -> AgentHooks:
             "gen_ai.tool.call.id": str(event.call_id),
             "neosian.iteration": event.iteration,
             "neosian.tool.success": event.result.success,
+            **_identity(event),
         }
         _record(
             f"execute_tool {event.name}",
             event.duration_ms,
             attributes,
             error=None if event.result.success else "tool_error",
+            started_at=event.started_at,
         )
 
     def on_turn(event: TurnEvent) -> None:
@@ -143,6 +159,7 @@ def otel_hooks(*, tracer_provider: TracerProvider | None = None) -> AgentHooks:
             "neosian.streamed": event.streamed,
             "neosian.blocked": response.blocked,
             "neosian.tool_calls": len(response.tool_calls_made),
+            **_identity(event),
         }
         if response.model is not None:
             attributes["gen_ai.response.model"] = response.model
@@ -155,6 +172,7 @@ def otel_hooks(*, tracer_provider: TracerProvider | None = None) -> AgentHooks:
             "neosian.fallback.reason": event.reason,
             "neosian.fallback.sticky": event.sticky,
             "neosian.streamed": event.streamed,
+            **_identity(event),
         }
         if event.cause_code is not None:
             attributes["neosian.fallback.cause_code"] = event.cause_code
@@ -168,6 +186,18 @@ def otel_hooks(*, tracer_provider: TracerProvider | None = None) -> AgentHooks:
         on_tool=on_tool,
         on_fallback=on_fallback,
     )
+
+
+def _identity(
+    event: LlmCallEvent | ToolEvent | TurnEvent | FallbackEvent,
+) -> dict[str, AttributeValue]:
+    """The run, parent run and conversation ids an event carries (#333)."""
+    ids = (
+        ("neosian.run_id", event.run_id),
+        ("neosian.parent_run_id", event.parent_run_id),
+        ("neosian.conversation_id", event.conversation_id),
+    )
+    return {key: value for key, value in ids if value is not None}
 
 
 def _load_trace() -> Any:

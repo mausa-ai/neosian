@@ -89,6 +89,7 @@ _TOOL_RESULT_INVALID = "max_tool_result_chars must be >= 1 when set, got {value}
 
 _MAX_TOOL_ITERATIONS_INVALID = "max_tool_iterations must be >= 1, got {value}"
 _TIMEOUT_INVALID = "timeout_seconds must be positive, got {value}"
+_TOOL_TIMEOUT_INVALID = "tool_timeout_seconds must be positive, got {value}"
 _BUDGET_INVALID = "{field} must be >= 1 when set, got {value}"
 _FALLBACK_BOTH = (
     "FallbackConfig takes model= (one rung) or models= (a ladder), never both"
@@ -300,6 +301,10 @@ class AgentConfig:
     # Per-request deadline handed to the provider SDK; None keeps each
     # SDK's own default (NF #169, LL-21).
     timeout_seconds: float | None = None
+    # The bound on one tool's execution (N7, ledger #331): past it the
+    # model receives a failed result coded `tool_timeout` and the run goes
+    # on. None waits; a tool's own `timeout_seconds` wins over this.
+    tool_timeout_seconds: float | None = None
     # The run's spend ceilings (NC9, ledger #222): the run raises
     # BudgetExceededError the moment its usage ledger crosses one, so
     # nothing is billed past the cap. Both default to None — off.
@@ -434,6 +439,10 @@ class AgentConfig:
         if self.timeout_seconds is not None and self.timeout_seconds <= 0:
             raise UnsupportedParameterError(
                 _TIMEOUT_INVALID.format(value=self.timeout_seconds)
+            )
+        if self.tool_timeout_seconds is not None and self.tool_timeout_seconds <= 0:
+            raise UnsupportedParameterError(
+                _TOOL_TIMEOUT_INVALID.format(value=self.tool_timeout_seconds)
             )
         if self.max_tool_result_chars is not None and self.max_tool_result_chars < 1:
             raise UnsupportedParameterError(

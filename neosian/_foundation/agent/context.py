@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import logging
 import time
+import uuid
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -34,6 +36,19 @@ _UNPRICED_UNDER_COST_CAP = (
     "Model {model} has no verified pricing: its spend cannot count against "
     "max_cost_micro_usd. Use max_total_tokens to bound this run."
 )
+
+# Run identity rides contextvars (N7, ledger #333), never Agent state: the
+# loops set CURRENT_RUN around a tool batch, so an `Agent` inside a `@Tool`
+# reads its parent's id when its own context is built; `Conversation` sets
+# CURRENT_CONVERSATION around each run it drives.
+CURRENT_RUN: ContextVar[str | None] = ContextVar("neosian_current_run", default=None)
+CURRENT_CONVERSATION: ContextVar[str | None] = ContextVar(
+    "neosian_current_conversation", default=None
+)
+
+
+def new_run_id() -> str:
+    return uuid.uuid4().hex
 
 
 def merge_usage(a: Usage | None, b: Usage | None) -> Usage | None:
@@ -162,6 +177,11 @@ class RunContext:
     started: float = field(default_factory=time.monotonic)  # TurnEvent duration
     ledger: UsageLedger = field(default_factory=UsageLedger)
     scope: ToolScope = field(default_factory=ToolScope)
+    # The run's identity on every hook event (#333): minted here, held
+    # nowhere else — the core stays stateless.
+    run_id: str = field(default_factory=new_run_id)
+    parent_run_id: str | None = field(default_factory=CURRENT_RUN.get)
+    conversation_id: str | None = field(default_factory=CURRENT_CONVERSATION.get)
 
 
 @dataclass(slots=True)

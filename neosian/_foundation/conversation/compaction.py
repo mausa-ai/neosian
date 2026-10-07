@@ -39,6 +39,7 @@ if TYPE_CHECKING:
     from neosian._foundation.conversation.types import ConversationTurn
     from neosian._foundation.llm.base import BaseLLMClient, Message
     from neosian._foundation.shared.context_policy import ContextPolicy
+    from neosian._foundation.shared.structured import Report
 
 # USER text is compacted least aggressively (§9.6): verbatim up to this
 # multiple of digest_chars, then head-clipped with a recall pointer
@@ -132,13 +133,15 @@ async def run_boundary(
     config: CompactionConfig,
     model: AnyModel,
     acquire: Callable[[AnyModel], BaseLLMClient],
+    report: Report | None = None,
 ) -> CompactionResult:
     """Run one compaction boundary; never more than one per send.
 
     Distillation failure degrades the affected turns to deterministic
     ``kind="log"`` lines; epoch failure skips the fold (retried next
     boundary); a store failure propagates — the caller's send raises
-    having persisted nothing.
+    having persisted nothing. `report` receives each model call's bill
+    (N7, #332).
     """
     head = turns[-1].turn if turns else 0
     cutoff = head - config.hot_turns
@@ -163,6 +166,7 @@ async def run_boundary(
                 acquire=acquire,
                 model=resolve_model(config.model or model),
                 digest_chars=config.digest_chars,
+                report=report,
             )
         for turn in pending:
             override = digests.get(turn.turn)
@@ -188,6 +192,7 @@ async def run_boundary(
             acquire=acquire,
             model=resolve_model(config.model or model),
             digest_chars=config.digest_chars,
+            report=report,
         )
         for last_turn, _ in blocks:
             summary = summaries.get(last_turn)

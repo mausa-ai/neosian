@@ -8,8 +8,31 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-10-08
+
+### Added
+
+- A bound on tool execution: `AgentConfig.tool_timeout_seconds` (default
+  `None`, unbounded as before), `@Tool(timeout_seconds=)` per tool and
+  `McpServer(..., timeout_seconds=)` per server. Past the bound the model
+  receives a failed result coded `tool_timeout`, the fourth code of the
+  `tool_` family, and the run continues; heartbeats run until the bound.
+- Run identity and timing on the hook events: `run_id` (one per `run()`
+  call), `parent_run_id` (an `Agent` inside a `@Tool`) and
+  `conversation_id` (under a `Conversation`) on all four events;
+  `started_at` on `LlmCallEvent` and `ToolEvent`; `LlmCallEvent.purpose`
+  (`agent`, `guardrail`, `compaction`, `reflection`). The OTel exporter
+  carries them as `neosian.run_id`, `neosian.parent_run_id`,
+  `neosian.conversation_id` and `neosian.purpose`, and starts a span
+  where its call or tool started.
+
 ### Changed
 
+- `on_llm_call` now fires for every billed model call: the guardrail
+  classifier, compaction's distillation and epoch calls and reflection
+  join the agent loop's own. Summing it is the whole bill; a host that
+  added `ReflectionResult.usage` or `CompactionResult.usage` by hand on
+  top of the hook now counts that spend twice.
 - The repository's one uv pin (the Dockerfile, the installer and both
   workflows) moves from 0.12.10 to 0.12.23.
 
@@ -1957,6 +1980,7 @@ pre-release — pin it explicitly; the API stability promise rides v1.0.0.
   guard.
 
 [Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.5.0...HEAD
+[1.6.0]: https://github.com/mausa-ai/neosian/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/mausa-ai/neosian/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/mausa-ai/neosian/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/mausa-ai/neosian/compare/v1.2.0...v1.3.0

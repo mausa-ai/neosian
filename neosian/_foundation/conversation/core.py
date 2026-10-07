@@ -46,8 +46,10 @@ from neosian._foundation.conversation.wiring import (
     DEFAULT_MEMORY_MOUNT_PATH,
     as_user_message,
     derive_config,
+    driving,
     fold_event,
     fold_response,
+    llm_call_reporter,
     resident_tools,
     resolve_memory,
     warn_server_compaction,
@@ -368,6 +370,9 @@ class Conversation:
             # Deliberately bare — no turn-ref: a boundary write belongs to
             # the whole session, not a turn (ledger #86; NP kept it).
             actor=self._actor,
+            report=llm_call_reporter(
+                self._agent._hooks, self._conversation_id, "reflection"
+            ),
         )
         if result.degraded is None:
             # The distillation call landed (even with zero writes); a
@@ -385,6 +390,9 @@ class Conversation:
             config=self._compaction,
             model=resolve_model(self._base_config.model),
             acquire=self._session_for_run()._get_or_create_client,
+            report=llm_call_reporter(
+                self._agent._hooks, self._conversation_id, "compaction"
+            ),
         )
         if result.entries:
             self._projections.extend(result.entries)
@@ -445,9 +453,10 @@ class Conversation:
             assert self._agent is not None
             self._captured = None
             self._inbox_context = await messages_for_turn(self._mailbox)
-            response = await self._session_for_run().run(
-                [*self._context, *view, *self._inbox_context, user], stream=False
-            )
+            with driving(self._conversation_id):
+                response = await self._session_for_run().run(
+                    [*self._context, *view, *self._inbox_context, user], stream=False
+                )
             await self._persist(user)
             return fold_response(response, compacted)
 
@@ -461,9 +470,10 @@ class Conversation:
             assert self._agent is not None
             self._captured = None
             self._inbox_context = await messages_for_turn(self._mailbox)
-            events = await self._session_for_run().run(
-                [*self._context, *view, *self._inbox_context, user], stream=True
-            )
+            with driving(self._conversation_id):  # the run's context is built here
+                events = await self._session_for_run().run(
+                    [*self._context, *view, *self._inbox_context, user], stream=True
+                )
             # Closed with this generator (AG-14): a consumer that stops
             # iterating reaches the run's streams and tools synchronously.
             async with closing(events):

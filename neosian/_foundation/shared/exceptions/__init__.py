@@ -102,6 +102,7 @@ from neosian._foundation.shared.exceptions.tools import (
     McpConnectionError as McpConnectionError,
     ToolExecutionError as ToolExecutionError,
     ToolInvalidArgumentsError as ToolInvalidArgumentsError,
+    ToolTimeoutError as ToolTimeoutError,
 )
 
 if TYPE_CHECKING:

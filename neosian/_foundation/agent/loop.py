@@ -8,9 +8,14 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel
 
-from neosian._foundation.agent.emit import blocked_response, emit_llm_call
+from neosian._foundation.agent.context import CURRENT_RUN
+from neosian._foundation.agent.emit import (
+    ToolTiming,
+    blocked_response,
+    emit_llm_call,
+    tool_event,
+)
 from neosian._foundation.agent.guards import check_guardrails
-from neosian._foundation.agent.hooks import ToolEvent
 from neosian._foundation.agent.response import AgentResponse
 from neosian._foundation.agent.tool_exec import execute_tool, format_tool_result
 from neosian._foundation.llm.base import (
@@ -152,21 +157,27 @@ async def execute_with_client(
 
         async def _gated_execute(
             tc: ToolCall, *, sem: asyncio.Semaphore = semaphore
-        ) -> tuple[ToolResult[Any], int]:
+        ) -> tuple[ToolResult[Any], ToolTiming]:
             async with sem:
-                tool_started = time.monotonic()
+                started = ToolTiming.start()
                 result = await execute_tool(agent, tc)
-                return result, int((time.monotonic() - tool_started) * 1000)
+                return result, ToolTiming.end(started)
 
-        timed_results = await asyncio.gather(*(_gated_execute(tc) for tc in tool_calls))
+        # The batch runs under this run's id (#333): gather copies the
+        # context into each tool task, so a nested Agent reads its parent.
+        token = CURRENT_RUN.set(ctx.run_id)
+        try:
+            timed_results = await asyncio.gather(
+                *(_gated_execute(tc) for tc in tool_calls)
+            )
+        finally:
+            CURRENT_RUN.reset(token)
 
         # Append in submission order — Anthropic requires tool_result
         # blocks to match the order of tool_use blocks in the preceding
         # assistant message. on_tool fires in the same order so blocking
         # and streaming runs emit identical hook sequences.
-        for tool_call, (result, duration_ms) in zip(
-            tool_calls, timed_results, strict=True
-        ):
+        for tool_call, (result, timing) in zip(tool_calls, timed_results, strict=True):
             all_tool_results.append(result)
             tool_result_content = format_tool_result(
                 result, agent._max_tool_result_chars
@@ -179,14 +190,7 @@ async def execute_with_client(
                 )
             )
             await ctx.hooks.tool(
-                ToolEvent(
-                    call_id=tool_call.id,
-                    name=tool_call.name,
-                    arguments=tool_call.arguments,
-                    result=result,
-                    duration_ms=duration_ms,
-                    iteration=iteration,
-                )
+                tool_event(ctx, tool_call, result, timing=timing, iteration=iteration)
             )
 
     # Max iterations reached: the last call sends no real tools, so the

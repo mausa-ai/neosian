@@ -18,6 +18,10 @@ from neosian._foundation.shared.types import ToolFunction as ToolFunction, ToolN
 from neosian._foundation.tools.result import ToolResult as ToolResult
 from neosian._foundation.tools.schema import arguments_schema, build_arguments_model
 
+_TIMEOUT_INVALID = (
+    "Tool '{name}': timeout_seconds must be positive or None, got {value}"
+)
+
 
 @dataclass
 class ToolMetadata:
@@ -25,13 +29,16 @@ class ToolMetadata:
     library-bridged tool came from (for messages), None when decorated.
     `arguments` is the model the schema was generated from and every call
     is validated against — None for a definition the library attached
-    (an MCP server's, an eval stub's), which binds instead."""
+    (an MCP server's, an eval stub's), which binds instead.
+    `timeout_seconds` bounds one execution (N7, ledger #331); None defers
+    to `AgentConfig.tool_timeout_seconds`."""
 
     name: ToolName
     description: str
     definition: ToolDefinition
     origin: str | None = None
     arguments: type[BaseModel] | None = None
+    timeout_seconds: float | None = None
 
 
 class Tool:
@@ -57,6 +64,7 @@ class Tool:
         *,
         params: Mapping[str, str] | None = None,
         strict: bool = False,
+        timeout_seconds: float | None = None,
     ) -> None:
         """Initialize tool decorator.
 
@@ -71,11 +79,21 @@ class Tool:
                 strict-mode schema shape (every property required, null
                 defaults dropped). Counts against Anthropic's per-request
                 schema-complexity budget. Default False (best-effort).
+            timeout_seconds: The bound on one execution of this tool; past
+                it the model receives a failed result coded `tool_timeout`
+                and the run goes on. None defers to the agent's
+                `tool_timeout_seconds`.
+
+        Raises:
+            ValueError: If `timeout_seconds` is not positive.
         """
+        if timeout_seconds is not None and timeout_seconds <= 0:
+            raise ValueError(_TIMEOUT_INVALID.format(name=name, value=timeout_seconds))
         self.name = ToolName(name)
         self.description = description
         self.params = params
         self.strict = strict
+        self.timeout_seconds = timeout_seconds
 
     def __call__(self, func: ToolFunction) -> ToolFunction:
         """Apply decorator to function."""
@@ -91,6 +109,7 @@ class Tool:
             description=self.description,
             definition=definition,
             arguments=arguments,
+            timeout_seconds=self.timeout_seconds,
         )
         func._tool_metadata = metadata  # type: ignore[attr-defined]
         return func
@@ -135,6 +154,7 @@ def attach_tool_metadata(
     *,
     origin: str | None = None,
     arguments: type[BaseModel] | None = None,
+    timeout_seconds: float | None = None,
 ) -> ToolFunction:
     """Attach a ready-made definition to a function the library built.
 
@@ -142,7 +162,8 @@ def attach_tool_metadata(
     harness's stub/override wrappers (DESIGN §13.6), the MCP bridge
     (§25) — the same library-only-mutator idiom as set_native_type
     below. Never reaches into an existing agent. `arguments` carries the
-    validator along when the wrapper stands in for a decorated tool.
+    validator along when the wrapper stands in for a decorated tool;
+    `timeout_seconds` the bound the factory chose (an MCP server's).
     """
     metadata = ToolMetadata(
         name=definition.name,
@@ -150,6 +171,7 @@ def attach_tool_metadata(
         definition=definition,
         origin=origin,
         arguments=arguments,
+        timeout_seconds=timeout_seconds,
     )
     func._tool_metadata = metadata  # type: ignore[attr-defined]
     return func
