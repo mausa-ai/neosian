@@ -327,6 +327,31 @@ evidence. Each stays measured every dispatch; none is tuned around
 
 ## Results
 
+### 2026-10-08: Haiku 5.5, local qualification
+
+Local runs on the uncommitted Haiku 5.5 entry (ledger #335), the unchanged
+twelve-scenario pack `5623d0d6…`, prompts and scoring rules as shipped. These
+are pre-dispatch measurements, not a CI dispatch or a claim of green memory
+qualification; the dispatched board rides the next release. The board
+completed without provider or harness errors.
+
+| Provider | Model | function | cli | http | mcp | total |
+|---|---|---|---|---|---|---|
+| Anthropic | claude-haiku-5-5 | 11/12 | 10/12 | 12/12 | 12/12 | 45/48 |
+
+- **Haiku:** `handoff` on function and cli: the continuing session does not
+  produce the build id from the recorded `cc-build` session (it answers that
+  the id is not in what was kept), where http and mcp recall it. cli `skills`
+  revises the skill twice in the revise session (three versions instead of
+  two: created, modified, modified; the class Sonnet's function cell showed on
+  2026-10-04). Every other cell passes. The board took 412 s.
+
+The catalog probe passed for `claude-haiku-5-5`; the frontier suite passed its
+six Haiku cells (effort low through max, each with a streamed continuation,
+and the signed-thinking replay after a changed memory prefix) in 38 s; the
+link-handle cell passed. One short real call priced on the base card: 22
+prompt tokens and 4 output tokens, 5 µ$.
+
 ### 2026-10-04: Sonnet 5.5 and GPT-6.1 Sol, local qualification
 
 Local runs on the uncommitted 1.4.0 implementation, twelve-scenario pack

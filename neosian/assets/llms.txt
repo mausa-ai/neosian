@@ -261,6 +261,10 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
   wall clock, change installed routing. The resident chat agent defaults
   to a model a local server runs, else latest Sonnet (5.5), separately
   from library defaults.
+- `claude-haiku-5-5` (Haiku 5.5; `CLAUDE_HAIKU_DEFAULT` and `_LATEST` name
+  the same row) is the fast Claude row, priced by prompt length: $0.10/$0.50
+  per MTok up to a 100,000-token prompt, $0.50/$2.50 beyond; the card is
+  picked per call from `Usage.prompt_tokens` and both cards are sealed.
 - Effort includes `XHIGH` and explicit `NONE` where supported (Luna);
   Python `None` leaves the provider default. Claude 5.5 preserves summarized
   thinking and asks the provider to drop prefix-incompatible signed blocks.

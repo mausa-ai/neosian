@@ -13,13 +13,20 @@ from neosian import (
     ReasoningEffort,
     Role,
     ToolChoice,
+    ToolDefinition,
     UnsupportedParameterError,
 )
 from neosian._foundation.llm.anthropic import AnthropicClient
 from neosian._foundation.llm.anthropic_convert import convert_messages
+from neosian._foundation.shared.types import ToolName
 
 pytestmark = pytest.mark.unit
-MODELS = (Model.CLAUDE_SONNET_5_5, Model.CLAUDE_OPUS_5_5, Model.CLAUDE_FABLE_5_1)
+NO_FORCED_CHOICE = (
+    Model.CLAUDE_SONNET_5_5,
+    Model.CLAUDE_OPUS_5_5,
+    Model.CLAUDE_FABLE_5_1,
+)
+BOUND = (*NO_FORCED_CHOICE, Model.CLAUDE_HAIKU_5_5)  # Haiku takes a forced choice
 
 
 def _reply(request: httpx.Request) -> httpx.Response:
@@ -91,7 +98,7 @@ def _reply(request: httpx.Request) -> httpx.Response:
     )
 
 
-@pytest.mark.parametrize("model", MODELS)
+@pytest.mark.parametrize("model", BOUND)
 @pytest.mark.parametrize("streaming", [False, True])
 @pytest.mark.parametrize("compaction", [False, True])
 async def test_binding_and_display_survive_sdk_and_replay(
@@ -170,7 +177,7 @@ async def test_binding_and_display_survive_sdk_and_replay(
         await client.close()
 
 
-@pytest.mark.parametrize("model", MODELS)
+@pytest.mark.parametrize("model", NO_FORCED_CHOICE)
 async def test_forced_tool_choice_fails_before_the_sdk(model: Model) -> None:
     client = AnthropicClient(api_key="test")
     try:
@@ -180,5 +187,34 @@ async def test_forced_tool_choice_fails_before_the_sdk(model: Model) -> None:
                 model,
                 tool_choice=ToolChoice.required(),
             )
+    finally:
+        await client.close()
+
+
+async def test_haiku_forced_choice_reaches_the_sdk() -> None:
+    """The one Claude 5.5 row that takes a forced choice sends it on the wire."""
+    requests: list[httpx.Request] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return _reply(request)
+
+    client = AnthropicClient(api_key="test")
+    await client.close()
+    client._client = AsyncAnthropic(
+        api_key="test",
+        http_client=httpx.AsyncClient(transport=httpx.MockTransport(respond)),
+    )
+    tool = ToolDefinition(
+        name=ToolName("ping"), description="Ping.", parameters={"type": "object"}
+    )
+    try:
+        await client.complete(
+            [Message(role=Role.USER, content="x")],
+            Model.CLAUDE_HAIKU_5_5,
+            tools=[tool],
+            tool_choice=ToolChoice.required(),
+        )
+        assert json.loads(requests[0].content)["tool_choice"] == {"type": "any"}
     finally:
         await client.close()

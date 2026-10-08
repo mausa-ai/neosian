@@ -51,6 +51,8 @@ def test_all_configuration_boundaries_resolve_selectors(build: Any) -> None:
 
 def test_provider_shortcuts_keep_the_balanced_tier() -> None:
     assert resolve_model("anthropic:latest") is Model.CLAUDE_SONNET_5_5
+    assert resolve_model("anthropic:haiku:latest") is Model.CLAUDE_HAIKU_5_5
+    assert lifecycle.DEFAULTS["anthropic:haiku"] is lifecycle.LATEST["anthropic:haiku"]
     assert resolve_model("openai:latest") is Model.GPT_6_1_SOL
     assert resolve_model("openai:default") is DEFAULT_MODELS[Provider.OPENAI]
     assert resolve_model("anthropic:default") is DEFAULT_MODELS[Provider.ANTHROPIC]

@@ -35,6 +35,7 @@ config = AgentConfig(
 | Sonnet | `CLAUDE_SONNET_DEFAULT` | `CLAUDE_SONNET_LATEST` |
 | Opus | `CLAUDE_OPUS_DEFAULT` | `CLAUDE_OPUS_LATEST` |
 | Fable | `CLAUDE_FABLE_DEFAULT` | `CLAUDE_FABLE_LATEST` |
+| Haiku | `CLAUDE_HAIKU_DEFAULT` | `CLAUDE_HAIKU_LATEST` |
 | Sol | `GPT_SOL_DEFAULT` | `GPT_SOL_LATEST` |
 | Astra | `GPT_ASTRA_DEFAULT` | `GPT_ASTRA_LATEST` |
 | Luna | `GPT_LUNA_DEFAULT` | `GPT_LUNA_LATEST` |
@@ -71,7 +72,8 @@ For 1.4.0 (published 2026-10-04), latest is Sonnet 5.5 / GPT-6.1 Sol;
 library defaults remain Sonnet 5 / GPT-6 Sol through the window, with
 promotion/removal eligible from 2026-11-03 UTC. GPT-5.1 also begins retirement
 in favor of GPT-6.1 Sol. Opus 5.5, Fable 5.1, Astra and Luna are both default
-and latest.
+and latest, as is Haiku 5.5 (added after 1.6.0; no predecessor was left in the
+catalog to window).
 The overall library default remains Cerebras. The **resident chat agent**
 chooses a model a local server is running, else latest Sonnet (`neosian docs
 local`); flags, saved selections and `/model` override it. This chat decision
@@ -81,7 +83,7 @@ is separate from the library catalog policy.
 
 Use `ReasoningEffort.LOW`, `MEDIUM`, `HIGH`, `XHIGH` or `MAX` on the current
 Claude and GPT-6 tiers. `None` omits effort and preserves the provider default:
-Sonnet/Fable use high, Opus 5.5 and GPT-6.1 Sol/Luna use medium.
+Sonnet/Fable use high, Opus 5.5, Haiku 5.5 and GPT-6.1 Sol/Luna use medium.
 `ReasoningEffort.NONE` explicitly requests no reasoning where supported
 (Luna and the transitioning GPT-6 Sol); Astra, GPT-6.1 Sol and Claude reject it.
 Low effort is not disabled thinking, and the same level can have different
@@ -99,13 +101,22 @@ on `Message.extra["anthropic"]`. The binding-controls beta requests dropping
 blocks invalidated by prefix edits, memory injection or compaction instead of
 failing the request; compatible signatures are replayed unchanged. Compaction
 combines both beta headers. Forced tool choice is unsupported on Sonnet 5.5,
-Opus 5.5 and Fable 5.1; use automatic tools or native structured output.
+Opus 5.5 and Fable 5.1 (Haiku 5.5 takes it); use automatic tools or native
+structured output.
 
-Prices remain integer micro-USD at the standard tier. GPT-6.1 Sol is $2 input,
-$10 output, $0.10 cached input and $2.50 cache write per million tokens.
-The existing estimator does not apply long-context/tier/region premiums:
-above 272K GPT input tokens, published rates multiply input/cache by 2 and
-output by 1.5. Treat displayed costs as standard-tier estimates.
+Prices are integer micro-USD on the standard tier, except where a row carries
+a long-prompt card: Haiku 5.5 bills $0.10 input, $0.50 output, $0.01 cached
+input and $0.125 cache write per million tokens up to a 100,000-token prompt,
+and $0.50 / $2.50 / $0.05 / $0.625 beyond it. The prompt length is
+`Usage.prompt_tokens` (uncached input plus both cache classes) and the card is
+chosen per call, so the cost ceiling and `on_llm_call` are exact. A summed
+`Usage` (a turn's `response.usage`, the chat envelope, compaction and
+maintenance results) bills on the sum's length, which is at least each
+call's: never an undercount, an overcount where calls straddle the threshold.
+GPT-6.1 Sol is $2 input, $10 output, $0.10 cached input and $2.50 cache write
+per million tokens; the estimator still applies no premium above 272K GPT
+input tokens (published rates multiply input/cache by 2 and output by 1.5),
+so treat those displayed costs as standard-tier estimates.
 
 ## AgentConfig, field by field
 
@@ -242,12 +253,13 @@ every fallback rung. The last call, the one made after
 a forced choice would leave the model required to call what it was not
 given, and is dropped with them.
 
-Two Claude rows take no forced choice at all: Opus 5.5 and Fable 5.1
-answer `required()` and `tool(...)` with a 400 (`auto` and `none` are
+Three Claude rows take no forced choice at all: Sonnet 5.5, Opus 5.5 and
+Fable 5.1 answer `required()` and `tool(...)` with a 400 (`auto` and `none` are
 their whole vocabulary). The scope refuses a forced choice on such a
 main model before any call is made (`UnsupportedParameterError`), and a
 fallback ladder skips such a rung when the run forces a call. The fact
-is on the row: `Model.CLAUDE_OPUS_5_5.supports_forced_tool_choice`.
+is on the row: `Model.CLAUDE_OPUS_5_5.supports_forced_tool_choice`; Haiku 5.5
+is the Claude 5.5 exception and takes one.
 
 ## A schema with tools
 

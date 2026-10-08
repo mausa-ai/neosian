@@ -131,6 +131,7 @@ class TestModelEnum:
         assert Model.CLAUDE_OPUS_5_5.max_output_tokens == 128_000
         assert Model.CLAUDE_FABLE_5_1.max_output_tokens == 128_000
         assert Model.CLAUDE_SONNET_5.max_output_tokens == 128_000
+        assert Model.CLAUDE_HAIKU_5_5.max_output_tokens == 128_000
 
     def test_model_has_context_window(self) -> None:
         """Test that all models have context_window property."""
@@ -149,6 +150,7 @@ class TestModelEnum:
         assert Model.CLAUDE_OPUS_5_5.context_window == 1_000_000
         assert Model.CLAUDE_FABLE_5_1.context_window == 1_000_000
         assert Model.CLAUDE_SONNET_5.context_window == 1_000_000
+        assert Model.CLAUDE_HAIKU_5_5.context_window == 1_000_000
 
     def test_model_value_is_string(self) -> None:
         """Test that Model enum values are strings (for API compatibility)."""

@@ -31,7 +31,7 @@ from neosian._foundation.shared.model_spec import (
     format_micro_usd as format_micro_usd,
 )
 
-PRICES_AS_OF = "2026-10-04"
+PRICES_AS_OF = "2026-10-08"
 _MODEL_SPECS: dict[str, ModelSpec] = {}
 
 
@@ -50,6 +50,7 @@ class Model(str, Enum):
     CLAUDE_OPUS_5_5 = "claude-opus-5-5"
     CLAUDE_SONNET_5_5 = "claude-sonnet-5-5"
     CLAUDE_SONNET_5 = "claude-sonnet-5"
+    CLAUDE_HAIKU_5_5 = "claude-haiku-5-5"
 
     # Cerebras
     CEREBRAS_GPT_OSS_120B = "gpt-oss-120b"
@@ -197,8 +198,9 @@ _MODEL_SPECS[Model.GPT_5_1.value] = ModelSpec(
 )
 
 # Anthropic (platform.claude.com/docs/en/about-claude/pricing and
-# /model-deprecations, 2026-09-26): `retires` is the not-sooner-than
-# floor; Opus 5.5 and Fable 5.1 take no forced `tool_choice` (#292).
+# /model-deprecations, 2026-10-08): `retires` is the not-sooner-than
+# floor; Sonnet 5.5, Opus 5.5 and Fable 5.1 take no forced `tool_choice`
+# (#292), Haiku 5.5 does.
 _CLAUDE_5 = partial(
     ModelSpec,
     provider=Provider.ANTHROPIC,
@@ -248,6 +250,20 @@ _MODEL_SPECS[Model.CLAUDE_SONNET_5.value] = _CLAUDE_5(
         cache_write_per_mtok=2_500_000,
     ),
     retires=date(2027, 6, 30),
+)
+# Haiku 5.5 (released 2026-10-07): the one tiered card — a prompt over 100K
+# tokens bills on the long card, picked per call (#335) — and the one
+# Claude 5 row that takes a forced `tool_choice`. Effort defaults to medium.
+_MODEL_SPECS[Model.CLAUDE_HAIKU_5_5.value] = _CLAUDE_5(
+    pricing=ModelPricing(
+        100_000,
+        500_000,
+        10_000,
+        125_000,
+        long_prompt_tokens=100_000,
+        long_prompt=ModelPricing(500_000, 2_500_000, 50_000, 625_000),
+    ),
+    retires=date(2027, 10, 7),
 )
 
 # Cerebras (inference-docs.cerebras.ai/models, 2026-09-10): the public
@@ -313,8 +329,9 @@ _MODEL_SPECS[Model.FAKE_REASONING.value] = ModelSpec(
 )
 
 # The shipped door rows (DESIGN §19.5, §31): priced here so the fingerprint
-# seals them. Where a card is tiered, the standard ≤200k tier is the sealed
-# number (docs.x.ai/docs/models; ai.google.dev/gemini-api/docs/pricing).
+# seals them. Where a provider tiers a card, the standard ≤200k tier is the
+# sealed number until a verified second card rides `long_prompt` (#335)
+# (docs.x.ai/docs/models; ai.google.dev/gemini-api/docs/pricing).
 _MODEL_SPECS[Model.GROK_4_6.value] = ModelSpec(
     provider=Provider.OPENAI_COMPATIBLE,
     context_window=500_000,
@@ -381,6 +398,13 @@ DEFAULT_MODELS: dict[Provider, Model] = {
 }
 
 
+def _card(pricing: ModelPricing) -> str:
+    return (
+        f"{pricing.input_per_mtok}:{pricing.output_per_mtok}"
+        f":{pricing.cache_read_per_mtok}:{pricing.cache_write_per_mtok}"
+    )
+
+
 def _prices_fingerprint() -> str:
     """Canonical sha256 of the shipped rate card + its as-of date.
 
@@ -396,11 +420,11 @@ def _prices_fingerprint() -> str:
         if spec.pricing is None or spec.provider is Provider.FAKE:
             continue
         pricing = spec.pricing
-        lines.append(
-            f"{model_id}:{pricing.input_per_mtok}:{pricing.output_per_mtok}"
-            f":{pricing.cache_read_per_mtok}:{pricing.cache_write_per_mtok}"
-        )
+        line = f"{model_id}:{_card(pricing)}"
+        if pricing.long_prompt is not None:  # the long card, with its threshold
+            line += f":>{pricing.long_prompt_tokens}:{_card(pricing.long_prompt)}"
+        lines.append(line)
     return hashlib.sha256("\n".join(lines).encode("ascii")).hexdigest()
 
 
-PRICES_FINGERPRINT = "916bc097749a495d34a01fa470c898cc0d342fce74251feacf3cd2e73e909362"
+PRICES_FINGERPRINT = "594d91013aba8f1d4c42f35ddb5cafdfecc37b0f68803c50fceafefc47249fdd"

@@ -5,7 +5,12 @@ import pytest
 from neosian import Message, Model, ReasoningEffort, Role
 from neosian._foundation.llm.anthropic import AnthropicClient
 
-MODELS = (Model.CLAUDE_SONNET_5_5, Model.CLAUDE_OPUS_5_5, Model.CLAUDE_FABLE_5_1)
+MODELS = (
+    Model.CLAUDE_SONNET_5_5,
+    Model.CLAUDE_OPUS_5_5,
+    Model.CLAUDE_FABLE_5_1,
+    Model.CLAUDE_HAIKU_5_5,
+)
 
 
 @pytest.mark.parametrize("model", MODELS, ids=lambda m: m.value)

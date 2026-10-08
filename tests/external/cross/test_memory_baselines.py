@@ -48,6 +48,13 @@ _PROVIDER_CASES = [
         "ANTHROPIC_API_KEY",
         id="anthropic",
     ),
+    # A second measured Anthropic row (#335), #210's second-row precedent.
+    pytest.param(
+        Model.CLAUDE_HAIKU_5_5,
+        "anthropic_api_key",
+        "ANTHROPIC_API_KEY",
+        id="anthropic-haiku",
+    ),
     pytest.param(
         Model.CEREBRAS_GPT_OSS_120B,
         "cerebras_api_key",

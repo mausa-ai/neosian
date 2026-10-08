@@ -90,3 +90,36 @@ These are findings and follow-up work, not additional migrations in 1.4.0.
 | Moonshot: `kimi-k3` | K3 remains the listed flagship. Published rates are $3 input, $15 output, $0.30 cache hit and $3 cache write per MTok. [Official catalog and rates](https://platform.kimi.ai/). | No successor found. A future metadata update should declare the verified $3 cache-write rate explicitly; the current unspecified-rate fallback already charges the same amount. |
 | Alibaba Model Studio (Singapore): `qwen3.8-max` | A September snapshot, `qwen3.8-max-0902` / `qwen3.8-max-2026-09-02`, is documented. [Release notes](https://www.alibabacloud.com/help/en/model-studio/newly-released-models). Qwen3.8-Max cache discounts explicitly differ from the generic ratios, with details in the console. [Cache documentation](https://www.alibabacloud.com/help/en/model-studio/context-cache). | Verify the rolling alias's relationship to the snapshot and qualify the Singapore ID before changing membership. Keep cache prices unspecified until the exact applicable rate is verified. |
 | Registered local doors and `fake` | Local model choices belong to the caller; FakeProvider remains deterministic and keyless. | No global replacement. Registered capabilities can opt into the new effort levels. |
+
+## 2026-10-08: Claude Haiku 5.5
+
+Released 2026-10-07 and verified the next day against the Anthropic models API
+on this account and the model, pricing and migration pages. `claude-haiku-5-5`
+(line `haiku`): 1M context, 128K output, images and PDFs, structured outputs,
+compaction (`compact_20260112`); adaptive thinking on by default
+(`budget_tokens` returns 400; `disabled` is accepted at effort high or below),
+effort low through max with a provider default of medium; a forced
+`tool_choice` is accepted, unlike the other Claude 5.5 rows; non-default
+sampling and prefill return 400; safety refusals arrive as `stop_reason:
+"refusal"` with no server-side fallback; the preserved-thinking history check
+applies and `block_binding` works with adaptive thinking; retirement not
+sooner than 2027-10-07; the Claude 4.7+ tokenizer. Sources:
+[overview](https://platform.claude.com/docs/en/models/haiku-5-5/overview),
+[migration guide](https://platform.claude.com/docs/en/models/haiku-5-5/migration-guide),
+[pricing](https://platform.claude.com/docs/en/about-claude/pricing).
+
+Pricing is by prompt length: $0.10 input / $0.50 output / $0.01 cache read /
+$0.125 five-minute write per MTok up to a 100,000-token prompt, and $0.50 /
+$2.50 / $0.05 / $0.625 beyond it (the hour write 2× input on each card). The
+catalog carries both cards (`ModelPricing.long_prompt`, ledger #335) and
+`Usage.cost_micro_usd` picks one per call from the prompt length, so the cost
+ceiling and `on_llm_call` are exact and a summed usage can only overcount.
+This supersedes the 2026-10-04 note above that no tiered billing contract was
+added; the OpenAI premium above 272K input tokens remains uncarded and is now
+cardable through the same field when that card is next verified.
+
+The row enters as the `anthropic:haiku` tier (`CLAUDE_HAIKU_DEFAULT` and
+`CLAUDE_HAIKU_LATEST`, both Haiku 5.5: no predecessor remained in the catalog)
+and joins the measured set beside Sonnet 5.5. Qualification is recorded on the
+baselines page: the catalog probe, the frontier suite and a local memory
+board; the dispatched board rides the next release.

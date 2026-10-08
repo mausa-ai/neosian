@@ -39,13 +39,35 @@ class ModelPricing:
 
     Approximate, for observability/cost-tracking — not a billing source.
     None cache rates mean "no separate published rate"; the effective_*
-    properties fall back to the input rate (conservative upper bound).
+    properties fall back to the input rate (conservative upper bound). A
+    long-prompt tier, where carded, is picked per call by `for_prompt`.
     """
 
     input_per_mtok: int
     output_per_mtok: int
     cache_read_per_mtok: int | None = None
     cache_write_per_mtok: int | None = None
+    # The long-prompt tier (#335): a prompt longer than `long_prompt_tokens`
+    # (Usage.prompt_tokens: uncached input plus both cache classes) bills on
+    # `long_prompt`, one level deep and never cheaper on any column, so a
+    # summed Usage priced on the sum's length never undercounts its calls.
+    long_prompt_tokens: int | None = None
+    long_prompt: "ModelPricing | None" = None
+
+    def __post_init__(self) -> None:
+        long = self.long_prompt
+        if (long is None) != (self.long_prompt_tokens is None):
+            raise ValueError("long_prompt and long_prompt_tokens travel together")
+        if long is None:
+            return
+        columns = (
+            (long.input_per_mtok, self.input_per_mtok),
+            (long.output_per_mtok, self.output_per_mtok),
+            (long.effective_cache_read_per_mtok, self.effective_cache_read_per_mtok),
+            (long.effective_cache_write_per_mtok, self.effective_cache_write_per_mtok),
+        )
+        if long.long_prompt is not None or any(far < near for far, near in columns):
+            raise ValueError("the long-prompt card is one tier deep and never cheaper")
 
     @property
     def effective_cache_read_per_mtok(self) -> int:
@@ -72,6 +94,13 @@ class ModelPricing:
         keeps sealing what it sealed.
         """
         return 2 * self.input_per_mtok
+
+    def for_prompt(self, prompt_tokens: int) -> "ModelPricing":
+        """The card a prompt of this length bills on."""
+        over = self.long_prompt_tokens
+        if self.long_prompt is None or over is None or prompt_tokens <= over:
+            return self
+        return self.long_prompt
 
 
 @dataclass(frozen=True)

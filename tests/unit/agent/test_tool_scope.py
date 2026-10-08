@@ -270,6 +270,7 @@ class TestARowThatTakesNoForcedChoice:
         assert not Model.CLAUDE_OPUS_5_5.supports_forced_tool_choice
         assert not Model.CLAUDE_FABLE_5_1.supports_forced_tool_choice
         assert Model.CLAUDE_SONNET_5.supports_forced_tool_choice
+        assert Model.CLAUDE_HAIKU_5_5.supports_forced_tool_choice  # the 5.5 exception
         assert Model.GPT_6_SOL.supports_forced_tool_choice
 
 

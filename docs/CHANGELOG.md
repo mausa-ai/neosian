@@ -8,6 +8,37 @@ phase close names the version.
 
 ## [Unreleased]
 
+### Added
+
+- `Model.CLAUDE_HAIKU_5_5` (`claude-haiku-5-5`, released 2026-10-07): 1M
+  context, 128K output, images and documents, adaptive thinking at every
+  effort level (provider default medium), compaction, and a forced
+  `tool_choice` accepted (the Claude 5.5 exception); retirement floor
+  2027-10-07. It joins the bound-thinking set and the measured Anthropic rows.
+- `ModelSelector.CLAUDE_HAIKU_DEFAULT` / `CLAUDE_HAIKU_LATEST`
+  (`anthropic:haiku:default|latest`), both Haiku 5.5: a tier born whole, with
+  no migration window.
+- A card by prompt length: `ModelPricing.long_prompt` with
+  `long_prompt_tokens` (one tier deep, never cheaper on any column) and
+  `for_prompt()`, `Usage.prompt_tokens`, and `Usage.cost_micro_usd` picking
+  the card per call. Haiku 5.5 carries $0.10 / $0.50 / $0.01 / $0.125 per
+  MTok up to a 100,000-token prompt and $0.50 / $2.50 / $0.05 / $0.625
+  beyond, both cards sealed by the fingerprint; `register_model` takes the
+  same shape (ledger #335).
+
+### Changed
+
+- `PRICES_AS_OF` is 2026-10-08; a tiered row's fingerprint line carries its
+  second card, every other row's line unchanged.
+- A summed `Usage` bills on the sum's prompt length: never an undercount, an
+  overcount where a tiered row's calls straddle the threshold; the cost
+  ceiling and `on_llm_call` price each call exactly.
+- The Haiku 5.5 row is qualified locally, not by dispatch: the catalog probe,
+  the six-cell frontier suite and the link-handle cell pass, and the 48-cell
+  memory board reads 45/48 (function and cli `handoff`, cli `skills`),
+  recorded on the baselines page with every miss retained; the dispatched
+  board rides the next release.
+
 ## [1.6.0] - 2026-10-08
 
 ### Added

@@ -42,6 +42,7 @@ class TestCatalogClock:
         assert Model.GEMINI_3_8_FLASH.spec.card_until == date(2026, 12, 31)
         assert Model.GPT_6_SOL.spec.retires is None
         assert Model.CLAUDE_OPUS_5_5.spec.retires == date(2027, 9, 22)
+        assert Model.CLAUDE_HAIKU_5_5.spec.retires == date(2027, 10, 7)
         assert Model.FAKE.spec.retires is None and Model.FAKE.spec.card_until is None
 
     @pytest.mark.parametrize(

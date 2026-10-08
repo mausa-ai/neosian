@@ -22,6 +22,8 @@ class ModelSelector(str, Enum):
     CLAUDE_OPUS_LATEST = "anthropic:opus:latest"
     CLAUDE_FABLE_DEFAULT = "anthropic:fable:default"
     CLAUDE_FABLE_LATEST = "anthropic:fable:latest"
+    CLAUDE_HAIKU_DEFAULT = "anthropic:haiku:default"
+    CLAUDE_HAIKU_LATEST = "anthropic:haiku:latest"
     GPT_SOL_DEFAULT = "openai:sol:default"
     GPT_SOL_LATEST = "openai:sol:latest"
     GPT_ASTRA_DEFAULT = "openai:astra:default"
@@ -63,6 +65,7 @@ DEFAULTS = {
     "anthropic:sonnet": Model.CLAUDE_SONNET_5,
     "anthropic:opus": Model.CLAUDE_OPUS_5_5,
     "anthropic:fable": Model.CLAUDE_FABLE_5_1,
+    "anthropic:haiku": Model.CLAUDE_HAIKU_5_5,
     "openai:sol": Model.GPT_6_SOL,
     "openai:astra": Model.GPT_6_ASTRA,
     "openai:luna": Model.GPT_6_LUNA,
@@ -79,6 +82,7 @@ _INITIAL_DEFAULTS = {
     "anthropic:sonnet": "claude-sonnet-5",
     "anthropic:opus": "claude-opus-5-5",
     "anthropic:fable": "claude-fable-5-1",
+    "anthropic:haiku": "claude-haiku-5-5",
     "openai:sol": "gpt-6-sol",
     "openai:astra": "gpt-6-astra",
     "openai:luna": "gpt-6-luna",

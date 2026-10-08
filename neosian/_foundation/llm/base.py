@@ -169,7 +169,8 @@ class Usage:
       cache_write_tokens where the endpoint reports them (automatic
       caching; GPT-5.6 and later bill a write at 1.25× input, NW4)
 
-    total_tokens = input + output + cache_read + cache_write.
+    prompt_tokens = input + cache_read + cache_write (what the provider read);
+    total_tokens = prompt_tokens + output.
     """
 
     input_tokens: int
@@ -180,12 +181,13 @@ class Usage:
     @property
     def total_tokens(self) -> int:
         """Total tokens used (includes cached tokens)."""
-        return (
-            self.input_tokens
-            + self.output_tokens
-            + self.cache_read_tokens
-            + self.cache_write_tokens
-        )
+        return self.prompt_tokens + self.output_tokens
+
+    @property
+    def prompt_tokens(self) -> int:
+        """What the provider read as the prompt: uncached input plus both
+        cache classes — the length a tiered card is keyed on (#335)."""
+        return self.input_tokens + self.cache_read_tokens + self.cache_write_tokens
 
     def __add__(self, other: "Usage") -> "Usage":
         """Field-wise sum, for accumulating usage across LLM calls."""
@@ -205,7 +207,11 @@ class Usage:
         observability, not a billing source (see PRICES_AS_OF in
         shared.types for the verification date). Cache token classes fall
         back to the input rate when the provider publishes no separate
-        cache rate.
+        cache rate. A tiered card (#335) is picked by this usage's prompt
+        length: exact for one call. A summed Usage (`__add__` loses the
+        per-call lengths) bills on the sum's length, which is at least each
+        call's, so it never undercounts and may overcount; sum per-call
+        costs for the exact bill.
 
         Args:
             model: The model whose pricing to apply. For multi-model runs
@@ -221,6 +227,7 @@ class Usage:
         pricing = model.pricing
         if pricing is None:
             return None
+        pricing = pricing.for_prompt(self.prompt_tokens)
         total = (
             self.input_tokens * pricing.input_per_mtok
             + self.output_tokens * pricing.output_per_mtok

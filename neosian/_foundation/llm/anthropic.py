@@ -58,6 +58,7 @@ _BOUND_THINKING = {
     Model.CLAUDE_SONNET_5_5,
     Model.CLAUDE_OPUS_5_5,
     Model.CLAUDE_FABLE_5_1,
+    Model.CLAUDE_HAIKU_5_5,
 }
 
 

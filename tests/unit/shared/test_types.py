@@ -61,6 +61,7 @@ class TestModelEnum:
         assert Model.GPT_6_LUNA.value == "gpt-6-luna"
         assert Model.CLAUDE_FABLE_5_1.value == "claude-fable-5-1"
         assert Model.CLAUDE_SONNET_5.value == "claude-sonnet-5"
+        assert Model.CLAUDE_HAIKU_5_5.value == "claude-haiku-5-5"
 
     def test_model_is_string_compatible(self) -> None:
         """Model should be string-compatible."""
@@ -90,6 +91,7 @@ class TestModelEnum:
         assert Model.CLAUDE_OPUS_5_5.max_output_tokens == 128_000
         assert Model.CLAUDE_FABLE_5_1.max_output_tokens == 128_000
         assert Model.CLAUDE_SONNET_5.max_output_tokens == 128_000
+        assert Model.CLAUDE_HAIKU_5_5.max_output_tokens == 128_000
 
     def test_model_spec_property(self) -> None:
         """Model.spec should return the ModelSpec for that model."""
@@ -120,6 +122,7 @@ class TestModelEnum:
         assert Model.CLAUDE_OPUS_5_5.context_window == 1_000_000
         assert Model.CLAUDE_SONNET_5.context_window == 1_000_000
         assert Model.CLAUDE_FABLE_5_1.context_window == 1_000_000
+        assert Model.CLAUDE_HAIKU_5_5.context_window == 1_000_000
 
 
 @pytest.mark.unit
@@ -377,6 +380,7 @@ class TestCompactionCapability:
         assert Model.CLAUDE_OPUS_5_5.supports_compaction_blocks
         assert Model.CLAUDE_FABLE_5_1.supports_compaction_blocks
         assert Model.CLAUDE_SONNET_5.supports_compaction_blocks
+        assert Model.CLAUDE_HAIKU_5_5.supports_compaction_blocks
 
     def test_non_anthropic_models_are_unsupported(self) -> None:
         assert not Model.FAKE.supports_compaction_blocks
