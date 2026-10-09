@@ -31,6 +31,7 @@ import httpx
 from neosian._foundation.conversation.base import ConversationStore
 from neosian._foundation.llm.codec import message_to_json
 from neosian._foundation.memory.base import MemoryStore
+from neosian._foundation.server.remote_erasable import RemoteErasable
 from neosian._foundation.server.remote_pageable import RemotePageable, ledger_payload
 from neosian._foundation.server.remote_portable import RemotePortable
 from neosian._foundation.server.wire import (
@@ -64,7 +65,9 @@ if TYPE_CHECKING:
     )
 
 
-class RemoteStore(MemoryStore, ConversationStore, RemotePortable, RemotePageable):
+class RemoteStore(
+    MemoryStore, ConversationStore, RemotePortable, RemotePageable, RemoteErasable
+):
     """Both storage ABCs over HTTP, against a running `neosian serve`.
 
     Construct with `await RemoteStore.connect(url, token=...)` — the
@@ -92,6 +95,8 @@ class RemoteStore(MemoryStore, ConversationStore, RemotePortable, RemotePageable
         # Whether the backend pages (`Pageable`), learned at `connect`;
         # the page methods refuse until the handshake says so.
         self._pageable = False
+        # Whether the backend erases (`Erasable`, §38), learned the same way.
+        self._erasable = False
         if not url.startswith(("http://", "https://")):
             raise ConfigurationError(f"RemoteStore url must be http(s), got {url!r}")
         if not token:
@@ -182,6 +187,7 @@ class RemoteStore(MemoryStore, ConversationStore, RemotePortable, RemotePageable
             probe = target(url, token=token, timeout=timeout, transport=transport)
         probe.client = client if isinstance(client, str) else None
         probe._pageable = capabilities.get("pageable") is True
+        probe._erasable = capabilities.get("erasable") is True
         return probe
 
     async def capabilities(self) -> dict[str, Any]:

@@ -1,7 +1,8 @@
 """The store-shaped routes — the wire mirrors the ABCs 1:1 (DESIGN §18).
 
 Fifteen POST endpoints under `/v1/`, one per storage-ABC method (the
-four `store/*` routes of NC4 live in `portable_routes.py`). Handlers
+four `store/*` routes of NC4 live in `portable_routes.py`, the two
+erasure routes of N8 in `erasure_routes.py`). Handlers
 are thin: decode the parameters by name through the typed readers in
 `wire.py`, await the store, encode the return value under one key.
 Everything a store method raises — `NeosianError` and the ABCs' bare

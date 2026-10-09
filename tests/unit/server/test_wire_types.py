@@ -95,6 +95,14 @@ _WRONG_TYPES: list[tuple[str, dict[str, Any], str]] = [
     ),
     ("conversation/search_turns", {"query": "x", "limit": "5"}, "limit"),
     ("conversation/search_turns", {"query": "x", "limit": True}, "limit"),
+    ("conversation/redact_turns", {"conversation_id": 1}, "conversation_id"),
+    ("conversation/redact_turns", {"conversation_id": "c1", "through": "1"}, "through"),
+    ("conversation/redact_turns", {"conversation_id": "c1", "turns": "1"}, "turns"),
+    ("conversation/redact_turns", {"conversation_id": "c1", "turns": [True]}, "turns"),
+    ("conversation/redact_turns", {"conversation_id": "c1", "actor": 5}, "actor"),
+    ("conversation/turn_redactions", {"conversations": "c1"}, "conversations"),
+    ("conversation/turn_redactions", {"since": 5}, "since"),
+    ("conversation/turn_redactions", {"limit": "x"}, "limit"),
     (
         "store/restore_scope",
         {"scope": 1, "documents": [], "versions": [], "redactions": []},
@@ -113,6 +121,21 @@ _WRONG_TYPES: list[tuple[str, dict[str, Any], str]] = [
     (
         "store/restore_conversation",
         {"conversation_id": "c1", "turns": {}, "projections": []},
+        "turns",
+    ),
+    (
+        "store/restore_conversation",
+        {"conversation_id": "c1", "turns": [], "projections": [], "redactions": 5},
+        "redactions",
+    ),
+    (
+        "store/restore_conversation",
+        {
+            "conversation_id": "c1",
+            "turns": [],
+            "projections": [],
+            "redactions": [{"conversation_id": "c1", "turns": "1"}],
+        },
         "turns",
     ),
 ]

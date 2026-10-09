@@ -34,9 +34,9 @@ class TestRedactionCodec:
             assert decode_redaction(encoded) == act
 
     def test_the_step(self) -> None:
-        assert (
-            WIRE_VERSION == 5
-        )  # NL: two reads + the turn author; NC4: store/*; NQ2: pages; N5: search
+        # NL: two reads + the turn author; NC4: store/*; NQ2: pages; N5:
+        # search; N8: the eraser.
+        assert WIRE_VERSION == 6
 
 
 @pytest.fixture

@@ -21,7 +21,7 @@ import yaml
 from neosian import RemoteStore
 from neosian._foundation.memory.paths import path_segments
 from neosian._foundation.memory.scope import Scope, parse_scope, scope_directory
-from neosian.conversation.testing import ConversationStoreContract
+from neosian.conversation.testing import ConversationStoreContract, ErasureContract
 from neosian.memory.testing import MemoryStoreContract
 from tests.support.postgres import plant_sql, store_schema
 
@@ -132,12 +132,26 @@ class TestContainerFileConversationContract(ConversationStoreContract):
             handle.write(line + "\n")
 
 
+class TestContainerFileErasureContract(ErasureContract):
+    def stamped(self, store: RemoteStore, actor: str) -> str:  # type: ignore[override]
+        return f"{store.client}/{actor}"
+
+    @pytest.fixture
+    def conversation_id(self) -> str:
+        return _fresh_conversation()
+
+    @pytest.fixture
+    async def store(self, file_leg: FileLeg) -> AsyncIterator[RemoteStore]:
+        yield file_leg.remote
+
+
 class TestFileBackendCapability:
     async def test_the_wire_reports_local_arbitration(self, file_leg: FileLeg) -> None:
         # The handshake carries FileStore's cross-process locking capability.
         assert type(file_leg.remote).supports_optimistic_concurrency is True
         capabilities = await file_leg.remote.capabilities()
         assert capabilities["backend"] == "FileStore"
+        assert capabilities["erasable"] is True  # §38
 
 
 # --- The Postgres-DSN leg -----------------------------------------------
@@ -281,6 +295,19 @@ class TestContainerPostgresConversationContract(ConversationStoreContract):
             "VALUES (%(cid)s, %(ts)s) ON CONFLICT (conversation_id) DO NOTHING",
             {"cid": conversation_id, "ts": _PLANT_TS},
         )
+
+
+class TestContainerPostgresErasureContract(ErasureContract):
+    def stamped(self, store: RemoteStore, actor: str) -> str:  # type: ignore[override]
+        return f"{store.client}/{actor}"
+
+    @pytest.fixture
+    def conversation_id(self) -> str:
+        return _fresh_conversation()
+
+    @pytest.fixture
+    async def store(self, pg_leg: PgLeg) -> AsyncIterator[RemoteStore]:
+        yield pg_leg.remote
 
 
 class TestPostgresBackendCapability:

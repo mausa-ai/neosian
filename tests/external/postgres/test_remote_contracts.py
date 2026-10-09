@@ -17,7 +17,7 @@ import pytest
 
 from neosian import PostgresStore, RemoteStore
 from neosian._foundation.server.app import build_app
-from neosian.conversation.testing import ConversationStoreContract
+from neosian.conversation.testing import ConversationStoreContract, ErasureContract
 from neosian.memory.testing import MemoryStoreContract
 from tests.support.postgres import plant_sql, store_schema
 
@@ -188,3 +188,18 @@ class TestCapabilityMirroringOverPostgres:
         assert type(remote).supports_optimistic_concurrency is True
         capabilities = await remote.capabilities()
         assert capabilities["backend"] == "PostgresStore"
+
+
+class TestRemotePostgresErasureContract(ErasureContract):
+    """The eraser's slice (§38) over the wire on the Postgres backend."""
+
+    def stamped(self, store: RemoteStore, actor: str) -> str:  # type: ignore[override]
+        return f"{store.client}/{actor}"
+
+    @pytest.fixture(name="store")
+    async def remote_store(
+        self,
+        store: PostgresStore,  # noqa: PT019, ARG002 - the conftest fixture, renamed
+        remote: RemoteStore,
+    ) -> AsyncIterator[RemoteStore]:
+        yield remote

@@ -1,13 +1,13 @@
 ---
 title: "The wire: the state process's HTTP contract"
-summary: The nineteen /v1/ routes, the envelope, paging, the JSON shapes and WIRE_VERSION
+summary: The twenty-one /v1/ routes, the envelope, paging, the JSON shapes and WIRE_VERSION
 ---
 
 # The wire
 
 `neosian serve` puts the two storage ABCs on a port. This page is the
 contract a client in any language can be written against: the
-handshake, the nineteen `/v1/` routes with their request and response
+handshake, the twenty-one `/v1/` routes with their request and response
 keys, the error envelope, paging, the JSON shapes, and the history of
 `WIRE_VERSION`. Every literal here is pinned by a test that drives the
 server with raw JSON and never through `RemoteStore`
@@ -24,17 +24,18 @@ any store call.
 
 ## The handshake
 
-`GET /v1/capabilities`, authenticated, answers six keys:
+`GET /v1/capabilities`, authenticated, answers seven keys:
 
 ```json
-{"wire_version": 5, "neosian_version": "<installed>", "backend": "FileStore",
- "supports_optimistic_concurrency": true, "pageable": true,
+{"wire_version": 6, "neosian_version": "<installed>", "backend": "FileStore",
+ "supports_optimistic_concurrency": true, "pageable": true, "erasable": true,
  "client": "client:default"}
 ```
 
 `backend` is the class serving the store, `pageable` whether its
-listings answer pages (below), and `client` the actor the presented
-token makes the caller. `GET /health` is the one unauthenticated route
+listings answer pages (below), `erasable` whether its turns can be
+redacted (the two erasure routes below), and `client` the actor the
+presented token makes the caller. `GET /health` is the one unauthenticated route
 and answers `{"status": "ok"}`, liveness only.
 
 ## Auth
@@ -48,10 +49,11 @@ with `WWW-Authenticate: Bearer` and no JSON body.
 An actor may carry an allowance, `client:alice@user:alice+alice-=tok`:
 two literal prefixes matched with `startswith` against the `scope` and
 `conversation_id` a request names, and against every id in a search's
-`conversations` list. A request outside them is `403` in the envelope
-under the code `forbidden`. A constrained token is refused `/mcp` and
-all four `store/*` routes outright, whatever its body names, and a
-search that names no `conversations` (the whole store) the same way.
+or a trail read's `conversations` list. A request outside them is `403`
+in the envelope under the code `forbidden`. A constrained token is
+refused `/mcp` and all four `store/*` routes outright, whatever its body
+names, and a search or a trail read that names no `conversations` (the
+whole store) the same way.
 A token with no allowance reaches everything.
 
 ## Requests
@@ -121,6 +123,8 @@ whose `path` is `null`. `versions` and `history` answer newest first.
 | `conversation/search_turns` | `query` req; `conversations` (a list of ids), `limit` (default 50, at most 500) | `turns` |
 | `conversation/append_projections` | `conversation_id`, `entries` req | `{}` |
 | `conversation/read_projections` | `conversation_id` req; `after`, `limit` | `entries`, `next_after` |
+| `conversation/redact_turns` | `conversation_id` req; `through`, `turns` (a list of turn numbers), `actor` | `count` (int) |
+| `conversation/turn_redactions` | `conversations` (a list of ids), `since`, `limit` (default 50, at most 500) | `redactions` |
 
 `search_turns` (`WIRE_VERSION` 5) answers the turns whose text holds
 every whitespace-split term of `query` as a case-insensitive substring,
@@ -133,6 +137,21 @@ answer is bounded and never pages: `limit` above 500 is `value_error`
 and a blank `query` are `value_error` too. Each turn is the
 `read_turns` shape.
 
+`redact_turns` and `turn_redactions` (`WIRE_VERSION` 6) are the eraser
+(`neosian docs stores`). `redact_turns` blanks the selected turns of one
+conversation and every projection entry covering them, keeps each
+turn's number, `created_at` and `actor`, and answers the count matched,
+already-redacted turns included, so repeating it changes nothing.
+`through` and `turns` both absent is every turn; `through: n` is turns 1
+to n; `turns` names the numbers; both given, or a number below 1, is
+`value_error`; an unknown conversation or number matches nothing. The
+act is recorded under the token's client like a write (`actor: "ops"`
+records `client:default/ops`). `turn_redactions` answers the trail
+newest first and is bounded like a search: `limit` above 500 is
+`value_error`, `conversations` narrows as it does for a search, and a
+redacted turn never answers a search again. A backend whose `erasable`
+is `false` answers both routes with `agent_configuration_error`.
+
 ### Store
 
 | route | request | response |
@@ -140,7 +159,7 @@ and a blank `query` are `value_error` too. Each turn is the
 | `store/scopes` | `{}` | `scopes` (sorted names) |
 | `store/conversations` | `{}` | `conversations` (sorted ids) |
 | `store/restore_scope` | `scope`, `documents`, `versions`, `redactions` req | `{}` |
-| `store/restore_conversation` | `conversation_id`, `turns`, `projections` req | `{}` |
+| `store/restore_conversation` | `conversation_id`, `turns`, `projections` req; `redactions` | `{}` |
 
 A restore is verbatim: the rows' own actors are kept and the caller's
 client is not stamped. The target must be empty, else `memory_conflict`
@@ -181,7 +200,12 @@ refused.
 - **redaction**: `path` (or `null` for a scope), `actor`, `created_at`,
   `count`.
 - **turn**: `conversation_id`, `turn`, `messages`, `created_at`,
-  `actor` (a string or `null`; absent on a restore reads as `null`).
+  `actor` (a string or `null`; absent on a restore reads as `null`),
+  `redacted` (absent on a restore reads as `false`). A redacted turn
+  carries `messages: []` and `redacted: true`; no other turn carries an
+  empty message list, and a restore refuses one.
+- **turn redaction** (a trail row): `conversation_id`, `turns` (the
+  numbers blanked, ascending integers from 1), `actor`, `created_at`.
 - **projection**: `turn`, `kind` (`log`, `digest`, `epoch`), `text`,
   `span` (absent reads as `1`).
 
@@ -212,6 +236,7 @@ dropped, not stored.
 | 3 | 0.89.0 | the four `store/*` routes |
 | 4 | 1.0.0rc8 | every listing answers a page; the handshake's `pageable` |
 | 5 | 1.0.0rc20 | `conversation/search_turns`; a constrained token's `conversations` list |
+| 6 | 1.8.0 | `conversation/redact_turns`, `conversation/turn_redactions`; the turn's `redacted`; the archive's `redactions`; the handshake's `erasable` |
 
 A narrowing (a parameter refused that was once let through) never moves
 the version; a new route or a new key does. `RemoteStore.connect`

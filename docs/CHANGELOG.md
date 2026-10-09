@@ -8,6 +8,39 @@ phase close names the version.
 
 ## [Unreleased]
 
+### Added
+
+- The eraser (N8, DESIGN §38): `Erasable`, a protocol beside the
+  conversation ABC that `FileStore`, `PostgresStore` and `RemoteStore`
+  implement. `redact_turns(conversation_id, *, through=None, turns=None,
+  actor=None)` blanks the selected turns of one conversation and every
+  projection entry covering them, keeps each turn's number, `created_at`
+  and `actor`, and answers the count matched; `turn_redactions(*,
+  conversations=None, since=None, limit=50)` reads the trail newest first.
+  `ConversationTurn.redacted` (additive, defaulted) marks a blanked turn,
+  whose `messages` is `()`; `ConversationRedaction` is the trail row;
+  `ConversationArchive.redactions` carries the trail through an export and
+  import. The opt-in `ErasureContract` slice of the conversation kit pins
+  it on every shipped store (ledger #342 to #347).
+- `POST /v1/conversation/redact_turns` and `/v1/conversation/turn_redactions`
+  at `WIRE_VERSION` 6; a turn's wire shape gains `redacted`, the archive
+  `redactions`, the handshake its seventh key `erasable`. A constrained
+  token's `redact_turns` is fenced by its `conversation_id`; its trail read
+  is checked id by id and refused store-wide. `neosian docs wire` states
+  both routes.
+
+### Changed
+
+- `WIRE_VERSION` is 6: a 1.7 `RemoteStore` is refused at the handshake by
+  name.
+- Postgres `SCHEMA_VERSION` is 4: `turns.redacted` and the `turn_redactions`
+  table arrive as idempotent statements; `apply_schema()` converges an
+  older schema.
+- `recall_turn`, `continue_session`, the SessionStart block and every log
+  line print `[redacted]` for a blanked turn, and `search_turns` never
+  answers one. A reader older than 1.8.0 refuses a redacted row as an
+  unsupported format, which is true.
+
 ## [1.7.0] - 2026-10-09
 
 ### Added

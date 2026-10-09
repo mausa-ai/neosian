@@ -66,6 +66,7 @@ class TestBearerGate:
         assert payload["backend"] == "FileStore"
         assert payload["supports_optimistic_concurrency"] is True
         assert payload["pageable"] is True  # §18.2: the listings page
+        assert payload["erasable"] is True  # §38: the turns can be redacted
         assert payload["client"] == "client:default"  # a bare token's client
 
 

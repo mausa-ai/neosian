@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from neosian._foundation.conversation.erasable import Erasable
 from neosian._foundation.conversation.types import ConversationProjection
 from neosian._foundation.llm.base import ImageBlock, Message, Role, TextBlock, ToolCall
 from neosian._foundation.memory.paths import path_segments
@@ -19,7 +20,7 @@ if TYPE_CHECKING:
     from neosian._foundation.memory.base import MemoryStore
 
 SCOPES = ("user:kit", "user:kit/proj:p")
-CONVERSATIONS = ("conv-a", "conv-b")
+CONVERSATIONS = ("conv-a", "conv-b", "conv-c")  # conv-c holds a redacted turn
 DELETED = ("c",)  # renamed away — reads None on both sides
 
 _TURNS = (
@@ -94,10 +95,17 @@ async def seed(
         )
     await turns.append_projections(CONVERSATIONS[0], _PROJECTIONS)
     await turns.append_projections(CONVERSATIONS[1], _PROJECTIONS[:1])
+    for messages in _TURNS[:2]:
+        await turns.append_turn(CONVERSATIONS[2], messages, actor="claude-code:s9")
+    await turns.append_projections(CONVERSATIONS[2], _PROJECTIONS[:2])
+    eraser: Erasable = store  # type: ignore[assignment]
+    await eraser.redact_turns(CONVERSATIONS[2], turns=(1,), actor="ops")
 
 
-async def assert_indistinguishable(a: object, b: object) -> None:
-    """Every ABC read answers the same on both stores."""
+async def assert_indistinguishable(a: object, b: object, *, trail: bool = True) -> None:
+    """Every ABC read answers the same on both stores; the erasure trail
+    too when both keep one (`trail=False`: the source was a bare store, so
+    the target holds the skeletons and no trail)."""
     ma: MemoryStore = a  # type: ignore[assignment]
     mb: MemoryStore = b  # type: ignore[assignment]
     for scope in SCOPES:
@@ -123,6 +131,12 @@ async def assert_indistinguishable(a: object, b: object) -> None:
         assert await ca.last_turn_number(conversation_id) == await cb.last_turn_number(
             conversation_id
         )
+    if isinstance(a, Erasable) and isinstance(b, Erasable):
+        ids = list(CONVERSATIONS)
+        acts = await a.turn_redactions(conversations=ids)
+        assert [act.turns for act in acts] == [(1,)]
+        theirs = await b.turn_redactions(conversations=ids)
+        assert theirs == (acts if trail else ())
 
 
 async def assert_numbering_continues(target: object) -> None:

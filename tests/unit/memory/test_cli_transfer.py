@@ -44,11 +44,11 @@ class TestRoundTrip:
         assert lines[0].startswith(
             "scope        user:kit  5 documents  13 versions  1 redaction"
         )
-        assert lines[-1] == f"exported 2 scopes, 2 conversations to {archive}"
+        assert lines[-1] == f"exported 2 scopes, 3 conversations to {archive}"
         imported = await _run(["import", str(archive), "--root", str(target)])
         assert imported.code == 0, imported.err
         assert imported.out.splitlines()[-1].startswith(
-            "imported 2 scopes, 2 conversations from"
+            "imported 2 scopes, 3 conversations from"
         )
         await assert_indistinguishable(FileStore(source), FileStore(target))
 

@@ -427,3 +427,56 @@ class TestSearchShapes:
         )
         assert nulls == bare
         assert len(bare["turns"]) == 1
+
+
+class TestErasureShapes:
+    async def test_the_selectors_and_the_bounds(self, raw_wire: RawWire) -> None:
+        # N8 (§38): the selectors are the ABC's own errors in the envelope;
+        # the trail is bounded like a search; null and absent are one thing.
+        await _turn(raw_wire, {"role": "user", "content": "hi"})
+        redact = "conversation/redact_turns"
+        assert await raw_wire.post(redact, {"conversation_id": "c", "through": 0}) == (
+            400,
+            _error("value_error", "through must be >= 1, got 0"),
+        )
+        assert await raw_wire.post(
+            redact, {"conversation_id": "c", "through": 1, "turns": [1]}
+        ) == (400, _error("value_error", "give through= or turns=, not both"))
+        assert await raw_wire.post(redact, {"conversation_id": "c", "turns": [0]}) == (
+            400,
+            _error("value_error", "turn numbers start at 1, got 0"),
+        )
+        status, refused = await raw_wire.post(redact, {"conversation_id": "a/b"})
+        assert (status, refused["error"]["code"]) == (
+            400,
+            "agent_conversation_id_invalid",
+        )
+        assert refused["error"]["details"]["conversation_id"] == "a/b"
+        trail = "conversation/turn_redactions"
+        assert await raw_wire.post(trail, {"limit": 501}) == (
+            400,
+            _error(
+                "value_error", "the trail answers at most 500 acts; narrow the window"
+            ),
+        )
+        assert await raw_wire.post(trail, {"limit": 0}) == (
+            400,
+            _error("value_error", "limit must be >= 1, got 0"),
+        )
+        assert await raw_wire.post(trail, {"since": "2026-10-10T00:00:00"}) == (
+            400,
+            _error(
+                "value_error", "naive wire timestamp refused: '2026-10-10T00:00:00'"
+            ),
+        )
+        _, nulls = await raw_wire.post(
+            redact,
+            {"conversation_id": "c", "through": None, "turns": None, "actor": None},
+        )
+        assert nulls == {"count": 1}
+        _, bare = await raw_wire.post(trail, {})
+        _, nulled = await raw_wire.post(
+            trail, {"conversations": None, "since": None, "limit": None}
+        )
+        assert bare == nulled
+        assert [act["turns"] for act in bare["redactions"]] == [[1]]

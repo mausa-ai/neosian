@@ -3,7 +3,8 @@
 One neosian-owned Starlette composes four surfaces: `/health`
 (unauthenticated — a container healthcheck needs no token), the
 authenticated `/v1/capabilities` handshake, the fifteen store-shaped
-routes plus the four `store/*` routes (NC4), and — when mounts are given — MCP over streamable HTTP at
+routes, the four `store/*` routes (NC4), the two erasure routes (N8),
+and — when mounts are given — MCP over streamable HTTP at
 `/mcp`, built from the same `create_memory_server` factory the stdio
 transport uses, so all five transports execute one dispatcher.
 
@@ -29,6 +30,7 @@ from importlib import metadata
 from typing import TYPE_CHECKING
 
 from neosian._foundation.conversation.base import ConversationStore
+from neosian._foundation.conversation.erasable import Erasable
 from neosian._foundation.memory.actor import parse_actor
 from neosian._foundation.memory.base import MemoryStore
 from neosian._foundation.memory.mounts import MemoryConfig
@@ -37,6 +39,7 @@ from neosian._foundation.server.ceiling import (
     MAX_REQUEST_BYTES,
     BodyCeilingMiddleware,
 )
+from neosian._foundation.server.erasure_routes import erasure_routes
 from neosian._foundation.server.portable_routes import portable_routes
 from neosian._foundation.server.routes import store_routes
 from neosian._foundation.server.sdk import (
@@ -143,6 +146,9 @@ def _capabilities(
                 # Whether a listing can answer a page (§18.2); without it
                 # every listing answers whole and a page is refused.
                 "pageable": isinstance(store, Pageable),
+                # Whether its turns can be redacted (§38); without it the
+                # two erasure routes refuse by name.
+                "erasable": isinstance(store, Erasable),
                 # Who the presented token makes the caller (§20) — the
                 # prefix every write through this connection records.
                 "client": request.state.actor,
@@ -181,6 +187,7 @@ async def build_app(
         Route("/v1/capabilities", _capabilities(store), methods=["GET"]),
         *store_routes(store, store),
         *portable_routes(store),
+        *erasure_routes(store),
     ]
 
     manager: StreamableHTTPSessionManager | None = None

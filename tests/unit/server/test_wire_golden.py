@@ -37,6 +37,8 @@ _POSTS = {
     "/v1/conversation/search_turns",
     "/v1/conversation/append_projections",
     "/v1/conversation/read_projections",
+    "/v1/conversation/redact_turns",
+    "/v1/conversation/turn_redactions",
     "/v1/store/scopes",
     "/v1/store/conversations",
     "/v1/store/restore_scope",
@@ -73,11 +75,12 @@ _TURN_1 = {
     "messages": [_MESSAGE],
     "created_at": _t(0),
     "actor": "client:default",
+    "redacted": False,
 }
 
 
 class TestTheRouteSet:
-    async def test_nineteen_posts_and_two_gets(self, tmp_path: Any) -> None:
+    async def test_twenty_one_posts_and_two_gets(self, tmp_path: Any) -> None:
         app = await build_app(FileStore(tmp_path / "s"), token=TOKEN)
         routes = [route for route in app.routes if isinstance(route, Route)]
         by_method: dict[str, set[str]] = {"POST": set(), "GET": set()}
@@ -87,7 +90,7 @@ class TestTheRouteSet:
                     by_method[method].add(route.path)
         assert by_method["POST"] == _POSTS
         assert by_method["GET"] == {"/health", "/v1/capabilities"}
-        assert len(routes) == 21
+        assert len(routes) == 23
 
     async def test_an_unknown_route_and_a_wrong_method_are_plain(
         self, raw_wire: RawWire
@@ -103,11 +106,12 @@ class TestTheHandshake:
         assert await raw_wire.get("/v1/capabilities") == (
             200,
             {
-                "wire_version": 5,
+                "wire_version": 6,
                 "neosian_version": metadata.version("neosian"),
                 "backend": "FileStore",
                 "supports_optimistic_concurrency": True,
                 "pageable": True,
+                "erasable": True,
                 "client": "client:default",
             },
         )
@@ -327,6 +331,53 @@ class TestSearchGolden:
         )
 
 
+class TestErasureGolden:
+    async def test_the_erasure_exchange(self, raw_wire: RawWire) -> None:
+        # N8 (§38): the act answers a count and records itself under the
+        # token's client; a redacted turn is the read_turns shape with an
+        # empty message list and the flag; the trail is one POST, bounded.
+        for text in ("hi", "the key is hunter2"):
+            await raw_wire.post(
+                "conversation/append_turn",
+                {
+                    "conversation_id": "c1",
+                    "messages": [{"role": "user", "content": text}],
+                },
+            )
+        assert await raw_wire.post(
+            "conversation/redact_turns", {"conversation_id": "c1", "turns": [2]}
+        ) == (200, {"count": 1})
+        skeleton = {
+            "conversation_id": "c1",
+            "turn": 2,
+            "messages": [],
+            "created_at": _t(1),
+            "actor": "client:default",
+            "redacted": True,
+        }
+        assert await raw_wire.post(
+            "conversation/read_turns", {"conversation_id": "c1"}
+        ) == (200, {"turns": [_TURN_1, skeleton], "next_after": None})
+        assert await raw_wire.post(
+            "conversation/search_turns", {"query": "hunter2"}
+        ) == (200, {"turns": []})
+        act = {
+            "conversation_id": "c1",
+            "turns": [2],
+            "actor": "client:default",
+            "created_at": _t(2),
+        }
+        assert await raw_wire.post(
+            "conversation/turn_redactions", {"conversations": ["c1"]}
+        ) == (200, {"redactions": [act]})
+        assert await raw_wire.post(
+            "conversation/redact_turns", {"conversation_id": "c1", "actor": "ops"}
+        ) == (200, {"count": 2})
+        _, body = await raw_wire.post("conversation/turn_redactions", {"limit": 1})
+        later = {**act, "turns": [1, 2], "actor": "client:default/ops"}
+        assert body == {"redactions": [{**later, "created_at": _t(3)}]}
+
+
 class TestStoreGolden:
     async def test_the_listings(self, raw_wire: RawWire) -> None:
         await raw_wire.post(
@@ -386,6 +437,7 @@ class TestStoreGolden:
     async def test_a_conversation_restores_verbatim(self, raw_wire: RawWire) -> None:
         turn = {**_TURN_1, "conversation_id": "r1", "actor": None}
         projection = {"turn": 1, "kind": "digest", "text": "d", "span": 1}
+        # A 5 archive names no `redactions`: absent is empty (§38).
         assert await raw_wire.post(
             "store/restore_conversation",
             {"conversation_id": "r1", "turns": [turn], "projections": [projection]},
@@ -396,6 +448,38 @@ class TestStoreGolden:
         assert await raw_wire.post(
             "conversation/read_projections", {"conversation_id": "r1"}
         ) == (200, {"entries": [projection], "next_after": None})
+
+    async def test_a_redacted_conversation_restores_with_its_trail(
+        self, raw_wire: RawWire
+    ) -> None:
+        skeleton = {
+            **_TURN_1,
+            "conversation_id": "r2",
+            "messages": [],
+            "actor": "conv:x",
+            "redacted": True,
+        }
+        act = {
+            "conversation_id": "r2",
+            "turns": [1],
+            "actor": "ops",
+            "created_at": _t(0),
+        }
+        assert await raw_wire.post(
+            "store/restore_conversation",
+            {
+                "conversation_id": "r2",
+                "turns": [skeleton],
+                "projections": [],
+                "redactions": [act],
+            },
+        ) == (200, {})
+        assert await raw_wire.post(
+            "conversation/read_turns", {"conversation_id": "r2"}
+        ) == (200, {"turns": [skeleton], "next_after": None})
+        assert await raw_wire.post(
+            "conversation/turn_redactions", {"conversations": ["r2"]}
+        ) == (200, {"redactions": [act]})
 
 
 class TestThePage:
@@ -409,4 +493,4 @@ class TestThePage:
         body = page.body
         for path in _POSTS:
             assert f"`{path.removeprefix('/v1/')}`" in body, path
-        assert "nineteen" in body and "`WIRE_VERSION`" in body
+        assert "twenty-one" in body and "`WIRE_VERSION`" in body

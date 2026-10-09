@@ -190,8 +190,10 @@ class TestRefusalByName:
     async def test_export_is_privilege_free_with_names(
         self, source: FileStore, target: FileStore
     ) -> None:
-        """Only reads are asked of a named source — a bare store works."""
+        """Only reads are asked of a named source — a bare store works. It
+        keeps no erasure trail (not `Erasable`), so the skeletons move and
+        the trail does not (§38)."""
         reads = _MemoryOnly(source)
         assert not isinstance(reads, Portable)
         await transfer(reads, target, scopes=SCOPES, conversations=CONVERSATIONS)
-        await assert_indistinguishable(source, target)
+        await assert_indistinguishable(source, target, trail=False)

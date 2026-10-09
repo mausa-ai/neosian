@@ -203,6 +203,57 @@ class TestTheGate:
         ops = await _post(http, "conversation/search_turns", "tok-ops", {"query": "hi"})
         assert ops.status_code == 200
 
+    async def test_a_fenced_token_erases_only_its_conversations(
+        self, http: httpx.AsyncClient
+    ) -> None:
+        # N8 (§38): the act is fenced by its id like every conversation
+        # route; the trail is checked id by id, and a read naming no list
+        # is the whole store, refused for what it reaches.
+        await _post(
+            http,
+            "conversation/append_turn",
+            "tok-alice",
+            {
+                "conversation_id": "alice-s2",
+                "messages": [{"role": "user", "content": "x"}],
+            },
+        )
+        mine = await _post(
+            http,
+            "conversation/redact_turns",
+            "tok-alice",
+            {"conversation_id": "alice-s2"},
+        )
+        assert (mine.status_code, mine.json()) == (200, {"count": 1})
+        theirs = await _post(
+            http,
+            "conversation/redact_turns",
+            "tok-alice",
+            {"conversation_id": "bob-s1"},
+        )
+        assert theirs.status_code == 403
+        assert "bob-s1" in theirs.json()["error"]["message"]
+        inside = await _post(
+            http,
+            "conversation/turn_redactions",
+            "tok-alice",
+            {"conversations": ["alice-s2"]},
+        )
+        assert inside.status_code == 200
+        assert [act["turns"] for act in inside.json()["redactions"]] == [[1]]
+        outside = await _post(
+            http,
+            "conversation/turn_redactions",
+            "tok-alice",
+            {"conversations": ["alice-s2", "bob-s1"]},
+        )
+        assert outside.status_code == 403
+        whole = await _post(http, "conversation/turn_redactions", "tok-alice", {})
+        assert whole.status_code == 403
+        assert "the whole store" in whole.json()["error"]["message"]
+        ops = await _post(http, "conversation/turn_redactions", "tok-ops", {})
+        assert ops.status_code == 200
+
     async def test_naming_scopes_only_denies_every_conversation(
         self, http: httpx.AsyncClient
     ) -> None:

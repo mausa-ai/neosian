@@ -6,7 +6,11 @@ from collections.abc import AsyncIterator
 import pytest
 
 from neosian import RemoteStore
-from neosian.conversation.testing import ConversationStoreContract, SearchContract
+from neosian.conversation.testing import (
+    ConversationStoreContract,
+    ErasureContract,
+    SearchContract,
+)
 from tests.unit.memory.paging import FrozenClock
 
 from .conftest import RemoteOverFile
@@ -62,3 +66,16 @@ class TestRemoteSearchOnTies(SearchContract):
         self, remote_over_file: RemoteOverFile
     ) -> AsyncIterator[RemoteStore]:
         yield remote_over_file.remote
+
+
+class TestRemoteErasureContract(ErasureContract):
+    """The eraser's slice (§38) over the wire."""
+
+    @pytest.fixture
+    async def store(
+        self, remote_over_file: RemoteOverFile
+    ) -> AsyncIterator[RemoteStore]:
+        yield remote_over_file.remote
+
+    def stamped(self, store: RemoteStore, actor: str) -> str:  # type: ignore[override]
+        return f"{store.client}/{actor}"

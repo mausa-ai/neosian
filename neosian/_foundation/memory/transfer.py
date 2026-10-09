@@ -17,6 +17,7 @@ re-run naming the rest.
 
 from __future__ import annotations
 
+import contextlib
 from typing import TYPE_CHECKING
 
 from neosian._foundation.conversation.base import ConversationStore
@@ -32,12 +33,15 @@ from neosian._foundation.memory.portable import (
 )
 from neosian._foundation.memory.scope import parse_scope
 from neosian._foundation.shared.exceptions import (
+    ConfigurationError,
     ConversationConflictError,
     MemoryConflictError,
 )
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
+
+    from neosian._foundation.conversation.types import ConversationRedaction
 
 # The trail read is bounded (§38, the `search_turns` shape) and the wire's
 # page is 500 (`server/paging.py`): an archive carries a conversation's
@@ -64,11 +68,13 @@ async def archive_conversation(
 ) -> ConversationArchive:
     """One conversation over the ABC reads, plus its erasure trail when
     the store keeps one (`Erasable`, §38)."""
-    acts = (
-        await store.turn_redactions(conversations=[conversation_id], limit=_TRAIL_LIMIT)
-        if isinstance(store, Erasable)
-        else ()
-    )
+    acts: tuple[ConversationRedaction, ...] = ()
+    if isinstance(store, Erasable):
+        # A host store behind the daemon without the protocol keeps no trail.
+        with contextlib.suppress(ConfigurationError):
+            acts = await store.turn_redactions(
+                conversations=[conversation_id], limit=_TRAIL_LIMIT
+            )
     return ConversationArchive(
         conversation_id=conversation_id,
         turns=await store.read_turns(conversation_id),

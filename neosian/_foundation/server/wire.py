@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING, Any, Final, cast
 
 from neosian._foundation.conversation.types import (
     ConversationProjection,
+    ConversationRedaction,
     ConversationTurn,
 )
 from neosian._foundation.llm.codec import message_from_json, message_to_json
@@ -53,7 +54,8 @@ if TYPE_CHECKING:
     from neosian._foundation.conversation.types import ProjectionKind
     from neosian._foundation.memory.types import MemoryAction
 
-WIRE_VERSION: Final = 5  # NC4: store/*; NQ2: pages; N5: conversation/search_turns
+# NC4: store/*; NQ2: pages; N5: search_turns; N8: redact_turns, turn_redactions.
+WIRE_VERSION: Final = 6
 
 # The envelope code for the ABCs' bare ValueError (programmer errors:
 # negative cursors, empty message lists). Deliberately not a neosian
@@ -136,6 +138,25 @@ def optional_strs(payload: Mapping[str, Any], name: str) -> list[str] | None:
     if items is not None and not all(isinstance(item, str) for item in items):
         raise ValueError(f"parameter {name!r} must be a list of strings")
     return cast("list[str] | None", items)
+
+
+def optional_ints(payload: Mapping[str, Any], name: str) -> list[int] | None:
+    items = _param(payload, name, list, "a list of integers", required=False)
+    if items is not None and not all(
+        isinstance(item, int) and not isinstance(item, bool) for item in items
+    ):
+        raise ValueError(f"parameter {name!r} must be a list of integers")
+    return cast("list[int] | None", items)
+
+
+def optional_objects(payload: Mapping[str, Any], name: str) -> list[dict[str, Any]]:
+    """An optional list of objects; absent or `null` is empty."""
+    items = _param(payload, name, list, "a list of objects", required=False)
+    if items is None:
+        return []
+    if not all(isinstance(item, dict) for item in items):
+        raise ValueError(f"parameter {name!r} must be a list of objects")
+    return cast(list[dict[str, Any]], items)
 
 
 # Value types ---------------------------------------------------------------
@@ -238,6 +259,7 @@ def encode_turn(turn: ConversationTurn) -> dict[str, Any]:
         "messages": [message_to_json(message) for message in turn.messages],
         "created_at": encode_timestamp(turn.created_at),
         "actor": turn.actor,
+        "redacted": turn.redacted,
     }
 
 
@@ -248,6 +270,30 @@ def decode_turn(data: Mapping[str, Any]) -> ConversationTurn:
         messages=tuple(message_from_json(encoded) for encoded in data["messages"]),
         created_at=decode_timestamp(data["created_at"]),
         actor=data.get("actor"),
+        redacted=bool(data.get("redacted", False)),  # absent on a 5 restore
+    )
+
+
+def encode_turn_redaction(act: ConversationRedaction) -> dict[str, Any]:
+    return {
+        "conversation_id": act.conversation_id,
+        "turns": list(act.turns),
+        "actor": act.actor,
+        "created_at": encode_timestamp(act.created_at),
+    }
+
+
+def decode_turn_redaction(data: Mapping[str, Any]) -> ConversationRedaction:
+    # Typed at the door like a projection (ND): a foreign client's archive
+    # names its turns as integers or is refused by name.
+    turns = optional_ints(data, "turns")
+    if not turns or any(turn < 1 for turn in turns):
+        raise ValueError("parameter 'turns' must name turn numbers from 1")
+    return ConversationRedaction(
+        conversation_id=require_str(data, "conversation_id"),
+        turns=tuple(turns),
+        actor=optional_str(data, "actor"),
+        created_at=decode_timestamp(data["created_at"]),
     )
 
 
