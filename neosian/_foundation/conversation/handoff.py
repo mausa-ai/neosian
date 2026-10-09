@@ -27,7 +27,11 @@ from typing import Final
 from neosian._foundation.conversation.base import ConversationStore
 from neosian._foundation.conversation.compaction import CompactionConfig
 from neosian._foundation.conversation.links import LinkRegistry
-from neosian._foundation.conversation.projection import one_line, tool_segment
+from neosian._foundation.conversation.projection import (
+    REDACTED,
+    one_line,
+    tool_segment,
+)
 from neosian._foundation.conversation.recall import Reach, in_reach
 from neosian._foundation.conversation.types import (
     ConversationProjection,
@@ -140,7 +144,10 @@ def render_continuation(
 
 def _verbatim(turn: ConversationTurn, digest_chars: int, links: LinkRegistry) -> str:
     """`[n] USER:` verbatim, each tool round one line, the final answer
-    verbatim and any earlier prose one line (the agent thinking aloud)."""
+    verbatim and any earlier prose one line (the agent thinking aloud);
+    a redacted turn is its label and the one word (§38)."""
+    if turn.redacted:
+        return f"[{turn.turn}] {REDACTED}"
     results = {m.tool_call_id: m for m in turn.messages if m.role is Role.TOOL}
     prose = [
         m for m in turn.messages if m.role is Role.ASSISTANT and text_of(m).strip()

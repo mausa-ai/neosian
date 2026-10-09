@@ -102,12 +102,26 @@ def build_portable_statements(schema: str) -> PortableStatements:
         ), rows AS (
             INSERT INTO {s}.turns
                 (conversation_id, turn, messages, created_at, neosian_format,
-                 actor, search_text)
+                 actor, search_text, redacted)
             SELECT %(conversation_id)s, (t.value ->> 'turn')::integer,
                    t.value -> 'messages', (t.value ->> 'created_at')::timestamptz,
-                   %(format)s, t.value ->> 'actor', t.value ->> 'search_text'
+                   %(format)s, t.value ->> 'actor', t.value ->> 'search_text',
+                   COALESCE((t.value ->> 'redacted')::boolean, false)
             FROM jsonb_array_elements(%(turns)s::jsonb) AS t(value)
             WHERE (SELECT empty FROM gate)
+            RETURNING 1
+        ), acts AS (
+            INSERT INTO {s}.turn_redactions (conversation_id, turns, actor, created_at)
+            SELECT %(conversation_id)s,
+                   ARRAY(SELECT n.value::integer
+                         FROM jsonb_array_elements_text(a.value -> 'turns')
+                              WITH ORDINALITY AS n(value, ord)
+                         ORDER BY n.ord),
+                   a.value ->> 'actor', (a.value ->> 'created_at')::timestamptz
+            FROM jsonb_array_elements(%(redactions)s::jsonb)
+                 WITH ORDINALITY AS a(value, ord)
+            WHERE (SELECT empty FROM gate)
+            ORDER BY a.ord
             RETURNING 1
         ), entries AS (
             INSERT INTO {s}.projections

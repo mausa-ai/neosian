@@ -40,6 +40,9 @@ class ConversationTurn:
     # Who appended it (NL, DESIGN §20): opaque to the store, `None` for
     # rows written before the field existed. Additive — last, defaulted.
     actor: str | None = None
+    # Blanked by `Erasable.redact_turns` (N8, DESIGN §38): the skeleton
+    # stays, `messages` is `()`. Additive — last, defaulted.
+    redacted: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,3 +72,19 @@ class ConversationProjection:
                 f"kind must be one of {sorted(_PROJECTION_KINDS)}, "
                 f"got {self.kind!r}"
             )
+
+
+@dataclass(frozen=True, slots=True)
+class ConversationRedaction:
+    """One erasure act on a conversation (N8, §38): the turn numbers it
+    blanked, ascending, who asked, when. The store appends one per act
+    that matched anything and never removes it."""
+
+    conversation_id: str
+    turns: tuple[int, ...]
+    actor: str | None
+    created_at: datetime
+
+    @property
+    def count(self) -> int:
+        return len(self.turns)

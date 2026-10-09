@@ -6,7 +6,11 @@ from pathlib import Path
 import pytest
 
 from neosian._foundation.memory.file import FileStore
-from neosian.conversation.testing import ConversationStoreContract, SearchContract
+from neosian.conversation.testing import (
+    ConversationStoreContract,
+    ErasureContract,
+    SearchContract,
+)
 from tests.support.clock import ManualClock
 from tests.unit.memory.paging import FrozenClock
 
@@ -50,3 +54,11 @@ class TestFileStoreSearchOnTies(SearchContract):
     @pytest.fixture
     def store(self, tmp_path: Path) -> FileStore:
         return FileStore(tmp_path / "ties", clock=FrozenClock())
+
+
+class TestFileStoreErasureContract(ErasureContract):
+    """The eraser's slice (§38) on the file substrate."""
+
+    @pytest.fixture
+    def store(self, tmp_path: Path, manual_clock: ManualClock) -> FileStore:
+        return FileStore(tmp_path / "erasure", clock=manual_clock)

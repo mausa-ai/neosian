@@ -20,6 +20,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from neosian._foundation.conversation.base import ConversationStore
+from neosian._foundation.conversation.erasable import Erasable
 from neosian._foundation.conversation.ids import parse_conversation_id
 from neosian._foundation.memory.base import MemoryStore
 from neosian._foundation.memory.portable import (
@@ -37,6 +38,11 @@ from neosian._foundation.shared.exceptions import (
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
+
+# The trail read is bounded (§38, the `search_turns` shape) and the wire's
+# page is 500 (`server/paging.py`): an archive carries a conversation's
+# newest 500 erasure acts, a named limit beside §26.3's others.
+_TRAIL_LIMIT = 500
 
 
 async def archive_scope(store: MemoryStore, scope: str) -> ScopeArchive:
@@ -56,10 +62,18 @@ async def archive_scope(store: MemoryStore, scope: str) -> ScopeArchive:
 async def archive_conversation(
     store: ConversationStore, conversation_id: str
 ) -> ConversationArchive:
+    """One conversation over the ABC reads, plus its erasure trail when
+    the store keeps one (`Erasable`, §38)."""
+    acts = (
+        await store.turn_redactions(conversations=[conversation_id], limit=_TRAIL_LIMIT)
+        if isinstance(store, Erasable)
+        else ()
+    )
     return ConversationArchive(
         conversation_id=conversation_id,
         turns=await store.read_turns(conversation_id),
         projections=await store.read_projections(conversation_id),
+        redactions=tuple(reversed(acts)),
     )
 
 
@@ -105,6 +119,7 @@ async def transfer(
             UnitReport(
                 "conversation",
                 conversation_id,
+                redactions=len(record.redactions),
                 turns=len(record.turns),
                 projections=len(record.projections),
             )

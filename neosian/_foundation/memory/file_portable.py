@@ -18,8 +18,10 @@ from typing import TYPE_CHECKING
 from neosian._foundation.conversation.file_rows import (
     CONVERSATIONS,
     PROJECTIONS,
+    REDACTIONS,
     TURNS,
     render_projection,
+    render_redaction,
     render_turn,
 )
 from neosian._foundation.conversation.ids import parse_conversation_id
@@ -119,6 +121,9 @@ class FilePortableStore:
         if archive.projections:
             text = "".join(render_projection(entry) for entry in archive.projections)
             atomic_write(directory / PROJECTIONS, text, fsync=True)
+        if archive.redactions:
+            text = "".join(render_redaction(act) for act in archive.redactions)
+            atomic_write(directory / REDACTIONS, text, fsync=True)
 
     def _walk(self, directory: Path, parts: tuple[str, ...], found: list[str]) -> None:
         for child in directory.iterdir():

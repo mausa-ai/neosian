@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any, cast
 from neosian._foundation.conversation.types import (
     CONVERSATION_FORMAT_VERSION,
     ConversationProjection,
+    ConversationRedaction,
     ConversationTurn,
     ProjectionKind,
 )
@@ -114,12 +115,17 @@ def _check_turn_format(conversation_id: str, where: str, declared: int) -> None:
 
 
 def conversation_turn(conversation_id: str, row: Row) -> ConversationTurn:
-    turn, encoded, created_at, declared, actor = row
+    turn, encoded, created_at, declared, actor, redacted = row
     where = f"turn row {turn}"
     _check_turn_format(conversation_id, where, declared)
-    if not isinstance(encoded, list) or not encoded:
+    # A redacted row carries no messages (N8); every other row carries some.
+    if not isinstance(encoded, list) or (not encoded and not redacted):
         raise ConversationFormatUnsupportedError(
             conversation_id, f"{where} has no message array"
+        )
+    if encoded and redacted:
+        raise ConversationFormatUnsupportedError(
+            conversation_id, f"{where} is redacted yet carries messages"
         )
     try:
         messages = tuple(message_from_json(item) for item in encoded)
@@ -133,6 +139,17 @@ def conversation_turn(conversation_id: str, row: Row) -> ConversationTurn:
         messages=messages,
         created_at=_utc(created_at),
         actor=actor,
+        redacted=bool(redacted),
+    )
+
+
+def turn_redaction(row: Row) -> ConversationRedaction:
+    conversation_id, turns, actor, created_at = row
+    return ConversationRedaction(
+        conversation_id=str(conversation_id),
+        turns=tuple(int(turn) for turn in turns),
+        actor=actor,
+        created_at=_utc(created_at),
     )
 
 

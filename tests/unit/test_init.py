@@ -274,6 +274,8 @@ def test_all_list_matches_exports() -> None:
         "ConversationStore",
         "ConversationTurn",
         "ConversationProjection",
+        "ConversationRedaction",
+        "Erasable",
         "ConversationView",
         "CompactionConfig",
         "CompactionResult",

@@ -8,6 +8,7 @@ import pytest
 from neosian._foundation.conversation.types import (
     CONVERSATION_FORMAT_VERSION,
     ConversationProjection,
+    ConversationRedaction,
     ConversationTurn,
 )
 from neosian._foundation.llm.base import Message, Role
@@ -17,7 +18,23 @@ from neosian._foundation.llm.base import Message, Role
 class TestConversationTurn:
     def test_field_list_is_the_contract(self) -> None:
         names = [f.name for f in dataclasses.fields(ConversationTurn)]
-        assert names == ["conversation_id", "turn", "messages", "created_at", "actor"]
+        assert names == [
+            "conversation_id",
+            "turn",
+            "messages",
+            "created_at",
+            "actor",
+            "redacted",  # N8 (§38): additive, last, defaulted
+        ]
+
+    def test_a_turn_is_not_redacted_until_the_eraser_says_so(self) -> None:
+        turn = ConversationTurn(
+            conversation_id="t",
+            turn=1,
+            messages=(Message(role=Role.USER, content="x"),),
+            created_at=datetime(2026, 8, 19, tzinfo=UTC),
+        )
+        assert turn.redacted is False
 
     def test_frozen_and_slotted(self) -> None:
         turn = ConversationTurn(
@@ -66,3 +83,19 @@ class TestConversationProjection:
 @pytest.mark.unit
 def test_format_version_is_one() -> None:
     assert CONVERSATION_FORMAT_VERSION == 1
+
+
+@pytest.mark.unit
+class TestConversationRedaction:
+    def test_field_list_is_the_contract_and_count_is_the_turns(self) -> None:
+        names = [f.name for f in dataclasses.fields(ConversationRedaction)]
+        assert names == ["conversation_id", "turns", "actor", "created_at"]
+        act = ConversationRedaction(
+            conversation_id="t",
+            turns=(1, 3),
+            actor="ops",
+            created_at=datetime(2026, 10, 10, tzinfo=UTC),
+        )
+        assert act.count == 2
+        with pytest.raises(dataclasses.FrozenInstanceError):
+            act.actor = "x"  # type: ignore[misc]

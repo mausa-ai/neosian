@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 if TYPE_CHECKING:
     from neosian._foundation.conversation.types import (
         ConversationProjection,
+        ConversationRedaction,
         ConversationTurn,
     )
     from neosian._foundation.memory.types import (
@@ -44,12 +45,15 @@ class ScopeArchive:
 
 @dataclass(frozen=True, slots=True)
 class ConversationArchive:
-    """One conversation, whole: turns ascending and gapless from 1,
-    projections in read order (turn, span, insertion)."""
+    """One conversation, whole: turns ascending and gapless from 1
+    (redacted ones as their skeletons), projections in read order (turn,
+    span, insertion), the erasure trail oldest first (N8, §38; additive,
+    defaulted: an archive written before it is still one)."""
 
     conversation_id: str
     turns: tuple[ConversationTurn, ...]
     projections: tuple[ConversationProjection, ...]
+    redactions: tuple[ConversationRedaction, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

@@ -51,6 +51,7 @@ from neosian._foundation.conversation.compaction import (
     CompactionResult,
 )
 from neosian._foundation.conversation.core import Conversation
+from neosian._foundation.conversation.erasable import Erasable
 from neosian._foundation.conversation.ids import parse_conversation_id
 from neosian._foundation.conversation.reflection import (
     ReflectionConfig,
@@ -60,6 +61,7 @@ from neosian._foundation.conversation.reflection import (
 from neosian._foundation.conversation.types import (
     CONVERSATION_FORMAT_VERSION,
     ConversationProjection,
+    ConversationRedaction,
     ConversationTurn,
 )
 from neosian._foundation.conversation.views import ConversationView
@@ -360,6 +362,8 @@ __all__ = [
     "ConversationStore",
     "ConversationTurn",
     "ConversationProjection",
+    "ConversationRedaction",
+    "Erasable",
     "ConversationView",
     "CompactionConfig",
     "CompactionResult",

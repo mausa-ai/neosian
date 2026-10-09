@@ -64,14 +64,16 @@ def search_files(
     """Every matching turn of the named conversations — or of every one
     under `parent` — newest first, cut to `limit`."""
     found: list[ConversationTurn] = []
-    for conversation_id in _held(parent) if ids is None else ids:
+    for conversation_id in held_ids(parent) if ids is None else ids:
         file = parent / conversation_id / TURNS
         if file.is_file():
             found.extend(scan_turns(file, conversation_id, terms))
     return newest_first(found)[:limit]
 
 
-def _held(parent: Path) -> tuple[str, ...]:
+def held_ids(parent: Path) -> tuple[str, ...]:
+    """Every conversation directory under `parent` with a grammatical
+    name; a foreign name is skipped, as listings skip foreign files."""
     if not parent.is_dir():
         return ()
     ids: list[str] = []

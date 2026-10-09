@@ -1,8 +1,8 @@
 """PostgresStore — the relational reference implementation (N3).
 
 The standalone counterpart of FileStore, implementing both storage seams
-(§8 documents, §9 turns), the mobility protocol (§26) and paged
-listings (§8) over one
+(§8 documents, §9 turns), the turn eraser (§38), the mobility protocol
+(§26) and paged listings (§8) over one
 lazily-opened autocommit pool
 (ledger #34): every mutation is a single atomic statement, the store
 never issues BEGIN/COMMIT/ROLLBACK, and `expected_version` is race-safe
@@ -28,12 +28,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from neosian._foundation.postgres.erasure_store import PostgresErasureStore
 from neosian._foundation.postgres.memory_store import PostgresMemoryStore
 from neosian._foundation.postgres.pageable import PostgresPageableStore
 from neosian._foundation.postgres.pool import PostgresPool
 from neosian._foundation.postgres.portable import PostgresPortableStore
 from neosian._foundation.postgres.schema import schema_sql, validate_schema_name
 from neosian._foundation.postgres.statements import build_statements
+from neosian._foundation.postgres.statements_erasure import build_erasure_statements
 from neosian._foundation.postgres.statements_pageable import build_pageable_statements
 from neosian._foundation.postgres.statements_portable import build_portable_statements
 from neosian._foundation.postgres.turn_store import PostgresTurnStore
@@ -44,7 +46,11 @@ if TYPE_CHECKING:
 
 
 class PostgresStore(
-    PostgresMemoryStore, PostgresTurnStore, PostgresPortableStore, PostgresPageableStore
+    PostgresMemoryStore,
+    PostgresTurnStore,
+    PostgresErasureStore,
+    PostgresPortableStore,
+    PostgresPageableStore,
 ):
     """Both storage seams over one Postgres schema (default ``neosian``).
 
@@ -71,6 +77,7 @@ class PostgresStore(
             dsn, min_size=min_size, max_size=max_size, timeout=pool_timeout
         )
         self._sql = build_statements(self._schema)
+        self._erasure_sql = build_erasure_statements(self._schema)
         self._portable_sql = build_portable_statements(self._schema)
         self._pageable_sql = build_pageable_statements(self._schema)
         self._clock = clock if clock is not None else SystemClock()

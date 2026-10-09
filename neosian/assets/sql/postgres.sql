@@ -114,6 +114,7 @@ CREATE TABLE IF NOT EXISTS {{schema}}.turns (
     neosian_format  integer     NOT NULL DEFAULT 1,
     actor           text,
     search_text     text,
+    redacted        boolean     NOT NULL DEFAULT false,
     PRIMARY KEY (conversation_id, turn)
 );
 
@@ -133,6 +134,12 @@ ALTER TABLE {{schema}}.turns ADD COLUMN IF NOT EXISTS actor text;
 --         USING gin (search_text gin_trgm_ops);
 ALTER TABLE {{schema}}.turns ADD COLUMN IF NOT EXISTS search_text text;
 
+-- Generation 4 (N8, DESIGN §38): a redacted turn keeps its row (number,
+-- stamp, actor) with an empty message array, an empty search_text and
+-- this flag; `Erasable.redact_turns` is the one statement that updates a
+-- turn. The ALTER converges a schema created before the column existed.
+ALTER TABLE {{schema}}.turns ADD COLUMN IF NOT EXISTS redacted boolean NOT NULL DEFAULT false;
+
 -- `id` realizes insertion order: read order is (turn, span, id), the
 -- tie-to-last-appended rule of §9.6. No unique key by design — entries
 -- are never deleted and overlaps render deterministically.
@@ -150,3 +157,19 @@ CREATE TABLE IF NOT EXISTS {{schema}}.projections (
 
 CREATE INDEX IF NOT EXISTS projections_order
     ON {{schema}}.projections (conversation_id, turn, span, id);
+
+-- Generation 4 (N8, DESIGN §38): the turn side's erasure trail (the
+-- memory_redactions parity): which turns of a conversation were blanked,
+-- by whom, when. Store-local audit, read through `Erasable`.
+CREATE TABLE IF NOT EXISTS {{schema}}.turn_redactions (
+    id              bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    conversation_id text        NOT NULL
+        REFERENCES {{schema}}.conversations (conversation_id)
+        ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
+    turns           integer[]   NOT NULL,
+    actor           text,
+    created_at      timestamptz NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS turn_redactions_time
+    ON {{schema}}.turn_redactions (conversation_id, created_at DESC);

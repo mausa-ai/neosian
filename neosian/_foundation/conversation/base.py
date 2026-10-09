@@ -38,13 +38,17 @@ Cross-implementation invariants (pinned by
   (ConversationIdInvalidError); negative `after`/`limit` and an empty
   `messages` sequence are programmer errors (ValueError).
 
-Deliberately absent: `list_conversations`, delete/redact, per-turn
+Deliberately absent: `list_conversations`, delete, per-turn
 usage/model/cost, capability ClassVars. Frozen for hosts since the
 2026-08-21 amendment (ECOSYSTEM §10); DESIGN §9 carries the rationale and
 the CS1-CS7 rulings. NL added one thing, additively:
 `append_turn(..., actor=)` and `ConversationTurn.actor` — who appended a
 turn, opaque to the store (DESIGN §20). N5 added `search_turns` before
-the promise, the seam test's sort (ledger #297).
+the promise, the seam test's sort (ledger #297). Redaction arrived
+beside the ABC, never on it: `erasable.Erasable` (N8, DESIGN §38, ledger
+#342) blanks turns with the skeleton kept, and `ConversationTurn.redacted`
+(additive, last, defaulted) is the one mark it leaves here — a redacted
+turn carries no messages, which every reader must accept.
 
 **Reserved for a 1.x minor** (NQ2, ledger #229) — neosian will not claim
 this name for anything else, so a host may implement it early:

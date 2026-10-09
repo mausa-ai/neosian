@@ -25,10 +25,12 @@ def test_conversation_all_is_pinned() -> None:
         "ConversationId",
         "ConversationIdInvalidError",
         "ConversationProjection",
+        "ConversationRedaction",
         "ConversationStore",
         "ConversationStoreError",
         "ConversationTurn",
         "ConversationView",
+        "Erasable",
         "FileStore",
         "LinkRegistry",
         "PostgresStore",
@@ -56,6 +58,7 @@ def test_conversation_testing_exports_the_contract_kit() -> None:
 
     assert neosian.conversation.testing.__all__ == [
         "ConversationStoreContract",
+        "ErasureContract",
         "SearchContract",
     ]
 

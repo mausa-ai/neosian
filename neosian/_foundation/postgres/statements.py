@@ -301,7 +301,7 @@ def build_statements(schema: str) -> Statements:
     """
 
     read_turns = f"""
-        SELECT turn, messages, created_at, neosian_format, actor
+        SELECT turn, messages, created_at, neosian_format, actor, redacted
         FROM {s}.turns
         WHERE conversation_id = %(conversation_id)s AND turn > %(after)s
         ORDER BY turn
@@ -319,7 +319,8 @@ def build_statements(schema: str) -> Statements:
     # COLLATE "C" keeps the tiebreak in codepoint order (ledger #37). A
     # NULL column (a generation-2 row) never matches.
     search_turns = f"""
-        SELECT conversation_id, turn, messages, created_at, neosian_format, actor
+        SELECT conversation_id, turn, messages, created_at, neosian_format, actor,
+               redacted
         FROM {s}.turns
         WHERE search_text ILIKE ALL(%(patterns)s::text[])
           AND (%(all)s::boolean OR conversation_id = ANY(%(ids)s::text[]))

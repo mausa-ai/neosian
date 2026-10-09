@@ -110,8 +110,17 @@ class PostgresPortableStore:
                         "created_at": _stamp(t.created_at),
                         "actor": t.actor,
                         "search_text": turn_text(t),  # a restore re-renders (§32)
+                        "redacted": t.redacted,
                     }
                     for t in archive.turns
+                ),
+                "redactions": _dump(
+                    {
+                        "turns": list(a.turns),
+                        "actor": a.actor,
+                        "created_at": _stamp(a.created_at),
+                    }
+                    for a in archive.redactions
                 ),
                 "projections": _dump(
                     {"turn": p.turn, "kind": p.kind, "text": p.text, "span": p.span}

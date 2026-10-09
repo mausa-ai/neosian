@@ -13,6 +13,7 @@ from neosian._foundation.conversation.compaction import (
     CompactionResult,
 )
 from neosian._foundation.conversation.core import Conversation
+from neosian._foundation.conversation.erasable import Erasable
 from neosian._foundation.conversation.ids import (
     CONVERSATION_ID_MAX_LENGTH,
     CONVERSATION_ID_PATTERN,
@@ -37,6 +38,7 @@ from neosian._foundation.conversation.search_history import (
 from neosian._foundation.conversation.types import (
     CONVERSATION_FORMAT_VERSION,
     ConversationProjection,
+    ConversationRedaction,
     ConversationTurn,
     ProjectionKind,
 )
@@ -70,10 +72,12 @@ __all__ = [
     "ConversationId",
     "ConversationIdInvalidError",
     "ConversationProjection",
+    "ConversationRedaction",
     "ConversationStore",
     "ConversationStoreError",
     "ConversationTurn",
     "ConversationView",
+    "Erasable",
     "FileStore",
     "LinkRegistry",
     "PostgresStore",

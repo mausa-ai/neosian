@@ -22,6 +22,7 @@ _TABLES = (
     "conversations",
     "turns",
     "projections",
+    "turn_redactions",
 )
 
 
@@ -61,6 +62,23 @@ def test_generation_three_adds_the_search_text_column() -> None:
 
 
 @pytest.mark.unit
+def test_generation_four_adds_the_redacted_column_and_the_trail() -> None:
+    # N8 (§38): the flag is in the CREATE for a fresh schema and in an
+    # idempotent ALTER for an older one; the trail table and its index
+    # follow the memory_redactions shape.
+    ddl = schema_sql()
+    assert (
+        'ALTER TABLE "neosian".turns ADD COLUMN IF NOT EXISTS redacted boolean '
+        "NOT NULL DEFAULT false;" in ddl
+    )
+    turns = ddl.split('CREATE TABLE IF NOT EXISTS "neosian".turns')[1].split(";")[0]
+    assert "redacted        boolean     NOT NULL DEFAULT false" in turns
+    trail = ddl.split('CREATE TABLE IF NOT EXISTS "neosian".turn_redactions')[1]
+    assert "turns           integer[]   NOT NULL" in trail.split(";")[0]
+    assert "turn_redactions_time" in ddl
+
+
+@pytest.mark.unit
 def test_rendered_ddl_is_idempotent_by_construction() -> None:
     ddl = schema_sql()
     creates = [line for line in ddl.splitlines() if line.lstrip().startswith("CREATE")]
@@ -78,7 +96,7 @@ def test_rendered_ddl_stamps_the_schema_version() -> None:
         in ddl
     )
     assert "ON CONFLICT (singleton) DO UPDATE" in ddl
-    assert SCHEMA_VERSION == 3  # bumping is a deliberate, reviewed diff (NL, N5)
+    assert SCHEMA_VERSION == 4  # bumping is a deliberate, reviewed diff (NL, N5, N8)
 
 
 @pytest.mark.unit

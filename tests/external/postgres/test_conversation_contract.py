@@ -8,7 +8,11 @@ from typing import Any
 import pytest
 
 from neosian import PostgresStore
-from neosian.conversation.testing import ConversationStoreContract, SearchContract
+from neosian.conversation.testing import (
+    ConversationStoreContract,
+    ErasureContract,
+    SearchContract,
+)
 from tests.support.postgres import plant_sql, store_schema
 from tests.unit.memory.paging import FrozenClock
 
@@ -109,3 +113,8 @@ class TestPostgresSearchOnTies(SearchContract):
     @pytest.fixture
     def manual_clock(self) -> FrozenClock:
         return FrozenClock()
+
+
+class TestPostgresErasureContract(ErasureContract):
+    """The eraser's slice (§38) against a real server: the one CTE that
+    updates a turn, and the trail's `COLLATE "C"` order."""

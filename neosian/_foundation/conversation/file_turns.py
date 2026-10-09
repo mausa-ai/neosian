@@ -8,13 +8,15 @@ every scope component carries a `%3A`, so `conversations/` never collides:
     root/conversations/<conversation_id>/
         turns.jsonl         # one codec-encoded turn per line
         projections.jsonl   # checkpointed compaction entries (slice B)
+        redactions.jsonl    # the erasure trail (N8, `file_erasure.py`)
 
-Pure appends — no rewrite path; the file's last line is the numbering's
-source of truth, never a line count. A malformed or newer row raises,
-never skips: skipping would silently drop a turn and corrupt the
-numbering. The row codec and the layout names live in `file_rows.py`,
-the search scan in `file_search.py` (a worker thread, like the memory
-listings). Deliberately self-contained: `memory/journal.py` stays
+Pure appends here; the one rewrite path is the eraser's (N8, §38). The
+file's last line is the numbering's source of truth, never a line
+count. A malformed or newer row raises, never skips: skipping would
+silently drop a turn and corrupt the numbering. The row codec and the
+layout names live in `file_rows.py`, the search scan in
+`file_search.py` (a worker thread, like the memory listings), the
+eraser in `file_erasure.py`. Deliberately self-contained: `memory/journal.py` stays
 MemoryVersion-typed, and importing it here would point an import edge
 against `memory.file → conversation.file_turns`.
 """

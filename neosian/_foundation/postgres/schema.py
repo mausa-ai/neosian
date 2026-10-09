@@ -27,7 +27,8 @@ _SQL_ASSET: Final = "sql/postgres.sql"
 # `neosian_schema` table on apply. `IF NOT EXISTS` cannot add a column, so
 # a later generation ships as equally idempotent statements and bumps
 # this number — a store can read it before trusting a column.
-SCHEMA_VERSION: Final = 3  # NL: turns.actor; N5: turns.search_text
+# NL: turns.actor; N5: turns.search_text; N8: turns.redacted, turn_redactions.
+SCHEMA_VERSION: Final = 4
 
 # Lowercase unquoted-identifier shape, ≤ 63 bytes (the Postgres NAMEDATALEN
 # limit). Restricting to this set makes quoting trivially safe.

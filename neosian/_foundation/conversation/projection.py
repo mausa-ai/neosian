@@ -43,6 +43,9 @@ _OMITTED: Final = (
     ' … [{omitted} chars omitted; pass call="{call}" to recall_turn to read '
     "this result whole] … "
 )
+# What every renderer says for a turn the eraser blanked (N8, §38): the
+# number stands, the content is gone, and recall says so too.
+REDACTED: Final = "[redacted]"
 
 
 def one_line(
@@ -78,10 +81,11 @@ def select(entries: Sequence[ConversationProjection]) -> dict[int, int]:
 
 
 def entry_line(entry: ConversationProjection) -> str:
-    """The entry's log line with its turn-ref label: ``[7]`` / ``[3-6]``."""
+    """The entry's log line with its turn-ref label: ``[7]`` / ``[3-6]``;
+    a blanked entry (§38) is its label alone."""
     if entry.span == 1:
-        return f"[{entry.turn}] {entry.text}"
-    return f"[{entry.turn - entry.span + 1}-{entry.turn}] {entry.text}"
+        return f"[{entry.turn}] {entry.text}".rstrip()
+    return f"[{entry.turn - entry.span + 1}-{entry.turn}] {entry.text}".rstrip()
 
 
 def render_view(
@@ -153,8 +157,11 @@ def log_line(
     `digest_chars` unless `agent_override` — the model-distilled digest —
     replaces the turn's combined prose as a single segment. Tool rounds
     render ``TOOL name(args digest) → result head/tail``. Every segment
-    is contracted through `links` and clipped atom-safe (§23).
+    is contracted through `links` and clipped atom-safe (§23). A redacted
+    turn is the one word `REDACTED`.
     """
+    if turn.redacted:
+        return REDACTED
     results = {
         message.tool_call_id: message
         for message in turn.messages
@@ -233,7 +240,9 @@ def render_turn(turn: ConversationTurn, *, result_chars: int = RESULT_CHARS) -> 
     """The verbatim role-labeled turn for recall_turn — prose unclipped
     (reasoning is model-internal and omitted); a tool result over
     `result_chars` shows its head and tail, the marker naming the call that
-    `render_call` opens whole."""
+    `render_call` opens whole. A redacted turn says so and nothing else."""
+    if turn.redacted:
+        return f"Turn {turn.turn}: {REDACTED}"
     names = {
         call.id: call.name for message in turn.messages for call in message.tool_calls
     }

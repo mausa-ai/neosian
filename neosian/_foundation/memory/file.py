@@ -30,6 +30,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, ClassVar
 
+from neosian._foundation.conversation.file_erasure import FileErasureStore
 from neosian._foundation.conversation.file_turns import FileTurnStore
 from neosian._foundation.memory import file_layout as layout, journal
 from neosian._foundation.memory.base import MemoryStore
@@ -61,10 +62,12 @@ _VERSIONS = layout.VERSIONS
 _REDACTIONS = layout.REDACTIONS
 
 
-class FileStore(MemoryStore, FileTurnStore, FilePortableStore, FilePageableStore):
+class FileStore(
+    MemoryStore, FileTurnStore, FileErasureStore, FilePortableStore, FilePageableStore
+):
     """Markdown + frontmatter memory store over a plain directory —
-    implementing both storage seams (§8 documents, §9 turns), the
-    mobility protocol (§26) and paged listings (§8)."""
+    implementing both storage seams (§8 documents, §9 turns), the turn
+    eraser (§38), the mobility protocol (§26) and paged listings (§8)."""
 
     supports_optimistic_concurrency: ClassVar[bool] = True
 
