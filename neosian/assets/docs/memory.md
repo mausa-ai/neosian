@@ -67,7 +67,12 @@ verbatim; its long URLs, paths and ids render as `[link conv-a:N]`
 handles the model passes as written in tool calls. Which conversations
 are shareable is your decision: ids carry no scope.
 
-History is searchable as well as pageable (DESIGN §32).
+History is searchable as well as pageable (DESIGN §32), and erasable by
+an operator, never by the agent (DESIGN §38): `neosian redact` blanks
+recorded turns with the skeleton kept and `neosian prune` applies a
+retention cutoff by conversation (`neosian docs cli`); `recall_turn`,
+`continue_session` and the log lines say `[redacted]` where content
+went, and `search_history` never finds it again.
 `search_history(query, conversation=None, limit=10)` registers with
 `recall_turn` as a pair (from the first send when a mount at `/project`
 exists, else at the first compaction or with views; `recall_tool=False`
@@ -122,8 +127,9 @@ actor (who wrote: a `conversation_id`, `cli:<host>`, `mcp:<host>`,
 rollback come with the store; redaction clears content while
 preserving the audit skeleton. From the shell, `neosian memory
 versions` reads the trail (`--json` carries full historical content),
-`revert` undoes the newest write, and `redact` is the one eraser,
-the find-and-redact remedy (`neosian docs cli`).
+`revert` undoes the newest write, and `redact` is the eraser of memory
+documents, the find-and-redact remedy; recorded turns have `neosian
+redact` and `prune` (`neosian docs cli`).
 
 A host sees the writes as they happen: on a streamed run every
 successful mutation emits a `memory_write` frame right after its
@@ -153,9 +159,9 @@ frozen index, like every other memory write.
 Memory ages instead of rotting: `neosian memory maintain` (or the
 library's `run_maintenance`) consolidates a store's writable mounts,
 explicitly and on the operator's cadence: there is no automatic
-trigger. The deterministic stage runs keylessly: prune empty documents,
+trigger. The deterministic stage runs keylessly: remove empty documents,
 merge byte-identical duplicates keeping the oldest. `--model MODEL`
-adds the semantic pass: merge overlapping documents, prune what
+adds the semantic pass: merge overlapping documents, retire what
 decayed, promote durable user facts out of project mounts. Protection
 is enforced in code, not prompt: documents updated inside the age floor
 (default 7 days, `--min-age-days`) are never deleted, redacted
@@ -187,7 +193,8 @@ same move is `transfer(source, target)` over the `Portable` protocol
 the three shipped stores implement. Beside it, `Pageable` reads the four
 listings a page at a time (`list_documents_page`, `versions_page`,
 `history_page`, `redactions_page`, each returning `Page(items,
-next_cursor)`); a host store needs neither.
+next_cursor)`), and `Erasable` is the turn eraser the operator verbs
+need (`neosian docs stores`); a host store needs none of the three.
 
 ## Five transports, one dispatcher
 

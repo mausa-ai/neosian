@@ -43,7 +43,9 @@ _READ_COMMANDS: Final = {
 }
 # The rest of what the tool runs: a form of these asks unless `reads` says
 # otherwise (`update` asks whole: it contacts PyPI, #214).
-_ASK_VERBS: Final = frozenset({"setup", "configure", "update", "export", "import"})
+_ASK_VERBS: Final = frozenset(
+    {"setup", "configure", "update", "export", "import", "redact", "prune"}
+)
 _VERBS: Final = _READ_VERBS | _READ_COMMANDS.keys() | _ASK_VERBS
 # A session, a paid run, a server, the hook door: never inside a chat.
 _OUTSIDE: Final = frozenset({"chat", "playground", "eval", "mcp", "record", "serve"})

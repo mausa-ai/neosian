@@ -334,6 +334,30 @@ def audit(ctx: typer.Context) -> None:
     )
 
 
+@app.command(name="redact", rich_help_panel=_OPERATE, context_settings=_PASS_THROUGH)
+def redact(ctx: typer.Context) -> None:
+    """Blank recorded turns of one conversation, the skeleton kept (DESIGN §38).
+
+    A thin pass-through to the one grammar (`neosian redact --help`);
+    irreversible, so the whole conversation takes an explicit `--all`.
+    """
+    from neosian._cli.shell_reports import erasure as erasure_main
+
+    raise typer.Exit(erasure_main(["redact", *ctx.args]))
+
+
+@app.command(name="prune", rich_help_panel=_OPERATE, context_settings=_PASS_THROUGH)
+def prune(ctx: typer.Context) -> None:
+    """Redact every conversation older than a cutoff, sessions documents too.
+
+    A thin pass-through to the one grammar (`neosian prune --help`);
+    `--dry-run` reports the plan and writes nothing.
+    """
+    from neosian._cli.shell_reports import erasure as erasure_main
+
+    raise typer.Exit(erasure_main(["prune", *ctx.args]))
+
+
 @app.command(name="export", rich_help_panel=_OPERATE, context_settings=_PASS_THROUGH)
 def export(ctx: typer.Context) -> None:
     """Write the store to DIR, whole — history included (DESIGN §26).

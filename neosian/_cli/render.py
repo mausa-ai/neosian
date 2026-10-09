@@ -18,6 +18,7 @@ from rich.tree import Tree
 from neosian._cli.display import console_for, records, section, terminal
 from neosian._cli.render_status import render_status as render_status
 from neosian._cli.ui import BRAND_ACCENT
+from neosian._foundation.memory.audit import turn_ranges
 
 Engine = Callable[[list[str]], int]
 Render = Callable[[dict[str, Any], Console], None]
@@ -96,6 +97,9 @@ def render_audit(envelope: dict[str, Any], console: Console) -> None:
     for entry in envelope["entries"]:
         if entry["event"] == "turn":
             what = f"{entry['conversation_id']} turn {entry['turn']}"
+        elif entry["event"] == "redacted" and entry.get("conversation_id"):
+            ranges = turn_ranges(tuple(entry.get("turns", ())))
+            what = f"{entry['conversation_id']} turns {ranges}"
         elif entry["event"] == "redacted":
             where = "scope-wide" if entry["path"] is None else f"/{entry['path']}"
             what = f"{entry['count']} at {where}"

@@ -1,7 +1,8 @@
 """The audit view (NL, DESIGN §20): what was done, by whom, when.
 
 One read composed over the ABCs' own reads — `history`, `redactions`,
-and `read_turns` when a conversation is named — so it answers identically
+and `read_turns` plus the eraser's trail (`turn_redactions`, §38) when a
+conversation is named — so it answers identically
 on FileStore, PostgresStore and through the daemon (`RemoteStore`), and
 a host store that passes the kits answers it too. The engine holds no
 state and interprets no actor: the filter is `actor_matches`'s
@@ -14,6 +15,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
 from neosian._foundation.conversation.base import ConversationStore
+from neosian._foundation.conversation.erasable import TRAIL_LIMIT, Erasable
 from neosian._foundation.memory.actor import actor_matches
 from neosian._foundation.memory.sessions import SESSIONS_PREFIX, parse_sessions_document
 
@@ -30,7 +32,8 @@ class AuditEntry:
     """One ledger line. Memory rows fill `path`/`version`; an erasure
     fills `path` (None scope-wide) and `count`; a turn fills
     `conversation_id`/`turn`; a sessions document's row carries the
-    sessions it says it continues (§33), read from the row's content."""
+    sessions it says it continues (§33), read from the row's content; a
+    turn erasure (§38) fills `conversation_id`, `count` and `turns`."""
 
     created_at: datetime
     actor: str | None
@@ -42,6 +45,7 @@ class AuditEntry:
     conversation_id: str | None = None
     turn: int | None = None
     continues: tuple[str, ...] = ()
+    turns: tuple[int, ...] = ()
 
 
 async def audit(
@@ -54,7 +58,8 @@ async def audit(
     limit: int | None = None,
 ) -> tuple[AuditEntry, ...]:
     """The scope's ledger, newest first, optionally one conversation's
-    turns merged in and the whole filtered to one actor's prefix."""
+    turns and erasure acts merged in and the whole filtered to one
+    actor's prefix."""
     entries: list[AuditEntry] = [
         AuditEntry(
             created_at=row.created_at,
@@ -98,7 +103,37 @@ async def audit(
             for turn in await store.read_turns(conversation_id)
             if since is None or turn.created_at >= since
         )
+        if isinstance(store, Erasable):
+            entries.extend(
+                AuditEntry(
+                    created_at=act.created_at,
+                    actor=act.actor,
+                    event="redacted",
+                    count=act.count,
+                    conversation_id=conversation_id,
+                    turns=act.turns,
+                )
+                for act in await store.turn_redactions(
+                    conversations=[conversation_id], since=since, limit=TRAIL_LIMIT
+                )
+            )
     if actor is not None:
         entries = [entry for entry in entries if actor_matches(entry.actor, actor)]
     entries.sort(key=lambda entry: entry.created_at, reverse=True)  # stable
     return tuple(entries)[:limit]
+
+
+def turn_ranges(turns: tuple[int, ...]) -> str:
+    """Ascending turn numbers as ranges: `(1, 2, 3, 7)` reads `1-3, 7`."""
+    parts: list[str] = []
+    start = previous = None
+    for number in turns:
+        if previous is not None and number == previous + 1:
+            previous = number
+            continue
+        if start is not None:
+            parts.append(str(start) if start == previous else f"{start}-{previous}")
+        start = previous = number
+    if start is not None:
+        parts.append(str(start) if start == previous else f"{start}-{previous}")
+    return ", ".join(parts)

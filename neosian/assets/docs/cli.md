@@ -1,6 +1,6 @@
 ---
 title: "The shell: one CLI for humans and agents"
-summary: status, setup, chat, search, audit, eval; the memory grammar, --json, exit tiers
+summary: status, setup, chat, search, audit, redact, prune; the memory grammar, --json, exit tiers
 ---
 
 # The shell
@@ -306,9 +306,9 @@ before any envelope exists.
 
 `maintain` is not one of the six dispatch commands: it runs the
 maintenance pass over the writable mounts (`neosian docs memory`).
-Keyless by default (prune empty documents, merge byte-identical
+Keyless by default (remove empty documents, merge byte-identical
 duplicates keeping the oldest), and `--model MODEL` adds the semantic
-pass (merge overlapping, prune stale, promote), which needs that
+pass (merge overlapping, retire stale, promote), which needs that
 provider's API key: a missing key is refused at construction, never a
 silent half-pass. `--min-age-days N` (default 7) protects recently
 updated documents from deletion. Its `--json` envelope is its own,
@@ -326,8 +326,9 @@ agent-facing six-command vocabulary.
 first. Text output is the audit trail without content: one line per
 row (version, action, actor, timestamp). `--json` carries every row's
 **full content**: that is the point-in-time read, and it means history
-reveals everything a document ever held. `redact` is the only eraser.
-Empty history is an answer (exit 0), not an error.
+reveals everything a document ever held. `redact` is the only eraser of
+memory; recorded turns have their own, `neosian redact` (below). Empty
+history is an answer (exit 0), not an error.
 
 **`redact PATH [--all]`** clears content everywhere for one document,
 current state and every version row alike, preserving the audit skeleton
@@ -386,7 +387,8 @@ grammar (exit 2); nothing to continue is exit 1 with the reason.
 [--limit N] [--json]` answers "what was done, by whom, when" for a scope
 (default: `NEOSIAN_SCOPE`, else this directory's project scope),
 newest first: every memory version row (deleted documents included),
-every redaction, and one conversation's turns when named. It takes the
+every redaction, and one conversation's turns and erasure acts when
+named (`redacted  s1 turns 1-3`, the trail of `neosian redact`). It takes the
 store selection above (`--root`, `--url`, or the DSN; `--scope` is a
 raw scope here, not a mount) and answers identically on every
 substrate. `--actor` filters by prefix: `claude-code:s1` matches
@@ -394,10 +396,61 @@ substrate. `--actor` filters by prefix: `claude-code:s1` matches
 process every actor carries the client prefix the daemon asserted.
 Exit tiers hold; an empty ledger is an answer (exit 0).
 
+## The eraser: `neosian redact` / `neosian prune`
+
+Every session of every client is recorded verbatim, tool results
+included, and served back by `search_history`, `recall_turn` and
+`continue_session`. A secret in one of those turns has one remedy, an
+operator's, never a tool the model can call (DESIGN §38):
+
+```
+neosian redact CONVERSATION (--all | --through N | --turns N[,N...]) [--actor A] [--json]
+neosian prune --older-than <N>d|<N>h [--dry-run] [--actor A] [--json]
+```
+
+`redact` blanks the selected turns of one conversation, skeleton kept:
+each turn's number, timestamp and actor stay, its messages go, every
+compaction entry covering it loses its text, and `read_turns`,
+`search_turns`, `recall_turn`, `continue_session`, the SessionStart
+block and a fresh `export` no longer carry the content (`[redacted]`
+where a reader would have shown it). Exactly one selector: `--through N`
+is turns 1 to N, `--turns 1,3` names them, and `--all` is the whole
+conversation, which also redacts its `sessions/<id>` document in every
+scope that holds one, so "where we left off" forgets it. The whole takes
+the explicit token because it is irreversible, the `memory redact
+--all` precedent. A number the conversation never had matches nothing;
+an unknown conversation is `no turns matched` at exit 0. The act lands
+in the trail under `--actor` (default `cli:local`), and `neosian audit
+--conversation ID` shows it; a repeat changes nothing and records
+another act. `--json` is `{"verb": "redact", "conversation_id", "count",
+"documents": [{"scope", "path"}], "client"}`.
+
+`prune` is retention on the same primitive: every conversation whose
+newest turn is older than the cutoff is redacted whole, its sessions
+documents with it, and a conversation that is already blanked whole is
+left alone, so a nightly run appends nothing twice. An active
+conversation is never cut in half. `--dry-run` prints the same plan,
+one line per conversation (its id, its turns, its last turn's stamp),
+and writes nothing; run it first. The schedule is yours (cron), neosian
+keeps no timer. `--json` is `{"verb": "prune", "cutoff", "dry_run",
+"turns", "conversations": [{"conversation_id", "turns", "last_at"}],
+"documents", "client"}`.
+
+Both take the store selection above (the home when none is named) and
+answer the same on every substrate; through the state process the act
+is recorded under the client the token asserts. Exit tiers hold: 2 for
+grammar with nothing built (no selector or two, a bad number or
+duration, an invalid id), 1 when the store refuses (a backend without
+the eraser, a lost connection), 0 with the report, a count of zero
+included. What a process loaded before the act it keeps until it starts
+again: a running `Conversation`, and the greeting a long-lived `neosian
+serve` rendered for `/mcp`.
+
 ## Moving a store: `neosian export` / `neosian import`
 
 `neosian export DIR` writes the store to `DIR`, whole: every scope and
-conversation, version history and redaction trail included, verbatim.
+conversation, version history and both redaction trails included,
+verbatim (a redacted turn travels as its skeleton).
 `DIR` is a FileStore root: `cat` it, `grep` it, `neosian serve --root
 DIR` it, or `neosian import DIR` it into any other store: a fresh
 root, Postgres by the DSN, or the state process by `--url`. Both verbs

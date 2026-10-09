@@ -138,3 +138,41 @@ def render_transfer(payload: dict[str, Any], console: Console) -> None:
             )
         )
     records(console, ("Kind", "Name", "Transferred"), rows)
+
+
+def render_erasure(payload: dict[str, Any], console: Console) -> None:
+    section(console, payload["verb"].capitalize())
+    if payload["verb"] == "redact":
+        fields(
+            console,
+            [
+                ("Conversation", payload["conversation_id"]),
+                ("Turns redacted", str(payload["count"])),
+            ],
+        )
+    else:
+        fields(
+            console,
+            [
+                ("Cutoff", payload["cutoff"]),
+                ("Mode", "dry run" if payload["dry_run"] else "redacted"),
+                ("Turns", str(payload["turns"])),
+            ],
+        )
+        if payload["conversations"]:
+            records(
+                console,
+                ("Conversation", "Turns", "Last turn"),
+                [
+                    (c["conversation_id"], str(c["turns"]), c["last_at"])
+                    for c in payload["conversations"]
+                ],
+            )
+        else:
+            console.print(Text("nothing older than the cutoff"))
+    if payload["documents"]:
+        records(
+            console,
+            ("Scope", "Document"),
+            [(d["scope"], f"/{d['path']}") for d in payload["documents"]],
+        )

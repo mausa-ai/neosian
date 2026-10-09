@@ -154,7 +154,9 @@ Each line is one page in the wheel — `neosian docs <topic>`.
 - **Conversation and memory** (`memory`). History is an append-only log;
   log-projection compaction pages aged turns out of context,
   `search_history` finds any turn by its words and `recall_turn`
-  re-hydrates it verbatim — paging, not deletion.
+  re-hydrates it verbatim — paging, not deletion. The one eraser is an
+  operator's: `neosian redact` blanks recorded turns with the skeleton
+  kept, `neosian prune` is retention on top.
   Memory is file-school: small markdown documents with frontmatter under
   mounted scopes, read and written through one `memory` tool (`view`,
   `create`, `str_replace`, `insert`, `delete`, `rename`); reflection at
@@ -165,8 +167,9 @@ Each line is one page in the wheel — `neosian docs <topic>`.
 - **The shell and the ledger** (`cli`). The six memory commands, the
   gardener (`maintain`), the operator verbs (`versions`, `redact`,
   `revert`), `audit` — what was done, by whom, when, on any substrate —
-  `search` — the turns holding every term, newest first — and
-  `export`/`import`, which move a store whole, history included.
+  `search` — the turns holding every term, newest first —
+  `export`/`import`, which move a store whole, history included, and
+  `redact`/`prune`, the turn eraser and the retention cutoff.
 - **Skills** (`skills`). A skill is a document under `skills/<name>` in
   a mount: versioned, curated by the mount flag, loaded by
   `list_skills`/`load_skill`, served over MCP as a prompt (a slash

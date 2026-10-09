@@ -137,7 +137,7 @@ def build_parser(
     # the semantic pass — so its --json envelope is its own (§14.2).
     maintain = command(
         "maintain",
-        "consolidate the store: prune empty documents, merge duplicates"
+        "consolidate the store: remove empty documents, merge duplicates"
         " (--model adds the semantic pass)",
     )
     maintain.add_argument(

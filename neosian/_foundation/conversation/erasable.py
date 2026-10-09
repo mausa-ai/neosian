@@ -21,7 +21,7 @@ position in its conversation's trail, each descending.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
@@ -31,6 +31,12 @@ if TYPE_CHECKING:
         ConversationProjection,
         ConversationRedaction,
     )
+
+
+# The most acts one trail read answers: the wire's page (`server/paging.py`
+# PAGE, pinned equal by a test). What export and audit ask for when they
+# want the trail whole.
+TRAIL_LIMIT: Final = 500
 
 
 @runtime_checkable

@@ -120,3 +120,34 @@ class TestAudit:
         )
         with pytest.raises(AttributeError):
             entry.actor = "x"  # type: ignore[misc]
+
+
+class TestTheEraserInTheLedger:
+    async def test_a_conversations_erasure_acts_join_when_it_is_named(
+        self, store: FileStore
+    ) -> None:
+        await _seed(store)
+        await store.append_turn("s1", [Message(role=Role.USER, content="two")])
+        await store.redact_turns("s1", turns=(1,), actor="cli:ops")
+        entries = await audit(store, _SCOPE, conversation_id="s1")
+        act = entries[0]
+        assert (act.event, act.conversation_id, act.turns, act.count, act.actor) == (
+            "redacted",
+            "s1",
+            (1,),
+            1,
+            "cli:ops",
+        )
+        assert act.path is None
+        # The scope's own view, no conversation named: the act is not a
+        # scope's row (§38, conversations carry no scope).
+        assert all(e.conversation_id is None for e in await audit(store, _SCOPE))
+        narrowed = await audit(store, _SCOPE, conversation_id="s1", actor="cli:ops")
+        assert [(e.event, e.conversation_id) for e in narrowed] == [("redacted", "s1")]
+
+    def test_turn_ranges_fold_runs(self) -> None:
+        from neosian._foundation.memory.audit import turn_ranges
+
+        assert turn_ranges(()) == ""
+        assert turn_ranges((4,)) == "4"
+        assert turn_ranges((1, 2, 3, 7, 9, 10)) == "1-3, 7, 9-10"

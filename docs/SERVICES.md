@@ -227,8 +227,11 @@ refused with 403 in the §18 envelope, so `client:reader` above reaches no
 conversation at all, and any constrained token is refused `/mcp` (its
 reach is the operator's mounts, which no prefix can fence) and the four
 `store/*` routes (they move the store whole and restore verbatim under
-the archive's own actors). **A token with no allowance behaves exactly as
-it did before** — nothing existing changes.
+the archive's own actors). The eraser's routes follow the conversation
+rule: `conversation/redact_turns` is fenced by its `conversation_id`,
+`conversation/turn_redactions` is checked id by id over its
+`conversations` list and refused store-wide. **A token with no allowance
+behaves exactly as it did before** — nothing existing changes.
 
 `NEOSIAN_CLIENT_TOKEN` is the **client's** side: read only by the argv
 entry points when `--url` names a state process (`neosian memory`,

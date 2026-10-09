@@ -8,6 +8,7 @@ from pathlib import Path
 from neosian._cli.render import Render, render_index, run_rendered
 from neosian._cli.render_reports import (
     render_configure,
+    render_erasure,
     render_maintenance,
     render_setup,
     render_transfer,
@@ -101,3 +102,9 @@ def transfer(argv: list[str]) -> int:
     from neosian.mobility import main as engine
 
     return run_rendered(engine, argv, render_transfer, out=sys.stdout, env=os.environ)
+
+
+def erasure(argv: list[str]) -> int:
+    from neosian.erasure import main as engine
+
+    return run_rendered(engine, argv, render_erasure, out=sys.stdout, env=os.environ)

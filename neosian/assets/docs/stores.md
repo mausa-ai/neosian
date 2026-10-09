@@ -73,7 +73,11 @@ conversation from 1 without gaps, messages stored through the public
 codec (`message_to_json`, `message_from_json`) and returned verbatim,
 projections in `(turn, span, insertion)` order, the same format marker,
 and no interpretation: the store never checks that a projected turn
-exists, never trims, never invents an id.
+exists, never trims, never invents an id. Turns are never deleted. The
+one way content leaves is the eraser beside the ABC (below): a redacted
+turn keeps its number, `created_at` and `actor`, carries no messages and
+reads `redacted=True`, the one additive field N8 put on `ConversationTurn`,
+and every reader of a turn accepts it.
 
 `search_turns` is one rule on every substrate, and the kit pins it: the
 query splits on whitespace into lowercased terms; a turn matches when
@@ -98,13 +102,29 @@ verb (`neosian docs cli`).
 Two names are reserved and must not be claimed: `MemoryStore.search`
 and `ConversationStore.list_conversations`, each a 1.x additive that
 arrives only by a recorded decision; a store may implement either
-early (`search_turns` arrived by exactly that route at N5). Two
+early (`search_turns` arrived by exactly that route at N5). Three
 protocols beside the ABCs are optional and cost a host
 nothing: `Pageable`, four `*_page` listings behind an opaque cursor,
-which is what `neosian serve` requires of a store it opens; and
-`Portable`, which `neosian export` and `import` need (`neosian docs
-memory`). Everything a store imports is public: the value types, the
-format constants, `parse_scope`, `validate_document_path`,
+which is what `neosian serve` requires of a store it opens; `Portable`,
+which `neosian export` and `import` need (`neosian docs memory`); and
+`Erasable` (DESIGN §38), the turn eraser `neosian redact` and `prune`
+need. `redact_turns(conversation_id, *, through=None, turns=None,
+actor=None)` blanks the selected turns of one conversation and every
+projection entry covering them, keeps each turn's number, `created_at`
+and `actor`, and answers the count matched, already-redacted turns
+counted, so a repeat changes nothing; both selectors absent is every
+turn, `through=N` turns 1 to N, `turns` the numbers named, both given or
+a number below 1 a `ValueError`, an unknown conversation or number
+matching nothing. `turn_redactions(*, conversations=None, since=None,
+limit=50)` reads the trail, `ConversationRedaction(conversation_id,
+turns, actor, created_at)` rows newest first under `created_at`, then
+the id in codepoint order, then the act's position, bounded like a
+search. A redacted turn never answers a search again (a stored
+`search_text` empties with it), and a reader older than 1.8.0 refuses
+its row as an unsupported format. The three shipped stores implement all
+three protocols; the state process transmits `erasable` in its handshake
+(`neosian docs wire`). Everything a store imports is public: the value
+types, the format constants, `parse_scope`, `validate_document_path`,
 `parse_conversation_id`, the codec, the error classes and `Clock`, from
 `neosian.memory` and `neosian.conversation`.
 
@@ -146,7 +166,9 @@ ledger reads and the concurrency contract included; `ConversationStoreContract`
 carries 44 (56 items), the fifteen of its search slice
 (`SearchContract`, also exported alone: run it a second time under a
 clock that never advances and the total order's tiebreak becomes a real
-check). The `store` fixture must start empty on every
+check). `ErasureContract`, twelve tests, is exported beside them and
+never inherited: a store that implements `Erasable` subclasses it too,
+with the same `store` fixture. The `store` fixture must start empty on every
 test, and `test_store_starts_empty` fails loudly when it leaks; the
 `scope` and `conversation_id` fixtures are overridable for a substrate
 that is not thrown away between tests. The planting hooks write one raw
@@ -209,10 +231,10 @@ for a network filesystem, where SQLite's locking is unreliable.
 
 | Store | Substrate | Kits | Run by |
 |---|---|---|---|
-| `FileStore` | a directory of markdown and JSON lines | both | `make test`, every commit |
-| `PostgresStore` | a schema in Postgres | both, and the cross-worker race | `make test-postgres`, CI |
-| `RemoteStore` behind `neosian serve` | either of the two, over the wire | both on both backends, raw-JSON pins beside | `make test`, `make test-container` |
-| `examples/sqlite_store.py` | one SQLite file | both | `make test`, every commit |
+| `FileStore` | a directory of markdown and JSON lines | both, and the eraser's slice | `make test`, every commit |
+| `PostgresStore` | a schema in Postgres | both, the eraser's slice, and the cross-worker race | `make test-postgres`, CI |
+| `RemoteStore` behind `neosian serve` | either of the two, over the wire | both and the eraser's slice on both backends, raw-JSON pins beside | `make test`, `make test-container` |
+| `examples/sqlite_store.py` | one SQLite file | both (not `Erasable`) | `make test`, every commit |
 
 A community store joins the table by pull request naming its
 repository, the neosian version its run pinned, and the green run.

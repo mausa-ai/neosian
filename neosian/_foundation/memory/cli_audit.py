@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Any, TextIO
 
 import httpx
 
-from neosian._foundation.memory.audit import AuditEntry, audit
+from neosian._foundation.memory.audit import AuditEntry, audit, turn_ranges
 from neosian._foundation.memory.home import project_scope
 from neosian._foundation.memory.scope import parse_scope
 from neosian._foundation.memory.settings import (
@@ -165,6 +165,7 @@ def _to_json(entry: AuditEntry) -> dict[str, Any]:
         "conversation_id": entry.conversation_id,
         "turn": entry.turn,
         "continues": list(entry.continues),
+        "turns": list(entry.turns),
     }
 
 
@@ -173,6 +174,8 @@ def _line(entry: AuditEntry) -> str:
     actor = entry.actor or "-"
     if entry.event == "turn":
         target = f"{entry.conversation_id} turn {entry.turn}"
+    elif entry.event == "redacted" and entry.conversation_id is not None:
+        target = f"{entry.conversation_id} turns {turn_ranges(entry.turns)}"
     elif entry.event == "redacted":
         where = "scope-wide" if entry.path is None else f"/{entry.path}"
         target = f"{entry.count} at {where}"

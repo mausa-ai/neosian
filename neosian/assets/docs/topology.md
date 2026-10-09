@@ -29,11 +29,18 @@ first-class answer when state is **shared across processes, apps, or
 languages**, including one container in a dev compose beside redis
 and minio: one process owns the files and remote clients speak to it. It adds no
 capability the library lacks, only reach. `docker run` is never step
-one. And nothing is a one-way door: `neosian export DIR` writes any
-store (a root, Postgres, the daemon by `--url`) to a directory that
-is itself a FileStore root, and `neosian import DIR` restores it
-verbatim into any other, one scope or conversation per request over
-the wire, version history and actors carried as they were.
+one. Nothing is a one-way door but the eraser: `neosian export DIR`
+writes any store (a root, Postgres, the daemon by `--url`) to a
+directory that is itself a FileStore root, and `neosian import DIR`
+restores it verbatim into any other, one scope or conversation per
+request over the wire, version history and actors carried as they were.
+`neosian redact` and `neosian prune` (`neosian docs cli`) blank
+recorded turns with the skeleton kept, on any substrate and through the
+daemon; an export then carries the skeletons and the trail, never the
+content, and a process that loaded a conversation before the act (a
+running `Conversation`, a long-lived `neosian serve` and the `/mcp`
+greeting it rendered at start) keeps what it loaded until it starts
+again.
 
 ## The appliance quickstart
 
@@ -164,8 +171,9 @@ hook prints the memory index and "where we left off" (the scope's
 recent sessions, log-projected) into its own window, and its MCP
 client calls `search_history(query)` and `recall_turn(turn, conversation)`
 on `/mcp` (or the stdio server) to find and re-read any recorded turn
-verbatim: one client writes, a different client recalls, on the same store (`neosian docs agents`,
-`neosian docs mcp`).
+verbatim, or `[redacted]` where an operator erased it: one client
+writes, a different client recalls, on the same store (`neosian docs
+agents`, `neosian docs mcp`).
 
 ## Cooperating local writers
 

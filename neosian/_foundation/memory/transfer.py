@@ -21,7 +21,7 @@ import contextlib
 from typing import TYPE_CHECKING
 
 from neosian._foundation.conversation.base import ConversationStore
-from neosian._foundation.conversation.erasable import Erasable
+from neosian._foundation.conversation.erasable import TRAIL_LIMIT, Erasable
 from neosian._foundation.conversation.ids import parse_conversation_id
 from neosian._foundation.memory.base import MemoryStore
 from neosian._foundation.memory.portable import (
@@ -42,11 +42,6 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from neosian._foundation.conversation.types import ConversationRedaction
-
-# The trail read is bounded (§38, the `search_turns` shape) and the wire's
-# page is 500 (`server/paging.py`): an archive carries a conversation's
-# newest 500 erasure acts, a named limit beside §26.3's others.
-_TRAIL_LIMIT = 500
 
 
 async def archive_scope(store: MemoryStore, scope: str) -> ScopeArchive:
@@ -72,8 +67,10 @@ async def archive_conversation(
     if isinstance(store, Erasable):
         # A host store behind the daemon without the protocol keeps no trail.
         with contextlib.suppress(ConfigurationError):
+            # Bounded (§38): an archive carries a conversation's newest
+            # TRAIL_LIMIT acts, a named limit beside §26.3's others.
             acts = await store.turn_redactions(
-                conversations=[conversation_id], limit=_TRAIL_LIMIT
+                conversations=[conversation_id], limit=TRAIL_LIMIT
             )
     return ConversationArchive(
         conversation_id=conversation_id,

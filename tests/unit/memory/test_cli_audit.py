@@ -75,6 +75,25 @@ class TestHappyPaths:
         (entry,) = json.loads(as_json.out)["entries"]
         assert entry["continues"] == ["s1", "s0"]
 
+    async def test_an_erasure_act_names_its_turns(self, tmp_path: Path) -> None:
+        from neosian._foundation.llm.base import Message, Role
+
+        store = FileStore(tmp_path)
+        for _ in range(3):
+            await store.append_turn("s1", [Message(role=Role.USER, content="x")])
+        await store.redact_turns("s1", turns=(1, 2), actor="cli:ops")
+        base = ["--root", str(tmp_path), "--scope", "user:me", "--conversation", "s1"]
+        text = await _run(base)
+        assert text.out.splitlines()[0].endswith("cli:ops  redacted  s1 turns 1-2")
+        as_json = await _run([*base, "--json"])
+        act = json.loads(as_json.out)["entries"][0]
+        assert (act["event"], act["conversation_id"], act["turns"], act["count"]) == (
+            "redacted",
+            "s1",
+            [1, 2],
+            2,
+        )
+
     async def test_filters_ride_through(self, tmp_path: Path) -> None:
         await _seed(tmp_path)
         result = await _run(

@@ -87,17 +87,24 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
   `--root DIR`, `--url` or the DSN names one.
 - Six commands: view, create, str_replace, insert, delete, rename.
   `--json` prints the memory tool's result envelope verbatim.
-- `neosian memory maintain`, the gardener: keyless dedup + empty-prune;
-  `--model MODEL` adds the semantic pass (merge, prune stale, promote).
+- `neosian memory maintain`, the gardener: keyless dedup + removal of
+  empty documents; `--model MODEL` adds the semantic pass (merge, retire
+  stale, promote).
 - A skill is `create /project/skills/<name>` with a frontmatter
   `description` and the instructions as the body (`neosian docs skills`);
   `versions` and `revert` work on it like any document.
 - Operator verbs, keyless: `versions PATH` (the audit trail; `--json`
-  carries full historical content), `redact PATH [--all]` (the one
+  carries full historical content), `redact PATH [--all]` (the memory
   eraser; audit skeleton preserved), `revert PATH --version N` (undo).
 - `neosian audit --scope S [--conversation C] [--actor A] [--since T]
   [--json]`, the ledger: what was done, by whom, when, newest first,
-  identical on a root, Postgres, or the state process (`--url`).
+  identical on a root, Postgres, or the state process (`--url`); with
+  `--conversation` the turn eraser's acts too.
+- `neosian redact ID (--all | --through N | --turns N[,N...]) [--json]`
+  and `neosian prune --older-than <N>d|<N>h [--dry-run] [--json]`: the
+  turn eraser (skeleton kept: number, stamp, actor; `--all` redacts the
+  sessions document too) and retention by conversation on top; an
+  operator's act, never a tool the model can call.
 - `neosian search TERMS... [--conversation ID]... [--limit N] [--json]`:
   the turns holding every term, newest first, across every conversation
   the store holds; identical on every substrate.
