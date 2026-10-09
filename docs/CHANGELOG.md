@@ -8,6 +8,8 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-10-10
+
 ### Added
 
 - The eraser (N8, DESIGN §38): `Erasable`, a protocol beside the
@@ -28,6 +30,18 @@ phase close names the version.
   token's `redact_turns` is fenced by its `conversation_id`; its trail read
   is checked id by id and refused store-wide. `neosian docs wire` states
   both routes.
+- `neosian redact CONVERSATION (--all | --through N | --turns N[,N...])` and
+  `neosian prune --older-than <N>d|<N>h [--dry-run]`: the operator verbs
+  over the primitive. `--all` erases the whole conversation and its
+  `sessions/<id>` document in every scope; `prune` redacts every
+  conversation whose newest turn predates the cutoff, leaves active and
+  already-blanked ones alone, and `--dry-run` reports the plan. Both take
+  the store selection, `--actor`, `--json` and the exit tiers; the chat
+  shell asks before running either. `neosian audit --conversation ID`
+  shows the erasure acts (`redacted  s1 turns 1-3`); `AuditEntry.turns`
+  is the additive field.
+- The pages `stores`, `cli`, `memory`, `topology` and `wire` state the
+  eraser; README and `llms.txt` name the two verbs.
 
 ### Changed
 
@@ -2046,6 +2060,7 @@ pre-release — pin it explicitly; the API stability promise rides v1.0.0.
   guard.
 
 [Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.7.0...HEAD
+[1.8.0]: https://github.com/mausa-ai/neosian/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/mausa-ai/neosian/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/mausa-ai/neosian/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/mausa-ai/neosian/compare/v1.4.0...v1.5.0
