@@ -8,6 +8,8 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-10-09
+
 ### Added
 
 - `Model.CLAUDE_HAIKU_5_5` (`claude-haiku-5-5`, released 2026-10-07): 1M
@@ -2010,7 +2012,8 @@ pre-release — pin it explicitly; the API stability promise rides v1.0.0.
 - Both entry points share one `_validate_run`, so neither can skip a
   guard.
 
-[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.7.0...HEAD
+[1.7.0]: https://github.com/mausa-ai/neosian/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/mausa-ai/neosian/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/mausa-ai/neosian/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/mausa-ai/neosian/compare/v1.3.0...v1.4.0

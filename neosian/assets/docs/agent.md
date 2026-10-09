@@ -72,7 +72,7 @@ For 1.4.0 (published 2026-10-04), latest is Sonnet 5.5 / GPT-6.1 Sol;
 library defaults remain Sonnet 5 / GPT-6 Sol through the window, with
 promotion/removal eligible from 2026-11-03 UTC. GPT-5.1 also begins retirement
 in favor of GPT-6.1 Sol. Opus 5.5, Fable 5.1, Astra and Luna are both default
-and latest, as is Haiku 5.5 (added after 1.6.0; no predecessor was left in the
+and latest, as is Haiku 5.5 (added in 1.7.0; no predecessor was left in the
 catalog to window).
 The overall library default remains Cerebras. The **resident chat agent**
 chooses a model a local server is running, else latest Sonnet (`neosian docs
