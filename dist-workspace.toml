@@ -46,6 +46,8 @@ publish-python = { contents = "read", id-token = "write", packages = "write" }
 "actions/upload-artifact" = "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
 "actions/download-artifact" = "3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c"
 "actions/attest" = "1e69f48acb82d1966a394da916b4c1698aa569d6"
+# upload mode caches the builds through rust-cache v2.9.2, the commit ci.yml pins
+"swatinem/rust-cache" = "6323deb102c322ba6fcbdcafc7e3dddab59af2b6"
 # Native runners per target: the Linux legs on the oldest supported
 # glibc (22.04), the Apple legs on macOS 15, Windows on 2025
 [dist.github-custom-runners]
