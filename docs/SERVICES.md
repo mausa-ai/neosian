@@ -267,6 +267,10 @@ in the normal flow:
 - `NEOSIAN_TEST_SERVER_SCHEMA` — the serving schema of the Postgres
   leg (with `NEOSIAN_TEST_POSTGRES_DSN` above). Gates the Postgres-leg
   tests.
+- `NEOSIAN_CONTAINER_TMPDIR` — where `scripts/container_test.sh` puts
+  the FileStore leg's volume (default: `$TMPDIR`, else `/tmp`). Set it
+  under your home when the daemon is a VM that mounts only the home
+  (Lima), where macOS's `/var/folders` cannot be bind-mounted.
 
 **Off means the tier self-skips whole** — `make test` and keyless boot
 never need a docker daemon. CI's `container` job builds the image and

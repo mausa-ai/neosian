@@ -74,7 +74,10 @@ echo "== build $IMAGE"
 docker build -q -t "$IMAGE" . >/dev/null
 
 echo "== leg 1: volume FileStore"
-ROOT="$(mktemp -d)"
+# The volume must live where the daemon can mount it: a VM-backed docker
+# (Lima) mounts the home, not macOS's $TMPDIR under /var/folders, so
+# NEOSIAN_CONTAINER_TMPDIR names the parent when the default cannot mount.
+ROOT="$(mktemp -d "${NEOSIAN_CONTAINER_TMPDIR:-${TMPDIR:-/tmp}}/neosian-container.XXXXXX")"
 CID="$(docker run -d --user "$(id -u):$(id -g)" \
     -e NEOSIAN_SERVE_TOKEN="$TOKEN" \
     -p "127.0.0.1:${PORT}:6367" -v "$ROOT:/data" "$IMAGE")"
