@@ -10,6 +10,7 @@ resolver = "3"
 version = "1.8.0"
 edition = "2024"
 rust-version = "1.99.0"
+authors = ["Mausa <community@neosian.com>"]
 license = "Apache-2.0"
 repository = "https://github.com/mausa-ai/neosian"
 homepage = "https://neosian.com"
@@ -18,3 +19,7 @@ homepage = "https://neosian.com"
 lto = "fat"
 codegen-units = 1
 strip = true
+
+# The profile cargo-dist builds the shipped binaries with
+[profile.dist]
+inherits = "release"

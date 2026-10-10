@@ -13,7 +13,7 @@ _ROOT = Path(__file__).resolve().parents[2]
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("workflow", ["ci.yml", "release.yml"])
+@pytest.mark.parametrize("workflow", ["ci.yml", "publish-python.yml"])
 @pytest.mark.parametrize(
     ("missing", "extra", "accepted"),
     [

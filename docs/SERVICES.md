@@ -275,7 +275,7 @@ in the normal flow:
 **Off means the tier self-skips whole** — `make test` and keyless boot
 never need a docker daemon. CI's `container` job builds the image and
 runs both legs on every push, no secret; the registry push is
-`release.yml`'s, on a release tag (DESIGN §29 — ledger #114's
+`publish-python.yml`'s, on a release tag (DESIGN §29 — ledger #114's
 built-and-smoked posture ended at NX).
 
 ## The local lane: a URL, not an API key
@@ -312,12 +312,16 @@ self-skip. The lint and unit-test jobs must never receive a secret.
 
 ## Publishing
 
-No key. `release.yml` publishes to PyPI by trusted publishing — the
-job's OIDC token (`id-token: write` on the `pypi` job alone) is
-exchanged by uv for a one-use upload token that PyPI accepts only from
-this repository's workflow — and pushes the image to GHCR with the
-workflow's own `GITHUB_TOKEN` (`packages: write` on the image jobs).
-A long-lived publishing credential never exists, so there is nothing
-to rotate or leak; the lint and unit-test jobs still never receive a
-secret, and a `workflow_dispatch` of the release workflow rehearses
-every step but the two pushes with nothing at all (DESIGN §29).
+No key. A `v*` tag runs cargo-dist's generated `release.yml`, which
+builds the binaries for the GitHub Release and then calls
+`publish-python.yml` as its publish job (DESIGN §39.5). That workflow
+publishes to PyPI by trusted publishing — the job's OIDC token
+(`id-token: write` on the `pypi` job alone) is exchanged by uv for a
+one-use upload token that PyPI accepts only from this repository's
+`publish-python.yml` on the `pypi` environment — and pushes the image to
+GHCR with the workflow's own `GITHUB_TOKEN` (`packages: write` on the
+image jobs). A long-lived publishing credential never exists, so there
+is nothing to rotate or leak; the lint and unit-test jobs still never
+receive a secret, and a `workflow_dispatch` of `publish-python.yml`
+rehearses every step but the two pushes with nothing at all (DESIGN
+§29).

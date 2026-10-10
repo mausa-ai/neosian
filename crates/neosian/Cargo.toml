@@ -4,12 +4,19 @@ description = "The state layer for LLM agents, as one static binary: the record,
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+authors.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 readme = "README.md"
 keywords = ["agents", "memory", "mcp", "llm"]
 categories = ["command-line-utilities"]
+
+[package.metadata.wix]
+upgrade-guid = "4F99CA3A-481B-4BC1-83A4-D24E8792A488"
+path-guid = "2A67E116-23B1-4CDF-A339-62D52D6E511C"
+license = false
+eula = false
 
 [[bin]]
 name = "neosian"

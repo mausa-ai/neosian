@@ -18,6 +18,13 @@ phase close names the version.
   `deny.toml`, the size gate over `.rs` and a CI job on the five targets
   the binary will ship for (ledger #348 to #352). No binary is published
   yet: the installers and channels follow at R3.
+- One release pipeline (DESIGN §39.5, ledger #350): cargo-dist generates
+  `release.yml` from `dist-workspace.toml`, builds the five targets with
+  their archives, checksums, attestations, the shell and PowerShell
+  installers, the npm package, the Homebrew formula, the MSI and the
+  updater on a `v*` tag, and calls `publish-python.yml` (today's PyPI and
+  GHCR jobs, verbatim) as its publish job before announcing the GitHub
+  Release. A pre-release tag hosts binaries and publishes nothing.
 
 ## [1.8.0] - 2026-10-10
 

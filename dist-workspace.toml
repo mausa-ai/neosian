@@ -1,0 +1,53 @@
+# cargo-dist (DESIGN §39.5, ledger #350): one `v*` tag builds the five
+# targets, the installers and the checksums, hosts them on the GitHub
+# Release, runs the Python publication as a custom publish job and
+# announces only when every job landed. `dist init` (re)generates
+# .github/workflows/release.yml from this file; a hand edit there is an
+# error `dist plan` reports on every pull request.
+[workspace]
+members = ["cargo:."]
+
+[dist]
+# The preferred dist version to use in CI (Cargo.toml SemVer syntax)
+cargo-dist-version = "0.32.0"
+# CI backends to support
+ci = "github"
+# The installers to generate for each app
+installers = ["shell", "powershell", "npm", "homebrew", "msi"]
+# Target platforms to build apps for (Rust target-triple syntax)
+targets = ["aarch64-apple-darwin", "aarch64-unknown-linux-gnu", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
+# One directory of its own, beside the home, so the uv tool's ~/.local/bin
+# shim and the binary coexist and `status` can name the shadowing (#339)
+install-path = "~/.neosian/bin"
+# Where to host releases
+hosting = "github"
+# The updater `neosian update` will call (§30.3; the shape at slice D)
+install-updater = true
+# Checksums with GitHub's provenance attestations beside them
+github-attestations = true
+# A pre-release tag hosts binaries and publishes nothing
+publish-prereleases = false
+# The Python half of the release, after the binaries are hosted; it
+# publishes by the job's OIDC token (PyPI) and the workflow's own
+# GITHUB_TOKEN (GHCR), so the called workflow needs these and no more
+publish-jobs = ["./publish-python"]
+[dist.github-custom-job-permissions]
+publish-python = { contents = "read", id-token = "write", packages = "write" }
+# The actions the generated workflow uses, pinned by commit the way
+# ci.yml pins them (DESIGN §29.3): checkout v7.0.1, upload-artifact
+# v7.0.1, download-artifact v8.0.1, attest v4.2.2. Dependabot's bump of
+# release.yml fails `dist generate --check`; the bump lands by moving the
+# commit here and regenerating.
+[dist.github-action-commits]
+"actions/checkout" = "3d3c42e5aac5ba805825da76410c181273ba90b1"
+"actions/upload-artifact" = "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
+"actions/download-artifact" = "3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c"
+"actions/attest" = "1e69f48acb82d1966a394da916b4c1698aa569d6"
+# Native runners per target: the Linux legs on the oldest supported
+# glibc (22.04), the Apple legs on macOS 15, Windows on 2025
+[dist.github-custom-runners]
+x86_64-unknown-linux-gnu = "ubuntu-22.04"
+aarch64-unknown-linux-gnu = "ubuntu-22.04-arm"
+aarch64-apple-darwin = "macos-15"
+x86_64-apple-darwin = "macos-15-intel"
+x86_64-pc-windows-msvc = "windows-2025"

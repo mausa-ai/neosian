@@ -43,10 +43,11 @@ test-container: ## Build the state-process image; both kits against it (needs do
 size: ## File-size gate (warn 300 / fail 500) over neosian/**/*.py and crates/**/*.rs
 	uv run python scripts/check_file_size.py
 
-rust-lint: ## cargo fmt --check + clippy -D warnings + cargo deny (licenses, advisories), the lockfile asserted
+rust-lint: ## cargo fmt --check + clippy -D warnings + cargo deny (licenses, advisories) + the generated release workflow current
 	cargo fmt --all --check
 	cargo clippy --workspace --all-targets --locked -- -D warnings
 	cargo deny check
+	dist generate --check
 
 rust-test: ## cargo test over the workspace, the lockfile asserted
 	cargo test --workspace --locked

@@ -82,9 +82,11 @@ The version literal lives once, in `pyproject [project].version`;
 `__version__` derives via `importlib.metadata` (a unit test pins it).
 Release axis = annotated `v<X.Y.Z>` tags, cut by `make release v=X.Y.Z`
 on a clean tree with the version's `## [X.Y.Z]` section in
-`docs/CHANGELOG.md`; pushing a `v*` tag runs `release.yml` (PyPI by trusted
-publishing, the image to GHCR). Bump on public-surface change, not per
-commit. `[Unreleased]` in `docs/CHANGELOG.md` accumulates until the bump.
+`docs/CHANGELOG.md`; pushing a `v*` tag runs cargo-dist's generated
+`release.yml` (the binaries on the GitHub Release), which calls
+`publish-python.yml` (PyPI by trusted publishing, the image to GHCR) as
+its publish job. Bump on public-surface change, not per commit.
+`[Unreleased]` in `docs/CHANGELOG.md` accumulates until the bump.
 
 ## Commits
 

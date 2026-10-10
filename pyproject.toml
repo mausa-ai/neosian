@@ -391,5 +391,6 @@ exclude = [
     "/Cargo.toml",
     "/Cargo.lock",
     "/deny.toml",
+    "/dist-workspace.toml",
     "/rust-toolchain.toml",
 ]

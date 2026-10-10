@@ -67,8 +67,12 @@ def test_the_docs_manifest_has_its_rust_twin() -> None:
 @pytest.mark.unit
 def test_the_rust_gates_run_on_the_five_targets() -> None:
     makefile = (_ROOT / "Makefile").read_text(encoding="utf-8")
-    lines = {ln.strip() for ln in makefile.splitlines() if ln.startswith("\tcargo ")}
-    assert len(lines) == 4, lines
+    lines = {
+        ln.strip()
+        for ln in makefile.splitlines()
+        if ln.startswith(("\tcargo ", "\tdist "))
+    }
+    assert len(lines) == 5, lines
     ci = yaml.safe_load((_ROOT / ".github" / "workflows" / "ci.yml").read_text())
     job = ci["jobs"]["rust"]
     assert set(job["strategy"]["matrix"]["runner"]) == _RUNNERS
