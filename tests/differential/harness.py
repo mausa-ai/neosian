@@ -26,9 +26,14 @@ import yaml
 
 ROOT: Final = Path(__file__).resolve().parents[2]
 BINARY_ENV: Final = "NEOSIAN_BINARY"
+# A verb with subcommands is told apart by each of them (`memory view`),
+# so a store's reads can assert before its writes exist.
+SUBCOMMANDS: Final[frozenset[str]] = frozenset({"memory"})
 # The verbs the binary answers today; R1 to R4 grow it, and the corpus
 # cases for a verb start asserting the day it joins.
-BINARY_VERBS: Final[frozenset[str]] = frozenset({"version", "docs"})
+BINARY_VERBS: Final[frozenset[str]] = frozenset(
+    {"version", "docs", "memory view", "memory versions"}
+)
 Door = Literal["python", "rust"]
 
 _TIMESTAMP: Final = re.compile(
@@ -60,7 +65,8 @@ class Case:
 
     @property
     def verb(self) -> str:
-        return self.argv[0]
+        head = self.argv[0]
+        return f"{head} {self.argv[1]}" if head in SUBCOMMANDS else head
 
     @property
     def json(self) -> bool:
@@ -110,6 +116,9 @@ class Workspace:
         }
         env["HOME"] = str(self.home.parent)
         env["NEOSIAN_HOME"] = str(self.home)
+        # The login the seed's scopes were derived from, whatever the
+        # runner's own environment names (the layout reads it first).
+        env["LOGNAME"] = self.user.partition(":")[2]
         env["NO_COLOR"] = "1"
         return env
 
@@ -295,12 +304,12 @@ def _document(text: str) -> tuple[Any, str]:
     return (None, text)
 
 
-def binary_verbs(executable: Path) -> frozenset[str]:
-    """The subcommands the binary's `--help` lists."""
+def _listed(executable: Path, *verb: str) -> list[str]:
+    """The subcommands a `--help` lists under `Commands:`."""
     help_text = subprocess.run(
-        [str(executable), "--help"], capture_output=True, text=True, check=True
+        [str(executable), *verb, "--help"], capture_output=True, text=True, check=True
     ).stdout
-    verbs: set[str] = set()
+    listed: list[str] = []
     listing = False
     for line in help_text.splitlines():
         if line.startswith("Commands:"):
@@ -309,5 +318,17 @@ def binary_verbs(executable: Path) -> frozenset[str]:
         if listing:
             if not line.strip():
                 break
-            verbs.add(line.split()[0])
+            listed.append(line.split()[0])
+    return listed
+
+
+def binary_verbs(executable: Path) -> frozenset[str]:
+    """The verbs the binary's `--help` lists, a verb with subcommands by
+    each of them."""
+    verbs: set[str] = set()
+    for verb in _listed(executable):
+        if verb in SUBCOMMANDS:
+            verbs.update(f"{verb} {sub}" for sub in _listed(executable, verb))
+        else:
+            verbs.add(verb)
     return frozenset(verbs)

@@ -8,6 +8,8 @@ use std::io::{self, Write};
 
 use serde_json::json;
 
+use crate::repr::repr;
+
 macro_rules! pages {
     ($($topic:literal),+ $(,)?) => {
         /// The curated reading order, each topic with its page's text.
@@ -113,17 +115,6 @@ fn scalar(value: &str) -> String {
     }
 }
 
-/// Python's `repr` of the one token a message carries: single quotes,
-/// or double quotes when the token holds a single quote and no double.
-fn repr(token: &str) -> String {
-    let escaped = token.replace('\\', "\\\\");
-    if token.contains('\'') && !token.contains('"') {
-        format!("\"{escaped}\"")
-    } else {
-        format!("'{}'", escaped.replace('\'', "\\'"))
-    }
-}
-
 fn known_topics() -> String {
     PAGES
         .iter()
@@ -210,13 +201,6 @@ mod tests {
             scalar(r#" "@Tool: a \"quoted\" word" "#),
             r#"@Tool: a "quoted" word"#
         );
-    }
-
-    #[test]
-    fn repr_is_pythons() {
-        assert_eq!(repr("nope"), "'nope'");
-        assert_eq!(repr("it's"), "\"it's\"");
-        assert_eq!(repr("a'b\"c"), "'a\\'b\"c'");
     }
 
     #[test]

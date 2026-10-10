@@ -30,10 +30,11 @@ MOUNTS: Final = (
     "--root",
     "{home}",
     "--mount",
-    "scope={user},path=/user",
+    "scope={user},path=user",
     "--mount",
-    "scope={proj},path=/project",
+    "scope={proj},path=project",
 )
+ROOT: Final = ("--root", "{home}")
 _CLIENTS: Final = ("codex", "muse-code", "pi", "opencode")
 
 
@@ -76,6 +77,68 @@ def _cli() -> list[Case]:
             ("memory", "view", "/project/skills/release", *MOUNTS, "--json"),
         ),
         Case("memory view directory", ("memory", "view", "/user", *MOUNTS)),
+        Case(
+            "memory view nested directory",
+            ("memory", "view", "/project/skills", *MOUNTS),
+        ),
+        Case(
+            "memory view mailbox directory",
+            ("memory", "view", "/project/messages/", *MOUNTS),
+        ),
+        Case(
+            "memory view range",
+            (
+                "memory",
+                "view",
+                "/project/skills/release",
+                "--view-range",
+                "5",
+                "-1",
+                *MOUNTS,
+            ),
+        ),
+        Case(
+            "memory view range refused",
+            ("memory", "view", "/project/facts", "--view-range", "40", "41", *MOUNTS),
+        ),
+        Case("memory view redacted", ("memory", "view", "/project/secret", *MOUNTS)),
+        Case("memory view missing", ("memory", "view", "/project/missing", *MOUNTS)),
+        Case(
+            "memory view unknown mount json",
+            ("memory", "view", "/elsewhere/facts", *MOUNTS, "--json"),
+        ),
+        Case(
+            "memory index past the budget",
+            (
+                "memory",
+                "view",
+                "/",
+                *ROOT,
+                "--mount",
+                "scope={user},path=user",
+                "--mount",
+                "scope={user}/proj:archive,path=archive",
+            ),
+        ),
+        Case("memory index sugar", ("memory", "view", "/", *ROOT, "--scope", "{proj}")),
+        Case("memory index layout", ("memory", "view", "/", *ROOT)),
+        Case(
+            "memory index policies",
+            (
+                "memory",
+                "view",
+                "/",
+                *ROOT,
+                "--mount",
+                "scope={user},path=user,ro",
+                "--mount",
+                "scope={proj},path=project,eo",
+            ),
+        ),
+        Case(
+            "memory scope refused",
+            ("memory", "view", "/", *ROOT, "--mount", "scope=nobody,path=user"),
+        ),
         Case(
             "memory create",
             (
@@ -139,6 +202,27 @@ def _cli() -> list[Case]:
         Case(
             "memory versions json",
             ("memory", "versions", "/project/facts", *MOUNTS, "--json"),
+        ),
+        Case("memory versions", ("memory", "versions", "/user/profile", *MOUNTS)),
+        Case(
+            "memory versions limit json",
+            ("memory", "versions", "/user/profile", "--limit", "2", *MOUNTS, "--json"),
+        ),
+        Case(
+            "memory versions deleted json",
+            ("memory", "versions", "/project/scratch", *MOUNTS, "--json"),
+        ),
+        Case(
+            "memory versions redacted",
+            ("memory", "versions", "/project/secret", *MOUNTS),
+        ),
+        Case(
+            "memory versions never written",
+            ("memory", "versions", "/project/never", *MOUNTS),
+        ),
+        Case(
+            "memory versions mount root json",
+            ("memory", "versions", "/project", *MOUNTS, "--json"),
         ),
         Case(
             "memory redact",

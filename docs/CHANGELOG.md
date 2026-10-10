@@ -8,6 +8,25 @@ phase close names the version.
 
 ## [Unreleased]
 
+### Added
+
+- The file store's read side in Rust (R1, the hot path; DESIGN §39.3):
+  the binary reads the home the Python side writes. `neosian memory view`
+  (the index within its budget, a directory, a document with numbered
+  lines and `--view-range`) and `neosian memory versions` answer from it
+  byte for byte as the shell does on a pipe, their `--json` envelopes
+  parsed-equal, and every call takes the root-wide advisory lock the two
+  implementations share. The store flags are the shell's: `--root`,
+  `--scope`, `--mount`, `--actor` and `--json`, and with none the home
+  and the working directory's layout. A store only the Python shell
+  reaches says so: with `NEOSIAN_POSTGRES_DSN` set the verb exits 1
+  naming `uv tool install neosian`.
+- The differential tier tells a verb with subcommands apart by each of
+  them (`memory view`), so a store's reads assert before its writes
+  exist; the corpus gains the read rulings (a range, a redacted document,
+  a missing path, an index past its budget, the sugar mount, the derived
+  layout, the mount policies, the version trail).
+
 ### Changed
 
 - Record the first dispatched board since 1.2.0 on the shipped rows,
@@ -17,6 +36,13 @@ phase close names the version.
   with two cells cut. Gemini, Moonshot and Model Studio could not answer
   (HTTP 402, 429 and 403) and carry no behavioral score. The pack, its
   prompts and its assertions are unchanged.
+
+### Fixed
+
+- The differential corpus named its mounts `path=/user` and
+  `path=/project`, tokens the mount grammar refuses at exit 2, so its
+  memory and MCP cases would have compared two identical refusals. They
+  name `user` and `project` now.
 
 ## [1.9.0] - 2026-10-10
 

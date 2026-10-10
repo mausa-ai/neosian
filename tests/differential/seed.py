@@ -1,9 +1,9 @@
 """The seeded home both doors read (DESIGN §39.4): built by the Python
 side alone, deterministic in content (one seeded generator) and real in
 shape, through the doors a real home is written by: memory documents with
-versions, a redaction, a rename and a deletion, two skills, sessions
-recorded through the record verb for two clients, a handoff note and a
-message. `SMALL` seeds the corpus; `REFERENCE` the latency gate, the
+versions, a redaction, a rename and a deletion, two skills, a scope past
+the index budget, sessions recorded through the record verb for two
+clients, a handoff note and a message. `SMALL` seeds the corpus; `REFERENCE` the latency gate, the
 maintainer's home's shape (about fifty conversations and fifty
 megabytes)."""
 
@@ -28,6 +28,7 @@ from tests.unit.record.payloads import prompt, stop, tool
 
 PROJECT_NAME: Final = "demo"
 _SEED: Final = 2026
+_ARCHIVE: Final = 90
 _WORDS: Final = [
     "the",
     "deploy",
@@ -182,6 +183,16 @@ async def seed(home: Path, shape: Shape, *, console: Path) -> Seeded:
     await store.rename(proj, "old-name", "new-name", actor="seed")
     await store.write(proj, "scratch", "# Scratch\n\ngone soon\n", actor="seed")
     await store.delete(proj, "scratch", actor="seed")
+    # A scope past the index budget (DESIGN §8): long names in three
+    # directories and at the root, so `view /` folds by recency.
+    for index in range(_ARCHIVE):
+        directory = ("alpha/", "beta/", "gamma/", "")[index % 4]
+        await store.write(
+            f"{user}/proj:archive",
+            f"{directory}{'entry-' * 15}{index:03d}",
+            f"# Entry {index}\n",
+            actor="seed",
+        )
 
     sessions: list[str] = []
     for index in range(shape.conversations):

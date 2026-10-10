@@ -6,8 +6,9 @@ use std::io::{self, Write};
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
+use serde_json::json;
 
-use crate::{docs, version};
+use crate::{docs, memory, version};
 
 #[derive(Parser)]
 #[command(
@@ -33,6 +34,26 @@ enum Command {
         #[arg(long = "json")]
         json: bool,
     },
+    /// Read and write agent memory from the shell.
+    Memory {
+        #[command(subcommand)]
+        command: memory::cli::Command,
+    },
+}
+
+/// A grammar-tier refusal (exit 2): the message on stderr, and where
+/// `--json` asked, one `{"error": "usage", "hint"}` object on stdout.
+pub fn usage(
+    json: bool,
+    message: &str,
+    out: &mut impl Write,
+    err: &mut impl Write,
+) -> io::Result<u8> {
+    if json {
+        writeln!(out, "{}", json!({"error": "usage", "hint": message}))?;
+    }
+    writeln!(err, "error: {message}")?;
+    Ok(2)
 }
 
 /// Parse and run; the exit code is the verb's.
@@ -40,16 +61,28 @@ pub fn run<I>(args: I) -> ExitCode
 where
     I: IntoIterator<Item = OsString>,
 {
-    let cli = match Cli::try_parse_from(args) {
-        Ok(cli) => cli,
-        Err(error) => error.exit(),
-    };
+    let args: Vec<OsString> = args.into_iter().collect();
     let stdout = io::stdout();
     let stderr = io::stderr();
     let (mut out, mut err) = (stdout.lock(), stderr.lock());
+    let cli = match Cli::try_parse_from(&args) {
+        Ok(cli) => cli,
+        Err(error) => {
+            // The grammar's own text stays on stderr; a caller that asked
+            // for JSON also reads the refusal as JSON (DESIGN §30.1).
+            if error.use_stderr() && args.iter().any(|arg| arg == "--json") {
+                let text = error.to_string();
+                let hint = text.lines().next().unwrap_or_default();
+                let hint = hint.strip_prefix("error: ").unwrap_or(hint);
+                let _ = writeln!(out, "{}", json!({"error": "usage", "hint": hint}));
+            }
+            error.exit()
+        }
+    };
     let code = match cli.command {
         Command::Version => writeln!(out, "{}", version::line()).map(|()| 0),
         Command::Docs { topic, json } => docs::run(topic.as_deref(), json, &mut out, &mut err),
+        Command::Memory { command } => memory::cli::run(&command, &mut out, &mut err),
     };
     match code {
         Ok(code) => ExitCode::from(code),

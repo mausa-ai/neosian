@@ -1,12 +1,19 @@
 //! neosian — the product doors as one static binary (DESIGN §39).
 //!
 //! The record verb, the MCP server, the state process and the operator
-//! verbs arrive phase by phase (R1 to R4); the forge ships `version` and
-//! `docs`, the two verbs a differential harness can already hold against
-//! the Python shell.
+//! verbs arrive phase by phase (R1 to R4), each held against the Python
+//! shell by the differential harness: `version` and `docs` from the forge,
+//! the file store and `memory` from R1.
 
+mod assets;
 mod cli;
 mod docs;
+mod home;
+mod memory;
+mod repr;
+mod store;
+#[cfg(test)]
+mod testing;
 mod version;
 
 use std::process::ExitCode;
