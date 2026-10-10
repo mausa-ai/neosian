@@ -5,11 +5,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final
+from typing import Any, Final
 
 import pytest
 
-from tests.differential.corpus import BY_NAME, IDS
+from tests.differential.corpus import BY_NAME, IDS, TURNS
 from tests.differential.harness import (
     BINARY_VERBS,
     Case,
@@ -34,6 +34,12 @@ class Scenario:
         return tuple(BY_NAME[name] for name in (*self.writes, *self.reads))
 
 
+_MEMORY_WRITES: Final = (
+    "memory create",
+    "memory str_replace",
+    "memory insert",
+    "memory rename",
+)
 SCENARIOS: Final = (
     Scenario(
         "a claude-code span, then the reads",
@@ -48,17 +54,22 @@ SCENARIOS: Final = (
     ),
     Scenario(
         "memory writes, then the reads",
-        writes=(
-            "memory create",
-            "memory str_replace",
-            "memory insert",
-            "memory rename",
-        ),
+        writes=_MEMORY_WRITES,
+        reads=("memory index json", "memory view document", "memory versions json"),
+    ),
+    Scenario(
+        "memory writes, then the reads over MCP",
+        writes=_MEMORY_WRITES,
+        reads=("mcp reads",),
+    ),
+    Scenario(
+        "an erasure, an undo and a deletion, then the reads",
+        writes=("memory redact", "memory revert", "memory delete"),
         reads=(
-            "memory index json",
+            "memory index",
             "memory view document",
             "memory versions json",
-            "mcp reads",
+            "memory versions",
         ),
     ),
     Scenario(
@@ -71,6 +82,16 @@ SCENARIOS: Final = (
 
 def _run(executable: Path, cases: tuple[Case, ...], space: Workspace) -> list[Outcome]:
     return [run_case(executable, case, space) for case in cases]
+
+
+def _space(seeded: Seeded, into: Path) -> Workspace:
+    return workspace(
+        seeded.home,
+        into,
+        user=seeded.user,
+        proj=seeded.proj,
+        project_name=PROJECT_NAME,
+    )
 
 
 @pytest.mark.parametrize("scenario", SCENARIOS, ids=[s.name for s in SCENARIOS])
@@ -89,13 +110,7 @@ def test_each_door_reads_what_the_other_wrote(
     reads = tuple(BY_NAME[name] for name in scenario.reads)
 
     def space(name: str) -> Workspace:
-        return workspace(
-            seeded.home,
-            tmp_path / name,
-            user=seeded.user,
-            proj=seeded.proj,
-            project_name=PROJECT_NAME,
-        )
+        return _space(seeded, tmp_path / name)
 
     spec = space("spec")
     _run(python_door, writes, spec)
@@ -116,3 +131,29 @@ def test_each_door_reads_what_the_other_wrote(
         ]
         assert observed == expected, name
         assert snapshot(mixed, keep=keep) == snapshot(spec, keep=keep), name
+
+
+def test_the_doors_take_turns_on_one_document(
+    seeded: Seeded, python_door: Path, rust_door: Path, tmp_path: Path
+) -> None:
+    """One document through every mutation, the writer changing at each
+    step: a door numbers its version from the rows the other one wrote,
+    and the home ends as the all-Python run leaves it."""
+    missing = sorted({case.verb for case in TURNS} - BINARY_VERBS)
+    if missing:
+        pytest.skip(f"the binary has no {', '.join(missing)} yet")
+    keep = seeded.ids | IDS
+
+    def run(name: str, *doors: Path) -> tuple[list[Any], dict[str, Any]]:
+        space = _space(seeded, tmp_path / name)
+        shapes = [
+            shape_of_output(
+                case, run_case(doors[index % len(doors)], case, space), space, keep=keep
+            )
+            for index, case in enumerate(TURNS)
+        ]
+        return shapes, snapshot(space, keep=keep)
+
+    spec = run("spec", python_door)
+    assert run("python-first", python_door, rust_door) == spec
+    assert run("rust-first", rust_door, python_door) == spec

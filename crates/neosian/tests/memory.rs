@@ -1,13 +1,11 @@
 //! `neosian memory` through the literal binary, over a home planted as the
 //! Python side writes it.
 
-#[path = "../src/testing.rs"]
-mod testing;
+mod support;
 
-use std::path::Path;
-use std::process::{Command, Output};
+use std::process::Command;
 
-use testing::Scratch;
+use support::{Scratch, memory, text};
 
 const DIR: &str = "user%3Ame";
 const FACTS: &str = "---\nneosian_format: 1\nversion: 2\ncreated_at: '2026-10-10T18:20:18.273843Z'\nupdated_at: '2026-10-10T18:20:18.276022Z'\nactor: seed\n---\n# Facts\n\n- deploy target: eu-west-1 (v1)\n";
@@ -24,22 +22,6 @@ fn planted(name: &str) -> Scratch {
     home.plant(&format!("{DIR}/documents/notes/reading.md"), FACTS);
     home.plant(&format!("{DIR}/versions/facts.jsonl"), ROWS);
     home
-}
-
-fn memory(home: &Path, args: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_neosian"))
-        .arg("memory")
-        .args(args)
-        .args(["--scope", "user:me", "--root"])
-        .arg(home)
-        .env_remove("NEOSIAN_SCOPE")
-        .env_remove("NEOSIAN_POSTGRES_DSN")
-        .output()
-        .expect("the binary runs")
-}
-
-fn text(bytes: Vec<u8>) -> String {
-    String::from_utf8(bytes).unwrap()
 }
 
 #[test]

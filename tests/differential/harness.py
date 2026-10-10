@@ -32,7 +32,24 @@ SUBCOMMANDS: Final[frozenset[str]] = frozenset({"memory"})
 # The verbs the binary answers today; R1 to R4 grow it, and the corpus
 # cases for a verb start asserting the day it joins.
 BINARY_VERBS: Final[frozenset[str]] = frozenset(
-    {"version", "docs", "memory view", "memory versions"}
+    {
+        "version",
+        "docs",
+        *(
+            f"memory {command}"
+            for command in (
+                "view",
+                "create",
+                "str_replace",
+                "insert",
+                "delete",
+                "rename",
+                "versions",
+                "redact",
+                "revert",
+            )
+        ),
+    }
 )
 Door = Literal["python", "rust"]
 

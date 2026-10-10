@@ -37,7 +37,7 @@ enum Command {
     /// Read and write agent memory from the shell.
     Memory {
         #[command(subcommand)]
-        command: memory::cli::Command,
+        command: memory::grammar::Command,
     },
 }
 

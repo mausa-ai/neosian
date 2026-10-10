@@ -15,6 +15,7 @@ use super::grammar::validate_document_path;
 
 pub const DOCUMENTS: &str = "documents";
 pub const VERSIONS: &str = "versions";
+pub const REDACTIONS: &str = "redactions.jsonl";
 
 /// A scope's directory: one component per segment, the `:` percent-encoded
 /// (the grammar leaves nothing else to encode), so every component carries

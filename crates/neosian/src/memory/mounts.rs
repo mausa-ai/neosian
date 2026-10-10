@@ -118,6 +118,23 @@ pub fn resolve<'a>(
     Err(MemoryError::path_invalid(path, &reason))
 }
 
+/// Refuse a write to a read-only mount.
+pub fn writable(mount: &Mount) -> Result<(), MemoryError> {
+    if mount.read_only {
+        return Err(MemoryError::read_only(&mount.path));
+    }
+    Ok(())
+}
+
+/// Refuse a change to an edit-only mount's document set: creating a new
+/// path, deleting, renaming. An in-place edit or an overwrite never asks.
+pub fn structural(mount: &Mount) -> Result<(), MemoryError> {
+    if mount.edit_only {
+        return Err(MemoryError::edit_only(&mount.path));
+    }
+    Ok(())
+}
+
 /// Is this a document a lifecycle owns (the mailbox, its links)?
 pub fn state_path(path: &str) -> bool {
     STATE_PREFIXES.iter().any(|prefix| path.starts_with(prefix))

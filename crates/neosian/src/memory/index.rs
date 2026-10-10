@@ -67,7 +67,8 @@ fn header(mount: &Mount) -> String {
     header
 }
 
-fn count(documents: usize) -> String {
+/// `1 document`, `7 documents`.
+pub fn count(documents: usize) -> String {
     let plural = if documents == 1 { "" } else { "s" };
     format!("{documents} document{plural}")
 }

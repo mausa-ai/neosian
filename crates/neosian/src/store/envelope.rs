@@ -3,9 +3,12 @@
 //! byte after the closing fence line is the content, verbatim, a content
 //! that itself begins with `---` included.
 //!
-//! The reader is bounded to what the stores write and a plain hand edit
+//! The codec is bounded to what the stores write and a plain hand edit
 //! leaves: one `key: value` per line for the reserved keys, anything else
-//! refused as `memory_format_unsupported`, never coerced.
+//! about them refused as `memory_format_unsupported`, never coerced. An
+//! unknown key is kept as the lines it was read from and written back
+//! after the reserved ones (C6), so what PyYAML wrote comes back as PyYAML
+//! wrote it.
 
 use super::FORMAT;
 use super::error::MemoryError;
@@ -32,8 +35,35 @@ const FALSE: [&str; 9] = [
 #[derive(Debug, PartialEq, Eq)]
 pub struct Envelope {
     pub version: u64,
+    pub created_at: Stamp,
     pub updated_at: Stamp,
+    /// The actor as the file spells it: a YAML scalar, plain for every
+    /// actor of the §20 grammar.
+    pub actor: Option<String>,
     pub redacted: bool,
+    /// The unknown keys' lines, verbatim.
+    pub extra: Vec<String>,
+}
+
+/// Serialize envelope and content; `parse` is its exact inverse. The
+/// timestamps are quoted because YAML would otherwise read them as its
+/// own timestamp type; a false `redacted` and an absent actor are left out.
+pub fn render(envelope: &Envelope, content: &str) -> String {
+    let (created, updated) = (envelope.created_at.z(), envelope.updated_at.z());
+    let mut text = format!(
+        "{FENCE}\nneosian_format: {FORMAT}\nversion: {}\ncreated_at: '{created}'\nupdated_at: '{updated}'\n",
+        envelope.version
+    );
+    if let Some(actor) = &envelope.actor {
+        text += &format!("actor: {actor}\n");
+    }
+    if envelope.redacted {
+        text += "redacted: true\n";
+    }
+    for line in &envelope.extra {
+        text += &format!("{line}\n");
+    }
+    format!("{text}{FENCE}\n{content}")
 }
 
 /// Split a stored file into its envelope and its byte-exact content.
@@ -62,11 +92,20 @@ pub fn parse<'a>(
         return Err(refuse("unterminated envelope fence"));
     };
     let mut values: [Option<&str>; 6] = [None; 6];
+    let mut extra = Vec::new();
     let mut entries = 0;
+    let mut unknown = false; // is the entry being read an unknown key's?
     for line in text[open.len() + 1..close].lines() {
         let item = line == "-" || line.starts_with("- ");
-        if line.is_empty() || line.starts_with([' ', '\t', '#']) || (item && entries > 0) {
-            continue; // a comment, or a longer value continuing
+        let longer = line.starts_with([' ', '\t']) || (item && entries > 0);
+        if longer || line.is_empty() || line.starts_with('#') {
+            if unknown {
+                extra.push(line.to_string());
+            } else if longer {
+                // A reserved key holds one scalar, on its own line.
+                return Err(refuse("invalid envelope YAML"));
+            }
+            continue;
         }
         let Some((key, value)) = key_line(line).filter(|_| !line.starts_with(['[', '{'])) else {
             let reason = if entries == 0 && !line.contains(": ") {
@@ -77,14 +116,17 @@ pub fn parse<'a>(
             return Err(refuse(reason));
         };
         entries += 1;
-        if let Some(slot) = RESERVED.iter().position(|reserved| *reserved == key) {
-            values[slot] = Some(value);
+        let slot = RESERVED.iter().position(|reserved| *reserved == key);
+        unknown = slot.is_none();
+        match slot {
+            Some(slot) => values[slot] = Some(value),
+            None => extra.push(line.to_string()),
         }
     }
     if entries == 0 {
         return Err(refuse("envelope is not a mapping"));
     }
-    let [format, version, created_at, updated_at, _actor, redacted] = values;
+    let [format, version, created_at, updated_at, actor, redacted] = values;
     let integer = |raw: Option<&str>| {
         raw.filter(|text| !text.is_empty() && text.bytes().all(|b| b.is_ascii_digit()))
             .and_then(|text| text.parse::<u64>().ok())
@@ -112,8 +154,15 @@ pub fn parse<'a>(
         return Err(refuse(&format!("format {declared} is newer than {FORMAT}")));
     }
     let version = integer(version).ok_or_else(|| refuse("missing or invalid version"))?;
-    stamp(created_at, "created_at")?;
+    let created_at = stamp(created_at, "created_at")?;
     let updated_at = stamp(updated_at, "updated_at")?;
+    let named = |word: &&str| !word.is_empty() && !NULL.contains(word);
+    let typed =
+        |word| TRUE.contains(&word) || FALSE.contains(&word) || integer(Some(word)).is_some();
+    let actor = match actor.filter(named) {
+        Some(word) if typed(word) => return Err(refuse("actor must be a string")),
+        actor => actor.map(str::to_string),
+    };
     let redacted = match redacted {
         None => false,
         Some(word) if TRUE.contains(&word) => true,
@@ -122,8 +171,11 @@ pub fn parse<'a>(
     };
     let envelope = Envelope {
         version,
+        created_at,
         updated_at,
+        actor,
         redacted,
+        extra,
     };
     Ok((envelope, text.get(close + width + 1..).unwrap_or("")))
 }
@@ -137,125 +189,4 @@ fn key_line(line: &str) -> Option<(&str, &str)> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    // What `envelope.render` writes for version 3 by `seed`, as PyYAML
-    // spells it (tests/unit/memory/test_envelope.py holds the Python side).
-    const HEAD: &str = "---\nneosian_format: 1\nversion: 3\ncreated_at: '2026-08-19T10:00:00Z'\nupdated_at: '2026-08-19T10:05:00.123456Z'\nactor: seed\n---\n";
-
-    fn read(text: &str) -> Result<(Envelope, &str), String> {
-        parse(text, "user:test", "notes/api").map_err(|error| error.message)
-    }
-
-    fn reason(text: &str) -> String {
-        let message = read(text).unwrap_err();
-        let prefix = "Unsupported memory format for 'notes/api' in scope 'user:test': ";
-        message.strip_prefix(prefix).unwrap_or(&message).to_string()
-    }
-
-    #[test]
-    fn the_content_is_every_byte_after_the_closing_fence() {
-        for content in [
-            "",
-            "x",
-            "x\n",
-            "x\n\n",
-            "\n",
-            "  leading and trailing  ",
-            "a\r\nb",
-            "---\ntitle: t\n---\nbody",
-            "---",
-            "unicode: café ✓",
-        ] {
-            let text = format!("{HEAD}{content}");
-            let (envelope, restored) = read(&text).unwrap();
-            assert_eq!(restored, content);
-            assert_eq!(envelope.version, 3);
-            assert_eq!(
-                envelope.updated_at.iso(),
-                "2026-08-19T10:05:00.123456+00:00"
-            );
-            assert!(!envelope.redacted);
-        }
-    }
-
-    #[test]
-    fn unknown_keys_and_longer_values_are_read_past() {
-        let text = HEAD.replace(
-            "actor: seed\n",
-            "actor: seed\nredacted: true\ncustom: kept\nnote: 'a\n\n  ---\n\n  b'\ntags:\n- one\n- two\n",
-        );
-        let text = format!("{text}body");
-        let (envelope, content) = read(&text).unwrap();
-        assert!(envelope.redacted);
-        assert_eq!(content, "body");
-    }
-
-    #[test]
-    fn a_crlf_fence_and_an_aware_plain_timestamp_are_accepted() {
-        let text = HEAD
-            .replacen("---\n", "---\r\n", 1)
-            .replace("'2026-08-19T10:00:00Z'", "2026-08-19 10:00:00+00:00");
-        assert_eq!(read(&format!("{text}body")).unwrap().1, "body");
-    }
-
-    #[test]
-    fn a_broken_or_newer_envelope_is_refused_never_coerced() {
-        let swap = |from: &str, to: &str| HEAD.replace(from, to);
-        for (text, why) in [
-            ("no fence at all".to_string(), "missing envelope fence"),
-            (
-                "---\nversion: 1\nno closing".to_string(),
-                "unterminated envelope fence",
-            ),
-            (
-                "---\n[not: a: mapping\n---\n".to_string(),
-                "invalid envelope YAML",
-            ),
-            (
-                "---\n- just\n- a list\n---\n".to_string(),
-                "envelope is not a mapping",
-            ),
-            ("---\n---\n".to_string(), "envelope is not a mapping"),
-            (
-                "---\nversion: 1\n---\n".to_string(),
-                "missing neosian_format",
-            ),
-            (
-                swap("neosian_format: 1", "neosian_format: true"),
-                "missing neosian_format",
-            ),
-            (
-                swap("neosian_format: 1", "neosian_format: 2"),
-                "format 2 is newer than 1",
-            ),
-            (
-                swap("version: 3", "version: 0"),
-                "missing or invalid version",
-            ),
-            (
-                swap("'2026-08-19T10:00:00Z'", "'2026-08-19T10:00:00'"),
-                "naive created_at timestamp",
-            ),
-            (
-                swap("'2026-08-19T10:00:00Z'", "2026-08-19"),
-                "missing or invalid created_at timestamp",
-            ),
-            (
-                swap("'2026-08-19T10:00:00Z'", "'soon'"),
-                "unreadable created_at timestamp",
-            ),
-            (
-                swap("updated_at: '2026-08-19T10:05:00.123456Z'\n", ""),
-                "missing or invalid updated_at timestamp",
-            ),
-            (
-                swap("actor: seed", "actor: seed\nredacted: maybe"),
-                "redacted must be a boolean",
-            ),
-        ] {
-            assert_eq!(reason(&text), why, "{text:?}");
-        }
-    }
-}
+mod tests;

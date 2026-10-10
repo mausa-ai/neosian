@@ -41,7 +41,7 @@ fn planted(name: &str) -> (Scratch, FileStore) {
 }
 
 /// A refusal as the doors print it.
-fn refusal<T>(result: Result<T, Error>) -> String {
+pub(super) fn refusal<T>(result: Result<T, Error>) -> String {
     match result {
         Err(Error::Memory(error)) => format!("[{}] {}", error.code, error.message),
         Err(Error::Io(error)) => panic!("{error}"),

@@ -15,6 +15,17 @@ pub struct MemoryError {
 }
 
 impl MemoryError {
+    pub fn not_found(scope: &str, path: &str) -> Self {
+        Self {
+            code: "memory_document_not_found",
+            message: format!(
+                "Memory document not found: {} in scope {}",
+                repr(path),
+                repr(scope)
+            ),
+        }
+    }
+
     pub fn scope_invalid(scope: &str, reason: &str) -> Self {
         Self {
             code: "memory_scope_invalid",
@@ -49,6 +60,23 @@ impl MemoryError {
                 repr(path),
                 repr(scope)
             ),
+        }
+    }
+
+    /// Raised by the tool layer alone: a mount is policy the store never
+    /// sees (C7).
+    pub fn read_only(mount_path: &str) -> Self {
+        Self {
+            code: "memory_read_only_mount",
+            message: format!("Memory mount {} is read-only", repr(mount_path)),
+        }
+    }
+
+    pub fn edit_only(mount_path: &str) -> Self {
+        let mount = repr(mount_path);
+        Self {
+            code: "memory_edit_only_mount",
+            message: format!("Memory mount {mount} is edit-only: its document set is fixed"),
         }
     }
 }

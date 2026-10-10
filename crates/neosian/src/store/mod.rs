@@ -6,6 +6,7 @@
 //! root/user%3A123/proj%3Aerp/
 //!     documents/notes/api.md      envelope frontmatter + verbatim body
 //!     versions/notes/api.jsonl    one row per mutation, full content
+//!     redactions.jsonl            {ts, actor, path|null, count} per redact
 //! ```
 //!
 //! Every public call holds the root-wide advisory lock for its whole
@@ -20,6 +21,7 @@ pub mod journal;
 pub mod layout;
 mod lock;
 pub mod time;
+mod write;
 
 use std::fs::{self, File};
 use std::io;
@@ -70,11 +72,7 @@ impl FileStore {
         let _held = self.lock()?;
         self.scope(scope)?;
         validate_document_path(path)?;
-        let file = layout::doc_file(&self.root, scope, path)?;
-        if !file.is_file() {
-            return Ok(None);
-        }
-        self.load(scope, path, &file).map(Some)
+        self.present(scope, path, &layout::doc_file(&self.root, scope, path)?)
     }
 
     /// The live documents of a scope, sorted by path; `prefix` is a plain
@@ -104,7 +102,7 @@ impl FileStore {
         let _held = self.lock()?;
         self.scope(scope)?;
         validate_document_path(path)?;
-        let mut rows = self.rows(scope, path)?;
+        let (_, mut rows) = self.rows(scope, path)?;
         rows.reverse();
         rows.truncate(limit);
         Ok(rows)
@@ -124,16 +122,24 @@ impl FileStore {
         Ok(())
     }
 
-    /// The sidecar's rows, oldest first. Every row records the spelling it
-    /// was written under, so a case-folding filesystem handing back another
-    /// path's history is caught here (MC-13).
-    fn rows(&self, scope: &str, path: &str) -> Result<Vec<Row>, Error> {
+    /// A path's sidecar and its rows, oldest first. Every row records the
+    /// spelling it was written under, so a case-folding filesystem handing
+    /// back another path's history is caught here (MC-13).
+    fn rows(&self, scope: &str, path: &str) -> Result<(PathBuf, Vec<Row>), Error> {
         let file = layout::journal_file(&self.root, scope, path)?;
         let rows = journal::read_rows(&file, scope, path)?;
         if rows.first().is_some_and(|row| row.path != path) {
             return Err(MemoryError::conflict(scope, Some(path), "case_collision").into());
         }
-        Ok(rows)
+        Ok((file, rows))
+    }
+
+    /// The live document at `file`, None when there is none.
+    fn present(&self, scope: &str, path: &str, file: &Path) -> Result<Option<Document>, Error> {
+        if !file.is_file() {
+            return Ok(None);
+        }
+        self.load(scope, path, file).map(Some)
     }
 
     fn load(&self, scope: &str, path: &str, file: &Path) -> Result<Document, Error> {

@@ -194,7 +194,10 @@ in `ps` (DESIGN §12 ledger #53). Unset, the entry points require
 `--root PATH` and use a FileStore; set, they use a `PostgresStore` and
 `--root` is refused (an explicit conflict, no precedence rule). None
 ever applies the DDL — run `python -m neosian.schemas postgres | psql`
-first (DESIGN §8 C1).
+first (DESIGN §8 C1). The Rust binary reads the file store alone until
+its Postgres substrate lands (DESIGN §39.2): with the key set, its
+`memory` verb exits 1 and names the Python shell, never the home in
+silence.
 
 ## The state process — bearer tokens, not an API key
 

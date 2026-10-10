@@ -56,21 +56,29 @@ pub fn parse_scope(value: &str) -> Result<(), MemoryError> {
         .map_err(|reason| MemoryError::scope_invalid(value, &reason))
 }
 
-/// DESIGN §20's actor grammar, `<kind>:<id>[/...][#<turn>]`; the refusal
-/// is the reason, for the flag that names it.
-pub fn parse_actor(value: &str) -> Result<(), String> {
-    let (head, turn) = value
-        .split_once('#')
-        .map_or((value, None), |(head, turn)| (head, Some(turn)));
-    let counted = turn.is_none_or(|turn| {
-        !turn.is_empty() && !turn.starts_with('0') && turn.bytes().all(|b| b.is_ascii_digit())
-    });
-    segments(
-        head,
-        true,
-        counted,
-        "does not match <kind>:<id>[/...][#<turn>]",
-    )
+/// Who wrote a row, held to DESIGN §20's grammar: `<kind>:<id>[/...]`
+/// with an optional `#<turn>`. Every writer of the binary names one, and
+/// the grammar makes it a plain YAML scalar, which is how an envelope
+/// spells it.
+#[derive(Debug)]
+pub struct Actor(String);
+
+impl Actor {
+    /// The refusal is the reason alone, for the flag that names it.
+    pub fn parse(value: &str) -> Result<Self, String> {
+        let (head, turn) = value
+            .split_once('#')
+            .map_or((value, None), |(head, turn)| (head, Some(turn)));
+        let counted = turn.is_none_or(|turn| {
+            !turn.is_empty() && !turn.starts_with('0') && turn.bytes().all(|b| b.is_ascii_digit())
+        });
+        let shape = "does not match <kind>:<id>[/...][#<turn>]";
+        segments(head, true, counted, shape).map(|()| Self(value.to_string()))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
 }
 
 /// A logical document path: extension-free segments joined by `/`.
@@ -146,13 +154,14 @@ mod tests {
 
     #[test]
     fn the_actor_grammar_adds_a_dash_and_a_turn() {
+        let parse_actor = |actor| Actor::parse(actor).map(|parsed| parsed.as_str().to_string());
         for actor in [
             "cli:local",
             "claude-code:abc#3",
             "serve:mcp/conv:x#12",
             "mcp:stdio",
         ] {
-            assert_eq!(parse_actor(actor), Ok(()), "{actor}");
+            assert_eq!(parse_actor(actor).as_deref(), Ok(actor));
         }
         let shape = Err("does not match <kind>:<id>[/...][#<turn>]".to_string());
         for actor in [

@@ -10,22 +10,28 @@ phase close names the version.
 
 ### Added
 
-- The file store's read side in Rust (R1, the hot path; DESIGN §39.3):
-  the binary reads the home the Python side writes. `neosian memory view`
-  (the index within its budget, a directory, a document with numbered
-  lines and `--view-range`) and `neosian memory versions` answer from it
-  byte for byte as the shell does on a pipe, their `--json` envelopes
-  parsed-equal, and every call takes the root-wide advisory lock the two
-  implementations share. The store flags are the shell's: `--root`,
-  `--scope`, `--mount`, `--actor` and `--json`, and with none the home
-  and the working directory's layout. A store only the Python shell
-  reaches says so: with `NEOSIAN_POSTGRES_DSN` set the verb exits 1
-  naming `uv tool install neosian`.
+- The file store in Rust, and `neosian memory` from the binary (R1, the
+  hot path; DESIGN §39.3): the binary reads and writes the home the
+  Python side does. The six commands (`view`, `create`, `str_replace`,
+  `insert`, `delete`, `rename`) and the operator verbs `versions`,
+  `redact` and `revert` answer byte for byte as the shell does on a pipe,
+  their `--json` envelopes parsed-equal, and leave the same documents,
+  version rows and redaction trail, so either implementation continues a
+  history the other began. Every call takes the root-wide advisory lock
+  the two share. The store flags are the shell's: `--root`, `--scope`,
+  `--mount`, `--actor` and `--json`, and with none the home and the
+  working directory's layout. An invocation refused at exit 2 carries
+  the binary's own grammar text; `maintain` is not in the binary yet;
+  and a store only the Python shell reaches says so: with
+  `NEOSIAN_POSTGRES_DSN` set the verb exits 1 naming `uv tool install
+  neosian`.
 - The differential tier tells a verb with subcommands apart by each of
-  them (`memory view`), so a store's reads assert before its writes
-  exist; the corpus gains the read rulings (a range, a redacted document,
-  a missing path, an index past its budget, the sugar mount, the derived
-  layout, the mount policies, the version trail).
+  them (`memory view`). The corpus grows from 61 to 100 cases with the
+  store's read and write rulings (ranges, redaction, an index past its
+  budget, the derived layout, read-only and edit-only mounts, conflicts,
+  the undo), and the mixed-home test gains a script the two doors take
+  turns on: one document through every mutation, the writer changing at
+  each step.
 
 ### Changed
 

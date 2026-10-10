@@ -6,14 +6,63 @@
 
 use std::io;
 
-use super::mounts::Mount;
+use super::commands;
+use super::mounts::{Mount, resolve, state_path};
 use crate::store::FileStore;
 use crate::store::error::{Error, MemoryError};
+use crate::store::grammar::Actor;
 
-/// The memory wiring of one invocation: a store and its explicit mounts.
+const MAILBOX: &str =
+    "Use messages for mailbox lifecycle changes; operator redaction remains available.";
+
+/// The memory wiring of one invocation: a store, its explicit mounts and
+/// who is writing.
 pub struct Memory {
     pub store: FileStore,
     pub mounts: Vec<Mount>,
+    pub actor: Actor,
+}
+
+/// One memory command with its arguments: Anthropic's vocabulary over one
+/// virtual path space.
+pub enum Call<'a> {
+    View {
+        path: &'a str,
+        range: Option<(i64, i64)>,
+    },
+    Create {
+        path: &'a str,
+        content: &'a str,
+    },
+    StrReplace {
+        path: &'a str,
+        old: &'a str,
+        new: &'a str,
+    },
+    Insert {
+        path: &'a str,
+        line: i64,
+        text: &'a str,
+    },
+    Delete {
+        path: &'a str,
+    },
+    Rename {
+        old: &'a str,
+        new: &'a str,
+    },
+}
+
+/// The structured twin of a successful mutation's prose: the canonical
+/// virtual path (a rename's destination) and the version row the command
+/// appended, which is the number an undo passes back. In-process only: no
+/// envelope ever carries it (ledger #98).
+#[derive(Debug, PartialEq, Eq)]
+pub struct Receipt {
+    pub path: String,
+    pub version: u64,
+    /// A rename's source.
+    pub previous_path: Option<String>,
 }
 
 /// What a command answers: the data or the error, and guidance for
@@ -22,6 +71,7 @@ pub struct Memory {
 pub struct Outcome {
     pub result: Result<String, String>,
     pub reminder: Option<String>,
+    pub receipt: Option<Receipt>,
 }
 
 impl Outcome {
@@ -29,6 +79,7 @@ impl Outcome {
         Self {
             result: Ok(data.into()),
             reminder: None,
+            receipt: None,
         }
     }
 
@@ -36,11 +87,23 @@ impl Outcome {
         Self {
             result: Err(error.into()),
             reminder: None,
+            receipt: None,
         }
     }
 
     pub fn hint(mut self, reminder: impl Into<String>) -> Self {
         self.reminder = Some(reminder.into());
+        self
+    }
+
+    /// The receipt of a write at `path` (the destination, for a move from
+    /// `previous_path`).
+    pub fn wrote(mut self, path: String, version: u64, previous_path: Option<String>) -> Self {
+        self.receipt = Some(Receipt {
+            path,
+            version,
+            previous_path,
+        });
         self
     }
 }
@@ -72,10 +135,35 @@ pub fn corrective(error: &MemoryError) -> Outcome {
     outcome.hint(hint)
 }
 
-/// A command's answer with its store refusals made corrective; only the
+/// Execute one command against the mounts. The mailbox and its links are
+/// a lifecycle's documents: a command that would write one is turned away
+/// before anything runs. A store refusal comes back corrective; only the
 /// filesystem's own failure is left to the caller.
-pub fn settle(result: Result<Outcome, Error>) -> io::Result<Outcome> {
-    match result {
+pub fn dispatch(memory: &Memory, call: &Call) -> io::Result<Outcome> {
+    let answered = || {
+        let written = match *call {
+            Call::View { .. } => vec![],
+            Call::Rename { old, new } => vec![old, new],
+            Call::Create { path, .. }
+            | Call::StrReplace { path, .. }
+            | Call::Insert { path, .. }
+            | Call::Delete { path } => vec![path],
+        };
+        for path in written {
+            if state_path(resolve(&memory.mounts, path)?.1) {
+                return Ok(Outcome::fail(MAILBOX));
+            }
+        }
+        match *call {
+            Call::View { path, range } => commands::view(memory, path, range),
+            Call::Create { path, content } => commands::create(memory, path, content),
+            Call::StrReplace { path, old, new } => commands::str_replace(memory, path, old, new),
+            Call::Insert { path, line, text } => commands::insert(memory, path, line, text),
+            Call::Delete { path } => commands::delete(memory, path),
+            Call::Rename { old, new } => commands::rename(memory, old, new),
+        }
+    };
+    match answered() {
         Ok(outcome) => Ok(outcome),
         Err(Error::Memory(error)) => Ok(corrective(&error)),
         Err(Error::Io(error)) => Err(error),

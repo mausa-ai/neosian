@@ -3,8 +3,9 @@
 //! lives here and never in the store (C7).
 
 pub mod cli;
-pub mod commands;
-pub mod dispatch;
+mod commands;
+mod dispatch;
+pub mod grammar;
 mod index;
 pub mod mounts;
 mod operate;

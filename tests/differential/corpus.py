@@ -1,8 +1,8 @@
 """The corpus (DESIGN §39.4): every case the replay holds against both
 doors over the seeded home. The hook payloads per client are the
 documented shapes the unit tier replays (the same builders); the memory
-grammar, the operator verbs and one MCP session follow. A case asserts
-only once its verb is in `harness.BINARY_VERBS`."""
+grammar with the store's rulings, the operator verbs and one MCP session
+follow. A case asserts only once its verb is in `harness.BINARY_VERBS`."""
 
 from __future__ import annotations
 
@@ -35,6 +35,14 @@ MOUNTS: Final = (
     "scope={proj},path=project",
 )
 ROOT: Final = ("--root", "{home}")
+# The user's mount read-only, the project's edit-only.
+POLICIES: Final = (
+    *ROOT,
+    "--mount",
+    "scope={user},path=user,ro",
+    "--mount",
+    "scope={proj},path=project,eo",
+)
 _CLIENTS: Final = ("codex", "muse-code", "pi", "opencode")
 
 
@@ -56,6 +64,146 @@ def _rpc(
     if params is not None:
         message["params"] = params
     return message
+
+
+def _memory(
+    name: str,
+    *argv: str,
+    mounts: tuple[str, ...] = MOUNTS,
+    text: bool = False,
+    stdin: str | None = None,
+    writes: bool = True,
+) -> Case:
+    """One memory invocation: the envelope under `--json` unless `text`."""
+    tail = () if text else ("--json",)
+    return Case(
+        f"memory {name}", ("memory", *argv, *mounts, *tail), stdin=stdin, writes=writes
+    )
+
+
+def _rulings() -> list[Case]:
+    """The write rulings of the store and its tool layer (DESIGN §8), each
+    over the seeded home: what a conformance kit pins on a store, as a
+    shell observes it."""
+    create, replace = "create", "str_replace"
+    return [
+        _memory(
+            "create overwrite",
+            create,
+            "/project/facts",
+            "--content",
+            "# Facts\n\n- rewritten\n",
+            text=True,
+        ),
+        _memory(
+            "create from stdin",
+            create,
+            "/project/piped",
+            "--content",
+            "-",
+            stdin="# Piped\n\nfrom a pipe\n",
+        ),
+        _memory(
+            "create unicode",
+            create,
+            "/user/notes/unicode",
+            "--content",
+            'café ✓ 日本 — "q" \\ \ttab\n',
+        ),
+        _memory(
+            "create over a deletion",
+            create,
+            "/project/scratch",
+            "--content",
+            "# Scratch\n\nback again\n",
+        ),
+        _memory(
+            "create mailbox refused", create, "/project/messages/x", "--content", "x"
+        ),
+        _memory(
+            "create mount root refused", create, "/project", "--content", "x", text=True
+        ),
+        _memory(
+            "create read-only refused",
+            create,
+            "/user/x",
+            "--content",
+            "x",
+            mounts=POLICIES,
+        ),
+        _memory(
+            "create edit-only refused",
+            create,
+            "/project/brand-new",
+            "--content",
+            "x",
+            mounts=POLICIES,
+            text=True,
+        ),
+        _memory(
+            "create edit-only overwrite",
+            create,
+            "/project/facts",
+            "--content",
+            "# Facts\n\nedited in place\n",
+            mounts=POLICIES,
+        ),
+        _memory(
+            "str_replace absent",
+            replace,
+            "/project/facts",
+            "--old-str",
+            "absent",
+            "--new-str",
+            "x",
+        ),
+        _memory(
+            "str_replace ambiguous",
+            replace,
+            "/project/facts",
+            "--old-str",
+            "e",
+            "--new-str",
+            "x",
+            text=True,
+        ),
+        _memory(
+            "str_replace redacted",
+            replace,
+            "/project/secret",
+            "--old-str",
+            "a",
+            "--new-str",
+            "x",
+        ),
+        _memory(
+            "insert out of range",
+            "insert",
+            "/project/decisions",
+            "--insert-line",
+            "99",
+            "--insert-text",
+            "x",
+        ),
+        _memory("delete missing", "delete", "/project/missing", text=True),
+        _memory(
+            "delete edit-only refused", "delete", "/project/facts", mounts=POLICIES
+        ),
+        _memory("rename occupied", "rename", "/project/facts", "/project/decisions"),
+        _memory(
+            "rename missing", "rename", "/project/missing", "/project/other", text=True
+        ),
+        _memory("rename across mounts", "rename", "/project/facts", "/user/facts"),
+        _memory("redact text", "redact", "/project/decisions", text=True),
+        _memory("redact scope", "redact", "/user", "--all"),
+        _memory("redact deleted path", "redact", "/project/scratch"),
+        _memory("redact read-only refused", "redact", "/user/profile", mounts=POLICIES),
+        _memory("revert stale", "revert", "/user/profile", "--version", "2"),
+        _memory("revert a creation", "revert", "/user/preferences", "--version", "1"),
+        _memory(
+            "revert redacted", "revert", "/project/secret", "--version", "1", text=True
+        ),
+    ]
 
 
 def _cli() -> list[Case]:
@@ -122,19 +270,7 @@ def _cli() -> list[Case]:
         ),
         Case("memory index sugar", ("memory", "view", "/", *ROOT, "--scope", "{proj}")),
         Case("memory index layout", ("memory", "view", "/", *ROOT)),
-        Case(
-            "memory index policies",
-            (
-                "memory",
-                "view",
-                "/",
-                *ROOT,
-                "--mount",
-                "scope={user},path=user,ro",
-                "--mount",
-                "scope={proj},path=project,eo",
-            ),
-        ),
+        Case("memory index policies", ("memory", "view", "/", *POLICIES)),
         Case(
             "memory scope refused",
             ("memory", "view", "/", *ROOT, "--mount", "scope=nobody,path=user"),
@@ -261,7 +397,7 @@ def _cli() -> list[Case]:
         ),
     ]
     version = Case("version", ("version",), token=re.compile(r"v[0-9][0-9A-Za-z.]*"))
-    return [version, *docs, *memory, *operator]
+    return [version, *docs, *memory, *_rulings(), *operator]
 
 
 def _hooks() -> list[Case]:
@@ -400,3 +536,30 @@ def _mcp() -> list[Case]:
 
 CASES: Final[tuple[Case, ...]] = (*_cli(), *_hooks(), *_mcp())
 BY_NAME: Final[dict[str, Case]] = {case.name: case for case in CASES}
+# One document through every mutation, each step building on the one
+# before: the script the two doors take turns on (test_mixed_home).
+_SHARED: Final = "/project/shared"
+_MOVED: Final = "/project/moved"
+TURNS: Final[tuple[Case, ...]] = (
+    _memory("turn create", "create", _SHARED, "--content", "# Shared\n\none\n"),
+    _memory(
+        "turn replace", "str_replace", _SHARED, "--old-str", "one", "--new-str", "two"
+    ),
+    _memory(
+        "turn insert",
+        "insert",
+        _SHARED,
+        "--insert-line",
+        "1",
+        "--insert-text",
+        "inserted",
+    ),
+    _memory("turn overwrite", "create", _SHARED, "--content", "# Shared\n\ncafé ✓\n"),
+    _memory("turn rename", "rename", _SHARED, _MOVED),
+    _memory("turn undo", "revert", _MOVED, "--version", "1"),
+    _memory("turn recreate", "create", _MOVED, "--content", "# Moved\n\nback\n"),
+    _memory("turn redact", "redact", _MOVED),
+    _memory("turn versions", "versions", _MOVED, writes=False),
+    _memory("turn source versions", "versions", _SHARED, writes=False),
+    _memory("turn index", "view", "/", text=True, writes=False),
+)

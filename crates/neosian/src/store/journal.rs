@@ -5,12 +5,15 @@
 //! would let a version number be reused.
 
 use std::fs;
+use std::io;
 use std::path::Path;
 
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use super::FORMAT;
 use super::error::{Error, MemoryError};
+use super::fileio::{append_line, atomic_write};
+use super::grammar::Actor;
 use super::time::{Stamp, Unreadable};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -60,6 +63,57 @@ pub fn read_rows(file: &Path, scope: &str, path: &str) -> Result<Vec<Row>, Error
         .map(|(index, line)| parse_row(line, index + 1, scope, path))
         .collect::<Result<_, _>>()?;
     Ok(rows)
+}
+
+/// The next monotonic version number of a document path.
+pub fn next_version(rows: &[Row]) -> u64 {
+    rows.last().map_or(1, |row| row.version + 1)
+}
+
+/// Append one complete row in a single write, synced: the sidecar is
+/// written before the document, and the row must be on disk before the
+/// document can claim its number, or a crash between the two could let
+/// the number be reused.
+pub fn append_row(file: &Path, row: &Row) -> io::Result<()> {
+    append_line(file, &render_row(row), true)
+}
+
+/// Replace the whole sidecar atomically (a redaction rewrites every row).
+pub fn rewrite_rows(file: &Path, rows: &[Row]) -> io::Result<()> {
+    atomic_write(file, &rows.iter().map(render_row).collect::<String>(), true)
+}
+
+/// One erasure act on a scope's trail: who cleared what, when, and how
+/// many distinct paths; `path` is None for the whole scope.
+pub fn append_redaction(
+    trail: &Path,
+    path: Option<&str>,
+    actor: &Actor,
+    count: usize,
+) -> io::Result<()> {
+    let act = json!({
+        "ts": Stamp::now().z(),
+        "actor": actor.as_str(),
+        "path": path,
+        "count": count,
+    });
+    append_line(trail, &format!("{act}\n"), false)
+}
+
+/// A row as one JSON line. Parity's unit for a row is the parsed object
+/// (ledger #348): key order and escaping are the writer's own.
+fn render_row(row: &Row) -> String {
+    let row = json!({
+        "neosian_format": FORMAT,
+        "path": row.path,
+        "version": row.version,
+        "action": row.action.as_str(),
+        "content": row.content,
+        "actor": row.actor,
+        "created_at": row.created_at.z(),
+        "redacted": row.redacted,
+    });
+    format!("{row}\n")
 }
 
 fn parse_row(line: &str, number: usize, scope: &str, path: &str) -> Result<Row, MemoryError> {
@@ -153,6 +207,26 @@ mod tests {
             (bare.actor, bare.redacted, bare.action),
             (None, false, Action::Deleted)
         );
+    }
+
+    #[test]
+    fn a_row_written_here_reads_back_whole() {
+        let written = Row {
+            path: "notes/café".to_string(),
+            version: 7,
+            action: Action::Deleted,
+            content: "# Notes\n\n- \"quoted\" \\ ✓\u{1}\n".to_string(),
+            actor: Some("cli:local#3".to_string()),
+            created_at: Stamp::parse("2026-10-10T18:20:18.000001Z").unwrap(),
+            redacted: true,
+        };
+        let line = render_row(&written);
+        assert!(line.ends_with("}\n") && line.matches('\n').count() == 1);
+        assert!(line.contains(r#""created_at":"2026-10-10T18:20:18.000001Z""#));
+        let read = parse_row(&line, 1, "user:test", "notes").unwrap();
+        assert_eq!(format!("{read:?}"), format!("{written:?}"));
+        assert_eq!(next_version(&[]), 1);
+        assert_eq!(next_version(&[read]), 8);
     }
 
     #[test]

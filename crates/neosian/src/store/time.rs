@@ -2,6 +2,8 @@
 //! microsecond resolution, in `datetime.isoformat()`'s text. A stamp keeps
 //! the offset it was read with, so it prints as Python would print it.
 
+use std::time::{SystemTime, UNIX_EPOCH};
+
 const DAY: i64 = 86_400_000_000;
 const MINUTE: i64 = 60_000_000;
 
@@ -22,6 +24,15 @@ pub enum Unreadable {
 }
 
 impl Stamp {
+    /// The wall clock in UTC, at Python's resolution.
+    pub fn now() -> Self {
+        let since = SystemTime::now().duration_since(UNIX_EPOCH);
+        Self {
+            micros: since.map_or(0, |since| since.as_micros() as i64),
+            offset: 0,
+        }
+    }
+
     /// `YYYY-MM-DD`, any one separator, `HH:MM[:SS[.f…]]`, then `Z`, `±HH`,
     /// `±HHMM` or `±HH:MM`: every form the stores write and a hand edit
     /// plausibly leaves; `fromisoformat`'s rarer spellings are refused.
@@ -110,6 +121,12 @@ impl Stamp {
         )
     }
 
+    /// The stored form: `isoformat()` with `Z` for UTC, as every row and
+    /// envelope carries it.
+    pub fn z(self) -> String {
+        self.iso().replace("+00:00", "Z")
+    }
+
     /// The instant, for ordering: two stamps compare as their moments do.
     pub fn instant(self) -> i64 {
         self.micros
@@ -171,6 +188,22 @@ mod tests {
         ] {
             assert_eq!(Stamp::parse(read).map(Stamp::iso).as_deref(), Ok(printed));
         }
+    }
+
+    #[test]
+    fn the_stored_form_says_z_for_utc_alone() {
+        let stored = |text| Stamp::parse(text).map(Stamp::z);
+        assert_eq!(
+            stored("2026-08-19T10:00:00+00:00").as_deref(),
+            Ok("2026-08-19T10:00:00Z")
+        );
+        assert_eq!(
+            stored("2026-08-19T12:00:00.5+02:00").as_deref(),
+            Ok("2026-08-19T12:00:00.500000+02:00")
+        );
+        let now = Stamp::now();
+        assert_eq!(Stamp::parse(&now.z()), Ok(now));
+        assert!(now.z().ends_with('Z') && now.instant() > 1_787_133_600_000_000);
     }
 
     #[test]
