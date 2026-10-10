@@ -56,6 +56,7 @@ from neosian._foundation.shared.muse_config import credential_names, settings_do
 __all__ = ["Environment"]  # re-exported: the entry point and the suite name it here
 
 _SERVER_ARGV: Final = ("-m", "neosian.mcp")  # the one place the module path lives
+_SERVER_VERB: Final = ("mcp",)  # the verb form: a frozen bundle or the binary (§39.3)
 _DEFAULT_ACTOR: Final = DEFAULT_ACTOR
 _DESCRIPTION: Final = "Print or apply an MCP client registration for neosian memory."
 _EPILOG: Final = (
@@ -125,7 +126,9 @@ def remove_argv(name: str, cli: str) -> list[str]:
     return [cli, "mcp", "remove", *scope, name]
 
 
-def build_entry(settings: StoreSettings, *, executable: str) -> RegistrationEntry:
+def build_entry(
+    settings: StoreSettings, *, executable: str, interpreter: bool = True
+) -> RegistrationEntry:
     """The resolved settings re-rendered as the server invocation.
 
     Absolute root (a client spawns the server from an arbitrary cwd),
@@ -136,7 +139,7 @@ def build_entry(settings: StoreSettings, *, executable: str) -> RegistrationEntr
     (`NEOSIAN_POSTGRES_DSN`), where a config file would be even more
     readable than argv.
     """
-    args: list[str] = list(_SERVER_ARGV)
+    args: list[str] = list(_SERVER_ARGV if interpreter else _SERVER_VERB)
     if settings.root is not None:
         args += ["--root", str(settings.root.expanduser().resolve())]
     if settings.url is not None:
@@ -352,7 +355,9 @@ def run_install(
     if settings.actor == _DEFAULT_ACTOR:
         # The installer knows the client; the stdio default does not.
         settings = replace(settings, actor=f"mcp:{args.client}")
-    entry = build_entry(settings, executable=context.executable)
+    entry = build_entry(
+        settings, executable=context.executable, interpreter=context.interpreter
+    )
     if args.client == "muse-code":
         entry = replace(entry, env_names=credential_names(settings))
     elif args.client == "cursor":

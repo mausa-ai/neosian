@@ -38,6 +38,7 @@ from neosian._foundation.record.settings import (
 from neosian._foundation.record.targets import (
     CLIENT_CHOICES,
     RECORD_ARGV,
+    RECORD_VERB,
     HookTarget,
     installed_argv,
     is_ours,
@@ -74,14 +75,17 @@ _EPILOG: Final = (
 )
 
 
-def build_argv(settings: RecordSettings, *, executable: str) -> list[str]:
+def build_argv(
+    settings: RecordSettings, *, executable: str, interpreter: bool = True
+) -> list[str]:
     """The resolved settings re-rendered as the verb's argv — the same
     layout `mcp install` renders (absolute root, the mounts that were
     named in canonical form, the URL verbatim, never the DSN), plus the
     agent's kind and an absolute spool (hooks run wherever the session
-    does, worktrees included)."""
+    does, worktrees included). An interpreter runs the module; a frozen
+    bundle or the binary takes the verb (§39.3)."""
     store = settings.store
-    args: list[str] = [executable, *RECORD_ARGV]
+    args: list[str] = [executable, *(RECORD_ARGV if interpreter else RECORD_VERB)]
     if store.root is not None:
         args += ["--root", str(store.root.expanduser().resolve())]
     if store.url is not None:
@@ -97,12 +101,18 @@ def build_argv(settings: RecordSettings, *, executable: str) -> list[str]:
 
 
 def build_command(
-    settings: RecordSettings, *, executable: str, project_token: str | None = None
+    settings: RecordSettings,
+    *,
+    executable: str,
+    interpreter: bool = True,
+    project_token: str | None = None,
 ) -> str:
     """`build_argv` as one shell line — what a hooks file carries. A line
     that names no mount ends on the client's project expression, raw:
     quoting it (as `shlex.join` would) stops the shell expanding it."""
-    line = shlex.join(build_argv(settings, executable=executable))
+    line = shlex.join(
+        build_argv(settings, executable=executable, interpreter=interpreter)
+    )
     if project_token is not None and not settings.store.mounts:
         return f"{line} {project_token}"
     return line
@@ -320,9 +330,14 @@ def run_install(
     if settings.agent == DEFAULT_AGENT:
         # The installer knows the client; the verb's default does not.
         settings = replace(settings, agent=args.client)
-    argv = build_argv(settings, executable=context.executable)
+    argv = build_argv(
+        settings, executable=context.executable, interpreter=context.interpreter
+    )
     command = build_command(
-        settings, executable=context.executable, project_token=target.project_token
+        settings,
+        executable=context.executable,
+        interpreter=context.interpreter,
+        project_token=target.project_token,
     )
     if args.client == "muse-code":
         from neosian._foundation.record.muse import run_install as muse_install

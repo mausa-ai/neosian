@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 from neosian._cli.status import run
-from neosian._foundation.shared.client_config import Environment
+from neosian._foundation.shared.client_config import Environment, frozen
 
 
 def main(argv: list[str] | None = None, *, prog: str = "neosian status") -> int:
@@ -28,6 +28,7 @@ def main(argv: list[str] | None = None, *, prog: str = "neosian status") -> int:
                     platform=sys.platform,
                     env=os.environ,
                     executable=sys.executable,
+                    interpreter=not frozen(),
                 ),
                 out=sys.stdout,
                 err=sys.stderr,

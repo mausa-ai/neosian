@@ -11,10 +11,12 @@ import pytest
 
 from neosian._cli.config import set_api_key, set_value
 from neosian._cli.shape import (
+    BINARY,
     CONTAINER,
     PIPX,
     PROJECT,
     UNKNOWN,
+    UPDATER,
     UV_TOOL,
     Shape,
     detect_shape,
@@ -66,6 +68,13 @@ class TestShape:
             CONTAINER
         )
         assert detect_shape(tmp_path / "nowhere", {}).kind == UNKNOWN
+
+    def test_a_frozen_bundle_is_the_binary_shape(self, tmp_path: Path) -> None:
+        # The interim bundle of §39.1 and, at R3, the binary itself: the
+        # updater is its one upgrade line, whatever the prefix holds.
+        (tmp_path / "uv-receipt.toml").write_text("")
+        assert detect_shape(tmp_path, {}, frozen=True).kind == BINARY
+        assert Shape(BINARY).upgrade_line("1.2.3") == UPDATER
 
     def test_the_upgrade_line_per_shape(self) -> None:
         assert Shape(UV_TOOL).upgrade_line("1.2.3") == "uv tool install neosian==1.2.3"

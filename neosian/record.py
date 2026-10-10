@@ -22,7 +22,7 @@ def main(argv: list[str] | None = None, *, prog: str = "neosian record") -> int:
     try:
         if args and args[0] == "install":
             from neosian._foundation.record.install import run_install
-            from neosian._foundation.shared.client_config import Environment
+            from neosian._foundation.shared.client_config import Environment, frozen
 
             return run_install(
                 args[1:],
@@ -33,6 +33,7 @@ def main(argv: list[str] | None = None, *, prog: str = "neosian record") -> int:
                     platform=sys.platform,
                     env=os.environ,
                     executable=sys.executable,
+                    interpreter=not frozen(),
                 ),
                 out=sys.stdout,
                 err=sys.stderr,

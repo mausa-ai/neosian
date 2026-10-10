@@ -30,8 +30,12 @@ from neosian._foundation.shared.client_config import (
 from neosian._foundation.shared.muse_config import config_dir as muse_config_dir
 
 RECORD_ARGV: Final = ("-m", "neosian.record")  # the one place the module path lives
+RECORD_VERB: Final = ("record",)  # the verb form: a frozen bundle or the binary (§39.3)
 MARKER: Final = " ".join(RECORD_ARGV)  # how ours is recognised in a file
-_PLUGIN_ARGV: Final = re.compile(r'\[[^\[\]]*"-m", "neosian\.record"[^\[\]]*\]')
+_VERB_FORM: Final = re.compile(r"(?:^|\s)\S*neosian(?:\.exe)?\s+record(?:\s|$)")
+_PLUGIN_ARGV: Final = re.compile(
+    r'\[[^\[\]]*(?:"-m", "neosian\.record"|"[^"]*neosian(?:\.exe)?", "record")[^\[\]]*\]'
+)
 _PLUGIN_FILE: Final = "neosian-record.js"
 
 
@@ -200,16 +204,22 @@ def resolve_target(
     return _TARGETS[client](context, level)
 
 
+def carries_ours(command: object) -> bool:
+    """A command line that runs our verb, in module form or verb form."""
+    text = str(command)
+    return MARKER in text or _VERB_FORM.search(text) is not None
+
+
 def is_ours(group: object) -> bool:
     """A hooks group that carries our command."""
     if not isinstance(group, dict):
         return False
-    if MARKER in str(group.get("command", "")):
+    if carries_ours(group.get("command", "")):
         return True
     if not isinstance(group.get("hooks"), list):
         return False
     return any(
-        isinstance(hook, dict) and MARKER in str(hook.get("command", ""))
+        isinstance(hook, dict) and carries_ours(hook.get("command", ""))
         for hook in group["hooks"]
     )
 
@@ -220,11 +230,11 @@ def _hook_argv(document: dict[str, Any]) -> list[str] | None:
         return None
     for groups in hooks.values():
         for group in groups if isinstance(groups, list) else []:
-            if isinstance(group, dict) and MARKER in str(group.get("command", "")):
+            if isinstance(group, dict) and carries_ours(group.get("command", "")):
                 return shlex.split(str(group["command"]))
             for hook in group.get("hooks", []) if isinstance(group, dict) else []:
                 command = hook.get("command", "") if isinstance(hook, dict) else ""
-                if MARKER in str(command):
+                if carries_ours(command):
                     return shlex.split(str(command))
     return None
 

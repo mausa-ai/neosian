@@ -18,7 +18,7 @@ from neosian._cli.render_reports import (
 
 def setup(argv: list[str]) -> int:
     from neosian._cli.setup import run_setup
-    from neosian._foundation.shared.client_config import Environment
+    from neosian._foundation.shared.client_config import Environment, frozen
 
     def engine(args: list[str]) -> int:
         return run_setup(
@@ -30,6 +30,7 @@ def setup(argv: list[str]) -> int:
                 platform=sys.platform,
                 env=os.environ,
                 executable=sys.executable,
+                interpreter=not frozen(),
             ),
             out=sys.stdout,
             err=sys.stderr,

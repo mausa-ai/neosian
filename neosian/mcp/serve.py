@@ -47,6 +47,7 @@ def main(argv: list[str] | None = None, *, prog: str = "neosian mcp") -> int:
         # stays flat (subparsers would rename the documented
         # `python -m neosian.mcp --root ...` invocation for no gain).
         from neosian._foundation.mcp.install import Environment, run_install
+        from neosian._foundation.shared.client_config import frozen
 
         try:
             return run_install(
@@ -58,6 +59,7 @@ def main(argv: list[str] | None = None, *, prog: str = "neosian mcp") -> int:
                     platform=sys.platform,
                     env=os.environ,
                     executable=sys.executable,
+                    interpreter=not frozen(),
                 ),
                 out=sys.stdout,
                 err=sys.stderr,

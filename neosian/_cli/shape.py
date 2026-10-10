@@ -12,10 +12,12 @@ from typing import Final
 
 CONTAINER_ENV: Final = "NEOSIAN_INSTALL"  # the image sets it to `container`
 IMAGE: Final = "ghcr.io/mausa-ai/neosian"
+UPDATER: Final = "neosian-update"  # cargo-dist's updater, beside the binary (§39.5)
 UV_TOOL: Final = "uv-tool"
 PIPX: Final = "pipx"
 CONTAINER: Final = "container"
 PROJECT: Final = "project"
+BINARY: Final = "binary"
 UNKNOWN: Final = "unknown"
 
 
@@ -35,15 +37,23 @@ class Shape:
             return f"pipx install --force {spec}"
         if self.kind == CONTAINER:
             return f"docker pull {IMAGE}:{version}"
+        if self.kind == BINARY:
+            return UPDATER
         if self.kind == PROJECT:
             return f"uv add {spec}"
         return f"pip install --upgrade {spec}"
 
 
-def detect_shape(prefix: Path, env: Mapping[str, str]) -> Shape:
-    """`uv tool` leaves its receipt at the venv root, pipx its metadata, the
-    image its environment marker; any other venv is a project's; the rest
-    is unknown (a system interpreter, an editable checkout)."""
+def detect_shape(
+    prefix: Path, env: Mapping[str, str], *, frozen: bool = False
+) -> Shape:
+    """A frozen bundle is the binary shape (the Rust binary reports it as
+    its own, §39.6); `uv tool` leaves its receipt at the venv root, pipx its
+    metadata, the image its environment marker; any other venv is a
+    project's; the rest is unknown (a system interpreter, an editable
+    checkout)."""
+    if frozen:
+        return Shape(BINARY)
     if env.get(CONTAINER_ENV) == CONTAINER:
         return Shape(CONTAINER)
     if (prefix / "uv-receipt.toml").is_file():

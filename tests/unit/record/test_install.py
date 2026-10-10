@@ -27,7 +27,13 @@ from neosian._foundation.record.install import (
     strip_hooks,
 )
 from neosian._foundation.record.settings import RecordSettings
-from neosian._foundation.record.targets import CLIENT_CHOICES, resolve_target
+from neosian._foundation.record.targets import (
+    _PLUGIN_ARGV,
+    CLIENT_CHOICES,
+    MARKER,
+    is_ours,
+    resolve_target,
+)
 from neosian._foundation.shared.client_config import Environment
 
 _EXECUTABLE = "/venv/bin/python3"
@@ -130,6 +136,21 @@ class TestTarget:
 
 
 class TestCommand:
+    def test_a_binary_takes_the_verb_form(self) -> None:
+        # A frozen bundle or the Rust binary runs the verb itself (§39.3),
+        # and a hook in either form is recognised as ours.
+        command = build_command(
+            _settings(), executable="/opt/neosian", interpreter=False
+        )
+        assert command.split()[:2] == ["/opt/neosian", "record"]
+        assert is_ours({"command": command})
+        assert is_ours({"command": f"/usr/bin/python3 {MARKER} --root /x"})
+        assert not is_ours({"command": "/opt/neosian serve --root /x"})
+        verb_plugin = 'const ARGV = ["/opt/neosian", "record", "--root", "/x"];'
+        module_plugin = 'const ARGV = ["/usr/bin/python3", "-m", "neosian.record"];'
+        assert _PLUGIN_ARGV.search(verb_plugin) and _PLUGIN_ARGV.search(module_plugin)
+        assert _PLUGIN_ARGV.search('const ARGV = ["/opt/neosian", "serve"];') is None
+
     def test_the_module_path_root_mount_and_spool_are_rendered(self) -> None:
         command = build_command(_settings(), executable=_EXECUTABLE)
         parts = command.split()

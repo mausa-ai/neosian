@@ -13,7 +13,7 @@ import pytest
 
 from neosian import __version__
 from neosian._cli.config import set_value
-from neosian._cli.shape import CONTAINER, PROJECT, UV_TOOL, Shape
+from neosian._cli.shape import BINARY, CONTAINER, PROJECT, UPDATER, UV_TOOL, Shape
 from neosian._cli.update import (
     Version,
     check_on_the_human_door,
@@ -295,3 +295,15 @@ def test_a_broken_config_leaves_the_knob_off(tmp_path: Path) -> None:
     config.parent.mkdir(parents=True)
     config.write_text("[update\nmode = 'auto'\n")
     assert current_mode() == "off"
+
+
+class TestBinaryShape:
+    def test_the_binary_is_told_its_updater(self) -> None:
+        newer = Version.parse("1.1.0")
+        assert newer is not None
+        notice = plan("1.0.0", newer, Shape(BINARY), applying=False)
+        assert notice.action == "notify" and notice.line.endswith(UPDATER)
+        refused = plan("1.0.0", newer, Shape(BINARY), applying=True)
+        assert refused.action == "refuse"
+        assert "a binary, not a uv tool" in refused.line
+        assert refused.line.endswith(UPDATER)

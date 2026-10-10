@@ -43,7 +43,7 @@ from neosian._foundation.record.targets import (
     active_targets,
     installed_argv,
 )
-from neosian._foundation.shared.client_config import LEVELS, Environment
+from neosian._foundation.shared.client_config import LEVELS, Environment, frozen
 from neosian._foundation.shared.exceptions import ConfigurationError, NeosianError
 
 if TYPE_CHECKING:
@@ -207,7 +207,7 @@ async def collect(context: Environment, env: Mapping[str, str]) -> Status:
     except ConfigurationError as exc:
         scopes_error = exc.message
     clients = tuple(client_status(client, context) for client in CLIENTS)
-    shape = detect_shape(Path(sys.prefix), env)
+    shape = detect_shape(Path(sys.prefix), env, frozen=frozen())
     config_path = get_config_path()
     config_error: str | None = None
     try:

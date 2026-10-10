@@ -183,6 +183,10 @@ class TestTargets:
 
 
 class TestEntry:
+    def test_a_binary_takes_the_verb_form(self) -> None:
+        entry = build_entry(_settings(), executable="/opt/neosian", interpreter=False)
+        assert entry.command == "/opt/neosian" and entry.args[:1] == ("mcp",)
+
     def test_the_module_path_is_the_argv_prefix(self) -> None:
         entry = build_entry(_settings(), executable=_EXECUTABLE)
         assert entry.command == _EXECUTABLE

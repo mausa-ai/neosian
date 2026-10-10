@@ -36,6 +36,7 @@ from neosian._cli.config import ConfigFileError, get_section, set_value
 from neosian._cli.shape import UV_TOOL, Shape, detect_shape
 from neosian._foundation.memory.home import home
 from neosian._foundation.memory.settings import StreamParser
+from neosian._foundation.shared.client_config import frozen
 from neosian._foundation.shared.fileio import atomic_write, private_mkdir
 
 MODES: Final = ("off", "notify", "auto")
@@ -222,7 +223,9 @@ def check_on_the_human_door(
         if latest is None:
             return None  # offline: silent
         write_stamp(root, latest, now=now)
-    shape = detect_shape(Path(sys.prefix) if prefix is None else prefix, env)
+    shape = detect_shape(
+        Path(sys.prefix) if prefix is None else prefix, env, frozen=frozen()
+    )
     decision = plan(__version__, latest, shape, applying=mode == "auto")
     if decision.action in ("notify", "refuse"):
         err.write(f"{decision.line}\n")
@@ -268,7 +271,9 @@ def run_update(
         out.write(json.dumps(payload) + "\n" if args.json_output else line + "\n")
         return 0
     mode = current_mode()
-    shape = detect_shape(Path(sys.prefix) if prefix is None else prefix, env)
+    shape = detect_shape(
+        Path(sys.prefix) if prefix is None else prefix, env, frozen=frozen()
+    )
     latest = latest_release(transport)
     if latest is not None:
         write_stamp(home(env), latest, now=datetime.now(UTC))

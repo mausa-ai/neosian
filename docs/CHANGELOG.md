@@ -36,6 +36,12 @@ phase close names the version.
   `initialize` 50 ms, p50 of twenty warm runs). The binary answers
   `version` and `docs` today; every other case waits, skipped by name,
   for the verb.
+- The `binary` installation shape (DESIGN §30, §39.6): `neosian status`
+  names it for a frozen bundle, and `neosian update` prints its
+  updater's line, `neosian-update`, applying nothing. The installers
+  emit the verb form (`<executable> record …`, `<executable> mcp …`)
+  when the executable is not a Python interpreter, and recognise a hook
+  in either form as theirs.
 
 ## [1.8.0] - 2026-10-10
 

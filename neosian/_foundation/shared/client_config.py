@@ -17,6 +17,7 @@ written once per machine with the layout derived per session, or
 from __future__ import annotations
 
 import json
+import sys
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -44,6 +45,15 @@ class Environment:
     env: Mapping[str, str]
     executable: str
     client_dirs: Mapping[str, Path] = field(default_factory=dict)
+    # A Python interpreter runs our modules (`-m neosian.record`); a frozen
+    # bundle or the Rust binary answers the verbs themselves (DESIGN §39.3).
+    interpreter: bool = True
+
+
+def frozen() -> bool:
+    """A one-directory bundle sets `sys.frozen`: the executable is then
+    `neosian` itself, not an interpreter (the interim of §39.1)."""
+    return bool(getattr(sys, "frozen", False))
 
 
 def add_level_argument(parser: argparse.ArgumentParser) -> None:
