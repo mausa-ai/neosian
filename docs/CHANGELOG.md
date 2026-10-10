@@ -26,12 +26,13 @@ phase close names the version.
   `NEOSIAN_POSTGRES_DSN` set the verb exits 1 naming `uv tool install
   neosian`.
 - The differential tier tells a verb with subcommands apart by each of
-  them (`memory view`). The corpus grows from 61 to 100 cases with the
+  them (`memory view`). The corpus grows from 61 to 108 cases with the
   store's read and write rulings (ranges, redaction, an index past its
   budget, the derived layout, read-only and edit-only mounts, conflicts,
-  the undo), and the mixed-home test gains a script the two doors take
-  turns on: one document through every mutation, the writer changing at
-  each step.
+  the undo) and the grammar tier's refusals, compared by their sentence
+  (argparse's usage block is the Python grammar's own); the mixed-home
+  test gains a script the two doors take turns on: one document through
+  every mutation, the writer changing at each step.
 
 ### Changed
 
@@ -45,6 +46,10 @@ phase close names the version.
 
 ### Fixed
 
+- Two `--mount` tokens at one path are refused at exit 2, `mount paths
+  must be unique`, by every argv entry that takes mounts (`neosian
+  memory`, `mcp`, `record`, `serve`). The shell used to build the store
+  and then raise a bare `ValueError`.
 - The differential corpus named its mounts `path=/user` and
   `path=/project`, tokens the mount grammar refuses at exit 2, so its
   memory and MCP cases would have compared two identical refusals. They

@@ -180,6 +180,23 @@ class TestArgvTier:
         # The argv tier constructs nothing.
         assert not root.exists()
 
+    async def test_two_mounts_at_one_path_exit_2(self, tmp_path: Path) -> None:
+        """`MemoryConfig` refuses the pair at construction, which is past
+        the grammar tier: the guard keeps the refusal at exit 2, with no
+        store built and no traceback."""
+        root = tmp_path / "mem"
+        out = io.StringIO()
+        argv = ["view", "--root", str(root), "--json"]
+        for scope in ("user:a", "user:b"):
+            argv += ["--mount", f"scope={scope},path=shared"]
+        code = await run(argv, _ENV, stdin=io.StringIO(), out=out, err=io.StringIO())
+        assert code == 2
+        assert json.loads(out.getvalue()) == {
+            "error": "usage",
+            "hint": "mount paths must be unique",
+        }
+        assert not root.exists()
+
     async def test_json_in_argv_makes_the_usage_error_an_object(
         self, tmp_path: Path
     ) -> None:

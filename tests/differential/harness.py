@@ -7,7 +7,9 @@ clock, a temp dir or an id generator, so timestamps, generated ids and
 the home's own path compare by shape, never by value; every other byte
 is exact. The binary answers only the verbs it has: a case whose verb is
 not in `BINARY_VERBS` is skipped, and a verb the binary gains without
-joining that list fails the ratchet in test_verbs.py."""
+joining that list fails the ratchet in test_verbs.py. One text is each
+grammar's own: at exit 2 argparse prints a usage block before the
+refusal's sentence, so the block is dropped and the sentence compared."""
 
 from __future__ import annotations
 
@@ -58,6 +60,11 @@ _TIMESTAMP: Final = re.compile(
 )
 _UUID: Final = re.compile(
     r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+)
+# argparse refuses with a usage block, then `<prog>: error: <sentence>`.
+# The block is the Python grammar's own; the sentence is the doors' to share.
+_ARGPARSE: Final = re.compile(
+    r"\Ausage: .*?^[^\n]*?: error: ", re.DOTALL | re.MULTILINE
 )
 _RPC_TIMEOUT: Final = 30.0
 
@@ -269,6 +276,7 @@ def shape_of_output(
     """What a door printed, by parity's unit: parsed JSON for `--json` and
     RPC answers, the normalised bytes for everything else."""
     stderr = normalise(_decode(outcome.stderr), space, keep=keep)
+    stderr = _ARGPARSE.sub("error: ", stderr)
     if case.rpc:
         answers = [
             json.loads(normalise(json.dumps(a), space, keep=keep)) for a in outcome.rpc

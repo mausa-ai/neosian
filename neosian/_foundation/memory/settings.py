@@ -278,7 +278,12 @@ def resolve_mounts(
         parser.error("--scope is the single-mount sugar; use --mount for multi-mount")
     scope = args.scope if args.scope is not None else env.get(SCOPE_ENV) or None
     if args.mount:
-        return tuple(parse_mount(parser, token) for token in args.mount)
+        mounts = tuple(parse_mount(parser, token) for token in args.mount)
+        if len({mount.mount_path for mount in mounts}) != len(mounts):
+            # `MemoryConfig` refuses the pair too, but past this tier: a
+            # bare ValueError, with the store already built (§14.1).
+            parser.error("mount paths must be unique")
+        return mounts
     if scope is not None:
         return (Mount(scope=scope, mount_path=SUGAR_MOUNT_PATH),)
     if layout is None:

@@ -206,6 +206,61 @@ def _rulings() -> list[Case]:
     ]
 
 
+def _refusals() -> list[Case]:
+    """The grammar tier (DESIGN §14.1): an invocation both doors refuse at
+    exit 2 in one sentence, with nothing built."""
+    collide = (
+        *ROOT,
+        "--mount",
+        "scope={user},path=x",
+        "--mount",
+        "scope={proj},path=x",
+    )
+    return [
+        _memory(
+            "versions limit refused",
+            "versions",
+            "/project/facts",
+            "--limit",
+            "0",
+            text=True,
+            writes=False,
+        ),
+        _memory("redact mount refused", "redact", "/project", writes=False),
+        _memory(
+            "redact all on a document refused",
+            "redact",
+            "/project/facts",
+            "--all",
+            text=True,
+            writes=False,
+        ),
+        _memory(
+            "revert version refused",
+            "revert",
+            "/project/facts",
+            "--version",
+            "0",
+            writes=False,
+        ),
+        _memory(
+            "actor refused", "view", "/", "--actor", "Nope", text=True, writes=False
+        ),
+        _memory(
+            "sugar with mounts refused", "view", "/", "--scope", "{user}", writes=False
+        ),
+        _memory(
+            "mount token refused",
+            "view",
+            "/",
+            mounts=(*ROOT, "--mount", "scope={user}"),
+            text=True,
+            writes=False,
+        ),
+        _memory("mounts collide", "view", "/", mounts=collide, writes=False),
+    ]
+
+
 def _cli() -> list[Case]:
     docs = [
         Case("docs listing", ("docs",)),
@@ -397,7 +452,7 @@ def _cli() -> list[Case]:
         ),
     ]
     version = Case("version", ("version",), token=re.compile(r"v[0-9][0-9A-Za-z.]*"))
-    return [version, *docs, *memory, *_rulings(), *operator]
+    return [version, *docs, *memory, *_rulings(), *_refusals(), *operator]
 
 
 def _hooks() -> list[Case]:
