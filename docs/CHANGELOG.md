@@ -8,6 +8,8 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-10-10
+
 ### Added
 
 - The Rust crate `crates/neosian` (R0, the forge; DESIGN §39): the
@@ -2094,7 +2096,8 @@ pre-release — pin it explicitly; the API stability promise rides v1.0.0.
 - Both entry points share one `_validate_run`, so neither can skip a
   guard.
 
-[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.7.0...HEAD
+[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.9.0...HEAD
+[1.9.0]: https://github.com/mausa-ai/neosian/compare/v1.8.0...v1.9.0
 [1.8.0]: https://github.com/mausa-ai/neosian/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/mausa-ai/neosian/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/mausa-ai/neosian/compare/v1.5.0...v1.6.0
