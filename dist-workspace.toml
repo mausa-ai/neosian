@@ -27,6 +27,9 @@ install-updater = true
 github-attestations = true
 # A pre-release tag hosts binaries and publishes nothing
 publish-prereleases = false
+# The five-target proof (R0, the user's ruling): this pull request builds
+# every target and uploads the artifacts to its own run, releasing nothing
+pr-run-mode = "upload"
 # The Python half of the release, after the binaries are hosted; it
 # publishes by the job's OIDC token (PyPI) and the workflow's own
 # GITHUB_TOKEN (GHCR), so the called workflow needs these and no more
