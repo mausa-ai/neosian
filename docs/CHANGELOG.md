@@ -8,6 +8,16 @@ phase close names the version.
 
 ## [Unreleased]
 
+### Changed
+
+- Record the first dispatched board since 1.2.0 on the shipped rows,
+  dispatch #23 at 1.8.0: gpt-6.1-sol 41/48, claude-sonnet-5-5 44/48,
+  claude-haiku-5-5 47/48 (the row's first dispatched board), grok-4.6
+  46/48, gpt-oss-120b 37/48, qwen-3.8-27b 46/48, and the local row 41/48
+  with two cells cut. Gemini, Moonshot and Model Studio could not answer
+  (HTTP 402, 429 and 403) and carry no behavioral score. The pack, its
+  prompts and its assertions are unchanged.
+
 ## [1.9.0] - 2026-10-10
 
 ### Added

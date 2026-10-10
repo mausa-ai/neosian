@@ -319,6 +319,10 @@ evidence. Each stays measured every dispatch; none is tuned around
   build document during the read. Sol and Grok pass all four handoff
   cells; Sonnet, both Cerebras rows, Kimi and the local model have misses,
   detailed below.
+  Dispatch #23 (1.8.0) re-measures it on the shipped rows: Grok passes all
+  four cells again, gpt-6.1-sol misses on function, http and mcp, Sonnet 5.5
+  on function, http and mcp, Haiku 5.5 on function, and gpt-oss-120b on all
+  four.
   One gpt-oss response also exposes a scoring limit: a nonbreaking
   hyphen in `BUILD‑7731` fails the ASCII-hyphen response regex. The
   local model's cli and mcp answers correctly report no pending note
@@ -326,6 +330,82 @@ evidence. Each stays measured every dispatch; none is tuned around
   keep those failures; no assertion was changed.
 
 ## Results
+
+### 2026-10-10: Dispatch #23, the shipped rows at 1.8.0 (the N8 /ship)
+
+[Dispatch #23](https://github.com/mausa-ai/neosian/actions/runs/38067372775)
+on `5ea8b2f`, the `1.8.0` tag, measures the twelve-scenario pack at
+`5623d0d6…`, unchanged since dispatch #22. All eight lanes completed, and
+the local lane cut two cells at its in-loop budget (below). The dispatch
+concludes `failure`; the tables keep every recorded miss, including three
+accounts that could not answer. No scenario in the pack exercises N8's
+eraser, and no miss below involves a redacted turn. This is the first
+dispatched board for the rows 1.2.0 to 1.8.0 changed: gpt-6.1-sol,
+claude-sonnet-5-5 and the Haiku 5.5 row (owed since 1.7.0).
+
+Scores are passing cells out of twelve. Provider access errors count as
+failed cells in the raw board but do not measure model behavior. Lane
+elapsed is the job's wall time, setup and probes included.
+
+| Provider | Model | function | cli | http | mcp | native | lane elapsed |
+|---|---|---|---|---|---|---|---|
+| OpenAI (Responses) | gpt-6.1-sol | 10/12 | 11/12 | 10/12 | 10/12 | n/a | 9 min 54 s |
+| Anthropic | claude-sonnet-5-5 | 10/12 | 12/12 | 11/12 | 11/12 | 12/12 | 20 min 34 s |
+| Anthropic | claude-haiku-5-5 | 11/12 | 12/12 | 12/12 | 12/12 | n/a | (same lane) |
+| Cerebras | gpt-oss-120b | 10/12 | 10/12 | 8/12 | 9/12 | n/a | 5 min 39 s |
+| Cerebras | qwen-3.8-27b | 12/12 | 10/12 (429) | 12/12 | 12/12 | n/a | (same lane) |
+| xAI (Responses) | grok-4.6 | 11/12 | 11/12 | 12/12 | 12/12 | n/a | 13 min 27 s |
+| Gemini | gemini-3.8-flash | 1/12 (account) | 1/12 (account) | 1/12 (account) | 1/12 (account) | n/a | 12 min 35 s |
+| Model Studio, token plan | qwen3.8-max | 1/12 (access) | 1/12 (access) | 1/12 (access) | 1/12 (access) | n/a | 1 min 7 s |
+| Moonshot (100 rpm) | kimi-k3 | 11/12 (429) | 1/12 (429) | 1/12 (429) | 1/12 (429) | n/a | 22 min 18 s |
+| local (the hosted runner, CPU) | gemma-4-e4b-it | 10/12 | 10/12 | 11/12 | 10/12 (2 cut) | n/a | 2 h 58 min 14 s |
+
+Findings, recorded as found:
+
+- **Sol (gpt-6.1-sol): 41/48,** the total its local qualification of
+  2026-10-04 read. `skills` modifies the skill during the read-only use
+  session on every transport (two versions instead of one); `handoff` adds
+  an extra modification on function, http and mcp (three versions instead
+  of two), and passes on cli.
+- **Sonnet (claude-sonnet-5-5): 44/48** (46/48 locally). `handoff` misses
+  on function, http and mcp, and function `skills` misses. The separate
+  function and native-memory run passes 23/24: function `skills` makes
+  the second revision write, and native passes every cell, so the native
+  `handoff` miss of the local run did not recur.
+- **Haiku (claude-haiku-5-5): 47/48** (45/48 locally), the first
+  dispatched board of the row. The one miss is function `handoff`; the cli
+  `handoff` and `skills` misses of the local run passed.
+- **Grok: 46/48** (44/48 in #22). `long-horizon-recall` misses the project
+  rate-limit fact on function and cli, the distractor class the Known
+  limits record. All four `handoff` cells pass.
+- **gpt-oss-120b: 37/48** (39/48 in #22). `handoff` is red on every
+  transport and `skills` on function, cli and mcp. Http also misses
+  `contradiction`, `long-horizon-recall` and `old-turn-search`, and mcp
+  `old-turn-search`.
+- **Cerebras Qwen: 46/48.** The two misses, cli `correct-wrong-memory` and
+  `long-horizon-recall`, are HTTP 429 `queue_exceeded` ("high traffic"),
+  provider capacity and not model behavior. Every other cell passes,
+  `handoff` on all four transports included.
+- **Kimi: account-limited.** The function board reads 11/12, its one miss
+  `handoff` again a 429. On cli, http and mcp every scenario but one
+  returns HTTP 429, and so does the door catalog probe. Nothing beyond the
+  function column measures the model.
+- **Gemini: 4/48, account-limited.** Every call returns HTTP 402: the
+  prepaid credits are depleted again, now from the first cell (in #22 the
+  function column passed 12/12 before they ran out). The door probes, the
+  link cell and both catalog probes fail with the same 402.
+- **Model Studio Qwen: no behavioral measurement.** Every cell and probe
+  returns HTTP 403, `AccessDenied.Unpurchased`, as in #22. Access must be
+  restored before a rerun can measure this row.
+- **Local Gemma: 41/48** (38/48 in #22). Function misses `handoff` and
+  `skills`; cli misses `cross-client` (the answer lacks `4821`) and
+  `skills`; http misses `skills`; mcp loses two cells to the 3000 s
+  in-loop budget (ledger #211), recorded as timeouts. The link-handle cell
+  fails: the tool was handed `link 1`, not the original URL, where it
+  passed in #22.
+- The catalog and door probes pass on OpenAI, Anthropic, xAI and Cerebras,
+  and so does link recall. The failing probe cells are the access errors
+  above and the local link cell.
 
 ### 2026-10-08: Haiku 5.5, local qualification
 
