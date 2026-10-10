@@ -58,6 +58,9 @@ Thumbs.db
 
 .neosian/
 .ruff_cache/
+
+# The Rust workspace builds here (DESIGN §39)
+/target/
 .import_linter_cache/
 
 # The record (roadmap, design, the tour, the protocol) lives in record/,

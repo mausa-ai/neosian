@@ -1,7 +1,7 @@
 # neosian development targets — `make help` (DESIGN §11)
 
 .DEFAULT_GOAL := help
-.PHONY: help install lint format typecheck test test-external test-postgres test-container size release phase-tag readme-media
+.PHONY: help install lint format typecheck test test-external test-postgres test-container size rust-lint rust-test release phase-tag readme-media
 
 help: ## List targets
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z_-]+:.*?##/ {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2} /^##@/ {printf "\n%s\n", substr($$0, 5)}' $(MAKEFILE_LIST)
@@ -40,8 +40,16 @@ test-postgres: ## Postgres suite: needs NEOSIAN_TEST_POSTGRES_DSN (self-skips wh
 test-container: ## Build the state-process image; both kits against it (needs docker)
 	./scripts/container_test.sh
 
-size: ## File-size gate (warn 300 / fail 500)
+size: ## File-size gate (warn 300 / fail 500) over neosian/**/*.py and crates/**/*.rs
 	uv run python scripts/check_file_size.py
+
+rust-lint: ## cargo fmt --check + clippy -D warnings + cargo deny (licenses, advisories), the lockfile asserted
+	cargo fmt --all --check
+	cargo clippy --workspace --all-targets --locked -- -D warnings
+	cargo deny check
+
+rust-test: ## cargo test over the workspace, the lockfile asserted
+	cargo test --workspace --locked
 
 ##@ Release
 
@@ -51,6 +59,7 @@ ifndef v
 endif
 	@git diff --quiet && git diff --cached --quiet || { echo "refusing: dirty tree"; exit 1; }
 	@grep -q '^version = "$(v)"$$' pyproject.toml || { echo "refusing: v$(v) is not pyproject [project].version"; exit 1; }
+	@grep -q '^version = "$(subst rc,-rc.,$(v))"$$' Cargo.toml || { echo "refusing: v$(v) is not Cargo.toml [workspace.package].version"; exit 1; }
 	@grep -q '^## \[$(subst .,\.,$(v))\]' docs/CHANGELOG.md || { echo "refusing: docs/CHANGELOG.md has no '## [$(v)]' section"; exit 1; }
 	uv run python scripts/check_model_release.py
 ifdef notes

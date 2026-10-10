@@ -59,7 +59,7 @@ jobs:
           tar tzf "$sdist" > "$RUNNER_TEMP/sdist-files.txt"
           grep -Eq '^[^/]+/LICENSE$' "$RUNNER_TEMP/sdist-files.txt"
           grep -Eq '^[^/]+/docs/README\.md$' "$RUNNER_TEMP/sdist-files.txt"
-          ! grep -E '^[^/]+/(\.claude|\.github|\.import_linter_cache|record|docs|branding)/' "$RUNNER_TEMP/sdist-files.txt" | grep -Ev '^[^/]+/docs/README\.md$'
+          ! grep -E '^[^/]+/(\.claude|\.github|\.import_linter_cache|record|docs|branding|crates)/' "$RUNNER_TEMP/sdist-files.txt" | grep -Ev '^[^/]+/docs/README\.md$'
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: dist

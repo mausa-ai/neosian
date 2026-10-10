@@ -1,7 +1,7 @@
 """The publishing posture (NX, DESIGN §29), pinned keylessly: least
 privilege at the top of every workflow, every action by commit SHA with
 its version beside it, the base image by its index digest, the one uv pin
-in its four sites, Dependabot over all three ecosystems, and the sdist
+in its four sites, Dependabot over all four ecosystems, and the sdist
 declaring what never ships. A drift here would otherwise surface only on
 the release that carries it."""
 
@@ -65,12 +65,12 @@ def test_the_one_uv_pin_names_the_same_release_everywhere() -> None:
 
 
 @pytest.mark.unit
-def test_dependabot_keeps_all_three_ecosystems() -> None:
+def test_dependabot_keeps_all_four_ecosystems() -> None:
     config = yaml.safe_load(
         (_ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8")
     )
     ecosystems = {entry["package-ecosystem"] for entry in config["updates"]}
-    assert ecosystems == {"github-actions", "uv", "docker"}
+    assert ecosystems == {"github-actions", "uv", "docker", "cargo"}
 
 
 @pytest.mark.unit
@@ -85,6 +85,7 @@ def test_the_sdist_leaves_the_planning_surface_out() -> None:
         "/.claude/",
         "/.github/",
         "/.import_linter_cache/",
+        "/crates/",
     } <= set(excluded)
 
 

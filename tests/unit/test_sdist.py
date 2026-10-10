@@ -27,6 +27,7 @@ _ROOT = Path(__file__).resolve().parents[2]
         (None, ".github/workflows/ci.yml", False),
         (None, ".import_linter_cache/cache", False),
         (None, "branding/logo.svg", False),
+        (None, "crates/neosian/Cargo.toml", False),
     ],
 )
 def test_archive_gate(

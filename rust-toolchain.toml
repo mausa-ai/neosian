@@ -1,0 +1,6 @@
+# The one Rust pin (DESIGN §39.4, ledger #352): an exact stable, moved by
+# a meta commit the way the uv pin moves; rustup installs it on first use.
+[toolchain]
+channel = "1.99.0"
+components = ["clippy", "rustfmt"]
+profile = "minimal"

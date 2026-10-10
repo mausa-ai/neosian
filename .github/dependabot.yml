@@ -1,6 +1,7 @@
 # Weekly, grouped — one pull request per ecosystem, never one per pin
 # (DESIGN §29). github-actions rewrites a SHA pin and its `# vX.Y.Z`
-# comment together; docker moves `tag@sha256:` pairs; uv re-locks.
+# comment together; docker moves `tag@sha256:` pairs; uv and cargo
+# re-lock.
 version: 2
 updates:
   - package-ecosystem: "github-actions"
@@ -23,4 +24,11 @@ updates:
       interval: "weekly"
     groups:
       images:
+        patterns: ["*"]
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      rust:
         patterns: ["*"]

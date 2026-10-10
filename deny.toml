@@ -1,0 +1,23 @@
+# cargo-deny (DESIGN §39.4): licenses and advisories are the Rust twin of
+# `uv audit --locked`; crates.io is the one source. An advisory is a
+# finding whose fix is a lock bump; `ignore` names an id with no fix yet.
+[graph]
+all-features = true
+
+[advisories]
+ignore = []
+
+# What the tree carries today; a new dependency's license is added here
+# deliberately, never by a wildcard.
+[licenses]
+allow = ["Apache-2.0", "MIT", "Unicode-3.0"]
+confidence-threshold = 0.8
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

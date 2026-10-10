@@ -1,10 +1,11 @@
 """File-size gate: warn at 300 lines, fail at 500 (DESIGN §10).
 
-Scope is library code only (neosian/**/*.py) — table-driven tests grow
-legitimately. An allowlist entry is a named debt with a hard line: it carries
-a ceiling and a reason, a file over its ceiling fails like any other, and an
-entry whose file is gone or back under the limit is stale and fails the gate,
-so the list can only shrink honestly.
+Scope is library code only (neosian/**/*.py and, since R0, the crate's
+crates/**/*.rs) — table-driven tests grow legitimately. An allowlist entry
+is a named debt with a hard line: it carries a ceiling and a reason, a file
+over its ceiling fails like any other, and an entry whose file is gone or
+back under the limit is stale and fails the gate, so the list can only
+shrink honestly.
 """
 
 import sys
@@ -25,7 +26,8 @@ def main() -> int:
     failures: list[str] = []
     seen_over_limit: set[str] = set()
 
-    for path in sorted((ROOT / "neosian").rglob("*.py")):
+    sources = [*(ROOT / "neosian").rglob("*.py"), *(ROOT / "crates").rglob("*.rs")]
+    for path in sorted(sources):
         rel = path.relative_to(ROOT).as_posix()
         lines = len(path.read_text(encoding="utf-8").splitlines())
         if lines >= FAIL_LINES:

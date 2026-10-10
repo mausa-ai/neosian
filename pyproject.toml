@@ -375,8 +375,9 @@ build-backend = "hatchling.build"
 
 # The sdist is the wheel's source plus what a stranger can run — tests,
 # examples, scripts, the Makefile, the Dockerfile. The planning documents,
-# the agent procedures, CI and the mark never ship (REVIEW TP-3, DESIGN
-# §29); hatchling already drops what .gitignore names.
+# the agent procedures, CI, the mark and the Rust crate (its own source,
+# crates.io's) never ship (REVIEW TP-3, DESIGN §29, §39); hatchling
+# already drops what .gitignore names.
 # Hatchling always includes docs/README.md as required project metadata.
 [tool.hatch.build.targets.sdist]
 exclude = [
@@ -386,4 +387,9 @@ exclude = [
     "/docs/",
     "/record/",
     "/branding/",
+    "/crates/",
+    "/Cargo.toml",
+    "/Cargo.lock",
+    "/deny.toml",
+    "/rust-toolchain.toml",
 ]

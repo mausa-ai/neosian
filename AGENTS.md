@@ -4,7 +4,9 @@ Async-only Python library: the state layer for LLM agents — a stateless
 `Agent` core (tools, orchestration, streaming, fallback, guardrails,
 structured output) with opt-in `Conversation` + memory layers around it,
 on storage the product owns. Read `docs/README.md` first; `neosian docs
-<topic>` prints the shipped pages from the wheel.
+<topic>` prints the shipped pages from the wheel. The product doors are
+also being built as one static Rust binary in `crates/` (the R track,
+DESIGN §39); the SDK and the human shell stay Python.
 
 ## Hard rules
 
@@ -45,6 +47,13 @@ on storage the product owns. Read `docs/README.md` first; `neosian docs
 - Import layering is enforced by import-linter: `_foundation` never
   imports `_cli`; memory/conversation never import provider internals;
   the facade only re-exports.
+- The Rust crate (`crates/neosian`): the toolchain is
+  `rust-toolchain.toml`'s exact pin and `rust-version` repeats it;
+  `cargo fmt`, `cargo clippy -D warnings` and `cargo deny` pass; the same
+  300/500 size gate reads `.rs`. Parity with the Python doors is
+  parsed-equal for data and byte-equal for text, held by the
+  differential harness; a seam that moves lands in both implementations
+  in the same release.
 - `llms.txt` and `neosian/assets/llms.txt` are byte-identical twins; the
   docs pages under `neosian/assets/docs/` are a manifest — a page not
   listed fails at import.
@@ -57,12 +66,14 @@ on storage the product owns. Read `docs/README.md` first; `neosian docs
 | `make lint` / `make format` | ruff + black --check + lint-imports / autofix |
 | `make typecheck` | `mypy --strict neosian tests examples` |
 | `make test` | unit tier — the default gate, zero API keys, the coverage floor |
-| `make size` | file-size gate (300/500) |
+| `make size` | file-size gate (300/500) over `neosian/**/*.py` and `crates/**/*.rs` |
+| `make rust-lint` / `make rust-test` | the crate's gates: `cargo fmt --check`, `clippy -D warnings`, `cargo deny check` / `cargo test --locked` |
 | `make test-external provider=<p> [file=…]` | real-API suite for one provider; `file=` injects creds value-blind |
 | `make test-postgres` | PostgresStore suite; needs `NEOSIAN_TEST_POSTGRES_DSN` (`docs/SERVICES.md`) |
 | `make test-container` | the state-process image against both conformance kits (docker) |
 
-All four default gates green, with no API key set, before every commit.
+All six default gates (the four Python ones, `rust-lint` and
+`rust-test`) green, with no API key set, before every commit.
 `docs/SERVICES.md` lists every environment key and what turning it off means.
 
 ## Versioning and releases

@@ -8,6 +8,17 @@ phase close names the version.
 
 ## [Unreleased]
 
+### Added
+
+- The Rust crate `crates/neosian` (R0, the forge; DESIGN §39): the
+  product doors begin a second implementation as one static binary, with
+  `neosian version` and `neosian docs` answering from it byte for byte as
+  the shell does on a pipe. The repository gains the Rust gates (`make
+  rust-lint`, `make rust-test`), `rust-toolchain.toml` at an exact pin,
+  `deny.toml`, the size gate over `.rs` and a CI job on the five targets
+  the binary will ship for (ledger #348 to #352). No binary is published
+  yet: the installers and channels follow at R3.
+
 ## [1.8.0] - 2026-10-10
 
 ### Added
