@@ -51,9 +51,10 @@ DESIGN §39); the SDK and the human shell stay Python.
   `rust-toolchain.toml`'s exact pin and `rust-version` repeats it;
   `cargo fmt`, `cargo clippy -D warnings` and `cargo deny` pass; the same
   300/500 size gate reads `.rs`. Parity with the Python doors is
-  parsed-equal for data and byte-equal for text, held by the
-  differential harness; a seam that moves lands in both implementations
-  in the same release.
+  parsed-equal for data and byte-equal for text, held by
+  `tests/differential/` (timestamps, generated ids and the home's path
+  compare by shape); a seam that moves lands in both implementations in
+  the same release, and the corpus gains the case.
 - `llms.txt` and `neosian/assets/llms.txt` are byte-identical twins; the
   docs pages under `neosian/assets/docs/` are a manifest — a page not
   listed fails at import.
@@ -67,7 +68,9 @@ DESIGN §39); the SDK and the human shell stay Python.
 | `make typecheck` | `mypy --strict neosian tests examples` |
 | `make test` | unit tier — the default gate, zero API keys, the coverage floor |
 | `make size` | file-size gate (300/500) over `neosian/**/*.py` and `crates/**/*.rs` |
-| `make rust-lint` / `make rust-test` | the crate's gates: `cargo fmt --check`, `clippy -D warnings`, `cargo deny check` / `cargo test --locked` |
+| `make rust-lint` / `make rust-test` | the crate's gates: `cargo fmt --check`, `clippy -D warnings`, `cargo deny check`, `dist generate --check` / `cargo test --locked` |
+| `make test-differential` | the corpus through the shell and the binary over one seeded home (`NEOSIAN_BINARY`, else `target/`); skips without a binary |
+| `make bench-hooks [home=DIR]` | the latency gate: p50 of 20 warm runs per door and event; a Rust number over budget fails |
 | `make test-external provider=<p> [file=…]` | real-API suite for one provider; `file=` injects creds value-blind |
 | `make test-postgres` | PostgresStore suite; needs `NEOSIAN_TEST_POSTGRES_DSN` (`docs/SERVICES.md`) |
 | `make test-container` | the state-process image against both conformance kits (docker) |

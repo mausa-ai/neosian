@@ -25,6 +25,17 @@ phase close names the version.
   updater on a `v*` tag, and calls `publish-python.yml` (today's PyPI and
   GHCR jobs, verbatim) as its publish job before announcing the GitHub
   Release. A pre-release tag hosts binaries and publishes nothing.
+- The differential tier and the latency gate (DESIGN §39.4, ledger #348
+  and #349): `tests/differential/` replays one corpus (the memory
+  grammar, the operator verbs, the hook payloads of six clients, an MCP
+  session) through the Python shell and the Rust binary over copies of
+  one seeded home and compares outputs and the home by parity's unit,
+  both ways in the mixed-home test; `make test-differential` runs it,
+  `make bench-hooks` holds the binary to its budgets (`version` 5 ms;
+  UserPromptSubmit and PostToolUse 10 ms; Stop, SessionStart and the MCP
+  `initialize` 50 ms, p50 of twenty warm runs). The binary answers
+  `version` and `docs` today; every other case waits, skipped by name,
+  for the verb.
 
 ## [1.8.0] - 2026-10-10
 

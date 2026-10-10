@@ -273,7 +273,21 @@ in the normal flow:
   (Lima), where macOS's `/var/folders` cannot be bind-mounted.
 
 **Off means the tier self-skips whole** — `make test` and keyless boot
-never need a docker daemon. CI's `container` job builds the image and
+never need a docker daemon.
+
+## The differential tier: a binary, not a key
+
+`make test-differential` replays the corpus through the Python shell and
+the Rust binary over one seeded home (DESIGN §39.4); `make bench-hooks`
+times both.
+
+- `NEOSIAN_BINARY`: the binary to hold against the shell. Unset means
+  `target/release/neosian`, then `target/debug/neosian`; neither built
+  means every test in the tier self-skips. CI's `rust` job builds the
+  release binary on its Linux x86_64 leg and runs both.
+
+**Off means the tier self-skips whole.** `make test` never collects it
+(the `differential` marker is excluded like the external tiers). CI's `container` job builds the image and
 runs both legs on every push, no secret; the registry push is
 `publish-python.yml`'s, on a release tag (DESIGN §29 — ledger #114's
 built-and-smoked posture ended at NX).

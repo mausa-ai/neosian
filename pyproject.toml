@@ -87,9 +87,10 @@ skip_empty = true
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
-addopts = "-m 'not external' --strict-markers --timeout=60"
+addopts = "-m 'not external and not differential' --strict-markers --timeout=60"
 markers = [
     "unit: Fast tests on fakes only — the default, fully keyless gate",
+    "differential: The corpus through the Python shell and the Rust binary (needs the built binary; keyless)",
     "external: Any test making real API calls (excluded by default)",
     "external_openai: Real OpenAI API calls",
     "external_anthropic: Real Anthropic API calls",

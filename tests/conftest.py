@@ -1,6 +1,8 @@
 """Shared test fixtures and tier auto-marking.
 
 Tiers are marked by path (DESIGN §10): tests/unit/** is `unit`;
+tests/differential/** is `differential` (DESIGN §39.4, the built binary
+beside the shell, excluded by default like the external tiers);
 tests/external/<provider>/** is `external` + `external_<provider>`;
 tests/external/cross/** is parametrized per provider and self-skips per
 key, so it carries every suite's marker. Selection is by marker —
@@ -55,6 +57,8 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
         rel = Path(item.fspath).relative_to(_TESTS_DIR).parts
         if rel[0] == "unit":
             item.add_marker(pytest.mark.unit)
+        elif rel[0] == "differential":
+            item.add_marker(pytest.mark.differential)
         elif rel[0] == "external":
             item.add_marker(pytest.mark.external)
             item.add_marker(pytest.mark.timeout(_EXTERNAL_TIMEOUT_SECONDS))

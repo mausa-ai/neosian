@@ -26,7 +26,9 @@ _WORKFLOWS = sorted(
     if path != _GENERATED
 )
 _DOCKERFILE = _ROOT / "Dockerfile"
-_PINNED_USE = re.compile(r"^\s*-\s*uses:\s*\S+@[0-9a-f]{40}\s+# v\d+\.\d+\.\d+\s*$")
+_PINNED_USE = re.compile(
+    r"^\s*(?:-\s*)?uses:\s*\S+@[0-9a-f]{40}\s+# v\d+\.\d+\.\d+\s*$"
+)
 _GENERATED_USE = re.compile(r"^\s*(?:-\s*)?uses:\s*(\S+)@([0-9a-f]{40})\s*$")
 _ANY_USE = re.compile(r"^\s*(?:-\s*)?uses:")
 _DIGEST = re.compile(r"^FROM python:[^@\s]+@(sha256:[0-9a-f]{64})", re.M)
