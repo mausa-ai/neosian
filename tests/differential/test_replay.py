@@ -32,6 +32,7 @@ def test_both_doors_agree(
             tmp_path / door,
             user=seeded.user,
             proj=seeded.proj,
+            session=seeded.sessions[-1],
             project_name=PROJECT_NAME,
         )
         for door in ("python", "rust")

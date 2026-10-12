@@ -1,5 +1,8 @@
 //! What the binary's integration tests share: a scratch home, and the
-//! literal `neosian memory` over it.
+//! literal `neosian memory` over it. Each test file is a crate of its
+//! own, so a helper one of them leaves aside is not dead code.
+
+#![allow(dead_code)]
 
 #[path = "../../src/testing.rs"]
 mod testing;

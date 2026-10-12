@@ -161,6 +161,7 @@ def main(argv: list[str] | None = None) -> int:
                 seeded.parent / door,
                 user=user,
                 proj=proj,
+                session="",  # the gate's cases name no session
                 project_name=PROJECT_NAME,
             )
             for door in doors

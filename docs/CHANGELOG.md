@@ -33,6 +33,19 @@ phase close names the version.
   (argparse's usage block is the Python grammar's own); the mixed-home
   test gains a script the two doors take turns on: one document through
   every mutation, the writer changing at each step.
+- `neosian search` and `neosian continue` from the binary (R1 slice B,
+  DESIGN §39.3): the turn log, the one search rule and its file scan,
+  the hit renderer, link handles, the log projection, the sessions
+  documents and the handoff baton are read by the binary, and the two
+  verbs answer byte for byte as the shell does on a pipe, their `--json`
+  envelopes parsed-equal: every hit, snippet, verbatim turn, tool line,
+  fold and frame the same. Both are reads, the note left pending; the
+  record verb and the MCP server bring the writes. The link-handle
+  grammar is the Python regex carried verbatim onto a backtracking
+  engine (`fancy-regex`). The search verb's message hits and
+  annotations land with the mailbox, which the binary does not read yet.
+  The corpus grows from 108 to 128 cases (eleven `search`, nine
+  `continue`), and the mixed-home test gains two baton scenarios.
 
 ### Changed
 

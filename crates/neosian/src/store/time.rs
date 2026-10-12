@@ -127,6 +127,14 @@ impl Stamp {
         self.iso().replace("+00:00", "Z")
     }
 
+    /// `isoformat(timespec="minutes")` with `Z` for UTC: the handoff's
+    /// stamps (§33).
+    pub fn minutes(self) -> String {
+        let full = self.iso();
+        let offset = &full[full.len() - 6..];
+        format!("{}{offset}", &full[..16]).replace("+00:00", "Z")
+    }
+
     /// The instant, for ordering: two stamps compare as their moments do.
     pub fn instant(self) -> i64 {
         self.micros
@@ -200,6 +208,15 @@ mod tests {
         assert_eq!(
             stored("2026-08-19T12:00:00.5+02:00").as_deref(),
             Ok("2026-08-19T12:00:00.500000+02:00")
+        );
+        let minutes = |text| Stamp::parse(text).map(Stamp::minutes);
+        assert_eq!(
+            minutes("2026-10-12T22:27:56.085324Z").as_deref(),
+            Ok("2026-10-12T22:27Z")
+        );
+        assert_eq!(
+            minutes("2026-08-19T10:00:00+02:00").as_deref(),
+            Ok("2026-08-19T10:00+02:00")
         );
         let now = Stamp::now();
         assert_eq!(Stamp::parse(&now.z()), Ok(now));

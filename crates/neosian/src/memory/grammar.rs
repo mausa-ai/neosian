@@ -16,7 +16,7 @@ use crate::home::project_mounts;
 use crate::repr::repr;
 use crate::store::grammar::Actor;
 
-const SCOPE_ENV: &str = "NEOSIAN_SCOPE";
+pub const SCOPE_ENV: &str = "NEOSIAN_SCOPE";
 /// Where the `--scope` sugar mounts: the path a trained memory tool roots at.
 const SUGAR_MOUNT_PATH: &str = "memories";
 

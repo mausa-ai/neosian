@@ -77,6 +77,16 @@ SCENARIOS: Final = (
         writes=("mcp handoff",),
         reads=("claude-code session start", "continue json"),
     ),
+    Scenario(
+        "a baton rewritten by hand, then the continue",
+        writes=("memory create baton",),
+        reads=("continue json", "continue", "search json"),
+    ),
+    Scenario(
+        "the baton deleted, then the continue",
+        writes=("memory delete baton",),
+        reads=("continue json", "continue named"),
+    ),
 )
 
 
@@ -90,6 +100,7 @@ def _space(seeded: Seeded, into: Path) -> Workspace:
         into,
         user=seeded.user,
         proj=seeded.proj,
+        session=seeded.sessions[-1],
         project_name=PROJECT_NAME,
     )
 

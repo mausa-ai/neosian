@@ -8,6 +8,7 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand};
 use serde_json::json;
 
+use crate::conversation::{cli_continue, cli_search};
 use crate::{docs, memory, version};
 
 #[derive(Parser)]
@@ -39,6 +40,10 @@ enum Command {
         #[command(subcommand)]
         command: memory::grammar::Command,
     },
+    /// Find the turns holding every term, newest first (DESIGN §32).
+    Search(cli_search::Search),
+    /// Print a recorded conversation as continue_session delivers it (§33).
+    Continue(cli_continue::Continue),
 }
 
 /// A grammar-tier refusal (exit 2): the message on stderr, and where
@@ -83,6 +88,8 @@ where
         Command::Version => writeln!(out, "{}", version::line()).map(|()| 0),
         Command::Docs { topic, json } => docs::run(topic.as_deref(), json, &mut out, &mut err),
         Command::Memory { command } => memory::cli::run(&command, &mut out, &mut err),
+        Command::Search(args) => cli_search::run(&args, &mut out, &mut err),
+        Command::Continue(args) => cli_continue::run(&args, &mut out, &mut err),
     };
     match code {
         Ok(code) => ExitCode::from(code),

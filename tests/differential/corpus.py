@@ -258,6 +258,21 @@ def _refusals() -> list[Case]:
             writes=False,
         ),
         _memory("mounts collide", "view", "/", mounts=collide, writes=False),
+        Case("search limit refused", ("search", "x", "--limit", "0", *ROOT)),
+        Case(
+            "search limit refused json",
+            ("search", "x", "--limit", "501", *ROOT, "--json"),
+        ),
+        Case("search blank refused", ("search", " ", *ROOT)),
+        Case(
+            "search conversation refused json",
+            ("search", "x", "--conversation", "a/b", *ROOT, "--json"),
+        ),
+        Case("continue id refused", ("continue", "a/b", *ROOT, "--scope", "{proj}")),
+        Case(
+            "continue scope refused json",
+            ("continue", *ROOT, "--scope", "bad", "--json"),
+        ),
     ]
 
 
@@ -432,6 +447,28 @@ def _cli() -> list[Case]:
             ("audit", "--scope", "{proj}", "--root", "{home}", "--json"),
         ),
         Case("search json", ("search", "turn", "--root", "{home}", "--json")),
+        Case("search", ("search", "turn", *ROOT)),
+        Case(
+            "search narrowed json",
+            ("search", "eu-west-1", "--conversation", "{session}", *ROOT, "--json"),
+        ),
+        Case("search two terms limit", ("search", "the", "ttl", "--limit", "2", *ROOT)),
+        Case(
+            "search a duplicate conversation",
+            (
+                "search",
+                "the",
+                "--conversation",
+                "{session}",
+                "--conversation",
+                "{session}",
+                *ROOT,
+                "--limit",
+                "4",
+            ),
+        ),
+        Case("search none", ("search", "zzz", *ROOT)),
+        Case("search none json", ("search", "zzz", "turn", *ROOT, "--json")),
         Case(
             "messages list json",
             ("messages", "list", "--root", "{home}", "--scope", "{proj}", "--json"),
@@ -439,6 +476,18 @@ def _cli() -> list[Case]:
         Case(
             "continue json",
             ("continue", "--root", "{home}", "--scope", "{proj}", "--json"),
+        ),
+        Case("continue", ("continue", *ROOT, "--scope", "{proj}")),
+        Case("continue the layout's scope", ("continue", *ROOT)),
+        Case("continue named", ("continue", "{session}", *ROOT, "--scope", "{proj}")),
+        Case(
+            "continue named json",
+            ("continue", "{session}", *ROOT, "--scope", "{proj}", "--json"),
+        ),
+        Case("continue a stranger", ("continue", "nope", *ROOT, "--scope", "{proj}")),
+        Case(
+            "continue an empty scope json",
+            ("continue", *ROOT, "--scope", "user:nobody", "--json"),
         ),
         Case("status json", ("status", "--json")),
         Case(
@@ -589,7 +638,22 @@ def _mcp() -> list[Case]:
     ]
 
 
-CASES: Final[tuple[Case, ...]] = (*_cli(), *_hooks(), *_mcp())
+_BATON: Final = (
+    "# handoff from cli:local\n\n- from: cli:local\n- written: 2026-10-12T22:31:00Z\n"
+    "- status: pending\n\nTake over the release: the tag is not cut.\n"
+)
+
+
+def _batons() -> list[Case]:
+    """The baton by hand (DESIGN §33): a pending, unlinked note rewritten
+    through the memory tool, and the baton deleted."""
+    return [
+        _memory("create baton", "create", "/project/handoff", "--content", _BATON),
+        _memory("delete baton", "delete", "/project/handoff"),
+    ]
+
+
+CASES: Final[tuple[Case, ...]] = (*_cli(), *_batons(), *_hooks(), *_mcp())
 BY_NAME: Final[dict[str, Case]] = {case.name: case for case in CASES}
 # One document through every mutation, each step building on the one
 # before: the script the two doors take turns on (test_mixed_home).

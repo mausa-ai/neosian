@@ -17,8 +17,8 @@ use crate::cli::usage;
 use crate::home::home;
 use crate::store::FileStore;
 
-const DSN_ENV: &str = "NEOSIAN_POSTGRES_DSN";
-const NEEDS_PYTHON: &str = "NEOSIAN_POSTGRES_DSN names a Postgres store, and the binary reads \
+pub const DSN_ENV: &str = "NEOSIAN_POSTGRES_DSN";
+pub const NEEDS_PYTHON: &str = "NEOSIAN_POSTGRES_DSN names a Postgres store, and the binary reads \
                             the file store alone: needs the Python shell: `uv tool install neosian`";
 
 /// A command's answer on the streams: the envelope under `--json`, else

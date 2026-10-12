@@ -37,6 +37,8 @@ BINARY_VERBS: Final[frozenset[str]] = frozenset(
     {
         "version",
         "docs",
+        "search",
+        "continue",
         *(
             f"memory {command}"
             for command in (
@@ -72,10 +74,11 @@ _RPC_TIMEOUT: Final = 30.0
 @dataclass(frozen=True)
 class Case:
     """One invocation. `argv` follows the executable, with `{home}`,
-    `{spool}`, `{project}`, `{out}`, `{user}` and `{proj}` expanded at run
-    time; `payload` is the object a hook sends on stdin (its strings
-    expanded too), `stdin` plain text, `rpc` a JSON-RPC conversation held
-    with the spawned server instead of a one-shot run."""
+    `{spool}`, `{project}`, `{out}`, `{user}`, `{proj}` and `{session}`
+    (the seed's newest conversation) expanded at run time; `payload` is
+    the object a hook sends on stdin (its strings expanded too), `stdin`
+    plain text, `rpc` a JSON-RPC conversation held with the spawned server
+    instead of a one-shot run."""
 
     name: str
     argv: tuple[str, ...]
@@ -108,13 +111,15 @@ class Outcome:
 @dataclass(frozen=True)
 class Workspace:
     """A door's private copy of the seeded home, the project directory the
-    hook argv names, and a scratch directory for exports."""
+    hook argv names, a scratch directory for exports, and the seed's
+    scopes and newest session."""
 
     home: Path
     project: Path
     out: Path
     user: str
     proj: str
+    session: str
 
     @property
     def spool(self) -> Path:
@@ -128,6 +133,7 @@ class Workspace:
             .replace("{out}", str(self.out))
             .replace("{user}", self.user)
             .replace("{proj}", self.proj)
+            .replace("{session}", self.session)
         )
 
     def environment(self) -> dict[str, str]:
@@ -172,7 +178,13 @@ def rust_door() -> Path | None:
 
 
 def workspace(
-    seeded: Path, into: Path, *, user: str, proj: str, project_name: str
+    seeded: Path,
+    into: Path,
+    *,
+    user: str,
+    proj: str,
+    session: str,
+    project_name: str,
 ) -> Workspace:
     """A fresh copy of the seeded home for one door."""
     into.mkdir(parents=True, exist_ok=True)
@@ -181,7 +193,9 @@ def workspace(
     project = into / project_name
     project.mkdir()
     out = into / "out"
-    return Workspace(home=home, project=project, out=out, user=user, proj=proj)
+    return Workspace(
+        home=home, project=project, out=out, user=user, proj=proj, session=session
+    )
 
 
 def run_case(executable: Path, case: Case, space: Workspace) -> Outcome:

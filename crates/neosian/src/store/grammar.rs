@@ -50,10 +50,15 @@ fn segments(value: &str, dash: bool, suffix: bool, shape: &str) -> Result<(), St
     }
 }
 
-/// ECOSYSTEM §2's scope grammar. Never normalizes.
-pub fn parse_scope(value: &str) -> Result<(), MemoryError> {
+/// ECOSYSTEM §2's scope grammar, the refusal as the reason alone (for a
+/// flag that words its own error around it). Never normalizes.
+pub fn check_scope(value: &str) -> Result<(), String> {
     segments(value, false, true, "does not match <type>:<id>[/...]")
-        .map_err(|reason| MemoryError::scope_invalid(value, &reason))
+}
+
+/// ECOSYSTEM §2's scope grammar, the refusal as the store's error.
+pub fn parse_scope(value: &str) -> Result<(), MemoryError> {
+    check_scope(value).map_err(|reason| MemoryError::scope_invalid(value, &reason))
 }
 
 /// Who wrote a row, held to DESIGN §20's grammar: `<kind>:<id>[/...]`

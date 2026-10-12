@@ -59,13 +59,11 @@ fn login() -> Result<String, Refusal> {
     }
 }
 
-/// The canonical two-mount layout for a working directory: the user's
-/// durable facts at `/user`, the project's at `/project`, both read-write.
-/// The slug is the directory's own name, so two same-named directories
-/// share a scope by design; a directory without a name derives nothing.
-pub fn project_mounts(cwd: &Path) -> Result<Vec<Mount>, Refusal> {
+/// `user:<login>/proj:<slug>` for a working directory. The slug is the
+/// directory's own name, so two same-named directories share a scope by
+/// design; a directory without a name derives nothing.
+pub fn project_scope(cwd: &Path) -> Result<String, Refusal> {
     let user = format!("user:{}", login()?);
-    let user_mount = Mount::new(&user, "user", (false, false), USER_PROSE)?;
     let directory = cwd.canonicalize().unwrap_or_else(|_| cwd.to_path_buf());
     let name = directory.file_name().map(|name| name.to_string_lossy());
     let Some(project) = name.map(|name| slug(&name)).filter(|slug| !slug.is_empty()) else {
@@ -74,9 +72,18 @@ pub fn project_mounts(cwd: &Path) -> Result<Vec<Mount>, Refusal> {
             "no project name in {shown} to derive a scope from; {FIX}"
         )));
     };
-    let scope = format!("{user}/proj:{project}");
+    Ok(format!("{user}/proj:{project}"))
+}
+
+/// The canonical two-mount layout for a working directory: the user's
+/// durable facts at `/user`, the project's at `/project`, both read-write.
+pub fn project_mounts(cwd: &Path) -> Result<Vec<Mount>, Refusal> {
+    let scope = project_scope(cwd)?;
+    let user = scope
+        .split_once('/')
+        .map_or(scope.as_str(), |(user, _)| user);
     Ok(vec![
-        user_mount,
+        Mount::new(user, "user", (false, false), USER_PROSE)?,
         Mount::new(&scope, "project", (false, false), PROJECT_PROSE)?,
     ])
 }
