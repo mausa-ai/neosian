@@ -68,7 +68,7 @@ phase close names the version.
   memory and MCP cases would have compared two identical refusals. They
   name `user` and `project` now.
 
-## [1.9.0] - 2026-10-10
+## [1.9.0] - 2026-10-13
 
 ### Added
 
