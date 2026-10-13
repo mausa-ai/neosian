@@ -19,9 +19,7 @@ pub fn private_mkdir(directory: &Path) -> io::Result<()> {
             None => break,
         }
     }
-    let mut builder = DirBuilder::new();
-    #[cfg(unix)]
-    std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
+    let builder = private_builder();
     for level in missing.into_iter().rev() {
         match builder.create(level) {
             Err(error) if error.kind() != io::ErrorKind::AlreadyExists => return Err(error),
@@ -31,12 +29,34 @@ pub fn private_mkdir(directory: &Path) -> io::Result<()> {
     Ok(())
 }
 
-/// Open options under which a new file is born private.
+/// A directory builder whose levels are born 0700. The mode is set on
+/// Unix alone, so the two platforms build it apart: a shared `let mut`
+/// would be unused on Windows.
+#[cfg(unix)]
+fn private_builder() -> DirBuilder {
+    use std::os::unix::fs::DirBuilderExt;
+    let mut builder = DirBuilder::new();
+    builder.mode(0o700);
+    builder
+}
+
+#[cfg(not(unix))]
+fn private_builder() -> DirBuilder {
+    DirBuilder::new()
+}
+
+/// Open options under which a new file is born private (0600 on Unix).
+#[cfg(unix)]
 pub fn private() -> OpenOptions {
+    use std::os::unix::fs::OpenOptionsExt;
     let mut options = OpenOptions::new();
-    #[cfg(unix)]
-    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    options.mode(0o600);
     options
+}
+
+#[cfg(not(unix))]
+pub fn private() -> OpenOptions {
+    OpenOptions::new()
 }
 
 /// Write through a temp file beside the destination and a rename: never
