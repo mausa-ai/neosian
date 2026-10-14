@@ -42,10 +42,17 @@ phase close names the version.
   fold and frame the same. Both are reads, the note left pending; the
   record verb and the MCP server bring the writes. The link-handle
   grammar is the Python regex carried verbatim onto a backtracking
-  engine (`fancy-regex`). The search verb's message hits and
-  annotations land with the mailbox, which the binary does not read yet.
-  The corpus grows from 108 to 128 cases (eleven `search`, nine
-  `continue`), and the mixed-home test gains two baton scenarios.
+  engine (`fancy-regex`). The corpus grows from 108 to 128 cases (eleven
+  `search`, nine `continue`), and the mixed-home test gains two baton
+  scenarios.
+- The mailbox is read by the binary (R1 slice C, DESIGN §34, §39.10):
+  a message document as the mailbox writes it, every version's outcome,
+  the summary line and the annotation. `neosian search` from the binary
+  merges message hits and annotations as the shell does, so a home with
+  a message about a conversation answers the same from either door; the
+  corpus gains the two cases. The unread listing, the lineage and the
+  delivery frame land with the record verb; the mailbox's writes with
+  the `messages` tool.
 
 ### Changed
 

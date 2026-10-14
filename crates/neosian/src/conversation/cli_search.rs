@@ -12,12 +12,13 @@ use clap::Args;
 use serde_json::{Value, json};
 
 use super::failed;
-use super::hits::{hit_json, hit_line};
+use super::hits::hit_line;
 use super::ids::check_conversation_id;
 use super::search::parse_query;
 use crate::cli::usage;
 use crate::home::home;
 use crate::memory::cli::{DSN_ENV, NEEDS_PYTHON};
+use crate::messaging::cli_history::{Hit, search_hits};
 use crate::repr::repr;
 use crate::store::FileStore;
 
@@ -76,8 +77,12 @@ pub fn run(args: &Search, out: &mut impl Write, err: &mut impl Write) -> io::Res
         Ok(turns) => turns,
         Err(error) => return failed(&error.text(), None, json, out, err),
     };
+    let hits = match search_hits(&store, &turns, &terms, ids, args.limit as usize) {
+        Ok(hits) => hits,
+        Err(error) => return failed(&error.text(), None, json, out, err),
+    };
     if json {
-        let hits: Vec<Value> = turns.iter().map(|turn| hit_json(turn, &terms)).collect();
+        let hits: Vec<Value> = hits.iter().map(|hit| hit.json(&terms)).collect();
         let envelope = json!({
             "query": query,
             "conversations": ids,
@@ -88,11 +93,23 @@ pub fn run(args: &Search, out: &mut impl Write, err: &mut impl Write) -> io::Res
         writeln!(out, "{envelope}")?;
         return Ok(0);
     }
-    if turns.is_empty() {
+    if hits.is_empty() {
         writeln!(out, "no turn matches every term of {}", repr(&query))?;
     }
-    for turn in &turns {
-        writeln!(out, "{}", hit_line(turn, &terms))?;
+    for hit in &hits {
+        match hit {
+            Hit::Turn { turn, annotations } => {
+                writeln!(out, "{}", hit_line(turn, &terms))?;
+                for note in annotations {
+                    writeln!(out, "{note}")?;
+                }
+            }
+            Hit::Message {
+                annotation,
+                snippet,
+                ..
+            } => writeln!(out, "{annotation}\n  {snippet}")?,
+        }
     }
     Ok(0)
 }

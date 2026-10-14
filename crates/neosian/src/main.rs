@@ -11,6 +11,7 @@ mod conversation;
 mod docs;
 mod home;
 mod memory;
+mod messaging;
 mod pyfmt;
 mod repr;
 mod store;

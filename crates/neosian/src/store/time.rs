@@ -135,6 +135,14 @@ impl Stamp {
         format!("{}{offset}", &full[..16]).replace("+00:00", "Z")
     }
 
+    /// The same instant under the UTC offset: `astimezone(UTC)`.
+    pub fn utc(self) -> Self {
+        Self {
+            micros: self.micros,
+            offset: 0,
+        }
+    }
+
     /// The instant, for ordering: two stamps compare as their moments do.
     pub fn instant(self) -> i64 {
         self.micros

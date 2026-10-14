@@ -32,7 +32,7 @@ use self::envelope::Envelope;
 use self::error::{Error, MemoryError};
 use self::grammar::{parse_scope, validate_document_path};
 use self::journal::Row;
-use self::layout::DOCUMENTS;
+use self::layout::{DOCUMENTS, REDACTIONS, VERSIONS};
 use self::time::Stamp;
 
 /// `neosian_format`: the storage format this build reads; anything newer
@@ -109,6 +109,18 @@ impl FileStore {
         Ok(rows)
     }
 
+    /// Every scope holding documents, history or redactions, sorted
+    /// (`file_portable.py`): a directory whose every component carries an
+    /// encoded colon and spells a scope of the grammar; a foreign one is
+    /// skipped, never ours to read.
+    pub fn scopes(&self) -> Result<Vec<String>, Error> {
+        let _held = self.lock()?;
+        let mut found = Vec::new();
+        walk_scopes(&self.root, &[], &mut found)?;
+        found.sort();
+        Ok(found)
+    }
+
     fn lock(&self) -> io::Result<File> {
         lock::acquire(&self.root.join(".store.lock"))
     }
@@ -151,6 +163,53 @@ impl FileStore {
             content: content.to_string(),
         })
     }
+}
+
+fn walk_scopes(dir: &Path, parts: &[String], found: &mut Vec<String>) -> io::Result<()> {
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let Ok(name) = entry.file_name().into_string() else {
+            continue;
+        };
+        if !entry.path().is_dir() || !name.contains("%3A") {
+            continue;
+        }
+        let below: Vec<String> = parts.iter().cloned().chain([name]).collect();
+        let decoded: Vec<String> = below.iter().map(|part| part.replace("%3A", ":")).collect();
+        let scope = decoded.join("/");
+        if parse_scope(&scope).is_err() {
+            continue;
+        }
+        if occupied(&entry.path())? {
+            found.push(scope);
+        }
+        walk_scopes(&entry.path(), &below, found)?;
+    }
+    Ok(())
+}
+
+/// Does a scope directory hold any document, any history or a trail?
+fn occupied(scope_dir: &Path) -> io::Result<bool> {
+    fn holds(dir: &Path, suffix: &str) -> io::Result<bool> {
+        if !dir.is_dir() {
+            return Ok(false);
+        }
+        for entry in fs::read_dir(dir)? {
+            let path = entry?.path();
+            let found = if path.is_dir() {
+                holds(&path, suffix)?
+            } else {
+                path.to_string_lossy().ends_with(suffix)
+            };
+            if found {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+    Ok(holds(&scope_dir.join(DOCUMENTS), ".md")?
+        || holds(&scope_dir.join(VERSIONS), ".jsonl")?
+        || scope_dir.join(REDACTIONS).is_file())
 }
 
 #[cfg(test)]

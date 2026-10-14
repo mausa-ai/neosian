@@ -23,6 +23,16 @@ const LATE: &str = concat!(
     "\n",
 );
 
+const MESSAGE_ID: &str = "6f1c2d3e-4a5b-4c6d-8e9f-0a1b2c3d4e5f";
+/// One message about `early` turn 1, as the mailbox writes it: version 1
+/// open, version 2 done with an outcome; the document is the second.
+fn message(status: &str, outcome: &str) -> String {
+    format!(
+        "{{\n  \"format\": 1,\n  \"id\": \"{MESSAGE_ID}\",\n  \"scope\": \"user:me\",\n  \"conversation\": null,\n  \"turn\": null,\n  \"source\": null,\n  \"about\": \"early\",\n  \"about_turn\": 1,\n  \"actor\": \"cli:local\",\n  \"body\": \"the cache ttl question\",\n  \"created_at\": \"2026-10-12T22:29:00Z\",\n  \"due_at\": \"2026-10-12T22:29:00Z\",\n  \"delivery\": \"next_activity\",\n  \"actionable\": false,\n  \"occurrence\": 1,\n  \"status\": \"{status}\",\n  \"read_by\": null,\n  \"read_at\": null,\n  \"owner\": null,\n  \"claim_token\": null,\n  \"claim_until\": null,\n  \"outcome\": {outcome},\n  \"wake_owner\": null,\n  \"wake_token\": null,\n  \"wake_until\": null,\n  \"wake_accepted\": false\n}}\n"
+    )
+}
+const ANNOTATION: &str = "[6f1c2d3e-4a5b-4c6d-8e9f-0a1b2c3d4e5f occurrence=1 scope=user:me from=cli:local at=2026-10-12T22:29:00+00:00 status=done actionable=False]\nthe cache ttl question\nLatest outcome: fixed in deploy";
+
 fn search(home: &Scratch, args: &[&str]) -> std::process::Output {
     Command::new(env!("CARGO_BIN_EXE_neosian"))
         .arg("search")
@@ -39,6 +49,38 @@ fn planted(name: &str) -> Scratch {
     home.plant(&format!("{CONVERSATIONS}/early/turns.jsonl"), EARLY);
     home.plant(&format!("{CONVERSATIONS}/late/turns.jsonl"), LATE);
     home.plant(&format!("{CONVERSATIONS}/not an id/turns.jsonl"), EARLY);
+    home
+}
+
+/// The turns, and the message about `early` under the `user:me` scope.
+fn with_message(name: &str) -> Scratch {
+    let home = planted(name);
+    let (open, done) = (
+        message("open", "null"),
+        message("done", "\"fixed in deploy\""),
+    );
+    home.plant(
+        &format!("user%3Ame/documents/messages/{MESSAGE_ID}.md"),
+        &format!(
+            "---\nneosian_format: 1\nversion: 2\ncreated_at: '2026-10-12T22:29:00Z'\nupdated_at: '2026-10-12T22:30:00Z'\nactor: cli:local\n---\n{done}"
+        ),
+    );
+    let row = |version: u64, action: &str, content: &str, at: &str| {
+        serde_json::json!({
+            "neosian_format": 1, "path": format!("messages/{MESSAGE_ID}"), "version": version,
+            "action": action, "content": content, "actor": "cli:local", "created_at": at,
+            "redacted": false,
+        })
+        .to_string()
+    };
+    home.plant(
+        &format!("user%3Ame/versions/messages/{MESSAGE_ID}.jsonl"),
+        &format!(
+            "{}\n{}\n",
+            row(1, "created", &open, "2026-10-12T22:29:00Z"),
+            row(2, "modified", &done, "2026-10-12T22:30:00Z")
+        ),
+    );
     home
 }
 
@@ -141,4 +183,42 @@ fn a_wrong_invocation_exits_two_and_builds_nothing() {
         serde_json::json!({"error": "usage", "hint": "--limit must be 1 to 500, got -1"})
     );
     assert!(!root.exists());
+}
+
+#[test]
+fn a_message_is_a_hit_of_its_own_and_annotates_the_turn_it_is_about() {
+    let home = with_message("bin-search-message");
+    let found = search(&home, &["ttl"]);
+    assert_eq!(found.status.code(), Some(0));
+    assert_eq!(
+        text(found.stdout),
+        format!(
+            "{ANNOTATION}\n  the cache ttl question\n\
+             [late #1] 2026-10-12T22:28:00Z -  ttl again: café\n\
+             [early #1] 2026-10-12T22:27:56.052833Z claude-code:early  the cache TTL is eight hours\n\
+             {ANNOTATION}\n"
+        )
+    );
+    let outcome = search(&home, &["deploy", "--limit", "1"]);
+    assert_eq!(
+        text(outcome.stdout),
+        format!("{ANNOTATION}\n  fixed in deploy\n")
+    );
+    let narrowed = search(&home, &["ttl", "--conversation", "late"]);
+    assert_eq!(
+        text(narrowed.stdout),
+        "[late #1] 2026-10-12T22:28:00Z -  ttl again: café\n"
+    );
+    let envelope: serde_json::Value =
+        serde_json::from_slice(&search(&home, &["ttl", "--json"]).stdout).unwrap();
+    let hits = envelope["hits"].as_array().unwrap();
+    assert_eq!(hits.len(), 3);
+    assert_eq!(hits[0]["type"], "message");
+    assert_eq!(hits[0]["conversation_id"], "early");
+    assert_eq!(hits[0]["turn"], 1);
+    assert_eq!(hits[0]["created_at"], "2026-10-12T22:29:00Z");
+    assert_eq!(hits[0]["annotation"], ANNOTATION);
+    assert_eq!(hits[1]["conversation_id"], "late");
+    assert!(hits[1].get("annotations").is_none());
+    assert_eq!(hits[2]["annotations"], serde_json::json!([ANNOTATION]));
 }

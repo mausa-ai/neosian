@@ -469,6 +469,8 @@ def _cli() -> list[Case]:
         ),
         Case("search none", ("search", "zzz", *ROOT)),
         Case("search none json", ("search", "zzz", "turn", *ROOT, "--json")),
+        Case("search message", ("search", "upstream", *ROOT)),
+        Case("search message json", ("search", "upstream", *ROOT, "--json")),
         Case(
             "messages list json",
             ("messages", "list", "--root", "{home}", "--scope", "{proj}", "--json"),
