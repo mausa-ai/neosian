@@ -8,10 +8,36 @@ use serde_json::{Number, Value};
 
 use crate::repr::repr;
 
+/// How `json.dumps` was called: the escaping, the separators, the key order.
+#[derive(Clone, Copy)]
+struct Style {
+    ascii: bool,
+    spaced: bool,
+    sorted: bool,
+}
+
 /// `json.dumps(value, separators=(",", ":"), ensure_ascii=ascii)`.
 pub fn dumps(value: &Value, ascii: bool) -> String {
     let mut out = String::new();
-    write_value(&mut out, value, ascii);
+    let style = Style {
+        ascii,
+        spaced: false,
+        sorted: false,
+    };
+    write_value(&mut out, value, style);
+    out
+}
+
+/// `json.dumps(value, ensure_ascii=ascii, sort_keys=sort_keys)`: the
+/// default separators, a space after every comma and colon.
+pub fn dumps_spaced(value: &Value, ascii: bool, sort_keys: bool) -> String {
+    let mut out = String::new();
+    let style = Style {
+        ascii,
+        spaced: true,
+        sorted: sort_keys,
+    };
+    write_value(&mut out, value, style);
     out
 }
 
@@ -45,31 +71,37 @@ fn py_repr(value: &Value) -> String {
     }
 }
 
-fn write_value(out: &mut String, value: &Value, ascii: bool) {
+fn write_value(out: &mut String, value: &Value, style: Style) {
+    let comma = if style.spaced { ", " } else { "," };
+    let colon = if style.spaced { ": " } else { ":" };
     match value {
         Value::Null => out.push_str("null"),
         Value::Bool(flag) => out.push_str(if *flag { "true" } else { "false" }),
         Value::Number(number) => out.push_str(&number_text(number)),
-        Value::String(text) => write_string(out, text, ascii),
+        Value::String(text) => write_string(out, text, style.ascii),
         Value::Array(items) => {
             out.push('[');
             for (index, item) in items.iter().enumerate() {
                 if index > 0 {
-                    out.push(',');
+                    out.push_str(comma);
                 }
-                write_value(out, item, ascii);
+                write_value(out, item, style);
             }
             out.push(']');
         }
         Value::Object(map) => {
+            let mut pairs: Vec<(&String, &Value)> = map.iter().collect();
+            if style.sorted {
+                pairs.sort_by(|a, b| a.0.cmp(b.0));
+            }
             out.push('{');
-            for (index, (key, item)) in map.iter().enumerate() {
+            for (index, (key, item)) in pairs.into_iter().enumerate() {
                 if index > 0 {
-                    out.push(',');
+                    out.push_str(comma);
                 }
-                write_string(out, key, ascii);
-                out.push(':');
-                write_value(out, item, ascii);
+                write_string(out, key, style.ascii);
+                out.push_str(colon);
+                write_value(out, item, style);
             }
             out.push('}');
         }
@@ -168,6 +200,15 @@ mod tests {
             r#"u0001😀"}"#
         );
         assert_eq!(dumps(&value, false), raw);
+        let nested = json!({"b": {"z": 1, "y": [true, {"d": 0, "c": null}]}, "a": "é"});
+        assert_eq!(
+            dumps_spaced(&nested, false, true),
+            r#"{"a": "é", "b": {"y": [true, {"c": null, "d": 0}], "z": 1}}"#
+        );
+        assert_eq!(
+            dumps_spaced(&nested, true, false),
+            r#"{"b": {"z": 1, "y": [true, {"d": 0, "c": null}]}, "a": "\u00e9"}"#
+        );
     }
 
     #[test]

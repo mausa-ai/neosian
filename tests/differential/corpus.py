@@ -593,7 +593,48 @@ def _hooks() -> list[Case]:
             writes=True,
         ),
     ]
-    return [*claude, *others, *cursor]
+    handoff = tool(
+        "mcp__neosian-memory__handoff",
+        tool_input={"note": "Take over the release: the tag is not cut."},
+        response={
+            "type": "text",
+            "text": "[handoff note recorded — the next session in this scope sees it "
+            "at start, and continue_session() there delivers this conversation]",
+        },
+        tool_use_id="toolu_handoff",
+        session=SESSION,
+    )
+    diagnostics = [
+        Case(
+            f"{name} json",
+            (*RECORD, "--json"),
+            payload=payload,
+            writes=name != "claude-code session start",
+        )
+        for name, payload in (
+            ("claude-code session start", session_start("startup", session=SESSION)),
+            ("claude-code prompt", prompt("Add a test for login", session=SESSION)),
+            ("claude-code tool", tool(session=SESSION)),
+            ("claude-code subagent tool", tool(session=SESSION, agent_id="sub-1")),
+            ("claude-code stop alone", stop(session=SESSION)),
+        )
+    ]
+    more = [
+        Case(
+            "claude-code stop empty",
+            RECORD,
+            payload=stop("", session=SESSION),
+            writes=True,
+        ),
+        Case("claude-code handoff tool", RECORD, payload=handoff, writes=True),
+        Case(
+            "cursor prompt without a project",
+            ("record", "--root", "{home}", "--spool", "{spool}", "--agent", "cursor"),
+            payload=_cursor("beforeSubmitPrompt", prompt="hello", workspace_roots=[]),
+            writes=True,
+        ),
+    ]
+    return [*claude, *others, *cursor, *diagnostics, *more]
 
 
 def _mcp() -> list[Case]:

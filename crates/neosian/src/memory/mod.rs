@@ -6,6 +6,6 @@ pub mod cli;
 mod commands;
 mod dispatch;
 pub mod grammar;
-mod index;
+pub mod index;
 pub mod mounts;
 mod operate;

@@ -25,6 +25,11 @@ fn chars(text: &str) -> isize {
 }
 
 pub fn render(store: &FileStore, mounts: &[Mount]) -> Result<String, Error> {
+    render_within(store, mounts, BUDGET_CHARS)
+}
+
+/// The index under `budget` characters: the session start block's share.
+pub fn render_within(store: &FileStore, mounts: &[Mount], budget: isize) -> Result<String, Error> {
     let mut listings: Vec<Listing> = Vec::new();
     let mut suffix = String::new();
     let template = block(MESSAGES, "index").expect("messages.yaml carries the index line");
@@ -43,7 +48,7 @@ pub fn render(store: &FileStore, mounts: &[Mount]) -> Result<String, Error> {
         entries.retain(|entry| !state_path(&entry.path));
         listings.push((mount, entries));
     }
-    let budget = BUDGET_CHARS - chars(&suffix);
+    let budget = budget - chars(&suffix);
     let full = blocks(&listings, None);
     let body = if chars(&full) <= budget {
         full

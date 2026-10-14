@@ -15,11 +15,11 @@
 
 pub mod envelope;
 pub mod error;
-mod fileio;
+pub(crate) mod fileio;
 pub mod grammar;
 pub mod journal;
 pub mod layout;
-mod lock;
+pub(crate) mod lock;
 pub mod time;
 mod turns;
 mod write;

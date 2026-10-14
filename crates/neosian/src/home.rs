@@ -75,15 +75,20 @@ pub fn project_scope(cwd: &Path) -> Result<String, Refusal> {
     Ok(format!("{user}/proj:{project}"))
 }
 
+/// The user's durable facts at `/user`: half of every layout, and the
+/// whole of it where a directory has no name to derive a project from.
+pub fn user_mount() -> Result<Mount, Refusal> {
+    let scope = format!("user:{}", login()?);
+    Ok(Mount::new(&scope, "user", (false, false), USER_PROSE)?)
+}
+
 /// The canonical two-mount layout for a working directory: the user's
 /// durable facts at `/user`, the project's at `/project`, both read-write.
 pub fn project_mounts(cwd: &Path) -> Result<Vec<Mount>, Refusal> {
+    let user = user_mount()?;
     let scope = project_scope(cwd)?;
-    let user = scope
-        .split_once('/')
-        .map_or(scope.as_str(), |(user, _)| user);
     Ok(vec![
-        Mount::new(user, "user", (false, false), USER_PROSE)?,
+        user,
         Mount::new(&scope, "project", (false, false), PROJECT_PROSE)?,
     ])
 }

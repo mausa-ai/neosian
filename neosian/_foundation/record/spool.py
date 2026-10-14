@@ -41,7 +41,9 @@ class Spool:
         if not file.is_file():
             return []
         records: list[Record] = []
-        for number, line in enumerate(file.read_text(encoding="utf-8").splitlines(), 1):
+        # One record per newline: a text's own line separators (U+2028,
+        # U+0085) are written raw and must never split one.
+        for number, line in enumerate(file.read_text(encoding="utf-8").split("\n"), 1):
             if not line.strip():
                 continue
             try:

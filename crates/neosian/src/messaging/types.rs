@@ -15,15 +15,39 @@ pub const PREFIX: &str = "messages/";
 pub struct InboxMessage {
     pub id: String,
     pub scope: String,
+    pub conversation: Option<String>,
     pub about: Option<String>,
     pub about_turn: Option<u64>,
     pub actor: String,
     pub body: String,
     pub created_at: Stamp,
+    pub due_at: Stamp,
     pub actionable: bool,
     pub occurrence: u64,
     pub status: String,
+    pub read_at: Option<Stamp>,
+    pub owner: Option<String>,
+    pub claim_until: Option<Stamp>,
     pub outcome: Option<String>,
+}
+
+impl InboxMessage {
+    pub fn available(&self, now: Stamp) -> bool {
+        self.status == "open" && self.due_at.instant() <= now.instant()
+    }
+
+    pub fn claimed(&self, now: Stamp) -> bool {
+        self.owner.is_some()
+            && self
+                .claim_until
+                .is_some_and(|until| until.instant() > now.instant())
+    }
+
+    /// Due and open, and never read or read under a claim that lapsed.
+    pub fn unread(&self, now: Stamp) -> bool {
+        let expired = self.owner.is_some() && !self.claimed(now);
+        self.available(now) && (self.read_at.is_none() || expired)
+    }
 }
 
 /// `messages/<id>`, the id a canonical UUID as `str(UUID(id))` spells it;
@@ -70,17 +94,22 @@ pub fn decode(content: &str) -> Result<InboxMessage, String> {
     Ok(InboxMessage {
         id: required("id")?,
         scope: required("scope")?,
+        conversation: text("conversation")?,
         about: text("about")?,
         about_turn: integer(&map, "about_turn")?,
         actor: required("actor")?,
         body: required("body")?,
         created_at: stamp("created_at")?.ok_or("message field created_at is missing")?,
+        due_at: stamp("due_at")?.ok_or("message field due_at is missing")?,
         actionable: map
             .get("actionable")
             .and_then(Value::as_bool)
             .unwrap_or(false),
         occurrence: integer(&map, "occurrence")?.unwrap_or(1),
         status: text("status")?.unwrap_or_else(|| "open".to_string()),
+        read_at: stamp("read_at")?,
+        owner: text("owner")?,
+        claim_until: stamp("claim_until")?,
         outcome: text("outcome")?,
     })
 }
@@ -130,6 +159,13 @@ mod tests {
 }
 "#;
 
+    fn with(field: &str, value: &str) -> String {
+        WRITTEN.replace(
+            &format!("\"{field}\": null"),
+            &format!("\"{field}\": {value}"),
+        )
+    }
+
     #[test]
     fn a_message_reads_back_as_pydantic_wrote_it() {
         let message = decode(WRITTEN).unwrap();
@@ -144,7 +180,43 @@ mod tests {
         );
         assert_eq!(message.created_at.z(), "2026-10-13T21:56:33.425486Z");
         assert_eq!((message.status.as_str(), message.outcome), ("open", None));
-        assert!(!message.actionable);
+        assert!(message.conversation.is_none() && !message.actionable);
+    }
+
+    #[test]
+    fn unread_is_due_open_and_not_read_under_a_live_claim() {
+        let now = Stamp::parse("2026-10-14T00:00:00Z").unwrap();
+        let message = decode(WRITTEN).unwrap();
+        assert!(message.available(now) && message.unread(now) && !message.claimed(now));
+        assert!(!message.available(Stamp::parse("2026-10-13T00:00:00Z").unwrap()));
+        assert!(
+            !decode(&with("read_at", "\"2026-10-13T22:00:00Z\""))
+                .unwrap()
+                .unread(now)
+        );
+        let lapsed = decode(
+            &with("read_at", "\"2026-10-13T22:00:00Z\"")
+                .replace("\"owner\": null", "\"owner\": \"codex:x\"")
+                .replace(
+                    "\"claim_until\": null",
+                    "\"claim_until\": \"2026-10-13T23:00:00Z\"",
+                ),
+        )
+        .unwrap();
+        assert!(lapsed.unread(now) && !lapsed.claimed(now));
+        let held = decode(&with("owner", "\"codex:x\"").replace(
+            "\"claim_until\": null",
+            "\"claim_until\": \"2026-10-15T00:00:00Z\"",
+        ))
+        .unwrap();
+        assert!(held.claimed(now));
+        assert!(
+            !decode(
+                &with("status", "\"done\"").replace("\"status\": \"open\"", "\"status\": \"done\"")
+            )
+            .unwrap()
+            .available(now)
+        );
     }
 
     #[test]

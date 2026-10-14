@@ -13,6 +13,7 @@ mod home;
 mod memory;
 mod messaging;
 mod pyfmt;
+mod record;
 mod repr;
 mod store;
 #[cfg(test)]

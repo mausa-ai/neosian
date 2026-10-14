@@ -1,10 +1,10 @@
 //! A message as the turn log carries it (`llm/codec.py`, `llm/blocks.py`):
-//! the read side of the codec, bounded to what the codec writes, and
-//! `text_of`.
+//! the read side of the codec, bounded to what the codec writes, the
+//! write side for the text messages the record builds, and `text_of`.
 
 use std::borrow::Cow;
 
-use serde_json::Value;
+use serde_json::{Value, json};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Role {
@@ -15,6 +15,15 @@ pub enum Role {
 }
 
 impl Role {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::System => "system",
+            Self::User => "user",
+            Self::Assistant => "assistant",
+            Self::Tool => "tool",
+        }
+    }
+
     fn parse(text: &str) -> Option<Self> {
         match text {
             "system" => Some(Self::System),
@@ -88,7 +97,7 @@ pub fn from_json(data: &Value) -> Option<Message> {
 }
 
 /// Python's falsiness of a JSON value: what `or []` replaces.
-fn falsy(value: &Value) -> bool {
+pub fn falsy(value: &Value) -> bool {
     match value {
         Value::Null | Value::Bool(false) => true,
         Value::Number(number) => number.as_f64() == Some(0.0),
@@ -127,6 +136,36 @@ fn tool_call(item: &Value) -> Option<ToolCall> {
         id: id.to_string(),
         name: name.to_string(),
         arguments,
+    })
+}
+
+/// `message_to_json`: the five keys in the codec's order, `reasoning`
+/// never set by the record; a block list keeps its text blocks.
+pub fn to_json(message: &Message) -> Value {
+    let content = match &message.content {
+        None => Value::Null,
+        Some(Content::Text(text)) => json!(text),
+        Some(Content::Blocks(blocks)) => Value::Array(
+            blocks
+                .iter()
+                .filter_map(|block| match block {
+                    Block::Text(text) => Some(json!({"type": "text", "text": text})),
+                    _ => None,
+                })
+                .collect(),
+        ),
+    };
+    let calls: Vec<Value> = message
+        .tool_calls
+        .iter()
+        .map(|call| json!({"id": call.id, "name": call.name, "arguments": call.arguments}))
+        .collect();
+    json!({
+        "role": message.role.as_str(),
+        "content": content,
+        "reasoning": Value::Null,
+        "tool_calls": calls,
+        "tool_call_id": message.tool_call_id,
     })
 }
 

@@ -3,10 +3,11 @@
 //! every row, ISO-Z stamps; a malformed or newer row is refused, never
 //! skipped, since skipping would corrupt the numbering.
 
-use serde_json::{Map, Value};
+use serde_json::{Map, Value, json};
 
 use super::message::{self, Message};
 use super::{FORMAT, Projection, Refused, Turn};
+use crate::pyfmt::dumps;
 use crate::store::time::{Stamp, Unreadable};
 
 pub const CONVERSATIONS: &str = "conversations";
@@ -48,6 +49,22 @@ fn stamp(raw: Option<&Value>, place: &str, conversation_id: &str) -> Result<Stam
         };
         refuse(format!("{place} has {kind} timestamp"))
     })
+}
+
+/// One turn as the Python side writes it (`render_turn`): compact,
+/// ASCII-escaped, the keys in its order, `redacted` only when set.
+pub fn render_turn(turn: &Turn) -> String {
+    let mut data = Map::new();
+    data.insert("neosian_format".to_string(), json!(FORMAT));
+    data.insert("turn".to_string(), json!(turn.turn));
+    data.insert("created_at".to_string(), json!(turn.created_at.z()));
+    let messages = turn.messages.iter().map(message::to_json).collect();
+    data.insert("messages".to_string(), Value::Array(messages));
+    data.insert("actor".to_string(), json!(turn.actor));
+    if turn.redacted {
+        data.insert("redacted".to_string(), json!(true));
+    }
+    format!("{}\n", dumps(&Value::Object(data), true))
 }
 
 /// One turn row; a redacted row carries no messages and every other row
@@ -142,6 +159,12 @@ mod tests {
     #[test]
     fn a_turn_reads_as_the_python_side_writes_it() {
         let turn = parse_turn(ROW, 2, "c").unwrap();
+        assert_eq!(render_turn(&turn), format!("{ROW}\n"));
+        let call = r#"{"neosian_format":1,"turn":1,"created_at":"2026-10-12T22:27:56Z","messages":[{"role":"user","content":"caf\u00e9","reasoning":null,"tool_calls":[],"tool_call_id":null},{"role":"assistant","content":null,"reasoning":null,"tool_calls":[{"id":"t1","name":"Read","arguments":{"b":1,"a":"x"}}],"tool_call_id":null},{"role":"tool","content":"ok","reasoning":null,"tool_calls":[],"tool_call_id":"t1"}],"actor":null}"#;
+        assert_eq!(
+            render_turn(&parse_turn(call, 1, "c").unwrap()),
+            format!("{call}\n")
+        );
         assert_eq!(
             (turn.turn, turn.actor.as_deref(), turn.redacted),
             (2, Some("claude-code:s"), false)

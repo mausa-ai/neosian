@@ -53,6 +53,27 @@ SCENARIOS: Final = (
         ),
     ),
     Scenario(
+        "a claude-code span, then the session start and the continue",
+        writes=("claude-code prompt", "claude-code tool", "claude-code stop alone"),
+        reads=(
+            "claude-code session start",
+            "claude-code session compact",
+            "memory index",
+            "search json",
+            "continue json",
+        ),
+    ),
+    Scenario(
+        "a handoff round from one door links the baton, then the continue",
+        writes=(
+            "memory create baton",
+            "claude-code prompt",
+            "claude-code handoff tool",
+            "claude-code stop alone",
+        ),
+        reads=("continue json", "claude-code session start"),
+    ),
+    Scenario(
         "memory writes, then the reads",
         writes=_MEMORY_WRITES,
         reads=("memory index json", "memory view document", "memory versions json"),

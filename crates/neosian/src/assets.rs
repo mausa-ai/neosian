@@ -36,6 +36,12 @@ pub fn block(text: &str, key: &str) -> Option<String> {
     scalar(text, key, "|").map(|lines| format!("{}\n", lines.join("\n")))
 }
 
+/// A `key: |-` block scalar as YAML reads it: the lines kept, nothing at
+/// the end.
+pub fn literal(text: &str, key: &str) -> Option<String> {
+    scalar(text, key, "|-").map(|lines| lines.join("\n"))
+}
+
 /// A `key: >-` block scalar as YAML reads it: consecutive lines folded
 /// into one with a space, a blank line a newline, nothing at the end.
 pub fn folded(text: &str, key: &str) -> Option<String> {
@@ -65,7 +71,7 @@ pub fn render(template: &str, variables: &[(&str, &str)]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{CONTEXT, MESSAGES, block, folded, render};
+    use super::{CONTEXT, MESSAGES, block, folded, literal, render};
 
     #[test]
     fn a_block_scalar_reads_as_yaml_reads_it() {
@@ -95,6 +101,12 @@ mod tests {
             Some("a b\nc")
         );
         assert_eq!(folded(CONTEXT, "absent"), None);
+        let instructions = literal(CONTEXT, "start_instructions").unwrap();
+        assert!(instructions.starts_with("Your persistent memory is the `memory` tool"));
+        assert!(
+            instructions.contains("\n  of writing a duplicate.\n") && !instructions.ends_with('\n')
+        );
+        assert!(instructions.ends_with("New work does not call it."));
         assert_eq!(
             render(
                 "[{{first}}-{{last}}] {{count}}",

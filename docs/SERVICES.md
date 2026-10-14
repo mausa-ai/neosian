@@ -196,8 +196,9 @@ in `ps` (DESIGN §12 ledger #53). Unset, the entry points require
 ever applies the DDL — run `python -m neosian.schemas postgres | psql`
 first (DESIGN §8 C1). The Rust binary reads the file store alone until
 its Postgres substrate lands (DESIGN §39.2): with the key set, its
-`memory`, `search` and `continue` verbs exit 1 and name the Python
-shell, never the home in silence.
+`memory`, `search`, `continue` and `record` verbs exit 1 and name the
+Python shell, never the home in silence (a hook's exit 2 would block the
+prompt, so the record verb says it at 1 with its hint).
 
 ## The state process — bearer tokens, not an API key
 

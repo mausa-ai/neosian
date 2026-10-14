@@ -23,8 +23,8 @@ use crate::text::{len, strip};
 pub const CONTINUE_BUDGET_CHARS: usize = 32768;
 /// `CompactionConfig()`'s widths: the digest, and the user line at four
 /// times it.
-const DIGEST_CHARS: usize = 200;
-const USER_CHARS: usize = 4 * DIGEST_CHARS;
+pub const DIGEST_CHARS: usize = 200;
+pub const USER_CHARS: usize = 4 * DIGEST_CHARS;
 
 /// What a continue call delivered: the conversation, the text, and
 /// whether its pending note rode along.

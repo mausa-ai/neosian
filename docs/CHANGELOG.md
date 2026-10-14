@@ -50,9 +50,29 @@ phase close names the version.
   the summary line and the annotation. `neosian search` from the binary
   merges message hits and annotations as the shell does, so a home with
   a message about a conversation answers the same from either door; the
-  corpus gains the two cases. The unread listing, the lineage and the
-  delivery frame land with the record verb; the mailbox's writes with
-  the `messages` tool.
+  corpus gains the two cases. The mailbox's writes land with the
+  `messages` tool.
+- `neosian record` from the binary (R1 slice C, DESIGN §39.3, §39.10):
+  the four hook events of every client row (Claude Code, Codex,
+  OpenCode, Pi, Muse, and Cursor's native vocabulary), the spool and the
+  session lock, the Stop landing (one turn by `<agent>:<session_id>`,
+  the sessions document, a pending baton linked) and the SessionStart
+  block (the index, the note, where we left off, the session identity
+  and the inbox) byte for byte as the Python door prints it, each
+  client's response shape included, the `--json` envelope
+  parsed-equal. The mailbox's reads ride along: the unread listing a
+  session may read, its lineage, the delivery frame on a prompt or
+  tool round. The two plugin-only writes (`MailboxPoll`,
+  `MailboxDelivery`) and the lineage note of a `continue_session`
+  round wait for the `messages` tool; the binary answers the two
+  events with exit 1 naming the Python shell. The latency gate reads
+  green on all four events over the reference home (UserPromptSubmit
+  and PostToolUse under 3 ms, Stop 7 ms, SessionStart 23 ms; the Python
+  door 200 to 580 ms): the link-handle scans read only the runs of text
+  that can hold an atom, the answer pinned against the full scan. The
+  corpus grows from 130 to 138 cases, and the mixed-home test gains a
+  span from one door read by the other and a handoff round linking the
+  baton from either door.
 
 ### Changed
 
@@ -66,6 +86,11 @@ phase close names the version.
 
 ### Fixed
 
+- The record verb's spool read a record per line boundary
+  (`str.splitlines`) while writing texts raw, so a prompt holding
+  U+2028, U+2029 or U+0085 split one record into several and every later
+  Stop of that session failed until the file was removed by hand. Both
+  doors read one record per newline.
 - Two `--mount` tokens at one path are refused at exit 2, `mount paths
   must be unique`, by every argv entry that takes mounts (`neosian
   memory`, `mcp`, `record`, `serve`). The shell used to build the store
