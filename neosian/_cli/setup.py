@@ -38,7 +38,12 @@ from neosian._foundation.mcp.install import (
 from neosian._foundation.mcp.targets import SERVER_NAME, resolve_target as mcp_target
 from neosian._foundation.memory.settings import CLIENT_TOKEN_ENV, StreamParser
 from neosian._foundation.record.install import run_install as hooks_install
-from neosian._foundation.shared.client_config import InstallError, add_level_argument
+from neosian._foundation.shared.client_config import (
+    InstallError,
+    add_binary_argument,
+    add_level_argument,
+    with_binary,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
@@ -62,7 +67,8 @@ _EPILOG: Final = (
     "it. Once per machine by default: the registration and the hooks name "
     "the store and no mount, each session's layout is derived where it "
     "runs. `neosian mcp install` / `neosian record install` print the exact "
-    "fragments and take every store flag."
+    "fragments and take every store flag. --binary PATH registers the neosian "
+    "binary in place of this interpreter; a plain --write restores it."
 )
 _TOKEN: Final = (
     f"hint: set {CLIENT_TOKEN_ENV} in each client's own environment: the "
@@ -182,6 +188,7 @@ def run_setup(
         "--json", action="store_true", dest="json_output", help="one JSON object"
     )
     add_level_argument(parser)
+    add_binary_argument(parser)
     add_locations(parser)
     parser.add_argument(
         "--yes", action="store_true", help="connect all found clients without asking"
@@ -193,6 +200,7 @@ def run_setup(
     try:
         args = parser.parse_args(list(argv))
         context = with_locations(parser, context, args.at, CLIENTS)
+        context = with_binary(parser, context, args.binary)
         if (
             args.write
             and not args.client

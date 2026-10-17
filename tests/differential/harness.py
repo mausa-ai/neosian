@@ -257,7 +257,8 @@ def _run_rpc(
                 if answer.get("id") == message["id"]:
                     responses.append(answer)
                     break
-        server.stdin.close()
+        # communicate() closes stdin itself (EOF ends the server); closing
+        # it here first made the flush inside communicate() raise.
         _, stderr = server.communicate(timeout=_RPC_TIMEOUT)
     finally:
         if server.poll() is None:

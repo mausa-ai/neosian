@@ -74,6 +74,14 @@ phase close names the version.
   span from one door read by the other and a handoff round linking the
   baton from either door.
 
+- `--binary PATH` on `neosian setup`, `neosian mcp install` and `neosian
+  record install`: the registration names that executable in place of the
+  interpreter and takes the verb form (`PATH record …`, `PATH mcp …`), so
+  the neosian binary's hooks and MCP server can be wired on a machine
+  where the Python shell runs `setup`; a path that is not a file is
+  refused at exit 2, and a plain `setup --write` restores the
+  interpreter.
+
 ### Changed
 
 - Record the first dispatched board since 1.2.0 on the shipped rows,
@@ -86,6 +94,11 @@ phase close names the version.
 
 ### Fixed
 
+- The MCP server's `serverInfo.version` names the wheel's version; it was
+  the empty string the SDK defaults to.
+- The differential harness's JSON-RPC replay closed the server's stdin
+  before draining it, which raised inside `communicate()`; the path had
+  never run, its two cases skipped by verb since R0.
 - The record verb's spool read a record per line boundary
   (`str.splitlines`) while writing texts raw, so a prompt holding
   U+2028, U+2029 or U+0085 split one record into several and every later

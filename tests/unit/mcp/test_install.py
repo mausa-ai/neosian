@@ -295,6 +295,23 @@ class TestExitTiers:
         fragment = json.loads(out)  # stdout is valid JSON on its own
         assert fragment["mcpServers"][SERVER_NAME]["command"] == _EXECUTABLE
 
+    def test_a_binary_registers_the_verb_form(self, tmp_path: Path) -> None:
+        # `--binary` names the executable that answers the verbs itself
+        # (DESIGN §39.3): its absolute path and `mcp`, never `-m`.
+        context = _context(tmp_path)
+        (context.home / ".claude").mkdir()
+        binary = tmp_path / "bin" / "neosian"
+        binary.parent.mkdir()
+        binary.write_text("")
+        argv = ["--client", "claude-code", "--root", "m", "--scope", "user:me"]
+        code, out, _ = _run([*argv, "--binary", str(binary)], context)
+        assert code == 0
+        entry = json.loads(out)["mcpServers"][SERVER_NAME]
+        assert entry["command"] == str(binary.resolve())
+        assert entry["args"][:3] == ["mcp", "--root", str(Path("m").resolve())]
+        code, out, err = _run([*argv, "--binary", str(tmp_path / "gone")], context)
+        assert code == 2 and out == "" and "--binary" in err and "not a file" in err
+
     def test_write_creates_the_file_when_the_dir_exists(self, tmp_path: Path) -> None:
         context = _context(tmp_path)
         (context.home / ".claude").mkdir()

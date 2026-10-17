@@ -131,6 +131,29 @@ class TestOncePerMachine:
         )
         assert list(_context(tmp_path).cwd.iterdir()) == []  # nothing per project
 
+    def test_a_binary_reaches_both_installers(self, tmp_path: Path) -> None:
+        # `--binary PATH` registers the neosian binary in place of the
+        # interpreter (DESIGN §39.3): the hook line and the MCP entry take
+        # the verb form; a plain run restores the interpreter.
+        (tmp_path / ".claude").mkdir()
+        binary = tmp_path / "bin" / "neosian"
+        binary.parent.mkdir()
+        binary.write_text("")
+        cli = _Cli(tmp_path)
+        code, out, err = _run(
+            tmp_path,
+            ["--write", "--yes", "--json", "--binary", str(binary)],
+            runner=cli,
+        )
+        assert code == 0, err
+        (row,) = json.loads(out)["clients"]
+        (add,) = cli.calls
+        entry = json.loads(add[-1])
+        assert entry["command"] == str(binary.resolve()) and entry["args"][0] == "mcp"
+        assert row["hooks"]["command"].startswith(f"{binary.resolve()} record ")
+        code, _, err = _run(tmp_path, ["--binary", str(tmp_path / "gone")], runner=cli)
+        assert code == 2 and "--binary" in err and "not a file" in err
+
     def test_an_entry_already_there_is_forgotten_and_added_again(
         self, tmp_path: Path
     ) -> None:

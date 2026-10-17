@@ -162,7 +162,9 @@ neosian mcp install --client claude-code --level project --scope user:me --write
 - The registration embeds the resolved settings: an absolute `--root`,
   any mounts you named in canonical `--mount` form, and the current
   interpreter's absolute path (GUI clients do not inherit your shell's
-  PATH). A Postgres registration never contains the DSN: set
+  PATH), or with `--binary PATH` that executable and the verb form
+  (`PATH mcp …`), the neosian binary answering the server itself. A
+  Postgres registration never contains the DSN: set
   `NEOSIAN_POSTGRES_DSN` in the client's own environment.
 - `--json` prints one machine-readable envelope instead.
 

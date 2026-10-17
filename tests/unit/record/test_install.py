@@ -264,6 +264,22 @@ class TestExitTiers:
         assert tuple(fragment["hooks"]) == HOOK_EVENTS
         assert "hint: re-run with --write" in err and "one writer" not in err
 
+    def test_a_binary_registers_the_verb_form(self, tmp_path: Path) -> None:
+        # `--binary` names the executable that answers the verbs itself
+        # (DESIGN §39.3): the hook line starts `<path> record`, never `-m`.
+        context = _context(tmp_path)
+        (context.home / ".claude").mkdir()
+        binary = tmp_path / "bin" / "neosian"
+        binary.parent.mkdir()
+        binary.write_text("")
+        code, out, _ = _run([*_ARGV, "--binary", str(binary)], context)
+        assert code == 0
+        command = json.loads(out)["hooks"]["Stop"][0]["hooks"][0]["command"]
+        assert command.startswith(f"{binary.resolve()} record --root ")
+        assert is_ours({"command": command})
+        code, out, err = _run([*_ARGV, "--binary", str(tmp_path / "gone")], context)
+        assert code == 2 and out == "" and "--binary" in err and "not a file" in err
+
     def test_write_creates_the_user_file_privately(self, tmp_path: Path) -> None:
         context = _context(tmp_path)
         (context.home / ".claude").mkdir()

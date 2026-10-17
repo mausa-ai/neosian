@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 import sys
 import tomllib
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
 
@@ -65,6 +65,29 @@ def add_level_argument(parser: argparse.ArgumentParser) -> None:
         "derived per session (default); project: this directory's files, its "
         "layout written into the line",
     )
+
+
+def add_binary_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--binary",
+        metavar="PATH",
+        help="register this executable in place of the interpreter: the neosian "
+        "binary (or a frozen bundle), which answers the verbs itself",
+    )
+
+
+def with_binary(
+    parser: argparse.ArgumentParser, context: Environment, binary: str | None
+) -> Environment:
+    """The context with `--binary` as its executable, which takes the verb
+    form (DESIGN §39.3); a path that is not a file is refused at the
+    grammar tier, since a registration naming it would break every hook."""
+    if binary is None:
+        return context
+    path = Path(binary).expanduser()
+    if not path.is_file():
+        parser.error(f"--binary {binary!r}: not a file")
+    return replace(context, executable=str(path.resolve()), interpreter=False)
 
 
 def claude_home(context: Environment) -> Path:

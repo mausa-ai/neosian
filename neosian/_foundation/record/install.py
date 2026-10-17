@@ -48,9 +48,11 @@ from neosian._foundation.shared.client_config import (
     FIX_BY_HAND,
     Environment,
     InstallError,
+    add_binary_argument,
     add_level_argument,
     ensure_evidence,
     load_document,
+    with_binary,
     write_document,
     write_text,
 )
@@ -309,9 +311,11 @@ def run_install(
         help="print one JSON envelope on stdout",
     )
     add_level_argument(parser)
+    add_binary_argument(parser)
     add_record_arguments(parser)
     try:
         args = parser.parse_args(list(argv))
+        context = with_binary(parser, context, args.binary)
         # Per machine the line names no mount: the verb derives each
         # session's layout from the client's project directory (§22.6).
         layout = context.cwd if args.level == "project" else None

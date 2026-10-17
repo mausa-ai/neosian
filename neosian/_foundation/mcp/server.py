@@ -24,6 +24,7 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+from importlib import metadata
 from typing import TYPE_CHECKING, Any, Final
 
 from pydantic import ValidationError
@@ -297,6 +298,7 @@ async def create_memory_server(
 
     return sdk.server_class(
         name,
+        version=metadata.version("neosian"),
         instructions=await instructions(),
         lifespan=lifespan,
         on_list_tools=on_list_tools,

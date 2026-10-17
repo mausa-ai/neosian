@@ -27,7 +27,7 @@ previews and protocol output retain their original content.
 
 ```
 neosian status [--json]                  # is this machine set up?
-neosian setup [--client C]… [--at C=DIR]… [--write] [--yes]    # wire the installed agents to this store
+neosian setup [--client C]… [--at C=DIR]… [--binary PATH] [--write] [--yes]    # wire the installed agents to this store
 neosian configure [--list | --provider NAME --key - | --env NAME --key - | --delete]
 neosian chat [PROMPT] [--model M] [--agent FILE] [--resume ID] [--json]
 neosian update [--check | --write] [--mode off|notify|auto]
@@ -65,7 +65,12 @@ neosian                                  # on a terminal: chat; under a pipe: th
   `opencode.jsonc`, merged by OpenCode with the `opencode.json` the
   entry landed in). `--root` and `--url` reach both installers:
   `neosian setup --url URL --write` moves every client on the machine
-  to the state process in one run after selection.
+  to the state process in one run after selection. `--binary PATH`
+  registers the neosian binary (`~/.neosian/bin/neosian`) in place of
+  this interpreter: the hooks and the MCP server then answer from it,
+  in the verb form (`PATH record …`, `PATH mcp …`); a plain
+  `setup --write` restores the interpreter. Both installers take the
+  same flag.
 - **Client locations:** setup and status accept repeated `--at CLIENT=DIR`.
   DIR is the client's user configuration directory, not a project root or
   config filename; relative paths resolve from the current directory.
@@ -482,7 +487,7 @@ when there is one, else the first read-write mount; a neosian
 `Conversation` with a writable `/project` mount writes its own the same
 way, so the listing is complete. `neosian record
 install --client claude-code|codex|opencode|muse-code|cursor|pi [--level user|project]
-[--write]` renders or applies the hooks, the `mcp install` twin
+[--binary PATH] [--write]` renders or applies the hooks, the `mcp install` twin
 (`neosian docs agents`). The exit tiers bend once
 for the hook's sake: 2 only for argv, 1 for everything after, so a
 broken store never blocks the agent. Startup context is printed on stdout;
