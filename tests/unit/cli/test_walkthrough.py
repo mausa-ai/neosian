@@ -517,7 +517,7 @@ class TestRecord:
         )
         assert result.returncode == 0, result.stderr
         if client == "opencode":
-            assert "export const NeosianRecord" in result.stdout
+            assert 'id: "neosian-record"' in result.stdout
             assert not (tmp_path / ".opencode").exists()  # print mode
             return
         document = json.loads(result.stdout)

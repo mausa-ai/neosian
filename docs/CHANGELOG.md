@@ -8,6 +8,8 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-10-17
+
 ### Added
 
 - The file store in Rust, and `neosian memory` from the binary (R1, the
@@ -141,6 +143,18 @@ phase close names the version.
   `path=/project`, tokens the mount grammar refuses at exit 2, so its
   memory and MCP cases would have compared two identical refusals. They
   name `user` and `project` now.
+- The OpenCode plugin loads on OpenCode 2 (2.0.25 verified). OpenCode 2's
+  plugin API is one default definition (`id`, `setup`) whose setup
+  registers hooks, and its loader refuses the 1.x named export, so under
+  OpenCode 2 the plugin an earlier release wrote recorded nothing (the
+  log says `failed to load plugin`). The rewritten template maps the
+  `prompt` and `execute.after` hooks and the session's execution events
+  onto the verb's three payloads, carries the inbox frame as a system
+  part of the turn's requests rather than a synthetic part of the user's
+  message, delivers a wake as a synthetic input, and reads the
+  assistant's reply from the text events. Re-run `neosian setup --write`
+  (or `record install --client opencode --write`) to rewrite the file;
+  OpenCode 1.x loads only the file an earlier release wrote.
 
 ## [1.9.0] - 2026-10-13
 
@@ -2230,7 +2244,8 @@ pre-release — pin it explicitly; the API stability promise rides v1.0.0.
 - Both entry points share one `_validate_run`, so neither can skip a
   guard.
 
-[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.9.0...HEAD
+[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.10.0...HEAD
+[1.10.0]: https://github.com/mausa-ai/neosian/compare/v1.9.0...v1.10.0
 [1.9.0]: https://github.com/mausa-ai/neosian/compare/v1.8.0...v1.9.0
 [1.8.0]: https://github.com/mausa-ai/neosian/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/mausa-ai/neosian/compare/v1.6.0...v1.7.0

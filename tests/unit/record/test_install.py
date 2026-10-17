@@ -581,18 +581,20 @@ class TestOpenCode:
         code, out, err = _run(self._ARGV, context)
         assert code == 0, err
         assert out.startswith("// neosian record — the OpenCode plugin.")
-        assert '"chat.message"' in out and '"tool.execute.after"' in out
-        assert "session.idle" in out and "__NEOSIAN" not in out
+        # OpenCode 2's shape: one default definition, the hooks in `setup`.
+        assert 'id: "neosian-record"' in out and "export default {" in out
+        assert 'hook("prompt"' in out and 'hook("execute.after"' in out
+        assert "session.execution." in out and "__NEOSIAN" not in out
         argv = json.loads(out.split("const ARGV = ", 1)[1].split(";", 1)[0])
         assert argv[:3] == [_EXECUTABLE, "-m", "neosian.record"]
         assert argv[argv.index("--agent") + 1] == "opencode"
         # One plugin serves every project: it hands the verb the directory
         # OpenCode opened (the argv itself names no mount once per machine).
-        assert "async ({ client, $, directory })" in out
+        assert "ctx.location.directory" in out
         assert '[...ARGV, "--project", directory]' in out
-        # A native tool's result is `output.output`; an MCP tool's the raw
-        # result, whose text blocks were once recorded as "".
-        assert "output.output ?? text(output.content ?? [])" in out
+        # A tool's result as the model reads it: its content, a string or
+        # text blocks (an MCP tool's were once recorded as ""), else output.
+        assert 'typeof result.content === "string"' in out
         assert "hint: re-run with --write" in err
         assert not (context.cwd / ".opencode").exists()
 
@@ -605,7 +607,7 @@ class TestOpenCode:
         target = context.home / ".config" / "opencode" / "plugins" / "neosian-record.js"
         assert code == 0 and out == f"created {target}\n"
         assert not (context.cwd / ".opencode").exists()
-        assert "export const NeosianRecord" in target.read_text()
+        assert 'id: "neosian-record"' in target.read_text()
         code, out, _ = _run([*self._ARGV, "--agent", "oc", "--write"], context)
         assert code == 0 and out == f"updated {target}\n"
         assert '"--agent", "oc"' in target.read_text()
@@ -616,7 +618,7 @@ class TestOpenCode:
         code, out, _ = _run([*self._ARGV, "--json"], context)
         assert code == 0
         payload = json.loads(out)
-        assert payload["hooks"] is None and "NeosianRecord" in payload["plugin"]
+        assert payload["hooks"] is None and "neosian-record" in payload["plugin"]
 
     def test_a_missing_config_dir_is_refused(self, tmp_path: Path) -> None:
         context = _context(tmp_path)

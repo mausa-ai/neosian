@@ -101,10 +101,14 @@ neosian record install --client opencode --level project --scope user:me --write
   writes a small plugin file, `plugins/neosian-record.js` in OpenCode's
   own config directory (`~/.config/opencode`, or `$OPENCODE_CONFIG_DIR`,
   which must exist; `.opencode/plugins/` in the project at `--level
-  project`), that maps `chat.message`, `tool.execute.after` and
-  `session.idle` onto the verb's three write payloads and pipes them in:
-  ours whole, overwritten on re-run, never merged; print mode prints
-  its source. The writer is `opencode:<session_id>`. OpenCode has no
+  project`): OpenCode 2's one plugin definition, whose `setup` maps the
+  `prompt` and `execute.after` hooks and the session's execution events
+  onto the verb's three write payloads and pipes them in, carrying the
+  inbox frame as a system part of the turn's requests and the
+  assistant's reply from the text events; ours whole, overwritten on
+  re-run, never merged; print mode prints its source. OpenCode 1.x loads
+  only the file an earlier release wrote. The writer is
+  `opencode:<session_id>`. OpenCode has no
   start hook, but it shows an MCP server's instructions to the model
   whole, so its read side is the server's instructions: the memory
   index, the pending handoff note and "where we left off", rendered per
@@ -364,7 +368,7 @@ two project directories, each session in its own `proj:` scope.
 |---|---|---|---|---|
 | Claude Code | ✓ user scope through `claude mcp add-json` | ✓ walkthrough green 2026-09-02; headless `claude -p` denies the MCP tools unless `--allowedTools mcp__neosian-memory__…` names them (the prompt before that variadic list) | ✓ 2026-09-19 (2.1.278): the server is spawned in the session's directory, the hook line's project directory expands | ✓ `SessionStart`, stdout as context (2026-09-03); the handoff run for real 2026-10-03 (2.1.288) |
 | Codex | ✓ through `codex mcp add` | ✓ walkthrough green 2026-09-03 (`codex exec`) | ✓ 2026-09-19 (0.154.0): the same, user-level hooks with no project trust step | ✓ JSON `additionalContext`; cross-client recall verified on 0.157.1 (2026-09-27) |
-| OpenCode | ✓ (`opencode.jsonc` when it holds plain JSON, else `opencode.json`) | ✓ walkthrough green 2026-09-03 (`opencode run`, a plugin) | ✓ 2026-09-19 (1.18.30, a free model): the same, the plugin passing the directory it was opened with | ✓ the server's instructions (shown whole, 1.18.30+): the index, the note and the sessions per connection; no hook |
+| OpenCode | ✓ (`opencode.jsonc` when it holds plain JSON, else `opencode.json`) | ✓ walkthrough green 2026-09-03 (`opencode run`, a plugin); the 2.0 definition verified 2026-10-17 (2.0.25, which refuses the 1.x export) | ✓ 2026-09-19 (1.18.30, a free model): the same, the plugin passing the directory it was opened with; 2026-10-17 (2.0.25) through the binary | ✓ the server's instructions (shown whole, 1.18.30+): the index, the note and the sessions per connection; no hook |
 | Claude Desktop | ✓ | no hooks surface | one file by nature; no project, so `/user` alone | — |
 | Cursor | ✓ user MCP, credential names forwarded | ✓ interactive CLI 2026.09.10-fd3934a; `--print` lacks full recording; MCP rounds through `afterMCPExecution` | ✓ one user registration, payload workspace roots | ✓ `sessionStart`, JSON `additional_context` |
 | Muse Code | ✓ user settings or shared project `.mcp.json` | ✓ walkthrough green 2026-09-22 (`muse exec`, 1.3.0); headless `muse exec` can stall on a shell approval no one can give, so a handoff leg says "no shell commands" | ✓ two projects, one user registration; authenticated managed hooks and MCP on the state process | ✓ `SessionStart`, plain stdout; prior turn recalled over MCP; continued and handed off for real 2026-10-03 (1.4.2) |

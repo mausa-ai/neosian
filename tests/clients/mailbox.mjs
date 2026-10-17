@@ -30,7 +30,7 @@ try {
   const log = join(root, "events.jsonl");
   const reply = join(root, "reply.json");
   await writeFile(reply, JSON.stringify({ messages: [item] }));
-  const recorder = `
+  const recorder = (log, reply) => `
     const fs = require('node:fs');
     let body = '';
     process.stdin.on('data', chunk => body += chunk);
@@ -47,9 +47,10 @@ try {
       }
     });
   `;
+  const argvFor = (log, reply) => JSON.stringify([process.execPath, "-e", recorder(log, reply), "--"]);
   const source = await readFile(new URL("../../neosian/assets/clients/pi-record.ts", import.meta.url), "utf8");
   const { default: piRecord } = await moduleFrom(stripTypeScriptTypes(source.replace(
-    "__NEOSIAN_RECORD_ARGV__", JSON.stringify([process.execPath, "-e", recorder, "--"])
+    "__NEOSIAN_RECORD_ARGV__", argvFor(log, reply)
   )));
   const callbacks = new Map(), sent = [];
   piRecord({ on: (event, callback) => callbacks.set(event, callback),
@@ -57,7 +58,8 @@ try {
   let session = "old";
   const ctx = { cwd: root, sessionManager: { getSessionId: () => session } };
   const emit = async (event, value = {}) => await callbacks.get(event)?.(value, ctx);
-  const events = async () => (await readFile(log, "utf8")).trim().split("\n").map(JSON.parse);
+  const events = async (file = log) =>
+    (await readFile(file, "utf8").catch(() => "")).trim().split("\n").filter(Boolean).map(JSON.parse);
   await emit("session_start", { reason: "startup" });
   let [timer] = timers;
   timer.callback();
@@ -94,56 +96,80 @@ try {
   assert.ok((await events()).some((e) => e.hook_event_name === "MailboxReceived"));
   assert.ok((await events()).some((e) => e.hook_event_name === "Stop" && e.last_assistant_message === "checked"));
 
-  // OpenCode uses its SDK's async prompt and tracks only observed live sessions.
+  // OpenCode 2: one definition whose setup registers the hooks; the wake is
+  // a synthetic input, the stop an execution event; the same recorder.
+  const ocLog = join(root, "opencode.jsonl");
+  const ocReply = join(root, "opencode-reply.json");
+  await writeFile(ocReply, JSON.stringify({ messages: [{ ...item, id: "opencode-message" }] }));
   const js = await readFile(new URL("../../neosian/assets/clients/opencode-record.js", import.meta.url), "utf8");
-  const { NeosianRecord } = await moduleFrom(js.replace("__NEOSIAN_RECORD_ARGV__", '["neosian", "record"]'));
-  const calls = [], wakes = [];
-  let refuse = true, pending = { ...item, id: "opencode-message" };
-  const $ = (_strings, _argv, body) => ({ quiet() { return this; }, async nothrow() {
-    const payload = JSON.parse(await body.text());
-    calls.push(payload);
-    const data = payload.hook_event_name === "MailboxPoll" ? JSON.stringify({ messages: [pending] })
-      : payload.hook_event_name === "MailboxContext" ? `context for ${payload.session_id}` : "";
-    return { exitCode: 0, stdout: Buffer.from(data) };
+  const { default: opencode } = await moduleFrom(js.replace("__NEOSIAN_RECORD_ARGV__", argvFor(ocLog, ocReply)));
+  assert.equal(opencode.id, "neosian-record");
+  const hooks = new Map(), wakes = [], stream = [];
+  let refuse = true, waiting;
+  const feed = (type, data) => { stream.push({ type, data }); waiting?.(); };
+  const subscribe = () => ({ async *[Symbol.asyncIterator]() {
+    for (;;) {
+      while (stream.length) yield stream.shift();
+      await new Promise((resolve) => { waiting = resolve; });
+    }
   } });
-  const hooks = await NeosianRecord({ directory: root, $, client: { session: {
-    messages: async () => ({ data: [] }),
-    promptAsync: async (request) => {
-      if (refuse) return { error: "temporarily unavailable" };
-      wakes.push(request);
-      return {};
-    },
-  } } });
+  const cleanup = await opencode.setup({
+    location: { directory: root },
+    session: { hook: async (name, callback) => hooks.set(name, callback),
+      synthetic: async (input) => {
+        if (refuse) throw new Error("temporarily unavailable");
+        wakes.push(input);
+        return {};
+      } },
+    tool: { hook: async (name, callback) => hooks.set(name, callback) },
+    event: { subscribe },
+  });
   [timer] = timers;
-  await hooks.event({ event: { type: "session.idle", properties: { sessionID: "historical" } } });
+  const recorded = async (name) => (await events(ocLog)).filter((e) => e.hook_event_name === name);
+  feed("session.execution.succeeded", { sessionID: "historical" });
   await timer.callback();
-  assert.equal(calls.length, 0);
-  const output = { parts: [{ type: "text", id: "original", text: "continue" }] };
-  await hooks["chat.message"]({ sessionID: "live" }, output);
-  assert.equal(output.parts[1].synthetic, true);
+  assert.equal((await events(ocLog)).length, 0); // An unseen session is never polled or stopped.
+  await hooks.get("prompt")({ sessionID: "live", messageID: "msg_1", prompt: { text: "continue" }, delivery: "queue" });
+  assert.equal((await recorded("UserPromptSubmit"))[0].prompt, "continue");
+  const request = { sessionID: "live", system: [] };
+  hooks.get("context")(request);
+  assert.ok(request.system[0].text.includes("identity: live"));
   await timer.callback(); // Busy: no wake attempt.
-  assert.equal(calls.some((e) => e.hook_event_name === "MailboxPoll"), false);
-  const idle = () => hooks.event({ event: { type: "session.idle", properties: { sessionID: "live" } } });
-  await idle();
+  assert.equal((await recorded("MailboxPoll")).length, 0);
+  feed("session.execution.succeeded", { sessionID: "live" });
+  await until(async () => (await recorded("Stop")).length === 1);
   await timer.callback();
-  assert.equal(calls.at(-1).accepted, false);
+  await until(async () => (await recorded("MailboxDelivery")).some((e) => e.accepted === false));
   refuse = false;
   await timer.callback(); // Rejected wake returns to idle and can retry.
+  await until(async () => (await recorded("MailboxDelivery")).some((e) => e.accepted === true));
   assert.equal(wakes.length, 1);
-  assert.equal(wakes[0].path.id, "live");
-  assert.equal(wakes[0].body.parts[0].synthetic, true);
-  assert.equal(calls.at(-1).accepted, true);
-  await idle();
+  assert.equal(wakes[0].sessionID, "live");
+  assert.equal(wakes[0].text, item.text);
+  feed("session.synthetic", { sessionID: "live", text: item.text });
+  feed("session.execution.started", { sessionID: "live" });
+  feed("session.step.started", { sessionID: "live", assistantMessageID: "msg_a" });
+  feed("session.text.ended", { sessionID: "live", assistantMessageID: "msg_a", ordinal: 0, text: "checked" });
+  feed("session.execution.succeeded", { sessionID: "live" });
+  await until(async () => (await recorded("Stop")).length === 2);
+  assert.equal((await recorded("Stop"))[1].last_assistant_message, "checked");
+  assert.equal((await recorded("MailboxReceived"))[0].text, item.text);
+  await timer.callback(); // A delivered item never repeats the accepted turn.
+  await until(async () => (await recorded("MailboxDelivery")).length === 3);
+  assert.equal(wakes.length, 1);
+  await hooks.get("execute.after")({ sessionID: "live", tool: "test", input: {}, id: "call",
+    status: "completed", result: { content: [{ type: "text", text: "tool result" }] } });
+  assert.equal((await recorded("PostToolUse"))[0].tool_response, "tool result");
+  const next = { sessionID: "live", system: [] };
+  hooks.get("context")(next);
+  assert.ok(next.system[0].text.includes("identity: live"));
+  feed("session.deleted", { sessionID: "live" });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  await writeFile(ocReply, JSON.stringify({ messages: [{ ...item, id: "after-delete" }] }));
   await timer.callback();
+  assert.equal((await recorded("MailboxPoll")).length, 3); // Deleted: no poll, no wake.
   assert.equal(wakes.length, 1);
-  const tool = { output: "tool result" };
-  await hooks["tool.execute.after"]({ sessionID: "live", tool: "test", args: {}, callID: "call" }, tool);
-  assert.equal(tool.output, "tool result\n\ncontext for live");
-  await hooks.event({ event: { type: "session.deleted", properties: { info: { id: "live" } } } });
-  pending = { ...item, id: "after-delete" };
-  await timer.callback();
-  assert.equal(wakes.length, 1);
-  await hooks.event({ event: { type: "server.instance.disposed", properties: { directory: root } } });
+  await cleanup();
   assert.equal(timers.size, 0);
   console.log("Mailbox adapters: wake acceptance/retry/dedup, busy sessions, switching, deletion and context passed");
 } finally {
