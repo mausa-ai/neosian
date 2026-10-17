@@ -312,23 +312,29 @@ def shape_of_output(
 def snapshot(space: Workspace, *, keep: frozenset[str]) -> dict[str, Any]:
     """What a door left in the home: JSONL rows parsed, a document's
     frontmatter parsed and its body exact, locks by presence, the rest
-    exact; paths normalised like contents."""
-    files: dict[str, Any] = {}
+    exact; paths normalised like contents. Files whose names are generated
+    ids share one normalised path (two messages in a scope), so each path
+    holds its files as a group ordered by content, never by the ids."""
+    files: dict[str, list[Any]] = {}
     for path in sorted(p for p in space.home.rglob("*") if p.is_file()):
         rel = normalise(path.relative_to(space.home).as_posix(), space, keep=keep)
         if path.name.endswith(".lock"):
-            files[rel] = "<lock>"
+            files.setdefault(rel, []).append("<lock>")
             continue
         text = normalise(_decode(path.read_bytes()), space, keep=keep)
         if path.suffix == ".jsonl":
-            files[rel] = [
+            entry: Any = [
                 json.loads(line) for line in text.splitlines() if line.strip()
             ]
         elif path.suffix == ".md":
-            files[rel] = _document(text)
+            entry = _document(text)
         else:
-            files[rel] = text
-    return files
+            entry = text
+        files.setdefault(rel, []).append(entry)
+    return {
+        rel: sorted(group, key=lambda entry: json.dumps(entry, sort_keys=True))
+        for rel, group in files.items()
+    }
 
 
 def _document(text: str) -> tuple[Any, str]:
