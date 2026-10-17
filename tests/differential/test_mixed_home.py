@@ -99,6 +99,16 @@ SCENARIOS: Final = (
         reads=("claude-code session start", "continue json"),
     ),
     Scenario(
+        "a continue over MCP picks the baton up, then the session start",
+        writes=("mcp continue named",),
+        reads=("claude-code session start", "continue json", "mcp reads"),
+    ),
+    Scenario(
+        "messages sent over MCP, then the reads and the plugin's poll",
+        writes=("mcp mailbox",),
+        reads=("mcp reads", "search json", "pi mailbox poll", "claude-code prompt"),
+    ),
+    Scenario(
         "a baton rewritten by hand, then the continue",
         writes=("memory create baton",),
         reads=("continue json", "continue", "search json"),

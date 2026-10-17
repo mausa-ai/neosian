@@ -135,6 +135,14 @@ impl Stamp {
         format!("{}{offset}", &full[..16]).replace("+00:00", "Z")
     }
 
+    /// The stamp `seconds` later under the same offset: `+ timedelta(seconds=…)`.
+    pub fn after(self, seconds: i64) -> Self {
+        Self {
+            micros: self.micros + seconds * 1_000_000,
+            offset: self.offset,
+        }
+    }
+
     /// The same instant under the UTC offset: `astimezone(UTC)`.
     pub fn utc(self) -> Self {
         Self {

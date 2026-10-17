@@ -65,6 +65,24 @@ def test_the_docs_manifest_has_its_rust_twin() -> None:
 
 
 @pytest.mark.unit
+def test_the_shipped_skills_have_their_rust_twin() -> None:
+    """The MCP server lists the wheel's own skills after the mounts'
+    (§24.3): the crate embeds each `assets/skills/*.md` by name."""
+    source = (_ROOT / "crates" / "neosian" / "src" / "assets.rs").read_text(
+        encoding="utf-8"
+    )
+    shipped = sorted(
+        path.stem for path in (_ROOT / "neosian" / "assets" / "skills").glob("*.md")
+    )
+    embedded = re.findall(
+        r'"/\.\./\.\./neosian/assets/skills/([a-z0-9_-]+)\.md"', source
+    )
+    assert sorted(embedded) == shipped
+    for name in shipped:  # the name the server lists it under
+        assert re.search(rf'\(\s*"{name}",', source)
+
+
+@pytest.mark.unit
 def test_the_rust_gates_run_on_the_five_targets() -> None:
     makefile = (_ROOT / "Makefile").read_text(encoding="utf-8")
     lines = {

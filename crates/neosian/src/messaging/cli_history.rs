@@ -63,7 +63,7 @@ pub fn search_hits<'a>(
     let scopes = store.scopes()?;
     if !scopes.is_empty() {
         let mailbox = Mailbox::over_scopes(store, scopes);
-        for receipt in mailbox.all()? {
+        for receipt in mailbox.all(None)? {
             let item = &receipt.message;
             let about = item.about.as_deref();
             if ids.is_some_and(|ids| !about.is_some_and(|about| ids.iter().any(|id| id == about))) {
@@ -73,13 +73,15 @@ pub fn search_hits<'a>(
             for (_, _, hit) in &mut rows {
                 if let Hit::Turn { turn, annotations } = hit
                     && about == Some(turn.conversation_id.as_str())
-                    && item.about_turn.is_none_or(|number| number == turn.turn)
+                    && item
+                        .about_turn
+                        .is_none_or(|number| number == turn.turn as i64)
                 {
                     annotations.push(note.clone());
                 }
             }
             let mut text = item.body.clone();
-            for version in mailbox.history(&item.scope, &receipt)? {
+            for version in mailbox.history(&item.scope, &item.id)? {
                 text.push('\n');
                 text.push_str(version.outcome.as_deref().unwrap_or(""));
             }

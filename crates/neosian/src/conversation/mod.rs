@@ -12,6 +12,7 @@ pub mod ids;
 pub mod links;
 pub mod message;
 pub mod projection;
+pub mod recall;
 pub mod rows;
 pub mod search;
 pub mod sessions;
@@ -88,6 +89,8 @@ impl Refused {
 pub enum Error {
     Conversation(Refused),
     Memory(MemoryError),
+    /// A `ValueError` of the Python side: its sentence, no code.
+    Value(String),
     Io(io::Error),
 }
 
@@ -98,6 +101,7 @@ impl Error {
         match self {
             Self::Conversation(refused) => format!("[{}] {}", refused.code, refused.message),
             Self::Memory(error) => format!("[{}] {}", error.code, error.message),
+            Self::Value(sentence) => sentence.clone(),
             Self::Io(error) => error.to_string(),
         }
     }
@@ -106,6 +110,12 @@ impl Error {
 impl From<Refused> for Error {
     fn from(refused: Refused) -> Self {
         Self::Conversation(refused)
+    }
+}
+
+impl From<MemoryError> for Error {
+    fn from(error: MemoryError) -> Self {
+        Self::Memory(error)
     }
 }
 

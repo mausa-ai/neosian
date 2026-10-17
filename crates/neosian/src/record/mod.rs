@@ -5,12 +5,14 @@
 //! `<agent>:<session_id>` in the conversation the session id names and
 //! writes the scope's sessions document; SessionStart prints the memory
 //! index, the pending note and "where we left off", which the client
-//! injects as context. The mailbox's reads ride along (#360); its writes
-//! (the plugins' poll and delivery events) wait for the `messages` tool.
+//! injects as context. The mailbox rides along: the inbox on every
+//! prompt and tool round, the plugins' poll and delivery events, the
+//! lineage note a continue call leaves (#360, R1 slice D).
 
 pub mod cli;
-mod context;
+pub mod context;
 mod land;
+mod mailbox;
 mod output;
 mod payload;
 mod settings;

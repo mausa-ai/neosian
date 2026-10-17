@@ -9,7 +9,7 @@ use clap::{Parser, Subcommand};
 use serde_json::json;
 
 use crate::conversation::{cli_continue, cli_search};
-use crate::{docs, memory, record, version};
+use crate::{docs, mcp, memory, record, version};
 
 #[derive(Parser)]
 #[command(
@@ -46,6 +46,8 @@ enum Command {
     Continue(cli_continue::Continue),
     /// Record a foreign agent's session from its hooks: one payload on stdin per call (§20.9).
     Record(record::cli::Record),
+    /// Serve neosian memory to MCP clients on stdio (§39.3).
+    Mcp(mcp::cli::Mcp),
 }
 
 /// A grammar-tier refusal (exit 2): the message on stderr, and where
@@ -93,6 +95,7 @@ where
         Command::Search(args) => cli_search::run(&args, &mut out, &mut err),
         Command::Continue(args) => cli_continue::run(&args, &mut out, &mut err),
         Command::Record(args) => record::cli::run(&args, &mut out, &mut err),
+        Command::Mcp(args) => mcp::cli::run(&args, &mut out, &mut err),
     };
     match code {
         Ok(code) => ExitCode::from(code),

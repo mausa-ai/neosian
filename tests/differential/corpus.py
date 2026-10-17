@@ -637,6 +637,39 @@ def _hooks() -> list[Case]:
     return [*claude, *others, *cursor, *diagnostics, *more]
 
 
+def _mailbox() -> list[Case]:
+    """The plugins' write events (DESIGN §34): Pi's poll with no wake
+    pending, and OpenCode's delivery report on a message the home does
+    not hold (its id canonical, so the refusal is the store's)."""
+    plugin = (
+        "record",
+        "--root",
+        "{home}",
+        "--spool",
+        "{spool}",
+        "--project",
+        "{project}",
+    )
+    poll = {"session_id": SESSION, "hook_event_name": "MailboxPoll"}
+    delivery = {
+        "session_id": SESSION,
+        "hook_event_name": "MailboxDelivery",
+        "scope": "{proj}",
+        "message_id": "00000000-0000-4000-8000-000000000000",
+        "occurrence": 1,
+        "token": "stale",
+        "accepted": True,
+    }
+    return [
+        Case("pi mailbox poll", (*plugin, "--agent", "pi", "--json"), payload=poll),
+        Case(
+            "opencode mailbox delivery unknown",
+            (*plugin, "--agent", "opencode", "--json"),
+            payload=delivery,
+        ),
+    ]
+
+
 def _mcp() -> list[Case]:
     initialize = _rpc(
         1,
@@ -675,9 +708,128 @@ def _mcp() -> list[Case]:
             },
         ),
     )
+
+    def call(id_: int, tool: str, **arguments: Any) -> dict[str, Any]:
+        return _rpc(id_, "tools/call", {"name": tool, "arguments": arguments})
+
+    skills = (
+        initialize,
+        initialized,
+        call(2, "list_skills"),
+        call(3, "load_skill", name="deploy"),
+        call(4, "load_skill", name="/project/skills/release"),
+        call(5, "load_skill", name="handoff"),
+        call(6, "load_skill", name="nope"),
+        _rpc(7, "prompts/get", {"name": "deploy"}),
+        _rpc(8, "prompts/get", {"name": "nope"}),
+    )
+    recalls = (
+        initialize,
+        initialized,
+        call(2, "recall_turn", turn=2, conversation="{session}"),
+        call(3, "recall_turn", turn="1", conversation="{session}", call="toolu_0200"),
+        call(4, "recall_turn", turn=9, conversation="{session}"),
+        call(5, "recall_turn", turn=1, conversation="{session}", call="nope"),
+        call(6, "recall_turn", turn=1),
+        call(7, "search_history", query="eu-west-1", conversation="{session}"),
+        call(8, "search_history", query="   "),
+        call(9, "search_history", query="nothing-holds-this"),
+        call(10, "memory", command="view", path="/project/facts", view_range=[1, 2]),
+        call(11, "memory", command="view", path="/project/facts", view_range=[1]),
+        call(12, "memory", command="create", path="/project/messages/x", content="no"),
+        call(13, "memory", command="insert", path="/project/facts"),
+        call(14, "messages", command="list", status="all"),
+        call(15, "messages", command="view", scope="/project", message_id="x"),
+        call(16, "nope"),
+        _rpc(17, "tools/call", {"name": "memory"}),
+        _rpc(18, "ping"),
+        _rpc(19, "resources/list"),
+    )
+    mailbox = (
+        initialize,
+        initialized,
+        call(
+            2,
+            "messages",
+            command="send",
+            scope="/project",
+            body="A note for later",
+            actionable=True,
+        ),
+        call(
+            3,
+            "messages",
+            command="send",
+            scope="/user",
+            body="Wake me",
+            delivery="wake",
+            session=SESSION,
+        ),
+        call(4, "messages", command="send", scope="/project", body="", session=SESSION),
+        call(
+            5,
+            "messages",
+            command="send",
+            scope="/project",
+            body="Due",
+            due_at="2026-01-01T00:00:00",
+        ),
+        call(6, "messages", command="list", status="all", limit=2),
+        call(
+            7,
+            "messages",
+            command="ack",
+            scope="/project",
+            message_id="00000000-0000-4000-8000-000000000000",
+            occurrence=1,
+            session=SESSION,
+        ),
+        call(
+            8,
+            "memory",
+            command="create",
+            path="/project/notes/after",
+            content="after the mailbox",
+        ),
+    )
+    pre_initialize = (
+        _rpc(1, "tools/list"),
+        initialize,
+        _rpc(2, "tools/list"),
+    )
     return [
         Case("mcp reads", ("mcp", *MOUNTS), rpc=reads),
         Case("mcp handoff", ("mcp", *MOUNTS), rpc=writes, writes=True),
+        Case("mcp skills", ("mcp", *MOUNTS), rpc=skills),
+        Case("mcp recalls", ("mcp", *MOUNTS), rpc=recalls),
+        Case("mcp mailbox", ("mcp", *MOUNTS), rpc=mailbox, writes=True),
+        Case("mcp before initialize", ("mcp", *MOUNTS), rpc=pre_initialize),
+        Case(
+            "mcp hooked client",
+            ("mcp", *MOUNTS, "--actor", "mcp:claude-code"),
+            rpc=(initialize,),
+        ),
+        Case(
+            "mcp continue named",
+            ("mcp", *MOUNTS),
+            rpc=(
+                initialize,
+                initialized,
+                call(2, "continue_session", conversation="{session}", session=SESSION),
+            ),
+            writes=True,
+        ),
+        Case(
+            "mcp policies",
+            ("mcp", *POLICIES),
+            rpc=(
+                initialize,
+                initialized,
+                _rpc(2, "tools/list"),
+                call(3, "list_skills"),
+                call(4, "handoff", note="x"),
+            ),
+        ),
     ]
 
 
@@ -696,7 +848,7 @@ def _batons() -> list[Case]:
     ]
 
 
-CASES: Final[tuple[Case, ...]] = (*_cli(), *_batons(), *_hooks(), *_mcp())
+CASES: Final[tuple[Case, ...]] = (*_cli(), *_batons(), *_hooks(), *_mailbox(), *_mcp())
 BY_NAME: Final[dict[str, Case]] = {case.name: case for case in CASES}
 # One document through every mutation, each step building on the one
 # before: the script the two doors take turns on (test_mixed_home).

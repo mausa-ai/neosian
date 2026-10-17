@@ -109,6 +109,15 @@ pub fn hit_json(turn: &Turn, terms: &[String]) -> Value {
     })
 }
 
+/// The tool's rendering: the header, the snippet indented under it.
+pub fn hit_block(turn: &Turn, terms: &[String]) -> String {
+    format!(
+        "{}\n  {}",
+        hit_header(turn),
+        snippet(&turn_text(turn), terms)
+    )
+}
+
 /// The shell's rendering: one line, the audit verb's two-space columns.
 pub fn hit_line(turn: &Turn, terms: &[String]) -> String {
     format!("{}  {}", hit_header(turn), snippet(&turn_text(turn), terms))

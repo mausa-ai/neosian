@@ -16,6 +16,7 @@ use std::path::{Path, PathBuf};
 
 use super::context::render_session_start;
 use super::land::land;
+use super::mailbox::{deliver, note_continue, poll};
 use super::output::{Envelope, respond};
 use super::payload::{
     PROMPT_EVENT, Payload, SESSION_START_EVENT, TOOL_EVENT, parse_payload, reduce_payload,
@@ -186,14 +187,20 @@ fn record_payload(
         turn: None,
         document: None,
         context: None,
+        messages: None,
     };
     let event = envelope.event.as_str();
     if matches!(event, "MailboxPoll" | "MailboxDelivery") {
-        let why = format!(
-            "{event} is the mailbox's write side, and the binary reads the mailbox alone: needs \
-             the Python shell: `uv tool install neosian`"
-        );
-        return Err(Error::Io(io::Error::other(why)));
+        let store = FileStore::open(&settings.root)?;
+        let mailbox = Mailbox::of_mounts(&store, &settings.mounts, Some(session_id))
+            .with_actor(envelope.actor.clone());
+        envelope.messages = Some(if event == "MailboxPoll" {
+            poll(&mailbox)?
+        } else {
+            deliver(&mailbox, payload)?;
+            Vec::new()
+        });
+        return Ok(envelope);
     }
     let mount = &settings.mounts[settings.sessions_mount];
     if event == "MailboxContext" {
@@ -252,14 +259,16 @@ fn record_payload(
     envelope.turn = landed.turn;
     envelope.document = landed.document;
     if matches!(event, PROMPT_EVENT | TOOL_EVENT) {
+        // The lineage note a continue call leaves, then the inbox (§34).
         let inbox = FileStore::open(&settings.root)
             .map_err(Error::from)
             .and_then(|store| {
-                mailbox_context(&Mailbox::of_mounts(
-                    &store,
-                    &settings.mounts,
-                    Some(session_id),
-                ))
+                let mailbox = Mailbox::of_mounts(&store, &settings.mounts, Some(session_id))
+                    .with_actor(envelope.actor.clone());
+                if event == TOOL_EVENT {
+                    note_continue(&mailbox, &mount.scope, payload)?;
+                }
+                mailbox_context(&mailbox)
             });
         match inbox {
             Ok(inbox) if settings.agent == "claude-code" => {

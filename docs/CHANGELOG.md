@@ -82,6 +82,35 @@ phase close names the version.
   refused at exit 2, and a plain `setup --write` restores the
   interpreter.
 
+- The MCP server from the binary (R1 slice D, DESIGN §39.3): `neosian
+  mcp` serves the state set on stdio with the Python server's name, its
+  eight tools (`memory`, `list_skills`, `load_skill`, `messages`,
+  `recall_turn`, `search_history`, `continue_session`, `handoff`), every
+  valid store skill as a prompt and the wheel's `handoff` skill after
+  them, the instructions a hooked client's actor selects, and the same
+  JSON-RPC answers as the Python SDK gives, parsed-equal: the
+  capabilities, a request before `initialize` refused, an unknown method
+  and an unknown prompt as the spec's errors, a mistyped argument as the
+  same corrective sentence. The store flags are the shell's; `install`
+  stays the Python shell's until R3. One newline-delimited loop on std
+  (no SDK) and `uuid` for message ids and claim tokens.
+- The mailbox's writes from the binary (DESIGN §34): the `messages` tool's
+  `send`, `ack`, `claim`, `renew`, `release`, `complete`, `snooze` and
+  `cancel`, each transition fenced as the Python side fences it and
+  written against the version read; a `continue_session` round declares
+  its lineage (`message-links/`) so an addressed message reaches the
+  successor before the recorder's Stop; and the plugins' `MailboxPoll`
+  and `MailboxDelivery` events answer from the record verb, one wake
+  reserved per poll.
+- The differential corpus grows to 147 cases: nine MCP sessions (the
+  reads, the skills and prompts, recall and search with the mailbox
+  merged, the messages tool's writes, a continue that picks the baton up,
+  a request before `initialize`, a hooked client's instructions, the
+  mount policies) and the plugins' two events; the mixed-home test gains
+  a continue over MCP read back by the hooks and a mailbox written over
+  MCP read by the search verb and the plugin's poll; the latency gate
+  measures `initialize` from the binary.
+
 ### Changed
 
 - Record the first dispatched board since 1.2.0 on the shipped rows,

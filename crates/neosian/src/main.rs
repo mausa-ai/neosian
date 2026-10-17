@@ -10,6 +10,7 @@ mod cli;
 mod conversation;
 mod docs;
 mod home;
+mod mcp;
 mod memory;
 mod messaging;
 mod pyfmt;

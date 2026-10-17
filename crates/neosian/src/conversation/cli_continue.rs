@@ -63,7 +63,7 @@ pub fn run(args: &Continue, out: &mut impl Write, err: &mut impl Write) -> io::R
         None => home()?,
     };
     let store = FileStore::open(&root)?;
-    let outcome = match continue_conversation(&store, &scope, args.conversation.as_deref()) {
+    let outcome = match continue_conversation(&store, &scope, args.conversation.as_deref(), None) {
         Ok(Ok(outcome)) => outcome,
         Ok(Err(corrective)) => return failed(&corrective.error, corrective.hint, json, out, err),
         Err(error) => return failed(&error.text(), None, json, out, err),

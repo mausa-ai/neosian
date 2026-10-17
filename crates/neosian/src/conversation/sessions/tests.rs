@@ -21,7 +21,7 @@ fn the_baton_reads_back_and_renders_as_written() {
         (Some("s"), true)
     );
     assert_eq!(
-        handoff_document(&baton.actor, baton.written, &baton.note, Some("s")),
+        handoff_document(&baton.actor, baton.written, &baton.note, Some("s"), None),
         BATON
     );
     let picked = BATON.replace(

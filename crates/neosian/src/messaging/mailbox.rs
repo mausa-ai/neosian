@@ -1,107 +1,226 @@
-//! The inbox as a reader sees it (`messaging/core.py`, DESIGN §34): the
-//! message documents of the scopes a reader reaches, each held to its
-//! address, the lineage a session is addressed through, and the unread
-//! listing the hooks and the search verb deliver. `send` and `update`
-//! land with the `messages` tool (#360).
+//! The inbox (`messaging/core.py`, DESIGN §34): the message documents of
+//! the scopes a reader reaches, each held to its address, the lineage a
+//! session is addressed through, and the listings. Session identity is
+//! never guessed. The writes (`send`, `update`, the lineage note) are in
+//! `writes.rs`.
 
 use std::collections::{HashMap, HashSet};
-use std::io;
 
-use super::types::{InboxMessage, PREFIX, decode, message_path};
+use super::types::{Delivery, InboxMessage, PREFIX, decode, message_path};
 use crate::conversation::Error;
 use crate::conversation::ids::parse_conversation_id;
 use crate::conversation::sessions::{continues, sessions_path};
 use crate::memory::mounts::Mount;
 use crate::store::FileStore;
+use crate::store::error::MemoryError;
+use crate::store::grammar::Actor;
 use crate::store::time::Stamp;
 
-/// `Mailbox.list`'s page.
-const LIST_LIMIT: usize = 50;
+/// `Mailbox.list`'s page, and the ceiling it refuses above.
+pub const LIST_LIMIT: usize = 50;
+const LIST_MAX: usize = 500;
+const DEFAULT_ACTOR: &str = "mailbox:local";
 
+/// Which messages a listing answers with.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ListStatus {
+    Unread,
+    Open,
+    Scheduled,
+    Closed,
+    All,
+}
+
+impl ListStatus {
+    pub const ALL: [Self; 5] = [
+        Self::Unread,
+        Self::Open,
+        Self::Scheduled,
+        Self::Closed,
+        Self::All,
+    ];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Unread => "unread",
+            Self::Open => "open",
+            Self::Scheduled => "scheduled",
+            Self::Closed => "closed",
+            Self::All => "all",
+        }
+    }
+
+    pub fn parse(text: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|status| status.as_str() == text)
+    }
+}
+
+#[derive(Debug)]
 pub struct Receipt {
     pub message: InboxMessage,
     pub version: u64,
 }
 
+/// One scope a mailbox reaches, with the policy of the mount that gave it.
+#[derive(Clone)]
+pub(super) struct Reach {
+    pub scope: String,
+    pub path: String,
+    pub read_only: bool,
+    pub edit_only: bool,
+}
+
 /// An explicitly scoped mailbox; session identity is never guessed.
 pub struct Mailbox<'a> {
-    store: &'a FileStore,
-    scopes: Vec<String>,
-    session: Option<&'a str>,
+    pub(super) store: &'a FileStore,
+    pub(super) reach: Vec<Reach>,
+    pub(super) session: Option<String>,
+    pub(super) actor: Actor,
+    clock: Option<Stamp>,
 }
 
 impl<'a> Mailbox<'a> {
-    /// Over the mounts' scopes, each once, in mount order: a hook's reach.
-    pub fn of_mounts(store: &'a FileStore, mounts: &[Mount], session: Option<&'a str>) -> Self {
-        let mut scopes: Vec<String> = Vec::new();
-        for mount in mounts {
-            if !scopes.contains(&mount.scope) {
-                scopes.push(mount.scope.clone());
-            }
-        }
+    fn new(store: &'a FileStore, reach: Vec<Reach>, session: Option<&str>) -> Self {
         Self {
             store,
-            scopes,
-            session,
+            reach,
+            session: session.map(str::to_string),
+            actor: Actor::parse(DEFAULT_ACTOR).expect("the default actor is grammatical"),
+            clock: None,
         }
     }
 
-    /// Over every scope the store holds: the search verb's reach.
-    pub fn over_scopes(store: &'a FileStore, scopes: Vec<String>) -> Self {
-        Self {
-            store,
-            scopes,
-            session: None,
+    /// Over the mounts' scopes, each once, in mount order: a hook's reach.
+    pub fn of_mounts(store: &'a FileStore, mounts: &[Mount], session: Option<&str>) -> Self {
+        let mut reach: Vec<Reach> = Vec::new();
+        for mount in mounts {
+            if !reach.iter().any(|known| known.scope == mount.scope) {
+                reach.push(Reach {
+                    scope: mount.scope.clone(),
+                    path: mount.path.clone(),
+                    read_only: mount.read_only,
+                    edit_only: mount.edit_only,
+                });
+            }
         }
+        Self::new(store, reach, session)
+    }
+
+    /// Over every scope the store holds: the search verb's reach, reads alone.
+    pub fn over_scopes(store: &'a FileStore, scopes: Vec<String>) -> Self {
+        let reach = scopes
+            .into_iter()
+            .map(|scope| Reach {
+                scope,
+                path: String::new(),
+                read_only: true,
+                edit_only: false,
+            })
+            .collect();
+        Self::new(store, reach, None)
+    }
+
+    /// Who the writes are recorded by.
+    pub fn with_actor(mut self, actor: Actor) -> Self {
+        self.actor = actor;
+        self
+    }
+
+    /// A fixed clock (the tests'); the wall clock otherwise, read per call.
+    #[cfg(test)]
+    pub fn at(mut self, now: Stamp) -> Self {
+        self.clock = Some(now);
+        self
     }
 
     pub fn session(&self) -> Option<&str> {
-        self.session
+        self.session.as_deref()
     }
 
-    /// One message read back and held to its address; None when the
-    /// document is absent or redacted.
-    pub fn view(&self, scope: &str, id: &str) -> Result<Option<Receipt>, Error> {
-        let path = message_path(id).map_err(value_error)?;
-        let Some(document) = self.store.read(scope, &path)? else {
-            return Ok(None);
+    /// The same reach and clock read as another session.
+    pub fn as_session(&self, session: Option<&str>) -> Self {
+        Self {
+            store: self.store,
+            reach: self.reach.clone(),
+            session: session.map(str::to_string),
+            actor: self.actor.clone(),
+            clock: self.clock,
+        }
+    }
+
+    pub fn now(&self) -> Stamp {
+        self.clock.unwrap_or_else(Stamp::now)
+    }
+
+    /// The scope's mount, or the Python side's refusals: not mounted, and
+    /// read-only when a write asks.
+    pub(super) fn mounted(&self, scope: &str, write: bool) -> Result<&Reach, Error> {
+        let Some(reach) = self.reach.iter().find(|reach| reach.scope == scope) else {
+            return Err(Error::Value(format!("scope is not mounted: {scope}")));
         };
-        if document.envelope.redacted {
-            return Ok(None);
+        if write && reach.read_only {
+            return Err(MemoryError::read_only(&reach.path).into());
         }
-        let message = decode(&document.content).map_err(value_error)?;
-        if message.scope != scope || message_path(&message.id).map_err(value_error)? != path {
+        Ok(reach)
+    }
+
+    /// One message read back and held to its address; absent or redacted
+    /// is the document-not-found refusal.
+    pub fn view(&self, scope: &str, id: &str) -> Result<Receipt, Error> {
+        self.mounted(scope, false)?;
+        let path = message_path(id).map_err(Error::Value)?;
+        let document = self
+            .store
+            .read(scope, &path)?
+            .filter(|document| !document.envelope.redacted)
+            .ok_or_else(|| MemoryError::not_found(scope, &path))?;
+        let message = decode(&document.content).map_err(Error::Value)?;
+        if message.scope != scope || message_path(&message.id).map_err(Error::Value)? != path {
             let mismatch = "message envelope does not match its storage address";
-            return Err(value_error(mismatch.to_string()));
+            return Err(Error::Value(mismatch.to_string()));
         }
-        Ok(Some(Receipt {
+        Ok(Receipt {
             message,
             version: document.envelope.version,
-        }))
+        })
     }
 
     /// Every version of one message, newest first, the redacted skipped.
-    pub fn history(&self, scope: &str, receipt: &Receipt) -> Result<Vec<InboxMessage>, Error> {
-        let path = message_path(&receipt.message.id).map_err(value_error)?;
+    pub fn history(&self, scope: &str, id: &str) -> Result<Vec<InboxMessage>, Error> {
+        let receipt = self.view(scope, id)?;
+        let path = message_path(id).map_err(Error::Value)?;
         let rows = self
             .store
             .versions(scope, &path, receipt.version as usize)?;
         rows.iter()
             .filter(|row| !row.redacted)
-            .map(|row| decode(&row.content).map_err(value_error))
+            .map(|row| decode(&row.content).map_err(Error::Value))
             .collect()
     }
 
-    /// Every live message of the scopes, by creation then id.
-    pub fn all(&self) -> Result<Vec<Receipt>, Error> {
+    /// Every live message of one scope, or of every scope reached, by
+    /// creation then id; one deleted between the listing and its read is
+    /// skipped.
+    pub fn all(&self, scope: Option<&str>) -> Result<Vec<Receipt>, Error> {
+        let scopes: Vec<&str> = match scope {
+            Some(scope) => vec![scope],
+            None => self
+                .reach
+                .iter()
+                .map(|reach| reach.scope.as_str())
+                .collect(),
+        };
         let mut found = Vec::new();
-        for scope in &self.scopes {
-            for entry in self.store.list_documents(scope, PREFIX)? {
+        for selected in scopes {
+            self.mounted(selected, false)?;
+            for entry in self.store.list_documents(selected, PREFIX)? {
                 if entry.redacted {
                     continue;
                 }
-                if let Some(receipt) = self.view(scope, &entry.path[PREFIX.len()..])? {
-                    found.push(receipt);
+                match self.view(selected, &entry.path[PREFIX.len()..]) {
+                    Ok(receipt) => found.push(receipt),
+                    Err(Error::Memory(error)) if error.code == "memory_document_not_found" => {}
+                    Err(error) => return Err(error),
                 }
             }
         }
@@ -116,7 +235,8 @@ impl<'a> Mailbox<'a> {
     /// line of a sessions document and every immediate `message-links/`
     /// declaration, which can precede the recorder's Stop.
     pub fn lineage(&self, scope: &str) -> Result<HashSet<String>, Error> {
-        let mut pending: Vec<String> = self.session.iter().map(|s| s.to_string()).collect();
+        self.mounted(scope, false)?;
+        let mut pending: Vec<String> = self.session.iter().cloned().collect();
         let mut found = HashSet::new();
         while let Some(current) = pending.pop() {
             if !found.insert(current.clone()) {
@@ -142,15 +262,37 @@ impl<'a> Mailbox<'a> {
         Ok(found)
     }
 
-    /// The unread, due messages this session may read, the earliest due
-    /// first, at most a page: an addressed message only through lineage.
-    pub fn list(&self) -> Result<Vec<Receipt>, Error> {
-        let now = Stamp::now();
+    /// The messages a listing answers with, the earliest due first, at
+    /// most `limit`: an addressed message only through lineage, and under
+    /// `wake_only` the wake deliveries still pending.
+    pub fn list(
+        &self,
+        scope: Option<&str>,
+        status: ListStatus,
+        limit: usize,
+        addressed: bool,
+        wake_only: bool,
+    ) -> Result<Vec<Receipt>, Error> {
+        if !(1..=LIST_MAX).contains(&limit) {
+            return Err(Error::Value("limit must be between 1 and 500".to_string()));
+        }
+        let now = self.now();
         let mut lineage: HashMap<String, HashSet<String>> = HashMap::new();
         let mut found = Vec::new();
-        for receipt in self.all()? {
+        for receipt in self.all(scope)? {
             let item = &receipt.message;
-            if let Some(conversation) = &item.conversation {
+            if wake_only
+                && (item.delivery != Delivery::Wake
+                    || item.wake_accepted
+                    || !item.unread(now)
+                    || item.claimed(now)
+                    || item
+                        .wake_until
+                        .is_some_and(|until| until.instant() > now.instant()))
+            {
+                continue;
+            }
+            if addressed && let Some(conversation) = &item.conversation {
                 if !lineage.contains_key(&item.scope) {
                     let reach = self.lineage(&item.scope)?;
                     lineage.insert(item.scope.clone(), reach);
@@ -159,7 +301,16 @@ impl<'a> Mailbox<'a> {
                     continue;
                 }
             }
-            if item.unread(now) {
+            let matches = match status {
+                ListStatus::All => true,
+                ListStatus::Unread => item.unread(now),
+                ListStatus::Open => item.available(now),
+                ListStatus::Scheduled => {
+                    item.status == "open" && item.due_at.instant() > now.instant()
+                }
+                ListStatus::Closed => item.status != "open",
+            };
+            if matches {
                 found.push(receipt);
             }
         }
@@ -171,12 +322,7 @@ impl<'a> Mailbox<'a> {
                 item.id.clone(),
             )
         });
-        found.truncate(LIST_LIMIT);
+        found.truncate(limit);
         Ok(found)
     }
-}
-
-/// A `ValueError` of the Python side: its sentence, at tier one.
-fn value_error(sentence: String) -> Error {
-    Error::Io(io::Error::other(sentence))
 }

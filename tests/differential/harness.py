@@ -40,6 +40,7 @@ BINARY_VERBS: Final[frozenset[str]] = frozenset(
         "search",
         "continue",
         "record",
+        "mcp",
         *(
             f"memory {command}"
             for command in (

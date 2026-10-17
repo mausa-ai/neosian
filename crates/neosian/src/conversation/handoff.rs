@@ -1,20 +1,24 @@
 //! The handoff delivered (`conversation/handoff.py`, DESIGN §33): the
 //! conversation whole under a budget, every user prompt and final answer
 //! verbatim with tool rounds one line each, the older turns as log lines,
-//! its pending note first. This is the shell's read: the baton stays
-//! pending, and the tool's pickup lands with the MCP server.
+//! its pending note first. The shell's read leaves the baton pending;
+//! the tool's call picks it up (R1 slice D).
 
 use super::ids::parse_conversation_id;
 use super::links::LinkRegistry;
 use super::message::{Role, text_of};
 use super::projection::{REDACTED, one_line, results, tool_segment};
 use super::sessions::{
-    HANDOFF_PATH, Handoff, SESSIONS_PREFIX, continues, parse_handoff, sessions_path,
+    HANDOFF_PATH, Handoff, SESSIONS_PREFIX, continues, handoff_document, parse_handoff,
+    sessions_path,
 };
 use super::views::project_conversation;
 use super::{Error, Projection, Turn};
 use crate::assets::{CONTEXT, folded, render};
 use crate::repr::repr;
+use crate::store::error::Error as StoreError;
+use crate::store::grammar::Actor;
+use crate::store::time::Stamp;
 use crate::store::{Document, Entry, FileStore};
 use crate::text::{len, strip};
 
@@ -153,12 +157,14 @@ fn verbatim_block(turn: &Turn, links: &LinkRegistry) -> String {
     lines.join("\n")
 }
 
-/// The continue call's work for a read (`pick_up=False`): the target
-/// resolved, delivered with its pending note, the baton untouched.
+/// The continue call's work: the target resolved, delivered with its
+/// pending note, and the baton marked picked up by `pick_up`'s session
+/// at its moment; None is the shell's read, the baton untouched.
 pub fn continue_conversation(
     store: &FileStore,
     scope: &str,
     conversation: Option<&str>,
+    pick_up: Option<(&Actor, Stamp)>,
 ) -> Answer<Continuation> {
     let document = store.read(scope, HANDOFF_PATH)?;
     let baton = pending(document.as_ref());
@@ -180,6 +186,9 @@ pub fn continue_conversation(
     let listed = store.read(scope, &sessions_path(&target))?;
     let continued = listed.map_or_else(Vec::new, |listed| continues(&listed.content));
     let delivered = baton.filter(|baton| belongs(baton, &target, conversation.is_some()));
+    if let (Some((by, now)), Some(document), Some(baton)) = (pick_up, &document, &delivered) {
+        picked_up(store, scope, document, baton, &target, by, now)?;
+    }
     let entries = store.read_projections(&target)?;
     let text = render_continuation(
         &turns,
@@ -193,6 +202,52 @@ pub fn continue_conversation(
         text,
         note: delivered.is_some(),
     }))
+}
+
+/// The baton marked picked up by a new version against the version that
+/// was read; on a conflict (the departing Stop linking it in the same
+/// beat) once more against the fresh one, still pending or not.
+fn picked_up(
+    store: &FileStore,
+    scope: &str,
+    document: &Document,
+    baton: &Handoff,
+    target: &str,
+    by: &Actor,
+    now: Stamp,
+) -> Result<(), Error> {
+    let mut expected = document.envelope.version;
+    let mut baton = Handoff {
+        actor: baton.actor.clone(),
+        written: baton.written,
+        note: baton.note.clone(),
+        conversation: baton.conversation.clone(),
+        pending: baton.pending,
+    };
+    for attempt in 0..2 {
+        let content = handoff_document(
+            &baton.actor,
+            baton.written,
+            &baton.note,
+            Some(target),
+            Some((now, by.as_str())),
+        );
+        match store.write(scope, HANDOFF_PATH, &content, by, Some(expected)) {
+            Ok(_) => return Ok(()),
+            Err(StoreError::Memory(error)) if error.code == "memory_conflict" && attempt == 0 => {
+                let Some(fresh) = store.read(scope, HANDOFF_PATH)? else {
+                    return Ok(());
+                };
+                let Some(again) = pending(Some(&fresh)) else {
+                    return Ok(());
+                };
+                expected = fresh.envelope.version;
+                baton = again;
+            }
+            Err(error) => return Err(error.into()),
+        }
+    }
+    Ok(())
 }
 
 fn pending(document: Option<&Document>) -> Option<Handoff> {

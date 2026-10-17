@@ -3,14 +3,11 @@
 //! delivers within its budget, and the annotation a search hit carries.
 //! Rendering never marks anything read, including overflow or failure.
 
-use super::mailbox::Mailbox;
-use super::types::InboxMessage;
+use super::mailbox::{LIST_LIMIT, ListStatus, Mailbox};
+use super::types::{CONTEXT_CHARS, InboxMessage};
 use crate::assets::{MESSAGES, block, render};
 use crate::conversation::Error;
 use crate::text::{head, len};
-
-/// `MailboxConfig.context_chars`.
-pub const CONTEXT_CHARS: usize = 2048;
 
 pub fn summary(item: &InboxMessage) -> String {
     format!(
@@ -41,7 +38,7 @@ pub fn annotation(item: &InboxMessage) -> String {
 /// The inbox frame within `CONTEXT_CHARS`: every unread summary that
 /// fits, the last one cut to the room left, nothing when there is none.
 pub fn context(mailbox: &Mailbox) -> Result<String, Error> {
-    let items = mailbox.list()?;
+    let items = mailbox.list(None, ListStatus::Unread, LIST_LIMIT, true, false)?;
     if items.is_empty() {
         return Ok(String::new());
     }
@@ -66,4 +63,23 @@ pub fn context(mailbox: &Mailbox) -> Result<String, Error> {
     let items = lines.join("\n");
     let text = render(&template, &[("session", session), ("items", &items)]);
     Ok(head(&text, CONTEXT_CHARS).to_string())
+}
+
+/// The one message a wake delivers, framed, the body cut to what the
+/// budget leaves after the frame.
+pub fn wake_text(item: &InboxMessage) -> String {
+    let template = block(MESSAGES, "wake").expect("messages.yaml carries the wake frame");
+    let occurrence = item.occurrence.to_string();
+    let frame = render(
+        &template,
+        &[
+            ("id", item.id.as_str()),
+            ("occurrence", occurrence.as_str()),
+            ("scope", item.scope.as_str()),
+            ("actor", item.actor.as_str()),
+        ],
+    );
+    let room = (CONTEXT_CHARS + len("{{body}}")).saturating_sub(len(&frame));
+    let text = render(&frame, &[("body", head(&item.body, room))]);
+    head(&text, CONTEXT_CHARS).to_string()
 }

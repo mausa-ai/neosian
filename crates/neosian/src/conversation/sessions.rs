@@ -162,17 +162,21 @@ pub struct Handoff {
     pub pending: bool,
 }
 
-/// The pending baton as the record writes it; the pickup's status lands
-/// with the tool.
+/// The baton as the record and the tool write it: pending, or picked up
+/// at a moment by a session.
 pub fn handoff_document(
     actor: &str,
     written: Stamp,
     note: &str,
     conversation: Option<&str>,
+    picked_up: Option<(Stamp, &str)>,
 ) -> String {
+    let status = picked_up.map_or("pending".to_string(), |(at, by)| {
+        format!("picked up {} by {by}", at.minutes())
+    });
     let link = conversation.map_or(String::new(), |id| format!("- conversation: {id}\n"));
     format!(
-        "# handoff from {actor}\n\n- from: {actor}\n- written: {}\n- status: pending\n{link}\n{}\n",
+        "# handoff from {actor}\n\n- from: {actor}\n- written: {}\n- status: {status}\n{link}\n{}\n",
         written.z(),
         strip(note)
     )
@@ -250,7 +254,13 @@ pub fn link_handoff(
     if !baton.pending || baton.conversation.is_some() {
         return Ok(false);
     }
-    let content = handoff_document(&baton.actor, baton.written, &baton.note, Some(conversation));
+    let content = handoff_document(
+        &baton.actor,
+        baton.written,
+        &baton.note,
+        Some(conversation),
+        None,
+    );
     match store.write(
         scope,
         HANDOFF_PATH,

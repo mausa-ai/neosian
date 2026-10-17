@@ -9,7 +9,7 @@
 
 use std::cmp::Reverse;
 
-use crate::assets::{CONTEXT, MESSAGES, block, folded, literal, render};
+use crate::assets::{CONTEXT, MEMORY, MESSAGES, block, folded, literal, render};
 use crate::conversation::Error;
 use crate::conversation::handoff::{DIGEST_CHARS, USER_CHARS};
 use crate::conversation::links::LinkRegistry;
@@ -17,7 +17,7 @@ use crate::conversation::sessions::{
     HANDOFF_PATH, SESSIONS_PREFIX, Tier, handoff_tier, parse_handoff,
 };
 use crate::conversation::views::project_conversation;
-use crate::memory::index::render_within;
+use crate::memory::index::{render as render_index, render_within};
 use crate::memory::mounts::Mount;
 use crate::messaging::delivery::context as mailbox_context;
 use crate::messaging::mailbox::Mailbox;
@@ -28,6 +28,8 @@ use crate::text::{len, rstrip};
 pub const COMPACT_SOURCE: &str = "compact";
 const RECENT_SESSIONS: usize = 3;
 const DEFAULT_CONTEXT_CHARS: isize = 10_000;
+/// `LEFT_OFF_BUDGET_CHARS`: the index budget, the start blocks' at full.
+const LEFT_OFF_BUDGET_CHARS: isize = 8192;
 
 /// What each client injects whole from a SessionStart hook (verified
 /// 2026-10-03, §33): Claude Code's documented 10,000 chars; Codex's 2,500
@@ -200,6 +202,37 @@ pub fn render_start_context(
         None => left_off,
         Some(note) => format!("{note}\n\n{left_off}"),
     })
+}
+
+/// The start blocks for a door with no hook (`render_instructions`, §33):
+/// the memory section with its index, the inbox, then the note and where
+/// we left off at the full budgets, the MCP server's instructions where
+/// the session is unknown and none is the own one.
+pub fn render_instructions(
+    store: &FileStore,
+    mounts: &[Mount],
+    now: Stamp,
+) -> Result<String, Error> {
+    let template = literal(MEMORY, "system_section").expect("memory.yaml carries the section");
+    let mut section = render(&template, &[("index", &render_index(store, mounts)?)]);
+    let inbox = mailbox_context(&Mailbox::of_mounts(store, mounts, None))?;
+    if !inbox.is_empty() {
+        section = format!("{section}\n\n{inbox}");
+    }
+    let Some(mount) = crate::conversation::sessions::sessions_mount(mounts).map(|at| &mounts[at])
+    else {
+        return Ok(section);
+    };
+    let rest = render_start_context(
+        store,
+        &mount.scope,
+        &mount.path,
+        "",
+        "startup",
+        now,
+        LEFT_OFF_BUDGET_CHARS,
+    )?;
+    Ok(format!("{section}\n\n{rest}"))
 }
 
 /// What the hook prints under the client's ceiling: instructions and

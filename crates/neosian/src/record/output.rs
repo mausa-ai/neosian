@@ -31,11 +31,13 @@ pub struct Envelope {
     pub turn: Option<u64>,
     pub document: Option<String>,
     pub context: Option<String>,
+    /// The plugins' poll and delivery events answer with this key too.
+    pub messages: Option<Vec<Value>>,
 }
 
 impl Envelope {
     pub fn json(&self) -> Value {
-        json!({
+        let mut envelope = json!({
             "event": self.event,
             "session_id": self.session_id,
             "actor": self.actor.as_str(),
@@ -45,7 +47,11 @@ impl Envelope {
             "document": self.document,
             "client": Value::Null,
             "context": self.context,
-        })
+        });
+        if let Some(messages) = &self.messages {
+            envelope["messages"] = json!(messages);
+        }
+        envelope
     }
 }
 
@@ -112,6 +118,7 @@ mod tests {
             turn: None,
             document: None,
             context: context.map(str::to_string),
+            messages: None,
         }
     }
 

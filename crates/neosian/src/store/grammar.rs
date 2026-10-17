@@ -65,7 +65,7 @@ pub fn parse_scope(value: &str) -> Result<(), MemoryError> {
 /// with an optional `#<turn>`. Every writer of the binary names one, and
 /// the grammar makes it a plain YAML scalar, which is how an envelope
 /// spells it.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Actor(String);
 
 impl Actor {

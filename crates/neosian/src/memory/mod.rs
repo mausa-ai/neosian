@@ -4,8 +4,9 @@
 
 pub mod cli;
 mod commands;
-mod dispatch;
+pub mod dispatch;
 pub mod grammar;
 pub mod index;
 pub mod mounts;
 mod operate;
+pub mod skill;
