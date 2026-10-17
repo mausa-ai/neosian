@@ -15,7 +15,7 @@
 # proxy (§18.4); the token is env-only, and an unset token refuses to
 # start at exit 2.
 
-FROM python:3.14-slim@sha256:cad9a2c871761c413caa6fdd6441c783451e740a48aaeba60ae62a8b53525ef6 AS builder
+FROM python:3.14-slim@sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabfe6013ec53729170 AS builder
 COPY --from=ghcr.io/astral-sh/uv:0.12.23 /uv /usr/local/bin/uv
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never
 WORKDIR /app
@@ -26,7 +26,7 @@ COPY neosian/ neosian/
 # appliance is NM's second backend, so it carries the driver (ledger #206).
 RUN uv sync --locked --no-dev --no-editable --extra postgres
 
-FROM python:3.14-slim@sha256:cad9a2c871761c413caa6fdd6441c783451e740a48aaeba60ae62a8b53525ef6
+FROM python:3.14-slim@sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabfe6013ec53729170
 RUN useradd --uid 1000 --create-home neosian \
     && mkdir /data && chown neosian:neosian /data
 # The venv keeps its build path; the module door below needs no shebang.
