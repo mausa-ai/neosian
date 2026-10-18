@@ -337,3 +337,38 @@ class TestContainerSurface:
             )
         assert response.status_code == 401
         assert response.headers["WWW-Authenticate"] == "Bearer"
+
+    async def test_mcp_initializes_over_the_socket(
+        self, server_url: str, server_token: str
+    ) -> None:
+        """The script mounts a scope on the file leg, so the container
+        serves `/mcp` (R2 slice B): one handshake-era `initialize`, its
+        answer an SSE frame naming the server and minting a session."""
+        initialize = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2025-06-18",
+                "capabilities": {},
+                "clientInfo": {"name": "container-conformance", "version": "0"},
+            },
+        }
+        headers = {
+            "Authorization": f"Bearer {server_token}",
+            "Accept": "application/json, text/event-stream",
+            "Content-Type": "application/json",
+        }
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{server_url}/mcp", json=initialize, headers=headers
+            )
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("text/event-stream")
+        assert response.headers["mcp-session-id"]
+        frames = [
+            json.loads(line[len("data: ") :])
+            for line in response.text.splitlines()
+            if line.startswith("data: ")
+        ]
+        assert frames[0]["result"]["serverInfo"]["name"] == "neosian-memory"

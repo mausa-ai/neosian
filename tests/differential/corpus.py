@@ -451,6 +451,15 @@ def _cli() -> list[Case]:
             "memory versions wire json",
             ("memory", "versions", "/project/notes/wire", *MOUNTS, "--json"),
         ),
+        # And what a session's writes over `/mcp` leave (slice B).
+        Case(
+            "memory view mcp document",
+            ("memory", "view", "/project/notes/over-mcp", *MOUNTS),
+        ),
+        Case(
+            "memory versions mcp json",
+            ("memory", "versions", "/project/notes/over-mcp", *MOUNTS, "--json"),
+        ),
     ]
     operator = [
         Case(

@@ -32,6 +32,7 @@ _PINNED_USE = re.compile(
 _GENERATED_USE = re.compile(r"^\s*(?:-\s*)?uses:\s*(\S+)@([0-9a-f]{40})\s*$")
 _ANY_USE = re.compile(r"^\s*(?:-\s*)?uses:")
 _DIGEST = re.compile(r"^FROM python:[^@\s]+@(sha256:[0-9a-f]{64})", re.M)
+_BACKENDS_LABEL = "ai.mausa.neosian.backends"
 
 
 def _workflow(path: Path) -> dict[Any, Any]:
@@ -89,6 +90,23 @@ def test_the_base_image_is_pinned_by_one_index_digest() -> None:
     digests = _DIGEST.findall(_DOCKERFILE.read_text(encoding="utf-8"))
     assert len(digests) == 2, "both stages pin the base image"
     assert len(set(digests)) == 1, "the two stages share one digest"
+
+
+@pytest.mark.unit
+def test_the_image_names_its_backends_and_the_container_test_reads_them() -> None:
+    # R2 slice B (#372): the container test runs one leg per backend the
+    # image's label names, so the Rust image at D narrows it to `file`
+    # and the Postgres leg skips by name until R4.
+    label = re.search(
+        rf'^LABEL {re.escape(_BACKENDS_LABEL)}="([^"]+)"$',
+        _DOCKERFILE.read_text(encoding="utf-8"),
+        re.M,
+    )
+    assert label is not None, "the image names its backends"
+    backends = label.group(1).split(",")
+    assert "file" in backends and set(backends) <= {"file", "postgres"}
+    script = (_ROOT / "scripts" / "container_test.sh").read_text(encoding="utf-8")
+    assert f'"{_BACKENDS_LABEL}"' in script, "the script reads the label"
 
 
 @pytest.mark.unit

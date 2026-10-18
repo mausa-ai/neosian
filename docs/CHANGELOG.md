@@ -17,11 +17,24 @@ phase close names the version.
   so a client may resume a page from either server over one home), the
   bearer gate with its token table and allowances, the body ceiling and
   the four `store/*` routes answer as the Python door answers them; the
-  Python conformance kits run green over `RemoteStore` against it.
-  `/mcp` over streamable HTTP waits for slice B, and a store only the
-  Python shell reaches says so: with `NEOSIAN_POSTGRES_DSN` set the verb
-  exits 1 naming `uv tool install neosian`. The two shutdown lines are
-  printed on SIGTERM and the process exits 0 after draining.
+  Python conformance kits run green over `RemoteStore` against it. A
+  store only the Python shell reaches says so: with
+  `NEOSIAN_POSTGRES_DSN` set the verb exits 1 naming `uv tool install
+  neosian`. The two shutdown lines are printed on SIGTERM and the
+  process exits 0 after draining.
+- `/mcp` from the binary (R2 slice B, #370): with mounts, `neosian serve`
+  speaks MCP over streamable HTTP as the Python door's SDK does in the
+  handshake era (2024-11-05 to 2025-11-25): `initialize` opens a session
+  whose id every answer carries, a request is answered as one SSE frame,
+  a notification is taken with 202, GET holds the session's standing
+  stream, DELETE ends it, and an idle session is forgotten after thirty
+  minutes. The one deliberate difference: a request stamped with a
+  2026-era protocol version is refused in the spec's own shape
+  (`-32022 Unsupported protocol version`, naming the four versions
+  served), which the SDK's client reads as a legacy advertisement and
+  falls back to `initialize`; the Python door serves the 2026-07-28
+  single-exchange era through its SDK. The bearer gate, the allowance's
+  refusal and the body ceiling cover the surface as on the Python door.
 - The differential tier replays the wire: a `serve` case spawns each
   door's state process over its copy of the seeded home, holds an
   exchange list with it and compares the answers and the home after
@@ -30,6 +43,20 @@ phase close names the version.
   and both kits run against the binary in the same tier
   (`tests/differential/test_kits.py`). The mixed-home test gains a
   client's writes through one door's state process read by the other.
+  Since slice B (#371) the tier reaches `/mcp` too: an exchange carries
+  the session an earlier answer minted (`{session:N}`), an SSE answer is
+  compared as its frames, the corpus holds a session's handshake, tools,
+  prompts, refusals and writes read back through the wire (184 cases),
+  the mixed-home test reads a session's writes from the other door, and
+  neosian's own `McpServer.http` connects to both doors and compares what
+  it lists and reads.
+- The image names the backends it serves (`LABEL
+  ai.mausa.neosian.backends`, R2 slice B, #372) and
+  `scripts/container_test.sh` runs one leg per name, skipping the
+  Postgres leg by the label or the unset DSN and saying which; the file
+  leg starts the container with a scope mounted, so `/mcp` is served and
+  the `external_server` tier initializes over the socket. The Rust image
+  at slice D narrows the label to `file` until R4.
 
 ### Fixed
 

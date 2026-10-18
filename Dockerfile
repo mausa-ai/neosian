@@ -34,6 +34,10 @@ COPY --from=builder /app/.venv /app/.venv
 ENV PATH="/app/.venv/bin:$PATH"
 # The installation shape `neosian status`/`update` report (DESIGN §30).
 ENV NEOSIAN_INSTALL=container
+# The backends this image serves; scripts/container_test.sh runs one leg
+# per backend named here (R2, §18.9). The Rust image narrows it to `file`
+# until R4 brings its Postgres backend.
+LABEL ai.mausa.neosian.backends="file,postgres"
 USER neosian
 VOLUME /data
 EXPOSE 6367

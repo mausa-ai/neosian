@@ -277,6 +277,12 @@ in the normal flow:
   under your home when the daemon is a VM that mounts only the home
   (Lima), where macOS's `/var/folders` cannot be bind-mounted.
 
+The script runs one leg per backend the image's
+`ai.mausa.neosian.backends` label names (R2, §18.9): the FileStore leg
+always, with a scope mounted so `/mcp` is served and initialized over
+the socket; the Postgres leg when the label names `postgres` and the
+DSN is set, skipped loudly otherwise, naming which.
+
 **Off means the tier self-skips whole** — `make test` and keyless boot
 never need a docker daemon.
 

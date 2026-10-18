@@ -5,10 +5,11 @@
 # conformance kits, the bearer gate, the health check, and a graceful
 # SIGTERM per leg.
 #
-# The FileStore leg always runs. The Postgres leg runs when
-# NEOSIAN_TEST_POSTGRES_DSN is set (CI's service container, or the
-# docs/SERVICES.md one-liner) and is skipped loudly otherwise. Needs a
-# docker daemon; refuses without one.
+# The FileStore leg always runs, with a scope mounted so /mcp is served
+# too. The Postgres leg runs when the image's ai.mausa.neosian.backends
+# label names postgres and NEOSIAN_TEST_POSTGRES_DSN is set (CI's service
+# container, or the docs/SERVICES.md one-liner); it is skipped loudly
+# otherwise, naming which. Needs a docker daemon; refuses without one.
 set -euo pipefail
 
 IMAGE="${NEOSIAN_CONTAINER_IMAGE:-neosian:conformance}"
@@ -72,15 +73,25 @@ graceful_stop() {
 
 echo "== build $IMAGE"
 docker build -q -t "$IMAGE" . >/dev/null
+# The image names the backends it serves (R2, §18.9): one leg per name.
+BACKENDS="$(docker image inspect -f '{{index .Config.Labels "ai.mausa.neosian.backends"}}' "$IMAGE")"
+if [ -z "$BACKENDS" ]; then
+    echo "container_test: $IMAGE carries no ai.mausa.neosian.backends label" >&2
+    exit 1
+fi
+echo "== backends: $BACKENDS"
 
 echo "== leg 1: volume FileStore"
 # The volume must live where the daemon can mount it: a VM-backed docker
 # (Lima) mounts the home, not macOS's $TMPDIR under /var/folders, so
 # NEOSIAN_CONTAINER_TMPDIR names the parent when the default cannot mount.
+# The scope mounts a memory, so the container serves /mcp beside the
+# store routes (§18.6: no mounts, no surface).
 ROOT="$(mktemp -d "${NEOSIAN_CONTAINER_TMPDIR:-${TMPDIR:-/tmp}}/neosian-container.XXXXXX")"
 CID="$(docker run -d --user "$(id -u):$(id -g)" \
     -e NEOSIAN_SERVE_TOKEN="$TOKEN" \
-    -p "127.0.0.1:${PORT}:6367" -v "$ROOT:/data" "$IMAGE")"
+    -p "127.0.0.1:${PORT}:6367" -v "$ROOT:/data" "$IMAGE" \
+    --root /data --scope user:container)"
 wait_health "http://127.0.0.1:${PORT}"
 NEOSIAN_TEST_SERVER_URL="http://127.0.0.1:${PORT}" \
     NEOSIAN_TEST_SERVER_TOKEN="$TOKEN" \
@@ -90,6 +101,13 @@ graceful_stop
 rm -rf "$ROOT"
 ROOT=""
 
+case ",$BACKENDS," in
+*,postgres,*) ;;
+*)
+    echo "== leg 2: Postgres — SKIPPED (the image serves: $BACKENDS)"
+    exit 0
+    ;;
+esac
 if [ -z "${NEOSIAN_TEST_POSTGRES_DSN:-}" ]; then
     echo "== leg 2: Postgres — SKIPPED (NEOSIAN_TEST_POSTGRES_DSN not set)"
     exit 0

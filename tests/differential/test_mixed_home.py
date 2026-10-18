@@ -129,6 +129,17 @@ SCENARIOS: Final = (
             "serve listings paged",
         ),
     ),
+    Scenario(
+        "a session's writes over /mcp, then the reads",
+        writes=("serve mcp writes",),
+        reads=(
+            "memory index",
+            "memory view mcp document",
+            "memory versions mcp json",
+            "serve mcp read back",
+            "continue json",
+        ),
+    ),
 )
 
 

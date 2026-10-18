@@ -13,10 +13,13 @@ refusal's sentence, so the block is dropped and the sentence compared.
 
 A `serve` case (R2, #368) spawns each door's state process over its copy
 of the home on a free port, replays an exchange list against it and
-compares the answers (status and parsed body) and the home after SIGTERM;
-the server's exit status and its log are each door's own and stay out of
-the comparison. A `next_cursor` is compared decoded, since the history's
-keyset carries a timestamp."""
+compares the answers (status, parsed body, whether a session id rode the
+answer) and the home after SIGTERM; the server's exit status and its log
+are each door's own and stay out of the comparison. A `next_cursor` is
+compared decoded, since the history's keyset carries a timestamp. An
+`/mcp` answer (slice B, #371) is its SSE frames parsed, and `{session:N}`
+in a header is the session id the N-th answer minted, compared by its
+presence alone."""
 
 from __future__ import annotations
 
@@ -85,6 +88,8 @@ _ARGPARSE: Final = re.compile(
     r"\Ausage: .*?^[^\n]*?: error: ", re.DOTALL | re.MULTILINE
 )
 _CURSOR_OF: Final = re.compile(r"\A\{cursor:(\d+)\}\Z")
+_SESSION_OF: Final = re.compile(r"\A\{session:(\d+)\}\Z")
+SESSION_HEADER: Final = "mcp-session-id"
 _RPC_TIMEOUT: Final = 30.0
 _BOOT_TIMEOUT: Final = 30.0
 _HTTP_TIMEOUT: Final = 30.0
@@ -94,8 +99,9 @@ _HTTP_TIMEOUT: Final = 30.0
 class Exchange:
     """One request of a `serve` case: the method, the path, the body (a
     JSON object with its strings expanded, `{cursor:N}` the `next_cursor`
-    the N-th answer carried; or raw bytes; or none) and the bearer
-    presented (None: no header)."""
+    the N-th answer carried; or raw bytes; or none), the bearer presented
+    (None: no header) and the headers, `{session:N}` the session id the
+    N-th answer minted."""
 
     method: str
     path: str
@@ -331,7 +337,7 @@ def _run_rpc(
     return Outcome(server.returncode, b"", stderr, tuple(responses))
 
 
-def _with_cursors(body: Mapping[str, Any], answers: list[tuple[int, Any]]) -> Any:
+def _with_cursors(body: Mapping[str, Any], answers: list[tuple[int, Any, bool]]) -> Any:
     """`{cursor:N}` in a body: the `next_cursor` the N-th answer carried."""
     resolved = dict(body)
     for name, value in body.items():
@@ -339,6 +345,32 @@ def _with_cursors(body: Mapping[str, Any], answers: list[tuple[int, Any]]) -> An
         if found is not None:
             resolved[name] = answers[int(found.group(1))][1]["next_cursor"]
     return resolved
+
+
+def _with_sessions(value: str, sessions: list[str | None]) -> str:
+    """`{session:N}` in a header: the session id the N-th answer minted."""
+    found = _SESSION_OF.match(value)
+    if found is None:
+        return value
+    minted = sessions[int(found.group(1))]
+    if minted is None:
+        raise RuntimeError(f"answer {found.group(1)} minted no session")
+    return minted
+
+
+def _parsed(response: httpx.Response) -> Any:
+    """A body by its kind: an SSE answer as its frames' JSON, a JSON body
+    parsed, anything else as text."""
+    if response.headers.get("content-type", "").startswith("text/event-stream"):
+        return [
+            json.loads(line[len("data: ") :])
+            for line in response.text.splitlines()
+            if line.startswith("data: ")
+        ]
+    try:
+        return response.json()
+    except ValueError:
+        return response.text
 
 
 def _run_http(
@@ -359,12 +391,16 @@ def _run_http(
         env=env,
         cwd=space.project,
     )
-    answers: list[tuple[int, Any]] = []
+    answers: list[tuple[int, Any, bool]] = []
+    sessions: list[str | None] = []
     try:
         wait_healthy(server, url)
         with httpx.Client(base_url=url, timeout=_HTTP_TIMEOUT) as http:
             for exchange in exchanges:
-                headers = dict(exchange.headers)
+                headers = {
+                    name: _with_sessions(value, sessions)
+                    for name, value in exchange.headers.items()
+                }
                 if exchange.token is not None:
                     headers["Authorization"] = f"Bearer {exchange.token}"
                 content: bytes | None = None
@@ -376,11 +412,11 @@ def _run_http(
                 response = http.request(
                     exchange.method, exchange.path, content=content, headers=headers
                 )
-                try:
-                    parsed: Any = response.json()
-                except ValueError:
-                    parsed = response.text
-                answers.append((response.status_code, parsed))
+                session = response.headers.get(SESSION_HEADER)
+                sessions.append(session)
+                answers.append(
+                    (response.status_code, _parsed(response), session is not None)
+                )
     finally:
         server.terminate()
         try:

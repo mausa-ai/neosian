@@ -2,20 +2,40 @@
 and probes (`tests/unit/server/test_wire_golden.py`, `test_wire_probes.py`)
 re-spelled as exchange lists over the seeded home, so both state
 processes answer them and leave the same home; the token table and the
-allowance; the grammar tier's refusals as one-shot runs."""
+allowance; the grammar tier's refusals as one-shot runs. Since slice B
+(#370, #371) the `/mcp` surface too: the handshake-era session over the
+project layout both doors derive from the working directory, its tools,
+prompts and refusals, the requests that present no session, and a
+session's writes read back through the wire."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping
 from typing import Any, Final
 
-from tests.differential.harness import TOKEN, Case, Exchange
+from tests.differential.harness import SESSION_HEADER, TOKEN, Case, Exchange
 
 SERVE: Final = ("serve", "--root", "{home}", "--port", "{port}")
 TOKEN_ENV: Final = {"NEOSIAN_SERVE_TOKEN": TOKEN}
 _ARCHIVE: Final = "{user}/proj:archive"
 _HI: Final = {"role": "user", "content": "hi"}
 _T0: Final = "2026-08-19T10:00:00Z"
+_MCP_HEADERS: Final = {
+    "Accept": "application/json, text/event-stream",
+    "Content-Type": "application/json",
+}
+_INITIALIZE: Final = {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "initialize",
+    "params": {
+        "protocolVersion": "2025-06-18",
+        "capabilities": {},
+        "clientInfo": {"name": "differential", "version": "0"},
+    },
+}
+_INITIALIZED: Final = {"jsonrpc": "2.0", "method": "notifications/initialized"}
+_OVER_MCP: Final = "notes/over-mcp"
 
 
 def _post(
@@ -538,6 +558,130 @@ def _refusals() -> list[Case]:
     ]
 
 
+def _rpc(
+    id_: int, method: str, params: Mapping[str, Any] | None = None
+) -> dict[str, Any]:
+    message: dict[str, Any] = {"jsonrpc": "2.0", "id": id_, "method": method}
+    if params is not None:
+        message["params"] = params
+    return message
+
+
+def _call(id_: int, tool: str, **arguments: Any) -> dict[str, Any]:
+    return _rpc(id_, "tools/call", {"name": tool, "arguments": arguments})
+
+
+def _mcp(
+    body: Mapping[str, Any] | bytes | None,
+    session: int | None = None,
+    *,
+    method: str = "POST",
+    token: str | None = TOKEN,
+    headers: Mapping[str, str] | None = None,
+) -> Exchange:
+    """One `/mcp` exchange: the SDK client's two headers unless overridden,
+    the session the N-th answer minted when `session` names it."""
+    carried = {**_MCP_HEADERS, **(headers or {})}
+    if session is not None:
+        carried[SESSION_HEADER] = f"{{session:{session}}}"
+    return Exchange(method, "/mcp", body, token, carried)
+
+
+def _mcp_session() -> Case:
+    """One session: the handshake, the state set, the refusals inside it,
+    DELETE and what follows."""
+    return _serve(
+        "mcp session",
+        _mcp(_INITIALIZE),
+        _mcp(_INITIALIZED, 0),
+        _mcp(_rpc(2, "tools/list"), 0),
+        _mcp(_rpc(3, "ping"), 0),
+        _mcp(_rpc(4, "prompts/list"), 0),
+        _mcp(_rpc(5, "prompts/get", {"name": "deploy"}), 0),
+        _mcp(_rpc(6, "prompts/get", {"name": "nope"}), 0),
+        _mcp(_rpc(7, "resources/list"), 0),
+        _mcp(_call(8, "memory", command="view", path="/"), 0),
+        _mcp(_call(9, "search_history", query="turn"), 0),
+        _mcp(_call(10, "recall_turn", turn=2, conversation="{session}"), 0),
+        _mcp(_call(11, "nope"), 0),
+        _mcp(_rpc(12, "tools/call", {"name": "memory"}), 0),
+        _mcp(_INITIALIZE, 0),
+        _mcp({"jsonrpc": "2.0", "id": 77, "result": {}}, 0),
+        _mcp({"jsonrpc": "2.0", "id": 1.5, "method": "ping"}, 0),
+        _mcp(_rpc(13, "ping"), 0, headers={"Accept": "application/json"}),
+        _mcp(_rpc(13, "ping"), 0, headers={"Content-Type": "text/plain"}),
+        _mcp(b"{nope", 0),
+        _mcp({}, 0, method="PUT"),
+        _mcp(None, 0, method="GET", headers={"Accept": "application/json"}),
+        _mcp(None, 0, method="DELETE"),
+        _mcp(_rpc(14, "ping"), 0),
+        _mcp(None, 0, method="DELETE"),
+    )
+
+
+def _mcp_without_session() -> Case:
+    """The requests that present no session: only `initialize` opens one,
+    and an opening request refused leaves nothing behind."""
+    return _serve(
+        "mcp without a session",
+        _mcp(_rpc(1, "ping")),
+        _mcp(_rpc(1, "ping"), headers={SESSION_HEADER: "nope"}),
+        _mcp(None, method="GET"),
+        _mcp(None, method="DELETE"),
+        _mcp(_INITIALIZED),
+        _mcp(_INITIALIZE, headers={"Accept": "text/plain"}),
+        _mcp(_INITIALIZE),
+        _mcp(_rpc(2, "tools/list"), 6),
+    )
+
+
+def _mcp_writes() -> Case:
+    """A session's writes as the process-wide actor, read back through the
+    same process's store routes."""
+    document = {"scope": "{proj}", "path": _OVER_MCP}
+    return _serve(
+        "mcp writes",
+        _mcp(_INITIALIZE),
+        _mcp(_INITIALIZED, 0),
+        _mcp(
+            _call(
+                2,
+                "memory",
+                command="create",
+                path=f"/project/{_OVER_MCP}",
+                content="# Over MCP\n\nWritten through /mcp.\n",
+            ),
+            0,
+        ),
+        _mcp(
+            _call(
+                3,
+                "memory",
+                command="str_replace",
+                path=f"/project/{_OVER_MCP}",
+                old_str="Written",
+                new_str="Rewritten",
+            ),
+            0,
+        ),
+        _mcp(_call(4, "memory", command="view", path=f"/project/{_OVER_MCP}"), 0),
+        _mcp(_call(5, "handoff", note="The wire departs; pick up the release."), 0),
+        _post("memory/read", document),
+        _post("memory/versions", document),
+        writes=True,
+    )
+
+
+def _mcp_read_back() -> Case:
+    """The wire's reads of what a session wrote (test_mixed_home)."""
+    document = {"scope": "{proj}", "path": _OVER_MCP}
+    return _serve(
+        "mcp read back",
+        _post("memory/read", document),
+        _post("memory/versions", document),
+    )
+
+
 def serve_cases() -> list[Case]:
     return [
         _handshake(),
@@ -548,4 +692,8 @@ def serve_cases() -> list[Case]:
         _bodies(),
         _allowance(),
         *_refusals(),
+        _mcp_session(),
+        _mcp_without_session(),
+        _mcp_writes(),
+        _mcp_read_back(),
     ]
