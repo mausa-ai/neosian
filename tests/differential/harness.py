@@ -9,25 +9,38 @@ is exact. The binary answers only the verbs it has: a case whose verb is
 not in `BINARY_VERBS` is skipped, and a verb the binary gains without
 joining that list fails the ratchet in test_verbs.py. One text is each
 grammar's own: at exit 2 argparse prints a usage block before the
-refusal's sentence, so the block is dropped and the sentence compared."""
+refusal's sentence, so the block is dropped and the sentence compared.
+
+A `serve` case (R2, #368) spawns each door's state process over its copy
+of the home on a free port, replays an exchange list against it and
+compares the answers (status and parsed body) and the home after SIGTERM;
+the server's exit status and its log are each door's own and stay out of
+the comparison. A `next_cursor` is compared decoded, since the history's
+keyset carries a timestamp."""
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import re
 import shutil
+import socket
 import subprocess
 import sys
+import time
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Final, Literal
 
+import httpx
 import yaml
 
 ROOT: Final = Path(__file__).resolve().parents[2]
 BINARY_ENV: Final = "NEOSIAN_BINARY"
+# The bearer the corpus's state processes take and its clients present.
+TOKEN: Final = "differential-token"
 # A verb with subcommands is told apart by each of them (`memory view`),
 # so a store's reads can assert before its writes exist.
 SUBCOMMANDS: Final[frozenset[str]] = frozenset({"memory"})
@@ -41,6 +54,7 @@ BINARY_VERBS: Final[frozenset[str]] = frozenset(
         "continue",
         "record",
         "mcp",
+        "serve",
         *(
             f"memory {command}"
             for command in (
@@ -70,23 +84,43 @@ _UUID: Final = re.compile(
 _ARGPARSE: Final = re.compile(
     r"\Ausage: .*?^[^\n]*?: error: ", re.DOTALL | re.MULTILINE
 )
+_CURSOR_OF: Final = re.compile(r"\A\{cursor:(\d+)\}\Z")
 _RPC_TIMEOUT: Final = 30.0
+_BOOT_TIMEOUT: Final = 30.0
+_HTTP_TIMEOUT: Final = 30.0
+
+
+@dataclass(frozen=True)
+class Exchange:
+    """One request of a `serve` case: the method, the path, the body (a
+    JSON object with its strings expanded, `{cursor:N}` the `next_cursor`
+    the N-th answer carried; or raw bytes; or none) and the bearer
+    presented (None: no header)."""
+
+    method: str
+    path: str
+    body: Mapping[str, Any] | bytes | None = None
+    token: str | None = TOKEN
+    headers: Mapping[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
 class Case:
     """One invocation. `argv` follows the executable, with `{home}`,
-    `{spool}`, `{project}`, `{out}`, `{user}`, `{proj}` and `{session}`
-    (the seed's newest conversation) expanded at run time; `payload` is
-    the object a hook sends on stdin (its strings expanded too), `stdin`
-    plain text, `rpc` a JSON-RPC conversation held with the spawned server
-    instead of a one-shot run."""
+    `{spool}`, `{project}`, `{out}`, `{user}`, `{proj}`, `{session}` (the
+    seed's newest conversation) and `{port}` expanded at run time;
+    `payload` is the object a hook sends on stdin (its strings expanded
+    too), `stdin` plain text, `rpc` a JSON-RPC conversation held with the
+    spawned server, `http` an exchange list held with the spawned state
+    process; `env` is laid over the workspace's environment, expanded."""
 
     name: str
     argv: tuple[str, ...]
     stdin: str | None = None
     payload: Mapping[str, Any] | None = None
     rpc: tuple[Mapping[str, Any], ...] = ()
+    http: tuple[Exchange, ...] = ()
+    env: Mapping[str, str] = field(default_factory=dict)
     writes: bool = False
     # A verb whose stdout is the shell's human banner compares by the one
     # token both print (`version`: what the installer greps, #340).
@@ -108,6 +142,7 @@ class Outcome:
     stdout: bytes
     stderr: bytes
     rpc: tuple[Any, ...] = ()
+    http: tuple[Any, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -200,12 +235,40 @@ def workspace(
     )
 
 
+def free_port() -> int:
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port: int = probe.getsockname()[1]
+    return port
+
+
+def wait_healthy(server: subprocess.Popen[bytes], url: str) -> None:
+    """Until `/health` answers, or the process gives up first."""
+    deadline = time.monotonic() + _BOOT_TIMEOUT
+    while True:
+        if server.poll() is not None:
+            _, err = server.communicate()
+            raise RuntimeError(f"serve exited early: {_decode(err)}")
+        try:
+            if httpx.get(f"{url}/health", timeout=1.0).status_code == 200:
+                return
+        except httpx.HTTPError:
+            pass
+        if time.monotonic() > deadline:
+            raise RuntimeError("serve never became healthy")
+        time.sleep(0.05)
+
+
 def run_case(executable: Path, case: Case, space: Workspace) -> Outcome:
-    """One door over one workspace: the one-shot run, or the RPC session."""
+    """One door over one workspace: the one-shot run, the RPC session, or
+    the state process and its exchanges."""
     argv = [str(executable), *(space.expand(token) for token in case.argv)]
     env = space.environment()
+    env.update({name: space.expand(value) for name, value in case.env.items()})
     if case.rpc:
         return _run_rpc(argv, case.rpc, space, env)
+    if case.http:
+        return _run_http(argv, case.http, space, env)
     stdin = case.stdin
     if case.payload is not None:
         stdin = space.expand(json.dumps(case.payload))
@@ -268,6 +331,66 @@ def _run_rpc(
     return Outcome(server.returncode, b"", stderr, tuple(responses))
 
 
+def _with_cursors(body: Mapping[str, Any], answers: list[tuple[int, Any]]) -> Any:
+    """`{cursor:N}` in a body: the `next_cursor` the N-th answer carried."""
+    resolved = dict(body)
+    for name, value in body.items():
+        found = _CURSOR_OF.match(value) if isinstance(value, str) else None
+        if found is not None:
+            resolved[name] = answers[int(found.group(1))][1]["next_cursor"]
+    return resolved
+
+
+def _run_http(
+    argv: list[str],
+    exchanges: tuple[Exchange, ...],
+    space: Workspace,
+    env: Mapping[str, str],
+) -> Outcome:
+    """The state process on a free port, the exchanges in order, SIGTERM."""
+    port = free_port()
+    argv = [token.replace("{port}", str(port)) for token in argv]
+    url = f"http://127.0.0.1:{port}"
+    server = subprocess.Popen(
+        argv,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=env,
+        cwd=space.project,
+    )
+    answers: list[tuple[int, Any]] = []
+    try:
+        wait_healthy(server, url)
+        with httpx.Client(base_url=url, timeout=_HTTP_TIMEOUT) as http:
+            for exchange in exchanges:
+                headers = dict(exchange.headers)
+                if exchange.token is not None:
+                    headers["Authorization"] = f"Bearer {exchange.token}"
+                content: bytes | None = None
+                if isinstance(exchange.body, Mapping):
+                    body = _with_cursors(exchange.body, answers)
+                    content = space.expand(json.dumps(body)).encode("utf-8")
+                elif exchange.body is not None:
+                    content = exchange.body
+                response = http.request(
+                    exchange.method, exchange.path, content=content, headers=headers
+                )
+                try:
+                    parsed: Any = response.json()
+                except ValueError:
+                    parsed = response.text
+                answers.append((response.status_code, parsed))
+    finally:
+        server.terminate()
+        try:
+            _, stderr = server.communicate(timeout=_RPC_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            server.kill()
+            _, stderr = server.communicate()
+    return Outcome(server.returncode, b"", stderr, http=tuple(answers))
+
+
 def normalise(text: str, space: Workspace, *, keep: frozenset[str]) -> str:
     """The shape of a text: the workspace's paths, timestamps and generated
     ids replaced by tokens, the ids the corpus itself names kept."""
@@ -287,11 +410,34 @@ def _decode(data: bytes) -> str:
     return data.decode("utf-8", errors="surrogateescape")
 
 
+def _cursors_decoded(value: Any) -> Any:
+    """A `next_cursor` as the keyset it encodes, its timestamp by shape;
+    every other value as it is."""
+    if isinstance(value, list):
+        return [_cursors_decoded(item) for item in value]
+    if not isinstance(value, dict):
+        return value
+    shaped: dict[str, Any] = {}
+    for name, item in value.items():
+        if name == "next_cursor" and isinstance(item, str):
+            parts = json.loads(base64.urlsafe_b64decode(item.encode("ascii")))
+            shaped[name] = [
+                _TIMESTAMP.sub("<TS>", part) if isinstance(part, str) else part
+                for part in parts
+            ]
+        else:
+            shaped[name] = _cursors_decoded(item)
+    return shaped
+
+
 def shape_of_output(
     case: Case, outcome: Outcome, space: Workspace, *, keep: frozenset[str]
 ) -> Any:
-    """What a door printed, by parity's unit: parsed JSON for `--json` and
-    RPC answers, the normalised bytes for everything else."""
+    """What a door printed, by parity's unit: parsed JSON for `--json`, RPC
+    and HTTP answers, the normalised bytes for everything else."""
+    if case.http:
+        answers = json.loads(normalise(json.dumps(outcome.http), space, keep=keep))
+        return _cursors_decoded(answers)
     stderr = normalise(_decode(outcome.stderr), space, keep=keep)
     stderr = _ARGPARSE.sub("error: ", stderr)
     if case.rpc:

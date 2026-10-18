@@ -11,6 +11,7 @@ from collections.abc import Mapping
 from typing import Any, Final
 
 from tests.differential.harness import Case
+from tests.differential.serve_cases import serve_cases
 from tests.unit.record.payloads import prompt, session_start, stop, tool
 
 # The corpus's own sessions: new conversations beside the seed's.
@@ -440,6 +441,16 @@ def _cli() -> list[Case]:
             ("memory", "revert", "/user/profile", "--version", "3", *MOUNTS, "--json"),
             writes=True,
         ),
+        # What a client's writes through the state process leave for the
+        # shell to read (test_mixed_home): nothing, over the seeded home.
+        Case(
+            "memory view wire document",
+            ("memory", "view", "/project/notes/wire", *MOUNTS),
+        ),
+        Case(
+            "memory versions wire json",
+            ("memory", "versions", "/project/notes/wire", *MOUNTS, "--json"),
+        ),
     ]
     operator = [
         Case(
@@ -469,6 +480,7 @@ def _cli() -> list[Case]:
         ),
         Case("search none", ("search", "zzz", *ROOT)),
         Case("search none json", ("search", "zzz", "turn", *ROOT, "--json")),
+        Case("search hi json", ("search", "hi", *ROOT, "--json")),
         Case("search message", ("search", "upstream", *ROOT)),
         Case("search message json", ("search", "upstream", *ROOT, "--json")),
         Case(
@@ -848,7 +860,14 @@ def _batons() -> list[Case]:
     ]
 
 
-CASES: Final[tuple[Case, ...]] = (*_cli(), *_batons(), *_hooks(), *_mailbox(), *_mcp())
+CASES: Final[tuple[Case, ...]] = (
+    *_cli(),
+    *_batons(),
+    *_hooks(),
+    *_mailbox(),
+    *_mcp(),
+    *serve_cases(),
+)
 BY_NAME: Final[dict[str, Case]] = {case.name: case for case in CASES}
 # One document through every mutation, each step building on the one
 # before: the script the two doors take turns on (test_mixed_home).

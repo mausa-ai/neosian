@@ -8,6 +8,35 @@ phase close names the version.
 
 ## [Unreleased]
 
+### Added
+
+- `neosian serve` from the binary (R2 slice A, the wire in Rust; DESIGN
+  §18, §39.11): the state process's twenty-one `/v1/` routes and the
+  handshake at `WIRE_VERSION` 6 over the file store, on axum. The
+  envelope, the typed parameters, the paged listings (byte-equal cursors,
+  so a client may resume a page from either server over one home), the
+  bearer gate with its token table and allowances, the body ceiling and
+  the four `store/*` routes answer as the Python door answers them; the
+  Python conformance kits run green over `RemoteStore` against it.
+  `/mcp` over streamable HTTP waits for slice B, and a store only the
+  Python shell reaches says so: with `NEOSIAN_POSTGRES_DSN` set the verb
+  exits 1 naming `uv tool install neosian`. The two shutdown lines are
+  printed on SIGTERM and the process exits 0 after draining.
+- The differential tier replays the wire: a `serve` case spawns each
+  door's state process over its copy of the seeded home, holds an
+  exchange list with it and compares the answers and the home after
+  SIGTERM; the corpus grows from 147 to 178 cases with the goldens' and
+  probes' exchanges, the token table and the grammar tier's refusals,
+  and both kits run against the binary in the same tier
+  (`tests/differential/test_kits.py`). The mixed-home test gains a
+  client's writes through one door's state process read by the other.
+
+### Fixed
+
+- `neosian serve --actor` with an actor outside the grammar is refused at
+  exit 2 like every other store flag; it was a traceback at exit 1 once
+  the server built its app.
+
 ## [1.10.0] - 2026-10-17
 
 ### Added

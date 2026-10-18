@@ -118,6 +118,17 @@ SCENARIOS: Final = (
         writes=("memory delete baton",),
         reads=("continue json", "continue named"),
     ),
+    Scenario(
+        "a client's writes through the state process, then the reads",
+        writes=("serve memory lifecycle", "serve conversation lifecycle"),
+        reads=(
+            "memory index",
+            "memory view wire document",
+            "memory versions wire json",
+            "search hi json",
+            "serve listings paged",
+        ),
+    ),
 )
 
 
