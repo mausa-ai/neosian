@@ -62,13 +62,51 @@ pub trait Handler {
     fn handle(&mut self, method: &str, params: Option<&Map<String, Value>>) -> Answer;
 }
 
+/// The dispatcher's gate, one per session on either transport (stdio,
+/// `/mcp`): `initialize` opens it, every other request but `ping` is
+/// refused until it is open.
+#[derive(Default)]
+pub struct Gate {
+    initialized: bool,
+}
+
+impl Gate {
+    /// Whether the handler sees this request, or the refusal it gets.
+    pub fn admit(&mut self, method: &str) -> Result<(), Answer> {
+        if method == "initialize" {
+            self.initialized = true;
+        } else if !self.initialized && method != "ping" {
+            return Err(Answer::invalid_params());
+        }
+        Ok(())
+    }
+}
+
+/// The answer's envelope for the request `id`.
+pub fn envelope(id: &Value, answer: Answer) -> Value {
+    match answer {
+        Answer::Result(result) => json!({"jsonrpc": "2.0", "id": id, "result": result}),
+        Answer::Error {
+            code,
+            message,
+            data,
+        } => {
+            let mut error = json!({"code": code, "message": message});
+            if let Some(data) = data {
+                error["data"] = data;
+            }
+            json!({"jsonrpc": "2.0", "id": id, "error": error})
+        }
+    }
+}
+
 /// Serve one session: read until EOF, answer every request in order.
 pub fn serve(
     handler: &mut impl Handler,
     input: impl BufRead,
     mut out: impl Write,
 ) -> io::Result<()> {
-    let mut initialized = false;
+    let mut gate = Gate::default();
     for line in input.lines() {
         let line = line?;
         let Ok(Value::Object(message)) = serde_json::from_str::<Value>(&line) else {
@@ -82,29 +120,11 @@ pub fn serve(
         let Some(id) = id else {
             continue; // a notification; none changes a stdio session
         };
-        let answer = if method == "initialize" {
-            initialized = true;
-            handler.handle(method, params)
-        } else if !initialized && method != "ping" {
-            Answer::invalid_params()
-        } else {
-            handler.handle(method, params)
+        let answer = match gate.admit(method) {
+            Ok(()) => handler.handle(method, params),
+            Err(refusal) => refusal,
         };
-        let envelope = match answer {
-            Answer::Result(result) => json!({"jsonrpc": "2.0", "id": id, "result": result}),
-            Answer::Error {
-                code,
-                message,
-                data,
-            } => {
-                let mut error = json!({"code": code, "message": message});
-                if let Some(data) = data {
-                    error["data"] = data;
-                }
-                json!({"jsonrpc": "2.0", "id": id, "error": error})
-            }
-        };
-        writeln!(out, "{envelope}")?;
+        writeln!(out, "{}", envelope(id, answer))?;
         out.flush()?;
     }
     Ok(())

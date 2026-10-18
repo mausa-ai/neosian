@@ -427,6 +427,7 @@ dependencies = [
  "base64",
  "clap",
  "fancy-regex",
+ "futures-util",
  "serde_json",
  "tokio",
  "uuid",

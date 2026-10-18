@@ -8,20 +8,25 @@
 
 use std::env;
 use std::io::{self, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use clap::Args;
+use tokio::sync::watch;
 
-use super::{Shared, auth, routes};
+use super::{Shared, auth, mcp, routes};
 use crate::cli::usage;
 use crate::home::home;
 use crate::mcp::cli::resolve_mounts;
+use crate::mcp::server::Server;
 use crate::memory::cli::{DSN_ENV, NEEDS_PYTHON};
-use crate::memory::mounts::Refusal;
+use crate::memory::dispatch::Memory;
+use crate::memory::mounts::{Mount, Refusal};
+use crate::record::context::render_instructions;
 use crate::repr::repr;
 use crate::store::FileStore;
 use crate::store::grammar::Actor;
+use crate::store::time::Stamp;
 
 /// The `/mcp` surface's process-wide actor (DESIGN §18.6, §20).
 pub const DEFAULT_ACTOR: &str = "serve:mcp";
@@ -71,10 +76,9 @@ fn refuse(message: impl Into<String>) -> Refusal {
 }
 
 /// The grammar tier (`parse_args`): what is refused at exit 2 with nothing
-/// built, in the Python door's order and sentences. The mounts are
-/// resolved for their grammar alone: the surface they gate, `/mcp`, lands
-/// at slice B.
-fn grammar(args: &Serve) -> Result<auth::Clients, Refusal> {
+/// built, in the Python door's order and sentences; the mounts resolved
+/// are the `/mcp` surface's, none meaning no surface (§18's relaxation).
+fn grammar(args: &Serve) -> Result<(auth::Clients, Vec<Mount>, Actor), Refusal> {
     if !(1..=65535).contains(&args.port) {
         return Err(refuse(format!(
             "--port must be in 1..65535, got {}",
@@ -118,24 +122,46 @@ fn grammar(args: &Serve) -> Result<auth::Clients, Refusal> {
             "--url is a client's flag: the state process serves a root or a DSN",
         ));
     }
-    resolve_mounts(args.scope.as_deref(), &args.mount, || Ok(Vec::new()))?;
+    let mounts = resolve_mounts(args.scope.as_deref(), &args.mount, || Ok(Vec::new()))?;
     let Some(token) = set(TOKEN_ENV) else {
         return Err(refuse(format!(
             "{TOKEN_ENV} is required — the state process never serves unauthenticated"
         )));
     };
     let clients = auth::parse_clients(&token).map_err(refuse)?;
-    if let Err(reason) = Actor::parse(&args.actor) {
-        return Err(refuse(format!(
+    let actor = Actor::parse(&args.actor).map_err(|reason| {
+        refuse(format!(
             "--actor {}: {reason} (e.g. cli:claude-code)",
             repr(&args.actor)
-        )));
-    }
-    Ok(clients)
+        ))
+    })?;
+    Ok((clients, mounts, actor))
 }
 
-/// SIGTERM or an interrupt: the graceful path, in-flight requests drained.
-async fn shutdown() {
+/// The `/mcp` surface (`build_app` with mounts, §18.6): the same server the
+/// stdio door serves, its instructions rendered once per process (#51 on
+/// this transport), writing as the process-wide actor.
+fn surface(
+    root: &Path,
+    mounts: Vec<Mount>,
+    actor: Actor,
+) -> io::Result<Result<mcp::Surface, String>> {
+    let store = FileStore::open(root)?;
+    let instructions = match render_instructions(&store, &mounts, Stamp::now()) {
+        Ok(instructions) => instructions,
+        Err(error) => return Ok(Err(error.text())),
+    };
+    let memory = Memory {
+        store,
+        mounts,
+        actor,
+    };
+    Ok(Ok(mcp::Surface::new(Server::new(memory, instructions))))
+}
+
+/// SIGTERM or an interrupt: the graceful path, in-flight requests drained
+/// and every standing `/mcp` stream ended so the connections can close.
+async fn shutdown(closing: Option<watch::Sender<bool>>) {
     #[cfg(unix)]
     {
         use tokio::signal::unix::{SignalKind, signal};
@@ -149,11 +175,14 @@ async fn shutdown() {
     {
         let _ = tokio::signal::ctrl_c().await;
     }
+    if let Some(closing) = closing {
+        let _ = closing.send(true);
+    }
 }
 
 pub fn run(args: &Serve, out: &mut impl Write, err: &mut impl Write) -> io::Result<u8> {
-    let clients = match grammar(args) {
-        Ok(clients) => clients,
+    let (clients, mounts, actor) = match grammar(args) {
+        Ok(parsed) => parsed,
         Err(Refusal::Usage(message)) => return usage(false, &message, out, err),
         Err(Refusal::Memory(error)) => {
             writeln!(err, "error: [{}] {}", error.code, error.message)?;
@@ -169,7 +198,23 @@ pub fn run(args: &Serve, out: &mut impl Write, err: &mut impl Write) -> io::Resu
         None => home()?,
     };
     let store = FileStore::open(&root)?;
-    let shared = Arc::new(Shared { store, clients });
+    let mcp = if mounts.is_empty() {
+        None
+    } else {
+        match surface(&root, mounts, actor)? {
+            Ok(surface) => Some(surface),
+            Err(text) => {
+                writeln!(err, "error: {text}")?;
+                return Ok(1);
+            }
+        }
+    };
+    let closing = mcp.as_ref().map(|surface| surface.closing.clone());
+    let shared = Arc::new(Shared {
+        store,
+        clients,
+        mcp,
+    });
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?;
@@ -182,7 +227,7 @@ pub fn run(args: &Serve, out: &mut impl Write, err: &mut impl Write) -> io::Resu
             listener.local_addr()?
         )?;
         axum::serve(listener, routes::router(shared))
-            .with_graceful_shutdown(shutdown())
+            .with_graceful_shutdown(shutdown(closing))
             .await
     });
     match served {

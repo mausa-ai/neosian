@@ -11,13 +11,13 @@ use axum::extract::{Request, State};
 use axum::http::StatusCode;
 use axum::middleware;
 use axum::response::Response;
-use axum::routing::{get, post};
+use axum::routing::{any, get, post};
 use serde_json::{Value, json};
 
 use super::auth::{self, Client};
 use super::envelope::{CEILING, Fail, json, text, unauthorized};
 use super::params::Payload;
-use super::{routes_conversation, routes_memory, routes_store};
+use super::{mcp, routes_conversation, routes_memory, routes_store};
 use crate::store::FileStore;
 use crate::version::VERSION;
 
@@ -47,6 +47,9 @@ pub fn router(shared: super::State) -> Router {
         .route("/v1/capabilities", get(capabilities));
     for route in table() {
         router = router.route(&format!("/v1/{}", route.name), post(endpoint));
+    }
+    if shared.mcp.is_some() {
+        router = router.route("/mcp", any(mcp::endpoint));
     }
     router
         .fallback(not_found)

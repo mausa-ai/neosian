@@ -6,7 +6,7 @@
 //! reproduced on std alone (user ruling, 2026-10-17).
 
 pub mod cli;
-mod rpc;
+pub mod rpc;
 mod schema;
-mod server;
+pub mod server;
 mod tools;
