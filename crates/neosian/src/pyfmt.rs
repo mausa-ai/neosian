@@ -50,7 +50,8 @@ pub fn py_str(value: &Value) -> String {
     }
 }
 
-fn py_repr(value: &Value) -> String {
+/// `repr(value)` of what `json.loads` returned.
+pub fn py_repr(value: &Value) -> String {
     match value {
         Value::Null => "None".to_string(),
         Value::Bool(true) => "True".to_string(),

@@ -11,15 +11,22 @@
 //!
 //! Every public call holds the root-wide advisory lock for its whole
 //! length, reads included, so the hooks, MCP servers and shells of both
-//! implementations may share one root.
+//! implementations may share one root. The ledger reads, the pages, the
+//! eraser and the restore (R2, the wire's substrate) sit in their modules.
 
+pub mod cursor;
 pub mod envelope;
+mod erasure;
 pub mod error;
 pub(crate) mod fileio;
 pub mod grammar;
 pub mod journal;
 pub mod layout;
+mod ledger;
 pub(crate) mod lock;
+mod pages;
+mod restore;
+pub(crate) mod scalar;
 pub mod time;
 mod turns;
 mod write;
@@ -33,6 +40,8 @@ use self::error::{Error, MemoryError};
 use self::grammar::{parse_scope, validate_document_path};
 use self::journal::Row;
 use self::layout::{DOCUMENTS, REDACTIONS, VERSIONS};
+pub use self::pages::Page;
+pub use self::restore::Restored;
 use self::time::Stamp;
 
 /// `neosian_format`: the storage format this build reads; anything newer
@@ -45,10 +54,12 @@ pub struct Document {
     pub content: String,
 }
 
-/// One row of a scope listing: a deleted document never appears, a
-/// redacted one appears flagged.
+/// One row of a scope listing (`MemoryEntry`): a deleted document never
+/// appears, a redacted one appears flagged.
 pub struct Entry {
     pub path: String,
+    pub version: u64,
+    pub created_at: Stamp,
     pub updated_at: Stamp,
     pub redacted: bool,
 }
@@ -81,6 +92,10 @@ impl FileStore {
     pub fn list_documents(&self, scope: &str, prefix: &str) -> Result<Vec<Entry>, Error> {
         let _held = self.lock()?;
         self.scope(scope)?;
+        self.listing(scope, prefix)
+    }
+
+    fn listing(&self, scope: &str, prefix: &str) -> Result<Vec<Entry>, Error> {
         let documents = layout::scope_dir(&self.root, scope).join(DOCUMENTS);
         let mut entries = Vec::new();
         for path in layout::logical_paths(&documents, ".md")? {
@@ -91,6 +106,8 @@ impl FileStore {
                 self.load(scope, &path, &documents.join(format!("{path}.md")))?;
             entries.push(Entry {
                 path,
+                version: envelope.version,
+                created_at: envelope.created_at,
                 updated_at: envelope.updated_at,
                 redacted: envelope.redacted,
             });

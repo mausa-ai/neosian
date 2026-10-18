@@ -105,6 +105,7 @@ mod tests {
         let turns = turns(4);
         let entries = vec![Projection {
             turn: 2,
+            kind: "epoch".into(),
             text: "folded".into(),
             span: 2,
         }];

@@ -1,17 +1,21 @@
-//! The memory store's errors (DESIGN §5, §8): the codes and the message
-//! text of `shared/exceptions/memory.py`, byte for byte, since both doors
-//! print them.
+//! The memory store's errors (DESIGN §5, §8): the codes, the message
+//! text and the typed details of `shared/exceptions/memory.py`, byte for
+//! byte, since both doors print them and the wire carries the details so
+//! a client rebuilds the exact exception (§18.3).
 
 use std::io;
+
+use serde_json::{Value, json};
 
 use crate::repr::repr;
 
 /// One refusal of the store or the tool layer: a code of the `memory_`
-/// family and the developer-facing sentence.
+/// family, the developer-facing sentence, and the fields it was built from.
 #[derive(Debug)]
 pub struct MemoryError {
     pub code: &'static str,
     pub message: String,
+    pub details: Value,
 }
 
 impl MemoryError {
@@ -23,6 +27,7 @@ impl MemoryError {
                 repr(path),
                 repr(scope)
             ),
+            details: json!({"scope": scope, "path": path}),
         }
     }
 
@@ -30,6 +35,7 @@ impl MemoryError {
         Self {
             code: "memory_scope_invalid",
             message: format!("Invalid memory scope {}: {reason}", repr(scope)),
+            details: json!({"scope": scope, "reason": reason}),
         }
     }
 
@@ -37,11 +43,24 @@ impl MemoryError {
         Self {
             code: "memory_path_invalid",
             message: format!("Invalid memory document path {}: {reason}", repr(path)),
+            details: json!({"path": path, "reason": reason}),
         }
     }
 
     /// `path` is None where the scope itself is what collided.
     pub fn conflict(scope: &str, path: Option<&str>, reason: &str) -> Self {
+        Self::conflict_versions(scope, path, reason, None, None)
+    }
+
+    /// A lost `expected_version` race: the version the caller expected and
+    /// the one found (None for an absent document).
+    pub fn conflict_versions(
+        scope: &str,
+        path: Option<&str>,
+        reason: &str,
+        expected: Option<u64>,
+        actual: Option<u64>,
+    ) -> Self {
         let place = match path {
             Some(path) => format!("on {} in scope {}", repr(path), repr(scope)),
             None => format!("in scope {}", repr(scope)),
@@ -49,6 +68,13 @@ impl MemoryError {
         Self {
             code: "memory_conflict",
             message: format!("Memory conflict {place}: {reason}"),
+            details: json!({
+                "scope": scope,
+                "path": path,
+                "reason": reason,
+                "expected_version": expected,
+                "actual_version": actual,
+            }),
         }
     }
 
@@ -60,6 +86,7 @@ impl MemoryError {
                 repr(path),
                 repr(scope)
             ),
+            details: json!({"scope": scope, "path": path, "reason": reason}),
         }
     }
 
@@ -69,6 +96,7 @@ impl MemoryError {
         Self {
             code: "memory_read_only_mount",
             message: format!("Memory mount {} is read-only", repr(mount_path)),
+            details: json!({"mount_path": mount_path}),
         }
     }
 
@@ -77,15 +105,18 @@ impl MemoryError {
         Self {
             code: "memory_edit_only_mount",
             message: format!("Memory mount {mount} is edit-only: its document set is fixed"),
+            details: json!({"mount_path": mount_path}),
         }
     }
 }
 
 /// What a store call fails with: a refusal the caller renders with its
-/// code, or the filesystem's own error.
+/// code, a `ValueError` of the Python side (its sentence, no code: a
+/// malformed cursor, a page limit below one), or the filesystem's own error.
 #[derive(Debug)]
 pub enum Error {
     Memory(MemoryError),
+    Value(String),
     Io(io::Error),
 }
 

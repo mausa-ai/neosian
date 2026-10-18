@@ -81,6 +81,13 @@ impl Actor {
         segments(head, true, counted, shape).map(|()| Self(value.to_string()))
     }
 
+    /// The daemon's stamp (§20, §18.4): the asserted client, grammatical
+    /// by construction, with the body's opaque tail under it; never
+    /// parsed, as the store keeps every actor opaque.
+    pub fn stamped(text: &str) -> Self {
+        Self(text.to_string())
+    }
+
     pub fn as_str(&self) -> &str {
         &self.0
     }

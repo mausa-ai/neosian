@@ -7,9 +7,12 @@ use crate::store::time::Stamp;
 const FULL: &str = "## /user — durable facts\n- /user/notes/a\n- /user/notes/b\n- /user/notes/c\n- /user/profile\n- /user/zeta\n\n## /project (read-only)\n- /project/decisions\n- /project/facts (redacted)\n- /project/skills/deploy\n- /project/skills/release\n\n## /kb (edit-only)\n(empty)";
 
 fn entry(path: &str, minute: u32, redacted: bool) -> Entry {
+    let stamp = Stamp::parse(&format!("2026-01-01T00:{minute:02}:00Z")).unwrap();
     Entry {
         path: path.to_string(),
-        updated_at: Stamp::parse(&format!("2026-01-01T00:{minute:02}:00Z")).unwrap(),
+        version: 1,
+        created_at: stamp,
+        updated_at: stamp,
         redacted,
     }
 }

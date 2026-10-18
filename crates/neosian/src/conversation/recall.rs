@@ -147,7 +147,7 @@ pub fn recall(
             ),
         }));
     }
-    let turns = match store.read_turns(target) {
+    let turns = match store.read_turns(target, 0, None) {
         Ok(turns) => turns,
         Err(Error::Conversation(refused)) => {
             return Ok(Err(Corrective {

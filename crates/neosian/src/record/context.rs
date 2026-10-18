@@ -86,7 +86,7 @@ pub fn render_left_off(
     let (header, footer) = (prompt("start_header"), prompt("start_footer"));
     let mut sessions = Vec::new();
     for conversation_id in choose_sessions(&entries, own, source) {
-        let turns = store.read_turns(&conversation_id)?;
+        let turns = store.read_turns(&conversation_id, 0, None)?;
         if !turns.is_empty() {
             sessions.push((conversation_id, turns));
         }
@@ -116,7 +116,7 @@ pub fn render_left_off(
         .max(1) as usize;
     let mut blocks = Vec::new();
     for (head, (conversation_id, turns)) in heads.iter().zip(&sessions) {
-        let entries = store.read_projections(conversation_id)?;
+        let entries = store.read_projections(conversation_id, 0, None)?;
         let links = LinkRegistry::of(turns, Some(conversation_id));
         let lines = project_conversation(turns, &entries, DIGEST_CHARS, USER_CHARS, share, &links);
         let mut block = vec![head.clone()];

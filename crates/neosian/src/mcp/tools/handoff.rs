@@ -151,6 +151,7 @@ fn handoff_call(server: &Server, arguments: &Map<String, Value>) -> Outcome {
         Err(StoreError::Memory(error)) => {
             Outcome::fail(format!("[{}] {}", error.code, error.message))
         }
+        Err(StoreError::Value(sentence)) => Outcome::fail(sentence),
         Err(StoreError::Io(error)) => Outcome::failed("handoff", &error.to_string()),
     }
 }

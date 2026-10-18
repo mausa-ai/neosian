@@ -9,7 +9,7 @@ use clap::{Parser, Subcommand};
 use serde_json::json;
 
 use crate::conversation::{cli_continue, cli_search};
-use crate::{docs, mcp, memory, record, version};
+use crate::{docs, mcp, memory, record, serve, version};
 
 #[derive(Parser)]
 #[command(
@@ -48,6 +48,8 @@ enum Command {
     Record(record::cli::Record),
     /// Serve neosian memory to MCP clients on stdio (§39.3).
     Mcp(mcp::cli::Mcp),
+    /// Serve neosian memory and conversations over HTTP: the state process (§18).
+    Serve(serve::cli::Serve),
 }
 
 /// A grammar-tier refusal (exit 2): the message on stderr, and where
@@ -96,6 +98,7 @@ where
         Command::Continue(args) => cli_continue::run(&args, &mut out, &mut err),
         Command::Record(args) => record::cli::run(&args, &mut out, &mut err),
         Command::Mcp(args) => mcp::cli::run(&args, &mut out, &mut err),
+        Command::Serve(args) => serve::cli::run(&args, &mut out, &mut err),
     };
     match code {
         Ok(code) => ExitCode::from(code),

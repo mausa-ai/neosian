@@ -166,6 +166,7 @@ pub fn dispatch(memory: &Memory, call: &Call) -> io::Result<Outcome> {
     match answered() {
         Ok(outcome) => Ok(outcome),
         Err(Error::Memory(error)) => Ok(corrective(&error)),
+        Err(Error::Value(sentence)) => Ok(Outcome::fail(sentence)),
         Err(Error::Io(error)) => Err(error),
     }
 }

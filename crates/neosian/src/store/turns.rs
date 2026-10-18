@@ -1,46 +1,87 @@
 //! Turn persistence over the root (`conversation/file_turns.py`, DESIGN
-//! §9.8), the read side: `root/conversations/<id>/turns.jsonl` and
-//! `projections.jsonl`, each read whole under the root-wide lock the
-//! memory side holds too, a malformed or newer row refused and never
-//! skipped; the turn append the record verb lands, unsynced as the
-//! Python side writes it.
+//! §9.8): `root/conversations/<id>/turns.jsonl` and `projections.jsonl`,
+//! each read whole under the root-wide lock the memory side holds too, a
+//! malformed or newer row refused and never skipped; the appends the
+//! record verb and the wire land, unsynced as the Python side writes them.
 
 use std::fs;
-use std::io;
 use std::path::{Path, PathBuf};
 
 use super::FileStore;
-use super::fileio::append_line;
+use super::fileio::{append_line, private_mkdir};
 use super::time::Stamp;
 use crate::conversation::ids::parse_conversation_id;
 use crate::conversation::message::Message;
 use crate::conversation::rows::{
-    CONVERSATIONS, PROJECTIONS, TURNS, parse_projection, parse_turn, render_turn,
+    CONVERSATIONS, PROJECTIONS, TURNS, parse_projection, parse_turn, render_projection, render_turn,
 };
 use crate::conversation::search::search_files;
 use crate::conversation::{Error, Projection, Refused, Turn};
 
+/// `_check_cursor`: the ABC's own refusals of a negative start or limit.
+fn check_cursor(after: i64, limit: Option<i64>) -> Result<(), Error> {
+    if after < 0 {
+        return Err(Error::Value(format!("after must be >= 0, got {after}")));
+    }
+    if let Some(limit) = limit.filter(|limit| *limit < 0) {
+        return Err(Error::Value(format!("limit must be >= 0, got {limit}")));
+    }
+    Ok(())
+}
+
+/// The rows past `after`, at most `limit`.
+fn window<T>(rows: Vec<T>, after: i64, limit: Option<i64>, turn_of: impl Fn(&T) -> u64) -> Vec<T> {
+    let mut kept: Vec<T> = rows
+        .into_iter()
+        .filter(|row| turn_of(row) > after as u64)
+        .collect();
+    if let Some(limit) = limit {
+        kept.truncate(limit as usize);
+    }
+    kept
+}
+
 impl FileStore {
-    /// Every turn of a conversation, oldest first; none for one never
-    /// written.
-    pub fn read_turns(&self, conversation_id: &str) -> Result<Vec<Turn>, Error> {
+    /// The turns past `after`, oldest first, at most `limit`; none for a
+    /// conversation never written.
+    pub fn read_turns(
+        &self,
+        conversation_id: &str,
+        after: i64,
+        limit: Option<i64>,
+    ) -> Result<Vec<Turn>, Error> {
         let _held = self.lock()?;
         let file = self.conversation_dir(conversation_id)?.join(TURNS);
-        rows(&file, |line, number| {
+        check_cursor(after, limit)?;
+        let turns = rows(&file, |line, number| {
             parse_turn(line, number, conversation_id)
-        })
+        })?;
+        Ok(window(turns, after, limit, |turn| turn.turn))
     }
 
-    /// Every projection entry of a conversation in store order: by turn,
-    /// then span, insertion order breaking ties.
-    pub fn read_projections(&self, conversation_id: &str) -> Result<Vec<Projection>, Error> {
+    /// The projection entries past `after` in store order (by turn, then
+    /// span, insertion order breaking ties), at most `limit`.
+    pub fn read_projections(
+        &self,
+        conversation_id: &str,
+        after: i64,
+        limit: Option<i64>,
+    ) -> Result<Vec<Projection>, Error> {
         let _held = self.lock()?;
         let file = self.conversation_dir(conversation_id)?.join(PROJECTIONS);
+        check_cursor(after, limit)?;
         let mut entries = rows(&file, |line, number| {
             parse_projection(line, number, conversation_id)
         })?;
         entries.sort_by_key(|entry| (entry.turn, entry.span));
-        Ok(entries)
+        Ok(window(entries, after, limit, |entry| entry.turn))
+    }
+
+    /// The last turn's number, 0 for a conversation never written.
+    pub fn last_turn_number(&self, conversation_id: &str) -> Result<u64, Error> {
+        let _held = self.lock()?;
+        let file = self.conversation_dir(conversation_id)?.join(TURNS);
+        last_number(&file, conversation_id)
     }
 
     /// One turn appended under the root lock: the number after the log's
@@ -52,10 +93,12 @@ impl FileStore {
         actor: Option<String>,
     ) -> Result<Turn, Error> {
         let _held = self.lock()?;
-        if messages.is_empty() {
-            return Err(io::Error::other("a turn must carry at least one message").into());
-        }
         let file = self.conversation_dir(conversation_id)?.join(TURNS);
+        if messages.is_empty() {
+            return Err(Error::Value(
+                "a turn must carry at least one message".to_string(),
+            ));
+        }
         let turn = Turn {
             conversation_id: conversation_id.to_string(),
             turn: last_number(&file, conversation_id)? + 1,
@@ -66,6 +109,23 @@ impl FileStore {
         };
         append_line(&file, &render_turn(&turn), false)?;
         Ok(turn)
+    }
+
+    /// Projection entries appended in one unsynced write; none is nothing.
+    pub fn append_projections(
+        &self,
+        conversation_id: &str,
+        entries: &[Projection],
+    ) -> Result<(), Error> {
+        let _held = self.lock()?;
+        let file = self.conversation_dir(conversation_id)?.join(PROJECTIONS);
+        if entries.is_empty() {
+            return Ok(());
+        }
+        private_mkdir(file.parent().unwrap_or(&self.root))?;
+        let text: String = entries.iter().map(render_projection).collect();
+        append_line(&file, &text, false)?;
+        Ok(())
     }
 
     /// When a conversation began: its first row's stamp, that row alone

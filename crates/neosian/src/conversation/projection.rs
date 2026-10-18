@@ -198,32 +198,18 @@ mod tests {
 
     #[test]
     fn the_winning_entry_is_the_widest_then_the_later() {
+        let entry = |turn, text: &str, span| Projection {
+            turn,
+            kind: "log".into(),
+            text: text.into(),
+            span,
+        };
         let entries = vec![
-            Projection {
-                turn: 2,
-                text: "a".into(),
-                span: 1,
-            },
-            Projection {
-                turn: 3,
-                text: "b".into(),
-                span: 3,
-            },
-            Projection {
-                turn: 3,
-                text: "c".into(),
-                span: 1,
-            },
-            Projection {
-                turn: 5,
-                text: "d".into(),
-                span: 2,
-            },
-            Projection {
-                turn: 5,
-                text: "e".into(),
-                span: 2,
-            },
+            entry(2, "a", 1),
+            entry(3, "b", 3),
+            entry(3, "c", 1),
+            entry(5, "d", 2),
+            entry(5, "e", 2),
         ];
         let winner = select(&entries);
         assert_eq!(
@@ -231,14 +217,7 @@ mod tests {
             (1, 1, 1, 4, 4)
         );
         assert_eq!(entry_line(&entries[1]), "[1-3] b");
-        assert_eq!(
-            entry_line(&Projection {
-                turn: 7,
-                text: "  ".into(),
-                span: 1
-            }),
-            "[7]"
-        );
+        assert_eq!(entry_line(&entry(7, "  ", 1)), "[7]");
     }
 
     #[test]

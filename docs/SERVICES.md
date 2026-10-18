@@ -196,14 +196,15 @@ in `ps` (DESIGN §12 ledger #53). Unset, the entry points require
 ever applies the DDL — run `python -m neosian.schemas postgres | psql`
 first (DESIGN §8 C1). The Rust binary reads the file store alone until
 its Postgres substrate lands (DESIGN §39.2): with the key set, its
-`memory`, `search`, `continue`, `record` and `mcp` verbs exit 1 and
-name the Python shell, never the home in silence (a hook's exit 2 would
-block the prompt, so the record verb says it at 1 with its hint).
+`memory`, `search`, `continue`, `record`, `mcp` and `serve` verbs exit 1
+and name the Python shell, never the home in silence (a hook's exit 2
+would block the prompt, so the record verb says it at 1 with its hint).
 
 ## The state process — bearer tokens, not an API key
 
 `NEOSIAN_SERVE_TOKEN` is read only by `neosian serve` / `python -m
-neosian.server`. There is deliberately no `--token` flag: the argv rule
+neosian.server`, the binary's `serve` included (R2, DESIGN §39.11).
+There is deliberately no `--token` flag: the argv rule
 above applies to a token exactly as it does to a DSN (ledger #53). Since
 NL (DESIGN §20) the value is a **table** — `actor=token[,actor=token…]`,
 each actor in the grammar (`claude-code:laptop=…,app:kit=…`) — or one

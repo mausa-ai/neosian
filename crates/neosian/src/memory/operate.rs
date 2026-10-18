@@ -26,6 +26,7 @@ pub fn settle(
     match result {
         Ok(code) => Ok(code),
         Err(Error::Memory(error)) => fail(&corrective(&error), json, out, err),
+        Err(Error::Value(sentence)) => fail(&Outcome::fail(sentence), json, out, err),
         Err(Error::Io(error)) => Err(error),
     }
 }

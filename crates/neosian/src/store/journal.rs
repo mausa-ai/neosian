@@ -83,21 +83,96 @@ pub fn rewrite_rows(file: &Path, rows: &[Row]) -> io::Result<()> {
     atomic_write(file, &rows.iter().map(render_row).collect::<String>(), true)
 }
 
-/// One erasure act on a scope's trail: who cleared what, when, and how
-/// many distinct paths; `path` is None for the whole scope.
+/// One erasure act on a scope's trail (`MemoryRedaction`): who cleared
+/// what, when, and how many distinct paths; `path` is None for the whole
+/// scope.
+#[derive(Debug)]
+pub struct Act {
+    pub path: Option<String>,
+    pub actor: Option<String>,
+    pub created_at: Stamp,
+    pub count: u64,
+}
+
 pub fn append_redaction(
     trail: &Path,
     path: Option<&str>,
     actor: &Actor,
     count: usize,
 ) -> io::Result<()> {
+    let act = Act {
+        path: path.map(str::to_string),
+        actor: Some(actor.as_str().to_string()),
+        created_at: Stamp::now(),
+        count: count as u64,
+    };
+    append_line(trail, &render_act(&act), false)
+}
+
+/// The whole trail at once, oldest first: a verbatim restore (§26).
+pub fn write_acts(trail: &Path, acts: &[Act]) -> io::Result<()> {
+    atomic_write(
+        trail,
+        &acts.iter().map(render_act).collect::<String>(),
+        false,
+    )
+}
+
+fn render_act(act: &Act) -> String {
     let act = json!({
-        "ts": Stamp::now().z(),
-        "actor": actor.as_str(),
-        "path": path,
-        "count": count,
+        "ts": act.created_at.z(),
+        "actor": act.actor,
+        "path": act.path,
+        "count": act.count,
     });
-    append_line(trail, &format!("{act}\n"), false)
+    format!("{act}\n")
+}
+
+/// The trail oldest first; a missing trail is an empty history. The
+/// refusals name the trail as the path, as the Python reader does.
+pub fn read_acts(trail: &Path, scope: &str) -> Result<Vec<Act>, MemoryError> {
+    if !trail.is_file() {
+        return Ok(Vec::new());
+    }
+    let name = trail
+        .file_name()
+        .map(|name| name.to_string_lossy())
+        .unwrap_or_default();
+    let refuse = |reason: String| MemoryError::format_unsupported(scope, &name, &reason);
+    let text = fs::read_to_string(trail).map_err(|_| refuse("unreadable trail".to_string()))?;
+    text.lines()
+        .enumerate()
+        .map(|(index, line)| {
+            let place = format!("redaction trail line {}", index + 1);
+            let data: Value =
+                serde_json::from_str(line).map_err(|_| refuse(format!("malformed {place}")))?;
+            let Some(data) = data.as_object() else {
+                return Err(refuse(format!("{place} is not an object")));
+            };
+            let optional = |key: &str| match data.get(key) {
+                None | Some(Value::Null) => Some(None),
+                Some(Value::String(text)) => Some(Some(text.clone())),
+                Some(_) => None,
+            };
+            let count = data.get("count").and_then(Value::as_u64);
+            let ts = data.get("ts").and_then(Value::as_str);
+            let (Some(ts), Some(actor), Some(path), Some(count)) =
+                (ts, optional("actor"), optional("path"), count)
+            else {
+                return Err(refuse(format!("{place} has invalid fields")));
+            };
+            let created_at = Stamp::parse(ts).map_err(|error| match error {
+                Unreadable::Malformed => refuse(format!("{place} has an unreadable timestamp")),
+                Unreadable::Naive => refuse(format!("{place} has a naive timestamp")),
+            })?;
+            Ok(Act {
+                path,
+                actor,
+                created_at,
+                count,
+            })
+        })
+        .collect()
 }
 
 /// A row as one JSON line. Parity's unit for a row is the parsed object

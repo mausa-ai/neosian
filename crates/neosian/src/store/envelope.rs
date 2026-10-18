@@ -45,6 +45,19 @@ pub struct Envelope {
     pub extra: Vec<String>,
 }
 
+impl Envelope {
+    /// The actor's value: the spelled scalar read back, a quoted one
+    /// unquoted (the wire's `actor`, §18.2).
+    pub fn actor_value(&self) -> Option<String> {
+        self.actor
+            .as_deref()
+            .map(|spelled| match super::scalar::read(spelled) {
+                Some(serde_json::Value::String(value)) => value,
+                _ => spelled.to_string(),
+            })
+    }
+}
+
 /// Serialize envelope and content; `parse` is its exact inverse. The
 /// timestamps are quoted because YAML would otherwise read them as its
 /// own timestamp type; a false `redacted` and an absent actor are left out.

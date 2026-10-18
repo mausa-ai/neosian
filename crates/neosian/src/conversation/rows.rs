@@ -1,18 +1,21 @@
 //! The turn log's row codec and layout names (`conversation/file_rows.py`,
 //! DESIGN §9.8): one compact JSON object per line, `neosian_format` on
 //! every row, ISO-Z stamps; a malformed or newer row is refused, never
-//! skipped, since skipping would corrupt the numbering.
+//! skipped, since skipping would corrupt the numbering. The projection row
+//! and the erasure act (§38) are rendered here too.
 
 use serde_json::{Map, Value, json};
 
 use super::message::{self, Message};
-use super::{FORMAT, Projection, Refused, Turn};
+use super::{FORMAT, Projection, Redaction, Refused, Turn};
 use crate::pyfmt::dumps;
 use crate::store::time::{Stamp, Unreadable};
 
 pub const CONVERSATIONS: &str = "conversations";
 pub const TURNS: &str = "turns.jsonl";
 pub const PROJECTIONS: &str = "projections.jsonl";
+pub const REDACTIONS: &str = "redactions.jsonl";
+pub const KINDS: [&str; 3] = ["log", "digest", "epoch"];
 
 fn parse_object(
     line: &str,
@@ -51,8 +54,23 @@ fn stamp(raw: Option<&Value>, place: &str, conversation_id: &str) -> Result<Stam
     })
 }
 
-/// One turn as the Python side writes it (`render_turn`): compact,
-/// ASCII-escaped, the keys in its order, `redacted` only when set.
+/// An actor field: absent or null is none, a string itself, anything else
+/// invalid.
+fn actor(raw: Option<&Value>) -> Option<Option<String>> {
+    match raw {
+        None | Some(Value::Null) => Some(None),
+        Some(Value::String(actor)) => Some(Some(actor.clone())),
+        Some(_) => None,
+    }
+}
+
+/// One row as the Python side writes it: compact, ASCII-escaped, the keys
+/// in its order.
+fn line(data: Map<String, Value>) -> String {
+    format!("{}\n", dumps(&Value::Object(data), true))
+}
+
+/// One turn (`render_turn`): `redacted` only when set.
 pub fn render_turn(turn: &Turn) -> String {
     let mut data = Map::new();
     data.insert("neosian_format".to_string(), json!(FORMAT));
@@ -64,7 +82,28 @@ pub fn render_turn(turn: &Turn) -> String {
     if turn.redacted {
         data.insert("redacted".to_string(), json!(true));
     }
-    format!("{}\n", dumps(&Value::Object(data), true))
+    line(data)
+}
+
+/// One projection row (`render_projection`).
+pub fn render_projection(entry: &Projection) -> String {
+    let mut data = Map::new();
+    data.insert("neosian_format".to_string(), json!(FORMAT));
+    data.insert("turn".to_string(), json!(entry.turn));
+    data.insert("span".to_string(), json!(entry.span));
+    data.insert("kind".to_string(), json!(entry.kind));
+    data.insert("text".to_string(), json!(entry.text));
+    line(data)
+}
+
+/// One erasure act (`render_redaction`).
+pub fn render_redaction(act: &Redaction) -> String {
+    let mut data = Map::new();
+    data.insert("neosian_format".to_string(), json!(FORMAT));
+    data.insert("created_at".to_string(), json!(act.created_at.z()));
+    data.insert("actor".to_string(), json!(act.actor));
+    data.insert("turns".to_string(), json!(act.turns));
+    line(data)
 }
 
 /// One turn row; a redacted row carries no messages and every other row
@@ -78,17 +117,13 @@ pub fn parse_turn(line: &str, number: usize, conversation_id: &str) -> Result<Tu
         .and_then(Value::as_u64)
         .filter(|turn| *turn >= 1);
     let encoded = data.get("messages").and_then(Value::as_array);
-    let actor = match data.get("actor") {
-        None | Some(Value::Null) => Some(None),
-        Some(Value::String(actor)) => Some(Some(actor.clone())),
-        Some(_) => None,
-    };
     let redacted = match data.get("redacted") {
         None => Some(false),
         Some(Value::Bool(flag)) => Some(*flag),
         Some(_) => None,
     };
-    let (Some(turn), Some(encoded), Some(actor), Some(redacted)) = (turn, encoded, actor, redacted)
+    let (Some(turn), Some(encoded), Some(actor), Some(redacted)) =
+        (turn, encoded, actor(data.get("actor")), redacted)
     else {
         return Err(refuse(format!("{place} has invalid fields")));
     };
@@ -99,8 +134,8 @@ pub fn parse_turn(line: &str, number: usize, conversation_id: &str) -> Result<Tu
     let messages: Vec<Message> = encoded
         .iter()
         .map(message::from_json)
-        .collect::<Option<_>>()
-        .ok_or_else(|| refuse(format!("{place} has an undecodable message")))?;
+        .collect::<Result<_, _>>()
+        .map_err(|_| refuse(format!("{place} has an undecodable message")))?;
     Ok(Turn {
         conversation_id: conversation_id.to_string(),
         turn,
@@ -124,12 +159,13 @@ pub fn parse_projection(
     let kind = data
         .get("kind")
         .and_then(Value::as_str)
-        .filter(|kind| matches!(*kind, "log" | "digest" | "epoch"));
+        .filter(|kind| KINDS.contains(kind));
     let text = data.get("text").and_then(Value::as_str);
     match (turn, span, kind, text) {
-        (Some(turn), Some(span), Some(_), Some(text)) if 1 <= span && span <= turn => {
+        (Some(turn), Some(span), Some(kind), Some(text)) if 1 <= span && span <= turn => {
             Ok(Projection {
                 turn,
+                kind: kind.to_string(),
                 text: text.to_string(),
                 span,
             })
@@ -139,6 +175,38 @@ pub fn parse_projection(
             &format!("{place} has invalid fields"),
         )),
     }
+}
+
+/// One erasure act of a conversation's trail (`parse_redaction`).
+pub fn parse_redaction(
+    line: &str,
+    number: usize,
+    conversation_id: &str,
+) -> Result<Redaction, Refused> {
+    let place = format!("redaction trail line {number}");
+    let data = parse_object(line, &place, conversation_id)?;
+    let turns = data
+        .get("turns")
+        .and_then(Value::as_array)
+        .and_then(|turns| {
+            turns
+                .iter()
+                .map(|turn| turn.as_u64().filter(|turn| *turn >= 1))
+                .collect::<Option<Vec<u64>>>()
+                .filter(|turns| !turns.is_empty())
+        });
+    let (Some(turns), Some(actor)) = (turns, actor(data.get("actor"))) else {
+        return Err(Refused::format_unsupported(
+            conversation_id,
+            &format!("{place} has invalid fields"),
+        ));
+    };
+    Ok(Redaction {
+        conversation_id: conversation_id.to_string(),
+        turns,
+        actor,
+        created_at: stamp(data.get("created_at"), &place, conversation_id)?,
+    })
 }
 
 #[cfg(test)]
@@ -174,16 +242,26 @@ mod tests {
         let skeleton = r#"{"neosian_format":1,"turn":3,"created_at":"2026-10-12T22:27:56Z","messages":[],"actor":null,"redacted":true}"#;
         let turn = parse_turn(skeleton, 3, "c").unwrap();
         assert!(turn.redacted && turn.messages.is_empty() && turn.actor.is_none());
-        let entry = parse_projection(
-            r#"{"neosian_format":1,"turn":6,"span":4,"kind":"epoch","text":"folded"}"#,
-            1,
-            "c",
-        )
-        .unwrap();
+        assert_eq!(render_turn(&turn), format!("{skeleton}\n"));
+        let row = r#"{"neosian_format":1,"turn":6,"span":4,"kind":"epoch","text":"folded"}"#;
+        let entry = parse_projection(row, 1, "c").unwrap();
         assert_eq!(
-            (entry.turn, entry.span, entry.text.as_str()),
-            (6, 4, "folded")
+            (
+                entry.turn,
+                entry.span,
+                entry.kind.as_str(),
+                entry.text.as_str()
+            ),
+            (6, 4, "epoch", "folded")
         );
+        assert_eq!(render_projection(&entry), format!("{row}\n"));
+        let act = r#"{"neosian_format":1,"created_at":"2026-10-12T22:27:56Z","actor":"client:default/ops","turns":[1,2]}"#;
+        let parsed = parse_redaction(act, 1, "c").unwrap();
+        assert_eq!(
+            (parsed.turns.as_slice(), parsed.conversation_id.as_str()),
+            (&[1, 2][..], "c")
+        );
+        assert_eq!(render_redaction(&parsed), format!("{act}\n"));
     }
 
     #[test]
@@ -243,6 +321,23 @@ mod tests {
         assert_eq!(
             entry(r#"{"neosian_format":1,"turn":2,"span":1,"kind":"fold","text":""}"#),
             "projection line 1 has invalid fields"
+        );
+        let act = |line: &str| parse_redaction(line, 2, "c").map_err(reason).unwrap_err();
+        assert_eq!(
+            act(
+                r#"{"neosian_format":1,"created_at":"2026-10-12T22:27:56Z","actor":null,"turns":[]}"#
+            ),
+            "redaction trail line 2 has invalid fields"
+        );
+        assert_eq!(
+            act(
+                r#"{"neosian_format":1,"created_at":"2026-10-12T22:27:56Z","actor":null,"turns":[0]}"#
+            ),
+            "redaction trail line 2 has invalid fields"
+        );
+        assert_eq!(
+            act(r#"{"neosian_format":1,"created_at":"2026-10-12","actor":null,"turns":[1]}"#),
+            "redaction trail line 2 has a naive timestamp"
         );
     }
 }

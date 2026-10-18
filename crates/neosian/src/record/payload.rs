@@ -7,7 +7,7 @@
 
 use serde_json::{Map, Value, json};
 
-use crate::conversation::message::{Content, Message, Role, ToolCall, falsy};
+use crate::conversation::message::{Message, Role, ToolCall, falsy};
 use crate::pyfmt::{dumps_spaced, py_str};
 use crate::text::{head, len, tail};
 
@@ -196,12 +196,7 @@ pub fn messages_of(records: &[Record]) -> Vec<Message> {
     let mut messages = Vec::new();
     let mut rounds = 0;
     let text = |record: &Record, key: &str| record.get(key).map_or_else(String::new, py_str);
-    let prose = |role, text: String| Message {
-        role,
-        content: Some(Content::Text(text)),
-        tool_calls: Vec::new(),
-        tool_call_id: None,
-    };
+    let prose = Message::text;
     for record in records {
         match record.get("kind").and_then(Value::as_str) {
             Some("prompt" | "context") => messages.push(prose(Role::User, text(record, "text"))),
@@ -215,18 +210,19 @@ pub fn messages_of(records: &[Record]) -> Vec<Message> {
                     id: call_id.clone(),
                     name: text(record, "name"),
                     arguments: record.get("input").cloned().unwrap_or(Value::Null),
+                    extra: Value::Null,
                 };
                 messages.push(Message {
                     role: Role::Assistant,
                     content: None,
+                    reasoning: Value::Null,
                     tool_calls: vec![call],
                     tool_call_id: None,
+                    extra: Value::Null,
                 });
                 messages.push(Message {
-                    role: Role::Tool,
-                    content: Some(Content::Text(text(record, "response"))),
-                    tool_calls: Vec::new(),
                     tool_call_id: Some(call_id),
+                    ..Message::text(Role::Tool, text(record, "response"))
                 });
             }
             Some("stop" | "assistant") if record.get("text").is_some_and(|t| !falsy(t)) => {

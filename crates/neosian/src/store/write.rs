@@ -13,6 +13,7 @@ use super::fileio::atomic_write;
 use super::grammar::{Actor, validate_document_path};
 use super::journal::{self, Action, Row};
 use super::layout::{self, DOCUMENTS, REDACTIONS, VERSIONS};
+use super::scalar::spell_str;
 use super::time::Stamp;
 use super::{Document, FileStore};
 
@@ -36,6 +37,12 @@ fn after(rows: &[Row], existing: &Document) -> u64 {
     journal::next_version(rows).max(existing.envelope.version + 1)
 }
 
+/// The actor as the envelope spells it: plain for every actor of the §20
+/// grammar, quoted as PyYAML quotes it for the wire's opaque tail.
+fn spelled(actor: &Actor) -> Option<String> {
+    Some(spell_str(actor.as_str()))
+}
+
 impl FileStore {
     /// Create or overwrite; the version written. `expected` is the version
     /// the caller read: another, or no document at all, is a
@@ -48,6 +55,20 @@ impl FileStore {
         actor: &Actor,
         expected: Option<u64>,
     ) -> Result<u64, Error> {
+        Ok(self
+            .write_document(scope, path, content, actor, expected)?
+            .version)
+    }
+
+    /// `write`, answering the envelope it wrote (the wire's document).
+    pub fn write_document(
+        &self,
+        scope: &str,
+        path: &str,
+        content: &str,
+        actor: &Actor,
+        expected: Option<u64>,
+    ) -> Result<Envelope, Error> {
         let _held = self.lock()?;
         self.scope(scope)?;
         validate_document_path(path)?;
@@ -60,7 +81,9 @@ impl FileStore {
             _ => None,
         };
         if let Some(reason) = lost {
-            return Err(MemoryError::conflict(scope, Some(path), reason).into());
+            let conflict =
+                MemoryError::conflict_versions(scope, Some(path), reason, expected, found);
+            return Err(conflict.into());
         }
         let (sidecar, rows) = self.rows(scope, path)?;
         let now = Stamp::now();
@@ -84,12 +107,12 @@ impl FileStore {
             version,
             created_at,
             updated_at: now,
-            actor: Some(actor.as_str().to_string()),
+            actor: spelled(actor),
             redacted: false,
             extra,
         };
         atomic_write(&file, &render(&envelope, content), false)?;
-        Ok(version)
+        Ok(envelope)
     }
 
     /// Remove a live document; the version the deletion consumed, None
@@ -124,6 +147,20 @@ impl FileStore {
     /// occupied destination (the source itself included) a
     /// `memory_conflict`, never a silent overwrite.
     pub fn rename(&self, scope: &str, src: &str, dst: &str, actor: &Actor) -> Result<u64, Error> {
+        Ok(self
+            .rename_document(scope, src, dst, actor)?
+            .envelope
+            .version)
+    }
+
+    /// `rename`, answering the document at its destination.
+    pub fn rename_document(
+        &self,
+        scope: &str,
+        src: &str,
+        dst: &str,
+        actor: &Actor,
+    ) -> Result<Document, Error> {
         let _held = self.lock()?;
         self.scope(scope)?;
         validate_document_path(src)?;
@@ -155,12 +192,15 @@ impl FileStore {
             version,
             created_at: now,
             updated_at: now,
-            actor: Some(actor.as_str().to_string()),
+            actor: spelled(actor),
             ..existing.envelope
         };
         atomic_write(&dst_file, &render(&envelope, &existing.content), false)?;
         fs::remove_file(&src_file)?;
-        Ok(version)
+        Ok(Document {
+            envelope,
+            content: existing.content,
+        })
     }
 
     /// Clear the content of one path, or of the whole scope, on the live

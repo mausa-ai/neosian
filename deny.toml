@@ -8,9 +8,10 @@ all-features = true
 ignore = []
 
 # What the tree carries today; a new dependency's license is added here
-# deliberately, never by a wildcard.
+# deliberately, never by a wildcard. BSD-3-Clause entered with axum's
+# router (matchit, R2, #366).
 [licenses]
-allow = ["Apache-2.0", "MIT", "Unicode-3.0"]
+allow = ["Apache-2.0", "BSD-3-Clause", "MIT", "Unicode-3.0"]
 confidence-threshold = 0.8
 
 [bans]

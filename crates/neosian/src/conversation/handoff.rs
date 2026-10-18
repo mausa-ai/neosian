@@ -176,7 +176,7 @@ pub fn continue_conversation(
         },
     };
     parse_conversation_id(&target)?;
-    let turns = store.read_turns(&target)?;
+    let turns = store.read_turns(&target, 0, None)?;
     if turns.is_empty() {
         return Ok(Err(Corrective {
             error: format!("Conversation {} has no turns", repr(&target)),
@@ -189,7 +189,7 @@ pub fn continue_conversation(
     if let (Some((by, now)), Some(document), Some(baton)) = (pick_up, &document, &delivered) {
         picked_up(store, scope, document, baton, &target, by, now)?;
     }
-    let entries = store.read_projections(&target)?;
+    let entries = store.read_projections(&target, 0, None)?;
     let text = render_continuation(
         &turns,
         &entries,

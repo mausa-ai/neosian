@@ -269,8 +269,8 @@ fingerprint-gated so a prompt change without a recorded re-run fails
 `MemoryStore`, and the `neosian.evaluation` facade stable under SemVer,
 the ecosystem seams (scope grammar, token classes, integer micro-USD,
 event vocabulary, error codes) SemVer-guaranteed, with a seam break only
-at a major, and the state process's wire (the nineteen `/v1/` routes and
-their envelope, `neosian docs wire`, versioned by `WIRE_VERSION`) stable
+at a major, and the state process's wire (the twenty-one `/v1/` routes
+and their envelope, `neosian docs wire`, versioned by `WIRE_VERSION`) stable
 under the same promise: one promise covering library, seams, and wire.
 Error codes are append-only forever. Consumers pin a release
 (`neosian==X.Y.Z`), never master. Model membership follows a **rolling 30-day policy**, independently of the

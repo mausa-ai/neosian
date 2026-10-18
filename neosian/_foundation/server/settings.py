@@ -25,6 +25,7 @@ from neosian._foundation.memory.settings import (
     POSTGRES_DSN_ENV as POSTGRES_DSN_ENV,
     StoreSettings,
     add_store_arguments,
+    resolve_actor,
     resolve_mounts,
     resolve_store_selection,
 )
@@ -112,7 +113,9 @@ def parse_args(
             root=selection.root,
             dsn=selection.dsn,
             schema=selection.schema,
-            actor=args.actor,
+            # The /mcp surface's identity is grammar too (R2: `build_app`
+            # once refused it past this tier, a traceback at exit 1).
+            actor=resolve_actor(parser, args.actor),
         ),
         host=args.host,
         port=args.port,

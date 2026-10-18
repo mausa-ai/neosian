@@ -23,7 +23,13 @@ name = "neosian"
 path = "src/main.rs"
 
 [dependencies]
+# The state process (R2, #366): the HTTP stack is axum on tokio, the
+# store's blocking calls under spawn_blocking; the hook verbs never start
+# the runtime.
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
+base64 = "0.22"
 clap = { version = "4.6", features = ["derive"] }
 fancy-regex = "0.19.2"
 serde_json = { version = "1.0", features = ["preserve_order"] }
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "signal"] }
 uuid = { version = "1.28", features = ["v4"] }

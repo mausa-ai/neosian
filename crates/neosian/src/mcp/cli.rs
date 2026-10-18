@@ -54,17 +54,21 @@ pub struct Mcp {
     install: Vec<String>,
 }
 
-/// The mount half of the grammar: the flags, else `NEOSIAN_SCOPE`, else
-/// the working directory's layout, a nameless directory degrading to the
-/// user mount alone.
-fn resolve_mounts(args: &Mcp) -> Result<Vec<Mount>, Refusal> {
-    if args.scope.is_some() && !args.mount.is_empty() {
+/// The mount half of the shared grammar (`resolve_mounts`): the flags,
+/// else `NEOSIAN_SCOPE`, else the working directory's layout; `nameless`
+/// is what a directory with no project name yields (§22.6: the user mount
+/// for a door a client spawns, nothing for the state process).
+pub fn resolve_mounts(
+    scope: Option<&str>,
+    mount: &[String],
+    nameless: impl FnOnce() -> Result<Vec<Mount>, Refusal>,
+) -> Result<Vec<Mount>, Refusal> {
+    if scope.is_some() && !mount.is_empty() {
         let sugar = "--scope is the single-mount sugar; use --mount for multi-mount";
         return Err(Refusal::Usage(sugar.to_string()));
     }
-    if !args.mount.is_empty() {
-        let mounts: Vec<Mount> = args
-            .mount
+    if !mount.is_empty() {
+        let mounts: Vec<Mount> = mount
             .iter()
             .map(|token| Mount::parse(token))
             .collect::<Result<_, _>>()?;
@@ -81,7 +85,7 @@ fn resolve_mounts(args: &Mcp) -> Result<Vec<Mount>, Refusal> {
         return Ok(mounts);
     }
     let named = env::var(SCOPE_ENV).ok().filter(|scope| !scope.is_empty());
-    if let Some(scope) = args.scope.as_ref().or(named.as_ref()) {
+    if let Some(scope) = scope.or(named.as_deref()) {
         return Ok(vec![Mount::new(
             scope,
             SUGAR_MOUNT_PATH,
@@ -92,7 +96,7 @@ fn resolve_mounts(args: &Mcp) -> Result<Vec<Mount>, Refusal> {
     let cwd = env::current_dir().map_err(|error| Refusal::Usage(error.to_string()))?;
     match project_mounts(&cwd) {
         Ok(mounts) => Ok(mounts),
-        Err(_) => Ok(vec![user_mount()?]),
+        Err(_) => nameless(),
     }
 }
 
@@ -115,7 +119,8 @@ pub fn run(args: &Mcp, out: &mut impl Write, err: &mut impl Write) -> io::Result
         let message = format!("unexpected argument {} found", repr(first));
         return usage(false, &message, out, err);
     }
-    let mounts = match resolve_mounts(args) {
+    let nameless = || Ok(vec![user_mount()?]);
+    let mounts = match resolve_mounts(args.scope.as_deref(), &args.mount, nameless) {
         Ok(mounts) => mounts,
         Err(Refusal::Usage(message)) => return usage(false, &message, out, err),
         Err(Refusal::Memory(error)) => {

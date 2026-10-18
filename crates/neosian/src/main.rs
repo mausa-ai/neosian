@@ -3,7 +3,8 @@
 //! The record verb, the MCP server, the state process and the operator
 //! verbs arrive phase by phase (R1 to R4), each held against the Python
 //! shell by the differential harness: `version` and `docs` from the forge,
-//! the file store, `memory`, `search` and `continue` from R1.
+//! the file store, `memory`, `search`, `continue`, `record` and `mcp` from
+//! R1, `serve` from R2.
 
 mod assets;
 mod cli;
@@ -16,6 +17,7 @@ mod messaging;
 mod pyfmt;
 mod record;
 mod repr;
+mod serve;
 mod store;
 #[cfg(test)]
 mod testing;

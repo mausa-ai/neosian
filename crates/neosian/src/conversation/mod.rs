@@ -20,7 +20,7 @@ pub mod views;
 
 use std::io::{self, Write};
 
-use serde_json::json;
+use serde_json::{Value, json};
 
 use self::message::Message;
 use crate::repr::repr;
@@ -45,20 +45,34 @@ pub struct Turn {
 }
 
 /// One checkpointed compaction entry (§9.6): `turn` is the last turn it
-/// covers, `span` how many consecutive turns end there.
+/// covers, `span` how many consecutive turns end there, `kind` one of
+/// `log`, `digest` and `epoch`.
 #[derive(Debug)]
 pub struct Projection {
     pub turn: u64,
+    pub kind: String,
     pub text: String,
     pub span: u64,
 }
 
-/// A refusal of the conversation seam: the codes and sentences of
-/// `shared/exceptions/conversation.py`, since both doors print them.
+/// One erasure act on a conversation (§38): the turn numbers it blanked,
+/// ascending, who asked, when.
+#[derive(Debug)]
+pub struct Redaction {
+    pub conversation_id: String,
+    pub turns: Vec<u64>,
+    pub actor: Option<String>,
+    pub created_at: Stamp,
+}
+
+/// A refusal of the conversation seam: the codes, sentences and typed
+/// details of `shared/exceptions/conversation.py`, since both doors print
+/// them and the wire carries the details (§18.3).
 #[derive(Debug)]
 pub struct Refused {
     pub code: &'static str,
     pub message: String,
+    pub details: Value,
 }
 
 impl Refused {
@@ -69,6 +83,7 @@ impl Refused {
                 "Invalid conversation id {}: {reason}",
                 repr(conversation_id)
             ),
+            details: json!({"conversation_id": conversation_id, "reason": reason}),
         }
     }
 
@@ -79,6 +94,19 @@ impl Refused {
                 "Unsupported turn format in conversation {}: {reason}",
                 repr(conversation_id)
             ),
+            details: json!({"conversation_id": conversation_id, "reason": reason}),
+        }
+    }
+
+    /// A verbatim restore meeting an occupied conversation (§26.3).
+    pub fn conflict(conversation_id: &str, reason: &str) -> Self {
+        Self {
+            code: "agent_conversation_conflict",
+            message: format!(
+                "Conversation conflict on {}: {reason}",
+                repr(conversation_id)
+            ),
+            details: json!({"conversation_id": conversation_id, "reason": reason}),
         }
     }
 }
@@ -129,6 +157,7 @@ impl From<StoreError> for Error {
     fn from(error: StoreError) -> Self {
         match error {
             StoreError::Memory(error) => Self::Memory(error),
+            StoreError::Value(sentence) => Self::Value(sentence),
             StoreError::Io(error) => Self::Io(error),
         }
     }

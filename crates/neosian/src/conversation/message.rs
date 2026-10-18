@@ -1,10 +1,15 @@
-//! A message as the turn log carries it (`llm/codec.py`, `llm/blocks.py`):
-//! the read side of the codec, bounded to what the codec writes, the
-//! write side for the text messages the record builds, and `text_of`.
+//! A message as the turn log and the wire carry it (`llm/codec.py`,
+//! `llm/blocks.py`): the codec whole, both ways. `reasoning` and `extra`
+//! ride verbatim as the Python dataclass keeps them; a block of every kind
+//! keeps its fields, so a turn a client appends reads back as it was sent
+//! (CS5). Where the Python codec raises, `from_json` names the sentence.
 
 use std::borrow::Cow;
 
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
+
+use crate::pyfmt::py_repr;
+use crate::text::is_space;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Role {
@@ -35,12 +40,22 @@ impl Role {
     }
 }
 
-/// A content block: only text contributes to what a renderer shows.
+/// A content block: only text contributes to what a renderer shows; the
+/// rest rides through verbatim.
 #[derive(Debug)]
 pub enum Block {
     Text(String),
-    Media,
-    Compaction,
+    /// An `image` or `document` block: exactly one of `data` or `url`.
+    Media {
+        kind: &'static str,
+        media_type: Option<String>,
+        data: Option<String>,
+        url: Option<String>,
+    },
+    Compaction {
+        content: Value,
+        encrypted_content: Value,
+    },
 }
 
 #[derive(Debug)]
@@ -55,44 +70,90 @@ pub struct ToolCall {
     pub name: String,
     /// The arguments object, its keys in the order the row holds them.
     pub arguments: Value,
+    /// A provider's own fields, emitted only when truthy.
+    pub extra: Value,
 }
 
 #[derive(Debug)]
 pub struct Message {
     pub role: Role,
     pub content: Option<Content>,
+    pub reasoning: Value,
     pub tool_calls: Vec<ToolCall>,
     pub tool_call_id: Option<String>,
+    pub extra: Value,
 }
 
-/// `message_from_json`: None where the Python codec raises (a missing or
-/// mistyped field, an unknown block type or role).
-pub fn from_json(data: &Value) -> Option<Message> {
-    let data = data.as_object()?;
-    let role = Role::parse(data.get("role")?.as_str()?)?;
+impl Message {
+    /// A plain text message, as the record builds them.
+    pub fn text(role: Role, text: String) -> Self {
+        Self {
+            role,
+            content: Some(Content::Text(text)),
+            reasoning: Value::Null,
+            tool_calls: Vec::new(),
+            tool_call_id: None,
+            extra: Value::Null,
+        }
+    }
+}
+
+/// Where `message_from_json` raises: the key a `KeyError` names, a
+/// `ValueError`'s sentence, or a shape Python would crash on (a
+/// `TypeError`), worded here since that door has no sentence.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Undecodable {
+    Key(&'static str),
+    Value(String),
+    Type(String),
+}
+
+type Decoded<T> = Result<T, Undecodable>;
+
+/// `message_from_json`, the codec's sentences where it refuses.
+pub fn from_json(data: &Value) -> Decoded<Message> {
+    let Some(data) = data.as_object() else {
+        return Err(Undecodable::Type("a message must be an object".to_string()));
+    };
+    let role = data.get("role").ok_or(Undecodable::Key("role"))?;
+    let role = role
+        .as_str()
+        .and_then(Role::parse)
+        .ok_or_else(|| Undecodable::Value(format!("{} is not a valid Role", py_repr(role))))?;
     let content = match data.get("content") {
         None | Some(Value::Null) => None,
         Some(Value::String(text)) => Some(Content::Text(text.clone())),
         Some(Value::Array(items)) => Some(Content::Blocks(
-            items.iter().map(block).collect::<Option<_>>()?,
+            items.iter().map(block).collect::<Decoded<_>>()?,
         )),
-        Some(_) => return None,
+        Some(_) => {
+            let shape = "message content must be a string, null or a list of blocks";
+            return Err(Undecodable::Type(shape.to_string()));
+        }
     };
     let tool_calls = match data.get("tool_calls") {
-        Some(Value::Array(calls)) => calls.iter().map(tool_call).collect::<Option<_>>()?,
-        Some(value) if !falsy(value) => return None,
+        Some(Value::Array(calls)) => calls.iter().map(tool_call).collect::<Decoded<_>>()?,
+        Some(value) if !falsy(value) => {
+            return Err(Undecodable::Type("tool_calls must be a list".to_string()));
+        }
         _ => Vec::new(),
     };
     let tool_call_id = match data.get("tool_call_id") {
-        None | Some(Value::Null) => None,
         Some(Value::String(id)) => Some(id.clone()).filter(|id| !id.is_empty()),
-        Some(_) => return None,
+        Some(value) if !falsy(value) => {
+            return Err(Undecodable::Type(
+                "tool_call_id must be a string".to_string(),
+            ));
+        }
+        _ => None,
     };
-    Some(Message {
+    Ok(Message {
         role,
         content,
+        reasoning: data.get("reasoning").cloned().unwrap_or(Value::Null),
         tool_calls,
         tool_call_id,
+        extra: data.get("extra").cloned().unwrap_or(Value::Null),
     })
 }
 
@@ -108,65 +169,152 @@ pub fn falsy(value: &Value) -> bool {
     }
 }
 
-fn block(item: &Value) -> Option<Block> {
-    let item = item.as_object()?;
-    match item.get("type")?.as_str()? {
-        "text" => Some(Block::Text(item.get("text")?.as_str()?.to_string())),
-        "image" | "document" => {
-            // Exactly one of `data` or `url`, and a media type with data.
-            let set = |key: &str| item.get(key).is_some_and(|value| !value.is_null());
-            (set("data") != set("url") && (!set("data") || set("media_type")))
-                .then_some(Block::Media)
-        }
-        "compaction" => Some(Block::Compaction),
-        _ => None,
+/// A string or null field of a block; anything else is a shape Python
+/// would crash on.
+fn optional_text(item: &Map<String, Value>, key: &str, what: &str) -> Decoded<Option<String>> {
+    match item.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(text)) => Ok(Some(text.clone())),
+        Some(_) => Err(Undecodable::Type(format!("{what} {key} must be a string"))),
     }
 }
 
-fn tool_call(item: &Value) -> Option<ToolCall> {
-    let item = item.as_object()?;
-    let id = item.get("id")?.as_str()?;
-    let name = item.get("name")?.as_str()?;
-    let arguments = match item.get("arguments") {
-        None | Some(Value::Null) => Value::Object(serde_json::Map::new()),
-        Some(object @ Value::Object(_)) => object.clone(),
-        Some(_) => return None,
+fn block(item: &Value) -> Decoded<Block> {
+    let Some(item) = item.as_object() else {
+        return Err(Undecodable::Type(
+            "a content block must be an object".to_string(),
+        ));
     };
-    Some(ToolCall {
-        id: id.to_string(),
-        name: name.to_string(),
+    let kind = item.get("type").unwrap_or(&Value::Null);
+    match kind.as_str() {
+        Some("text") => match item.get("text").ok_or(Undecodable::Key("text"))? {
+            Value::String(text) => Ok(Block::Text(text.clone())),
+            _ => Err(Undecodable::Type(
+                "a text block's text must be a string".to_string(),
+            )),
+        },
+        Some(name @ ("image" | "document")) => {
+            let block = if name == "image" {
+                "ImageBlock"
+            } else {
+                "DocumentBlock"
+            };
+            let media_type = optional_text(item, "media_type", block)?;
+            let data = optional_text(item, "data", block)?;
+            let url = optional_text(item, "url", block)?;
+            if data.is_none() == url.is_none() {
+                let why = format!("{block} requires exactly one of 'data' or 'url'");
+                return Err(Undecodable::Value(why));
+            }
+            if data.is_some() && media_type.is_none() {
+                let why = format!("{block} requires media_type with base64 data");
+                return Err(Undecodable::Value(why));
+            }
+            Ok(Block::Media {
+                kind: if name == "image" { "image" } else { "document" },
+                media_type,
+                // `"".join(data.split())`: the base64 payload without its whitespace.
+                data: data.map(|data| data.chars().filter(|ch| !is_space(*ch)).collect()),
+                url,
+            })
+        }
+        Some("compaction") => Ok(Block::Compaction {
+            content: item.get("content").cloned().unwrap_or(Value::Null),
+            encrypted_content: item
+                .get("encrypted_content")
+                .cloned()
+                .unwrap_or(Value::Null),
+        }),
+        _ => Err(Undecodable::Value(format!(
+            "Unknown content block type: {}",
+            py_repr(kind)
+        ))),
+    }
+}
+
+fn tool_call(item: &Value) -> Decoded<ToolCall> {
+    let Some(item) = item.as_object() else {
+        return Err(Undecodable::Type(
+            "a tool call must be an object".to_string(),
+        ));
+    };
+    let field = |key: &'static str| -> Decoded<String> {
+        match item.get(key).ok_or(Undecodable::Key(key))? {
+            Value::String(text) => Ok(text.clone()),
+            _ => Err(Undecodable::Value(format!(
+                "tool call parameter {} must be a string",
+                crate::repr::repr(key)
+            ))),
+        }
+    };
+    let (id, name) = (field("id")?, field("name")?);
+    let arguments = match item.get("arguments") {
+        None | Some(Value::Null) => Value::Object(Map::new()),
+        Some(object @ Value::Object(_)) => object.clone(),
+        Some(_) => {
+            let why = "tool call parameter 'arguments' must be an object";
+            return Err(Undecodable::Value(why.to_string()));
+        }
+    };
+    Ok(ToolCall {
+        id,
+        name,
         arguments,
+        extra: item.get("extra").cloned().unwrap_or(Value::Null),
     })
 }
 
-/// `message_to_json`: the five keys in the codec's order, `reasoning`
-/// never set by the record; a block list keeps its text blocks.
+fn block_json(block: &Block) -> Value {
+    match block {
+        Block::Text(text) => json!({"type": "text", "text": text}),
+        Block::Media {
+            kind,
+            media_type,
+            data,
+            url,
+        } => json!({"type": kind, "media_type": media_type, "data": data, "url": url}),
+        Block::Compaction {
+            content,
+            encrypted_content,
+        } => json!({
+            "type": "compaction",
+            "content": content,
+            "encrypted_content": encrypted_content,
+        }),
+    }
+}
+
+/// `message_to_json`: the five keys in the codec's order, `extra` on the
+/// message and on a call only when truthy.
 pub fn to_json(message: &Message) -> Value {
     let content = match &message.content {
         None => Value::Null,
         Some(Content::Text(text)) => json!(text),
-        Some(Content::Blocks(blocks)) => Value::Array(
-            blocks
-                .iter()
-                .filter_map(|block| match block {
-                    Block::Text(text) => Some(json!({"type": "text", "text": text})),
-                    _ => None,
-                })
-                .collect(),
-        ),
+        Some(Content::Blocks(blocks)) => Value::Array(blocks.iter().map(block_json).collect()),
     };
     let calls: Vec<Value> = message
         .tool_calls
         .iter()
-        .map(|call| json!({"id": call.id, "name": call.name, "arguments": call.arguments}))
+        .map(|call| {
+            let mut call_json =
+                json!({"id": call.id, "name": call.name, "arguments": call.arguments});
+            if !falsy(&call.extra) {
+                call_json["extra"] = call.extra.clone();
+            }
+            call_json
+        })
         .collect();
-    json!({
+    let mut encoded = json!({
         "role": message.role.as_str(),
         "content": content,
-        "reasoning": Value::Null,
+        "reasoning": message.reasoning,
         "tool_calls": calls,
         "tool_call_id": message.tool_call_id,
-    })
+    });
+    if !falsy(&message.extra) {
+        encoded["extra"] = message.extra.clone();
+    }
+    encoded
 }
 
 /// `text_of`: the text, the text blocks joined by newlines, or nothing.
@@ -188,59 +336,4 @@ pub fn text_of(message: &Message) -> Cow<'_, str> {
 }
 
 #[cfg(test)]
-mod tests {
-    use serde_json::json;
-
-    use super::*;
-
-    #[test]
-    fn a_message_reads_as_the_codec_wrote_it() {
-        let message = from_json(&json!({
-            "role": "assistant", "content": null, "reasoning": null,
-            "tool_calls": [{"id": "t1", "name": "Read", "arguments": {"b": 1, "a": 2}}],
-            "tool_call_id": null
-        }))
-        .unwrap();
-        assert_eq!(message.role, Role::Assistant);
-        assert_eq!(text_of(&message), "");
-        assert_eq!(
-            message.tool_calls[0].arguments.to_string(),
-            r#"{"b":1,"a":2}"#
-        );
-        let blocks = from_json(&json!({
-            "role": "user",
-            "content": [
-                {"type": "text", "text": "one"},
-                {"type": "image", "url": "https://x/y.png"},
-                {"type": "text", "text": "two"}
-            ]
-        }))
-        .unwrap();
-        assert_eq!(text_of(&blocks), "one\ntwo");
-        let tool = from_json(&json!({"role": "tool", "content": "ok", "tool_call_id": "t1"}));
-        assert_eq!(tool.unwrap().tool_call_id.as_deref(), Some("t1"));
-        let bare =
-            from_json(&json!({"role": "user", "tool_calls": "", "tool_call_id": ""})).unwrap();
-        assert!(bare.tool_calls.is_empty() && bare.tool_call_id.is_none());
-    }
-
-    #[test]
-    fn what_the_codec_refuses_is_none() {
-        for data in [
-            json!([]),
-            json!({"content": "x"}),
-            json!({"role": "robot"}),
-            json!({"role": "user", "content": 7}),
-            json!({"role": "user", "content": [{"type": "video"}]}),
-            json!({"role": "user", "content": [{"type": "text"}]}),
-            json!({"role": "user", "content": [{"type": "image", "data": "abc"}]}),
-            json!({"role": "user", "content": [{"type": "image", "data": "abc", "url": "u"}]}),
-            json!({"role": "assistant", "tool_calls": [{"id": "t1"}]}),
-            json!({"role": "assistant", "tool_calls": [{"id": 1, "name": "x"}]}),
-            json!({"role": "assistant", "tool_calls": [{"id": "t", "name": "x", "arguments": "{}"}]}),
-            json!({"role": "assistant", "tool_calls": "x"}),
-        ] {
-            assert!(from_json(&data).is_none(), "{data}");
-        }
-    }
-}
+mod tests;
