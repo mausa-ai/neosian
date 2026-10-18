@@ -339,11 +339,14 @@ class TestContainerSurface:
         assert response.headers["WWW-Authenticate"] == "Bearer"
 
     async def test_mcp_initializes_over_the_socket(
-        self, server_url: str, server_token: str
+        self, file_leg: FileLeg, server_url: str, server_token: str
     ) -> None:
-        """The script mounts a scope on the file leg, so the container
-        serves `/mcp` (R2 slice B): one handshake-era `initialize`, its
-        answer an SSE frame naming the server and minting a session."""
+        """The script mounts a scope on the file leg alone, so that
+        container serves `/mcp` (R2 slice B) while the Postgres leg keeps
+        its bare command and answers 404 there: one handshake-era
+        `initialize`, its answer an SSE frame naming the server and
+        minting a session."""
+        assert file_leg.root.is_dir(), "the file leg is the one with a scope"
         initialize = {
             "jsonrpc": "2.0",
             "id": 1,
