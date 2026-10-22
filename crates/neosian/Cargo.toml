@@ -27,7 +27,7 @@ path = "src/main.rs"
 # store's blocking calls under spawn_blocking; the hook verbs never start
 # the runtime.
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
-base64 = "0.22"
+base64 = "0.23"
 clap = { version = "4.6", features = ["derive"] }
 fancy-regex = "0.19.2"
 # `/mcp`'s standing stream (slice B, #370): one `unfold` over the session's
