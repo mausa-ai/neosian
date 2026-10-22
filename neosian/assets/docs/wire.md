@@ -20,6 +20,13 @@ corpus also runs through all four Python/Rust client-server pairings
 version-skew probes. The Rust client implements the operations those
 two doors call; Python `RemoteStore` implements the whole wire.
 
+Every route listed here is served by both implementations. The Rust
+binary and the container image use FileStore; the Python server supports
+FileStore, Postgres and a host's store through `build_app`. The image
+contains the Rust server since 1.11.0. Backend capabilities in the
+handshake, rather than the implementation language, decide whether a
+client can page or erase. `WIRE_VERSION` remains 6.
+
 The wire mirrors the ABCs one method to one route and carries nothing
 else: no audit route (the shell composes `neosian audit` from
 `memory/history`, `memory/redactions` and `conversation/read_turns`),
@@ -251,8 +258,12 @@ refuses a mismatch by name before any store call.
 
 ## Beside the wire
 
-`/mcp`, present when the process is started with mounts, speaks the MCP
-specification over streamable HTTP and is not covered here
-(`neosian docs mcp`). The Python client is `RemoteStore`
-(`neosian docs topology`); a client in another language implements
-this page.
+`/mcp`, present in both implementations when the process is started with
+mounts, speaks MCP over streamable HTTP. The Rust server supports the
+handshake versions from 2024-11-05 through 2025-11-25 and refuses a newer
+protocol header with `-32022 Unsupported protocol version`; neosian's
+MCP client falls back to the handshake. The Python server also serves
+the 2026-07-28 single-exchange protocol through its SDK. This transport
+is separate from the storage wire (`neosian docs mcp`). The Python client
+is `RemoteStore` (`neosian docs topology`); a client in another language
+implements this page.

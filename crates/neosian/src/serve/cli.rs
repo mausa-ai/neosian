@@ -14,7 +14,7 @@ use std::sync::Arc;
 use clap::Args;
 use tokio::sync::watch;
 
-use super::{Shared, auth, mcp, routes};
+use super::{Shared, auth, health, mcp, routes};
 use crate::cli::usage;
 use crate::home::home;
 use crate::mcp::cli::resolve_mounts;
@@ -39,6 +39,9 @@ const DEFAULT_PORT: i64 = 6367;
 /// Serve neosian memory and conversations over HTTP: the state process.
 #[derive(Args)]
 pub struct Serve {
+    /// The container's liveness probe; opens no store and needs no token.
+    #[arg(long, hide = true)]
+    healthcheck: bool,
     /// FileStore root directory (created on start; default: the home,
     /// ~/.neosian or $NEOSIAN_HOME)
     #[arg(long)]
@@ -79,12 +82,6 @@ fn refuse(message: impl Into<String>) -> Refusal {
 /// built, in the Python door's order and sentences; the mounts resolved
 /// are the `/mcp` surface's, none meaning no surface (§18's relaxation).
 fn grammar(args: &Serve) -> Result<(auth::Clients, Vec<Mount>, Actor), Refusal> {
-    if !(1..=65535).contains(&args.port) {
-        return Err(refuse(format!(
-            "--port must be in 1..65535, got {}",
-            args.port
-        )));
-    }
     let dsn = set(DSN_ENV);
     let named: Vec<&str> = [
         ("--root", args.root.is_some()),
@@ -181,6 +178,17 @@ async fn shutdown(closing: Option<watch::Sender<bool>>) {
 }
 
 pub fn run(args: &Serve, out: &mut impl Write, err: &mut impl Write) -> io::Result<u8> {
+    if !(1..=65535).contains(&args.port) {
+        return usage(
+            false,
+            &format!("--port must be in 1..65535, got {}", args.port),
+            out,
+            err,
+        );
+    }
+    if args.healthcheck {
+        return health::run(&args.host, args.port as u16, err);
+    }
     let (clients, mounts, actor) = match grammar(args) {
         Ok(parsed) => parsed,
         Err(Refusal::Usage(message)) => return usage(false, &message, out, err),

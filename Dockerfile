@@ -1,51 +1,39 @@
-# The state process, as an appliance (DESIGN §18.9): one token, one
-# volume, one health check. Built and smoked by CI on both backends on
-# every push; published to ghcr.io/mausa-ai/neosian:<X.Y.Z> by release.yml
-# on a release tag (DESIGN §29, retiring ledger #114's built-not-published
-# posture). The base image is pinned by its multi-arch index digest and uv
-# by the repository's one pin; Dependabot moves both.
+# The state process as an appliance (DESIGN §18.9, §39.11): one static
+# Rust binary, one token, one volume. Published for amd64 and arm64 at
+# ghcr.io/mausa-ai/neosian:<X.Y.Z> by the release workflow.
+# Both bases pin multi-arch index digests; Dependabot moves them.
 #
 #   docker run -e NEOSIAN_SERVE_TOKEN=... -p 6367:6367 -v state:/data \
 #       ghcr.io/mausa-ai/neosian:<X.Y.Z>
-#   docker build -t neosian .            # the same image, locally
+#   docker build -t neosian .
 #
-# The default command serves a FileStore on the /data volume; set
-# NEOSIAN_POSTGRES_DSN (and override the command, e.g. `--schema
-# neosian`) for the Postgres backend. TLS terminates at a reverse
-# proxy (§18.4); the token is env-only, and an unset token refuses to
-# start at exit 2.
+# FileStore only until R4 adds the Rust Postgres backend. Use the Python
+# shell's `neosian serve` for Postgres. TLS terminates at a reverse proxy;
+# an unset NEOSIAN_SERVE_TOKEN refuses to start at exit 2.
 
-FROM python:3.14-slim@sha256:cad9a2c871761c413caa6fdd6441c783451e740a48aaeba60ae62a8b53525ef6 AS builder
-COPY --from=ghcr.io/astral-sh/uv:0.12.23 /uv /usr/local/bin/uv
-ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never
+FROM rust:1.99.0-alpine@sha256:0cce0a5e0e8ba67b455257a3a02a1d99005f382748789d6464460028810f1627 AS builder
 WORKDIR /app
-COPY pyproject.toml uv.lock LICENSE ./
-COPY docs/README.md docs/README.md
-COPY neosian/ neosian/
-# The locked runtime set plus the one extra, never the dev group: the
-# appliance is NM's second backend, so it carries the driver (ledger #206).
-RUN uv sync --locked --no-dev --no-editable --extra postgres
+COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
+COPY crates/ crates/
+COPY neosian/assets/ neosian/assets/
+# Alpine's native musl target links statically on both architectures.
+# The image's exact toolchain is the repository pin; the explicit choice
+# avoids installing rustfmt and clippy in this build-only stage.
+RUN cargo +${RUST_VERSION} build --release --locked \
+    && mkdir /data && chown 1000:1000 /data && chmod 700 /data
 
-FROM python:3.14-slim@sha256:cad9a2c871761c413caa6fdd6441c783451e740a48aaeba60ae62a8b53525ef6
-RUN useradd --uid 1000 --create-home neosian \
-    && mkdir /data && chown neosian:neosian /data
-# The venv keeps its build path; the module door below needs no shebang.
-COPY --from=builder /app/.venv /app/.venv
-ENV PATH="/app/.venv/bin:$PATH"
-# The installation shape `neosian status`/`update` report (DESIGN §30).
+FROM gcr.io/distroless/static-debian13:nonroot@sha256:d62067879de890a1def9da0e7766b7d20810a5e5555cef8506b752437d7a3e88
+COPY --from=builder /app/target/release/neosian /usr/local/bin/neosian
+COPY --from=builder --chown=1000:1000 /data /data
+COPY LICENSE docs/LICENSE-MUSL crates/neosian/LICENSE-TLS /usr/share/doc/neosian/
+# Keep the previous image's uid so existing named volumes remain writable.
+USER 1000:1000
 ENV NEOSIAN_INSTALL=container
-# The backends this image serves; scripts/container_test.sh runs one leg
-# per backend named here (R2, §18.9). The Rust image narrows it to `file`
-# until R4 brings its Postgres backend.
-LABEL ai.mausa.neosian.backends="file,postgres"
-USER neosian
+LABEL ai.mausa.neosian.backends="file"
 VOLUME /data
 EXPOSE 6367
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s CMD \
-    ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:6367/health', timeout=2)"]
-# 0.0.0.0 rides the entrypoint: the library default (127.0.0.1, §18.7)
-# is unreachable from outside a container, and a CMD override — a
-# different root, a schema — must not silently lose the bind. The
-# module door is `neosian serve` with no shell in the way (§18.9).
-ENTRYPOINT ["python", "-m", "neosian.server", "--host", "0.0.0.0"]
+    ["/usr/local/bin/neosian", "serve", "--healthcheck"]
+# Bind in the entrypoint so overriding the root or mounts keeps it reachable.
+ENTRYPOINT ["/usr/local/bin/neosian", "serve", "--host", "0.0.0.0"]
 CMD ["--root", "/data"]

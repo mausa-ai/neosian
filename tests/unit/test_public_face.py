@@ -17,7 +17,6 @@ import neosian
 _ROOT = Path(__file__).resolve().parents[2]
 _FLOOR = ("LICENSE", "docs/README.md", "docs/SECURITY.md")
 _INSTALLER = _ROOT / "scripts" / "install.sh"
-_DOCKERFILE = _ROOT / "Dockerfile"
 
 
 @pytest.mark.unit
@@ -67,14 +66,12 @@ def test_license_metadata_matches_the_file() -> None:
 
 
 @pytest.mark.unit
-def test_the_installer_pins_uv_to_the_dockerfile() -> None:
-    # One uv pin for the repository (ledger #185): the installer and the
-    # appliance image name the same release, or a bump goes half-way.
+def test_the_installer_pins_uv_and_the_shipped_release() -> None:
+    # The repository's uv pin is shared with the Python workflows
+    # (test_release_posture); the appliance needs no Python since R2.
     script = _INSTALLER.read_text(encoding="utf-8")
     pinned = re.search(r'^UV_VERSION="(\d+\.\d+\.\d+)"', script, re.M)
     assert pinned
-    image = re.search(r"ghcr\.io/astral-sh/uv:(\d+\.\d+\.\d+)", _DOCKERFILE.read_text())
-    assert image and image.group(1) == pinned.group(1)
     assert 'PACKAGE="neosian"' in script
     assert 'uv tool install --python ">=3.12"' in script
     # The install says what it brings, before it does (ledger #206).

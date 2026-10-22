@@ -140,16 +140,19 @@ jobs:
       - name: smoke
         run: |
           cid="$(docker run -d -e NEOSIAN_SERVE_TOKEN=smoke -p 127.0.0.1:16367:6367 "$IMAGE:$VERSION-$ARCH")"
+          trap 'docker logs "$cid"; docker rm -fv "$cid" >/dev/null' EXIT
           ok=
           for _ in $(seq 30); do
-            curl -fsS http://127.0.0.1:16367/health && ok=1 && break
+            if curl -fsS http://127.0.0.1:16367/health && \
+                [ "$(docker inspect -f '{{.State.Health.Status}}' "$cid")" = healthy ]; then
+              ok=1
+              break
+            fi
             sleep 1
           done
-          docker logs "$cid"
-          docker rm -f "$cid" >/dev/null
           test "$ok" = 1
-          inside="$(docker run --rm --entrypoint python "$IMAGE:$VERSION-$ARCH" -c 'import neosian; print(neosian.__version__)')"
-          test "$inside" = "$VERSION"
+          inside="$(docker run --rm --entrypoint /usr/local/bin/neosian "$IMAGE:$VERSION-$ARCH" version)"
+          test "$inside" = "neosian v$VERSION"
       - if: github.event_name == 'push'
         run: echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
       - if: github.event_name == 'push'

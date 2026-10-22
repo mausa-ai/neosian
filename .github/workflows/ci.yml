@@ -2,8 +2,8 @@ name: CI
 
 # Least privilege at the top; a job that needs more grants it itself
 # (publish-python.yml's publish jobs — DESIGN §29). Every action is pinned by
-# commit SHA with its version beside it, the way the Dockerfile pins uv;
-# Dependabot moves both together.
+# commit SHA with its version beside it; the Dockerfile pins base images
+# by digest. Dependabot maintains both.
 permissions:
   contents: read
 
@@ -20,8 +20,8 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
-# The repository's one uv pin (ledger #185): the Dockerfile, the installer
-# and both workflows name the same release; a unit test keeps them equal.
+# The repository's one uv pin (ledger #185): the installer and the Python
+# workflows name the same release; a unit test keeps them equal.
 env:
   UV_VERSION: "0.12.23"
 
@@ -226,9 +226,9 @@ jobs:
           NEOSIAN_TEST_POSTGRES_DSN: postgresql://postgres:postgres@localhost:5432/postgres
 
   # The container conformance run (DESIGN §18.9): build the image, then
-  # both kits over a real socket against it on both backends — NM's
-  # done-when. No secret; the registry push is publish-python.yml's, on a tag
-  # (DESIGN §29); every trigger.
+  # both kits over a real socket on each backend its label names (FileStore
+  # until R4 adds Postgres). No secret; the registry push is
+  # publish-python.yml's, on a tag (DESIGN §29); every trigger.
   container:
     runs-on: ubuntu-24.04
     timeout-minutes: 15

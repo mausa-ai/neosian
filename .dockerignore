@@ -1,10 +1,13 @@
-# Whitelist: the image builds from exactly what the wheel would carry.
+# Only the crate, its embedded assets and the notices enter the build.
 *
-!pyproject.toml
-!uv.lock
+!Cargo.toml
+!Cargo.lock
+!rust-toolchain.toml
+!LICENSE
 !docs/
 docs/*
-!docs/README.md
-!LICENSE
+!docs/LICENSE-MUSL
+!crates/
 !neosian/
-neosian/**/__pycache__/
+neosian/*
+!neosian/assets/

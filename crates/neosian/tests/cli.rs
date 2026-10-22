@@ -41,3 +41,31 @@ fn a_bad_invocation_exits_two() {
     assert_eq!(neosian(&["docs", "nope"]).status.code(), Some(2));
     assert_eq!(neosian(&["nope"]).status.code(), Some(2));
 }
+
+#[test]
+fn the_container_probe_needs_no_token_or_store() {
+    // A reserved but unserved port refuses promptly. The deliberately bad
+    // DSN and absent token would fail server construction before any request.
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port().to_string();
+    drop(listener);
+    let output = Command::new(env!("CARGO_BIN_EXE_neosian"))
+        .args(["serve", "--healthcheck", "--port", &port])
+        .env_remove("NEOSIAN_SERVE_TOKEN")
+        .env("NEOSIAN_POSTGRES_DSN", "not-a-dsn")
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stdout.is_empty());
+    assert!(
+        String::from_utf8(output.stderr)
+            .unwrap()
+            .starts_with("healthcheck:")
+    );
+    assert_eq!(
+        neosian(&["serve", "--healthcheck", "--port", "0"])
+            .status
+            .code(),
+        Some(2)
+    );
+}

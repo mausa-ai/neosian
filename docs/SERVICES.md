@@ -293,7 +293,11 @@ The script runs one leg per backend the image's
 `ai.mausa.neosian.backends` label names (R2, §18.9): the FileStore leg
 always, with a scope mounted so `/mcp` is served and initialized over
 the socket; the Postgres leg when the label names `postgres` and the
-DSN is set, skipped loudly otherwise, naming which.
+DSN is set, skipped loudly otherwise, naming which. Since 1.11.0 the
+image runs the Rust server and declares `file` only; the Postgres image
+backend waits for R4. The Python server continues to support Postgres.
+The test waits for both `/health` and Docker's built-in health status,
+so it also exercises the binary's credential-free probe.
 
 **Off means the tier self-skips whole** — `make test` and keyless boot
 never need a docker daemon.
@@ -311,7 +315,7 @@ times both.
 
 **Off means the tier self-skips whole.** `make test` never collects it
 (the `differential` marker is excluded like the external tiers). CI's `container` job builds the image and
-runs both legs on every push, no secret; the registry push is
+runs the image's declared backends on every push, no secret; the registry push is
 `publish-python.yml`'s, on a release tag (DESIGN §29 — ledger #114's
 built-and-smoked posture ended at NX).
 

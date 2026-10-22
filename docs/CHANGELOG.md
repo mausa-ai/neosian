@@ -8,6 +8,23 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [1.11.0] - 2026-10-22
+
+### Changed
+
+- The container image runs the static Rust state process on a digest-pinned
+  distroless base, with no Python or shell. It keeps `/data`, UID 1000,
+  port 6367, `NEOSIAN_INSTALL=container`, the token requirement and the
+  graceful shutdown path. The binary performs its own `/health` probe;
+  container conformance and release smoke runs require Docker's health
+  status to become healthy. Native amd64 and arm64 release legs check
+  `neosian version` before publishing.
+- The image supports FileStore only until R4 adds its Postgres backend.
+  Existing Postgres container deployments must retain their earlier image
+  or use the Python server with `neosian[postgres]` installed. Both server
+  implementations serve all twenty-one storage routes at `WIRE_VERSION` 6;
+  the topology and wire pages name their backends and MCP protocol support.
+
 ### Added
 
 - The Rust binary's `record` and MCP stdio commands accept `--url`,
@@ -68,10 +85,13 @@ phase close names the version.
   Postgres leg by the label or the unset DSN and saying which; the file
   leg starts the container with a scope mounted, so `/mcp` is served and
   the `external_server` tier initializes over the socket. The Rust image
-  at slice D narrows the label to `file` until R4.
+  declares `file` until R4.
 
 ### Fixed
 
+- Rust wire-client loopback fixtures explicitly make accepted sockets
+  blocking. On macOS they could inherit the listener's nonblocking mode
+  and fail before request bytes arrived.
 - `neosian serve --actor` with an actor outside the grammar is refused at
   exit 2 like every other store flag; it was a traceback at exit 1 once
   the server built its app.
@@ -2312,7 +2332,8 @@ pre-release — pin it explicitly; the API stability promise rides v1.0.0.
 - Both entry points share one `_validate_run`, so neither can skip a
   guard.
 
-[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.10.0...HEAD
+[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.11.0...HEAD
+[1.11.0]: https://github.com/mausa-ai/neosian/compare/v1.10.0...v1.11.0
 [1.10.0]: https://github.com/mausa-ai/neosian/compare/v1.9.0...v1.10.0
 [1.9.0]: https://github.com/mausa-ai/neosian/compare/v1.8.0...v1.9.0
 [1.8.0]: https://github.com/mausa-ai/neosian/compare/v1.7.0...v1.8.0

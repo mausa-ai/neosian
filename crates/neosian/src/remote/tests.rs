@@ -37,6 +37,9 @@ impl Stub {
                         Err(error) => panic!("{error}"),
                     }
                 };
+                // Accepted sockets inherit nonblocking mode on macOS.
+                // Only the accept loop polls; the request reader blocks.
+                stream.set_nonblocking(false).unwrap();
                 stream
                     .set_read_timeout(Some(Duration::from_secs(5)))
                     .unwrap();

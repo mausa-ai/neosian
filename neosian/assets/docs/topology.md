@@ -14,6 +14,11 @@ and the quickstart always begins embedded.
 | **your app runs neosian** | embed + `FileStore`: dev, local tools, cooperating local agents | embed + `PostgresStore`: production, multi-worker |
 | **a separate process runs neosian** | the state process (`neosian serve`) owning a FileStore root | the state process over Postgres |
 
+The Rust binary and the published container serve FileStore. The Python
+shell serves FileStore or Postgres, and `build_app(store)` serves a host's
+own implementation. Both state processes answer all twenty-one `/v1/`
+routes and `/health`; both expose `/mcp` when started with mounts.
+
 The Rust binary's `record --url URL` and `mcp --url URL` reach either
 state-process implementation with `NEOSIAN_CLIENT_TOKEN`. The record spool
 stays on the client machine and clears only after a successful landing.
@@ -62,16 +67,26 @@ docker run -d \
 curl -fsS http://localhost:6367/health
 ```
 
-The image is published per release tag (amd64 and arm64; `latest` names
-the newest final release); the shipped `Dockerfile` builds the same image
-from a checkout (`docker build -t neosian .`).
+Since 1.11.0 the image contains the static Rust binary on a distroless
+base, with no Python or shell. It is published per release tag (amd64 and
+arm64; `latest` names the newest final release). The shipped `Dockerfile`
+builds the same image from a checkout (`docker build -t neosian .`). The
+binary performs the container's unauthenticated `/health` probe itself.
 
-The default command serves a FileStore on the `/data` volume; set
-`NEOSIAN_POSTGRES_DSN` (and override the command, e.g. `--schema
-neosian`) for the Postgres backend. Without the container it is one
-command: `NEOSIAN_SERVE_TOKEN=… neosian serve`, where no flags serve the
-home, `--root DIR` another root. The token is env-only and an unset
-token refuses to start; TLS terminates at a reverse proxy.
+The default command serves a FileStore on `/data`, under the same UID
+1000 as earlier images, so existing volumes keep their ownership. To
+expose MCP too, append `--root /data --scope user:me` to `docker run`.
+The image currently supports FileStore only; its Postgres backend is
+scheduled for R4. For Postgres, install `neosian[postgres]` and run the
+Python shell's `neosian serve` with `NEOSIAN_POSTGRES_DSN` set and no
+`--root`; `--schema neosian` selects a schema. Existing Postgres
+container deployments must keep their earlier image until that backend
+lands or run the Python server.
+
+Without the container it is one command:
+`NEOSIAN_SERVE_TOKEN=… neosian serve`, where no flags serve the home,
+`--root DIR` another root. The token is env-only and an unset token
+refuses to start; TLS terminates at a reverse proxy.
 
 ## The home: one place for every project
 

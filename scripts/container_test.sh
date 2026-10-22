@@ -35,7 +35,8 @@ trap cleanup EXIT
 
 wait_health() {
     local url="$1" waited=0
-    until curl -fsS "$url/health" >/dev/null 2>&1; do
+    until curl -fsS "$url/health" >/dev/null 2>&1 && \
+        [ "$(docker inspect -f '{{.State.Health.Status}}' "$CID")" = healthy ]; do
         if [ "$(docker inspect -f '{{.State.Running}}' "$CID" 2>/dev/null)" != "true" ]; then
             echo "container_test: container exited before healthy" >&2
             docker logs "$CID" >&2 || true
@@ -52,11 +53,11 @@ wait_health() {
 }
 
 graceful_stop() {
-    # SIGTERM drains, then uvicorn logs the shutdown — the log, never
+    # SIGTERM drains, then the server logs the shutdown — the log, never
     # the exit code, is the evidence (§18.7).
     docker stop -t 30 "$CID" >/dev/null
     # The log driver can trail the stop by a beat (run 33643692828 read
-    # the log 60 ms before uvicorn's last lines landed): wait for the
+    # the log 60 ms before the server's last lines landed): wait for the
     # line, up to ten seconds, before calling the shutdown ungraceful.
     local tries=0
     until docker logs "$CID" 2>&1 | grep -q "Application shutdown complete"; do

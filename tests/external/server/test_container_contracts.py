@@ -1,7 +1,7 @@
 """Both conformance kits through `RemoteStore` against the *running
 container* — NM's done-when: the same conformance tests, over a real
-socket into the published image, on both backends (volume FileStore /
-Postgres DSN), with the bearer token enforced (DESIGN §18.8).
+socket into the published image, on each declared backend (volume
+FileStore today; Postgres at R4), with the bearer token enforced (§18.8).
 
 `scripts/container_test.sh` starts one container per backend and runs
 this module once per leg; the other leg's tests self-skip on their

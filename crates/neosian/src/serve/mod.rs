@@ -10,6 +10,7 @@ mod auth;
 pub mod cli;
 mod codec;
 mod envelope;
+mod health;
 mod mcp;
 mod paging;
 mod params;

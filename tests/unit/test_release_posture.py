@@ -1,7 +1,7 @@
 """The publishing posture (NX, DESIGN §29; the one release of §39.5),
 pinned keylessly: least privilege at the top of every hand-written
 workflow, every action by commit SHA with its version beside it, the base
-image by its index digest, the one uv pin in its four sites, Dependabot
+images by their index digests, the one uv pin across Python installers, Dependabot
 over all four ecosystems, and the sdist declaring what never ships. The
 generated release.yml is cargo-dist's (ledger #350): its permissions are
 what it generates, its actions are the commits dist-workspace.toml names,
@@ -31,7 +31,7 @@ _PINNED_USE = re.compile(
 )
 _GENERATED_USE = re.compile(r"^\s*(?:-\s*)?uses:\s*(\S+)@([0-9a-f]{40})\s*$")
 _ANY_USE = re.compile(r"^\s*(?:-\s*)?uses:")
-_DIGEST = re.compile(r"^FROM python:[^@\s]+@(sha256:[0-9a-f]{64})", re.M)
+_BASE = re.compile(r"^FROM (\S+)(?: AS \w+)?$", re.M)
 _BACKENDS_LABEL = "ai.mausa.neosian.backends"
 
 
@@ -86,10 +86,14 @@ def test_the_generated_release_is_pinned_by_its_config() -> None:
 
 
 @pytest.mark.unit
-def test_the_base_image_is_pinned_by_one_index_digest() -> None:
-    digests = _DIGEST.findall(_DOCKERFILE.read_text(encoding="utf-8"))
-    assert len(digests) == 2, "both stages pin the base image"
-    assert len(set(digests)) == 1, "the two stages share one digest"
+def test_the_image_pins_both_bases_and_the_repository_toolchain() -> None:
+    bases = _BASE.findall(_DOCKERFILE.read_text(encoding="utf-8"))
+    assert len(bases) == 2, "a builder and a distroless runtime"
+    assert all(re.fullmatch(r"[^@]+@sha256:[0-9a-f]{64}", base) for base in bases)
+    with (_ROOT / "rust-toolchain.toml").open("rb") as f:
+        channel = tomllib.load(f)["toolchain"]["channel"]
+    assert bases[0].split("@")[0] == f"rust:{channel}-alpine"
+    assert bases[1].startswith("gcr.io/distroless/static-debian13:nonroot@")
 
 
 @pytest.mark.unit
@@ -111,12 +115,31 @@ def test_the_image_names_its_backends_and_the_container_test_reads_them() -> Non
 
 @pytest.mark.unit
 def test_the_one_uv_pin_names_the_same_release_everywhere() -> None:
-    # Ledger #185 widened at NX: the Dockerfile, the installer and every
-    # workflow's UV_VERSION — a bump that misses one site goes red here.
-    image = re.search(r"ghcr\.io/astral-sh/uv:(\d+\.\d+\.\d+)", _DOCKERFILE.read_text())
-    assert image
+    # The Rust image needs no uv. The installer and every Python
+    # workflow still share one pin (ledger #185, R2 slice D).
+    script = (_ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+    installer = re.search(r'^UV_VERSION="(\d+\.\d+\.\d+)"', script, re.M)
+    assert installer
     for path in _WORKFLOWS:
-        assert _workflow(path)["env"]["UV_VERSION"] == image.group(1), path.name
+        assert _workflow(path)["env"]["UV_VERSION"] == installer.group(1), path.name
+
+
+@pytest.mark.unit
+def test_the_container_keeps_its_volume_identity_and_probes_without_a_shell() -> None:
+    text = _DOCKERFILE.read_text(encoding="utf-8")
+    assert "USER 1000:1000" in text, "existing volumes belong to uid 1000"
+    assert "--chown=1000:1000 /data /data" in text
+    assert "ENV NEOSIAN_INSTALL=container" in text
+    assert 'ENTRYPOINT ["/usr/local/bin/neosian", "serve", "--host", "0.0.0.0"]' in text
+    assert '["/usr/local/bin/neosian", "serve", "--healthcheck"]' in text
+    assert 'CMD ["--root", "/data"]' in text
+    release = _workflow(_RELEASE)
+    smoke = next(
+        s["run"] for s in release["jobs"]["image"]["steps"] if s.get("name") == "smoke"
+    )
+    assert "--entrypoint /usr/local/bin/neosian" in smoke
+    assert '"neosian v$VERSION"' in smoke
+    assert ".State.Health.Status" in smoke
 
 
 @pytest.mark.unit
