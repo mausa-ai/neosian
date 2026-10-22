@@ -304,6 +304,11 @@ never need a docker daemon.
 
 ## The differential tier: a binary, not a key
 
+Setup and configuration comparisons use temporary homes and client
+directories, synthetic keys, and client CLI stand-ins. They never invoke
+the machine's installed clients. Status compares all findings while
+checking each implementation's own installation shape and upgrade command.
+
 `make test-differential` replays the corpus through the Python shell and
 the Rust binary over one seeded home (DESIGN §39.4); `make bench-hooks`
 times both.

@@ -4,10 +4,13 @@
 //! verbs arrive phase by phase (R1 to R4), each held against the Python
 //! shell by the differential harness: `version` and `docs` from the forge,
 //! the file store, `memory`, `search`, `continue`, `record` and `mcp` from
-//! R1, `serve` from R2.
+//! R1, `serve` from R2, and `setup`, `status`, `configure` from R3.
 
 mod assets;
 mod cli;
+mod clients;
+mod config;
+mod configure;
 mod conversation;
 mod docs;
 mod home;

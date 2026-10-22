@@ -35,6 +35,11 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
 
 ## Set up from the shell (the human path)
 
+The Python shell and Rust binary both provide `setup`, `status`, and
+`configure` over the same home and client files. Setup registers the
+executable running it; `--binary PATH` selects an explicit binary.
+The standalone `mcp install` and `record install` commands remain Python.
+
 - `neosian status [--at CLIENT=DIR]… [--json]`: is this machine set up? The home, which
   providers have a key (never values), this directory's two scopes, per
   client installed / MCP registered / hooks present / level (user,

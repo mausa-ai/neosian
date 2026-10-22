@@ -25,7 +25,7 @@ RUN cargo +${RUST_VERSION} build --release --locked \
 FROM gcr.io/distroless/static-debian13:nonroot@sha256:d62067879de890a1def9da0e7766b7d20810a5e5555cef8506b752437d7a3e88
 COPY --from=builder /app/target/release/neosian /usr/local/bin/neosian
 COPY --from=builder --chown=1000:1000 /data /data
-COPY LICENSE docs/LICENSE-MUSL crates/neosian/LICENSE-TLS /usr/share/doc/neosian/
+COPY LICENSE docs/LICENSE-MUSL crates/neosian/LICENSE-TLS crates/neosian/LICENSE-CONSOLE /usr/share/doc/neosian/
 # Keep the previous image's uid so existing named volumes remain writable.
 USER 1000:1000
 ENV NEOSIAN_INSTALL=container

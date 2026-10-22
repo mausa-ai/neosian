@@ -16,6 +16,11 @@ payloads are the import path.
 
 ## Install
 
+`setup` and `status` are available in both the Python shell and Rust binary.
+Setup registers the executable running it, or the binary named by
+`--binary PATH`. The standalone `record install` and `mcp install` forms
+below currently require the Python shell.
+
 ```bash
 neosian setup --write                                             # select clients, once per machine
 neosian setup --url http://127.0.0.1:6367 --write                 # the same, behind the state process

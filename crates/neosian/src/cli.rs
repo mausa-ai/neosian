@@ -9,7 +9,7 @@ use clap::{Parser, Subcommand};
 use serde_json::json;
 
 use crate::conversation::{cli_continue, cli_search};
-use crate::{docs, mcp, memory, record, serve, version};
+use crate::{clients, configure, docs, mcp, memory, record, serve, version};
 
 #[derive(Parser)]
 #[command(
@@ -25,6 +25,12 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Wire the installed agents to this store: MCP and the hooks.
+    Setup(clients::setup::Setup),
+    /// Is this machine set up? The home, the keys, the clients.
+    Status(clients::status::Status),
+    /// Store a provider's API key under the home, or list them.
+    Configure(configure::Configure),
     /// Display version information.
     Version,
     /// Print a shipped docs page, or list the topics.
@@ -91,6 +97,9 @@ where
         }
     };
     let code = match cli.command {
+        Command::Setup(args) => clients::setup::run(&args, &mut out, &mut err),
+        Command::Status(args) => clients::status::run(&args, &mut out, &mut err),
+        Command::Configure(args) => configure::run(&args, &mut out, &mut err),
         Command::Version => writeln!(out, "{}", version::line()).map(|()| 0),
         Command::Docs { topic, json } => docs::run(topic.as_deref(), json, &mut out, &mut err),
         Command::Memory { command } => memory::cli::run(&command, &mut out, &mut err),

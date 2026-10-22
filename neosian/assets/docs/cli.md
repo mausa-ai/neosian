@@ -23,6 +23,12 @@ streamed answers remain immediate, with tool events and write receipts
 shown as they arrive. Document bodies, continued transcripts, configuration
 previews and protocol output retain their original content.
 
+The Rust binary also provides `setup`, `status`, and `configure` over the
+same home and client files. Its reports use plain text or `--json`.
+Setup registers the executable that runs it; `--binary PATH` selects an
+explicit binary from either implementation. The standalone `mcp install`
+and `record install` commands currently belong to the Python shell.
+
 ## Set up and talk
 
 ```
@@ -69,8 +75,9 @@ neosian                                  # on a terminal: chat; under a pipe: th
   registers the neosian binary (`~/.neosian/bin/neosian`) in place of
   this interpreter: the hooks and the MCP server then answer from it,
   in the verb form (`PATH record …`, `PATH mcp …`); a plain
-  `setup --write` restores the interpreter. Both installers take the
-  same flag.
+  `setup --write` from the Python shell restores the interpreter.
+  Setup from the Rust binary registers that binary by default. Both Python
+  installers take the same flag.
 - **Client locations:** setup and status accept repeated `--at CLIENT=DIR`.
   DIR is the client's user configuration directory, not a project root or
   config filename; relative paths resolve from the current directory.
@@ -87,7 +94,10 @@ neosian                                  # on a terminal: chat; under a pipe: th
   NAME --key -` names a door by the env var its key lives in, for one the
   shell has not loaded (an agent file registers it); bare on a terminal
   prompts for each. Every stored key reaches the environment before a
-  model is built, a door registered later included.
+  model is built, a door registered later included. The binary lists the
+  shipped providers and stored environment names; it does not load Python
+  agent files. Both implementations preserve the other TOML tables when
+  changing one credential and create the file with private permissions.
 - **`chat`**: the resident agent. It knows neosian (the `docs` tool
   reads the shipped pages on demand), writes to `/user` and `/project`
   on the home, loads the skills your other agents wrote, and runs the

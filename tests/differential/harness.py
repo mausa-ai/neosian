@@ -32,6 +32,7 @@ import socket
 import subprocess
 import sys
 import time
+import tomllib
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -58,6 +59,9 @@ BINARY_VERBS: Final[frozenset[str]] = frozenset(
         "record",
         "mcp",
         "serve",
+        "setup",
+        "status",
+        "configure",
         *(
             f"memory {command}"
             for command in (
@@ -187,7 +191,20 @@ class Workspace:
             for k, v in os.environ.items()
             if not k.startswith("NEOSIAN_") or k == BINARY_ENV
         }
+        # Client overrides and credentials must never escape the fake HOME.
+        for name in tuple(env):
+            if name.endswith("_API_KEY") or name in {
+                "CLAUDE_CONFIG_DIR",
+                "CODEX_HOME",
+                "OPENCODE_CONFIG_DIR",
+                "PI_CODING_AGENT_DIR",
+                "XDG_CONFIG_HOME",
+                "APPDATA",
+                "LOCALAPPDATA",
+            }:
+                del env[name]
         env["HOME"] = str(self.home.parent)
+        env["USERPROFILE"] = str(self.home.parent)
         env["NEOSIAN_HOME"] = str(self.home)
         # The login the seed's scopes were derived from, whatever the
         # runner's own environment names (the layout reads it first).
@@ -487,6 +504,18 @@ def shape_of_output(
         return (outcome.code, None if found is None else found.group(0), stderr)
     if case.json:
         parsed = [json.loads(line) for line in stdout.splitlines() if line.strip()]
+        if case.verb == "status" and outcome.code == 0:
+            # A real distinction between the doors, like version's banner:
+            # validate each installation's command before comparing findings.
+            # test_configuration also pins which shape each door reports.
+            upgrades = {
+                "binary": "neosian-update",
+                "project": "uv add 'neosian==<version>'",
+            }
+            for report in parsed:
+                assert report["upgrade"] == upgrades[report["shape"]]
+                report["shape"] = "<INSTALLATION>"
+                report["upgrade"] = "<UPGRADE>"
         return (outcome.code, parsed, stderr)
     return (outcome.code, stdout, stderr)
 
@@ -510,6 +539,14 @@ def snapshot(space: Workspace, *, keep: frozenset[str]) -> dict[str, Any]:
             ]
         elif path.suffix == ".md":
             entry = _document(text)
+        elif path.suffix == ".toml":
+            try:
+                raw = tomllib.loads(path.read_text())
+                entry = json.loads(
+                    normalise(json.dumps(raw, default=str), space, keep=keep)
+                )
+            except tomllib.TOMLDecodeError:
+                entry = text
         else:
             entry = text
         files.setdefault(rel, []).append(entry)

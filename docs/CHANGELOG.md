@@ -8,6 +8,25 @@ phase close names the version.
 
 ## [Unreleased]
 
+### Added
+
+- The Rust binary provides `setup`, `status`, and `configure` over the
+  existing home. Setup supports all six clients, per-machine and project
+  registration, explicit client directories, and client-owned CLI writers.
+  Status reads both registration levels and reports provider sources and
+  the newest session. Configure reads keys from stdin, preserves other TOML
+  tables, and writes private files. Each implementation registers itself
+  by default; `--binary PATH` selects an explicit binary.
+- Differential tests compare the six clients' registration files, previews,
+  writes, transitions, refusals, credential configuration and status
+  findings under isolated homes and client CLI stand-ins.
+
+### Changed
+
+- Malformed configuration files have the same diagnostic in both
+  implementations, naming the file and `neosian configure --delete` as
+  the recovery command without parser-specific text.
+
 ## [1.11.0] - 2026-10-22
 
 ### Changed
