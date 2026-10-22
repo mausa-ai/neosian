@@ -18,8 +18,9 @@ payloads are the import path.
 
 `setup` and `status` are available in both the Python shell and Rust binary.
 Setup registers the executable running it, or the binary named by
-`--binary PATH`. The standalone `record install` and `mcp install` forms
-below currently require the Python shell.
+`--binary PATH`. Both implementations provide the standalone `record
+install` and `mcp install` forms below. MCP installation also supports
+Claude Desktop, which has no recording hooks.
 
 ```bash
 neosian setup --write                                             # select clients, once per machine
@@ -37,8 +38,9 @@ neosian record install --client opencode --level project --scope user:me --write
   status accept invocation-only `--at CLIENT=DIR` overrides and report where
   they searched; a missing client home is never created.
   `neosian status` shows each selected client
-  green afterwards, at which level, and names an interpreter that
-  stopped resolving.
+  green afterwards, at which level, and names a binary or interpreter that
+  stopped resolving. It also warns when distinct `neosian` executables on
+  PATH compete for the command name.
 - **Once per machine.** By default the hooks land in the client's own
   settings (`--level user`) and serve every project: with no store flag
   the line names `~/.neosian` (or `$NEOSIAN_HOME`) and no mount, and the

@@ -4,6 +4,7 @@ shape wants. Pure over the interpreter prefix and the environment."""
 
 from __future__ import annotations
 
+import os
 import shlex
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -63,3 +64,32 @@ def detect_shape(
     if (prefix / "pyvenv.cfg").is_file():
         return Shape(PROJECT)
     return Shape(UNKNOWN)
+
+
+def path_executables(env: Mapping[str, str], cwd: Path) -> tuple[str, ...]:
+    """Executable neosian entries in PATH order, with symlink aliases deduplicated."""
+    paths = env.get("PATH", "")
+    if not paths:
+        return ()
+    names: tuple[str, ...] = ("neosian",)
+    if os.name == "nt":
+        names += tuple(
+            "neosian" + ext
+            for ext in env.get("PATHEXT", ".COM;.EXE;.BAT;.CMD").split(";")
+        )
+    found: dict[Path, str] = {}
+    for directory in paths.split(os.pathsep):
+        for name in names:
+            candidate = cwd / directory / name
+            if candidate.is_file() and os.access(candidate, os.X_OK):
+                found.setdefault(candidate.resolve(), str(candidate.absolute()))
+    return tuple(found.values())
+
+
+def shadowing(paths: tuple[str, ...]) -> tuple[str, ...]:
+    if len(paths) < 2:
+        return ()
+    return (
+        f"PATH selects {paths[0]}; also found {', '.join(paths[1:])}. "
+        "Run an absolute path to choose an installation",
+    )

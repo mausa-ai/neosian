@@ -3,6 +3,8 @@
 pub mod context;
 pub mod files;
 pub mod hooks;
+pub mod install;
+mod install_output;
 pub mod mcp;
 mod muse;
 mod runner;

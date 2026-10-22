@@ -1,9 +1,6 @@
 //! Registration argv: store selection and a per-project layout, without opening a store.
 
-use super::{
-    context::{Context, absolute, expand},
-    setup::Setup,
-};
+use super::context::{Context, absolute, expand};
 use crate::{
     home,
     memory::mounts::{Mount, Refusal},
@@ -16,18 +13,23 @@ pub struct Settings {
     pub mounts: Vec<String>,
     pub spool: PathBuf,
     pub credentials: Vec<&'static str>,
+    pub schema: Option<String>,
+    pub actor: Option<String>,
+    pub agent: Option<String>,
 }
 
-fn refusal(error: Refusal) -> String {
+pub fn refusal(error: Refusal) -> String {
     match error {
         Refusal::Usage(s) => s,
         Refusal::Memory(e) => format!("error: [{}] {}", e.code, e.message),
     }
 }
 
-pub fn resolve(args: &Setup, context: &Context) -> Result<Settings, String> {
-    let root_arg = args.root.as_ref().filter(|value| !value.is_empty());
-    let url_arg = args.url.as_ref().filter(|value| !value.is_empty());
+pub fn resolve(
+    root_arg: Option<&str>,
+    url_arg: Option<&str>,
+    context: &Context,
+) -> Result<Settings, String> {
     let dsn = context
         .env
         .get("NEOSIAN_POSTGRES_DSN")
@@ -49,6 +51,9 @@ pub fn resolve(args: &Setup, context: &Context) -> Result<Settings, String> {
         mounts: vec![],
         spool: absolute(&context.cwd, &root.join("spool")),
         credentials: vec![],
+        schema: None,
+        actor: None,
+        agent: None,
     };
     if let Some(url) = url_arg {
         if !url.starts_with("http://") && !url.starts_with("https://") {
@@ -64,7 +69,7 @@ pub fn resolve(args: &Setup, context: &Context) -> Result<Settings, String> {
         {
             return Err("--url needs NEOSIAN_CLIENT_TOKEN — the client's bearer token, never on the command line".into());
         }
-        settings.store = vec!["--url".into(), url.clone()];
+        settings.store = vec!["--url".into(), url.into()];
         settings.credentials.push("NEOSIAN_CLIENT_TOKEN");
     } else if dsn {
         settings.credentials.push("NEOSIAN_POSTGRES_DSN");
@@ -75,19 +80,35 @@ pub fn resolve(args: &Setup, context: &Context) -> Result<Settings, String> {
             absolute(&context.cwd, &root).display().to_string(),
         ];
     }
-    let mounts = if let Some(scope) = context.env.get("NEOSIAN_SCOPE").filter(|v| !v.is_empty()) {
-        vec![Mount::new(scope, "memories", (false, false), "").map_err(|e| refusal(e.into()))?]
-    } else if args.level == "project" {
-        home::project_mounts(&context.cwd).map_err(refusal)?
-    } else {
-        home::user_mount().map_err(refusal)?;
-        vec![]
-    };
-    for mount in mounts {
-        settings.mounts.extend([
-            "--mount".into(),
-            format!("scope={},path={}", mount.scope, mount.path),
-        ]);
-    }
     Ok(settings)
+}
+
+pub fn mounts(level: &str, context: &Context) -> Result<Vec<Mount>, Refusal> {
+    if let Some(scope) = context.env.get("NEOSIAN_SCOPE").filter(|v| !v.is_empty()) {
+        Ok(vec![Mount::new(scope, "memories", (false, false), "")?])
+    } else if level == "project" {
+        home::project_mounts(&context.cwd)
+    } else {
+        home::user_mount()?;
+        Ok(vec![])
+    }
+}
+
+pub fn mount_argv(mounts: &[Mount]) -> Vec<String> {
+    mounts
+        .iter()
+        .flat_map(|mount| {
+            let policy = if mount.read_only {
+                ",ro"
+            } else if mount.edit_only {
+                ",eo"
+            } else {
+                ""
+            };
+            [
+                "--mount".into(),
+                format!("scope={},path={}{policy}", mount.scope, mount.path),
+            ]
+        })
+        .collect()
 }

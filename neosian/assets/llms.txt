@@ -35,16 +35,18 @@ the mount flag, loaded by `list_skills`/`load_skill`, served as MCP prompts.
 
 ## Set up from the shell (the human path)
 
-The Python shell and Rust binary both provide `setup`, `status`, and
-`configure` over the same home and client files. Setup registers the
-executable running it; `--binary PATH` selects an explicit binary.
-The standalone `mcp install` and `record install` commands remain Python.
+The Python shell and Rust binary both provide `setup`, `status`,
+`configure`, `update`, `mcp install`, and `record install` over the same
+home and client files. Setup registers the executable running it;
+`--binary PATH` selects an explicit binary.
 
 - `neosian status [--at CLIENT=DIR]… [--json]`: is this machine set up? The home, which
   providers have a key (never values), this directory's two scopes, per
   client installed / MCP registered / hooks present / level (user,
-  project, both) / interpreter resolving, the last recorded session, the
-  install shape. Exit 0 always; findings are data.
+  project, both) / binary or interpreter resolving, the last recorded session,
+  the install shape and competing executables on PATH. JSON retains the
+  interpreter fields and adds executable_kind, path_executables and shadowing.
+  Exit 0 always; findings are data.
 - `neosian setup [--write] [--yes] [--client C]… [--at C=DIR]…`:
   wire every installed client (Claude Code, Codex, OpenCode, Muse Code, Cursor, Pi) to the home,
   once per machine: MCP + the record hooks in the client's own config, no
@@ -79,9 +81,11 @@ The standalone `mcp install` and `record install` commands remain Python.
   the agent cannot do
   (`/help`, `/configure` for a key typed masked, `/model`, `/resume`,
   `/new`, `/compact`, `/exit`); `/model` changes only this session.
-- `neosian update [--mode off|notify|auto]`: a PyPI check on the human
-  verbs only, never on an agent verb; `auto` applies a uv tool install
-  within the major.
+- `neosian update [--check|--write] [--mode off|notify|auto]`: Python checks
+  PyPI; the binary checks stable GitHub Releases and invokes its sibling
+  updater only with a matching cargo-dist receipt. Automatic checks run on
+  terminal human verbs only. Applying stays within the major; `--check`
+  alone only reports even in auto mode. The home requires no migration.
 
 ## Operate memory from the shell
 

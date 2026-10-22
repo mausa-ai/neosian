@@ -277,7 +277,7 @@ def run_update(
     latest = latest_release(transport)
     if latest is not None:
         write_stamp(home(env), latest, now=datetime.now(UTC))
-    applying = args.write or mode == "auto"
+    applying = args.write or (mode == "auto" and not args.check)
     decision = plan(__version__, latest, shape, applying=applying)
     if args.json_output:
         payload = {

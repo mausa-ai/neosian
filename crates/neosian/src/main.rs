@@ -22,11 +22,13 @@ mod record;
 mod remote;
 mod repr;
 mod serve;
+mod shape;
 mod state;
 mod store;
 #[cfg(test)]
 mod testing;
 mod text;
+mod update;
 mod version;
 mod wire;
 

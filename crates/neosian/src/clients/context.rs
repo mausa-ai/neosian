@@ -84,6 +84,19 @@ impl Context {
             "opencode" => ("OPENCODE_CONFIG_DIR", ".config/opencode"),
             "pi" => ("PI_CODING_AGENT_DIR", ".pi/agent"),
             "cursor" => ("", ".cursor"),
+            "claude-desktop" => {
+                return if cfg!(target_os = "macos") {
+                    self.home.join("Library/Application Support/Claude")
+                } else if cfg!(windows) {
+                    self.env
+                        .get("APPDATA")
+                        .filter(|v| !v.is_empty())
+                        .map_or_else(|| self.home.join("AppData/Roaming"), PathBuf::from)
+                        .join("Claude")
+                } else {
+                    self.home.join(".config/Claude")
+                };
+            }
             "muse-code" => {
                 return self
                     .env

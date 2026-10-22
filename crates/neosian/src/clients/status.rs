@@ -4,7 +4,7 @@ use super::{
     context::{CLIENTS, Context},
     hooks, runner, targets,
 };
-use crate::{config, home, memory::mounts::Refusal, store::FileStore, version};
+use crate::{config, home, memory::mounts::Refusal, shape, store::FileStore, version};
 use clap::Args;
 use serde_json::{Value, json};
 use std::io::{self, Write};
@@ -55,6 +55,17 @@ fn client_status(client: &str, context: &Context) -> Value {
     let server = at(&servers, "project").or_else(|| at(&servers, "user"));
     let hook = at(&hooks, "user").or_else(|| at(&hooks, "project"));
     let interpreter = [server, hook].into_iter().flatten().find_map(|a| a.first());
+    let kind = [server, hook]
+        .into_iter()
+        .flatten()
+        .find(|a| !a.is_empty())
+        .map(|a| {
+            if a.get(1).is_some_and(|v| v == "-m") {
+                "interpreter"
+            } else {
+                "binary"
+            }
+        });
     let resolves = interpreter.map(|command| {
         if Path::new(command).is_absolute() {
             Path::new(command).is_file()
@@ -98,7 +109,7 @@ fn client_status(client: &str, context: &Context) -> Value {
     json!({"client": client, "label": target.label, "installed": target.evidence.is_dir(),
         "mcp_registered": server.is_some(), "hooks_present": hook.is_some(), "level": level,
         "hook_files": hooks.iter().map(|(p, _, _)| p).collect::<Vec<_>>(), "interpreter": interpreter,
-        "interpreter_resolves": resolves, "mcp_shadowed_by": shadow, "root": root,
+        "interpreter_resolves": resolves, "executable_kind": kind, "mcp_shadowed_by": shadow, "root": root,
         "message_delivery": delivery, "searched_directory": target.evidence})
 }
 
@@ -174,11 +185,14 @@ pub fn run(args: &Status, out: &mut impl Write, err: &mut impl Write) -> io::Res
         let files = c["hook_files"].as_array().unwrap();
         (files.len() >= 2).then(|| format!("{}: the hooks are installed in multiple sources ({} and {}), and each span can land more than once. Run `neosian setup --write` here to keep the one per machine", c["client"].as_str().unwrap(), files[0].as_str().unwrap(), files[1].as_str().unwrap()))
     }).collect();
+    let paths = shape::paths(&context.env, &context.cwd);
+    let shape = shape::kind(&context.env);
     let status = json!({"version": version::VERSION, "home": root, "home_exists": root.is_dir(),
         "config_path": path, "config_exists": path.is_file(), "config_error": config_error,
         "providers": config::rows(&document), "scopes": scopes, "scopes_error": scopes_error,
         "clients": clients, "last_session": session, "one_writer": [], "double_fire": double_fire,
-        "shape": "binary", "upgrade": "neosian-update", "update_mode": mode});
+        "shape": shape, "upgrade": shape::upgrade(shape, "<version>"), "update_mode": mode,
+        "path_executables": paths, "shadowing": shape::shadowing(&paths)});
     if args.json {
         writeln!(out, "{status}")?;
     } else {
@@ -194,8 +208,10 @@ fn string<'a>(value: &'a Value, key: &str) -> &'a str {
 fn render(status: &Value, out: &mut impl Write) -> io::Result<()> {
     writeln!(
         out,
-        "neosian {}  binary  upgrade: neosian-update",
-        version::VERSION
+        "neosian {}  {}  upgrade: {}",
+        version::VERSION,
+        string(status, "shape"),
+        string(status, "upgrade")
     )?;
     let exists = |key| {
         if status[key] == true {
@@ -285,9 +301,10 @@ fn render(status: &Value, out: &mut impl Write) -> io::Result<()> {
             ));
         }
         match client["interpreter_resolves"].as_bool() {
-            Some(true) => cells.push("interpreter ok".into()),
+            Some(true) => cells.push(format!("{} ok", string(client, "executable_kind"))),
             Some(false) => cells.push(format!(
-                "interpreter missing: {}",
+                "{} missing: {}",
+                string(client, "executable_kind"),
                 string(client, "interpreter")
             )),
             _ => {}
@@ -307,7 +324,12 @@ fn render(status: &Value, out: &mut impl Write) -> io::Result<()> {
     } else {
         writeln!(out, "session   none recorded")?;
     }
-    for note in status["double_fire"].as_array().unwrap() {
+    for note in status["double_fire"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .chain(status["shadowing"].as_array().unwrap())
+    {
         writeln!(out, "note      {}", note.as_str().unwrap())?;
     }
     writeln!(out, "update    mode {}", string(status, "update_mode"))

@@ -75,7 +75,16 @@ fn perform(
     let mut args = vec!["mcp".into()];
     args.extend(settings.store.clone());
     args.extend(settings.mounts.clone());
-    args.extend(["--actor".into(), format!("mcp:{}", target.client)]);
+    args.extend([
+        "--actor".into(),
+        settings
+            .actor
+            .clone()
+            .unwrap_or_else(|| format!("mcp:{}", target.client)),
+    ]);
+    if let Some(schema) = &settings.schema {
+        args.extend(["--schema".into(), schema.clone()]);
+    }
     let mut entry = json!({"command": context.executable, "args": args});
     if ["muse-code", "cursor"].contains(&target.client.as_str()) && !settings.credentials.is_empty()
     {
@@ -100,6 +109,16 @@ fn perform(
         entry = json!({"type": "local", "command": argv, "enabled": true});
     }
     files::evidence(target)?;
+    if write && target.cli.is_some() {
+        return Err(Failure::new(
+            format!(
+                "{}'s own CLI writes {}; --write is not offered",
+                target.label,
+                target.path.display()
+            ),
+            format!("apply it with: {}", shell_join(&apply_argv(target, &entry))),
+        ));
+    }
     let project = targets::mcp(&target.client, context, "project");
     let mut shadowed = None;
     let mut displaced = None;

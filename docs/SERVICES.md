@@ -123,14 +123,30 @@ the real one.
 
 `[update] mode = off | notify | auto` lives in `<home>/config.toml`
 (`neosian update --mode M` sets it; default `off`), deliberately not
-an environment variable: the check contacts PyPI's simple index and
-the opt-in is the asking (DESIGN §30.3, ledger #214). It runs only on
+an environment variable: Python checks PyPI's simple index and the Rust
+binary checks the latest stable GitHub Release with an installer asset.
+The opt-in authorizes the check (DESIGN §30.3, §39.5). It runs only on
 the human door — bare `neosian`, `chat`, `status`, `playground`,
 `configure`, on a terminal, never under `--json` — never on `memory`,
 `audit`, `search`, `export`, `import`, `record`, `mcp` or `serve`; once per 24 h
-by a stamp under the home; silent when offline. `NEOSIAN_INSTALL`
+by a stamp under the home; silent when offline. The binary's human verbs
+are `status` and `configure`. Python uses `update-check`; the binary uses
+`binary-update-check`, so each caches its own publication channel.
+`NEOSIAN_INSTALL`
 (set to `container` by the image) names the installation shape
-`status` and `update` report — `auto` applies only the uv tool shape.
+`status` and `update` report. Python applies only the uv tool shape; the
+binary requires the adjacent cargo-dist updater and a receipt matching
+its directory and version. Both refuse a new major or a pre-release over
+a stable when applying. `--check` never applies unless `--write` is also
+explicit; the container only prints its pull command.
+
+The external cargo-dist updater reads its own receipt under
+`$XDG_CONFIG_HOME/neosian` or `~/.config/neosian` (Windows:
+`$LOCALAPPDATA/neosian`). Its `AXOUPDATER_CONFIG_PATH` and
+`AXOUPDATER_CONFIG_WORKING_DIR` overrides select another receipt directory;
+the binary checks the same selection before invoking it. The updater's
+own network configuration remains cargo-dist's; neosian's release check
+needs no token.
 
 ## The scope — `NEOSIAN_SCOPE`
 

@@ -166,10 +166,11 @@ neosian mcp install --client claude-code --level project --scope user:me --write
   neosian never creates another program's config home. Install the
   client first.
 - The registration embeds the resolved settings: an absolute `--root`,
-  any mounts you named in canonical `--mount` form, and the current
-  interpreter's absolute path (GUI clients do not inherit your shell's
-  PATH), or with `--binary PATH` that executable and the verb form
-  (`PATH mcp …`), the neosian binary answering the server itself. A
+  any mounts you named in canonical `--mount` form, and the running
+  executable's absolute path (GUI clients do not inherit your shell's
+  PATH). Python registers its interpreter with `-m neosian.mcp`; the
+  binary registers itself with the `mcp` verb. `--binary PATH` selects
+  that executable and the verb form (`PATH mcp …`) from either door. A
   Postgres registration never contains the DSN: set
   `NEOSIAN_POSTGRES_DSN` in the client's own environment.
 - `--json` prints one machine-readable envelope instead.

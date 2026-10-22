@@ -67,7 +67,17 @@ fn applied(mut envelope: Value) -> Value {
 fn install_pair(args: &Setup, context: &Context, client: &str) -> Value {
     let target = targets::mcp(client, context, &args.level);
     let hook = targets::hooks(client, context, &args.level);
-    let settings = settings::resolve(args, context);
+    let settings = settings::resolve(
+        args.root.as_deref().filter(|v| !v.is_empty()),
+        args.url.as_deref().filter(|v| !v.is_empty()),
+        context,
+    )
+    .and_then(|mut settings| {
+        settings.mounts = settings::mount_argv(
+            &settings::mounts(&args.level, context).map_err(settings::refusal)?,
+        );
+        Ok(settings)
+    });
     let grammar = |message: String| json!({"success": false, "error": message, "hint": null});
     let incompatible = (target.level != args.level).then(|| {
         format!(

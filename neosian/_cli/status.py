@@ -4,10 +4,11 @@ The home and whether it exists; the config and which providers have a key
 (names and sources, never values); this directory's two scopes; per
 client, whether it is installed, registered for MCP, carrying the hooks,
 at which level (once per machine, or this directory's files — §22.6), and
-whether the interpreter those files name still resolves (the moved-venv
-failure, silent until now); the last recorded session; the double-fire
+whether the binary or interpreter those files name still resolves;
+the last recorded session; the double-fire
 note when a client carries the hooks at both levels; the installation
-shape with its upgrade line; the update knob. Exit 0 whenever it ran:
+shape with its upgrade line; competing executables on PATH; the update knob.
+Exit 0 whenever it ran:
 findings are data. Pure over an
 injected `Environment`; the only store access is one read of the home,
 and only when the home exists.
@@ -31,7 +32,7 @@ from neosian._cli.config import (
     read_config,
 )
 from neosian._cli.providers import key_source, provider_keys
-from neosian._cli.shape import Shape, detect_shape
+from neosian._cli.shape import Shape, detect_shape, path_executables, shadowing
 from neosian._foundation.mcp.targets import (
     registered_argv,
     resolve_target as mcp_target,
@@ -74,6 +75,7 @@ class ClientStatus:
     root: str | None  # the --root both entries name
     message_delivery: tuple[str, ...] = ()
     searched_directory: str = ""
+    executable_kind: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,6 +96,8 @@ class Status:
     shape: str
     upgrade: str
     update_mode: str
+    path_executables: tuple[str, ...] = ()
+    shadowing: tuple[str, ...] = ()
 
 
 def _root_of(argv: Sequence[str] | None) -> str | None:
@@ -134,6 +138,7 @@ def client_status(client: str, context: Environment) -> ClientStatus:
     server_argv = _at(servers, "project") or _at(servers, "user")
     hook_argv = _at(hooks, "user") or _at(hooks, "project")
     interpreter = next((a[0] for a in (server_argv, hook_argv) if a), None)
+    argv = next((a for a in (server_argv, hook_argv) if a), None)
     roots = {_root_of(server_argv), _root_of(hook_argv)}
     root = roots.pop() if len(roots) == 1 and None not in roots else None
     target = mcp_target(client, context)
@@ -147,6 +152,9 @@ def client_status(client: str, context: Environment) -> ClientStatus:
         level="both" if len(found) == 2 else next(iter(found), None),
         hook_files=tuple(hooks),
         interpreter=interpreter,
+        executable_kind=(
+            None if argv is None else "interpreter" if "-m" in argv[:2] else "binary"
+        ),
         interpreter_resolves=None if interpreter is None else _resolves(interpreter),
         root=root,
         message_delivery=(
@@ -207,6 +215,7 @@ async def collect(context: Environment, env: Mapping[str, str]) -> Status:
     except ConfigurationError as exc:
         scopes_error = exc.message
     clients = tuple(client_status(client, context) for client in CLIENTS)
+    paths = path_executables(env, context.cwd)
     shape = detect_shape(Path(sys.prefix), env, frozen=frozen())
     config_path = get_config_path()
     config_error: str | None = None
@@ -246,6 +255,8 @@ async def collect(context: Environment, env: Mapping[str, str]) -> Status:
         shape=shape.kind,
         upgrade=Shape(shape.kind).upgrade_line("<version>"),
         update_mode=str(mode),
+        path_executables=paths,
+        shadowing=shadowing(paths),
     )
 
 
@@ -264,9 +275,11 @@ def _client_line(client: ClientStatus) -> str:
     if client.message_delivery:
         cells.append("messages " + ", ".join(client.message_delivery))
     if client.interpreter_resolves is False:
-        cells.append(f"interpreter missing: {client.interpreter}")
+        cells.append(
+            f"{client.executable_kind or 'interpreter'} missing: {client.interpreter}"
+        )
     elif client.interpreter_resolves:
-        cells.append("interpreter ok")
+        cells.append(f"{client.executable_kind or 'interpreter'} ok")
     return f"  {client.client:<12}installed  " + "  ".join(cells)
 
 
@@ -294,7 +307,7 @@ def render_text(status: Status) -> str:
         )
     else:
         lines.append("session   none recorded")
-    for note in (*status.double_fire, *status.one_writer):
+    for note in (*status.double_fire, *status.one_writer, *status.shadowing):
         lines.append(f"note      {note}")
     lines.append(f"update    mode {status.update_mode}")
     return "\n".join(lines) + "\n"

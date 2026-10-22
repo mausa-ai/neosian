@@ -50,6 +50,8 @@ const CURSOR_HINT: &str = "hint: Cursor has no unambiguous project; using /user.
 /// Record a foreign agent's session from its hooks: one payload on stdin per call.
 #[derive(Args)]
 pub struct Record {
+    #[command(subcommand)]
+    command: Option<crate::clients::install::RecordCommand>,
     /// FileStore root directory (created on start; default: the home,
     /// ~/.neosian or $NEOSIAN_HOME)
     #[arg(long)]
@@ -83,6 +85,9 @@ pub struct Record {
 }
 
 pub fn run(args: &Record, out: &mut impl Write, err: &mut impl Write) -> io::Result<u8> {
+    if let Some(crate::clients::install::RecordCommand::Install(install)) = &args.command {
+        return crate::clients::install::record(install, out, err);
+    }
     let json = args.json;
     let cwd = env::current_dir()?;
     let mut settled = |layout: &Path| -> io::Result<Result<Result<Vec<Mount>, String>, u8>> {

@@ -62,6 +62,7 @@ BINARY_VERBS: Final[frozenset[str]] = frozenset(
         "setup",
         "status",
         "configure",
+        "update",
         *(
             f"memory {command}"
             for command in (
@@ -455,6 +456,7 @@ def normalise(text: str, space: Workspace, *, keep: frozenset[str]) -> str:
     ):
         for spelling in {str(path), str(path.resolve())}:
             text = text.replace(spelling, token)
+            text = text.replace(spelling.replace("/", r"\/"), token)
     text = _TIMESTAMP.sub("<TS>", text)
     return _UUID.sub(lambda m: m.group(0) if m.group(0) in keep else "<ID>", text)
 

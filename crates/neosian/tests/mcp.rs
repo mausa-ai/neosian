@@ -175,7 +175,7 @@ fn the_state_set_is_served_over_stdio() {
 }
 
 #[test]
-fn a_hooked_client_gets_the_discipline_alone_and_install_names_python() {
+fn a_hooked_client_gets_the_discipline_alone_and_install_registers_the_binary() {
     let home = Scratch::new("mcp-hooked");
     let initialize = json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2024-11-05", "capabilities": {}, "clientInfo": {"name": "t", "version": "0"}}});
     let answers = session(&home, "mcp:claude-code", &[initialize]);
@@ -183,12 +183,23 @@ fn a_hooked_client_gets_the_discipline_alone_and_install_names_python() {
     assert!(instructions.starts_with("Your persistent memory is the `memory` tool"));
     assert!(!instructions.contains("## /memories"));
     assert_eq!(answers[0]["result"]["protocolVersion"], "2024-11-05");
-    let refused = Command::new(env!("CARGO_BIN_EXE_neosian"))
-        .args(["mcp", "install", "--client", "claude-code"])
+    home.plant(".claude/keep", "unrelated");
+    let installed = Command::new(env!("CARGO_BIN_EXE_neosian"))
+        .args(["mcp", "install", "--client", "claude-code", "--json"])
+        .env_clear()
+        .env("HOME", home.path())
+        .env("USERPROFILE", home.path())
+        .env("LOGNAME", "test")
+        .env("NEOSIAN_HOME", home.path().join("state"))
         .output()
         .unwrap();
-    assert_eq!(refused.status.code(), Some(1));
-    assert!(String::from_utf8_lossy(&refused.stderr).contains("uv tool install neosian"));
+    assert_eq!(installed.status.code(), Some(0));
+    let report: Value = serde_json::from_slice(&installed.stdout).unwrap();
+    assert_eq!(report["success"], true);
+    assert_eq!(report["written"], false);
+    assert_eq!(report["entry"]["args"][0], "mcp");
+    assert_eq!(report["entry"]["command"], env!("CARGO_BIN_EXE_neosian"));
+    assert!(!home.path().join("state").exists());
     let usage = Command::new(env!("CARGO_BIN_EXE_neosian"))
         .args(["mcp", "--scope", "nope"])
         .output()

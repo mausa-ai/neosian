@@ -180,6 +180,14 @@ class TestTheVerb:
         code, out, _, _ = self._run(tmp_path, [], _index(__version__))
         assert code == 0 and "is current" in out
 
+    def test_explicit_check_does_not_apply_in_auto_mode(self, tmp_path: Path) -> None:
+        set_value("update", "mode", "auto")
+        major, minor, patch = __version__.split("rc")[0].split(".")
+        newer = f"{major}.{minor}.{int(patch) + 1}"
+        code, out, _, applied = self._run(tmp_path, ["--check"], _index(newer))
+        assert code == 0 and applied == []
+        assert "is available" in out
+
     def test_mode_sets_the_knob(self, tmp_path: Path) -> None:
         code, out, _, _ = self._run(tmp_path, ["--mode", "notify", "--json"], _down())
         assert code == 0 and json.loads(out) == {"mode": "notify"}

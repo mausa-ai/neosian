@@ -174,8 +174,12 @@ pub fn install(target: &Target, context: &Context, settings: &Settings, write: b
     let mut argv = vec![context.executable.clone(), "record".into()];
     argv.extend(settings.store.clone());
     argv.extend(settings.mounts.clone());
-    if target.client != "claude-code" {
-        argv.extend(["--agent".into(), target.client.clone()]);
+    if let Some(schema) = &settings.schema {
+        argv.extend(["--schema".into(), schema.clone()]);
+    }
+    let agent = settings.agent.as_deref().unwrap_or(&target.client);
+    if agent != "claude-code" {
+        argv.extend(["--agent".into(), agent.into()]);
     }
     argv.extend(["--spool".into(), settings.spool.display().to_string()]);
     let mut command = shell_join(&argv);

@@ -10,6 +10,18 @@ phase close names the version.
 
 ### Added
 
+- The Rust binary provides standalone `mcp install` and `record install`,
+  with the existing fragments, scoped registration, safe writes and
+  client-owned file rules. MCP includes Claude Desktop's registration.
+- Binary `update` checks stable GitHub Releases, caches checks separately
+  from Python, and invokes the adjacent cargo-dist updater with the checked
+  tag only when its receipt matches this installation. New majors and
+  pre-releases over stable releases are refused when applying; containers
+  print a pull command. The shared update policy defaults to off.
+- Both status implementations name competing executables on PATH and
+  distinguish a registered binary from a Python interpreter. JSON retains
+  existing fields and adds `executable_kind`, `path_executables`, and
+  `shadowing`. No migration of the home is needed.
 - The Rust binary provides `setup`, `status`, and `configure` over the
   existing home. Setup supports all six clients, per-machine and project
   registration, explicit client directories, and client-owned CLI writers.
@@ -23,6 +35,8 @@ phase close names the version.
 
 ### Changed
 
+- An explicit `update --check` only reports, even when the update policy
+  is `auto`, unless `--write` is also supplied.
 - Malformed configuration files have the same diagnostic in both
   implementations, naming the file and `neosian configure --delete` as
   the recovery command without parser-specific text.

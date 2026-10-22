@@ -23,11 +23,12 @@ streamed answers remain immediate, with tool events and write receipts
 shown as they arrive. Document bodies, continued transcripts, configuration
 previews and protocol output retain their original content.
 
-The Rust binary also provides `setup`, `status`, and `configure` over the
-same home and client files. Its reports use plain text or `--json`.
+The Rust binary also provides `setup`, `status`, `configure`, and `update`
+over the same home and client files. Its reports use plain text or `--json`.
 Setup registers the executable that runs it; `--binary PATH` selects an
-explicit binary from either implementation. The standalone `mcp install`
-and `record install` commands currently belong to the Python shell.
+explicit binary from either implementation. Both implementations provide
+the standalone `mcp install` and `record install` commands, including
+printable fragments, custom scopes and project-level registration.
 
 ## Set up and talk
 
@@ -44,12 +45,17 @@ neosian                                  # on a terminal: chat; under a pipe: th
   providers have a key (names and sources, never values); this
   directory's two scopes; per client (Claude Code, Codex, OpenCode, Muse Code, Cursor, Pi)
   installed / MCP registered / hooks present / at which level (`user`,
-  `project`, or `both`) / the interpreter those files name still
+  `project`, or `both`) / the executable those files name still
   resolving; message delivery capabilities; the last recorded session;
   and a note when a client carries the hooks at both levels (they would
   run twice);
-  the installation shape with its upgrade line; the update knob. Exit 0
-  whenever it ran; findings are data. For Muse, managed hooks count as
+  the installation shape with its upgrade line; the update knob. Client
+  rows distinguish a binary from a Python interpreter. If several distinct
+  `neosian` executables are on PATH, a finding names the first and the
+  alternatives; symlink aliases count once. JSON adds `executable_kind`
+  per client and `path_executables` plus `shadowing` on the report. The
+  existing `interpreter` and `interpreter_resolves` fields remain available.
+  Exit 0 whenever it ran; findings are data. For Muse, managed hooks count as
   user level; `mcp_shadowed_by` names a preserved shared project MCP entry
   that overrides the user registration.
 - **`setup`**: detects the clients present and runs both installers
@@ -115,10 +121,21 @@ neosian                                  # on a terminal: chat; under a pipe: th
   so does an Ollama model loaded in memory. A local model needs no key
   and the session's header names it (`llama-cpp/…`, `ollama/…`); with
   none running, a missing `ANTHROPIC_API_KEY` fails before inference.
-- **`update`**: checks PyPI's simple index; `[update] mode` is `off`
-  (default), `notify` (one stderr line on the human verbs, once per
-  24 h) or `auto` (applies a uv tool install within the major, never a
-  pre-release over a stable, then re-executes itself).
+- **`update`**: the Python shell checks PyPI's simple index; the binary
+  checks the latest stable GitHub Release with an installer asset.
+  `[update] mode` is `off` (default), `notify` (one stderr line on the
+  human verbs, with checks cached for 24 h), or `auto`. An explicit
+  `--check` only reports, including in auto mode. Python applies only a
+  uv tool install; the binary applies through its adjacent `neosian-update`
+  only when a cargo-dist receipt names that installation and release.
+  The checked tag is passed explicitly to the updater. A missing or
+  mismatched receipt, including a package-manager install without one,
+  requires updating through the original installer. Both implementations
+  refuse a new major or a pre-release over a stable when applying.
+  Containers receive a `docker pull` command. Automatic updates re-run
+  the requested human command after replacement. Hooks, MCP and other
+  agent commands never check; pipes and `--json` never trigger a background
+  check. Explicit `update --json` returns the decision and exit status.
 
 **The session.** On a terminal `chat` (and bare `neosian`, and
 `playground`) opens a full-screen session in the terminal's own colors:

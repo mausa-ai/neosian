@@ -87,9 +87,11 @@ version` (the Development section has the gates).
 ## One store under many agents
 
 `neosian setup --write` asks which installed clients to connect to the home.
-The Python shell and Rust binary both provide `setup`, `status`, and
-`configure` over the same home. Setup registers the executable running it;
-`--binary PATH` selects an explicit binary. No home migration is needed.
+The Python shell and Rust binary both provide `setup`, `status`, `configure`,
+`update`, `mcp install`, and `record install` over the same home.
+Status names competing `neosian` executables on PATH. Setup registers the
+executable running it; `--binary PATH` selects an explicit binary. No home
+migration is needed.
 Use `--write --yes` for all detected clients in scripts, or repeated
 `--client C` for an explicit selection. Setup and status accept
 `--at CLIENT=DIR` for a custom client configuration directory, for one run.

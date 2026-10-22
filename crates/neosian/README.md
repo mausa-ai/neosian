@@ -10,5 +10,11 @@ shell. Setup connects Claude Code, Codex, OpenCode, Muse Code, Cursor and
 Pi, and registers this binary by default. `--write --yes` applies all
 detected clients; repeated `--client` and `--at CLIENT=DIR` narrow the work.
 
+`mcp install` and `record install` print or apply a single client's
+registration. `status` names competing executables on PATH. `update`
+checks GitHub Releases; `--write` calls the adjacent cargo-dist updater
+only for the installation its receipt owns, within the installed major.
+The home and recorded state require no migration.
+
 Documentation: <https://neosian.com/docs>. Source and design:
 <https://github.com/mausa-ai/neosian>.

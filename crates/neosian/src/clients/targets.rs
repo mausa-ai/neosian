@@ -24,6 +24,7 @@ pub fn mcp(client: &str, context: &Context, level: &str) -> Target {
     let project = level == "project";
     let label = match client {
         "claude-code" => "Claude Code",
+        "claude-desktop" => "Claude Desktop",
         "codex" => "Codex",
         "opencode" => "OpenCode",
         "muse-code" => "Muse Code",
@@ -58,6 +59,10 @@ pub fn mcp(client: &str, context: &Context, level: &str) -> Target {
             target.key = "mcp_servers";
             target.cli = Some("codex");
             base.join("config.toml")
+        }
+        "claude-desktop" => {
+            target.level = "user".into();
+            base.join("claude_desktop_config.json")
         }
         "cursor" => {
             target.level = "user".into();

@@ -52,9 +52,8 @@ pub struct Mcp {
     /// who writes: <kind>:<id>[/...], recorded on every row
     #[arg(long, default_value = DEFAULT_ACTOR)]
     actor: String,
-    /// `install`: the registration is the Python shell's until R3
-    #[arg(hide = true, trailing_var_arg = true, allow_hyphen_values = true)]
-    install: Vec<String>,
+    #[command(subcommand)]
+    command: Option<crate::clients::install::McpCommand>,
 }
 
 /// The mount half of the shared grammar (`resolve_mounts`): the flags,
@@ -111,16 +110,8 @@ fn hooked(actor: &str) -> bool {
 }
 
 pub fn run(args: &Mcp, out: &mut impl Write, err: &mut impl Write) -> io::Result<u8> {
-    if let Some(first) = args.install.first() {
-        if first == "install" {
-            writeln!(
-                err,
-                "error: `neosian mcp install` is the Python shell's until R3: needs the Python shell: `uv tool install neosian`"
-            )?;
-            return Ok(1);
-        }
-        let message = format!("unexpected argument {} found", repr(first));
-        return usage(false, &message, out, err);
+    if let Some(crate::clients::install::McpCommand::Install(install)) = &args.command {
+        return crate::clients::install::mcp(install, out, err);
     }
     let nameless = || Ok(vec![user_mount()?]);
     let mounts = match resolve_mounts(args.scope.as_deref(), &args.mount, nameless) {

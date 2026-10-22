@@ -31,10 +31,11 @@ its alias. On a machine with nothing on it,
 `curl -fsS https://neosian.com/install | bash` lands uv and neosian,
 saying what it installs first.
 
-The Rust binary also provides `setup`, `status`, and `configure` using
-the same home and client files. Setup registers the executable running it;
-`--binary PATH` selects an explicit binary. Chat, the TUI and the Python
-SDK remain in the Python package.
+The Rust binary also provides `setup`, `status`, `configure`, `update`,
+`mcp install`, and `record install` using the same home and client files.
+Setup registers the executable running it; `--binary PATH` selects an
+explicit binary. Status names competing executables on PATH. Chat, the
+TUI and the Python SDK remain in the Python package.
 
 ## The agent you already use
 
