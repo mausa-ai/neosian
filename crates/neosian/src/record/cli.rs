@@ -34,8 +34,8 @@ use crate::memory::mounts::{Mount, Refusal};
 use crate::messaging::delivery::context as mailbox_context;
 use crate::messaging::mailbox::Mailbox;
 use crate::pyfmt::py_str;
+use crate::remote::selection::Selection;
 use crate::repr::repr;
-use crate::store::FileStore;
 use crate::store::grammar::Actor;
 use crate::store::time::Stamp;
 use clap::Args;
@@ -54,6 +54,9 @@ pub struct Record {
     /// ~/.neosian or $NEOSIAN_HOME)
     #[arg(long)]
     pub(super) root: Option<PathBuf>,
+    /// State process URL; bearer token comes from NEOSIAN_CLIENT_TOKEN.
+    #[arg(long)]
+    pub(super) url: Option<String>,
     /// single read-write mount of SCOPE at /memories (the memory_scope= sugar)
     #[arg(long)]
     pub(super) scope: Option<String>,
@@ -108,13 +111,13 @@ pub fn run(args: &Record, out: &mut impl Write, err: &mut impl Write) -> io::Res
         );
         return usage(json, &message, out, err);
     }
+    let store = match Selection::resolve(args.root.as_deref(), args.url.as_deref()) {
+        Ok(store) => store,
+        Err(message) => return usage(json, &message, out, err),
+    };
     if env::var_os(DSN_ENV).is_some_and(|dsn| !dsn.is_empty()) {
         return failed(NEEDS_PYTHON, Some(HINT), json, out, err);
     }
-    let root = match &args.root {
-        Some(root) => root.clone(),
-        None => home()?,
-    };
     let spool = match &args.spool {
         Some(spool) => spool.clone(),
         None => home()?.join(SPOOL_DIR_NAME),
@@ -152,7 +155,7 @@ pub fn run(args: &Record, out: &mut impl Write, err: &mut impl Write) -> io::Res
         }
     }
     let settings = Settings {
-        root,
+        store,
         mounts,
         sessions_mount: sessions,
         agent: args.agent.clone(),
@@ -188,11 +191,12 @@ fn record_payload(
         document: None,
         context: None,
         messages: None,
+        client: None,
     };
     let event = envelope.event.as_str();
     if matches!(event, "MailboxPoll" | "MailboxDelivery") {
-        let store = FileStore::open(&settings.root)?;
-        let mailbox = Mailbox::of_mounts(&store, &settings.mounts, Some(session_id))
+        let store = settings.store.open()?;
+        let mailbox = Mailbox::of_mounts(store.as_ref(), &settings.mounts, Some(session_id))
             .with_actor(envelope.actor.clone());
         envelope.messages = Some(if event == "MailboxPoll" {
             poll(&mailbox)?
@@ -204,8 +208,8 @@ fn record_payload(
     }
     let mount = &settings.mounts[settings.sessions_mount];
     if event == "MailboxContext" {
-        let store = FileStore::open(&settings.root)?;
-        let mailbox = Mailbox::of_mounts(&store, &settings.mounts, Some(session_id));
+        let store = settings.store.open()?;
+        let mailbox = Mailbox::of_mounts(store.as_ref(), &settings.mounts, Some(session_id));
         let identity = crate::assets::block(crate::assets::MESSAGES, "identity")
             .expect("messages.yaml carries the identity line");
         let identity = crate::text::rstrip(&crate::assets::render(
@@ -222,14 +226,15 @@ fn record_payload(
         return Ok(envelope);
     }
     if event == SESSION_START_EVENT {
-        let store = FileStore::open(&settings.root)?;
+        let store = settings.store.open()?;
+        envelope.client = store.client().map(str::to_string);
         let source = payload
             .get("source")
             .filter(|s| !crate::conversation::message::falsy(s));
         let source = source.map_or_else(String::new, py_str);
         envelope.disposition = "context";
         envelope.context = Some(render_session_start(
-            &store,
+            store.as_ref(),
             &settings.mounts,
             mount,
             &settings.agent,
@@ -258,13 +263,17 @@ fn record_payload(
     envelope.conversation_id = landed.conversation_id;
     envelope.turn = landed.turn;
     envelope.document = landed.document;
+    envelope.client = landed.client;
     if matches!(event, PROMPT_EVENT | TOOL_EVENT) {
         // The lineage note a continue call leaves, then the inbox (§34).
-        let inbox = FileStore::open(&settings.root)
+        let inbox = settings
+            .store
+            .open()
             .map_err(Error::from)
             .and_then(|store| {
-                let mailbox = Mailbox::of_mounts(&store, &settings.mounts, Some(session_id))
-                    .with_actor(envelope.actor.clone());
+                let mailbox =
+                    Mailbox::of_mounts(store.as_ref(), &settings.mounts, Some(session_id))
+                        .with_actor(envelope.actor.clone());
                 if event == TOOL_EVENT {
                     note_continue(&mailbox, &mount.scope, payload)?;
                 }

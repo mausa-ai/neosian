@@ -9,7 +9,7 @@ use super::message::{Role, text_of};
 use super::projection::REDACTED;
 use super::{Error, Turn};
 use crate::pyfmt::dumps;
-use crate::store::FileStore;
+use crate::state::State;
 use crate::text::{head, len, strip, tail};
 
 pub const RESULT_CHARS: usize = 4096;
@@ -132,7 +132,7 @@ pub struct Corrective {
 /// names it), or the corrective failure with `label` naming the
 /// conversation; a refusal of the seam is `[code] message`.
 pub fn recall(
-    store: &FileStore,
+    store: &dyn State,
     target: &str,
     turn: i64,
     label: &str,

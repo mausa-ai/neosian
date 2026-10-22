@@ -7,7 +7,7 @@
 use super::mounts::{Mount, resolve};
 use crate::assets::SKILLS;
 use crate::conversation::Error;
-use crate::store::FileStore;
+use crate::state::State;
 
 pub const SKILLS_PREFIX: &str = "skills/";
 const FENCE: &str = "---";
@@ -180,7 +180,7 @@ pub fn shipped_skills() -> Vec<Skill> {
         .collect()
 }
 
-fn read(store: &FileStore, mount: &Mount, name: &str) -> Result<Option<SkillEntry>, Error> {
+fn read(store: &dyn State, mount: &Mount, name: &str) -> Result<Option<SkillEntry>, Error> {
     if name.contains('/') {
         return Ok(None);
     }
@@ -224,7 +224,7 @@ fn shipped_entry(skill: &Skill) -> SkillEntry {
 
 /// Every skill: the mounts in order, then the directory.
 pub fn list_skills(
-    store: &FileStore,
+    store: &dyn State,
     mounts: &[Mount],
     directory: &[Skill],
 ) -> Result<Vec<SkillEntry>, Error> {
@@ -243,7 +243,7 @@ pub fn list_skills(
 /// One skill by name (the first in listing order) or by its
 /// `/mount/skills/name` path; None when nothing is there.
 pub fn load_skill(
-    store: &FileStore,
+    store: &dyn State,
     mounts: &[Mount],
     directory: &[Skill],
     name: &str,

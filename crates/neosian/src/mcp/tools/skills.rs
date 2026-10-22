@@ -60,7 +60,7 @@ fn row(entry: &SkillEntry) -> Value {
 
 fn list_call(server: &Server, _: &Map<String, Value>) -> Outcome {
     let memory = &server.memory;
-    let entries = match list_skills(&memory.store, &memory.mounts, &server.shipped) {
+    let entries = match list_skills(memory.store.as_ref(), &memory.mounts, &server.shipped) {
         Ok(entries) => entries,
         Err(error) => return Outcome::failed("list_skills", &error.text()),
     };
@@ -76,13 +76,13 @@ fn list_call(server: &Server, _: &Map<String, Value>) -> Outcome {
 fn load_call(server: &Server, arguments: &Map<String, Value>) -> Outcome {
     let memory = &server.memory;
     let name = text(arguments, "name").unwrap_or_default();
-    let entry = match load_skill(&memory.store, &memory.mounts, &server.shipped, name) {
+    let entry = match load_skill(memory.store.as_ref(), &memory.mounts, &server.shipped, name) {
         Ok(entry) => entry,
         Err(Error::Memory(error)) => return corrective(&error).into(),
         Err(error) => return Outcome::failed("load_skill", &error.text()),
     };
     let Some(entry) = entry else {
-        let names = match list_skills(&memory.store, &memory.mounts, &server.shipped) {
+        let names = match list_skills(memory.store.as_ref(), &memory.mounts, &server.shipped) {
             Ok(entries) => entries
                 .iter()
                 .map(|entry| entry.name.clone())

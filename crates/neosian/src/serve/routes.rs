@@ -22,7 +22,7 @@ use crate::store::FileStore;
 use crate::version::VERSION;
 
 /// The wire version this build speaks; `RemoteStore.connect` refuses another.
-pub const WIRE_VERSION: u64 = 6;
+use crate::wire::WIRE_VERSION;
 
 /// A route's body: the store, the typed payload and the stamped client.
 pub type Handler = fn(&FileStore, &Payload, &str) -> Result<Value, Fail>;

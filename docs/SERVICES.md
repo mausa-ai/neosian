@@ -194,11 +194,13 @@ in `ps` (DESIGN §12 ledger #53). Unset, the entry points require
 `--root PATH` and use a FileStore; set, they use a `PostgresStore` and
 `--root` is refused (an explicit conflict, no precedence rule). None
 ever applies the DDL — run `python -m neosian.schemas postgres | psql`
-first (DESIGN §8 C1). The Rust binary reads the file store alone until
-its Postgres substrate lands (DESIGN §39.2): with the key set, its
+first (DESIGN §8 C1). The Rust binary's direct backend is FileStore until
+its Postgres substrate lands (DESIGN §39.2); its `record` and `mcp` commands
+can also reach either server implementation through `--url`. With the DSN set, its
 `memory`, `search`, `continue`, `record`, `mcp` and `serve` verbs exit 1
 and name the Python shell, never the home in silence (a hook's exit 2
 would block the prompt, so the record verb says it at 1 with its hint).
+An explicit `--url` together with the DSN is an argv conflict, exit 2.
 
 ## The state process — bearer tokens, not an API key
 
@@ -240,10 +242,20 @@ behaves exactly as it did before** — nothing existing changes.
 
 `NEOSIAN_CLIENT_TOKEN` is the **client's** side: read only by the argv
 entry points when `--url` names a state process (`neosian memory`,
-`neosian mcp`, `neosian audit`, `neosian search`), never by the library
+`neosian record`, `neosian mcp`, `neosian audit`, `neosian search`), never by the library
 (`RemoteStore.connect(url, token=…)` takes it explicitly). A distinct
 key because one machine runs both; `--url` without it refuses at the
-grammar tier. Off means no daemon store from the shell.
+grammar tier. Off means no daemon store from the shell. The Rust binary
+reads this key for `record --url` and `mcp --url` too; its other commands
+remain local until their remote doors land.
+
+`SSL_CERT_FILE` selects a PEM CA bundle for HTTPS clients. The Rust wire
+client uses rustls with Mozilla roots when unset, verifies certificates
+and hostnames, and replaces those roots with the named bundle when set.
+The Python client delegates TLS configuration to httpx. Both clients
+use 30-second transport timeouts, follow no redirects and perform no
+application retries. Rust transport diagnostics use ureq's wording;
+structured storage failures retain the wire's codes and details.
 
 **Off means the process refuses to start** — exit 2 at the grammar tier,
 naming the key. Default-deny is code, not configuration (ledger #107,

@@ -16,14 +16,14 @@ use super::rpc::serve;
 use super::server::Server;
 use crate::assets::{CONTEXT, literal};
 use crate::cli::usage;
-use crate::home::{home, project_mounts, user_mount};
+use crate::home::{project_mounts, user_mount};
 use crate::memory::cli::{DSN_ENV, NEEDS_PYTHON};
 use crate::memory::dispatch::Memory;
 use crate::memory::grammar::{SCOPE_ENV, SUGAR_MOUNT_PATH};
 use crate::memory::mounts::{Mount, Refusal};
 use crate::record::context::render_instructions;
+use crate::remote::selection::Selection;
 use crate::repr::repr;
-use crate::store::FileStore;
 use crate::store::grammar::Actor;
 use crate::store::time::Stamp;
 
@@ -39,6 +39,9 @@ pub struct Mcp {
     /// ~/.neosian or $NEOSIAN_HOME)
     #[arg(long)]
     root: Option<PathBuf>,
+    /// State process URL; bearer token comes from NEOSIAN_CLIENT_TOKEN.
+    #[arg(long)]
+    url: Option<String>,
     /// single read-write mount of SCOPE at /memories
     #[arg(long)]
     scope: Option<String>,
@@ -138,19 +141,29 @@ pub fn run(args: &Mcp, out: &mut impl Write, err: &mut impl Write) -> io::Result
             return usage(false, &message, out, err);
         }
     };
+    let selected = match Selection::resolve(args.root.as_deref(), args.url.as_deref()) {
+        Ok(selected) => selected,
+        Err(message) => return usage(false, &message, out, err),
+    };
     if env::var_os(DSN_ENV).is_some_and(|dsn| !dsn.is_empty()) {
         writeln!(err, "error: {NEEDS_PYTHON}")?;
         return Ok(1);
     }
-    let root = match &args.root {
-        Some(root) => root.clone(),
-        None => home()?,
+    let store = match selected.open() {
+        Ok(store) => store,
+        Err(error) => {
+            writeln!(
+                err,
+                "error: {}",
+                crate::conversation::Error::from(error).text()
+            )?;
+            return Ok(1);
+        }
     };
-    let store = FileStore::open(&root)?;
     let instructions = if hooked(actor.as_str()) {
         literal(CONTEXT, "start_instructions").expect("context.yaml carries the discipline")
     } else {
-        match render_instructions(&store, &mounts, Stamp::now()) {
+        match render_instructions(store.as_ref(), &mounts, Stamp::now()) {
             Ok(instructions) => instructions,
             Err(error) => {
                 writeln!(err, "error: {}", error.text())?;

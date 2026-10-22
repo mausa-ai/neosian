@@ -30,6 +30,7 @@ pub struct Envelope {
     pub conversation_id: Option<String>,
     pub turn: Option<u64>,
     pub document: Option<String>,
+    pub client: Option<String>,
     pub context: Option<String>,
     /// The plugins' poll and delivery events answer with this key too.
     pub messages: Option<Vec<Value>>,
@@ -45,7 +46,7 @@ impl Envelope {
             "conversation_id": self.conversation_id,
             "turn": self.turn,
             "document": self.document,
-            "client": Value::Null,
+            "client": self.client,
             "context": self.context,
         });
         if let Some(messages) = &self.messages {
@@ -119,6 +120,7 @@ mod tests {
             document: None,
             context: context.map(str::to_string),
             messages: None,
+            client: None,
         }
     }
 

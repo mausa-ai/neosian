@@ -272,6 +272,10 @@ EOF
 | `--actor NAME` | who writes, `<kind>:<id>` (default `cli:local`; `cli:<host>` names the agent driving the shell) |
 | `--schema NAME` | Postgres schema (Postgres only) |
 
+The Rust binary currently accepts `--url` on `record` and the MCP stdio
+server. These use the same token environment variable and refuse a server
+with another wire version; other binary commands remain local.
+
 Postgres arrives only through the `NEOSIAN_POSTGRES_DSN` environment
 variable; there is no `--dsn` flag (argv is world-readable), and the
 state process through `--url` with `NEOSIAN_CLIENT_TOKEN` set the same

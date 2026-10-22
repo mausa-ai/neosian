@@ -84,7 +84,10 @@ fn listing(mount: &Mount, entries: &[Entry]) -> Outcome {
 /// to a document only.
 pub fn view(memory: &Memory, path: &str, range: Option<(i64, i64)>) -> Result<Outcome, Error> {
     if path.trim_matches('/').is_empty() {
-        return Ok(Outcome::ok(index::render(&memory.store, &memory.mounts)?));
+        return Ok(Outcome::ok(index::render(
+            memory.store.as_ref(),
+            &memory.mounts,
+        )?));
     }
     let (mount, document) = resolve(&memory.mounts, path)?;
     if document.is_empty() {
@@ -229,10 +232,15 @@ pub fn delete(memory: &Memory, path: &str) -> Result<Outcome, Error> {
     writable(mount)?;
     structural(mount)?;
     let shown = virtual_path(mount, document);
-    match memory.store.delete(&mount.scope, document, &memory.actor)? {
-        Some(version) => Ok(Outcome::ok(format!("Deleted {shown}")).wrote(shown, version, None)),
-        None => Ok(Outcome::fail(format!("No document at {shown}")).hint(INDEX_HINT)),
+    let deleted = memory.store.delete(&mount.scope, document, &memory.actor)?;
+    if !deleted.removed {
+        return Ok(Outcome::fail(format!("No document at {shown}")).hint(INDEX_HINT));
     }
+    let outcome = Outcome::ok(format!("Deleted {shown}"));
+    Ok(match deleted.version {
+        Some(version) => outcome.wrote(shown, version, None),
+        None => outcome,
+    })
 }
 
 /// Move a document. Within a mount it is the store's rename; across
@@ -246,7 +254,7 @@ pub fn rename(memory: &Memory, old: &str, new: &str) -> Result<Outcome, Error> {
     writable(to)?;
     structural(from)?;
     structural(to)?;
-    let (store, actor) = (&memory.store, &memory.actor);
+    let (store, actor) = (memory.store.as_ref(), &memory.actor);
     let (verb, version) = if from.path == to.path {
         ("Renamed", store.rename(&from.scope, source, target, actor)?)
     } else {

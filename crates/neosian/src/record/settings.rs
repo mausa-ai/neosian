@@ -18,7 +18,7 @@ use crate::memory::mounts::{Mount, Refusal};
 /// Everything the verb needs: the store, the mounts and the one the
 /// sessions document lands in, the agent's kind, the spool.
 pub struct Settings {
-    pub root: PathBuf,
+    pub store: crate::remote::selection::Selection,
     pub mounts: Vec<Mount>,
     pub sessions_mount: usize,
     pub agent: String,

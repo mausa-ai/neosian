@@ -169,8 +169,12 @@ fn moment(text: Option<&str>) -> Result<Option<Stamp>, Outcome> {
 fn call(server: &Server, arguments: &Map<String, Value>) -> Outcome {
     let memory = &server.memory;
     let command = text(arguments, "command").unwrap_or_default();
-    let mailbox = Mailbox::of_mounts(&memory.store, &memory.mounts, text(arguments, "session"))
-        .with_actor(memory.actor.clone());
+    let mailbox = Mailbox::of_mounts(
+        memory.store.as_ref(),
+        &memory.mounts,
+        text(arguments, "session"),
+    )
+    .with_actor(memory.actor.clone());
     let scope = text(arguments, "scope");
     let selected = scope.map(|scope| {
         memory

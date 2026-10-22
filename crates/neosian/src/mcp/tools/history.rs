@@ -84,7 +84,7 @@ pub fn search() -> Tool {
 
 fn mailbox(server: &Server) -> Mailbox<'_> {
     let memory = &server.memory;
-    Mailbox::of_mounts(&memory.store, &memory.mounts, None).with_actor(memory.actor.clone())
+    Mailbox::of_mounts(memory.store.as_ref(), &memory.mounts, None).with_actor(memory.actor.clone())
 }
 
 fn recall_call(server: &Server, arguments: &Map<String, Value>) -> Outcome {
@@ -92,7 +92,13 @@ fn recall_call(server: &Server, arguments: &Map<String, Value>) -> Outcome {
     let conversation = text(arguments, "conversation").unwrap_or_default();
     let label = format!("Conversation {}", repr(conversation));
     let call = text(arguments, "call");
-    let found = recalling::recall(&server.memory.store, conversation, turn, &label, call);
+    let found = recalling::recall(
+        server.memory.store.as_ref(),
+        conversation,
+        turn,
+        &label,
+        call,
+    );
     let text = match found {
         Ok(Ok(text)) => text,
         Ok(Err(corrective)) => {

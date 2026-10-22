@@ -16,7 +16,6 @@ use crate::conversation::Error;
 use crate::conversation::sessions::{
     continued_ids, continues, handoff_declared, link_handoff, sessions_document, sessions_path,
 };
-use crate::store::FileStore;
 use crate::store::grammar::Actor;
 
 /// What a landing left: the disposition, and the turn and document once
@@ -26,6 +25,7 @@ pub struct Landed {
     pub conversation_id: Option<String>,
     pub turn: Option<u64>,
     pub document: Option<String>,
+    pub client: Option<String>,
 }
 
 fn only(disposition: &'static str) -> Landed {
@@ -34,6 +34,7 @@ fn only(disposition: &'static str) -> Landed {
         conversation_id: None,
         turn: None,
         document: None,
+        client: None,
     }
 }
 
@@ -77,7 +78,7 @@ pub fn land(
     }
     let mount = &settings.mounts[settings.sessions_mount];
     let scope = mount.scope.as_str();
-    let store = FileStore::open(&settings.root)?;
+    let store = settings.store.open()?;
     let turn = store.append_turn(session_id, messages, Some(actor.as_str().to_string()))?;
     // The lineage (§33): what this span declared, after what the document
     // already says; it is rewritten whole at every Stop.
@@ -104,12 +105,14 @@ pub fn land(
     );
     store.write(scope, &sessions_path(session_id), &content, &stamp, None)?;
     if handoff_declared(&turn.messages) {
-        link_handoff(&store, scope, session_id, &stamp)?;
+        link_handoff(store.as_ref(), scope, session_id, &stamp)?;
     }
+    let client = store.client().map(str::to_string);
     drop(store);
     spool.clear(session_id)?;
     Ok(Landed {
         disposition: "recorded",
+        client,
         conversation_id: Some(turn.conversation_id),
         turn: Some(turn.turn),
         document: Some(format!("/{}/{}", mount.path, sessions_path(session_id))),

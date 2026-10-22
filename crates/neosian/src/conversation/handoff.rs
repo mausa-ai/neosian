@@ -16,10 +16,11 @@ use super::views::project_conversation;
 use super::{Error, Projection, Turn};
 use crate::assets::{CONTEXT, folded, render};
 use crate::repr::repr;
+use crate::state::State;
 use crate::store::error::Error as StoreError;
 use crate::store::grammar::Actor;
 use crate::store::time::Stamp;
-use crate::store::{Document, Entry, FileStore};
+use crate::store::{Document, Entry};
 use crate::text::{len, strip};
 
 /// Four times the index budget: the newest turns verbatim under three
@@ -161,7 +162,7 @@ fn verbatim_block(turn: &Turn, links: &LinkRegistry) -> String {
 /// pending note, and the baton marked picked up by `pick_up`'s session
 /// at its moment; None is the shell's read, the baton untouched.
 pub fn continue_conversation(
-    store: &FileStore,
+    store: &dyn State,
     scope: &str,
     conversation: Option<&str>,
     pick_up: Option<(&Actor, Stamp)>,
@@ -208,7 +209,7 @@ pub fn continue_conversation(
 /// was read; on a conflict (the departing Stop linking it in the same
 /// beat) once more against the fresh one, still pending or not.
 fn picked_up(
-    store: &FileStore,
+    store: &dyn State,
     scope: &str,
     document: &Document,
     baton: &Handoff,
@@ -264,7 +265,7 @@ fn belongs(baton: &Handoff, target: &str, named: bool) -> bool {
 /// The session a bare call means: the note's when the record linked it,
 /// else the newest listed session, written after the note when one is
 /// pending and unlinked.
-fn default_target(store: &FileStore, scope: &str, baton: Option<&Handoff>) -> Answer<String> {
+fn default_target(store: &dyn State, scope: &str, baton: Option<&Handoff>) -> Answer<String> {
     if let Some(linked) = baton.and_then(|baton| baton.conversation.clone()) {
         return Ok(Ok(linked));
     }

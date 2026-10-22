@@ -72,8 +72,9 @@ pub fn run(command: &Command, out: &mut impl Write, err: &mut impl Write) -> io:
         Some(root) => root.clone(),
         None => home()?,
     };
+    let store = std::sync::Arc::new(FileStore::open(&root)?);
     let memory = Memory {
-        store: FileStore::open(&root)?,
+        store: store.clone(),
         mounts,
         actor,
     };
@@ -112,7 +113,7 @@ pub fn run(command: &Command, out: &mut impl Write, err: &mut impl Write) -> io:
             return operate::settle(answered, json, out, err);
         }
         Command::Redact { path, all, .. } => {
-            let answered = operate::redact(&memory, path, *all, json, out);
+            let answered = operate::redact(&memory, &store, path, *all, json, out);
             return operate::settle(answered, json, out, err);
         }
         Command::Revert { path, version, .. } => {

@@ -81,7 +81,11 @@ impl Server {
     }
 
     fn prompts(&self) -> Answer {
-        match list_skills(&self.memory.store, &self.memory.mounts, &self.shipped) {
+        match list_skills(
+            self.memory.store.as_ref(),
+            &self.memory.mounts,
+            &self.shipped,
+        ) {
             Ok(entries) => {
                 let prompts: Vec<Value> = entries
                     .iter()
@@ -101,7 +105,12 @@ impl Server {
         else {
             return Answer::invalid_params();
         };
-        let found = load_skill(&self.memory.store, &self.memory.mounts, &self.shipped, name);
+        let found = load_skill(
+            self.memory.store.as_ref(),
+            &self.memory.mounts,
+            &self.shipped,
+            name,
+        );
         match found {
             Ok(Some(entry)) if entry.skill.is_some() => {
                 let skill = entry.skill.expect("checked");

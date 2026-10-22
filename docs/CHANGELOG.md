@@ -10,6 +10,18 @@ phase close names the version.
 
 ### Added
 
+- The Rust binary's `record` and MCP stdio commands accept `--url`,
+  using `NEOSIAN_CLIENT_TOKEN` to reach either state-process implementation.
+  The client checks `WIRE_VERSION` before storage calls, follows listing
+  pages, preserves structured store errors and uses verified HTTPS with
+  30-second transport timeouts. `SSL_CERT_FILE` selects custom CA roots.
+  Recording keeps its spool locally until the remote landing succeeds;
+  transport failures are not retried. Other binary commands gain remote
+  selection with their later phases.
+- Remote differential coverage runs the hook and MCP corpus through all
+  four Python/Rust client-server pairings, including recorded spans,
+  outage recovery, multi-page reads, version-skew refusal and verified TLS.
+  The TLS dependency notices accompany the binary archives.
 - `neosian serve` from the binary (R2 slice A, the wire in Rust; DESIGN
   §18, §39.11): the state process's twenty-one `/v1/` routes and the
   handshake at `WIRE_VERSION` 6 over the file store, on axum. The

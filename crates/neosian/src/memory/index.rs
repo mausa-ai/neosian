@@ -11,8 +11,9 @@ use std::collections::{BTreeMap, HashSet};
 
 use super::mounts::{Mount, state_path};
 use crate::assets::{MESSAGES, block};
+use crate::state::State;
+use crate::store::Entry;
 use crate::store::error::Error;
-use crate::store::{Entry, FileStore};
 
 /// About 2k tokens under the §6 character heuristic.
 const BUDGET_CHARS: isize = 8192;
@@ -24,12 +25,12 @@ fn chars(text: &str) -> isize {
     text.chars().count() as isize
 }
 
-pub fn render(store: &FileStore, mounts: &[Mount]) -> Result<String, Error> {
+pub fn render(store: &dyn State, mounts: &[Mount]) -> Result<String, Error> {
     render_within(store, mounts, BUDGET_CHARS)
 }
 
 /// The index under `budget` characters: the session start block's share.
-pub fn render_within(store: &FileStore, mounts: &[Mount], budget: isize) -> Result<String, Error> {
+pub fn render_within(store: &dyn State, mounts: &[Mount], budget: isize) -> Result<String, Error> {
     let mut listings: Vec<Listing> = Vec::new();
     let mut suffix = String::new();
     let template = block(MESSAGES, "index").expect("messages.yaml carries the index line");

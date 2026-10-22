@@ -152,7 +152,7 @@ fn surface(
         Err(error) => return Ok(Err(error.text())),
     };
     let memory = Memory {
-        store,
+        store: std::sync::Arc::new(store),
         mounts,
         actor,
     };

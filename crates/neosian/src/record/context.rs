@@ -21,8 +21,9 @@ use crate::memory::index::{render as render_index, render_within};
 use crate::memory::mounts::Mount;
 use crate::messaging::delivery::context as mailbox_context;
 use crate::messaging::mailbox::Mailbox;
+use crate::state::State;
+use crate::store::Entry;
 use crate::store::time::Stamp;
-use crate::store::{Entry, FileStore};
 use crate::text::{len, rstrip};
 
 pub const COMPACT_SOURCE: &str = "compact";
@@ -76,7 +77,7 @@ pub fn choose_sessions(entries: &[Entry], own: &str, source: &str) -> Vec<String
 /// chosen session as log lines under an even share of what the frame
 /// lines leave (the fold line says what is hidden).
 pub fn render_left_off(
-    store: &FileStore,
+    store: &dyn State,
     scope: &str,
     own: &str,
     source: &str,
@@ -134,7 +135,7 @@ pub fn render_left_off(
 /// The pending handoff note as session start shows it (§33): in full
 /// while young, one line once stale, nothing once picked up or absent.
 pub fn render_note(
-    store: &FileStore,
+    store: &dyn State,
     scope: &str,
     mount_path: &str,
     now: Stamp,
@@ -181,7 +182,7 @@ pub fn render_note(
 /// The note (never after a compaction), then "where we left off" under
 /// what the budget leaves.
 pub fn render_start_context(
-    store: &FileStore,
+    store: &dyn State,
     scope: &str,
     mount_path: &str,
     own: &str,
@@ -209,7 +210,7 @@ pub fn render_start_context(
 /// we left off at the full budgets, the MCP server's instructions where
 /// the session is unknown and none is the own one.
 pub fn render_instructions(
-    store: &FileStore,
+    store: &dyn State,
     mounts: &[Mount],
     now: Stamp,
 ) -> Result<String, Error> {
@@ -239,7 +240,7 @@ pub fn render_instructions(
 /// index up to three eighths, the note and recent sessions under the
 /// rest, the session identity and the inbox at the end.
 pub fn render_session_start(
-    store: &FileStore,
+    store: &dyn State,
     mounts: &[Mount],
     mount: &Mount,
     agent: &str,

@@ -16,13 +16,16 @@ mod memory;
 mod messaging;
 mod pyfmt;
 mod record;
+mod remote;
 mod repr;
 mod serve;
+mod state;
 mod store;
 #[cfg(test)]
 mod testing;
 mod text;
 mod version;
+mod wire;
 
 use std::process::ExitCode;
 

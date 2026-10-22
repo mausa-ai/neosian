@@ -8,9 +8,10 @@ use std::io;
 
 use super::commands;
 use super::mounts::{Mount, resolve, state_path};
-use crate::store::FileStore;
+use crate::state::State;
 use crate::store::error::{Error, MemoryError};
 use crate::store::grammar::Actor;
+use std::sync::Arc;
 
 const MAILBOX: &str =
     "Use messages for mailbox lifecycle changes; operator redaction remains available.";
@@ -18,7 +19,7 @@ const MAILBOX: &str =
 /// The memory wiring of one invocation: a store, its explicit mounts and
 /// who is writing.
 pub struct Memory {
-    pub store: FileStore,
+    pub store: Arc<dyn State>,
     pub mounts: Vec<Mount>,
     pub actor: Actor,
 }

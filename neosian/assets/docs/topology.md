@@ -14,6 +14,14 @@ and the quickstart always begins embedded.
 | **your app runs neosian** | embed + `FileStore`: dev, local tools, cooperating local agents | embed + `PostgresStore`: production, multi-worker |
 | **a separate process runs neosian** | the state process (`neosian serve`) owning a FileStore root | the state process over Postgres |
 
+The Rust binary's `record --url URL` and `mcp --url URL` reach either
+state-process implementation with `NEOSIAN_CLIENT_TOKEN`. The record spool
+stays on the client machine and clears only after a successful landing.
+A failed landing keeps the span for the next Stop; a partial remote write
+is not an exactly-once transaction. Neither client retries transport
+failures automatically. Other binary command-line remote doors remain
+scheduled for later phases.
+
 ## Embed first
 
 A single app embeds the library and talks to its store directly:

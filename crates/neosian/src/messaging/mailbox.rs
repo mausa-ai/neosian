@@ -11,7 +11,7 @@ use crate::conversation::Error;
 use crate::conversation::ids::parse_conversation_id;
 use crate::conversation::sessions::{continues, sessions_path};
 use crate::memory::mounts::Mount;
-use crate::store::FileStore;
+use crate::state::State;
 use crate::store::error::MemoryError;
 use crate::store::grammar::Actor;
 use crate::store::time::Stamp;
@@ -72,7 +72,7 @@ pub(super) struct Reach {
 
 /// An explicitly scoped mailbox; session identity is never guessed.
 pub struct Mailbox<'a> {
-    pub(super) store: &'a FileStore,
+    pub(super) store: &'a dyn State,
     pub(super) reach: Vec<Reach>,
     pub(super) session: Option<String>,
     pub(super) actor: Actor,
@@ -80,7 +80,7 @@ pub struct Mailbox<'a> {
 }
 
 impl<'a> Mailbox<'a> {
-    fn new(store: &'a FileStore, reach: Vec<Reach>, session: Option<&str>) -> Self {
+    fn new(store: &'a dyn State, reach: Vec<Reach>, session: Option<&str>) -> Self {
         Self {
             store,
             reach,
@@ -91,7 +91,7 @@ impl<'a> Mailbox<'a> {
     }
 
     /// Over the mounts' scopes, each once, in mount order: a hook's reach.
-    pub fn of_mounts(store: &'a FileStore, mounts: &[Mount], session: Option<&str>) -> Self {
+    pub fn of_mounts(store: &'a dyn State, mounts: &[Mount], session: Option<&str>) -> Self {
         let mut reach: Vec<Reach> = Vec::new();
         for mount in mounts {
             if !reach.iter().any(|known| known.scope == mount.scope) {
@@ -107,7 +107,7 @@ impl<'a> Mailbox<'a> {
     }
 
     /// Over every scope the store holds: the search verb's reach, reads alone.
-    pub fn over_scopes(store: &'a FileStore, scopes: Vec<String>) -> Self {
+    pub fn over_scopes(store: &'a dyn State, scopes: Vec<String>) -> Self {
         let reach = scopes
             .into_iter()
             .map(|scope| Reach {

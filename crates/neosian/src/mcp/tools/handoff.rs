@@ -76,7 +76,7 @@ fn continue_call(server: &Server, arguments: &Map<String, Value>) -> Outcome {
     let scope = scope(server);
     let conversation = text(arguments, "conversation");
     let outcome = continue_conversation(
-        &memory.store,
+        memory.store.as_ref(),
         scope,
         conversation,
         Some((&memory.actor, Stamp::now())),
@@ -99,8 +99,12 @@ fn continue_call(server: &Server, arguments: &Map<String, Value>) -> Outcome {
         Err(error) => return Outcome::failed("continue_session", &error.text()),
     };
     let mut text = delivered.text;
-    let reader = Mailbox::of_mounts(&memory.store, &memory.mounts, text_session(arguments))
-        .with_actor(memory.actor.clone());
+    let reader = Mailbox::of_mounts(
+        memory.store.as_ref(),
+        &memory.mounts,
+        text_session(arguments),
+    )
+    .with_actor(memory.actor.clone());
     match continuation_context(&reader, scope, &delivered.conversation, &memory.actor) {
         Ok(extra) if !extra.is_empty() => {
             text.push_str("\n\n");

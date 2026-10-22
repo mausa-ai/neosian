@@ -9,8 +9,9 @@ use serde_json::{Value, json};
 
 use crate::repr::repr;
 
-/// One refusal of the store or the tool layer: a code of the `memory_`
-/// family, the developer-facing sentence, and the fields it was built from.
+/// A storage, tool or configuration refusal: the stable code, the
+/// developer-facing sentence and the structured fields it was built from.
+/// The remote decoder also carries conversation and base errors here.
 #[derive(Debug)]
 pub struct MemoryError {
     pub code: &'static str,
@@ -19,6 +20,14 @@ pub struct MemoryError {
 }
 
 impl MemoryError {
+    pub fn configuration(message: impl Into<String>) -> Self {
+        Self {
+            code: "agent_configuration_error",
+            message: message.into(),
+            details: json!({}),
+        }
+    }
+
     pub fn not_found(scope: &str, path: &str) -> Self {
         Self {
             code: "memory_document_not_found",

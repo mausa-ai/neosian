@@ -105,6 +105,12 @@ impl Mailbox<'_> {
                 "an explicit calling session is required".to_string(),
             ));
         };
+        if !self.store.supports_optimistic_concurrency() {
+            return Err(crate::store::error::MemoryError::configuration(
+                "mailbox updates require cross-worker optimistic concurrency",
+            )
+            .into());
+        }
         let due_at = if action == Action::Snooze {
             Some(due_time(self.now(), update.due_at, update.delay_seconds).map_err(Error::Value)?)
         } else {

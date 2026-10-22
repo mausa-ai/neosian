@@ -14,7 +14,11 @@ server with raw JSON and never through `RemoteStore`
 (`tests/unit/server/test_wire_golden.py`, `test_wire_probes.py`), and the
 differential tier replays the same exchanges against the Python and the
 Rust state process over one home (`tests/differential/serve_cases.py`):
-the two answer alike and leave the same home.
+the two answer alike and leave the same home. The remote hook and MCP
+corpus also runs through all four Python/Rust client-server pairings
+(`tests/differential/test_remote.py`), with separate multi-page, TLS and
+version-skew probes. The Rust client implements the operations those
+two doors call; Python `RemoteStore` implements the whole wire.
 
 The wire mirrors the ABCs one method to one route and carries nothing
 else: no audit route (the shell composes `neosian audit` from

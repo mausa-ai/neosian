@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use super::Error;
 use super::message::{Message, Role, text_of};
 use crate::memory::mounts::Mount;
-use crate::store::FileStore;
+use crate::state::State;
 use crate::store::error::Error as StoreError;
 use crate::store::grammar::Actor;
 use crate::store::time::Stamp;
@@ -237,7 +237,7 @@ pub fn sessions_mount(mounts: &[Mount]) -> Option<usize> {
 /// landed first and knows the target already, so nothing is written.
 /// True when it linked.
 pub fn link_handoff(
-    store: &FileStore,
+    store: &dyn State,
     scope: &str,
     conversation: &str,
     actor: &Actor,

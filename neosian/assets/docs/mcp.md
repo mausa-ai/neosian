@@ -11,6 +11,12 @@ the install and loads at first use. For MCP over the network, the state
 process mounts this same factory's server at `/mcp`: `neosian serve`
 with mounts (`neosian docs topology`).
 
+The Rust binary's `neosian mcp --url URL` keeps MCP on stdio and reaches
+storage over the state-process wire. Set `NEOSIAN_CLIENT_TOKEN` in the
+client's environment. All eight tools, skills and prompts use that store,
+served by either the Python or Rust state process; a wire-version mismatch
+refuses startup before any storage call.
+
 ## The state set
 
 The memory server becomes the state server one tool at a time. Today it
