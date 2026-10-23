@@ -22,7 +22,7 @@ Two doors, one store:
   interactive Cursor get memory and skills over MCP and every session
   recorded through hooks: `neosian setup --write` lets you select the clients to
   connect, once per machine; `neosian status` says whether the machine is
-  set up; bare `neosian` opens a chat with an agent that knows neosian,
+  set up; the Python shell's bare `neosian` opens a chat with an agent that knows neosian,
   on the same memory, and runs the shell's verbs for you: ask it whether
   the machine is set up.
 - **Build an agent.** An async-only, stateless `Agent` (tools,
@@ -53,33 +53,35 @@ response = await convo.send("Where did we leave off?")
 
 ## Install
 
-Requires Python >= 3.12. One package, everything in it. Pin the release:
+For an existing agent, install the native binary on macOS or Linux:
 
 ```bash
-uv add "neosian==1.11.0"
+curl -fsS https://neosian.com/install | sh
+neosian setup --write
 ```
 
-The install brings the library with its two provider SDKs (OpenAI and
-Anthropic — Cerebras, xAI and Gemini ride the OpenAI wire), the `neosian`
-shell, the MCP server and client, the state process and OpenTelemetry
-spans: about 70 MB on disk, none of it loaded until used. Nothing in
-it needs an account or a server to start — `Model.FAKE` runs keylessly
-and `FileStore` is a directory. The one extra is the Postgres driver,
-`uv add "neosian[postgres]==1.11.0"`, for a `PostgresStore` against a
-server you already run; `[all]` is its alias.
+The installer selects the platform, verifies the archive's SHA-256 and
+installs under `~/.neosian/bin`, with a link in `~/.local/bin` when that
+name is free. An existing Python command is preserved; `neosian status`
+names competing executables. Both implementations use the same home,
+with no data migration. Windows has a PowerShell installer and MSI on the
+[GitHub Release](https://github.com/mausa-ai/neosian/releases/latest).
+Publisher signing and Apple notarization are deferred; browser downloads
+can trigger macOS or Windows security warnings.
 
-For a machine with nothing on it, the one-liner is
-[scripts/install.sh](https://github.com/mausa-ai/neosian/blob/v1.11.0/scripts/install.sh): it says what it
-installs, finds uv or installs it from a pinned release, runs `uv tool
-install neosian`, checks the PATH and prints the registration command.
-It is the same two commands, spelled out beside it:
+The next release also publishes `npm install -g neosian`,
+`brew install mausa-ai/neosian/neosian`, and `cargo install neosian --locked`.
+Cargo builds from source and requires the Rust version named by the crate.
+Use the original package manager to update these installations.
 
-```bash
-curl -fsS https://neosian.com/install | bash
-# or, by hand:
-curl -LsSf https://astral.sh/uv/install.sh | sh
-uv tool install "neosian==1.11.0"
-```
+For the Python shell, including chat, the TUI, playground and eval, use
+`uv tool install "neosian==1.11.0"`, or
+`curl -fsS https://neosian.com/install | sh -s -- --python`.
+For the SDK, use `uv add "neosian==1.11.0"`. Python requires >= 3.12.
+The Python package includes its provider SDKs, MCP server and client,
+state process and OpenTelemetry spans, about 70 MB on disk, loaded on use.
+`Model.FAKE` and `FileStore` need no account. The one extra is the Postgres
+driver, `uv add "neosian[postgres]==1.11.0"`; `[all]` is its alias.
 
 To work on neosian itself, `uv sync --all-groups` then `uv run neosian
 version` (the Development section has the gates).

@@ -2,40 +2,25 @@
 //! at build time, one source with the wheel, never prose in Rust.
 
 /// `neosian/assets/prompts/messages.yaml`.
-pub const MESSAGES: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../neosian/assets/prompts/messages.yaml"
-));
+pub const MESSAGES: &str = include_str!(concat!(env!("NEOSIAN_ASSETS"), "/prompts/messages.yaml"));
 
 /// `neosian/assets/prompts/context.yaml`.
-pub const CONTEXT: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../neosian/assets/prompts/context.yaml"
-));
+pub const CONTEXT: &str = include_str!(concat!(env!("NEOSIAN_ASSETS"), "/prompts/context.yaml"));
 
 /// `neosian/assets/prompts/tools.yaml`: the built-in tools' descriptions
 /// and their parameters' prose.
-pub const TOOLS: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../neosian/assets/prompts/tools.yaml"
-));
+pub const TOOLS: &str = include_str!(concat!(env!("NEOSIAN_ASSETS"), "/prompts/tools.yaml"));
 
 /// `neosian/assets/prompts/memory.yaml`: the memory tool and the system
 /// section.
-pub const MEMORY: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../neosian/assets/prompts/memory.yaml"
-));
+pub const MEMORY: &str = include_str!(concat!(env!("NEOSIAN_ASSETS"), "/prompts/memory.yaml"));
 
 /// The wheel's own skills, `neosian/assets/skills/*.md`, by name: the
 /// directory the MCP server lists after the mounts' (§24.3). A unit test
 /// keeps this list equal to the directory.
 pub const SKILLS: [(&str, &str); 1] = [(
     "handoff",
-    include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../neosian/assets/skills/handoff.md"
-    )),
+    include_str!(concat!(env!("NEOSIAN_ASSETS"), "/skills/handoff.md")),
 )];
 
 /// The lines of a top-level block scalar introduced by `key: <head>`, the

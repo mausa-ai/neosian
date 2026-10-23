@@ -252,9 +252,12 @@ fn perform(
     }
     let plugin = target.plugin.then(|| {
         let template = if target.client == "pi" {
-            include_str!("../../../../neosian/assets/clients/pi-record.ts")
+            include_str!(concat!(env!("NEOSIAN_ASSETS"), "/clients/pi-record.ts"))
         } else {
-            include_str!("../../../../neosian/assets/clients/opencode-record.js")
+            include_str!(concat!(
+                env!("NEOSIAN_ASSETS"),
+                "/clients/opencode-record.js"
+            ))
         };
         template.replace(
             "__NEOSIAN_RECORD_ARGV__",

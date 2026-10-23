@@ -16,8 +16,8 @@ macro_rules! pages {
         const PAGES: &[(&str, &str)] = &[$((
             $topic,
             include_str!(concat!(
-                env!("CARGO_MANIFEST_DIR"),
-                "/../../neosian/assets/docs/",
+                env!("NEOSIAN_ASSETS"),
+                "/docs/",
                 $topic,
                 ".md"
             )),

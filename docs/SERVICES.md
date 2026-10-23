@@ -374,16 +374,57 @@ self-skip. The lint and unit-test jobs must never receive a secret.
 
 ## Publishing
 
-No key. A `v*` tag runs cargo-dist's generated `release.yml`, which
-builds the binaries for the GitHub Release and then calls
-`publish-python.yml` as its publish job (DESIGN §39.5). That workflow
-publishes to PyPI by trusted publishing — the job's OIDC token
-(`id-token: write` on the `pypi` job alone) is exchanged by uv for a
-one-use upload token that PyPI accepts only from this repository's
-`publish-python.yml` on the `pypi` environment — and pushes the image to
-GHCR with the workflow's own `GITHUB_TOKEN` (`packages: write` on the
-image jobs). A long-lived publishing credential never exists, so there
-is nothing to rotate or leak; the lint and unit-test jobs still never
-receive a secret, and a `workflow_dispatch` of `publish-python.yml`
-rehearses every step but the two pushes with nothing at all (DESIGN
-§29).
+A stable `v*` tag runs cargo-dist's generated `release.yml`: the five
+binary targets, installers, checksums and GitHub attestations are hosted
+on the GitHub Release, then `publish-python.yml` and
+`publish-channels.yml` run. Announcement waits for both. A pre-release
+hosts binary artifacts without publishing the package-manager channels.
+Publication is a release operation; the default gates remain keyless.
+
+Python publication uses PyPI trusted publishing for `mausa-ai/neosian`,
+workflow `publish-python.yml`, environment `pypi`, and the job's OIDC
+identity. GHCR uses the workflow's `GITHUB_TOKEN`. A dispatch of that
+workflow rehearses the build without either upload.
+
+The binary channels require this setup before the R3 release tag:
+
+| Channel | Publisher setup | Without it |
+|---|---|---|
+| npm `neosian` | On the existing package, configure GitHub trusted publishing: owner `mausa-ai`, repository `neosian`, calling workflow `release.yml`, environment `npm`. Node 24 supplies the required npm CLI; no npm token is used. | The npm publication fails; the release is not announced complete. |
+| crates.io `neosian` | First publication needs a crates.io account with verified email and a token permitting creation of `neosian`, stored as the GitHub environment secret `CARGO_REGISTRY_TOKEN` in `crates-io`. After that first publish, configure trusted publishing for `mausa-ai/neosian`, calling workflow `release.yml`, environment `crates-io`, and delete the bootstrap secret. | The first publication cannot create the crate; subsequent publication needs either the bootstrap token or configured OIDC trust. |
+| Homebrew | Create and initialize the public `mausa-ai/homebrew-neosian` tap. Store `HOMEBREW_TAP_TOKEN` on `mausa-ai/neosian`: a token with Contents read/write on that tap alone. | The formula cannot be pushed. |
+
+npm and crates.io retries compare the published archive's digest and skip
+only identical content; a conflicting version is an error. The Homebrew
+job commits the generated formula only when it changed, with DCO sign-off.
+A dispatch of `publish-channels.yml` verifies the source package; none of
+its publication steps run. The workflows never print credentials.
+The crate jobs require a clean source tree before staging the asset
+snapshot. Cargo's `--allow-dirty` admits those generated, ignored files.
+
+Both npm and crates.io validate the calling `release.yml` workflow when
+using these reusable workflows. Configure trust shortly
+before publication: npm currently requires the first publish within two
+days of creating its trust configuration. See the
+[npm trusted-publisher documentation](https://docs.npmjs.com/trusted-publishers/)
+and [crates.io trusted publishing](https://crates.io/docs/trusted-publishing).
+
+Platform publisher signing and Apple notarization are deferred. No signing
+account or credential is needed for these builds. Browser downloads can
+trigger platform security warnings; checksums and GitHub attestations are
+available on the release.
+
+## The curl installer
+
+`scripts/install.sh`, served verbatim at `/install`, defaults to the binary.
+`--python` keeps the uv tool route; `--find-links DIR` implies Python.
+`NEOSIAN_VERSION` and `NEOSIAN_INSTALL_FIND_LINKS` mirror those flags.
+`NEOSIAN_INSTALL_DIR` selects the binary directory, default
+`~/.neosian/bin`; it does not move the state home. The installer links
+`~/.local/bin/neosian` only if the name is free, and reports a competing
+command without replacing it. The generated cargo-dist installer writes
+the update receipt; shell profile files are left alone. SHA-256 tooling is
+required: `sha256sum`, or a private adapter for macOS's `shasum`.
+`UV_INSTALL_DIR` controls where the Python route finds a newly installed uv.
+An explicit `--python` installation may replace this installer's own PATH
+link with uv's shim; the binary and its update receipt stay in place.

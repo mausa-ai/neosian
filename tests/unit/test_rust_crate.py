@@ -74,9 +74,7 @@ def test_the_shipped_skills_have_their_rust_twin() -> None:
     shipped = sorted(
         path.stem for path in (_ROOT / "neosian" / "assets" / "skills").glob("*.md")
     )
-    embedded = re.findall(
-        r'"/\.\./\.\./neosian/assets/skills/([a-z0-9_-]+)\.md"', source
-    )
+    embedded = re.findall(r'"/skills/([a-z0-9_-]+)\.md"', source)
     assert sorted(embedded) == shipped
     for name in shipped:  # the name the server lists it under
         assert re.search(rf'\(\s*"{name}",', source)

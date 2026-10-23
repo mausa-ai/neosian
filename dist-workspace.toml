@@ -30,9 +30,11 @@ publish-prereleases = false
 # The Python half of the release, after the binaries are hosted; it
 # publishes by the job's OIDC token (PyPI) and the workflow's own
 # GITHUB_TOKEN (GHCR), so the called workflow needs these and no more
-publish-jobs = ["./publish-python"]
+publish-jobs = ["./publish-python", "./publish-channels"]
+tap = "mausa-ai/homebrew-neosian"
 [dist.github-custom-job-permissions]
 publish-python = { contents = "read", id-token = "write", packages = "write" }
+publish-channels = { contents = "read", id-token = "write" }
 # The actions the generated workflow uses, pinned by commit the way
 # ci.yml pins them (DESIGN §29.3): checkout v7.0.1, upload-artifact
 # v7.0.2, download-artifact v8.0.2, attest v4.2.2. Dependabot's bump of

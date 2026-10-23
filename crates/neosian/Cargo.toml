@@ -11,6 +11,7 @@ homepage.workspace = true
 readme = "README.md"
 keywords = ["agents", "memory", "mcp", "llm"]
 categories = ["command-line-utilities"]
+include = ["src/**", "tests/**", "build.rs", "assets/**", "README.md", "LICENSE*", "wix/**"]
 
 [package.metadata.wix]
 upgrade-guid = "4F99CA3A-481B-4BC1-83A4-D24E8792A488"

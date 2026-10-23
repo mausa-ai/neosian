@@ -10,6 +10,10 @@ phase close names the version.
 
 ### Added
 
+- Release publication for the binary's npm, Homebrew and crates.io channels.
+  The Rust source package carries the same assets as the wheel and builds
+  independently of the repository. Platform signing remains deferred.
+
 - The Rust binary provides standalone `mcp install` and `record install`,
   with the existing fragments, scoped registration, safe writes and
   client-owned file rules. MCP includes Claude Desktop's registration.
@@ -34,6 +38,14 @@ phase close names the version.
   findings under isolated homes and client CLI stand-ins.
 
 ### Changed
+
+- The curl installer defaults to the native binary, with mandatory SHA-256
+  tooling, its own directory and a PATH link when the name is free. Existing
+  Python shims are preserved. `--python` keeps the uv installation, and
+  `--find-links` continues to select a local Python wheel. Missing argument
+  values and malformed versions are refused before downloading. An explicit
+  Python install can replace this installer's PATH link while preserving
+  the binary in its own directory.
 
 - An explicit `update --check` only reports, even when the update policy
   is `auto`, unless `--write` is also supplied.

@@ -72,17 +72,22 @@ def test_the_generated_release_is_pinned_by_its_config() -> None:
     uses = [ln for ln in text.splitlines() if _ANY_USE.match(ln)]
     for line in uses:
         if "./.github/workflows/" in line:
-            assert line.strip() == "uses: ./.github/workflows/publish-python.yml"
+            assert line.strip() in {
+                "uses: ./.github/workflows/publish-python.yml",
+                "uses: ./.github/workflows/publish-channels.yml",
+            }
             continue
         matched = _GENERATED_USE.match(line)
         assert matched, line
         assert commits[matched.group(1)] == matched.group(2), line
-    assert dist["publish-jobs"] == ["./publish-python"]
+    assert dist["publish-jobs"] == ["./publish-python", "./publish-channels"]
     assert dist["publish-prereleases"] is False
     release = _workflow(_GENERATED)
     assert release["permissions"] == {"contents": "write"}
     assert release[True]["push"]["tags"]
-    assert "custom-publish-python" in release["jobs"]["announce"]["needs"]
+    assert {"custom-publish-python", "custom-publish-channels"} <= set(
+        release["jobs"]["announce"]["needs"]
+    )
 
 
 @pytest.mark.unit
@@ -121,7 +126,9 @@ def test_the_one_uv_pin_names_the_same_release_everywhere() -> None:
     installer = re.search(r'^UV_VERSION="(\d+\.\d+\.\d+)"', script, re.M)
     assert installer
     for path in _WORKFLOWS:
-        assert _workflow(path)["env"]["UV_VERSION"] == installer.group(1), path.name
+        workflow = _workflow(path)
+        if "astral-sh/setup-uv@" in path.read_text(encoding="utf-8"):
+            assert workflow["env"]["UV_VERSION"] == installer.group(1), path.name
 
 
 @pytest.mark.unit

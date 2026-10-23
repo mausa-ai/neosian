@@ -61,6 +61,9 @@ Thumbs.db
 
 # The Rust workspace builds here (DESIGN §39)
 /target/
+# Canonical wheel data staged only for the crates.io source archive.
+/crates/neosian/assets/
+/crates/neosian/LICENSE
 .import_linter_cache/
 
 # The record (roadmap, design, the tour, the protocol) lives in record/,

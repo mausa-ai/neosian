@@ -30,6 +30,31 @@ explicit binary from either implementation. Both implementations provide
 the standalone `mcp install` and `record install` commands, including
 printable fragments, custom scopes and project-level registration.
 
+## Install and update
+
+The macOS/Linux curl installer selects the Rust binary by default:
+`curl -fsS https://neosian.com/install | sh`. It verifies the archive,
+installs under `~/.neosian/bin` and links `~/.local/bin/neosian` only when
+that name is free. `--version X.Y.Z` pins a release; `--python` keeps the
+uv tool installation, and `--find-links DIR` implies `--python` for a local
+wheel. Existing Python shims are preserved. Both doors share the home,
+and `status` names PATH shadowing; no data migration is needed.
+Running `--python` after a binary install lets uv replace this installer's
+PATH link with the Python shell; the binary stays under `~/.neosian/bin`.
+
+The next release also publishes the binary through npm (`npm install -g
+neosian`), Homebrew (`brew install mausa-ai/neosian/neosian`) and crates.io
+(`cargo install neosian --locked`). Cargo needs the crate's Rust version.
+Windows has PowerShell and MSI downloads on the GitHub Release. Platform
+signing is deferred; browser downloads can trigger security warnings.
+Use npm, brew or cargo to update their installations; the binary's updater
+only replaces an installation owned by a matching cargo-dist receipt.
+
+`uv tool install neosian` supplies the Python shell with chat, the TUI,
+playground, eval and all operator verbs. `uv add neosian` supplies the SDK.
+The binary's remaining operator verbs and Postgres backend are still
+being implemented; the command table below identifies the available doors.
+
 ## Set up and talk
 
 ```

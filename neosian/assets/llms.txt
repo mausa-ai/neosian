@@ -288,6 +288,18 @@ home and client files. Setup registers the executable running it;
 
 ## Install
 
+`curl -fsS https://neosian.com/install | sh` installs the native binary on
+macOS/Linux, verifies SHA-256, and preserves an existing Python command.
+Windows has PowerShell/MSI downloads. Publisher signing is deferred;
+browser downloads can trigger security warnings. The next release also
+publishes npm (`npm install -g neosian`), Homebrew (`brew install
+mausa-ai/neosian/neosian`) and Cargo (`cargo install neosian --locked`)
+channels. Update those through their original package manager.
+`uv tool install neosian` (or the curl installer's `--python`) supplies the
+Python shell with chat, the TUI, playground, eval and every operator verb;
+`uv add neosian` supplies the SDK. Both doors share the same home with no
+migration; `status` names competing executables on PATH.
+
 - `uv add "neosian==1.11.0"`: one package, the library and its
   provider SDKs, the `neosian` shell, the MCP server and client, the
   state process and OpenTelemetry spans (about 70 MB; nothing loaded
@@ -295,8 +307,8 @@ home and client files. Setup registers the executable running it;
   Keyless to start: `Model.FAKE` and `FileStore`
   need nothing. The one extra is the Postgres driver for `PostgresStore`,
   `neosian[postgres]` (`[all]` its alias).
-- `curl -fsS https://neosian.com/install | bash` puts uv and neosian on a
-  machine with nothing on it; the script says what it installs first.
+- `curl -fsS https://neosian.com/install | sh -s -- --python` installs uv
+  when needed and the Python shell; the script says what it installs first.
 - The appliance: `docker run -d -e NEOSIAN_SERVE_TOKEN=… -p 6367:6367
   -v neosian-state:/data ghcr.io/mausa-ai/neosian:1.11.0`, the state
   process on a volume, `/health` the one open route. Since 1.11.0 it

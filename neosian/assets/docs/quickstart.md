@@ -14,41 +14,48 @@ on its async-only, stateless Python core (>= 3.12).
 
 ## Install
 
-From PyPI, pinned to a release: the `llms.txt` beside this wheel names
-the version:
+For an existing agent, the native binary needs no Python or uv:
 
 ```bash
-uv add "neosian==<X.Y.Z>"
+curl -fsS https://neosian.com/install | sh
+neosian setup --write
 ```
 
-One package, everything but a database driver: the library with its
-provider SDKs, the `neosian` shell, the MCP server and client, the state
-process and OpenTelemetry spans, about 70 MB, none of it loaded
-until used. Keyless to start: `Model.FAKE` needs no account and
-`FileStore` is a directory. The one extra is the Postgres driver for
-`PostgresStore`, `uv add "neosian[postgres]==<X.Y.Z>"`, with `[all]` as
-its alias. On a machine with nothing on it,
-`curl -fsS https://neosian.com/install | bash` lands uv and neosian,
-saying what it installs first.
+The installer verifies SHA-256, installs in `~/.neosian/bin`, and links
+`~/.local/bin/neosian` when that name is free. It preserves an existing
+Python command; `status` names competing executables. The binary and Python
+shell share the same home and client files, with no migration.
+`--version X.Y.Z` selects a release. `--python` retains the uv tool path;
+`--find-links DIR` selects a local Python wheel and implies `--python`.
+Windows installers are on the GitHub Release. Publisher signing and Apple
+notarization are deferred, so browser downloads can trigger security warnings.
 
-The Rust binary also provides `setup`, `status`, `configure`, `update`,
-`mcp install`, and `record install` using the same home and client files.
-Setup registers the executable running it; `--binary PATH` selects an
-explicit binary. Status names competing executables on PATH. Chat, the
-TUI and the Python SDK remain in the Python package.
+The next release also publishes `npm install -g neosian`,
+`brew install mausa-ai/neosian/neosian`, and `cargo install neosian --locked`.
+The first two use prebuilt binaries; Cargo requires the crate's Rust version.
+Update these installations through the package manager that installed them.
+
+For chat, the TUI, playground and eval, install the Python shell with
+`uv tool install "neosian==<X.Y.Z>"`, or run the curl installer with
+`sh -s -- --python`. For the SDK, use `uv add "neosian==<X.Y.Z>"`.
+The `llms.txt` beside the wheel names its version; Python requires >= 3.12.
+The package includes the provider SDKs, MCP server and client, state process
+and OpenTelemetry spans, about 70 MB, loaded on use. `Model.FAKE` and
+`FileStore` need no account. The one extra is the Postgres driver:
+`uv add "neosian[postgres]==<X.Y.Z>"`, with `[all]` as its alias.
 
 ## The agent you already use
 
-Three commands and no Python. `neosian status` says whether this machine
+Set up the agent you already use with the binary. `neosian status` says whether this machine
 is set up. `neosian setup --write` asks which installed agents to connect (Claude
 Code, Codex, OpenCode, Muse Code, Cursor, Pi) to the home once per machine:
 memory and skills over MCP, every session recorded through the client's
-own hooks, so a new project needs nothing. Bare `neosian` opens a chat
+own hooks, so a new project needs nothing. The Python shell's bare `neosian` opens a chat
 with an agent that knows neosian, writes to the same memory and runs
 these verbs for you, asking before one that changes anything
 (`neosian docs cli`).
 
-From then on each session lands as a turn the ledger names (`neosian
+From then on each session lands as a turn the ledger names (the Python shell's `neosian
 audit`), the next session opens on where you left off, "continue" in
 any of them carries the last session on in one call (ask the departing
 one to hand off and the next one starts with its note), and `neosian

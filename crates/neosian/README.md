@@ -16,5 +16,20 @@ checks GitHub Releases; `--write` calls the adjacent cargo-dist updater
 only for the installation its receipt owns, within the installed major.
 The home and recorded state require no migration.
 
+Install with `curl -fsS https://neosian.com/install | sh`, or use the
+PowerShell installer/MSI on the GitHub Release. Publisher signing and
+Apple notarization are deferred; browser downloads can trigger warnings.
+The next release also publishes npm (`npm install -g neosian`), Homebrew
+(`brew install mausa-ai/neosian/neosian`) and Cargo (`cargo install neosian
+--locked`). Update those installations through their package manager.
+Cargo builds from source and requires the crate's declared Rust version.
+
+To prepare a source archive, start with a clean repository, run
+`python3 scripts/package_crate.py` then `cargo package --package neosian
+--locked --allow-dirty`. The staged assets are generated from
+`neosian/assets/` and ignored by Git; Cargo requires that flag to include
+them. CI and publication check the source tree is clean before staging.
+Registry builds need no Python and fetch no runtime data.
+
 Documentation: <https://neosian.com/docs>. Source and design:
 <https://github.com/mausa-ai/neosian>.
