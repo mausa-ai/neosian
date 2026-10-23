@@ -70,7 +70,7 @@ pub fn load_page(topic: &str) -> Option<Page> {
 /// pages are validated at the Python gate, so a page is never fenceless
 /// here; one would simply be all body.
 fn parse(topic: &'static str, text: &str) -> Page {
-    let lines: Vec<&str> = text.trim().split('\n').collect();
+    let lines: Vec<&str> = text.trim().lines().collect();
     let is_fence = |line: &str| line.trim_end_matches('\r') == "---";
     let close = if lines.first().is_some_and(|line| is_fence(line)) {
         lines
@@ -200,6 +200,18 @@ mod tests {
         assert_eq!(
             scalar(r#" "@Tool: a \"quoted\" word" "#),
             r#"@Tool: a "quoted" word"#
+        );
+    }
+
+    #[test]
+    fn a_windows_checkout_prints_the_same_document_bytes() {
+        let text =
+            "---\r\ntitle: Quickstart\r\nsummary: Read me\r\n---\r\n\r\nCost in µ$.\r\nNext…\r\n";
+        let page = parse("quickstart", text);
+        assert_eq!(page.body, "Cost in µ$.\nNext…");
+        assert_eq!(
+            page.body,
+            parse("quickstart", &text.replace("\r\n", "\n")).body
         );
     }
 

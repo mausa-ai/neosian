@@ -53,8 +53,8 @@ def checked(name: str, work: Path, artifacts: Path | None) -> Path:
 
 def output(binary: Path, *args: str, env: dict[str, str], work: Path) -> str:
     return subprocess.check_output(
-        [str(binary), *args], env=env, cwd=work, text=True, timeout=60
-    )
+        [str(binary), *args], env=env, cwd=work, timeout=60
+    ).decode("utf-8")
 
 
 def verify(

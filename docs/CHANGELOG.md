@@ -8,6 +8,14 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [1.12.2] - 2026-10-23
+
+### Fixed
+
+- The binary's embedded docs use the same LF line endings on Windows
+  and Unix, even when built from a Windows checkout. Live release checks
+  decode output explicitly as UTF-8 and compare its original line endings.
+
 ## [1.12.1] - 2026-10-23
 
 ### Fixed
@@ -2389,7 +2397,8 @@ pre-release — pin it explicitly; the API stability promise rides v1.0.0.
 - Both entry points share one `_validate_run`, so neither can skip a
   guard.
 
-[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.12.1...HEAD
+[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.12.2...HEAD
+[1.12.2]: https://github.com/mausa-ai/neosian/compare/v1.12.1...v1.12.2
 [1.12.1]: https://github.com/mausa-ai/neosian/compare/v1.12.0...v1.12.1
 [1.12.0]: https://github.com/mausa-ai/neosian/compare/v1.11.0...v1.12.0
 [1.11.0]: https://github.com/mausa-ai/neosian/compare/v1.10.0...v1.11.0
