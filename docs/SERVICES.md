@@ -410,6 +410,12 @@ and [crates.io trusted publishing](https://crates.io/docs/trusted-publishing).
 
 For the release, verify the same version through all five binary archive
 targets, the Windows MSI, and fresh npm and Cargo installations.
+After publication, dispatch the `Verify release` workflow with the stable
+version (without `v`). It checks each archive's SHA-256, runs the binary
+on its native platform, installs and uninstalls the MSI on Windows, and
+checks fresh npm, Cargo and PyPI installs together on Linux. Every install
+must report the release version and its embedded quickstart; both CLI
+implementations must report their competing PATH entries.
 The curl and npm rehearsals in CI use locally built native artifacts;
 the live checks follow publication. Check `neosian version` and
 `neosian docs quickstart` in each installed package, then `neosian status`
