@@ -15,6 +15,7 @@ permissions:
 env:
   UV_VERSION: "0.12.23"
   NEOSIAN_VERIFY_VERSION: ${{ inputs.version }}
+  NEOSIAN_VERIFY_ROOT: ${{ github.workspace }}/release
 
 jobs:
   archives:
@@ -34,25 +35,36 @@ jobs:
             target: x86_64-pc-windows-msvc
     runs-on: ${{ matrix.runner }}
     steps:
+      # Keep the verifier repairable without replacing a published release.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: verifier
+          persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: v${{ inputs.version }}
+          path: release
           persist-credentials: false
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           version: ${{ env.UV_VERSION }}
-      - run: uv run --no-project --python 3.12 scripts/check_live_release.py archive
+      - run: uv run --no-project --python 3.12 verifier/scripts/check_live_release.py archive
         env:
           NEOSIAN_VERIFY_TARGET: ${{ matrix.target }}
       - if: runner.os == 'Windows'
-        run: uv run --no-project --python 3.12 scripts/check_live_release.py msi
+        run: uv run --no-project --python 3.12 verifier/scripts/check_live_release.py msi
 
   channels:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          path: verifier
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
           ref: v${{ inputs.version }}
+          path: release
           persist-credentials: false
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
@@ -61,4 +73,4 @@ jobs:
         with:
           node-version: '24'
           package-manager-cache: false
-      - run: uv run --no-project --python 3.12 scripts/check_live_release.py channels
+      - run: uv run --no-project --python 3.12 verifier/scripts/check_live_release.py channels

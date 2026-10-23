@@ -8,6 +8,12 @@ phase close names the version.
 
 ## [Unreleased]
 
+### Fixed
+
+- Live MSI verification quotes installation property values using Windows
+  Installer syntax and prints installer logs on timeout. The verification
+  workflow can check an existing release with a corrected verifier.
+
 ## [1.12.2] - 2026-10-23
 
 ### Fixed

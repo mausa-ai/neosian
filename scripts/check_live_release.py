@@ -1,6 +1,7 @@
 """Verify published binaries, the MSI and fresh registry installations.
 
-Run from the release's checkout. --artifacts rehearses archive/MSI checks
+NEOSIAN_VERIFY_ROOT selects the release checkout when the verifier is newer.
+--artifacts rehearses archive/MSI checks
 against cargo-dist's local output; normal runs download the real release.
 The MSI mode is intended for an ephemeral Windows runner: it installs and
 uninstalls the package. Other modes keep installations in a temporary directory.
@@ -20,7 +21,9 @@ import zipfile
 from pathlib import Path, PurePosixPath
 from urllib.request import Request, urlopen
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(
+    os.getenv("NEOSIAN_VERIFY_ROOT", str(Path(__file__).resolve().parents[1]))
+).resolve()
 VERSION = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["version"]
 TARGETS = (
     "aarch64-apple-darwin",
@@ -101,37 +104,49 @@ def archive(
     verify(binary, work, env)
 
 
-def msi(work: Path, env: dict[str, str], artifacts: Path | None) -> None:
-    assert os.name == "nt", "MSI verification requires Windows"
-    path = checked("neosian-x86_64-pc-windows-msvc.msi", work, artifacts)
-    destination = work / "msi installation"
-
-    def install(action: str, *properties: str) -> None:
-        log = work / f"msi-{action}.log"
+def run_msi(
+    path: Path,
+    action: str,
+    log: Path,
+    env: dict[str, str],
+    destination: Path | None = None,
+) -> None:
+    # MSI requires PROPERTY="value with spaces", not "PROPERTY=value with spaces".
+    # Pass its command line directly to CreateProcess, without a shell or the
+    # C-runtime quoting that subprocess applies to an argument list on Windows.
+    command = f'msiexec.exe /{action} "{path}" /qn /norestart /L*v "{log}"'
+    if destination is not None:
+        command += f' APPLICATIONFOLDER="{destination}"'
+    print(f"msiexec /{action} started", flush=True)
+    try:
         result = subprocess.run(
-            [
-                "msiexec.exe",
-                f"/{action}",
-                str(path),
-                "/qn",
-                "/norestart",
-                "/L*v",
-                str(log),
-                *properties,
-            ],
+            command,
+            shell=False,
             env=env,
             timeout=180,
             check=False,
         )
         if result.returncode not in (0, 3010):
-            print(log.read_text(encoding="utf-16", errors="replace")[-12000:])
             raise RuntimeError(f"msiexec /{action} failed: {result.returncode}")
+    except (subprocess.SubprocessError, RuntimeError):
+        if log.exists():
+            print(log.read_text(encoding="utf-16", errors="replace")[-12000:])
+        else:
+            print("msiexec did not create its log")
+        raise
+    print(f"msiexec /{action} completed: {result.returncode}", flush=True)
 
-    install("i", f"APPLICATIONFOLDER={destination}")
+
+def msi(work: Path, env: dict[str, str], artifacts: Path | None) -> None:
+    assert os.name == "nt", "MSI verification requires Windows"
+    path = checked("neosian-x86_64-pc-windows-msvc.msi", work, artifacts)
+    destination = work / "msi installation"
+
+    run_msi(path, "i", work / "msi-i.log", env, destination)
     try:
         verify(destination / "bin/neosian.exe", work, env)
     finally:
-        install("x")
+        run_msi(path, "x", work / "msi-x.log", env)
     assert not (destination / "bin/neosian.exe").exists(), "MSI did not uninstall"
 
 
