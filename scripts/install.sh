@@ -33,7 +33,10 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --python) python=1; shift ;;
         --find-links|--version)
-            [ $# -ge 2 ] && [ -n "$2" ] || { echo "error: $1 needs a value" >&2; exit 2; }
+            if [ $# -lt 2 ] || [ -z "$2" ]; then
+                echo "error: $1 needs a value" >&2
+                exit 2
+            fi
             case "$1" in
                 --find-links) find_links="$2" ;;
                 --version) version="$2" ;;
