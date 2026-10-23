@@ -68,7 +68,7 @@ jobs:
       # The public curl entry point over real native artifacts, with no uv:
       # one successful installation and one deliberately corrupted archive.
       - if: matrix.runner == 'ubuntu-24.04' || matrix.runner == 'macos-15'
-        run: dist build --artifacts=host --installer=shell --installer=npm --installer=homebrew
+        run: dist build --artifacts=host --installer=shell --installer=npm
       - if: matrix.runner == 'ubuntu-24.04' || matrix.runner == 'macos-15'
         run: python3 scripts/check_binary_install.py
       - if: matrix.runner == 'ubuntu-24.04' || matrix.runner == 'macos-15'

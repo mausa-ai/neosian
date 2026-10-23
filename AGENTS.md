@@ -88,7 +88,7 @@ on a clean tree with the version's `## [X.Y.Z]` section in
 `docs/CHANGELOG.md`; pushing a `v*` tag runs cargo-dist's generated
 `release.yml` (the binaries on the GitHub Release), which calls
 `publish-python.yml` (PyPI by trusted publishing, the image to GHCR) and
-`publish-channels.yml` (npm, crates.io and the Homebrew tap) as its publish
+`publish-channels.yml` (npm and crates.io; Homebrew is deferred) as its publish
 jobs. Channel account setup is in `docs/SERVICES.md`.
 Bump on public-surface change, not per commit.
 `[Unreleased]` in `docs/CHANGELOG.md` accumulates until the bump.

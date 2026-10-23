@@ -15,12 +15,6 @@ from urllib.request import Request, urlopen
 
 
 def metadata(path: Path, channel: str) -> tuple[str, str]:
-    if channel == "homebrew":
-        text = path.read_text(encoding="utf-8")
-        match = re.search(r'^  version "([^"]+)"$', text, re.M)
-        if not text.startswith("class Neosian < Formula\n") or not match:
-            raise ValueError("not a neosian formula")
-        return "neosian", match.group(1)
     with tarfile.open(path) as archive:
         suffix = "/package.json" if channel == "npm" else "/Cargo.toml"
         members = [m for m in archive.getmembers() if m.name.endswith(suffix)]
@@ -59,8 +53,6 @@ def needs_publish(path: Path, channel: str, tag: str) -> bool:
         raise ValueError("only stable neosian artifacts may publish")
     if tag != f"v{version}":
         raise ValueError(f"artifact version {version} does not match tag {tag}")
-    if channel == "homebrew":
-        return True
     existing = published(channel, version)
     if existing is None:
         return True
@@ -78,7 +70,7 @@ def needs_publish(path: Path, channel: str, tag: str) -> bool:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("channel", choices=("npm", "crate", "homebrew"))
+    parser.add_argument("channel", choices=("npm", "crate"))
     parser.add_argument("artifact", type=Path)
     args = parser.parse_args()
     result = needs_publish(args.artifact, args.channel, os.environ["GITHUB_REF_NAME"])

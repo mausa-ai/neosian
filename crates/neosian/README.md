@@ -19,9 +19,9 @@ The home and recorded state require no migration.
 Install with `curl -fsS https://neosian.com/install | sh`, or use the
 PowerShell installer/MSI on the GitHub Release. Publisher signing and
 Apple notarization are deferred; browser downloads can trigger warnings.
-The next release also publishes npm (`npm install -g neosian`), Homebrew
-(`brew install mausa-ai/neosian/neosian`) and Cargo (`cargo install neosian
---locked`). Update those installations through their package manager.
+The binary's package-manager commands use npm (`npm install -g neosian`)
+and Cargo (`cargo install neosian --locked`). Homebrew distribution is
+deferred. Update those installations through their package manager.
 Cargo builds from source and requires the crate's declared Rust version.
 
 To prepare a source archive, start with a clean repository, run

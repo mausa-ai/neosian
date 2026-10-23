@@ -8,11 +8,14 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [1.12.0] - 2026-10-23
+
 ### Added
 
-- Release publication for the binary's npm, Homebrew and crates.io channels.
+- Release publication for the binary's npm and crates.io channels.
   The Rust source package carries the same assets as the wheel and builds
-  independently of the repository. Platform signing remains deferred.
+  independently of the repository. Homebrew distribution and platform
+  signing remain deferred.
 
 - The Rust binary provides standalone `mcp install` and `record install`,
   with the existing fragments, scoped registration, safe writes and
@@ -2377,7 +2380,8 @@ pre-release — pin it explicitly; the API stability promise rides v1.0.0.
 - Both entry points share one `_validate_run`, so neither can skip a
   guard.
 
-[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.11.0...HEAD
+[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.12.0...HEAD
+[1.12.0]: https://github.com/mausa-ai/neosian/compare/v1.11.0...v1.12.0
 [1.11.0]: https://github.com/mausa-ai/neosian/compare/v1.10.0...v1.11.0
 [1.10.0]: https://github.com/mausa-ai/neosian/compare/v1.9.0...v1.10.0
 [1.9.0]: https://github.com/mausa-ai/neosian/compare/v1.8.0...v1.9.0

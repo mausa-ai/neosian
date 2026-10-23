@@ -74,15 +74,6 @@ def test_a_wrong_tag_or_prerelease_cannot_reach_the_registry(
 
 
 @pytest.mark.unit
-def test_formula_tag_is_checked(tmp_path: Path) -> None:
-    path = tmp_path / "neosian.rb"
-    path.write_text('class Neosian < Formula\n  version "1.2.3"\nend\n')
-    assert release.needs_publish(path, "homebrew", "v1.2.3")
-    with pytest.raises(ValueError, match="does not match"):
-        release.needs_publish(path, "homebrew", "v1.2.4")
-
-
-@pytest.mark.unit
 def test_staging_replaces_stale_assets_without_changing_the_source(
     tmp_path: Path,
 ) -> None:
@@ -109,8 +100,7 @@ def test_dispatch_cannot_publish_and_announce_waits_for_the_channels() -> None:
     workflow = yaml.safe_load(
         (_ROOT / ".github/workflows/publish-channels.yml").read_text()
     )
-    for job in ("npm", "homebrew"):
-        assert "github.event_name == 'push'" in workflow["jobs"][job]["if"]
+    assert "github.event_name == 'push'" in workflow["jobs"]["npm"]["if"]
     crate = workflow["jobs"]["crate"]
     commands = [step.get("run", "") for step in crate["steps"]]
     assert commands.index('test -z "$(git status --porcelain)"') < commands.index(

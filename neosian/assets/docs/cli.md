@@ -42,12 +42,12 @@ and `status` names PATH shadowing; no data migration is needed.
 Running `--python` after a binary install lets uv replace this installer's
 PATH link with the Python shell; the binary stays under `~/.neosian/bin`.
 
-The next release also publishes the binary through npm (`npm install -g
-neosian`), Homebrew (`brew install mausa-ai/neosian/neosian`) and crates.io
-(`cargo install neosian --locked`). Cargo needs the crate's Rust version.
+The binary's package-manager commands use npm (`npm install -g neosian`)
+and crates.io (`cargo install neosian --locked`). Homebrew distribution is
+deferred. Cargo needs the crate's Rust version.
 Windows has PowerShell and MSI downloads on the GitHub Release. Platform
 signing is deferred; browser downloads can trigger security warnings.
-Use npm, brew or cargo to update their installations; the binary's updater
+Use npm or cargo to update their installations; the binary's updater
 only replaces an installation owned by a matching cargo-dist receipt.
 
 `uv tool install neosian` supplies the Python shell with chat, the TUI,

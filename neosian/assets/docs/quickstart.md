@@ -23,16 +23,17 @@ neosian setup --write
 
 The installer verifies SHA-256, installs in `~/.neosian/bin`, and links
 `~/.local/bin/neosian` when that name is free. It preserves an existing
-Python command; `status` names competing executables. The binary and Python
+Python command; use `~/.neosian/bin/neosian setup --write` to connect the
+binary in that case. `status` names competing executables. The binary and Python
 shell share the same home and client files, with no migration.
 `--version X.Y.Z` selects a release. `--python` retains the uv tool path;
 `--find-links DIR` selects a local Python wheel and implies `--python`.
 Windows installers are on the GitHub Release. Publisher signing and Apple
 notarization are deferred, so browser downloads can trigger security warnings.
 
-The next release also publishes `npm install -g neosian`,
-`brew install mausa-ai/neosian/neosian`, and `cargo install neosian --locked`.
-The first two use prebuilt binaries; Cargo requires the crate's Rust version.
+The binary's package-manager commands are `npm install -g neosian` and
+`cargo install neosian --locked`. Homebrew distribution is deferred.
+npm uses prebuilt binaries; Cargo requires the crate's Rust version.
 Update these installations through the package manager that installed them.
 
 For chat, the TUI, playground and eval, install the Python shell with

@@ -390,13 +390,12 @@ The binary channels require this setup before the R3 release tag:
 
 | Channel | Publisher setup | Without it |
 |---|---|---|
-| npm `neosian` | On the existing package, configure GitHub trusted publishing: owner `mausa-ai`, repository `neosian`, calling workflow `release.yml`, environment `npm`. Node 24 supplies the required npm CLI; no npm token is used. | The npm publication fails; the release is not announced complete. |
-| crates.io `neosian` | First publication needs a crates.io account with verified email and a token permitting creation of `neosian`, stored as the GitHub environment secret `CARGO_REGISTRY_TOKEN` in `crates-io`. After that first publish, configure trusted publishing for `mausa-ai/neosian`, calling workflow `release.yml`, environment `crates-io`, and delete the bootstrap secret. | The first publication cannot create the crate; subsequent publication needs either the bootstrap token or configured OIDC trust. |
-| Homebrew | Create and initialize the public `mausa-ai/homebrew-neosian` tap. Store `HOMEBREW_TAP_TOKEN` on `mausa-ai/neosian`: a token with Contents read/write on that tap alone. | The formula cannot be pushed. |
+| npm `neosian` | Create the GitHub environment `npm` on `mausa-ai/neosian`. In the existing npm package's publishing settings, configure GitHub trusted publishing: owner `mausa-ai`, repository `neosian`, calling workflow `release.yml`, environment `npm`. Node 24 supplies the required npm CLI; no npm token is used. | The npm publication fails; the release is not announced complete. |
+| crates.io `neosian` | Create the GitHub environment `crates-io` on `mausa-ai/neosian`. First publication needs a crates.io account with verified email and a token permitting creation of `neosian`, stored there as environment secret `CARGO_REGISTRY_TOKEN`. After that first publish, configure trusted publishing for `mausa-ai/neosian`, calling workflow `release.yml`, environment `crates-io`, and delete the bootstrap secret. | The first publication cannot create the crate; subsequent publication needs either the bootstrap token or configured OIDC trust. |
 
 npm and crates.io retries compare the published archive's digest and skip
-only identical content; a conflicting version is an error. The Homebrew
-job commits the generated formula only when it changed, with DCO sign-off.
+only identical content; a conflicting version is an error. Homebrew
+distribution is deferred; no tap or Homebrew publication job is required.
 A dispatch of `publish-channels.yml` verifies the source package; none of
 its publication steps run. The workflows never print credentials.
 The crate jobs require a clean source tree before staging the asset
@@ -408,6 +407,15 @@ before publication: npm currently requires the first publish within two
 days of creating its trust configuration. See the
 [npm trusted-publisher documentation](https://docs.npmjs.com/trusted-publishers/)
 and [crates.io trusted publishing](https://crates.io/docs/trusted-publishing).
+
+For the release, verify the same version through all five binary archive
+targets, the Windows MSI, and fresh npm and Cargo installations.
+The curl and npm rehearsals in CI use locally built native artifacts;
+the live checks follow publication. Check `neosian version` and
+`neosian docs quickstart` in each installed package, then `neosian status`
+with the binary and Python shell both on PATH. Neither installation
+requires migrating the existing home. Update the site's `RELEASE` only
+after the package and release assets are available.
 
 Platform publisher signing and Apple notarization are deferred. No signing
 account or credential is needed for these builds. Browser downloads can
