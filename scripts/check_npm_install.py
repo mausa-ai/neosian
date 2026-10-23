@@ -8,6 +8,7 @@ import functools
 import http.server
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import tempfile
@@ -15,6 +16,42 @@ import threading
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def publication(work: Path, npm: str, env: dict[str, str], version: str) -> None:
+    """Run the workflow's actual command in dry-run mode, including its path.
+
+    npm treats a bare `artifacts/name.tar.gz` as GitHub shorthand. Installing
+    an absolute tarball path does not exercise that publication failure.
+    """
+    workflow = (ROOT / ".github/workflows/publish-channels.yml").read_text()
+    commands = [
+        shlex.split(line.strip().removeprefix("run: "))
+        for line in workflow.splitlines()
+        if line.strip().startswith("run: npm publish ")
+    ]
+    assert len(commands) == 1
+    command = commands[0]
+    assert len(command) == 5 and command[:4] == ["npm", "publish", "--access", "public"]
+    path = Path(command[-1])
+    assert path == Path("artifacts/neosian-npm-package.tar.gz")
+    (work / path).parent.mkdir()
+    shutil.copy2(ROOT / "target/distrib" / path.name, work / path)
+    subprocess.check_output(
+        [
+            npm,
+            *command[1:],
+            "--dry-run",
+            "--ignore-scripts",
+            "--cache",
+            str(work / "cache"),
+        ],
+        cwd=work,
+        env=env,
+        text=True,
+        timeout=120,
+    )
+    print(f"release workflow's npm publication command accepts neosian {version}")
 
 
 def check() -> None:
@@ -55,6 +92,7 @@ def check() -> None:
                     "NO_PROXY": "127.0.0.1",
                 }
                 Path(env["HOME"]).mkdir()
+                publication(work, npm, env, version)
                 packed = subprocess.check_output(
                     [
                         npm,

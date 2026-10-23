@@ -39,7 +39,7 @@ jobs:
       - id: check
         run: python3 scripts/check_channel_release.py npm artifacts/neosian-npm-package.tar.gz >> "$GITHUB_OUTPUT"
       - if: steps.check.outputs.publish == 'true'
-        run: npm publish --access public artifacts/neosian-npm-package.tar.gz
+        run: npm publish --access public ./artifacts/neosian-npm-package.tar.gz
 
   crate:
     runs-on: ubuntu-24.04

@@ -300,7 +300,7 @@ Python shell with chat, the TUI, playground, eval and every operator verb;
 `uv add neosian` supplies the SDK. Both doors share the same home with no
 migration; `status` names competing executables on PATH.
 
-- `uv add "neosian==1.12.0"`: one package, the library and its
+- `uv add "neosian==1.12.1"`: one package, the library and its
   provider SDKs, the `neosian` shell, the MCP server and client, the
   state process and OpenTelemetry spans (about 70 MB; nothing loaded
   until used). Pin a release for reproducible installs.
@@ -310,15 +310,15 @@ migration; `status` names competing executables on PATH.
 - `curl -fsS https://neosian.com/install | sh -s -- --python` installs uv
   when needed and the Python shell; the script says what it installs first.
 - The appliance: `docker run -d -e NEOSIAN_SERVE_TOKEN=… -p 6367:6367
-  -v neosian-state:/data ghcr.io/mausa-ai/neosian:1.12.0`, the state
+  -v neosian-state:/data ghcr.io/mausa-ai/neosian:1.12.1`, the state
   process on a volume, `/health` the one open route. Since 1.11.0 it
   runs the Rust binary and serves FileStore only; use the Python server
   for Postgres until the image gains that backend.
 
 ## Docs
 
-- https://github.com/mausa-ai/neosian/blob/v1.12.0/docs/README.md: install and quickstart.
-- https://github.com/mausa-ai/neosian/blob/v1.12.0/docs/SERVICES.md: every environment key and what turning it off means.
+- https://github.com/mausa-ai/neosian/blob/v1.12.1/docs/README.md: install and quickstart.
+- https://github.com/mausa-ai/neosian/blob/v1.12.1/docs/SERVICES.md: every environment key and what turning it off means.
 - `neosian docs baselines`: the published per-provider memory numbers.
 
 ## Messages and reminders

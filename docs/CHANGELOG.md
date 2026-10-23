@@ -8,6 +8,15 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [1.12.1] - 2026-10-23
+
+### Fixed
+
+- The npm publication command treats the generated archive as a local
+  file instead of a GitHub repository shorthand. The npm channel did not
+  publish 1.12.0. Native npm rehearsals now execute the workflow's actual
+  publication command in dry-run mode before testing installation.
+
 ## [1.12.0] - 2026-10-23
 
 ### Added
@@ -2380,7 +2389,8 @@ pre-release — pin it explicitly; the API stability promise rides v1.0.0.
 - Both entry points share one `_validate_run`, so neither can skip a
   guard.
 
-[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.12.0...HEAD
+[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.12.1...HEAD
+[1.12.1]: https://github.com/mausa-ai/neosian/compare/v1.12.0...v1.12.1
 [1.12.0]: https://github.com/mausa-ai/neosian/compare/v1.11.0...v1.12.0
 [1.11.0]: https://github.com/mausa-ai/neosian/compare/v1.10.0...v1.11.0
 [1.10.0]: https://github.com/mausa-ai/neosian/compare/v1.9.0...v1.10.0
