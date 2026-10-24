@@ -383,3 +383,9 @@ refuses a different advertised wire version before any storage call.
 streamable HTTP and the initialize/initialized handshake through protocol
 2025-11-25. The retired Python server's 2026 single-exchange protocol is not
 part of v2. See `neosian docs mcp` for lifecycle and tool scope boundaries.
+
+Knowledge bundles and collection metadata are format-1 application content
+over existing memory routes. They add no wire operation or backend capability.
+The scoped CLI composes those reads/writes; it cannot claim a transaction or
+atomic compare-and-create across them. `neosian docs knowledge` distinguishes
+current-document ingestion from whole-store restoration.

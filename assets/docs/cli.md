@@ -16,6 +16,7 @@ protocol servers use their own framing.
 |---|---|
 | `setup`, `status` | Register clients and inspect local setup |
 | `profile init/import/export/show/bind` | Create portable workspace selections and local bindings |
+| `knowledge import/collection/validate/references/export` | Preview scoped Markdown ingestion, optional structures and readable bundles |
 | `mcp install`, `record install` | Configure one integration independently |
 | `update` | Check/apply a binary update or set update policy |
 | `memory view/create/str_replace/insert/delete/rename` | Mounted document operations |
@@ -30,11 +31,11 @@ protocol servers use their own framing.
 | `record` | Consume a foreign agent hook payload on stdin |
 | `mcp` | MCP server over stdio |
 | `serve` | State HTTP and optional MCP HTTP server |
-| `schema state/wire/errors/profile/grants/postgres` | Print machine contracts or schema SQL |
+| `schema state/wire/errors/profile/grants/knowledge/postgres` | Print machine contracts or schema SQL |
 
 ## Store selection and mounts
 
-`--profile NAME` selects portable sources for memory, messages, search,
+`--profile NAME` selects portable sources for knowledge, memory, messages, search,
 continue, MCP and record, and also configures setup/status. `NEOSIAN_PROFILE`
 and local checkout bindings provide defaults. A selected profile cannot be
 combined with legacy store/scope selectors. Whole-store operators refuse an
@@ -78,3 +79,12 @@ should be updated using that package manager.
 
 Version 2 retires provider configuration, chat/TUI, playground, evaluation,
 reflection execution and maintenance's model stage. See `neosian docs migration`.
+
+## Knowledge imports and structure
+
+`knowledge import DIR --to /memories/notes --scope user:demo` previews ordinary
+Markdown ingestion. `--write` applies with other writers paused. Collection
+rules, reference resolution and current-document bundles are described in
+`neosian docs knowledge`; `neosian schema knowledge` prints their format-1
+contract. This scoped workflow supports profiles. Top-level archive operators
+retain their full-history restoration and operator authority requirements.

@@ -99,3 +99,14 @@ and bounded excerpts. Files hold the root lock during a search page; Postgres
 uses a statement snapshot. No persistent search index, cache or DDL is added.
 Custom services declare support separately and pass the optional independent
 search cases. See `neosian docs memory` and `neosian docs wire`.
+
+## Current-document knowledge bundles
+
+`knowledge import` and `knowledge export` use mounted reads/writes on every
+backend. Their readable metadata is ordinary versioned content; storage
+format 1, wire 6 and schema 4 are unchanged. Optional collection validation
+runs in this workflow and explicit checks, not inside arbitrary raw writes.
+Bundles carry current documents and source envelope evidence, while top-level
+archives retain complete histories and original storage identities. Apply and
+export require paused writers; no batch transaction or synchronization is
+claimed. See `neosian docs knowledge` for format and provenance limits.

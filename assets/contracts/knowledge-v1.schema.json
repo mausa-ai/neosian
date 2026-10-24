@@ -1,0 +1,307 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neosian.com/contracts/knowledge-v1.schema.json",
+  "title": "Neosian knowledge format 1",
+  "description": "Shapes for marked Markdown metadata, collection definitions and knowledge.json bundles. Runtime also checks byte bounds, path/authority rules, checksums, field-value types and duplicate JSON keys. These are ingestion formats, not storage replicas.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/Metadata"
+    },
+    {
+      "$ref": "#/$defs/Collection"
+    },
+    {
+      "$ref": "#/$defs/Bundle"
+    }
+  ],
+  "$defs": {
+    "Metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "const": 1
+        },
+        "collection": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "description": "Frozen logical document path grammar; lifecycle paths and .collection components are refused."
+        },
+        "attributes": {
+          "type": "object"
+        },
+        "references": {
+          "type": "array",
+          "maxItems": 128,
+          "items": {
+            "$ref": "#/$defs/Reference"
+          }
+        },
+        "sources": {
+          "type": "array",
+          "maxItems": 128,
+          "items": {
+            "$ref": "#/$defs/Source"
+          }
+        }
+      },
+      "required": [
+        "format",
+        "collection"
+      ]
+    },
+    "Reference": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "relation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "description": "Frozen logical document path grammar; lifecycle paths and .collection components are refused."
+        },
+        "scope": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "relation",
+        "path"
+      ]
+    },
+    "Source": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "file": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "origin": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Origin"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "label",
+        "file",
+        "sha256"
+      ]
+    },
+    "Origin": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "scope": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "description": "Frozen logical document path grammar; lifecycle paths and .collection components are refused."
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "Z$"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "Z$"
+        },
+        "actor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "extra": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "scope",
+        "path",
+        "version",
+        "created_at",
+        "updated_at",
+        "extra"
+      ]
+    },
+    "Collection": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "const": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "schema": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Rules"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "format",
+        "name"
+      ]
+    },
+    "Rules": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "type": "object",
+          "maxProperties": 64,
+          "propertyNames": {
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/Field"
+          }
+        },
+        "allow_unknown": {
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "required": [
+        "fields"
+      ]
+    },
+    "Field": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "enum": [
+            "string",
+            "integer",
+            "number",
+            "boolean",
+            "array",
+            "object",
+            "null"
+          ]
+        },
+        "required": {
+          "type": "boolean",
+          "default": false
+        },
+        "values": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "minItems": 1,
+          "maxItems": 64
+        }
+      },
+      "required": [
+        "type"
+      ]
+    },
+    "Bundle": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "const": 1
+        },
+        "collection": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Collection"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "documents": {
+          "type": "array",
+          "maxItems": 1000,
+          "items": {
+            "$ref": "#/$defs/Record"
+          }
+        }
+      },
+      "required": [
+        "format",
+        "documents"
+      ]
+    },
+    "Record": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "description": "Frozen logical document path grammar; lifecycle paths and .collection components are refused."
+        },
+        "file": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Contained relative non-symlink file; no dot, parent or empty components."
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "origin": {
+          "$ref": "#/$defs/Origin"
+        }
+      },
+      "required": [
+        "path",
+        "file",
+        "sha256",
+        "origin"
+      ]
+    }
+  }
+}

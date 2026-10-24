@@ -58,7 +58,7 @@ pub fn private_mkdir(directory: &Path) -> io::Result<()> {
 /// Unix alone, so the two platforms build it apart: a shared `let mut`
 /// would be unused on Windows.
 #[cfg(unix)]
-fn private_builder() -> DirBuilder {
+pub(crate) fn private_builder() -> DirBuilder {
     use std::os::unix::fs::DirBuilderExt;
     let mut builder = DirBuilder::new();
     builder.mode(0o700);
@@ -66,7 +66,7 @@ fn private_builder() -> DirBuilder {
 }
 
 #[cfg(not(unix))]
-fn private_builder() -> DirBuilder {
+pub(crate) fn private_builder() -> DirBuilder {
     DirBuilder::new()
 }
 

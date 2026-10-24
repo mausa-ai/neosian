@@ -75,6 +75,15 @@ and machines. Profiles select sources, qualified skills and bounded context;
 HTTP sources require server-enforced grants. `neosian docs profiles` covers
 portable import/export and explicit local/shared capture consent.
 
+## Bring existing knowledge
+
+`neosian knowledge import ./notes --to /memories/notes --scope user:demo`
+previews Markdown ingestion; `--write` applies after pausing other writers.
+Choose your own collections and optional field rules, resolve deliberate
+references, and export readable knowledge bundles with source provenance.
+These use the same profiles and storage backends as memory. Full-history
+archives remain available separately. Read `neosian docs knowledge`.
+
 ## Interfaces and compatibility
 
 Version 2 intentionally retires the Python distribution, public SDKs,
@@ -93,7 +102,7 @@ The versioned `neosian-docs.json` release artifact supplies those same pages
 to the website. `neosian-contracts.tar.gz` contains machine contracts,
 fixtures, the independent HTTP conformance runner and the optional one-time
 metadata converter. `neosian schema state`, `wire`, `errors`, `profile` and
-`grants` print the
+`grants` and `knowledge` print the
 machine-readable definitions directly.
 
 ## Development

@@ -9,6 +9,6 @@ pub mod grammar;
 pub mod index;
 mod maintain;
 pub mod mounts;
-mod operate;
+pub(crate) mod operate;
 pub mod search;
 pub mod skill;

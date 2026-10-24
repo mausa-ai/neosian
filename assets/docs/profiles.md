@@ -233,7 +233,7 @@ Cursor print mode lacks full capture hooks, and Claude Desktop has no capture
 hooks. Preview does not prove that a client loaded or trusted its hooks; the
 existing client trust/setup rules still apply (`neosian docs agents`).
 
-Profile-aware commands are memory, messages, search, continue, MCP, record,
+Profile-aware commands are knowledge, memory, messages, search, continue, MCP, record,
 setup and status. Whole-store operators (`audit`, `export`, `import`, `redact`,
 `prune`, `serve`) require an explicit legacy store outside any active profile.
 Run them from an unbound directory with `NEOSIAN_PROFILE` unset; a portable

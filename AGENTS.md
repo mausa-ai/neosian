@@ -35,6 +35,11 @@ development and optional one-time migration tooling only (S0, DESIGN §40).
   capability, distinct from history search. Authorize before scanning/paging;
   exclude erased content and lifecycle records. Unicode 17.0.0 matching and
   opaque cursor semantics are shared across backends, never database defaults.
+- **Knowledge imports are explicit.** Preview scoped Markdown/bundle changes;
+  refuse lifecycle records and erased destinations. Collection rules validate
+  imports and explicit checks, not authority. Structure/provenance stays in
+  versioned content. Apply/export requires paused writers; full archives retain
+  the separate history/envelope restoration contract.
 
 ## Conventions
 

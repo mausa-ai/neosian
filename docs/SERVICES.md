@@ -153,3 +153,8 @@ The storage runner checks it when advertised on either full/base profiles;
 reference Postgres and container gates include these cases. Scope grants
 apply before search, and restart-based grant revocation also applies to
 resumed search pages. Search has no separate cache or index to provision.
+
+Knowledge import/collection/validate/references/export introduces no service
+setting, account or dependency. It uses existing mounted storage access and
+explicit local input/output paths. Apply and export require paused writers;
+collection rules are optional validation rather than server authorization.

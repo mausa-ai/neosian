@@ -48,3 +48,14 @@ Policy changes retain pending spans rather than replay them into a changed
 destination. Import/export excludes bindings and credentials, but includes
 ordinary profile text and filter literals. See `neosian docs profiles` and
 `neosian docs wire` for limits, operator privileges and recovery behavior.
+
+## Knowledge ingestion
+
+The knowledge workflow accepts explicit UTF-8 Markdown or format-1 bundles,
+rejects symlink/traversal inputs and protects lifecycle and erased targets.
+Source labels, metadata and references are untrusted data, never authority.
+Reference resolution cannot read outside currently mounted permissions.
+Collection schemas are advisory checks, not access control. Apply/export
+requires paused writers because wire 6 has no batch transaction or atomic
+compare-and-create. Bundles retain current source evidence; exported copies
+require their own erasure and are not automatically synchronized.

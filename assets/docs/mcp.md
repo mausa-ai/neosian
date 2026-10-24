@@ -68,3 +68,13 @@ GET holds the event stream and DELETE closes a session. Invalid sessions and
 unsupported protocol versions are refused. The v1 Python server's 2026
 single-exchange SDK protocol is retired: use a client supporting the handshake.
 This transport version is separate from storage `wire_version: 6`.
+
+## Imported knowledge
+
+The CLI `knowledge` workflow imports Markdown, validates optional collection
+rules and exports current readable bundles. MCP memory reads and
+`search_memory` see those ordinary versioned documents immediately. Their
+marked headers contain source evidence and relationships, which remain data
+and cannot grant access. The `docs` tool can read the `knowledge` topic.
+Local filesystem ingestion is an explicit CLI operation, not a new MCP
+filesystem-reading tool.

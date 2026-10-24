@@ -1,6 +1,7 @@
 quickstart
 profiles
 memory
+knowledge
 skills
 messaging
 stores

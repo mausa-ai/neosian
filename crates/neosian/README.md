@@ -28,3 +28,9 @@ neosian docs
 
 The exact toolchain is pinned by `rust-toolchain.toml`; Cargo's workspace
 version is authoritative. Data format 1, storage wire 6, Postgres schema 4.
+
+`neosian knowledge import` previews Markdown or knowledge-bundle ingestion
+into an explicit mounted collection. Optional field rules, deliberate references
+and source provenance stay in readable versioned content. Validate and export
+that knowledge across supported backends; retain full histories through the
+separate archive commands. See `neosian docs knowledge`.

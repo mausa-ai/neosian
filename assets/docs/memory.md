@@ -114,6 +114,15 @@ Remote storage must advertise `memory_search: {version: 1}`. Otherwise search
 refuses without a fallback scan or download. The HTTP request names one
 explicit scope and requires its read authority; see `neosian docs wire`.
 
+## Import and structure knowledge
+
+To bring existing Markdown into a chosen collection, use `knowledge import`
+with an explicit mounted destination. Optional collection rules, source
+provenance and references live in readable, versioned content. The workflow
+previews changes and provides a current-document export; full histories remain
+the archive contract. See `neosian docs knowledge`. These content attributes
+are searchable as content, separately from envelope `extra` metadata.
+
 ## Deterministic maintenance
 
 `memory maintain --dry-run` lists aged empty documents and exact duplicates.

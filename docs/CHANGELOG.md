@@ -8,6 +8,24 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-10-24
+
+### Added
+
+- Scoped `knowledge import/collection/validate/references/export` workflows
+  for UTF-8 Markdown and documented knowledge bundles. Imports preview by
+  default with explicit destinations, provenance and fail/skip/replace
+  conflict policies, across files, Postgres and remote/profile sources.
+- Optional collection field rules and deliberate document references stored
+  as readable versioned content. Reference resolution respects mounted read
+  authority; validation reports actionable document/field failures. Rules
+  are advisory and do not change raw storage write or permission semantics.
+- Knowledge format-1 schema and docs, checksummed current-document exports,
+  strict format/duplicate-key/input-containment checks, and protection for
+  lifecycle paths, redacted documents and deleted destinations. Full-history
+  archives retain their existing restoration guarantees; apply/export of
+  knowledge requires paused writers and reports partial apply receipts.
+
 ## [2.2.0] - 2026-10-24
 
 ### Added

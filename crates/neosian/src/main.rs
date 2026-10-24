@@ -13,6 +13,7 @@ mod config;
 mod conversation;
 mod docs;
 mod home;
+mod knowledge;
 mod mcp;
 mod memory;
 mod messaging;

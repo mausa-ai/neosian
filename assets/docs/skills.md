@@ -100,3 +100,8 @@ bare, with no path or version, like a directory skill.
 Serving an owner's skill scope over the network, versions and all, is
 the state process on that scope (`neosian serve`); a host operating it
 for many owners is a host's product, outside the core.
+
+Stored skill documents can be brought in as Markdown through `knowledge
+import` with a deliberate collection prefix. This preserves readable content
+and provenance; it does not add skill execution, dependency resolution or
+change a profile's skill selection. Existing discovery and load rules apply.

@@ -25,6 +25,11 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Import, structure, check and export scoped knowledge.
+    Knowledge {
+        #[command(subcommand)]
+        command: crate::knowledge::cli::Command,
+    },
     /// Create, exchange and bind portable workspace profiles.
     Profile {
         #[command(subcommand)]
@@ -168,6 +173,7 @@ where
         }
     }
     let code = match cli.command {
+        Command::Knowledge { command } => crate::knowledge::cli::run(&command, &mut out, &mut err),
         Command::Profile { command } => crate::profile::cli::run(&command, &mut out, &mut err),
         Command::Setup(args) => clients::setup::run(&args, &mut out, &mut err),
         Command::Status(args) => clients::status::run(&args, &mut out, &mut err),
