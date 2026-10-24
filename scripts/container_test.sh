@@ -98,6 +98,9 @@ NEOSIAN_TEST_SERVER_URL="http://127.0.0.1:${PORT}" \
     NEOSIAN_TEST_SERVER_TOKEN="$TOKEN" \
     NEOSIAN_TEST_SERVER_ROOT="$ROOT" \
     uv run pytest -m external_server -q
+NEOSIAN_TEST_SERVER_URL="http://127.0.0.1:${PORT}" \
+    NEOSIAN_TEST_SERVER_TOKEN="$TOKEN" \
+    make test-storage-contract backend=http
 graceful_stop
 rm -rf "$ROOT"
 ROOT=""
@@ -148,6 +151,9 @@ NEOSIAN_TEST_SERVER_URL="http://127.0.0.1:${PORT}" \
     NEOSIAN_TEST_SERVER_TOKEN="$TOKEN" \
     NEOSIAN_TEST_SERVER_SCHEMA="$SCHEMA" \
     uv run pytest -m external_server -q
+NEOSIAN_TEST_SERVER_URL="http://127.0.0.1:${PORT}" \
+    NEOSIAN_TEST_SERVER_TOKEN="$TOKEN" \
+    make test-storage-contract backend=http
 graceful_stop
 
 echo "== container conformance: both legs green"

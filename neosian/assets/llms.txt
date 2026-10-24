@@ -246,6 +246,12 @@ names the implementation for every command.
   `neosian/assets/contracts/wire-v6.openapi.json` and the adjacent
   `state-v1.schema.json`; `make test-contract` checks the Rust binary
   against literal versioned fixtures without Python product imports.
+- `make test-storage-contract` checks the storage wire on files, Postgres
+  or a supplied HTTP test service, with full/base capability profiles.
+  Local backends use two server processes. External tests use
+  `NEOSIAN_TEST_SERVER_URL` and `NEOSIAN_TEST_SERVER_TOKEN`, optionally
+  `NEOSIAN_TEST_SERVER_PEER_URL` for a second worker. Use disposable test
+  state; `neosian docs stores` names the scope and limits of these checks.
 
 ## Bring an OpenAI-compatible model
 

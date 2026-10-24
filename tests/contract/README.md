@@ -27,11 +27,14 @@ stored rows validate against the adjacent `state-v1.schema.json` definitions.
 Generated timestamps, IDs and claim tokens are checked by shape and lifecycle;
 the expected content, versions, actors and failure codes stay literal.
 
-This is the first independent contract slice. It does not replace the existing
-Python/Rust differential corpus or certify a third-party service. Backend races,
-Postgres, TLS, HTTP MCP sessions, recording hooks, client adapters and the full
-operator corpus still rely on their existing suites. Their expectations must
-be preserved independently before removing the Python implementation they use.
+The [storage suite](storage/README.md) also runs against two file-backed or
+Postgres server processes, or an explicitly selected external test service.
+Its full/base profiles state which optional capabilities were verified; the
+container gate runs the full profile on both backends. This adds independent
+coverage for storage behavior and concurrent writes. Substrate corruption,
+TLS, HTTP MCP sessions, recording hooks, client adapters and the full operator
+corpus still retain their existing suites. Preserve their expectations
+independently before removing the Python implementation they use.
 
 Change an expectation only with an explained contract decision. Preserve old
 readable fixtures when a new format is introduced; add a new version directory

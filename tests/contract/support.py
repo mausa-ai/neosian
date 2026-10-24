@@ -10,7 +10,7 @@ import time
 import tomllib
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -30,6 +30,15 @@ def fixture(name: str) -> Any:
 def package_version() -> str:
     with (ROOT / "Cargo.toml").open("rb") as handle:
         return str(tomllib.load(handle)["workspace"]["package"]["version"])
+
+
+def executable() -> Path:
+    suffix = ".exe" if os.name == "nt" else ""
+    path = Path(
+        os.environ.get("NEOSIAN_BINARY", ROOT / "target" / "debug" / f"neosian{suffix}")
+    ).resolve()
+    assert path.is_file(), "build the binary or set NEOSIAN_BINARY"
+    return path
 
 
 @dataclass(frozen=True)
@@ -96,6 +105,7 @@ class Reply:
 @dataclass(frozen=True)
 class Server:
     url: str
+    token: str = field(default=ADMIN, repr=False)
 
     def request(
         self,
@@ -103,10 +113,12 @@ class Server:
         body: Any = None,
         *,
         method: str = "POST",
-        token: str | None = ADMIN,
+        token: str | None = None,
+        authenticated: bool = True,
         raw: bytes | None = None,
     ) -> Reply:
-        headers = {} if token is None else {"Authorization": f"Bearer {token}"}
+        bearer = self.token if token is None else token
+        headers = {"Authorization": f"Bearer {bearer}"} if authenticated else {}
         data: bytes | None = (
             raw if raw is not None else json.dumps(body).encode("utf-8")
         )
@@ -144,7 +156,9 @@ class Server:
 
 
 @contextmanager
-def serve(binary: Binary) -> Iterator[Server]:
+def serve(
+    binary: Binary, *, postgres_dsn: str | None = None, schema: str | None = None
+) -> Iterator[Server]:
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))
         port = probe.getsockname()[1]
@@ -152,15 +166,15 @@ def serve(binary: Binary) -> Iterator[Server]:
     env["NEOSIAN_SERVE_TOKEN"] = (
         f"client:contract={ADMIN},client:limited@user:allowed+allowed-={LIMITED}"
     )
+    args = [str(binary.executable), "serve", "--port", str(port)]
+    if postgres_dsn is None:
+        args.extend(["--root", str(binary.home)])
+    else:
+        assert schema is not None
+        env["NEOSIAN_POSTGRES_DSN"] = postgres_dsn
+        args.extend(["--schema", schema])
     process = subprocess.Popen(
-        [
-            str(binary.executable),
-            "serve",
-            "--root",
-            str(binary.home),
-            "--port",
-            str(port),
-        ],
+        args,
         stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -174,7 +188,10 @@ def serve(binary: Binary) -> Iterator[Server]:
             if process.poll() is not None:
                 raise AssertionError(process.communicate()[1].decode("utf-8"))
             try:
-                if server.request("/health", method="GET", token=None).status == 200:
+                if (
+                    server.request("/health", method="GET", authenticated=False).status
+                    == 200
+                ):
                     break
             except (URLError, TimeoutError):
                 pass

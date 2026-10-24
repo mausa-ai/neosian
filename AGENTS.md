@@ -71,6 +71,7 @@ DESIGN §39); the SDK and the human shell stay Python.
 | `make rust-lint` / `make rust-test` | the crate's gates: `cargo fmt --check`, `clippy -D warnings`, `cargo deny check`, `dist generate --check` / `cargo test --locked` |
 | `make test-differential` | the corpus through the shell and the binary over one seeded home (`NEOSIAN_BINARY`, else `target/`); skips without a binary |
 | `make test-contract` | independent format/CLI/MCP/HTTP contracts (`NEOSIAN_BINARY`, else `target/debug/neosian`); requires a binary, imports no Python product code |
+| `make test-storage-contract [backend=file\|postgres\|http] [profile=full\|base]` | independent storage wire checks; two local server processes or explicitly selected external test endpoints |
 | `make bench-hooks [home=DIR]` | the latency gate: p50 of 20 warm runs per door and event; a Rust number over budget fails |
 | `make test-external provider=<p> [file=…]` | real-API suite for one provider; `file=` injects creds value-blind |
 | `make test-postgres` | PostgresStore suite; needs `NEOSIAN_TEST_POSTGRES_DSN` (`docs/SERVICES.md`) |

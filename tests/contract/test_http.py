@@ -42,7 +42,7 @@ def restore_turns(server: Server) -> dict[str, Any]:
 
 
 def test_handshake_and_transport_failures(server: Server) -> None:
-    health = server.request("/health", method="GET", token=None)
+    health = server.request("/health", method="GET", authenticated=False)
     assert (health.status, health.body) == (200, {"status": "ok"})
     capabilities = server.request("/v1/capabilities", method="GET")
     assert capabilities.body == {
@@ -54,7 +54,7 @@ def test_handshake_and_transport_failures(server: Server) -> None:
         "erasable": True,
         "client": "client:contract",
     }
-    denied = server.request("/v1/capabilities", method="GET", token=None)
+    denied = server.request("/v1/capabilities", method="GET", authenticated=False)
     assert (denied.status, denied.body, denied.headers["www-authenticate"]) == (
         401,
         "unauthorized",

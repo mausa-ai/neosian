@@ -243,6 +243,9 @@ jobs:
       - run: uv run pytest -m external_postgres -v
         env:
           NEOSIAN_TEST_POSTGRES_DSN: postgresql://postgres:postgres@localhost:5432/postgres
+      - run: make test-storage-contract backend=postgres
+        env:
+          NEOSIAN_TEST_POSTGRES_DSN: postgresql://postgres:postgres@localhost:5432/postgres
 
   # The container conformance run (DESIGN §18.9): build the image, then
   # both kits over a real socket on FileStore and Postgres. No secret;

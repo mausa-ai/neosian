@@ -5,7 +5,6 @@ from __future__ import annotations
 import copy
 import json
 import shutil
-import sys
 from typing import Any
 
 import pytest
@@ -192,9 +191,3 @@ def test_openapi_route_set_is_explicit() -> None:
             for body in bodies:
                 for media in body.get("content", {}).values():
                     Draft202012Validator.check_schema(media["schema"])
-
-
-def test_the_contract_tier_did_not_import_the_python_product() -> None:
-    assert not any(
-        name == "neosian" or name.startswith("neosian.") for name in sys.modules
-    )

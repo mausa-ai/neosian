@@ -107,6 +107,13 @@ conformance kits, paging, mobility and mixed-worker concurrency run against
 the Rust process as well as Python. Rust cases self-skip per test without a
 built binary; CI builds it before running this tier.
 
+`make test-storage-contract backend=postgres` uses the same DSN for the
+independent wire suite. It creates one unique schema for the run, starts
+two Rust processes on it, gives each case fresh scopes/conversations and
+drops only that schema on exit. An explicitly selected Postgres contract
+run fails if the DSN or binary is missing. CI runs this beside the existing
+kits; `make test` still needs no database.
+
 `NEOSIAN_EXAMPLE_POSTGRES_DSN` is read only by
 `examples/fastapi_chatbot.py` — the library itself never reads a DSN
 from the environment; the MCP entry point does (below). Unset, the
@@ -300,9 +307,10 @@ carries no credentials) and reports liveness only.
 ## The container suite — a URL, not an API key
 
 The `external_server` tier points `RemoteStore` at a **running
-state-process container** (NM's done-when; §18.9). Four test keys, all set
-by `scripts/container_test.sh` (`make test-container`) — never by hand
-in the normal flow:
+state-process container** (NM's done-when; §18.9).
+`scripts/container_test.sh` (`make test-container`) supplies its endpoint,
+token and substrate settings. The independent suite can also use an
+explicitly selected external test service. Relevant settings:
 
 - `NEOSIAN_TEST_SERVER_URL` + `NEOSIAN_TEST_SERVER_TOKEN` — where the
   container listens and its bearer token. Unset means every test in the
@@ -313,6 +321,9 @@ in the normal flow:
 - `NEOSIAN_TEST_SERVER_SCHEMA` — the serving schema of the Postgres
   leg (with `NEOSIAN_TEST_POSTGRES_DSN` above). Gates the Postgres-leg
   tests.
+- `NEOSIAN_TEST_SERVER_PEER_URL` — optional second worker for the
+  independent storage HTTP suite, sharing the primary service's store
+  and bearer identity. Unset means concurrent requests use one endpoint.
 - `NEOSIAN_CONTAINER_TMPDIR` — where `scripts/container_test.sh` puts
   the FileStore leg's volume (default: `$TMPDIR`, else `/tmp`). Set it
   under your home when the daemon is a VM that mounts only the home
@@ -321,6 +332,14 @@ in the normal flow:
   the same test database. Use this when a Docker VM cannot reach the
   host's published port. Unset, the script uses `NEOSIAN_TEST_POSTGRES_DSN`
   with `localhost` or `127.0.0.1` replaced by `host.docker.internal`.
+
+The container script also runs `make test-storage-contract backend=http`
+on both backends, using the URL and token above. That target can be run
+against a custom disposable HTTP test service without installing the
+Python product in the test runner. Unlike the older `external_server`
+tier, it fails on missing URL/token. Its full/base capability profiles,
+test writes and retained-history cleanup responsibility are documented in
+`tests/contract/storage/README.md` and `neosian docs stores`.
 
 The script runs one leg per backend the image's
 `ai.mausa.neosian.backends` label names (R2, §18.9): the FileStore leg

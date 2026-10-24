@@ -18,6 +18,12 @@ phase close names the version.
   and all 21 storage HTTP operations from literal versioned fixtures,
   without importing the Python product. CI runs it against the release
   binary alongside the existing differential suite.
+- `make test-storage-contract` runs independent wire behavior checks on
+  files, Postgres or a supplied HTTP test service. Local backends use two
+  server processes for competing writes and turn appends. Full/base
+  profiles distinguish required and optional capabilities; CI adds the
+  suite to Postgres and both container legs. The existing Python store
+  kits remain while the remaining coverage is preserved independently.
 
 ### Fixed
 

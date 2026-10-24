@@ -35,9 +35,11 @@ typed inputs and canonical outputs, not every legacy decoder coercion.
 `make test-contract` drives the binary through raw HTTP, CLI and MCP,
 validating successful storage requests and responses against those files.
 Its versioned fixtures and expected results import no Python product code.
-This first independent suite complements the existing conformance and
-differential suites; it does not yet replace their backend, hook, adapter
-or operator coverage.
+Its storage subset also checks files, Postgres and independently operated
+test services through `make test-storage-contract` (`neosian docs stores`).
+It complements the existing conformance and differential suites; substrate
+corruption, TLS, HTTP MCP, hooks, adapters and full operator coverage still
+retain their existing checks.
 
 Every route listed here is served by both implementations. The Rust
 binary and the container image serve FileStore or Postgres; the Python

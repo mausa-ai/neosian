@@ -2,13 +2,19 @@
 
 from __future__ import annotations
 
-import os
 from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 
-from tests.contract.support import ROOT, Binary, Server, serve
+from tests.contract.support import Binary, Server, executable, serve
+
+
+def pytest_addoption(parser: pytest.Parser) -> None:
+    parser.addoption(
+        "--storage-backend", choices=("file", "postgres", "http"), default="file"
+    )
+    parser.addoption("--storage-profile", choices=("full", "base"), default="full")
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
@@ -19,12 +25,7 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
 
 @pytest.fixture
 def binary(tmp_path: Path) -> Binary:
-    suffix = ".exe" if os.name == "nt" else ""
-    executable = Path(
-        os.environ.get("NEOSIAN_BINARY", ROOT / "target" / "debug" / f"neosian{suffix}")
-    ).resolve()
-    assert executable.is_file(), "build the binary or set NEOSIAN_BINARY"
-    return Binary(executable, tmp_path)
+    return Binary(executable(), tmp_path)
 
 
 @pytest.fixture

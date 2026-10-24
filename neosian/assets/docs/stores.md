@@ -291,3 +291,35 @@ that compatibility gap remains to be resolved before the major-version cut.
 records. `make test-contract` reads them through the Rust binary without
 importing the Python product; the existing kits remain the broader store
 certification checks during the transition.
+
+## Independent HTTP conformance
+
+From a source checkout, `make test-storage-contract` runs the independent
+wire suite against two Rust processes sharing a temporary FileStore home.
+`backend=postgres` uses `NEOSIAN_TEST_POSTGRES_DSN`, applies the shipped SQL
+to one new schema, runs two processes and drops only that schema afterward.
+The server never applies DDL. Both paths check competing versioned writes,
+concurrent unconditional writes and gapless concurrent turn appends.
+
+For an independently operated storage service, run
+`make test-storage-contract backend=http` with `NEOSIAN_TEST_SERVER_URL`
+and `NEOSIAN_TEST_SERVER_TOKEN`. Use a disposable test deployment and an
+unconstrained token: cases write, delete, redact and restore under fresh
+random test scopes and conversations. External history is left for the
+test deployment's owner to dispose of. An optional
+`NEOSIAN_TEST_SERVER_PEER_URL` exercises a second worker on the same store;
+without it, concurrency is tested through one endpoint only.
+
+The default `profile=full` requires optimistic concurrency, paging,
+turn erasure and whole-store portability. `profile=base` verifies the
+required wire, runs cases for declared optional capabilities, checks
+refusals for missing ones and reports their skipped cases. A missing
+capability cannot produce a full-profile pass. A false concurrency flag
+does not permit ignoring a serial `expected_version` mismatch.
+
+Report the revision, backend/deployment, profile, passed/skipped counts
+and whether separate workers were exercised. These checks cover the wire
+behaviors named in `tests/contract/storage/README.md`; the existing
+substrate corruption, transport and operator suites remain until their
+independent replacements are complete. The HTTP runner itself needs no
+installed neosian Python package, database driver or local binary.
