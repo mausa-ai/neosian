@@ -27,6 +27,8 @@ from tests.contract.upkeep_support import edit, invoke, prepare, save
             }
         ),
     ],
+    # Pytest exports IDs in PYTEST_CURRENT_TEST; large payloads exceed exec limits.
+    ids=["duplicate-keys", "oversized-request", "too-many-changes", "too-many-sources"],
 )
 def test_invalid_or_unbounded_request_refuses_before_store_open(
     binary: Binary, raw: str
