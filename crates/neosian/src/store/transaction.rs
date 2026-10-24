@@ -106,6 +106,7 @@ impl WriteOp {
         let valid = match tail {
             ["redactions.jsonl"] => true,
             [".changes", "head.json"] => true,
+            [".exchange", "receipt.json"] => true,
             [".changes", "events", file] => file
                 .strip_suffix(".json")
                 .is_some_and(|n| n.len() == 20 && n.bytes().all(|b| b.is_ascii_digit())),

@@ -60,6 +60,12 @@ development and optional one-time migration tooling only (S0, DESIGN §40).
   schema 4 with paused/restarted writers. Cursors and mailbox references never
   grant access or execute agents.
 
+- **Exchange is explicit and one-way.** Current-memory snapshots/deltas select
+  one authorized tracked scope and an explicit local replica. Pause source
+  writers; apply data and checkpoint together. Refuse local drift, stale
+  ordering and missing receipts. Gaps need a fresh empty replica. Exclude raw
+  turns, lifecycle records and source history bodies; hashes are not authority.
+
 ## Conventions
 
 - Rust uses `rust-toolchain.toml`'s exact pin, repeated by `rust-version`.

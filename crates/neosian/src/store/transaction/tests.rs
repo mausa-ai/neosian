@@ -3,7 +3,7 @@ use crate::testing::Scratch;
 
 #[test]
 fn every_committed_boundary_recovers_once_before_another_operation() {
-    for stopped in 0..=5 {
+    for stopped in 0..=6 {
         let scratch = Scratch::new(&format!("redo-boundary-{stopped}"));
         let canonical = scratch.path().canonicalize().unwrap();
         let root = canonical.as_path();
@@ -21,6 +21,7 @@ fn every_committed_boundary_recovers_once_before_another_operation() {
             )
             .unwrap(),
             WriteOp::put(root, &path(".changes/head.json"), "head".into()).unwrap(),
+            WriteOp::put(root, &path(".exchange/receipt.json"), "checkpoint".into()).unwrap(),
         ];
         assert!(
             commit_with(root, writes, |n| {
@@ -47,6 +48,10 @@ fn every_committed_boundary_recovers_once_before_another_operation() {
         assert_eq!(
             fs::read_to_string(path(".changes/head.json")).unwrap(),
             "head"
+        );
+        assert_eq!(
+            fs::read_to_string(path(".exchange/receipt.json")).unwrap(),
+            "checkpoint"
         );
         assert_eq!(
             fs::read_to_string(path(".changes/events/00000000000000000002.json")).unwrap(),

@@ -128,3 +128,13 @@ pause writers, review/apply `neosian schema changes-postgres --schema NAME`,
 then restart every writer with compatible binaries. The optional extension has
 its own version 1 and is never installed on connection. Back up before migration
 and read `neosian docs changes` for recovery, retention and reconciliation.
+
+## Exchange receivers
+
+Exchange format 1 adds a local `.exchange/receipt.json` per receiver scope.
+It belongs with the replica and participates in redo recovery. All processes
+that open that root must understand exchange receipt recovery; stop old writers
+before upgrading. Do not remove receipts or recovery plans to bypass a refusal.
+Missing checkpoints on occupied state require a fresh snapshot into a new empty
+replica. Archives and knowledge bundles remain separate formats and cannot be
+passed to exchange apply. Read `neosian docs exchange`.

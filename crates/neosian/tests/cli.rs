@@ -24,7 +24,8 @@ fn docs_lists_then_prints_a_page() {
     let listing = neosian(&["docs"]);
     assert!(listing.status.success());
     let stdout = String::from_utf8(listing.stdout).unwrap();
-    assert_eq!(stdout.lines().count(), 15);
+    assert_eq!(stdout.lines().count(), 16);
+    assert!(stdout.lines().any(|line| line.starts_with("exchange ")));
     assert!(stdout.lines().any(|line| line.starts_with("changes ")));
     assert!(stdout.lines().any(|line| line.starts_with("governance ")));
     assert!(stdout.lines().any(|line| line.starts_with("knowledge ")));

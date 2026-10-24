@@ -161,3 +161,12 @@ Polling uses one statement snapshot. Retention changes events and floor together
 contracts include `changes-v1.schema.json`, OpenAPI routes and independent replay,
 concurrency, retention and authority tests. File process-kill probes and Postgres
 rollback probes check physical behavior separately from the wire shapes.
+
+## From notifications to replicas
+
+`exchange snapshot/delta` uses a paused source's stable head and consumes the
+complete retained interval to export current memory plus explicit erasures.
+A local receiver atomically commits data and its checkpoint, refusing conflicts
+and reordered bundles. Retention/reset gaps require a fresh empty replica.
+Receiver feeds emit local reconciliation markers instead of copying source
+event identities. See `neosian docs exchange` for the separate format and bounds.

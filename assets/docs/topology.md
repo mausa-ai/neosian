@@ -51,7 +51,7 @@ importing client. See `neosian docs wire` before sharing a store.
 ## Container
 
 ```sh
-docker run -e NEOSIAN_SERVE_TOKEN='your-private-token' -p 6367:6367 -v state:/data ghcr.io/mausa-ai/neosian:2.7.0
+docker run -e NEOSIAN_SERVE_TOKEN='your-private-token' -p 6367:6367 -v state:/data ghcr.io/mausa-ai/neosian:2.8.0
 ```
 
 The image serves the Rust binary as uid 1000 with a private `/data` volume.
@@ -75,3 +75,9 @@ Profiles can require effective or approved knowledge in retrieval and context.
 Raw authorized reads/history remain available for inspection, so private drafts
 need separate scopes/grants. Hosts provide trusted approval workflows and account
 mapping. See `neosian docs governance`.
+
+For one-way local replicas, `exchange` exports current memory from one authorized
+tracked scope on files, Postgres or HTTP. Explicit local receiver roots retain
+atomic checkpoints and observed revisions. Source writers pause for export;
+conflicts and gaps refuse. No account linking, hosted sync service or raw-turn
+sharing is implied. See `neosian docs exchange`.

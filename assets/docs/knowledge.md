@@ -214,5 +214,6 @@ revision recovery and paused-writer requirements.
 Imports, reviews, renames and erasures emit ordinary document changes on capable
 backends. A host can follow their durable references without copying knowledge
 bodies into a notification log. Scope restoration instead announces reconciliation.
-The feed does not supply incremental replica exchange or batch atomicity; see
-`neosian docs changes` for checkpoints and gaps.
+The feed supplies references; `exchange` adds one-way current-memory replicas
+with atomic receiver checkpoints. See `neosian docs changes` for polling and
+`neosian docs exchange` for snapshots, deltas, conflicts and erasure.

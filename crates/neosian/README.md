@@ -54,3 +54,8 @@ references. File memory mutations recover through a redo journal; Postgres uses
 transactions with its optional operator-installed changes extension. Hosts handle
 reconciliation and can attach references to mailbox work. Read `neosian docs
 changes` for cursors, gaps, current authority and upgrade requirements.
+
+`neosian exchange` exports current-memory snapshots and deltas from an authorized
+tracked scope to an explicit local replica. Atomic apply checkpoints, conflict
+refusal and erasure protect retained observations. Pause source writers; raw
+history and bindings do not travel. Read `neosian docs exchange` for bounds.

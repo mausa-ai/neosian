@@ -149,3 +149,13 @@ Archives carry state and history, with a fresh restoration marker at the target.
 Polling, retention gaps and mailbox references are specified in `neosian docs
 changes`. Custom services declare the optional capability and run its additional
 conformance cases; the base/full storage profiles do not force optional features.
+
+## Incremental replicas
+
+`exchange` reads current ordinary documents from one authorized tracked scope
+and applies snapshots/deltas to a dedicated local FileStore. The source may use
+files, Postgres with changes extension 1, or capable HTTP. Pause source writers;
+receiver data and `.exchange/receipt.json` recover in one redo transaction.
+Local edits conflict, and missing checkpoints or source gaps require a new empty
+replica. Source history bodies and raw turns are excluded; full archives keep
+their separate restore contract. See `neosian docs exchange`.

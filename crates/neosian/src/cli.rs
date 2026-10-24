@@ -25,6 +25,11 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Exchange current-memory snapshots and deltas with a local replica.
+    Exchange {
+        #[command(subcommand)]
+        command: crate::exchange::cli::Command,
+    },
     /// Read durable scope changes or explicitly prune their retained events.
     Changes {
         #[command(subcommand)]
@@ -188,6 +193,7 @@ where
         }
     }
     let code = match cli.command {
+        Command::Exchange { command } => crate::exchange::cli::run(&command, &mut out, &mut err),
         Command::Changes { command } => crate::changes::cli::run(&command, &mut out, &mut err),
         Command::Upkeep { command } => crate::upkeep::cli::run(&command, &mut out, &mut err),
         Command::Skill { command } => crate::skill::cli::run(&command, &mut out, &mut err),

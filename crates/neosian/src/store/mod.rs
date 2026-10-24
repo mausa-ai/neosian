@@ -19,6 +19,8 @@ pub mod cursor;
 pub mod envelope;
 pub(crate) mod erasure;
 pub mod error;
+mod exchange;
+mod exchange_data;
 pub(crate) mod fileio;
 pub mod grammar;
 pub mod journal;

@@ -436,3 +436,10 @@ gaps are `untracked`, `retention` or `stream_reset`, never successful omission.
 Events are ordered by sequence and contain references, never document bodies.
 A custom backend must durably couple its mutations and events before advertising
 this capability. Independently passing JSON shape validation is insufficient.
+
+The CLI exchange format 1 composes existing scoped memory reads and change-feed
+v1 into snapshots and deltas for an explicit local receiver. There is no new
+HTTP capability or apply route. Current grants apply to every source read;
+source histories and raw turns are excluded from the output.
+`neosian schema exchange` and `neosian docs exchange` specify that separate
+contract, paused-source requirement, local recovery and conflict rules.

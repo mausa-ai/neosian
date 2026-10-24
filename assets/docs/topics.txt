@@ -6,6 +6,7 @@ governance
 skills
 messaging
 changes
+exchange
 stores
 agents
 cli

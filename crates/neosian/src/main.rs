@@ -13,6 +13,7 @@ mod clients;
 mod config;
 mod conversation;
 mod docs;
+mod exchange;
 mod home;
 mod knowledge;
 mod mcp;

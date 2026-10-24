@@ -26,6 +26,7 @@ def test_docs_and_schemas_are_the_shipped_assets(binary: Binary) -> None:
         ("upkeep", "upkeep-v1.schema.json"),
         ("governance", "governance-v1.schema.json"),
         ("changes", "changes-v1.schema.json"),
+        ("exchange", "exchange-v1.schema.json"),
     ]:
         printed = binary.run("schema", kind)
         assert printed.returncode == 0

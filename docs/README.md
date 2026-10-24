@@ -163,3 +163,12 @@ gaps. File memory mutations recover through a redo journal; Postgres couples
 events transactionally after its operator installs the optional changes extension.
 Mailbox context can reference a document revision without copying its body.
 Read `neosian docs changes` before enabling the feed or upgrading mixed writers.
+
+## Exchange incremental memory
+
+`neosian exchange snapshot` and `exchange delta` carry one authorized tracked
+scope to a dedicated local replica. Preview/apply preserves current envelopes,
+retains observed revisions and propagates erasure with an atomic checkpoint.
+Pause source writers for export; reordered bundles, local edits and source gaps
+refuse explicitly. Source histories, conversation turns and bindings are excluded.
+Read `neosian docs exchange` for the one-way contract, recovery and bounds.

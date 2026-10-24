@@ -190,3 +190,13 @@ The independent file and Postgres conformance fixtures enable the optional feed;
 physical Postgres tests also verify compatibility without it, refusal of partial
 or future extensions, and rollback when events cannot be recorded. Container
 conformance installs the extension only in its disposable owned schema.
+
+## Incremental exchange
+
+Exchange adds no account, environment setting, scheduler or service. Sources
+use existing file/Postgres/HTTP selection and current read grants; Postgres needs
+changes extension 1. Export requires paused compatible writers and `--paused`.
+Receivers require explicit local roots/scopes and `--write` after preview.
+The independent suite covers replay, lost checkpoints, process-kill recovery,
+concurrent apply, source mutation/revocation and physical erasure; the Postgres
+tier covers direct and remote sources. See `neosian docs exchange` for limits.

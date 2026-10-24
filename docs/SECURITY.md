@@ -115,3 +115,17 @@ change ID. File recovery plans temporarily contain mutation data in private file
 unsafe or corrupt plans refuse operation for inspection. Do not discard pending
 plans to bypass recovery. Pause and upgrade all writers together; direct/old
 writers cannot participate in the durable feed. Read `neosian docs changes`.
+
+## Exchange artifacts and replicas
+
+Exchange exports one currently authorized tracked scope, excluding source
+history bodies, conversation/lifecycle records, bindings and configuration.
+Ordinary content and opaque JSON metadata travel unchanged; they are not scanned
+for secrets. The bundle digest verifies content, not sender identity or authority.
+Treat an imported file as data to review before explicit local apply.
+
+Receiver data, erasure and receipt recover together. Local edits, stale ordering
+and missing checkpoints on occupied state refuse. Retention gaps require a new
+empty replica. Previously accepted checkpoints cannot roll back erasure; copies
+of bundles/backups and erasures not yet delivered remain separate responsibilities.
+Pause compatible source writers and stop older receiver binaries before upgrade.

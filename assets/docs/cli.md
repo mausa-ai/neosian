@@ -111,3 +111,12 @@ and concurrency limits; `neosian schema upkeep` prints the format-1 shapes.
 cursor on empty pages and explicit reset/retention gaps. `changes prune /mount
 --through CURSOR` previews retention; `--write` applies at most 10,000 events.
 Read `neosian docs changes` for authority, reconciliation and backend setup.
+
+`exchange snapshot /mount FILE --paused` creates a current-memory bundle;
+`exchange delta /mount FILE --after PREVIOUS --paused` uses a previous bundle
+or checkpoint file. `exchange inspect FILE` validates and describes it.
+`exchange apply FILE --root DIR --scope SCOPE` previews; `--write` commits
+to that local replica. `exchange status --root DIR --scope SCOPE` recovers
+and reports its checkpoint/conflicts; `--checkpoint-only` prints reusable
+checkpoint JSON. Source commands share memory/profile flags. Read `neosian docs
+exchange` and `neosian schema exchange` before using the one-way workflow.

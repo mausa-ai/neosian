@@ -11,6 +11,7 @@ pub enum Kind {
     Postgres,
     ChangesPostgres,
     Changes,
+    Exchange,
     Profile,
     Grants,
     Knowledge,
@@ -32,6 +33,11 @@ pub fn run(args: &Schema, out: &mut impl Write, err: &mut impl Write) -> io::Res
         return crate::cli::usage(false, "--schema applies only to postgres", out, err);
     }
     let text = match args.kind {
+        Kind::Exchange => include_str!(concat!(
+            env!("NEOSIAN_ASSETS"),
+            "/contracts/exchange-v1.schema.json"
+        ))
+        .to_string(),
         Kind::Changes => include_str!(concat!(
             env!("NEOSIAN_ASSETS"),
             "/contracts/changes-v1.schema.json"

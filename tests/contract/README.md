@@ -70,3 +70,10 @@ Postgres probes force event/retention failures and assert transaction rollback;
 legacy schema 4 and unsupported extension installations have separate checks.
 The frozen v1 replay projection excludes only added discovery and `.changes/`/
 `.transactions/` internals; its original expected files remain untouched.
+
+Exchange contracts cover current snapshots and coalesced deltas, explicit scope
+authority, literal metadata/cursors, replay/order/conflicts, lost receipts, source
+gaps, multi-page intervals and physical erasure. Real receiver processes are
+killed during snapshot/delta/erasure apply; a new process must recover both data
+and checkpoint. Direct and HTTP Postgres sources use disposable test schemas.
+These tests do not claim bidirectional or remote receiver synchronization.

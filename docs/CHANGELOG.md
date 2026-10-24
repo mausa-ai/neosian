@@ -8,6 +8,29 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [2.8.0] - 2026-10-24
+
+### Added
+
+- One-way exchange format 1 and CLI snapshot/delta/inspect/apply/status for an
+  authorized tracked scope on files, Postgres or HTTP and an explicit local
+  FileStore replica. Source export requires paused writers; apply previews first.
+- Current envelopes, skill/knowledge content and JSON metadata travel with source
+  versions, actors and UTC times. Source history bodies, lifecycle records, raw
+  turns and bindings are excluded. Receivers retain their observed revisions.
+- Atomic receiver data/erasure/checkpoint recovery, idempotent last-bundle replay,
+  local conflict detection and explicit stale/out-of-order/missing-checkpoint
+  refusal. Source gaps or resets require a fresh snapshot in an empty replica.
+- Exchange schema/guide and independent source-authority, multi-page, corruption,
+  process-kill, concurrent-apply, physical erasure and Postgres-source contracts.
+
+### Compatibility
+
+- Existing format 1, wire 6, Postgres schema 4 and error identifiers remain.
+  Receiver roots add a private exchange receipt to redo recovery; stop older
+  writers before upgrading. Full archives remain separate. No remote apply,
+  bidirectional merge, raw-turn synchronization or managed service is introduced.
+
 ## [2.7.0] - 2026-10-25
 
 ### Added
@@ -2651,7 +2674,8 @@ pre-release — pin it explicitly; the API stability promise rides v1.0.0.
 - Both entry points share one `_validate_run`, so neither can skip a
   guard.
 
-[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.13.0...HEAD
+[Unreleased]: https://github.com/mausa-ai/neosian/compare/v2.8.0...HEAD
+[2.8.0]: https://github.com/mausa-ai/neosian/compare/v2.7.0...v2.8.0
 [1.13.0]: https://github.com/mausa-ai/neosian/compare/v1.12.2...v1.13.0
 [1.12.2]: https://github.com/mausa-ai/neosian/compare/v1.12.1...v1.12.2
 [1.12.1]: https://github.com/mausa-ai/neosian/compare/v1.12.0...v1.12.1

@@ -1,0 +1,321 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neosian.com/contracts/exchange-v1.schema.json",
+  "title": "One-way current-memory exchange, format 1",
+  "description": "Snapshots and coalesced deltas from one authorized tracked scope to an explicit local replica. Operational ordering, UTF-8 byte bounds, digest, scope/path grammar and erasure checks are also enforced by the CLI. Read neosian docs exchange.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/bundle"
+    },
+    {
+      "$ref": "#/$defs/checkpoint"
+    }
+  ],
+  "$defs": {
+    "bundle": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "const": 1
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "base": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/checkpoint"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "checkpoint": {
+          "$ref": "#/$defs/checkpoint"
+        },
+        "updates": {
+          "type": "array",
+          "maxItems": 1000,
+          "items": {
+            "$ref": "#/$defs/update"
+          }
+        },
+        "erasures": {
+          "type": "array",
+          "maxItems": 10000,
+          "items": {
+            "$ref": "#/$defs/erasure"
+          }
+        }
+      },
+      "required": [
+        "format",
+        "id",
+        "base",
+        "checkpoint",
+        "updates",
+        "erasures"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "base": {
+                "type": "null"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "erasures": {
+                "maxItems": 0
+              },
+              "updates": {
+                "items": {
+                  "properties": {
+                    "deletion": {
+                      "type": "null"
+                    },
+                    "document": {
+                      "$ref": "#/$defs/record"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "checkpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "const": 1
+        },
+        "scope": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 512
+        },
+        "stream": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "cursor": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048
+        }
+      },
+      "required": [
+        "format",
+        "scope",
+        "stream",
+        "cursor"
+      ]
+    },
+    "record": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "type": "string",
+          "maxLength": 1048576
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9223372036854775806
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "Z$"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "Z$"
+        },
+        "actor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "redacted": {
+          "type": "boolean"
+        },
+        "extra": {
+          "type": "object",
+          "propertyNames": {
+            "not": {
+              "enum": [
+                "neosian_format",
+                "version",
+                "created_at",
+                "updated_at",
+                "actor",
+                "redacted"
+              ]
+            }
+          }
+        }
+      },
+      "required": [
+        "content",
+        "version",
+        "created_at",
+        "updated_at",
+        "actor",
+        "redacted",
+        "extra"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "redacted": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "content": {
+                "const": ""
+              }
+            }
+          }
+        }
+      ]
+    },
+    "deletion": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9223372036854775806
+        },
+        "actor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "Z$"
+        },
+        "redacted": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "version",
+        "actor",
+        "created_at",
+        "redacted"
+      ]
+    },
+    "update": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "document": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/record"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "deletion": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/deletion"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "path",
+        "document",
+        "deletion"
+      ],
+      "oneOf": [
+        {
+          "properties": {
+            "document": {
+              "$ref": "#/$defs/record"
+            },
+            "deletion": {
+              "type": "null"
+            }
+          }
+        },
+        {
+          "properties": {
+            "document": {
+              "type": "null"
+            },
+            "deletion": {
+              "$ref": "#/$defs/deletion"
+            }
+          }
+        }
+      ]
+    },
+    "erasure": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "Z$"
+        }
+      },
+      "required": [
+        "path",
+        "created_at"
+      ]
+    }
+  }
+}

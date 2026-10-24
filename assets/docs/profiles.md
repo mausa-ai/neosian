@@ -272,3 +272,12 @@ mount and reports source/workspace identity. It cannot use a history-only scope.
 Each HTTP page rechecks server grants; a saved cursor grants no access. Change
 references are raw audit inspection, independent of context governance filters.
 Separate scopes protect private path metadata. See `neosian docs changes`.
+
+## Explicit memory exchange
+
+`exchange snapshot` and `exchange delta` can select one profile mount with
+current source read authority, including a read-only mount. Governance selection
+policies do not filter these raw inspection exports. They carry ordinary current
+memory and skills, excluding raw turns, lifecycle state and binding credentials;
+capture/sharing settings are not widened. Receivers use an explicit local root
+and matching scope, outside profile routing. See `neosian docs exchange`.
