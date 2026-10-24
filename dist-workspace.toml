@@ -1,6 +1,6 @@
 # cargo-dist (DESIGN §39.5, ledger #350): one `v*` tag builds the five
 # targets, the installers and the checksums, hosts them on the GitHub
-# Release, runs the Python publication as a custom publish job and
+# Release, runs core/channel publication as custom publish jobs and
 # announces only when every job landed. `dist init` (re)generates
 # .github/workflows/release.yml from this file; a hand edit there is an
 # error `dist plan` reports on every pull request.
@@ -27,12 +27,12 @@ install-updater = true
 github-attestations = true
 # A pre-release tag hosts binaries and publishes nothing
 publish-prereleases = false
-# The Python half of the release, after the binaries are hosted; it
-# publishes by the job's OIDC token (PyPI) and the workflow's own
+# Core artifacts and channels, after the binaries are hosted; this
+# publishes docs using the release token and the workflow's own
 # GITHUB_TOKEN (GHCR), so the called workflow needs these and no more
-publish-jobs = ["./publish-python", "./publish-channels"]
+publish-jobs = ["./publish-core", "./publish-channels"]
 [dist.github-custom-job-permissions]
-publish-python = { contents = "read", id-token = "write", packages = "write" }
+publish-core = { contents = "write", packages = "write" }
 publish-channels = { contents = "read", id-token = "write" }
 # The actions the generated workflow uses, pinned by commit the way
 # ci.yml pins them (DESIGN §29.3): checkout v7.0.1, upload-artifact

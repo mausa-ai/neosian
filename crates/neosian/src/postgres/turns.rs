@@ -4,7 +4,7 @@ use super::{PostgresStore, rows, sql};
 use crate::conversation::ids::parse_conversation_id;
 use crate::conversation::search::messages_text;
 use crate::conversation::{
-    Error, FORMAT, Projection, Redaction, Turn,
+    Error, FORMAT, Projection, Redaction, Refused, Turn,
     message::{self, Message},
 };
 use crate::remote::codec;
@@ -128,8 +128,18 @@ impl PostgresStore {
         let (through, named) = crate::store::erasure::selection(through, turns)?;
         let row = self.one(sql!("erasure/redact_turns"), json!({
             "conversation_id":id,"through":through,"all":named.is_none(),"turns":named.unwrap_or_default(),
-            "actor":actor,"now":Stamp::now().z()
+            "actor":actor,"now":Stamp::now().z(),"format":FORMAT
         }), false)?;
+        if row["format_ok"] != true {
+            return Err(Refused::format_unsupported(
+                id,
+                &format!(
+                    "erasure target declares unsupported format {}",
+                    row["current_format"]
+                ),
+            )
+            .into());
+        }
         Ok(codec::number(&row, "matched")? as usize)
     }
 

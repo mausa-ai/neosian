@@ -1,13 +1,10 @@
-# The Rust workspace (DESIGN §39, ledger #338): one crate today, the
-# product doors as one static binary. The version is the wheel's, a
-# unit test keeps the two literals equal; the toolchain is
-# rust-toolchain.toml's pin and `rust-version` names the same release.
+# Product version authority. One binary, no embedding SDK.
 [workspace]
 members = ["crates/neosian"]
 resolver = "3"
 
 [workspace.package]
-version = "1.13.0"
+version = "2.0.0"
 edition = "2024"
 rust-version = "1.99.0"
 authors = ["Mausa <community@neosian.com>"]

@@ -9,9 +9,7 @@ use clap::{CommandFactory, Parser, Subcommand};
 use serde_json::json;
 
 use crate::conversation::{cli_continue, cli_search};
-use crate::{
-    clients, configure, docs, mcp, memory, messaging, operator, record, serve, update, version,
-};
+use crate::{clients, docs, mcp, memory, messaging, operator, record, serve, update, version};
 
 #[derive(Parser)]
 #[command(
@@ -29,14 +27,14 @@ struct Cli {
 enum Command {
     /// Wire the installed agents to this store: MCP and the hooks.
     Setup(clients::setup::Setup),
-    /// Is this machine set up? The home, the keys, the clients.
+    /// Is this machine set up? The home and the clients.
     Status(clients::status::Status),
-    /// Store a provider's API key under the home, or list them.
-    Configure(configure::Configure),
     /// Check GitHub Releases for a newer binary; print the command or apply it.
     Update(update::Update),
     /// Display version information.
     Version,
+    /// Print a machine-readable contract or operator-owned Postgres DDL.
+    Schema(crate::schema::Schema),
     /// Print a shipped docs page, or list the topics.
     Docs {
         /// Topic to print (omit to list the topics)
@@ -99,20 +97,8 @@ where
     let stderr = io::stderr();
     let (mut out, mut err) = (stdout.lock(), stderr.lock());
     if args.len() == 1 {
-        if io::stdin().is_terminal() && stdout.is_terminal() {
-            return finish(
-                crate::python_shell::run(&args, &mut out, &mut err),
-                &mut err,
-            );
-        }
         return finish(
             writeln!(out, "{}", Cli::command().render_help()).map(|()| 0),
-            &mut err,
-        );
-    }
-    if crate::python_shell::requested(&args) {
-        return finish(
-            crate::python_shell::run(&args, &mut out, &mut err),
             &mut err,
         );
     }
@@ -132,7 +118,6 @@ where
     };
     let verb = match &cli.command {
         Command::Status(_) => "status",
-        Command::Configure(_) => "configure",
         _ => "",
     };
     if update::human_door(
@@ -151,9 +136,9 @@ where
     let code = match cli.command {
         Command::Setup(args) => clients::setup::run(&args, &mut out, &mut err),
         Command::Status(args) => clients::status::run(&args, &mut out, &mut err),
-        Command::Configure(args) => configure::run(&args, &mut out, &mut err),
         Command::Update(args) => update::run(&args, &mut out, &mut err),
         Command::Version => writeln!(out, "{}", version::line()).map(|()| 0),
+        Command::Schema(args) => crate::schema::run(&args, &mut out, &mut err),
         Command::Docs { topic, json } => docs::run(topic.as_deref(), json, &mut out, &mut err),
         Command::Memory { command } => memory::cli::run(&command, &mut out, &mut err),
         Command::Audit(args) => operator::audit::run(&args, &mut out, &mut err),

@@ -24,7 +24,7 @@ fn a_skill_is_a_description_and_a_body() {
         "it's"
     );
     let shipped = shipped_skills();
-    assert_eq!(shipped.len(), 1);
+    assert_eq!(shipped.len(), 2);
     assert!(shipped[0].description.starts_with("Hand this session off"));
     assert!(shipped[0].content.starts_with("Write the handoff note now"));
 }

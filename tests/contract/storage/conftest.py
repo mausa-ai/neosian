@@ -48,7 +48,7 @@ def endpoints(
                 connection.execute,
                 sql.SQL("DROP SCHEMA {} CASCADE").format(sql.Identifier(schema)),
             )
-            ddl = (ROOT / "neosian/assets/sql/postgres.sql").read_text(encoding="utf-8")
+            ddl = (ROOT / "assets/sql/postgres.sql").read_text(encoding="utf-8")
             ddl = ddl.replace("{{schema}}", '"' + schema + '"').replace(
                 "{{version}}", "4"
             )

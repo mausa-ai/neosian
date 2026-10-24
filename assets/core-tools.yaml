@@ -1,0 +1,7 @@
+docs: "Read the documentation shipped with this neosian version. Omit topic to list pages. Use this before proposing setup, storage, migration or operator commands."
+docs_params:
+  topic: "A topic from the documentation listing; omitted or empty lists topics."
+memory_history: "Read a mounted document's version metadata or a mount's recent write ledger. This tool is read-only and returns at most 100 rows without historical bodies. Use the memory tool to read current content. Only the configured mounts are addressable."
+memory_history_params:
+  path: "Virtual document path, or a mount root such as /project for its write ledger."
+  limit: "Maximum rows, newest first, from 1 to 100; default 20."

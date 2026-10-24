@@ -21,7 +21,7 @@ try {
         process.stdout.write(payload.source + ':' + payload.session_id);
     });
   `;
-  const template = await readFile(new URL("../../neosian/assets/clients/pi-record.ts", import.meta.url), "utf8");
+  const template = await readFile(new URL("../../assets/clients/pi-record.ts", import.meta.url), "utf8");
   const load = async (argv) => {
     const source = stripTypeScriptTypes(template.replace("__NEOSIAN_RECORD_ARGV__", JSON.stringify(argv)));
     const { default: extension } = await import("data:text/javascript;base64," + Buffer.from(source).toString("base64"));

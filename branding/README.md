@@ -70,13 +70,10 @@ neutrals: only the hue tells the siblings apart.
 
 ## Where it shows
 
-- `neosian/assets/logo_ascii_small.txt` — the mark rasterized at 33×16 and
-  written in half-blocks; the playground header prints it in the support
-  colour beside the wordmark art in the accent (`neosian/_cli/ui.py`).
-- `README.md` — `logo-light.svg` / `logo-dark.svg` in a `<picture>` at the top;
-  `logo-adaptive.svg` for `<img>` contexts that follow the OS scheme.
-- A neosian.com host (a kit fork) seeds `[design] seed = "#88884d"` and keeps
-  maki sarısı as its artwork hue; nothing in this repo depends on that.
+The vector marks and light/dark lockups remain the site's source artwork.
+`docs/README.md` is the product entry point. The ASCII playground artwork
+retired with the Python product in v2; there is no terminal chat header.
+The site maintains its own palette and CSS in its repository.
 
 ## README media (`readme/`)
 
@@ -101,26 +98,15 @@ tape's `Set Theme` and `Set FontFamily` lines carry the look; the tapes'
   `neosian memory view /` lists it and `neosian memory view
   /project/deploy` shows the saved markdown.
 
-Run `make readme-media` from the checkout after `make install`. It needs
-`vhs`, `ffmpeg`, `ffprobe`, `ttyd`, `starship`, `git`, `claude` and
-`codex` on PATH, with `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` supplied
-in the environment. The script reads no key files. This checkout's
-`.venv/bin/neosian` is first on PATH; each tape gets fresh temporary
-client configurations, a store and a project (a one-commit git
-repository, so the branch pill reads `main`), removed on exit. Personal
-client settings and stores are untouched. The tapes source
-`scripts/readme_demo.sh`: Claude uses Haiku and Codex uses GPT-6 Luna;
-Codex's reviewed local hooks are enabled for these invocations, with
-diagnostics checked outside the frame.
+These are historical v1 recordings of retained memory, recording and
+continuation behavior. Their tapes and rendered GIF/MP4 pairs remain as
+provenance and are served from the site's pinned product release. They do
+not demonstrate a v2 SDK or agent runtime.
 
-These are real API calls, with their normal cost and variable latency.
-Playback is twice the captured speed; setup and seed sessions are hidden.
-The recorder clears inherited `NO_COLOR` so the rendered verbs show.
-The script verifies the recorded actors, recalled facts, the search hit,
-the index entry and the saved file, checks GIF and MP4 durations, and
-replaces the four pairs only when every check passes. A slow run fails
-the duration gate; it never silently publishes an overlong recording.
-
-The tape is the source: re-render, never re-record. Each GIF and MP4 sits
-beside its tape. README embeds the GIFs by absolute URL at the release
-tag so PyPI renders them, and the sdist excludes `branding/`.
+The model-driven producer scripts and `make readme-media` retired with the
+Python product in S0. Reproducing those original captures requires the
+historical release checkout and its documented external client accounts;
+this checkout does not run or regenerate them. A future recording refresh
+must use the binary and the user's external agent, with explicit approval
+for any real API cost. No provider account is needed for the product or its
+default verification gates.

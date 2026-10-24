@@ -1,0 +1,25 @@
+# neosian
+
+> Memory and context for the agent you already use. One Rust binary,
+> CLI/MCP/HTTP interfaces, state on your own files or Postgres.
+
+Release: 2.0.0. Read installed pages with `neosian docs TOPIC` or the MCP
+`docs` tool. They are versioned with the executable and are authoritative
+for that version. The release's neosian-docs.json carries the same pages.
+
+- [Quickstart](https://neosian.com/docs/quickstart): install and connect clients.
+- [Memory](https://neosian.com/docs/memory): mounts, versions and upkeep.
+- [Skills](https://neosian.com/docs/skills): reusable instructions as documents.
+- [Messaging](https://neosian.com/docs/messaging): messages, reminders and claims.
+- [Stores](https://neosian.com/docs/stores): formats and HTTP conformance.
+- [Agents](https://neosian.com/docs/agents): recording through client hooks.
+- [CLI](https://neosian.com/docs/cli): command grammar and operator actions.
+- [MCP](https://neosian.com/docs/mcp): tools, prompts and transports.
+- [Topology](https://neosian.com/docs/topology): local, Postgres and remote access.
+- [Wire](https://neosian.com/docs/wire): storage HTTP protocol version 6.
+- [Migration](https://neosian.com/docs/migration): v1 compatibility and retired APIs.
+
+Version 2 has no Python product, dedicated SDK, agent runtime or model
+provider integration. Custom backends implement the tested HTTP contract.
+Memory, turns and mailbox remain format 1; Postgres remains schema 4.
+Error identifiers are append-only; `neosian schema errors` lists them.

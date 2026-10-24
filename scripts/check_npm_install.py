@@ -136,9 +136,7 @@ def check() -> None:
                     [binary, "docs", "--json"], env=env, text=True
                 )
                 topics = json.loads(output)["topics"]
-                assert len(topics) == len(
-                    list((ROOT / "neosian/assets/docs").glob("*.md"))
-                )
+                assert len(topics) == len(list((ROOT / "assets/docs").glob("*.md")))
                 print(
                     f"npm global install runs neosian {version} and all embedded topics"
                 )

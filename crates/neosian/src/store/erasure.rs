@@ -92,8 +92,7 @@ impl FileStore {
         parse_conversation_id(conversation_id)?;
         let (through, named) = selection(through, turns)?;
         let created_at = Stamp::now();
-        let directory = self.root.join(CONVERSATIONS).join(conversation_id);
-        let turns_file = directory.join(TURNS);
+        let turns_file = self.conversation_file(conversation_id, TURNS)?;
         if !turns_file.is_file() {
             return Ok(0);
         }
@@ -113,9 +112,12 @@ impl FileStore {
             row.messages.clear();
             row.redacted = true;
         }
-        let text: String = recorded.iter().map(render_turn).collect();
-        atomic_write(&turns_file, &text, true)?;
-        let projections_file = directory.join(PROJECTIONS);
+        let projections_file = self.conversation_file(conversation_id, PROJECTIONS)?;
+        let trail = self.conversation_file(conversation_id, REDACTIONS)?;
+        if trail.is_file() {
+            rows(&trail, conversation_id, parse_redaction)?;
+        }
+        let mut projection_text = None;
         if projections_file.is_file() {
             let mut entries = rows(&projections_file, conversation_id, parse_projection)?;
             let mut blanked = false;
@@ -125,8 +127,13 @@ impl FileStore {
             }
             if blanked {
                 let text: String = entries.iter().map(render_projection).collect();
-                atomic_write(&projections_file, &text, true)?;
+                projection_text = Some(text);
             }
+        }
+        let text: String = recorded.iter().map(render_turn).collect();
+        atomic_write(&turns_file, &text, true)?;
+        if let Some(text) = projection_text {
+            atomic_write(&projections_file, &text, true)?;
         }
         let act = Redaction {
             conversation_id: conversation_id.to_string(),
@@ -134,7 +141,7 @@ impl FileStore {
             actor: actor.map(str::to_string),
             created_at,
         };
-        append_line(&directory.join(REDACTIONS), &render_redaction(&act), true)?;
+        append_line(&trail, &render_redaction(&act), true)?;
         Ok(act.turns.len())
     }
 
@@ -167,7 +174,7 @@ impl FileStore {
         };
         let mut acts: Vec<(Redaction, usize)> = Vec::new();
         for conversation_id in ids {
-            let trail = parent.join(conversation_id).join(REDACTIONS);
+            let trail = self.conversation_file(conversation_id, REDACTIONS)?;
             if trail.is_file() {
                 let read = rows(&trail, conversation_id, parse_redaction)?;
                 acts.extend(read.into_iter().enumerate().map(|(at, act)| (act, at)));

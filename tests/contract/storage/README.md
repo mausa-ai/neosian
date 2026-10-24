@@ -55,15 +55,14 @@ full-profile pass. Passing this wire suite is evidence for these cases, not
 certification of a service's authentication system, operational durability,
 custom physical format or all backend races. The separate
 [FileStore corpus](../file/README.md) plants malformed files and tests basic
-containment. Postgres corruption/schema-generation cases, deeper races, TLS,
-HTTP MCP and remaining operator/client behavior retain their existing tests
-until independent replacements are complete.
+containment. `../postgres/` plants malformed database rows; `../replay/`
+preserves the frozen v1 operator, client, hook and HTTP MCP expectations.
 
 The runner can also live in a test-only environment, with no neosian package:
 
 ```sh
 uv run --isolated --no-project --python 3.12 \
-  --with pytest --with pytest-timeout --with pytest-asyncio \
+  --with pytest --with pytest-timeout \
   --with jsonschema --with PyYAML \
   python -m pytest --confcutdir=tests/contract tests/contract/storage \
   -m contract --storage-backend=http -q -rs

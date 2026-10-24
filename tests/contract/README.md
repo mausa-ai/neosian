@@ -6,8 +6,7 @@ skips it. CI runs the release binary on Linux.
 
 The runner uses pytest, JSON Schema validation, a subprocess and raw HTTP/JSON-RPC.
 It does not import `neosian`, its codecs, fakes, stores or conformance classes.
-`--confcutdir=tests/contract` excludes the SDK's root fixtures; an assertion also
-checks that no product module was imported. Python is a test runner here.
+Python is development tooling only; no product module is installed or imported.
 Every process gets a temporary home and isolated client configuration.
 
 `fixtures/v1/records.json` and `fixtures/v1/home/` are independently authored
@@ -22,7 +21,7 @@ away in the fixture.
 The tests cover all 21 storage POST operations, the handshake, transport and
 allowance refusals, paging and occupied restores, the six memory commands,
 all ten mailbox operations, and a stdio MCP session. Successful storage requests
-and responses validate against `neosian/assets/contracts/wire-v6.openapi.json`;
+and responses validate against `assets/contracts/wire-v6.openapi.json`;
 stored rows validate against the adjacent `state-v1.schema.json` definitions.
 Generated timestamps, IDs and claim tokens are checked by shape and lifecycle;
 the expected content, versions, actors and failure codes stay literal.
@@ -34,10 +33,18 @@ container gate runs the full profile on both backends. This adds independent
 coverage for storage behavior and concurrent writes. The
 [FileStore corpus](file/README.md) plants malformed files, checks refusal
 without data replacement, private modes, basic containment, numbering and
-reference cursor decoding. Postgres corruption/schema-generation cases,
-deeper races, TLS, HTTP MCP sessions, recording hooks, client adapters and
-the full operator corpus still retain their existing suites. Preserve their
-expectations independently before removing the Python implementation they use.
+reference cursor decoding. `postgres/` plants malformed/future rows and checks
+schema generation. `replay/` freezes 261 Python 1.13.0 output/file-delta cases
+before the product cut, including operators, hooks and HTTP MCP sessions.
+Verified HTTPS, migration, six-client setup, maintenance and the current
+embedded manifest have additional independent cases. Node harnesses under
+`tests/clients/` exercise the generated Pi and OpenCode adapters.
+
+The release's `neosian-contracts.tar.gz` carries this tier and its locked
+test dependencies. Extract into a new directory, run `make install`, then
+`make test-storage-contract backend=http` against a disposable service. No
+binary or Rust checkout is needed for HTTP mode. Local file/Postgres probes
+require an installed binary selected by absolute `NEOSIAN_BINARY`.
 
 Change an expectation only with an explained contract decision. Preserve old
 readable fixtures when a new format is introduced; add a new version directory

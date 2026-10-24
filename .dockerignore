@@ -8,6 +8,4 @@
 docs/*
 !docs/LICENSE-MUSL
 !crates/
-!neosian/
-neosian/*
-!neosian/assets/
+!assets/

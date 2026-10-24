@@ -1,4 +1,4 @@
-"""Independent tier: run with --confcutdir=tests/contract to exclude SDK fixtures."""
+"""Independent tier: disposable processes and explicit storage profiles."""
 
 from __future__ import annotations
 

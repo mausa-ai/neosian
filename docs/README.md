@@ -1,345 +1,114 @@
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/mausa-ai/neosian/v1.13.0/branding/logo-dark.svg">
-  <img src="https://raw.githubusercontent.com/mausa-ai/neosian/v1.13.0/branding/logo-light.svg" alt="neosian" width="280">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/mausa-ai/neosian/v2.0.0/branding/logo-dark.svg">
+  <img src="https://raw.githubusercontent.com/mausa-ai/neosian/v2.0.0/branding/logo-light.svg" alt="neosian" width="280">
 </picture>
 
 # neosian
 
-[![PyPI](https://img.shields.io/pypi/v/neosian.svg?include_prereleases&color=6d6d32)](https://pypi.org/project/neosian/)
-[![Docs](https://img.shields.io/badge/docs-neosian.com%2Fdocs-6d6d32.svg)](https://neosian.com/docs)
-[![CI](https://github.com/mausa-ai/neosian/actions/workflows/ci.yml/badge.svg)](https://github.com/mausa-ai/neosian/actions/workflows/ci.yml)
-[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-6d6d32.svg)](https://github.com/mausa-ai/neosian/blob/v1.13.0/LICENSE)
-[![Python 3.12 | 3.13 | 3.14](https://img.shields.io/badge/python-3.12%20%7C%203.13%20%7C%203.14-6d6d32.svg)](https://github.com/mausa-ai/neosian/blob/v1.13.0/pyproject.toml)
+**Memory and context for the agent you already use.** Durable conversations,
+agent-curated memory, skills, messages and a ledger of who did what, on
+storage you own. One Rust binary; CLI, MCP and HTTP access. No model account,
+Python runtime or hosted service is required.
 
-**The state layer for LLM agents**: durable conversations, agent-curated
-memory, skills, a shared board and a ledger of who did what, on storage
-you own (a directory, your Postgres, or one small state process), for
-the agent you already use or the one you build.
-
-Two doors, one store:
-
-- **Give your agent state.** Claude Code, Codex, OpenCode, Muse Code, Pi or
-  interactive Cursor get memory and skills over MCP and every session
-  recorded through hooks: `neosian setup --write` lets you select the clients to
-  connect, once per machine; `neosian status` says whether the machine is
-  set up; the Python shell's bare `neosian` opens a chat with an agent that knows neosian,
-  on the same memory, and runs the shell's verbs for you: ask it whether
-  the machine is set up.
-- **Build an agent.** An async-only, stateless `Agent` (tools,
-  streaming, fallback, guardrails, structured output) that a
-  `Conversation` wraps into a durable, memory-bearing thread.
-
-<p align="center">
-<img src="https://raw.githubusercontent.com/mausa-ai/neosian/v1.13.0/branding/readme/record.gif" alt="A headless Claude Code session lands as a recorded turn; neosian audit names it" width="720">
-<br>
-<img src="https://raw.githubusercontent.com/mausa-ai/neosian/v1.13.0/branding/readme/left-off.gif" alt="The next Claude Code session opens on where we left off; neosian search finds the turn by its words" width="720">
-</p>
-
-*Set up once per machine, every session lands in the ledger: the Python
-shell's `neosian audit` names the turn, the next session opens on where we left off, and
-`neosian search` finds it by its words.*
-
-Agents read this repository too: [llms.txt](https://github.com/mausa-ai/neosian/blob/v1.13.0/llms.txt) is the machine
-front door, `neosian docs` prints the shipped docs pages from the wheel
-(version-true), and every shell verb has `--json` and exit tiers — one
-CLI for humans and agents (`neosian docs cli`).
-
-```python
-store = FileStore(home())                          # ~/.neosian, or your PostgresStore(dsn)
-convo = Conversation(config, store=store, conversation_id="thread-829",
-                     memory_scope=project_scope())  # user:<login>/proj:<dir>
-response = await convo.send("Where did we leave off?")
-```
+[Documentation](https://neosian.com/docs) ·
+[Releases](https://github.com/mausa-ai/neosian/releases) ·
+[Changelog](CHANGELOG.md)
 
 ## Install
 
-For an existing agent, install the native binary on macOS or Linux:
-
-```bash
+```sh
 curl -fsS https://neosian.com/install | sh
 neosian setup --write
+neosian status
 ```
 
-The installer selects the platform, verifies the archive's SHA-256 and
-installs under `~/.neosian/bin`, with a link in `~/.local/bin` when that
-name is free. An existing Python command is preserved; `neosian status`
-names competing executables. In that case, run
-`~/.neosian/bin/neosian setup --write` to connect the binary.
-Both implementations use the same home,
-with no data migration. Windows has a PowerShell installer and MSI on the
-[GitHub Release](https://github.com/mausa-ai/neosian/releases/latest).
-Publisher signing and Apple notarization are deferred; browser downloads
-can trigger macOS or Windows security warnings.
+Setup connects Claude Code, Codex, OpenCode, Muse Code, Pi and interactive
+Cursor through MCP and hooks. It previews the registrations before `--write`.
+Restart the client after setup. Every session can leave a durable record;
+the next session reads the index, recalls relevant turns and continues
+explicit handoffs.
 
-The binary's package-manager commands are `npm install -g neosian` and
-`cargo install neosian --locked`. Homebrew distribution is deferred.
-Cargo builds from source and requires the Rust version named by the crate.
-Use the original package manager to update these installations.
+The installer verifies the archive's checksum and installs under
+`~/.neosian/bin`, linking `~/.local/bin/neosian` when that name is free.
+An existing command is preserved; `status` reports PATH shadowing.
+Windows has a PowerShell installer and MSI on each GitHub Release.
+Package-manager alternatives are `npm install -g neosian` and
+`cargo install neosian --locked`. Cargo builds from source with the exact
+Rust version in `rust-toolchain.toml`. Update using the original installer
+or package manager. Signing and notarization remain deferred.
 
-For the Python shell, including chat, the TUI, playground and eval, use
-`uv tool install "neosian==1.13.0"`, or
-`curl -fsS https://neosian.com/install | sh -s -- --python`.
-For the SDK, use `uv add "neosian==1.13.0"`. Python requires >= 3.12.
-The Python package includes its provider SDKs, MCP server and client,
-state process and OpenTelemetry spans, about 70 MB on disk, loaded on use.
-`Model.FAKE` and `FileStore` need no account. The one extra is the Postgres
-driver, `uv add "neosian[postgres]==1.13.0"`; `[all]` is its alias.
+## Read, write and carry state
 
-To work on neosian itself, `uv sync --all-groups` then `uv run neosian
-version` (the Development section has the gates).
-
-## One store under many agents
-
-`neosian setup --write` asks which installed clients to connect to the home.
-The Python shell and Rust binary both provide `setup`, `status`, `configure`,
-`update`, `mcp install`, and `record install` over the same home.
-Status names competing `neosian` executables on PATH. Setup registers the
-executable running it; `--binary PATH` selects an explicit binary. No home
-migration is needed. Both doors also provide `audit`, `export`, `import`,
-`redact`, `prune` and the memory commands (except `maintain` in the binary),
-plus `messages`, `search` and `continue`, on files, Postgres or through
-`--url`. Recording and MCP use those same backends. Chat, playground, eval
-and memory maintenance use the Python shell; the binary prints its install
-command. `neosian docs cli` lists the implementation for every command.
-Use `--write --yes` for all detected clients in scripts, or repeated
-`--client C` for an explicit selection. Setup and status accept
-`--at CLIENT=DIR` for a custom client configuration directory, for one run.
-Their hooks record each session into one store, so any of them picks up
-where another stopped: say "continue" and the agent receives that
-conversation in one call, with the note the last one left on departure;
-one ledger names them all, and which continued which.
-
-<p align="center">
-<img src="https://raw.githubusercontent.com/mausa-ai/neosian/v1.13.0/branding/readme/many-agents.gif" alt="Claude Code records a deployment fact; Codex recalls it from the same neosian store in a new session; one audit names both" width="720">
-<br>
-<img src="https://raw.githubusercontent.com/mausa-ai/neosian/v1.13.0/branding/readme/memory-write.gif" alt="Claude Code saves a project memory through MCP; the memory index lists it and neosian memory view shows the saved markdown file" width="720">
-</p>
-
-*Claude Code records the work, Codex picks it up, one audit names both.
-A memory write becomes a plain markdown document you can read, version
-and revert.*
-
-## Build an agent
-
-Keyless boot is an invariant: `Model.FAKE` is always available, so an
-install verifies with no account. The fake is scripted through the
-`client_factory` seam — the same seam the unit tier and the eval
-baseline use:
-
-```python
-import asyncio
-
-from neosian import Agent, AgentConfig, Message, Model, Role
-from neosian.fake import FakeClient, FakeScript, FakeTurn
-
-fake = FakeClient(FakeScript(turns=(FakeTurn(content="hello from the fake"),)))
-config = AgentConfig(system_prompt="Be concise.", model=Model.FAKE,
-                     client_factory=lambda _: fake)
-
-
-async def main() -> None:
-    response = await Agent(config=config).run(
-        [Message(role=Role.USER, content="hello")], stream=False
-    )
-    print(response.message.content)
-
-
-asyncio.run(main())
+```sh
+neosian memory create /memories/decision --scope user:demo --content 'Keep the reason with the decision.'
+neosian memory view /memories/decision --scope user:demo
+neosian memory versions /memories/decision --scope user:demo --json
+neosian export ./archive --scope user:demo
 ```
 
-Set a key and name a real model (`model=Model.CLAUDE_SONNET_5_5`, the
-providers table below); tools are decorated functions whose signature is
-the schema (`neosian docs tools`). [examples/](https://github.com/mausa-ai/neosian/tree/v1.13.0/examples) has one runnable
-file per feature, every one importing keylessly.
+The default home is `~/.neosian`, overridden by `NEOSIAN_HOME` or `--root`.
+FileStore keeps ordinary markdown and JSONL files, with a shared root lock
+for cooperating local processes. Postgres supports distributed writers;
+`neosian schema postgres` prints its operator-owned DDL. A remote state
+process exposes the same storage contract over authenticated HTTP.
 
-## Durable messages and reminders
+Memory mounts define what an agent may read or edit. Every write carries an
+actor and a version; ordinary delete retains history, and operator redaction
+clears content while keeping its audit skeleton. Mailbox messages, reminders,
+claims and outcomes use the same store. Skills are versioned memory documents;
+`handoff` and `upkeep` also ship as immutable instructions for your agent.
 
-See `neosian docs messaging` for the shared `messages` tool, conversation and
-scope destinations, history annotations, explicit acknowledgment and claims.
-Reminders can be snoozed with a finding and a new due time on the same ID.
-Native conversations opt in with `mailbox=MailboxConfig()` from
-`neosian.messaging`. Regenerate client adapters after upgrading for automatic
-delivery. Pi and OpenCode also support wake requests while attached.
+`memory maintain --dry-run` previews deterministic empty/duplicate cleanup.
+The MCP `docs` tool reads the installed documentation and `memory_history`
+reads bounded, mounted version metadata. Neosian does not run a model or
+control the agent's context window. Raw conversation history is shared with
+readers authorized for that store; local scope defaults are not a portable
+identity or privacy boundary.
 
-## What is in the box
+## Interfaces and compatibility
 
-Each line is one page in the wheel — `neosian docs <topic>`.
+Version 2 intentionally retires the Python distribution, public SDKs,
+agent/provider runtime, chat/TUI, playground, runtime guardrails and agent
+evaluation product. Custom storage integrates through a conformance-tested
+HTTP service. There is no supported Rust embedding API.
 
-- **Conversation and memory** (`memory`). History is an append-only log;
-  log-projection compaction pages aged turns out of context,
-  `search_history` finds any turn by its words and `recall_turn`
-  re-hydrates it verbatim — paging, not deletion. The one eraser is an
-  operator's: `neosian redact` blanks recorded turns with the skeleton
-  kept, `neosian prune` is retention on top.
-  Memory is file-school: small markdown documents with frontmatter under
-  mounted scopes, read and written through one `memory` tool (`view`,
-  `create`, `str_replace`, `insert`, `delete`, `rename`); reflection at
-  the close distills the session into deliberate writes. Every write is
-  a full-content version row with an actor; a `memory_write` frame on
-  the stream carries `{command, path, version}` so a host renders
-  "remembered X" with a working `revert_memory` undo.
-- **The shell and the ledger** (`cli`). The six memory commands, the
-  gardener (`maintain`), the operator verbs (`versions`, `redact`,
-  `revert`), `audit` — what was done, by whom, when, on any substrate —
-  `search` — the turns holding every term, newest first —
-  `export`/`import`, which move a store whole, history included, and
-  `redact`/`prune`, the turn eraser and the retention cutoff.
-- **Skills** (`skills`). A skill is a document under `skills/<name>` in
-  a mount: versioned, curated by the mount flag, loaded by
-  `list_skills`/`load_skill`, served over MCP as a prompt (a slash
-  command in Claude Code).
-- **MCP, both directions** (`mcp`). `python -m neosian.mcp` serves the
-  store to any client over stdio; `McpServer.stdio/http/in_process`
-  consumes any MCP server as agent tools — schema verbatim, `is_error`
-  in-band, the approval gate and hooks unchanged.
-- **The agent you already use** (`agents`). `neosian record install`
-  spells the hooks that land a prompt-to-stop span as one turn by
-  `claude-code:<session>` (Codex, OpenCode, Muse Code, Pi and interactive Cursor
-  too), plus a sessions document; `SessionStart` prints the index, the
-  pending handoff note and "where we left off" into the next window
-  (OpenCode reads them from the server's instructions). A handoff is
-  declared, never assumed: `handoff` writes the note on departure,
-  `continue_session` carries a session on in one call, and the ledger
-  shows which continued which. Registered once per machine, every project gets its
-  own scope with no file of its own. A neosian `Conversation` on the same home shares the
-  scope, so one `audit` names both.
-- **The state process** (`topology`). `neosian serve` puts memory and
-  conversations on a port. The container runs the Rust binary over
-  FileStore or Postgres; both implementations serve the same storage wire.
-  `RemoteStore` drops in where `FileStore` does, core install. Bearer tokens env-only, per-client
-  when you want the ledger to know who wrote.
-- **The agent core** (`agent`, `tools`). `run(stream=True)` yields eleven
-  frozen `AgentEvent` dataclasses a host relays over SSE; `AgentHooks`
-  observe every turn, call and tool; `ToolGateConfig` routes every tool
-  call through one approver, and no decision is a denial; capability-
-  aware fallback, guardrails on any model, structured output, prompt
-  caching, multimodal blocks on Anthropic.
-- **Under your own agent** (`interop`). `tool_definition(tool)` is the
-  definition any neosian tool sends to the model and the tool itself the
-  executor, so the memory tool runs under a pydantic-ai or OpenAI Agents
-  SDK agent (two runnable examples, keyless in the unit tier) or over
-  MCP from any language; the data stays a directory you can grep, git
-  and leave with.
-- **Your own store** (`stores`). The two storage ABCs and their
-constraints in plain words, the shipped conformance kits as the
-  certification standard, and `examples/sqlite_store.py`, a third
-  substrate that passes both kits and stays community custody.
+Memory, turn and mailbox formats remain **1**, Postgres schema **4**, and
+storage wire **6**. Existing histories and JSON metadata survive. Arbitrary
+YAML metadata and libpq-specific connection settings have explicit migration
+or refusal rules: read `neosian docs migration` before upgrading v1 homes
+and client registrations. Error identifiers remain reserved forever.
 
-## Providers
-
-API keys are read from environment variables; a provider is available when
-its key is set (asking for an unavailable model raises
-`MissingAPIKeyError`). For the shell, `neosian configure` stores any of
-them under the home and loads them where the environment has none.
-
-| Provider | Env var | Models |
-|---|---|---|
-| A registered door | the door's `api_key_env` | The day-one door for any model neosian has not shipped: any OpenAI-compatible endpoint via `register_model` (`neosian docs quickstart`) |
-| Local (llama.cpp, Ollama) | none: `api_key_env=None` | A door that signs nothing, on a zero card; `neosian chat` finds a running llama-server or Ollama by itself and defaults to its model; the recipes and the measured local row (`neosian docs local`) |
-| OpenAI | `OPENAI_API_KEY` | `gpt-6.1-sol` (latest), `gpt-6-sol` (default during migration), `gpt-6-astra`, `gpt-6-luna`; `gpt-5.1` is superseded, on the Responses API with reasoning carried through tool loops and nothing stored at the provider |
-| Anthropic | `ANTHROPIC_API_KEY` | `claude-fable-5-1`, `claude-opus-5-5`, `claude-sonnet-5-5` (latest; chat default with no local server running), `claude-sonnet-5` (library default during migration), `claude-haiku-5-5` (the fast row, priced by prompt length); vision/PDF input, prompt caching, adaptive thinking |
-| Cerebras | `CEREBRAS_API_KEY` | Default provider: `gpt-oss-120b`, `qwen-3.8-27b` |
-| xAI | `XAI_API_KEY` | `grok-4.6` — a shipped door row (`Model.GROK_4_6`), on the Responses API |
-| Google Gemini API | `GEMINI_API_KEY` | `gemini-3.8-flash`, `gemini-3.7-flash` on the OpenAI-compatible endpoint (`Model.GEMINI_3_8_FLASH`; the introductory card through 2026-12-31) |
-| Moonshot | `MOONSHOT_API_KEY` | `kimi-k3`: a shipped door row (`Model.KIMI_K3`), always reasoning |
-| Alibaba Model Studio (Singapore) | `DASHSCOPE_API_KEY` | `qwen3.8-max`: a shipped door row (`Model.QWEN_3_8_MAX`); thinking on when a `reasoning_effort` is asked |
-| Fake | — | Keyless, deterministic, always available (`Model.FAKE`) |
-
-Every shipped row is a `Model` member and answers to its wire id too
-(`AgentConfig(model="gpt-6.1-sol")`); each carries its provider's
-lifecycle as data (`Model.X.spec.retires`, `card_until`) and is earned by
-green dispatched runs of the memory baselines — membership is measured,
-never assumed (`neosian docs baselines`).
-
-## Storage
-
-`MemoryStore` and `ConversationStore` are the contracts: async ABCs that
-own no connection, commit no transaction, issue no DDL. `FileStore` (a
-plain directory), `PostgresStore` (the `postgres` extra; schema by
-`python -m neosian.schemas postgres | psql "$DSN"`) and `RemoteStore`
-(the state process's wire) implement both; a host may implement its own,
-kept honest by the shipped `MemoryStoreContract` /
-`ConversationStoreContract` conformance kits (`neosian docs stores`: the
-contract, the kits, a worked SQLite example that passes both). FileStore
-coordinates cooperating local processes through a root lock; restart all
-writers when upgrading. Network filesystems are outside this guarantee.
-Postgres supports distributed workers (`neosian docs topology`).
-
-## Evaluation
-
-`neosian eval suite.yaml` runs YAML suites and exits nonzero on failure —
-an agent suite over variants × models × cases, and `kind: memory`, which
-scores store truth across scripted sessions on every transport. A suite
-names its agent file relative to itself, so it runs from any directory;
-`--json` prints the artifact and `--output DIR` places it. The
-shipped memory pack is all-green on `models: [fake]`, and the same pack
-against the real providers produces the
-[baselines page](https://github.com/mausa-ai/neosian/blob/v1.13.0/neosian/assets/docs/baselines.md),
-fingerprint-gated so a prompt change without a recorded re-run fails
-`make test`.
-
-## Stability
-
-`v1.0.0` carries the API stability promise: `Agent`, `Conversation`,
-`MemoryStore`, and the `neosian.evaluation` facade stable under SemVer,
-the ecosystem seams (scope grammar, token classes, integer micro-USD,
-event vocabulary, error codes) SemVer-guaranteed, with a seam break only
-at a major, and the state process's wire (the twenty-one `/v1/` routes
-and their envelope, `neosian docs wire`, versioned by `WIRE_VERSION`) stable
-under the same promise: one promise covering library, seams, and wire.
-Error codes are append-only forever. Consumers pin a release
-(`neosian==X.Y.Z`), never master. Model membership follows a **rolling 30-day policy**, independently of the
-stable library interfaces: `ModelSelector` offers per-tier `DEFAULT` and
-`LATEST`, while `Model` pins a concrete ID. A qualified replacement becomes
-latest when neosian ships it; default promotion and predecessor removal
-happen in the first release at least 30 days later. Each successor gets its
-own window, with visible migration warnings. Package upgrades change the
-catalog; the wall clock never changes an installed package's routing.
-Provider shutdowns can make an endpoint unavailable sooner. See
-`neosian docs agent` for selectors, exact pins and the policy.
+`neosian docs` lists every embedded page; `neosian docs TOPIC` reads it.
+The versioned `neosian-docs.json` release artifact supplies those same pages
+to the website. `neosian-contracts.tar.gz` contains machine contracts,
+fixtures, the independent HTTP conformance runner and the optional one-time
+metadata converter. `neosian schema state`, `wire` and `errors` print the
+machine-readable definitions directly.
 
 ## Development
 
-```bash
-make install    # uv sync --locked --all-groups
-make lint       # ruff + black --check + import-linter
-make typecheck  # mypy --strict neosian tests examples
-make test       # unit tier — the default gate, zero API keys
-make size       # file-size gate (warn 300 / fail 500)
-make test-contract  # built binary, physical file failures + raw HTTP/CLI/MCP; no Python product imports
-make test-storage-contract backend=postgres  # independent wire kit; file/postgres/http backends
-make test-external provider=anthropic file=~/path/to/creds  # real API calls
-make test-postgres                                      # needs NEOSIAN_TEST_POSTGRES_DSN
-make test-container                                     # both kits vs the container (docker)
+```sh
+make install        # locked Python test/development tools, no product package
+make lint           # ruff and black
+make typecheck      # mypy --strict over tests and tools
+make test           # independent binary contracts, keyless
+make size           # Rust source file-size gate
+make rust-lint      # fmt, clippy, deny, generated release workflow
+make rust-test      # Rust unit and integration tests
+make test-postgres  # explicit disposable test database DSN
+make test-container # independent conformance against both image backends
+make bench-hooks    # binary latency budgets over a 50 MB literal home
+make docs-artifacts # versioned website input and contracts archive
 ```
 
-The default gate needs no accounts; external tiers inject credentials
-value-blind. Sign off every commit (`git commit -s`): contributions are
-accepted under the [Developer Certificate of
-Origin](https://developercertificate.org/) and licensed as the project
-is, Apache-2.0 — there is no CLA. Open an issue before a feature or a
-departure from documented behaviour; the public API is pinned by
-`tests/unit/test_init.py`, so an export change is a reviewed diff.
-[SECURITY.md](https://github.com/mausa-ai/neosian/blob/v1.13.0/docs/SECURITY.md) is where vulnerabilities go, never an issue.
+Cargo's workspace version is the product version authority. The independent
+tests retain literal v1 records and 261 frozen Python-reference cases, plus
+raw CLI/MCP/HTTP, file corruption, concurrency and Postgres probes. They
+import no product implementation. Python is used only for development and
+an optional one-time migration script. Node checks exercise the shipped Pi
+and OpenCode adapters.
 
-## Documents
-
-- `neosian docs <topic>` — the shipped pages, from the wheel: `quickstart`,
-  `memory`, `skills`, `messaging` (messages and reminders),
-  `stores` (author and certify your own store),
-  `agents`, `cli`, `mcp`, `interop` (memory under pydantic-ai or the
-  Agents SDK), `agent`, `tools`, `local` (llama.cpp and Ollama on the
-  door), `topology`, `wire` (the state process's HTTP contract),
-  `baselines` (the published per-provider memory numbers); the same pages
-  online at [neosian.com/docs](https://neosian.com/docs), rendered from the
-  wheel at the current release.
-- [SERVICES.md](https://github.com/mausa-ai/neosian/blob/v1.13.0/docs/SERVICES.md) — every env key and what turning it off means.
-- [CHANGELOG.md](https://github.com/mausa-ai/neosian/blob/v1.13.0/docs/CHANGELOG.md) — Keep a Changelog, one section per release.
-- [SECURITY.md](https://github.com/mausa-ai/neosian/blob/v1.13.0/docs/SECURITY.md) — where to report, and the supported line.
-- [llms.txt](https://github.com/mausa-ai/neosian/blob/v1.13.0/llms.txt) — the machine-readable front door (byte-identical
-  twin ships in the wheel).
-
----
-
-Be kind and constructive in every project space; the maintainers read
-**community@neosian.com**.
+Contributions use DCO sign-off (`git commit -s`) and Apache-2.0 licensing.
+See [SERVICES.md](SERVICES.md) for environment settings and release accounts,
+[SECURITY.md](SECURITY.md) for vulnerability reports, and
+[llms.txt](../llms.txt) for the machine-readable front door.

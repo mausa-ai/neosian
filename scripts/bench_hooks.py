@@ -1,17 +1,12 @@
-"""The latency gate (DESIGN §39.4, ledger #349): the p50 of twenty warm
-runs per door and event over one home, the spawn included — the cost a
-hook actually pays. Budgets: `version` 5 ms; UserPromptSubmit and
-PostToolUse 10 ms; Stop, SessionStart and the MCP `initialize` 50 ms. A
-Rust number over budget fails; the Python door is measured, printed and
-exempt; an event the binary cannot answer yet reads "not yet". The home
-is the maintainer's (`--home`, copied, never written) or a seeded one
-of its shape (`--seed`, CI's).
+"""Latency gate: p50 of 20 warm binary runs, spawn included, over a 50 MB home.
+
+Budgets: version 5 ms; prompt/tool 10 ms; stop/start/MCP initialize 50 ms.
+A supplied --home is copied, never changed. The default seed is literal data.
 """
 
 from __future__ import annotations
 
 import argparse
-import asyncio
 import json
 import shutil
 import statistics
@@ -20,6 +15,7 @@ import sys
 import tempfile
 import time
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Final
@@ -27,10 +23,16 @@ from typing import Final
 ROOT: Final = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from tests.differential import harness  # noqa: E402
-from tests.differential.corpus import MOUNTS, RECORD, SESSION  # noqa: E402
-from tests.differential.seed import PROJECT_NAME, REFERENCE, seed  # noqa: E402
-from tests.unit.record.payloads import prompt, session_start, stop, tool  # noqa: E402
+from tests.contract.replay import harness  # noqa: E402
+from tests.contract.replay.corpus import MOUNTS, RECORD, SESSION  # noqa: E402
+
+PROJECT_NAME = "demo"
+from tests.contract.replay.payloads import (  # noqa: E402
+    prompt,
+    session_start,
+    stop,
+    tool,
+)
 
 RUNS: Final = 20
 WARMUP: Final = 3
@@ -63,7 +65,8 @@ def _one_shot(argv: list[str], stdin: bytes | None, space: harness.Workspace) ->
         capture_output=True,
         env=space.environment(),
         cwd=space.project,
-        check=False,
+        check=True,
+        timeout=30,
     )
     return (time.perf_counter() - started) * 1000
 
@@ -79,13 +82,22 @@ def _initialize(argv: list[str], space: harness.Workspace) -> float:
         cwd=space.project,
     )
     assert server.stdin is not None and server.stdout is not None
-    server.stdin.write((json.dumps(_INITIALIZE) + "\n").encode())
-    server.stdin.flush()
-    server.stdout.readline()
-    elapsed = (time.perf_counter() - started) * 1000
-    server.kill()
-    server.wait()
-    return elapsed
+    try:
+        server.stdin.write((json.dumps(_INITIALIZE) + "\n").encode())
+        server.stdin.flush()
+        with ThreadPoolExecutor(max_workers=1) as reader:
+            response = reader.submit(server.stdout.readline)
+            try:
+                line = response.result(timeout=30)
+            finally:
+                elapsed = (time.perf_counter() - started) * 1000
+                server.kill()
+            assert json.loads(line)["result"]["serverInfo"]["name"] == "neosian-memory"
+        return elapsed
+    finally:
+        if server.poll() is None:
+            server.kill()
+        server.wait(timeout=5)
 
 
 def _measure(
@@ -94,7 +106,7 @@ def _measure(
     argv: tuple[str, ...],
     payload: dict[str, object] | None,
     space: harness.Workspace,
-) -> float | None:
+) -> float:
     full = [str(executable), *(space.expand(a) for a in argv)]
     stdin = None if payload is None else space.expand(json.dumps(payload)).encode()
 
@@ -118,17 +130,32 @@ def _home(args: argparse.Namespace) -> Iterator[tuple[Path, str, str]]:
     """The reference home: a copy of the maintainer's, or a seeded one."""
     with tempfile.TemporaryDirectory() as scratch:
         base = Path(scratch)
-        if args.home:
-            from neosian._foundation.memory.home import project_scope, user_scope
-
-            seeded = base / "seed"
-            shutil.copytree(Path(args.home).expanduser(), seeded)
-            user, proj = str(user_scope()), str(project_scope(base / PROJECT_NAME))
-        else:
-            grown = asyncio.run(
-                seed(base / "seed", REFERENCE, console=harness.python_door())
-            )
-            seeded, user, proj = grown.home, grown.user, grown.proj
+        source = ROOT / "tests/contract/replay/home"
+        metadata = json.loads((source.parent / "seed.json").read_text())
+        seeded = base / "seed"
+        shutil.copytree(Path(args.home).expanduser() if args.home else source, seeded)
+        user, proj = metadata["user"], metadata["proj"]
+        if not args.home:
+            # Literal records, independent of a product implementation: 50 MB
+            # across 50 conversations, four 250 KB turns each.
+            for n in range(50):
+                directory = seeded / "conversations" / f"bench-{n:03d}"
+                directory.mkdir(parents=True)
+                turns = [
+                    {
+                        "neosian_format": 1,
+                        "turn": turn,
+                        "created_at": "2026-01-01T00:00:00Z",
+                        "actor": "cli:bench",
+                        "messages": [
+                            {"role": "user", "content": "bench " + "x" * 250_000}
+                        ],
+                    }
+                    for turn in range(1, 5)
+                ]
+                (directory / "turns.jsonl").write_text(
+                    "".join(json.dumps(row) + "\n" for row in turns)
+                )
         yield seeded, user, proj
 
 
@@ -151,7 +178,8 @@ def main(argv: list[str] | None = None) -> int:
     rust = args.binary or harness.rust_door()
     if rust is None:
         parser.error("no binary: `cargo build --release` or --binary PATH")
-    doors: dict[str, Path] = {"python": harness.python_door(), "rust": rust}
+    rust = rust.resolve()
+    doors: dict[str, Path] = {"rust": rust}
     verbs = harness.binary_verbs(rust)
     failed = False
     with _home(args) as (seeded, user, proj):
@@ -167,12 +195,9 @@ def main(argv: list[str] | None = None) -> int:
             for door in doors
         }
         print(
-            f"{'event':<18}{'python':>10}{'rust':>10}{'budget':>10}  verdict  (p50 of {RUNS} warm runs, ms, spawn included)"
+            f"{'event':<18}{'rust':>10}{'budget':>10}  verdict  (p50 of {RUNS} warm runs, ms, spawn included)"
         )
         for event, argv_, payload, budget in EVENTS:
-            python_ms = _measure(
-                doors["python"], event, argv_, payload, spaces["python"]
-            )
             if argv_[0] in verbs:
                 rust_ms = _measure(doors["rust"], event, argv_, payload, spaces["rust"])
                 verdict = (
@@ -181,9 +206,8 @@ def main(argv: list[str] | None = None) -> int:
                 failed |= verdict != "ok"
                 rust_text = f"{rust_ms:10.1f}"
             else:
-                rust_text, verdict = f"{'-':>10}", "not yet"
-            print(f"{event:<18}{python_ms:10.1f}{rust_text}{budget:10.1f}  {verdict}")
-    print("the Python door is exempt: its floor is the interpreter (§39.1)")
+                raise RuntimeError(f"required benchmark verb missing: {argv_[0]}")
+            print(f"{event:<18}{rust_text}{budget:10.1f}  {verdict}")
     return 1 if failed else 0
 
 

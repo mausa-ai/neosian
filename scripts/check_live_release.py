@@ -24,7 +24,9 @@ from urllib.request import Request, urlopen
 ROOT = Path(
     os.getenv("NEOSIAN_VERIFY_ROOT", str(Path(__file__).resolve().parents[1]))
 ).resolve()
-VERSION = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["version"]
+VERSION = tomllib.loads((ROOT / "Cargo.toml").read_text())["workspace"]["package"][
+    "version"
+]
 TARGETS = (
     "aarch64-apple-darwin",
     "aarch64-unknown-linux-gnu",
@@ -60,16 +62,11 @@ def output(binary: Path, *args: str, env: dict[str, str], work: Path) -> str:
     ).decode("utf-8")
 
 
-def verify(
-    binary: Path, work: Path, env: dict[str, str], *, python: bool = False
-) -> None:
+def verify(binary: Path, work: Path, env: dict[str, str]) -> None:
     banner = output(binary, "version", env=env, work=work)
-    if python:
-        assert f"v{VERSION}" in banner, banner
-    else:
-        assert banner.strip() == f"neosian v{VERSION}", banner
+    assert banner.strip() == f"neosian v{VERSION}", banner
     docs = output(binary, "docs", "quickstart", env=env, work=work)
-    page = (ROOT / "neosian/assets/docs/quickstart.md").read_text(encoding="utf-8")
+    page = (ROOT / "assets/docs/quickstart.md").read_text(encoding="utf-8")
     assert docs == page.split("---", 2)[2].strip() + "\n", "embedded docs differ"
     status = json.loads(output(binary, "status", "--json", env=env, work=work))
     assert status["version"] == VERSION, status
@@ -152,19 +149,8 @@ def msi(work: Path, env: dict[str, str], artifacts: Path | None) -> None:
 
 def channels(work: Path, env: dict[str, str]) -> None:
     assert os.name != "nt", "the registry rehearsal runs on macOS or Linux"
-    npm_prefix, cargo_prefix, python_bin = (
-        work / "npm",
-        work / "cargo",
-        work / "python-bin",
-    )
-    env.update(
-        {
-            "UV_TOOL_DIR": str(work / "python-tools"),
-            "UV_TOOL_BIN_DIR": str(python_bin),
-            "UV_CACHE_DIR": str(work / "uv-cache"),
-            "CARGO_TARGET_DIR": str(work / "cargo-target"),
-        }
-    )
+    npm_prefix, cargo_prefix = work / "npm", work / "cargo"
+    env["CARGO_TARGET_DIR"] = str(work / "cargo-target")
     for key in ("NPM_CONFIG_USERCONFIG", "NPM_CONFIG_GLOBALCONFIG"):
         path = work / key
         path.write_text("")
@@ -211,29 +197,12 @@ def channels(work: Path, env: dict[str, str]) -> None:
         timeout=900,
     )
     verify(cargo_prefix / "bin/neosian", work, env)
-    subprocess.run(
-        [
-            "uv",
-            "tool",
-            "install",
-            "--python",
-            "3.12",
-            "--default-index",
-            "https://pypi.org/simple",
-            f"neosian=={VERSION}",
-        ],
-        env=env,
-        cwd=work,
-        check=True,
-        timeout=240,
+    env["PATH"] = os.pathsep.join(
+        (str(native.parent), str(cargo_prefix / "bin"), env["PATH"])
     )
-    python = python_bin / "neosian"
-    env["PATH"] = os.pathsep.join((str(native.parent), str(python_bin), env["PATH"]))
-    verify(python, work, env, python=True)
-    for binary in (native, python):
-        status = json.loads(output(binary, "status", "--json", env=env, work=work))
-        assert len(status["path_executables"]) >= 2 and status["shadowing"], status
-    print("npm, Cargo and PyPI installations agree; both doors report PATH shadowing")
+    status = json.loads(output(native, "status", "--json", env=env, work=work))
+    assert len(status["path_executables"]) >= 2 and status["shadowing"], status
+    print("npm and Cargo installations agree and PATH shadowing is reported")
 
 
 def main() -> None:

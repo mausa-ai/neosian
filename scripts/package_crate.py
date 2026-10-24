@@ -17,7 +17,7 @@ def stage(root: Path = ROOT) -> None:
     target = crate / "assets"
     if target.exists():
         rmtree(target)
-    copytree(root / "neosian" / "assets", target, ignore=ignore_cache)
+    copytree(root / "assets", target, ignore=ignore_cache)
     copy2(root / "LICENSE", crate / "LICENSE")
 
 

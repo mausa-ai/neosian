@@ -1,0 +1,45 @@
+# Model-facing descriptions of the built-in tools (ECOSYSTEM §8).
+
+skill_list: "List the available skills — reusable instructions — with their names and descriptions. A skill kept in a memory mount also shows its path (/mount/skills/name) and version. Use this to discover what is available before loading one."
+
+skill_load: "Load a skill by name, or by its /mount/skills/name path. Returns the full instructions; for a skill in a mount the reminder names the document, so you can revise it with the memory tool. Use list_skills first to see what's available."
+
+skill_guide: |-
+  To add a skill, create /<mount>/skills/<name> with the memory tool: a
+  frontmatter block whose `description` says when to use it, then the
+  instructions as the body. Revise one with str_replace on its path; a
+  read-only mount's skills are fixed. For example:
+  ---
+  description: Release this project
+  ---
+  1. Bump the version ...
+
+recall_turn_any: "Re-read one turn of a recorded conversation verbatim. Every agent's sessions are listed in the memory index under sessions/ (each document names its conversation id), and the 'where we left off' block at session start shows each turn as one line labeled with its number in square brackets, e.g. [7]. Pass the conversation id and a turn number to get that turn's full original text, including complete tool calls and results; a long tool result shows its head and tail with a marker naming its call: pass call=<id> to read that one result whole. Use it whenever a log line mentions something you need the details of, and to read the URL, path or id a [link <id>:N] handle stands for."
+
+search_history_any: "Search every recorded conversation for turns holding every given term (case-insensitive substrings, separated by spaces), newest first: message text, tool calls with their arguments, and tool results. Each hit names the conversation and turn, e.g. [cc-7f3a #2], with a snippet around the match; pass that id and number to recall_turn to read the turn verbatim. Use it when the memory index and the 'where we left off' block do not say where something happened, or when a fact lives in a session older than the ones shown. Pass conversation=<id> to search one session; limit is the newest N hits (default 10, at most 50)."
+
+search_history_footer: "[newest first, at most {{shown}}; call recall_turn(n, conversation=\"<id>\") to re-read a hit verbatim]"
+
+continue_session: "Continue a recorded conversation: the one call to make when the user says to continue, carry on, pick up or resume where another session (any agent) left off. Delivers that conversation whole, within a budget: every user prompt and final answer verbatim, tool rounds as one line each, the older turns as one-line log entries; its handoff note first when one is pending, which this call picks up. Omit conversation to continue the session the pending note names, else the most recent session listed in the memory index under sessions/; pass conversation=<id> to continue that one. Afterwards carry on as the same work. Never call it for new work: a session that continues nothing is a new session."
+
+continue_session_params:
+  session: "Your exact current session ID from the session hook, for immediate continuation routing."
+  conversation: "The conversation id to continue, as the sessions/ document or the handoff note names it; omit for the pending note's session, else the most recent one listed."
+
+handoff: "Write the handoff note for whoever continues this work next, in any agent: call it when the user says to hand off, wrap up for the next session, or leave a note for later. The note is shown in full at the next session start in this scope until a session picks it up with continue_session. Under 2048 characters: what was being done and for whom, what is done (the paths, ids and commands that matter), what is next (the first step precisely), what is open or blocked; name turns as [n] instead of repeating them. One note stands per scope: a new one replaces it (the old one stays as a version)."
+
+handoff_params:
+  note: "The note, under 2048 characters: what was being done, what is done, what is next, what is open."
+
+skill_load_params:
+  name: "The skill's name as listed by list_skills, or its /mount/skills/name path."
+
+recall_turn_any_params:
+  turn: "The turn number shown in square brackets in the session's log, e.g. 7 for [7]."
+  conversation: "The conversation id, as the sessions/ document or the view names it."
+  call: "The id of one tool call of that turn, as the marker on a shortened result names it: returns that call and its result whole."
+
+search_history_any_params:
+  query: "One or more terms separated by spaces; a turn matches when it holds every one, case-insensitively."
+  conversation: "The id of one conversation to search, as the sessions/ document names it; omit for every recorded conversation."
+  limit: "How many of the newest hits to return (default 10, at most 50)."

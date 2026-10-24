@@ -189,7 +189,7 @@ pub fn run(args: &Status, out: &mut impl Write, err: &mut impl Write) -> io::Res
     let shape = shape::kind(&context.env);
     let status = json!({"version": version::VERSION, "home": root, "home_exists": root.is_dir(),
         "config_path": path, "config_exists": path.is_file(), "config_error": config_error,
-        "providers": config::rows(&document), "scopes": scopes, "scopes_error": scopes_error,
+        "scopes": scopes, "scopes_error": scopes_error,
         "clients": clients, "last_session": session, "one_writer": [], "double_fire": double_fire,
         "shape": shape, "upgrade": shape::upgrade(shape, "<version>"), "update_mode": mode,
         "path_executables": paths, "shadowing": shape::shadowing(&paths)});
@@ -233,22 +233,6 @@ fn render(status: &Value, out: &mut impl Write) -> io::Result<()> {
         status["config_error"]
             .as_str()
             .unwrap_or(exists("config_exists"))
-    )?;
-    let keyed: Vec<_> = status["providers"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter(|p| p["source"].is_string())
-        .map(|p| format!("{} ({})", string(p, "name"), string(p, "source")))
-        .collect();
-    writeln!(
-        out,
-        "keys      {}",
-        if keyed.is_empty() {
-            "none — neosian configure".into()
-        } else {
-            keyed.join(", ")
-        }
     )?;
     let scopes = status["scopes"]
         .as_object()

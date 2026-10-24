@@ -50,6 +50,17 @@ pub struct Flags {
 
 #[derive(Subcommand)]
 pub enum Command {
+    /// Remove aged empty documents and exact duplicates. Pause other writers first.
+    Maintain {
+        /// Preview the deletions without changing any document.
+        #[arg(long)]
+        dry_run: bool,
+        /// Protect documents updated in the last N days.
+        #[arg(long, default_value_t = 7, value_parser = clap::value_parser!(u32).range(0..=365000))]
+        min_age_days: u32,
+        #[command(flatten)]
+        flags: Flags,
+    },
     /// print a document, a directory listing, or / (the index)
     View {
         /// virtual path
@@ -156,7 +167,8 @@ pub enum Command {
 impl Command {
     pub fn flags(&self) -> &Flags {
         match self {
-            Self::View { flags, .. }
+            Self::Maintain { flags, .. }
+            | Self::View { flags, .. }
             | Self::Create { flags, .. }
             | Self::StrReplace { flags, .. }
             | Self::Insert { flags, .. }

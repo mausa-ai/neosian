@@ -8,6 +8,31 @@ use std::path::Path;
 use std::process;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+/// Resolve the deepest existing component, including dangling symlinks.
+/// Callers hold the store lock; this is not a sandbox against hostile OS writers.
+pub fn within(root: &Path, candidate: &Path) -> io::Result<bool> {
+    let mut existing = candidate;
+    loop {
+        match fs::symlink_metadata(existing) {
+            Ok(_) => break,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                let Some(parent) = existing.parent() else {
+                    return Ok(false);
+                };
+                existing = parent;
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    match existing.canonicalize() {
+        Ok(resolved) => Ok(resolved
+            .join(candidate.strip_prefix(existing).unwrap_or(candidate))
+            .starts_with(root)),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(error),
+    }
+}
+
 /// `mkdir -p` with every newly created level private.
 pub fn private_mkdir(directory: &Path) -> io::Result<()> {
     let mut missing = Vec::new();

@@ -1,107 +1,92 @@
 # neosian — conventions for agents and people
 
-Async-only Python library: the state layer for LLM agents — a stateless
-`Agent` core (tools, orchestration, streaming, fallback, guardrails,
-structured output) with opt-in `Conversation` + memory layers around it,
-on storage the product owns. Read `docs/README.md` first; `neosian docs
-<topic>` prints the shipped pages from the wheel. The product doors are
-also ship as one static Rust binary in `crates/` (the R track,
-DESIGN §39); the SDK and the human shell stay Python.
+The memory/context core for the agent you already use. One Rust binary
+provides CLI, MCP and HTTP interfaces; there is no dedicated SDK, Rust
+embedding API, Python distribution or model runtime. Read `docs/README.md`
+first; `neosian docs <topic>` prints the embedded pages. Python is test,
+development and optional one-time migration tooling only (S0, DESIGN §40).
 
 ## Hard rules
 
-- **Async-only.** No sync wrapper, no `asyncio.run()` in library code — it
-  deadlocks in notebooks and servers.
-- **Stateless core.** `Agent` stores nothing between calls; `Conversation`
-  and memory are opt-in layers, never state smuggled in.
-- **Prompts are data.** Every shipped prompt (guardrail policies, tool
-  descriptions, the memory prompt pack) lives in `neosian/assets/` as YAML
-  or markdown + frontmatter — never prose in Python.
-- **Money = integer micro-USD** (ceiling division, never undercount);
-  floats only at display edges. **Timestamps are tz-aware UTC.**
-- **The ABC is the contract.** Storage ABCs own no connection, no commit,
-  no DDL; `FileStore`/`PostgresStore`/`RemoteStore` are reference
-  implementations, kept honest by the shipped conformance kits.
-- **The public API is `__all__`-pinned** by `tests/unit/test_init.py` —
-  every export change is a deliberate, reviewed diff.
-- **Seams are frozen; error codes are append-only.** Scope grammar, token
-  classes, integer µ$, the event vocabulary, the error-code families and
-  the wire (`WIRE_VERSION`) change only by a recorded decision, never in
-  passing.
-- **Never name a host.** No host imports, no host assumptions (async DB,
-  web framework, tenancy).
+- **State, not an agent runtime.** Memory, skills, history, mailbox, hooks
+  and storage belong here. Hosts own models, orchestration, accounts,
+  hosting and business logic. Never import or assume a host's internals.
+- **Prompts are data.** Shipped tool descriptions and agent instructions
+  live in `assets/` YAML or markdown with frontmatter, never Rust strings.
+- **Money = integer micro-USD** with ceiling division; floats only at
+  display edges. **Timestamps are timezone-aware UTC.** Preserve historical
+  token classes and data even though the product no longer meters models.
+- **The wire is the storage contract.** Custom backends are independent
+  HTTP services verified by the shipped conformance runner. The core never
+  applies Postgres DDL on connection; migrations are operator-owned.
+- **Seams are frozen; error codes are append-only.** Scope/actor grammar,
+  format 1, wire 6, Postgres schema 4 and every reserved code change only
+  by a recorded decision, never in passing. Retired runtime event names
+  are reserved; they are not silently repurposed for state notifications.
+- **Preserve data.** Versions, actors, timestamps, opaque JSON metadata and
+  erasure skeletons survive supported operations. Refuse unsupported
+  formats explicitly; do not silently migrate or discard history.
 
 ## Conventions
 
-- `mypy --strict` passes, always. `ruff` + `black`, line length 88. Simple
-  elegant quality code — not one line that is not needed.
-- Constants live module-local; `shared/constants.py` is named debt, never
-  grown further — new constants go next to their use.
-- File-size gate: warn 300, fail 500 lines (`make size`); allowlist
-  entries carry a ceiling and a reason, stale entries fail the gate.
-- Test tiers: `unit` (FakeProvider and the shipped fakes only — the
-  default, fully keyless) / `external_<provider>` (real API calls;
-  dispatch-only). Per-test skip helpers, never module-level skips; key
-  checks test falsiness (an absent CI secret is `""`). Prefer the shipped
-  fakes over ad-hoc `AsyncMock`.
-- Import layering is enforced by import-linter: `_foundation` never
-  imports `_cli`; memory/conversation never import provider internals;
-  the facade only re-exports.
-- The Rust crate (`crates/neosian`): the toolchain is
-  `rust-toolchain.toml`'s exact pin and `rust-version` repeats it;
-  `cargo fmt`, `cargo clippy -D warnings` and `cargo deny` pass; the same
-  300/500 size gate reads `.rs`. Parity with the Python doors is
-  parsed-equal for data and byte-equal for text, held by
-  `tests/differential/` (timestamps, generated ids and the home's path
-  compare by shape); a seam that moves lands in both implementations in
-  the same release, and the corpus gains the case.
-- `llms.txt` and `neosian/assets/llms.txt` are byte-identical twins; the
-  docs pages under `neosian/assets/docs/` are a manifest — a page not
-  listed fails at import.
+- Rust uses `rust-toolchain.toml`'s exact pin, repeated by `rust-version`.
+  `cargo fmt`, `cargo clippy -D warnings` and `cargo deny` pass.
+- Python tooling passes `mypy --strict`, `ruff` and `black` (88 columns).
+  Constants stay module-local. Keep code small and purposeful.
+- File-size gate: warn 300, fail 500 lines over `crates/**/*.rs`.
+  Allowlist entries need a ceiling and reason; stale entries fail.
+- Tests need no model keys. Rust unit/integration tests and independent
+  raw CLI/MCP/HTTP contracts are the default gates. Literal fixtures and
+  frozen v1 reference expectations must never be regenerated from Rust.
+  Postgres tests explicitly require a disposable test DSN. External HTTP
+  conformance operates only on unique test scopes and conversations.
+- The canonical assets are `assets/`. A staged crate snapshot is generated,
+  never authored. `llms.txt` and `assets/llms.txt` are byte-identical twins.
+  Every docs page appears exactly once in `assets/docs/topics.txt`; the
+  build and contract gates enforce the manifest and embedded bytes.
 
 ## Gates
 
 | Command | What |
 |---|---|
-| `make install` | `uv sync --locked --all-groups` |
-| `make lint` / `make format` | ruff + black --check + lint-imports / autofix |
-| `make typecheck` | `mypy --strict neosian tests examples` |
-| `make test` | unit tier — the default gate, zero API keys, the coverage floor |
-| `make size` | file-size gate (300/500) over `neosian/**/*.py` and `crates/**/*.rs` |
-| `make rust-lint` / `make rust-test` | the crate's gates: `cargo fmt --check`, `clippy -D warnings`, `cargo deny check`, `dist generate --check` / `cargo test --locked` |
-| `make test-differential` | the corpus through the shell and the binary over one seeded home (`NEOSIAN_BINARY`, else `target/`); skips without a binary |
-| `make test-contract` | independent format/CLI/MCP/HTTP contracts (`NEOSIAN_BINARY`, else `target/debug/neosian`); requires a binary, imports no Python product code |
-| `make test-storage-contract [backend=file\|postgres\|http] [profile=full\|base]` | independent storage wire checks; two local server processes or explicitly selected external test endpoints |
-| `make bench-hooks [home=DIR]` | the latency gate: p50 of 20 warm runs per door and event; a Rust number over budget fails |
-| `make test-external provider=<p> [file=…]` | real-API suite for one provider; `file=` injects creds value-blind |
-| `make test-postgres` | PostgresStore suite; needs `NEOSIAN_TEST_POSTGRES_DSN` (`docs/SERVICES.md`) |
-| `make test-container` | the state-process image against both conformance kits (docker) |
+| `make install` | `uv sync --locked --all-groups`, development tools only |
+| `make lint` / `make format` | ruff + black --check / autofix |
+| `make typecheck` | `mypy --strict tests scripts` |
+| `make test` | build the binary and run independent contracts/tooling, keyless |
+| `make size` | Rust source size gate (300/500) |
+| `make rust-lint` / `make rust-test` | fmt, clippy, deny, generated release workflow / locked Cargo tests |
+| `make test-postgres` | wire and physical-row checks; requires `NEOSIAN_TEST_POSTGRES_DSN` |
+| `make test-storage-contract [backend=http] [profile=full]` | independent custom-storage conformance |
+| `make test-container` | image conformance on files and Postgres |
+| `make bench-hooks [home=DIR]` | p50 of 20 warm runs per event; a number over budget fails |
+| `make docs-artifacts` | deterministic versioned docs and contracts release artifacts |
 
-All six default gates (the four Python ones, `rust-lint` and
-`rust-test`) green, with no API key set, before every commit.
-`docs/SERVICES.md` lists every environment key and what turning it off means.
+All six default gates (lint, typecheck, test, size, rust-lint, rust-test)
+pass with no model API keys before every commit. `docs/SERVICES.md` lists
+runtime settings, test infrastructure and publishing accounts. CI also
+checks the six client integrations, image, Postgres, packages and latency.
 
 ## Versioning and releases
 
-The version literal lives once, in `pyproject [project].version`;
-`__version__` derives via `importlib.metadata` (a unit test pins it).
+The version authority is `Cargo.toml` `[workspace.package].version`.
 Release axis = annotated `v<X.Y.Z>` tags, cut by `make release v=X.Y.Z`
 on a clean tree with the version's `## [X.Y.Z]` section in
-`docs/CHANGELOG.md`; pushing a `v*` tag runs cargo-dist's generated
-`release.yml` (the binaries on the GitHub Release), which calls
-`publish-python.yml` (PyPI by trusted publishing, the image to GHCR) and
-`publish-channels.yml` (npm and crates.io; Homebrew is deferred) as its publish
-jobs. Channel account setup is in `docs/SERVICES.md`.
-Bump on public-surface change, not per commit.
-`[Unreleased]` in `docs/CHANGELOG.md` accumulates until the bump.
+`docs/CHANGELOG.md`. Bump on public-surface change, not per commit.
+`[Unreleased]` accumulates until that bump.
+
+Pushing a `v*` tag runs cargo-dist's generated `release.yml` for binaries,
+then `publish-core.yml` for checksummed docs/contracts and GHCR, and
+`publish-channels.yml` for npm/crates.io. No PyPI product is published.
+Homebrew, signing and notarization remain deferred. The site's `RELEASE`
+pin moves only after publication; a phase close does not deploy it.
 
 ## Commits
 
-- Subject ≤ 72 chars, outcome not mechanics: `<what became true>`,
-  prefixed by the phase id when the work belongs to one, `meta:` for
-  housekeeping.
-- Body when it matters: the *why*; `Docs: <section>` where a documented
-  decision is touched; `Verified: <how>` (or explicitly `not verified`).
-- Sign off every commit (`git commit -s`, the DCO). No attribution
-  trailers. One commit per coherent outcome.
-- Push `--follow-tags`.
+- Subject ≤ 72 chars, outcome not mechanics: `<what became true>`, prefixed
+  by the phase id, or `meta:` for housekeeping.
+- Body when useful: the why; `Docs: <section>` for decisions;
+  `Verified: <how>` (or explicitly `not verified`).
+- Sign off every commit (`git commit -s`, DCO). No attribution trailers.
+  One commit per coherent outcome. Push `--follow-tags` only when requested.
+- `record/` is ignored local planning history. Edit it in place, never
+  force-add or commit it.

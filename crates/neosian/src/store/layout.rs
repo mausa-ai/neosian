@@ -48,17 +48,16 @@ pub fn journal_file(root: &Path, scope: &str, path: &str) -> Result<PathBuf, Err
 
 /// Refuse a file a symlink would carry outside the root: the deepest
 /// level that exists is resolved, the rest is the grammar's.
-fn contained(root: &Path, candidate: PathBuf, path: &str) -> Result<PathBuf, Error> {
-    let mut existing = candidate.as_path();
-    while !existing.exists() {
-        existing = existing.parent().unwrap_or(root);
-    }
-    let below = candidate.strip_prefix(existing).unwrap_or(&candidate);
-    if existing.canonicalize()?.join(below).starts_with(root) {
+pub fn contained(root: &Path, candidate: PathBuf, path: &str) -> Result<PathBuf, Error> {
+    if super::fileio::within(root, &candidate)? {
         Ok(candidate)
     } else {
         Err(MemoryError::path_invalid(path, "escapes the store root").into())
     }
+}
+
+pub fn trail_file(root: &Path, scope: &str) -> Result<PathBuf, Error> {
+    contained(root, scope_dir(root, scope).join(REDACTIONS), REDACTIONS)
 }
 
 /// Is a segment of `scope` already on disk under another spelling? A

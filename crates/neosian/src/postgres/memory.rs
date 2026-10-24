@@ -161,8 +161,13 @@ impl PostgresStore {
         }
         let row = self.one(
             sql!("store/redact"),
-            json!({"scope":scope,"path":path,"actor":actor.as_str(),"now":Stamp::now().z()}),
+            json!({"scope":scope,"path":path,"actor":actor.as_str(),"now":Stamp::now().z(),"format":FORMAT}),
             false,
+        )?;
+        guard(
+            scope,
+            row["invalid_path"].as_str().unwrap_or_default(),
+            &row,
         )?;
         Ok(codec::number(&row, "matched")? as usize)
     }

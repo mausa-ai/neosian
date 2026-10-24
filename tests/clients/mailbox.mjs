@@ -48,7 +48,7 @@ try {
     });
   `;
   const argvFor = (log, reply) => JSON.stringify([process.execPath, "-e", recorder(log, reply), "--"]);
-  const source = await readFile(new URL("../../neosian/assets/clients/pi-record.ts", import.meta.url), "utf8");
+  const source = await readFile(new URL("../../assets/clients/pi-record.ts", import.meta.url), "utf8");
   const { default: piRecord } = await moduleFrom(stripTypeScriptTypes(source.replace(
     "__NEOSIAN_RECORD_ARGV__", argvFor(log, reply)
   )));
@@ -101,7 +101,7 @@ try {
   const ocLog = join(root, "opencode.jsonl");
   const ocReply = join(root, "opencode-reply.json");
   await writeFile(ocReply, JSON.stringify({ messages: [{ ...item, id: "opencode-message" }] }));
-  const js = await readFile(new URL("../../neosian/assets/clients/opencode-record.js", import.meta.url), "utf8");
+  const js = await readFile(new URL("../../assets/clients/opencode-record.js", import.meta.url), "utf8");
   const { default: opencode } = await moduleFrom(js.replace("__NEOSIAN_RECORD_ARGV__", argvFor(ocLog, ocReply)));
   assert.equal(opencode.id, "neosian-record");
   const hooks = new Map(), wakes = [], stream = [];

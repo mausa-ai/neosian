@@ -97,9 +97,7 @@ def check() -> None:
             docs = subprocess.check_output(
                 [binary, "docs", "quickstart"], env=run_env, text=True
             )
-            source = (ROOT / "neosian/assets/docs/quickstart.md").read_text(
-                encoding="utf-8"
-            )
+            source = (ROOT / "assets/docs/quickstart.md").read_text(encoding="utf-8")
             assert docs == source.split("---", 2)[2].strip() + "\n"
             print(
                 f"installed {expected}; receipt, updater, PATH and embedded docs verified"

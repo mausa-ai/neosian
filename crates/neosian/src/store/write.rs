@@ -12,7 +12,7 @@ use super::error::{Error, MemoryError};
 use super::fileio::atomic_write;
 use super::grammar::{Actor, validate_document_path};
 use super::journal::{self, Action, Row};
-use super::layout::{self, DOCUMENTS, REDACTIONS, VERSIONS};
+use super::layout::{self, DOCUMENTS, VERSIONS};
 use super::scalar::spell_str;
 use super::time::Stamp;
 use super::{Document, FileStore};
@@ -215,17 +215,26 @@ impl FileStore {
             validate_document_path(path)?;
         }
         let targets = self.redact_targets(scope, path)?;
+        let trail = layout::trail_file(&self.root, scope)?;
+        if !targets.is_empty() {
+            journal::read_acts(&trail, scope)?;
+        }
+        let mut prepared = Vec::new();
         for target in &targets {
             let sidecar = layout::journal_file(&self.root, scope, target)?;
             let mut rows = journal::read_rows(&sidecar, scope, target)?;
+            let file = layout::doc_file(&self.root, scope, target)?;
+            let document = self.present(scope, target, &file)?;
+            for row in &mut rows {
+                (row.content, row.redacted) = (String::new(), true);
+            }
+            prepared.push((sidecar, rows, file, document));
+        }
+        for (sidecar, rows, file, document) in prepared {
             if !rows.is_empty() {
-                for row in &mut rows {
-                    (row.content, row.redacted) = (String::new(), true);
-                }
                 journal::rewrite_rows(&sidecar, &rows)?;
             }
-            let file = layout::doc_file(&self.root, scope, target)?;
-            if let Some(document) = self.present(scope, target, &file)? {
+            if let Some(document) = document {
                 let envelope = Envelope {
                     redacted: true,
                     ..document.envelope
@@ -234,7 +243,6 @@ impl FileStore {
             }
         }
         if !targets.is_empty() {
-            let trail = layout::scope_dir(&self.root, scope).join(REDACTIONS);
             journal::append_redaction(&trail, path, actor, targets.len())?;
         }
         Ok(targets.len())

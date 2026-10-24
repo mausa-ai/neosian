@@ -17,7 +17,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import ProxyHandler, Request, build_opener
 
 ROOT = Path(__file__).resolve().parents[2]
-ASSETS = ROOT / "neosian" / "assets" / "contracts"
+ASSETS = ROOT / "assets" / "contracts"
 FIXTURES = Path(__file__).parent / "fixtures" / "v1"
 ADMIN = "contract-admin"
 LIMITED = "contract-limited"

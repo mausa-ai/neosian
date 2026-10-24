@@ -3,8 +3,8 @@
 //! forms, and the spelling `safe_dump` chooses for a JSON scalar. The
 //! envelope's unknown keys cross the wire as JSON through `read`, a
 //! restore's `extra` lands as YAML through `spell` (DESIGN §18.2, §39.11).
-//! Bounded to one-line scalars: a flow or block collection is not read,
-//! a list or object is not spelled.
+//! JSON collections also round-trip on one line. Other YAML collections
+//! require the explicit v1 metadata migration before crossing the wire.
 
 use serde_json::{Number, Value};
 
@@ -50,6 +50,9 @@ pub fn key_value(line: &str) -> Option<(&str, &str)> {
 /// take (a collection, an unterminated quote, an unknown escape).
 pub fn read(raw: &str) -> Option<Value> {
     let text = raw.trim();
+    if text.starts_with(['[', '{']) {
+        return serde_json::from_str(text).ok();
+    }
     if let Some(inner) = text.strip_prefix('\'') {
         return single_quoted(inner);
     }
@@ -203,7 +206,7 @@ fn comment_only(rest: &str) -> bool {
     rest.is_empty() || rest.starts_with('#')
 }
 
-/// `safe_dump`'s spelling of one JSON scalar; None for a list or an object.
+/// YAML scalar spelling; JSON spelling for a list or object.
 pub fn spell(value: &Value) -> Option<String> {
     Some(match value {
         Value::Null => "null".to_string(),
@@ -221,7 +224,7 @@ pub fn spell(value: &Value) -> Option<String> {
             _ => number.to_string(),
         },
         Value::String(text) => spell_str(text),
-        Value::Array(_) | Value::Object(_) => return None,
+        Value::Array(_) | Value::Object(_) => value.to_string(),
     })
 }
 
@@ -390,7 +393,10 @@ mod tests {
         ] {
             assert_eq!(spell(&value).as_deref(), Some(text), "{value}");
         }
-        assert_eq!(spell(&json!([1])), None);
+        assert_eq!(
+            read(&spell(&json!([1, {"x": "y"}])).unwrap()),
+            Some(json!([1, {"x": "y"}]))
+        );
         assert_eq!(read(&spell_str("a\tb")), Some(json!("a\tb")));
     }
 }

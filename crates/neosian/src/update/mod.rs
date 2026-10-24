@@ -158,7 +158,7 @@ fn execute(args: &Update, out: &mut impl Write, err: &mut impl Write) -> io::Res
 }
 
 pub fn human_door(verb: &str, terminal: bool, json: bool) -> bool {
-    terminal && !json && matches!(verb, "status" | "configure")
+    terminal && !json && verb == "status"
 }
 
 pub fn human_check(err: &mut impl Write) -> io::Result<Option<u8>> {

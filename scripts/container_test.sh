@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # The container conformance run (DESIGN §18.9, NM's done-when): build
 # the image, start one container per backend, and point the
-# `external_server` tier's RemoteStore at it over a real socket — both
-# conformance kits, the bearer gate, the health check, and a graceful
+# independent HTTP conformance runner at it over a real socket, with
+# capability checks, a health probe, and a graceful
 # SIGTERM per leg.
 #
 # Both legs mount a scope so /mcp is served too. The FileStore leg always
@@ -15,7 +15,7 @@ set -euo pipefail
 IMAGE="${NEOSIAN_CONTAINER_IMAGE:-neosian:conformance}"
 TOKEN="container-conformance"
 PORT="${NEOSIAN_CONTAINER_PORT:-16367}"
-SCHEMA="neosian_container"
+SCHEMA="neosian_container_$(python3 -c 'import uuid; print(uuid.uuid4().hex)')"
 BOOT_TIMEOUT=30
 
 command -v docker >/dev/null || {
@@ -26,6 +26,9 @@ command -v docker >/dev/null || {
 cleanup() {
     if [ -n "${CID:-}" ]; then
         docker rm -f "$CID" >/dev/null 2>&1 || true
+    fi
+    if [ "${PG_CREATED:-0}" = 1 ]; then
+        NEOSIAN_CONTAINER_SCHEMA="$SCHEMA" uv run python scripts/container_schema.py drop
     fi
     if [ -n "${ROOT:-}" ]; then
         rm -rf "$ROOT"
@@ -96,10 +99,6 @@ CID="$(docker run -d --user "$(id -u):$(id -g)" \
 wait_health "http://127.0.0.1:${PORT}"
 NEOSIAN_TEST_SERVER_URL="http://127.0.0.1:${PORT}" \
     NEOSIAN_TEST_SERVER_TOKEN="$TOKEN" \
-    NEOSIAN_TEST_SERVER_ROOT="$ROOT" \
-    uv run pytest -m external_server -q
-NEOSIAN_TEST_SERVER_URL="http://127.0.0.1:${PORT}" \
-    NEOSIAN_TEST_SERVER_TOKEN="$TOKEN" \
     make test-storage-contract backend=http
 graceful_stop
 rm -rf "$ROOT"
@@ -120,19 +119,8 @@ fi
 echo "== leg 2: Postgres DSN"
 # The schema is the operator's explicit act (C1) — applied from the
 # host before the server starts.
-uv run python -c "
-import asyncio, os
-from neosian import PostgresStore
-
-async def main() -> None:
-    store = PostgresStore(
-        os.environ['NEOSIAN_TEST_POSTGRES_DSN'], schema='$SCHEMA'
-    )
-    await store.apply_schema()
-    await store.aclose()
-
-asyncio.run(main())
-"
+NEOSIAN_CONTAINER_SCHEMA="$SCHEMA" uv run python scripts/container_schema.py create
+PG_CREATED=1
 # Inside the container, the host's databases live at
 # host.docker.internal (mapped to the gateway on plain Linux docker).
 # Only the host part moves: a user, password or database that happens to
@@ -147,10 +135,6 @@ CID="$(docker run -d --add-host=host.docker.internal:host-gateway \
     -e NEOSIAN_POSTGRES_DSN="$CONTAINER_DSN" \
     -p "127.0.0.1:${PORT}:6367" "$IMAGE" --schema "$SCHEMA" --scope user:container)"
 wait_health "http://127.0.0.1:${PORT}"
-NEOSIAN_TEST_SERVER_URL="http://127.0.0.1:${PORT}" \
-    NEOSIAN_TEST_SERVER_TOKEN="$TOKEN" \
-    NEOSIAN_TEST_SERVER_SCHEMA="$SCHEMA" \
-    uv run pytest -m external_server -q
 NEOSIAN_TEST_SERVER_URL="http://127.0.0.1:${PORT}" \
     NEOSIAN_TEST_SERVER_TOKEN="$TOKEN" \
     make test-storage-contract backend=http

@@ -80,6 +80,14 @@ pub fn run(command: &Command, out: &mut impl Write, err: &mut impl Write) -> io:
         actor,
     };
     let call = match command {
+        Command::Maintain {
+            min_age_days,
+            dry_run,
+            ..
+        } => {
+            let answered = super::maintain::run(&memory, *min_age_days, *dry_run, json, out);
+            return operate::settle(answered, json, out, err);
+        }
         Command::View {
             path, view_range, ..
         } => {

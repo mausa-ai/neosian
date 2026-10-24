@@ -15,7 +15,6 @@ use super::fileio::{atomic_write, private_mkdir};
 use super::grammar::validate_document_path;
 use super::journal::{self, Act, Row};
 use super::layout::{self, DOCUMENTS, VERSIONS};
-use super::ledger::check_scope;
 use crate::conversation::ids::parse_conversation_id;
 use crate::conversation::rows::{
     CONVERSATIONS, PROJECTIONS, REDACTIONS as TRAIL, TURNS, render_projection, render_redaction,
@@ -49,6 +48,11 @@ impl FileStore {
     pub fn conversations(&self) -> Result<Vec<String>, Error> {
         let _held = self.lock()?;
         let parent = self.root.join(CONVERSATIONS);
+        if !super::fileio::within(&self.root, &parent)? {
+            return Err(
+                MemoryError::path_invalid("conversations", "escapes the store root").into(),
+            );
+        }
         if !parent.is_dir() {
             return Ok(Vec::new());
         }
@@ -58,7 +62,10 @@ impl FileStore {
             let Ok(name) = entry.file_name().into_string() else {
                 continue;
             };
-            if parse_conversation_id(&name).is_ok() && conversation_occupied(&entry.path()) {
+            if entry.file_type()?.is_dir()
+                && parse_conversation_id(&name).is_ok()
+                && conversation_occupied(&entry.path())
+            {
                 found.push(name);
             }
         }
@@ -76,14 +83,17 @@ impl FileStore {
         redactions: &[Act],
     ) -> Result<(), Error> {
         let _held = self.lock()?;
-        check_scope(scope)?;
+        self.scope(scope)?;
         for path in documents
             .iter()
             .map(|document| document.path.as_str())
             .chain(versions.iter().map(|row| row.path.as_str()))
         {
             validate_document_path(path)?;
+            layout::doc_file(&self.root, scope, path)?;
+            layout::journal_file(&self.root, scope, path)?;
         }
+        let trail = layout::trail_file(&self.root, scope)?;
         let scope_dir = layout::scope_dir(&self.root, scope);
         if scope_occupied(&scope_dir)? {
             return Err(MemoryError::conflict(scope, None, "target_occupied").into());
@@ -97,7 +107,7 @@ impl FileStore {
             journal::rewrite_rows(&layout::journal_file(&self.root, scope, &path)?, &rows)?;
         }
         if !redactions.is_empty() {
-            journal::write_acts(&scope_dir.join(layout::REDACTIONS), redactions)?;
+            journal::write_acts(&trail, redactions)?;
         }
         for document in documents {
             let file = layout::doc_file(&self.root, scope, &document.path)?;
@@ -115,8 +125,10 @@ impl FileStore {
         redactions: &[Redaction],
     ) -> Result<(), conversation::Error> {
         let _held = self.lock()?;
-        parse_conversation_id(conversation_id)?;
-        let directory = self.root.join(CONVERSATIONS).join(conversation_id);
+        let directory = self.conversation_dir(conversation_id)?;
+        for name in [TURNS, PROJECTIONS, TRAIL] {
+            self.conversation_file(conversation_id, name)?;
+        }
         if conversation_occupied(&directory) {
             return Err(Refused::conflict(conversation_id, "target_occupied").into());
         }

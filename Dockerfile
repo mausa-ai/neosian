@@ -14,7 +14,7 @@ FROM rust:1.99.0-alpine@sha256:0cce0a5e0e8ba67b455257a3a02a1d99005f382748789d646
 WORKDIR /app
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY crates/ crates/
-COPY neosian/assets/ neosian/assets/
+COPY assets/ assets/
 # Alpine's native musl target links statically on both architectures.
 # The image's exact toolchain is the repository pin; the explicit choice
 # avoids installing rustfmt and clippy in this build-only stage.

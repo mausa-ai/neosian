@@ -1,0 +1,126 @@
+name: Publish (core artifacts)
+
+on:
+  workflow_call:
+    inputs:
+      plan:
+        required: true
+        type: string
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: publish-core-${{ github.ref }}
+  cancel-in-progress: false
+env:
+  UV_VERSION: "0.12.23"
+  IMAGE: ghcr.io/mausa-ai/neosian
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+      - uses: taiki-e/install-action@ab6895351a88b908e96a4697860d4ffea5e57dbe # v2.87.27
+        with:
+          tool: cargo-deny@0.20.2,cargo-dist@0.32.0
+      - id: version
+        run: python3 -c 'import tomllib; print("version=" + tomllib.load(open("Cargo.toml", "rb"))["workspace"]["package"]["version"])' >> "$GITHUB_OUTPUT"
+      - if: github.ref_type == 'tag'
+        run: test "$GITHUB_REF_NAME" = "v${{ steps.version.outputs.version }}"
+      - run: make install
+      - run: make lint typecheck size rust-lint rust-test test
+      - run: uv run --locked pip-audit
+      - run: make docs-artifacts
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: core-artifacts
+          path: target/docs/*
+          if-no-files-found: error
+      - if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" target/docs/* --clobber
+
+  # One native build per architecture (no emulation, no third-party
+  # action); the smoke — the health route and the version inside the
+  # image — runs before any push. The labels are OCI's; `source` links
+  # the package to the repository.
+  image:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    env:
+      VERSION: ${{ needs.build.outputs.version }}
+      ARCH: ${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: |
+          docker build --platform "linux/$ARCH" \
+            --label "org.opencontainers.image.title=neosian" \
+            --label "org.opencontainers.image.description=The neosian state process: memory, skills, conversations and the ledger behind one bearer token" \
+            --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
+            --label "org.opencontainers.image.version=$VERSION" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            --label "org.opencontainers.image.licenses=Apache-2.0" \
+            --label "org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            -t "$IMAGE:$VERSION-$ARCH" .
+      - name: smoke
+        run: |
+          cid="$(docker run -d -e NEOSIAN_SERVE_TOKEN=smoke -p 127.0.0.1:16367:6367 "$IMAGE:$VERSION-$ARCH")"
+          trap 'docker logs "$cid"; docker rm -fv "$cid" >/dev/null' EXIT
+          ok=
+          for _ in $(seq 30); do
+            if curl -fsS http://127.0.0.1:16367/health && \
+                [ "$(docker inspect -f '{{.State.Health.Status}}' "$cid")" = healthy ]; then
+              ok=1
+              break
+            fi
+            sleep 1
+          done
+          test "$ok" = 1
+          inside="$(docker run --rm --entrypoint /usr/local/bin/neosian "$IMAGE:$VERSION-$ARCH" version)"
+          test "$inside" = "neosian v$VERSION"
+      - if: github.event_name == 'push'
+        run: echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - if: github.event_name == 'push'
+        run: docker push "$IMAGE:$VERSION-$ARCH"
+
+  # The multi-arch index from the two pushed legs; `latest` only on a
+  # final version — a pre-release is never what an unpinned pull gets.
+  manifest:
+    if: github.event_name == 'push'
+    needs: [build, image]
+    runs-on: ubuntu-24.04
+    permissions:
+      packages: write
+    env:
+      VERSION: ${{ needs.build.outputs.version }}
+    steps:
+      - run: echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - run: |
+          tags=(-t "$IMAGE:$VERSION")
+          if [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then tags+=(-t "$IMAGE:latest"); fi
+          docker buildx imagetools create "${tags[@]}" \
+            --annotation "index:org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
+            --annotation "index:org.opencontainers.image.version=$VERSION" \
+            --annotation "index:org.opencontainers.image.revision=$GITHUB_SHA" \
+            --annotation "index:org.opencontainers.image.licenses=Apache-2.0" \
+            "$IMAGE:$VERSION-amd64" "$IMAGE:$VERSION-arm64"
+          docker buildx imagetools inspect "$IMAGE:$VERSION"

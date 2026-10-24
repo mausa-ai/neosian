@@ -8,34 +8,64 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-10-24
+
+### Changed
+
+- Neosian is the Rust memory/context core with CLI, MCP and HTTP interfaces.
+  Cargo's workspace version is authoritative. Canonical prompts, client
+  adapters, docs and schemas live in `assets/`; the binary embeds them.
+- Python is development and optional migration tooling only. Independent
+  contracts and 261 frozen Python 1.13.0 reference cases replace the live
+  Python differential oracle. File/Postgres corruption, concurrency,
+  transport, operator and client checks preserve retained behavior.
+- Releases publish native binaries, npm, crates.io and GHCR, plus checksummed
+  docs JSON and a standalone HTTP conformance archive. The website consumes
+  the docs artifact. There is no new PyPI release or maintained v1 line.
+
+### Removed
+
+- The Python distribution and public SDKs, agent/provider runtime and
+  catalog, chat/TUI, playground, runtime guardrails, agent evaluation and
+  model-driven reflection. There is no Rust embedding API.
+- `configure`, `chat`, `playground`, `eval`, `reflect` and maintenance's
+  model option. Bare `neosian` prints help. Custom storage integrates over
+  the published HTTP contract instead of Python subclassing.
+
 ### Added
 
-- OpenAPI 3.1.1 for the existing storage wire 6 and JSON Schema 2020-12
-  definitions for format-1 memory, turns, projections, erasures and mailbox
-  records, under `neosian/assets/contracts/`. The wire, stores and messaging
-  pages explain capabilities, physical formats and interchange limits.
-- An independent `make test-contract` tier drives the Rust CLI, stdio MCP
-  and all 21 storage HTTP operations from literal versioned fixtures,
-  without importing the Python product. CI runs it against the release
-  binary alongside the existing differential suite.
-- `make test-storage-contract` runs independent wire behavior checks on
-  files, Postgres or a supplied HTTP test service. Local backends use two
-  server processes for competing writes and turn appends. Full/base
-  profiles distinguish required and optional capabilities; CI adds the
-  suite to Postgres and both container legs. The existing Python store
-  kits remain while the remaining coverage is preserved independently.
-- Independent FileStore cases preserve malformed-file refusals, unchanged
-  data after blocked writes, version/turn numbering, private modes, basic
-  symlink containment and reference cursor decoding. `make test-contract`
-  runs them from literal fixtures without Python product imports.
+- Native deterministic `memory maintain`: preview empty/duplicate cleanup
+  with `--dry-run`, respecting mount permissions, age and protected paths.
+  Applying cleanup requires pausing other writers; wire 6 has no conditional
+  delete or whole-plan transaction.
+- MCP `docs` and mounted, bounded `memory_history` tools, plus the `upkeep`
+  skill for the user's own agent. No model is executed by the core.
+- `schema state|wire|errors|postgres`, format-1 JSON Schema, wire-6 OpenAPI
+  and an explicit active/reserved error identifier inventory. Conversation
+  errors retain their `agent_conversation_*` identifiers.
+- An optional metadata converter for JSON-compatible block YAML, with full
+  selection validation, exclusive backups and atomic per-document writes.
+  Migration docs cover homes, histories, clients and tokio-postgres DSNs.
 
 ### Fixed
 
-- A signed negative history-version cursor no longer causes HTTP 500 in
-  the Rust FileStore. Its ordering now matches the Python reference.
-- Paging documentation now distinguishes memory cursors from explicit
-  conversation bounds and describes automatic projection pages that keep
-  a whole turn together even above 500 entries. Runtime behavior is unchanged.
+- FileStore checks containment across memory, history, conversation,
+  search, erasure and restore paths. Erasure preflights selected sidecars
+  before rewriting content. These checks do not claim crash transactions
+  or protection from uncooperative filesystem races.
+- Postgres erasure refuses unsupported affected memory, turn and projection
+  formats before modifying any selected rows; memory mutations also reject
+  invalid zero format markers.
+- Wire writes and renames reject unsupported metadata before mutation.
+  Nested JSON metadata survives archive and wire round trips.
+- A negative history-version cursor no longer causes HTTP 500. Paging docs
+  distinguish memory cursors, explicit conversation bounds and automatic
+  projection pages that preserve a whole turn even above 500 entries.
+
+Memory, turn and mailbox formats remain 1, Postgres schema 4 and storage
+wire 6. Existing versions, actors, timestamps, metadata and erasure records
+are retained. Every legacy error identifier stays permanently reserved.
+Read `neosian docs migration` before upgrading v1 installations.
 
 ## [1.13.0] - 2026-10-24
 

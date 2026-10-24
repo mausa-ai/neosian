@@ -35,6 +35,12 @@ def test_stdio_tools_history_and_refusals(binary: Binary) -> None:
         ("recall_turn", {"turn": "bad"}),
         ("messages", {"command": "list"}),
         ("missing", {}),
+        ("docs", {}),
+        ("docs", {"topic": "memory"}),
+        ("memory_history", {"path": "/memories/notes/fact", "limit": 1}),
+        ("memory_history", {"path": "/elsewhere/secret"}),
+        ("memory_history", {"path": "/memories", "limit": 101}),
+        ("load_skill", {"name": "upkeep"}),
     ]
     for number, (name, arguments) in enumerate(calls, 3):
         requests.append(
@@ -55,7 +61,7 @@ def test_stdio_tools_history_and_refusals(binary: Binary) -> None:
     )
     assert (process.returncode, process.stderr) == (0, "")
     answers = [json.loads(line) for line in process.stdout.splitlines()]
-    assert [a["id"] for a in answers] == list(range(11))
+    assert [a["id"] for a in answers] == list(range(17))
     assert all(a["jsonrpc"] == "2.0" for a in answers)
     assert answers[0]["error"]["code"] == -32602
     initialized = answers[1]["result"]
@@ -74,6 +80,8 @@ def test_stdio_tools_history_and_refusals(binary: Binary) -> None:
         "search_history",
         "continue_session",
         "handoff",
+        "docs",
+        "memory_history",
     ]
 
     def text(number: int) -> str:
@@ -92,3 +100,14 @@ def test_stdio_tools_history_and_refusals(binary: Binary) -> None:
     assert json.loads(text(9))["items"][0]["body"] == "Review the saved decision."
     assert answers[10]["result"]["isError"] is True
     assert text(10) == "Tool 'missing' not found"
+    assert "memory" in {row["topic"] for row in json.loads(text(11))}
+    assert "memory" in text(12).lower()
+    rows = json.loads(text(13))["entries"]
+    assert len(rows) == 1 and rows[0]["version"] == 2
+    assert "content" not in rows[0]
+    assert answers[14]["result"]["isError"] is True
+    assert answers[15]["result"]["isError"] is True
+    assert "Pause other writers" in text(16)
+    for tool in answers[2]["result"]["tools"][-2:]:
+        assert tool["annotations"]["readOnlyHint"] is True
+        assert tool["annotations"]["destructiveHint"] is False

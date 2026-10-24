@@ -1,0 +1,15 @@
+{
+  "user": "user:reference",
+  "proj": "user:reference/proj:demo",
+  "sessions": [
+    "7f45b096-d380-4b73-8446-ab8c82e26123",
+    "6bc5b3b3-c6cf-481a-bd43-281c608f02b1",
+    "f064376c-4558-4af0-873e-f4721ba98d07"
+  ],
+  "locks": [
+    ".store.lock",
+    "spool/.6bc5b3b3-c6cf-481a-bd43-281c608f02b1.lock",
+    "spool/.7f45b096-d380-4b73-8446-ab8c82e26123.lock",
+    "spool/.f064376c-4558-4af0-873e-f4721ba98d07.lock"
+  ]
+}

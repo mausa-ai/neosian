@@ -8,6 +8,7 @@ mod handoff;
 mod history;
 mod memory;
 mod messages;
+mod operator;
 mod skills;
 
 use serde_json::{Map, Value};
@@ -87,6 +88,8 @@ pub fn served(memory: &Memory) -> Vec<Tool> {
         tools.push(handoff::continue_session());
         tools.push(handoff::handoff());
     }
+    tools.push(operator::docs());
+    tools.push(operator::history());
     tools
 }
 

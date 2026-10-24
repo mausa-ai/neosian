@@ -1,0 +1,387 @@
+---
+title: "Any agent: the record through hooks"
+summary: Agent hooks record sessions; startup context, MCP recall and search read them back
+---
+
+# Any agent
+
+neosian is the state layer for the agent you already use. The memory
+half is the MCP server and `neosian mcp install` (`neosian docs mcp`).
+The record half is `neosian record`: the agent's hooks call it with one
+payload on stdin per event, and a prompt-to-stop span lands in the store
+as **one turn with a foreign actor** (`claude-code:<session_id>`) in a
+conversation keyed by the session id, plus a small **sessions document**
+under the scope. Transcript files are never read: the documented hook
+payloads are the import path.
+
+## Install
+
+`setup` and `status` are provided by the binary.
+Setup registers the executable running it, or the binary named by
+`--binary PATH`. The binary also provides the standalone `record
+install` and `mcp install` forms below. MCP installation also supports
+Claude Desktop, which has no recording hooks.
+
+```bash
+neosian setup --write                                             # select clients, once per machine
+neosian setup --url http://127.0.0.1:6367 --write                 # the same, behind the state process
+neosian record install --client claude-code                       # print the user-level hooks
+neosian record install --client codex --write
+neosian record install --client opencode --level project --scope user:me --write
+```
+
+- **`neosian setup`** runs this installer and `mcp install` for every
+  client it finds (their config directories are the evidence), prints
+  first. On a terminal `--write` asks which clients to connect, all selected
+  initially. Scripts use `--write --yes` for all detected clients or repeated
+  `--client C` for an explicit selection. JSON never prompts. Both setup and
+  status accept invocation-only `--at CLIENT=DIR` overrides and report where
+  they searched; a missing client home is never created.
+  `neosian status` shows each selected client
+  green afterwards, at which level, and names a binary or interpreter that
+  stopped resolving. It also warns when distinct `neosian` executables on
+  PATH compete for the command name.
+- **Once per machine.** By default the hooks land in the client's own
+  settings (`--level user`) and serve every project: with no store flag
+  the line names `~/.neosian` (or `$NEOSIAN_HOME`) and no mount, and the
+  verb derives each session's layout where it runs: `user:<login>` at
+  `/user`, `user:<login>/proj:<slug>` at `/project`, the slug the
+  project directory's name. Nothing is written into a project. A
+  neosian agent lands in the same place with `FileStore(home())` and
+  `project_scope()` (`neosian docs quickstart`).
+- **`--level project`** writes this directory's file instead, with its
+  layout spelled into the line: a scope of your own for one project
+  (`--scope`, `--mount`), or recording only where you ask for it. A
+  lighter per-project override needs no second registration: set
+  `NEOSIAN_SCOPE` in that project's environment for the client. Muse clears
+  this variable at launch, as does Cursor for MCP children; name their
+  scopes explicitly when installing.
+- **One level per client.** Every client merges its hook sources, so
+  ours at two levels would run twice and land each span twice. A
+  user-level `--write` removes this directory's project-level entry
+  (ours only, by its command; every other hook and key survives) and
+  says so; a project-level install beside user-level hooks is refused.
+  A project that still carries hooks from an earlier install shows
+  `level both` in `neosian status`, with the fix: run `neosian setup
+  --write` there. Inside a repository that commits those hooks, that
+  edits the committed file.
+- **Which project.** Claude Code runs a hook in a working directory
+  that moves when the agent runs `cd`, so its line ends on `--project
+  "$CLAUDE_PROJECT_DIR"`, the directory the session started in, which
+  stays put. Codex runs hooks in the session's directory and needs
+  nothing; the OpenCode plugin passes the directory it was opened with.
+  Cursor uses the payload's workspace roots; see its section below.
+  A directory with no name to derive a project from (`/`) records to
+  `/user` alone; a hook never exits 2, which Claude Code reads as
+  "block the prompt".
+- Print mode (the default) puts the paste-able `hooks` fragment on
+  stdout (Muse shows its multi-file change preview instead; the one command on `UserPromptSubmit`, `PostToolUse`, `Stop`
+  and `SessionStart`) and guidance on stderr.
+- `--write` merges it into `~/.claude/settings.json` (under
+  `$CLAUDE_CONFIG_DIR` when set), preserving every other key, event and
+  hook; a group carrying our command is replaced, so a re-run is
+  idempotent. `~/.claude` must exist: neosian never creates another
+  program's config home.
+- The store flags are `mcp install`'s; the hook line adds `--spool`
+  (absolute) and `--agent` when not the default. A DSN is never written
+  into a hook line; `--url` carries the token through
+  `NEOSIAN_CLIENT_TOKEN` in the client's own environment, which is now
+  a setting for the machine, not for one project.
+- Hooks beside an MCP server on one FileStore root are **two writers**,
+  and the home is one root for every project on the machine: run
+  `neosian serve` (no flags: it serves the home; `neosian docs
+  topology` has the per-user service recipe), then `neosian setup --url
+  URL --write --yes` moves every detected client there in one run. Or use Postgres.
+- **Codex** takes the same fragment at `~/.codex/hooks.json` (`~/.codex`,
+  or `$CODEX_HOME`, must exist). At the user level there is no project
+  trust step, but Codex runs a new hook only once you have reviewed it
+  in its `/hooks` command; automation that has vetted them runs `codex
+  exec --dangerously-bypass-hook-trust`. At `--level project` it is the
+  project's `.codex/hooks.json`, loaded only for a trusted project. The
+  hook line carries `--agent codex`, so the writer is
+  `codex:<thread_id>`; Codex's `Stop` hook expects JSON on stdout, and
+  the verb answers `{}` there. The memory half is TOML Codex's own CLI
+  writes: `neosian mcp install --client codex` prints the
+  `[mcp_servers.neosian-memory]` table and the `codex mcp add …` line,
+  and `neosian setup --write` runs that line for you.
+- **OpenCode** has no shell hooks; it has a plugin API. The same command
+  writes a small plugin file, `plugins/neosian-record.js` in OpenCode's
+  own config directory (`~/.config/opencode`, or `$OPENCODE_CONFIG_DIR`,
+  which must exist; `.opencode/plugins/` in the project at `--level
+  project`): OpenCode 2's one plugin definition, whose `setup` maps the
+  `prompt` and `execute.after` hooks and the session's execution events
+  onto the verb's three write payloads and pipes them in, carrying the
+  inbox frame as a system part of the turn's requests and the
+  assistant's reply from the text events; ours whole, overwritten on
+  re-run, never merged; print mode prints its source. OpenCode 1.x loads
+  only the file an earlier release wrote. The writer is
+  `opencode:<session_id>`. OpenCode has no
+  start hook, but it shows an MCP server's instructions to the model
+  whole, so its read side is the server's instructions: the memory
+  index, the pending handoff note and "where we left off", rendered per
+  connection (DESIGN §33). The memory half is JSON: `neosian mcp
+  install --client opencode` merges `{"mcp": {"neosian-memory": {"type":
+  "local", …}}}` into OpenCode's config in the same directory: into
+  `opencode.jsonc` when that file stands there holding plain JSON (the
+  file OpenCode's own init leaves), else into `opencode.json`. OpenCode
+  reads both files and merges them, the `.jsonc` last, so beside a
+  commented `.jsonc` the entry lands in `opencode.json` and the report
+  says so (and warns when the `.jsonc` names `neosian-memory` itself,
+  since that entry would win). Any model OpenCode can run works, its
+  free models included.
+
+## What a span becomes
+
+| hook | the record |
+|---|---|
+| `UserPromptSubmit` | the `USER` message that opens the turn (spooled) |
+| `PostToolUse` | an `ASSISTANT` tool call + its `TOOL` result, whole up to 1 MiB (its head and tail above that); a subagent's rounds (`agent_id`) are skipped |
+| `Stop` | the final `ASSISTANT` text (`last_assistant_message`); the span lands as one `append_turn` by `claude-code:<session_id>`, and the sessions document is written by `claude-code:<session_id>#<turn>` |
+| `SessionStart` | nothing written: the verb prints the context (below), which the client adds to the model's window |
+
+The sessions document lives at `sessions/<session_id>` in the mount at
+`/project` (else the first read-write mount) with agent, conversation,
+started, last prompt and turn count, so the next agent finds the listing
+in its index. Between the prompt and the stop the span waits in a
+per-session spool (`spool/` under the home; `--spool DIR`), never the store; a
+failed landing keeps it, and the next stop carries the whole span.
+
+Exit tiers bend once, for the hook's sake: Claude Code reads a hook's
+exit 2 as "block", so the verb exits 2 only for a bad invocation
+(caught at install time) and 1 for everything after (a broken store
+never blocks the agent) and prints nothing on stdout unless `--json`,
+except on `SessionStart`. Cursor uses JSON hook responses, described below.
+
+## Session start: where we left off
+
+Claude Code, Codex, Cursor and Muse Code add a `SessionStart` hook's
+output to the model's context, so on that event the verb prints three
+blocks and writes nothing:
+
+1. **The memory index** of the scope, so the sessions documents are
+   listed (the MCP server's instructions then carry the write discipline
+   alone: one window, one copy).
+2. **The handoff note**, when one is pending (DESIGN §33): the note the
+   last departing agent wrote with `handoff`, in full, naming the
+   `continue_session` call that picks it up; one line once it is a week
+   old; nothing once a session picked it up.
+3. **Where we left off**: the scope's recent sessions, log-projected
+   the way a conversation view is (`neosian docs memory`): one line per
+   turn, its number in square brackets, newest session first (older
+   turns fold into a count line: paging, never deletion). Which sessions
+   depends on `source`: after a **compaction** (`source: compact`) the
+   session's own record comes back and no note, the re-injection of
+   what the client just paged out; on `startup`, `resume`, `clear` or
+   `fork` the three most recently written sessions, the own one
+   included when it is among them.
+
+The three blocks share one budget, the client's own ceiling on what a
+hook may inject (Claude Code 10,000 characters, Codex 2,500 tokens,
+Cursor 10,000, Muse Code 16 KiB), counted exactly: the index up to
+three eighths of it, the note up to 2048, the sessions the rest, so a
+busy scope folds and never trips a client into a file-path preview. A
+client with no start hook, OpenCode, reads the same blocks from the MCP
+server's instructions, which it shows whole.
+
+A handoff is declared, never assumed. The block offers; a session that
+says nothing is new work. When the user says "continue", the agent makes
+one call, `continue_session()`, and receives the conversation whole: the
+note's session, else the most recent one listed. The block names every
+turn it shows, and the footer names the call that re-reads one:
+`recall_turn(n, conversation="<id>")` on the `neosian-memory` MCP server
+(`neosian docs mcp`), and `search_history(query)` on the same server finds a
+turn of any session by its words, listed or not. Bodies stay behind
+tools; the block is a table of contents, not the transcript. An empty
+scope still prints the frame, so the agent knows the door exists.
+For Codex, the text is carried in the hook response's
+`hookSpecificOutput.additionalContext` JSON field: its parser treats the
+frame's leading `[` as JSON, so a plain-text response would be rejected.
+`--json` still selects neosian's diagnostic envelope.
+A store that cannot be reached exits 1 with nothing on stdout:
+`SessionStart` never blocks.
+
+The window stays each agent's own: neosian feeds it at the client's
+extension points (session start, the post-compaction re-injection)
+and never replaces it. The three lifetimes hold across clients
+(`neosian docs memory`): skills are how (the `skills/` documents of
+the mounts, the same list and the same MCP prompts from every client,
+`neosian docs skills`), memory is what we know, the board is what we
+are doing now, and the record is history, recallable
+turn by turn, never in the window whole. Reflection at pre-compact is not offered: a hook
+process is keyless, and the foreign agent's own model is the only one
+in the room.
+
+Read it back on any substrate:
+
+```bash
+neosian audit  # current project scope
+neosian audit --scope user:me --conversation <session_id> --root ~/.my-agent/state
+neosian audit --scope user:me --actor claude-code:<session_id> --url http://127.0.0.1:6367
+```
+
+## Muse Code
+
+`neosian setup --client muse-code --write` installs both halves. Muse's
+configuration directory must already exist: `$XDG_CONFIG_HOME/muse`, or
+`~/.config/muse`. Its user `settings.json` holds both `mcpServers` and
+`hooks`; a new file includes `schema_version: 1`. Existing malformed or
+unsupported settings are refused, and other settings survive a merge.
+The writer is `muse-code:<session_id>`.
+
+FileStore hooks use this user settings file, or `.muse/hooks.json` with
+`--level project`. Project hooks require a trusted workspace, such as
+`muse exec --trust-workspace`. Muse runs lifecycle hooks in the session's
+workspace and tool hooks in the tool's effective directory; the stop
+lands the shared spool in the session's scope. Startup context is plain
+text, capped below Muse's 16 KiB stdout limit without splitting UTF-8.
+
+Muse clears the environment of hooks and MCP processes. For `--url` or
+Postgres, the installer therefore uses **user-level managed hooks**:
+`neosian-hooks.json` beside settings, named by `managed_hooks_path`.
+`managed_hooks_env_vars` gains only `NEOSIAN_CLIENT_TOKEN` or
+`NEOSIAN_POSTGRES_DSN`. MCP entries reference the same variable with
+`${NAME}`; values are never written to a registration or printed.
+Credential-backed project hooks are refused: use `--level user`.
+An existing managed pointer to another file is preserved and automatic
+installation is refused with a manual merge explanation.
+
+Switching stores removes only neosian's displaced hook groups. `status`
+reads ordinary, managed and project hooks, and reports duplicates.
+Muse hook print mode shows a path-keyed change preview: `merge`,
+`remove_neosian_hooks`, and `add_managed_hooks_env_vars` name the edits;
+it does not print unrelated settings. `setup` validates both halves
+before writing either. Its JSON hook envelope includes this `files` map.
+
+Muse and Claude Code share the project MCP file `.mcp.json`. Installing
+Muse at user level preserves its existing neosian entry, which overrides
+Muse's user registration. Both the installer and `status` report its
+path as `mcp_shadowed_by`; change the shared entry deliberately when
+moving stores.
+
+References: Muse's [hooks](https://meta-models.github.io/muse-code-sdk/next/guides/extend/hooks/)
+and [MCP configuration](https://meta-models.github.io/muse-code-sdk/next/guides/extend/mcp-servers/),
+verified against Muse Code 1.3.0.
+
+## Cursor
+
+`neosian setup --client cursor --url URL --write` installs user MCP at
+`~/.cursor/mcp.json` and native version-1 hooks at `~/.cursor/hooks.json`.
+Cursor clears custom environment variables for MCP children; the entry
+forwards credential names as `${env:NAME}` references, never their values.
+Hooks inherit the client environment. The `.cursor` directory must exist.
+Both halves are checked before setup writes; unrelated configuration
+survives, and reinstall is idempotent.
+`record install --client cursor --level project` writes trusted project
+hooks instead. Cursor's MCP installer remains user-level only.
+
+User hooks run from `~/.cursor`, so the recorder derives `/project` from
+one absolute `workspace_roots` entry in the payload. Missing or multiple
+roots use `/user` alone, with a diagnostic. Supply `--project DIR` on the
+record command or explicit `--scope`/`--mount` at installation to select a
+project; `NEOSIAN_SCOPE` also takes precedence. Tool cwd changes do not
+change the session's project.
+
+`beforeSubmitPrompt` supplies the prompt, `postToolUse` the tool round
+(including its JSON-string output, whole up to 1 MiB), and
+`afterAgentResponse` the assistant text. A completed turn lands once both
+`stop` and `afterAgentResponse` have arrived, in either order. Cursor's
+interactive CLI can send the stop first. Aborted or failed turns can land
+without assistant text. The actor is `cursor:<conversation_id>`.
+A per-session advisory spool lock serializes concurrent hook processes
+through the store write; it is released if a process exits. Its small
+hidden lock file stays in the spool to keep
+waiting processes on the same lock. This does not permit multiple direct
+writers to a FileStore root.
+`sessionStart` returns the same index and recent sessions through JSON
+`additional_context`; other successful hooks return `{}`. `--json`
+continues to return the recorder's diagnostic envelope.
+
+Cursor can also load Claude Code hooks. The Claude recorder ignores
+payloads carrying Cursor's version marker, leaving recording and startup
+context to the native Cursor registration. Both configurations stay in
+place. This CLI imports Claude configurations containing a matcher;
+matcherless groups alone did not load in the probe.
+
+The measured target is the interactive Cursor CLI `2026.09.10-fd3934a`.
+Its `--print` mode emitted startup and tool hooks, but omitted prompt,
+response and stop events: full recording is unavailable there. Use the
+interactive CLI for recording. Transcript parsing is not a fallback.
+The installer escapes JSON slashes so this version's comment reader
+preserves daemon URLs inside hook commands.
+
+References: Cursor's [hooks](https://cursor.com/docs/hooks) and
+[third-party hooks](https://cursor.com/docs/reference/third-party-hooks).
+
+## Pi
+
+`neosian setup --client pi --write` installs both halves for Pi 1.0.1 or
+later. The user registration is `~/.pi/agent/mcp.json`, with native
+`mcpServers` and direct tool exposure. The recorder is
+`~/.pi/agent/extensions/neosian-record.ts`. `PI_CODING_AGENT_DIR` relocates
+that agent directory; it must exist before installation. Project level
+uses `.pi/mcp.json` and `.pi/extensions/neosian-record.ts` and requires
+Pi's project trust. One recording level per client prevents duplicate
+spans. Re-running setup replaces our extension and preserves unrelated
+MCP entries.
+
+The extension runs in interactive and print modes. It sends actual user
+messages, completed tool rounds (including nested MCP calls and error
+results), and the final assistant text to `neosian record --agent pi`.
+Writes are serialized and each span lands at `agent_settled`, after
+automatic retries, rather than the earlier `agent_end`. Orderly shutdown
+drains an unfinished span. A killed process may leave a spool for the
+next stop; recorder failures never prevent Pi from continuing. The writer
+is `pi:<session_id>` and the project comes from Pi's extension context.
+No transcript files are parsed.
+
+Pi does not show a server's full instructions automatically. The
+extension reads the memory instructions and three startup blocks into a
+named `neosian` system-prompt section, preserving other sections. It
+refreshes after compaction, including a retry without a new user prompt. The section's
+10,000-character budget is neosian's conservative policy, not a claimed
+Pi limit. Resume, new-session and fork events reset the context and
+recording identity. Pi reads `AGENTS.md` natively.
+
+For shared recording, use `neosian setup --client pi --url URL --write`
+and set `NEOSIAN_CLIENT_TOKEN` in Pi's environment; the token is inherited
+by both subprocesses and never written to either configuration file.
+The extension requires Pi's built-in MCP support; an extension replacing
+`/mcp` can disable the native registration. Check `pi mcp list` and
+`neosian status` when diagnosing setup.
+
+Validation: Pi 1.0.1 passed a real Claude Code → Pi → Claude Code → Pi
+walkthrough on 2026-10-03 with Sonnet 5. Each arrival called
+`continue_session`, all three links landed in the recorded sessions,
+and the final handoff linked to the last Pi session. The shared memory
+instructions require the continue call even when a startup summary
+already contains the answer: reading it alone does not pick up the note
+or declare the continuation. A separate keyless runtime check exercises
+Pi's event pipeline; the adapter checks cover compaction and shutdown.
+
+References: Pi's [configuration](https://pi.dev/docs/latest/configuration),
+[MCP](https://pi.dev/docs/latest/mcp) and
+[extensions](https://pi.dev/docs/latest/extensions).
+
+## The client table
+
+A row exists only while its walkthrough is green on a real install. "Per
+machine" is the default registration: one run of `neosian setup --write`,
+two project directories, each session in its own `proj:` scope.
+
+| client | memory (`mcp install`) | record (`record install`) | per machine | session start |
+|---|---|---|---|---|
+| Claude Code | ✓ user scope through `claude mcp add-json` | ✓ walkthrough green 2026-09-02; headless `claude -p` denies the MCP tools unless `--allowedTools mcp__neosian-memory__…` names them (the prompt before that variadic list) | ✓ 2026-09-19 (2.1.278): the server is spawned in the session's directory, the hook line's project directory expands | ✓ `SessionStart`, stdout as context (2026-09-03); the handoff run for real 2026-10-03 (2.1.288) |
+| Codex | ✓ through `codex mcp add` | ✓ walkthrough green 2026-09-03 (`codex exec`) | ✓ 2026-09-19 (0.154.0): the same, user-level hooks with no project trust step | ✓ JSON `additionalContext`; cross-client recall verified on 0.157.1 (2026-09-27) |
+| OpenCode | ✓ (`opencode.jsonc` when it holds plain JSON, else `opencode.json`) | ✓ walkthrough green 2026-09-03 (`opencode run`, a plugin); the 2.0 definition verified 2026-10-17 (2.0.25, which refuses the 1.x export) | ✓ 2026-09-19 (1.18.30, a free model): the same, the plugin passing the directory it was opened with; 2026-10-17 (2.0.25) through the binary | ✓ the server's instructions (shown whole, 1.18.30+): the index, the note and the sessions per connection; no hook |
+| Claude Desktop | ✓ | no hooks surface | one file by nature; no project, so `/user` alone | — |
+| Cursor | ✓ user MCP, credential names forwarded | ✓ interactive CLI 2026.09.10-fd3934a; `--print` lacks full recording; MCP rounds through `afterMCPExecution` | ✓ one user registration, payload workspace roots | ✓ `sessionStart`, JSON `additional_context` |
+| Muse Code | ✓ user settings or shared project `.mcp.json` | ✓ walkthrough green 2026-09-22 (`muse exec`, 1.3.0); headless `muse exec` can stall on a shell approval no one can give, so a handoff leg says "no shell commands" | ✓ two projects, one user registration; authenticated managed hooks and MCP on the state process | ✓ `SessionStart`, plain stdout; prior turn recalled over MCP; continued and handed off for real 2026-10-03 (1.4.2) |
+| Pi | ✓ native MCP, direct tools (1.0.1) | ✓ print-mode walkthrough green 2026-10-03; extension commits at final settlement | ✓ two projects through one user registration and the state process; `PI_CODING_AGENT_DIR` honored | ✓ named system section, startup and compaction; Claude Code → Pi → Claude Code → Pi with all continuation links verified |
+
+## Durable messages and reminders
+
+See `neosian docs messaging` for the shared `messages` tool, conversation and
+scope destinations, history annotations, explicit acknowledgment and claims.
+Reminders can be snoozed with a finding and a new due time on the same ID.
+Regenerate client adapters after upgrading for automatic
+delivery. Pi and OpenCode also support wake requests while attached.

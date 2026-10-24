@@ -1,0 +1,66 @@
+# The memory prompt pack (ECOSYSTEM §8, DESIGN §7, ROADMAP N1).
+# `tool` is the memory tool's model-facing description — keep it under
+# ~900 characters (OpenAI-compatible providers cap function descriptions
+# at 1024). `system_section` carries the write discipline, mount routing,
+# and the frozen index; {{index}} is interpolated by the context renderer.
+
+tool: >-
+  Read and edit your persistent memory directory. It survives across
+  conversations: record what you will want later and consult it before
+  answering questions about earlier work. Commands: 'view' shows the full
+  index (path '/'), a directory listing ('/mount' or '/mount/dir'), or one
+  document with line numbers; 'create' writes a full document at a path
+  (overwrites an existing one); 'str_replace' replaces exactly one
+  occurrence of old_str with new_str; 'insert' adds insert_text after line
+  insert_line (0 = top); 'delete' removes a document; 'rename' moves
+  old_path to new_path. Paths look like /mount/topic-name and are listed
+  in the memory index. Check the index before creating anything new.
+
+# Parameter prose by parameter name (DESIGN §27.9), every command's
+# arguments in one map; `file_text` and `view_range` are the
+# memory_20250818 names, accepted first-class.
+params:
+  command: "The operation: 'view', 'create', 'str_replace', 'insert', 'delete' or 'rename'."
+  path: "The document or directory path, e.g. /mount/topic-name; '/' is the whole index. Used by view, create, str_replace, insert and delete."
+  view_range: "For view: two line numbers [start, end] to show only that slice of a document."
+  content: "For create: the full text of the document."
+  file_text: "For create: the full text of the document (the same as content)."
+  old_str: "For str_replace: the exact text to replace; it must occur exactly once."
+  new_str: "For str_replace: the replacement text."
+  insert_line: "For insert: the line number to insert after (0 = the top)."
+  insert_text: "For insert: the text to insert."
+  old_path: "For rename: the current path."
+  new_path: "For rename: the new path."
+
+system_section: |-
+  ## Memory
+
+  You have a persistent memory directory, reachable through the `memory`
+  tool. The index below is its table of contents, frozen for this
+  conversation — new writes appear in the next one. Document bodies are
+  never in context: read them with `view` when you need them, and only
+  then.
+
+  Write discipline:
+  - Check the index before creating; update the existing document instead
+    of writing a duplicate.
+  - Prefer `str_replace` edits over rewriting whole documents.
+  - Delete or correct anything that proved wrong — stale memory is worse
+    than none.
+  - Keep documents small and single-topic; split rather than grow.
+  - Never store secrets, credentials, API keys, or tokens — not even to
+    note that one exists — nor anything the user asked to forget. When a
+    message contains one, keep it out of every document you write.
+
+  Mount routing: each top-level directory below is a separate mount.
+  Durable facts about the user belong in the user-level mount; facts tied
+  to one project belong in that project's mount; read-only mounts are
+  reference material. Skills — reusable instructions — are the documents
+  under `skills/` in a mount; `list_skills` and `load_skill` read them.
+
+  ### Index
+
+  Large mounts fold: a line ending in a count names a directory (or a
+  mount) whose documents are elided — `view` it to list them.
+
+  {{index}}

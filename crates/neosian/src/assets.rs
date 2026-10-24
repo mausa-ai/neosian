@@ -1,27 +1,33 @@
-//! The shipped prompts (DESIGN §7, §39.3): embedded from `neosian/assets/`
-//! at build time, one source with the wheel, never prose in Rust.
+//! The shipped prompts (DESIGN §7, §39.3): embedded from `assets/`
+//! at build time from one canonical source, never prose in Rust.
 
-/// `neosian/assets/prompts/messages.yaml`.
+/// `assets/prompts/messages.yaml`.
 pub const MESSAGES: &str = include_str!(concat!(env!("NEOSIAN_ASSETS"), "/prompts/messages.yaml"));
 
-/// `neosian/assets/prompts/context.yaml`.
+/// `assets/prompts/context.yaml`.
 pub const CONTEXT: &str = include_str!(concat!(env!("NEOSIAN_ASSETS"), "/prompts/context.yaml"));
 
-/// `neosian/assets/prompts/tools.yaml`: the built-in tools' descriptions
+/// `assets/prompts/tools.yaml`: the built-in tools' descriptions
 /// and their parameters' prose.
 pub const TOOLS: &str = include_str!(concat!(env!("NEOSIAN_ASSETS"), "/prompts/tools.yaml"));
 
-/// `neosian/assets/prompts/memory.yaml`: the memory tool and the system
+/// `assets/prompts/memory.yaml`: the memory tool and the system
 /// section.
 pub const MEMORY: &str = include_str!(concat!(env!("NEOSIAN_ASSETS"), "/prompts/memory.yaml"));
 
-/// The wheel's own skills, `neosian/assets/skills/*.md`, by name: the
+/// The binary's own skills, `assets/skills/*.md`, by name: the
 /// directory the MCP server lists after the mounts' (§24.3). A unit test
 /// keeps this list equal to the directory.
-pub const SKILLS: [(&str, &str); 1] = [(
-    "handoff",
-    include_str!(concat!(env!("NEOSIAN_ASSETS"), "/skills/handoff.md")),
-)];
+pub const SKILLS: [(&str, &str); 2] = [
+    (
+        "handoff",
+        include_str!(concat!(env!("NEOSIAN_ASSETS"), "/skills/handoff.md")),
+    ),
+    (
+        "upkeep",
+        include_str!(concat!(env!("NEOSIAN_ASSETS"), "/skills/upkeep.md")),
+    ),
+];
 
 /// The lines of a top-level block scalar introduced by `key: <head>`, the
 /// two-space indent dropped and the trailing blank lines clipped.

@@ -15,7 +15,7 @@ use crate::conversation::message::Message;
 use crate::conversation::rows::{
     CONVERSATIONS, PROJECTIONS, TURNS, parse_projection, parse_turn, render_projection, render_turn,
 };
-use crate::conversation::search::search_files;
+use crate::conversation::search::{held_ids, newest_first, scan_turns};
 use crate::conversation::{Error, Projection, Refused, Turn};
 
 /// `_check_cursor`: the ABC's own refusals of a negative start or limit.
@@ -51,7 +51,7 @@ impl FileStore {
         limit: Option<i64>,
     ) -> Result<Vec<Turn>, Error> {
         let _held = self.lock()?;
-        let file = self.conversation_dir(conversation_id)?.join(TURNS);
+        let file = self.conversation_file(conversation_id, TURNS)?;
         check_cursor(after, limit)?;
         let turns = rows(&file, |line, number| {
             parse_turn(line, number, conversation_id)
@@ -68,7 +68,7 @@ impl FileStore {
         limit: Option<i64>,
     ) -> Result<Vec<Projection>, Error> {
         let _held = self.lock()?;
-        let file = self.conversation_dir(conversation_id)?.join(PROJECTIONS);
+        let file = self.conversation_file(conversation_id, PROJECTIONS)?;
         check_cursor(after, limit)?;
         let mut entries = rows(&file, |line, number| {
             parse_projection(line, number, conversation_id)
@@ -80,7 +80,7 @@ impl FileStore {
     /// The last turn's number, 0 for a conversation never written.
     pub fn last_turn_number(&self, conversation_id: &str) -> Result<u64, Error> {
         let _held = self.lock()?;
-        let file = self.conversation_dir(conversation_id)?.join(TURNS);
+        let file = self.conversation_file(conversation_id, TURNS)?;
         last_number(&file, conversation_id)
     }
 
@@ -93,7 +93,7 @@ impl FileStore {
         actor: Option<String>,
     ) -> Result<Turn, Error> {
         let _held = self.lock()?;
-        let file = self.conversation_dir(conversation_id)?.join(TURNS);
+        let file = self.conversation_file(conversation_id, TURNS)?;
         if messages.is_empty() {
             return Err(Error::Value(
                 "a turn must carry at least one message".to_string(),
@@ -118,7 +118,7 @@ impl FileStore {
         entries: &[Projection],
     ) -> Result<(), Error> {
         let _held = self.lock()?;
-        let file = self.conversation_dir(conversation_id)?.join(PROJECTIONS);
+        let file = self.conversation_file(conversation_id, PROJECTIONS)?;
         if entries.is_empty() {
             return Ok(());
         }
@@ -132,7 +132,7 @@ impl FileStore {
     /// parsed; None for one never written.
     pub fn first_turn_stamp(&self, conversation_id: &str) -> Result<Option<Stamp>, Error> {
         let _held = self.lock()?;
-        let file = self.conversation_dir(conversation_id)?.join(TURNS);
+        let file = self.conversation_file(conversation_id, TURNS)?;
         if !file.is_file() {
             return Ok(None);
         }
@@ -161,24 +161,44 @@ impl FileStore {
                 return Ok(Vec::new());
             }
         }
-        search_files(&self.root.join(CONVERSATIONS), ids, terms, limit)
+        let held;
+        let ids = match ids {
+            Some(ids) => ids,
+            None => {
+                held = held_ids(&self.root.join(CONVERSATIONS))?;
+                &held
+            }
+        };
+        let mut found = Vec::new();
+        for id in ids {
+            let file = self.conversation_file(id, TURNS)?;
+            if file.is_file() {
+                found.extend(scan_turns(&file, id, terms)?);
+            }
+        }
+        newest_first(&mut found);
+        found.truncate(limit);
+        Ok(found)
     }
 
     /// The conversation's directory, refused when a symlink would carry
     /// it outside the root.
-    fn conversation_dir(&self, conversation_id: &str) -> Result<PathBuf, Error> {
+    pub(super) fn conversation_dir(&self, conversation_id: &str) -> Result<PathBuf, Error> {
         parse_conversation_id(conversation_id)?;
         let candidate = self.root.join(CONVERSATIONS).join(conversation_id);
-        let mut existing = candidate.as_path();
-        while !existing.exists() {
-            existing = existing.parent().unwrap_or(&self.root);
-        }
-        let below = candidate.strip_prefix(existing).unwrap_or(&candidate);
-        if existing.canonicalize()?.join(below).starts_with(&self.root) {
+        if super::fileio::within(&self.root, &candidate)? {
             Ok(candidate)
         } else {
             Err(Refused::id_invalid(conversation_id, "escapes the store root").into())
         }
+    }
+
+    pub(super) fn conversation_file(&self, id: &str, name: &str) -> Result<PathBuf, Error> {
+        let file = self.conversation_dir(id)?.join(name);
+        if !super::fileio::within(&self.root, &file)? {
+            return Err(Refused::id_invalid(id, "escapes the store root").into());
+        }
+        Ok(file)
     }
 }
 

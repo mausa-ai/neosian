@@ -103,7 +103,7 @@ impl FileStore {
                 continue;
             }
             let Document { envelope, .. } =
-                self.load(scope, &path, &documents.join(format!("{path}.md")))?;
+                self.load(scope, &path, &layout::doc_file(&self.root, scope, &path)?)?;
             entries.push(Entry {
                 path,
                 version: envelope.version,
@@ -146,6 +146,14 @@ impl FileStore {
     /// process may have created the conflicting spelling between calls.
     fn scope(&self, scope: &str) -> Result<(), Error> {
         parse_scope(scope)?;
+        let directory = layout::scope_dir(&self.root, scope);
+        for path in [
+            directory.clone(),
+            directory.join(DOCUMENTS),
+            directory.join(VERSIONS),
+        ] {
+            layout::contained(&self.root, path, scope)?;
+        }
         if layout::case_collision(&self.root, scope)? {
             return Err(MemoryError::conflict(scope, None, "case_collision").into());
         }
@@ -188,7 +196,7 @@ fn walk_scopes(dir: &Path, parts: &[String], found: &mut Vec<String>) -> io::Res
         let Ok(name) = entry.file_name().into_string() else {
             continue;
         };
-        if !entry.path().is_dir() || !name.contains("%3A") {
+        if !entry.file_type()?.is_dir() || !name.contains("%3A") {
             continue;
         }
         let below: Vec<String> = parts.iter().cloned().chain([name]).collect();
@@ -208,12 +216,17 @@ fn walk_scopes(dir: &Path, parts: &[String], found: &mut Vec<String>) -> io::Res
 /// Does a scope directory hold any document, any history or a trail?
 fn occupied(scope_dir: &Path) -> io::Result<bool> {
     fn holds(dir: &Path, suffix: &str) -> io::Result<bool> {
-        if !dir.is_dir() {
+        if !dir.is_dir() || fs::symlink_metadata(dir)?.file_type().is_symlink() {
             return Ok(false);
         }
         for entry in fs::read_dir(dir)? {
-            let path = entry?.path();
-            let found = if path.is_dir() {
+            let entry = entry?;
+            let kind = entry.file_type()?;
+            if kind.is_symlink() {
+                continue;
+            }
+            let path = entry.path();
+            let found = if kind.is_dir() {
                 holds(&path, suffix)?
             } else {
                 path.to_string_lossy().ends_with(suffix)

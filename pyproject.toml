@@ -1,140 +1,32 @@
-[project]
-name = "neosian"
-version = "1.13.0"
-description = "Async-only library for LLM agents: tools, orchestration, streaming, guardrails — with opt-in conversation, memory, and compaction layers over a stateless core."
-readme = "docs/README.md"
-license = "Apache-2.0"
-requires-python = ">=3.12"
-keywords = ["llm", "agents", "memory", "conversation", "streaming", "mcp"]
-classifiers = [
-    "Development Status :: 5 - Production/Stable",
-    "Framework :: AsyncIO",
-    "Intended Audience :: Developers",
-    "Operating System :: OS Independent",
-    "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: 3.13",
-    "Programming Language :: Python :: 3.14",
-    "Typing :: Typed",
-]
-# One package, every door but one (NX, ledger #206): the shell, the MCP
-# server and client, the state process and the OTel span exporter are
-# core — `uv add neosian` is the whole product short of a database
-# server. The imports stay lazy (#184): `import neosian` loads no
-# provider SDK, no serving stack and no terminal library; each arrives
-# at first use behind one guarded site. The two provider SDKs are
-# capped at their next major (#183): a green CI never vouches for a wire
-# it has not seen, and the `lowest` CI job resolves every declared floor
-# for real on both Python ends.
-dependencies = [
-    "anthropic>=1.8.0,<2",
-    "httpx>=0.28.1",
-    "mcp>=2,<3",
-    "openai>=3.2.0,<4",
-    "opentelemetry-api>=1.30",
-    "pydantic>=2.13.4",
-    # MCP's JWT dependency: exclude GHSA-w6j9-cwv2-h6wq in every install.
-    "pyjwt>=2.15.0",
-    "pyyaml>=6.0.3",
-    "rich>=15.0.0",
-    "starlette>=1.6",
-    "textual>=8.2.8,<9",
-    "tomli-w>=1.2.0",
-    "typer>=0.27.1",
-    "uvicorn>=0.52.4",
-]
-
-# The one extra: the Postgres driver, a 20 MB binary wheel that matters
-# only beside a server you already run (psycopg 3.2.10 is the first
-# wheel for 3.14); `all` is its alias (#206; the four empty aliases that
-# let rc3's pinned `neosian[cli]==…` lines resolve left at rc16, NX2).
-[project.optional-dependencies]
-postgres = ["psycopg[binary,pool]>=3.2.10"]
-all = ["neosian[postgres]"]
-
-[project.urls]
-Homepage = "https://github.com/mausa-ai/neosian"
-Repository = "https://github.com/mausa-ai/neosian"
-Documentation = "https://neosian.com/docs"
-Changelog = "https://github.com/mausa-ai/neosian/blob/master/docs/CHANGELOG.md"
-Issues = "https://github.com/mausa-ai/neosian/issues"
-
+# Python is development and migration tooling only; this is not a distribution.
 [dependency-groups]
 dev = [
     "black>=26.5.1",
-    "import-linter>=2.13",
+    "httpx>=0.28.1",
     "jsonschema>=4.26",
     "mypy>=2.3.1",
-    "opentelemetry-sdk>=1.30",
-    "psycopg[binary,pool]>=3.2.10",
+    "pip-audit>=2.9",
+    "psycopg[binary]>=3.2.10",
     "pytest>=9.1.1",
-    "pytest-asyncio>=1.4.0",
-    "pytest-cov>=7",
     "pytest-timeout>=2.3",
+    "pyyaml>=6.0.3",
     "referencing>=0.37",
     "ruff>=0.16.3",
     "types-pyyaml>=6.0.12.20250915",
 ]
-examples = [
-    "fastapi>=0.141.1",
-    "openai-agents>=0.22",
-    "pydantic-ai-slim>=2.48",
-]
-
-[tool.coverage.run]
-source = ["neosian"]
-
-[tool.coverage.report]
-skip_empty = true
 
 [tool.pytest.ini_options]
-asyncio_mode = "auto"
-asyncio_default_fixture_loop_scope = "function"
-addopts = "-m 'not external and not differential and not contract' --strict-markers --timeout=60"
+addopts = "--strict-markers --timeout=60"
 markers = [
-    "unit: Fast tests on fakes only — the default, fully keyless gate",
-    "differential: The corpus through the Python shell and the Rust binary (needs the built binary; keyless)",
-    "contract: Independent public-format and CLI/MCP/HTTP checks against the built binary, without the Python product",
-    "external: Any test making real API calls (excluded by default)",
-    "external_openai: Real OpenAI API calls",
-    "external_anthropic: Real Anthropic API calls",
-    "external_cerebras: Real Cerebras API calls",
-    "external_xai: Real xAI API calls (shipped door)",
-    "external_gemini: Real Gemini API calls (shipped door)",
-    "external_kimi: Real Moonshot API calls (a shipped door row)",
-    "external_qwen: Real Alibaba Model Studio API calls (a shipped door row)",
-    "external_local: A llama-server on the OpenAI wire (URL env var, not an API key)",
-    "external_postgres: A real PostgreSQL server (DSN env var, not an API key)",
-    "external_server: A running state-process container (URL env var, not an API key)",
+    "contract: Independent format and CLI/MCP/HTTP checks against the binary",
+    "postgres: PostgreSQL corruption tests, explicitly selected with a test DSN",
 ]
-testpaths = ["tests"]
-filterwarnings = [
-    "default::DeprecationWarning",
-    "error::DeprecationWarning:neosian.*",
-    # last so it outranks the default:: entries above
-    # create_autospec walks a pydantic instance's dir(); the SDK-spec mocks
-    # (tests/unit/llm/sdk_specs.py) would otherwise emit this on every access
-    "ignore:Accessing the 'model_(computed_)?fields' attribute:DeprecationWarning:unittest.mock",
-    "ignore:The `__fields__` attribute is deprecated:DeprecationWarning:unittest.mock",
-    "ignore:The `__fields_set__` attribute is deprecated:DeprecationWarning:unittest.mock",
-]
+testpaths = ["tests/contract", "tests/tooling"]
 
 [tool.mypy]
 python_version = "3.12"
 strict = true
-# `examples/` is not a package; its files are checked as `examples.<name>`,
-# the name the tests import them by (NF, TP-8).
 explicit_package_bases = true
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = true
-disallow_incomplete_defs = true
-check_untyped_defs = true
-disallow_untyped_decorators = true
-no_implicit_optional = true
-warn_redundant_casts = true
-warn_unused_ignores = true
-warn_no_return = true
-warn_unreachable = true
 
 [tool.black]
 line-length = 88
@@ -158,243 +50,8 @@ select = [
 ]
 ignore = [
     "E501",   # line too long (handled by black)
-    "UP042",  # keep (str, Enum) — StrEnum changes str()/format semantics on
-              # serialization-heavy public enums (Model, Role, AgentEventType)
 ]
 
 [tool.ruff.lint.isort]
-# `from m import X as X` re-exports stay one statement (shared/types.py)
+# Keep explicit re-exports in one statement
 combine-as-imports = true
-
-# Layering (DESIGN §1) — forbidden contracts only. Type-only imports are
-# excluded: the contracts police runtime coupling, and TYPE_CHECKING
-# blocks (e.g. shared.types -> agent.hooks for AgentHooks) create none.
-[tool.importlinter]
-root_packages = ["neosian"]
-exclude_type_checking_imports = true
-
-[[tool.importlinter.contracts]]
-name = "the library never imports its CLI"
-type = "forbidden"
-source_modules = ["neosian._foundation"]
-forbidden_modules = ["neosian._cli"]
-
-# The facades re-export the foundation, never the reverse — an inversion
-# would drag a facade's whole public surface into a foundation import.
-[[tool.importlinter.contracts]]
-name = "the foundation never imports the facades"
-type = "forbidden"
-source_modules = ["neosian._foundation"]
-forbidden_modules = [
-    "neosian.mcp",
-    "neosian.memory",
-    "neosian.evaluation",
-    "neosian.conversation",
-    "neosian.catalog",
-    "neosian.fake",
-    "neosian.schemas",
-    "neosian.server",
-]
-
-[[tool.importlinter.contracts]]
-name = "storage substrates speak only to ABCs, never provider internals"
-type = "forbidden"
-source_modules = [
-    "neosian._foundation.memory",
-    "neosian._foundation.postgres",
-]
-forbidden_modules = [
-    "neosian._foundation.llm.openai",
-    "neosian._foundation.llm.openai_convert",
-    "neosian._foundation.llm.openai_stream",
-    "neosian._foundation.llm.openai_responses",
-    "neosian._foundation.llm.openai_responses_stream",
-    "neosian._foundation.llm.anthropic",
-    "neosian._foundation.llm.anthropic_convert",
-    "neosian._foundation.llm.anthropic_stream",
-    "neosian._foundation.llm.fake",
-]
-
-[[tool.importlinter.contracts]]
-name = "the MCP server speaks only to the store and tool layers"
-type = "forbidden"
-source_modules = ["neosian._foundation.mcp"]
-forbidden_modules = [
-    "neosian._foundation.agent",
-    "neosian._foundation.llm.openai",
-    "neosian._foundation.llm.openai_convert",
-    "neosian._foundation.llm.openai_stream",
-    "neosian._foundation.llm.openai_responses",
-    "neosian._foundation.llm.openai_responses_stream",
-    "neosian._foundation.llm.anthropic",
-    "neosian._foundation.llm.anthropic_convert",
-    "neosian._foundation.llm.anthropic_stream",
-    "neosian._foundation.llm.fake",
-]
-
-# The record verb writes what a foreign agent's hooks report: the store
-# and the message codec, never the agent, a provider, or the MCP SDK (§20.9).
-[[tool.importlinter.contracts]]
-name = "the record verb speaks only to the store and codec layers"
-type = "forbidden"
-source_modules = ["neosian._foundation.record"]
-forbidden_modules = [
-    "neosian._foundation.agent",
-    "neosian._foundation.mcp",
-    "neosian._foundation.llm.openai",
-    "neosian._foundation.llm.openai_convert",
-    "neosian._foundation.llm.openai_stream",
-    "neosian._foundation.llm.openai_responses",
-    "neosian._foundation.llm.openai_responses_stream",
-    "neosian._foundation.llm.anthropic",
-    "neosian._foundation.llm.anthropic_convert",
-    "neosian._foundation.llm.anthropic_stream",
-    "neosian._foundation.llm.fake",
-]
-
-# The state process is a storage surface: the wire mirrors the ABCs and
-# every MCP call rides the shared dispatcher — never the agent (§18).
-[[tool.importlinter.contracts]]
-name = "the state process speaks only to the store and tool layers"
-type = "forbidden"
-source_modules = ["neosian._foundation.server"]
-forbidden_modules = [
-    "neosian._foundation.agent",
-    "neosian._foundation.llm.openai",
-    "neosian._foundation.llm.openai_convert",
-    "neosian._foundation.llm.openai_stream",
-    "neosian._foundation.llm.openai_responses",
-    "neosian._foundation.llm.openai_responses_stream",
-    "neosian._foundation.llm.anthropic",
-    "neosian._foundation.llm.anthropic_convert",
-    "neosian._foundation.llm.anthropic_stream",
-    "neosian._foundation.llm.fake",
-]
-
-# Conversation drives an Agent, which owns the router — the direct edge
-# is the honest one to police (ledger #26).
-[[tool.importlinter.contracts]]
-name = "the conversation layer never imports provider clients directly"
-type = "forbidden"
-source_modules = ["neosian._foundation.conversation"]
-forbidden_modules = [
-    "neosian._foundation.llm.openai",
-    "neosian._foundation.llm.openai_convert",
-    "neosian._foundation.llm.openai_stream",
-    "neosian._foundation.llm.openai_responses",
-    "neosian._foundation.llm.openai_responses_stream",
-    "neosian._foundation.llm.anthropic",
-    "neosian._foundation.llm.anthropic_convert",
-    "neosian._foundation.llm.anthropic_stream",
-    "neosian._foundation.llm.fake",
-]
-allow_indirect_imports = true
-
-[[tool.importlinter.contracts]]
-name = "the conversation storage seam never imports the agent"
-type = "forbidden"
-source_modules = [
-    "neosian._foundation.conversation.base",
-    "neosian._foundation.conversation.types",
-    "neosian._foundation.conversation.ids",
-    "neosian._foundation.conversation.file_turns",
-    "neosian._foundation.conversation.testing",
-    "neosian._foundation.conversation.projection",
-    "neosian._foundation.conversation.distill",
-    "neosian._foundation.conversation.compaction",
-    "neosian._foundation.conversation.reflection",
-    "neosian._foundation.conversation.recall",
-    "neosian._foundation.conversation.search",
-    "neosian._foundation.conversation.hits",
-    "neosian._foundation.conversation.search_history",
-    "neosian._foundation.conversation.sessions",
-    "neosian._foundation.postgres",
-]
-forbidden_modules = ["neosian._foundation.agent"]
-
-[[tool.importlinter.contracts]]
-name = "the runtime library never imports the eval harness"
-type = "forbidden"
-source_modules = [
-    "neosian._foundation.agent",
-    "neosian._foundation.conversation",
-    "neosian._foundation.guardrails",
-    "neosian._foundation.llm",
-    "neosian._foundation.mcp",
-    "neosian._foundation.memory",
-    "neosian._foundation.postgres",
-    "neosian._foundation.server",
-    "neosian._foundation.shared",
-    "neosian._foundation.tools",
-]
-forbidden_modules = ["neosian._foundation.evaluation"]
-
-# The harness drives an Agent and scripts the fake — llm.fake is its
-# legitimate seam; the four real clients never are.
-[[tool.importlinter.contracts]]
-name = "the eval harness never imports provider clients directly"
-type = "forbidden"
-source_modules = ["neosian._foundation.evaluation"]
-forbidden_modules = [
-    "neosian._foundation.llm.openai",
-    "neosian._foundation.llm.openai_convert",
-    "neosian._foundation.llm.openai_stream",
-    "neosian._foundation.llm.openai_responses",
-    "neosian._foundation.llm.openai_responses_stream",
-    "neosian._foundation.llm.anthropic",
-    "neosian._foundation.llm.anthropic_convert",
-    "neosian._foundation.llm.anthropic_stream",
-]
-allow_indirect_imports = true
-
-# The OTel exporter observes through the hook seam only (ledger #83) —
-# never the orchestration it observes, the providers, or the layers.
-[[tool.importlinter.contracts]]
-name = "the OTel exporter speaks only to the hook seam"
-type = "forbidden"
-source_modules = ["neosian._foundation.otel"]
-forbidden_modules = [
-    "neosian._foundation.llm.openai",
-    "neosian._foundation.llm.openai_convert",
-    "neosian._foundation.llm.openai_stream",
-    "neosian._foundation.llm.openai_responses",
-    "neosian._foundation.llm.openai_responses_stream",
-    "neosian._foundation.llm.anthropic",
-    "neosian._foundation.llm.anthropic_convert",
-    "neosian._foundation.llm.anthropic_stream",
-    "neosian._foundation.conversation",
-    "neosian._foundation.memory",
-    "neosian._foundation.postgres",
-    "neosian._foundation.mcp",
-    "neosian._foundation.evaluation",
-    "neosian._foundation.guardrails",
-]
-
-[project.scripts]
-neosian = "neosian._cli.entry:main"
-
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
-# The sdist is the wheel's source plus what a stranger can run — tests,
-# examples, scripts, the Makefile, the Dockerfile. The planning documents,
-# the agent procedures, CI, the mark and the Rust crate (its own source,
-# crates.io's) never ship (REVIEW TP-3, DESIGN §29, §39); hatchling
-# already drops what .gitignore names.
-# Hatchling always includes docs/README.md as required project metadata.
-[tool.hatch.build.targets.sdist]
-exclude = [
-    "/.claude/",
-    "/.github/",
-    "/.import_linter_cache/",
-    "/docs/",
-    "/record/",
-    "/branding/",
-    "/crates/",
-    "/Cargo.toml",
-    "/Cargo.lock",
-    "/deny.toml",
-    "/dist-workspace.toml",
-    "/rust-toolchain.toml",
-]

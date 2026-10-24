@@ -1,0 +1,425 @@
+{
+  "format": 1,
+  "codes": [
+    {
+      "code": "agent_budget_exceeded",
+      "status": "reserved",
+      "v1_family": "agent",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "agent_configuration_error",
+      "status": "active",
+      "v1_family": "agent",
+      "meaning": "Retained state-operation failure."
+    },
+    {
+      "code": "agent_conversation_conflict",
+      "status": "active",
+      "v1_family": "conversation",
+      "meaning": "Retained state-operation failure."
+    },
+    {
+      "code": "agent_conversation_error",
+      "status": "reserved",
+      "v1_family": "conversation",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "agent_conversation_format_unsupported",
+      "status": "active",
+      "v1_family": "conversation",
+      "meaning": "Retained state-operation failure."
+    },
+    {
+      "code": "agent_conversation_id_invalid",
+      "status": "active",
+      "v1_family": "conversation",
+      "meaning": "Retained state-operation failure."
+    },
+    {
+      "code": "agent_file_not_found",
+      "status": "reserved",
+      "v1_family": "agent",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "agent_invalid_configuration",
+      "status": "reserved",
+      "v1_family": "agent",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "agent_invalid_definition",
+      "status": "reserved",
+      "v1_family": "agent",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "agent_invalid_model",
+      "status": "reserved",
+      "v1_family": "agent",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "agent_load_failed",
+      "status": "reserved",
+      "v1_family": "agent",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "agent_missing_api_key",
+      "status": "reserved",
+      "v1_family": "agent",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "agent_missing_configuration",
+      "status": "reserved",
+      "v1_family": "agent",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "agent_structured_output_error",
+      "status": "reserved",
+      "v1_family": "agent",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "agent_structured_output_incompatible_with_tools",
+      "status": "reserved",
+      "v1_family": "agent",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "agent_structured_output_requires_blocking",
+      "status": "reserved",
+      "v1_family": "agent",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "blackboard_directory_not_found",
+      "status": "reserved",
+      "v1_family": "blackboard",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "blackboard_entry_not_found",
+      "status": "reserved",
+      "v1_family": "blackboard",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "blackboard_error",
+      "status": "reserved",
+      "v1_family": "blackboard",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "blackboard_read_failed",
+      "status": "reserved",
+      "v1_family": "blackboard",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "blackboard_update_failed",
+      "status": "reserved",
+      "v1_family": "blackboard",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "eval_case_invalid",
+      "status": "reserved",
+      "v1_family": "evaluation",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "eval_config_invalid_yaml",
+      "status": "reserved",
+      "v1_family": "evaluation",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "eval_config_missing_key",
+      "status": "reserved",
+      "v1_family": "evaluation",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "eval_config_not_found",
+      "status": "reserved",
+      "v1_family": "evaluation",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "eval_config_unknown_key",
+      "status": "reserved",
+      "v1_family": "evaluation",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "eval_error",
+      "status": "reserved",
+      "v1_family": "evaluation",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "eval_model_unknown",
+      "status": "reserved",
+      "v1_family": "evaluation",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "eval_prompt_not_found",
+      "status": "reserved",
+      "v1_family": "evaluation",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "eval_run_failed",
+      "status": "reserved",
+      "v1_family": "evaluation",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "forbidden",
+      "status": "active",
+      "v1_family": "wire",
+      "meaning": "Token allowance denies this operation."
+    },
+    {
+      "code": "guardrail_error",
+      "status": "reserved",
+      "v1_family": "guardrails",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "guardrail_output_requires_blocking",
+      "status": "reserved",
+      "v1_family": "guardrails",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "guardrail_policy_parse_failed",
+      "status": "reserved",
+      "v1_family": "guardrails",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "llm_authentication_failed",
+      "status": "reserved",
+      "v1_family": "provider",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "llm_context_window_exceeded",
+      "status": "reserved",
+      "v1_family": "provider",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "llm_error",
+      "status": "reserved",
+      "v1_family": "llm",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "llm_fake_script_exhausted",
+      "status": "reserved",
+      "v1_family": "provider",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "llm_fallback_exhausted",
+      "status": "reserved",
+      "v1_family": "provider",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "llm_message_serialization_failed",
+      "status": "reserved",
+      "v1_family": "llm",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "llm_model_failed",
+      "status": "reserved",
+      "v1_family": "provider",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "llm_provider_error",
+      "status": "reserved",
+      "v1_family": "provider",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "llm_tool_call_generation_failed",
+      "status": "reserved",
+      "v1_family": "llm",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "llm_unsupported_content",
+      "status": "reserved",
+      "v1_family": "llm",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "llm_unsupported_parameter",
+      "status": "reserved",
+      "v1_family": "llm",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "memory_actor_invalid",
+      "status": "active",
+      "v1_family": "memory",
+      "meaning": "Retained state-operation failure."
+    },
+    {
+      "code": "memory_conflict",
+      "status": "active",
+      "v1_family": "memory",
+      "meaning": "Retained state-operation failure."
+    },
+    {
+      "code": "memory_document_not_found",
+      "status": "active",
+      "v1_family": "memory",
+      "meaning": "Retained state-operation failure."
+    },
+    {
+      "code": "memory_edit_only_mount",
+      "status": "active",
+      "v1_family": "memory",
+      "meaning": "Retained state-operation failure."
+    },
+    {
+      "code": "memory_error",
+      "status": "reserved",
+      "v1_family": "memory",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "memory_format_unsupported",
+      "status": "active",
+      "v1_family": "memory",
+      "meaning": "Retained state-operation failure."
+    },
+    {
+      "code": "memory_path_invalid",
+      "status": "active",
+      "v1_family": "memory",
+      "meaning": "Retained state-operation failure."
+    },
+    {
+      "code": "memory_read_only_mount",
+      "status": "active",
+      "v1_family": "memory",
+      "meaning": "Retained state-operation failure."
+    },
+    {
+      "code": "memory_scope_invalid",
+      "status": "active",
+      "v1_family": "memory",
+      "meaning": "Retained state-operation failure."
+    },
+    {
+      "code": "neosian_error",
+      "status": "reserved",
+      "v1_family": "base",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "prompt_file_not_found",
+      "status": "reserved",
+      "v1_family": "agent",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "prompt_invalid_yaml",
+      "status": "reserved",
+      "v1_family": "agent",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "prompt_load_failed",
+      "status": "reserved",
+      "v1_family": "agent",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "prompt_missing_key",
+      "status": "reserved",
+      "v1_family": "agent",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "skill_directory_not_found",
+      "status": "reserved",
+      "v1_family": "skills",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "skill_duplicate_name",
+      "status": "reserved",
+      "v1_family": "skills",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "skill_file_not_found",
+      "status": "reserved",
+      "v1_family": "skills",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "skill_invalid_frontmatter",
+      "status": "reserved",
+      "v1_family": "skills",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "skill_load_failed",
+      "status": "reserved",
+      "v1_family": "skills",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "skill_missing_key",
+      "status": "reserved",
+      "v1_family": "skills",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "tool_execution_failed",
+      "status": "reserved",
+      "v1_family": "tools",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "tool_invalid_arguments",
+      "status": "reserved",
+      "v1_family": "tools",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "tool_mcp_connection_failed",
+      "status": "reserved",
+      "v1_family": "tools",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "tool_timeout",
+      "status": "reserved",
+      "v1_family": "tools",
+      "meaning": "Legacy v1 identifier; reserved permanently and never reassigned."
+    },
+    {
+      "code": "value_error",
+      "status": "active",
+      "v1_family": "wire",
+      "meaning": "Malformed wire argument, cursor or response."
+    }
+  ]
+}

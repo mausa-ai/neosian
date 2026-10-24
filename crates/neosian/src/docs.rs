@@ -1,8 +1,6 @@
 //! `neosian docs` (DESIGN §14.4, §39.3): the shipped pages, embedded from
-//! `neosian/assets/docs/` at build time (one source with the wheel) and
-//! printed byte for byte as the Python door prints them on a pipe. The
-//! topic order is the manifest's; a unit test in the Python tier keeps the
-//! list below equal to `docs_assets._TOPICS`.
+//! `assets/docs/` at build time. The build script checks the manifest;
+//! independent contract tests compare every embedded page with its source.
 
 use std::io::{self, Write};
 
@@ -10,38 +8,7 @@ use serde_json::json;
 
 use crate::repr::repr;
 
-macro_rules! pages {
-    ($($topic:literal),+ $(,)?) => {
-        /// The curated reading order, each topic with its page's text.
-        const PAGES: &[(&str, &str)] = &[$((
-            $topic,
-            include_str!(concat!(
-                env!("NEOSIAN_ASSETS"),
-                "/docs/",
-                $topic,
-                ".md"
-            )),
-        ),)+];
-    };
-}
-
-pages!(
-    "quickstart",
-    "memory",
-    "skills",
-    "messaging",
-    "stores",
-    "agents",
-    "cli",
-    "mcp",
-    "interop",
-    "agent",
-    "tools",
-    "local",
-    "topology",
-    "wire",
-    "baselines",
-);
+include!(concat!(env!("OUT_DIR"), "/docs_pages.rs"));
 
 /// One shipped page; `topic` is the argv token.
 pub struct Page {
@@ -65,10 +32,8 @@ pub fn load_page(topic: &str) -> Option<Page> {
     Some(parse(name, text))
 }
 
-/// The Python reader's exact split (`frontmatter.parse_frontmatter`): the
-/// stripped text, whole-line `---` fences, the body stripped again. The
-/// pages are validated at the Python gate, so a page is never fenceless
-/// here; one would simply be all body.
+/// Retain v1's whole-line frontmatter fences and stripped body. The build
+/// script validates every shipped page before embedding it.
 fn parse(topic: &'static str, text: &str) -> Page {
     let lines: Vec<&str> = text.trim().lines().collect();
     let is_fence = |line: &str| line.trim_end_matches('\r') == "---";

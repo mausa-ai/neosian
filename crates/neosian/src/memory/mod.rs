@@ -7,6 +7,7 @@ mod commands;
 pub mod dispatch;
 pub mod grammar;
 pub mod index;
+mod maintain;
 pub mod mounts;
 mod operate;
 pub mod skill;

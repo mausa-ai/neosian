@@ -33,6 +33,7 @@ Its checks cover:
 POSIX permission checks skip on Windows; symlink checks skip there only if
 the runner cannot create a symlink. Missing binaries fail. This corpus does
 not establish crash recovery, cross-file rollback or complete containment
-coverage for every operator. Postgres corruption/schema-generation cases,
-deeper backend races and the remaining transport/client/operator corpus
-retain their existing suites during the S0 transition.
+coverage for every operator. Additional cases preflight erasure sidecars and
+restore targets, skip symlink directories during enumeration, and verify the
+optional YAML converter preserves bodies/history with exclusive backups.
+Postgres and frozen operator/client cases live in adjacent directories.

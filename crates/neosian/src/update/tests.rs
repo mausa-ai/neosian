@@ -214,11 +214,9 @@ fn agent_verbs_pipes_and_json_never_check_for_updates() {
     ] {
         assert!(!human_door(verb, true, false));
     }
-    for verb in ["status", "configure"] {
-        assert!(human_door(verb, true, false));
-        assert!(!human_door(verb, false, false));
-        assert!(!human_door(verb, true, true));
-    }
+    assert!(human_door("status", true, false));
+    assert!(!human_door("status", false, false));
+    assert!(!human_door("status", true, true));
 }
 
 #[cfg(unix)]

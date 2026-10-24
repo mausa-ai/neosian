@@ -10,7 +10,7 @@ use std::path::Path;
 
 use super::ids::parse_conversation_id;
 use super::message::{Message, text_of};
-use super::rows::{TURNS, parse_turn};
+use super::rows::parse_turn;
 use super::{Error, Turn};
 use crate::pyfmt::dumps;
 use crate::text::is_space;
@@ -105,43 +105,22 @@ pub fn scan_turns(
     Ok(found)
 }
 
-/// Every matching turn of the named conversations, or of every one under
-/// `parent`, newest first, cut to `limit`.
-pub fn search_files(
-    parent: &Path,
-    ids: Option<&[String]>,
-    terms: &[String],
-    limit: usize,
-) -> Result<Vec<Turn>, Error> {
-    let held;
-    let ids = match ids {
-        Some(ids) => ids,
-        None => {
-            held = held_ids(parent)?;
-            &held
-        }
-    };
-    let mut found = Vec::new();
-    for conversation_id in ids {
-        let file = parent.join(conversation_id).join(TURNS);
-        if file.is_file() {
-            found.extend(scan_turns(&file, conversation_id, terms)?);
-        }
-    }
-    newest_first(&mut found);
-    found.truncate(limit);
-    Ok(found)
-}
-
 /// Every entry under `parent` with a grammatical name; a foreign name is
 /// skipped, as listings skip foreign files.
 pub fn held_ids(parent: &Path) -> Result<Vec<String>, Error> {
+    if !crate::store::fileio::within(parent.parent().unwrap_or(parent), parent)? {
+        return Err(super::Refused::id_invalid("conversations", "escapes the store root").into());
+    }
     if !parent.is_dir() {
         return Ok(Vec::new());
     }
     let mut ids = Vec::new();
     for entry in fs::read_dir(parent)? {
-        let name = entry?.file_name();
+        let entry = entry?;
+        if !entry.file_type()?.is_dir() {
+            continue;
+        }
+        let name = entry.file_name();
         if let Some(name) = name
             .to_str()
             .filter(|name| parse_conversation_id(name).is_ok())

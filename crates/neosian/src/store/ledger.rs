@@ -9,9 +9,8 @@ use serde_json::json;
 use super::FileStore;
 use super::cursor::{self, Kind, instant};
 use super::error::Error;
-use super::grammar::parse_scope;
 use super::journal::{self, Act, Row};
-use super::layout::{self, REDACTIONS, VERSIONS};
+use super::layout::{self, VERSIONS};
 use super::pages::{Page, page_limit, paged};
 use super::time::Stamp;
 
@@ -104,7 +103,7 @@ impl FileStore {
     }
 
     fn trail(&self, scope: &str) -> Result<Vec<Act>, Error> {
-        let trail = layout::scope_dir(&self.root, scope).join(REDACTIONS);
+        let trail = layout::trail_file(&self.root, scope)?;
         Ok(journal::read_acts(&trail, scope)?)
     }
 
@@ -166,10 +165,4 @@ impl FileStore {
             next_cursor: page.next_cursor,
         })
     }
-}
-
-/// The scope grammar alone, for a restore (which checks no case fold).
-pub fn check_scope(scope: &str) -> Result<(), Error> {
-    parse_scope(scope)?;
-    Ok(())
 }
