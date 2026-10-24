@@ -31,10 +31,13 @@ The [storage suite](storage/README.md) also runs against two file-backed or
 Postgres server processes, or an explicitly selected external test service.
 Its full/base profiles state which optional capabilities were verified; the
 container gate runs the full profile on both backends. This adds independent
-coverage for storage behavior and concurrent writes. Substrate corruption,
-TLS, HTTP MCP sessions, recording hooks, client adapters and the full operator
-corpus still retain their existing suites. Preserve their expectations
-independently before removing the Python implementation they use.
+coverage for storage behavior and concurrent writes. The
+[FileStore corpus](file/README.md) plants malformed files, checks refusal
+without data replacement, private modes, basic containment, numbering and
+reference cursor decoding. Postgres corruption/schema-generation cases,
+deeper races, TLS, HTTP MCP sessions, recording hooks, client adapters and
+the full operator corpus still retain their existing suites. Preserve their
+expectations independently before removing the Python implementation they use.
 
 Change an expectation only with an explained contract decision. Preserve old
 readable fixtures when a new format is introduced; add a new version directory

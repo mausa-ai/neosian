@@ -37,9 +37,11 @@ validating successful storage requests and responses against those files.
 Its versioned fixtures and expected results import no Python product code.
 Its storage subset also checks files, Postgres and independently operated
 test services through `make test-storage-contract` (`neosian docs stores`).
-It complements the existing conformance and differential suites; substrate
-corruption, TLS, HTTP MCP, hooks, adapters and full operator coverage still
-retain their existing checks.
+The FileStore corpus also plants malformed physical records and verifies
+refusals, numbering, private modes and basic containment. These complement
+the existing conformance and differential suites; Postgres corruption,
+deeper races, TLS, HTTP MCP, hooks, adapters and full operator coverage
+still retain their existing checks.
 
 Every route listed here is served by both implementations. The Rust
 binary and the container image serve FileStore or Postgres; the Python

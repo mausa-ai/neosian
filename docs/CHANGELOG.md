@@ -24,9 +24,15 @@ phase close names the version.
   profiles distinguish required and optional capabilities; CI adds the
   suite to Postgres and both container legs. The existing Python store
   kits remain while the remaining coverage is preserved independently.
+- Independent FileStore cases preserve malformed-file refusals, unchanged
+  data after blocked writes, version/turn numbering, private modes, basic
+  symlink containment and reference cursor decoding. `make test-contract`
+  runs them from literal fixtures without Python product imports.
 
 ### Fixed
 
+- A signed negative history-version cursor no longer causes HTTP 500 in
+  the Rust FileStore. Its ordering now matches the Python reference.
 - Paging documentation now distinguishes memory cursors from explicit
   conversation bounds and describes automatic projection pages that keep
   a whole turn together even above 500 entries. Runtime behavior is unchanged.

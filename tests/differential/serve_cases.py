@@ -146,6 +146,15 @@ def _memory() -> list[Case]:
         _post(
             "memory/list_documents", {"scope": "{proj}", "prefix": None, "limit": None}
         ),
+        # The reference decoder accepts signed integer keysets. A negative
+        # history version must not panic in the Rust FileStore.
+        _post(
+            "memory/history",
+            {
+                "scope": "{user}",
+                "cursor": "WyJoaXN0b3J5IiwiMjAyNi0wOC0xOVQxMDowMDowMFoiLCJwcm9maWxlIiwtMV0=",
+            },
+        ),
     )
     ledger = _serve(
         "ledger",

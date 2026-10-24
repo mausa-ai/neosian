@@ -246,6 +246,8 @@ names the implementation for every command.
   `neosian/assets/contracts/wire-v6.openapi.json` and the adjacent
   `state-v1.schema.json`; `make test-contract` checks the Rust binary
   against literal versioned fixtures without Python product imports.
+  Its FileStore cases also plant malformed records and check refused
+  writes, numbering, private modes, basic containment and cursor decoding.
 - `make test-storage-contract` checks the storage wire on files, Postgres
   or a supplied HTTP test service, with full/base capability profiles.
   Local backends use two server processes. External tests use

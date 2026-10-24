@@ -306,7 +306,7 @@ make lint       # ruff + black --check + import-linter
 make typecheck  # mypy --strict neosian tests examples
 make test       # unit tier — the default gate, zero API keys
 make size       # file-size gate (warn 300 / fail 500)
-make test-contract  # built binary, literal formats + raw HTTP/CLI/MCP; no Python product imports
+make test-contract  # built binary, physical file failures + raw HTTP/CLI/MCP; no Python product imports
 make test-storage-contract backend=postgres  # independent wire kit; file/postgres/http backends
 make test-external provider=anthropic file=~/path/to/creds  # real API calls
 make test-postgres                                      # needs NEOSIAN_TEST_POSTGRES_DSN

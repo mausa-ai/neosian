@@ -319,7 +319,12 @@ does not permit ignoring a serial `expected_version` mismatch.
 
 Report the revision, backend/deployment, profile, passed/skipped counts
 and whether separate workers were exercised. These checks cover the wire
-behaviors named in `tests/contract/storage/README.md`; the existing
-substrate corruption, transport and operator suites remain until their
-independent replacements are complete. The HTTP runner itself needs no
-installed neosian Python package, database driver or local binary.
+behaviors named in `tests/contract/storage/README.md`. The separate
+`tests/contract/file/` corpus, included in `make test-contract`, plants
+malformed files and checks refusal without replacing unreadable data,
+private modes, basic containment, numbering and reference cursor decoding.
+It does not promise cross-file rollback or crash recovery. Existing
+Postgres corruption/schema-generation, deeper race, transport and operator
+suites remain until their independent replacements are complete. The HTTP
+runner itself needs no installed neosian Python package, database driver
+or local binary.

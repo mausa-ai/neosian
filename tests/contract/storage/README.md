@@ -53,9 +53,11 @@ Report the neosian revision, backend/deployment, profile, number passed/skipped
 and whether a separate worker was exercised. A base-profile pass is not a
 full-profile pass. Passing this wire suite is evidence for these cases, not
 certification of a service's authentication system, operational durability,
-custom physical format or all backend races. Substrate corruption/format
-planting, TLS, HTTP MCP and the remaining operator/client corpus retain their
-existing tests until independent replacements are complete.
+custom physical format or all backend races. The separate
+[FileStore corpus](../file/README.md) plants malformed files and tests basic
+containment. Postgres corruption/schema-generation cases, deeper races, TLS,
+HTTP MCP and remaining operator/client behavior retain their existing tests
+until independent replacements are complete.
 
 The runner can also live in a test-only environment, with no neosian package:
 

@@ -19,7 +19,7 @@ use super::time::Stamp;
 pub struct HistoryKey {
     pub created_at: Stamp,
     pub path: String,
-    pub version: u64,
+    pub version: i64,
 }
 
 impl HistoryKey {
@@ -31,7 +31,7 @@ impl HistoryKey {
         Ok(Self {
             created_at: Stamp::parse(text(0)).expect("the codec checked the instant"),
             path: text(1).to_string(),
-            version: parts[2].as_u64().expect("the codec checked the integer"),
+            version: parts[2].as_i64().expect("the codec checked the integer"),
         })
     }
 
@@ -43,7 +43,7 @@ impl HistoryKey {
         if row.path != self.path {
             return row.path > self.path;
         }
-        row.version < self.version
+        i128::from(row.version) < i128::from(self.version)
     }
 }
 
