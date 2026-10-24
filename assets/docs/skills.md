@@ -279,3 +279,8 @@ changed pin before loading. See `neosian docs memory` for the full workflow.
 Representative raw MCP clients and all six setup registrations are tested;
 a client's command rendering and context limits remain that client's behavior.
 The tests do not claim identical model execution or live-client UI behavior.
+
+Skill and text-resource revisions appear as ordinary durable document changes
+on capable backends. A host can poll references and decide whether to inspect
+new revisions; profile pins still refuse changed content until explicitly updated.
+No feed event installs or executes a skill. Read `neosian docs changes`.

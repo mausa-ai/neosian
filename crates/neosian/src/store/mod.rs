@@ -14,6 +14,7 @@
 //! implementations may share one root. The ledger reads, the pages, the
 //! eraser and the restore (R2, the wire's substrate) sit in their modules.
 
+mod changes;
 pub mod cursor;
 pub mod envelope;
 pub(crate) mod erasure;
@@ -29,6 +30,7 @@ mod restore;
 pub(crate) mod scalar;
 mod search;
 pub mod time;
+mod transaction;
 mod turns;
 mod write;
 
@@ -140,7 +142,9 @@ impl FileStore {
     }
 
     fn lock(&self) -> io::Result<File> {
-        lock::acquire(&self.root.join(".store.lock"))
+        let held = lock::acquire(&self.root.join(".store.lock"))?;
+        transaction::recover(&self.root)?;
+        Ok(held)
     }
 
     /// Validate the scope and refuse a case fold, on every access: another

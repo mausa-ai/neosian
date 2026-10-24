@@ -99,3 +99,19 @@ Filtered search requires an advertised capability and excludes stale, invalid,
 superseded, expired and draft records before matching or pagination. Erasure
 clears review metadata with the body; expiry alone never deletes data. Prior
 copies and conversation records retain their separate erasure requirements.
+
+## Durable change references
+
+Change pages check current scope read grants before storage; retention, including
+preview, requires operator and scope write permission. A saved cursor does not
+retain revoked access. Events contain paths and versions, not content, and are
+raw authorized audit inspection even when a profile filters governed context.
+Use separate scopes for sensitive draft names. References survive content erasure;
+copies in mailboxes, exports and host state require separate handling.
+
+A mailbox context checks a mounted current document/version when sent. It does
+not grant recipients access, fetch content automatically or authenticate a supplied
+change ID. File recovery plans temporarily contain mutation data in private files;
+unsafe or corrupt plans refuse operation for inspection. Do not discard pending
+plans to bypass recovery. Pause and upgrade all writers together; direct/old
+writers cannot participate in the durable feed. Read `neosian docs changes`.

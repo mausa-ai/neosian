@@ -98,6 +98,7 @@ pub struct InboxMessage {
     pub source: Option<String>,
     pub about: Option<String>,
     pub about_turn: Option<i64>,
+    pub context: Option<super::context::Reference>,
     pub actor: String,
     pub body: String,
     pub created_at: Stamp,
@@ -225,10 +226,14 @@ pub fn to_value(message: &InboxMessage) -> Map<String, Value> {
         ("wake_until", stamp(message.wake_until)),
         ("wake_accepted", json!(message.wake_accepted)),
     ];
-    pairs
+    let mut value: Map<String, Value> = pairs
         .into_iter()
         .map(|(key, value)| (key.to_string(), value))
-        .collect()
+        .collect();
+    if let Some(context) = &message.context {
+        value.insert("context".into(), json!(context));
+    }
+    value
 }
 
 /// `types.decode` over pydantic's own output: the declared fields, a
@@ -277,6 +282,15 @@ pub fn decode(content: &str) -> Result<InboxMessage, String> {
         source: text("source")?,
         about: text("about")?,
         about_turn: integer(&map, "about_turn")?,
+        context: map
+            .get("context")
+            .map(|value| {
+                let reference: super::context::Reference = serde_json::from_value(value.clone())
+                    .map_err(|_| "invalid message context".to_string())?;
+                reference.validate()?;
+                Ok::<_, String>(reference)
+            })
+            .transpose()?,
         actor: required("actor")?,
         body: required("body")?,
         created_at: stamp("created_at")?.ok_or("message field created_at is missing")?,

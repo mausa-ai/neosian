@@ -5,6 +5,7 @@ knowledge
 governance
 skills
 messaging
+changes
 stores
 agents
 cli

@@ -34,3 +34,8 @@ knowledge_params:
   data: "Strict governance change format-1 JSON for prepare; at most 64 KiB. Owner/reviewer labels cannot grant authority."
   expected_version: "Positive current document version, required by prepare."
   reason: "Reason for the review change, 1..240 characters, required by prepare."
+changes: "Read a bounded page of durable state changes from one mounted scope. Events contain references and versions, never document bodies or access authority. Save the returned cursor even on empty pages. A gap or state.scope_reset requires reconciliation with currently authorized state; never assume missing events mean no changes. Read docs topic changes before building a consumer. Polling does not execute work or start agents."
+changes_params:
+  path: "Exactly one mounted scope, such as /project; no document prefix or combined source ordering."
+  limit: "Maximum events, from 1 to 100; default 50."
+  cursor: "Opaque cursor from a previous page of this same source/scope. Omit to start at retained history; handle any explicit gap."

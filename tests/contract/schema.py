@@ -19,6 +19,10 @@ OPENAPI: dict[str, Any] = json.loads(
 REGISTRY: Registry[Any] = Registry().with_resource(
     STATE["$id"], Resource.from_contents(STATE)
 )
+CHANGES: dict[str, Any] = json.loads(
+    (ASSETS / "changes-v1.schema.json").read_text(encoding="utf-8")
+)
+REGISTRY = REGISTRY.with_resource(CHANGES["$id"], Resource.from_contents(CHANGES))
 
 
 def validate(name: str, value: Any) -> None:

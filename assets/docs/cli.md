@@ -26,6 +26,7 @@ protocol servers use their own framing.
 | `memory versions/revert/redact` | Inspect history, undo the newest row, erase content |
 | `memory maintain` | Aged empty/exact-duplicate cleanup; preview with `--dry-run` |
 | `upkeep scan/prepare/inspect/apply` | Bounded findings, guarded proposals, preview and explicitly approved changes |
+| `changes read/prune` | Poll durable scope changes or preview/apply event retention |
 | `messages` | Durable messages, reminders, claims and acknowledgments |
 | `search`, `continue` | Find recorded turns and resume a known conversation |
 | `audit` | Scope ledger, optionally merged with a conversation |
@@ -34,11 +35,11 @@ protocol servers use their own framing.
 | `record` | Consume a foreign agent hook payload on stdin |
 | `mcp` | MCP server over stdio |
 | `serve` | State HTTP and optional MCP HTTP server |
-| `schema state/wire/errors/profile/grants/knowledge/skill/upkeep/governance/postgres` | Print machine contracts or schema SQL |
+| `schema state/wire/errors/profile/grants/knowledge/skill/upkeep/governance/changes/postgres/changes-postgres` | Print machine contracts or schema SQL |
 
 ## Store selection and mounts
 
-`--profile NAME` selects portable sources for upkeep, skill, knowledge, memory, messages, search,
+`--profile NAME` selects portable sources for changes, upkeep, skill, knowledge, memory, messages, search,
 continue, MCP and record, and also configures setup/status. `NEOSIAN_PROFILE`
 and local checkout bindings provide defaults. A selected profile cannot be
 combined with legacy store/scope selectors. Whole-store operators refuse an
@@ -105,3 +106,8 @@ PROPOSAL_FILE` compares current state, including after a partial or interrupted
 apply. These commands share memory/profile selection flags and return JSON.
 Read `neosian docs memory` for literal requests, bounds, authority, recovery
 and concurrency limits; `neosian schema upkeep` prints the format-1 shapes.
+
+`changes read /mount` returns up to 100 reference-only events, including a durable
+cursor on empty pages and explicit reset/retention gaps. `changes prune /mount
+--through CURSOR` previews retention; `--write` applies at most 10,000 events.
+Read `neosian docs changes` for authority, reconciliation and backend setup.

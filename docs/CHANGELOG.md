@@ -8,6 +8,31 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [2.7.0] - 2026-10-25
+
+### Added
+
+- Durable per-scope change-feed version 1 over CLI, MCP and optional wire-6
+  routes. Stable event IDs reference memory, skill and shared-knowledge changes,
+  including rename/delete/erase. Bounded opaque cursors, baseline/restore markers,
+  explicit retention/reset gaps and operator retention preserve replay semantics.
+- File memory mutations and scope restores use a private durable redo journal;
+  the next cooperating storage call recovers interrupted state and event writes.
+  Postgres couples mutations and events transactionally when its optional
+  operator-owned changes extension 1 is installed on schema 4. No automatic DDL.
+- Optional mailbox context pins a mounted current document/version and accepts a
+  descriptive change ID. Existing operations, occurrence fences and claim leases
+  remain; references neither copy content nor grant authority or start agents.
+- Shipped changes guide, schemas and independent replay, concurrent writer,
+  retention, revoked-authority, process-kill and transaction rollback contracts.
+
+### Compatibility
+
+- Existing data formats 1, wire 6, Postgres schema 4 and reserved runtime event
+  names remain. Stop old writers before upgrading; pause and restart all writers
+  when installing the Postgres extension. Conversation and whole-batch operations
+  retain their separate guarantees. References are audit metadata after erasure.
+
 ## [2.6.0] - 2026-10-24
 
 ### Added

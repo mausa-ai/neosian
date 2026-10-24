@@ -115,3 +115,16 @@ Error identifiers remain reserved forever. `neosian schema errors` lists
 each active and reserved v1 identifier; conversation failures retain their
 `agent_conversation_*` names and configuration failures retain
 `agent_configuration_error`. A prefix alone never determines retirement.
+
+## Enabling durable changes
+
+Stop all existing file writers before upgrading to the durable redo-journal
+implementation. Mixing old/direct writers loses change continuity. Existing
+memory, history and mailbox format-1 records remain supported; tracking starts
+with an explicit baseline marker, not a fabricated history.
+
+Postgres schema 4 remains supported without a feed. To enable change-feed v1,
+pause writers, review/apply `neosian schema changes-postgres --schema NAME`,
+then restart every writer with compatible binaries. The optional extension has
+its own version 1 and is never installed on connection. Back up before migration
+and read `neosian docs changes` for recovery, retention and reconciliation.

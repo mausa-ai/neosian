@@ -5,15 +5,12 @@
 //! would let a version number be reused.
 
 use std::fs;
-use std::io;
 use std::path::Path;
 
 use serde_json::{Value, json};
 
 use super::FORMAT;
 use super::error::{Error, MemoryError};
-use super::fileio::{append_line, atomic_write};
-use super::grammar::Actor;
 use super::time::{Stamp, Unreadable};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -70,19 +67,6 @@ pub fn next_version(rows: &[Row]) -> u64 {
     rows.last().map_or(1, |row| row.version + 1)
 }
 
-/// Append one complete row in a single write, synced: the sidecar is
-/// written before the document, and the row must be on disk before the
-/// document can claim its number, or a crash between the two could let
-/// the number be reused.
-pub fn append_row(file: &Path, row: &Row) -> io::Result<()> {
-    append_line(file, &render_row(row), true)
-}
-
-/// Replace the whole sidecar atomically (a redaction rewrites every row).
-pub fn rewrite_rows(file: &Path, rows: &[Row]) -> io::Result<()> {
-    atomic_write(file, &rows.iter().map(render_row).collect::<String>(), true)
-}
-
 /// One erasure act on a scope's trail (`MemoryRedaction`): who cleared
 /// what, when, and how many distinct paths; `path` is None for the whole
 /// scope.
@@ -94,31 +78,7 @@ pub struct Act {
     pub count: u64,
 }
 
-pub fn append_redaction(
-    trail: &Path,
-    path: Option<&str>,
-    actor: &Actor,
-    count: usize,
-) -> io::Result<()> {
-    let act = Act {
-        path: path.map(str::to_string),
-        actor: Some(actor.as_str().to_string()),
-        created_at: Stamp::now(),
-        count: count as u64,
-    };
-    append_line(trail, &render_act(&act), false)
-}
-
-/// The whole trail at once, oldest first: a verbatim restore (§26).
-pub fn write_acts(trail: &Path, acts: &[Act]) -> io::Result<()> {
-    atomic_write(
-        trail,
-        &acts.iter().map(render_act).collect::<String>(),
-        false,
-    )
-}
-
-fn render_act(act: &Act) -> String {
+pub(super) fn render_act(act: &Act) -> String {
     let act = json!({
         "ts": act.created_at.z(),
         "actor": act.actor,
@@ -177,7 +137,7 @@ pub fn read_acts(trail: &Path, scope: &str) -> Result<Vec<Act>, MemoryError> {
 
 /// A row as one JSON line. Parity's unit for a row is the parsed object
 /// (ledger #348): key order and escaping are the writer's own.
-fn render_row(row: &Row) -> String {
+pub(super) fn render_row(row: &Row) -> String {
     let row = json!({
         "neosian_format": FORMAT,
         "path": row.path,

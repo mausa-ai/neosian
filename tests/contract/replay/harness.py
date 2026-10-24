@@ -527,6 +527,11 @@ def snapshot(space: Workspace, *, keep: frozenset[str]) -> dict[str, Any]:
     holds its files as a group ordered by content, never by the ids."""
     files: dict[str, list[Any]] = {}
     for path in sorted(p for p in space.home.rglob("*") if p.is_file()):
+        # S7 internals have independent crash/replay contracts, not v1 fixtures.
+        if {".changes", ".transactions"}.intersection(
+            path.relative_to(space.home).parts
+        ):
+            continue
         rel = normalise(path.relative_to(space.home).as_posix(), space, keep=keep)
         if path.name.endswith(".lock"):
             files.setdefault(rel, []).append("<lock>")

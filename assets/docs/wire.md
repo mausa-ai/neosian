@@ -6,7 +6,7 @@ summary: Storage routes, optional memory search, authorization, paging and wire 
 # The wire
 
 `neosian serve` exposes durable state through wire 6. This page documents
-its twenty-one base storage POST routes, optional `memory/search`, and two GET routes. Literal fixtures and
+its twenty-one base storage POST routes, optional search/change routes, and two GET routes. Literal fixtures and
 independent raw HTTP, CLI and MCP cases pin behavior without a product SDK.
 
 Machine contracts live in `assets/contracts/`: `wire-v6.openapi.json` is
@@ -191,6 +191,8 @@ continuation beside it. `req` marks a required parameter.
 | `memory/redact` | `scope` req; `path`, `actor` | `count` (int) |
 | `memory/history` | `scope` req; `since`, `cursor`, `limit` | `versions`, `next_cursor` |
 | `memory/redactions` | `scope` req; `since`, `cursor`, `limit` | `redactions`, `next_cursor` |
+| `memory/changes` (optional v1) | `scope` req; `cursor`, `limit` (1..100, default 50) | Stream, events, checkpoint/head/floor cursors and explicit gap |
+| `memory/prune_changes` (optional v1) | `scope`, `through` req; `write` (default false) | `format`, `scope`, `removed`, `write`, `earliest_cursor` |
 | `memory/search` (optional v1) | `scope`, `query` req; `prefix`, `fields`, `metadata_keys`, `limit`, `cursor` | `hits`, `next_cursor` |
 
 A write with no `actor` is recorded under the token's client
@@ -416,3 +418,21 @@ compare-and-swap or multi-document transaction. Snapshot rechecks cannot
 close every concurrent-write window. Apply/recovery therefore require paused
 writers, and lost acknowledgements require current-state inspection before
 preparing further work. See `neosian docs memory`.
+
+## Optional change-feed version 1
+
+`change_feed: {version: 1}` advertises durable per-scope state references and
+explicit bounded replay. FileStore supports it; Postgres requires the separate
+operator-installed changes extension 1 on schema 4. Clients refuse absent or
+unsupported declarations. `changes-v1.schema.json` specifies events and pages;
+`neosian docs changes` specifies ordering, atomicity, resets and retention.
+
+`memory/changes` requires current scope read authority before storage access.
+`memory/prune_changes`, including preview, requires operator and scope write
+authority. Profile policies do not hide authorized raw audit references. A cursor
+is scoped, opaque, at most 2,048 UTF-8 bytes and never grants authority. Unknown
+fields and malformed requests refuse. Normal empty pages retain a checkpoint;
+gaps are `untracked`, `retention` or `stream_reset`, never successful omission.
+Events are ordered by sequence and contain references, never document bodies.
+A custom backend must durably couple its mutations and events before advertising
+this capability. Independently passing JSON shape validation is insufficient.

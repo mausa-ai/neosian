@@ -14,6 +14,24 @@ use crate::wire::encode;
 use serde_json::{Value, json};
 
 impl State for RemoteStore {
+    fn supports_changes(&self) -> Result<bool, Error> {
+        Ok(self.capabilities["change_feed"]["version"] == 1)
+    }
+    fn read_changes(
+        &self,
+        scope: &str,
+        request: &crate::changes::model::Request,
+    ) -> Result<crate::changes::model::Page, Error> {
+        self.changes_read(scope, request)
+    }
+    fn prune_changes(
+        &self,
+        scope: &str,
+        through: &str,
+        write: bool,
+    ) -> Result<crate::changes::model::Pruned, Error> {
+        self.changes_prune(scope, through, write)
+    }
     fn search_memory(
         &self,
         scope: &str,

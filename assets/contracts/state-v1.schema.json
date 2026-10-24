@@ -1041,6 +1041,32 @@
         },
         "wake_accepted": {
           "type": "boolean"
+        },
+        "context": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "scope",
+            "path",
+            "version"
+          ],
+          "properties": {
+            "scope": {
+              "$ref": "#/$defs/Scope"
+            },
+            "path": {
+              "$ref": "#/$defs/DocumentPath"
+            },
+            "version": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9223372036854775807
+            },
+            "change_id": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:[1-9][0-9]{0,18}$"
+            }
+          }
         }
       },
       "required": [

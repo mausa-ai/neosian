@@ -7,7 +7,7 @@ use crate::mcp::server::Server;
 use crate::messaging::dispatch::{self, COMMANDS, DELIVERIES, STATUSES};
 use serde_json::{Map, Value};
 
-const FIELDS: [Field; 18] = [
+const FIELDS: [Field; 21] = [
     Field {
         name: "command",
         kind: Kind::Literal(&COMMANDS),
@@ -71,6 +71,21 @@ const FIELDS: [Field; 18] = [
     Field {
         name: "about_turn",
         kind: Kind::Int,
+        presence: Presence::Optional,
+    },
+    Field {
+        name: "context",
+        kind: Kind::Str,
+        presence: Presence::Optional,
+    },
+    Field {
+        name: "context_version",
+        kind: Kind::StrictInt,
+        presence: Presence::Optional,
+    },
+    Field {
+        name: "change_id",
+        kind: Kind::Str,
         presence: Presence::Optional,
     },
     Field {

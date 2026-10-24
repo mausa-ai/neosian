@@ -7,6 +7,7 @@
 //! R1, `serve` from R2, and `setup`, `status`, `configure` from R3.
 
 mod assets;
+mod changes;
 mod cli;
 mod clients;
 mod config;

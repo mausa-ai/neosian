@@ -53,6 +53,12 @@ def endpoints(
                 "{{version}}", "4"
             )
             connection.execute(ddl)
+            extension = (ROOT / "assets/sql/changes-postgres.sql").read_text(
+                encoding="utf-8"
+            )
+            connection.execute(
+                extension.replace("{{schema}}", chr(34) + schema + chr(34))
+            )
         primary = stack.enter_context(serve(binary, postgres_dsn=dsn, schema=schema))
         peer = stack.enter_context(serve(binary, postgres_dsn=dsn, schema=schema))
         yield primary, peer

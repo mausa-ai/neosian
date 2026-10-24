@@ -46,6 +46,13 @@ pub struct Messages {
     delay_seconds: Option<i64>,
     #[arg(long, allow_negative_numbers = true)]
     about_turn: Option<i64>,
+    /// Mounted document to reference; its current version is captured, never its body.
+    #[arg(long)]
+    context: Option<String>,
+    #[arg(long)]
+    context_version: Option<u64>,
+    #[arg(long)]
+    change_id: Option<String>,
     #[arg(long, allow_negative_numbers = true)]
     occurrence: Option<i64>,
     #[arg(long, value_parser = DELIVERIES, default_value = "next_activity")]
@@ -97,6 +104,9 @@ pub fn run(args: &Messages, out: &mut impl Write, err: &mut impl Write) -> io::R
         "delay_seconds": args.delay_seconds,
         "about": args.about,
         "about_turn": args.about_turn,
+        "context": args.context,
+        "context_version": args.context_version,
+        "change_id": args.change_id,
         "occurrence": args.occurrence,
         "token": args.token,
         "outcome": args.outcome,

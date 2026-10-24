@@ -30,5 +30,6 @@
             RETURNING 1
         )
         SELECT g.existed, g.format_ok,
+               (SELECT version FROM vrow) AS version,
                (SELECT neosian_format FROM current) AS current_format
         FROM gate AS g

@@ -1,9 +1,6 @@
-//! Store mobility's write path (`memory/file_portable.py`, DESIGN §26):
-//! the units a store holds, and a verbatim restore of one. Sidecars land
-//! first, atomic and synced, so a number can never be reused even if the
-//! process dies before the documents land; then the trail, then the
-//! documents; everything private. The unit must be empty, else
-//! `target_occupied` and nothing is written.
+//! Verbatim restore into empty units. A scope's redo plan recovers its journals,
+//! documents and reset event together. Conversation restoration retains its
+//! separate journal-first contract. Occupied targets refuse before writing.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -15,6 +12,8 @@ use super::fileio::{atomic_write, private_mkdir};
 use super::grammar::validate_document_path;
 use super::journal::{self, Act, Row};
 use super::layout::{self, DOCUMENTS, VERSIONS};
+use super::transaction::WriteOp;
+use crate::changes::model::Change;
 use crate::conversation::ids::parse_conversation_id;
 use crate::conversation::rows::{
     CONVERSATIONS, PROJECTIONS, REDACTIONS as TRAIL, TURNS, render_projection, render_redaction,
@@ -102,16 +101,32 @@ impl FileStore {
         for row in versions {
             by_path.entry(row.path.clone()).or_default().push(row);
         }
+        let mut writes = vec![];
         for (path, mut rows) in by_path {
             rows.sort_by_key(|row| row.version);
-            journal::rewrite_rows(&layout::journal_file(&self.root, scope, &path)?, &rows)?;
+            writes.push(WriteOp::put(
+                &self.root,
+                &layout::journal_file(&self.root, scope, &path)?,
+                rows.iter().map(journal::render_row).collect(),
+            )?);
         }
         if !redactions.is_empty() {
-            journal::write_acts(&trail, redactions)?;
+            writes.push(WriteOp::put(
+                &self.root,
+                &trail,
+                redactions.iter().map(journal::render_act).collect(),
+            )?);
         }
         for document in documents {
             let file = layout::doc_file(&self.root, scope, &document.path)?;
-            atomic_write(&file, &render(&document.envelope, &document.content), false)?;
+            writes.push(WriteOp::put(
+                &self.root,
+                &file,
+                render(&document.envelope, &document.content),
+            )?);
+        }
+        if !writes.is_empty() {
+            self.commit_changes(scope, writes, Change::reset("restored"))?;
         }
         Ok(())
     }

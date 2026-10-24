@@ -121,6 +121,19 @@
                         }
                       },
                       "description": "Optional governance format-1 filtering on memory/search. Requires memory_search version 1. No new access authority."
+                    },
+                    "change_feed": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "version": {
+                          "const": 1
+                        }
+                      },
+                      "required": [
+                        "version"
+                      ],
+                      "description": "Optional durable scope changes and operator retention, format 1."
                     }
                   },
                   "required": [
@@ -3842,6 +3855,347 @@
                   ],
                   "additionalProperties": false,
                   "description": "Ascending document-path order. A nonfinal page has exactly limit hits; no total count. Only current, non-redacted memory documents are searched. sessions/, messages/, message-links/ and handoff are excluded. Each page reads current state; writes before the last key require a new query."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid parameters or storage refusal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "state-v1.schema.json#/$defs/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bearer; plain text, not the JSON envelope",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string",
+                  "const": "Bearer"
+                }
+              }
+            },
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "const": "unauthorized"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated request outside its allowance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "state-v1.schema.json#/$defs/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Body exceeds 64 MiB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "state-v1.schema.json#/$defs/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal/driver error, plain text with no storage envelope",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/memory/changes": {
+      "post": {
+        "operationId": "memory_changes",
+        "summary": "Read durable changes in one authorized scope (optional change-feed version 1)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "scope": {
+                    "$ref": "state-v1.schema.json#/$defs/Scope"
+                  },
+                  "cursor": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2048,
+                        "description": "Opaque, at most 2048 UTF-8 bytes. Never an authorization token."
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100,
+                    "default": 50
+                  }
+                },
+                "required": [
+                  "scope"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "format": {
+                      "const": 1
+                    },
+                    "scope": {
+                      "$ref": "state-v1.schema.json#/$defs/Scope"
+                    },
+                    "stream": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "events": {
+                      "type": "array",
+                      "maxItems": 100,
+                      "items": {
+                        "$ref": "changes-v1.schema.json#/$defs/Event"
+                      }
+                    },
+                    "cursor": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 2048,
+                          "description": "Opaque, at most 2048 UTF-8 bytes. Never an authorization token."
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "head_cursor": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 2048,
+                          "description": "Opaque, at most 2048 UTF-8 bytes. Never an authorization token."
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "earliest_cursor": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 2048,
+                          "description": "Opaque, at most 2048 UTF-8 bytes. Never an authorization token."
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "has_more": {
+                      "type": "boolean"
+                    },
+                    "gap": {
+                      "enum": [
+                        null,
+                        "untracked",
+                        "retention",
+                        "stream_reset"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "format",
+                    "scope",
+                    "stream",
+                    "events",
+                    "cursor",
+                    "head_cursor",
+                    "earliest_cursor",
+                    "has_more",
+                    "gap"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid parameters or storage refusal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "state-v1.schema.json#/$defs/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bearer; plain text, not the JSON envelope",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string",
+                  "const": "Bearer"
+                }
+              }
+            },
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "const": "unauthorized"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated request outside its allowance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "state-v1.schema.json#/$defs/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Body exceeds 64 MiB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "state-v1.schema.json#/$defs/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal/driver error, plain text with no storage envelope",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/memory/prune_changes": {
+      "post": {
+        "operationId": "memory_prune_changes",
+        "summary": "Preview or apply operator retention through a scope cursor (optional change-feed version 1)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "scope": {
+                    "$ref": "state-v1.schema.json#/$defs/Scope"
+                  },
+                  "through": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2048,
+                    "description": "Opaque, at most 2048 UTF-8 bytes. Never an authorization token."
+                  },
+                  "write": {
+                    "type": "boolean",
+                    "default": false
+                  }
+                },
+                "required": [
+                  "scope",
+                  "through"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "format": {
+                      "const": 1
+                    },
+                    "scope": {
+                      "$ref": "state-v1.schema.json#/$defs/Scope"
+                    },
+                    "removed": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 10000
+                    },
+                    "write": {
+                      "type": "boolean"
+                    },
+                    "earliest_cursor": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 2048,
+                      "description": "Opaque, at most 2048 UTF-8 bytes. Never an authorization token."
+                    }
+                  },
+                  "required": [
+                    "format",
+                    "scope",
+                    "removed",
+                    "write",
+                    "earliest_cursor"
+                  ]
                 }
               }
             }

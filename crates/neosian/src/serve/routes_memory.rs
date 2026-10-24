@@ -13,7 +13,17 @@ use super::params::{Payload, optional_int, optional_str, optional_timestamp, req
 use super::routes::Route;
 use crate::store::grammar::Actor;
 
-pub const ROUTES: [Route; 10] = [
+pub const ROUTES: [Route; 12] = [
+    Route {
+        name: "memory/changes",
+        handler: changes,
+        whole_store: false,
+    },
+    Route {
+        name: "memory/prune_changes",
+        handler: prune_changes,
+        whole_store: false,
+    },
     Route {
         name: "memory/search",
         handler: search,
@@ -65,6 +75,35 @@ pub const ROUTES: [Route; 10] = [
         whole_store: false,
     },
 ];
+
+fn changes(store: &dyn Backend, payload: &Payload, _client: &str) -> Result<Value, Fail> {
+    let scope = require_str(payload, "scope")?;
+    let mut params = payload.clone();
+    params.remove("scope");
+    let request = serde_json::from_value(Value::Object(params))
+        .map_err(|_| Fail::value("invalid change-feed request"))?;
+    Ok(
+        serde_json::to_value(store.read_changes(&scope, &request)?)
+            .expect("change page serializes"),
+    )
+}
+
+fn prune_changes(store: &dyn Backend, payload: &Payload, _client: &str) -> Result<Value, Fail> {
+    #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Prune {
+        scope: String,
+        through: String,
+        #[serde(default)]
+        write: bool,
+    }
+    let p: Prune = serde_json::from_value(Value::Object(payload.clone()))
+        .map_err(|_| Fail::value("invalid change-retention request"))?;
+    Ok(
+        serde_json::to_value(store.prune_changes(&p.scope, &p.through, p.write)?)
+            .expect("prune serializes"),
+    )
+}
 
 fn search(store: &dyn Backend, payload: &Payload, _client: &str) -> Result<Value, Fail> {
     let scope = require_str(payload, "scope")?;

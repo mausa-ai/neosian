@@ -1,0 +1,459 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neosian.com/contracts/changes-v1.schema.json",
+  "title": "Durable scope changes format 1",
+  "description": "Optional wire-6 change_feed version 1. Authorization precedes reads and retention. Read each page under current grants; no cross-source order or historical bodies. Retention and stream resets require explicit reconciliation.",
+  "$defs": {
+    "Event": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "const": 1
+        },
+        "id": {
+          "type": "string",
+          "maxLength": 57
+        },
+        "stream": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9223372036854775807
+        },
+        "scope": {
+          "$ref": "state-v1.schema.json#/$defs/Scope"
+        },
+        "kind": {
+          "enum": [
+            "state.document_created",
+            "state.document_modified",
+            "state.document_deleted",
+            "state.document_renamed",
+            "state.document_erased",
+            "state.scope_erased",
+            "state.scope_reset"
+          ]
+        },
+        "path": {
+          "anyOf": [
+            {
+              "$ref": "state-v1.schema.json#/$defs/DocumentPath"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9223372036854775807
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "previous_path": {
+          "anyOf": [
+            {
+              "$ref": "state-v1.schema.json#/$defs/DocumentPath"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "previous_version": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9223372036854775807
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "created_at": {
+          "$ref": "state-v1.schema.json#/$defs/Timestamp"
+        },
+        "reason": {
+          "enum": [
+            null,
+            "tracking_started",
+            "restored"
+          ]
+        }
+      },
+      "required": [
+        "format",
+        "id",
+        "stream",
+        "sequence",
+        "scope",
+        "kind",
+        "path",
+        "version",
+        "previous_path",
+        "previous_version",
+        "created_at",
+        "reason"
+      ],
+      "description": "Reference-only audit event. ID is stream:sequence. Sequence orders this scope; timestamps do not. No content, opaque metadata or actor copies.",
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "state.document_created",
+                  "state.document_modified",
+                  "state.document_deleted"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "path": {
+                "$ref": "state-v1.schema.json#/$defs/DocumentPath"
+              },
+              "version": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9223372036854775807
+              },
+              "previous_path": {
+                "type": "null"
+              },
+              "previous_version": {
+                "type": "null"
+              },
+              "reason": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "state.document_renamed"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "path": {
+                "$ref": "state-v1.schema.json#/$defs/DocumentPath"
+              },
+              "version": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9223372036854775807
+              },
+              "previous_path": {
+                "$ref": "state-v1.schema.json#/$defs/DocumentPath"
+              },
+              "previous_version": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9223372036854775807
+              },
+              "reason": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "state.document_erased"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "path": {
+                "$ref": "state-v1.schema.json#/$defs/DocumentPath"
+              },
+              "version": {
+                "type": "null"
+              },
+              "previous_path": {
+                "type": "null"
+              },
+              "previous_version": {
+                "type": "null"
+              },
+              "reason": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "state.scope_erased",
+                  "state.scope_reset"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "path": {
+                "type": "null"
+              },
+              "version": {
+                "type": "null"
+              },
+              "previous_path": {
+                "type": "null"
+              },
+              "previous_version": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "state.scope_erased"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "reason": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "state.scope_reset"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "reason": {
+                "enum": [
+                  "tracking_started",
+                  "restored"
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "Request": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "scope": {
+          "$ref": "state-v1.schema.json#/$defs/Scope"
+        },
+        "cursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048,
+              "description": "Opaque, at most 2048 UTF-8 bytes. Never an authorization token."
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 50
+        }
+      },
+      "required": [
+        "scope"
+      ]
+    },
+    "Page": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "const": 1
+        },
+        "scope": {
+          "$ref": "state-v1.schema.json#/$defs/Scope"
+        },
+        "stream": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "events": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "$ref": "changes-v1.schema.json#/$defs/Event"
+          }
+        },
+        "cursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048,
+              "description": "Opaque, at most 2048 UTF-8 bytes. Never an authorization token."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "head_cursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048,
+              "description": "Opaque, at most 2048 UTF-8 bytes. Never an authorization token."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "earliest_cursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048,
+              "description": "Opaque, at most 2048 UTF-8 bytes. Never an authorization token."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "has_more": {
+          "type": "boolean"
+        },
+        "gap": {
+          "enum": [
+            null,
+            "untracked",
+            "retention",
+            "stream_reset"
+          ]
+        }
+      },
+      "required": [
+        "format",
+        "scope",
+        "stream",
+        "events",
+        "cursor",
+        "head_cursor",
+        "earliest_cursor",
+        "has_more",
+        "gap"
+      ]
+    },
+    "Prune": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "scope": {
+          "$ref": "state-v1.schema.json#/$defs/Scope"
+        },
+        "through": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048,
+          "description": "Opaque, at most 2048 UTF-8 bytes. Never an authorization token."
+        },
+        "write": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "required": [
+        "scope",
+        "through"
+      ]
+    },
+    "Pruned": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "const": 1
+        },
+        "scope": {
+          "$ref": "state-v1.schema.json#/$defs/Scope"
+        },
+        "removed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        },
+        "write": {
+          "type": "boolean"
+        },
+        "earliest_cursor": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048,
+          "description": "Opaque, at most 2048 UTF-8 bytes. Never an authorization token."
+        }
+      },
+      "required": [
+        "format",
+        "scope",
+        "removed",
+        "write",
+        "earliest_cursor"
+      ]
+    }
+  }
+}

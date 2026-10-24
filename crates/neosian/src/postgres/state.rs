@@ -11,6 +11,24 @@ use crate::store::time::Stamp;
 use crate::store::{Document, Entry, Restored};
 
 impl State for PostgresStore {
+    fn supports_changes(&self) -> Result<bool, Error> {
+        self.supports_changes()
+    }
+    fn read_changes(
+        &self,
+        scope: &str,
+        request: &crate::changes::model::Request,
+    ) -> Result<crate::changes::model::Page, Error> {
+        self.read_changes(scope, request)
+    }
+    fn prune_changes(
+        &self,
+        scope: &str,
+        through: &str,
+        write: bool,
+    ) -> Result<crate::changes::model::Pruned, Error> {
+        self.prune_changes(scope, through, write)
+    }
     fn search_memory(
         &self,
         scope: &str,

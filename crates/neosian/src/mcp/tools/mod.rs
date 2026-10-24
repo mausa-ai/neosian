@@ -4,6 +4,7 @@
 //! in the Python server's order: `memory`, the skills, `messages`, the
 //! history pair, the handoff pair, then docs, history metadata and memory search.
 
+mod changes;
 mod handoff;
 mod history;
 mod knowledge;
@@ -110,6 +111,7 @@ pub fn served(memory: &Memory) -> Vec<Tool> {
     tools.push(upkeep::review());
     tools.push(upkeep::apply());
     tools.push(knowledge::tool());
+    tools.push(changes::tool());
     tools
 }
 

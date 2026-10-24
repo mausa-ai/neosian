@@ -1,6 +1,7 @@
 //! Postgres over the same atomic statements as the Python reference store.
 //! The schema is operator-owned; opening a store never applies DDL.
 
+mod changes;
 mod connection;
 mod memory;
 mod pages;
@@ -25,6 +26,7 @@ pub(crate) use sql;
 
 pub struct PostgresStore {
     pool: connection::Pool,
+    changes: std::sync::OnceLock<bool>,
 }
 
 pub fn validate_schema(name: &str) -> Result<(), MemoryError> {
@@ -49,6 +51,7 @@ impl PostgresStore {
         validate_schema(schema)?;
         Ok(Self {
             pool: connection::Pool::new(dsn, schema)?,
+            changes: std::sync::OnceLock::new(),
         })
     }
 

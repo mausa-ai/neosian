@@ -14,6 +14,7 @@ fn item(actionable: bool, delivery: Delivery) -> InboxMessage {
         source: Some("sender".to_string()),
         about: None,
         about_turn: None,
+        context: None,
         actor: "cli:local".to_string(),
         body: "one check".to_string(),
         created_at: at("2026-10-03T00:00:00Z"),

@@ -1,6 +1,6 @@
 //! The memory ABC; mutations return their own statement's document snapshot.
 
-use super::{PostgresStore, rows, sql};
+use super::{PostgresStore, changes::Mutation, rows, sql};
 use crate::remote::codec;
 use crate::state::Deleted;
 use crate::store::error::{Error, MemoryError};
@@ -33,13 +33,14 @@ impl PostgresStore {
         rows::address(scope, path)?;
         // The wire represents negative expectations as MAX; they still conflict.
         let expectation = expected.map(|v| i32::try_from(v).unwrap_or(-1));
-        let mut row = self.one(
+        let mut row = self.mutate(
             sql!("store/write_document"),
             json!({
                 "scope":scope,"path":path,"content":content,"actor":actor.as_str(),
                 "expected":expectation,"now":Stamp::now().z(),"format":FORMAT
             }),
             true,
+            Mutation::Write,
         )?;
         guard(scope, path, &row)?;
         if row["version"].is_null() {
@@ -66,9 +67,9 @@ impl PostgresStore {
 
     pub fn delete(&self, scope: &str, path: &str, actor: &Actor) -> Result<Deleted, Error> {
         rows::address(scope, path)?;
-        let row = self.one(sql!("store/delete_document"), json!({
+        let row = self.mutate(sql!("store/delete_document"), json!({
             "scope":scope,"path":path,"actor":actor.as_str(),"now":Stamp::now().z(),"format":FORMAT
-        }), true)?;
+        }), true, Mutation::Delete)?;
         guard(scope, path, &row)?;
         Ok(Deleted {
             removed: row["existed"] == true,
@@ -85,9 +86,9 @@ impl PostgresStore {
     ) -> Result<Document, Error> {
         rows::address(scope, src)?;
         rows::address(scope, dst)?;
-        let mut row = self.one(sql!("store/rename_document"), json!({
+        let mut row = self.mutate(sql!("store/rename_document"), json!({
             "scope":scope,"src":src,"dst":dst,"actor":actor.as_str(),"now":Stamp::now().z(),"format":FORMAT
-        }), true)?;
+        }), true, Mutation::Rename)?;
         if row["src_exists"] != true {
             return Err(MemoryError::not_found(scope, src).into());
         }
@@ -159,10 +160,11 @@ impl PostgresStore {
         if let Some(path) = path {
             rows::address(scope, path)?;
         }
-        let row = self.one(
+        let row = self.mutate(
             sql!("store/redact"),
             json!({"scope":scope,"path":path,"actor":actor.as_str(),"now":Stamp::now().z(),"format":FORMAT}),
             false,
+            Mutation::Erase,
         )?;
         guard(
             scope,

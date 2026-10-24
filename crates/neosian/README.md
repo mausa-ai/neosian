@@ -48,3 +48,9 @@ before preparing remaining work. Read `neosian docs memory` for the workflow.
 policies for shared procedures and decisions. Review changes use upkeep proposals;
 profile policies select effective knowledge and skills without granting access.
 Read `neosian docs governance` for content hashes, expiry and erasure.
+
+`neosian changes read` and MCP `changes` expose bounded, durable per-scope
+references. File memory mutations recover through a redo journal; Postgres uses
+transactions with its optional operator-installed changes extension. Hosts handle
+reconciliation and can attach references to mailbox work. Read `neosian docs
+changes` for cursors, gaps, current authority and upgrade requirements.

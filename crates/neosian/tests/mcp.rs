@@ -141,7 +141,8 @@ fn the_state_set_is_served_over_stdio() {
             "search_memory",
             "upkeep_review",
             "upkeep_apply",
-            "knowledge"
+            "knowledge",
+            "changes"
         ]
     );
     assert_eq!(

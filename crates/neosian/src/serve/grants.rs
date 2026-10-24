@@ -107,14 +107,20 @@ impl Grants {
         if whole {
             return if g.operator { None } else { deny() };
         }
-        let erase = route.ends_with("/redact") || route.ends_with("/redact_turns");
+        let erase = route.ends_with("/redact")
+            || route.ends_with("/redact_turns")
+            || route == "memory/prune_changes";
         if erase && !g.operator {
             return deny();
         }
         if route.starts_with("memory/") {
             let write = matches!(
                 route,
-                "memory/write" | "memory/delete" | "memory/rename" | "memory/redact"
+                "memory/write"
+                    | "memory/delete"
+                    | "memory/rename"
+                    | "memory/redact"
+                    | "memory/prune_changes"
             );
             return match p.get("scope").and_then(Value::as_str) {
                 Some(scope)

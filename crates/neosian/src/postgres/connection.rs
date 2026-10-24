@@ -1,5 +1,5 @@
-//! Four lazy autocommit connections. No BEGIN, COMMIT or DDL, and retries
-//! only for known, aborted version/turn races. Never replay a lost request.
+//! Four lazy connections, with transactions for optional durable change events.
+//! No DDL; retry only known aborted races, never a lost commit response.
 
 use std::collections::HashMap;
 use std::io;
@@ -75,6 +75,26 @@ impl Pool {
         params: &Value,
         retry: bool,
     ) -> io::Result<Vec<Value>> {
+        self.query(template, params, retry, None)
+    }
+
+    pub(super) fn mutate(
+        &self,
+        template: &'static str,
+        params: &Value,
+        retry: bool,
+        mutation: super::changes::Mutation,
+    ) -> io::Result<Vec<Value>> {
+        self.query(template, params, retry, Some(mutation))
+    }
+
+    fn query(
+        &self,
+        template: &'static str,
+        params: &Value,
+        retry: bool,
+        mutation: Option<super::changes::Mutation>,
+    ) -> io::Result<Vec<Value>> {
         let (sql, names) = parameters(&template.replace("{{schema}}", &self.schema));
         self.runtime.block_on(async {
             for attempt in 0..ATTEMPTS {
@@ -91,7 +111,7 @@ impl Pool {
                     let prepared = conn.client.prepare(&sql).await.map_err(failure)?;
                     conn.statements.insert(template, prepared);
                 }
-                let statement = &conn.statements[template];
+                let statement = conn.statements[template].clone();
                 let bound = names
                     .iter()
                     .zip(statement.params())
@@ -104,7 +124,40 @@ impl Pool {
                     .collect::<io::Result<Vec<_>>>()?;
                 let borrowed: Vec<&(dyn ToSql + Sync)> =
                     bound.iter().map(|value| &**value as _).collect();
-                let result = conn.client.query(statement, &borrowed).await;
+                let result = if let Some(mutation) = mutation {
+                    let tx = conn.client.transaction().await.map_err(failure)?;
+                    let scope = params["scope"]
+                        .as_str()
+                        .ok_or_else(|| io::Error::other("missing scope"))?;
+                    let lock_key = format!("{}:{scope}", self.schema);
+                    tx.execute(super::sql!("changes/lock"), &[&lock_key])
+                        .await
+                        .map_err(failure)?;
+                    match tx.query(&statement, &borrowed).await {
+                        Ok(rows) => {
+                            let values = rows
+                                .iter()
+                                .map(values::row)
+                                .collect::<io::Result<Vec<_>>>()?;
+                            let result = super::changes::finish(
+                                &tx,
+                                &self.schema,
+                                mutation,
+                                params,
+                                &values,
+                            )
+                            .await?;
+                            tx.commit().await.map_err(failure)?;
+                            return Ok(result.unwrap_or(values));
+                        }
+                        Err(error) => {
+                            tx.rollback().await.map_err(failure)?;
+                            Err(error)
+                        }
+                    }
+                } else {
+                    conn.client.query(&statement, &borrowed).await
+                };
                 drop(held);
                 match result {
                     Ok(rows) => return rows.iter().map(values::row).collect(),
@@ -136,7 +189,7 @@ pub(super) fn failure(error: tokio_postgres::Error) -> io::Error {
 }
 
 /// Only the trusted assets contain placeholders. All caller data stays bound.
-fn parameters(template: &str) -> (String, Vec<String>) {
+pub(super) fn parameters(template: &str) -> (String, Vec<String>) {
     let mut sql = String::new();
     let mut names = Vec::new();
     let mut rest = template;

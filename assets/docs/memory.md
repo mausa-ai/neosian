@@ -278,3 +278,12 @@ text. Knowledge headers remain readable, and source provenance, dependencies
 and resource hashes are content metadata. Raw memory edits can invalidate a
 skill; use `skill validate` and review its manifest. Root erasure does not
 cascade to separate resources or copies. See `neosian docs skills`.
+
+## Follow durable changes
+
+`changes read /mount` and MCP `changes` poll stable scope events for memory,
+skills and knowledge, including rename/delete/erase references. File mutations
+now recover documents, audit rows and events through one redo plan; Postgres
+uses a transaction when its optional changes extension is installed. These
+per-mutation guarantees do not remove paused-writer requirements for upkeep,
+maintenance or exports. Read `neosian docs changes` for bounded replay and gaps.

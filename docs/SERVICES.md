@@ -175,3 +175,18 @@ supply reasoning, scheduling and approval policy. Pause other writers for apply
 and recovery; inspect partial or lost-response outcomes before fresh proposals.
 The default contracts cover file/HTTP guards and fault injection; the Postgres
 tier checks preserved physical rows, revisions and erasure.
+
+## Change-feed storage extension
+
+FileStore has no new runtime setting: cooperating memory writers persist private
+redo plans and reference-only events. Stop older writers before upgrading.
+Postgres schema 4 can operate without the optional feed. To enable extension 1,
+pause writers, review `neosian schema changes-postgres --schema NAME`, apply with
+the schema owner's connection, and restart all compatible writers. No DDL runs
+on connection. The core owns no automatic retention schedule; operators preview
+and apply bounded `changes prune` requests. See `neosian docs changes`.
+
+The independent file and Postgres conformance fixtures enable the optional feed;
+physical Postgres tests also verify compatibility without it, refusal of partial
+or future extensions, and rollback when events cannot be recorded. Container
+conformance installs the extension only in its disposable owned schema.

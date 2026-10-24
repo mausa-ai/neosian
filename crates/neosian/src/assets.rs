@@ -159,7 +159,7 @@ mod tests {
                     .to_string()
             )
         );
-        assert_eq!(messages.len(), 18);
+        assert_eq!(messages.len(), 21);
         assert_eq!(mapping(MEMORY, "params").unwrap().len(), 11);
         assert!(
             folded(MEMORY, "tool")

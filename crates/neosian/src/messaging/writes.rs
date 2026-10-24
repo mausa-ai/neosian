@@ -26,6 +26,7 @@ pub struct Send<'a> {
     pub delay_seconds: Option<i64>,
     pub about: Option<&'a str>,
     pub about_turn: Option<i64>,
+    pub context: Option<super::context::Reference>,
 }
 
 /// What a lifecycle `update` names beside the action.
@@ -49,6 +50,18 @@ impl Mailbox<'_> {
             return Err(Error::Value("message body must not be empty".to_string()));
         }
         check_target(send.scope, send.about, send.about_turn).map_err(Error::Value)?;
+        if let Some(context) = &send.context {
+            context.validate().map_err(Error::Value)?;
+            self.mounted(&context.scope, false)?;
+            let current = self.store.read(&context.scope, &context.path)?;
+            if !current.is_some_and(|doc| {
+                !doc.envelope.redacted && doc.envelope.version == context.version
+            }) {
+                return Err(Error::Value(
+                    "context document changed, is missing or erased".into(),
+                ));
+            }
+        }
         let now = self.now().utc();
         let message = InboxMessage {
             id: Uuid::new_v4().to_string(),
@@ -58,6 +71,7 @@ impl Mailbox<'_> {
             source: self.session.clone(),
             actor: self.actor.as_str().to_string(),
             body: body.to_string(),
+            context: send.context.clone(),
             created_at: now,
             due_at: due_time(now, send.due_at, send.delay_seconds).map_err(Error::Value)?,
             delivery: send.delivery,

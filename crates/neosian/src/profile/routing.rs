@@ -123,6 +123,29 @@ impl Routed {
 }
 
 impl State for Routed {
+    fn read_changes(
+        &self,
+        scope: &str,
+        request: &crate::changes::model::Request,
+    ) -> Result<crate::changes::model::Page, Error> {
+        if !self.profile.mounts.iter().any(|m| m.scope == scope) {
+            return Err(denied());
+        }
+        self.memory(scope, false, false)?
+            .read_changes(scope, request)
+    }
+    fn prune_changes(
+        &self,
+        scope: &str,
+        through: &str,
+        write: bool,
+    ) -> Result<crate::changes::model::Pruned, Error> {
+        if !self.profile.mounts.iter().any(|m| m.scope == scope) {
+            return Err(denied());
+        }
+        self.memory(scope, true, true)?
+            .prune_changes(scope, through, write)
+    }
     fn search_memory(
         &self,
         scope: &str,

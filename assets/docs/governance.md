@@ -142,3 +142,9 @@ The server checks grants on each request; configuration/token revocation takes
 effect after server restart. Long-lived local MCP bridges reauthorize each storage
 call. Already delivered context remains in the host's possession. Direct file and
 Postgres connections remain operator access under OS/database permissions.
+
+Governance revisions emit ordinary document changes when the backend supports
+the durable feed. Those references are raw authorized audit data and are not
+filtered by effective/approved retrieval policies. A host may use them to
+reconsider cached context or request a review; neosian runs no automatic review.
+See `neosian docs changes` for current grants and erasure/reference limits.

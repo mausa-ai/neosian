@@ -37,3 +37,8 @@ commands. The frozen expected.json bytes are unchanged.
 S6's optional `knowledge_policy` handshake and `knowledge` tool discovery are
 projected out of this frozen comparison and tested independently. All original
 fixture and expected-result bytes remain unchanged.
+
+S7 projects out optional change-feed discovery and the three optional mailbox
+reference inputs with their description paragraph. Its `.changes/` and
+`.transactions/` files have independent physical recovery tests; all legacy
+document/history bytes still compare against the frozen fixtures.

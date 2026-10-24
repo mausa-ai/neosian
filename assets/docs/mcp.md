@@ -14,6 +14,7 @@ and shipped skills are embedded data assets; no model client runs in neosian.
 |---|---|
 | `memory` | Mounted read/create/replace/insert/delete/rename operations |
 | `list_skills`, `load_skill` | Discover and read mounted and shipped skills |
+| `changes` | Read bounded durable change references for one mounted scope |
 | `messages` | Durable mailbox lifecycle |
 | `recall_turn`, `search_history` | Read recorded turns and search history |
 | `continue_session`, `handoff` | Explicit continuation and departure note |
@@ -27,7 +28,7 @@ and shipped skills are embedded data assets; no model client runs in neosian.
 Without a profile, the handoff pair is present only when a read-write mount
 can hold session state. With `--profile NAME`, history tools require an
 explicit history selection; `continue_session` can read with capture off,
-while `handoff` requires capture permission. `docs`, `memory_history` and `search_memory`
+while `handoff` requires capture permission. `docs`, `memory_history`, `changes` and `search_memory`
 carry read-only, non-destructive annotations.
 `memory_history(path, limit=20)` requires a mounted virtual path, accepts 1–100
 rows, and returns attribution/version metadata without historical bodies.
@@ -109,3 +110,9 @@ Managed skills check dependencies, supporting text hashes and profile revision
 guards on load. The existing list/load tools and prompts expose source/version
 details; they add no execution or permission grant. Missing, erased or changed
 pinned content refuses. CLI `skill` manages these same versioned documents.
+
+`changes(path="/project", limit=50, cursor=...)` polls one exact mount root,
+rechecks current authority and preserves custom-backend opaque cursors. It never
+prunes events. Handle reset/retention gaps and reconcile using `neosian docs
+changes`. Optional message context references let the host connect notifications
+to the existing mailbox workflow without copying bodies or granting access.

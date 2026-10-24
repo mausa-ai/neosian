@@ -210,3 +210,9 @@ observations, including collection definitions, and uses normal versioned
 writes. It does not rewrite definitions, resolve semantic disagreements or
 repair inbound links automatically. See `neosian docs memory` for approval,
 revision recovery and paused-writer requirements.
+
+Imports, reviews, renames and erasures emit ordinary document changes on capable
+backends. A host can follow their durable references without copying knowledge
+bodies into a notification log. Scope restoration instead announces reconciliation.
+The feed does not supply incremental replica exchange or batch atomicity; see
+`neosian docs changes` for checkpoints and gaps.

@@ -81,6 +81,13 @@ async fn capabilities(State(shared): State<super::State>, request: Request) -> R
     if let Some(grants) = &shared.clients.1 {
         capability["authorization"] = grants.capability();
     }
+    let store = shared.store.clone();
+    match tokio::task::spawn_blocking(move || store.supports_changes()).await {
+        Ok(Ok(true)) => capability["change_feed"] = json!({"version":1}),
+        Ok(Ok(false)) => {}
+        Ok(Err(error)) => return Fail::from(error).response(),
+        Err(_) => return Fail::internal().response(),
+    }
     json(StatusCode::OK, &capability)
 }
 

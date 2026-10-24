@@ -18,6 +18,28 @@ pub struct Deleted {
 }
 
 pub trait State: Send + Sync {
+    fn supports_changes(&self) -> Result<bool, Error> {
+        Ok(false)
+    }
+    fn read_changes(
+        &self,
+        _scope: &str,
+        _request: &crate::changes::model::Request,
+    ) -> Result<crate::changes::model::Page, Error> {
+        Err(crate::changes::model::invalid(
+            "backend does not support change-feed version 1",
+        ))
+    }
+    fn prune_changes(
+        &self,
+        _scope: &str,
+        _through: &str,
+        _write: bool,
+    ) -> Result<crate::changes::model::Pruned, Error> {
+        Err(crate::changes::model::invalid(
+            "backend does not support change-feed version 1",
+        ))
+    }
     fn profile(&self) -> Option<&crate::profile::Profile> {
         None
     }

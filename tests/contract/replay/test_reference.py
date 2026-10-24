@@ -33,11 +33,22 @@ def retained(value: Any) -> Any:
         result = {key: retained(item) for key, item in value.items()}
         if "serverInfo" in result:
             result["serverInfo"]["version"] = "<VERSION>"
+        if result.get("name") == "messages" and "inputSchema" in result:
+            # S7's optional reference inputs have independent authority/codec tests.
+            for field in ("context", "context_version", "change_id"):
+                result["inputSchema"]["properties"].pop(field, None)
+            result["description"] = result["description"].replace(
+                "Optional context pins a mounted document and its current version. A change_id\n"
+                "is a descriptive correlation, never proof or permission. Read references using\n"
+                "current mounts; referenced content is not copied or executed.\n",
+                "",
+            )
         if "wire_version" in result and "neosian_version" in result:
             result["neosian_version"] = "<VERSION>"
             result.pop(
                 "memory_search", None
             )  # S2's optional capability has independent contracts.
+            result.pop("change_feed", None)  # S7 has independent durability contracts.
             result.pop(
                 "knowledge_policy", None
             )  # S6's optional filter is tested separately.
@@ -54,6 +65,7 @@ def retained(value: Any) -> Any:
                     "upkeep_review",
                     "upkeep_apply",
                     "knowledge",
+                    "changes",
                 },
             ),
             ("prompts", {"upkeep"}),

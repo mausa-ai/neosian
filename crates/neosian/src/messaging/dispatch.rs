@@ -102,6 +102,10 @@ pub fn dispatch(memory: &Memory, arguments: &Map<String, Value>) -> Outcome {
             return Outcome::fail(sentence);
         }
         let send = Send {
+            context: match super::context::select(memory, arguments) {
+                Ok(reference) => reference,
+                Err(message) => return Outcome::fail(message),
+            },
             scope: selected,
             conversation,
             turn,

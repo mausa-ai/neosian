@@ -128,10 +128,13 @@ must be restarted together. Locks cover memory, turns, restores and reads of
 mutable journals. Cancellation drains worker I/O before releasing the lock;
 process death releases the OS lock. The lock file is never unlinked. This is
 local filesystem coordination, not a distributed/network-filesystem lock.
-Journal-before-document crash behavior is unchanged; cross-file writes are
-not transactions. Postgres remains the scalable multi-worker substrate.
+Memory mutations now persist a redo plan before document, journal and change
+event writes; interrupted plans recover on the next storage call. This does not
+make conversation operations or whole batches atomic. Postgres remains the
+multi-worker substrate, with optional transactional change-feed support.
 
-No new storage schema, wire version or agent-event vocabulary is introduced.
+The mailbox still uses storage format 1 and wire 6. Its lifecycle introduces
+no agent-runtime event vocabulary; optional changes use separate `state.*` names.
 Mailbox document format is independently versioned. Mailbox search scans
 message documents. The separate `search_memory` operation excludes mailbox
 and conversation records (`neosian docs memory`).
@@ -144,3 +147,25 @@ document has its own version; an occurrence is a separate lifecycle fence.
 `make test-contract` exercises all ten CLI operations, stale occurrence
 and claim-token refusals, and idempotent completion and cancellation
 without importing any product implementation.
+
+## Document and change references
+
+`send` accepts an optional `context` mounted document path, `context_version`
+expected current version and `change_id` correlation. CLI flags are `--context`,
+`--context-version` and `--change-id`. The path must currently resolve through a
+readable mount to a live, unerased document; a stale supplied version refuses.
+The stored optional context is `{scope, path, version, change_id?}`. Messages
+without context retain the original format-1 body exactly.
+
+Only references are copied. The recipient fetches content using its own current
+mounts and grants; a message grants no access and does not keep erased content
+readable. The change ID is a sender assertion, not independently verified proof.
+A document may change after the send check; its pinned version makes that visible
+when the host reads it. References remain in message history after a target is
+moved or erased and require separate erasure if sensitive.
+
+Hosts can poll `changes`, send actionable messages about revisions, and use the
+existing claim/renew/release/complete/snooze fences to coordinate. They must still
+check current user authority before doing work. No new mailbox operation,
+automatic subscription or agent startup is introduced. See `neosian docs changes`
+for event IDs, durable checkpoints, explicit gaps and retention.

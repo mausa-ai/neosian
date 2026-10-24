@@ -59,6 +59,7 @@
             RETURNING 1
         )
         SELECT g.src_exists, g.dst_exists, g.format_ok,
+               (SELECT version FROM src_row) AS source_version,
                (SELECT neosian_format FROM src) AS current_format,
                d.content, d.version, d.created_at, d.updated_at,
                d.redacted, d.extra

@@ -1,21 +1,17 @@
-//! The store's mutations (`memory/file.py`, DESIGN §8). Each appends
-//! exactly one version row per path it touches, the row before the
-//! document: the sidecar is the counter's source of truth, synced before
-//! the document can claim its number, so a crash between the two never
-//! lets a number be reused. A version is per document, monotonic from 1,
-//! and a delete consumes one.
-
-use std::fs;
+//! Memory mutations persist a redo plan before their journals, documents and
+//! change events. Recovery completes interrupted writes before subsequent reads.
+//! Versions remain per document, monotonic from 1; deletes consume a version.
 
 use super::envelope::{Envelope, render};
 use super::error::{Error, MemoryError};
-use super::fileio::atomic_write;
 use super::grammar::{Actor, validate_document_path};
 use super::journal::{self, Action, Row};
 use super::layout::{self, DOCUMENTS, VERSIONS};
 use super::scalar::spell_str;
 use super::time::Stamp;
+use super::transaction::WriteOp;
 use super::{Document, FileStore};
+use crate::changes::model::{Change, Kind};
 
 /// The row a mutation appends, by `by` at `at`; `content` is what it records.
 fn row(path: &str, version: u64, action: Action, content: &str, by: &Actor, at: Stamp) -> Row {
@@ -102,7 +98,11 @@ impl FileStore {
                 Vec::new(),
             ),
         };
-        journal::append_row(&sidecar, &row(path, version, action, content, actor, now))?;
+        let sidecar_write = WriteOp::append(
+            &self.root,
+            &sidecar,
+            journal::render_row(&row(path, version, action, content, actor, now)),
+        )?;
         let envelope = Envelope {
             version,
             created_at,
@@ -111,7 +111,22 @@ impl FileStore {
             redacted: false,
             extra,
         };
-        atomic_write(&file, &render(&envelope, content), false)?;
+        self.commit_changes(
+            scope,
+            vec![
+                sidecar_write,
+                WriteOp::put(&self.root, &file, render(&envelope, content))?,
+            ],
+            Change::new(
+                if action == Action::Created {
+                    Kind::Created
+                } else {
+                    Kind::Modified
+                },
+                Some(path),
+                Some(version),
+            ),
+        )?;
         Ok(envelope)
     }
 
@@ -136,8 +151,14 @@ impl FileStore {
             Stamp::now(),
         );
         gone.redacted = existing.envelope.redacted;
-        journal::append_row(&sidecar, &gone)?;
-        fs::remove_file(&file)?;
+        self.commit_changes(
+            scope,
+            vec![
+                WriteOp::append(&self.root, &sidecar, journal::render_row(&gone))?,
+                WriteOp::remove(&self.root, &file)?,
+            ],
+            Change::new(Kind::Deleted, Some(path), Some(version)),
+        )?;
         Ok(Some(version))
     }
 
@@ -183,11 +204,17 @@ impl FileStore {
             moved.redacted = existing.envelope.redacted;
             moved
         };
-        journal::append_row(
+        let source_version = after(&src_rows, &existing);
+        let source_write = WriteOp::append(
+            &self.root,
             &src_sidecar,
-            &moved(src, after(&src_rows, &existing), Action::Deleted),
+            journal::render_row(&moved(src, source_version, Action::Deleted)),
         )?;
-        journal::append_row(&dst_sidecar, &moved(dst, version, Action::Created))?;
+        let dest_write = WriteOp::append(
+            &self.root,
+            &dst_sidecar,
+            journal::render_row(&moved(dst, version, Action::Created)),
+        )?;
         let envelope = Envelope {
             version,
             created_at: now,
@@ -195,8 +222,19 @@ impl FileStore {
             actor: spelled(actor),
             ..existing.envelope
         };
-        atomic_write(&dst_file, &render(&envelope, &existing.content), false)?;
-        fs::remove_file(&src_file)?;
+        let mut change = Change::new(Kind::Renamed, Some(dst), Some(version));
+        change.previous_path = Some(src.into());
+        change.previous_version = Some(source_version);
+        self.commit_changes(
+            scope,
+            vec![
+                source_write,
+                dest_write,
+                WriteOp::put(&self.root, &dst_file, render(&envelope, &existing.content))?,
+                WriteOp::remove(&self.root, &src_file)?,
+            ],
+            change,
+        )?;
         Ok(Document {
             envelope,
             content: existing.content,
@@ -230,20 +268,47 @@ impl FileStore {
             }
             prepared.push((sidecar, rows, file, document));
         }
+        let mut writes = vec![];
         for (sidecar, rows, file, document) in prepared {
             if !rows.is_empty() {
-                journal::rewrite_rows(&sidecar, &rows)?;
+                writes.push(WriteOp::put(
+                    &self.root,
+                    &sidecar,
+                    rows.iter().map(journal::render_row).collect(),
+                )?);
             }
             if let Some(document) = document {
                 let envelope = Envelope {
                     redacted: true,
                     ..document.envelope
                 };
-                atomic_write(&file, &render(&envelope, ""), false)?;
+                writes.push(WriteOp::put(&self.root, &file, render(&envelope, ""))?);
             }
         }
         if !targets.is_empty() {
-            journal::append_redaction(&trail, path, actor, targets.len())?;
+            writes.push(WriteOp::append(
+                &self.root,
+                &trail,
+                journal::render_act(&journal::Act {
+                    path: path.map(str::to_string),
+                    actor: Some(actor.as_str().into()),
+                    created_at: Stamp::now(),
+                    count: targets.len() as u64,
+                }),
+            )?);
+            self.commit_changes(
+                scope,
+                writes,
+                Change::new(
+                    if path.is_some() {
+                        Kind::Erased
+                    } else {
+                        Kind::ScopeErased
+                    },
+                    path,
+                    None,
+                ),
+            )?;
         }
         Ok(targets.len())
     }

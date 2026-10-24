@@ -54,6 +54,12 @@ development and optional one-time migration tooling only (S0, DESIGN §40).
   grants authorize every access path. Raw reads/history remain inspection
   surfaces. Expiry never deletes; body erasure includes review metadata.
 
+- **Changes are durable references.** Advertise change-feed v1 only when mutations
+  and events recover together. Reauthorize each page, expose reset/retention gaps,
+  and keep content out of events. Postgres extension 1 is operator-installed on
+  schema 4 with paused/restarted writers. Cursors and mailbox references never
+  grant access or execute agents.
+
 ## Conventions
 
 - Rust uses `rust-toolchain.toml`'s exact pin, repeated by `rust-version`.

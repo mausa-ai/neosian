@@ -6,6 +6,7 @@
 
 pub mod cli;
 pub mod cli_history;
+pub mod context;
 pub mod delivery;
 pub mod dispatch;
 pub mod history;

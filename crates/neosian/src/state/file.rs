@@ -4,6 +4,24 @@ use super::*;
 use crate::store::FileStore;
 
 impl State for FileStore {
+    fn supports_changes(&self) -> Result<bool, Error> {
+        Ok(true)
+    }
+    fn read_changes(
+        &self,
+        scope: &str,
+        request: &crate::changes::model::Request,
+    ) -> Result<crate::changes::model::Page, Error> {
+        self.read_changes(scope, request)
+    }
+    fn prune_changes(
+        &self,
+        scope: &str,
+        through: &str,
+        write: bool,
+    ) -> Result<crate::changes::model::Pruned, Error> {
+        self.prune_changes(scope, through, write)
+    }
     fn search_memory(
         &self,
         scope: &str,

@@ -40,10 +40,12 @@ in historical payloads, uses integer micro-USD.
 
 Malformed records, future formats, case collisions and paths escaping the
 root are refused. Cooperating local processes share a private root lock;
-files are born private. Neither the lock nor atomic file replacement promises
-whole-store crash recovery or safe operation on network filesystems. Pause
-writers for migration, maintenance and consistent exports. Postgres is the
-backend for distributed workers.
+files are born private. Memory mutations and scope restores use a durable redo
+journal so their documents, audit rows and change events recover together.
+Conversation writes and whole-store batches retain their separate guarantees.
+Network filesystems are unsupported. Pause writers for migration, maintenance
+and consistent exports. Read `neosian docs changes` before upgrading writers.
+Postgres is the backend for distributed workers.
 
 ## Postgres
 
@@ -85,7 +87,7 @@ NEOSIAN_TEST_SERVER_URL='http://127.0.0.1:6367' NEOSIAN_TEST_SERVER_TOKEN='test-
 ```
 
 Use a disposable service: the runner writes random namespaces and tests erasure.
-`profile=full` requires every capability; `profile=base` exercises the advertised
+`profile=full` requires the base paging, erasure, concurrency and portability capabilities; `profile=base` exercises the advertised
 subset and checks refusals. `NEOSIAN_TEST_SERVER_PEER_URL` optionally points at
 a second worker on the same data to exercise cross-worker races. Without it,
 HTTP mode uses one endpoint. The file and Postgres fixtures use two processes.
@@ -134,3 +136,16 @@ when content is erased; it is not used by the lexical memory-search API.
 Raw authorized reads/history and faithful archives retain their inspection and
 restoration contracts. Expiry is a retrieval condition, never automatic deletion.
 Read `neosian docs governance` for review assertions and separate copy erasure.
+
+## Durable changes
+
+Files advertise change-feed version 1 and keep reference-only events under each
+scope's `.changes/`, with crash recovery in the root `.transactions/` journal.
+Postgres schema 4 remains valid without a feed; `schema changes-postgres` prints
+optional operator-owned extension 1. Pause and restart all writers when enabling
+it. The core never applies DDL. Mutations and their events share a Postgres
+transaction; interrupted file mutations replay before subsequent storage calls.
+Archives carry state and history, with a fresh restoration marker at the target.
+Polling, retention gaps and mailbox references are specified in `neosian docs
+changes`. Custom services declare the optional capability and run its additional
+conformance cases; the base/full storage profiles do not force optional features.

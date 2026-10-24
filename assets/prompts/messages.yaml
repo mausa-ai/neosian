@@ -8,6 +8,9 @@ tool: |
   claim token for renew, release, complete and snooze. An expired token cannot
   complete work. A correction may reference a conversation and turn with about
   and about_turn; it remains visible in history without changing past words.
+  Optional context pins a mounted document and its current version. A change_id
+  is a descriptive correlation, never proof or permission. Read references using
+  current mounts; referenced content is not copied or executed.
   Supply your exact session ID from the context banner when it is not bound.
   Never guess it from the latest recorded session. Sending confirms storage,
   not delivery. Wake requests remain queued when no receiver supports waking.
@@ -49,6 +52,9 @@ params:
   delay_seconds: Positive seconds from now; two weeks is 1209600. Used for send or snooze.
   about: Optional historical conversation to annotate without restricting a scope-level destination.
   about_turn: Optional turn of the conversation named by about.
+  context: Optional mounted document path to reference without copying its content.
+  context_version: Optional expected current document version; a changed version is refused.
+  change_id: Optional change event id associated by the sender, requiring context.
   occurrence: The occurrence returned by view/list/claim; required for lifecycle updates.
   token: The current claim token returned by claim; required for owned-work updates.
   outcome: The finding or outcome; required for complete and snooze.

@@ -126,7 +126,7 @@ The versioned `neosian-docs.json` release artifact supplies those same pages
 to the website. `neosian-contracts.tar.gz` contains machine contracts,
 fixtures, the independent HTTP conformance runner and the optional one-time
 metadata converter. `neosian schema state`, `wire`, `errors`, `profile` and
-`grants`, `knowledge`, `skill`, `upkeep` and `governance` print the
+`grants`, `knowledge`, `skill`, `upkeep`, `governance` and `changes` print the
 machine-readable definitions directly.
 
 ## Development
@@ -156,3 +156,10 @@ Contributions use DCO sign-off (`git commit -s`) and Apache-2.0 licensing.
 See [SERVICES.md](SERVICES.md) for environment settings and release accounts,
 [SECURITY.md](SECURITY.md) for vulnerability reports, and
 [llms.txt](../llms.txt) for the machine-readable front door.
+
+Durable change polling is available through `changes read`, MCP `changes` and
+optional HTTP change-feed version 1. Events carry stable references and explicit
+gaps. File memory mutations recover through a redo journal; Postgres couples
+events transactionally after its operator installs the optional changes extension.
+Mailbox context can reference a document revision without copying its body.
+Read `neosian docs changes` before enabling the feed or upgrading mixed writers.

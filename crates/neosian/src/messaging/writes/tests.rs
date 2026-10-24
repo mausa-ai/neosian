@@ -42,6 +42,7 @@ fn to<'a>(scope: &'a str, conversation: Option<&'a str>) -> Send<'a> {
         delay_seconds: None,
         about: None,
         about_turn: None,
+        context: None,
     }
 }
 

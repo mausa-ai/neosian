@@ -27,6 +27,11 @@ def main() -> None:
                         "{{version}}", "4"
                     )
                 )
+                extension = (
+                    Path(__file__).resolve().parents[1]
+                    / "assets/sql/changes-postgres.sql"
+                ).read_text()
+                connection.execute(extension.replace("{{schema}}", f'"{name}"'))
             except Exception:
                 connection.execute(
                     sql.SQL("DROP SCHEMA {} CASCADE").format(sql.Identifier(name))

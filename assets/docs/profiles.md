@@ -266,3 +266,9 @@ capture and history consent do not gate ordinary document upkeep. The shipped
 `builtin:upkeep` skill guides scan, prepare, preview and explicitly authorized
 apply. A proposal digest is not an approval identity or a grant. No maintenance
 policy is imported from document text. Read `neosian docs memory` for limits.
+
+`changes read /project --profile NAME` polls one explicitly selected memory
+mount and reports source/workspace identity. It cannot use a history-only scope.
+Each HTTP page rechecks server grants; a saved cursor grants no access. Change
+references are raw audit inspection, independent of context governance filters.
+Separate scopes protect private path metadata. See `neosian docs changes`.

@@ -18,7 +18,7 @@ erasures, projection spans and a mailbox record. The physical memory erasure
 trail uses `ts`; the wire uses `created_at`. Neither difference is normalised
 away in the fixture.
 
-The tests cover all 21 base storage POST operations and optional memory search,
+The tests cover all 21 base storage POST operations, optional memory search and change feeds,
 the handshake, transport and
 allowance refusals, paging and occupied restores, the six memory commands,
 all ten mailbox operations, and a stdio MCP session. Successful storage requests
@@ -62,3 +62,11 @@ Change an expectation only with an explained contract decision. Preserve old
 readable fixtures when a new format is introduced; add a new version directory
 and explicit conversion/refusal cases. Do not bless a regression by recording
 the current program's output as the new expected answer.
+
+Optional change-feed v1 runs shared replay, mutation, pagination, concurrency and
+retention cases when advertised. File recovery probes kill a real writer after
+its journal appears and validate recovered state/events in a new process.
+Postgres probes force event/retention failures and assert transaction rollback;
+legacy schema 4 and unsupported extension installations have separate checks.
+The frozen v1 replay projection excludes only added discovery and `.changes/`/
+`.transactions/` internals; its original expected files remain untouched.

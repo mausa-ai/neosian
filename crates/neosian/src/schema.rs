@@ -9,6 +9,8 @@ pub enum Kind {
     Wire,
     Errors,
     Postgres,
+    ChangesPostgres,
+    Changes,
     Profile,
     Grants,
     Knowledge,
@@ -26,10 +28,15 @@ pub struct Schema {
 }
 
 pub fn run(args: &Schema, out: &mut impl Write, err: &mut impl Write) -> io::Result<u8> {
-    if args.schema.is_some() && !matches!(args.kind, Kind::Postgres) {
+    if args.schema.is_some() && !matches!(args.kind, Kind::Postgres | Kind::ChangesPostgres) {
         return crate::cli::usage(false, "--schema applies only to postgres", out, err);
     }
     let text = match args.kind {
+        Kind::Changes => include_str!(concat!(
+            env!("NEOSIAN_ASSETS"),
+            "/contracts/changes-v1.schema.json"
+        ))
+        .to_string(),
         Kind::Governance => include_str!(concat!(
             env!("NEOSIAN_ASSETS"),
             "/contracts/governance-v1.schema.json"
@@ -75,14 +82,18 @@ pub fn run(args: &Schema, out: &mut impl Write, err: &mut impl Write) -> io::Res
             "/contracts/knowledge-v1.schema.json"
         ))
         .to_string(),
-        Kind::Postgres => {
+        Kind::Postgres | Kind::ChangesPostgres => {
             let name = args.schema.as_deref().unwrap_or("neosian");
             if let Err(error) = crate::postgres::validate_schema(name) {
                 return crate::cli::usage(false, &error.message, out, err);
             }
-            include_str!(concat!(env!("NEOSIAN_ASSETS"), "/sql/postgres.sql"))
-                .replace("{{schema}}", &format!("\"{name}\""))
-                .replace("{{version}}", "4")
+            (if matches!(args.kind, Kind::ChangesPostgres) {
+                include_str!(concat!(env!("NEOSIAN_ASSETS"), "/sql/changes-postgres.sql"))
+            } else {
+                include_str!(concat!(env!("NEOSIAN_ASSETS"), "/sql/postgres.sql"))
+            })
+            .replace("{{schema}}", &format!("\"{name}\""))
+            .replace("{{version}}", "4")
         }
     };
     write!(out, "{text}")?;

@@ -1,5 +1,5 @@
 //! `neosian serve`: the state process (`_foundation/server/`, DESIGN §18,
-//! §39.11): the twenty-one `/v1/` routes and the handshake at
+//! §39.11): the base and optional `/v1/` routes and the handshake at
 //! `WIRE_VERSION` 6 over the file store, the bearer gate with its token
 //! table and allowances, the body ceiling, on axum (#366). Every store
 //! call runs under `spawn_blocking` holding the root lock, as the Python

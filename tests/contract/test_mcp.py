@@ -86,6 +86,7 @@ def test_stdio_tools_history_and_refusals(binary: Binary) -> None:
         "upkeep_review",
         "upkeep_apply",
         "knowledge",
+        "changes",
     ]
 
     def text(number: int) -> str:
@@ -119,6 +120,7 @@ def test_stdio_tools_history_and_refusals(binary: Binary) -> None:
         "search_memory",
         "upkeep_review",
         "knowledge",
+        "changes",
     ):
         tool = tools[name]
         assert tool["annotations"]["readOnlyHint"] is True

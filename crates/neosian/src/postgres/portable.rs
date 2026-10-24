@@ -42,7 +42,7 @@ impl PostgresStore {
             .collect::<Result<_, _>>()?;
         let versions: Vec<Value> = versions.iter().map(encode::version).collect();
         let redactions: Vec<Value> = redactions.iter().map(encode::redaction).collect();
-        let row = self.one(sql!("portable/restore_scope"), json!({"scope":scope,"documents":documents,"versions":versions,"redactions":redactions,"format":FORMAT}), true)?;
+        let row = self.mutate(sql!("portable/restore_scope"), json!({"scope":scope,"documents":documents,"versions":versions,"redactions":redactions,"format":FORMAT}), true, super::changes::Mutation::Restore)?;
         if row["empty"] != true {
             return Err(MemoryError::conflict(scope, None, "target_occupied").into());
         }
