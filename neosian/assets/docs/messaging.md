@@ -165,3 +165,12 @@ not transactions. Postgres remains the scalable multi-worker substrate.
 No new storage schema, wire version or agent-event vocabulary is introduced.
 Mailbox document format is independently versioned. Initial search scans
 message documents; it does not add the reserved general memory-search API.
+
+The canonical format-1 body is the `Mailbox` definition in
+`neosian/assets/contracts/state-v1.schema.json` (source tree and wheel).
+It includes the destination and provenance, due time, occurrence, status,
+read receipt, claim lease and wake reservation. The surrounding memory
+document has its own version; an occurrence is a separate lifecycle fence.
+`make test-contract` exercises all ten CLI operations, stale occurrence
+and claim-token refusals, and idempotent completion and cancellation
+without importing the Python mailbox implementation.

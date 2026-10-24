@@ -95,6 +95,10 @@ jobs:
       - if: matrix.runner == 'ubuntu-24.04'
         run: cargo build --release --locked
       - if: matrix.runner == 'ubuntu-24.04'
+        run: make test-contract
+        env:
+          NEOSIAN_BINARY: target/release/neosian
+      - if: matrix.runner == 'ubuntu-24.04'
         run: make test-differential
       - if: matrix.runner == 'ubuntu-24.04'
         run: make bench-hooks

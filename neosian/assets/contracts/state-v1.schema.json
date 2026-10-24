@@ -1,0 +1,1147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neosian.com/contracts/state-v1.schema.json",
+  "title": "Neosian state records, format 1",
+  "description": "Canonical records and storage envelope metadata. Select a named $defs entry; this root is a definitions bundle. It describes the supported interchange shape, not every legacy decoder coercion.",
+  "$defs": {
+    "Timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,6})?Z$(?![\\s\\S])",
+      "description": "Canonical timezone-aware UTC output, with up to six fractional digits."
+    },
+    "Scope": {
+      "type": "string",
+      "maxLength": 512,
+      "pattern": "^[a-z][a-z0-9_]{0,31}:(?!\\.{1,2}(?:/|$))[A-Za-z0-9_.-]{1,128}(?:/[a-z][a-z0-9_]{0,31}:(?!\\.{1,2}(?:/|$))[A-Za-z0-9_.-]{1,128}){0,7}$(?![\\s\\S])"
+    },
+    "ConversationId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^(?!\\.{1,2}$)[A-Za-z0-9_.-]+$(?![\\s\\S])"
+    },
+    "TextBlock": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "text"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "text"
+      ],
+      "additionalProperties": false
+    },
+    "CompactionBlock": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "compaction"
+        },
+        "content": {},
+        "encrypted_content": {}
+      },
+      "required": [
+        "type",
+        "content",
+        "encrypted_content"
+      ],
+      "additionalProperties": false
+    },
+    "ImageBlock": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "image"
+        },
+        "media_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "data": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "type",
+        "media_type",
+        "data",
+        "url"
+      ],
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "properties": {
+            "data": {
+              "type": "string"
+            },
+            "url": {
+              "type": "null"
+            },
+            "media_type": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "properties": {
+            "url": {
+              "type": "string"
+            },
+            "data": {
+              "type": "null"
+            }
+          }
+        }
+      ]
+    },
+    "DocumentBlock": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "document"
+        },
+        "media_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "data": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "type",
+        "media_type",
+        "data",
+        "url"
+      ],
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "properties": {
+            "data": {
+              "type": "string"
+            },
+            "url": {
+              "type": "null"
+            },
+            "media_type": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "properties": {
+            "url": {
+              "type": "string"
+            },
+            "data": {
+              "type": "null"
+            }
+          }
+        }
+      ]
+    },
+    "Content": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        },
+        {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "$ref": "#/$defs/TextBlock"
+              },
+              {
+                "$ref": "#/$defs/ImageBlock"
+              },
+              {
+                "$ref": "#/$defs/DocumentBlock"
+              },
+              {
+                "$ref": "#/$defs/CompactionBlock"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "ToolCall": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "arguments": {
+          "type": "object"
+        },
+        "extra": {}
+      },
+      "required": [
+        "id",
+        "name",
+        "arguments"
+      ],
+      "additionalProperties": false
+    },
+    "Message": {
+      "type": "object",
+      "properties": {
+        "role": {
+          "enum": [
+            "system",
+            "user",
+            "assistant",
+            "tool"
+          ]
+        },
+        "content": {
+          "$ref": "#/$defs/Content"
+        },
+        "reasoning": {},
+        "tool_calls": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ToolCall"
+          }
+        },
+        "tool_call_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "extra": {}
+      },
+      "required": [
+        "role",
+        "content",
+        "reasoning",
+        "tool_calls",
+        "tool_call_id"
+      ],
+      "additionalProperties": false
+    },
+    "MemoryEnvelope": {
+      "type": "object",
+      "properties": {
+        "neosian_format": {
+          "const": 1
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "created_at": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "updated_at": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "actor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "redacted": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "neosian_format",
+        "version",
+        "created_at",
+        "updated_at"
+      ],
+      "additionalProperties": true
+    },
+    "Document": {
+      "type": "object",
+      "properties": {
+        "scope": {
+          "$ref": "#/$defs/Scope"
+        },
+        "path": {
+          "$ref": "#/$defs/DocumentPath"
+        },
+        "content": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "created_at": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "updated_at": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "actor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "redacted": {
+          "type": "boolean"
+        },
+        "extra": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "scope",
+        "path",
+        "content",
+        "version",
+        "created_at",
+        "updated_at",
+        "actor",
+        "redacted",
+        "extra"
+      ],
+      "additionalProperties": false
+    },
+    "Entry": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/DocumentPath"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "created_at": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "updated_at": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "redacted": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "path",
+        "version",
+        "created_at",
+        "updated_at",
+        "redacted"
+      ],
+      "additionalProperties": false
+    },
+    "Version": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/DocumentPath"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "action": {
+          "enum": [
+            "created",
+            "modified",
+            "deleted"
+          ]
+        },
+        "content": {
+          "type": "string"
+        },
+        "actor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "created_at": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "redacted": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "path",
+        "version",
+        "action",
+        "content",
+        "actor",
+        "created_at",
+        "redacted"
+      ],
+      "additionalProperties": false
+    },
+    "MemoryRedaction": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DocumentPath"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "actor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "created_at": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "path",
+        "actor",
+        "created_at",
+        "count"
+      ],
+      "additionalProperties": false
+    },
+    "Turn": {
+      "type": "object",
+      "properties": {
+        "conversation_id": {
+          "$ref": "#/$defs/ConversationId"
+        },
+        "turn": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "messages": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Message"
+          }
+        },
+        "created_at": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "actor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "redacted": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "conversation_id",
+        "turn",
+        "messages",
+        "created_at",
+        "actor",
+        "redacted"
+      ],
+      "additionalProperties": false,
+      "if": {
+        "properties": {
+          "redacted": {
+            "const": true
+          }
+        },
+        "required": [
+          "redacted"
+        ]
+      },
+      "then": {
+        "properties": {
+          "messages": {
+            "maxItems": 0
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "messages": {
+            "minItems": 1
+          }
+        }
+      }
+    },
+    "TurnRow": {
+      "type": "object",
+      "properties": {
+        "neosian_format": {
+          "const": 1
+        },
+        "turn": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "messages": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Message"
+          }
+        },
+        "created_at": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "actor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "redacted": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "neosian_format",
+        "turn",
+        "messages",
+        "created_at"
+      ],
+      "additionalProperties": false,
+      "if": {
+        "properties": {
+          "redacted": {
+            "const": true
+          }
+        },
+        "required": [
+          "redacted"
+        ]
+      },
+      "then": {
+        "properties": {
+          "messages": {
+            "maxItems": 0
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "messages": {
+            "minItems": 1
+          }
+        }
+      }
+    },
+    "Projection": {
+      "type": "object",
+      "properties": {
+        "turn": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "kind": {
+          "enum": [
+            "log",
+            "digest",
+            "epoch"
+          ]
+        },
+        "text": {
+          "type": "string"
+        },
+        "span": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "turn",
+        "kind",
+        "text",
+        "span"
+      ],
+      "additionalProperties": false,
+      "description": "span must not exceed turn; this relation is checked by the reader."
+    },
+    "ProjectionRow": {
+      "type": "object",
+      "properties": {
+        "neosian_format": {
+          "const": 1
+        },
+        "turn": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "kind": {
+          "enum": [
+            "log",
+            "digest",
+            "epoch"
+          ]
+        },
+        "text": {
+          "type": "string"
+        },
+        "span": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "neosian_format",
+        "turn",
+        "kind",
+        "text",
+        "span"
+      ],
+      "additionalProperties": false
+    },
+    "TurnRedaction": {
+      "type": "object",
+      "properties": {
+        "conversation_id": {
+          "$ref": "#/$defs/ConversationId"
+        },
+        "turns": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "minItems": 1
+        },
+        "actor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "created_at": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      },
+      "required": [
+        "conversation_id",
+        "turns",
+        "actor",
+        "created_at"
+      ],
+      "additionalProperties": false
+    },
+    "VersionRow": {
+      "type": "object",
+      "properties": {
+        "neosian_format": {
+          "const": 1
+        },
+        "path": {
+          "$ref": "#/$defs/DocumentPath"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "action": {
+          "enum": [
+            "created",
+            "modified",
+            "deleted"
+          ]
+        },
+        "content": {
+          "type": "string"
+        },
+        "actor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "created_at": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "redacted": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "neosian_format",
+        "path",
+        "version",
+        "action",
+        "content",
+        "actor",
+        "created_at",
+        "redacted"
+      ],
+      "additionalProperties": false
+    },
+    "MemoryRedactionRow": {
+      "type": "object",
+      "properties": {
+        "ts": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "actor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "path": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DocumentPath"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "ts",
+        "actor",
+        "path",
+        "count"
+      ],
+      "additionalProperties": false
+    },
+    "TurnRedactionRow": {
+      "type": "object",
+      "properties": {
+        "neosian_format": {
+          "const": 1
+        },
+        "turns": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "minItems": 1
+        },
+        "actor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "created_at": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      },
+      "required": [
+        "neosian_format",
+        "turns",
+        "actor",
+        "created_at"
+      ],
+      "additionalProperties": false
+    },
+    "Mailbox": {
+      "type": "object",
+      "properties": {
+        "format": {
+          "const": 1
+        },
+        "id": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "scope": {
+          "$ref": "#/$defs/Scope"
+        },
+        "conversation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConversationId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "turn": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConversationId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "about": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConversationId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "about_turn": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "actor": {
+          "type": "string"
+        },
+        "body": {
+          "type": "string"
+        },
+        "created_at": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "due_at": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "delivery": {
+          "enum": [
+            "next_activity",
+            "wake"
+          ]
+        },
+        "actionable": {
+          "type": "boolean"
+        },
+        "occurrence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "status": {
+          "enum": [
+            "open",
+            "done",
+            "cancelled"
+          ]
+        },
+        "read_by": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "read_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "owner": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "claim_token": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "claim_until": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "outcome": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "wake_owner": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "wake_token": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "wake_until": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "wake_accepted": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "format",
+        "id",
+        "scope",
+        "conversation",
+        "turn",
+        "source",
+        "about",
+        "about_turn",
+        "actor",
+        "body",
+        "created_at",
+        "due_at",
+        "delivery",
+        "actionable",
+        "occurrence",
+        "status",
+        "read_by",
+        "read_at",
+        "owner",
+        "claim_token",
+        "claim_until",
+        "outcome",
+        "wake_owner",
+        "wake_token",
+        "wake_until",
+        "wake_accepted"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "turn": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "conversation": {
+                "$ref": "#/$defs/ConversationId"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "about_turn": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "about": {
+                "$ref": "#/$defs/ConversationId"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "Error": {
+      "type": "object",
+      "properties": {
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "details": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "code",
+            "message",
+            "details"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "error"
+      ],
+      "additionalProperties": false
+    },
+    "DocumentPath": {
+      "type": "string",
+      "maxLength": 512,
+      "pattern": "^(?!\\.{1,2}(?:/|$))[A-Za-z0-9_.-]{1,128}(?:/(?!\\.{1,2}(?:/|$))[A-Za-z0-9_.-]{1,128}){0,15}$(?![\\s\\S])"
+    }
+  }
+}

@@ -22,6 +22,23 @@ recording, MCP, memory and operator doors (including messages, search and
 continue) call; Python `RemoteStore`
 implements the whole wire.
 
+Machine-readable contracts live in `neosian/assets/contracts/` in the
+source tree and wheel: `wire-v6.openapi.json` describes the 21 storage
+POSTs and the two GETs using [OpenAPI 3.1.1](https://spec.openapis.org/oas/v3.1.1.html).
+Its adjacent `state-v1.schema.json` defines canonical records using
+[JSON Schema 2020-12](https://json-schema.org/draft/2020-12/json-schema-core).
+Keep the files together to resolve references offline; their schema IDs
+are identifiers, not endpoints served by `neosian serve`. No request to
+`/contracts` or `/openapi.json` is provided. The schemas describe supported
+typed inputs and canonical outputs, not every legacy decoder coercion.
+
+`make test-contract` drives the binary through raw HTTP, CLI and MCP,
+validating successful storage requests and responses against those files.
+Its versioned fixtures and expected results import no Python product code.
+This first independent suite complements the existing conformance and
+differential suites; it does not yet replace their backend, hook, adapter
+or operator coverage.
+
 Every route listed here is served by both implementations. The Rust
 binary and the container image serve FileStore or Postgres; the Python
 server also serves a host's store through `build_app`. The image
@@ -53,6 +70,16 @@ listings answer pages (below), `erasable` whether its turns can be
 redacted (the two erasure routes below), and `client` the actor the
 presented token makes the caller. `GET /health` is the one unauthenticated route
 and answers `{"status": "ok"}`, liveness only.
+
+The capability fields are independent. A client requiring concurrent
+version fences checks `supports_optimistic_concurrency`; a client following
+memory cursors checks `pageable`; turn erasure requires `erasable`.
+Whole-store portability has no handshake field in wire 6: all four
+`store/*` routes require it and answer `agent_configuration_error` when
+the backend lacks it. The built-in file and Postgres backends support
+these capabilities. A custom HTTP service must reproduce their declared
+semantics and failures, including attribution and scope allowances;
+returning the same JSON shapes alone is insufficient.
 
 ## Auth
 
@@ -185,15 +212,21 @@ that cannot be moved whole answers every `store/*` route with
 
 ## Paging
 
-No listing answers more than 500 rows. The memory listings take an
-opaque `cursor` and answer `next_cursor`, `null` on the last page; the
-conversation reads take `after` (a turn number, `0` or absent from the
-start) and answer `next_after`, `null` on the last page. A `limit` of
-500 or less is the ABC's exact answer; `limit: 0` is an empty page with
-no continuation; a negative `limit` or `after` is `value_error`. A
-`read_projections` page ends on a whole turn. A host store served
-without `Pageable` answers whole with `next_cursor: null` and refuses a
-`cursor` by name; the handshake's `pageable` says which.
+Memory listings take an opaque `cursor`, cap each page at 500 rows and
+answer `next_cursor`, `null` on the last page. Cursors are specific to
+their listing method; passing a document-list cursor to `versions` is
+`value_error`. A host store served without `Pageable` answers whole with
+`next_cursor: null` and refuses a `cursor` by name; the handshake's
+`pageable` says which.
+
+Conversation reads take `after` (a turn number, `0` or absent from the
+start). With an omitted limit or a limit above 500 they page automatically
+and answer `next_after`. An explicit `limit` of 500 or less is a total
+bound and answers `next_after: null` even when more rows exist. Automatic
+projection paging ends on a whole turn and can exceed the nominal 500
+rows when one turn has more entries; an explicit total bound can cut
+that group. On both memory and conversation reads, `limit: 0` answers
+no rows or continuation; a negative `limit` or `after` is `value_error`.
 `conversation/search_turns` is not a listing and does not page: its
 `limit` is a bound, 500 at most.
 

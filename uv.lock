@@ -1216,6 +1216,7 @@ postgres = [
 dev = [
     { name = "black" },
     { name = "import-linter" },
+    { name = "jsonschema" },
     { name = "mypy" },
     { name = "opentelemetry-sdk" },
     { name = "psycopg", extra = ["binary", "pool"] },
@@ -1223,6 +1224,7 @@ dev = [
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
     { name = "pytest-timeout" },
+    { name = "referencing" },
     { name = "ruff" },
     { name = "types-pyyaml" },
 ]
@@ -1257,6 +1259,7 @@ provides-extras = ["postgres", "all"]
 dev = [
     { name = "black", specifier = ">=26.5.1" },
     { name = "import-linter", specifier = ">=2.13" },
+    { name = "jsonschema", specifier = ">=4.26" },
     { name = "mypy", specifier = ">=2.3.1" },
     { name = "opentelemetry-sdk", specifier = ">=1.30" },
     { name = "psycopg", extras = ["binary", "pool"], specifier = ">=3.2.10" },
@@ -1264,6 +1267,7 @@ dev = [
     { name = "pytest-asyncio", specifier = ">=1.4.0" },
     { name = "pytest-cov", specifier = ">=7" },
     { name = "pytest-timeout", specifier = ">=2.3" },
+    { name = "referencing", specifier = ">=0.37" },
     { name = "ruff", specifier = ">=0.16.3" },
     { name = "types-pyyaml", specifier = ">=6.0.12.20250915" },
 ]

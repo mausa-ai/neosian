@@ -236,12 +236,16 @@ names the implementation for every command.
   agent_settled closes the span after retries. Credentials stay env-only.
 - Python clients: `await RemoteStore.connect(url, token=...)` carries both
   storage ABCs over the wire, core install, drops in where FileStore
-  does. Listings cross in pages of at most 500 rows, followed for you;
+  does. Listings cross in pages, followed for you; automatic projection
+  pages keep a whole turn together and can exceed 500 rows.
   `Pageable` pages them yourself. `neosian docs topology` carries the
   full shape.
 - `neosian docs wire` is the HTTP contract a client in any language
-  implements: the nineteen /v1/ routes, the envelope, paging, the JSON
-  shapes, WIRE_VERSION.
+  implements: the twenty-one storage /v1/ routes, the envelope, paging,
+  the JSON shapes, WIRE_VERSION. The source tree and wheel carry
+  `neosian/assets/contracts/wire-v6.openapi.json` and the adjacent
+  `state-v1.schema.json`; `make test-contract` checks the Rust binary
+  against literal versioned fixtures without Python product imports.
 
 ## Bring an OpenAI-compatible model
 

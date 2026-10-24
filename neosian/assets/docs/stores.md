@@ -60,7 +60,8 @@ Seven constraints keep the memory seam implementable over anything:
    the highest ever issued, an identical write still bumps, a rename is
    `deleted` at the source and `created` at the destination (which
    continues its own history).
-6. **A format marker.** Every row declares `neosian_format`; a newer
+6. **A format marker.** Memory envelopes and version rows declare
+   `neosian_format`; a newer
    value is refused (`memory_format_unsupported`), and unknown keys a
    substrate holds beside the contract's fields come back in `extra` and
    survive a write.
@@ -247,3 +248,46 @@ Reminders can be snoozed with a finding and a new due time on the same ID.
 Native conversations opt in with `mailbox=MailboxConfig()` from
 `neosian.messaging`. Regenerate client adapters after upgrading for automatic
 delivery. Pi and OpenCode also support wake requests while attached.
+
+## Stored formats and interchange
+
+The source tree and wheel carry `neosian/assets/contracts/state-v1.schema.json`.
+It is a definitions bundle: select the named `$defs` entry for the record
+being validated, rather than validating against the unrestricted root.
+`wire-v6.openapi.json` beside it references the same definitions for HTTP
+responses. Neither file changes the existing format or wire version.
+
+| Record | Version and representation | Schema definition |
+|---|---|---|
+| Live memory | `neosian_format: 1` YAML frontmatter followed by the exact Markdown body | `MemoryEnvelope` for the header; `Document` for the flattened wire record |
+| Memory versions | format 1 JSON lines, including full content and deleted/redacted skeletons | `VersionRow`; `Version` on the wire |
+| Memory erasure trail | legacy JSON lines with `ts`, actor, path and count; no format marker | `MemoryRedactionRow`; `MemoryRedaction` uses `created_at` on the wire |
+| Conversation turns | format 1 JSON lines; the directory supplies the conversation ID | `TurnRow`; `Turn` includes the ID on the wire |
+| Projections and turn erasures | format 1 JSON lines; projection span covers consecutive turns ending at `turn` | `ProjectionRow`, `TurnRedactionRow`; their wire definitions omit the marker |
+| Mailbox | JSON body with its own `format: 1`, inside an ordinary memory document | `Mailbox` |
+
+FileStore paths remain percent-encoded scope directories with `documents/`,
+`versions/` and `redactions.jsonl`; conversations live under
+`conversations/<id>/`. The Postgres schema generation is 4, separate from
+these record versions. All writers must preserve monotonic document and
+turn numbers, actors, timestamps and erasure skeletons. A memory redaction
+does not advance the document version or `updated_at`, so neither is an
+erasure cursor.
+
+Canonical timestamps are UTC with `Z`. A message keeps its text, image,
+document or compaction blocks, tool calls, reasoning and opaque `extra`
+fields. Recorded provider metadata is data: reading or transferring it
+does not require that provider's client, account or model. Newer memory
+and turn format markers are refused, never silently rewritten.
+
+Unknown memory metadata that is JSON-compatible can travel in `extra`.
+Rust preserves unknown frontmatter lines on local writes, but its wire
+and archive conversion supports scalar and inline JSON values, not every
+handwritten block-YAML value. The independent fixtures exercise nested
+inline JSON. They do not establish lossless conversion of arbitrary YAML;
+that compatibility gap remains to be resolved before the major-version cut.
+
+`tests/contract/fixtures/v1/` holds literal homes and equivalent wire
+records. `make test-contract` reads them through the Rust binary without
+importing the Python product; the existing kits remain the broader store
+certification checks during the transition.

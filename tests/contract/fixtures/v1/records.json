@@ -1,0 +1,193 @@
+{
+  "document": {
+    "scope": "user:contract",
+    "path": "notes/fact",
+    "content": "café ✓\n",
+    "version": 2,
+    "created_at": "2026-08-19T10:00:00Z",
+    "updated_at": "2026-08-19T10:00:00Z",
+    "actor": "cli:fixture",
+    "redacted": false,
+    "extra": {
+      "reviewed": true,
+      "nested": {
+        "items": [
+          1,
+          null,
+          true
+        ]
+      }
+    }
+  },
+  "versions": [
+    {
+      "path": "notes/fact",
+      "version": 1,
+      "action": "created",
+      "content": "first",
+      "actor": "cli:fixture",
+      "created_at": "2026-08-19T10:00:00Z",
+      "redacted": false
+    },
+    {
+      "path": "notes/fact",
+      "version": 2,
+      "action": "modified",
+      "content": "café ✓\n",
+      "actor": "cli:fixture",
+      "created_at": "2026-08-19T10:00:00Z",
+      "redacted": false
+    },
+    {
+      "path": "gone",
+      "version": 1,
+      "action": "deleted",
+      "content": "",
+      "actor": null,
+      "created_at": "2026-08-19T10:00:00Z",
+      "redacted": true
+    }
+  ],
+  "redaction": {
+    "path": "gone",
+    "actor": "cli:erase",
+    "created_at": "2026-08-19T10:00:00Z",
+    "count": 1
+  },
+  "turns": [
+    {
+      "conversation_id": "contract-session",
+      "turn": 1,
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "Review café memory"
+            },
+            {
+              "type": "image",
+              "media_type": null,
+              "data": null,
+              "url": "https://example.invalid/image.png"
+            },
+            {
+              "type": "document",
+              "media_type": "application/pdf",
+              "data": "YQ==",
+              "url": null
+            }
+          ],
+          "reasoning": null,
+          "tool_calls": [],
+          "tool_call_id": null
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "compaction",
+              "content": "prior evidence",
+              "encrypted_content": "opaque-envelope"
+            }
+          ],
+          "reasoning": "recorded reasoning",
+          "tool_calls": [
+            {
+              "id": "call-1",
+              "name": "memory",
+              "arguments": {
+                "command": "view",
+                "path": "/memories/notes/fact"
+              },
+              "extra": {
+                "signature": "opaque-tool-metadata"
+              }
+            }
+          ],
+          "tool_call_id": null,
+          "extra": {
+            "provider_field": {
+              "preserved": true
+            }
+          }
+        },
+        {
+          "role": "tool",
+          "content": "café ✓\n",
+          "reasoning": null,
+          "tool_calls": [],
+          "tool_call_id": "call-1"
+        }
+      ],
+      "created_at": "2026-08-19T10:00:00Z",
+      "actor": "cli:fixture",
+      "redacted": false
+    },
+    {
+      "conversation_id": "contract-session",
+      "turn": 2,
+      "messages": [],
+      "created_at": "2026-08-19T10:00:00Z",
+      "actor": null,
+      "redacted": true
+    }
+  ],
+  "projections": [
+    {
+      "turn": 1,
+      "kind": "log",
+      "text": "reviewed memory",
+      "span": 1
+    },
+    {
+      "turn": 1,
+      "kind": "digest",
+      "text": "recorded summary",
+      "span": 1
+    },
+    {
+      "turn": 2,
+      "kind": "epoch",
+      "text": "[redacted]",
+      "span": 2
+    }
+  ],
+  "turn_redaction": {
+    "conversation_id": "contract-session",
+    "turns": [
+      2
+    ],
+    "actor": "cli:erase",
+    "created_at": "2026-08-19T10:00:00Z"
+  },
+  "mailbox": {
+    "format": 1,
+    "id": "00000000-0000-4000-8000-000000000001",
+    "scope": "user:contract",
+    "conversation": null,
+    "turn": null,
+    "source": "contract-session",
+    "about": "contract-session",
+    "about_turn": 1,
+    "actor": "cli:fixture",
+    "body": "Review the saved decision.",
+    "created_at": "2026-08-19T10:00:00Z",
+    "due_at": "2026-08-19T10:00:00Z",
+    "delivery": "next_activity",
+    "actionable": true,
+    "occurrence": 1,
+    "status": "open",
+    "read_by": null,
+    "read_at": null,
+    "owner": null,
+    "claim_token": null,
+    "claim_until": null,
+    "outcome": null,
+    "wake_owner": null,
+    "wake_token": null,
+    "wake_until": null,
+    "wake_accepted": false
+  }
+}

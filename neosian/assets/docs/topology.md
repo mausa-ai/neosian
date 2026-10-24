@@ -168,9 +168,11 @@ implements the contract `neosian docs wire` states. Agents speak MCP
 over streamable HTTP at `/mcp` when the server is started with mounts
 (`--scope` or `--mount`).
 
-Every listing crosses the wire a page at a time. A route answers at most
-500 rows and names what to send back: `next_cursor` for the memory
-listings, `next_after` for a conversation's turns and projections.
+Memory listings cross the wire in pages of at most 500 rows with
+`next_cursor`. Conversation reads use `next_after` for automatic paging;
+an explicit limit of 500 or less is a total bound with no continuation.
+Automatic projection pages keep a whole turn together and can exceed 500
+entries when one turn fills a page (`neosian docs wire`).
 `RemoteStore` follows the pages for you, so `history(scope)` still
 returns every row. To page yourself, the three shipped stores implement
 `Pageable`: `await store.history_page(scope, cursor=None, limit=100)`

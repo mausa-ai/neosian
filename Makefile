@@ -1,7 +1,7 @@
 # neosian development targets — `make help` (DESIGN §11)
 
 .DEFAULT_GOAL := help
-.PHONY: help install lint format typecheck test test-external test-postgres test-container size rust-lint rust-test test-differential bench-hooks release phase-tag readme-media
+.PHONY: help install lint format typecheck test test-external test-postgres test-container size rust-lint rust-test test-differential test-contract bench-hooks release phase-tag readme-media
 
 help: ## List targets
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z_-]+:.*?##/ {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2} /^##@/ {printf "\n%s\n", substr($$0, 5)}' $(MAKEFILE_LIST)
@@ -54,6 +54,9 @@ rust-test: ## cargo test over the workspace, the lockfile asserted
 
 test-differential: ## The corpus through the shell and the binary over one seeded home (NEOSIAN_BINARY, else target/release, else target/debug)
 	uv run pytest tests/differential -m differential -q
+
+test-contract: ## Independent formats and raw CLI/MCP/HTTP checks (build target/debug/neosian, or set NEOSIAN_BINARY)
+	uv run pytest --confcutdir=tests/contract tests/contract -m contract -q
 
 bench-hooks: ## The latency gate: p50 of 20 warm runs per door and event; home=DIR copies yours (default: a seeded reference home), binary=PATH
 	uv run python scripts/bench_hooks.py $(if $(home),--home "$(home)",--seed) $(if $(binary),--binary "$(binary)")

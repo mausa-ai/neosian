@@ -8,6 +8,23 @@ phase close names the version.
 
 ## [Unreleased]
 
+### Added
+
+- OpenAPI 3.1.1 for the existing storage wire 6 and JSON Schema 2020-12
+  definitions for format-1 memory, turns, projections, erasures and mailbox
+  records, under `neosian/assets/contracts/`. The wire, stores and messaging
+  pages explain capabilities, physical formats and interchange limits.
+- An independent `make test-contract` tier drives the Rust CLI, stdio MCP
+  and all 21 storage HTTP operations from literal versioned fixtures,
+  without importing the Python product. CI runs it against the release
+  binary alongside the existing differential suite.
+
+### Fixed
+
+- Paging documentation now distinguishes memory cursors from explicit
+  conversation bounds and describes automatic projection pages that keep
+  a whole turn together even above 500 entries. Runtime behavior is unchanged.
+
 ## [1.13.0] - 2026-10-24
 
 ### Added
