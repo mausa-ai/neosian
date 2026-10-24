@@ -66,3 +66,20 @@ selection, current revision pins and supporting hashes. Raw authorized memory
 reads remain available. Import/edit/revert/export require paused writers and
 stable files; partial batches report receipts without rollback. Root erasure
 does not cascade to separate resources or existing exports.
+
+## Reviewed upkeep
+
+Upkeep request/proposal JSON and stored instructions cannot grant permission.
+An approval digest binds reviewed content, not a human identity or signed
+authorization. Hosts control write-tool exposure and approval policy; current
+mount and server permissions remain authoritative. Proposals bind the workspace,
+logical sources and full observed snapshots, including erasure/metadata that
+may not advance a version. They do not authenticate a physical endpoint.
+Reserved lifecycle records and erased content are excluded.
+
+Apply/recovery requires paused writers. Wire 6 has no conditional delete,
+erasure-generation fence or atomic batch; a change after the final read cannot
+be ruled out. Partial receipts contain acknowledged writes, and a lost response
+may hide a committed write. Inspect current state and prepare fresh remaining
+work. Derived content and proposal copies need separate erasure; source
+erasure cannot recall a body already copied elsewhere.

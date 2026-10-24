@@ -6,7 +6,7 @@ pub(crate) mod json;
 pub(crate) mod model;
 pub(crate) mod plan;
 mod read;
-mod rules;
+pub(crate) mod rules;
 #[cfg(test)]
 mod tests;
 

@@ -25,6 +25,11 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Review memory quality and apply explicitly approved, guarded changes.
+    Upkeep {
+        #[command(subcommand)]
+        command: crate::upkeep::cli::Command,
+    },
     /// Manage reusable skills, supporting files and profile revision guards.
     Skill {
         #[command(subcommand)]
@@ -178,6 +183,7 @@ where
         }
     }
     let code = match cli.command {
+        Command::Upkeep { command } => crate::upkeep::cli::run(&command, &mut out, &mut err),
         Command::Skill { command } => crate::skill::cli::run(&command, &mut out, &mut err),
         Command::Knowledge { command } => crate::knowledge::cli::run(&command, &mut out, &mut err),
         Command::Profile { command } => crate::profile::cli::run(&command, &mut out, &mut err),

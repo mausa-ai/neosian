@@ -1,0 +1,284 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neosian.com/contracts/upkeep-v1.schema.json",
+  "title": "Neosian reviewed upkeep format 1",
+  "description": "Requests and proposals are data, not authority. Runtime validation also enforces operation fields, reserved paths, source identity, permissions, unchanged snapshots, provenance, collection rules and explicit separate approval. Input/proposal limit: 256 KiB UTF-8. Approval IDs are SHA-256 of compact UTF-8 JSON with recursively sorted object keys, arrays in order and id omitted. No batch atomicity or automatic retry; pause writers.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/request"
+    },
+    {
+      "$ref": "#/$defs/proposal"
+    }
+  ],
+  "$defs": {
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "const": 1
+        },
+        "changes": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/edit"
+          }
+        }
+      },
+      "required": [
+        "format",
+        "changes"
+      ]
+    },
+    "edit": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^/[A-Za-z0-9_.-]{1,128}/[A-Za-z0-9_.-]{1,128}(?:/[A-Za-z0-9_.-]{1,128})*$"
+        },
+        "operation": {
+          "enum": [
+            "replace",
+            "restore",
+            "delete"
+          ]
+        },
+        "expected_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        },
+        "body": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "attributes": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "references": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "relation": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "scope": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "relation",
+                  "path"
+                ]
+              },
+              "maxItems": 128
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "restore_version": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^/[A-Za-z0-9_.-]{1,128}/[A-Za-z0-9_.-]{1,128}(?:/[A-Za-z0-9_.-]{1,128})*$"
+          },
+          "maxItems": 16
+        },
+        "keeper": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^/[A-Za-z0-9_.-]{1,128}/[A-Za-z0-9_.-]{1,128}(?:/[A-Za-z0-9_.-]{1,128})*$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "path",
+        "operation",
+        "expected_version",
+        "reason"
+      ]
+    },
+    "proposal": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "const": 1
+        },
+        "workspace": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "observations": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 128,
+          "items": {
+            "$ref": "#/$defs/observation"
+          }
+        },
+        "changes": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/change"
+          }
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "format",
+        "workspace",
+        "observations",
+        "changes",
+        "id"
+      ]
+    },
+    "observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^/[A-Za-z0-9_.-]{1,128}/[A-Za-z0-9_.-]{1,128}(?:/[A-Za-z0-9_.-]{1,128})*$"
+        },
+        "scope": {
+          "type": "string"
+        },
+        "source": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "path",
+        "scope",
+        "source",
+        "version",
+        "sha256"
+      ]
+    },
+    "change": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^/[A-Za-z0-9_.-]{1,128}/[A-Za-z0-9_.-]{1,128}(?:/[A-Za-z0-9_.-]{1,128})*$"
+        },
+        "operation": {
+          "enum": [
+            "replace",
+            "restore",
+            "delete"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        },
+        "content": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "keeper": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^/[A-Za-z0-9_.-]{1,128}/[A-Za-z0-9_.-]{1,128}(?:/[A-Za-z0-9_.-]{1,128})*$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "restore_version": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "path",
+        "operation",
+        "reason",
+        "content",
+        "keeper",
+        "restore_version"
+      ]
+    }
+  }
+}

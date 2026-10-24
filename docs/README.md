@@ -61,7 +61,12 @@ clears content while keeping its audit skeleton. Mailbox messages, reminders,
 claims and outcomes use the same store. Skills are versioned memory documents;
 `handoff` and `upkeep` also ship as immutable instructions for your agent.
 
-`memory maintain --dry-run` previews deterministic empty/duplicate cleanup.
+`upkeep scan/prepare/apply` finds review candidates, prepares guarded changes
+and previews them before explicit approval. It preserves sources and rechecks
+versions, permissions and content; applying requires paused writers. The
+agent supplies judgment. `memory maintain --dry-run` also previews
+deterministic empty/duplicate cleanup. Read `neosian docs memory` for requests,
+approval boundaries and inspection after an interrupted batch.
 The MCP `docs` tool reads the installed documentation and `memory_history`
 reads bounded, mounted version metadata. `memory search` and MCP `search_memory`
 find current permitted documents through paths, bodies and explicitly selected
@@ -112,7 +117,7 @@ The versioned `neosian-docs.json` release artifact supplies those same pages
 to the website. `neosian-contracts.tar.gz` contains machine contracts,
 fixtures, the independent HTTP conformance runner and the optional one-time
 metadata converter. `neosian schema state`, `wire`, `errors`, `profile` and
-`grants`, `knowledge` and `skill` print the
+`grants`, `knowledge`, `skill` and `upkeep` print the
 machine-readable definitions directly.
 
 ## Development

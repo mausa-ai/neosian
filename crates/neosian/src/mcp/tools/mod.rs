@@ -11,6 +11,7 @@ mod messages;
 mod operator;
 mod search_memory;
 mod skills;
+mod upkeep;
 
 use serde_json::{Map, Value};
 
@@ -105,6 +106,8 @@ pub fn served(memory: &Memory) -> Vec<Tool> {
     tools.push(operator::docs());
     tools.push(operator::history());
     tools.push(search_memory::tool());
+    tools.push(upkeep::review());
+    tools.push(upkeep::apply());
     tools
 }
 

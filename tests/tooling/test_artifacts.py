@@ -37,6 +37,7 @@ def test_release_artifacts_are_complete_deterministic_and_versioned(
             "assets/contracts/grants-v1.schema.json",
             "assets/contracts/knowledge-v1.schema.json",
             "assets/contracts/skill-v1.schema.json",
+            "assets/contracts/upkeep-v1.schema.json",
             "assets/sql/postgres.sql",
             "scripts/migrate_v1_metadata.py",
             "tests/contract/storage/test_concurrency.py",

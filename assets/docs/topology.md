@@ -51,7 +51,7 @@ importing client. See `neosian docs wire` before sharing a store.
 ## Container
 
 ```sh
-docker run -e NEOSIAN_SERVE_TOKEN='your-private-token' -p 6367:6367 -v state:/data ghcr.io/mausa-ai/neosian:2.4.0
+docker run -e NEOSIAN_SERVE_TOKEN='your-private-token' -p 6367:6367 -v state:/data ghcr.io/mausa-ai/neosian:2.5.0
 ```
 
 The image serves the Rust binary as uid 1000 with a private `/data` volume.

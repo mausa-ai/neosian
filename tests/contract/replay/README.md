@@ -20,6 +20,9 @@ current MCP contract tests; retained calls continue to use this reference.
 S2's optional `memory_search` handshake field and `search_memory` discovery
 entry are excluded only from the v1 comparison, with full independent S2
 contracts checking them. Frozen expectations and seeded data stay unchanged.
+S5's additive `upkeep_review` and `upkeep_apply` discovery entries are likewise
+excluded from the v1 comparison; independent current contracts cover their
+approval, permissions, provenance, interruption and erasure behavior.
 
 Do not regenerate these expectations from a candidate binary to make a
 failure pass. A change requires an explicit compatibility decision and a

@@ -199,3 +199,11 @@ Skills can use these same readable headers and provenance. `neosian skill`
 adds skill-specific validation, directory packages, dependency/resource checks
 and profile revision guards over ordinary stored documents. Its optional
 manifest lives in `attributes.skill`; see `neosian docs skills`.
+
+`upkeep` provides reviewed corrections to existing knowledge bodies, attributes
+and references. Preparation retains source provenance, records current source
+snapshots and checks the resulting collection attributes. Apply rechecks those
+observations, including collection definitions, and uses normal versioned
+writes. It does not rewrite definitions, resolve semantic disagreements or
+repair inbound links automatically. See `neosian docs memory` for approval,
+revision recovery and paused-writer requirements.

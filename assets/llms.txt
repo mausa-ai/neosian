@@ -3,7 +3,7 @@
 > Memory and context for the agent you already use. One Rust binary,
 > CLI/MCP/HTTP interfaces, state on your own files or Postgres.
 
-Release: 2.4.0. Read installed pages with `neosian docs TOPIC` or the MCP
+Release: 2.5.0. Read installed pages with `neosian docs TOPIC` or the MCP
 `docs` tool. They are versioned with the executable and are authoritative
 for that version. The release's neosian-docs.json carries the same pages.
 
@@ -42,3 +42,8 @@ Skill changes preview until --write; imports use explicit /mount/skills/name.
 Supporting text and dependencies are checked through mounted reads. Profile pins
 guard current source/version/hash, never load erased or historical fallbacks.
 Apply/export needs paused writers. Skills execute in the user's agent.
+
+Reviewed upkeep format 1 provides bounded scans, source-preserving proposals,
+preview and explicitly approved apply over existing scoped storage. The digest
+binds content, not authority. Pause writers and inspect partial/lost-response
+outcomes before fresh proposals. No model execution, scheduler or DDL is added.

@@ -8,6 +8,29 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-10-24
+
+### Added
+
+- `upkeep scan/prepare/inspect/apply`, MCP `upkeep_review`/`upkeep_apply` and
+  a format-1 proposal schema. Bounded scans flag empty, duplicate, stale-review
+  and structurally inconsistent memory; the user's agent supplies judgment.
+- Source-preserving corrections, consolidation, attribute/reference repairs,
+  retained-revision recovery and aged empty/exact-duplicate deletion. Apply
+  previews by default and requires a separate approval digest plus current
+  permissions. Proposals bind logical sources, versions and full snapshots,
+  including collection rules, metadata and erasure state.
+- Partial-write receipts and inspection after interrupted or lost-response
+  outcomes, with stale-proposal refusal and explicit fresh-review recovery.
+  Apply requires paused writers; no batch atomicity or concurrent-erasure
+  guarantee is added. Existing formats, wire 6 and Postgres schema 4 remain.
+
+### Changed
+
+- The shipped upkeep skill guides proposal review and authorized application.
+  Legacy deterministic maintenance now also protects sessions, handoff and
+  collection definitions, including case aliases.
+
 ## [2.4.0] - 2026-10-24
 
 ### Added

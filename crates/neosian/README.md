@@ -38,3 +38,8 @@ separate archive commands. See `neosian docs knowledge`.
 `neosian skill` manages portable, versioned instructions with optional text
 resources, dependencies and profile revision guards. Read `neosian docs skills`
 for previews, exact update/recovery semantics and permission boundaries.
+
+`neosian upkeep scan/prepare/apply` and MCP upkeep tools provide bounded,
+reviewed memory corrections with source provenance, current-state guards and
+explicit approval. Apply requires paused writers; inspect interrupted batches
+before preparing remaining work. Read `neosian docs memory` for the workflow.

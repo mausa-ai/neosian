@@ -116,3 +116,10 @@ Profile pins are portable configuration guards; dependencies and resource hashes
 are content metadata. No backend capability or DDL is added. Full archives
 retain skill histories, while skill directory exports carry current content
 and source evidence. Apply/export requires paused writers.
+
+Reviewed upkeep composes existing reads, revisions, writes and deletes. Its
+format-1 request/proposal files are an application contract, not a new stored
+record or wire capability. Changes preserve envelope extras and source
+provenance, with normal actor attribution and version fences on replacements.
+Pause writers: deletes and erasure have no conditional fence, and batches can
+partially apply. See `neosian docs memory` for inspection and recovery.

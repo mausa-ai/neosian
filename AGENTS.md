@@ -26,6 +26,10 @@ development and optional one-time migration tooling only (S0, DESIGN §40).
 - **Preserve data.** Versions, actors, timestamps, opaque JSON metadata and
   erasure skeletons survive supported operations. Refuse unsupported
   formats explicitly; do not silently migrate or discard history.
+- **Reviewed upkeep.** Proposal digests bind content, never grant authority.
+  Preserve sources and require current mounted/server permissions. Apply and
+  recovery require paused writers; report partial receipts and inspect lost
+  responses before fresh proposals. Keep lifecycle and erased records protected.
 - **Profiles select; backends authorize.** Portable profile format 1 excludes
   local bindings and credentials. New profile capture defaults off; local/shared
   capture requires matching binding consent and filtering before persistence.

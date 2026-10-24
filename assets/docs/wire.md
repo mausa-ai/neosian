@@ -394,3 +394,11 @@ Skill management reuses existing mounted memory read/write/list/version
 operations. Skills, resources and their metadata remain normal documents;
 profile revision guards need no additional storage capability. The binary
 checks current dependencies/resources before serving managed instructions.
+
+Reviewed upkeep also uses those existing routes, plus ordinary deletes. Its
+proposal format adds no backend capability or DDL. Replacement uses
+`expected_version`; wire 6 has no conditional delete, redaction-generation
+compare-and-swap or multi-document transaction. Snapshot rechecks cannot
+close every concurrent-write window. Apply/recovery therefore require paused
+writers, and lost acknowledgements require current-state inspection before
+preparing further work. See `neosian docs memory`.

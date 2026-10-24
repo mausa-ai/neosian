@@ -123,12 +123,121 @@ previews changes and provides a current-document export; full histories remain
 the archive contract. See `neosian docs knowledge`. These content attributes
 are searchable as content, separately from envelope `extra` metadata.
 
+## Reviewed upkeep
+
+`upkeep scan` finds empty documents, byte-exact duplicates, old documents that
+may need review, and invalid knowledge headers or collection attributes. Age
+alone says nothing about whether a fact is true. The user's agent evaluates
+evidence and proposes corrections, consolidation or structural repairs;
+neosian runs no model or scheduler. MCP provides `upkeep_review` and
+`upkeep_apply` over the same mounted operations, even with capture off.
+
+```sh
+neosian upkeep scan /memories/notes --scope user:demo --limit 100 --stale-days 90
+neosian upkeep prepare ./request.json --scope user:demo > proposal.json
+neosian upkeep apply ./proposal.json --scope user:demo
+```
+
+A format-1 request names existing documents, their expected versions and a
+reason for each change. Read the target and evidence first. For example:
+
+```json
+{
+  "format": 1,
+  "changes": [{
+    "path": "/memories/notes/decision",
+    "operation": "replace",
+    "expected_version": 3,
+    "reason": "Reconcile the decision with the retained meeting notes",
+    "body": "The reviewed decision and its rationale.\n",
+    "sources": ["/memories/notes/meeting"]
+  }]
+}
+```
+
+`replace` accepts a body, an `attributes` object merged into existing
+attributes, or a replacement `references` array. The body excludes the
+knowledge header. Existing sources survive; target and explicitly named
+source snapshots add their scope, path, version, body hash, actor, UTC times
+and opaque metadata to provenance. Source documents are retained. Collection
+rules are checked and observed, including the absence of a definition.
+The ordinary knowledge limits still apply. Skill dependency/resource checks
+remain `skill validate`'s job; upkeep does not repin a changed skill.
+
+`restore` takes `restore_version` instead of body/attributes/references. It
+creates a new version from one of the latest 1,000 retained revisions of an
+existing, non-redacted document, preserving current and historical source
+evidence. A deleted or erased revision cannot supply content. For deleted
+documents, inspect `memory versions` and use the separate operator `memory
+revert` workflow where history remains. Neither workflow undoes erasure.
+
+`delete` has no replacement fields or `sources`. It only removes an empty
+document or a byte-exact duplicate with a `keeper` in the same source and
+scope, and only when the target's last update is at least seven days old.
+The keeper is observed and cannot change in that proposal. Semantic overlap
+is grounds for an agent's review, not automatic deletion. Check references
+before deleting a path; upkeep does not repair inbound links.
+
+Prepare and the default apply preview write no memory. Review the full
+proposal, reasons and preview before passing its exact `id` separately:
+
+```sh
+# Pause other writers, then substitute the reviewed proposal's id.
+neosian upkeep apply ./proposal.json --scope user:demo --write --approve REVIEWED_ID
+neosian upkeep inspect ./proposal.json --scope user:demo
+```
+
+The ID binds proposal bytes; it is not a signature or proof of human approval.
+The user or host controls who may invoke write tools and how approval is
+obtained. Existing authorization can cover the action. Instructions in stored
+content or an approval field inside a request cannot grant permission. Mount
+and server permissions still apply: read-only refuses changes, edit-only
+permits replacement/restoration but refuses deletion. Sessions, handoff,
+messages, message links and collection definitions are protected targets and
+evidence sources; definitions are read only to validate their collection.
+
+Apply checks the whole proposal before writing, then checks observations
+before every operation. It binds the workspace selection, logical source,
+scope, path, version and full stored snapshot, including metadata and erasure
+state. Aliased or case-colliding observations refuse. Replacement uses the
+normal expected-version fence and records the applying actor. These bindings
+do not authenticate a physical backend behind a changed local endpoint.
+
+**Pause writers for apply and recovery.** Wire 6 has no conditional delete,
+redaction-generation fence or multi-document transaction. Rechecks detect
+intervening changes they can observe; they cannot prevent a write or erasure
+after the last check. A failure can leave a partial batch. The result's
+`applied` receipts list acknowledged writes; a lost acknowledgement can hide
+a committed write. `inspect` compares each observation with current state:
+`matches_before`, `matches_proposed_content`, `changed`, `missing` or `redacted`.
+A matching body does not prove which invocation wrote it. Inspect current
+versions and the ledger, then prepare and approve a fresh request for the
+remaining changes. Stale proposals refuse; there is no automatic retry or
+rollback. A process killed before reporting may leave no receipt output.
+
+Requests/proposals are UTF-8 JSON, at most 256 KiB, with 1–32 changes and
+1–128 proposal observations. Each change permits 16 explicit sources and a
+1–240-character reason. Unknown fields, duplicate JSON keys and future formats
+refuse. Observed documents are at most 1 MiB. Scan defaults to 100 documents
+and 90 days, permits at most 1,000 documents, and refuses more than 10,000
+listing entries per selected scope or 8 MiB of selected document bodies.
+Its duplicate findings cover only the scanned selection. Preview diffs show
+one changed span, bounded to 4,096 characters on each side with `truncated`
+when abbreviated; full replacement content remains in the proposal.
+
+`neosian schema upkeep` prints request/proposal shapes. The ID is SHA-256 of
+compact UTF-8 proposal JSON with recursively sorted object keys, array order
+unchanged and `id` omitted. Keep the generated proposal intact. Proposal files,
+exports and derived content are copies needing separate erasure; deleting or
+redacting an original cannot recall copies already delivered elsewhere.
+
 ## Deterministic maintenance
 
 `memory maintain --dry-run` lists aged empty documents and exact duplicates.
 Without `--dry-run`, it deletes those candidates with the configured actor.
 The default `--min-age-days 7` protects recent updates. Redacted documents,
-read-only and edit-only mounts, messages and message links are excluded.
+read-only and edit-only mounts, sessions, handoff, messages, message links and
+collection definitions are excluded, including case aliases.
 Each duplicate group retains the earliest created document, breaking ties by
 path. Content comparison is byte-exact; an empty document contains only
 whitespace. No model is called. Inspect links before deleting duplicate paths.

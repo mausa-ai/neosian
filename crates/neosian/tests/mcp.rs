@@ -138,12 +138,14 @@ fn the_state_set_is_served_over_stdio() {
             "handoff",
             "docs",
             "memory_history",
-            "search_memory"
+            "search_memory",
+            "upkeep_review",
+            "upkeep_apply"
         ]
     );
     assert_eq!(
         answers[3]["result"]["prompts"],
-        json!([{"description": "Deploy it.", "name": "deploy"}, {"description": "Hand this session off, so that the next session in any agent continues it; write the note, then stop", "name": "handoff"}, {"name": "upkeep", "description": "Review and consolidate durable memory when the user requests upkeep, using their agent and the existing memory tools."}])
+        json!([{"description": "Deploy it.", "name": "deploy"}, {"description": "Hand this session off, so that the next session in any agent continues it; write the note, then stop", "name": "handoff"}, {"name": "upkeep", "description": "Review durable memory, prepare guarded proposals and apply changes under the user's or host's approval policy."}])
     );
     assert_eq!(text(&answers[4]), "Created /memories/notes (v1)");
     assert_eq!(text(&answers[5]), "/memories/notes (v1):\n1: é first");

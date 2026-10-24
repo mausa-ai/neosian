@@ -20,6 +20,8 @@ and shipped skills are embedded data assets; no model client runs in neosian.
 | `docs` | List topics or read a page from this installed version |
 | `memory_history` | Document version metadata or a mount's recent write ledger |
 | `search_memory` | Current mounted document search with bounded excerpts and source/version references |
+| `upkeep_review` | Read-only scan, proposal preparation and inspection against current state |
+| `upkeep_apply` | Preview a proposal; apply only with explicit write and its separate approval digest |
 
 Without a profile, the handoff pair is present only when a read-write mount
 can hold session state. With `--profile NAME`, history tools require an
@@ -47,6 +49,20 @@ references, scope/path, version, actor and bounded excerpts. Metadata needs
 explicit keys; profile injection modes do not limit permitted reads. Remote
 sources need optional memory-search capability version 1. See `neosian docs
 memory` for matching, Unicode, exclusions and pagination semantics.
+
+`upkeep_review(command, data=null, path="/", limit=100, stale_days=90)` scans
+with `command="scan"`, prepares with `command="prepare"` and a format-1
+request JSON string in `data`, or compares a proposal with current state using
+`command="inspect"` and its JSON in `data`. It is annotated read-only.
+`upkeep_apply(proposal, write=false, approve=null)` takes the proposal JSON
+string and previews by default. Applying requires `write=true` and `approve`
+equal to the exact proposal ID, plus current mounted/server write authority.
+It carries destructive, non-idempotent annotations and requires paused
+writers. Both tools work without conversation capture/history selection and
+reuse existing storage routes. Review reasons and full proposed content;
+diffs can be truncated. The digest binds content, not an approver's identity.
+The host controls approval policy and write-tool access. See the memory page
+for provenance, bounds, partial receipts, lost responses and recovery.
 
 Skills are also MCP prompts (`prompts/list`, `prompts/get`). `handoff` guides a
 clean departure; `upkeep` guides grounded consolidation by the user's agent.

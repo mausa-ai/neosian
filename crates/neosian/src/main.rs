@@ -34,6 +34,7 @@ mod store;
 mod testing;
 mod text;
 mod update;
+mod upkeep;
 mod version;
 mod wire;
 

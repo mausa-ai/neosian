@@ -24,6 +24,7 @@ protocol servers use their own framing.
 | `memory search` | Keyword search over current mounted documents and selected metadata |
 | `memory versions/revert/redact` | Inspect history, undo the newest row, erase content |
 | `memory maintain` | Aged empty/exact-duplicate cleanup; preview with `--dry-run` |
+| `upkeep scan/prepare/inspect/apply` | Bounded findings, guarded proposals, preview and explicitly approved changes |
 | `messages` | Durable messages, reminders, claims and acknowledgments |
 | `search`, `continue` | Find recorded turns and resume a known conversation |
 | `audit` | Scope ledger, optionally merged with a conversation |
@@ -32,11 +33,11 @@ protocol servers use their own framing.
 | `record` | Consume a foreign agent hook payload on stdin |
 | `mcp` | MCP server over stdio |
 | `serve` | State HTTP and optional MCP HTTP server |
-| `schema state/wire/errors/profile/grants/knowledge/skill/postgres` | Print machine contracts or schema SQL |
+| `schema state/wire/errors/profile/grants/knowledge/skill/upkeep/postgres` | Print machine contracts or schema SQL |
 
 ## Store selection and mounts
 
-`--profile NAME` selects portable sources for skill, knowledge, memory, messages, search,
+`--profile NAME` selects portable sources for upkeep, skill, knowledge, memory, messages, search,
 continue, MCP and record, and also configures setup/status. `NEOSIAN_PROFILE`
 and local checkout bindings provide defaults. A selected profile cannot be
 combined with legacy store/scope selectors. Whole-store operators refuse an
@@ -95,3 +96,11 @@ require explicit `--profile`; select/unselect/unpin do not open storage. All
 changes preview until `--write`; imports require `/mount/skills/name`, default
 to conflict refusal and accept explicit `--replace`. Edit/revert require
 `--expect-version`; pause writers for changes and export. Results are JSON.
+
+`upkeep scan [PATH]` returns bounded quality findings. `prepare REQUEST_FILE`
+prints a proposal without writing memory; `apply PROPOSAL_FILE` previews it.
+Apply requires `--write --approve PROPOSAL_ID` and paused writers. `inspect
+PROPOSAL_FILE` compares current state, including after a partial or interrupted
+apply. These commands share memory/profile selection flags and return JSON.
+Read `neosian docs memory` for literal requests, bounds, authority, recovery
+and concurrency limits; `neosian schema upkeep` prints the format-1 shapes.

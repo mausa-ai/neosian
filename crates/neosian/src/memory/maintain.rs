@@ -7,7 +7,7 @@ use std::io::Write;
 use serde_json::{Value, json};
 
 use super::dispatch::Memory;
-use super::mounts::{Mount, state_path};
+use super::mounts::Mount;
 use crate::store::error::Error;
 use crate::store::time::Stamp;
 use crate::store::{Document, Entry};
@@ -28,7 +28,7 @@ fn plan(memory: &Memory, cutoff: Stamp) -> Result<Vec<Action<'_>>, Error> {
         }
         let mut groups: BTreeMap<String, Vec<Entry>> = BTreeMap::new();
         for entry in memory.store.list_documents(&mount.scope, "")? {
-            if entry.redacted || state_path(&entry.path) {
+            if entry.redacted || crate::knowledge::model::ordinary(&entry.path).is_err() {
                 continue;
             }
             let Some(document) = memory.store.read(&mount.scope, &entry.path)? else {

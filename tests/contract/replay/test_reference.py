@@ -42,7 +42,16 @@ def retained(value: Any) -> Any:
             result["version"] = "<VERSION>"
             result.pop("providers", None)  # v2 retires provider credential inspection.
         for key, added in (
-            ("tools", {"docs", "memory_history", "search_memory"}),
+            (
+                "tools",
+                {
+                    "docs",
+                    "memory_history",
+                    "search_memory",
+                    "upkeep_review",
+                    "upkeep_apply",
+                },
+            ),
             ("prompts", {"upkeep"}),
         ):
             if isinstance(result.get(key), list):

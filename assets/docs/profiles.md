@@ -251,3 +251,10 @@ explicitly reviewed and repinned/unpinned. No historical body or configuration
 copy is substituted. Supporting files and selected dependencies are checked too.
 Export carries these references/guards without credentials or endpoints. Older
 strict binaries refuse profiles containing the new field. See `neosian docs skills`.
+
+Reviewed upkeep uses the selected workspace and mounted logical sources.
+Proposals bind that selection and recheck current mount and server authority;
+capture and history consent do not gate ordinary document upkeep. The shipped
+`builtin:upkeep` skill guides scan, prepare, preview and explicitly authorized
+apply. A proposal digest is not an approval identity or a grant. No maintenance
+policy is imported from document text. Read `neosian docs memory` for limits.

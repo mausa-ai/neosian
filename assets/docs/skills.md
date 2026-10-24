@@ -263,6 +263,13 @@ Profiles use qualified names to disambiguate sources. Legacy configurations
 retain their existing bare-name precedence: mounts in order, then shipped
 skills. Explicit paths or `builtin:name` avoid ambiguity. MCP tools and prompts
 include source/version details for managed or profile-selected skills.
+
+The shipped `upkeep` skill uses `upkeep_review` and `upkeep_apply` for grounded,
+reviewable memory changes under the user's or host's approval policy. It does
+not execute a model or schedule work. Upkeep may edit stored skill documents
+as ordinary knowledge, but does not validate their dependency/resource graph
+or update profile pins. Run `skill validate` and deliberately review any
+changed pin before loading. See `neosian docs memory` for the full workflow.
 Representative raw MCP clients and all six setup registrations are tested;
 a client's command rendering and context limits remain that client's behavior.
 The tests do not claim identical model execution or live-client UI behavior.

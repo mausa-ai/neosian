@@ -162,3 +162,10 @@ collection rules are optional validation rather than server authorization.
 S4 skill management uses existing storage/profile settings and needs no model
 keys, package registry or external execution service. Skill directory packages
 are UTF-8 data; source commands/scripts are never executed during import/load.
+
+Reviewed upkeep needs no additional service, credential, database object or
+model account. CLI/MCP compose existing mounted storage operations. Hosts may
+supply reasoning, scheduling and approval policy. Pause other writers for apply
+and recovery; inspect partial or lost-response outcomes before fresh proposals.
+The default contracts cover file/HTTP guards and fault injection; the Postgres
+tier checks preserved physical rows, revisions and erasure.
