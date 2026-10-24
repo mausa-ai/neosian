@@ -224,7 +224,16 @@ impl Command {
     /// working directory's project layout) and its actor, each held to its
     /// grammar, then the command's own guards.
     pub fn settings(&self, cwd: &Path) -> Result<(Vec<Mount>, Actor), Refusal> {
-        let flags = self.flags();
+        let settings = self.flags().settings(cwd)?;
+        self.guard()?;
+        Ok(settings)
+    }
+}
+
+impl Flags {
+    /// Shared mount and actor grammar for memory and messages.
+    pub fn settings(&self, cwd: &Path) -> Result<(Vec<Mount>, Actor), Refusal> {
+        let flags = self;
         if flags.scope.is_some() && !flags.mount.is_empty() {
             let sugar = "--scope is the single-mount sugar; use --mount for multi-mount";
             return Err(Refusal::Usage(sugar.to_string()));
@@ -253,7 +262,6 @@ impl Command {
             let actor = repr(&flags.actor);
             Refusal::Usage(format!("--actor {actor}: {reason} (e.g. cli:claude-code)"))
         })?;
-        self.guard()?;
         Ok((mounts, actor))
     }
 }

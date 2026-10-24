@@ -216,9 +216,8 @@ at `--root PATH` or the resolved home; set, they use a `PostgresStore` and
 ever applies the DDL — run `python -m neosian.schemas postgres | psql`
 first (DESIGN §8 C1). The Rust binary supports Postgres for `serve`,
 `record`, `mcp`, `memory` (except `maintain`), `audit`, `export`, `import`,
-`redact` and `prune`. These client commands also reach either server
-through `--url`. Binary `search` and `continue` still use local files;
-`messages` remains in the Python shell.
+`redact`, `prune`, `messages`, `search` and `continue`. These client
+commands also reach either server through `--url`.
 
 Rust uses tokio-postgres's URI or keyword DSNs and four lazy connections.
 The driver defaults to `sslmode=prefer`; `sslmode=require` requires TLS,
@@ -276,8 +275,8 @@ entry points when `--url` names a state process (`neosian memory`,
 key because one machine runs both; `--url` without it refuses at the
 grammar tier. Off means no daemon store from the shell. The Rust binary
 reads this key for `record`, `mcp`, `memory` (except `maintain`), `audit`,
-`export`, `import`, `redact` and `prune` when they use `--url`. Binary
-`search` and `continue` remain local.
+`export`, `import`, `redact`, `prune`, `messages`, `search` and `continue`
+when they use `--url`.
 
 `SSL_CERT_FILE` selects a PEM CA bundle for HTTPS clients. The Rust wire
 client uses rustls with Mozilla roots when unset, verifies certificates

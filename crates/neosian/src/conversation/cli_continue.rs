@@ -11,18 +11,17 @@ use std::io::{self, Write};
 use std::path::PathBuf;
 
 use clap::Args;
-use serde_json::{Value, json};
+use serde_json::json;
 
 use super::failed;
 use super::handoff::continue_conversation;
 use super::ids::check_conversation_id;
 use crate::cli::usage;
-use crate::home::{home, project_scope};
-use crate::memory::cli::{DSN_ENV, NEEDS_PYTHON};
+use crate::home::project_scope;
 use crate::memory::grammar::SCOPE_ENV;
 use crate::memory::mounts::Refusal;
+use crate::remote::selection::Selection;
 use crate::repr::repr;
-use crate::store::FileStore;
 use crate::store::grammar::check_scope;
 
 /// Print a recorded conversation the way continue_session delivers it.
@@ -35,6 +34,12 @@ pub struct Continue {
     /// ~/.neosian or $NEOSIAN_HOME)
     #[arg(long)]
     root: Option<PathBuf>,
+    /// State process URL; token from NEOSIAN_CLIENT_TOKEN.
+    #[arg(long)]
+    url: Option<String>,
+    /// Postgres schema (Postgres only).
+    #[arg(long)]
+    schema: Option<String>,
     /// the scope whose sessions and note to read (default: $NEOSIAN_SCOPE,
     /// else this directory's project scope)
     #[arg(long)]
@@ -46,6 +51,14 @@ pub struct Continue {
 
 pub fn run(args: &Continue, out: &mut impl Write, err: &mut impl Write) -> io::Result<u8> {
     let json = args.json;
+    let selected = match Selection::resolve_schema(
+        args.root.as_deref(),
+        args.url.as_deref(),
+        args.schema.as_deref(),
+    ) {
+        Ok(selected) => selected,
+        Err(message) => return usage(json, &message, out, err),
+    };
     let checked = args.conversation.as_deref().map(check_conversation_id);
     if let (Some(Err(reason)), Some(conversation)) = (checked, &args.conversation) {
         let message = format!("conversation {}: {reason}", repr(conversation));
@@ -55,25 +68,24 @@ pub fn run(args: &Continue, out: &mut impl Write, err: &mut impl Write) -> io::R
         Ok(scope) => scope,
         Err(message) => return usage(json, &message, out, err),
     };
-    if env::var_os(DSN_ENV).is_some_and(|dsn| !dsn.is_empty()) {
-        return failed(NEEDS_PYTHON, None, json, out, err);
-    }
-    let root = match &args.root {
-        Some(root) => root.clone(),
-        None => home()?,
+    let store = match selected.open() {
+        Ok(store) => store,
+        Err(error) => return failed(&super::Error::from(error).text(), None, json, out, err),
     };
-    let store = FileStore::open(&root)?;
-    let outcome = match continue_conversation(&store, &scope, args.conversation.as_deref(), None) {
-        Ok(Ok(outcome)) => outcome,
-        Ok(Err(corrective)) => return failed(&corrective.error, corrective.hint, json, out, err),
-        Err(error) => return failed(&error.text(), None, json, out, err),
-    };
+    let outcome =
+        match continue_conversation(store.as_ref(), &scope, args.conversation.as_deref(), None) {
+            Ok(Ok(outcome)) => outcome,
+            Ok(Err(corrective)) => {
+                return failed(&corrective.error, corrective.hint, json, out, err);
+            }
+            Err(error) => return failed(&error.text(), None, json, out, err),
+        };
     if json {
         let envelope = json!({
             "conversation": outcome.conversation,
             "scope": scope,
             "note": outcome.note,
-            "client": Value::Null,
+            "client": store.client(),
             "text": outcome.text,
         });
         writeln!(out, "{envelope}")?;

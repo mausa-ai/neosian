@@ -17,12 +17,10 @@ use crate::cli::usage;
 use crate::remote::selection::Selection;
 
 pub const DSN_ENV: &str = "NEOSIAN_POSTGRES_DSN";
-pub const NEEDS_PYTHON: &str = "NEOSIAN_POSTGRES_DSN names a Postgres store, and this backend \
-                            needs the Python shell: `uv tool install neosian`";
 
 /// A command's answer on the streams: the envelope under `--json`, else
 /// the data on stdout and the guidance on stderr.
-fn render(
+pub(crate) fn render(
     outcome: &Outcome,
     json: bool,
     out: &mut impl Write,

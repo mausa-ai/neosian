@@ -5,11 +5,13 @@ use std::ffi::OsString;
 use std::io::{self, IsTerminal, Write};
 use std::process::ExitCode;
 
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
 use serde_json::json;
 
 use crate::conversation::{cli_continue, cli_search};
-use crate::{clients, configure, docs, mcp, memory, operator, record, serve, update, version};
+use crate::{
+    clients, configure, docs, mcp, memory, messaging, operator, record, serve, update, version,
+};
 
 #[derive(Parser)]
 #[command(
@@ -62,6 +64,8 @@ enum Command {
     Search(cli_search::Search),
     /// Print a recorded conversation as continue_session delivers it (§33).
     Continue(cli_continue::Continue),
+    /// Durable messages and reminders.
+    Messages(messaging::cli::Messages),
     /// Record a foreign agent's session from its hooks: one payload on stdin per call (§20.9).
     Record(record::cli::Record),
     /// Serve neosian memory to MCP clients on stdio (§39.3).
@@ -94,6 +98,24 @@ where
     let stdout = io::stdout();
     let stderr = io::stderr();
     let (mut out, mut err) = (stdout.lock(), stderr.lock());
+    if args.len() == 1 {
+        if io::stdin().is_terminal() && stdout.is_terminal() {
+            return finish(
+                crate::python_shell::run(&args, &mut out, &mut err),
+                &mut err,
+            );
+        }
+        return finish(
+            writeln!(out, "{}", Cli::command().render_help()).map(|()| 0),
+            &mut err,
+        );
+    }
+    if crate::python_shell::requested(&args) {
+        return finish(
+            crate::python_shell::run(&args, &mut out, &mut err),
+            &mut err,
+        );
+    }
     let cli = match Cli::try_parse_from(&args) {
         Ok(cli) => cli,
         Err(error) => {
@@ -141,10 +163,15 @@ where
         Command::Prune(args) => operator::erasure::prune(&args, &mut out, &mut err),
         Command::Search(args) => cli_search::run(&args, &mut out, &mut err),
         Command::Continue(args) => cli_continue::run(&args, &mut out, &mut err),
+        Command::Messages(args) => messaging::cli::run(&args, &mut out, &mut err),
         Command::Record(args) => record::cli::run(&args, &mut out, &mut err),
         Command::Mcp(args) => mcp::cli::run(&args, &mut out, &mut err),
         Command::Serve(args) => serve::cli::run(&args, &mut out, &mut err),
     };
+    finish(code, &mut err)
+}
+
+fn finish(code: io::Result<u8>, err: &mut impl Write) -> ExitCode {
     match code {
         Ok(code) => ExitCode::from(code),
         // A closed pipe is the reader's choice, not an error of ours.

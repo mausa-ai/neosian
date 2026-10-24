@@ -39,11 +39,12 @@ The Python shell and Rust binary both provide `setup`, `status`,
 `configure`, `update`, `mcp install`, and `record install` over the same
 home and client files. Setup registers the executable running it;
 `--binary PATH` selects an explicit binary.
-The binary also provides audit, export, import, redact and prune, and all
-memory commands except maintain. These commands accept --url with
-NEOSIAN_CLIENT_TOKEN; binary search and continue remain on local files.
-Recording, MCP, memory and the operator commands also support Postgres
-directly. The messages CLI still uses the Python shell.
+The binary also provides audit, export, import, redact, prune, messages,
+search, continue and all memory commands except maintain. These commands,
+recording and MCP use files, direct Postgres or --url with
+NEOSIAN_CLIENT_TOKEN. Chat, playground, eval and memory maintain use the
+Python shell; the binary prints its install command. The cli docs page
+names the implementation for every command.
 
 - `neosian status [--at CLIENT=DIR]… [--json]`: is this machine set up? The home, which
   providers have a key (never values), this directory's two scopes, per
@@ -305,7 +306,7 @@ Python shell with chat, the TUI, playground, eval and every operator verb;
 `uv add neosian` supplies the SDK. Both doors share the same home with no
 migration; `status` names competing executables on PATH.
 
-- `uv add "neosian==1.12.2"`: one package, the library and its
+- `uv add "neosian==1.13.0"`: one package, the library and its
   provider SDKs, the `neosian` shell, the MCP server and client, the
   state process and OpenTelemetry spans (about 70 MB; nothing loaded
   until used). Pin a release for reproducible installs.
@@ -315,7 +316,7 @@ migration; `status` names competing executables on PATH.
 - `curl -fsS https://neosian.com/install | sh -s -- --python` installs uv
   when needed and the Python shell; the script says what it installs first.
 - The appliance: `docker run -d -e NEOSIAN_SERVE_TOKEN=… -p 6367:6367
-  -v neosian-state:/data ghcr.io/mausa-ai/neosian:1.12.2`, the state
+  -v neosian-state:/data ghcr.io/mausa-ai/neosian:1.13.0`, the state
   process on a volume, `/health` the one open route. Since 1.11.0 it
   runs the Rust binary. Both backends are supported: for Postgres, set
   NEOSIAN_POSTGRES_DSN and pass --schema neosian instead of the default
@@ -324,8 +325,8 @@ migration; `status` names competing executables on PATH.
 
 ## Docs
 
-- https://github.com/mausa-ai/neosian/blob/v1.12.2/docs/README.md: install and quickstart.
-- https://github.com/mausa-ai/neosian/blob/v1.12.2/docs/SERVICES.md: every environment key and what turning it off means.
+- https://github.com/mausa-ai/neosian/blob/v1.13.0/docs/README.md: install and quickstart.
+- https://github.com/mausa-ai/neosian/blob/v1.13.0/docs/SERVICES.md: every environment key and what turning it off means.
 - `neosian docs baselines`: the published per-provider memory numbers.
 
 ## Messages and reminders

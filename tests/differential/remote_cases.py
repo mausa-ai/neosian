@@ -118,7 +118,8 @@ REMOTE_CASES = (
     *(
         case
         for case in CASES
-        if case.verb in {"audit", "export", "redact", "prune"}
+        if case.verb
+        in {"audit", "export", "redact", "prune", "messages", "search", "continue"}
         and "--root" in case.argv
         and "--url" not in case.argv
         and "--schema" not in case.argv

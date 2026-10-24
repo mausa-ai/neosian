@@ -13,7 +13,7 @@ import pytest
 
 from neosian import PostgresStore, RemoteStore
 from neosian._foundation.server.app import build_app
-from tests.differential.harness import free_port, rust_door, wait_healthy
+from tests.differential.harness import free_port, python_door, rust_door, wait_healthy
 from tests.support.postgres import store_schema
 
 
@@ -24,9 +24,11 @@ async def remote_postgres(
     directory: Path,
     implementation: str,
     token: str,
+    *,
+    over_socket: bool = False,
 ) -> AsyncIterator[RemoteStore]:
     """The Rust leg runs a real binary, with SQL planting left to the caller."""
-    if implementation == "python":
+    if implementation == "python" and not over_socket:
         app = await build_app(store, token=token)
         client = await RemoteStore.connect(
             "http://state-process", token=token, transport=httpx.ASGITransport(app=app)
@@ -36,7 +38,7 @@ async def remote_postgres(
         finally:
             await client.aclose()
         return
-    binary = rust_door()
+    binary = python_door() if implementation == "python" else rust_door()
     if binary is None:
         pytest.skip("no binary: `cargo build --locked` or set NEOSIAN_BINARY")
     port = free_port()
@@ -65,6 +67,7 @@ async def remote_postgres(
         except subprocess.TimeoutExpired:
             server.kill()
             server.communicate()
-            pytest.fail("Rust Postgres server did not stop gracefully")
-        assert server.returncode == 0, stderr.decode(errors="replace")
+            pytest.fail(f"{implementation} Postgres server did not stop gracefully")
+        if implementation == "rust":
+            assert server.returncode == 0, stderr.decode(errors="replace")
         assert b"Application shutdown complete" in stderr

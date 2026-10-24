@@ -11,6 +11,7 @@ from collections.abc import Mapping
 from typing import Any, Final
 
 from tests.differential.harness import Case
+from tests.differential.message_cases import message_cases
 from tests.differential.operator_cases import operator_cases
 from tests.differential.serve_cases import serve_cases
 from tests.unit.record.payloads import prompt, session_start, stop, tool
@@ -878,6 +879,7 @@ CASES: Final[tuple[Case, ...]] = (
     *_mcp(),
     *serve_cases(),
     *operator_cases(),
+    *message_cases(),
 )
 BY_NAME: Final[dict[str, Case]] = {case.name: case for case in CASES}
 # One document through every mutation, each step building on the one

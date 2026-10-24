@@ -20,6 +20,7 @@ mod messaging;
 mod operator;
 mod postgres;
 mod pyfmt;
+mod python_shell;
 mod record;
 mod remote;
 mod repr;

@@ -56,6 +56,7 @@ BINARY_VERBS: Final[frozenset[str]] = frozenset(
         "docs",
         "search",
         "continue",
+        "messages",
         "record",
         "mcp",
         "serve",

@@ -5,7 +5,7 @@ Async-only Python library: the state layer for LLM agents — a stateless
 structured output) with opt-in `Conversation` + memory layers around it,
 on storage the product owns. Read `docs/README.md` first; `neosian docs
 <topic>` prints the shipped pages from the wheel. The product doors are
-also being built as one static Rust binary in `crates/` (the R track,
+also ship as one static Rust binary in `crates/` (the R track,
 DESIGN §39); the SDK and the human shell stay Python.
 
 ## Hard rules

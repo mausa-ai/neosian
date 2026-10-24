@@ -4,7 +4,6 @@
 //! narrows. Exit tiers (§14.1): 2 for grammar with nothing constructed,
 //! 1 when the store answers with an error, 0 with the hits, or none.
 
-use std::env;
 use std::io::{self, Write};
 use std::path::PathBuf;
 
@@ -16,11 +15,9 @@ use super::hits::hit_line;
 use super::ids::check_conversation_id;
 use super::search::parse_query;
 use crate::cli::usage;
-use crate::home::home;
-use crate::memory::cli::{DSN_ENV, NEEDS_PYTHON};
 use crate::messaging::cli_history::{Hit, search_hits};
+use crate::remote::selection::Selection;
 use crate::repr::repr;
-use crate::store::FileStore;
 
 const DEFAULT_LIMIT: i64 = 20;
 /// The wire's page (§18.2): every substrate alike.
@@ -36,6 +33,12 @@ pub struct Search {
     /// ~/.neosian or $NEOSIAN_HOME)
     #[arg(long)]
     root: Option<PathBuf>,
+    /// State process URL; token from NEOSIAN_CLIENT_TOKEN.
+    #[arg(long)]
+    url: Option<String>,
+    /// Postgres schema (Postgres only).
+    #[arg(long)]
+    schema: Option<String>,
     /// search this conversation only (repeatable); default: every one
     #[arg(long = "conversation", value_name = "ID")]
     conversations: Vec<String>,
@@ -49,6 +52,14 @@ pub struct Search {
 
 pub fn run(args: &Search, out: &mut impl Write, err: &mut impl Write) -> io::Result<u8> {
     let json = args.json;
+    let selected = match Selection::resolve_schema(
+        args.root.as_deref(),
+        args.url.as_deref(),
+        args.schema.as_deref(),
+    ) {
+        Ok(selected) => selected,
+        Err(message) => return usage(json, &message, out, err),
+    };
     let query = args.query.join(" ");
     let terms = match parse_query(&query) {
         Ok(terms) => terms,
@@ -64,20 +75,16 @@ pub fn run(args: &Search, out: &mut impl Write, err: &mut impl Write) -> io::Res
             return usage(json, &message, out, err);
         }
     }
-    if env::var_os(DSN_ENV).is_some_and(|dsn| !dsn.is_empty()) {
-        return failed(NEEDS_PYTHON, None, json, out, err);
-    }
-    let root = match &args.root {
-        Some(root) => root.clone(),
-        None => home()?,
+    let store = match selected.open() {
+        Ok(store) => store,
+        Err(error) => return failed(&super::Error::from(error).text(), None, json, out, err),
     };
-    let store = FileStore::open(&root)?;
     let ids = (!args.conversations.is_empty()).then_some(args.conversations.as_slice());
     let turns = match store.search_turns(&terms, ids, args.limit as usize) {
         Ok(turns) => turns,
         Err(error) => return failed(&error.text(), None, json, out, err),
     };
-    let hits = match search_hits(&store, &turns, &terms, ids, args.limit as usize) {
+    let hits = match search_hits(store.as_ref(), &turns, &terms, ids, args.limit as usize) {
         Ok(hits) => hits,
         Err(error) => return failed(&error.text(), None, json, out, err),
     };
@@ -87,7 +94,7 @@ pub fn run(args: &Search, out: &mut impl Write, err: &mut impl Write) -> io::Res
             "query": query,
             "conversations": ids,
             "limit": args.limit,
-            "client": Value::Null,
+            "client": store.client(),
             "hits": hits,
         });
         writeln!(out, "{envelope}")?;

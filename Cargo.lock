@@ -862,7 +862,7 @@ dependencies = [
 
 [[package]]
 name = "neosian"
-version = "1.12.2"
+version = "1.13.0"
 dependencies = [
  "axum",
  "base64 0.22.1",

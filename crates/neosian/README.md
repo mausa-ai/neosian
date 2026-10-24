@@ -16,6 +16,13 @@ checks GitHub Releases; `--write` calls the adjacent cargo-dist updater
 only for the installation its receipt owns, within the installed major.
 The home and recorded state require no migration.
 
+`memory`, `messages`, `search`, `continue`, `audit`, `export`, `import`,
+`redact` and `prune` work on files, Postgres or either state process through
+`--url`. Recording and MCP use those same backends; `serve` hosts files or
+Postgres. The database schema stays operator-owned. Chat, playground, eval
+and `memory maintain` name the Python shell. `neosian docs cli` has the
+complete command table.
+
 Install with `curl -fsS https://neosian.com/install | sh`, or use the
 PowerShell installer/MSI on the GitHub Release. Publisher signing and
 Apple notarization are deferred; browser downloads can trigger warnings.

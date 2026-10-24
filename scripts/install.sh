@@ -9,7 +9,7 @@ PACKAGE="neosian"
 # The release this script shipped with — the default pin. A unit test keeps
 # it equal to pyproject's version; the site serves the script from master.
 # Explicit so the installer resolves the release it describes.
-NEOSIAN_RELEASE="1.12.2"
+NEOSIAN_RELEASE="1.13.0"
 
 python=0
 find_links="${NEOSIAN_INSTALL_FIND_LINKS:-}"

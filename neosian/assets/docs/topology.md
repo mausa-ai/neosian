@@ -24,8 +24,9 @@ state-process implementation with `NEOSIAN_CLIENT_TOKEN`. The record spool
 stays on the client machine and clears only after a successful landing.
 A failed landing keeps the span for the next Stop; a partial remote write
 is not an exactly-once transaction. Neither client retries transport
-failures automatically. Binary memory and operator commands also accept
-`--url`; remote search/continue and the messages CLI remain pending.
+failures automatically. Binary memory and operator commands, including
+`messages`, `search` and `continue`, also accept `--url` and direct Postgres.
+Model-bearing work stays in the Python shell and SDK.
 
 ## Embed first
 

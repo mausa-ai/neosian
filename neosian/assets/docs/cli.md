@@ -52,10 +52,28 @@ only replaces an installation owned by a matching cargo-dist receipt.
 
 `uv tool install neosian` supplies the Python shell with chat, the TUI,
 playground, eval and all operator verbs. `uv add neosian` supplies the SDK.
-The binary also provides `audit`, `export`, `import`, `redact` and `prune`,
-plus `memory versions`, `memory redact` and `memory revert`. `messages`
-is still being implemented. Recording, MCP, memory and the operator commands
-also support Postgres directly.
+
+## Which implementation runs each command
+
+| command | Python shell | Rust binary |
+|---|---|---|
+| `version`, `docs` | yes | yes; the same shipped pages |
+| `setup`, `status`, `configure`, `update` | yes | yes; registers and updates the binary |
+| `record`, `record install` | yes | yes |
+| `mcp`, `mcp install`, `serve` | yes | yes |
+| `memory view`, `create`, `str_replace`, `insert`, `delete`, `rename` | yes | yes |
+| `memory versions`, `redact`, `revert` | yes | yes |
+| `audit`, `export`, `import`, `redact`, `prune` | yes | yes |
+| `messages`, `search`, `continue` | yes | yes |
+| `chat`, `playground`, `eval`, `memory maintain` | yes | prints `needs the Python shell: uv tool install neosian` |
+| no command | chat on a terminal; help under a pipe | Python-shell guidance on a terminal; help under a pipe |
+
+The model-bearing commands and the Python SDK's reflection stay in Python.
+The binary's guidance exits 1 before opening a home or a store. Its data
+commands support FileStore, direct Postgres and either state-process
+implementation through `--url`; `serve` hosts FileStore or Postgres.
+Python also embeds host-owned stores through the SDK. Machine setup and
+configuration use the local home in both implementations.
 
 ## Set up and talk
 
@@ -328,10 +346,10 @@ EOF
 
 The Rust binary accepts `--url` on `record`, the MCP stdio server, every
 `memory` command except `maintain`, and `audit`, `export`, `import`,
-`redact` and `prune`. These use the same token environment variable and
-refuse a server with another wire version. Binary `search` and `continue`
-remain on local files. The other listed store commands and `serve` also
-support Postgres directly; apply the schema before starting them.
+`redact`, `prune`, `messages`, `search` and `continue`. These use the same
+token environment variable and refuse a server with another wire version.
+All these store commands and `serve` also support Postgres directly;
+apply the schema before starting them.
 
 Postgres arrives only through the `NEOSIAN_POSTGRES_DSN` environment
 variable; there is no `--dsn` flag (argv is world-readable), and the

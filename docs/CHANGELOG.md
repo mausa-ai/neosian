@@ -8,8 +8,15 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [1.13.0] - 2026-10-24
+
 ### Added
 
+- The Rust binary provides all ten `messages` commands, sharing their
+  lifecycle with MCP. Messages, history search and session continuation
+  work on files, direct Postgres and either state process through `--url`.
+  The CLI page names the implementation for every command. Model-bearing
+  commands print the Python shell's install command before opening a store.
 - The Rust binary and container support Postgres for the state process,
   recording, MCP, memory and operator commands. Python and Rust share the
   shipped SQL statements and schema; neither server applies DDL. TLS
@@ -2423,7 +2430,8 @@ pre-release — pin it explicitly; the API stability promise rides v1.0.0.
 - Both entry points share one `_validate_run`, so neither can skip a
   guard.
 
-[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.12.2...HEAD
+[Unreleased]: https://github.com/mausa-ai/neosian/compare/v1.13.0...HEAD
+[1.13.0]: https://github.com/mausa-ai/neosian/compare/v1.12.2...v1.13.0
 [1.12.2]: https://github.com/mausa-ai/neosian/compare/v1.12.1...v1.12.2
 [1.12.1]: https://github.com/mausa-ai/neosian/compare/v1.12.0...v1.12.1
 [1.12.0]: https://github.com/mausa-ai/neosian/compare/v1.11.0...v1.12.0

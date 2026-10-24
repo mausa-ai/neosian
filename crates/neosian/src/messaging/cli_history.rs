@@ -10,7 +10,7 @@ use super::mailbox::Mailbox;
 use crate::conversation::hits::{hit_json, snippet};
 use crate::conversation::search::match_terms;
 use crate::conversation::{Error, Turn};
-use crate::store::FileStore;
+use crate::state::State;
 
 /// A search answer: a turn with the annotations about it, or a message.
 pub enum Hit<'a> {
@@ -43,7 +43,7 @@ impl Hit<'_> {
 /// The turn hits, annotated and joined by the message hits, newest first,
 /// the newest `limit`.
 pub fn search_hits<'a>(
-    store: &FileStore,
+    store: &dyn State,
     turns: &'a [Turn],
     terms: &[String],
     ids: Option<&[String]>,

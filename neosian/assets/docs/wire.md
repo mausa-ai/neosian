@@ -18,7 +18,8 @@ the two answer alike and leave the same home. The remote hook and MCP
 corpus also runs through all four Python/Rust client-server pairings
 (`tests/differential/test_remote.py`), with separate multi-page, TLS and
 version-skew probes. The Rust client implements the operations the
-recording, MCP, memory and operator doors call; Python `RemoteStore`
+recording, MCP, memory and operator doors (including messages, search and
+continue) call; Python `RemoteStore`
 implements the whole wire.
 
 Every route listed here is served by both implementations. The Rust

@@ -4,8 +4,10 @@
 //! R1 slice D the writes: `send`, the fenced transitions, the lineage
 //! note a continuation declares.
 
+pub mod cli;
 pub mod cli_history;
 pub mod delivery;
+pub mod dispatch;
 pub mod history;
 pub mod mailbox;
 pub mod transitions;

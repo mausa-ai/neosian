@@ -107,7 +107,7 @@ an aware ISO-8601 `due_at` or positive `delay_seconds`, never both. Times are
 stored in UTC, and relative delays start at the operation's clock. There are
 no cron expressions or implicit recurring schedules.
 
-The shell uses the same implementation:
+The Python shell and Rust binary expose the same commands and lifecycle:
 
 ```sh
 neosian messages send --target /project --body "Check upstream issue #123" --delay-seconds 1296000 --json
@@ -118,6 +118,7 @@ neosian messages snooze --target /project --session SESSION --message-id UUID --
 
 `--scope`/`--mount`, `--root`, `--url` and the existing database/environment
 configuration select storage. `--target` selects a destination among mounts.
+Both implementations use files, direct Postgres or either state process.
 With no scope or mount override, commands use the current directory's user
 and project mounts. `neosian messages list` reads both; an untargeted send
 uses the project mount. Storage defaults to the home.
