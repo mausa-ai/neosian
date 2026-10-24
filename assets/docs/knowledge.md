@@ -9,7 +9,10 @@ summary: Preview Markdown imports, choose collection rules and references, and e
 collection, with source provenance and normal document versions. Its commands
 use the same `--scope`, `--mount`, `--profile`, `--root`, `--url`, `--schema`
 and `--actor` selection as memory commands. Results are JSON, including when
-`--json` is omitted. No model account or new storage capability is required.
+`--json` is omitted. Imports and exports use existing storage operations.
+`knowledge govern/read` adds reviewed procedures/decisions and explicit retrieval
+policies; see `neosian docs governance`. `validate` checks governance record
+structure as well as collection rules. No model account is required.
 
 ```sh
 neosian knowledge import ./notes --to /memories/notes --scope user:demo --json

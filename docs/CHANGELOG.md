@@ -8,6 +8,26 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [2.6.0] - 2026-10-24
+
+### Added
+
+- Optional governance format 1 for shared procedures and decisions: ownership,
+  draft/approved/superseded state, content-bound review, UTC effective/expiry
+  dates and explicit supersession links. Review labels describe attribution;
+  authenticated scope grants remain authority.
+- CLI `knowledge govern/read`, MCP `knowledge` and `schema governance`.
+  Review changes prepare source-preserving S5 proposals and use its separate
+  approval/apply, current-state guards and interrupted-run inspection.
+- Explicit all/effective/approved retrieval selection, optional profile mount
+  policies and optional wire-6 knowledge-policy version 1. Filtering precedes
+  search matching/paging and covers profile memory context and selected skill
+  graphs. Raw authorized reads/history/export remain inspection surfaces.
+- Independent review-hash, policy precedence, time-boundary, reference,
+  revocation and physical erasure contracts across files/Postgres/HTTP, plus
+  a shipped governance guide. No new storage schema, runtime or host account
+  model; expiry never deletes content and copied data needs separate erasure.
+
 ## [2.5.0] - 2026-10-24
 
 ### Added

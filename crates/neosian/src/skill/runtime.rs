@@ -65,9 +65,31 @@ impl Check<'_> {
             .read(&mount.scope, document)?
             .filter(|d| !d.envelope.redacted)
             .ok_or_else(|| invalid(format!("skill document is missing or redacted: {path}")))?;
+        if self.selected {
+            self.policy(path, &doc.content)?;
+        }
         Ok((doc.content, doc.envelope.version))
     }
+    fn policy(&self, path: &str, text: &str) -> Result<(), Error> {
+        let (mount, name) = resolve(self.mounts, path)?;
+        let policy = crate::knowledge::governance::Policy::All.selected(self.store, &mount.scope);
+        if !crate::knowledge::governance::eligible(
+            policy,
+            &mount.scope,
+            name,
+            text,
+            crate::store::time::Stamp::now(),
+        ) {
+            return Err(invalid(format!(
+                "skill document is excluded by knowledge policy: {path}"
+            )));
+        }
+        Ok(())
+    }
     fn visit(&mut self, path: &str, text: &str, version: u64) -> Result<Value, Error> {
+        if self.selected {
+            self.policy(path, text)?;
+        }
         if self.stack.len() >= 8 || self.count >= MAX_NODES {
             return Err(invalid(
                 "skill dependency graph exceeds depth 8 or 64 nodes",

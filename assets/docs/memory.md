@@ -250,6 +250,15 @@ writes or I/O failures can still produce partial results. The result reports
 what actually happened. Model-assisted judgment belongs to the user's agent,
 which can load the shipped `upkeep` skill.
 
+## Reviewed knowledge
+
+Shared procedures/decisions can carry content-bound review assertions and
+effective/expiry state. `memory search --knowledge-policy approved` filters before
+excerpts and pagination; a selected profile may require that policy. Raw memory
+reads and revisions remain available under current authority. `knowledge govern`
+prepares ordinary upkeep proposals, so apply/recovery retains the guards above.
+Expiry affects retrieval and never triggers deletion. See `neosian docs governance`.
+
 ## Recorded conversations
 
 Profile-free hooks append numbered turns and log projections; new profiles

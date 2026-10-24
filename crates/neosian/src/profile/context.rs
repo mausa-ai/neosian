@@ -39,6 +39,7 @@ pub fn render_context(
     let p = store
         .profile()
         .expect("profile context uses a routed store");
+    let now = Stamp::now();
     let limit = limit.min(p.context.max_chars);
     let limit = if own.is_some() {
         limit.saturating_sub(template("profile_instructions").chars().count())
@@ -70,11 +71,34 @@ pub fn render_context(
         ));
         match m.injection {
             Injection::Index => {
-                for entry in store.list_documents(&m.scope, "")? {
+                let entries = store.list_documents(&m.scope, "")?;
+                if !m.knowledge_policy.is_all() && entries.len() > 10_000 {
+                    return Err(crate::knowledge::model::invalid(
+                        "filtered context exceeds 10000 entries",
+                    )
+                    .into());
+                }
+                for entry in entries {
                     if crate::memory::mounts::state_path(&entry.path)
                         || entry.path.starts_with("sessions/")
                     {
                         continue;
+                    }
+                    if !m.knowledge_policy.is_all() {
+                        let Some(doc) = store.read(&m.scope, &entry.path)? else {
+                            continue;
+                        };
+                        if doc.envelope.redacted
+                            || !crate::knowledge::governance::eligible(
+                                m.knowledge_policy,
+                                &m.scope,
+                                &entry.path,
+                                &doc.content,
+                                now,
+                            )
+                        {
+                            continue;
+                        }
                     }
                     b.push(&format!(
                         "- /{}/{} (v{}{}, source={}, scope={})",
@@ -90,10 +114,21 @@ pub fn render_context(
             Injection::Full => {
                 for path in &m.documents {
                     match store.read(&m.scope, path)? {
-                        Some(doc) if !doc.envelope.redacted => b.push(&format!(
-                            "/{}/{} (v{}, source={}, scope={}):\n{}",
-                            m.path, path, doc.envelope.version, m.source, m.scope, doc.content
-                        )),
+                        Some(doc)
+                            if !doc.envelope.redacted
+                                && crate::knowledge::governance::eligible(
+                                    m.knowledge_policy,
+                                    &m.scope,
+                                    path,
+                                    &doc.content,
+                                    now,
+                                ) =>
+                        {
+                            b.push(&format!(
+                                "/{}/{} (v{}, source={}, scope={}):\n{}",
+                                m.path, path, doc.envelope.version, m.source, m.scope, doc.content
+                            ))
+                        }
                         _ => b.push(&render(
                             &template("profile_missing"),
                             &[("path", &format!("/{}/{path}", m.path))],

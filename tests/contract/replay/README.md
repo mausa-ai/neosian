@@ -33,3 +33,7 @@ machine-specific location to its fixture role; the executable count,
 order, basename and other status fields stay exact. Independent product
 cases assert exact supplied PATHs and shadowing for zero, one and two
 commands. The frozen expected.json bytes are unchanged.
+
+S6's optional `knowledge_policy` handshake and `knowledge` tool discovery are
+projected out of this frozen comparison and tested independently. All original
+fixture and expected-result bytes remain unchanged.

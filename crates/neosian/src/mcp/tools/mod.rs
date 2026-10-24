@@ -6,6 +6,7 @@
 
 mod handoff;
 mod history;
+mod knowledge;
 mod memory;
 mod messages;
 mod operator;
@@ -108,6 +109,7 @@ pub fn served(memory: &Memory) -> Vec<Tool> {
     tools.push(search_memory::tool());
     tools.push(upkeep::review());
     tools.push(upkeep::apply());
+    tools.push(knowledge::tool());
     tools
 }
 

@@ -123,3 +123,14 @@ record or wire capability. Changes preserve envelope extras and source
 provenance, with normal actor attribution and version fences on replacements.
 Pause writers: deletes and erasure have no conditional fence, and batches can
 partially apply. See `neosian docs memory` for inspection and recovery.
+
+## Reviewed shared knowledge
+
+Governance format 1 lives in the ordinary document body and shares its versions
+and erasure. It introduces no storage tables, DDL or sidecar. The optional
+knowledge-policy version-1 capability filters current memory search before
+matching and pagination. Postgres's existing generated FTS column also clears
+when content is erased; it is not used by the lexical memory-search API.
+Raw authorized reads/history and faithful archives retain their inspection and
+restoration contracts. Expiry is a retrieval condition, never automatic deletion.
+Read `neosian docs governance` for review assertions and separate copy erasure.

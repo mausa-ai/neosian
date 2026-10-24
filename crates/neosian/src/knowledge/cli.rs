@@ -13,6 +13,26 @@ use crate::store::error::Error;
 
 #[derive(Subcommand)]
 pub enum Command {
+    /// Retrieve current knowledge under an explicit review policy.
+    Read {
+        path: String,
+        #[arg(long, value_enum, default_value = "effective")]
+        policy: super::governance::Policy,
+        #[command(flatten)]
+        flags: Flags,
+    },
+    /// Prepare a review-state proposal; apply it with upkeep apply after review.
+    Govern {
+        path: String,
+        #[arg(long)]
+        file: PathBuf,
+        #[arg(long)]
+        expect_version: u64,
+        #[arg(long)]
+        reason: String,
+        #[command(flatten)]
+        flags: Flags,
+    },
     /// Preview a Markdown or knowledge-bundle import; pause writers before --write.
     Import {
         input: PathBuf,
@@ -50,6 +70,8 @@ pub enum Command {
     /// Resolve explicit references using only currently mounted read authority.
     References {
         path: String,
+        #[arg(long, value_enum, default_value = "all")]
+        policy: super::governance::Policy,
         #[command(flatten)]
         flags: Flags,
     },
@@ -66,7 +88,9 @@ pub enum Command {
 impl Command {
     fn flags(&self) -> &Flags {
         match self {
-            Self::Import { flags, .. }
+            Self::Read { flags, .. }
+            | Self::Govern { flags, .. }
+            | Self::Import { flags, .. }
             | Self::Collection { flags, .. }
             | Self::Validate { flags, .. }
             | Self::References { flags, .. }
@@ -76,7 +100,9 @@ impl Command {
     fn path(&self) -> &str {
         match self {
             Self::Import { to, .. } => to,
-            Self::Collection { path, .. }
+            Self::Read { path, .. }
+            | Self::Govern { path, .. }
+            | Self::Collection { path, .. }
             | Self::Validate { path, .. }
             | Self::References { path, .. }
             | Self::Export { path, .. } => path,
@@ -129,9 +155,27 @@ pub fn run(command: &Command, out: &mut impl Write, err: &mut impl Write) -> io:
             )?)?),
             _ => None,
         };
-        Ok((input, definition))
+        let governance = match command {
+            Command::Govern {
+                file,
+                expect_version,
+                reason,
+                ..
+            } => {
+                if *expect_version == 0 {
+                    return Err(model::invalid("expect-version must be positive"));
+                }
+                crate::upkeep::model::reason(reason)?;
+                Some(super::govern::Change::parse(&input::read(
+                    file,
+                    model::MAX_METADATA,
+                )?)?)
+            }
+            _ => None,
+        };
+        Ok((input, definition, governance))
     })();
-    let (input, definition) = match prepared {
+    let (input, definition, governance) = match prepared {
         Ok(prepared) => prepared,
         Err(error) => return crate::cli::usage(flags.json, &super::text_error(error), out, err),
     };
@@ -142,6 +186,23 @@ pub fn run(command: &Command, out: &mut impl Write, err: &mut impl Write) -> io:
             actor,
         };
         let (report, code) = match command {
+            Command::Read { path, policy, .. } => (super::govern::read(&memory, path, *policy)?, 0),
+            Command::Govern {
+                path,
+                expect_version,
+                reason,
+                ..
+            } => (
+                serde_json::to_value(super::govern::prepare(
+                    &memory,
+                    path,
+                    &governance.expect("prepared governance"),
+                    *expect_version,
+                    reason,
+                )?)
+                .expect("proposal serializes"),
+                0,
+            ),
             Command::Import {
                 to,
                 conflict,
@@ -158,7 +219,7 @@ pub fn run(command: &Command, out: &mut impl Write, err: &mut impl Write) -> io:
                 plan::collection(&memory, path, definition, *write)?
             }
             Command::Validate { path, .. } => read::validate(&memory, path)?,
-            Command::References { path, .. } => read::references(&memory, path)?,
+            Command::References { path, policy, .. } => read::references(&memory, path, *policy)?,
             Command::Export { path, output, .. } => read::export(&memory, path, output)?,
         };
         writeln!(out, "{report}")?;

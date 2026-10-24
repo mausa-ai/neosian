@@ -1,0 +1,354 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neosian.com/contracts/governance-v1.schema.json",
+  "title": "Knowledge governance format 1",
+  "description": "Optional attributes.neosian_governance record, or a governance change. Semantic validation checks labels, UTC dates/order, scope/path grammar and content hashes. Review assertions are not authentication. Changes prepare S5 proposals; application requires separate approval.",
+  "$defs": {
+    "record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "format",
+        "kind",
+        "owners",
+        "state"
+      ],
+      "properties": {
+        "format": {
+          "const": 1
+        },
+        "kind": {
+          "enum": [
+            "knowledge",
+            "procedure",
+            "decision"
+          ]
+        },
+        "owners": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]+$"
+          }
+        },
+        "state": {
+          "enum": [
+            "draft",
+            "approved",
+            "superseded"
+          ]
+        },
+        "effective_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?Z$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?Z$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "superseded_by": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "scope",
+                "path"
+              ],
+              "properties": {
+                "scope": {
+                  "$ref": "state-v1.schema.json#/$defs/Scope"
+                },
+                "path": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "review": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "by",
+                "at",
+                "sha256"
+              ],
+              "properties": {
+                "by": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]+$"
+                },
+                "at": {
+                  "type": "string",
+                  "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?Z$"
+                },
+                "sha256": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "approved"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "review"
+            ],
+            "properties": {
+              "review": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "by",
+                  "at",
+                  "sha256"
+                ],
+                "properties": {
+                  "by": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256,
+                    "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]+$"
+                  },
+                  "at": {
+                    "type": "string",
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?Z$"
+                  },
+                  "sha256": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "review": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "superseded_by"
+            ],
+            "properties": {
+              "superseded_by": {
+                "type": "object"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "state": {
+                "const": "superseded"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "change": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "format",
+        "kind",
+        "owners",
+        "state"
+      ],
+      "properties": {
+        "format": {
+          "const": 1
+        },
+        "kind": {
+          "enum": [
+            "knowledge",
+            "procedure",
+            "decision"
+          ]
+        },
+        "owners": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]+$"
+          }
+        },
+        "state": {
+          "enum": [
+            "draft",
+            "approved",
+            "superseded"
+          ]
+        },
+        "effective_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?Z$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?Z$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "superseded_by": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "scope",
+                "path"
+              ],
+              "properties": {
+                "scope": {
+                  "$ref": "state-v1.schema.json#/$defs/Scope"
+                },
+                "path": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reviewer": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]+$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "approved"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "reviewer"
+            ],
+            "properties": {
+              "reviewer": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]+$"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "reviewer": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "superseded_by"
+            ],
+            "properties": {
+              "superseded_by": {
+                "type": "object"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "state": {
+                "const": "superseded"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "anyOf": [
+    {
+      "$ref": "#/$defs/record"
+    },
+    {
+      "$ref": "#/$defs/change"
+    }
+  ]
+}

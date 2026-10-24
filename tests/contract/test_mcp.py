@@ -85,6 +85,7 @@ def test_stdio_tools_history_and_refusals(binary: Binary) -> None:
         "search_memory",
         "upkeep_review",
         "upkeep_apply",
+        "knowledge",
     ]
 
     def text(number: int) -> str:
@@ -112,7 +113,13 @@ def test_stdio_tools_history_and_refusals(binary: Binary) -> None:
     assert answers[15]["result"]["isError"] is True
     assert "pause other writers" in text(16).lower()
     tools = {tool["name"]: tool for tool in answers[2]["result"]["tools"]}
-    for name in ("docs", "memory_history", "search_memory", "upkeep_review"):
+    for name in (
+        "docs",
+        "memory_history",
+        "search_memory",
+        "upkeep_review",
+        "knowledge",
+    ):
         tool = tools[name]
         assert tool["annotations"]["readOnlyHint"] is True
         assert tool["annotations"]["destructiveHint"] is False

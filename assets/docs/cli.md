@@ -18,6 +18,7 @@ protocol servers use their own framing.
 | `profile init/import/export/show/bind` | Create portable workspace selections and local bindings |
 | `skill` | Import/export, discover/load, inspect/validate, edit/diff/revert and select/pin reusable skills. See `neosian docs skills`. |
 | `knowledge import/collection/validate/references/export` | Preview scoped Markdown ingestion, optional structures and readable bundles |
+| `knowledge govern/read` | Prepare a review-state proposal or retrieve current knowledge under an explicit policy |
 | `mcp install`, `record install` | Configure one integration independently |
 | `update` | Check/apply a binary update or set update policy |
 | `memory view/create/str_replace/insert/delete/rename` | Mounted document operations |
@@ -33,7 +34,7 @@ protocol servers use their own framing.
 | `record` | Consume a foreign agent hook payload on stdin |
 | `mcp` | MCP server over stdio |
 | `serve` | State HTTP and optional MCP HTTP server |
-| `schema state/wire/errors/profile/grants/knowledge/skill/upkeep/postgres` | Print machine contracts or schema SQL |
+| `schema state/wire/errors/profile/grants/knowledge/skill/upkeep/governance/postgres` | Print machine contracts or schema SQL |
 
 ## Store selection and mounts
 

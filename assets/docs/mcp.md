@@ -22,6 +22,7 @@ and shipped skills are embedded data assets; no model client runs in neosian.
 | `search_memory` | Current mounted document search with bounded excerpts and source/version references |
 | `upkeep_review` | Read-only scan, proposal preparation and inspection against current state |
 | `upkeep_apply` | Preview a proposal; apply only with explicit write and its separate approval digest |
+| `knowledge` | Read policy-selected knowledge, resolve references or prepare a governance proposal |
 
 Without a profile, the handoff pair is present only when a read-write mount
 can hold session state. With `--profile NAME`, history tools require an
@@ -42,13 +43,22 @@ provide none of those guarantees. The selected profile bounds raw history
 before reads/search, including startup projections and mailbox annotations.
 
 `search_memory(query, path="/", fields=["path", "content"], metadata_keys=[],
-limit=20, cursor=null)` searches current authorized memory, including skills.
+limit=20, cursor=null, knowledge_policy="all")` searches current authorized memory, including skills.
 It is available with capture off and without a history selection. It reads
 current storage independently of the startup index. Results have mounted
 references, scope/path, version, actor and bounded excerpts. Metadata needs
 explicit keys; profile injection modes do not limit permitted reads. Remote
 sources need optional memory-search capability version 1. See `neosian docs
 memory` for matching, Unicode, exclusions and pagination semantics.
+
+`knowledge(command, path, policy="effective", data=null, expected_version=null,
+reason=null)` is read-only. `read` returns current status and policy-eligible
+content; `references` resolves current permitted targets; `prepare` takes strict
+governance change JSON, an expected version and a reason, returning an ordinary
+upkeep proposal. Apply with `upkeep_apply` after review. Profiles may require a
+stricter retrieval policy, including for selected skills and their dependencies.
+Raw `memory` and `memory_history` remain authorized inspection paths. See
+`neosian docs governance` for state, approval and authority semantics.
 
 `upkeep_review(command, data=null, path="/", limit=100, stale_days=90)` scans
 with `command="scan"`, prepares with `command="prepare"` and a format-1

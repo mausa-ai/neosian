@@ -14,6 +14,7 @@ pub enum Kind {
     Knowledge,
     Skill,
     Upkeep,
+    Governance,
 }
 
 #[derive(Args)]
@@ -29,6 +30,11 @@ pub fn run(args: &Schema, out: &mut impl Write, err: &mut impl Write) -> io::Res
         return crate::cli::usage(false, "--schema applies only to postgres", out, err);
     }
     let text = match args.kind {
+        Kind::Governance => include_str!(concat!(
+            env!("NEOSIAN_ASSETS"),
+            "/contracts/governance-v1.schema.json"
+        ))
+        .to_string(),
         Kind::State => include_str!(concat!(
             env!("NEOSIAN_ASSETS"),
             "/contracts/state-v1.schema.json"

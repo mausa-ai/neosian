@@ -38,6 +38,9 @@ def retained(value: Any) -> Any:
             result.pop(
                 "memory_search", None
             )  # S2's optional capability has independent contracts.
+            result.pop(
+                "knowledge_policy", None
+            )  # S6's optional filter is tested separately.
         if "path_executables" in result and "update_mode" in result:
             result["version"] = "<VERSION>"
             result.pop("providers", None)  # v2 retires provider credential inspection.
@@ -50,6 +53,7 @@ def retained(value: Any) -> Any:
                     "search_memory",
                     "upkeep_review",
                     "upkeep_apply",
+                    "knowledge",
                 },
             ),
             ("prompts", {"upkeep"}),

@@ -43,7 +43,7 @@ pub fn selection<'a>(
 pub fn run(memory: &Memory, path: &str, request: &Request) -> Result<Page, Error> {
     let selected = selection(&memory.mounts, path)?;
     let profile = memory.store.profile();
-    let target = json!({
+    let mut target = json!({
         "path": path,
         "workspace": profile.map(|p| &p.workspace_id),
         "mounts": selected.iter().map(|(m, prefix)| json!([
@@ -51,6 +51,17 @@ pub fn run(memory: &Memory, path: &str, request: &Request) -> Result<Page, Error
             profile.and_then(|p| p.mounts.iter().find(|s| s.scope == m.scope)).map(|m| &m.source)
         ])).collect::<Vec<Value>>()
     });
+    let policies: Vec<_> = selected
+        .iter()
+        .map(|(m, _)| {
+            request
+                .knowledge_policy
+                .selected(memory.store.as_ref(), &m.scope)
+        })
+        .collect();
+    if policies.iter().any(|p| !p.is_all()) {
+        target["knowledge_policies"] = json!(policies);
+    }
     let position = request.after(&target, "mounted-memory-search-v1")?;
     let (start, backend): (String, Option<String>) = if position.is_empty() {
         (String::new(), None)
@@ -91,6 +102,9 @@ pub fn run(memory: &Memory, path: &str, request: &Request) -> Result<Page, Error
         }
         let mut query = request.clone();
         query.prefix = prefix;
+        query.knowledge_policy = request
+            .knowledge_policy
+            .selected(memory.store.as_ref(), &mount.scope);
         query.cursor = if mount.path == start {
             backend.clone()
         } else {

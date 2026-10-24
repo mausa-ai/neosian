@@ -35,7 +35,7 @@ enum Command {
         #[command(subcommand)]
         command: crate::skill::cli::Command,
     },
-    /// Import, structure, check and export scoped knowledge.
+    /// Import, structure, review, retrieve and export scoped knowledge.
     Knowledge {
         #[command(subcommand)]
         command: crate::knowledge::cli::Command,

@@ -49,6 +49,10 @@ development and optional one-time migration tooling only (S0, DESIGN §40).
   through mounted authority; no automatic install or execution. Profile pins
   guard current source/version/hash and refuse changed or erased content.
   Preserve legacy `eo` as edit-only; selection never grants broader access.
+- **Review is content state.** Governance labels and hashes are assertions,
+  never authenticated roles. Profile policies narrow knowledge retrieval;
+  grants authorize every access path. Raw reads/history remain inspection
+  surfaces. Expiry never deletes; body erasure includes review metadata.
 
 ## Conventions
 

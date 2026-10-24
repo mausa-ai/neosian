@@ -9,7 +9,12 @@ use crate::mcp::server::Server;
 use crate::memory::search::{Request, mounted};
 
 const ASSET: &str = include_str!(concat!(env!("NEOSIAN_ASSETS"), "/core-tools.yaml"));
-const FIELDS: [Field; 6] = [
+const FIELDS: [Field; 7] = [
+    Field {
+        name: "knowledge_policy",
+        kind: Kind::Literal(&["all", "effective", "approved"]),
+        presence: Presence::Default("all"),
+    },
     Field {
         name: "query",
         kind: Kind::Str,

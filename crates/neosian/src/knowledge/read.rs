@@ -4,6 +4,7 @@ use std::path::Path;
 
 use serde_json::{Value, json};
 
+use super::governance::{self, Policy};
 use super::input::{Bundle, Record};
 use super::model::{
     Content, DEFINITION, MAX_BODY, MAX_DOCUMENTS, MAX_TOTAL, Origin, Source, digest, invalid,
@@ -68,6 +69,13 @@ pub fn validate(memory: &Memory, path: &str) -> Result<(Value, u8), Error> {
     for (path, document) in &documents {
         match Content::parse(&document.content, prefix) {
             Ok(content) => {
+                if let Err(error) = governance::record(&content) {
+                    issues.push(Issue {
+                        path: path.clone(),
+                        field: format!("attributes.{}", governance::KEY),
+                        message: super::text_error(error),
+                    });
+                }
                 if content.metadata.collection != prefix {
                     issues.push(Issue {
                         path: path.clone(),
@@ -93,7 +101,7 @@ pub fn validate(memory: &Memory, path: &str) -> Result<(Value, u8), Error> {
     ))
 }
 
-pub fn references(memory: &Memory, path: &str) -> Result<(Value, u8), Error> {
+pub fn references(memory: &Memory, path: &str, policy: Policy) -> Result<(Value, u8), Error> {
     let (mount, path) = target(memory, path)?;
     let found = memory
         .store
@@ -103,7 +111,24 @@ pub fn references(memory: &Memory, path: &str) -> Result<(Value, u8), Error> {
     let fallback = path
         .rsplit_once('/')
         .map_or("knowledge", |(parent, _)| parent);
-    let content = Content::parse(&found.content, fallback)?;
+    let mut content = Content::parse(&found.content, fallback)?;
+    let now = crate::store::time::Stamp::now();
+    let policy = policy.selected(memory.store.as_ref(), &mount.scope);
+    if !governance::eligible(policy, &mount.scope, path, &found.content, now) {
+        return Ok((
+            json!({"references":[],"status":"excluded","policy":policy}),
+            0,
+        ));
+    }
+    if let Ok(Some(record)) = governance::record(&content)
+        && let Some(link) = record.superseded_by
+    {
+        content.metadata.references.push(super::model::Reference {
+            relation: "superseded_by".into(),
+            scope: Some(link.scope),
+            path: link.path,
+        });
+    }
     let mut results = vec![];
     for reference in content.metadata.references {
         let (scope, target) = match reference.scope {
@@ -116,7 +141,16 @@ pub fn references(memory: &Memory, path: &str) -> Result<(Value, u8), Error> {
         let selected = memory.mounts.iter().find(|m| m.scope == scope);
         let resolved = selected.map(|_| memory.store.read(&scope, &target));
         let (status, version) = match resolved {
-            Some(Ok(Some(doc))) if !doc.envelope.redacted => {
+            Some(Ok(Some(doc)))
+                if !doc.envelope.redacted
+                    && governance::eligible(
+                        policy.selected(memory.store.as_ref(), &scope),
+                        &scope,
+                        &target,
+                        &doc.content,
+                        now,
+                    ) =>
+            {
                 ("available", Some(doc.envelope.version))
             }
             Some(Ok(None)) => ("missing", None),

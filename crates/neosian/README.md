@@ -43,3 +43,8 @@ for previews, exact update/recovery semantics and permission boundaries.
 reviewed memory corrections with source provenance, current-state guards and
 explicit approval. Apply requires paused writers; inspect interrupted batches
 before preparing remaining work. Read `neosian docs memory` for the workflow.
+
+`neosian knowledge govern/read` adds review assertions and explicit retrieval
+policies for shared procedures and decisions. Review changes use upkeep proposals;
+profile policies select effective knowledge and skills without granting access.
+Read `neosian docs governance` for content hashes, expiry and erasure.

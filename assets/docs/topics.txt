@@ -2,6 +2,7 @@ quickstart
 profiles
 memory
 knowledge
+governance
 skills
 messaging
 stores

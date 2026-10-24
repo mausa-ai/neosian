@@ -99,6 +99,15 @@ select and pin current skill revisions explicitly without copying their bodies.
 The agent executes instructions. Read `neosian docs skills` for the workflow,
 revision guards, permission rules and paused-writer requirements.
 
+## Review shared knowledge
+
+Shared procedures and decisions can carry ownership, review, effective/expiry
+state and explicit supersession links. `knowledge govern` prepares an upkeep
+proposal; `knowledge read` and filtered search select current approved content.
+Profile policies also govern injected knowledge and selected skill graphs.
+Labels describe responsibility, while server grants authorize access. Read
+`neosian docs governance` for approval, retrieval and erasure boundaries.
+
 ## Interfaces and compatibility
 
 Version 2 intentionally retires the Python distribution, public SDKs,
@@ -117,7 +126,7 @@ The versioned `neosian-docs.json` release artifact supplies those same pages
 to the website. `neosian-contracts.tar.gz` contains machine contracts,
 fixtures, the independent HTTP conformance runner and the optional one-time
 metadata converter. `neosian schema state`, `wire`, `errors`, `profile` and
-`grants`, `knowledge`, `skill` and `upkeep` print the
+`grants`, `knowledge`, `skill`, `upkeep` and `governance` print the
 machine-readable definitions directly.
 
 ## Development

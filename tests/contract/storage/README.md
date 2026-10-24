@@ -10,6 +10,12 @@ matching, Unicode 17.0.0, selected metadata, keyset paging and erasure. These
 cases are optional under both base/full profiles and report explicit skips
 when search is absent. Metadata fixture cases additionally require portability.
 
+When `knowledge_policy: {version: 1}` is declared, governance cases independently
+compute approval hashes and verify effective/approved filtering, invalid/future
+records, policy-bound paging and current erasure. This extension requires search
+version 1; absent support is an explicit skip under both profiles. These checks
+do not authenticate a reviewer's label or certify host approval workflows.
+
 From a checkout with the development dependencies:
 
 ```sh

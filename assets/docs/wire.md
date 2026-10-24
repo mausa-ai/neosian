@@ -61,6 +61,10 @@ a fallback. Existing wire-6 routes, stored formats and schema 4 are unchanged.
 The conformance runner exercises declared search support on both full and
 base profiles, and reports skipped search cases when it is absent.
 
+The optional `"knowledge_policy": {"version": 1}` capability adds governance
+filtering to that operation. It requires memory-search version 1. The reference
+backends advertise both; clients refuse filtered search on an older service.
+
 ## Auth
 
 Every request but `/health` carries `Authorization: Bearer <token>`,
@@ -226,7 +230,7 @@ Fetch the current authoritative document for its full meaning and version.
 Paths sort ascending with bytewise ASCII ordering. Limit defaults to 20 and
 must be 1..100. A nonfinal page has exactly `limit` hits and an opaque
 `next_cursor` (1..4096 bytes); the final page has `null`. Bind cursors to the
-scope, query, prefix, fields and metadata keys; reuse with a different target
+ scope, query, prefix, fields and metadata keys; reuse with a different target
 or query is `value_error`. Limit may change. Cursors carry no read authority.
 There is no total count or cross-page snapshot. Each page reads current data;
 new/renamed paths before the last key require restarting the query.
@@ -239,6 +243,16 @@ search index or cache. A completed erasure therefore affects the next query
 even though it may preserve version, timestamps and metadata. Output limits
 do not bound scan work. `neosian docs memory` describes the mounted CLI/MCP
 forms, which add source references and preserve backend cursor opacity.
+
+With knowledge-policy capability version 1, `knowledge_policy` accepts `all`
+(omitted default), `effective` or `approved`. Filter current governance state
+before matching, excerpts and lookahead, at one server UTC instant per scan.
+Effective includes unmanaged documents and effective approved content; approved
+requires valid content-bound approval. Draft, superseded, expired, scheduled,
+stale and invalid governed content is excluded. Cursors also bind this policy.
+Scope grants still authorize every page; policy is a selection, not access
+authority. Raw reads/history remain unchanged. `neosian docs governance` and
+`schema governance` specify metadata, approval hashes and time boundaries.
 
 ### Conversation
 

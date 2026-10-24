@@ -83,3 +83,19 @@ be ruled out. Partial receipts contain acknowledged writes, and a lost response
 may hide a committed write. Inspect current state and prepare fresh remaining
 work. Derived content and proposal copies need separate erasure; source
 erasure cannot recall a body already copied elsewhere.
+
+## Shared knowledge review
+
+Owner/reviewer labels and review hashes are content assertions, not authenticated
+roles or signatures. Hosts requiring trusted approval must restrict write/apply
+credentials and implement their approval workflow. Scope grants, token allowances
+and mounted access remain authoritative; review metadata cannot change them.
+
+Optional profile review policies filter searches, knowledge reads/references,
+injected memory and selected skill graphs. They are context selection, not a
+secrecy boundary: raw authorized memory/history/export paths remain available
+for review and recovery. Use distinct granted scopes for private drafts.
+Filtered search requires an advertised capability and excludes stale, invalid,
+superseded, expired and draft records before matching or pagination. Erasure
+clears review metadata with the body; expiry alone never deletes data. Prior
+copies and conversation records retain their separate erasure requirements.

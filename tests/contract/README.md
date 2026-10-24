@@ -47,6 +47,11 @@ backend replies. The optional storage cases run unchanged on file, Postgres
 and external HTTP services; absence of the declared capability is an explicit
 skip, including under the full base-storage profile.
 
+Governance cases independently hash review subjects and cover CLI/MCP proposals,
+profile retrieval floors, skill graphs, references, source-preserving recovery,
+revocation and file/Postgres erasure. The optional HTTP filter cases also run on
+custom services. Raw read authority remains separate from review selection.
+
 The release's `neosian-contracts.tar.gz` carries this tier and its locked
 test dependencies. Extract into a new directory, run `make install`, then
 `make test-storage-contract backend=http` against a disposable service. No

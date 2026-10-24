@@ -36,6 +36,11 @@ pub struct Request {
     pub limit: usize,
     #[serde(default)]
     pub cursor: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "crate::knowledge::governance::Policy::is_all"
+    )]
+    pub knowledge_policy: crate::knowledge::governance::Policy,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -113,14 +118,20 @@ impl Request {
     }
 
     pub fn fingerprint(&self, target: &Value) -> String {
-        let bytes = serde_json::to_vec(&json!([
+        let mut selection = json!([
             target,
             self.query,
             self.prefix,
             self.fields,
             self.metadata_keys
-        ]))
-        .expect("search values serialize");
+        ]);
+        if !self.knowledge_policy.is_all() {
+            selection
+                .as_array_mut()
+                .expect("selection array")
+                .push(json!(self.knowledge_policy));
+        }
+        let bytes = serde_json::to_vec(&selection).expect("search values serialize");
         Sha256::digest(bytes)
             .iter()
             .map(|b| format!("{b:02x}"))
@@ -240,6 +251,7 @@ pub fn scan(
 ) -> Result<Page, Error> {
     let after = request.scope_after(scope)?;
     let terms = matching::terms(&request.query);
+    let now = crate::store::time::Stamp::now();
     let mut page = Page {
         hits: Vec::new(),
         next_cursor: None,
@@ -251,6 +263,15 @@ pub fn scan(
             || !searchable(&path)
             || document.envelope.redacted
         {
+            continue;
+        }
+        if !crate::knowledge::governance::eligible(
+            request.knowledge_policy,
+            scope,
+            &path,
+            &document.content,
+            now,
+        ) {
             continue;
         }
         if let Some((excerpt, matched_fields)) =

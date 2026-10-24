@@ -27,6 +27,9 @@ pub struct Search {
     /// Opaque continuation returned by the previous identical query.
     #[arg(long)]
     cursor: Option<String>,
+    /// Review policy; a selected profile may require a stricter policy.
+    #[arg(long, value_enum, default_value = "all")]
+    knowledge_policy: crate::knowledge::governance::Policy,
 }
 
 impl Search {
@@ -42,6 +45,7 @@ impl Search {
             metadata_keys: self.metadata_keys.clone(),
             limit: self.limit as usize,
             cursor: self.cursor.clone(),
+            knowledge_policy: self.knowledge_policy,
         }
     }
     pub fn validate(&self, mounts: &[crate::memory::mounts::Mount]) -> Result<(), String> {

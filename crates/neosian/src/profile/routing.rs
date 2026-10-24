@@ -131,8 +131,10 @@ impl State for Routed {
         if !self.profile.mounts.iter().any(|m| m.scope == scope) {
             return Err(denied());
         }
+        let mut request = request.clone();
+        request.knowledge_policy = request.knowledge_policy.selected(self, scope);
         self.memory(scope, false, false)?
-            .search_memory(scope, request)
+            .search_memory(scope, &request)
     }
     fn profile(&self) -> Option<&Profile> {
         Some(&self.profile)

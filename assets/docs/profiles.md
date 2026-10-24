@@ -51,6 +51,14 @@ hook invocations resolve the current configuration on every event.
 
 ## Exchange a selection
 
+An optional mount `knowledge_policy = "effective"` or `"approved"` sets the
+minimum review policy for memory search, knowledge reads/references, injected
+memory and selected skill graphs. The omitted default is `all`. Requests can
+tighten the policy; raw memory/history reads and exports remain authorized
+inspection surfaces. Built-in skills and transcript/mailbox selection keep their
+separate rules. Read `neosian docs governance` before enabling the filter.
+Profile export retains this choice; older strict readers refuse the added field.
+
 ```sh
 neosian profile export work > work.toml
 neosian profile import work work.toml       # validate and preview

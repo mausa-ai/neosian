@@ -51,6 +51,12 @@ intersect legacy allowances. All `/mcp` access is refused in that mode; use a
 local profile MCP bridge. Restart after token/grant changes. An operator grant
 permits whole-store enumeration/restore and must remain administrator-only.
 
+Knowledge review policies need no account service or background scheduler.
+Optional profile mount `knowledge_policy` selects all/effective/approved content;
+the server advertises `knowledge_policy: {version: 1}` for filtered memory search.
+This does not restrict raw reads or establish reviewer identity. Hosts control
+approval credentials/workflows; restart the server to apply grant revocation.
+
 Postgres schema creation is an explicit operator action:
 
 ```sh

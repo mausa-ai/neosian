@@ -3,7 +3,7 @@
 > Memory and context for the agent you already use. One Rust binary,
 > CLI/MCP/HTTP interfaces, state on your own files or Postgres.
 
-Release: 2.5.0. Read installed pages with `neosian docs TOPIC` or the MCP
+Release: 2.6.0. Read installed pages with `neosian docs TOPIC` or the MCP
 `docs` tool. They are versioned with the executable and are authoritative
 for that version. The release's neosian-docs.json carries the same pages.
 
@@ -11,6 +11,7 @@ for that version. The release's neosian-docs.json carries the same pages.
 - [Profiles](https://neosian.com/docs/profiles): portable workspaces, bindings, grants and explicit capture.
 - [Memory](https://neosian.com/docs/memory): mounts, current-document search, versions and upkeep.
 - [Knowledge](https://neosian.com/docs/knowledge): Markdown imports, optional collections, references and readable bundles.
+- [Governance](https://neosian.com/docs/governance): ownership, content-bound review, effective/expiry state and retrieval policy.
 - [Skills](https://neosian.com/docs/skills): versioned instructions, portable text packages, dependencies and profile revision guards.
 - [Messaging](https://neosian.com/docs/messaging): messages, reminders and claims.
 - [Stores](https://neosian.com/docs/stores): formats and HTTP conformance.
@@ -47,3 +48,9 @@ Reviewed upkeep format 1 provides bounded scans, source-preserving proposals,
 preview and explicitly approved apply over existing scoped storage. The digest
 binds content, not authority. Pause writers and inspect partial/lost-response
 outcomes before fresh proposals. No model execution, scheduler or DDL is added.
+
+Governance format 1 is optional versioned knowledge content. Owner/reviewer
+labels and hashes never grant authority. Profile all/effective/approved policies
+select knowledge context and skills; optional knowledge-policy version 1 filters
+search before excerpts/paging. Raw authorized reads/history remain inspection
+paths. Expiry does not delete; body erasure includes review/provenance metadata.

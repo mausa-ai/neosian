@@ -26,6 +26,14 @@ impl State for RemoteStore {
             )
             .into());
         }
+        if !request.knowledge_policy.is_all()
+            && self.capabilities["knowledge_policy"]["version"] != 1
+        {
+            return Err(crate::store::error::MemoryError::configuration(
+                "server does not support knowledge-policy version 1",
+            )
+            .into());
+        }
         let mut payload = serde_json::to_value(request).expect("search request serializes");
         payload["scope"] = scope.into();
         let page = serde_json::from_value(self.call("memory/search", payload)?)

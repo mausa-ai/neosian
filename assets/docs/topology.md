@@ -51,7 +51,7 @@ importing client. See `neosian docs wire` before sharing a store.
 ## Container
 
 ```sh
-docker run -e NEOSIAN_SERVE_TOKEN='your-private-token' -p 6367:6367 -v state:/data ghcr.io/mausa-ai/neosian:2.5.0
+docker run -e NEOSIAN_SERVE_TOKEN='your-private-token' -p 6367:6367 -v state:/data ghcr.io/mausa-ai/neosian:2.6.0
 ```
 
 The image serves the Rust binary as uid 1000 with a private `/data` volume.
@@ -65,3 +65,13 @@ writers for migrations or consistent archives. Network filesystems are outside
 that guarantee. Postgres supports distributed writers. Neither remote access
 nor a shared token automatically makes recordings private; select storage and
 sharing boundaries intentionally.
+
+## Shared procedures and decisions
+
+Mount personal, project and organization scopes explicitly. The core does not
+infer membership from those names. Review metadata describes owners, approval,
+effective/expiry dates and supersession; scoped grants remain authority.
+Profiles can require effective or approved knowledge in retrieval and context.
+Raw authorized reads/history remain available for inspection, so private drafts
+need separate scopes/grants. Hosts provide trusted approval workflows and account
+mapping. See `neosian docs governance`.

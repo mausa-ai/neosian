@@ -52,6 +52,11 @@ pub struct Mount {
     pub injection: Injection,
     #[serde(default)]
     pub documents: Vec<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "crate::knowledge::governance::Policy::is_all"
+    )]
+    pub knowledge_policy: crate::knowledge::governance::Policy,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -156,6 +161,7 @@ impl Profile {
                 access: Access::Rw,
                 injection: Injection::Index,
                 documents: vec![],
+                knowledge_policy: Default::default(),
             }],
             workspace_id,
             name,

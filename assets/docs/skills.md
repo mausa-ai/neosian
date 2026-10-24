@@ -5,6 +5,12 @@ summary: a skill is skills/<name> in a mount - versioned, curated by flag, serve
 
 # Skills
 
+Profile mounts can require `knowledge_policy = "effective"` or `"approved"`.
+Selected skill roots, dependencies and supporting documents must qualify at load
+time; excluded graphs refuse. Raw authorized reads and management inspection
+remain available. Built-in immutable skills are separate assets. See
+`neosian docs governance` for review assertions and authority boundaries.
+
 A skill is reusable instructions (how to release, how to review, how
 to file a ticket) that an agent loads on demand instead of carrying in
 every prompt. In neosian a skill is a **document in a memory mount**:

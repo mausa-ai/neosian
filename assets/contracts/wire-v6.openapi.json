@@ -108,6 +108,19 @@
                       ],
                       "additionalProperties": false,
                       "description": "Optional current-memory lexical search contract version 1. Its absence means memory/search is unsupported."
+                    },
+                    "knowledge_policy": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "version"
+                      ],
+                      "properties": {
+                        "version": {
+                          "const": 1
+                        }
+                      },
+                      "description": "Optional governance format-1 filtering on memory/search. Requires memory_search version 1. No new access authority."
                     }
                   },
                   "required": [
@@ -3694,7 +3707,16 @@
                     "minLength": 1,
                     "maxLength": 4096,
                     "default": null,
-                    "description": "Opaque keyset continuation bound to scope, query, prefix, fields and metadata keys. Not a permission token or snapshot."
+                    "description": "Opaque keyset continuation bound to scope, query, prefix, fields and metadata keys. Not a permission token or snapshot. Review policy is also bound; expiry and revocation are rechecked per page."
+                  },
+                  "knowledge_policy": {
+                    "enum": [
+                      "all",
+                      "effective",
+                      "approved"
+                    ],
+                    "default": "all",
+                    "description": "Optional knowledge_policy capability version 1; filter current review state at server UTC before matching and pagination. All preserves unfiltered behavior."
                   }
                 },
                 "required": [
