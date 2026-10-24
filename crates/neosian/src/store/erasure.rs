@@ -20,7 +20,7 @@ use crate::conversation::{Error, Projection, Redaction};
 
 /// `parse_selection`: at most one selector, every number from 1, the
 /// named turns deduplicated and ascending.
-fn selection(
+pub(crate) fn selection(
     through: Option<i64>,
     turns: Option<&[i64]>,
 ) -> Result<(Option<u64>, Option<Vec<u64>>), Error> {

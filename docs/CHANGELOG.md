@@ -10,6 +10,12 @@ phase close names the version.
 
 ### Added
 
+- The Rust binary and container support Postgres for the state process,
+  recording, MCP, memory and operator commands. Python and Rust share the
+  shipped SQL statements and schema; neither server applies DDL. TLS
+  verifies certificates and hostnames, with `PGSSLROOTCERT` for a private
+  CA bundle. Both conformance kits, paging, archives and mixed-worker races
+  run through the Rust server on isolated Postgres schemas.
 - The Rust binary provides `audit`, `export`, `import`, `redact` and
   `prune`, with the Python shell's reports and refusal tiers. Imports
   preflight every selected target before restoring the first unit;
@@ -22,6 +28,8 @@ phase close names the version.
 
 ### Fixed
 
+- Rust wire documents preserve nested JSON metadata and quoted keys
+  containing colons through reads, mutations and archive restores.
 - Live MSI verification quotes installation property values using Windows
   Installer syntax and prints installer logs on timeout. The verification
   workflow can check an existing release with a corrected verifier.

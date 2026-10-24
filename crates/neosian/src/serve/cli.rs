@@ -8,22 +8,25 @@
 
 use std::env;
 use std::io::{self, Write};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use clap::Args;
 use tokio::sync::watch;
 
+use super::backend::Backend;
 use super::{Shared, auth, health, mcp, routes};
 use crate::cli::usage;
 use crate::home::home;
 use crate::mcp::cli::resolve_mounts;
 use crate::mcp::server::Server;
-use crate::memory::cli::{DSN_ENV, NEEDS_PYTHON};
+use crate::memory::cli::DSN_ENV;
 use crate::memory::dispatch::Memory;
 use crate::memory::mounts::{Mount, Refusal};
+use crate::postgres::PostgresStore;
 use crate::record::context::render_instructions;
 use crate::repr::repr;
+use crate::state::State;
 use crate::store::FileStore;
 use crate::store::grammar::Actor;
 use crate::store::time::Stamp;
@@ -139,21 +142,18 @@ fn grammar(args: &Serve) -> Result<(auth::Clients, Vec<Mount>, Actor), Refusal> 
 /// stdio door serves, its instructions rendered once per process (#51 on
 /// this transport), writing as the process-wide actor.
 fn surface(
-    root: &Path,
+    store: Arc<dyn State>,
     mounts: Vec<Mount>,
     actor: Actor,
-) -> io::Result<Result<mcp::Surface, String>> {
-    let store = FileStore::open(root)?;
-    let instructions = match render_instructions(&store, &mounts, Stamp::now()) {
-        Ok(instructions) => instructions,
-        Err(error) => return Ok(Err(error.text())),
-    };
+) -> Result<mcp::Surface, String> {
+    let instructions =
+        render_instructions(store.as_ref(), &mounts, Stamp::now()).map_err(|e| e.text())?;
     let memory = Memory {
-        store: std::sync::Arc::new(store),
+        store,
         mounts,
         actor,
     };
-    Ok(Ok(mcp::Surface::new(Server::new(memory, instructions))))
+    Ok(mcp::Surface::new(Server::new(memory, instructions)))
 }
 
 /// SIGTERM or an interrupt: the graceful path, in-flight requests drained
@@ -197,19 +197,29 @@ pub fn run(args: &Serve, out: &mut impl Write, err: &mut impl Write) -> io::Resu
             return Ok(2);
         }
     };
-    if set(DSN_ENV).is_some() {
-        writeln!(err, "error: {NEEDS_PYTHON}")?;
-        return Ok(1);
-    }
-    let root = match &args.root {
-        Some(root) => root.clone(),
-        None => home()?,
+    let store: Arc<dyn Backend> = if let Some(dsn) = set(DSN_ENV) {
+        match PostgresStore::open(&dsn, args.schema.as_deref().unwrap_or("neosian")) {
+            Ok(store) => Arc::new(store),
+            Err(error) => {
+                writeln!(
+                    err,
+                    "error: {}",
+                    crate::conversation::Error::from(error).text()
+                )?;
+                return Ok(1);
+            }
+        }
+    } else {
+        let root = match &args.root {
+            Some(root) => root.clone(),
+            None => home()?,
+        };
+        Arc::new(FileStore::open(&root)?)
     };
-    let store = FileStore::open(&root)?;
     let mcp = if mounts.is_empty() {
         None
     } else {
-        match surface(&root, mounts, actor)? {
+        match surface(store.clone(), mounts, actor) {
             Ok(surface) => Some(surface),
             Err(text) => {
                 writeln!(err, "error: {text}")?;
@@ -219,7 +229,7 @@ pub fn run(args: &Serve, out: &mut impl Write, err: &mut impl Write) -> io::Resu
     };
     let closing = mcp.as_ref().map(|surface| surface.closing.clone());
     let shared = Arc::new(Shared {
-        store,
+        store: store.clone(),
         clients,
         mcp,
     });

@@ -5,13 +5,13 @@
 use serde_json::{Value, json};
 
 use super::auth::stamp;
+use super::backend::Backend;
 use super::codec;
 use super::envelope::Fail;
 use super::paging::memory_page;
 use super::params::{Payload, optional_int, optional_str, optional_timestamp, require_str};
 use super::routes::Route;
 use crate::store::grammar::Actor;
-use crate::store::{Document, FileStore};
 
 pub const ROUTES: [Route; 9] = [
     Route {
@@ -67,7 +67,7 @@ pub fn actor(client: &str, payload: &Payload) -> Result<Actor, Fail> {
     Ok(Actor::stamped(&stamp(client, body.as_deref())))
 }
 
-fn read(store: &FileStore, payload: &Payload, _client: &str) -> Result<Value, Fail> {
+fn read(store: &dyn Backend, payload: &Payload, _client: &str) -> Result<Value, Fail> {
     let scope = require_str(payload, "scope")?;
     let path = require_str(payload, "path")?;
     let document = store
@@ -77,26 +77,25 @@ fn read(store: &FileStore, payload: &Payload, _client: &str) -> Result<Value, Fa
     Ok(json!({"document": document}))
 }
 
-fn write(store: &FileStore, payload: &Payload, client: &str) -> Result<Value, Fail> {
+fn write(store: &dyn Backend, payload: &Payload, client: &str) -> Result<Value, Fail> {
     let scope = require_str(payload, "scope")?;
     let path = require_str(payload, "path")?;
     let content = require_str(payload, "content")?;
     let actor = actor(client, payload)?;
     let expected = optional_int(payload, "expected_version")?;
     let expected = expected.map(|version| u64::try_from(version).unwrap_or(u64::MAX));
-    let envelope = store.write_document(&scope, &path, &content, &actor, expected)?;
-    let document = Document { envelope, content };
+    let document = store.write_document(&scope, &path, &content, &actor, expected)?;
     Ok(json!({"document": codec::document(&scope, &path, &document)?}))
 }
 
-fn delete(store: &FileStore, payload: &Payload, client: &str) -> Result<Value, Fail> {
+fn delete(store: &dyn Backend, payload: &Payload, client: &str) -> Result<Value, Fail> {
     let scope = require_str(payload, "scope")?;
     let path = require_str(payload, "path")?;
     let actor = actor(client, payload)?;
-    Ok(json!({"deleted": store.delete(&scope, &path, &actor)?.is_some()}))
+    Ok(json!({"deleted": store.delete(&scope, &path, &actor)?.removed}))
 }
 
-fn rename(store: &FileStore, payload: &Payload, client: &str) -> Result<Value, Fail> {
+fn rename(store: &dyn Backend, payload: &Payload, client: &str) -> Result<Value, Fail> {
     let scope = require_str(payload, "scope")?;
     let src = require_str(payload, "src")?;
     let dst = require_str(payload, "dst")?;
@@ -105,7 +104,7 @@ fn rename(store: &FileStore, payload: &Payload, client: &str) -> Result<Value, F
     Ok(json!({"document": codec::document(&scope, &dst, &document)?}))
 }
 
-fn list_documents(store: &FileStore, payload: &Payload, _client: &str) -> Result<Value, Fail> {
+fn list_documents(store: &dyn Backend, payload: &Payload, _client: &str) -> Result<Value, Fail> {
     let scope = require_str(payload, "scope")?;
     let prefix = optional_str(payload, "prefix")?.unwrap_or_default();
     let page = memory_page(
@@ -118,7 +117,7 @@ fn list_documents(store: &FileStore, payload: &Payload, _client: &str) -> Result
     Ok(json!({"entries": entries, "next_cursor": page.next_cursor}))
 }
 
-fn versions(store: &FileStore, payload: &Payload, _client: &str) -> Result<Value, Fail> {
+fn versions(store: &dyn Backend, payload: &Payload, _client: &str) -> Result<Value, Fail> {
     let scope = require_str(payload, "scope")?;
     let path = require_str(payload, "path")?;
     let page = memory_page(
@@ -131,33 +130,33 @@ fn versions(store: &FileStore, payload: &Payload, _client: &str) -> Result<Value
     Ok(json!({"versions": versions, "next_cursor": page.next_cursor}))
 }
 
-fn redact(store: &FileStore, payload: &Payload, client: &str) -> Result<Value, Fail> {
+fn redact(store: &dyn Backend, payload: &Payload, client: &str) -> Result<Value, Fail> {
     let scope = require_str(payload, "scope")?;
     let path = optional_str(payload, "path")?;
     let actor = actor(client, payload)?;
     Ok(json!({"count": store.redact(&scope, path.as_deref(), &actor)?}))
 }
 
-fn history(store: &FileStore, payload: &Payload, _client: &str) -> Result<Value, Fail> {
+fn history(store: &dyn Backend, payload: &Payload, _client: &str) -> Result<Value, Fail> {
     let scope = require_str(payload, "scope")?;
     let since = optional_timestamp(payload, "since")?;
     let page = memory_page(
         payload,
         None,
-        |_| Ok(store.history(&scope, since)?),
+        |_| Ok(store.history(&scope, since, None)?),
         |cursor, size| Ok(store.history_page(&scope, since, cursor, size)?),
     )?;
     let versions: Vec<Value> = page.items.iter().map(codec::version).collect();
     Ok(json!({"versions": versions, "next_cursor": page.next_cursor}))
 }
 
-fn redactions(store: &FileStore, payload: &Payload, _client: &str) -> Result<Value, Fail> {
+fn redactions(store: &dyn Backend, payload: &Payload, _client: &str) -> Result<Value, Fail> {
     let scope = require_str(payload, "scope")?;
     let since = optional_timestamp(payload, "since")?;
     let page = memory_page(
         payload,
         None,
-        |_| Ok(store.redactions(&scope, since)?),
+        |_| Ok(store.redactions(&scope, since, None)?),
         |cursor, size| Ok(store.redactions_page(&scope, since, cursor, size)?),
     )?;
     let acts: Vec<Value> = page.items.iter().map(codec::redaction).collect();

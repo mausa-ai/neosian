@@ -15,17 +15,17 @@ use axum::routing::{any, get, post};
 use serde_json::{Value, json};
 
 use super::auth::{self, Client};
+use super::backend::Backend;
 use super::envelope::{CEILING, Fail, json, text, unauthorized};
 use super::params::Payload;
 use super::{mcp, routes_conversation, routes_memory, routes_store};
-use crate::store::FileStore;
 use crate::version::VERSION;
 
 /// The wire version this build speaks; `RemoteStore.connect` refuses another.
 use crate::wire::WIRE_VERSION;
 
 /// A route's body: the store, the typed payload and the stamped client.
-pub type Handler = fn(&FileStore, &Payload, &str) -> Result<Value, Fail>;
+pub type Handler = fn(&dyn Backend, &Payload, &str) -> Result<Value, Fail>;
 
 pub struct Route {
     pub name: &'static str,
@@ -63,7 +63,7 @@ async fn health() -> Response {
 }
 
 /// The handshake: what the store can do, and who the token makes the caller.
-async fn capabilities(request: Request) -> Response {
+async fn capabilities(State(shared): State<super::State>, request: Request) -> Response {
     let Some(client) = request.extensions().get::<Client>() else {
         return unauthorized();
     };
@@ -72,8 +72,8 @@ async fn capabilities(request: Request) -> Response {
         &json!({
             "wire_version": WIRE_VERSION,
             "neosian_version": VERSION,
-            "backend": "FileStore",
-            "supports_optimistic_concurrency": true,
+            "backend": shared.store.backend(),
+            "supports_optimistic_concurrency": shared.store.supports_optimistic_concurrency(),
             "pageable": true,
             "erasable": true,
             "client": client.actor,
@@ -110,8 +110,10 @@ async fn endpoint(State(shared): State<super::State>, request: Request) -> Respo
         return refusal.response();
     }
     let handler = route.handler;
-    let answered =
-        tokio::task::spawn_blocking(move || handler(&shared.store, &payload, &client.actor)).await;
+    let answered = tokio::task::spawn_blocking(move || {
+        handler(shared.store.as_ref(), &payload, &client.actor)
+    })
+    .await;
     match answered {
         Ok(Ok(value)) => json(StatusCode::OK, &value),
         Ok(Err(fail)) => fail.response(),

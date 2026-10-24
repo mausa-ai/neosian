@@ -18,6 +18,34 @@ const FALSE: [&str; 9] = [
     "false", "False", "FALSE", "no", "No", "NO", "off", "Off", "OFF",
 ];
 
+/// A mapping line's separator is outside its quoted key. A colon inside
+/// JSON or YAML quotes belongs to the key, including escaped quotes.
+pub fn key_value(line: &str) -> Option<(&str, &str)> {
+    let mut quote = None;
+    let mut chars = line.char_indices().peekable();
+    while let Some((at, ch)) = chars.next() {
+        if let Some(held) = quote {
+            if held == '"' && ch == '\\' {
+                chars.next();
+            } else if ch == held {
+                if held == '\'' && chars.peek().is_some_and(|(_, next)| *next == '\'') {
+                    chars.next();
+                } else {
+                    quote = None;
+                }
+            }
+        } else if at == 0 && matches!(ch, '\'' | '"') {
+            quote = Some(ch);
+        } else if ch == ':' {
+            let value = &line[at + 1..];
+            if value.is_empty() || value.starts_with(char::is_whitespace) {
+                return Some((&line[..at], value.trim()));
+            }
+        }
+    }
+    None
+}
+
 /// PyYAML's reading of one scalar; None for a form this reader does not
 /// take (a collection, an unterminated quote, an unknown escape).
 pub fn read(raw: &str) -> Option<Value> {

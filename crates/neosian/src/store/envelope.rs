@@ -195,10 +195,7 @@ pub fn parse<'a>(
 
 /// `key: value` at the left margin: the key, and the value trimmed.
 fn key_line(line: &str) -> Option<(&str, &str)> {
-    match line.split_once(": ") {
-        Some((key, value)) => Some((key, value.trim())),
-        None => line.strip_suffix(':').map(|key| (key, "")),
-    }
+    super::scalar::key_value(line)
 }
 
 #[cfg(test)]

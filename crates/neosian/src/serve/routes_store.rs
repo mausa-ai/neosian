@@ -5,11 +5,11 @@
 
 use serde_json::{Value, json};
 
+use super::backend::Backend;
 use super::codec;
 use super::envelope::Fail;
 use super::params::{Payload, optional_objects, require_objects, require_str};
 use super::routes::Route;
-use crate::store::FileStore;
 
 pub const ROUTES: [Route; 4] = [
     Route {
@@ -52,15 +52,15 @@ fn each<T>(
         .collect()
 }
 
-fn scopes(store: &FileStore, _payload: &Payload, _client: &str) -> Result<Value, Fail> {
+fn scopes(store: &dyn Backend, _payload: &Payload, _client: &str) -> Result<Value, Fail> {
     Ok(json!({"scopes": store.scopes()?}))
 }
 
-fn conversations(store: &FileStore, _payload: &Payload, _client: &str) -> Result<Value, Fail> {
+fn conversations(store: &dyn Backend, _payload: &Payload, _client: &str) -> Result<Value, Fail> {
     Ok(json!({"conversations": store.conversations()?}))
 }
 
-fn restore_scope(store: &FileStore, payload: &Payload, _client: &str) -> Result<Value, Fail> {
+fn restore_scope(store: &dyn Backend, payload: &Payload, _client: &str) -> Result<Value, Fail> {
     let scope = require_str(payload, "scope")?;
     let documents = each(payload, "documents", true, codec::decode_document)?;
     let versions = each(payload, "versions", true, codec::decode_version)?;
@@ -70,7 +70,7 @@ fn restore_scope(store: &FileStore, payload: &Payload, _client: &str) -> Result<
 }
 
 fn restore_conversation(
-    store: &FileStore,
+    store: &dyn Backend,
     payload: &Payload,
     _client: &str,
 ) -> Result<Value, Fail> {

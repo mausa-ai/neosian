@@ -276,7 +276,12 @@ def _store() -> Case:
         "updated_at": _T0,
         "actor": "conv:x#1",
         "redacted": False,
-        "extra": {"custom": "kept", "count": 3, "flag": True},
+        "extra": {
+            "custom": "kept",
+            "count": 3,
+            "flag": True,
+            "a: b": {"items": [True, None, "line\nbreak"]},
+        },
     }
     row = {
         "path": "notes/a",

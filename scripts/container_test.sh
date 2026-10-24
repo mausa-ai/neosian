@@ -5,8 +5,8 @@
 # conformance kits, the bearer gate, the health check, and a graceful
 # SIGTERM per leg.
 #
-# The FileStore leg always runs, with a scope mounted so /mcp is served
-# too. The Postgres leg runs when the image's ai.mausa.neosian.backends
+# Both legs mount a scope so /mcp is served too. The FileStore leg always
+# runs. The Postgres leg runs when the image's ai.mausa.neosian.backends
 # label names postgres and NEOSIAN_TEST_POSTGRES_DSN is set (CI's service
 # container, or the docs/SERVICES.md one-liner); it is skipped loudly
 # otherwise, naming which. Needs a docker daemon; refuses without one.
@@ -134,12 +134,15 @@ asyncio.run(main())
 # host.docker.internal (mapped to the gateway on plain Linux docker).
 # Only the host part moves: a user, password or database that happens to
 # read "localhost" stays as written.
-CONTAINER_DSN="$(printf '%s' "$NEOSIAN_TEST_POSTGRES_DSN" | sed -E \
-    's#^([a-z]+://([^@/]*@)?)(localhost|127\.0\.0\.1)([:/?]|$)#\1host.docker.internal\4#')"
+CONTAINER_DSN="${NEOSIAN_CONTAINER_POSTGRES_DSN:-}"
+if [ -z "$CONTAINER_DSN" ]; then
+    CONTAINER_DSN="$(printf '%s' "$NEOSIAN_TEST_POSTGRES_DSN" | sed -E \
+        's#^([a-z]+://([^@/]*@)?)(localhost|127\.0\.0\.1)([:/?]|$)#\1host.docker.internal\4#')"
+fi
 CID="$(docker run -d --add-host=host.docker.internal:host-gateway \
     -e NEOSIAN_SERVE_TOKEN="$TOKEN" \
     -e NEOSIAN_POSTGRES_DSN="$CONTAINER_DSN" \
-    -p "127.0.0.1:${PORT}:6367" "$IMAGE" --schema "$SCHEMA")"
+    -p "127.0.0.1:${PORT}:6367" "$IMAGE" --schema "$SCHEMA" --scope user:container)"
 wait_health "http://127.0.0.1:${PORT}"
 NEOSIAN_TEST_SERVER_URL="http://127.0.0.1:${PORT}" \
     NEOSIAN_TEST_SERVER_TOKEN="$TOKEN" \

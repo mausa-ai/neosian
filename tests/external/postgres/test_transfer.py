@@ -6,7 +6,6 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from pathlib import Path
 
-import httpx
 import pytest
 
 from neosian import PostgresStore, RemoteStore
@@ -14,9 +13,9 @@ from neosian._foundation.conversation.types import ConversationProjection
 from neosian._foundation.memory.file import FileStore
 from neosian._foundation.memory.portable import ConversationArchive
 from neosian._foundation.memory.transfer import archive_scope, transfer
-from neosian._foundation.server.app import build_app
 from neosian._foundation.shared.exceptions import MemoryConflictError
 from tests.support.clock import ManualClock
+from tests.support.postgres_server import remote_postgres
 from tests.unit.memory.mobility import (
     CONVERSATIONS,
     SCOPES,
@@ -37,16 +36,17 @@ async def seeded(tmp_path: Path, manual_clock: ManualClock) -> FileStore:
     return files
 
 
-@pytest.fixture
-async def remote(store: PostgresStore) -> AsyncIterator[RemoteStore]:
-    app = await build_app(store, token=_TOKEN)
-    client = await RemoteStore.connect(
-        "http://state-process", token=_TOKEN, transport=httpx.ASGITransport(app=app)
-    )
-    try:
-        yield client
-    finally:
-        await client.aclose()
+@pytest.fixture(params=["python", "rust"])
+async def remote(
+    store: PostgresStore,
+    postgres_dsn: str,
+    tmp_path: Path,
+    request: pytest.FixtureRequest,
+) -> AsyncIterator[RemoteStore]:
+    async with remote_postgres(
+        store, postgres_dsn, tmp_path, request.param, _TOKEN
+    ) as remote:
+        yield remote
 
 
 class TestThePairs:

@@ -15,6 +15,7 @@ method (C1/CS1: the store issues no DDL).
 from __future__ import annotations
 
 import re
+from functools import cache
 from importlib import resources
 from typing import Final
 
@@ -48,6 +49,19 @@ def validate_schema_name(name: str) -> str:
 def quote_identifier(name: str) -> str:
     """Double-quote a validated identifier (the charset admits no quotes)."""
     return f'"{name}"'
+
+
+def statement(schema: str, name: str) -> str:
+    """A shared Python/Rust statement, qualified with a validated schema."""
+    quoted = quote_identifier(validate_schema_name(schema))
+    return _statement_template(name).replace("{{schema}}", quoted)
+
+
+@cache
+def _statement_template(name: str) -> str:
+    return (
+        resources.files("neosian.assets").joinpath(f"sql/{name}.sql").read_text("utf-8")
+    )
 
 
 def schema_sql(schema: str = "neosian") -> str:

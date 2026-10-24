@@ -16,7 +16,7 @@
 
 pub mod cursor;
 pub mod envelope;
-mod erasure;
+pub(crate) mod erasure;
 pub mod error;
 pub(crate) mod fileio;
 pub mod grammar;
@@ -24,7 +24,7 @@ pub mod journal;
 pub mod layout;
 mod ledger;
 pub(crate) mod lock;
-mod pages;
+pub(crate) mod pages;
 mod restore;
 pub(crate) mod scalar;
 pub mod time;

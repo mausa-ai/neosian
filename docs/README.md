@@ -98,7 +98,8 @@ executable running it; `--binary PATH` selects an explicit binary. No home
 migration is needed. Both doors also provide `audit`, `export`, `import`,
 `redact`, `prune` and the memory commands (except `maintain` in the binary),
 locally or through `--url`. Binary `search` and `continue` remain local;
-`messages` and direct Postgres access still use the Python shell.
+`messages` still uses the Python shell. The binary also supports Postgres
+for recording, MCP, memory and these operator commands.
 Use `--write --yes` for all detected clients in scripts, or repeated
 `--client C` for an explicit selection. Setup and status accept
 `--at CLIENT=DIR` for a custom client configuration directory, for one run.
@@ -203,8 +204,8 @@ Each line is one page in the wheel — `neosian docs <topic>`.
   scope, so one `audit` names both.
 - **The state process** (`topology`). `neosian serve` puts memory and
   conversations on a port. The container runs the Rust binary over
-  FileStore; the Python server also serves Postgres. `RemoteStore` drops in where
-  `FileStore` does, core install. Bearer tokens env-only, per-client
+  FileStore or Postgres; both implementations serve the same storage wire.
+  `RemoteStore` drops in where `FileStore` does, core install. Bearer tokens env-only, per-client
   when you want the ledger to know who wrote.
 - **The agent core** (`agent`, `tools`). `run(stream=True)` yields eleven
   frozen `AgentEvent` dataclasses a host relays over SSE; `AgentHooks`

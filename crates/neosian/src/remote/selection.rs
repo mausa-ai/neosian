@@ -14,16 +14,12 @@ pub const TOKEN_ENV: &str = "NEOSIAN_CLIENT_TOKEN";
 
 pub enum Selection {
     File(PathBuf),
-    Postgres,
+    Postgres { dsn: String, schema: String },
     Remote { url: String, token: String },
 }
 
 impl Selection {
-    /// Resolve store selection without constructing a home or an HTTP client.
-    pub fn resolve(root: Option<&Path>, url: Option<&str>) -> Result<Self, String> {
-        Self::resolve_schema(root, url, None)
-    }
-
+    /// Resolve store selection without constructing a home or a database client.
     pub fn resolve_schema(
         root: Option<&Path>,
         url: Option<&str>,
@@ -45,7 +41,11 @@ impl Selection {
             return Err("--schema applies only to Postgres (unset --root/--url)".to_string());
         }
         if dsn {
-            return Ok(Self::Postgres);
+            return Ok(Self::Postgres {
+                dsn: std::env::var(DSN_ENV)
+                    .map_err(|_| "Postgres DSN must be UTF-8".to_string())?,
+                schema: schema.unwrap_or("neosian").to_string(),
+            });
         }
         if let Some(url) = url {
             if !url.starts_with("http://") && !url.starts_with("https://") {
@@ -71,7 +71,9 @@ impl Selection {
 
     pub fn open(&self) -> Result<Arc<dyn State>, Error> {
         match self {
-            Self::Postgres => Err(Error::Value(crate::memory::cli::NEEDS_PYTHON.to_string())),
+            Self::Postgres { dsn, schema } => {
+                Ok(Arc::new(crate::postgres::PostgresStore::open(dsn, schema)?))
+            }
             Self::File(root) => Ok(Arc::new(FileStore::open(root)?)),
             Self::Remote { url, token } => Ok(Arc::new(RemoteStore::connect(url, token)?)),
         }

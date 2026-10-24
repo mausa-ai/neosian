@@ -95,13 +95,17 @@ database. Locally:
 ```bash
 docker run --rm -e POSTGRES_PASSWORD=postgres -p 5432:5432 postgres:17
 export NEOSIAN_TEST_POSTGRES_DSN=postgresql://postgres:postgres@localhost:5432/postgres
+cargo build --locked  # Rust server leg, or set NEOSIAN_BINARY
 make test-postgres
 ```
 
 CI supplies the DSN from a service container — never a secret — so the
 `postgres` job runs on every push and PR, unlike the dispatch-only
 provider jobs (DESIGN §12 ledger #40, #89). Each test creates and drops its
-own uniquely-named schema; the server keeps no state between runs.
+own uniquely-named schema; the server keeps no state between runs. Both
+conformance kits, paging, mobility and mixed-worker concurrency run against
+the Rust process as well as Python. Rust cases self-skip per test without a
+built binary; CI builds it before running this tier.
 
 `NEOSIAN_EXAMPLE_POSTGRES_DSN` is read only by
 `examples/fastapi_chatbot.py` — the library itself never reads a DSN
@@ -206,17 +210,25 @@ neosian.mcp` / the `neosian mcp` pass-through, `neosian memory` /
 `python -m neosian.memory`, and `neosian serve` / `python -m
 neosian.server` — never by the library: all are processes configured
 through argv, and a DSN must not appear there — argv is world-readable
-in `ps` (DESIGN §12 ledger #53). Unset, the entry points require
-`--root PATH` and use a FileStore; set, they use a `PostgresStore` and
+in `ps` (DESIGN §12 ledger #53). Unset, the entry points use a FileStore
+at `--root PATH` or the resolved home; set, they use a `PostgresStore` and
 `--root` is refused (an explicit conflict, no precedence rule). None
 ever applies the DDL — run `python -m neosian.schemas postgres | psql`
-first (DESIGN §8 C1). The Rust binary's direct backend is FileStore until
-its Postgres substrate lands (DESIGN §39.2). `record`, `mcp`, `memory`
-(except `maintain`), `audit`, `export`, `import`, `redact` and `prune` can
-also reach either server implementation through `--url`. With the DSN alone,
-its store commands exit 1 and name the Python shell, never the home in
-silence (a hook's exit 2
-would block the prompt, so the record verb says it at 1 with its hint).
+first (DESIGN §8 C1). The Rust binary supports Postgres for `serve`,
+`record`, `mcp`, `memory` (except `maintain`), `audit`, `export`, `import`,
+`redact` and `prune`. These client commands also reach either server
+through `--url`. Binary `search` and `continue` still use local files;
+`messages` remains in the Python shell.
+
+Rust uses tokio-postgres's URI or keyword DSNs and four lazy connections.
+The driver defaults to `sslmode=prefer`; `sslmode=require` requires TLS,
+and every TLS connection verifies the certificate and hostname against
+public roots. Set `PGSSLROOTCERT` to a PEM bundle to trust a private CA;
+unset means public roots only. Libpq-only DSN options are refused, including
+`sslrootcert` within the DSN; use the environment variable for that bundle.
+The Python driver keeps its libpq behavior. DSNs and database diagnostics
+containing user data are never printed by the Rust server.
+
 An explicit `--url` together with the DSN is an argv conflict, exit 2.
 
 ## The state process — bearer tokens, not an API key
@@ -289,7 +301,7 @@ carries no credentials) and reports liveness only.
 ## The container suite — a URL, not an API key
 
 The `external_server` tier points `RemoteStore` at a **running
-state-process container** (NM's done-when; §18.9). Four keys, all set
+state-process container** (NM's done-when; §18.9). Four test keys, all set
 by `scripts/container_test.sh` (`make test-container`) — never by hand
 in the normal flow:
 
@@ -306,14 +318,18 @@ in the normal flow:
   the FileStore leg's volume (default: `$TMPDIR`, else `/tmp`). Set it
   under your home when the daemon is a VM that mounts only the home
   (Lima), where macOS's `/var/folders` cannot be bind-mounted.
+- `NEOSIAN_CONTAINER_POSTGRES_DSN`: optional container-facing address of
+  the same test database. Use this when a Docker VM cannot reach the
+  host's published port. Unset, the script uses `NEOSIAN_TEST_POSTGRES_DSN`
+  with `localhost` or `127.0.0.1` replaced by `host.docker.internal`.
 
 The script runs one leg per backend the image's
 `ai.mausa.neosian.backends` label names (R2, §18.9): the FileStore leg
-always, with a scope mounted so `/mcp` is served and initialized over
-the socket; the Postgres leg when the label names `postgres` and the
-DSN is set, skipped loudly otherwise, naming which. Since 1.11.0 the
-image runs the Rust server and declares `file` only; the Postgres image
-backend waits for R4. The Python server continues to support Postgres.
+always; the Postgres leg when the label names `postgres` and the
+DSN is set, skipped loudly otherwise, naming which. Both mount a scope
+and initialize `/mcp` over the socket. Since 1.11.0 the
+image runs the Rust server. It now declares `file,postgres`; both legs
+run when the test DSN is set.
 The test waits for both `/health` and Docker's built-in health status,
 so it also exercises the binary's credential-free probe.
 

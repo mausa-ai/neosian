@@ -1,7 +1,7 @@
 """Both conformance kits through `RemoteStore` against the *running
 container* — NM's done-when: the same conformance tests, over a real
 socket into the published image, on each declared backend (volume
-FileStore today; Postgres at R4), with the bearer token enforced (§18.8).
+FileStore and Postgres), with the bearer token enforced (§18.8).
 
 `scripts/container_test.sh` starts one container per backend and runs
 this module once per leg; the other leg's tests self-skip on their
@@ -339,14 +339,10 @@ class TestContainerSurface:
         assert response.headers["WWW-Authenticate"] == "Bearer"
 
     async def test_mcp_initializes_over_the_socket(
-        self, file_leg: FileLeg, server_url: str, server_token: str
+        self, server_url: str, server_token: str
     ) -> None:
-        """The script mounts a scope on the file leg alone, so that
-        container serves `/mcp` (R2 slice B) while the Postgres leg keeps
-        its bare command and answers 404 there: one handshake-era
-        `initialize`, its answer an SSE frame naming the server and
-        minting a session."""
-        assert file_leg.root.is_dir(), "the file leg is the one with a scope"
+        """Each backend serves `/mcp`: initialize returns an SSE frame
+        naming the server and minting a session."""
         initialize = {
             "jsonrpc": "2.0",
             "id": 1,

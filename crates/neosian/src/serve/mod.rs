@@ -7,6 +7,7 @@
 //! MCP over streamable HTTP when the process has mounts (slice B, #370).
 
 mod auth;
+mod backend;
 pub mod cli;
 mod codec;
 mod envelope;
@@ -23,12 +24,12 @@ mod streamable;
 
 use std::sync::Arc;
 
-use crate::store::FileStore;
+use backend::Backend;
 
 /// What every handler shares: the store, the token table and, with
 /// mounts, the MCP surface.
 pub struct Shared {
-    pub store: FileStore,
+    pub store: Arc<dyn Backend>,
     pub clients: auth::Clients,
     pub mcp: Option<mcp::Surface>,
 }

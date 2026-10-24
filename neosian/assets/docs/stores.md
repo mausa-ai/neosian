@@ -233,7 +233,7 @@ for a network filesystem, where SQLite's locking is unreliable.
 |---|---|---|---|
 | `FileStore` | a directory of markdown and JSON lines | both, and the eraser's slice | `make test`, every commit |
 | `PostgresStore` | a schema in Postgres | both, the eraser's slice, and the cross-worker race | `make test-postgres`, CI |
-| `RemoteStore` behind `neosian serve` | FileStore from either server; Postgres from Python | both and the eraser's slice; raw-JSON pins beside | `make test`, `make test-differential`, `make test-container` (FileStore image) |
+| `RemoteStore` behind `neosian serve` | FileStore and Postgres from either server | both and the eraser's slice; raw-JSON pins beside | `make test`, `make test-postgres`, `make test-differential`, `make test-container` |
 | `examples/sqlite_store.py` | one SQLite file | both (not `Erasable`) | `make test`, every commit |
 
 A community store joins the table by pull request naming its

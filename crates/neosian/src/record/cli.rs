@@ -28,7 +28,6 @@ use crate::conversation::ids::parse_conversation_id;
 use crate::conversation::sessions::sessions_mount;
 use crate::conversation::{Error, failed};
 use crate::home::home;
-use crate::memory::cli::{DSN_ENV, NEEDS_PYTHON};
 use crate::memory::grammar::SCOPE_ENV;
 use crate::memory::mounts::{Mount, Refusal};
 use crate::messaging::delivery::context as mailbox_context;
@@ -59,6 +58,9 @@ pub struct Record {
     /// State process URL; bearer token comes from NEOSIAN_CLIENT_TOKEN.
     #[arg(long)]
     pub(super) url: Option<String>,
+    /// Postgres schema (Postgres only).
+    #[arg(long)]
+    pub(super) schema: Option<String>,
     /// single read-write mount of SCOPE at /memories (the memory_scope= sugar)
     #[arg(long)]
     pub(super) scope: Option<String>,
@@ -116,13 +118,15 @@ pub fn run(args: &Record, out: &mut impl Write, err: &mut impl Write) -> io::Res
         );
         return usage(json, &message, out, err);
     }
-    let store = match Selection::resolve(args.root.as_deref(), args.url.as_deref()) {
+    let store = match Selection::resolve_schema(
+        args.root.as_deref(),
+        args.url.as_deref(),
+        args.schema.as_deref(),
+    ) {
         Ok(store) => store,
         Err(message) => return usage(json, &message, out, err),
     };
-    if env::var_os(DSN_ENV).is_some_and(|dsn| !dsn.is_empty()) {
-        return failed(NEEDS_PYTHON, Some(HINT), json, out, err);
-    }
+
     let spool = match &args.spool {
         Some(spool) => spool.clone(),
         None => home()?.join(SPOOL_DIR_NAME),

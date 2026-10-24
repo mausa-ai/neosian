@@ -54,7 +54,8 @@ only replaces an installation owned by a matching cargo-dist receipt.
 playground, eval and all operator verbs. `uv add neosian` supplies the SDK.
 The binary also provides `audit`, `export`, `import`, `redact` and `prune`,
 plus `memory versions`, `memory redact` and `memory revert`. `messages`
-and the direct Postgres backend are still being implemented.
+is still being implemented. Recording, MCP, memory and the operator commands
+also support Postgres directly.
 
 ## Set up and talk
 
@@ -329,7 +330,8 @@ The Rust binary accepts `--url` on `record`, the MCP stdio server, every
 `memory` command except `maintain`, and `audit`, `export`, `import`,
 `redact` and `prune`. These use the same token environment variable and
 refuse a server with another wire version. Binary `search` and `continue`
-remain local; direct Postgres access still uses the Python shell.
+remain on local files. The other listed store commands and `serve` also
+support Postgres directly; apply the schema before starting them.
 
 Postgres arrives only through the `NEOSIAN_POSTGRES_DSN` environment
 variable; there is no `--dsn` flag (argv is world-readable), and the

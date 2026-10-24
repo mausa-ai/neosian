@@ -103,9 +103,7 @@ def test_the_image_pins_both_bases_and_the_repository_toolchain() -> None:
 
 @pytest.mark.unit
 def test_the_image_names_its_backends_and_the_container_test_reads_them() -> None:
-    # R2 slice B (#372): the container test runs one leg per backend the
-    # image's label names, so the Rust image at D narrows it to `file`
-    # and the Postgres leg skips by name until R4.
+    # R4: both substrates run through the binary image's real socket.
     label = re.search(
         rf'^LABEL {re.escape(_BACKENDS_LABEL)}="([^"]+)"$',
         _DOCKERFILE.read_text(encoding="utf-8"),
@@ -113,7 +111,7 @@ def test_the_image_names_its_backends_and_the_container_test_reads_them() -> Non
     )
     assert label is not None, "the image names its backends"
     backends = label.group(1).split(",")
-    assert "file" in backends and set(backends) <= {"file", "postgres"}
+    assert set(backends) == {"file", "postgres"}
     script = (_ROOT / "scripts" / "container_test.sh").read_text(encoding="utf-8")
     assert f'"{_BACKENDS_LABEL}"' in script, "the script reads the label"
 

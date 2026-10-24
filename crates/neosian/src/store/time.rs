@@ -24,6 +24,10 @@ pub enum Unreadable {
 }
 
 impl Stamp {
+    pub fn from_micros(micros: i64) -> Self {
+        Self { micros, offset: 0 }
+    }
+
     /// The wall clock in UTC, at Python's resolution.
     pub fn now() -> Self {
         let since = SystemTime::now().duration_since(UNIX_EPOCH);

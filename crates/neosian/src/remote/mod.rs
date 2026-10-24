@@ -2,7 +2,7 @@
 //! The handshake precedes every opened-store lifetime; one pooled agent
 //! serves its calls. No application retries, redirects or async runtime.
 
-mod codec;
+pub(crate) mod codec;
 mod errors;
 pub mod selection;
 mod state;

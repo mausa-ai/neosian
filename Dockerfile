@@ -7,8 +7,7 @@
 #       ghcr.io/mausa-ai/neosian:<X.Y.Z>
 #   docker build -t neosian .
 #
-# FileStore only until R4 adds the Rust Postgres backend. Use the Python
-# shell's `neosian serve` for Postgres. TLS terminates at a reverse proxy;
+# FileStore and Postgres share the same wire. TLS terminates at a reverse proxy;
 # an unset NEOSIAN_SERVE_TOKEN refuses to start at exit 2.
 
 FROM rust:1.99.0-alpine@sha256:0cce0a5e0e8ba67b455257a3a02a1d99005f382748789d6464460028810f1627 AS builder
@@ -29,7 +28,7 @@ COPY LICENSE docs/LICENSE-MUSL crates/neosian/LICENSE-TLS crates/neosian/LICENSE
 # Keep the previous image's uid so existing named volumes remain writable.
 USER 1000:1000
 ENV NEOSIAN_INSTALL=container
-LABEL ai.mausa.neosian.backends="file"
+LABEL ai.mausa.neosian.backends="file,postgres"
 VOLUME /data
 EXPOSE 6367
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s CMD \

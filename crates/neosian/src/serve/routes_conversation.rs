@@ -5,6 +5,7 @@
 
 use serde_json::{Value, json};
 
+use super::backend::Backend;
 use super::codec;
 use super::envelope::Fail;
 use super::paging::{PAGE, projections_page, turns_page};
@@ -16,7 +17,6 @@ use super::routes::Route;
 use super::routes_memory::actor;
 use crate::conversation::ids::parse_conversation_id;
 use crate::conversation::search::parse_query;
-use crate::store::FileStore;
 
 pub const ROUTES: [Route; 8] = [
     Route {
@@ -65,7 +65,7 @@ fn turns(turns: &[crate::conversation::Turn]) -> Vec<Value> {
     turns.iter().map(codec::turn).collect()
 }
 
-fn append_turn(store: &FileStore, payload: &Payload, client: &str) -> Result<Value, Fail> {
+fn append_turn(store: &dyn Backend, payload: &Payload, client: &str) -> Result<Value, Fail> {
     let conversation_id = require_str(payload, "conversation_id")?;
     let messages = require_objects(payload, "messages")?
         .into_iter()
@@ -76,17 +76,17 @@ fn append_turn(store: &FileStore, payload: &Payload, client: &str) -> Result<Val
     Ok(json!({"turn": codec::turn(&turn)}))
 }
 
-fn read_turns(store: &FileStore, payload: &Payload, _client: &str) -> Result<Value, Fail> {
+fn read_turns(store: &dyn Backend, payload: &Payload, _client: &str) -> Result<Value, Fail> {
     let (page, next_after) = turns_page(store, payload)?;
     Ok(json!({"turns": turns(&page), "next_after": next_after}))
 }
 
-fn last_turn_number(store: &FileStore, payload: &Payload, _client: &str) -> Result<Value, Fail> {
+fn last_turn_number(store: &dyn Backend, payload: &Payload, _client: &str) -> Result<Value, Fail> {
     let conversation_id = require_str(payload, "conversation_id")?;
     Ok(json!({"turn": store.last_turn_number(&conversation_id)?}))
 }
 
-fn search_turns(store: &FileStore, payload: &Payload, _client: &str) -> Result<Value, Fail> {
+fn search_turns(store: &dyn Backend, payload: &Payload, _client: &str) -> Result<Value, Fail> {
     let limit = optional_int(payload, "limit")?;
     if limit.is_some_and(|limit| limit > PAGE) {
         let why = format!("a search answers at most {PAGE} turns; narrow the query");
@@ -106,7 +106,11 @@ fn search_turns(store: &FileStore, payload: &Payload, _client: &str) -> Result<V
     Ok(json!({"turns": turns(&found)}))
 }
 
-fn append_projections(store: &FileStore, payload: &Payload, _client: &str) -> Result<Value, Fail> {
+fn append_projections(
+    store: &dyn Backend,
+    payload: &Payload,
+    _client: &str,
+) -> Result<Value, Fail> {
     let conversation_id = require_str(payload, "conversation_id")?;
     let entries = require_objects(payload, "entries")?
         .into_iter()
@@ -116,13 +120,13 @@ fn append_projections(store: &FileStore, payload: &Payload, _client: &str) -> Re
     Ok(json!({}))
 }
 
-fn read_projections(store: &FileStore, payload: &Payload, _client: &str) -> Result<Value, Fail> {
+fn read_projections(store: &dyn Backend, payload: &Payload, _client: &str) -> Result<Value, Fail> {
     let (entries, next_after) = projections_page(store, payload)?;
     let entries: Vec<Value> = entries.iter().map(codec::projection).collect();
     Ok(json!({"entries": entries, "next_after": next_after}))
 }
 
-fn redact_turns(store: &FileStore, payload: &Payload, client: &str) -> Result<Value, Fail> {
+fn redact_turns(store: &dyn Backend, payload: &Payload, client: &str) -> Result<Value, Fail> {
     let conversation_id = require_str(payload, "conversation_id")?;
     let through = optional_int(payload, "through")?;
     let turns = optional_ints(payload, "turns")?;
@@ -136,7 +140,7 @@ fn redact_turns(store: &FileStore, payload: &Payload, client: &str) -> Result<Va
     Ok(json!({"count": count}))
 }
 
-fn turn_redactions(store: &FileStore, payload: &Payload, _client: &str) -> Result<Value, Fail> {
+fn turn_redactions(store: &dyn Backend, payload: &Payload, _client: &str) -> Result<Value, Fail> {
     let limit = optional_int(payload, "limit")?;
     if limit.is_some_and(|limit| limit > PAGE) {
         let why = format!("the trail answers at most {PAGE} acts; narrow the window");

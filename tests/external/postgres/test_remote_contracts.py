@@ -10,33 +10,33 @@ conftest's per-test schema, kept in hand for substrate planting.
 import json
 from collections.abc import AsyncIterator, Mapping
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
-import httpx
 import pytest
 
 from neosian import PostgresStore, RemoteStore
-from neosian._foundation.server.app import build_app
 from neosian.conversation.testing import ConversationStoreContract, ErasureContract
 from neosian.memory.testing import MemoryStoreContract
 from tests.support.postgres import plant_sql, store_schema
+from tests.support.postgres_server import remote_postgres
 
 _PLANT_TS = datetime(2026, 1, 1, tzinfo=UTC)
 _TOKEN = "postgres-contract-token"
-_BASE_URL = "http://state-process"
 
 
-@pytest.fixture
-async def remote(store: PostgresStore) -> AsyncIterator[RemoteStore]:
-    """A RemoteStore whose server is this test's PostgresStore."""
-    app = await build_app(store, token=_TOKEN)
-    client = await RemoteStore.connect(
-        _BASE_URL, token=_TOKEN, transport=httpx.ASGITransport(app=app)
-    )
-    try:
-        yield client
-    finally:
-        await client.aclose()
+@pytest.fixture(params=["python", "rust"])
+async def remote(
+    store: PostgresStore,
+    postgres_dsn: str,
+    tmp_path: Path,
+    request: pytest.FixtureRequest,
+) -> AsyncIterator[RemoteStore]:
+    """The same contracts against both server implementations."""
+    async with remote_postgres(
+        store, postgres_dsn, tmp_path, request.param, _TOKEN
+    ) as remote:
+        yield remote
 
 
 def _decode(line: str) -> dict[str, Any] | None:

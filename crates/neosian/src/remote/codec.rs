@@ -1,6 +1,5 @@
-//! Decode wire values, without imposing the file envelope's scalar-only
-//! metadata bound. A remote document's extra data is kept as YAML-compatible
-//! JSON lines; it is never written through the local file serializer.
+//! Decode wire and Postgres values with JSON metadata preserved as
+//! YAML-compatible lines. File readers retain their separate YAML bounds.
 
 use crate::conversation::message;
 use crate::conversation::{Projection, Redaction, Turn};

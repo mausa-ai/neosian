@@ -15,7 +15,7 @@ fn stamp(stamp: Stamp) -> String {
 }
 
 /// The envelope's unknown keys as `MemoryDocument.extra`, bounded to
-/// one-line scalars (§39.11).
+/// one-line scalars or JSON collections (§39.11, §39.17).
 fn extra_json(envelope: &Envelope, scope: &str, path: &str) -> Result<Value, MemoryError> {
     let mut extra = Map::new();
     let mut last = String::new();
@@ -33,15 +33,12 @@ fn extra_json(envelope: &Envelope, scope: &str, path: &str) -> Result<Value, Mem
         if line.starts_with([' ', '\t']) || line == "-" || line.starts_with("- ") {
             return Err(bounded(&last));
         }
-        let (name, raw) = match line.split_once(": ") {
-            Some((name, raw)) => (name, raw.trim()),
-            None => (line.strip_suffix(':').unwrap_or(line), ""),
-        };
+        let (name, raw) = scalar::key_value(line).ok_or_else(|| bounded(&last))?;
         let name = match scalar::read(name) {
             Some(Value::String(unquoted)) => unquoted,
             _ => name.to_string(),
         };
-        let Some(value) = scalar::read(raw) else {
+        let Some(value) = scalar::read(raw).or_else(|| serde_json::from_str(raw).ok()) else {
             return Err(bounded(&name));
         };
         last = name.clone();

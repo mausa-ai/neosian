@@ -110,13 +110,7 @@ pub fn decode_document(data: &Payload) -> Result<Restored, Fail> {
         Some(value) if falsy(value) => {}
         Some(Value::Object(fields)) => {
             for (name, value) in fields {
-                let Some(spelled) = scalar::spell(value) else {
-                    let why = format!(
-                        "parameter 'extra' holds {}, which is not a scalar",
-                        repr(name)
-                    );
-                    return Err(Fail::value(why));
-                };
+                let spelled = scalar::spell(value).unwrap_or_else(|| value.to_string());
                 extra.push(format!("{}: {spelled}", scalar::spell_str(name)));
             }
         }

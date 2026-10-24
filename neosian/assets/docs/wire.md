@@ -17,12 +17,13 @@ Rust state process over one home (`tests/differential/serve_cases.py`):
 the two answer alike and leave the same home. The remote hook and MCP
 corpus also runs through all four Python/Rust client-server pairings
 (`tests/differential/test_remote.py`), with separate multi-page, TLS and
-version-skew probes. The Rust client implements the operations those
-two doors call; Python `RemoteStore` implements the whole wire.
+version-skew probes. The Rust client implements the operations the
+recording, MCP, memory and operator doors call; Python `RemoteStore`
+implements the whole wire.
 
 Every route listed here is served by both implementations. The Rust
-binary and the container image use FileStore; the Python server supports
-FileStore, Postgres and a host's store through `build_app`. The image
+binary and the container image serve FileStore or Postgres; the Python
+server also serves a host's store through `build_app`. The image
 contains the Rust server since 1.11.0. Backend capabilities in the
 handshake, rather than the implementation language, decide whether a
 client can page or erase. `WIRE_VERSION` remains 6.

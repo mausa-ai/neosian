@@ -4,10 +4,11 @@
 //! `next_cursor`; the conversation reads carry their own cursor and answer
 //! `next_after`, a cut projection page ending on a whole turn.
 
+use super::backend::Backend;
 use super::envelope::Fail;
 use super::params::{Payload, optional_int, optional_str, require_str};
 use crate::conversation::{Projection, Turn};
-use crate::store::{FileStore, Page};
+use crate::store::Page;
 
 /// The most rows one response carries.
 pub const PAGE: i64 = 500;
@@ -47,7 +48,10 @@ fn window(payload: &Payload) -> Result<(String, i64, Option<i64>, i64), Fail> {
 }
 
 /// `turns_page`: the turns past `after`, and where the next page starts.
-pub fn turns_page(store: &FileStore, payload: &Payload) -> Result<(Vec<Turn>, Option<u64>), Fail> {
+pub fn turns_page(
+    store: &dyn Backend,
+    payload: &Payload,
+) -> Result<(Vec<Turn>, Option<u64>), Fail> {
     let (conversation_id, after, limit, size) = window(payload)?;
     let turns = store.read_turns(&conversation_id, after, Some(size))?;
     if (turns.len() as i64) < size || Some(size) == limit {
@@ -60,7 +64,7 @@ pub fn turns_page(store: &FileStore, payload: &Payload) -> Result<(Vec<Turn>, Op
 /// `projections_page`: as `turns_page`, but a cut page ends on a whole
 /// turn, widening rather than advancing when one turn fills it.
 pub fn projections_page(
-    store: &FileStore,
+    store: &dyn Backend,
     payload: &Payload,
 ) -> Result<(Vec<Projection>, Option<u64>), Fail> {
     let (conversation_id, after, limit, mut size) = window(payload)?;

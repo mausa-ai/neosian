@@ -4,23 +4,34 @@ interleaved writes."""
 
 import asyncio
 from collections.abc import AsyncIterator
+from pathlib import Path
 
 import pytest
 
-from neosian import Message, PostgresStore, Role
+from neosian import Message, PostgresStore, RemoteStore, Role
 from neosian._foundation.memory.types import MemoryDocument
 from neosian._foundation.shared.exceptions import MemoryConflictError
 from tests.support.postgres import store_schema
+from tests.support.postgres_server import remote_postgres
 
 _SCOPE = "user:workers"
 _TURNS = 25
 
 
-@pytest.fixture
+@pytest.fixture(params=["python", "rust"])
 async def other(
-    postgres_dsn: str, store: PostgresStore
-) -> AsyncIterator[PostgresStore]:
+    postgres_dsn: str,
+    store: PostgresStore,
+    tmp_path: Path,
+    request: pytest.FixtureRequest,
+) -> AsyncIterator[PostgresStore | RemoteStore]:
     """A second store on the same schema — a second worker process."""
+    if request.param == "rust":
+        async with remote_postgres(
+            store, postgres_dsn, tmp_path, "rust", "workers"
+        ) as remote:
+            yield remote
+        return
     other = PostgresStore(postgres_dsn, schema=store_schema(store))
     try:
         yield other
@@ -29,7 +40,7 @@ async def other(
 
 
 async def test_turn_numbers_stay_gapless_across_two_workers(
-    store: PostgresStore, other: PostgresStore
+    store: PostgresStore, other: PostgresStore | RemoteStore
 ) -> None:
     """CS3: 25 interleaved appends from two pools yield exactly 1..25."""
     workers = (store, other)
@@ -48,7 +59,7 @@ async def test_turn_numbers_stay_gapless_across_two_workers(
 
 
 async def test_expected_version_race_has_exactly_one_winner(
-    store: PostgresStore, other: PostgresStore
+    store: PostgresStore, other: PostgresStore | RemoteStore
 ) -> None:
     """The reason this substrate exists: `expected_version` arbitrates
     across processes — one writer wins, the other gets the conflict."""
@@ -69,7 +80,7 @@ async def test_expected_version_race_has_exactly_one_winner(
 
 
 async def test_racing_plain_writes_never_reuse_a_version(
-    store: PostgresStore, other: PostgresStore
+    store: PostgresStore, other: PostgresStore | RemoteStore
 ) -> None:
     await store.write(_SCOPE, "doc", "v1")
     written = await asyncio.gather(

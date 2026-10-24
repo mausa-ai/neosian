@@ -14,18 +14,18 @@ and the quickstart always begins embedded.
 | **your app runs neosian** | embed + `FileStore`: dev, local tools, cooperating local agents | embed + `PostgresStore`: production, multi-worker |
 | **a separate process runs neosian** | the state process (`neosian serve`) owning a FileStore root | the state process over Postgres |
 
-The Rust binary and the published container serve FileStore. The Python
-shell serves FileStore or Postgres, and `build_app(store)` serves a host's
-own implementation. Both state processes answer all twenty-one `/v1/`
-routes and `/health`; both expose `/mcp` when started with mounts.
+The Rust binary, container and Python shell serve FileStore or Postgres.
+Python's `build_app(store)` also serves a host's own implementation. Both
+state processes answer all twenty-one `/v1/` routes and `/health`; both
+expose `/mcp` when started with mounts.
 
 The Rust binary's `record --url URL` and `mcp --url URL` reach either
 state-process implementation with `NEOSIAN_CLIENT_TOKEN`. The record spool
 stays on the client machine and clears only after a successful landing.
 A failed landing keeps the span for the next Stop; a partial remote write
 is not an exactly-once transaction. Neither client retries transport
-failures automatically. Other binary command-line remote doors remain
-scheduled for later phases.
+failures automatically. Binary memory and operator commands also accept
+`--url`; remote search/continue and the messages CLI remain pending.
 
 ## Embed first
 
@@ -76,12 +76,19 @@ binary performs the container's unauthenticated `/health` probe itself.
 The default command serves a FileStore on `/data`, under the same UID
 1000 as earlier images, so existing volumes keep their ownership. To
 expose MCP too, append `--root /data --scope user:me` to `docker run`.
-The image currently supports FileStore only; its Postgres backend is
-scheduled for R4. For Postgres, install `neosian[postgres]` and run the
-Python shell's `neosian serve` with `NEOSIAN_POSTGRES_DSN` set and no
-`--root`; `--schema neosian` selects a schema. Existing Postgres
-container deployments must keep their earlier image until that backend
-lands or run the Python server.
+For Postgres, set `NEOSIAN_POSTGRES_DSN` and replace the default command
+with `--schema neosian`; this selects the database without the default
+`--root /data`. Apply the shipped schema explicitly before starting either
+server. The binary uses the same SQL statements as Python, with four lazy
+autocommit connections, atomic mutations and bounded retries for version
+races. It never applies DDL or retries an uncertain transport failure.
+
+The binary accepts tokio-postgres URI or keyword DSNs. `sslmode=require`
+requires TLS with certificate and hostname verification; `prefer` is the
+driver default and permits a server without TLS. `PGSSLROOTCERT` may name
+a PEM bundle for a private certificate authority. Libpq-only DSN options,
+including `sslrootcert` in the DSN, are refused by the Rust driver; use
+`PGSSLROOTCERT` for that bundle. The Python driver retains libpq's options.
 
 Without the container it is one command:
 `NEOSIAN_SERVE_TOKEN=… neosian serve`, where no flags serve the home,

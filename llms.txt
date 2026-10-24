@@ -41,8 +41,9 @@ home and client files. Setup registers the executable running it;
 `--binary PATH` selects an explicit binary.
 The binary also provides audit, export, import, redact and prune, and all
 memory commands except maintain. These commands accept --url with
-NEOSIAN_CLIENT_TOKEN; binary search and continue remain local. Direct
-Postgres access and messages still use the Python shell.
+NEOSIAN_CLIENT_TOKEN; binary search and continue remain on local files.
+Recording, MCP, memory and the operator commands also support Postgres
+directly. The messages CLI still uses the Python shell.
 
 - `neosian status [--at CLIENT=DIR]… [--json]`: is this machine set up? The home, which
   providers have a key (never values), this directory's two scopes, per
@@ -316,8 +317,10 @@ migration; `status` names competing executables on PATH.
 - The appliance: `docker run -d -e NEOSIAN_SERVE_TOKEN=… -p 6367:6367
   -v neosian-state:/data ghcr.io/mausa-ai/neosian:1.12.2`, the state
   process on a volume, `/health` the one open route. Since 1.11.0 it
-  runs the Rust binary and serves FileStore only; use the Python server
-  for Postgres until the image gains that backend.
+  runs the Rust binary. Both backends are supported: for Postgres, set
+  NEOSIAN_POSTGRES_DSN and pass --schema neosian instead of the default
+  --root /data. Apply the schema first. Rust uses verified TLS, with
+  PGSSLROOTCERT for an optional private CA bundle.
 
 ## Docs
 

@@ -17,7 +17,6 @@ use super::server::Server;
 use crate::assets::{CONTEXT, literal};
 use crate::cli::usage;
 use crate::home::{project_mounts, user_mount};
-use crate::memory::cli::{DSN_ENV, NEEDS_PYTHON};
 use crate::memory::dispatch::Memory;
 use crate::memory::grammar::{SCOPE_ENV, SUGAR_MOUNT_PATH};
 use crate::memory::mounts::{Mount, Refusal};
@@ -42,6 +41,9 @@ pub struct Mcp {
     /// State process URL; bearer token comes from NEOSIAN_CLIENT_TOKEN.
     #[arg(long)]
     url: Option<String>,
+    /// Postgres schema (Postgres only).
+    #[arg(long)]
+    schema: Option<String>,
     /// single read-write mount of SCOPE at /memories
     #[arg(long)]
     scope: Option<String>,
@@ -132,14 +134,15 @@ pub fn run(args: &Mcp, out: &mut impl Write, err: &mut impl Write) -> io::Result
             return usage(false, &message, out, err);
         }
     };
-    let selected = match Selection::resolve(args.root.as_deref(), args.url.as_deref()) {
+    let selected = match Selection::resolve_schema(
+        args.root.as_deref(),
+        args.url.as_deref(),
+        args.schema.as_deref(),
+    ) {
         Ok(selected) => selected,
         Err(message) => return usage(false, &message, out, err),
     };
-    if env::var_os(DSN_ENV).is_some_and(|dsn| !dsn.is_empty()) {
-        writeln!(err, "error: {NEEDS_PYTHON}")?;
-        return Ok(1);
-    }
+
     let store = match selected.open() {
         Ok(store) => store,
         Err(error) => {
