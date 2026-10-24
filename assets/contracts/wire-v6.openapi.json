@@ -3,7 +3,7 @@
   "info": {
     "title": "Neosian storage HTTP contract",
     "version": "6",
-    "description": "Storage wire 6, independent of package version. Bodies are JSON objects regardless of Content-Type; unknown request keys are ignored and optional null equals absence. JSON Schema describes supported typed input, not legacy coercions. Scope/conversation allowances are literal prefixes; constrained tokens cannot call store/* or /mcp and must explicitly bound conversation searches/trail reads. MCP at /mcp is a separate negotiated protocol, not described by this document."
+    "description": "Storage wire 6, independent of package version. Bodies are JSON objects regardless of Content-Type; legacy operations ignore unknown request keys and treat optional null as absence. Optional memory-search version 1 uses strict fields and types, with null allowed only for cursor. JSON Schema describes supported typed input, not legacy coercions. Scope/conversation allowances are literal prefixes; constrained tokens cannot call store/* or /mcp and must explicitly bound conversation searches/trail reads. MCP at /mcp is a separate negotiated protocol, not described by this document."
   },
   "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
   "security": [
@@ -83,11 +83,31 @@
                       "description": "Optional opt-in grant enforcement capability, versioned separately from wire 6. Required by portable HTTP profiles.",
                       "type": "object",
                       "properties": {
-                        "version": {"const": 1},
-                        "mode": {"const": "scoped"}
+                        "version": {
+                          "const": 1
+                        },
+                        "mode": {
+                          "const": "scoped"
+                        }
                       },
-                      "required": ["version", "mode"],
+                      "required": [
+                        "version",
+                        "mode"
+                      ],
                       "additionalProperties": false
+                    },
+                    "memory_search": {
+                      "type": "object",
+                      "properties": {
+                        "version": {
+                          "const": 1
+                        }
+                      },
+                      "required": [
+                        "version"
+                      ],
+                      "additionalProperties": false,
+                      "description": "Optional current-memory lexical search contract version 1. Its absence means memory/search is unsupported."
                     }
                   },
                   "required": [
@@ -3540,6 +3560,266 @@
                   "properties": {},
                   "required": [],
                   "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid parameters or storage refusal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "state-v1.schema.json#/$defs/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bearer; plain text, not the JSON envelope",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string",
+                  "const": "Bearer"
+                }
+              }
+            },
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "const": "unauthorized"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated request outside its allowance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "state-v1.schema.json#/$defs/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Body exceeds 64 MiB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "state-v1.schema.json#/$defs/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal/driver error, plain text with no storage envelope",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/memory/search": {
+      "post": {
+        "operationId": "memory_search",
+        "summary": "Search current memory in one authorized scope (optional version 1)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "scope": {
+                    "$ref": "state-v1.schema.json#/$defs/Scope"
+                  },
+                  "query": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1024,
+                    "description": "1..16 whitespace terms, all matched as per-scalar Unicode-17.0.0 per-scalar lowercase substrings across selected values. No stemming, normalization or regex."
+                  },
+                  "prefix": {
+                    "type": "string",
+                    "maxLength": 1024,
+                    "default": "",
+                    "description": "Case-sensitive literal document-path prefix, at most 1024 UTF-8 bytes."
+                  },
+                  "fields": {
+                    "type": "array",
+                    "items": {
+                      "enum": [
+                        "path",
+                        "content",
+                        "metadata"
+                      ]
+                    },
+                    "minItems": 1,
+                    "maxItems": 3,
+                    "uniqueItems": true,
+                    "default": [
+                      "path",
+                      "content"
+                    ]
+                  },
+                  "metadata_keys": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "maxItems": 8,
+                    "uniqueItems": true,
+                    "default": []
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100,
+                    "default": 20
+                  },
+                  "cursor": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "minLength": 1,
+                    "maxLength": 4096,
+                    "default": null,
+                    "description": "Opaque keyset continuation bound to scope, query, prefix, fields and metadata keys. Not a permission token or snapshot."
+                  }
+                },
+                "required": [
+                  "scope",
+                  "query"
+                ],
+                "additionalProperties": false,
+                "description": "Requires memory_search version 1. Unknown fields and mistyped/default-null fields refuse. metadata requires 1..8 metadata_keys; keys require the metadata field. Scope authorization precedes scanning and pagination."
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "hits": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "scope": {
+                            "$ref": "state-v1.schema.json#/$defs/Scope"
+                          },
+                          "path": {
+                            "$ref": "state-v1.schema.json#/$defs/DocumentPath"
+                          },
+                          "version": {
+                            "type": "integer",
+                            "minimum": 1
+                          },
+                          "created_at": {
+                            "$ref": "state-v1.schema.json#/$defs/Timestamp"
+                          },
+                          "updated_at": {
+                            "$ref": "state-v1.schema.json#/$defs/Timestamp"
+                          },
+                          "actor": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "matched_fields": {
+                            "type": "array",
+                            "items": {
+                              "enum": [
+                                "path",
+                                "content",
+                                "metadata"
+                              ]
+                            },
+                            "minItems": 1,
+                            "maxItems": 3,
+                            "uniqueItems": true
+                          },
+                          "excerpt": {
+                            "type": "object",
+                            "properties": {
+                              "field": {
+                                "enum": [
+                                  "path",
+                                  "content",
+                                  "metadata"
+                                ]
+                              },
+                              "metadata_key": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ],
+                                "maxLength": 128
+                              },
+                              "offset": {
+                                "type": "integer",
+                                "minimum": 0
+                              },
+                              "text": {
+                                "type": "string",
+                                "maxLength": 240
+                              }
+                            },
+                            "required": [
+                              "field",
+                              "metadata_key",
+                              "offset",
+                              "text"
+                            ],
+                            "additionalProperties": false,
+                            "description": "Up to 240 original Unicode scalars, starting up to 40 scalars before the first match. Offset is zero-based within the path, body or matched metadata string value. Content is preferred, then selected metadata keys, then path."
+                          }
+                        },
+                        "required": [
+                          "scope",
+                          "path",
+                          "version",
+                          "created_at",
+                          "updated_at",
+                          "actor",
+                          "matched_fields",
+                          "excerpt"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "maxItems": 100
+                    },
+                    "next_cursor": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "minLength": 1,
+                      "maxLength": 4096
+                    }
+                  },
+                  "required": [
+                    "hits",
+                    "next_cursor"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Ascending document-path order. A nonfinal page has exactly limit hits; no total count. Only current, non-redacted memory documents are searched. sessions/, messages/, message-links/ and handoff are excluded. Each page reads current state; writes before the last key require a new query."
                 }
               }
             }

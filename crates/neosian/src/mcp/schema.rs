@@ -2,8 +2,8 @@
 //! DESIGN §27.9): the JSON Schema the client lists, and the validation
 //! every call passes, worded as pydantic words it so the corrective
 //! failure is the same text on every transport. Bounded to the shapes the
-//! eight tools declare: a string, an integer, a boolean, a list of
-//! integers, a literal set; optional, defaulted or required.
+//! declared tools use: strings, integers, booleans, integer/string lists
+//! and literal sets; optional, defaulted or required.
 
 use serde_json::{Map, Value, json};
 
@@ -11,8 +11,10 @@ use serde_json::{Map, Value, json};
 pub enum Kind {
     Str,
     Int,
+    StrictInt,
     Bool,
     IntList,
+    StrList,
     Literal(&'static [&'static str]),
 }
 
@@ -44,9 +46,10 @@ pub fn input_schema(fields: &[Field], described: &[(String, String)]) -> Value {
             .unwrap_or_default();
         let typed = match field.kind {
             Kind::Str => json!({"type": "string"}),
-            Kind::Int => json!({"type": "integer"}),
+            Kind::Int | Kind::StrictInt => json!({"type": "integer"}),
             Kind::Bool => json!({"type": "boolean"}),
             Kind::IntList => json!({"items": {"type": "integer"}, "type": "array"}),
+            Kind::StrList => json!({"items": {"type": "string"}, "type": "array"}),
             Kind::Literal(choices) => json!({"enum": choices, "type": "string"}),
         };
         let mut property = Map::new();
@@ -88,7 +91,8 @@ fn merge(property: &mut Map<String, Value>, typed: Value) {
 
 fn default_value(kind: Kind, text: &str) -> Value {
     match kind {
-        Kind::Int => json!(text.parse::<i64>().unwrap_or_default()),
+        Kind::Int | Kind::StrictInt => json!(text.parse::<i64>().unwrap_or_default()),
+        Kind::StrList => serde_json::from_str(text).expect("string-list default"),
         Kind::Bool => json!(text == "true"),
         _ => json!(text),
     }
@@ -129,6 +133,10 @@ fn coerce(kind: Kind, value: &Value) -> Result<Value, String> {
             },
             _ => Err("Input should be a valid integer".to_string()),
         },
+        Kind::StrictInt => match value {
+            Value::Number(n) if n.is_i64() || n.is_u64() => Ok(value.clone()),
+            _ => Err("Input should be a valid integer".into()),
+        },
         Kind::Bool => match value {
             Value::Bool(_) => Ok(value.clone()),
             Value::Number(number) if number.as_i64() == Some(0) => Ok(json!(false)),
@@ -140,12 +148,20 @@ fn coerce(kind: Kind, value: &Value) -> Result<Value, String> {
             },
             _ => Err("Input should be a valid boolean, unable to interpret input".to_string()),
         },
-        Kind::IntList => match value {
+        Kind::IntList | Kind::StrList => match value {
             Value::Array(items) => {
                 let mut parsed = Vec::new();
                 for (index, item) in items.iter().enumerate() {
                     parsed.push(
-                        coerce(Kind::Int, item).map_err(|message| format!("{index}: {message}"))?,
+                        coerce(
+                            if matches!(kind, Kind::StrList) {
+                                Kind::Str
+                            } else {
+                                Kind::Int
+                            },
+                            item,
+                        )
+                        .map_err(|message| format!("{index}: {message}"))?,
                     );
                 }
                 Ok(Value::Array(parsed))

@@ -17,6 +17,9 @@ Version banners and documentation are checked against the current Cargo
 version and shipped manifest elsewhere, because v2 deliberately changes
 those surfaces. Explicit v2 additions to MCP discovery are covered by the
 current MCP contract tests; retained calls continue to use this reference.
+S2's optional `memory_search` handshake field and `search_memory` discovery
+entry are excluded only from the v1 comparison, with full independent S2
+contracts checking them. Frozen expectations and seeded data stay unchanged.
 
 Do not regenerate these expectations from a candidate binary to make a
 failure pass. A change requires an explicit compatibility decision and a

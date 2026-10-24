@@ -4,6 +4,13 @@ use super::*;
 use crate::store::FileStore;
 
 impl State for FileStore {
+    fn search_memory(
+        &self,
+        scope: &str,
+        request: &crate::memory::search::Request,
+    ) -> Result<crate::memory::search::Page, Error> {
+        self.search_memory(scope, request)
+    }
     fn supports_optimistic_concurrency(&self) -> bool {
         true
     }

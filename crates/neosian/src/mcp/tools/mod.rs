@@ -2,13 +2,14 @@
 //! declaration (the name, the prose from the prompt pack, the schema's
 //! fields, the annotations) and a body over the server's memory. Listed
 //! in the Python server's order: `memory`, the skills, `messages`, the
-//! history pair, the handoff pair.
+//! history pair, the handoff pair, then docs, history metadata and memory search.
 
 mod handoff;
 mod history;
 mod memory;
 mod messages;
 mod operator;
+mod search_memory;
 mod skills;
 
 use serde_json::{Map, Value};
@@ -103,6 +104,7 @@ pub fn served(memory: &Memory) -> Vec<Tool> {
     }
     tools.push(operator::docs());
     tools.push(operator::history());
+    tools.push(search_memory::tool());
     tools
 }
 

@@ -19,11 +19,12 @@ and shipped skills are embedded data assets; no model client runs in neosian.
 | `continue_session`, `handoff` | Explicit continuation and departure note |
 | `docs` | List topics or read a page from this installed version |
 | `memory_history` | Document version metadata or a mount's recent write ledger |
+| `search_memory` | Current mounted document search with bounded excerpts and source/version references |
 
 Without a profile, the handoff pair is present only when a read-write mount
 can hold session state. With `--profile NAME`, history tools require an
 explicit history selection; `continue_session` can read with capture off,
-while `handoff` requires capture permission. `docs` and `memory_history`
+while `handoff` requires capture permission. `docs`, `memory_history` and `search_memory`
 carry read-only, non-destructive annotations.
 `memory_history(path, limit=20)` requires a mounted virtual path, accepts 1–100
 rows, and returns attribution/version metadata without historical bodies.
@@ -37,6 +38,15 @@ portable source selection, bounded injection, qualified skills, capture off
 by default and server-enforced grants. Local username/project defaults alone
 provide none of those guarantees. The selected profile bounds raw history
 before reads/search, including startup projections and mailbox annotations.
+
+`search_memory(query, path="/", fields=["path", "content"], metadata_keys=[],
+limit=20, cursor=null)` searches current authorized memory, including skills.
+It is available with capture off and without a history selection. It reads
+current storage independently of the startup index. Results have mounted
+references, scope/path, version, actor and bounded excerpts. Metadata needs
+explicit keys; profile injection modes do not limit permitted reads. Remote
+sources need optional memory-search capability version 1. See `neosian docs
+memory` for matching, Unicode, exclusions and pagination semantics.
 
 Skills are also MCP prompts (`prompts/list`, `prompts/get`). `handoff` guides a
 clean departure; `upkeep` guides grounded consolidation by the user's agent.

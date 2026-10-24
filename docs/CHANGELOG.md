@@ -8,6 +8,22 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-10-24
+
+### Added
+
+- Current-memory keyword search through `memory search`, MCP `search_memory`
+  and optional HTTP `memory/search` version 1. Paths, content and explicitly
+  selected metadata string values use the same Unicode 17.0.0 matching on
+  files, Postgres and remote services. Existing history search is unchanged.
+- Bounded excerpts, mounted references, source/scope/path, version and actor
+  provenance, with stable path ordering and opaque cursor pagination. Each
+  page rechecks authority and reads current storage; erased/deleted content,
+  old versions, session and mailbox records are excluded.
+- Optional custom-storage search conformance, raw authorization and malformed
+  response checks, and direct CLI/MCP/Postgres lifecycle cases. Reference
+  search retains no derived index or cache and requires no schema migration.
+
 ## [2.1.0] - 2026-10-24
 
 ### Added

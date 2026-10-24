@@ -30,6 +30,16 @@ pub trait State: Send + Sync {
     }
     fn read(&self, scope: &str, path: &str) -> Result<Option<Document>, Error>;
     fn list_documents(&self, scope: &str, prefix: &str) -> Result<Vec<Entry>, Error>;
+    fn search_memory(
+        &self,
+        _scope: &str,
+        _request: &crate::memory::search::Request,
+    ) -> Result<crate::memory::search::Page, Error> {
+        Err(crate::store::error::MemoryError::configuration(
+            "backend does not support memory-search version 1",
+        )
+        .into())
+    }
     fn versions(&self, scope: &str, path: &str, limit: usize) -> Result<Vec<Row>, Error>;
     fn write(
         &self,

@@ -162,6 +162,7 @@ def test_openapi_route_set_is_explicit() -> None:
             "memory/delete",
             "memory/rename",
             "memory/list_documents",
+            "memory/search",
             "memory/versions",
             "memory/redact",
             "memory/history",

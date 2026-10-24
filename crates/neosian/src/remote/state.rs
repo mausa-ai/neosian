@@ -14,6 +14,25 @@ use crate::wire::encode;
 use serde_json::{Value, json};
 
 impl State for RemoteStore {
+    fn search_memory(
+        &self,
+        scope: &str,
+        request: &crate::memory::search::Request,
+    ) -> Result<crate::memory::search::Page, Error> {
+        request.validate_backend(scope)?;
+        if self.capabilities["memory_search"]["version"] != 1 {
+            return Err(crate::store::error::MemoryError::configuration(
+                "server does not support memory-search version 1",
+            )
+            .into());
+        }
+        let mut payload = serde_json::to_value(request).expect("search request serializes");
+        payload["scope"] = scope.into();
+        let page = serde_json::from_value(self.call("memory/search", payload)?)
+            .map_err(|_| codec::malformed("memory/search"))?;
+        request.check_page(scope, &page)?;
+        Ok(page)
+    }
     fn supports_optimistic_concurrency(&self) -> bool {
         self.capabilities
             .get("supports_optimistic_concurrency")

@@ -1,4 +1,4 @@
-//! The nine `memory/*` routes (`server/routes.py`, DESIGN §18.2): the
+//! The base `memory/*` routes plus optional current-document search: the
 //! `MemoryStore` methods by name, a write stamped under the token's
 //! client, every listing a page.
 
@@ -13,7 +13,12 @@ use super::params::{Payload, optional_int, optional_str, optional_timestamp, req
 use super::routes::Route;
 use crate::store::grammar::Actor;
 
-pub const ROUTES: [Route; 9] = [
+pub const ROUTES: [Route; 10] = [
+    Route {
+        name: "memory/search",
+        handler: search,
+        whole_store: false,
+    },
     Route {
         name: "memory/read",
         handler: read,
@@ -60,6 +65,16 @@ pub const ROUTES: [Route; 9] = [
         whole_store: false,
     },
 ];
+
+fn search(store: &dyn Backend, payload: &Payload, _client: &str) -> Result<Value, Fail> {
+    let scope = require_str(payload, "scope")?;
+    let mut parameters = payload.clone();
+    parameters.remove("scope");
+    let request: crate::memory::search::Request = serde_json::from_value(Value::Object(parameters))
+        .map_err(|error| Fail::value(format!("invalid memory-search request: {error}")))?;
+    let page = store.search_memory(&scope, &request)?;
+    Ok(serde_json::to_value(page).expect("search page serializes"))
+}
 
 /// `stamp(client, optional_str(payload, "actor"))` as the store's actor.
 pub fn actor(client: &str, payload: &Payload) -> Result<Actor, Fail> {

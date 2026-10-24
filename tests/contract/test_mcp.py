@@ -82,6 +82,7 @@ def test_stdio_tools_history_and_refusals(binary: Binary) -> None:
         "handoff",
         "docs",
         "memory_history",
+        "search_memory",
     ]
 
     def text(number: int) -> str:

@@ -44,6 +44,7 @@ or package manager. Signing and notarization remain deferred.
 ```sh
 neosian memory create /memories/decision --scope user:demo --content 'Keep the reason with the decision.'
 neosian memory view /memories/decision --scope user:demo
+neosian memory search 'decision' --scope user:demo --json
 neosian memory versions /memories/decision --scope user:demo --json
 neosian export ./archive --scope user:demo
 ```
@@ -62,8 +63,11 @@ claims and outcomes use the same store. Skills are versioned memory documents;
 
 `memory maintain --dry-run` previews deterministic empty/duplicate cleanup.
 The MCP `docs` tool reads the installed documentation and `memory_history`
-reads bounded, mounted version metadata. Neosian does not run a model or
-control the agent's context window. Raw conversation history is shared with
+reads bounded, mounted version metadata. `memory search` and MCP `search_memory`
+find current permitted documents through paths, bodies and explicitly selected
+metadata, with bounded excerpts and versioned source references. Search sees
+new writes and erasures without rebuilding the startup index. Neosian does not
+run a model or control the agent's context window. Raw conversation history is shared with
 readers authorized for that store; local scope defaults are not a portable
 identity or privacy boundary. Use `neosian profile init NAME --write` and
 machine-local bindings to select the same authorized knowledge across agents

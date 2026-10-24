@@ -129,6 +129,14 @@ scope/path and version identify selected content. This bounds neosian's
 injection, not the host's context window or tool responses. Listing and
 reading a source can still require backend work beyond that output budget.
 
+`memory search` and MCP `search_memory` search current mounted documents
+independently of injection mode or capture. Results add the workspace UUID,
+logical source and mounted reference to the real scope/path/version. The
+search cursor is bound to the mounted selection and preserves backend cursor
+opacity. An HTTP source must additionally advertise memory-search version 1;
+unsupported sources refuse instead of falling back to a document download.
+See `neosian docs memory` for fields, metadata selection and pagination.
+
 ## History and capture
 
 No `history` means no raw-history tools or startup transcript summaries.

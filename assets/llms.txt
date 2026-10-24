@@ -3,13 +3,13 @@
 > Memory and context for the agent you already use. One Rust binary,
 > CLI/MCP/HTTP interfaces, state on your own files or Postgres.
 
-Release: 2.1.0. Read installed pages with `neosian docs TOPIC` or the MCP
+Release: 2.2.0. Read installed pages with `neosian docs TOPIC` or the MCP
 `docs` tool. They are versioned with the executable and are authoritative
 for that version. The release's neosian-docs.json carries the same pages.
 
 - [Quickstart](https://neosian.com/docs/quickstart): install and connect clients.
 - [Profiles](https://neosian.com/docs/profiles): portable workspaces, bindings, grants and explicit capture.
-- [Memory](https://neosian.com/docs/memory): mounts, versions and upkeep.
+- [Memory](https://neosian.com/docs/memory): mounts, current-document search, versions and upkeep.
 - [Skills](https://neosian.com/docs/skills): reusable instructions as documents.
 - [Messaging](https://neosian.com/docs/messaging): messages, reminders and claims.
 - [Stores](https://neosian.com/docs/stores): formats and HTTP conformance.
@@ -27,3 +27,7 @@ Error identifiers are append-only; `neosian schema errors` lists them.
 Profile format 1 selects sources and bounded context independently of machine
 or agent account. New profile capture is off. Server grants authorize shared
 access; local bindings hold environment references, never exported secrets.
+
+Memory-search version 1 adds authorized keyword search over current documents
+and selected metadata with excerpts and source references. Remote sources
+advertise the optional capability; history search remains a separate operation.

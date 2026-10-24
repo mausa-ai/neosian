@@ -147,3 +147,9 @@ Neither a local S0 close nor its done-tag publishes or deploys anything.
 The site repository's `RELEASE` pin advances only after publication. Its
 build verifies the docs artifact checksum and renders the exact release's
 pages; authored documentation stays in this repository's `assets/docs/`.
+
+Memory-search version 1 introduces no service setting or model dependency.
+The storage runner checks it when advertised on either full/base profiles;
+reference Postgres and container gates include these cases. Scope grants
+apply before search, and restart-based grant revocation also applies to
+resumed search pages. Search has no separate cache or index to provision.

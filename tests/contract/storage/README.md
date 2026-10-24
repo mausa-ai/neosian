@@ -5,6 +5,10 @@ This suite exercises storage wire 6 without importing `neosian` or using
 the published schemas and checks independently written behavioral expectations.
 It covers memory/version/erasure history, scope/path/ID validation, turns and
 projections, lexical history search, paging, restore and concurrent writes.
+When `memory_search: {version: 1}` is declared, it also tests current-memory
+matching, Unicode 17.0.0, selected metadata, keyset paging and erasure. These
+cases are optional under both base/full profiles and report explicit skips
+when search is absent. Metadata fixture cases additionally require portability.
 
 From a checkout with the development dependencies:
 

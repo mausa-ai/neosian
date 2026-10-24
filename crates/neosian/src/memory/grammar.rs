@@ -53,6 +53,13 @@ pub struct Flags {
 
 #[derive(Subcommand)]
 pub enum Command {
+    /// Search current mounted memory and explicitly selected metadata.
+    Search {
+        #[command(flatten)]
+        search: super::search::cli::Search,
+        #[command(flatten)]
+        flags: Flags,
+    },
     /// Remove aged empty documents and exact duplicates. Pause other writers first.
     Maintain {
         /// Preview the deletions without changing any document.
@@ -170,7 +177,8 @@ pub enum Command {
 impl Command {
     pub fn flags(&self) -> &Flags {
         match self {
-            Self::Maintain { flags, .. }
+            Self::Search { flags, .. }
+            | Self::Maintain { flags, .. }
             | Self::View { flags, .. }
             | Self::Create { flags, .. }
             | Self::StrReplace { flags, .. }
@@ -244,6 +252,9 @@ impl Command {
         selected: &crate::remote::selection::Selection,
     ) -> Result<(Vec<Mount>, Actor), Refusal> {
         let settings = self.flags().selected_settings(cwd, selected)?;
+        if let Self::Search { search, .. } = self {
+            search.validate(&settings.0).map_err(Refusal::Usage)?;
+        }
         self.guard()?;
         Ok(settings)
     }

@@ -77,6 +77,11 @@ Both read the store live: a skill written this session is loadable
 this session. The memory index lists skills under `skills/` like any
 document, so the frozen index shows what exists and the tools show
 what it is for. Shipped skills are immutable assets beside the mounts'.
+`search_memory` can find text inside permitted stored skill documents even
+when their names do not reveal the relevant subject. It returns the current
+document reference and version; skill selection and load permissions still
+follow the profile rules above. Shipped immutable skill assets are not stored
+memory and remain discoverable through `list_skills` and MCP prompts.
 
 ## Served to any agent
 

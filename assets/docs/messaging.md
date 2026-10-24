@@ -132,8 +132,9 @@ Journal-before-document crash behavior is unchanged; cross-file writes are
 not transactions. Postgres remains the scalable multi-worker substrate.
 
 No new storage schema, wire version or agent-event vocabulary is introduced.
-Mailbox document format is independently versioned. Initial search scans
-message documents; it does not add the reserved general memory-search API.
+Mailbox document format is independently versioned. Mailbox search scans
+message documents. The separate `search_memory` operation excludes mailbox
+and conversation records (`neosian docs memory`).
 
 The canonical format-1 body is the `Mailbox` definition in
 `assets/contracts/state-v1.schema.json` (source tree and contracts artifact).

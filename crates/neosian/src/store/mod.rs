@@ -27,6 +27,7 @@ pub(crate) mod lock;
 pub(crate) mod pages;
 mod restore;
 pub(crate) mod scalar;
+mod search;
 pub mod time;
 mod turns;
 mod write;

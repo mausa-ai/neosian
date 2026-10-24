@@ -164,6 +164,12 @@ except on `SessionStart`. Cursor uses JSON hook responses, described below.
 
 ## Session start: where we left off
 
+Startup injection remains a bounded index. The separate `search_memory`
+tool searches current permitted documents when a filename or the initial
+index is insufficient, including documents added during the session. It
+returns excerpts and source/version references for the agent to read. It
+does not rebuild the host's prompt or manage its context cache.
+
 Claude Code, Codex, Cursor and Muse Code add a `SessionStart` hook's
 output to the model's context, so on that event the verb prints three
 blocks and writes nothing:

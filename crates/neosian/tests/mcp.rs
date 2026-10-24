@@ -137,7 +137,8 @@ fn the_state_set_is_served_over_stdio() {
             "continue_session",
             "handoff",
             "docs",
-            "memory_history"
+            "memory_history",
+            "search_memory"
         ]
     );
     assert_eq!(

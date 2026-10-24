@@ -35,11 +35,14 @@ def retained(value: Any) -> Any:
             result["serverInfo"]["version"] = "<VERSION>"
         if "wire_version" in result and "neosian_version" in result:
             result["neosian_version"] = "<VERSION>"
+            result.pop(
+                "memory_search", None
+            )  # S2's optional capability has independent contracts.
         if "path_executables" in result and "update_mode" in result:
             result["version"] = "<VERSION>"
             result.pop("providers", None)  # v2 retires provider credential inspection.
         for key, added in (
-            ("tools", {"docs", "memory_history"}),
+            ("tools", {"docs", "memory_history", "search_memory"}),
             ("prompts", {"upkeep"}),
         ):
             if isinstance(result.get(key), list):

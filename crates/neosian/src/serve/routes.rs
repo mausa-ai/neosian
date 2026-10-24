@@ -1,5 +1,5 @@
 //! The app (`server/app.py`, `routes.py`'s `endpoint`, DESIGN §18.6): one
-//! router carrying `/health`, the handshake and the twenty-one POST
+//! router carrying `/health`, the handshake and the base/optional POST
 //! routes, the bearer gate outermost, the body read under the ceiling, the
 //! payload typed as an object, the allowance checked, then one blocking
 //! store call off the runtime's workers. An unknown path and a wrong
@@ -75,6 +75,7 @@ async fn capabilities(State(shared): State<super::State>, request: Request) -> R
         "pageable": true,
         "erasable": true,
         "client": client.actor,
+        "memory_search": {"version": 1},
     });
     if let Some(grants) = &shared.clients.1 {
         capability["authorization"] = grants.capability();

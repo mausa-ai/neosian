@@ -16,7 +16,11 @@ fn stamp(stamp: Stamp) -> String {
 
 /// The envelope's unknown keys as `MemoryDocument.extra`, bounded to
 /// one-line scalars or JSON collections (§39.11, §39.17).
-fn extra_json(envelope: &Envelope, scope: &str, path: &str) -> Result<Value, MemoryError> {
+pub(crate) fn extra_json(
+    envelope: &Envelope,
+    scope: &str,
+    path: &str,
+) -> Result<Value, MemoryError> {
     let mut extra = Map::new();
     let mut last = String::new();
     for line in &envelope.extra {

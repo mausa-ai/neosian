@@ -2,7 +2,7 @@
 //! transport over the memory ladder. stdout carries the artifact and
 //! stderr the guidance; exit 0 is success, 1 a command that ran and
 //! failed, 2 an invocation that was wrong, with nothing built. `--json`
-//! prints the memory tool's envelope, one object.
+//! prints one object: the document tool's envelope or an operation's structured result.
 
 use std::env;
 use std::io::{self, Write};
@@ -76,6 +76,10 @@ pub fn run(command: &Command, out: &mut impl Write, err: &mut impl Write) -> io:
         actor,
     };
     let call = match command {
+        Command::Search { search, .. } => {
+            let answered = search.run(&memory, json, out);
+            return operate::settle(answered, json, out, err);
+        }
         Command::Maintain {
             min_age_days,
             dry_run,

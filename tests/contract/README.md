@@ -18,7 +18,8 @@ erasures, projection spans and a mailbox record. The physical memory erasure
 trail uses `ts`; the wire uses `created_at`. Neither difference is normalised
 away in the fixture.
 
-The tests cover all 21 storage POST operations, the handshake, transport and
+The tests cover all 21 base storage POST operations and optional memory search,
+the handshake, transport and
 allowance refusals, paging and occupied restores, the six memory commands,
 all ten mailbox operations, and a stdio MCP session. Successful storage requests
 and responses validate against `assets/contracts/wire-v6.openapi.json`;
@@ -39,6 +40,12 @@ before the product cut, including operators, hooks and HTTP MCP sessions.
 Verified HTTPS, migration, six-client setup, maintenance and the current
 embedded manifest have additional independent cases. Node harnesses under
 `tests/clients/` exercise the generated Pi and OpenCode adapters.
+
+Memory-search cases pin Unicode/metadata matching, current-row lifecycle,
+opaque cursor forwarding, profile references, raw grant denials and malformed
+backend replies. The optional storage cases run unchanged on file, Postgres
+and external HTTP services; absence of the declared capability is an explicit
+skip, including under the full base-storage profile.
 
 The release's `neosian-contracts.tar.gz` carries this tier and its locked
 test dependencies. Extract into a new directory, run `make install`, then

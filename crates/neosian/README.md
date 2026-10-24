@@ -10,6 +10,11 @@ across machines. Local bindings keep credentials out of profile exports;
 new profiles capture no conversations until explicitly enabled. Read
 `neosian docs profiles` for context selection, grants and capture policy.
 
+`neosian memory search QUERY` and MCP `search_memory` find current permitted
+documents and selected metadata with bounded excerpts and source/version
+references. Files, Postgres and capable remote services share the same
+keyword semantics. Search requires no model account or derived index.
+
 ```sh
 cargo install neosian --locked
 neosian setup --write

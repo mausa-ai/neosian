@@ -11,6 +11,13 @@ use crate::store::time::Stamp;
 use crate::store::{Document, Entry, Restored};
 
 impl State for PostgresStore {
+    fn search_memory(
+        &self,
+        scope: &str,
+        request: &crate::memory::search::Request,
+    ) -> Result<crate::memory::search::Page, Error> {
+        self.search_memory(scope, request)
+    }
     fn supports_optimistic_concurrency(&self) -> bool {
         true
     }

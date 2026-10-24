@@ -19,6 +19,7 @@ protocol servers use their own framing.
 | `mcp install`, `record install` | Configure one integration independently |
 | `update` | Check/apply a binary update or set update policy |
 | `memory view/create/str_replace/insert/delete/rename` | Mounted document operations |
+| `memory search` | Keyword search over current mounted documents and selected metadata |
 | `memory versions/revert/redact` | Inspect history, undo the newest row, erase content |
 | `memory maintain` | Aged empty/exact-duplicate cleanup; preview with `--dry-run` |
 | `messages` | Durable messages, reminders, claims and acknowledgments |
@@ -52,6 +53,7 @@ replaces default user/project mounts. `--actor` records attribution.
 
 ```sh
 neosian memory view / --root ./state --scope user:demo --json
+neosian memory search 'deployment decision' --root ./state --scope user:demo --json
 neosian memory create /memories/note --root ./state --scope user:demo --content -
 neosian audit --scope user:demo --json
 neosian export ./archive --scope user:demo

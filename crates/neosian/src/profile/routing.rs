@@ -123,6 +123,17 @@ impl Routed {
 }
 
 impl State for Routed {
+    fn search_memory(
+        &self,
+        scope: &str,
+        request: &crate::memory::search::Request,
+    ) -> Result<crate::memory::search::Page, Error> {
+        if !self.profile.mounts.iter().any(|m| m.scope == scope) {
+            return Err(denied());
+        }
+        self.memory(scope, false, false)?
+            .search_memory(scope, request)
+    }
     fn profile(&self) -> Option<&Profile> {
         Some(&self.profile)
     }

@@ -31,6 +31,10 @@ development and optional one-time migration tooling only (S0, DESIGN §40).
   capture requires matching binding consent and filtering before persistence.
   Server grants intersect token allowances before reads or writes; they never
   turn the operator's hosted MCP mounts into a per-client surface.
+- **Search is a read contract.** Memory-search version 1 is an optional wire-6
+  capability, distinct from history search. Authorize before scanning/paging;
+  exclude erased content and lifecycle records. Unicode 17.0.0 matching and
+  opaque cursor semantics are shared across backends, never database defaults.
 
 ## Conventions
 

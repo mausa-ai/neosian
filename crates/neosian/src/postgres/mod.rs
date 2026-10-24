@@ -6,6 +6,7 @@ mod memory;
 mod pages;
 mod portable;
 mod rows;
+mod search;
 mod state;
 mod tls;
 mod turns;

@@ -1,12 +1,12 @@
 ---
 title: "The wire: the state process's HTTP contract"
-summary: The twenty-one /v1/ routes, the envelope, paging, the JSON shapes and WIRE_VERSION
+summary: Storage routes, optional memory search, authorization, paging and wire formats
 ---
 
 # The wire
 
 `neosian serve` exposes durable state through wire 6. This page documents
-its twenty-one storage POST routes and two GET routes. Literal fixtures and
+its twenty-one base storage POST routes, optional `memory/search`, and two GET routes. Literal fixtures and
 independent raw HTTP, CLI and MCP cases pin behavior without a product SDK.
 
 Machine contracts live in `assets/contracts/`: `wire-v6.openapi.json` is
@@ -53,6 +53,14 @@ these capabilities. A custom HTTP service must reproduce their declared
 semantics and failures, including attribution and scope allowances;
 returning the same JSON shapes alone is insufficient.
 
+The reference backends also advertise `"memory_search": {"version": 1}`.
+This optional, separately versioned operation is independent of legacy
+`pageable`. Clients check it before calling `memory/search`; absence means
+unsupported, and the binary refuses search without downloading documents as
+a fallback. Existing wire-6 routes, stored formats and schema 4 are unchanged.
+The conformance runner exercises declared search support on both full and
+base profiles, and reports skipped search cases when it is absent.
+
 ## Auth
 
 Every request but `/health` carries `Authorization: Bearer <token>`,
@@ -67,7 +75,7 @@ two literal prefixes matched with `startswith` against the `scope` and
 or a trail read's `conversations` list. A request outside them is `403`
 in the envelope under the code `forbidden`. A constrained token is
 refused `/mcp` and all four `store/*` routes outright, whatever its body
-names, and a search or a trail read that names no `conversations` (the
+names, and a conversation search or a trail read that names no `conversations` (the
 whole store) the same way.
 A token with no allowance reaches everything unless the opt-in grants below
 narrow it. Ignored body fields cannot authorize an unbounded search or trail
@@ -96,13 +104,13 @@ append = false
 
 Memory scopes match exactly, unlike legacy token prefixes. A conversation
 grant requires either a literal `prefix` or nonempty `ids = [...]`. `read`
-permits reads, versions, listings and history; `write` permits memory writes,
+permits reads, memory search, versions, listings and history; `write` permits memory writes,
 delete and rename; `append` permits both turns and projections. Permissions
 are independent and default false. Erasure also requires `operator = true`
 on the client entry. That flag grants all four whole-store routes, including
 unrestricted enumeration and restore subject to legacy allowances; reserve
 it for trusted administrators. Non-operators cannot use those routes.
-Even an operator's search/trail request names an explicitly authorized
+Even an operator's conversation search/trail request names an explicitly authorized
 `conversations` array. `[]` remains an empty search, never a global read.
 
 Checks precede store access and apply to raw HTTP callers as well as profile
@@ -133,6 +141,9 @@ operation's, by name. A body that is not JSON, or not an object, is
 Every parameter is typed at the door, nested objects included: a string
 where an integer belongs is `400` naming the parameter, and a JSON
 boolean is never an integer. Keys the route does not know are ignored.
+The optional `memory/search` v1 request instead rejects unknown fields and
+mistyped values. Its defaults apply only when a field is absent; only its
+`cursor` accepts `null`. This does not change legacy route decoders.
 The `Content-Type` header is not read. A body over 64 MiB is `413`,
 checked inside the bearer gate, so an unauthenticated oversize body is
 still `401`.
@@ -176,11 +187,58 @@ continuation beside it. `req` marks a required parameter.
 | `memory/redact` | `scope` req; `path`, `actor` | `count` (int) |
 | `memory/history` | `scope` req; `since`, `cursor`, `limit` | `versions`, `next_cursor` |
 | `memory/redactions` | `scope` req; `since`, `cursor`, `limit` | `redactions`, `next_cursor` |
+| `memory/search` (optional v1) | `scope`, `query` req; `prefix`, `fields`, `metadata_keys`, `limit`, `cursor` | `hits`, `next_cursor` |
 
 A write with no `actor` is recorded under the token's client
 (`client:default`); with `actor: "me"` under `client:default/me`.
 `redact` with no `path` redacts the whole scope and records a redaction
 whose `path` is `null`. `versions` and `history` answer newest first.
+
+### Memory search version 1
+
+`POST /v1/memory/search` requires one explicit authorized `scope`. Token
+allowances and exact-scope read grants are checked before scanning or paging;
+an actor label, alternate scope array or cursor cannot widen that scope.
+Query parameters and JSON schemas are in the OpenAPI artifact. For example:
+
+```json
+{"scope":"workspace:team","query":"deployment window","prefix":"notes/",
+ "fields":["path","content"],"metadata_keys":[],"limit":20,"cursor":null}
+```
+
+The 1..16 whitespace terms (1..1024 characters total) must all match selected
+values as substrings after per-scalar Unicode 17.0.0 lowercase. White_Space
+uses that Unicode version too. No normalization, accent removal, stemming or
+regex is applied. `path` and `content` are the default fields. Selecting
+`metadata` requires 1..8 explicit top-level `extra` keys (1..128 characters
+each); only their recursive string values participate, never object keys or
+numeric/boolean/null values. Unselected metadata is not returned. A prefix
+is a case-sensitive literal document prefix, at most 1024 UTF-8 bytes.
+
+Hits contain `scope`, `path`, `version`, UTC `created_at`/`updated_at`, `actor`,
+`matched_fields` and one `excerpt`. The excerpt has `field`, nullable
+`metadata_key`, a zero-based Unicode-character `offset` within the selected
+string, and `text` of at most 240 characters. It starts up to 40 characters
+before the first match, preferring content, then selected metadata, then path.
+Metadata objects traverse keys in ascending order; arrays retain their order.
+Fetch the current authoritative document for its full meaning and version.
+
+Paths sort ascending with bytewise ASCII ordering. Limit defaults to 20 and
+must be 1..100. A nonfinal page has exactly `limit` hits and an opaque
+`next_cursor` (1..4096 bytes); the final page has `null`. Bind cursors to the
+scope, query, prefix, fields and metadata keys; reuse with a different target
+or query is `value_error`. Limit may change. Cursors carry no read authority.
+There is no total count or cross-page snapshot. Each page reads current data;
+new/renamed paths before the last key require restarting the query.
+
+Only current, non-redacted documents participate. Old versions, deleted
+documents, `sessions/`, `handoff`, `messages/` and `message-links/` are excluded
+even when a path or retained metadata matches. Reference file search holds
+the root lock and Postgres uses one statement snapshot; neither creates a
+search index or cache. A completed erasure therefore affects the next query
+even though it may preserve version, timestamps and metadata. Output limits
+do not bound scan work. `neosian docs memory` describes the mounted CLI/MCP
+forms, which add source references and preserve backend cursor opacity.
 
 ### Conversation
 

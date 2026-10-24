@@ -33,6 +33,13 @@ Grant-enabled servers refuse hosted `/mcp`; clients use local stdio bridges.
 File ownership and direct Postgres credentials remain operator authority.
 Legacy token prefixes remain literal prefixes and are not exact-scope grants.
 
+Memory search checks scope read authority before scanning or constructing
+excerpts and pages. Cursors do not grant access, and every resumed page is
+reauthorized. Redacted/deleted documents, historical bodies and mailbox/session
+records are excluded. Only explicitly selected metadata string values are
+searched. Reference backends retain no search cache or derived index; results
+already delivered to a client cannot be recalled after erasure.
+
 New profiles capture off by default. Local/shared capture requires consent in
 both the profile and its machine-local binding. Deterministic filters precede
 the private spool, outbound turns and session summaries; they are not universal
