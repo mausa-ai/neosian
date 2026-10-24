@@ -95,7 +95,10 @@ The Python shell and Rust binary both provide `setup`, `status`, `configure`,
 `update`, `mcp install`, and `record install` over the same home.
 Status names competing `neosian` executables on PATH. Setup registers the
 executable running it; `--binary PATH` selects an explicit binary. No home
-migration is needed.
+migration is needed. Both doors also provide `audit`, `export`, `import`,
+`redact`, `prune` and the memory commands (except `maintain` in the binary),
+locally or through `--url`. Binary `search` and `continue` remain local;
+`messages` and direct Postgres access still use the Python shell.
 Use `--write --yes` for all detected clients in scripts, or repeated
 `--client C` for an explicit selection. Setup and status accept
 `--at CLIENT=DIR` for a custom client configuration directory, for one run.

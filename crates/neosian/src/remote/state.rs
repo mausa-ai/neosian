@@ -1,14 +1,16 @@
-//! The operations used by the record and eight MCP tools, over the frozen
-//! wire. Scope/path validation belongs to the server's store.
+//! The product doors over the frozen wire. Scope/path validation
+//! belongs to the server's store.
 
 use super::{RemoteStore, codec};
 use crate::conversation::message::{self, Message};
-use crate::conversation::{self, Projection, Turn};
+use crate::conversation::{self, Projection, Redaction, Turn};
 use crate::state::{Deleted, State};
 use crate::store::error::Error;
 use crate::store::grammar::Actor;
-use crate::store::journal::Row;
-use crate::store::{Document, Entry};
+use crate::store::journal::{Act, Row};
+use crate::store::time::Stamp;
+use crate::store::{Document, Entry, Restored};
+use crate::wire::encode;
 use serde_json::{Value, json};
 
 impl State for RemoteStore {
@@ -162,5 +164,127 @@ impl State for RemoteStore {
             json!({"conversation_id":id,"messages":messages,"actor":actor}),
         )?;
         Ok(codec::turn(codec::key(&data, "turn")?)?)
+    }
+    fn history(
+        &self,
+        scope: &str,
+        since: Option<Stamp>,
+        limit: Option<usize>,
+    ) -> Result<Vec<Row>, Error> {
+        self.follow(
+            "memory/history",
+            json!({"scope":scope,"since":since.map(|stamp| stamp.utc().z()),"cursor":null,"limit":limit}),
+            "versions",
+            false,
+        )?
+        .iter()
+        .map(codec::version)
+        .collect()
+    }
+    fn redactions(
+        &self,
+        scope: &str,
+        since: Option<Stamp>,
+        limit: Option<usize>,
+    ) -> Result<Vec<Act>, Error> {
+        self.follow(
+            "memory/redactions",
+            json!({"scope":scope,"since":since.map(|stamp| stamp.utc().z()),"cursor":null,"limit":limit}),
+            "redactions",
+            false,
+        )?
+        .iter()
+        .map(codec::redaction)
+        .collect()
+    }
+    fn redact(&self, scope: &str, path: Option<&str>, actor: &Actor) -> Result<usize, Error> {
+        let data = self.call(
+            "memory/redact",
+            json!({"scope":scope,"path":path,"actor":actor.as_str()}),
+        )?;
+        Ok(codec::number(&data, "count")? as usize)
+    }
+    fn scopes(&self) -> Result<Vec<String>, Error> {
+        self.names("scopes")
+    }
+    fn conversations(&self) -> Result<Vec<String>, Error> {
+        self.names("conversations")
+    }
+    fn last_turn_number(&self, id: &str) -> Result<u64, conversation::Error> {
+        let data = self.call(
+            "conversation/last_turn_number",
+            json!({"conversation_id":id}),
+        )?;
+        Ok(codec::number(&data, "turn")?)
+    }
+    fn restore_scope(
+        &self,
+        scope: &str,
+        documents: &[Restored],
+        versions: Vec<Row>,
+        redactions: &[Act],
+    ) -> Result<(), Error> {
+        let documents = documents
+            .iter()
+            .map(|doc| encode::document_parts(scope, &doc.path, &doc.content, &doc.envelope))
+            .collect::<Result<Vec<_>, _>>()?;
+        self.call(
+            "store/restore_scope",
+            json!({
+                "scope": scope,
+                "documents": documents,
+                "versions": versions.iter().map(encode::version).collect::<Vec<_>>(),
+                "redactions": redactions.iter().map(encode::redaction).collect::<Vec<_>>(),
+            }),
+        )?;
+        Ok(())
+    }
+    fn restore_conversation(
+        &self,
+        id: &str,
+        turns: &[Turn],
+        projections: &[Projection],
+        redactions: &[Redaction],
+    ) -> Result<(), conversation::Error> {
+        self.call(
+            "store/restore_conversation",
+            json!({
+                "conversation_id": id,
+                "turns": turns.iter().map(encode::turn).collect::<Vec<_>>(),
+                "projections": projections.iter().map(encode::projection).collect::<Vec<_>>(),
+                "redactions": redactions.iter().map(encode::turn_redaction).collect::<Vec<_>>(),
+            }),
+        )?;
+        Ok(())
+    }
+    fn redact_turns(
+        &self,
+        id: &str,
+        through: Option<i64>,
+        turns: Option<&[i64]>,
+        actor: Option<&str>,
+    ) -> Result<usize, conversation::Error> {
+        self.require_erasable()?;
+        let data = self.call(
+            "conversation/redact_turns",
+            json!({"conversation_id":id,"through":through,"turns":turns,"actor":actor}),
+        )?;
+        Ok(codec::number(&data, "count")? as usize)
+    }
+    fn turn_redactions(
+        &self,
+        ids: Option<&[String]>,
+        since: Option<Stamp>,
+        limit: i64,
+    ) -> Result<Vec<Redaction>, conversation::Error> {
+        self.require_erasable()?;
+        let data = self.call(
+            "conversation/turn_redactions",
+            json!({"conversations":ids,"since":since.map(|stamp| stamp.utc().z()),"limit":limit}),
+        )?;
+        Ok(codec::array(&data, "redactions")?
+            .iter()
+            .map(codec::turn_redaction)
+            .collect::<Result<_, _>>()?)
     }
 }

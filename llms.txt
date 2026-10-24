@@ -39,6 +39,10 @@ The Python shell and Rust binary both provide `setup`, `status`,
 `configure`, `update`, `mcp install`, and `record install` over the same
 home and client files. Setup registers the executable running it;
 `--binary PATH` selects an explicit binary.
+The binary also provides audit, export, import, redact and prune, and all
+memory commands except maintain. These commands accept --url with
+NEOSIAN_CLIENT_TOKEN; binary search and continue remain local. Direct
+Postgres access and messages still use the Python shell.
 
 - `neosian status [--at CLIENT=DIR]… [--json]`: is this machine set up? The home, which
   providers have a key (never values), this directory's two scopes, per

@@ -17,6 +17,7 @@ mod home;
 mod mcp;
 mod memory;
 mod messaging;
+mod operator;
 mod pyfmt;
 mod record;
 mod remote;

@@ -52,8 +52,9 @@ only replaces an installation owned by a matching cargo-dist receipt.
 
 `uv tool install neosian` supplies the Python shell with chat, the TUI,
 playground, eval and all operator verbs. `uv add neosian` supplies the SDK.
-The binary's remaining operator verbs and Postgres backend are still
-being implemented; the command table below identifies the available doors.
+The binary also provides `audit`, `export`, `import`, `redact` and `prune`,
+plus `memory versions`, `memory redact` and `memory revert`. `messages`
+and the direct Postgres backend are still being implemented.
 
 ## Set up and talk
 
@@ -324,9 +325,11 @@ EOF
 | `--actor NAME` | who writes, `<kind>:<id>` (default `cli:local`; `cli:<host>` names the agent driving the shell) |
 | `--schema NAME` | Postgres schema (Postgres only) |
 
-The Rust binary currently accepts `--url` on `record` and the MCP stdio
-server. These use the same token environment variable and refuse a server
-with another wire version; other binary commands remain local.
+The Rust binary accepts `--url` on `record`, the MCP stdio server, every
+`memory` command except `maintain`, and `audit`, `export`, `import`,
+`redact` and `prune`. These use the same token environment variable and
+refuse a server with another wire version. Binary `search` and `continue`
+remain local; direct Postgres access still uses the Python shell.
 
 Postgres arrives only through the `NEOSIAN_POSTGRES_DSN` environment
 variable; there is no `--dsn` flag (argv is world-readable), and the

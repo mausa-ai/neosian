@@ -1,6 +1,8 @@
 //! Real loopback exchanges: handshake ordering, paging, refusals and
 //! transport failures. No provider or application server is involved.
 
+mod operator;
+
 use super::*;
 use crate::state::State;
 use crate::store::grammar::Actor;

@@ -27,6 +27,12 @@ pub struct Flags {
     /// ~/.neosian or $NEOSIAN_HOME)
     #[arg(long)]
     pub root: Option<PathBuf>,
+    /// State process URL; bearer token from NEOSIAN_CLIENT_TOKEN.
+    #[arg(long)]
+    pub url: Option<String>,
+    /// Postgres schema (Postgres only).
+    #[arg(long)]
+    pub schema: Option<String>,
     /// single read-write mount of SCOPE at /memories
     #[arg(long)]
     scope: Option<String>,

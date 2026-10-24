@@ -11,6 +11,7 @@ from pathlib import Path
 
 from tests.differential.corpus import CASES, RECORD, SESSION
 from tests.differential.harness import TOKEN, Case, Workspace, free_port, wait_healthy
+from tests.differential.operator_cases import remote_memory_cases
 from tests.unit.record.payloads import prompt, session_start, stop, tool
 
 REMOTE_CASES = tuple(case for case in CASES if case.verb in {"record", "mcp"})
@@ -112,4 +113,16 @@ def _memory_lifecycle() -> Case:
     )
 
 
-REMOTE_CASES = (*REMOTE_CASES, _memory_lifecycle())
+REMOTE_CASES = (
+    *REMOTE_CASES,
+    *(
+        case
+        for case in CASES
+        if case.verb in {"audit", "export", "redact", "prune"}
+        and "--root" in case.argv
+        and "--url" not in case.argv
+        and "--schema" not in case.argv
+    ),
+    *remote_memory_cases(),
+    _memory_lifecycle(),
+)

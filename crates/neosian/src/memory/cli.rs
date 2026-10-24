@@ -14,12 +14,11 @@ use super::grammar::Command;
 use super::mounts::Refusal;
 use super::operate;
 use crate::cli::usage;
-use crate::home::home;
-use crate::store::FileStore;
+use crate::remote::selection::Selection;
 
 pub const DSN_ENV: &str = "NEOSIAN_POSTGRES_DSN";
-pub const NEEDS_PYTHON: &str = "NEOSIAN_POSTGRES_DSN names a Postgres store, and the binary reads \
-                            the file store alone: needs the Python shell: `uv tool install neosian`";
+pub const NEEDS_PYTHON: &str = "NEOSIAN_POSTGRES_DSN names a Postgres store, and this backend \
+                            needs the Python shell: `uv tool install neosian`";
 
 /// A command's answer on the streams: the envelope under `--json`, else
 /// the data on stdout and the guidance on stderr.
@@ -56,9 +55,14 @@ fn render(
 pub fn run(command: &Command, out: &mut impl Write, err: &mut impl Write) -> io::Result<u8> {
     let flags = command.flags();
     let json = flags.json;
-    if env::var_os(DSN_ENV).is_some_and(|dsn| !dsn.is_empty()) {
-        return operate::fail(&Outcome::fail(NEEDS_PYTHON), json, out, err);
-    }
+    let selection = match Selection::resolve_schema(
+        flags.root.as_deref(),
+        flags.url.as_deref(),
+        flags.schema.as_deref(),
+    ) {
+        Ok(selection) => selection,
+        Err(message) => return usage(json, &message, out, err),
+    };
     let (mounts, actor) = match command.settings(&env::current_dir()?) {
         Ok(settled) => settled,
         Err(Refusal::Usage(message)) => return usage(json, &message, out, err),
@@ -68,13 +72,12 @@ pub fn run(command: &Command, out: &mut impl Write, err: &mut impl Write) -> io:
         }
     };
     let text = command.payload()?;
-    let root = match &flags.root {
-        Some(root) => root.clone(),
-        None => home()?,
+    let store = match selection.open() {
+        Ok(store) => store,
+        Err(error) => return operate::settle(Err(error), json, out, err),
     };
-    let store = std::sync::Arc::new(FileStore::open(&root)?);
     let memory = Memory {
-        store: store.clone(),
+        store,
         mounts,
         actor,
     };
@@ -113,7 +116,7 @@ pub fn run(command: &Command, out: &mut impl Write, err: &mut impl Write) -> io:
             return operate::settle(answered, json, out, err);
         }
         Command::Redact { path, all, .. } => {
-            let answered = operate::redact(&memory, &store, path, *all, json, out);
+            let answered = operate::redact(&memory, path, *all, json, out);
             return operate::settle(answered, json, out, err);
         }
         Command::Revert { path, version, .. } => {

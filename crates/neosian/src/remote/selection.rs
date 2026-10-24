@@ -14,13 +14,21 @@ pub const TOKEN_ENV: &str = "NEOSIAN_CLIENT_TOKEN";
 
 pub enum Selection {
     File(PathBuf),
+    Postgres,
     Remote { url: String, token: String },
 }
 
 impl Selection {
-    /// Resolve the URL half without constructing a home or an HTTP client.
-    /// The caller keeps the existing unsupported-Postgres diagnostic.
+    /// Resolve store selection without constructing a home or an HTTP client.
     pub fn resolve(root: Option<&Path>, url: Option<&str>) -> Result<Self, String> {
+        Self::resolve_schema(root, url, None)
+    }
+
+    pub fn resolve_schema(
+        root: Option<&Path>,
+        url: Option<&str>,
+        schema: Option<&str>,
+    ) -> Result<Self, String> {
         let dsn = std::env::var_os(DSN_ENV).is_some_and(|dsn| !dsn.is_empty());
         let named: Vec<&str> = [
             ("--root", root.is_some()),
@@ -30,8 +38,14 @@ impl Selection {
         .into_iter()
         .filter_map(|(name, present)| present.then_some(name))
         .collect();
-        if url.is_some() && named.len() > 1 {
+        if named.len() > 1 {
             return Err(format!("{} are mutually exclusive", named.join(" and ")));
+        }
+        if schema.is_some() && !dsn {
+            return Err("--schema applies only to Postgres (unset --root/--url)".to_string());
+        }
+        if dsn {
+            return Ok(Self::Postgres);
         }
         if let Some(url) = url {
             if !url.starts_with("http://") && !url.starts_with("https://") {
@@ -57,6 +71,7 @@ impl Selection {
 
     pub fn open(&self) -> Result<Arc<dyn State>, Error> {
         match self {
+            Self::Postgres => Err(Error::Value(crate::memory::cli::NEEDS_PYTHON.to_string())),
             Self::File(root) => Ok(Arc::new(FileStore::open(root)?)),
             Self::Remote { url, token } => Ok(Arc::new(RemoteStore::connect(url, token)?)),
         }

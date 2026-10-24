@@ -63,6 +63,11 @@ BINARY_VERBS: Final[frozenset[str]] = frozenset(
         "status",
         "configure",
         "update",
+        "audit",
+        "export",
+        "import",
+        "redact",
+        "prune",
         *(
             f"memory {command}"
             for command in (

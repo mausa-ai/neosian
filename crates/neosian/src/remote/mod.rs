@@ -25,7 +25,7 @@ pub struct RemoteStore {
     authorization: String,
     client: Option<String>,
     // Retained verbatim, never inferred from the name of the backend. The
-    // optional protocol methods arrive with their operator callers.
+    // operator erasers consult the advertised protocol before a call.
     capabilities: Value,
 }
 
@@ -154,6 +154,34 @@ impl RemoteStore {
             payload[send] = next.clone();
             payload["limit"] = json!(remaining);
         }
+    }
+}
+
+impl RemoteStore {
+    fn names(&self, kind: &str) -> Result<Vec<String>, Error> {
+        let data = self.call(&format!("store/{kind}"), json!({}))?;
+        codec::array(&data, kind)?
+            .iter()
+            .map(|name| {
+                name.as_str()
+                    .map(str::to_string)
+                    .ok_or_else(|| codec::malformed(kind))
+            })
+            .collect()
+    }
+    fn require_erasable(&self) -> Result<(), Error> {
+        if self
+            .capabilities
+            .get("erasable")
+            .is_some_and(|value| !crate::conversation::message::falsy(value))
+        {
+            return Ok(());
+        }
+        Err(MemoryError::configuration(
+            "the server's backend does not implement Erasable — \
+             its turns cannot be redacted (DESIGN §38)",
+        )
+        .into())
     }
 }
 

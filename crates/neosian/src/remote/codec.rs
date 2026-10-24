@@ -3,10 +3,10 @@
 //! JSON lines; it is never written through the local file serializer.
 
 use crate::conversation::message;
-use crate::conversation::{Projection, Turn};
+use crate::conversation::{Projection, Redaction, Turn};
 use crate::store::envelope::Envelope;
 use crate::store::error::Error;
-use crate::store::journal::{Action, Row};
+use crate::store::journal::{Act, Action, Row};
 use crate::store::scalar::spell_str;
 use crate::store::time::Stamp;
 use crate::store::{Document, Entry};
@@ -120,5 +120,38 @@ pub fn projection(data: &Value) -> Result<Projection, Error> {
         kind: text(data, "kind")?,
         text: text(data, "text")?,
         span: number(data, "span")?,
+    })
+}
+
+pub fn redaction(data: &Value) -> Result<Act, Error> {
+    let path = match key(data, "path")? {
+        Value::Null => None,
+        Value::String(path) => Some(path.clone()),
+        _ => return Err(malformed("path")),
+    };
+    Ok(Act {
+        path,
+        actor: actor(data)?,
+        created_at: moment(data, "created_at")?,
+        count: number(data, "count")?,
+    })
+}
+pub fn turn_redaction(data: &Value) -> Result<Redaction, Error> {
+    let turns = array(data, "turns")?
+        .iter()
+        .map(|v| {
+            v.as_u64()
+                .filter(|n| *n > 0)
+                .ok_or_else(|| malformed("turns"))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    if turns.is_empty() {
+        return Err(malformed("turns"));
+    }
+    Ok(Redaction {
+        conversation_id: text(data, "conversation_id")?,
+        turns,
+        actor: actor(data)?,
+        created_at: moment(data, "created_at")?,
     })
 }

@@ -9,7 +9,7 @@ use clap::{Parser, Subcommand};
 use serde_json::json;
 
 use crate::conversation::{cli_continue, cli_search};
-use crate::{clients, configure, docs, mcp, memory, record, serve, update, version};
+use crate::{clients, configure, docs, mcp, memory, operator, record, serve, update, version};
 
 #[derive(Parser)]
 #[command(
@@ -48,6 +48,16 @@ enum Command {
         #[command(subcommand)]
         command: memory::grammar::Command,
     },
+    /// Read a scope's ledger, optionally merged with one conversation.
+    Audit(operator::audit::Audit),
+    /// Export selected scopes and conversations to a FileStore archive.
+    Export(operator::transfer::Transfer),
+    /// Restore a FileStore archive into empty target units.
+    Import(operator::transfer::Transfer),
+    /// Blank recorded turns and, with --all, their sessions documents.
+    Redact(operator::erasure::Redact),
+    /// Erase conversations whose newest turn predates a cutoff.
+    Prune(operator::erasure::Prune),
     /// Find the turns holding every term, newest first (DESIGN §32).
     Search(cli_search::Search),
     /// Print a recorded conversation as continue_session delivers it (§33).
@@ -124,6 +134,11 @@ where
         Command::Version => writeln!(out, "{}", version::line()).map(|()| 0),
         Command::Docs { topic, json } => docs::run(topic.as_deref(), json, &mut out, &mut err),
         Command::Memory { command } => memory::cli::run(&command, &mut out, &mut err),
+        Command::Audit(args) => operator::audit::run(&args, &mut out, &mut err),
+        Command::Export(args) => operator::transfer::run(&args, false, &mut out, &mut err),
+        Command::Import(args) => operator::transfer::run(&args, true, &mut out, &mut err),
+        Command::Redact(args) => operator::erasure::redact(&args, &mut out, &mut err),
+        Command::Prune(args) => operator::erasure::prune(&args, &mut out, &mut err),
         Command::Search(args) => cli_search::run(&args, &mut out, &mut err),
         Command::Continue(args) => cli_continue::run(&args, &mut out, &mut err),
         Command::Record(args) => record::cli::run(&args, &mut out, &mut err),

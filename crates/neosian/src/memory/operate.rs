@@ -104,7 +104,6 @@ pub fn versions(
 /// set as it was.
 pub fn redact(
     memory: &Memory,
-    store: &crate::store::FileStore,
     path: &str,
     scope_wide: bool,
     json: bool,
@@ -113,7 +112,7 @@ pub fn redact(
     let (mount, document) = resolve(&memory.mounts, path)?;
     writable(mount)?;
     let target = (!scope_wide).then_some(document);
-    let matched = store.redact(&mount.scope, target, &memory.actor)?;
+    let matched = memory.store.redact(&mount.scope, target, &memory.actor)?;
     if json {
         let envelope = json!({"path": path, "scope_wide": scope_wide, "matched": matched});
         writeln!(out, "{envelope}")?;

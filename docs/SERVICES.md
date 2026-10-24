@@ -211,10 +211,11 @@ in `ps` (DESIGN §12 ledger #53). Unset, the entry points require
 `--root` is refused (an explicit conflict, no precedence rule). None
 ever applies the DDL — run `python -m neosian.schemas postgres | psql`
 first (DESIGN §8 C1). The Rust binary's direct backend is FileStore until
-its Postgres substrate lands (DESIGN §39.2); its `record` and `mcp` commands
-can also reach either server implementation through `--url`. With the DSN set, its
-`memory`, `search`, `continue`, `record`, `mcp` and `serve` verbs exit 1
-and name the Python shell, never the home in silence (a hook's exit 2
+its Postgres substrate lands (DESIGN §39.2). `record`, `mcp`, `memory`
+(except `maintain`), `audit`, `export`, `import`, `redact` and `prune` can
+also reach either server implementation through `--url`. With the DSN alone,
+its store commands exit 1 and name the Python shell, never the home in
+silence (a hook's exit 2
 would block the prompt, so the record verb says it at 1 with its hint).
 An explicit `--url` together with the DSN is an argv conflict, exit 2.
 
@@ -262,8 +263,9 @@ entry points when `--url` names a state process (`neosian memory`,
 (`RemoteStore.connect(url, token=…)` takes it explicitly). A distinct
 key because one machine runs both; `--url` without it refuses at the
 grammar tier. Off means no daemon store from the shell. The Rust binary
-reads this key for `record --url` and `mcp --url` too; its other commands
-remain local until their remote doors land.
+reads this key for `record`, `mcp`, `memory` (except `maintain`), `audit`,
+`export`, `import`, `redact` and `prune` when they use `--url`. Binary
+`search` and `continue` remain local.
 
 `SSL_CERT_FILE` selects a PEM CA bundle for HTTPS clients. The Rust wire
 client uses rustls with Mozilla roots when unset, verifies certificates

@@ -8,6 +8,18 @@ phase close names the version.
 
 ## [Unreleased]
 
+### Added
+
+- The Rust binary provides `audit`, `export`, `import`, `redact` and
+  `prune`, with the Python shell's reports and refusal tiers. Imports
+  preflight every selected target before restoring the first unit;
+  archives preserve actors, timestamps, metadata and erasure trails.
+  Whole-conversation erasure also blanks sessions documents across scopes.
+- Binary `memory` commands, including `versions`, `redact` and `revert`,
+  and these operator verbs accept `--url` with `NEOSIAN_CLIENT_TOKEN`.
+  Remote ledger reads follow every page, and turn erasure checks the
+  server's negotiated capability before sending a request.
+
 ### Fixed
 
 - Live MSI verification quotes installation property values using Windows
