@@ -91,3 +91,40 @@ def test_error_identifiers_survive_the_major_cut(binary: Binary) -> None:
         "guardrail_error",
     ):
         assert by_code[code]["status"] == "reserved"
+
+
+@pytest.mark.parametrize("count", [0, 1, 2])
+def test_status_reports_exact_path_order_and_shadowing(
+    binary: Binary, count: int
+) -> None:
+    import os
+    import subprocess
+
+    commands = []
+    for index in range(count):
+        command = binary.directory / f"bin-{index}" / "neosian"
+        command.parent.mkdir()
+        command.write_bytes(b"")
+        command.chmod(0o700)
+        commands.append(str(command))
+    env = binary.environment()
+    env["PATH"] = os.pathsep.join(
+        str(binary.directory / f"bin-{i}") for i in range(count)
+    )
+    result = subprocess.run(
+        [str(binary.executable), "status", "--json"],
+        env=env,
+        cwd=binary.directory,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=True,
+    )
+    status = json.loads(result.stdout)
+    assert status["path_executables"] == commands
+    if count < 2:
+        assert status["shadowing"] == []
+    else:
+        assert status["shadowing"] == [
+            f"PATH selects {commands[0]}; also found {commands[1]}. Run an absolute path to choose an installation"
+        ]

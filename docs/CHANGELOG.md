@@ -8,6 +8,19 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-10-24
+
+### Fixed
+
+- The docs manifest build accepts Windows CRLF checkouts while the printed
+  pages retain the same LF output as other platforms.
+- The frozen status replay now supplies its own PATH executable. Its original
+  captured bytes remain unchanged; installation paths compare by their fixture
+  role, with additional exact PATH ordering and shadowing checks.
+
+The 2.0.0 tag's publication failed at the Windows build. This is the first
+published v2 package; its major-version boundary is described below.
+
 ## [2.0.0] - 2026-10-24
 
 ### Changed

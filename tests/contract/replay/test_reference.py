@@ -2,6 +2,7 @@
 
 import ast
 import json
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -84,6 +85,14 @@ def test_v1_reference(case: Case, binary: Binary, tmp_path: Path) -> None:
         lock = space.home / name
         lock.parent.mkdir(parents=True, exist_ok=True)
         lock.write_bytes(b"\0")
+    # The reference capture had one PATH command installed. Supply that same
+    # condition explicitly instead of inheriting the workstation's PATH.
+    path_command = space.out / "status-bin" / "neosian"
+    if case.name == "status json":
+        path_command.parent.mkdir(parents=True)
+        path_command.write_bytes(b"")
+        path_command.chmod(0o700)
+        case = replace(case, env={**case.env, "PATH": str(path_command.parent)})
     before = snapshot(space, keep=keep)
     result = run_case(binary.executable, case, space)
     after = snapshot(space, keep=keep)
@@ -97,4 +106,11 @@ def test_v1_reference(case: Case, binary: Binary, tmp_path: Path) -> None:
         "removed": sorted(set(before) - set(after)),
     }
     # JSON removes Python tuples; content and every nonvolatile field stay exact.
-    assert retained(json.loads(json.dumps(observed))) == retained(EXPECTED[case.name])
+    expected = json.loads(json.dumps(EXPECTED[case.name]))
+    if case.name == "status json":
+        # Only the machine-specific location changes, with a one-to-one mapping.
+        # Preserve the frozen count/order/name and every other status field.
+        paths = expected["output"][1][0]["path_executables"]
+        assert len(paths) == 1 and Path(paths[0]).name == "neosian"
+        expected["output"][1][0]["path_executables"] = ["<OUT>/status-bin/neosian"]
+    assert retained(json.loads(json.dumps(observed))) == retained(expected)

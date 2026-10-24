@@ -8,9 +8,10 @@ store, with a synthetic login and a fixed `/fixture/demo` source path.
 The original differential cases cover CLI memory, operator/archive,
 mailbox, six client hook formats, MCP stdio and HTTP sessions, and raw
 wire requests. Each compares output plus changed and removed files.
-Only timestamps, generated UUIDs and temporary paths compare by shape;
-the named fixture IDs stay exact. The comparison rules are preserved in
-`harness.py`. The file suite separately pins byte-exact body preservation.
+Only timestamps, generated UUIDs and installation/temporary paths compare
+by shape; the named fixture IDs stay exact. The general comparison rules
+are preserved in `harness.py`. The file suite separately pins byte-exact
+body preservation.
 
 Version banners and documentation are checked against the current Cargo
 version and shipped manifest elsewhere, because v2 deliberately changes
@@ -19,4 +20,10 @@ current MCP contract tests; retained calls continue to use this reference.
 
 Do not regenerate these expectations from a candidate binary to make a
 failure pass. A change requires an explicit compatibility decision and a
-reviewed expected-result diff. All fixture content is synthetic.
+reviewed expected-result diff. State content is synthetic. The status
+capture also contains the original machine's PATH executable location.
+That case now supplies one private PATH command and maps the old
+machine-specific location to its fixture role; the executable count,
+order, basename and other status fields stay exact. Independent product
+cases assert exact supplied PATHs and shadowing for zero, one and two
+commands. The frozen expected.json bytes are unchanged.

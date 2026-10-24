@@ -1,6 +1,6 @@
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/mausa-ai/neosian/v2.0.0/branding/logo-dark.svg">
-  <img src="https://raw.githubusercontent.com/mausa-ai/neosian/v2.0.0/branding/logo-light.svg" alt="neosian" width="280">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/mausa-ai/neosian/v2.0.1/branding/logo-dark.svg">
+  <img src="https://raw.githubusercontent.com/mausa-ai/neosian/v2.0.1/branding/logo-light.svg" alt="neosian" width="280">
 </picture>
 
 # neosian

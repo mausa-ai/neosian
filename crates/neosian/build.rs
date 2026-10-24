@@ -29,7 +29,9 @@ fn main() {
         let path = docs.join(format!("{topic}.md"));
         let text = std::fs::read_to_string(&path).expect("listed page missing");
         assert!(
-            text.starts_with("---\n") && text.contains("\ntitle:") && text.contains("\nsummary:"),
+            text.lines().next() == Some("---")
+                && text.contains("\ntitle:")
+                && text.contains("\nsummary:"),
             "page metadata missing"
         );
         generated.push_str(&format!(
