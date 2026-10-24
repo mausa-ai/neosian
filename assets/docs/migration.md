@@ -17,6 +17,15 @@ there is no maintained v1 product line.
 
 ## Homes, histories and clients
 
+Profiles are an explicit opt-in, with no history rewrite. Bind existing exact
+scope strings to a stable workspace UUID, select old conversation IDs or their
+authorized prefix for read access, and reinstall clients with `--profile NAME`.
+New captured IDs use the workspace namespace; legacy IDs remain intact.
+Import alone never activates a profile or permits recording. New profile
+capture is off; profile-free hooks keep their previous behavior. HTTP sources
+must advertise scoped authorization before a profile can use them. See
+`neosian docs profiles` for the local-binding and sharing migration.
+
 Memory, turns and mailbox records remain format 1. Postgres schema remains
 4 and the storage HTTP protocol remains wire 6. Version numbers, actors,
 redaction skeletons, projections and unknown JSON metadata are preserved.

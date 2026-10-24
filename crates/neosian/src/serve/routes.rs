@@ -67,18 +67,19 @@ async fn capabilities(State(shared): State<super::State>, request: Request) -> R
     let Some(client) = request.extensions().get::<Client>() else {
         return unauthorized();
     };
-    json(
-        StatusCode::OK,
-        &json!({
-            "wire_version": WIRE_VERSION,
-            "neosian_version": VERSION,
-            "backend": shared.store.backend(),
-            "supports_optimistic_concurrency": shared.store.supports_optimistic_concurrency(),
-            "pageable": true,
-            "erasable": true,
-            "client": client.actor,
-        }),
-    )
+    let mut capability = json!({
+        "wire_version": WIRE_VERSION,
+        "neosian_version": VERSION,
+        "backend": shared.store.backend(),
+        "supports_optimistic_concurrency": shared.store.supports_optimistic_concurrency(),
+        "pageable": true,
+        "erasable": true,
+        "client": client.actor,
+    });
+    if let Some(grants) = &shared.clients.1 {
+        capability["authorization"] = grants.capability();
+    }
+    json(StatusCode::OK, &capability)
 }
 
 async fn not_found() -> Response {
@@ -106,7 +107,23 @@ async fn endpoint(State(shared): State<super::State>, request: Request) -> Respo
     let Value::Object(payload) = payload else {
         return Fail::value("request body must be an object").response();
     };
+    // Only the route's actual target can authorize a store-wide read.
+    // An ignored scope/conversation_id must not turn an unbounded search into a scoped one.
+    if client.constrained()
+        && matches!(
+            name.as_str(),
+            "conversation/search_turns" | "conversation/turn_redactions"
+        )
+        && !payload.get("conversations").is_some_and(Value::is_array)
+    {
+        return Fail::forbidden("the whole store").response();
+    }
     if let Some(refusal) = auth::allowed(&client, &payload, route.whole_store) {
+        return refusal.response();
+    }
+    if let Some(grants) = &shared.clients.1
+        && let Some(refusal) = grants.allowed(&client.actor, &name, &payload, route.whole_store)
+    {
         return refusal.response();
     }
     let handler = route.handler;

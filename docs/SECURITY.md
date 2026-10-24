@@ -23,3 +23,21 @@ maintained. Existing data and protocol compatibility is documented in
 
 The neosian.com service publishes its own policy and addresses; a
 report that concerns both is welcome here.
+
+## Workspace authority and capture
+
+Portable profiles select context; they cannot grant server permission.
+Profile HTTP bindings require the scoped authorization capability, with
+exact memory-scope and conversation grants checked before storage access.
+Grant-enabled servers refuse hosted `/mcp`; clients use local stdio bridges.
+File ownership and direct Postgres credentials remain operator authority.
+Legacy token prefixes remain literal prefixes and are not exact-scope grants.
+
+New profiles capture off by default. Local/shared capture requires consent in
+both the profile and its machine-local binding. Deterministic filters precede
+the private spool, outbound turns and session summaries; they are not universal
+secret detection and do not filter explicit memory writes or host-owned logs.
+Policy changes retain pending spans rather than replay them into a changed
+destination. Import/export excludes bindings and credentials, but includes
+ordinary profile text and filter literals. See `neosian docs profiles` and
+`neosian docs wire` for limits, operator privileges and recovery behavior.

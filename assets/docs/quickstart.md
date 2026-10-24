@@ -43,7 +43,19 @@ The default home is `~/.neosian`; `NEOSIAN_HOME` or `--root DIR` selects
 another. `--scope` mounts one scope at `/memories`. Without explicit mounts,
 the local username and project directory derive `/user` and `/project`.
 Those defaults are local conveniences, not portable cross-machine identity.
-Use explicit scopes to share known state.
+Use a portable profile to keep explicit source identity across machines:
+
+```sh
+neosian profile init work --write
+neosian profile bind work --source workspace --root /absolute/path/to/knowledge --project "$PWD" --write
+neosian setup --profile work --client codex
+```
+
+Profiles default to capture off; memory and selected skills still work.
+Import/export carries the selection without local bindings or credentials.
+Read `neosian docs profiles` to connect shared sources, opt into recording,
+and enforce server permissions independently of the agent account. Existing
+profile-free setups continue to record as described above.
 
 FileStore needs no service. For Postgres or a remote state process, read
 `neosian docs topology`. To implement an HTTP client or custom backend,

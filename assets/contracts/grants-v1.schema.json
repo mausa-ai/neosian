@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neosian.com/contracts/grants-v1.schema.json",
+  "title": "Server grants 1 (parsed TOML)",
+  "description": "Local operator configuration, loaded at startup from NEOSIAN_SERVE_GRANTS. The binary also validates unique authenticated actors, unique scope entries and retained scope/conversation grammar. Every permission defaults to false; grants intersect legacy token allowances. operator permits whole-store routes and must only be assigned to trusted administrators.",
+  "type": "object", "additionalProperties": false, "required": ["grant_format", "clients"],
+  "properties": {
+    "grant_format": {"const": 1},
+    "clients": {"type": "array", "items": {"$ref": "#/$defs/client"}}
+  },
+  "$defs": {
+    "conversation": {"type": "string", "pattern": "^[A-Za-z0-9_.-]{1,128}$", "not": {"enum": [".", ".."]}},
+    "client": {
+      "type": "object", "additionalProperties": false, "required": ["actor"],
+      "properties": {
+        "actor": {"type": "string", "minLength": 1},
+        "operator": {"type": "boolean", "default": false},
+        "scopes": {"type": "array", "items": {"$ref": "#/$defs/scope"}},
+        "conversations": {"type": "array", "items": {"$ref": "#/$defs/conversations"}}
+      }
+    },
+    "scope": {
+      "type": "object", "additionalProperties": false, "required": ["scope"],
+      "properties": {
+        "scope": {"type": "string", "minLength": 1},
+        "read": {"type": "boolean", "default": false},
+        "write": {"type": "boolean", "default": false}
+      }
+    },
+    "conversations": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "prefix": {"$ref": "#/$defs/conversation"},
+        "ids": {"type": "array", "items": {"$ref": "#/$defs/conversation"}},
+        "read": {"type": "boolean", "default": false},
+        "append": {"type": "boolean", "default": false}
+      },
+      "oneOf": [
+        {"required": ["prefix"], "properties": {"ids": {"maxItems": 0}}},
+        {"required": ["ids"], "not": {"required": ["prefix"]}, "properties": {"ids": {"minItems": 1}}}
+      ]
+    }
+  }
+}

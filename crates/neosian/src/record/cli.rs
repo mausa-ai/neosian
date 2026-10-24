@@ -49,6 +49,9 @@ const CURSOR_HINT: &str = "hint: Cursor has no unambiguous project; using /user.
 /// Record a foreign agent's session from its hooks: one payload on stdin per call.
 #[derive(Args)]
 pub struct Record {
+    /// Select a portable workspace profile and its local capture policy.
+    #[arg(long)]
+    pub(super) profile: Option<String>,
     #[command(subcommand)]
     command: Option<crate::clients::install::RecordCommand>,
     /// FileStore root directory (created on start; default: the home,
@@ -88,10 +91,25 @@ pub struct Record {
 
 pub fn run(args: &Record, out: &mut impl Write, err: &mut impl Write) -> io::Result<u8> {
     if let Some(crate::clients::install::RecordCommand::Install(install)) = &args.command {
+        if args.profile.is_some() {
+            return usage(args.json, "place --profile after install", out, err);
+        }
         return crate::clients::install::record(install, out, err);
     }
     let json = args.json;
     let cwd = env::current_dir()?;
+    let layout = layout_of(args.project.as_deref(), &cwd);
+    if args.agent != "cursor"
+        || args.project.is_some()
+        || args.profile.is_some()
+        || env::var_os("NEOSIAN_PROFILE").is_some_and(|v| !v.is_empty())
+    {
+        match crate::profile::resolve::selected(args.profile.as_deref(), &layout) {
+            Ok(Some(selected)) => return super::profile::run(args, selected, None, out, err),
+            Ok(None) => {}
+            Err(message) => return failed(&message, None, json, out, err),
+        }
+    }
     let mut settled = |layout: &Path| -> io::Result<Result<Result<Vec<Mount>, String>, u8>> {
         Ok(match resolve_mounts(args, layout) {
             Ok(resolved) => Ok(resolved),
@@ -144,6 +162,13 @@ pub fn run(args: &Record, out: &mut impl Write, err: &mut impl Write) -> io::Res
     };
     if args.agent == "cursor" && args.project.is_none() {
         let project = cursor_project(&payload);
+        match crate::profile::resolve::selected(args.profile.as_deref(), &project) {
+            Ok(Some(selected)) => {
+                return super::profile::run(args, selected, Some(payload), out, err);
+            }
+            Ok(None) => {}
+            Err(message) => return failed(&message, None, json, out, err),
+        }
         mounts = match settled(&project)? {
             Ok(Ok(mounts)) => mounts,
             Ok(Err(message)) => return failed(&message, Some(HINT), json, out, err),
@@ -164,6 +189,7 @@ pub fn run(args: &Record, out: &mut impl Write, err: &mut impl Write) -> io::Res
         }
     }
     let settings = Settings {
+        provenance: None,
         store,
         mounts,
         sessions_mount: sessions,

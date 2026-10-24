@@ -28,6 +28,8 @@ pub struct Setup {
     pub root: Option<String>,
     #[arg(long)]
     pub url: Option<String>,
+    #[arg(long)]
+    pub profile: Option<String>,
 }
 
 fn discovery(context: &Context, clients: &[String]) -> Vec<Value> {
@@ -67,15 +69,19 @@ fn applied(mut envelope: Value) -> Value {
 fn install_pair(args: &Setup, context: &Context, client: &str) -> Value {
     let target = targets::mcp(client, context, &args.level);
     let hook = targets::hooks(client, context, &args.level);
-    let settings = settings::resolve(
+    let settings = settings::resolve_profile(
         args.root.as_deref().filter(|v| !v.is_empty()),
         args.url.as_deref().filter(|v| !v.is_empty()),
+        args.profile.as_deref(),
+        false,
         context,
     )
     .and_then(|mut settings| {
-        settings.mounts = settings::mount_argv(
-            &settings::mounts(&args.level, context).map_err(settings::refusal)?,
-        );
+        if settings.profile.is_none() {
+            settings.mounts = settings::mount_argv(
+                &settings::mounts(&args.level, context).map_err(settings::refusal)?,
+            );
+        }
         Ok(settings)
     });
     let grammar = |message: String| json!({"success": false, "error": message, "hint": null});
@@ -138,7 +144,12 @@ fn install_pair(args: &Setup, context: &Context, client: &str) -> Value {
         }
     }
     let hooks = applied(hooks::install(&hook, context, &settings, args.write));
-    json!({"client": client, "label": target.label, "mcp": mcp, "hooks": hooks})
+    let mut row = json!({"client": client, "label": target.label, "mcp": mcp, "hooks": hooks});
+    if let Some(profile) = settings.profile {
+        row["profile"] = profile;
+        row["profile_support"] = settings::support(client);
+    }
+    row
 }
 
 fn line(kind: &str, envelope: &Value, write: bool) -> String {
@@ -257,6 +268,22 @@ pub fn run(args: &Setup, out: &mut impl Write, err: &mut impl Write) -> io::Resu
     } else {
         for row in &rows {
             writeln!(out, "{}", text(row, "label"))?;
+            if row["profile"].is_object() {
+                writeln!(
+                    out,
+                    "  profile {}  capture {}  context {}",
+                    text(&row["profile"], "profile"),
+                    text(&row["profile"], "capture"),
+                    text(&row["profile_support"], "context")
+                )?;
+                writeln!(
+                    out,
+                    "  capture fields {}  history source {}  support {}",
+                    row["profile"]["definition"]["capture"]["fields"],
+                    text(&row["profile"]["definition"]["history"], "source"),
+                    text(&row["profile_support"], "capture")
+                )?;
+            }
             for kind in ["mcp", "hooks"] {
                 writeln!(out, "{}", line(kind, &row[kind], args.write))?;
             }

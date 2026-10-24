@@ -14,7 +14,6 @@ use super::grammar::Command;
 use super::mounts::Refusal;
 use super::operate;
 use crate::cli::usage;
-use crate::remote::selection::Selection;
 
 pub const DSN_ENV: &str = "NEOSIAN_POSTGRES_DSN";
 
@@ -53,15 +52,12 @@ pub(crate) fn render(
 pub fn run(command: &Command, out: &mut impl Write, err: &mut impl Write) -> io::Result<u8> {
     let flags = command.flags();
     let json = flags.json;
-    let selection = match Selection::resolve_schema(
-        flags.root.as_deref(),
-        flags.url.as_deref(),
-        flags.schema.as_deref(),
-    ) {
+    let cwd = env::current_dir()?;
+    let selection = match flags.select(&cwd) {
         Ok(selection) => selection,
         Err(message) => return usage(json, &message, out, err),
     };
-    let (mounts, actor) = match command.settings(&env::current_dir()?) {
+    let (mounts, actor) = match command.settings(&cwd, &selection) {
         Ok(settled) => settled,
         Err(Refusal::Usage(message)) => return usage(json, &message, out, err),
         Err(Refusal::Memory(error)) => {

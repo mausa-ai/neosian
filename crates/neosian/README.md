@@ -5,6 +5,11 @@ CLI, MCP and authenticated HTTP access to your files or Postgres; no model
 account or Python runtime. This crate distributes the executable and has
 no supported embedding SDK.
 
+Portable workspace profiles select the same authorized memory and skills
+across machines. Local bindings keep credentials out of profile exports;
+new profiles capture no conversations until explicitly enabled. Read
+`neosian docs profiles` for context selection, grants and capture policy.
+
 ```sh
 cargo install neosian --locked
 neosian setup --write

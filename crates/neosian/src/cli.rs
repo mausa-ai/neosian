@@ -25,6 +25,11 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Create, exchange and bind portable workspace profiles.
+    Profile {
+        #[command(subcommand)]
+        command: crate::profile::cli::Command,
+    },
     /// Wire the installed agents to this store: MCP and the hooks.
     Setup(clients::setup::Setup),
     /// Is this machine set up? The home and the clients.
@@ -120,6 +125,35 @@ where
         Command::Status(_) => "status",
         _ => "",
     };
+    if matches!(
+        &cli.command,
+        Command::Audit(_)
+            | Command::Export(_)
+            | Command::Import(_)
+            | Command::Redact(_)
+            | Command::Prune(_)
+            | Command::Serve(_)
+    ) {
+        let selection = std::env::current_dir()
+            .map_err(|e| e.to_string())
+            .and_then(|cwd| crate::profile::resolve::selected(None, &cwd));
+        let issue = match selection {
+            Ok(None) => None,
+            Ok(Some(_)) => Some("this operator command requires an explicit legacy store outside a selected profile".into()),
+            Err(message) => Some(message),
+        };
+        if let Some(message) = issue {
+            return finish(
+                usage(
+                    args.iter().any(|a| a == "--json"),
+                    &message,
+                    &mut out,
+                    &mut err,
+                ),
+                &mut err,
+            );
+        }
+    }
     if update::human_door(
         verb,
         stdout.is_terminal(),
@@ -134,6 +168,7 @@ where
         }
     }
     let code = match cli.command {
+        Command::Profile { command } => crate::profile::cli::run(&command, &mut out, &mut err),
         Command::Setup(args) => clients::setup::run(&args, &mut out, &mut err),
         Command::Status(args) => clients::status::run(&args, &mut out, &mut err),
         Command::Update(args) => update::run(&args, &mut out, &mut err),

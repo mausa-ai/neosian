@@ -27,6 +27,8 @@ Cursor through MCP and hooks. It previews the registrations before `--write`.
 Restart the client after setup. Every session can leave a durable record;
 the next session reads the index, recalls relevant turns and continues
 explicit handoffs.
+Portable profiles opt into recording separately: new profiles capture off by
+default.
 
 The installer verifies the archive's checksum and installs under
 `~/.neosian/bin`, linking `~/.local/bin/neosian` when that name is free.
@@ -63,7 +65,11 @@ The MCP `docs` tool reads the installed documentation and `memory_history`
 reads bounded, mounted version metadata. Neosian does not run a model or
 control the agent's context window. Raw conversation history is shared with
 readers authorized for that store; local scope defaults are not a portable
-identity or privacy boundary.
+identity or privacy boundary. Use `neosian profile init NAME --write` and
+machine-local bindings to select the same authorized knowledge across agents
+and machines. Profiles select sources, qualified skills and bounded context;
+HTTP sources require server-enforced grants. `neosian docs profiles` covers
+portable import/export and explicit local/shared capture consent.
 
 ## Interfaces and compatibility
 
@@ -82,7 +88,8 @@ and client registrations. Error identifiers remain reserved forever.
 The versioned `neosian-docs.json` release artifact supplies those same pages
 to the website. `neosian-contracts.tar.gz` contains machine contracts,
 fixtures, the independent HTTP conformance runner and the optional one-time
-metadata converter. `neosian schema state`, `wire` and `errors` print the
+metadata converter. `neosian schema state`, `wire`, `errors`, `profile` and
+`grants` print the
 machine-readable definitions directly.
 
 ## Development

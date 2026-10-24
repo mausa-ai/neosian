@@ -181,7 +181,9 @@ pub fn install(target: &Target, context: &Context, settings: &Settings, write: b
     if agent != "claude-code" {
         argv.extend(["--agent".into(), agent.into()]);
     }
-    argv.extend(["--spool".into(), settings.spool.display().to_string()]);
+    if settings.profile.is_none() {
+        argv.extend(["--spool".into(), settings.spool.display().to_string()]);
+    }
     let mut command = shell_join(&argv);
     if target.client == "claude-code" && target.level == "user" && settings.mounts.is_empty() {
         command.push_str(" --project \"$CLAUDE_PROJECT_DIR\"");

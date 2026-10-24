@@ -78,6 +78,16 @@
                     },
                     "client": {
                       "type": "string"
+                    },
+                    "authorization": {
+                      "description": "Optional opt-in grant enforcement capability, versioned separately from wire 6. Required by portable HTTP profiles.",
+                      "type": "object",
+                      "properties": {
+                        "version": {"const": 1},
+                        "mode": {"const": "scoped"}
+                      },
+                      "required": ["version", "mode"],
+                      "additionalProperties": false
                     }
                   },
                   "required": [

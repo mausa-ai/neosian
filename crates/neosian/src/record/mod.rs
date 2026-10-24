@@ -14,6 +14,7 @@ pub mod context;
 mod land;
 mod mailbox;
 mod output;
-mod payload;
+pub(crate) mod payload;
+mod profile;
 mod settings;
 mod spool;

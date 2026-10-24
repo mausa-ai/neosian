@@ -165,7 +165,32 @@ pub fn dispatch(memory: &Memory, call: &Call) -> io::Result<Outcome> {
         }
     };
     match answered() {
-        Ok(outcome) => Ok(outcome),
+        Ok(mut outcome) => {
+            if let Some(profile) = memory.store.profile() {
+                let path = match call {
+                    Call::View { path, .. }
+                    | Call::Create { path, .. }
+                    | Call::StrReplace { path, .. }
+                    | Call::Insert { path, .. }
+                    | Call::Delete { path } => path,
+                    Call::Rename { new, .. } => new,
+                };
+                if let Ok((mount, _)) = resolve(&memory.mounts, path)
+                    && let Some(source) = profile.mounts.iter().find(|m| m.scope == mount.scope)
+                {
+                    let reference = format!(
+                        "workspace={} source={} scope={}",
+                        profile.workspace_id, source.source, mount.scope
+                    );
+                    let hint = outcome.reminder.get_or_insert_with(String::new);
+                    if !hint.is_empty() {
+                        hint.push('\n');
+                    }
+                    hint.push_str(&reference);
+                }
+            }
+            Ok(outcome)
+        }
         Err(Error::Memory(error)) => Ok(corrective(&error)),
         Err(Error::Value(sentence)) => Ok(Outcome::fail(sentence)),
         Err(Error::Io(error)) => Err(error),

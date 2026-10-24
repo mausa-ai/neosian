@@ -66,6 +66,13 @@ pub fn handoff() -> Tool {
 }
 
 fn scope(server: &Server) -> &str {
+    if let Some(profile) = server.memory.store.profile() {
+        return &profile
+            .history
+            .as_ref()
+            .expect("history tool requires history")
+            .scope;
+    }
     let mounts = &server.memory.mounts;
     let at = sessions_mount(mounts).expect("the pair is served only with a sessions mount");
     &mounts[at].scope
@@ -75,11 +82,15 @@ fn continue_call(server: &Server, arguments: &Map<String, Value>) -> Outcome {
     let memory = &server.memory;
     let scope = scope(server);
     let conversation = text(arguments, "conversation");
+    let writable = memory
+        .store
+        .profile()
+        .is_none_or(|p| p.capture.mode != crate::profile::model::CaptureMode::Off);
     let outcome = continue_conversation(
         memory.store.as_ref(),
         scope,
         conversation,
-        Some((&memory.actor, Stamp::now())),
+        writable.then(|| (&memory.actor, Stamp::now())),
     );
     let delivered = match outcome {
         Ok(Ok(delivered)) => delivered,
@@ -99,6 +110,16 @@ fn continue_call(server: &Server, arguments: &Map<String, Value>) -> Outcome {
         Err(error) => return Outcome::failed("continue_session", &error.text()),
     };
     let mut text = delivered.text;
+    // A read-only profile must not write mailbox continuation receipts.
+    if memory.store.profile().is_some()
+        && (!writable
+            || !memory
+                .mounts
+                .iter()
+                .any(|m| m.scope == scope && !m.read_only && !m.edit_only))
+    {
+        return Outcome::ok(text);
+    }
     let reader = Mailbox::of_mounts(
         memory.store.as_ref(),
         &memory.mounts,

@@ -24,7 +24,8 @@ fn docs_lists_then_prints_a_page() {
     let listing = neosian(&["docs"]);
     assert!(listing.status.success());
     let stdout = String::from_utf8(listing.stdout).unwrap();
-    assert_eq!(stdout.lines().count(), 11);
+    assert_eq!(stdout.lines().count(), 12);
+    assert!(stdout.lines().any(|line| line.starts_with("profiles ")));
     assert!(stdout.starts_with("quickstart  "));
     assert_eq!(
         String::from_utf8(listing.stderr).unwrap(),

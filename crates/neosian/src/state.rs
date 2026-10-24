@@ -18,6 +18,12 @@ pub struct Deleted {
 }
 
 pub trait State: Send + Sync {
+    fn profile(&self) -> Option<&crate::profile::Profile> {
+        None
+    }
+    fn same_source(&self, _a: &str, _b: &str) -> bool {
+        true
+    }
     fn supports_optimistic_concurrency(&self) -> bool;
     fn client(&self) -> Option<&str> {
         None

@@ -56,6 +56,14 @@ Mutability is the mount's, exactly as for memory:
 
 ## Load one
 
+Portable profiles explicitly select `/mount/skills/name` and `builtin:name`
+entries. Only those entries appear in skill discovery, loading and MCP
+prompts; bare names do not select a profile skill. Missing selections are
+reported. Lists carry workspace/source/scope provenance and the current
+document version. This is context selection, not secrecy from a permitted
+memory reader. Imported profile mounts default to `ro`; the `rw` default
+above describes legacy mounts. See `neosian docs profiles`.
+
 The MCP server exposes two read-only tools beside `memory`:
 
 - `list_skills()`: every skill with its description; a skill in a

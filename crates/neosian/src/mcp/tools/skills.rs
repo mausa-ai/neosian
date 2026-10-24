@@ -64,7 +64,25 @@ fn list_call(server: &Server, _: &Map<String, Value>) -> Outcome {
         Ok(entries) => entries,
         Err(error) => return Outcome::failed("list_skills", &error.text()),
     };
-    let rows: Vec<Value> = entries.iter().map(row).collect();
+    let rows: Vec<Value> = entries
+        .iter()
+        .map(|entry| {
+            let mut row = row(entry);
+            if let Some(profile) = memory.store.profile() {
+                row["workspace_id"] = json!(profile.workspace_id);
+                if let Some(path) = &entry.path
+                    && let Ok((mount, _)) = crate::memory::mounts::resolve(&memory.mounts, path)
+                    && let Some(selected) = profile.mounts.iter().find(|m| m.scope == mount.scope)
+                {
+                    row["source"] = json!(selected.source);
+                    row["scope"] = json!(mount.scope);
+                } else {
+                    row["source"] = json!("builtin");
+                }
+            }
+            row
+        })
+        .collect();
     let outcome = Outcome::ok(py_str(&Value::Array(rows)));
     if memory.mounts.iter().any(|mount| !mount.read_only) {
         outcome.hint(literal(TOOLS, "skill_guide").expect("tools.yaml carries the guide"))

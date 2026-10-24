@@ -39,6 +39,8 @@ pub struct Search {
     /// Postgres schema (Postgres only).
     #[arg(long)]
     schema: Option<String>,
+    #[arg(long)]
+    profile: Option<String>,
     /// search this conversation only (repeatable); default: every one
     #[arg(long = "conversation", value_name = "ID")]
     conversations: Vec<String>,
@@ -52,10 +54,13 @@ pub struct Search {
 
 pub fn run(args: &Search, out: &mut impl Write, err: &mut impl Write) -> io::Result<u8> {
     let json = args.json;
-    let selected = match Selection::resolve_schema(
+    let selected = match Selection::resolve_profile(
         args.root.as_deref(),
         args.url.as_deref(),
         args.schema.as_deref(),
+        args.profile.as_deref(),
+        &std::env::current_dir()?,
+        false,
     ) {
         Ok(selected) => selected,
         Err(message) => return usage(json, &message, out, err),
@@ -79,7 +84,18 @@ pub fn run(args: &Search, out: &mut impl Write, err: &mut impl Write) -> io::Res
         Ok(store) => store,
         Err(error) => return failed(&super::Error::from(error).text(), None, json, out, err),
     };
-    let ids = (!args.conversations.is_empty()).then_some(args.conversations.as_slice());
+    let discovered;
+    let ids = if !args.conversations.is_empty() {
+        Some(args.conversations.as_slice())
+    } else if store.profile().is_some() {
+        discovered = match store.conversations() {
+            Ok(ids) => ids,
+            Err(error) => return failed(&super::Error::from(error).text(), None, json, out, err),
+        };
+        Some(discovered.as_slice())
+    } else {
+        None
+    };
     let turns = match store.search_turns(&terms, ids, args.limit as usize) {
         Ok(turns) => turns,
         Err(error) => return failed(&error.text(), None, json, out, err),

@@ -30,6 +30,18 @@ pub struct RemoteStore {
 }
 
 impl RemoteStore {
+    pub fn profile_connect(url: &str, token: &str) -> Result<Self, Error> {
+        let store = Self::connect(url, token)?;
+        if store.capabilities["authorization"]["version"] != 1
+            || store.capabilities["authorization"]["mode"] != "scoped"
+        {
+            return Err(MemoryError::configuration(
+                "profile HTTP sources require scoped authorization version 1",
+            )
+            .into());
+        }
+        Ok(store)
+    }
     pub fn connect(url: &str, token: &str) -> Result<Self, Error> {
         Self::with_timeout(url, token, Duration::from_secs(30))
     }

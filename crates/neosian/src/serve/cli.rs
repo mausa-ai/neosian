@@ -128,7 +128,9 @@ fn grammar(args: &Serve) -> Result<(auth::Clients, Vec<Mount>, Actor), Refusal> 
             "{TOKEN_ENV} is required — the state process never serves unauthenticated"
         )));
     };
-    let clients = auth::parse_clients(&token).map_err(refuse)?;
+    let clients = auth::parse_clients(&token)
+        .and_then(auth::Clients::with_grants)
+        .map_err(refuse)?;
     let actor = Actor::parse(&args.actor).map_err(|reason| {
         refuse(format!(
             "--actor {}: {reason} (e.g. cli:claude-code)",

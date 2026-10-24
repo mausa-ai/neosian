@@ -130,7 +130,16 @@ fn search_call(server: &Server, arguments: &Map<String, Value>) -> Outcome {
         return Outcome::fail(format!("limit must be at least 1; got {limit}"));
     }
     let shown = limit.min(MAX_HITS) as usize;
-    let narrowed = text(arguments, "conversation").map(|id| vec![id.to_string()]);
+    let narrowed = match text(arguments, "conversation") {
+        Some(id) => Some(vec![id.to_string()]),
+        None if server.memory.store.profile().is_some() => {
+            match server.memory.store.conversations() {
+                Ok(ids) => Some(ids),
+                Err(error) => return Outcome::failed("search_history", &Error::from(error).text()),
+            }
+        }
+        None => None,
+    };
     let ids = narrowed.as_deref();
     let turns = match server.memory.store.search_turns(&terms, ids, shown) {
         Ok(turns) => turns,

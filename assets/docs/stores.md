@@ -5,6 +5,12 @@ summary: Format-1 files and records, schema-4 Postgres, custom HTTP backends and
 
 # Storage and conformance
 
+Portable profiles route explicitly selected mounts to file, Postgres and HTTP
+sources without changing stored formats. HTTP profile bindings require the
+separately versioned scoped-authorization capability; ordinary storage
+conformance does not certify it. Direct files and database credentials remain
+operator authority. See `neosian docs profiles` and `neosian docs wire`.
+
 The supported backends are FileStore and Postgres. Custom backends run as
 independent HTTP services implementing wire 6. There is no public embedding
 SDK or storage subclass API. The contract consists of the schemas, documented

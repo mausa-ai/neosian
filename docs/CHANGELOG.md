@@ -8,6 +8,34 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-10-24
+
+### Added
+
+- Portable TOML workspace profiles, stable UUIDs, explicit source/mount/skill
+  selection and machine-local file, Postgres or HTTP bindings. Import/export
+  excludes endpoints and credentials and does not create a selection.
+  Replacing an already selected alias applies on its next invocation.
+- Bounded index/full/none context with source provenance; profile-aware CLI,
+  MCP, setup/status and all six client integrations. History is explicitly
+  selected and checked before reads, search, projections and continuation.
+- Opt-in server grants for exact memory-scope read/write and conversation
+  read/append authority. Grants intersect token allowances and expose a
+  separately versioned optional capability on wire 6. Constrained clients
+  use local stdio MCP bridges; grant-enabled HTTP MCP remains refused.
+- Capture off by default for new profiles, with explicit local/shared consent
+  in both profile and binding. Selected fields and deterministic filters apply
+  before spool, transport and summaries. Workspace conversation IDs preserve
+  source identity; changed policies or bindings retain pending spans locally.
+- Profile/grant JSON Schemas and embedded guidance, with independent portable
+  machine, HTTP authority, capture and Postgres contract tests. Stored formats
+  1, wire 6, schema 4 and profile-free recording remain supported.
+
+### Fixed
+
+- Constrained legacy HTTP searches and redaction-trail reads can no longer
+  authorize an unbounded read using an ignored scope or conversation-ID field.
+
 ## [2.0.1] - 2026-10-24
 
 ### Fixed

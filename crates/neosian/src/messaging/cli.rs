@@ -13,7 +13,6 @@ use crate::memory::cli::render;
 use crate::memory::dispatch::{Memory, Outcome};
 use crate::memory::grammar::Flags;
 use crate::memory::mounts::Refusal;
-use crate::remote::selection::Selection;
 
 /// Durable messages and reminders.
 #[derive(Args)]
@@ -61,15 +60,12 @@ pub struct Messages {
 
 pub fn run(args: &Messages, out: &mut impl Write, err: &mut impl Write) -> io::Result<u8> {
     let flags = &args.flags;
-    let selected = match Selection::resolve_schema(
-        flags.root.as_deref(),
-        flags.url.as_deref(),
-        flags.schema.as_deref(),
-    ) {
+    let cwd = env::current_dir()?;
+    let selected = match flags.select(&cwd) {
         Ok(selected) => selected,
         Err(message) => return usage(flags.json, &message, out, err),
     };
-    let (mounts, actor) = match flags.settings(&env::current_dir()?) {
+    let (mounts, actor) = match flags.selected_settings(&cwd, &selected) {
         Ok(settings) => settings,
         Err(Refusal::Usage(message)) => return usage(flags.json, &message, out, err),
         Err(Refusal::Memory(error)) => {

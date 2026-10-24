@@ -11,10 +11,12 @@ The exact Rust toolchain is pinned in `rust-toolchain.toml`.
 |---|---|---|
 | `NEOSIAN_HOME` | FileStore home; a leading `~` expands | `~/.neosian`; an explicit `--root` takes precedence |
 | `NEOSIAN_SCOPE` | Default mount/scope for commands and integrations | Scope derives from the local login and working directory |
+| `NEOSIAN_PROFILE` | Portable profile selection, below explicit `--profile` | Longest registered project root, else legacy selection |
 | `NEOSIAN_POSTGRES_DSN` | Explicit Postgres URI or keyword/value DSN | Use files unless `--url` selects a remote service |
 | `PGSSLROOTCERT` | PEM trust bundle for direct Postgres TLS | Built-in public roots; certificates and hostnames are verified |
 | `NEOSIAN_CLIENT_TOKEN` | Bearer token for `--url` | Remote operations refuse without a token |
 | `NEOSIAN_SERVE_TOKEN` | One bearer token or a per-client allowance table | `serve` refuses to start |
+| `NEOSIAN_SERVE_GRANTS` | Path to operator-owned exact-scope/conversation grants TOML, loaded at startup | Legacy token allowances only; profile HTTP bindings refuse this mode |
 | `SSL_CERT_FILE` | Additional PEM trust bundle for HTTPS clients | Built-in public roots |
 | `NEOSIAN_INSTALL=container` | Container installation identity | Installation shape derives from the executable |
 | `NO_COLOR` | Disable terminal colour | Normal terminal detection |
@@ -31,11 +33,23 @@ Client configuration follows each client's native locations and overrides:
 `LOCALAPPDATA`. See `neosian docs agents`; `setup` previews before `--write`.
 Login/home variables describe local defaults, not cross-machine identity.
 
+Portable profiles use `$NEOSIAN_HOME/profiles/` and machine-local
+`profile-bindings.toml`. Bindings reference arbitrary uppercase environment
+variable names for HTTP tokens and Postgres DSNs; values are read only at use.
+Setup reports and forwards the names without copying values. Profiles default
+to capture off; enabling local/shared capture requires the matching binding's
+consent. `profile-spool/` holds filtered pending spans and policy fingerprints.
+The profiles page documents recovery after a policy or destination change.
+
 `serve` binds loopback by default. Terminate public TLS at an operator-owned
 proxy and pass bearer authentication through. A bare server token has the
 whole-store allowance; per-client tables can restrict scope and conversation
 prefixes. `neosian docs wire` documents their grammar and capability gates.
 No mounts means no `/mcp` surface. Storage routes remain available.
+With grants enabled, absent permissions deny access and exact-scope grants
+intersect legacy allowances. All `/mcp` access is refused in that mode; use a
+local profile MCP bridge. Restart after token/grant changes. An operator grant
+permits whole-store enumeration/restore and must remain administrator-only.
 
 Postgres schema creation is an explicit operator action:
 

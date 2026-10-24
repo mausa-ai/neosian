@@ -5,6 +5,14 @@ summary: Run state on your own storage and connect clients through an authentica
 
 # Local, Postgres or a state process
 
+For one authorized workspace across machines, use a portable profile and
+machine-local bindings (`neosian docs profiles`). Share the exported selection,
+then bind each machine to the same granted HTTP service with its own token.
+The operator enables exact-scope/conversation grants; agent accounts are not
+authorization. Each client runs a local stdio MCP bridge. Constrained hosted
+HTTP MCP remains unavailable. Capture starts off, with explicit local history
+or shared-history consent; local capture can accompany remote knowledge.
+
 One binary provides local CLI, MCP and HTTP access. FileStore uses a directory;
 Postgres uses an operator-owned schema; remote clients use the same wire from
 any language. No hosted service, model account or Python runtime is needed.
@@ -43,7 +51,7 @@ importing client. See `neosian docs wire` before sharing a store.
 ## Container
 
 ```sh
-docker run -e NEOSIAN_SERVE_TOKEN='your-private-token' -p 6367:6367 -v state:/data ghcr.io/mausa-ai/neosian:2.0.1
+docker run -e NEOSIAN_SERVE_TOKEN='your-private-token' -p 6367:6367 -v state:/data ghcr.io/mausa-ai/neosian:2.1.0
 ```
 
 The image serves the Rust binary as uid 1000 with a private `/data` volume.

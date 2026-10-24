@@ -157,7 +157,11 @@ class Server:
 
 @contextmanager
 def serve(
-    binary: Binary, *, postgres_dsn: str | None = None, schema: str | None = None
+    binary: Binary,
+    *,
+    postgres_dsn: str | None = None,
+    schema: str | None = None,
+    extra_env: dict[str, str] | None = None,
 ) -> Iterator[Server]:
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))
@@ -166,6 +170,7 @@ def serve(
     env["NEOSIAN_SERVE_TOKEN"] = (
         f"client:contract={ADMIN},client:limited@user:allowed+allowed-={LIMITED}"
     )
+    env.update(extra_env or {})
     args = [str(binary.executable), "serve", "--port", str(port)]
     if postgres_dsn is None:
         args.extend(["--root", str(binary.home)])

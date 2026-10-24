@@ -214,6 +214,14 @@ pub fn render_instructions(
     mounts: &[Mount],
     now: Stamp,
 ) -> Result<String, Error> {
+    if let Some(profile) = store.profile() {
+        return crate::profile::context::render_context(
+            store,
+            mounts,
+            profile.context.max_chars,
+            None,
+        );
+    }
     let template = literal(MEMORY, "system_section").expect("memory.yaml carries the section");
     let mut section = render(&template, &[("index", &render_index(store, mounts)?)]);
     let inbox = mailbox_context(&Mailbox::of_mounts(store, mounts, None))?;

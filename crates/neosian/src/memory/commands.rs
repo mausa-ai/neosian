@@ -254,6 +254,9 @@ pub fn rename(memory: &Memory, old: &str, new: &str) -> Result<Outcome, Error> {
     writable(to)?;
     structural(from)?;
     structural(to)?;
+    if !memory.store.same_source(&from.scope, &to.scope) {
+        return Ok(Outcome::fail("cross-source rename is not supported"));
+    }
     let (store, actor) = (memory.store.as_ref(), &memory.actor);
     let (verb, version) = if from.path == to.path {
         ("Renamed", store.rename(&from.scope, source, target, actor)?)

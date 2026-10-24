@@ -7,7 +7,8 @@ summary: Documents, mounts, version history, deterministic upkeep and the record
 
 Memory consists of small markdown documents under scopes. A mount binds a
 scope to a virtual directory: `scope=user:me,path=user` exposes `/user`.
-Repeat `--mount` for multiple sources. `ro` is read-only; `eo` allows edits
+Repeat `--mount` for multiple scopes in one store. A portable profile can
+route mounts across distinct sources (`neosian docs profiles`). `ro` is read-only; `eo` allows edits
 to existing documents while fixing the document set. The store holds no
 mount policy; CLI and MCP enforce it before mutations.
 
@@ -16,7 +17,9 @@ The memory tool and CLI share six commands: `view`, `create`, `str_replace`,
 before editing it. `str_replace` requires exactly one matching occurrence;
 `insert` uses a zero-based line number. A line range on `view` is one-based
 and inclusive, with end `-1` meaning the end. A content flag of `-` reads stdin.
-Paths have no `.md` suffix at this interface. A cross-scope rename is not atomic.
+Paths have no `.md` suffix at this interface. A cross-scope rename is not atomic;
+cross-source rename is refused. Profile memory responses identify the
+workspace, logical source and real scope alongside the versioned path.
 
 Every mutation appends an attributed full-content version row. Deletion
 removes the live document but retains history; re-creation never reuses a
@@ -52,7 +55,8 @@ which can load the shipped `upkeep` skill.
 
 ## Recorded conversations
 
-Hooks append numbered turns and log projections. Startup context gives a
+Profile-free hooks append numbered turns and log projections; new profiles
+require explicit local/shared capture consent. Startup context gives a
 bounded index of prior sessions; `recall_turn` rehydrates a named turn and
 `search_history` searches recorded text. `continue_session` follows an explicit
 handoff. These tools do not run an agent or control its context window.

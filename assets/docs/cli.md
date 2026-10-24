@@ -15,6 +15,7 @@ protocol servers use their own framing.
 | Command | Purpose |
 |---|---|
 | `setup`, `status` | Register clients and inspect local setup |
+| `profile init/import/export/show/bind` | Create portable workspace selections and local bindings |
 | `mcp install`, `record install` | Configure one integration independently |
 | `update` | Check/apply a binary update or set update policy |
 | `memory view/create/str_replace/insert/delete/rename` | Mounted document operations |
@@ -28,9 +29,19 @@ protocol servers use their own framing.
 | `record` | Consume a foreign agent hook payload on stdin |
 | `mcp` | MCP server over stdio |
 | `serve` | State HTTP and optional MCP HTTP server |
-| `schema state/wire/errors/postgres` | Print machine contracts or schema SQL |
+| `schema state/wire/errors/profile/grants/postgres` | Print machine contracts or schema SQL |
 
 ## Store selection and mounts
+
+`--profile NAME` selects portable sources for memory, messages, search,
+continue, MCP and record, and also configures setup/status. `NEOSIAN_PROFILE`
+and local checkout bindings provide defaults. A selected profile cannot be
+combined with legacy store/scope selectors. Whole-store operators refuse an
+active profile; run them against an explicit legacy store from an unbound
+directory. See `neosian docs profiles` for import/export, authority and capture.
+Profile management returns JSON, except `profile export`, which prints TOML.
+
+The following selection rules apply without a profile.
 
 `--root DIR`, `NEOSIAN_POSTGRES_DSN` and `--url URL` are mutually exclusive.
 `--schema NAME` applies only to Postgres. A remote client takes its bearer from

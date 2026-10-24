@@ -13,12 +13,50 @@ use std::sync::Arc;
 pub const TOKEN_ENV: &str = "NEOSIAN_CLIENT_TOKEN";
 
 pub enum Selection {
+    Profile(Box<crate::profile::resolve::Resolved>),
     File(PathBuf),
     Postgres { dsn: String, schema: String },
     Remote { url: String, token: String },
 }
 
 impl Selection {
+    pub fn resolve_profile(
+        root: Option<&Path>,
+        url: Option<&str>,
+        schema: Option<&str>,
+        profile: Option<&str>,
+        project: &Path,
+        mounts: bool,
+    ) -> Result<Self, String> {
+        if let Some(selected) = crate::profile::resolve::selected(profile, project)? {
+            selected.conflicts(root.is_some() || url.is_some() || schema.is_some() || mounts)?;
+            selected.check()?;
+            return Ok(Self::Profile(Box::new(selected)));
+        }
+        Self::resolve_schema(root, url, schema)
+    }
+
+    pub fn mounts(&self) -> Option<Result<Vec<crate::memory::mounts::Mount>, String>> {
+        let Self::Profile(p) = self else {
+            return None;
+        };
+        Some(
+            p.profile
+                .mounts
+                .iter()
+                .map(|m| {
+                    use crate::profile::model::Access;
+                    crate::memory::mounts::Mount::new(
+                        &m.scope,
+                        &m.path,
+                        (m.access == Access::Ro, m.access == Access::Eo),
+                        "",
+                    )
+                    .map_err(|_| "invalid profile mount".into())
+                })
+                .collect(),
+        )
+    }
     /// Resolve store selection without constructing a home or a database client.
     pub fn resolve_schema(
         root: Option<&Path>,
@@ -71,6 +109,7 @@ impl Selection {
 
     pub fn open(&self) -> Result<Arc<dyn State>, Error> {
         match self {
+            Self::Profile(profile) => profile.open(),
             Self::Postgres { dsn, schema } => {
                 Ok(Arc::new(crate::postgres::PostgresStore::open(dsn, schema)?))
             }

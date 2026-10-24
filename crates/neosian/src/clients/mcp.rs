@@ -95,7 +95,7 @@ fn perform(
         };
         let mut names = json!({});
         for name in &settings.credentials {
-            names[*name] = json!(format!("${{{prefix}{name}}}"));
+            names[name.as_str()] = json!(format!("${{{prefix}{name}}}"));
         }
         entry["env"] = names;
     }

@@ -12,7 +12,8 @@ pub struct Settings {
     pub store: Vec<String>,
     pub mounts: Vec<String>,
     pub spool: PathBuf,
-    pub credentials: Vec<&'static str>,
+    pub credentials: Vec<String>,
+    pub profile: Option<serde_json::Value>,
     pub schema: Option<String>,
     pub actor: Option<String>,
     pub agent: Option<String>,
@@ -51,6 +52,7 @@ pub fn resolve(
         mounts: vec![],
         spool: absolute(&context.cwd, &root.join("spool")),
         credentials: vec![],
+        profile: None,
         schema: None,
         actor: None,
         agent: None,
@@ -70,9 +72,9 @@ pub fn resolve(
             return Err("--url needs NEOSIAN_CLIENT_TOKEN — the client's bearer token, never on the command line".into());
         }
         settings.store = vec!["--url".into(), url.into()];
-        settings.credentials.push("NEOSIAN_CLIENT_TOKEN");
+        settings.credentials.push("NEOSIAN_CLIENT_TOKEN".into());
     } else if dsn {
-        settings.credentials.push("NEOSIAN_POSTGRES_DSN");
+        settings.credentials.push("NEOSIAN_POSTGRES_DSN".into());
     } else {
         let root = root_arg.map_or(root, |s| expand(s, &context.home));
         settings.store = vec![
@@ -81,6 +83,61 @@ pub fn resolve(
         ];
     }
     Ok(settings)
+}
+
+pub fn resolve_profile(
+    root: Option<&str>,
+    url: Option<&str>,
+    name: Option<&str>,
+    legacy: bool,
+    context: &Context,
+) -> Result<Settings, String> {
+    let Some(selected) = crate::profile::resolve::selected(name, &context.cwd)? else {
+        return resolve(root, url, context);
+    };
+    selected.conflicts(root.is_some() || url.is_some() || legacy)?;
+    selected.check()?;
+    let mut credentials = Vec::new();
+    for source in &selected.profile.sources {
+        if let Some(name) = selected.bindings[source].credential()
+            && !credentials.contains(&name.to_string())
+        {
+            credentials.push(name.to_string());
+        }
+    }
+    if context
+        .env
+        .get("NEOSIAN_HOME")
+        .is_some_and(|s| !s.is_empty())
+    {
+        credentials.push("NEOSIAN_HOME".into());
+    }
+    Ok(Settings {
+        store: vec!["--profile".into(), selected.name.clone()],
+        mounts: vec![],
+        spool: selected.home.join("profile-spool"),
+        credentials,
+        profile: Some(selected.report()),
+        schema: None,
+        actor: None,
+        agent: None,
+    })
+}
+
+pub fn support(client: &str) -> serde_json::Value {
+    let context = match client {
+        "opencode" => "mcp_instructions",
+        "pi" => "system_prompt_section",
+        "claude-desktop" => "client_dependent_mcp_instructions",
+        _ => "session_start_hook",
+    };
+    let capture = match client {
+        "cursor" => "interactive_only",
+        "claude-desktop" => "unavailable",
+        _ => "hook_payloads",
+    };
+    serde_json::json!({"memory":"local_stdio_bridge","context":context,
+        "capture":capture,"constrained_http_mcp":false})
 }
 
 pub fn mounts(level: &str, context: &Context) -> Result<Vec<Mount>, Refusal> {

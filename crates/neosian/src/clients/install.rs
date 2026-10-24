@@ -35,6 +35,8 @@ pub struct Common {
     #[arg(long)]
     schema: Option<String>,
     #[arg(long)]
+    profile: Option<String>,
+    #[arg(long)]
     scope: Option<String>,
     #[arg(long, value_name = "scope=...,path=...[,ro|,eo]")]
     mount: Vec<String>,
@@ -76,10 +78,23 @@ pub enum RecordCommand {
 
 impl Common {
     fn settings(&self, context: &Context, record: bool) -> Result<Settings, Refusal> {
-        let mut resolved = settings::resolve(self.root.as_deref(), self.url.as_deref(), context)
-            .map_err(Refusal::Usage)?;
+        let mut resolved = settings::resolve_profile(
+            self.root.as_deref(),
+            self.url.as_deref(),
+            self.profile.as_deref(),
+            self.schema.is_some() || self.scope.is_some() || !self.mount.is_empty(),
+            context,
+        )
+        .map_err(Refusal::Usage)?;
+        if resolved.profile.is_some() {
+            return Ok(resolved);
+        }
         if let Some(schema) = &self.schema {
-            if !resolved.credentials.contains(&"NEOSIAN_POSTGRES_DSN") {
+            if !resolved
+                .credentials
+                .iter()
+                .any(|s| s == "NEOSIAN_POSTGRES_DSN")
+            {
                 return Err(Refusal::Usage(
                     "--schema applies only to Postgres (unset --root/--url)".into(),
                 ));
@@ -174,7 +189,11 @@ pub fn mcp(args: &McpInstall, out: &mut impl Write, err: &mut impl Write) -> io:
     if args.actor != "mcp:stdio" {
         settings.actor = Some(args.actor.clone());
     }
-    let payload = mcp::install(&target, &context, &settings, common.write);
+    let mut payload = mcp::install(&target, &context, &settings, common.write);
+    if let Some(profile) = &settings.profile {
+        payload["profile"] = profile.clone();
+        payload["profile_support"] = settings::support(&args.client);
+    }
     install_output::render(&payload, &target, &settings, false, common.json, out, err)
 }
 
@@ -203,9 +222,21 @@ pub fn record(args: &RecordInstall, out: &mut impl Write, err: &mut impl Write) 
         settings.agent = Some(args.agent.clone());
     }
     if let Some(spool) = &args.spool {
+        if settings.profile.is_some() {
+            return usage(
+                common.json,
+                "profile spools are managed under the neosian home; omit --spool",
+                out,
+                err,
+            );
+        }
         settings.spool = absolute(&context.cwd, &expand(spool, &context.home));
     }
     let target = targets::hooks(&args.client, &context, &common.level);
-    let payload = hooks::install(&target, &context, &settings, common.write);
+    let mut payload = hooks::install(&target, &context, &settings, common.write);
+    if let Some(profile) = &settings.profile {
+        payload["profile"] = profile.clone();
+        payload["profile_support"] = settings::support(&args.client);
+    }
     install_output::render(&payload, &target, &settings, true, common.json, out, err)
 }

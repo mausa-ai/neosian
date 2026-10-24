@@ -40,6 +40,8 @@ pub struct Continue {
     /// Postgres schema (Postgres only).
     #[arg(long)]
     schema: Option<String>,
+    #[arg(long)]
+    profile: Option<String>,
     /// the scope whose sessions and note to read (default: $NEOSIAN_SCOPE,
     /// else this directory's project scope)
     #[arg(long)]
@@ -51,10 +53,13 @@ pub struct Continue {
 
 pub fn run(args: &Continue, out: &mut impl Write, err: &mut impl Write) -> io::Result<u8> {
     let json = args.json;
-    let selected = match Selection::resolve_schema(
+    let selected = match Selection::resolve_profile(
         args.root.as_deref(),
         args.url.as_deref(),
         args.schema.as_deref(),
+        args.profile.as_deref(),
+        &std::env::current_dir()?,
+        args.scope.is_some(),
     ) {
         Ok(selected) => selected,
         Err(message) => return usage(json, &message, out, err),
@@ -64,7 +69,16 @@ pub fn run(args: &Continue, out: &mut impl Write, err: &mut impl Write) -> io::R
         let message = format!("conversation {}: {reason}", repr(conversation));
         return usage(json, &message, out, err);
     }
-    let scope = match resolve_scope(args.scope.as_deref())? {
+    let scoped = match &selected {
+        Selection::Profile(p) => p
+            .profile
+            .history
+            .as_ref()
+            .map(|h| h.scope.clone())
+            .ok_or_else(|| "this profile has no history selection".to_string()),
+        _ => resolve_scope(args.scope.as_deref())?,
+    };
+    let scope = match scoped {
         Ok(scope) => scope,
         Err(message) => return usage(json, &message, out, err),
     };

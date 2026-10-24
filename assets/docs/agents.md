@@ -5,6 +5,16 @@ summary: Agent hooks record sessions; startup context, MCP recall and search rea
 
 # Any agent
 
+Portable profiles add explicit source selection and recording policy to all
+six supported clients. Use `setup --profile NAME` (or the standalone
+installers' `--profile NAME`) and inspect the capture fields, destination and
+`profile_support` report. New profiles capture off by default; startup context
+and memory remain available. Local/shared recording requires both profile and
+binding consent, filtering precedes the spool, and new conversation IDs retain
+native identity as provenance under a workspace namespace. Read `neosian docs
+profiles` for this policy. The session-ID and automatic-recording behavior
+below describes existing profile-free hooks.
+
 neosian is the state layer for the agent you already use. The memory
 half is the MCP server and `neosian mcp install` (`neosian docs mcp`).
 The record half is `neosian record`: the agent's hooks call it with one

@@ -13,6 +13,8 @@ use std::path::Path;
 #[derive(Args)]
 pub struct Status {
     #[arg(long)]
+    profile: Option<String>,
+    #[arg(long)]
     json: bool,
     #[arg(long, value_name = "CLIENT=DIR")]
     at: Vec<String>,
@@ -144,23 +146,40 @@ pub fn run(args: &Status, out: &mut impl Write, err: &mut impl Write) -> io::Res
         return crate::cli::usage(args.json, &message, out, err);
     }
     let root = home::home()?;
+    let selected = match crate::profile::resolve::selected(args.profile.as_deref(), &context.cwd) {
+        Ok(selected) => selected,
+        Err(message) => return crate::cli::usage(args.json, &message, out, err),
+    };
     let path = root.join("config.toml");
     let mut scopes = Value::Null;
     let mut scopes_error = Value::Null;
     let mut session = None;
-    match home::project_mounts(&context.cwd) {
-        Ok(mounts) => {
-            scopes = json!({});
-            for mount in &mounts {
-                scopes[format!("/{}", mount.path)] = json!(mount.scope);
-            }
-            session = last_session(&root, &mounts[1].scope);
+    if let Some(selected) = &selected {
+        scopes = json!({});
+        for mount in &selected.profile.mounts {
+            scopes[format!("/{}", mount.path)] = json!(mount.scope);
         }
-        Err(error) => {
-            scopes_error = json!(match error {
-                Refusal::Usage(s) => s,
-                Refusal::Memory(e) => e.message,
-            })
+        scopes_error = json!(
+            selected
+                .conflicts(false)
+                .and_then(|()| selected.check())
+                .err()
+        );
+    } else {
+        match home::project_mounts(&context.cwd) {
+            Ok(mounts) => {
+                scopes = json!({});
+                for mount in &mounts {
+                    scopes[format!("/{}", mount.path)] = json!(mount.scope);
+                }
+                session = last_session(&root, &mounts[1].scope);
+            }
+            Err(error) => {
+                scopes_error = json!(match error {
+                    Refusal::Usage(s) => s,
+                    Refusal::Memory(e) => e.message,
+                })
+            }
         }
     }
     let loaded = config::read(&path);
@@ -179,7 +198,13 @@ pub fn run(args: &Status, out: &mut impl Write, err: &mut impl Write) -> io::Res
         .unwrap_or("off".into());
     let clients: Vec<_> = CLIENTS
         .iter()
-        .map(|client| client_status(client, &context))
+        .map(|client| {
+            let mut status = client_status(client, &context);
+            if selected.is_some() {
+                status["profile_support"] = super::settings::support(client);
+            }
+            status
+        })
         .collect();
     let double_fire: Vec<_> = clients.iter().filter_map(|c| {
         let files = c["hook_files"].as_array().unwrap();
@@ -187,12 +212,15 @@ pub fn run(args: &Status, out: &mut impl Write, err: &mut impl Write) -> io::Res
     }).collect();
     let paths = shape::paths(&context.env, &context.cwd);
     let shape = shape::kind(&context.env);
-    let status = json!({"version": version::VERSION, "home": root, "home_exists": root.is_dir(),
+    let mut status = json!({"version": version::VERSION, "home": root, "home_exists": root.is_dir(),
         "config_path": path, "config_exists": path.is_file(), "config_error": config_error,
         "scopes": scopes, "scopes_error": scopes_error,
         "clients": clients, "last_session": session, "one_writer": [], "double_fire": double_fire,
         "shape": shape, "upgrade": shape::upgrade(shape, "<version>"), "update_mode": mode,
         "path_executables": paths, "shadowing": shape::shadowing(&paths)});
+    if let Some(selected) = selected {
+        status["profile"] = selected.report();
+    }
     if args.json {
         writeln!(out, "{status}")?;
     } else {
@@ -206,6 +234,19 @@ fn string<'a>(value: &'a Value, key: &str) -> &'a str {
 }
 
 fn render(status: &Value, out: &mut impl Write) -> io::Result<()> {
+    if let Some(profile) = status.get("profile") {
+        writeln!(
+            out,
+            "profile   {}  workspace {}  capture {}  ready {}",
+            string(profile, "profile"),
+            string(profile, "workspace_id"),
+            string(profile, "capture"),
+            profile["ready"]
+        )?;
+        if let Some(issue) = profile["issue"].as_str() {
+            writeln!(out, "profile   {issue}")?;
+        }
+    }
     writeln!(
         out,
         "neosian {}  {}  upgrade: {}",

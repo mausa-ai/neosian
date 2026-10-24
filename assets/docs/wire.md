@@ -29,7 +29,7 @@ wire routes. Product version 2.0.0 retains `wire_version: 6` and format 1.
 
 ## The handshake
 
-`GET /v1/capabilities`, authenticated, answers seven keys:
+`GET /v1/capabilities`, authenticated, answers these base keys:
 
 ```json
 {"wire_version": 6, "neosian_version": "<installed>", "backend": "FileStore",
@@ -69,7 +69,61 @@ in the envelope under the code `forbidden`. A constrained token is
 refused `/mcp` and all four `store/*` routes outright, whatever its body
 names, and a search or a trail read that names no `conversations` (the
 whole store) the same way.
-A token with no allowance reaches everything.
+A token with no allowance reaches everything unless the opt-in grants below
+narrow it. Ignored body fields cannot authorize an unbounded search or trail
+read: those routes check the actual `conversations` array.
+
+### Exact-scope grants for portable profiles
+
+Set `NEOSIAN_SERVE_GRANTS` to an operator-owned TOML file. Version 1 grants
+intersect the existing token table; missing actors or permissions deny access.
+Token values stay exclusively in `NEOSIAN_SERVE_TOKEN`. For example, with
+an authenticated `client:reader` token actor:
+
+```toml
+grant_format = 1
+[[clients]]
+actor = "client:reader"
+[[clients.scopes]]
+scope = "workspace:team"
+read = true
+write = false
+[[clients.conversations]]
+prefix = "w-11111111222243338444555555555555-"
+read = true
+append = false
+```
+
+Memory scopes match exactly, unlike legacy token prefixes. A conversation
+grant requires either a literal `prefix` or nonempty `ids = [...]`. `read`
+permits reads, versions, listings and history; `write` permits memory writes,
+delete and rename; `append` permits both turns and projections. Permissions
+are independent and default false. Erasure also requires `operator = true`
+on the client entry. That flag grants all four whole-store routes, including
+unrestricted enumeration and restore subject to legacy allowances; reserve
+it for trusted administrators. Non-operators cannot use those routes.
+Even an operator's search/trail request names an explicitly authorized
+`conversations` array. `[]` remains an empty search, never a global read.
+
+Checks precede store access and apply to raw HTTP callers as well as profile
+clients. Editing a profile or forging the request's attribution cannot widen
+the token's permission. Grant files reject unknown fields, unsupported format,
+duplicate actors/scopes and actors absent from the token table before opening
+the store. Files are bounded to 1 MiB and loaded once at startup. Restart the
+server after changing grants or revoking/rotating tokens.
+
+With grants enabled the handshake adds this separately versioned optional
+capability: `"authorization": {"version": 1, "mode": "scoped"}`. It reports
+enforcement, not a permission inventory. Portable HTTP profiles require it
+and refuse an older/unscoped backend. Legacy clients keep wire 6. The profile
+and grants schemas print with `neosian schema profile` and `neosian schema
+grants`. Custom services advertising this capability must enforce the same
+restrictions; the existing base/full storage runner alone does not certify
+authorization. Reference-server adversarial tests are in
+`tests/contract/test_profile_http.py`.
+
+All `/mcp` access is refused when grants are enabled. Use the local
+`neosian mcp --profile NAME` stdio bridge to the granted storage routes.
 
 ## Requests
 
@@ -259,9 +313,11 @@ dropped, not stored.
 | 5 | 1.0.0rc20 | `conversation/search_turns`; a constrained token's `conversations` list |
 | 6 | 1.8.0 | `conversation/redact_turns`, `conversation/turn_redactions`; the turn's `redacted`; the archive's `redactions`; the handshake's `erasable` |
 
-A narrowing of accepted legacy input does not move the wire version; an
-added route or response key does. The binary refuses a different advertised
-wire version before any storage call.
+A narrowing of accepted legacy input does not move the wire version. Routes
+and required response changes need a wire revision. The optional authorization
+capability introduced with profiles is a recorded, separately versioned
+extension; base handshakes and all stored shapes remain unchanged. The binary
+refuses a different advertised wire version before any storage call.
 
 ## Beside the wire
 

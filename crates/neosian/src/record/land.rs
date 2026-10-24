@@ -95,7 +95,7 @@ pub fn land(
     let started = store
         .first_turn_stamp(session_id)?
         .unwrap_or(turn.created_at);
-    let content = sessions_document(
+    let mut content = sessions_document(
         &settings.agent,
         session_id,
         started,
@@ -103,6 +103,9 @@ pub fn land(
         turn.turn,
         &lineage,
     );
+    if let Some(provenance) = &settings.provenance {
+        content.push_str(provenance);
+    }
     store.write(scope, &sessions_path(session_id), &content, &stamp, None)?;
     if handoff_declared(&turn.messages) {
         link_handoff(store.as_ref(), scope, session_id, &stamp)?;

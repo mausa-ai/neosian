@@ -18,6 +18,7 @@ mod memory;
 mod messaging;
 mod operator;
 mod postgres;
+mod profile;
 mod pyfmt;
 mod record;
 mod remote;

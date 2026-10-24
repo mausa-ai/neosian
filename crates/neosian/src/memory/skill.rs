@@ -228,6 +228,33 @@ pub fn list_skills(
     mounts: &[Mount],
     directory: &[Skill],
 ) -> Result<Vec<SkillEntry>, Error> {
+    if let Some(profile) = store.profile() {
+        let mut entries = Vec::new();
+        for selected in &profile.skills {
+            let entry = if let Some(builtin) = selected.strip_prefix("builtin:") {
+                directory
+                    .iter()
+                    .find(|s| s.name == builtin)
+                    .map(shipped_entry)
+            } else {
+                let (mount, path) = resolve(mounts, selected)?;
+                read(store, mount, path.strip_prefix(SKILLS_PREFIX).unwrap_or(""))?
+            };
+            let mut entry = entry.unwrap_or_else(|| SkillEntry {
+                name: selected.clone(),
+                path: Some(selected.clone()),
+                skill: None,
+                version: None,
+                error: Some("Selected skill is unavailable or redacted".into()),
+            });
+            entry.name = selected.clone();
+            if let Some(skill) = &mut entry.skill {
+                skill.name = selected.clone();
+            }
+            entries.push(entry);
+        }
+        return Ok(entries);
+    }
     let mut entries = Vec::new();
     for mount in mounts {
         for listing in store.list_documents(&mount.scope, SKILLS_PREFIX)? {
@@ -248,6 +275,11 @@ pub fn load_skill(
     directory: &[Skill],
     name: &str,
 ) -> Result<Option<SkillEntry>, Error> {
+    if store.profile().is_some() {
+        return Ok(list_skills(store, mounts, directory)?
+            .into_iter()
+            .find(|e| e.name == name));
+    }
     if name.starts_with('/') {
         let (mount, rest) = resolve(mounts, name)?;
         let Some(bare) = rest.strip_prefix(SKILLS_PREFIX) else {

@@ -54,7 +54,15 @@ impl Client {
 
 /// The table: each entry the header bytes a hit presents and its client.
 #[derive(Debug)]
-pub struct Clients(Vec<(Vec<u8>, Client)>);
+pub struct Clients(Vec<(Vec<u8>, Client)>, pub Option<super::grants::Grants>);
+
+impl Clients {
+    pub fn with_grants(mut self) -> Result<Self, String> {
+        let actors: Vec<_> = self.0.iter().map(|(_, c)| c.actor.as_str()).collect();
+        self.1 = super::grants::Grants::load(&actors)?;
+        Ok(self)
+    }
+}
 
 /// `parse_clients`: `NEOSIAN_SERVE_TOKEN` to its table; refuses, never
 /// guesses.
@@ -73,7 +81,7 @@ pub fn parse_clients(value: &str) -> Result<Clients, String> {
             scopes: None,
             conversations: None,
         };
-        return Ok(Clients(vec![(header(value), client)]));
+        return Ok(Clients(vec![(header(value), client)], None));
     }
     let mut clients: Vec<(Vec<u8>, Client)> = Vec::new();
     for (index, entry) in value.split(',').enumerate() {
@@ -97,7 +105,7 @@ pub fn parse_clients(value: &str) -> Result<Clients, String> {
         }
         clients.push((header(token), client));
     }
-    Ok(Clients(clients))
+    Ok(Clients(clients, None))
 }
 
 /// `actor[@scope-prefix][+id-prefix]`: the allowance rides the actor side
@@ -167,7 +175,7 @@ pub async fn bearer(
     let Some(client) = client.cloned() else {
         return unauthorized();
     };
-    if client.constrained() && request.uri().path() == "/mcp" {
+    if (client.constrained() || shared.clients.1.is_some()) && request.uri().path() == "/mcp" {
         let what = "/mcp — the surface serves the operator's mounts, which no prefix can fence";
         return Fail::forbidden(what).response();
     }

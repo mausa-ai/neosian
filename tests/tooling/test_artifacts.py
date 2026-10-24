@@ -33,6 +33,8 @@ def test_release_artifacts_are_complete_deterministic_and_versioned(
         for expected in [
             "assets/contracts/wire-v6.openapi.json",
             "assets/contracts/state-v1.schema.json",
+            "assets/contracts/profile-v1.schema.json",
+            "assets/contracts/grants-v1.schema.json",
             "assets/sql/postgres.sql",
             "scripts/migrate_v1_metadata.py",
             "tests/contract/storage/test_concurrency.py",

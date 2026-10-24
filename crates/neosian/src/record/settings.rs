@@ -23,6 +23,7 @@ pub struct Settings {
     pub sessions_mount: usize,
     pub agent: String,
     pub spool: PathBuf,
+    pub provenance: Option<String>,
 }
 
 /// The mount half of the grammar: the flags, else `NEOSIAN_SCOPE`, else

@@ -11,6 +11,7 @@ mod backend;
 pub mod cli;
 mod codec;
 mod envelope;
+mod grants;
 mod health;
 mod mcp;
 mod paging;

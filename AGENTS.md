@@ -26,6 +26,11 @@ development and optional one-time migration tooling only (S0, DESIGN §40).
 - **Preserve data.** Versions, actors, timestamps, opaque JSON metadata and
   erasure skeletons survive supported operations. Refuse unsupported
   formats explicitly; do not silently migrate or discard history.
+- **Profiles select; backends authorize.** Portable profile format 1 excludes
+  local bindings and credentials. New profile capture defaults off; local/shared
+  capture requires matching binding consent and filtering before persistence.
+  Server grants intersect token allowances before reads or writes; they never
+  turn the operator's hosted MCP mounts into a per-client surface.
 
 ## Conventions
 

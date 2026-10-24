@@ -82,9 +82,22 @@ pub fn served(memory: &Memory) -> Vec<Tool> {
         skills::load(),
         messages::tool(),
     ];
-    tools.push(history::recall());
-    tools.push(history::search());
-    if sessions_mount(&memory.mounts).is_some() {
+    let history = memory.store.profile().is_none_or(|p| p.history.is_some());
+    if history {
+        tools.push(history::recall());
+        tools.push(history::search());
+    }
+    if let Some(profile) = memory.store.profile() {
+        if profile.history.is_some() {
+            let mut continuation = handoff::continue_session();
+            continuation.read_only =
+                profile.capture.mode == crate::profile::model::CaptureMode::Off;
+            tools.push(continuation);
+            if !tools.last().expect("continuation").read_only {
+                tools.push(handoff::handoff());
+            }
+        }
+    } else if sessions_mount(&memory.mounts).is_some() {
         tools.push(handoff::continue_session());
         tools.push(handoff::handoff());
     }

@@ -23,6 +23,9 @@ pub const SUGAR_MOUNT_PATH: &str = "memories";
 /// The store flags every memory command takes.
 #[derive(Args)]
 pub struct Flags {
+    /// Select a portable workspace profile and its local bindings.
+    #[arg(long)]
+    pub profile: Option<String>,
     /// FileStore root directory (created on start; default: the home,
     /// ~/.neosian or $NEOSIAN_HOME)
     #[arg(long)]
@@ -235,14 +238,40 @@ impl Command {
     /// flags name (else `NEOSIAN_SCOPE` as the sugar mount, else the
     /// working directory's project layout) and its actor, each held to its
     /// grammar, then the command's own guards.
-    pub fn settings(&self, cwd: &Path) -> Result<(Vec<Mount>, Actor), Refusal> {
-        let settings = self.flags().settings(cwd)?;
+    pub fn settings(
+        &self,
+        cwd: &Path,
+        selected: &crate::remote::selection::Selection,
+    ) -> Result<(Vec<Mount>, Actor), Refusal> {
+        let settings = self.flags().selected_settings(cwd, selected)?;
         self.guard()?;
         Ok(settings)
     }
 }
 
 impl Flags {
+    pub fn select(&self, cwd: &Path) -> Result<crate::remote::selection::Selection, String> {
+        crate::remote::selection::Selection::resolve_profile(
+            self.root.as_deref(),
+            self.url.as_deref(),
+            self.schema.as_deref(),
+            self.profile.as_deref(),
+            cwd,
+            self.scope.is_some() || !self.mount.is_empty(),
+        )
+    }
+
+    pub fn selected_settings(
+        &self,
+        cwd: &Path,
+        selected: &crate::remote::selection::Selection,
+    ) -> Result<(Vec<Mount>, Actor), Refusal> {
+        if let Some(mounts) = selected.mounts() {
+            let actor = Actor::parse(&self.actor).map_err(Refusal::Usage)?;
+            return Ok((mounts.map_err(Refusal::Usage)?, actor));
+        }
+        self.settings(cwd)
+    }
     /// Shared mount and actor grammar for memory and messages.
     pub fn settings(&self, cwd: &Path) -> Result<(Vec<Mount>, Actor), Refusal> {
         let flags = self;

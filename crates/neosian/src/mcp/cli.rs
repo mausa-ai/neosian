@@ -34,6 +34,9 @@ const HOOKED_CLIENTS: [&str; 5] = ["claude-code", "codex", "cursor", "muse-code"
 /// Serve neosian memory to MCP clients on stdio.
 #[derive(Args)]
 pub struct Mcp {
+    /// Select a portable workspace profile and its local bindings.
+    #[arg(long)]
+    profile: Option<String>,
     /// FileStore root directory (created on start; default: the home,
     /// ~/.neosian or $NEOSIAN_HOME)
     #[arg(long)]
@@ -113,10 +116,31 @@ fn hooked(actor: &str) -> bool {
 
 pub fn run(args: &Mcp, out: &mut impl Write, err: &mut impl Write) -> io::Result<u8> {
     if let Some(crate::clients::install::McpCommand::Install(install)) = &args.command {
+        if args.profile.is_some() {
+            return usage(false, "place --profile after install", out, err);
+        }
         return crate::clients::install::mcp(install, out, err);
     }
-    let nameless = || Ok(vec![user_mount()?]);
-    let mounts = match resolve_mounts(args.scope.as_deref(), &args.mount, nameless) {
+    let selected = match Selection::resolve_profile(
+        args.root.as_deref(),
+        args.url.as_deref(),
+        args.schema.as_deref(),
+        args.profile.as_deref(),
+        &env::current_dir()?,
+        args.scope.is_some() || !args.mount.is_empty(),
+    ) {
+        Ok(selected) => selected,
+        Err(message) => return usage(false, &message, out, err),
+    };
+    let resolved_mounts = selected
+        .mounts()
+        .map(|m| m.map_err(Refusal::Usage))
+        .unwrap_or_else(|| {
+            resolve_mounts(args.scope.as_deref(), &args.mount, || {
+                Ok(vec![user_mount()?])
+            })
+        });
+    let mounts = match resolved_mounts {
         Ok(mounts) => mounts,
         Err(Refusal::Usage(message)) => return usage(false, &message, out, err),
         Err(Refusal::Memory(error)) => {
@@ -134,15 +158,6 @@ pub fn run(args: &Mcp, out: &mut impl Write, err: &mut impl Write) -> io::Result
             return usage(false, &message, out, err);
         }
     };
-    let selected = match Selection::resolve_schema(
-        args.root.as_deref(),
-        args.url.as_deref(),
-        args.schema.as_deref(),
-    ) {
-        Ok(selected) => selected,
-        Err(message) => return usage(false, &message, out, err),
-    };
-
     let store = match selected.open() {
         Ok(store) => store,
         Err(error) => {
@@ -155,7 +170,15 @@ pub fn run(args: &Mcp, out: &mut impl Write, err: &mut impl Write) -> io::Result
         }
     };
     let instructions = if hooked(actor.as_str()) {
-        literal(CONTEXT, "start_instructions").expect("context.yaml carries the discipline")
+        literal(
+            CONTEXT,
+            if store.profile().is_some() {
+                "profile_instructions"
+            } else {
+                "start_instructions"
+            },
+        )
+        .expect("context.yaml carries the discipline")
     } else {
         match render_instructions(store.as_ref(), &mounts, Stamp::now()) {
             Ok(instructions) => instructions,

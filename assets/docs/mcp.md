@@ -20,17 +20,23 @@ and shipped skills are embedded data assets; no model client runs in neosian.
 | `docs` | List topics or read a page from this installed version |
 | `memory_history` | Document version metadata or a mount's recent write ledger |
 
-The handoff pair is present only when a read-write mount can hold session
-state. `docs` and `memory_history` carry read-only, non-destructive annotations.
+Without a profile, the handoff pair is present only when a read-write mount
+can hold session state. With `--profile NAME`, history tools require an
+explicit history selection; `continue_session` can read with capture off,
+while `handoff` requires capture permission. `docs` and `memory_history`
+carry read-only, non-destructive annotations.
 `memory_history(path, limit=20)` requires a mounted virtual path, accepts 1–100
 rows, and returns attribution/version metadata without historical bodies.
 It cannot use an arbitrary storage scope to bypass mounts. `memory versions`
 is the operator CLI for reading historical content.
 
-The existing conversation history tools address the store's conversation IDs;
+Profile-free conversation history tools address the store's conversation IDs;
 mounts do not turn raw conversation history into a per-user privacy boundary.
-Share raw history only with intended readers. A future workspace policy is not
-implied by local username/project defaults.
+Share raw history only with intended readers. `neosian docs profiles` describes
+portable source selection, bounded injection, qualified skills, capture off
+by default and server-enforced grants. Local username/project defaults alone
+provide none of those guarantees. The selected profile bounds raw history
+before reads/search, including startup projections and mailbox annotations.
 
 Skills are also MCP prompts (`prompts/list`, `prompts/get`). `handoff` guides a
 clean departure; `upkeep` guides grounded consolidation by the user's agent.
@@ -41,8 +47,9 @@ than authority to bypass your own constraints.
 
 `neosian serve --scope user:demo` exposes `/mcp` alongside the storage wire.
 Use `NEOSIAN_SERVE_TOKEN` and send `Authorization: Bearer ...` on every request.
-A constrained token cannot access `/mcp`; use the explicitly scoped storage
-HTTP routes instead. No mounts means no MCP surface.
+A constrained token cannot access `/mcp`; enabling server grants refuses
+`/mcp` for every token. Use the local stdio bridge with a profile and granted
+storage HTTP routes. No mounts means no MCP surface.
 
 The server implements the initialize/initialized lifecycle and handshake
 protocol versions from 2024-11-05 through 2025-11-25. Retain the returned
