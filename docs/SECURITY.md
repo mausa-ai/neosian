@@ -59,3 +59,10 @@ Collection schemas are advisory checks, not access control. Apply/export
 requires paused writers because wire 6 has no batch transaction or atomic
 compare-and-create. Bundles retain current source evidence; exported copies
 require their own erasure and are not automatically synchronized.
+
+Managed skill files and dependency declarations are data, not executable
+installation hooks or permission grants. Loading checks mounted reads, profile
+selection, current revision pins and supporting hashes. Raw authorized memory
+reads remain available. Import/edit/revert/export require paused writers and
+stable files; partial batches report receipts without rollback. Root erasure
+does not cascade to separate resources or existing exports.

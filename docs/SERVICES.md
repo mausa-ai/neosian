@@ -158,3 +158,7 @@ Knowledge import/collection/validate/references/export introduces no service
 setting, account or dependency. It uses existing mounted storage access and
 explicit local input/output paths. Apply and export require paused writers;
 collection rules are optional validation rather than server authorization.
+
+S4 skill management uses existing storage/profile settings and needs no model
+keys, package registry or external execution service. Skill directory packages
+are UTF-8 data; source commands/scripts are never executed during import/load.

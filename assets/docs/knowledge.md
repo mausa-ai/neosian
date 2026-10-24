@@ -194,3 +194,8 @@ listing work. Inputs refuse symlinks, traversal and unsupported formats.
 Exports preflight provenance growth against ingestion limits; use a full
 archive when that evidence exceeds them. A longer destination prefix or custom
 source label can require additional header space on import.
+
+Skills can use these same readable headers and provenance. `neosian skill`
+adds skill-specific validation, directory packages, dependency/resource checks
+and profile revision guards over ordinary stored documents. Its optional
+manifest lives in `attributes.skill`; see `neosian docs skills`.

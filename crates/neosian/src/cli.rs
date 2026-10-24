@@ -25,6 +25,11 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Manage reusable skills, supporting files and profile revision guards.
+    Skill {
+        #[command(subcommand)]
+        command: crate::skill::cli::Command,
+    },
     /// Import, structure, check and export scoped knowledge.
     Knowledge {
         #[command(subcommand)]
@@ -173,6 +178,7 @@ where
         }
     }
     let code = match cli.command {
+        Command::Skill { command } => crate::skill::cli::run(&command, &mut out, &mut err),
         Command::Knowledge { command } => crate::knowledge::cli::run(&command, &mut out, &mut err),
         Command::Profile { command } => crate::profile::cli::run(&command, &mut out, &mut err),
         Command::Setup(args) => clients::setup::run(&args, &mut out, &mut err),

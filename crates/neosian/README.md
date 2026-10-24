@@ -34,3 +34,7 @@ into an explicit mounted collection. Optional field rules, deliberate references
 and source provenance stay in readable versioned content. Validate and export
 that knowledge across supported backends; retain full histories through the
 separate archive commands. See `neosian docs knowledge`.
+
+`neosian skill` manages portable, versioned instructions with optional text
+resources, dependencies and profile revision guards. Read `neosian docs skills`
+for previews, exact update/recovery semantics and permission boundaries.

@@ -84,6 +84,16 @@ references, and export readable knowledge bundles with source provenance.
 These use the same profiles and storage backends as memory. Full-history
 archives remain available separately. Read `neosian docs knowledge`.
 
+## Manage reusable skills
+
+`neosian skill import ./review --to /memories/skills/review --scope user:demo`
+previews a Markdown skill or directory package. Discover, inspect, validate,
+edit, diff, revert and export use normal memory versions and mounted authority.
+Optional text resources and dependencies are checked when loaded. Profiles can
+select and pin current skill revisions explicitly without copying their bodies.
+The agent executes instructions. Read `neosian docs skills` for the workflow,
+revision guards, permission rules and paused-writer requirements.
+
 ## Interfaces and compatibility
 
 Version 2 intentionally retires the Python distribution, public SDKs,
@@ -102,7 +112,7 @@ The versioned `neosian-docs.json` release artifact supplies those same pages
 to the website. `neosian-contracts.tar.gz` contains machine contracts,
 fixtures, the independent HTTP conformance runner and the optional one-time
 metadata converter. `neosian schema state`, `wire`, `errors`, `profile` and
-`grants` and `knowledge` print the
+`grants`, `knowledge` and `skill` print the
 machine-readable definitions directly.
 
 ## Development

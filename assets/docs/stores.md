@@ -110,3 +110,9 @@ Bundles carry current documents and source envelope evidence, while top-level
 archives retain complete histories and original storage identities. Apply and
 export require paused writers; no batch transaction or synchronization is
 claimed. See `neosian docs knowledge` for format and provenance limits.
+
+Managed skills and supporting text use ordinary memory rows and revisions.
+Profile pins are portable configuration guards; dependencies and resource hashes
+are content metadata. No backend capability or DDL is added. Full archives
+retain skill histories, while skill directory exports carry current content
+and source evidence. Apply/export requires paused writers.

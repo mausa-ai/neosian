@@ -1,5 +1,5 @@
 //! `list_skills` and `load_skill` (`memory/skills.py`, DESIGN §24.3): the
-//! mounts' `skills/` documents and the wheel's own, read live per call;
+//! mounts' `skills/` documents and the binary's shipped assets, read live per call;
 //! a skill in a mount names its document and version, so a revision is
 //! one `str_replace` away.
 
@@ -54,6 +54,9 @@ fn row(entry: &SkillEntry) -> Value {
     if let Some(path) = &entry.path {
         row.insert("path".to_string(), json!(path));
         row.insert("version".to_string(), json!(entry.version));
+    }
+    if let Some(details) = &entry.details {
+        row.insert("details".into(), details.clone());
     }
     Value::Object(row)
 }
@@ -111,6 +114,10 @@ fn load_call(server: &Server, arguments: &Map<String, Value>) -> Outcome {
             .hint(format!("Available skills: {}", names.join(", ")));
     };
     let Some(skill) = &entry.skill else {
+        if memory.store.profile().is_some() {
+            return Outcome::fail(entry.error.clone().unwrap_or_default())
+                .hint(literal(TOOLS, "skill_refusal").expect("skill refusal asset"));
+        }
         let version = entry.version.map_or("None".to_string(), |v| v.to_string());
         return Outcome::fail(entry.error.clone().unwrap_or_default()).hint(format!(
             "Fix {} (version {version}) with the memory tool's str_replace.",
@@ -118,6 +125,12 @@ fn load_call(server: &Server, arguments: &Map<String, Value>) -> Outcome {
         ));
     };
     let outcome = Outcome::ok(skill.content.clone());
+    if let Some(details) = &entry.details {
+        return outcome.hint(format!(
+            "{}\n{details}",
+            literal(TOOLS, "skill_context").expect("skill context asset")
+        ));
+    }
     match (&entry.path, entry.version) {
         (Some(path), Some(version)) => outcome.hint(format!("{path} (version {version})")),
         _ => outcome,

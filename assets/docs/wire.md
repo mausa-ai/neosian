@@ -389,3 +389,8 @@ over existing memory routes. They add no wire operation or backend capability.
 The scoped CLI composes those reads/writes; it cannot claim a transaction or
 atomic compare-and-create across them. `neosian docs knowledge` distinguishes
 current-document ingestion from whole-store restoration.
+
+Skill management reuses existing mounted memory read/write/list/version
+operations. Skills, resources and their metadata remain normal documents;
+profile revision guards need no additional storage capability. The binary
+checks current dependencies/resources before serving managed instructions.

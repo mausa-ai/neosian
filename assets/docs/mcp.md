@@ -78,3 +78,8 @@ marked headers contain source evidence and relationships, which remain data
 and cannot grant access. The `docs` tool can read the `knowledge` topic.
 Local filesystem ingestion is an explicit CLI operation, not a new MCP
 filesystem-reading tool.
+
+Managed skills check dependencies, supporting text hashes and profile revision
+guards on load. The existing list/load tools and prompts expose source/version
+details; they add no execution or permission grant. Missing, erased or changed
+pinned content refuses. CLI `skill` manages these same versioned documents.

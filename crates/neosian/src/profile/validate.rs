@@ -116,6 +116,29 @@ pub fn profile(p: &Profile) -> Result<(), String> {
             validate_document_path(segments[2]).map_err(|_| "invalid skill name")?;
         }
     }
+    if p.skill_pins.len() > 256 {
+        return Err("too many skill pins".into());
+    }
+    for (path, pin) in &p.skill_pins {
+        if !p.skills.contains(path) {
+            return Err("skill pin must name a selected stored skill".into());
+        }
+        let (mount, _) =
+            crate::skill::model::address(path).map_err(|_| "pin must name /mount/skills/name")?;
+        if !p
+            .mounts
+            .iter()
+            .any(|m| m.path == mount && m.scope == pin.scope && m.source == pin.source)
+        {
+            return Err("skill pin source/scope must match its selected mount".into());
+        }
+        crate::skill::model::Revision {
+            version: pin.version,
+            sha256: pin.sha256.clone(),
+        }
+        .validate()
+        .map_err(|_| "invalid pinned revision")?;
+    }
     let c = &p.capture;
     if c.fields.len() > 5
         || c.fields

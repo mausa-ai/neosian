@@ -27,6 +27,7 @@ mod repr;
 mod schema;
 mod serve;
 mod shape;
+mod skill;
 mod state;
 mod store;
 #[cfg(test)]

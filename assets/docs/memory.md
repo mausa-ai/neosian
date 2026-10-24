@@ -154,3 +154,9 @@ Operator `redact` clears selected turns; `prune` applies an age cutoff to
 conversations. Whole-conversation erasure also clears their session documents.
 Projections covering erased turns are blanked. Memory and turn formats remain
 1; `neosian docs stores` documents the on-disk layout and failure behavior.
+
+`neosian skill` manages versioned `skills/name` documents and their supporting
+text. Knowledge headers remain readable, and source provenance, dependencies
+and resource hashes are content metadata. Raw memory edits can invalidate a
+skill; use `skill validate` and review its manifest. Root erasure does not
+cascade to separate resources or copies. See `neosian docs skills`.

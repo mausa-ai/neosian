@@ -12,6 +12,7 @@ pub enum Kind {
     Profile,
     Grants,
     Knowledge,
+    Skill,
 }
 
 #[derive(Args)]
@@ -50,6 +51,11 @@ pub fn run(args: &Schema, out: &mut impl Write, err: &mut impl Write) -> io::Res
         Kind::Grants => include_str!(concat!(
             env!("NEOSIAN_ASSETS"),
             "/contracts/grants-v1.schema.json"
+        ))
+        .to_string(),
+        Kind::Skill => include_str!(concat!(
+            env!("NEOSIAN_ASSETS"),
+            "/contracts/skill-v1.schema.json"
         ))
         .to_string(),
         Kind::Knowledge => include_str!(concat!(

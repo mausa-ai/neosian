@@ -41,6 +41,11 @@ development and optional one-time migration tooling only (S0, DESIGN §40).
   versioned content. Apply/export requires paused writers; full archives retain
   the separate history/envelope restoration contract.
 
+- **Skill revisions remain state.** Dependencies and text resources are checked
+  through mounted authority; no automatic install or execution. Profile pins
+  guard current source/version/hash and refuse changed or erased content.
+  Preserve legacy `eo` as edit-only; selection never grants broader access.
+
 ## Conventions
 
 - Rust uses `rust-toolchain.toml`'s exact pin, repeated by `rust-version`.

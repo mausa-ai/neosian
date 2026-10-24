@@ -8,6 +8,25 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-10-24
+
+### Added
+
+- `skill` management for Markdown/directory import and export, discovery,
+  inspection, validation, loading, expected-version edits, textual diffs and
+  explicit recovery to a retained root revision. Changes preview by default.
+- Portable text resources, checked hashes, bounded dependencies and collection
+  associations in readable versioned knowledge metadata. Existing knowledge
+  imports now remain recognizable as skills. No scripts are executed.
+- Explicit profile skill selection and current source/version/hash pins.
+  Changed, unavailable or erased revisions refuse until deliberately reviewed
+  and repinned/unpinned; supporting files and selected dependencies are checked.
+  MCP tools/prompts show source and revision details for managed/profile skills.
+- Skill format-1 schema and additive optional profile `skill_pins` contract.
+  Legacy unpinned profiles and skill precedence remain compatible. State formats,
+  wire 6, Postgres schema 4 and mount permission meanings remain unchanged.
+  Skill mutations/export require paused writers and report partial receipts.
+
 ## [2.3.0] - 2026-10-24
 
 ### Added

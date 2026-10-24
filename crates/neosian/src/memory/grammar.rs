@@ -261,6 +261,23 @@ impl Command {
 }
 
 impl Flags {
+    /// Configuration-only skill actions have no storage selection to override.
+    pub fn local_profile(&self) -> Result<&str, String> {
+        if self.root.is_some()
+            || self.url.is_some()
+            || self.schema.is_some()
+            || self.scope.is_some()
+            || !self.mount.is_empty()
+        {
+            return Err(
+                "profile selection changes do not accept storage or mount overrides".into(),
+            );
+        }
+        self.profile
+            .as_deref()
+            .ok_or_else(|| "skill selection changes require explicit --profile".into())
+    }
+
     pub fn select(&self, cwd: &Path) -> Result<crate::remote::selection::Selection, String> {
         crate::remote::selection::Selection::resolve_profile(
             self.root.as_deref(),

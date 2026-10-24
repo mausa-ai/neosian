@@ -114,10 +114,14 @@ impl Server {
         match found {
             Ok(Some(entry)) if entry.skill.is_some() => {
                 let skill = entry.skill.expect("checked");
-                Answer::Result(json!({
-                    "description": skill.description,
-                    "messages": [{"content": {"text": skill.content, "type": "text"}, "role": "user"}],
-                }))
+                let mut messages =
+                    vec![json!({"content":{"text":skill.content,"type":"text"},"role":"user"})];
+                if let Some(details) = entry.details {
+                    let guide = crate::assets::literal(crate::assets::TOOLS, "skill_context")
+                        .expect("skill context asset");
+                    messages.push(json!({"content":{"text":format!("{guide}\n{details}"),"type":"text"},"role":"user"}));
+                }
+                Answer::Result(json!({"description":skill.description,"messages":messages}))
             }
             Ok(_) => Answer::Error {
                 code: INVALID_PARAMS,

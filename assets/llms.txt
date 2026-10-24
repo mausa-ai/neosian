@@ -3,7 +3,7 @@
 > Memory and context for the agent you already use. One Rust binary,
 > CLI/MCP/HTTP interfaces, state on your own files or Postgres.
 
-Release: 2.3.0. Read installed pages with `neosian docs TOPIC` or the MCP
+Release: 2.4.0. Read installed pages with `neosian docs TOPIC` or the MCP
 `docs` tool. They are versioned with the executable and are authoritative
 for that version. The release's neosian-docs.json carries the same pages.
 
@@ -11,7 +11,7 @@ for that version. The release's neosian-docs.json carries the same pages.
 - [Profiles](https://neosian.com/docs/profiles): portable workspaces, bindings, grants and explicit capture.
 - [Memory](https://neosian.com/docs/memory): mounts, current-document search, versions and upkeep.
 - [Knowledge](https://neosian.com/docs/knowledge): Markdown imports, optional collections, references and readable bundles.
-- [Skills](https://neosian.com/docs/skills): reusable instructions as documents.
+- [Skills](https://neosian.com/docs/skills): versioned instructions, portable text packages, dependencies and profile revision guards.
 - [Messaging](https://neosian.com/docs/messaging): messages, reminders and claims.
 - [Stores](https://neosian.com/docs/stores): formats and HTTP conformance.
 - [Agents](https://neosian.com/docs/agents): recording through client hooks.
@@ -37,3 +37,8 @@ Knowledge format 1 supports previewed Markdown/bundle imports into explicit
 mounted collections. Optional field rules are advisory; structure and source
 provenance live in versioned content. References never grant target access.
 Apply/export requires paused writers; full-history archives remain separate.
+
+Skill changes preview until --write; imports use explicit /mount/skills/name.
+Supporting text and dependencies are checked through mounted reads. Profile pins
+guard current source/version/hash, never load erased or historical fallbacks.
+Apply/export needs paused writers. Skills execute in the user's agent.

@@ -1,10 +1,10 @@
 //! Scoped knowledge workflows over ordinary, versioned memory documents.
 
 pub mod cli;
-mod input;
-mod json;
-mod model;
-mod plan;
+pub(crate) mod input;
+pub(crate) mod json;
+pub(crate) mod model;
+pub(crate) mod plan;
 mod read;
 mod rules;
 #[cfg(test)]

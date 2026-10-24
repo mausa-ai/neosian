@@ -240,3 +240,14 @@ Run them from an unbound directory with `NEOSIAN_PROFILE` unset; a portable
 profile export is distinct from a data archive. Use trusted operator authority
 for backups and erasure. Profile-free invocations retain their existing
 selection and data formats; profiles never silently migrate stored history.
+
+## Managed skill revisions
+
+`neosian skill select/unselect` previews qualified selection changes; `pin/unpin`
+previews current-revision guards. Each requires an explicit `--profile`; `--write`
+applies. Optional `skill_pins` records source, scope, version and content SHA-256
+for a selected stored skill. A changed, missing or erased skill refuses until
+explicitly reviewed and repinned/unpinned. No historical body or configuration
+copy is substituted. Supporting files and selected dependencies are checked too.
+Export carries these references/guards without credentials or endpoints. Older
+strict binaries refuse profiles containing the new field. See `neosian docs skills`.

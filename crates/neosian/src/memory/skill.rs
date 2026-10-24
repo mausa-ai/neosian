@@ -1,7 +1,7 @@
 //! Skills as documents in a mount (`memory/skills.py`, `shared/skill.py`,
 //! `shared/frontmatter.py`, DESIGN §24): a skill is the document
 //! `skills/<name>` under any mount, markdown with a frontmatter whose
-//! `description` says when to use it; the wheel's own skills are a
+//! `description` says when to use it; the binary's shipped skills are a
 //! directory source listed after the mounts'. Read live per call.
 
 use super::mounts::{Mount, resolve};
@@ -28,6 +28,7 @@ pub struct SkillEntry {
     pub skill: Option<Skill>,
     pub version: Option<u64>,
     pub error: Option<String>,
+    pub details: Option<serde_json::Value>,
 }
 
 fn invalid(where_: &str, reason: Option<&str>) -> String {
@@ -141,6 +142,16 @@ fn frontmatter(content: &str, where_: &str) -> Result<(Fields, String), String> 
 /// A skill document whose address is `name`; `where_` names the source
 /// in errors. The sentences are the Python side's.
 pub fn skill_from_document(name: &str, content: &str, where_: &str) -> Result<Skill, String> {
+    let owned;
+    let content = if content.starts_with("<!-- neosian-knowledge:") {
+        owned = crate::skill::model::parse(content)
+            .map_err(|e| crate::conversation::Error::from(e).text())?
+            .0
+            .body;
+        owned.as_str()
+    } else {
+        content
+    };
     let (fields, body) = frontmatter(content, where_)?;
     let field = |key: &str| fields.iter().find(|(known, _)| known == key);
     let Some((_, description)) = field("description") else {
@@ -169,7 +180,7 @@ pub fn skill_from_document(name: &str, content: &str, where_: &str) -> Result<Sk
     })
 }
 
-/// The wheel's own skills, in name order.
+/// The binary's shipped skills, in name order.
 pub fn shipped_skills() -> Vec<Skill> {
     SKILLS
         .iter()
@@ -180,7 +191,12 @@ pub fn shipped_skills() -> Vec<Skill> {
         .collect()
 }
 
-fn read(store: &dyn State, mount: &Mount, name: &str) -> Result<Option<SkillEntry>, Error> {
+fn read(
+    store: &dyn State,
+    mounts: &[Mount],
+    mount: &Mount,
+    name: &str,
+) -> Result<Option<SkillEntry>, Error> {
     if name.contains('/') {
         return Ok(None);
     }
@@ -192,24 +208,38 @@ fn read(store: &dyn State, mount: &Mount, name: &str) -> Result<Option<SkillEntr
     }
     let path = format!("/{}/{SKILLS_PREFIX}{name}", mount.path);
     let version = Some(document.envelope.version);
-    Ok(Some(
-        match skill_from_document(name, &document.content, &path) {
-            Ok(skill) => SkillEntry {
-                name: name.to_string(),
-                path: Some(path),
-                skill: Some(skill),
-                version,
-                error: None,
-            },
-            Err(error) => SkillEntry {
-                name: name.to_string(),
-                path: Some(path),
-                skill: None,
-                version,
-                error: Some(error),
-            },
+    let checked = crate::skill::runtime::check(
+        store,
+        mounts,
+        &path,
+        &document.content,
+        document.envelope.version,
+        true,
+        &Default::default(),
+    )
+    .map_err(|e| crate::conversation::Error::from(e).text());
+    let show_details =
+        store.profile().is_some() || document.content.starts_with("<!-- neosian-knowledge:");
+    let parsed = skill_from_document(name, &document.content, &path)
+        .and_then(|skill| checked.map(|details| (skill, details)));
+    Ok(Some(match parsed {
+        Ok((skill, details)) => SkillEntry {
+            name: name.to_string(),
+            path: Some(path),
+            skill: Some(skill),
+            version,
+            error: None,
+            details: show_details.then_some(details),
         },
-    ))
+        Err(error) => SkillEntry {
+            name: name.to_string(),
+            path: Some(path),
+            skill: None,
+            version,
+            error: Some(error),
+            details: None,
+        },
+    }))
 }
 
 fn shipped_entry(skill: &Skill) -> SkillEntry {
@@ -219,6 +249,7 @@ fn shipped_entry(skill: &Skill) -> SkillEntry {
         skill: Some(skill.clone()),
         version: None,
         error: None,
+        details: None,
     }
 }
 
@@ -238,7 +269,12 @@ pub fn list_skills(
                     .map(shipped_entry)
             } else {
                 let (mount, path) = resolve(mounts, selected)?;
-                read(store, mount, path.strip_prefix(SKILLS_PREFIX).unwrap_or(""))?
+                read(
+                    store,
+                    mounts,
+                    mount,
+                    path.strip_prefix(SKILLS_PREFIX).unwrap_or(""),
+                )?
             };
             let mut entry = entry.unwrap_or_else(|| SkillEntry {
                 name: selected.clone(),
@@ -246,7 +282,13 @@ pub fn list_skills(
                 skill: None,
                 version: None,
                 error: Some("Selected skill is unavailable or redacted".into()),
+                details: None,
             });
+            if selected.starts_with("builtin:") && entry.skill.is_some() {
+                entry.details = Some(
+                    serde_json::json!({"source":"builtin","path":selected,"binary_version":env!("CARGO_PKG_VERSION")}),
+                );
+            }
             entry.name = selected.clone();
             if let Some(skill) = &mut entry.skill {
                 skill.name = selected.clone();
@@ -257,8 +299,20 @@ pub fn list_skills(
     }
     let mut entries = Vec::new();
     for mount in mounts {
-        for listing in store.list_documents(&mount.scope, SKILLS_PREFIX)? {
-            if let Some(entry) = read(store, mount, &listing.path[SKILLS_PREFIX.len()..])? {
+        let listings = store.list_documents(&mount.scope, SKILLS_PREFIX)?;
+        if listings.len() > 10_000 {
+            return Err(crate::store::error::Error::Value(
+                "skill discovery exceeds 10000 entries".into(),
+            )
+            .into());
+        }
+        for listing in listings {
+            let bare = listing.path.strip_prefix(SKILLS_PREFIX).ok_or_else(|| {
+                crate::store::error::Error::Value(
+                    "backend returned an out-of-prefix skill path".into(),
+                )
+            })?;
+            if let Some(entry) = read(store, mounts, mount, bare)? {
                 entries.push(entry);
             }
         }
@@ -280,15 +334,21 @@ pub fn load_skill(
             .into_iter()
             .find(|e| e.name == name));
     }
+    if let Some(builtin) = name.strip_prefix("builtin:") {
+        return Ok(directory
+            .iter()
+            .find(|skill| skill.name == builtin)
+            .map(shipped_entry));
+    }
     if name.starts_with('/') {
         let (mount, rest) = resolve(mounts, name)?;
         let Some(bare) = rest.strip_prefix(SKILLS_PREFIX) else {
             return Ok(None);
         };
-        return read(store, mount, bare);
+        return read(store, mounts, mount, bare);
     }
     for mount in mounts {
-        if let Some(entry) = read(store, mount, name)? {
+        if let Some(entry) = read(store, mounts, mount, name)? {
             return Ok(Some(entry));
         }
     }

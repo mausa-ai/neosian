@@ -2,7 +2,7 @@
 
 pub mod cli;
 pub mod context;
-mod files;
+pub(crate) mod files;
 pub mod filter;
 pub mod model;
 pub mod resolve;

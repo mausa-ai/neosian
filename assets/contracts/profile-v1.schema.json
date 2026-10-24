@@ -13,11 +13,13 @@
     "sources": {"type": "array", "minItems": 1, "maxItems": 32, "uniqueItems": true, "items": {"$ref": "#/$defs/alias"}},
     "mounts": {"type": "array", "minItems": 1, "maxItems": 32, "items": {"$ref": "#/$defs/mount"}},
     "skills": {"type": "array", "maxItems": 256, "uniqueItems": true, "default": [], "items": {"type": "string", "maxLength": 4096, "pattern": "^(builtin:(handoff|upkeep)|/[^/]+/skills/[^/]+)$"}},
+    "skill_pins": {"type":"object", "maxProperties":256, "propertyNames":{"pattern":"^/[^/]+/skills/[^/]+$"}, "additionalProperties":{"$ref":"#/$defs/skillPin"}},
     "context": {"$ref": "#/$defs/context"},
     "capture": {"$ref": "#/$defs/capture"},
     "history": {"$ref": "#/$defs/history"}
   },
   "$defs": {
+    "skillPin": {"type":"object","additionalProperties":false,"required":["source","scope","version","sha256"],"properties":{"source":{"$ref":"#/$defs/alias"},"scope":{"type":"string","minLength":1},"version":{"type":"integer","minimum":1},"sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"}}},
     "alias": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,63}$"},
     "textList": {"type": "array", "maxItems": 256, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 4096}},
     "conversation": {"type": "string", "pattern": "^[A-Za-z0-9_.-]{1,128}$", "not": {"enum": [".", ".."]}},

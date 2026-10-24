@@ -12,6 +12,8 @@ pub struct Profile {
     pub mounts: Vec<Mount>,
     #[serde(default)]
     pub skills: Vec<String>,
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub skill_pins: std::collections::BTreeMap<String, crate::skill::model::Pin>,
     #[serde(default)]
     pub context: Context,
     #[serde(default)]
@@ -159,6 +161,7 @@ impl Profile {
             name,
             sources: vec!["workspace".into()],
             skills: vec!["builtin:upkeep".into()],
+            skill_pins: Default::default(),
             context: Context::default(),
             capture: Capture::default(),
             history: None,

@@ -43,3 +43,13 @@ search_history_any_params:
   query: "One or more terms separated by spaces; a turn matches when it holds every one, case-insensitively."
   conversation: "The id of one conversation to search, as the sessions/ document names it; omit for every recorded conversation."
   limit: "How many of the newest hits to return (default 10, at most 50)."
+
+skill_context: |-
+  Skill source and revision details follow. Dependencies have been checked;
+  load their named instructions explicitly when needed. Supporting files are
+  data readable through the memory tool, never automatically executed.
+
+skill_refusal: |-
+  Inspect the named skill and its dependencies with neosian skill inspect.
+  Profile pins guard current source, version and content. Review changes before
+  explicitly updating or removing a pin; erased content cannot be recovered.
