@@ -10,7 +10,7 @@
 # FileStore and Postgres share the same wire. TLS terminates at a reverse proxy;
 # an unset NEOSIAN_SERVE_TOKEN refuses to start at exit 2.
 
-FROM rust:1.99.0-alpine@sha256:0cce0a5e0e8ba67b455257a3a02a1d99005f382748789d6464460028810f1627 AS builder
+FROM rust:1.99.1-alpine@sha256:b1d5dd5a22a09404d3e798c0cf051b689077360374eb505fa5bb93c479693d87 AS builder
 WORKDIR /app
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY crates/ crates/
