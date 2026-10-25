@@ -21,6 +21,7 @@ pub(crate) mod erasure;
 pub mod error;
 mod exchange;
 mod exchange_data;
+mod exchange_files;
 pub(crate) mod fileio;
 pub mod grammar;
 pub mod journal;
@@ -188,7 +189,7 @@ impl FileStore {
     }
 
     fn load(&self, scope: &str, path: &str, file: &Path) -> Result<Document, Error> {
-        let text = fs::read_to_string(file)?;
+        let text = crate::limits::read_file(file)?;
         let (envelope, content) = envelope::parse(&text, scope, path)?;
         Ok(Document {
             envelope,

@@ -23,6 +23,21 @@ phase close names the version.
 - Installer next steps and embedded guides connect preview, write, check and
   client restart/trust, using the installed binary's exact path.
 
+### Changed
+
+- Knowledge import/check/export defaults increase to 10,000 documents and 256 MiB,
+  with explicit configurable document, byte and staging budgets. Imports stage
+  bodies on disk, compare full destination hashes and preserve partial receipts;
+  exports publish complete staged bundles. Existing wire-6 pages serve bulk reads.
+- File document paging/search retain bounded path pages. Postgres search fetches
+  one candidate at a time from the same query snapshot, with an expanded-row byte
+  guard. HTTP responses and decoded memory files have configurable byte budgets.
+- Exchange receivers can grow beyond 1,000 retained paths through bounded deltas.
+  Defaults are 100,000 retained paths and 1 GiB of artifacts. Artifact hashes and
+  redo plans stream without copying untouched bodies into memory. Format-1 bundle
+  bounds, receipt fingerprints and recovery/erasure guarantees remain unchanged;
+  lowering preparation budgets does not prevent committed recovery.
+
 ### Fixed
 
 - Codex registration discovery parses its complete TOML document, so valid MCP

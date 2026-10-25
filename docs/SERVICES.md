@@ -21,6 +21,15 @@ The exact Rust toolchain is pinned in `rust-toolchain.toml`.
 | `NEOSIAN_INSTALL=container` | Container installation identity | Installation shape derives from the executable |
 | `NO_COLOR` | Disable terminal colour | Normal terminal detection |
 
+Bulk operation budgets are configured with `NEOSIAN_KNOWLEDGE_MAX_DOCUMENTS`
+(default 10,000; maximum 100,000), `NEOSIAN_KNOWLEDGE_MAX_BYTES` (256 MiB; 2 GiB),
+`NEOSIAN_MAX_TEMP_BYTES` (512 MiB; 8 GiB), `NEOSIAN_REPLICA_MAX_PATHS` (100,000;
+1,000,000), `NEOSIAN_REPLICA_MAX_BYTES` (1 GiB; 64 GiB), `NEOSIAN_MAX_FILE_BYTES`
+(64 MiB; 1 GiB), and `NEOSIAN_MAX_RESPONSE_BYTES` (64 MiB; 1 GiB). Byte settings
+are positive decimal byte counts, not unit strings. Empty values use defaults.
+See `neosian docs stores` for each setting's exact scope; these do not change
+permissions, skill/context limits or the format-1 exchange bundle bounds.
+
 Flags and environment values containing credentials are never copied into
 client registrations or hook commands. Supply credentials in the client's
 own environment. `status` reports installation paths and registrations,

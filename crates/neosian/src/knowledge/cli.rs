@@ -208,7 +208,7 @@ pub fn run(command: &Command, out: &mut impl Write, err: &mut impl Write) -> io:
                 conflict,
                 write,
                 ..
-            } => plan::import(
+            } => plan::import_staged(
                 &memory,
                 to,
                 input.expect("prepared input"),

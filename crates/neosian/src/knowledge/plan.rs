@@ -2,18 +2,22 @@
 
 use serde_json::{Value, json};
 
-use super::input::Input;
-use super::model::{DEFINITION, MAX_DOCUMENTS, invalid, ordinary};
+use super::input::{Input, Item, Staged};
+use super::model::{DEFINITION, invalid, ordinary};
 use super::rules::{Definition, Issue};
 use super::{definition, snapshot, target, text_error};
+use crate::limits::{Knowledge, Scratch};
 use crate::memory::dispatch::Memory;
 use crate::memory::mounts::{Mount, structural, writable};
+use crate::state::scan::Entries;
 use crate::store::{Document, error::Error};
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::PathBuf;
 
 struct Change {
     path: String,
-    content: String,
-    before: Option<Value>,
+    content: PathBuf,
+    before: Option<String>,
     action: &'static str,
 }
 
@@ -30,12 +34,20 @@ fn observed(memory: &Memory, mount: &Mount, path: &str) -> Result<Option<Documen
     Ok(found)
 }
 
+fn fingerprint(scope: &str, path: &str, doc: Option<&Document>) -> Result<Option<String>, Error> {
+    Ok(snapshot(scope, path, doc)?.map(|mut v| {
+        v.sort_all_objects();
+        super::model::digest(serde_json::to_vec(&v).expect("snapshot serializes"))
+    }))
+}
+
 fn change(
     memory: &Memory,
     mount: &Mount,
     path: String,
     content: String,
     conflict: &str,
+    scratch: &Scratch,
 ) -> Result<Change, Error> {
     let found = observed(memory, mount, &path)?;
     let action = match &found {
@@ -49,23 +61,18 @@ fn change(
         Some(_) => "conflict",
     };
     Ok(Change {
-        before: snapshot(&mount.scope, &path, found.as_ref())?,
+        before: fingerprint(&mount.scope, &path, found.as_ref())?,
         path,
-        content,
+        content: scratch.save(&content)?,
         action,
     })
 }
 
-fn collisions(a: &str, b: &str) -> bool {
-    for (left, right) in a.split('/').zip(b.split('/')) {
-        if !left.eq_ignore_ascii_case(right) {
-            break;
-        }
-        if left != right {
-            return true;
-        }
-    }
-    false
+fn case_keys(path: &str) -> impl Iterator<Item = (&str, String)> {
+    path.match_indices('/')
+        .map(|(i, _)| &path[..i])
+        .chain(std::iter::once(path))
+        .map(|p| (p, p.to_ascii_lowercase()))
 }
 
 fn existing_issues(
@@ -75,15 +82,19 @@ fn existing_issues(
     rules: &Definition,
     planned: &[Change],
 ) -> Result<Vec<Issue>, Error> {
-    let entries = memory
-        .store
-        .list_documents(&mount.scope, &format!("{prefix}/"))?;
-    if entries.len() > MAX_DOCUMENTS + 1 {
-        return Err(invalid("collection validation exceeds 1000 documents"));
-    }
+    let selected = format!("{prefix}/");
+    let entries = Entries::new(memory.store.as_ref(), &mount.scope, &selected);
+    let limits = Knowledge::load()?;
+    let replaced: BTreeSet<_> = planned
+        .iter()
+        .filter(|p| matches!(p.action, "create" | "replace"))
+        .map(|p| p.path.as_str())
+        .collect();
     let mut issues = vec![];
     let mut total = 0;
+    let mut count = 0;
     for entry in entries {
+        let entry = entry?;
         if !entry.path.starts_with(&format!("{prefix}/")) {
             return Err(invalid(
                 "backend returned a document outside the selected collection",
@@ -92,15 +103,14 @@ fn existing_issues(
         if entry.path == format!("{prefix}/{DEFINITION}") || entry.redacted {
             continue;
         }
+        count += 1;
+        limits.check(count, total)?;
         if entry.path.ends_with(&format!("/{DEFINITION}")) {
             return Err(invalid(
                 "nested collections require separate definition changes",
             ));
         }
-        if planned
-            .iter()
-            .any(|p| p.path == entry.path && matches!(p.action, "create" | "replace"))
-        {
+        if replaced.contains(entry.path.as_str()) {
             continue;
         }
         if let Some(doc) = memory.store.read(&mount.scope, &entry.path)? {
@@ -108,9 +118,7 @@ fn existing_issues(
                 continue;
             }
             total += doc.content.len();
-            if total > super::model::MAX_TOTAL {
-                return Err(invalid("collection validation exceeds 20 MiB"));
-            }
+            limits.check(count, total)?;
             let content = super::model::Content::parse(&doc.content, prefix)?;
             if content.metadata.collection != prefix {
                 issues.push(Issue {
@@ -132,21 +140,31 @@ fn apply(
     write: bool,
     mut report: Value,
 ) -> Result<(Value, u8), Error> {
-    let entries = memory.store.list_documents(&mount.scope, "")?;
-    if entries.len() > 10_000 {
-        return Err(invalid(
-            "knowledge preflight exceeds 10000 current documents in this scope",
-        ));
-    }
+    let mut planned = BTreeMap::new();
     for change in &changes {
-        if entries.iter().any(|e| collisions(&change.path, &e.path))
-            || changes
-                .iter()
-                .any(|other| collisions(&change.path, &other.path))
-        {
+        for (spelling, key) in case_keys(&change.path) {
+            if planned
+                .get(&key)
+                .is_some_and(|previous| *previous != spelling)
+            {
+                return Err(invalid(format!(
+                    "case-colliding destination: {}",
+                    change.path
+                )));
+            }
+            planned.insert(key, spelling);
+        }
+    }
+    for entry in Entries::new(memory.store.as_ref(), &mount.scope, "") {
+        let entry = entry?;
+        if case_keys(&entry.path).any(|(spelling, key)| {
+            planned
+                .get(&key)
+                .is_some_and(|previous| *previous != spelling)
+        }) {
             return Err(invalid(format!(
                 "case-colliding destination: {}",
-                change.path
+                entry.path
             )));
         }
     }
@@ -172,7 +190,7 @@ fn apply(
             .filter(|c| matches!(c.action, "create" | "replace"))
         {
             let current = observed(memory, mount, &change.path)?;
-            if snapshot(&mount.scope, &change.path, current.as_ref())? != change.before {
+            if fingerprint(&mount.scope, &change.path, current.as_ref())? != change.before {
                 return Err(invalid(format!(
                     "destination changed during preflight: {}",
                     change.path
@@ -184,7 +202,7 @@ fn apply(
             .filter(|c| matches!(c.action, "create" | "replace"))
         {
             let current = observed(memory, mount, &change.path)?;
-            if snapshot(&mount.scope, &change.path, current.as_ref())? != change.before {
+            if fingerprint(&mount.scope, &change.path, current.as_ref())? != change.before {
                 return Err(invalid(format!(
                     "destination changed before write: {}",
                     change.path
@@ -193,7 +211,7 @@ fn apply(
             let version = memory.store.write(
                 &mount.scope,
                 &change.path,
-                &change.content,
+                &super::input::read(&change.content, super::model::MAX_BODY)?,
                 &memory.actor,
                 current.map(|d| d.envelope.version),
             )?;
@@ -214,10 +232,70 @@ fn apply(
     Ok((report, 0))
 }
 
+struct Prepared<'a> {
+    collection: Option<Definition>,
+    items: Box<dyn Iterator<Item = Result<Item, Error>> + 'a>,
+    ignored: Vec<String>,
+    scratch: &'a Scratch,
+}
+
 pub fn import(
     memory: &Memory,
     path: &str,
     input: Input,
+    conflict: &str,
+    write: bool,
+) -> Result<(Value, u8), Error> {
+    let scratch = Scratch::new()?;
+    import_items(
+        memory,
+        path,
+        Prepared {
+            collection: input.collection,
+            items: Box::new(input.items.into_iter().map(Ok)),
+            ignored: input.ignored,
+            scratch: &scratch,
+        },
+        conflict,
+        write,
+    )
+}
+
+pub fn import_staged(
+    memory: &Memory,
+    path: &str,
+    input: Staged,
+    conflict: &str,
+    write: bool,
+) -> Result<(Value, u8), Error> {
+    let (_, prefix) = target(memory, path)?;
+    let items = input.items.iter().map(|(path, file)| {
+        Ok(Item {
+            path: path.clone(),
+            content: super::model::Content::parse(
+                &super::input::read(file, super::model::MAX_BODY)?,
+                prefix,
+            )?,
+        })
+    });
+    import_items(
+        memory,
+        path,
+        Prepared {
+            collection: input.collection.clone(),
+            items: Box::new(items),
+            ignored: input.ignored.clone(),
+            scratch: &input.scratch,
+        },
+        conflict,
+        write,
+    )
+}
+
+fn import_items(
+    memory: &Memory,
+    path: &str,
+    input: Prepared<'_>,
     conflict: &str,
     write: bool,
 ) -> Result<(Value, u8), Error> {
@@ -236,10 +314,13 @@ pub fn import(
             format!("{prefix}/{DEFINITION}"),
             incoming.render(),
             conflict,
+            input.scratch,
         )?);
     }
     let mut issues = vec![];
+    let mut checked_parents = BTreeSet::new();
     for item in input.items {
+        let item = item?;
         let target = format!("{prefix}/{}", item.path);
         ordinary(&target)?;
         let planned = change(
@@ -248,6 +329,7 @@ pub fn import(
             target.clone(),
             item.content.render()?,
             conflict,
+            input.scratch,
         )?;
         if planned.action != "skip"
             && let Some(rules) = &effective
@@ -261,10 +343,11 @@ pub fn import(
             for part in parent.split('/') {
                 nested.push('/');
                 nested.push_str(part);
-                if memory
-                    .store
-                    .read(&mount.scope, &format!("{nested}/{DEFINITION}"))?
-                    .is_some()
+                if checked_parents.insert(nested.clone())
+                    && memory
+                        .store
+                        .read(&mount.scope, &format!("{nested}/{DEFINITION}"))?
+                        .is_some()
                 {
                     return Err(invalid(format!(
                         "nested collection requires a separate import: {nested}"
@@ -301,12 +384,14 @@ pub fn collection(
         return Ok((json!({"path":path,"definition":existing}), 0));
     };
     writable(mount)?;
+    let scratch = Scratch::new()?;
     let change = change(
         memory,
         mount,
         format!("{prefix}/{DEFINITION}"),
         incoming.render(),
         "replace",
+        &scratch,
     )?;
     let issues = existing_issues(memory, mount, prefix, &incoming, &[])?;
     apply(

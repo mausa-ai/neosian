@@ -63,6 +63,29 @@ impl FileStore {
         mut writes: Vec<WriteOp>,
         change: Change,
     ) -> Result<(), Error> {
+        writes.extend(self.change_writes(scope, change)?);
+        transaction::commit(&self.root, writes)?;
+        Ok(())
+    }
+
+    pub(super) fn commit_changes_stream(
+        &self,
+        scope: &str,
+        writes: impl Iterator<Item = std::io::Result<WriteOp>>,
+        change: Change,
+        maximum: u64,
+    ) -> Result<(), Error> {
+        let events = self.change_writes(scope, change)?;
+        transaction::commit_stream(
+            &self.root,
+            writes.chain(events.into_iter().map(Ok)),
+            maximum,
+        )?;
+        Ok(())
+    }
+
+    fn change_writes(&self, scope: &str, change: Change) -> Result<Vec<WriteOp>, Error> {
+        let mut writes = vec![];
         let found = self.change_head(scope)?;
         let mut head = found.clone().unwrap_or_else(Head::new);
         let mut changes = vec![];
@@ -84,8 +107,7 @@ impl FileStore {
             &self.change_file(scope, "head.json")?,
             serde_json::to_string(&head).expect("head serializes"),
         )?);
-        transaction::commit(&self.root, writes)?;
-        Ok(())
+        Ok(writes)
     }
 
     pub fn read_changes(&self, scope: &str, request: &Request) -> Result<Page, Error> {

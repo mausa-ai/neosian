@@ -7,9 +7,7 @@ use std::path::{Component, Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use super::model::{
-    self, Content, MAX_BODY, MAX_DOCUMENTS, MAX_TOTAL, Origin, Source, digest, invalid,
-};
+use super::model::{self, Content, MAX_BODY, Origin, Source, digest, invalid};
 use super::rules::Definition;
 use crate::store::error::Error;
 
@@ -22,6 +20,25 @@ pub struct Input {
     pub collection: Option<Definition>,
     pub items: Vec<Item>,
     pub ignored: Vec<String>,
+}
+
+pub struct Staged {
+    pub collection: Option<Definition>,
+    pub items: Vec<(String, PathBuf)>,
+    pub ignored: Vec<String>,
+    pub scratch: crate::limits::Scratch,
+    bytes: usize,
+    limits: crate::limits::Knowledge,
+}
+
+impl Staged {
+    fn push(&mut self, path: String, content: Content) -> Result<(), Error> {
+        let text = content.render()?;
+        self.bytes += text.len();
+        self.limits.check(self.items.len() + 1, self.bytes)?;
+        self.items.push((path, self.scratch.save(&text)?));
+        Ok(())
+    }
 }
 
 #[derive(Deserialize, Serialize)]
@@ -119,14 +136,17 @@ fn walk(
     files: &mut Vec<PathBuf>,
     ignored: &mut Vec<String>,
     visited: &mut usize,
+    maximum: u64,
 ) -> Result<(), Error> {
     if relative.components().count() > 16 {
         return Err(invalid("input nesting exceeds 16 levels"));
     }
     for entry in fs::read_dir(root.join(relative))? {
         *visited += 1;
-        if *visited > 10_000 {
-            return Err(invalid("input contains more than 10000 filesystem entries"));
+        if *visited as u64 > maximum {
+            return Err(invalid(format!(
+                "input traversal exceeds {maximum} filesystem entries; split the input or raise NEOSIAN_KNOWLEDGE_MAX_DOCUMENTS"
+            )));
         }
         let entry = entry?;
         let path = relative.join(entry.file_name());
@@ -138,7 +158,7 @@ fn walk(
             )));
         }
         if kind.is_dir() {
-            walk(root, &path, files, ignored, visited)?;
+            walk(root, &path, files, ignored, visited, maximum)?;
         } else if kind.is_file() && markdown(&path) {
             files.push(path);
         } else {
@@ -153,7 +173,7 @@ pub fn load(
     format: &str,
     source: Option<&str>,
     collection: &str,
-) -> Result<Input, Error> {
+) -> Result<Staged, Error> {
     let meta = fs::symlink_metadata(path)?;
     if meta.file_type().is_symlink() {
         return Err(invalid("the input root must not be a symlink"));
@@ -166,17 +186,23 @@ pub fn load(
     if label.is_empty() || label.chars().count() > 256 {
         return Err(invalid("source label requires 1..256 characters"));
     }
-    let mut result = Input {
+    let limits = crate::limits::Knowledge::load()?;
+    let mut result = Staged {
         collection: None,
         items: vec![],
         ignored: vec![],
+        scratch: crate::limits::Scratch::new()?,
+        bytes: 0,
+        limits,
     };
     let (root, records): (PathBuf, Vec<Record>) = if format == "bundle" {
         if !meta.is_dir() {
             return Err(invalid("bundle input must be a directory"));
         }
-        let bundle: Bundle =
-            super::json::parse(&read(&contained(path, "knowledge.json")?, 2 * MAX_BODY)?)?;
+        let bundle: Bundle = super::json::parse(&read(
+            &contained(path, "knowledge.json")?,
+            limits.manifest(),
+        )?)?;
         if bundle.format != 1 {
             return Err(invalid("unsupported knowledge bundle format; expected 1"));
         }
@@ -188,7 +214,14 @@ pub fn load(
     } else {
         let (root, mut files) = if meta.is_dir() {
             let mut files = vec![];
-            walk(path, Path::new(""), &mut files, &mut result.ignored, &mut 0)?;
+            walk(
+                path,
+                Path::new(""),
+                &mut files,
+                &mut result.ignored,
+                &mut 0,
+                limits.documents * 10,
+            )?;
             (path.to_path_buf(), files)
         } else {
             if !markdown(path) {
@@ -203,18 +236,14 @@ pub fn load(
             )
         };
         files.sort();
-        if files.len() > MAX_DOCUMENTS {
-            return Err(invalid("import exceeds 1000 documents"));
-        }
+        limits.check(files.len(), 0)?;
         let mut total = 0;
         for file in files {
             let logical = name(&file.with_extension(""))?;
             model::ordinary(&logical)?;
             let text = read(&contained(&root, &name(&file)?)?, MAX_BODY)?;
             total += text.len();
-            if total > MAX_TOTAL {
-                return Err(invalid("import exceeds 20 MiB"));
-            }
+            limits.check(0, total)?;
             let mut content = Content::parse(&text, collection)?;
             content.metadata.collection = collection.into();
             let provenance = Source {
@@ -226,26 +255,19 @@ pub fn load(
             if !content.metadata.sources.contains(&provenance) {
                 content.metadata.sources.push(provenance);
             }
-            result.items.push(Item {
-                path: logical,
-                content,
-            });
+            result.push(logical, content)?;
         }
         validate(&mut result)?;
         return Ok(result);
     };
-    if records.len() > MAX_DOCUMENTS {
-        return Err(invalid("import exceeds 1000 documents"));
-    }
+    limits.check(records.len(), 0)?;
     let mut total = 0;
     for record in records {
         model::ordinary(&record.path)?;
         record.origin.validate()?;
         let text = read(&contained(&root, &record.file)?, MAX_BODY)?;
         total += text.len();
-        if total > MAX_TOTAL {
-            return Err(invalid("import exceeds 20 MiB"));
-        }
+        limits.check(0, total)?;
         if digest(&text) != record.sha256 {
             return Err(invalid(format!("checksum mismatch: {}", record.file)));
         }
@@ -260,31 +282,20 @@ pub fn load(
         if !content.metadata.sources.contains(&provenance) {
             content.metadata.sources.push(provenance);
         }
-        result.items.push(Item {
-            path: record.path,
-            content,
-        });
+        result.push(record.path, content)?;
     }
     validate(&mut result)?;
     Ok(result)
 }
 
-fn validate(input: &mut Input) -> Result<(), Error> {
+fn validate(input: &mut Staged) -> Result<(), Error> {
     let mut names = HashSet::new();
-    let mut total = 0;
-    for item in &input.items {
-        if !names.insert(item.path.to_ascii_lowercase()) {
-            return Err(invalid(format!(
-                "duplicate or case-colliding path: {}",
-                item.path
-            )));
+    for (path, _) in &input.items {
+        if !names.insert(path.to_ascii_lowercase()) {
+            return Err(invalid(format!("duplicate or case-colliding path: {path}")));
         }
-        total += item.content.render()?.len();
     }
-    if total > MAX_TOTAL {
-        return Err(invalid("import with metadata exceeds 20 MiB"));
-    }
-    input.items.sort_by(|a, b| a.path.cmp(&b.path));
+    input.items.sort_by(|a, b| a.0.cmp(&b.0));
     input.ignored.sort();
     Ok(())
 }

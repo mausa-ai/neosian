@@ -92,7 +92,9 @@ previews Markdown ingestion; `--write` applies after pausing other writers.
 Choose your own collections and optional field rules, resolve deliberate
 references, and export readable knowledge bundles with source provenance.
 These use the same profiles and storage backends as memory. Full-history
-archives remain available separately. Read `neosian docs knowledge`.
+archives remain available separately. Knowledge batches default to 10,000 documents
+and 256 MiB with configurable budgets; imports stage bodies on disk and exports
+publish complete bundles. Read `neosian docs knowledge`.
 
 ## Manage reusable skills
 

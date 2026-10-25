@@ -79,6 +79,34 @@ impl State for RemoteStore {
         }
     }
 
+    fn document_page(
+        &self,
+        scope: &str,
+        prefix: &str,
+        cursor: Option<&str>,
+        limit: i64,
+    ) -> Result<crate::store::Page<Entry>, Error> {
+        let data = self.call(
+            "memory/list_documents",
+            json!({"scope":scope,"prefix":prefix,"cursor":cursor,"limit":limit}),
+        )?;
+        let items = codec::array(&data, "entries")?
+            .iter()
+            .map(codec::entry)
+            .collect::<Result<Vec<_>, _>>()?;
+        let next = codec::key(&data, "next_cursor")?;
+        let next_cursor = match next {
+            Value::Null => None,
+            Value::String(s) if !s.is_empty() && s.len() <= 8192 && !items.is_empty() => {
+                Some(s.clone())
+            }
+            _ => return Err(codec::malformed("next_cursor")),
+        };
+        if items.len() > limit as usize {
+            return Err(codec::malformed("entries"));
+        }
+        Ok(crate::store::Page { items, next_cursor })
+    }
     fn list_documents(&self, scope: &str, prefix: &str) -> Result<Vec<Entry>, Error> {
         self.follow(
             "memory/list_documents",

@@ -96,3 +96,47 @@ def test_search_refuses_future_physical_rows(database: Database) -> None:
             sql.Identifier(schema)
         )
     ).fetchone() == ("needle", 99)
+
+
+def test_search_streams_to_lookahead_and_bounds_expanded_row_bytes(
+    binary: Binary, database: Database
+) -> None:
+    connection, schema, server = database
+    for path in ["a", "b", "c"]:
+        server.post("memory/write", scope="user:search", path=path, content="needle")
+    # Large highly compressible values must count their expanded bytes, including extra.
+    connection.execute(
+        sql.SQL("UPDATE {}.memories SET extra = %s::jsonb WHERE path = 'c'").format(
+            sql.Identifier(schema)
+        ),
+        (json.dumps({"large": "x" * 12000}),),
+    )
+    env = {
+        "NEOSIAN_POSTGRES_DSN": os.environ["NEOSIAN_TEST_POSTGRES_DSN"],
+        "NEOSIAN_MAX_FILE_BYTES": "1024",
+    }
+    args = [
+        "memory",
+        "search",
+        "needle",
+        "--scope",
+        "user:search",
+        "--schema",
+        schema,
+        "--json",
+    ]
+    first = run(binary, *args, "--limit", "1", env=env)
+    assert first.returncode == 0, first.stderr
+    page = json.loads(first.stdout)
+    assert [hit["path"] for hit in page["hits"]] == ["a"] and page["next_cursor"]
+    refused = run(binary, *args, "--limit", "3", env=env)
+    assert refused.returncode != 0 and "NEOSIAN_MAX_FILE_BYTES" in refused.stderr
+    env["NEOSIAN_MAX_FILE_BYTES"] = "20000"
+    raised = run(binary, *args, "--limit", "3", env=env)
+    assert raised.returncode == 0, raised.stderr
+    assert [hit["path"] for hit in json.loads(raised.stdout)["hits"]] == ["a", "b", "c"]
+    assert connection.execute(
+        sql.SQL(
+            "SELECT version, content, length(extra->>'large') FROM {}.memories WHERE path = 'c'"
+        ).format(sql.Identifier(schema))
+    ).fetchone() == (1, "needle", 12000)

@@ -100,9 +100,13 @@ pub fn collect(store: &dyn State, scope: &str, base: Option<Checkpoint>) -> Resu
         }
     }
     if base.is_none() || erasures.iter().any(|e| e.path.is_none()) {
-        for entry in store.list_documents(scope, "")? {
+        for entry in crate::state::scan::Entries::new(store, scope, "") {
+            let entry = entry?;
             if selected(&entry.path) {
                 paths.insert(entry.path);
+                if paths.len() > MAX_PATHS {
+                    return Err(invalid("exchange selects more than 1000 paths"));
+                }
             }
         }
     }

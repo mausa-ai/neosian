@@ -229,6 +229,30 @@ impl State for Routed {
         }
         Ok(entries)
     }
+    fn document_page(
+        &self,
+        scope: &str,
+        prefix: &str,
+        cursor: Option<&str>,
+        limit: i64,
+    ) -> Result<crate::store::Page<Entry>, Error> {
+        let mut page = self
+            .memory(scope, false, false)?
+            .document_page(scope, prefix, cursor, limit)?;
+        if self
+            .profile
+            .history
+            .as_ref()
+            .is_some_and(|h| h.scope == scope)
+        {
+            page.items.retain(|e| {
+                e.path
+                    .strip_prefix("sessions/")
+                    .is_none_or(|id| self.history(id, false).is_ok())
+            });
+        }
+        Ok(page)
+    }
     fn versions(&self, scope: &str, path: &str, limit: usize) -> Result<Vec<Row>, Error> {
         self.memory(scope, false, false)?
             .versions(scope, path, limit)

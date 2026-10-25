@@ -38,6 +38,15 @@ impl State for FileStore {
     fn list_documents(&self, scope: &str, prefix: &str) -> Result<Vec<Entry>, Error> {
         self.list_documents(scope, prefix)
     }
+    fn document_page(
+        &self,
+        scope: &str,
+        prefix: &str,
+        cursor: Option<&str>,
+        limit: i64,
+    ) -> Result<crate::store::Page<Entry>, Error> {
+        self.list_documents_page(scope, prefix, cursor, limit)
+    }
     fn versions(&self, scope: &str, path: &str, limit: usize) -> Result<Vec<Row>, Error> {
         self.versions(scope, path, limit)
     }

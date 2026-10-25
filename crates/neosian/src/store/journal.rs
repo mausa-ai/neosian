@@ -54,7 +54,7 @@ pub fn read_rows(file: &Path, scope: &str, path: &str) -> Result<Vec<Row>, Error
     if !file.is_file() {
         return Ok(Vec::new());
     }
-    let rows = fs::read_to_string(file)?
+    let rows = crate::limits::read_file(file)?
         .lines()
         .enumerate()
         .map(|(index, line)| parse_row(line, index + 1, scope, path))

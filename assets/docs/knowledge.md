@@ -186,17 +186,44 @@ bundles are current-document ingestion sources, not replicas or incremental
 sync. Previously exported/copied knowledge requires separate erasure; importing
 an old bundle into a fresh destination cannot know about later source erasure.
 
-Per-operation limits are 1000 documents, 1 MiB per stored document including its header,
-20 MiB total, 64 KiB per metadata/definition header, 128 references and 128
-source records per document, 64 defined fields, and a 2 MiB manifest. Field
-names and relation labels are 1..128 characters; collection names and source
-labels are 1..256. Source filenames are at most 1024 UTF-8 bytes. Directory
-walking stops at 10000 entries or 16 levels. Preflight reads at most 10000
-current scope entries after the backend listing; this does not bound backend
-listing work. Inputs refuse symlinks, traversal and unsupported formats.
-Exports preflight provenance growth against ingestion limits; use a full
-archive when that evidence exceeds them. A longer destination prefix or custom
-source label can require additional header space on import.
+Knowledge operations default to 10,000 documents and 256 MiB of normalized
+content. `NEOSIAN_KNOWLEDGE_MAX_DOCUMENTS` (up to 100,000) and
+`NEOSIAN_KNOWLEDGE_MAX_BYTES` (up to 2 GiB) select explicit local budgets. Byte
+settings are positive decimal integers. For example, to import up to 20,000
+notes within a 512 MiB content budget:
+
+```sh
+NEOSIAN_KNOWLEDGE_MAX_DOCUMENTS=20000 NEOSIAN_KNOWLEDGE_MAX_BYTES=536870912 NEOSIAN_MAX_TEMP_BYTES=2147483648 neosian knowledge import ./notes --to /memories/notes --scope user:demo
+```
+
+Review the preview, pause writers, then repeat with `--write`. Import bodies are
+staged privately on disk; plans retain paths and hashes of full destination
+snapshots. Collection validation and export consume document pages and read one
+body at a time. Export stages a complete bundle before publishing its output
+name. Budget failures never silently truncate a batch; a write failure still
+reports exact partial receipts. Local staging and recovery-plan preparation each
+have a 512 MiB default budget through `NEOSIAN_MAX_TEMP_BYTES`; exchange accounts
+for its staging and redo plan together. Knowledge stages use the OS temp
+location (exports stage beside the output); receiver stages stay under its root. Ensure that location has room;
+normal completion and errors clean stages, while a killed process may leave a
+private `.neosian-stage-*` directory. Remove an orphan only after its process has
+stopped. Retain committed `.transactions/pending.json` for automatic recovery.
+
+Fixed validation bounds remain 1 MiB per stored knowledge document including its
+header, 64 KiB per metadata/definition header, 128 references and 128 source
+records per document, and 64 defined fields. Field names and relation labels are
+1..128 characters; collection names and source labels are 1..256. Source filenames
+are at most 1024 UTF-8 bytes. A manifest is bounded by the configured content
+budget or 64 MiB, whichever is smaller. Directory walking stops at ten times the
+document budget or 16 levels. Inputs refuse symlinks, traversal and unsupported
+formats. Larger bundles keep format 1; older binaries may refuse their size.
+
+Exports preflight provenance growth against ingestion limits; use a full archive
+when that evidence exceeds them. A longer destination prefix or custom source
+label can require additional header space on import. These budgets do not enlarge
+skill loading or context injection, change backend permissions, or make
+full-history archives incremental. See `neosian docs stores` for file, HTTP and
+replica budgets and their practical limits.
 
 Skills can use these same readable headers and provenance. `neosian skill`
 adds skill-specific validation, directory packages, dependency/resource checks

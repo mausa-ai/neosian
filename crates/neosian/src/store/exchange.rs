@@ -7,7 +7,8 @@ use serde_json::{Value, json};
 use super::{
     FileStore,
     error::{Error, MemoryError},
-    exchange_data::{check_layout, fingerprint},
+    exchange_data::check_layout,
+    exchange_files::fingerprint,
     layout,
     transaction::WriteOp,
 };
@@ -63,8 +64,9 @@ impl FileStore {
         self.scope(scope)?;
         let receipt = self.receipt(scope)?;
         let files = self.exchange_files(scope)?;
+        let digest = fingerprint(&files)?;
         let status = match &receipt {
-            Some(r) if r.fingerprint == fingerprint(&files) => "ready",
+            Some(r) if r.fingerprint == digest => "ready",
             Some(_) => "conflict",
             None if files.is_empty()
                 && !layout::scope_dir(&self.root, scope)
@@ -98,7 +100,7 @@ impl FileStore {
         let before = self.exchange_files(scope)?;
         let refuse = |reason| MemoryError::conflict(scope, None, reason);
         if let Some(receipt) = &receipt {
-            if receipt.fingerprint != fingerprint(&before) {
+            if receipt.fingerprint != fingerprint(&before)? {
                 return Err(refuse("replica_changed").into());
             }
             if receipt.bundle_id == bundle.id {
@@ -122,35 +124,41 @@ impl FileStore {
             }
         }
         let mut after = before.clone();
-        self.exchange_data(scope, bundle, &mut after)?;
+        let staging = self.root.join(".transactions");
+        super::fileio::private_mkdir(&staging)?;
+        let scratch = crate::limits::Scratch::beside(&staging)?;
+        self.exchange_data(scope, bundle, &mut after, &scratch)?;
         check_layout(&self.root, &layout::scope_dir(&self.root, scope), &after)?;
         let receipt = Receipt {
             format: 1,
             bundle_id: bundle.id.clone(),
             checkpoint: bundle.checkpoint.clone(),
-            fingerprint: fingerprint(&after),
+            fingerprint: fingerprint(&after)?,
         };
         let directory = layout::scope_dir(&self.root, scope);
-        let mut writes = vec![];
-        for (name, text) in &after {
-            if before.get(name) != Some(text) {
-                writes.push(WriteOp::put(
-                    &self.root,
-                    &directory.join(name),
-                    text.clone(),
-                )?);
-            }
-        }
-        for name in before.keys().filter(|name| !after.contains_key(*name)) {
-            writes.push(WriteOp::remove(&self.root, &directory.join(name))?);
-        }
-        writes.push(WriteOp::put(
-            &self.root,
-            &self.receipt_path(scope)?,
-            serde_json::to_string(&receipt).expect("receipt serializes"),
-        )?);
         if write {
-            self.commit_changes(scope, writes, Change::reset("restored"))?;
+            let puts = after
+                .iter()
+                .filter(|(name, artifact)| !before.get(*name).is_some_and(|old| old.same(artifact)))
+                .map(|(name, artifact)| {
+                    let text = artifact.text().map_err(crate::limits::into_io)?;
+                    WriteOp::put(&self.root, &directory.join(name), text)
+                });
+            let removes = before
+                .keys()
+                .filter(|name| !after.contains_key(*name))
+                .map(|name| WriteOp::remove(&self.root, &directory.join(name)));
+            let receipt = WriteOp::put(
+                &self.root,
+                &self.receipt_path(scope)?,
+                serde_json::to_string(&receipt).expect("receipt serializes"),
+            )?;
+            self.commit_changes_stream(
+                scope,
+                puts.chain(removes).chain(std::iter::once(Ok(receipt))),
+                Change::reset("restored"),
+                scratch.remaining(),
+            )?;
         }
         Ok(
             json!({"status":if write {"applied"} else {"preview"}, "write":write,

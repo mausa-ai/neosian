@@ -109,10 +109,15 @@ impl RemoteStore {
         envelope: bool,
     ) -> Result<Value, Error> {
         let status = response.status();
-        // httpx has no 10 MB response cap. Read the body whole, preserving
-        // transport errors as infrastructure failures, before decoding JSON.
+        // Bound untrusted response bytes before JSON allocation. Operators may
+        // raise the local budget without changing a server's authorization.
+        let maximum = crate::limits::setting(crate::limits::RESPONSE, 64 << 20, 1 << 30)?;
         let mut bytes = Vec::new();
-        io::Read::read_to_end(&mut response.body_mut().as_reader(), &mut bytes)?;
+        io::Read::read_to_end(
+            &mut io::Read::take(response.body_mut().as_reader(), maximum + 1),
+            &mut bytes,
+        )?;
+        crate::limits::check(crate::limits::RESPONSE, bytes.len() as u64, maximum)?;
         let decoded = serde_json::from_slice::<Value>(&bytes);
         if !status.is_success() {
             if envelope

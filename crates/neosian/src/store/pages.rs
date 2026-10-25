@@ -1,7 +1,7 @@
 //! Paged listings beside the reads (`memory/pageable.py`,
-//! `file_pageable.py`, DESIGN §8, #244): each page reads what the whole
-//! read reads and keeps the rows after the cursor, so what a page bounds
-//! is the answer, not the work. The keysets are the listings' own orders:
+//! `file_pageable.py`, DESIGN §8, #244): document pages retain a bounded
+//! set of names and load only the next page. Version reads retain their
+//! separate journal validation contract. The keysets are the listings' own orders:
 //! the path, the version; the ledger's are in `ledger.rs`.
 
 use serde_json::json;
@@ -65,11 +65,30 @@ impl FileStore {
             ),
             None => None,
         };
-        let mut entries = self.listing(scope, prefix)?;
-        if let Some(after) = &after {
-            entries.retain(|entry| entry.path > *after);
+        let directory = super::layout::scope_dir(&self.root, scope).join(super::layout::DOCUMENTS);
+        let paths = super::layout::path_page(
+            &directory,
+            ".md",
+            prefix,
+            after.as_deref().unwrap_or(""),
+            limit.saturating_add(1),
+        )?;
+        let mut entries = Vec::new();
+        for path in paths {
+            let document = self.load(
+                scope,
+                &path,
+                &super::layout::doc_file(&self.root, scope, &path)?,
+            )?;
+            let e = document.envelope;
+            entries.push(Entry {
+                path,
+                version: e.version,
+                created_at: e.created_at,
+                updated_at: e.updated_at,
+                redacted: e.redacted,
+            });
         }
-        entries.truncate(limit + 1);
         Ok(paged(entries, limit, |entry| {
             cursor::encode("list", &[json!(entry.path)])
         }))

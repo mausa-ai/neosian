@@ -1,5 +1,5 @@
 use super::*;
-use crate::store::time::Stamp;
+use crate::store::{Document, envelope::Envelope, time::Stamp};
 
 fn request(query: &str) -> Request {
     serde_json::from_value(json!({"query":query})).unwrap()

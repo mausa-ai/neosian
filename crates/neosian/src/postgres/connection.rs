@@ -1,6 +1,8 @@
 //! Four lazy connections, with transactions for optional durable change events.
 //! No DDL; retry only known aborted races, never a lost commit response.
 
+mod scan;
+
 use std::collections::HashMap;
 use std::io;
 use std::sync::atomic::{AtomicUsize, Ordering};

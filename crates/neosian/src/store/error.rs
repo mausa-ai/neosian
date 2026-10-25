@@ -137,6 +137,12 @@ impl From<MemoryError> for Error {
 
 impl From<io::Error> for Error {
     fn from(error: io::Error) -> Self {
+        if let Some(refusal) = error
+            .get_ref()
+            .and_then(|e| e.downcast_ref::<crate::limits::Refusal>())
+        {
+            return Self::Value(refusal.to_string());
+        }
         Self::Io(error)
     }
 }

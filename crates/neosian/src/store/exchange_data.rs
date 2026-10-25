@@ -4,16 +4,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use super::exchange_files::{Artifact, Files};
 use super::{FileStore, envelope, error::Error, journal, layout};
-use crate::exchange::model::{Bundle, MAX_PATHS, selected};
-use crate::knowledge::model::{digest, invalid};
-
-pub(super) type Files = BTreeMap<String, String>;
-const MAX_STORED_BYTES: usize = 128 * 1024 * 1024;
-
-pub(super) fn fingerprint(files: &Files) -> String {
-    digest(serde_json::to_vec(files).expect("artifact map serializes"))
-}
+use crate::exchange::model::{Bundle, selected};
+use crate::knowledge::model::invalid;
 
 /// Probe names on the receiver's filesystem before committing a redo plan.
 /// Case/normalization aliases and file/directory overlaps must not leave an
@@ -59,30 +53,47 @@ impl FileStore {
         let directory = layout::scope_dir(&self.root, scope);
         let mut files = Files::new();
         let mut total = 0;
+        let mut distinct = BTreeSet::new();
+        let maximum = crate::limits::setting(crate::limits::REPLICA, 1 << 30, 64 << 30)?;
+        let paths = crate::limits::setting("NEOSIAN_REPLICA_MAX_PATHS", 100_000, 1_000_000)?;
         for (folder, suffix) in [(layout::DOCUMENTS, ".md"), (layout::VERSIONS, ".jsonl")] {
-            for path in layout::logical_paths(&directory.join(folder), suffix)? {
-                let relative = format!("{folder}/{path}{suffix}");
-                let file = layout::contained(&self.root, directory.join(&relative), &path)?;
-                total += fs::metadata(&file)?.len();
-                if total > MAX_STORED_BYTES as u64 {
-                    return Err(invalid("replica artifacts exceed 128 MiB"));
+            let mut after = String::new();
+            loop {
+                let page = layout::path_page(&directory.join(folder), suffix, "", &after, 256)?;
+                if page.is_empty() {
+                    break;
                 }
-                if folder == layout::DOCUMENTS {
-                    self.load(scope, &path, &file)?;
-                } else {
-                    self.rows(scope, &path)?;
+                for path in &page {
+                    let relative = format!("{folder}/{path}{suffix}");
+                    let file = layout::contained(&self.root, directory.join(&relative), path)?;
+                    let artifact = Artifact::open(file.clone())?;
+                    total += artifact.bytes;
+                    crate::limits::check(crate::limits::REPLICA, total, maximum)?;
+                    crate::limits::check(
+                        "NEOSIAN_REPLICA_MAX_PATHS",
+                        {
+                            distinct.insert(path.clone());
+                            distinct.len() as u64
+                        },
+                        paths,
+                    )?;
+                    if folder == layout::DOCUMENTS {
+                        self.load(scope, path, &file)?;
+                    } else {
+                        self.rows(scope, path)?;
+                    }
+                    files.insert(relative, artifact);
                 }
-                files.insert(relative, fs::read_to_string(file)?);
+                after = page.last().expect("nonempty").clone();
             }
         }
         let trail = layout::trail_file(&self.root, scope)?;
         if trail.exists() {
-            total += fs::metadata(&trail)?.len();
-            if total > MAX_STORED_BYTES as u64 {
-                return Err(invalid("replica artifacts exceed 128 MiB"));
-            }
+            let artifact = Artifact::open(trail.clone())?;
+            total += artifact.bytes;
+            crate::limits::check(crate::limits::REPLICA, total, maximum)?;
             journal::read_acts(&trail, scope)?;
-            files.insert(layout::REDACTIONS.into(), fs::read_to_string(trail)?);
+            files.insert(layout::REDACTIONS.into(), artifact);
         }
         Ok(files)
     }
@@ -92,6 +103,7 @@ impl FileStore {
         scope: &str,
         bundle: &Bundle,
         files: &mut Files,
+        scratch: &crate::limits::Scratch,
     ) -> Result<(), Error> {
         let mut paths = BTreeSet::new();
         for name in files.keys() {
@@ -109,19 +121,32 @@ impl FileStore {
         let observed = paths.clone();
         paths.extend(bundle.updates.iter().map(|u| u.path.clone()));
         paths.extend(bundle.erasures.iter().filter_map(|e| e.path.clone()));
-        if paths.len() > MAX_PATHS || paths.iter().any(|p| !selected(p)) {
-            return Err(invalid("replica must contain at most 1000 ordinary paths"));
+        crate::limits::check(
+            "NEOSIAN_REPLICA_MAX_PATHS",
+            paths.len() as u64,
+            crate::limits::setting("NEOSIAN_REPLICA_MAX_PATHS", 100_000, 1_000_000)?,
+        )?;
+        if paths.iter().any(|p| !selected(p)) {
+            return Err(invalid("replica must contain only ordinary paths"));
         }
         let mut folded = BTreeSet::new();
         if paths.iter().any(|p| !folded.insert(p.to_lowercase())) {
             return Err(invalid("case-aliased replica path"));
         }
+        let updates: BTreeMap<_, _> = bundle
+            .updates
+            .iter()
+            .map(|u| (u.path.as_str(), u))
+            .collect();
+        let erased_paths: BTreeSet<_> = bundle
+            .erasures
+            .iter()
+            .filter_map(|e| e.path.as_deref())
+            .collect();
+        let erased_scope = bundle.erasures.iter().any(|e| e.path.is_none());
         for path in paths {
-            let update = bundle.updates.iter().find(|u| u.path == path);
-            let erased = bundle
-                .erasures
-                .iter()
-                .any(|e| e.path.as_ref().is_none_or(|p| p == &path));
+            let update = updates.get(path.as_str());
+            let erased = erased_scope || erased_paths.contains(path.as_str());
             if update.is_none() && !erased {
                 continue;
             }
@@ -134,9 +159,13 @@ impl FileStore {
                     row.redacted = true;
                 }
                 if let Some(text) = files.get(&doc_name) {
-                    let (mut envelope, _) = envelope::parse(text, scope, &path)?;
+                    let text = text.text()?;
+                    let (mut envelope, _) = envelope::parse(&text, scope, &path)?;
                     envelope.redacted = true;
-                    files.insert(doc_name.clone(), envelope::render(&envelope, ""));
+                    files.insert(
+                        doc_name.clone(),
+                        Artifact::stage(scratch, &envelope::render(&envelope, ""))?,
+                    );
                 }
             }
             if let Some(update) = update {
@@ -157,7 +186,7 @@ impl FileStore {
                     };
                     files.insert(
                         doc_name.clone(),
-                        envelope::render(&doc.envelope, &doc.content),
+                        Artifact::stage(scratch, &envelope::render(&doc.envelope, &doc.content))?,
                     );
                     row
                 } else {
@@ -195,9 +224,20 @@ impl FileStore {
                 }
             }
             if !rows.is_empty() {
-                files.insert(row_name, rows.iter().map(journal::render_row).collect());
+                files.insert(
+                    row_name,
+                    Artifact::stage(
+                        scratch,
+                        &rows.iter().map(journal::render_row).collect::<String>(),
+                    )?,
+                );
             }
         }
+        let mut trail = files
+            .get(layout::REDACTIONS)
+            .map(Artifact::text)
+            .transpose()?
+            .unwrap_or_default();
         for erasure in &bundle.erasures {
             let act = journal::Act {
                 path: erasure.path.clone(),
@@ -209,14 +249,16 @@ impl FileStore {
                     .filter(|path| erasure.path.as_ref().is_none_or(|p| p == *path))
                     .count() as u64,
             };
-            files
-                .entry(layout::REDACTIONS.into())
-                .or_default()
-                .push_str(&journal::render_act(&act));
+            trail.push_str(&journal::render_act(&act));
         }
-        if files.values().map(String::len).sum::<usize>() > MAX_STORED_BYTES {
-            return Err(invalid("replica artifacts exceed 128 MiB"));
+        if !bundle.erasures.is_empty() {
+            files.insert(layout::REDACTIONS.into(), Artifact::stage(scratch, &trail)?);
         }
+        crate::limits::check(
+            crate::limits::REPLICA,
+            files.values().map(|f| f.bytes).sum(),
+            crate::limits::setting(crate::limits::REPLICA, 1 << 30, 64 << 30)?,
+        )?;
         Ok(())
     }
 }

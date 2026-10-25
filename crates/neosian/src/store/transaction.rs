@@ -1,5 +1,7 @@
 //! One committed redo plan, protected by the root lock, before state or events move.
 
+mod stream;
+
 use std::collections::BTreeSet;
 use std::fs;
 use std::io::{self, Read, Seek, SeekFrom, Write};
@@ -33,22 +35,33 @@ pub struct WriteOp {
     pub operation: Operation,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct Plan {
-    format: u32,
-    writes: Vec<WriteOp>,
-}
-
 fn bad() -> io::Error {
     io::Error::other("invalid or unsafe memory recovery plan")
 }
 
-fn hash(bytes: &[u8]) -> String {
-    Sha256::digest(bytes)
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect()
+fn hash_file(path: &Path, maximum: u64) -> io::Result<(u64, String)> {
+    let mut hash = Sha256::new();
+    let mut length = 0;
+    match fs::File::open(path) {
+        Ok(file) => {
+            let mut reader = file.take(maximum);
+            let mut buffer = [0; 64 * 1024];
+            loop {
+                let size = reader.read(&mut buffer)?;
+                if size == 0 {
+                    break;
+                }
+                hash.update(&buffer[..size]);
+                length += size as u64;
+            }
+        }
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e),
+    }
+    Ok((
+        length,
+        hash.finalize().iter().map(|b| format!("{b:02x}")).collect(),
+    ))
 }
 
 impl WriteOp {
@@ -59,17 +72,13 @@ impl WriteOp {
         Self::new(root, path, Operation::Remove)
     }
     pub fn append(root: &Path, path: &Path, text: String) -> io::Result<Self> {
-        let previous = match fs::read(path) {
-            Ok(bytes) => bytes,
-            Err(e) if e.kind() == io::ErrorKind::NotFound => vec![],
-            Err(e) => return Err(e),
-        };
+        let (offset, prefix_sha256) = hash_file(path, u64::MAX)?;
         Self::new(
             root,
             path,
             Operation::Append {
-                offset: previous.len() as u64,
-                prefix_sha256: hash(&previous),
+                offset,
+                prefix_sha256,
                 text,
             },
         )
@@ -148,39 +157,9 @@ fn safe(root: &Path, path: &Path) -> io::Result<()> {
 }
 
 fn prefix(path: &Path, offset: u64, expected: &str) -> io::Result<()> {
-    let bytes = match fs::File::open(path) {
-        Ok(file) => {
-            let mut bytes = vec![];
-            file.take(offset).read_to_end(&mut bytes)?;
-            bytes
-        }
-        Err(e) if e.kind() == io::ErrorKind::NotFound && offset == 0 => vec![],
-        Err(e) => return Err(e),
-    };
-    if bytes.len() as u64 != offset || hash(&bytes) != expected {
+    let (length, digest) = hash_file(path, offset)?;
+    if length != offset || digest != expected {
         return Err(bad());
-    }
-    Ok(())
-}
-
-fn validate(root: &Path, plan: &Plan) -> io::Result<()> {
-    if plan.format != 1 || plan.writes.is_empty() {
-        return Err(bad());
-    }
-    let mut seen = BTreeSet::new();
-    for write in &plan.writes {
-        let target = write.target(root)?;
-        if !seen.insert(&write.path) {
-            return Err(bad());
-        }
-        if let Operation::Append {
-            offset,
-            prefix_sha256,
-            ..
-        } = &write.operation
-        {
-            prefix(&target, *offset, prefix_sha256)?;
-        }
     }
     Ok(())
 }
@@ -246,34 +225,24 @@ pub fn commit(root: &Path, writes: Vec<WriteOp>) -> io::Result<()> {
     commit_with(root, writes, |_| Ok(()))
 }
 
+pub fn commit_stream(
+    root: &Path,
+    writes: impl Iterator<Item = io::Result<WriteOp>>,
+    maximum: u64,
+) -> io::Result<()> {
+    stream::commit(root, writes, maximum, |_| Ok(()))
+}
+
 fn commit_with(
     root: &Path,
     writes: Vec<WriteOp>,
-    mut boundary: impl FnMut(usize) -> io::Result<()>,
+    boundary: impl FnMut(usize) -> io::Result<()>,
 ) -> io::Result<()> {
     if writes.is_empty() {
         return Ok(());
     }
-    let plan = Plan { format: 1, writes };
-    validate(root, &plan)?;
-    let pending = root.join(DIRECTORY).join("pending.json");
-    safe(root, &pending)?;
-    if pending.exists() {
-        return Err(bad());
-    }
-    fileio::atomic_write(
-        &pending,
-        &serde_json::to_string(&plan).map_err(|_| bad())?,
-        true,
-    )?;
-    sync_parents(root, &pending)?;
-    boundary(0)?;
-    for (i, write) in plan.writes.iter().enumerate() {
-        apply(root, write)?;
-        boundary(i + 1)?;
-    }
-    fs::remove_file(&pending)?;
-    sync_parents(root, &pending)
+    let maximum = crate::limits::temp_bytes().map_err(crate::limits::into_io)?;
+    stream::commit(root, writes.into_iter().map(Ok), maximum, boundary)
 }
 
 /// Called under the root lock by every public storage operation.
@@ -283,15 +252,29 @@ pub fn recover(root: &Path) -> io::Result<()> {
     let pending = directory.join("pending.json");
     safe(root, &pending)?;
     if pending.exists() {
-        let plan: Plan = serde_json::from_slice(&fs::read(&pending)?).map_err(|_| bad())?;
-        validate(root, &plan)?;
-        for write in &plan.writes {
-            apply(root, write)?;
-        }
+        stream::validate_file(root, &pending)?;
+        stream::read(&pending, |write| apply(root, &write))?;
         fs::remove_file(&pending)?;
         sync_parents(root, &pending)?;
     }
-    clean_temps(&directory)
+    clean_temps(&directory)?;
+    // Receiver stages live under the same root lock. Once committed recovery
+    // has finished, no staged body is needed; remove copies left by a killed writer.
+    if directory.is_dir() {
+        for entry in fs::read_dir(&directory)? {
+            let entry = entry?;
+            if entry.file_type()?.is_dir()
+                && entry
+                    .file_name()
+                    .to_str()
+                    .and_then(|name| name.strip_prefix(".neosian-stage-"))
+                    .is_some_and(|id| uuid::Uuid::parse_str(id).is_ok())
+            {
+                fs::remove_dir_all(entry.path())?;
+            }
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

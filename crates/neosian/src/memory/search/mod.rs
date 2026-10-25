@@ -2,6 +2,8 @@
 
 pub mod cli;
 mod matching;
+mod scan;
+pub use scan::{Scan, scan};
 pub mod mounted;
 #[cfg(test)]
 mod tests;
@@ -13,7 +15,6 @@ use sha2::{Digest, Sha256};
 use crate::store::cursor::{self, Kind};
 use crate::store::error::{Error, MemoryError};
 use crate::store::grammar::{parse_scope, validate_document_path};
-use crate::store::{Document, envelope::Envelope};
 
 fn fields() -> Vec<String> {
     vec!["path".into(), "content".into()]
@@ -241,70 +242,4 @@ pub fn searchable(path: &str) -> bool {
     !crate::memory::mounts::state_path(path)
         && !path.starts_with("sessions/")
         && path != crate::conversation::sessions::HANDOFF_PATH
-}
-
-/// The caller supplies current documents in ascending path order under its read boundary.
-pub fn scan(
-    scope: &str,
-    request: &Request,
-    documents: impl Iterator<Item = Result<(String, Document), Error>>,
-) -> Result<Page, Error> {
-    let after = request.scope_after(scope)?;
-    let terms = matching::terms(&request.query);
-    let now = crate::store::time::Stamp::now();
-    let mut page = Page {
-        hits: Vec::new(),
-        next_cursor: None,
-    };
-    for row in documents {
-        let (path, document) = row?;
-        if path <= after
-            || !path.starts_with(&request.prefix)
-            || !searchable(&path)
-            || document.envelope.redacted
-        {
-            continue;
-        }
-        if !crate::knowledge::governance::eligible(
-            request.knowledge_policy,
-            scope,
-            &path,
-            &document.content,
-            now,
-        ) {
-            continue;
-        }
-        if let Some((excerpt, matched_fields)) =
-            matching::find(scope, &path, &document, request, &terms)?
-        {
-            if page.hits.len() == request.limit {
-                page.next_cursor = Some(request.cursor_for(
-                    &json!(scope),
-                    "memory-search-v1",
-                    &page.hits.last().expect("nonempty").path,
-                ));
-                break;
-            }
-            let Envelope {
-                version,
-                created_at,
-                updated_at,
-                ..
-            } = &document.envelope;
-            page.hits.push(Hit {
-                scope: scope.into(),
-                path,
-                version: *version,
-                created_at: created_at.utc().z(),
-                updated_at: updated_at.utc().z(),
-                actor: document.envelope.actor_value(),
-                matched_fields,
-                excerpt,
-                reference: None,
-                source: None,
-                workspace_id: None,
-            });
-        }
-    }
-    Ok(page)
 }

@@ -85,30 +85,60 @@ pub fn case_collision(root: &Path, scope: &str) -> io::Result<bool> {
 
 /// Every logical path with a `suffix` file under `dir`, sorted. A foreign
 /// file whose name is outside the grammar is skipped, never ours to read.
-pub fn logical_paths(dir: &Path, suffix: &str) -> io::Result<Vec<String>> {
-    fn walk(dir: &Path, prefix: &str, suffix: &str, found: &mut Vec<String>) -> io::Result<()> {
+pub fn visit_paths(dir: &Path, suffix: &str, visit: &mut impl FnMut(String)) -> io::Result<()> {
+    fn walk(
+        dir: &Path,
+        prefix: &str,
+        suffix: &str,
+        visit: &mut impl FnMut(String),
+    ) -> io::Result<()> {
         for entry in fs::read_dir(dir)? {
             let entry = entry?;
             let Ok(name) = entry.file_name().into_string() else {
                 continue;
             };
             if entry.file_type()?.is_dir() {
-                walk(&entry.path(), &format!("{prefix}{name}/"), suffix, found)?;
+                walk(&entry.path(), &format!("{prefix}{name}/"), suffix, visit)?;
             } else if let Some(stem) = name.strip_suffix(suffix) {
                 let logical = format!("{prefix}{stem}");
                 if validate_document_path(&logical).is_ok() {
-                    found.push(logical);
+                    visit(logical);
                 }
             }
         }
         Ok(())
     }
-    let mut found = Vec::new();
     if dir.is_dir() {
-        walk(dir, "", suffix, &mut found)?;
+        walk(dir, "", suffix, visit)?;
     }
+    Ok(())
+}
+
+pub fn logical_paths(dir: &Path, suffix: &str) -> io::Result<Vec<String>> {
+    let mut found = Vec::new();
+    visit_paths(dir, suffix, &mut |p| found.push(p))?;
     found.sort();
     Ok(found)
+}
+
+/// Inspect names while retaining only the next page, never every document body.
+pub fn path_page(
+    dir: &Path,
+    suffix: &str,
+    prefix: &str,
+    after: &str,
+    limit: usize,
+) -> io::Result<Vec<String>> {
+    let mut selected = std::collections::BTreeSet::new();
+    visit_paths(dir, suffix, &mut |path| {
+        if path.as_str() > after && path.starts_with(prefix) {
+            selected.insert(path);
+            if selected.len() > limit {
+                selected.pop_last();
+            }
+        }
+    })?;
+    Ok(selected.into_iter().collect())
 }
 
 #[cfg(test)]

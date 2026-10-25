@@ -2,6 +2,7 @@
 //! Only operations with a caller belong here; no runtime is required.
 
 mod file;
+pub mod scan;
 
 use crate::conversation::message::Message;
 use crate::conversation::{self, Projection, Redaction, Turn};
@@ -52,6 +53,28 @@ pub trait State: Send + Sync {
     }
     fn read(&self, scope: &str, path: &str) -> Result<Option<Document>, Error>;
     fn list_documents(&self, scope: &str, prefix: &str) -> Result<Vec<Entry>, Error>;
+    fn document_page(
+        &self,
+        scope: &str,
+        prefix: &str,
+        cursor: Option<&str>,
+        limit: i64,
+    ) -> Result<crate::store::Page<Entry>, Error> {
+        let limit = crate::store::pages::page_limit(limit)?;
+        let after = cursor
+            .map(|c| crate::store::cursor::decode("list", c, &[crate::store::cursor::Kind::Str]))
+            .transpose()
+            .map_err(Error::Value)?
+            .map(|p| p[0].as_str().unwrap().to_string());
+        let entries = self
+            .list_documents(scope, prefix)?
+            .into_iter()
+            .filter(|e| after.as_ref().is_none_or(|a| e.path > *a))
+            .collect();
+        Ok(crate::store::pages::paged(entries, limit, |e| {
+            crate::store::cursor::encode("list", &[serde_json::json!(e.path)])
+        }))
+    }
     fn search_memory(
         &self,
         _scope: &str,

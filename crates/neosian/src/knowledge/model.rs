@@ -7,7 +7,6 @@ use sha2::{Digest, Sha256};
 use crate::store::error::Error;
 use crate::store::grammar::{parse_scope, validate_document_path};
 
-pub const MAX_DOCUMENTS: usize = 1000;
 pub const MAX_BODY: usize = 1024 * 1024;
 pub const MAX_TOTAL: usize = 20 * MAX_BODY;
 pub const MAX_METADATA: usize = 64 * 1024;

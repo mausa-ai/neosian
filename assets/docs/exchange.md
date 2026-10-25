@@ -149,11 +149,31 @@ number encoding. Whitespace and input object order do not affect it. Consumers
 can preserve the exported numeric representations or use `exchange inspect` to
 verify. This digest is not a signature or authorization capability.
 
-Limits are 1,000 selected paths per bundle and retained replica, 1 MiB per body,
-20 MiB per serialized bundle, 10,000 events per delta, 2,048 UTF-8 bytes per cursor
-and 128 MiB of retained receiver artifacts. Unknown fields/formats, duplicate JSON
-keys, ambiguous case aliases, unsafe paths and oversized inputs refuse. The
-serialized bounds include JSON escaping. No automatic pruning discards history
-to satisfy a limit. Existing storage format 1, wire 6, schema 4 and error codes
-remain unchanged. Receivers must use compatible binaries that understand the
-receipt recovery path; stop old writers before upgrading.
+Bundle bounds remain 1,000 selected paths, 1 MiB per body, 20 MiB per serialized
+bundle, 10,000 events per delta and 2,048 UTF-8 bytes per cursor. A replica may
+grow beyond 1,000 paths across explicit deltas. Its default budgets are 100,000
+retained paths and 1 GiB of document/history/trail artifacts; use
+`NEOSIAN_REPLICA_MAX_PATHS` (up to 1,000,000) and `NEOSIAN_REPLICA_MAX_BYTES` (up to
+64 GiB) to change them. The receiver hashes artifacts incrementally and stages
+changed files on disk; untouched bodies are not copied into the apply plan.
+Private receiver stages live under its transaction directory; recovery removes
+leftover stages from interrupted applies after completing any committed plan.
+`NEOSIAN_MAX_FILE_BYTES` bounds each artifact (64 MiB by default), and
+`NEOSIAN_MAX_TEMP_BYTES` bounds staged files plus the serialized redo plan
+(512 MiB by default). A long per-path history can reach its file budget before
+the whole replica reaches its budget. History is never pruned to fit.
+
+These settings do not enlarge format-1 bundles. If a source snapshot or a single
+required delta exceeds its bundle bounds, choose smaller independent scopes or
+use the separate full archive workflow; there is no automatic snapshot splitting
+or continuation within a delta. Status/apply still read and hash the entire
+replica to detect local edits, so bounded memory does not mean constant time.
+
+Unknown fields/formats, duplicate JSON keys, ambiguous case aliases, unsafe paths
+and oversized inputs refuse. Serialized bounds include JSON escaping. Refusals
+name the resource budget; adjust it explicitly or reduce the selected batch.
+An already committed recovery plan completes even if preparation limits were
+subsequently lowered. Existing storage format 1, wire 6, schema 4, receipt
+fingerprints and error codes remain unchanged. Receivers must use compatible
+binaries that understand the receipt recovery path; stop old writers before
+upgrading. See `neosian docs stores` for all local operation budgets.

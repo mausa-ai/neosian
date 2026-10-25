@@ -40,6 +40,10 @@ Knowledge format 1 supports previewed Markdown/bundle imports into explicit
 mounted collections. Optional field rules are advisory; structure and source
 provenance live in versioned content. References never grant target access.
 Apply/export requires paused writers; full-history archives remain separate.
+Knowledge batches default to 10,000 documents and 256 MiB with explicit local
+budgets. Paged reads and disk staging avoid retaining all collection bodies.
+Replica budgets are separate from the unchanged format-1 exchange bundle bounds.
+Read the stores page for byte settings, recovery behavior and remaining limits.
 
 Skill changes preview until --write; imports use explicit /mount/skills/name.
 Supporting text and dependencies are checked through mounted reads. Profile pins
