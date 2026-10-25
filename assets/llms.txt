@@ -3,7 +3,7 @@
 > Memory and context for the agent you already use. One Rust binary,
 > CLI/MCP/HTTP interfaces, state on your own files or Postgres.
 
-Release: 2.8.0. Read installed pages with `neosian docs TOPIC` or the MCP
+Release: 2.9.0. Read installed pages with `neosian docs TOPIC` or the MCP
 `docs` tool. They are versioned with the executable and are authoritative
 for that version. The release's neosian-docs.json carries the same pages.
 
@@ -68,3 +68,8 @@ a dedicated local FileStore replica. Pause source writers; preview and explicitl
 apply with a durable receipt. Reject reordered bundles, local drift and missing
 checkpoints. Gaps require a fresh snapshot. Source history, raw turns, lifecycle
 state and bindings are excluded. Bundles/backups require separate erasure.
+
+Setup shows running, PATH and registered executable paths, storage and capture.
+`setup --check` inspects saved settings and probes MCP with temporary file storage.
+Configured source access is not checked; client connection and hook delivery are
+not observed. Restart the client and review hook trust after saving registrations.

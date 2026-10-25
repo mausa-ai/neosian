@@ -79,7 +79,7 @@ pub fn load(path: &Path) -> Result<Value, Failure> {
 pub fn read(path: &Path) -> Option<Value> {
     let text = fs::read_to_string(path).ok()?;
     let value: Value = if path.extension().is_some_and(|s| s == "toml") {
-        serde_json::to_value(text.parse::<toml::Value>().ok()?).ok()?
+        serde_json::to_value(text.parse::<toml::Table>().ok()?).ok()?
     } else {
         serde_json::from_str(&text).ok()?
     };

@@ -3,7 +3,7 @@
 # cargo-dist owns platform selection, archive verification and update receipts.
 set -eu
 
-NEOSIAN_RELEASE="2.8.0"
+NEOSIAN_RELEASE="2.9.0"
 
 version="${NEOSIAN_VERSION:-$NEOSIAN_RELEASE}"
 
@@ -95,5 +95,5 @@ CHECKSUM
         echo "  Run '$bin_dir/neosian status' to inspect competing installations."
     fi
     ok "installed neosian v$actual at $bin_dir/neosian"
-    printf '\nNext:\n  "%s/neosian" setup --write\n  "%s/neosian" status\n' "$bin_dir" "$bin_dir"
+printf '\nNext:\n  "%s/neosian" setup --write\n  "%s/neosian" setup --check\n  "%s/neosian" status\n' "$bin_dir" "$bin_dir" "$bin_dir"
     exit 0

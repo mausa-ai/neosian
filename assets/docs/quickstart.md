@@ -9,9 +9,14 @@ Install the native binary on macOS or Linux:
 
 ```sh
 curl -fsS https://neosian.com/install | sh
-neosian setup --write
-neosian status
+"$HOME/.neosian/bin/neosian" setup --write
+"$HOME/.neosian/bin/neosian" setup --check
 ```
+
+Use the installer's printed absolute path if you selected another directory.
+It preserves existing commands, so a plain `neosian` may still run an older
+installation. Use `neosian status` to inspect running, PATH and registered paths;
+update using the installer or package manager that owns that installation.
 
 Windows installers and MSI are on the GitHub Release. Package manager
 alternatives are `npm install -g neosian` and `cargo install neosian --locked`.
@@ -25,7 +30,19 @@ Cursor through MCP and hooks. It registers the executable running it;
 `--write`; `--write --yes` connects all detected clients in scripts.
 `--at CLIENT=DIR` overrides a client directory for that invocation.
 
-Restart your agent after updating registrations. Its memory index points to
+`setup --check` inspects saved registrations without rewriting them and tests
+the running binary through MCP initialization, tool discovery and a temporary
+memory write/read. It removes that temporary store afterward. Add `--client C`
+to check one client, repeat the same `--at` override if used, and add `--json`
+for a structured report. `--check` cannot be combined with `--write`.
+Storage, profile sources, required environment variable names and capture policy
+are reported without opening the configured stores or printing credential values.
+Exit 0 means these checks passed; exit 1 means a finding or probe needs attention.
+PATH differences are advisory. Source connectivity and permissions, the client's
+own environment, connection and hook delivery still need checking in that client.
+
+Restart your agent after updating registrations, review its hook trust settings,
+and confirm that `neosian-memory` connects. Its memory index points to
 small documents under mounted scopes. The `memory` tool reads and edits them;
 hooks record conversations and supply startup context. The `docs` tool reads
 these same versioned pages. `list_skills` and `load_skill` expose reusable

@@ -56,6 +56,9 @@ def retained(value: Any) -> Any:
         if "path_executables" in result and "update_mode" in result:
             result["version"] = "<VERSION>"
             result.pop("providers", None)  # v2 retires provider credential inspection.
+            result.pop("installation", None)  # Independently checked setup diagnostics.
+        if "mcp_registered" in result and "hooks_present" in result:
+            result.pop("registrations", None)  # Retain every original status finding.
         for key, added in (
             (
                 "tools",

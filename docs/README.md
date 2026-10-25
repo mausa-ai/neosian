@@ -18,13 +18,17 @@ Python runtime or hosted service is required.
 
 ```sh
 curl -fsS https://neosian.com/install | sh
-neosian setup --write
-neosian status
+"$HOME/.neosian/bin/neosian" setup --write
+"$HOME/.neosian/bin/neosian" setup --check
 ```
 
 Setup connects Claude Code, Codex, OpenCode, Muse Code, Pi and interactive
 Cursor through MCP and hooks. It previews the registrations before `--write`.
-Restart the client after setup. Every session can leave a durable record;
+Use the exact path printed by the installer if you chose another install directory.
+Setup shows the running, selected and PATH executables, storage and capture policy.
+`setup --check` inspects registrations and tests MCP with temporary file storage;
+it leaves your selected storage unopened. Restart the client and review hook trust
+after setup. Every session can leave a durable record;
 the next session reads the index, recalls relevant turns and continues
 explicit handoffs.
 Portable profiles opt into recording separately: new profiles capture off by
@@ -32,7 +36,8 @@ default.
 
 The installer verifies the archive's checksum and installs under
 `~/.neosian/bin`, linking `~/.local/bin/neosian` when that name is free.
-An existing command is preserved; `status` reports PATH shadowing.
+An existing command is preserved; `status` reports PATH shadowing and the separate
+MCP and hook executables. A saved registration does not prove a client connection.
 Windows has a PowerShell installer and MSI on each GitHub Release.
 Package-manager alternatives are `npm install -g neosian` and
 `cargo install neosian --locked`. Cargo builds from source with the exact

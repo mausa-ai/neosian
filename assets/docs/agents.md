@@ -34,6 +34,7 @@ Claude Desktop, which has no recording hooks.
 
 ```bash
 neosian setup --write                                             # select clients, once per machine
+neosian setup --check --client codex                              # inspect saved settings and test MCP locally
 neosian setup --url http://127.0.0.1:6367 --write                 # the same, behind the state process
 neosian record install --client claude-code                       # print the user-level hooks
 neosian record install --client codex --write
@@ -47,18 +48,30 @@ neosian record install --client opencode --level project --scope user:me --write
   `--client C` for an explicit selection. JSON never prompts. Both setup and
   status accept invocation-only `--at CLIENT=DIR` overrides and report where
   they searched; a missing client home is never created.
-  `neosian status` shows each selected client
-  green afterwards, at which level, and names a binary or interpreter that
-  stopped resolving. It also warns when distinct `neosian` executables on
-  PATH compete for the command name.
+  Setup and status show running, selected and PATH executable paths.
+  `status` also reports the MCP and hook executables separately, their storage
+  selection and capture policy. PATH differences remain visible even when only
+  one command is on PATH and another binary is running by absolute path.
+- **`neosian setup --check`** inspects existing registrations and runs a bounded
+  MCP initialize/list/create/read probe through the running binary, using a
+  temporary file store that is removed afterward. It does not execute commands
+  found in client configuration, open configured stores, contact a model, or
+  rewrite registrations. Missing executables, differing MCP/hook storage,
+  incomplete profile bindings or credentials and duplicate hook files produce
+  exit 1; passing checks produce exit 0. `--json` separates `installation`,
+  `storage`, `clients`, `probe` and `issues`. An explicit `--root`, `--url` or
+  `--profile` also checks registrations against that requested selection.
+  Checks use this shell's environment; each client still needs its own credential
+  variables. Source access is `not_checked`, and client connection/hook delivery
+  are `not_observed`. Restart the client, review hook trust and confirm its MCP
+  connection. `--check` and `--write` are separate steps.
 - **Once per machine.** By default the hooks land in the client's own
   settings (`--level user`) and serve every project: with no store flag
   the line names `~/.neosian` (or `$NEOSIAN_HOME`) and no mount, and the
   verb derives each session's layout where it runs: `user:<login>` at
   `/user`, `user:<login>/proj:<slug>` at `/project`, the slug the
-  project directory's name. Nothing is written into a project. A
-  neosian agent lands in the same place with `FileStore(home())` and
-  `project_scope()` (`neosian docs quickstart`).
+  project directory's name. Nothing is written into a project. CLI operations
+  use the same local defaults (`neosian docs quickstart`).
 - **`--level project`** writes this directory's file instead, with its
   layout spelled into the line: a scope of your own for one project
   (`--scope`, `--mount`), or recording only where you ask for it. A
@@ -97,11 +110,9 @@ neosian record install --client opencode --level project --scope user:me --write
   into a hook line; `--url` carries the token through
   `NEOSIAN_CLIENT_TOKEN` in the client's own environment, which is now
   a setting for the machine, not for one project.
-- Hooks beside an MCP server on one FileStore root are **two writers**,
-  and the home is one root for every project on the machine: run
-  `neosian serve` (no flags: it serves the home; `neosian docs
-  topology` has the per-user service recipe), then `neosian setup --url
-  URL --write --yes` moves every detected client there in one run. Or use Postgres.
+- Hooks and MCP can share a local FileStore root through its cooperating process
+  lock. For remote storage, `neosian setup --url URL --write --yes` selects an
+  explicitly operated state process, or use Postgres. Read `neosian docs topology`.
 - **Codex** takes the same fragment at `~/.codex/hooks.json` (`~/.codex`,
   or `$CODEX_HOME`, must exist). At the user level there is no project
   trust step, but Codex runs a new hook only once you have reviewed it

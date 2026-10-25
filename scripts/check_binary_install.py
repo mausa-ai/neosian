@@ -94,6 +94,20 @@ def check() -> None:
                 [binary, "version"], env=run_env, text=True
             )
             assert version.strip() == f"neosian v{expected}"
+            assert f'"{binary.resolve()}" setup --check' in result.stdout
+            # A new home has no clients yet; the isolated product probe still passes.
+            checked = subprocess.run(
+                [binary, "setup", "--check", "--json"],
+                env=run_env,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+            assert checked.returncode == 1, checked.stdout + checked.stderr
+            report = json.loads(checked.stdout)
+            assert report["probe"]["success"] is True
+            assert report["client_connection"] == "not_observed"
             docs = subprocess.check_output(
                 [binary, "docs", "quickstart"], env=run_env, text=True
             )

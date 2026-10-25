@@ -8,6 +8,28 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [2.9.0] - 2026-10-25
+
+### Added
+
+- `setup --check` inspects saved MCP/hook registrations and probes the running
+  binary through MCP initialization, tool discovery and a temporary memory
+  write/read. It cleans up the temporary store and reports incomplete settings,
+  stale executables, mismatched storage and duplicate hook files.
+- Setup/status report running, selected, PATH and registered executable paths,
+  storage/profile selection and capture policy. Checks expose missing credential
+  variable names without values. Configured storage access and live client/hook
+  delivery remain explicitly unverified; no model call or registration rewrite.
+- Installer next steps and embedded guides connect preview, write, check and
+  client restart/trust, using the installed binary's exact path.
+
+### Fixed
+
+- Codex registration discovery parses its complete TOML document, so valid MCP
+  entries are recognized by status and setup checks.
+- Diagnostics refuse malformed HTTP endpoints without repeating inline
+  credentials or query values from client configuration.
+
 ### Removed
 
 - Legacy v1 YAML metadata converter and its release packaging. Python is now

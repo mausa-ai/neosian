@@ -2,7 +2,7 @@
 
 use super::{
     context::{CLIENTS, Context},
-    hooks, runner, targets,
+    diagnostics, hooks, runner, targets,
 };
 use crate::{config, home, memory::mounts::Refusal, shape, store::FileStore, version};
 use clap::Args;
@@ -34,7 +34,7 @@ fn root(argv: Option<&Vec<String>>) -> Option<&str> {
         .map(String::as_str)
 }
 
-fn client_status(client: &str, context: &Context) -> Value {
+pub(super) fn client_status(client: &str, context: &Context) -> Value {
     let mut servers: Found = vec![];
     let mut hooks: Found = vec![];
     for level in ["user", "project"] {
@@ -112,7 +112,9 @@ fn client_status(client: &str, context: &Context) -> Value {
         "mcp_registered": server.is_some(), "hooks_present": hook.is_some(), "level": level,
         "hook_files": hooks.iter().map(|(p, _, _)| p).collect::<Vec<_>>(), "interpreter": interpreter,
         "interpreter_resolves": resolves, "executable_kind": kind, "mcp_shadowed_by": shadow, "root": root,
-        "message_delivery": delivery, "searched_directory": target.evidence})
+        "message_delivery": delivery, "searched_directory": target.evidence,
+        "registrations":{"mcp":diagnostics::registration(server, context),
+            "hooks":diagnostics::registration(hook, context)}})
 }
 
 fn last_session(root: &Path, scope: &str) -> Option<Value> {
@@ -217,7 +219,8 @@ pub fn run(args: &Status, out: &mut impl Write, err: &mut impl Write) -> io::Res
         "scopes": scopes, "scopes_error": scopes_error,
         "clients": clients, "last_session": session, "one_writer": [], "double_fire": double_fire,
         "shape": shape, "upgrade": shape::upgrade(shape, "<version>"), "update_mode": mode,
-        "path_executables": paths, "shadowing": shape::shadowing(&paths)});
+        "path_executables": paths, "shadowing": shape::shadowing(&paths),
+        "installation":diagnostics::installation(&context)});
     if let Some(selected) = selected {
         status["profile"] = selected.report();
     }
@@ -254,6 +257,7 @@ fn render(status: &Value, out: &mut impl Write) -> io::Result<()> {
         string(status, "shape"),
         string(status, "upgrade")
     )?;
+    super::setup_check::render_installation(&status["installation"], out)?;
     let exists = |key| {
         if status[key] == true {
             "exists"
@@ -335,6 +339,7 @@ fn render(status: &Value, out: &mut impl Write) -> io::Result<()> {
             _ => {}
         }
         writeln!(out, "  {name:<12}installed  {}", cells.join("  "))?;
+        super::setup_check::render_registrations(client, out)?;
     }
     let s = &status["last_session"];
     if s.is_object() {

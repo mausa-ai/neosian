@@ -34,6 +34,10 @@ order, basename and other status fields stay exact. Independent product
 cases assert exact supplied PATHs and shadowing for zero, one and two
 commands. The frozen expected.json bytes are unchanged.
 
+Setup diagnostics add `installation` to status and `registrations` to its client
+rows. Only these new fields are projected out; `test_setup_check.py` checks their
+paths, storage/capture reports, secret handling and isolated MCP probe separately.
+
 The `prune no match text` case adjusts its duration input for the age of the
 oldest seeded turn, keeping its cutoff at least eleven hours before that turn.
 The originally captured `12h` input eventually selects the fixed seed as it

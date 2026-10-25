@@ -23,6 +23,7 @@ neosian profile bind work --source workspace --root /absolute/path/to/knowledge 
 neosian profile show work
 neosian setup --profile work --client codex # preview the selected policy
 neosian setup --profile work --client codex --write
+neosian setup --profile work --client codex --check
 neosian memory view / --profile work
 neosian status --profile work --json
 ```

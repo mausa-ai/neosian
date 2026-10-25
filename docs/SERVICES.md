@@ -27,6 +27,12 @@ own environment. `status` reports installation paths and registrations,
 not secrets. Old provider credential tables in `config.toml` are preserved
 but ignored by the core.
 
+`setup --check` inspects registrations and selected storage/profile configuration
+using this shell's environment. Its subprocess probe clears inherited credentials
+and store selectors, uses a private temporary FileStore, then removes it. No model
+keys or services are needed for the probe. Configured source connectivity and
+permissions are not tested, and client connection/hook delivery remain unobserved.
+
 Client configuration follows each client's native locations and overrides:
 `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `OPENCODE_CONFIG_DIR`,
 `PI_CODING_AGENT_DIR`, `XDG_CONFIG_HOME`, and Windows `APPDATA` /

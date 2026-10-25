@@ -2,7 +2,7 @@
 
 use super::{
     context::{CLIENTS, Context},
-    files, hooks, mcp, runner, settings, targets,
+    diagnostics, files, hooks, mcp, runner, settings, setup_check, targets,
 };
 use clap::Args;
 use serde_json::{Value, json};
@@ -14,6 +14,9 @@ pub struct Setup {
     client: Vec<String>,
     #[arg(long)]
     write: bool,
+    /// Check saved registrations and probe this binary with temporary MCP/file storage.
+    #[arg(long, conflicts_with = "write")]
+    check: bool,
     #[arg(long)]
     json: bool,
     #[arg(long, default_value = "user", value_parser = ["user", "project"])]
@@ -213,6 +216,23 @@ pub fn run(args: &Setup, out: &mut impl Write, err: &mut impl Write) -> io::Resu
             clients.push(client.clone());
         }
     }
+    let installation = diagnostics::installation(&context);
+    let storage = diagnostics::selection(
+        args.root.as_deref(),
+        args.url.as_deref(),
+        args.profile.as_deref(),
+        &context,
+    );
+    if args.check {
+        return setup_check::run(
+            &context,
+            &clients,
+            storage,
+            args.root.is_some() || args.url.is_some() || args.profile.is_some(),
+            args.json,
+            out,
+        );
+    }
     if clients.is_empty() {
         let message = format!(
             "no client found: none of {} is installed",
@@ -263,9 +283,12 @@ pub fn run(args: &Setup, out: &mut impl Write, err: &mut impl Write) -> io::Resu
         writeln!(
             out,
             "{}",
-            json!({"written": args.write, "level": args.level, "clients": rows, "searched": searched})
+            json!({"written": args.write, "level": args.level, "clients": rows, "searched": searched,
+                "installation":installation,"storage":storage})
         )?;
     } else {
+        setup_check::render_installation(&installation, out)?;
+        setup_check::render_storage(&storage, out)?;
         for row in &rows {
             writeln!(out, "{}", text(row, "label"))?;
             if row["profile"].is_object() {
@@ -307,6 +330,12 @@ pub fn run(args: &Setup, out: &mut impl Write, err: &mut impl Write) -> io::Resu
         }
         if !args.write {
             writeln!(err, "hint: re-run with --write to apply")?;
+        }
+        if args.write && !failed {
+            writeln!(
+                out,
+                "Registrations saved. Run this executable with setup --check, then restart the client and review hook trust."
+            )?;
         }
         write!(out, "{}", discovery_text(&searched))?;
     }

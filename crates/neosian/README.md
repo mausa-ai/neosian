@@ -18,9 +18,14 @@ keyword semantics. Search requires no model account or derived index.
 ```sh
 cargo install neosian --locked
 neosian setup --write
+neosian setup --check
 neosian status
 neosian docs
 ```
+
+Setup shows executable, storage and capture choices. `setup --check` inspects
+registrations and tests MCP with temporary local storage. Restart the client
+and review hook trust afterward; saved settings do not prove a connection.
 
 [Documentation](https://neosian.com/docs) ·
 [Source](https://github.com/mausa-ai/neosian) ·
