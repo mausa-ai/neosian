@@ -12,6 +12,8 @@ phase close names the version.
 
 - The container image's distroless base moves to the current
   `static-debian13:nonroot` digest.
+- The pinned Rust toolchain moves to 1.99.1, so building from source now
+  requires Rust 1.99.1 or newer (`rust-version`).
 
 ## [2.9.0] - 2026-10-25
 
