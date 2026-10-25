@@ -117,8 +117,8 @@ def test_v1_reference(case: Case, binary: Binary, tmp_path: Path) -> None:
         lock = space.home / name
         lock.parent.mkdir(parents=True, exist_ok=True)
         lock.write_bytes(b"\0")
-    if case.name == "prune no match text":
-        # Preserve the captured no-match condition as the frozen seed ages.
+    if case.name in {"prune no match text", "prune dry run json"}:
+        # Preserve the captured no-match conditions as the frozen seed ages.
         # Only the duration input changes; fixture and expected bytes stay exact.
         oldest = min(
             datetime.fromisoformat(json.loads(line)["created_at"])
@@ -127,7 +127,9 @@ def test_v1_reference(case: Case, binary: Binary, tmp_path: Path) -> None:
         )
         age = datetime.now(UTC) - oldest
         hours = max(0, age.days * 24 + age.seconds // 3600) + 12
-        case = replace(case, argv=(*case.argv[:-1], f"{hours}h"))
+        at = case.argv.index("--older-than") + 1
+        argv = (*case.argv[:at], f"{hours}h", *case.argv[at + 1 :])
+        case = replace(case, argv=argv)
     # The reference capture had one PATH command installed. Supply that same
     # condition explicitly instead of inheriting the workstation's PATH.
     path_command = space.out / "status-bin" / "neosian"
