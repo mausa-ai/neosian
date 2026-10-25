@@ -11,8 +11,9 @@ ignore = []
 # deliberately, never by a wildcard. BSD-3-Clause entered with axum's
 # router (matchit, R2, #366). R2's wire client adds ISC for rustls's ring,
 # webpki and untrusted, and CDLA-Permissive-2.0 for Mozilla's root data.
+# Zlib entered with foldhash, serde_json's preserve_order hasher (#406).
 [licenses]
-allow = ["Apache-2.0", "BSD-3-Clause", "CDLA-Permissive-2.0", "ISC", "MIT", "Unicode-3.0"]
+allow = ["Apache-2.0", "BSD-3-Clause", "CDLA-Permissive-2.0", "ISC", "MIT", "Unicode-3.0", "Zlib"]
 confidence-threshold = 0.8
 
 [bans]
