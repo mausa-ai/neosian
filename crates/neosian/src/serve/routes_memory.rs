@@ -138,8 +138,7 @@ fn write(store: &dyn Backend, payload: &Payload, client: &str) -> Result<Value, 
     let actor = actor(client, payload)?;
     let expected = optional_int(payload, "expected_version")?;
     let expected = expected.map(|version| u64::try_from(version).unwrap_or(u64::MAX));
-    // A legacy block-YAML envelope must be converted before a wire mutation.
-    // Refuse before changing its body, rather than failing to encode the receipt.
+    // Preflight response metadata so unsupported YAML is refused before a write.
     if let Some(existing) = store.read(&scope, &path)? {
         codec::document(&scope, &path, &existing)?;
     }

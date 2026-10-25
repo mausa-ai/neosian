@@ -45,7 +45,6 @@ def test_release_artifacts_are_complete_deterministic_and_versioned(
             "assets/sql/changes-postgres.sql",
             "tests/contract/storage/test_changes.py",
             "assets/sql/postgres.sql",
-            "scripts/migrate_v1_metadata.py",
             "tests/contract/storage/test_concurrency.py",
             "LICENSE",
         ]:

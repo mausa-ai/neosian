@@ -2,7 +2,7 @@
 
 Neosian 2 runs locally without a model provider, account or hosted service.
 The product is one Rust binary. Python 3.12+ and uv are development and
-optional migration tools; no Python distribution or provider SDK is installed.
+test tools only; no Python distribution or provider SDK is installed.
 The exact Rust toolchain is pinned in `rust-toolchain.toml`.
 
 ## Runtime settings
@@ -122,7 +122,7 @@ A release is complete only when every publication job succeeds.
   x86-64/ARM64, Windows x86-64), checksums, installers, plus
   `neosian-docs.json` and `neosian-contracts.tar.gz` with SHA-256 sidecars.
   The docs artifact is the website's v2 input. The contracts archive carries
-  the independent runner and optional metadata converter. `GITHUB_TOKEN`
+  the independent runner and fixtures. `GITHUB_TOKEN`
   needs `contents: write` in the publishing jobs.
 - **GHCR:** `ghcr.io/mausa-ai/neosian`, Linux amd64/arm64 native builds and
   a multi-architecture manifest. `GITHUB_TOKEN` needs `packages: write`.

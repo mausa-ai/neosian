@@ -1,6 +1,6 @@
 ---
 title: "Migrating from v1"
-summary: The v2 product boundary, existing homes and clients, metadata conversion and Postgres connection settings
+summary: The v2 product boundary, existing homes and clients, supported metadata and Postgres connection settings
 ---
 
 # Migrating from v1
@@ -59,28 +59,11 @@ supported by v2. Use a client implementing one of the listed session protocols;
 
 FileStore preserves unknown envelope lines on ordinary local updates.
 HTTP and portable operations support scalar YAML and single-line JSON
-arrays/objects. Arbitrary block YAML, aliases and folded strings require
-explicit conversion before crossing those boundaries. Unsupported metadata
-is refused with `memory_format_unsupported`; wire writes and renames
-preflight their response metadata before changing a document.
-
-The release's `migrate_v1_metadata.py` is an optional, one-time tool, not a
-Python product dependency. It requires Python 3.12+ and PyYAML. With every
-writer stopped, run it first without `--write`, inspect its list, then apply:
-
-```sh
-uv run --no-project --with PyYAML python migrate_v1_metadata.py /path/to/home
-uv run --no-project --with PyYAML python migrate_v1_metadata.py /path/to/home --write
-```
-
-It validates the entire selection before writing, creates private exclusive
-`.md.v1-backup` copies, and atomically replaces each converted document.
-Bodies and historical journals stay byte-identical. Nested JSON-compatible
-values retain their types. Non-string mapping keys, sets, non-finite numbers,
-custom YAML values and recursive aliases are refused for an explicit operator
-decision. Existing backup files also stop the run. An I/O failure can leave
-some documents converted; backups permit recovery. A successful rerun is a
-no-op. Keep backups outside public exports and remove them only after review.
+arrays/objects. Arbitrary block YAML, aliases and folded strings are unsupported
+on those paths and refused with `memory_format_unsupported`; wire writes and
+renames preflight their response metadata before changing a document.
+Neosian ships no legacy metadata converter or automatic migration system.
+Python is used only for development and tests.
 
 ## Postgres DSNs
 

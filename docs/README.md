@@ -116,16 +116,17 @@ evaluation product. Custom storage integrates through a conformance-tested
 HTTP service. There is no supported Rust embedding API.
 
 Memory, turn and mailbox formats remain **1**, Postgres schema **4**, and
-storage wire **6**. Existing histories and JSON metadata survive. Arbitrary
-YAML metadata and libpq-specific connection settings have explicit migration
-or refusal rules: read `neosian docs migration` before upgrading v1 homes
-and client registrations. Error identifiers remain reserved forever.
+storage wire **6**. These data and protocol versions are independent of the
+application version. Existing histories and JSON metadata survive. Unsupported
+YAML metadata and connection settings are refused explicitly; read
+`neosian docs migration` for supported formats and upgrade steps.
+Error identifiers remain reserved forever.
 
 `neosian docs` lists every embedded page; `neosian docs TOPIC` reads it.
 The versioned `neosian-docs.json` release artifact supplies those same pages
 to the website. `neosian-contracts.tar.gz` contains machine contracts,
-fixtures, the independent HTTP conformance runner and the optional one-time
-metadata converter. `neosian schema state`, `wire`, `errors`, `profile` and
+fixtures and the independent HTTP conformance runner.
+`neosian schema state`, `wire`, `errors`, `profile` and
 `grants`, `knowledge`, `skill`, `upkeep`, `governance` and `changes` print the
 machine-readable definitions directly.
 
@@ -149,8 +150,7 @@ Cargo's workspace version is the product version authority. The independent
 tests retain literal v1 records and 261 frozen Python-reference cases, plus
 raw CLI/MCP/HTTP, file corruption, concurrency and Postgres probes. They
 import no product implementation. Python is used only for development and
-an optional one-time migration script. Node checks exercise the shipped Pi
-and OpenCode adapters.
+tests. Node checks exercise the shipped Pi and OpenCode adapters.
 
 Contributions use DCO sign-off (`git commit -s`) and Apache-2.0 licensing.
 See [SERVICES.md](SERVICES.md) for environment settings and release accounts,

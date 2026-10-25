@@ -1,4 +1,4 @@
-# Python is development and migration tooling only; this is not a distribution.
+# Python is for development and tests only; this is not a distribution.
 [dependency-groups]
 dev = [
     "black>=26.5.1",

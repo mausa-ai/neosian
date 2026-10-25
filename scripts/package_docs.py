@@ -45,7 +45,6 @@ def build(destination: Path, root: Path = ROOT) -> list[Path]:
             "uv.lock",
             "Makefile",
             "tests/__init__.py",
-            "scripts/migrate_v1_metadata.py",
         )
     ]
     for directory in ("assets", "tests/contract"):

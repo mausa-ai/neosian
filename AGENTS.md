@@ -3,8 +3,8 @@
 The memory/context core for the agent you already use. One Rust binary
 provides CLI, MCP and HTTP interfaces; there is no dedicated SDK, Rust
 embedding API, Python distribution or model runtime. Read `docs/README.md`
-first; `neosian docs <topic>` prints the embedded pages. Python is test,
-development and optional one-time migration tooling only (S0, DESIGN §40).
+first; `neosian docs <topic>` prints the embedded pages. Python is for
+development and tests only (DESIGN §40).
 
 ## Hard rules
 

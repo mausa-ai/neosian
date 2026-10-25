@@ -8,6 +8,12 @@ phase close names the version.
 
 ## [Unreleased]
 
+### Removed
+
+- Legacy v1 YAML metadata converter and its release packaging. Python is now
+  used only for development and tests. Supported storage formats and explicit
+  refusal of unsupported metadata remain unchanged.
+
 ## [2.8.0] - 2026-10-24
 
 ### Added

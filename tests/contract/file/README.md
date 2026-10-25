@@ -34,6 +34,6 @@ POSIX permission checks skip on Windows; symlink checks skip there only if
 the runner cannot create a symlink. Missing binaries fail. This corpus does
 not establish crash recovery, cross-file rollback or complete containment
 coverage for every operator. Additional cases preflight erasure sidecars and
-restore targets, skip symlink directories during enumeration, and verify the
-optional YAML converter preserves bodies/history with exclusive backups.
+restore targets, skip symlink directories during enumeration, refuse unsupported
+YAML before wire mutations, and preserve supported nested JSON metadata.
 Postgres and frozen operator/client cases live in adjacent directories.

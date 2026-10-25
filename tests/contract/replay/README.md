@@ -34,6 +34,12 @@ order, basename and other status fields stay exact. Independent product
 cases assert exact supplied PATHs and shadowing for zero, one and two
 commands. The frozen expected.json bytes are unchanged.
 
+The `prune no match text` case adjusts its duration input for the age of the
+oldest seeded turn, keeping its cutoff at least eleven hours before that turn.
+The originally captured `12h` input eventually selects the fixed seed as it
+ages. This preserves the original no-match scenario and still compares every
+output and file change against the unchanged reference.
+
 S6's optional `knowledge_policy` handshake and `knowledge` tool discovery are
 projected out of this frozen comparison and tested independently. All original
 fixture and expected-result bytes remain unchanged.
