@@ -255,9 +255,9 @@ which can load the shipped `upkeep` skill.
 Agent reads leave a local trace. A document body shown by the MCP memory
 tool's `view`, or delivered by an included knowledge `read`, writes one row per
 MCP session and document to `<home>/heat/<scope>.jsonl`: a time, a session id
-and a path, never content. The index, directory listings, the shell, maintenance,
-search, export and conformance write nothing, and a session re-reading a document
-adds nothing. The log sits beside the store, never in it: format 1, wire 6,
+and a path, never content. The index, directory listings, mailbox documents, the
+shell, maintenance, search, export and conformance write nothing, and a session
+re-reading a document adds nothing. The log sits beside the store, never in it: format 1, wire 6,
 archives, exchange and profiles are unchanged, and a read is never a write.
 
 `memory heat [PATH]` lists the read documents under `/`, a mount, a directory or
@@ -268,6 +268,14 @@ all, and the last read, then how many listed documents were never read.
 `read_sessions_7d`, `read_sessions_30d`, `read_sessions` and `last_read`. Heat is
 evidence for a reviewer, never a selector: the index and search order are
 unchanged, and a document the authorized listing does not show is never shown.
+
+`memory heat PATH --related` takes one document and lists what the sessions that
+read it also read, across mounts: how many of those sessions read each document
+(shared) and how many logged sessions read it at all, most shared first and, on a
+tie, the narrower document first. A document every session opens appears in every
+list; its second number shows that. Folded rows carry no session, so co-access
+counts the unfolded rows, at least the last 30 days. PATH must name one document.
+`--json` prints `sessions`, `observed`, `related` and `truncated`.
 
 Delete, rename and redaction scrub or move a document's rows; redacting a whole
 scope removes its file. The log is derived state and may be deleted. Rows older

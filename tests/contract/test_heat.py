@@ -11,12 +11,20 @@ from tests.contract.support import FIXTURES, Binary
 
 SCOPE = "user:contract"
 SCOPE_FILE = "user%3Acontract.jsonl"
+MAILBOX = "/memories/messages/00000000-0000-4000-8000-000000000001"
+MOUNTS = (
+    "--mount",
+    f"scope={SCOPE},path=memories",
+    "--mount",
+    "scope=user:other,path=other",
+)
 
 
 def rpc(
     binary: Binary,
     calls: list[tuple[str, dict[str, Any]]],
     env: dict[str, str] | None = None,
+    store: tuple[str, ...] = ("--scope", SCOPE),
 ) -> list[dict[str, Any]]:
     """One stdio MCP session: initialize, then every call; its answers in order."""
     requests: list[dict[str, Any]] = [
@@ -42,7 +50,7 @@ def rpc(
             }
         )
     process = subprocess.run(
-        [str(binary.executable), "mcp", "--scope", SCOPE, "--actor", "mcp:contract"],
+        [str(binary.executable), "mcp", *store, "--actor", "mcp:contract"],
         input="".join(json.dumps(request) + "\n" for request in requests),
         capture_output=True,
         text=True,
@@ -101,9 +109,11 @@ def test_only_delivered_agent_reads_are_logged_once_per_session(
                 "knowledge",
                 {"command": "read", "path": "/memories/new", "policy": "approved"},
             ),
+            view(MAILBOX),
         ],
     )
     assert answers[4]["result"]["isError"] is True
+    assert text(answers[9]).startswith(MAILBOX + " (v")
     assert json.loads(text(answers[7]))["included"] is True
     assert json.loads(text(answers[8]))["included"] is False
     logged = rows(binary)
@@ -194,3 +204,42 @@ def test_heat_report_orders_read_documents_and_scrubs_with_the_document(
         check=False,
     )
     assert off.stdout.splitlines()[-1] == "(heat log off: NEOSIAN_HEAT=off)"
+
+
+def test_related_lists_what_the_same_sessions_read_across_mounts(
+    binary: Binary,
+) -> None:
+    shutil.copytree(FIXTURES / "home", binary.home)
+    a, b, d, c = (
+        "/memories/notes/a",
+        "/memories/notes/b",
+        "/memories/notes/d",
+        "/other/c",
+    )
+    for path in (a, b, d, c):
+        created = binary.run("memory", "create", path, "--content", path, *MOUNTS)
+        assert created.returncode == 0, created.stderr
+    for session in ((a, b, c, d), (a, b), (c, b)):
+        rpc(binary, [view(path) for path in session], store=MOUNTS)
+    report = binary.json("memory", "heat", a, "--related", *MOUNTS)
+    assert (report["enabled"], report["sessions"], report["observed"]) == (True, 2, 3)
+    assert not report["truncated"]
+    # Most shared first; on a tie the narrower document (fewer readers) leads.
+    assert [
+        (r["path"], r["scope"], r["shared"], r["sessions"]) for r in report["related"]
+    ] == [(b, SCOPE, 2, 3), (d, SCOPE, 1, 1), (c, "user:other", 1, 2)]
+    other = binary.json("memory", "heat", c, "--related", *MOUNTS)
+    assert [r["path"] for r in other["related"]] == [b, d, a]
+    shown = binary.run("memory", "heat", a, "--related", "--limit", "1", *MOUNTS)
+    assert shown.stdout.splitlines() == [
+        f"related to {a}: read by 2 of 3 logged sessions; "
+        "what they also read (shared / read by)",
+        f"- {b}  2 / 3",
+        "(2 more related; raise --limit)",
+    ]
+    lonely = binary.run("memory", "heat", "/memories/notes/fact", "--related", *MOUNTS)
+    assert lonely.stdout.splitlines()[-1] == "no session has read it"
+    root = binary.run("memory", "heat", "/memories", "--related", *MOUNTS)
+    assert root.returncode == 2 and "--related needs one document" in root.stderr
+    missing = binary.run("memory", "heat", "/memories/notes/x", "--related", *MOUNTS)
+    assert missing.returncode == 1 and "memory_document_not_found" in missing.stderr

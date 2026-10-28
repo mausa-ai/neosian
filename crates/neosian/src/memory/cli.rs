@@ -88,8 +88,18 @@ pub fn run(command: &Command, out: &mut impl Write, err: &mut impl Write) -> io:
             let answered = super::maintain::run(&memory, *min_age_days, *dry_run, json, out);
             return operate::settle(answered, json, out, err);
         }
-        Command::Heat { path, limit, .. } => {
-            let answered = super::heat::report::run(&memory, path, *limit as usize, json, out);
+        Command::Heat {
+            path,
+            limit,
+            related,
+            ..
+        } => {
+            let limit = *limit as usize;
+            let answered = if *related {
+                super::heat::related::run(&memory, path, limit, json, out)
+            } else {
+                super::heat::report::run(&memory, path, limit, json, out)
+            };
             return operate::settle(answered, json, out, err);
         }
         Command::View {

@@ -6,7 +6,7 @@
 use super::dispatch::{Memory, Outcome};
 use super::heat;
 use super::index;
-use super::mounts::{Mount, resolve, structural, writable};
+use super::mounts::{Mount, resolve, state_path, structural, writable};
 use crate::store::error::{Error, MemoryError};
 use crate::store::{Document, Entry};
 
@@ -105,6 +105,8 @@ pub fn view(memory: &Memory, path: &str, range: Option<(i64, i64)>) -> Result<Ou
         let lines = found.content.matches('\n').count() as i64 + 1;
         return Ok(
             match range.map(|range| view_span(range, lines)).transpose() {
+                // A mailbox document is a lifecycle record: never heat (§40.34).
+                Ok(span) if state_path(document) => Outcome::ok(numbered(&found, &shown, span)),
                 Ok(span) => {
                     Outcome::ok(numbered(&found, &shown, span)).viewed(&mount.scope, document)
                 }

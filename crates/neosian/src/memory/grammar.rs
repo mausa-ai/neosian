@@ -76,7 +76,10 @@ pub enum Command {
         /// virtual path: / (every mount), a mount, a directory or a document
         #[arg(default_value = "/")]
         path: String,
-        /// most-read documents to show
+        /// list what the sessions that read the document at PATH also read
+        #[arg(long)]
+        related: bool,
+        /// rows to show: most read, or most shared with --related
         #[arg(long, value_name = "N", default_value_t = 20, value_parser = clap::value_parser!(u32).range(1..=10000))]
         limit: u32,
         #[command(flatten)]
@@ -214,6 +217,14 @@ impl Command {
             Self::Revert { version, .. } if *version < 1 => {
                 refuse("--version must be at least 1 (versions start at 1)".to_string())
             }
+            Self::Heat {
+                path,
+                related: true,
+                ..
+            } if !path.trim_matches('/').contains('/') => refuse(format!(
+                "--related needs one document's path, not {}",
+                repr(path)
+            )),
             Self::Redact { path, all, .. } => {
                 let root = !path.trim_matches('/').contains('/');
                 match (root, all) {

@@ -119,3 +119,37 @@ fn deletion_redaction_and_renames_move_or_drop_the_rows() {
     fs::write(file(&dir, SCOPE), "not json\n{\"path\":\"kept\"}\n").unwrap();
     assert!(counts_in(&dir, SCOPE, stamp(NOW)).is_empty());
 }
+
+#[test]
+fn co_access_counts_distinct_readers_with_the_document_and_in_all() {
+    let rows: Vec<(String, String)> = [
+        ("s1", "a"),
+        ("s1", "b"),
+        ("s2", "a"),
+        ("s2", "b"),
+        ("s3", "b"),
+        ("s1", "b"),
+        ("s3", "c"),
+    ]
+    .map(|(reader, path)| (reader.to_string(), path.to_string()))
+    .into();
+    let with: HashSet<&str> = ["s1", "s2"].into();
+    let counts = related::tally(&rows, &with);
+    assert_eq!(counts["a"], (2, 2));
+    assert_eq!(counts["b"], (2, 3));
+    assert_eq!(counts["c"], (0, 1));
+}
+
+#[test]
+fn verbatim_rows_carry_their_reader_and_folds_none() {
+    let dir = sandbox("reads");
+    let heat = Heat::default();
+    heat.observe_in(&dir, "a", SCOPE, "old", stamp("2026-01-01T00:00:00Z"));
+    heat.observe_in(&dir, "b", SCOPE, "new", stamp("2026-10-27T00:00:00Z"));
+    compact(&file(&dir, SCOPE), stamp(NOW)).unwrap();
+    assert_eq!(
+        reads_in(&dir, SCOPE),
+        [("b".to_string(), "new".to_string())]
+    );
+    assert!(reads_in(&dir, "user:nobody").is_empty());
+}

@@ -3,12 +3,14 @@
 //! knowledge `read` delivered, leaves one row per reader and path in a log
 //! beside the store in the home, never in the store: format 1, wire 6,
 //! archives, exchange and profiles are untouched, and a read never becomes
-//! a write. The index, listings, the shell, the gardener, search, export
-//! and conformance leave no trace. The log is derived state: `memory heat`
-//! reports it and upkeep scan cites it; the index and search render as
-//! they did without it. Every write here is best effort, since the read it
+//! a write. The index, listings, mailbox documents, the shell, the
+//! gardener, search, export and conformance leave no trace. The log is
+//! derived state: `memory heat` reports it, `--related` joins it by
+//! session (§40.34) and upkeep scan cites it; the index and search render
+//! as they did without it. Every write here is best effort, since the read it
 //! describes has already been answered.
 
+pub mod related;
 pub mod report;
 mod rows;
 #[cfg(test)]
@@ -106,6 +108,19 @@ pub fn counts_in(directory: &Path, scope: &str, now: Stamp) -> BTreeMap<String, 
         counts.last = later(counts.last, Stamp::from_micros(at));
     }
     found
+}
+
+/// The verbatim rows of `scope` as (reader, path) pairs: what co-access
+/// joins across scopes by reader. Folds carry no reader and are skipped.
+pub fn reads_in(directory: &Path, scope: &str) -> Vec<(String, String)> {
+    load(&file(directory, scope))
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|row| match row {
+            Row::Read { reader, path, .. } => Some((reader, path)),
+            Row::Fold { .. } => None,
+        })
+        .collect()
 }
 
 /// `counts_in` over the home's heat directory; empty when the log is off.

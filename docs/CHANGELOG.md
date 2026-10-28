@@ -13,12 +13,16 @@ phase close names the version.
 - Agent reads leave a local heat log. A document body shown by the MCP memory
   tool's `view`, or delivered by an included knowledge `read`, writes one row
   per MCP session and document under `<home>/heat/`, beside the store and never
-  in it or on the wire. The index, listings, the shell, maintenance, search and
-  export write nothing. `memory heat [PATH]` reports distinct sessions over 7
+  in it or on the wire. The index, listings, mailbox documents, the shell,
+  maintenance, search and export write nothing. `memory heat [PATH]` reports distinct sessions over 7
   and 30 days, all time and the last read, most read first, with the never-read
   count; upkeep `scan` findings carry the same four fields. Delete, rename and
   redaction scrub or move the rows; `NEOSIAN_HEAT=off` stops writing. The
   index and search order are unchanged.
+- `memory heat PATH --related` lists the documents read by the sessions that
+  read one document, each with how many logged sessions read it at all, so a
+  document every session opens can be discounted. It counts the heat log's
+  unfolded rows across mounts and reorders nothing.
 
 ### Changed
 

@@ -105,7 +105,7 @@ pub fn run(
     )?;
     let width = read
         .iter()
-        .map(|read| read.shown().len())
+        .map(|read| read.shown().chars().count())
         .max()
         .unwrap_or(0);
     for read in &read {
