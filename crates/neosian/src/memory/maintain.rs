@@ -118,6 +118,7 @@ pub fn run(
             .delete(&action.mount.scope, &action.entry.path, &memory.actor)?
             .removed
         {
+            super::heat::forget(&action.mount.scope, &action.entry.path);
             writes.push(json!({"command": "delete", "path": path, "version": null}));
         }
     }

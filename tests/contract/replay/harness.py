@@ -528,9 +528,12 @@ def snapshot(space: Workspace, *, keep: frozenset[str]) -> dict[str, Any]:
     files: dict[str, list[Any]] = {}
     for path in sorted(p for p in space.home.rglob("*") if p.is_file()):
         # S7 internals have independent crash/replay contracts, not v1 fixtures.
-        if {".changes", ".transactions"}.intersection(
-            path.relative_to(space.home).parts
-        ):
+        parts = path.relative_to(space.home).parts
+        if {".changes", ".transactions"}.intersection(parts):
+            continue
+        # The heat log (#407) is v2 derived state beside the store, with its own
+        # contracts; the store's bytes stay the frozen comparison.
+        if parts[0] == "heat":
             continue
         rel = normalise(path.relative_to(space.home).as_posix(), space, keep=keep)
         if path.name.endswith(".lock"):

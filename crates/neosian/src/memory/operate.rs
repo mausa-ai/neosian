@@ -113,6 +113,10 @@ pub fn redact(
     writable(mount)?;
     let target = (!scope_wide).then_some(document);
     let matched = memory.store.redact(&mount.scope, target, &memory.actor)?;
+    match target {
+        Some(document) => super::heat::forget(&mount.scope, document),
+        None => super::heat::forget_scope(&mount.scope),
+    }
     if json {
         let envelope = json!({"path": path, "scope_wide": scope_wide, "matched": matched});
         writeln!(out, "{envelope}")?;

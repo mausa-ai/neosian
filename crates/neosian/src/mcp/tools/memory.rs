@@ -186,7 +186,12 @@ fn call(server: &Server, arguments: &Map<String, Value>) -> Outcome {
         },
     };
     match dispatch(memory, &answered) {
-        Ok(outcome) => outcome.into(),
+        Ok(outcome) => {
+            if let Some(viewed) = &outcome.viewed {
+                server.observe(&viewed.scope, &viewed.path);
+            }
+            outcome.into()
+        }
         Err(error) => Outcome::failed("memory", &error.to_string()),
     }
 }

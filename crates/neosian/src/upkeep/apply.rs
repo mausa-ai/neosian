@@ -190,6 +190,7 @@ fn write_one(
         if !deleted.removed {
             return Err(invalid("document disappeared before upkeep deletion"));
         }
+        crate::memory::heat::forget(&mount.scope, path);
         Ok(json!({"path":change.path,"operation":"delete","version":deleted.version}))
     }
 }

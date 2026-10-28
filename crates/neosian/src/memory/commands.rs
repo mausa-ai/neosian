@@ -4,6 +4,7 @@
 //! in `dispatch.rs` makes them corrective.
 
 use super::dispatch::{Memory, Outcome};
+use super::heat;
 use super::index;
 use super::mounts::{Mount, resolve, structural, writable};
 use crate::store::error::{Error, MemoryError};
@@ -104,7 +105,9 @@ pub fn view(memory: &Memory, path: &str, range: Option<(i64, i64)>) -> Result<Ou
         let lines = found.content.matches('\n').count() as i64 + 1;
         return Ok(
             match range.map(|range| view_span(range, lines)).transpose() {
-                Ok(span) => Outcome::ok(numbered(&found, &shown, span)),
+                Ok(span) => {
+                    Outcome::ok(numbered(&found, &shown, span)).viewed(&mount.scope, document)
+                }
                 Err(why) => Outcome::fail(why),
             },
         );
@@ -236,6 +239,7 @@ pub fn delete(memory: &Memory, path: &str) -> Result<Outcome, Error> {
     if !deleted.removed {
         return Ok(Outcome::fail(format!("No document at {shown}")).hint(INDEX_HINT));
     }
+    heat::forget(&mount.scope, document);
     let outcome = Outcome::ok(format!("Deleted {shown}"));
     Ok(match deleted.version {
         Some(version) => outcome.wrote(shown, version, None),
@@ -270,6 +274,7 @@ pub fn rename(memory: &Memory, old: &str, new: &str) -> Result<Outcome, Error> {
         store.delete(&from.scope, source, actor)?;
         ("Moved", version)
     };
+    heat::rename(&from.scope, source, &to.scope, target);
     let (was, now) = (virtual_path(from, source), virtual_path(to, target));
     let prose = format!("{verb} {was} to {now} (v{version})");
     Ok(Outcome::ok(prose).wrote(now, version, Some(was)))

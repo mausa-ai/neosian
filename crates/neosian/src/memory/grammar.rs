@@ -71,6 +71,17 @@ pub enum Command {
         #[command(flatten)]
         flags: Flags,
     },
+    /// which documents agent sessions read: counts over 7 and 30 days, all time, and the last read
+    Heat {
+        /// virtual path: / (every mount), a mount, a directory or a document
+        #[arg(default_value = "/")]
+        path: String,
+        /// most-read documents to show
+        #[arg(long, value_name = "N", default_value_t = 20, value_parser = clap::value_parser!(u32).range(1..=10000))]
+        limit: u32,
+        #[command(flatten)]
+        flags: Flags,
+    },
     /// print a document, a directory listing, or / (the index)
     View {
         /// virtual path
@@ -179,6 +190,7 @@ impl Command {
         match self {
             Self::Search { flags, .. }
             | Self::Maintain { flags, .. }
+            | Self::Heat { flags, .. }
             | Self::View { flags, .. }
             | Self::Create { flags, .. }
             | Self::StrReplace { flags, .. }

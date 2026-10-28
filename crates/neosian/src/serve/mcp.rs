@@ -206,12 +206,15 @@ async fn post(
         Err(refused) => refused,
         Ok(()) => {
             let shared = shared.clone();
+            let reader = id.to_string();
             let handled = tokio::task::spawn_blocking(move || {
                 let surface = shared
                     .mcp
                     .as_ref()
                     .expect("the route exists with the surface");
-                surface.server().handle(&method, params.as_ref())
+                let mut server = surface.server();
+                server.set_reader(&reader);
+                server.handle(&method, params.as_ref())
             })
             .await;
             handled.unwrap_or_else(|_| Answer::Error {

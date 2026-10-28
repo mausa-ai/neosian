@@ -25,6 +25,7 @@ protocol servers use their own framing.
 | `memory search` | Keyword search over current mounted documents and selected metadata |
 | `memory versions/revert/redact` | Inspect history, undo the newest row, erase content |
 | `memory maintain` | Aged empty/exact-duplicate cleanup; preview with `--dry-run` |
+| `memory heat` | Which documents agent sessions read (7/30-day, all-time, last read); never reorders the index |
 | `upkeep scan/prepare/inspect/apply` | Bounded findings, guarded proposals, preview and explicitly approved changes |
 | `changes read/prune` | Poll durable scope changes or preview/apply event retention |
 | `messages` | Durable messages, reminders, claims and acknowledgments |

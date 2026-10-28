@@ -6,6 +6,7 @@ pub mod cli;
 mod commands;
 pub mod dispatch;
 pub mod grammar;
+pub mod heat;
 pub mod index;
 mod maintain;
 pub mod mounts;

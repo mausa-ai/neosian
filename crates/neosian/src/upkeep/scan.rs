@@ -47,6 +47,7 @@ pub fn scan(memory: &Memory, path: &str, limit: usize, stale_days: u32) -> Resul
             continue;
         }
         let prefix = selected.map_or("", |(_, p)| p);
+        let heat = crate::memory::heat::counts(&mount.scope, now);
         let mut entries = memory.store.list_documents(&mount.scope, prefix)?;
         if entries.len() > 10_000 {
             return Err(invalid(
@@ -128,8 +129,12 @@ pub fn scan(memory: &Memory, path: &str, limit: usize, stale_days: u32) -> Resul
                 }
             }
             if !issues.is_empty() {
+                // Read evidence (§40.33): sessions that read the document, never a verdict.
+                let read = heat.get(&entry.path).cloned().unwrap_or_default();
                 findings.push(json!({"path":path,"scope":mount.scope,"source":source(memory,&mount.scope),
-                    "version":doc.envelope.version,"content_sha256":digest(&doc.content),"issues":issues}));
+                    "version":doc.envelope.version,"content_sha256":digest(&doc.content),
+                    "read_sessions_7d":read.week,"read_sessions_30d":read.month,"read_sessions":read.total,
+                    "last_read":read.last.map(|last| last.utc().z()),"issues":issues}));
             }
         }
     }

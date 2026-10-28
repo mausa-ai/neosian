@@ -214,6 +214,7 @@ fn sessions(
             if wanted.contains(&entry.path) && !entry.redacted {
                 if write {
                     store.redact(&scope, Some(&entry.path), actor)?;
+                    crate::memory::heat::forget(&scope, &entry.path);
                 }
                 found.push(json!({"scope":scope,"path":entry.path}));
             }

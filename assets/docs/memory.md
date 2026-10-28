@@ -250,6 +250,30 @@ writes or I/O failures can still produce partial results. The result reports
 what actually happened. Model-assisted judgment belongs to the user's agent,
 which can load the shipped `upkeep` skill.
 
+## Read heat
+
+Agent reads leave a local trace. A document body shown by the MCP memory
+tool's `view`, or delivered by an included knowledge `read`, writes one row per
+MCP session and document to `<home>/heat/<scope>.jsonl`: a time, a session id
+and a path, never content. The index, directory listings, the shell, maintenance,
+search, export and conformance write nothing, and a session re-reading a document
+adds nothing. The log sits beside the store, never in it: format 1, wire 6,
+archives, exchange and profiles are unchanged, and a read is never a write.
+
+`memory heat [PATH]` lists the read documents under `/`, a mount, a directory or
+one document, most read first: distinct sessions in the last 7 and 30 days, in
+all, and the last read, then how many listed documents were never read.
+`--limit N` bounds the rows (default 20); `--json` prints `documents`, `read`,
+`unread` and `truncated`. Upkeep `scan` findings carry the same evidence as
+`read_sessions_7d`, `read_sessions_30d`, `read_sessions` and `last_read`. Heat is
+evidence for a reviewer, never a selector: the index and search order are
+unchanged, and a document the authorized listing does not show is never shown.
+
+Delete, rename and redaction scrub or move a document's rows; redacting a whole
+scope removes its file. The log is derived state and may be deleted. Rows older
+than 30 days fold into per-path totals once a file passes 2 MiB.
+`NEOSIAN_HEAT=off` stops writing; existing rows still report.
+
 ## Reviewed knowledge
 
 Shared procedures/decisions can carry content-bound review assertions and

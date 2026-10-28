@@ -11,6 +11,7 @@ use super::rpc::{Answer, Handler, INVALID_PARAMS, negotiate};
 use super::schema::{input_schema, validate};
 use super::tools::{Outcome, Tool, served};
 use crate::memory::dispatch::Memory;
+use crate::memory::heat::Heat;
 use crate::memory::skill::{Skill, list_skills, load_skill, shipped_skills};
 use crate::version;
 
@@ -22,6 +23,10 @@ pub struct Server {
     pub instructions: String,
     pub shipped: Vec<Skill>,
     tools: Vec<Tool>,
+    heat: Heat,
+    /// Who reads (§40.33): the one stdio session, minted at start, or the
+    /// `/mcp` session named before each call it dispatches.
+    reader: String,
 }
 
 impl Server {
@@ -32,7 +37,20 @@ impl Server {
             instructions,
             shipped: shipped_skills(),
             tools,
+            heat: Heat::default(),
+            reader: uuid::Uuid::new_v4().to_string(),
         }
+    }
+
+    pub fn set_reader(&mut self, id: &str) {
+        if self.reader != id {
+            self.reader = id.to_string();
+        }
+    }
+
+    /// A document body this session read: one heat row per session and path.
+    pub fn observe(&self, scope: &str, path: &str) {
+        self.heat.observe(&self.reader, scope, path);
     }
 
     fn listed(&self) -> Value {

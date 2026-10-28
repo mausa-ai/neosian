@@ -66,6 +66,15 @@ pub struct Receipt {
     pub previous_path: Option<String>,
 }
 
+/// The document a `view` showed, in-process only: what the MCP memory
+/// tool records as read heat (§40.33). A listing, the index and a
+/// redacted document show none.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Viewed {
+    pub scope: String,
+    pub path: String,
+}
+
 /// What a command answers: the data or the error, and guidance for
 /// whoever asked (a hint, a caveat, the way to recover).
 #[derive(Debug, PartialEq, Eq)]
@@ -73,6 +82,7 @@ pub struct Outcome {
     pub result: Result<String, String>,
     pub reminder: Option<String>,
     pub receipt: Option<Receipt>,
+    pub viewed: Option<Box<Viewed>>,
 }
 
 impl Outcome {
@@ -81,6 +91,7 @@ impl Outcome {
             result: Ok(data.into()),
             reminder: None,
             receipt: None,
+            viewed: None,
         }
     }
 
@@ -89,11 +100,21 @@ impl Outcome {
             result: Err(error.into()),
             reminder: None,
             receipt: None,
+            viewed: None,
         }
     }
 
     pub fn hint(mut self, reminder: impl Into<String>) -> Self {
         self.reminder = Some(reminder.into());
+        self
+    }
+
+    /// The document body this answer shows.
+    pub fn viewed(mut self, scope: &str, path: &str) -> Self {
+        self.viewed = Some(Box::new(Viewed {
+            scope: scope.to_string(),
+            path: path.to_string(),
+        }));
         self
     }
 

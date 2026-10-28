@@ -93,7 +93,16 @@ fn call(server: &Server, args: &Map<String, Value>) -> Outcome {
         }
     })();
     match result {
-        Ok(value) => Outcome::ok(value.to_string()),
+        Ok(value) => {
+            // A delivered body is a read (§40.33); a policy-withheld one is not.
+            if text(args, "command") == Some("read")
+                && value["included"] == true
+                && let (Some(scope), Some(path)) = (value["scope"].as_str(), value["path"].as_str())
+            {
+                server.observe(scope, path);
+            }
+            Outcome::ok(value.to_string())
+        }
         Err(error) => Outcome::failed("knowledge", &crate::conversation::Error::from(error).text()),
     }
 }
