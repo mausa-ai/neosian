@@ -8,17 +8,19 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [2.10.0] - 2026-10-28
+
 ### Added
 
 - Agent reads leave a local heat log. A document body shown by the MCP memory
   tool's `view`, or delivered by an included knowledge `read`, writes one row
   per MCP session and document under `<home>/heat/`, beside the store and never
   in it or on the wire. The index, listings, mailbox documents, the shell,
-  maintenance, search and export write nothing. `memory heat [PATH]` reports distinct sessions over 7
-  and 30 days, all time and the last read, most read first, with the never-read
-  count; upkeep `scan` findings carry the same four fields. Delete, rename and
-  redaction scrub or move the rows; `NEOSIAN_HEAT=off` stops writing. The
-  index and search order are unchanged.
+  maintenance, search and export write nothing. `memory heat [PATH]` reports
+  distinct sessions over 7 and 30 days, all time and the last read, most read
+  first, with the never-read count; upkeep `scan` findings carry the same four
+  fields. Delete, rename and redaction scrub or move the rows;
+  `NEOSIAN_HEAT=off` stops writing. The index and search order are unchanged.
 - `memory heat PATH --related` lists the documents read by the sessions that
   read one document, each with how many logged sessions read it at all, so a
   document every session opens can be discounted. It counts the heat log's
@@ -2740,7 +2742,9 @@ pre-release — pin it explicitly; the API stability promise rides v1.0.0.
 - Both entry points share one `_validate_run`, so neither can skip a
   guard.
 
-[Unreleased]: https://github.com/mausa-ai/neosian/compare/v2.8.0...HEAD
+[Unreleased]: https://github.com/mausa-ai/neosian/compare/v2.10.0...HEAD
+[2.10.0]: https://github.com/mausa-ai/neosian/compare/v2.9.0...v2.10.0
+[2.9.0]: https://github.com/mausa-ai/neosian/compare/v2.8.0...v2.9.0
 [2.8.0]: https://github.com/mausa-ai/neosian/compare/v2.7.0...v2.8.0
 [1.13.0]: https://github.com/mausa-ai/neosian/compare/v1.12.2...v1.13.0
 [1.12.2]: https://github.com/mausa-ai/neosian/compare/v1.12.1...v1.12.2

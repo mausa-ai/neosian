@@ -3,7 +3,7 @@
 # cargo-dist owns platform selection, archive verification and update receipts.
 set -eu
 
-NEOSIAN_RELEASE="2.9.0"
+NEOSIAN_RELEASE="2.10.0"
 
 version="${NEOSIAN_VERSION:-$NEOSIAN_RELEASE}"
 

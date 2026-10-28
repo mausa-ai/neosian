@@ -3,7 +3,7 @@
 > Memory and context for the agent you already use. One Rust binary,
 > CLI/MCP/HTTP interfaces, state on your own files or Postgres.
 
-Release: 2.9.0. Read installed pages with `neosian docs TOPIC` or the MCP
+Release: 2.10.0. Read installed pages with `neosian docs TOPIC` or the MCP
 `docs` tool. They are versioned with the executable and are authoritative
 for that version. The release's neosian-docs.json carries the same pages.
 
