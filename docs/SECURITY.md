@@ -26,6 +26,13 @@ report that concerns both is welcome here.
 
 ## Workspace authority and capture
 
+Claude Code's bundled cache plugin uses the host's documented mod API and
+existing account. The Rust memory/MCP process gains no model credentials or
+scheduler. Its local statusline bridge persists only cache metadata, delegates
+the already-configured statusline command and never reads transcripts. Host
+cache estimates are not live server proofs; unexpected misses are detectable
+only after a request. See `neosian docs agents` for controls and receipt limits.
+
 Portable profiles select context; they cannot grant server permission.
 Profile HTTP bindings require the scoped authorization capability, with
 exact memory-scope and conversation grants checked before storage access.

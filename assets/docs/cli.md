@@ -15,6 +15,7 @@ protocol servers use their own framing.
 | Command | Purpose |
 |---|---|
 | `setup`, `status` | Register clients and inspect local setup |
+| `statusline --client claude-code` | Display cache state from Claude Code's statusline JSON; setup installs its observation bridge |
 | `profile init/import/export/show/bind` | Create portable workspace selections and local bindings |
 | `skill` | Import/export, discover/load, inspect/validate, edit/diff/revert and select/pin reusable skills. See `neosian docs skills`. |
 | `knowledge import/collection/validate/references/export` | Preview scoped Markdown ingestion, optional structures and readable bundles |
@@ -81,6 +82,14 @@ executable. `status --json` reports paths and registrations without provider
 credentials. `update --mode off|notify|auto` stores the update policy; ordinary
 hooks and MCP calls never initiate update checks. Package-manager installations
 should be updated using that package manager.
+
+Claude Code setup also installs the bundled cache plugin and composes the
+observation bridge with an existing statusline. Keep-warm defaults on for an
+observed one-hour subscription cache while idle, until the session closes.
+Expired or uncertain caches wait for the next normal message. Use
+`setup --claude-cache off --write` to disable it and restore the prior statusline.
+`/neosian-cache` in Claude shows status and accepts `on`, `off` or a duration
+such as `2h`. See `neosian docs agents` for compatibility and request limits.
 
 Version 2 retires provider configuration, chat/TUI, playground, evaluation,
 reflection execution and maintenance's model stage. See `neosian docs migration`.

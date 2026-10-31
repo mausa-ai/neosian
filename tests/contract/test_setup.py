@@ -52,7 +52,10 @@ def test_setup_preview_and_repeat_keep_foreign_files(
     first = run("--write")
     expected = (
         1
-        if unsupported or (level == "user" and client in {"claude-code", "codex"})
+        # Claude's cache mod is installed through its CLI at either scope.
+        if unsupported
+        or client == "claude-code"
+        or (level == "user" and client == "codex")
         else 0
     )
     assert first.returncode == expected, first.stderr

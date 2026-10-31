@@ -1,6 +1,7 @@
 //! `setup`: wire the selected clients once per machine (§22.6, §30.3).
 
 use super::{
+    cache_install,
     context::{CLIENTS, Context},
     diagnostics, files, hooks, mcp, runner, settings, setup_check, targets,
 };
@@ -33,6 +34,9 @@ pub struct Setup {
     pub url: Option<String>,
     #[arg(long)]
     pub profile: Option<String>,
+    /// Install idle cache maintenance for Claude Code, or disable it and restore its prior statusline.
+    #[arg(long, default_value = "auto", value_parser = ["auto", "off"])]
+    claude_cache: String,
 }
 
 fn discovery(context: &Context, clients: &[String]) -> Vec<Value> {
@@ -103,7 +107,7 @@ fn install_pair(args: &Setup, context: &Context, client: &str) -> Value {
             "mcp": grammar(incompatible.unwrap_or_else(|| message.clone())), "hooks": grammar(message)});
         }
     };
-    if args.write && ["muse-code", "cursor", "pi"].contains(&client) {
+    if args.write && ["claude-code", "muse-code", "cursor", "pi"].contains(&client) {
         let mcp = applied(match &incompatible {
             Some(message) => grammar(message.clone()),
             None => mcp::install(&target, context, &settings, false),
@@ -111,6 +115,12 @@ fn install_pair(args: &Setup, context: &Context, client: &str) -> Value {
         let hooks = applied(hooks::install(&hook, context, &settings, false));
         if mcp["success"] != true || hooks["success"] != true {
             return json!({"client": client, "label": target.label, "mcp": mcp, "hooks": hooks});
+        }
+        if client == "claude-code" && args.claude_cache == "auto" {
+            let cache = cache_install::install(context, &args.level, false);
+            if cache["success"] != true {
+                return json!({"client":client,"label":target.label,"mcp":mcp,"hooks":hooks,"cache":cache});
+            }
         }
     }
     let mut mcp = applied(match incompatible {
@@ -148,6 +158,13 @@ fn install_pair(args: &Setup, context: &Context, client: &str) -> Value {
     }
     let hooks = applied(hooks::install(&hook, context, &settings, args.write));
     let mut row = json!({"client": client, "label": target.label, "mcp": mcp, "hooks": hooks});
+    if client == "claude-code" {
+        row["cache"] = if args.claude_cache == "off" {
+            cache_install::disable(context, &args.level, args.write)
+        } else {
+            cache_install::install(context, &args.level, args.write)
+        };
+    }
     if let Some(profile) = settings.profile {
         row["profile"] = profile;
         row["profile_support"] = settings::support(client);
@@ -275,9 +292,10 @@ pub fn run(args: &Setup, out: &mut impl Write, err: &mut impl Write) -> io::Resu
         .map(|client| install_pair(args, &context, client))
         .collect();
     let failed = rows.iter().any(|row| {
-        ["mcp", "hooks"]
-            .iter()
-            .any(|k| row[k]["success"] != true || (args.write && row[k]["applied"] != true))
+        ["mcp", "hooks", "cache"].iter().any(|k| {
+            !row[k].is_null()
+                && (row[k]["success"] != true || (args.write && row[k]["applied"] != true))
+        })
     });
     if args.json {
         writeln!(
@@ -309,6 +327,26 @@ pub fn run(args: &Setup, out: &mut impl Write, err: &mut impl Write) -> io::Resu
             }
             for kind in ["mcp", "hooks"] {
                 writeln!(out, "{}", line(kind, &row[kind], args.write))?;
+            }
+            if let Some(cache) = row.get("cache") {
+                writeln!(out, "{}", line("cache", cache, args.write))?;
+                if let Some(note) = cache["note"].as_str() {
+                    writeln!(out, "  note  {note}")?;
+                }
+                if !args.write
+                    && let Some(commands) = cache["commands"].as_array()
+                {
+                    for argv in commands {
+                        let argv: Vec<_> = argv
+                            .as_array()
+                            .unwrap()
+                            .iter()
+                            .filter_map(Value::as_str)
+                            .map(str::to_owned)
+                            .collect();
+                        writeln!(out, "    {}", super::context::shell_join(&argv))?;
+                    }
+                }
             }
             for note in [&row["mcp"]["note"], &row["hooks"]["trust_hint"]]
                 .into_iter()

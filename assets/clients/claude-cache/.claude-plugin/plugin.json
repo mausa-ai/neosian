@@ -1,0 +1,22 @@
+{
+  "name": "neosian-cache",
+  "version": "1.0.0",
+  "description": "Maintain an already-warm conversation cache while idle, with visible receipts and no automatic cold rebuilds.",
+  "author": { "name": "Mausa" },
+  "homepage": "https://neosian.com/docs/agents",
+  "license": "Apache-2.0",
+  "userConfig": {
+    "enabled": {
+      "type": "boolean",
+      "title": "Keep warm while idle",
+      "description": "Maintain an observed one-hour cache until the session closes. Expired or uncertain caches wait for your next message.",
+      "default": true
+    },
+    "allowApi": {
+      "type": "boolean",
+      "title": "Allow usage-billed sessions",
+      "description": "Also allow maintenance without subscription usage indicators, when a one-hour cache is observed. Requests use your account's normal billing.",
+      "default": false
+    }
+  }
+}

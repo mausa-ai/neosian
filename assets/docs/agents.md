@@ -1,6 +1,6 @@
 ---
 title: "Any agent: the record through hooks"
-summary: Agent hooks record sessions; startup context, MCP recall and search read them back
+summary: Agent setup, recording hooks, startup context and Claude Code cache maintenance
 ---
 
 # Any agent
@@ -48,6 +48,8 @@ neosian record install --client opencode --level project --scope user:me --write
   `--client C` for an explicit selection. JSON never prompts. Both setup and
   status accept invocation-only `--at CLIENT=DIR` overrides and report where
   they searched; a missing client home is never created.
+  Claude Code setup also installs the cache plugin and observation bridge
+  described below; the standalone MCP/hook installers do not.
   Setup and status show running, selected and PATH executable paths.
   `status` also reports the MCP and hook executables separately, their storage
   selection and capture policy. PATH differences remain visible even when only
@@ -150,6 +152,101 @@ neosian record install --client opencode --level project --scope user:me --write
   says so (and warns when the `.jsonc` names `neosian-memory` itself,
   since that entry would win). Any model OpenCode can run works, its
   free models included.
+
+## Claude Code cache maintenance
+
+`neosian setup --client claude-code --write` installs the bundled
+`neosian-cache@neosian-local` plugin through Claude's public plugin CLI and
+composes a local observation bridge with your existing statusline. Restart
+Claude Code after setup. Ordinary `claude` launches work; no patched binary,
+extra mode, separate model account or background Neosian daemon is needed.
+Claude Code 2.1.314 is the tested baseline. The plugin accepts subsequent
+2.1 patches only while the required public events and receipt fields match.
+
+Keep-warm defaults on until the session closes. After a successful ordinary
+request, it matches Claude's documented cache observation to that request's
+usage. An observed one-hour subscription cache becomes eligible for a hidden
+refresh near minute 55 from that request's start, while idle. Normal conversation
+activity postpones refresh; verified refreshes also renew the deadline.
+The request uses Claude's public `model.fork` API and the session's current
+model and account; it creates no main conversation turn and cannot run tools.
+The Rust memory, search, capture and MCP paths do not run the timer or model.
+
+If the laptop wakes after expiry, the cache lifetime is unknown, context or
+model changes, or a refresh fails verification, automatic calls stop and the
+badge warns. The feature stays enabled: the next successful ordinary message
+can establish a new warm cache and rearm maintenance. It does not deliberately
+rebuild an expired cache just to produce a small reply. Five-minute caches
+are observed without automatic refresh; setup does not change Claude's TTL.
+
+| In Claude Code | Effect |
+|---|---|
+| `/neosian-cache` or `/neosian-cache status` | Show status without making a model request |
+| `/neosian-cache off` | Stop maintenance for this session |
+| `/neosian-cache on` | Enable until close; still requires an observed warm one-hour cache |
+| `/neosian-cache 2h` | Enable for a duration (minutes or hours, at most seven days) |
+| `/config` | Persist the plugin's `enabled` and `allowApi` preferences |
+
+Subscription usage indicators and a one-hour TTL are required by default.
+An explicit `on`, duration or persistent `allowApi` also opts usage-billed
+sessions into maintenance when a warm one-hour cache is observed. Requests
+consume the account's normal usage. There is no promise of quota savings.
+
+The passive Neosian badge shows expected warmth, pause reasons and the last
+refresh's actual cache reads, writes and output tokens. A successful refresh
+must read nearly all the observed prefix and return the expected short reply;
+a surprising receipt prevents further automatic attempts. Reported usage can
+include reasoning tokens even for a one-word visible reply. Checks
+allow at most 256 output tokens, 1,024 uncached input tokens and 2,048 cache-write
+tokens, require at least 90% prefix reuse, and allow at most 2,048 unreused prefix
+tokens. These limits are checked after completion. Cache status is a TTL
+estimate, not a live server probe. Claude's public fork API
+has neither an only-if-cached condition nor a hard output-token cap: an
+unexpected miss can only be detected after that one request has occurred.
+
+Setup preserves the previous statusline command and feeds it the original
+JSON. The bridge uses Bash, or Git Bash/PowerShell on Windows, bounds delegated
+output to 64 KiB and waits at most five seconds. On Windows it honors
+`CLAUDE_CODE_GIT_BASH_PATH` and finds standard Git Bash locations before falling
+back to PowerShell. Its refresh interval is at most 30 seconds, preserving any
+faster existing interval. A missing plugin heartbeat produces a fallback
+warning. `neosian status --json` and `neosian setup --check` inspect installed
+assets and observation wiring; they explicitly do not claim live delivery.
+After a Neosian update, repeat setup to refresh the bundled plugin. Normal
+`claude update` does not remove the plugin; incompatible behavior pauses it.
+
+To remove the integration from this setup scope, run
+`neosian setup --client claude-code --claude-cache off --write`. This disables
+the plugin and restores the saved statusline if Neosian still owns its wrapper.
+Project removal restores inheritance when no project statusline existed.
+Disabling stops future refreshes; an already-sent request may finish.
+An explicit plugin disable survives later setup runs. To restore installation,
+enable `neosian-cache@neosian-local` through `/plugin`, then repeat setup.
+
+The bridge stores bounded observations and refresh receipts under
+`neosian-cache/observations/` beside the selected Claude settings file. These
+contain session IDs, host/model IDs, counts, status and UTC times; no prompts,
+response text, transcripts, credentials or memory documents. One observation
+and one receipt are overwritten per session. They are local diagnostics,
+not memory or an authority to resume refresh after a restart; old session
+files may be removed while Claude is closed.
+
+### Standalone cache display
+
+`neosian statusline --client claude-code` also works independently: read
+Claude's documented statusline JSON from stdin and print a compact badge, or
+use `--json` for normalized fields. Without the installer-owned `--bridge DIR`,
+it stores nothing and makes no model or network request. For example:
+
+```text
+cache estimate warm ~4m59s | last main read 17633, wrote 637 | misses 0 | cold rebuild ~18272 tokens
+```
+
+The cold rebuild count estimates context tokens, not money. Read/write counts
+and misses describe main requests; side requests may have a different TTL.
+Invalid JSON or input larger than 1 MiB exits 1 without echoing the payload.
+See Claude's [statusline documentation](https://code.claude.com/docs/en/statusline)
+and [mod API](https://code.claude.com/docs/en/plugins/mods/api).
 
 ## What a span becomes
 

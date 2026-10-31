@@ -59,6 +59,8 @@ enum Command {
     Setup(clients::setup::Setup),
     /// Is this machine set up? The home and the clients.
     Status(clients::status::Status),
+    /// Display cache information from a client's statusline JSON on stdin.
+    Statusline(clients::statusline::Statusline),
     /// Check GitHub Releases for a newer binary; print the command or apply it.
     Update(update::Update),
     /// Display version information.
@@ -201,6 +203,7 @@ where
         Command::Profile { command } => crate::profile::cli::run(&command, &mut out, &mut err),
         Command::Setup(args) => clients::setup::run(&args, &mut out, &mut err),
         Command::Status(args) => clients::status::run(&args, &mut out, &mut err),
+        Command::Statusline(args) => clients::statusline::run(&args, &mut out, &mut err),
         Command::Update(args) => update::run(&args, &mut out, &mut err),
         Command::Version => writeln!(out, "{}", version::line()).map(|()| 0),
         Command::Schema(args) => crate::schema::run(&args, &mut out, &mut err),

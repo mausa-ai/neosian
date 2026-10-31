@@ -8,6 +8,27 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [2.11.0] - 2026-10-31
+
+### Added
+
+- Claude Code setup installs the bundled `neosian-cache` mod using the public
+  plugin CLI, preserving an existing statusline through an observation bridge.
+  An observed one-hour subscription cache defaults to maintenance near minute 55
+  while idle, until the session closes. Cold, uncertain or changed caches wait for
+  ordinary user activity. Hidden host requests leave the main conversation and
+  Neosian memory untouched. A badge reports estimates and actual refresh usage;
+  `/neosian-cache` provides status, on/off and optional duration controls.
+- `setup --claude-cache off` disables the integration and restores its owned
+  statusline. `status` and `setup --check` inspect plugin assets and bridge
+  configuration. Persistent plugin preferences and explicit API opt-in remain
+  host-owned. Neither cache-hit guarantees nor subscription quota savings are
+  promised; unexpected request receipts stop subsequent automatic attempts.
+- Standalone `statusline --client claude-code` displays estimated cache warmth,
+  expiry and cold rebuild tokens alongside actual last-main-request cache
+  reads/writes and misses. Without `--bridge`, it is stateless and independent
+  of memory. Neither path makes model or network requests.
+
 ## [2.10.0] - 2026-10-28
 
 ### Added
@@ -2742,7 +2763,8 @@ pre-release — pin it explicitly; the API stability promise rides v1.0.0.
 - Both entry points share one `_validate_run`, so neither can skip a
   guard.
 
-[Unreleased]: https://github.com/mausa-ai/neosian/compare/v2.10.0...HEAD
+[Unreleased]: https://github.com/mausa-ai/neosian/compare/v2.11.0...HEAD
+[2.11.0]: https://github.com/mausa-ai/neosian/compare/v2.10.0...v2.11.0
 [2.10.0]: https://github.com/mausa-ai/neosian/compare/v2.9.0...v2.10.0
 [2.9.0]: https://github.com/mausa-ai/neosian/compare/v2.8.0...v2.9.0
 [2.8.0]: https://github.com/mausa-ai/neosian/compare/v2.7.0...v2.8.0

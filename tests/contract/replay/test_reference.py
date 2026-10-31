@@ -59,6 +59,9 @@ def retained(value: Any) -> Any:
             result.pop("installation", None)  # Independently checked setup diagnostics.
         if "mcp_registered" in result and "hooks_present" in result:
             result.pop("registrations", None)  # Retain every original status finding.
+            result.pop(
+                "cache", None
+            )  # Claude's additive setup metadata is tested separately.
         for key, added in (
             (
                 "tools",

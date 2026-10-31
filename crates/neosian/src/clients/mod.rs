@@ -1,5 +1,8 @@
 //! Client registration and discovery (`shared/client_config.py`, §22.6).
 
+mod cache_bridge;
+mod cache_install;
+mod cache_shell;
 pub mod context;
 mod diagnostics;
 pub mod files;
@@ -15,4 +18,5 @@ mod settings;
 pub mod setup;
 mod setup_check;
 pub mod status;
+pub mod statusline;
 pub mod targets;

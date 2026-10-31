@@ -108,13 +108,17 @@ pub(super) fn client_status(client: &str, context: &Context) -> Value {
         None
     };
     let target = targets::mcp(client, context, "user");
-    json!({"client": client, "label": target.label, "installed": target.evidence.is_dir(),
+    let mut result = json!({"client": client, "label": target.label, "installed": target.evidence.is_dir(),
         "mcp_registered": server.is_some(), "hooks_present": hook.is_some(), "level": level,
         "hook_files": hooks.iter().map(|(p, _, _)| p).collect::<Vec<_>>(), "interpreter": interpreter,
         "interpreter_resolves": resolves, "executable_kind": kind, "mcp_shadowed_by": shadow, "root": root,
         "message_delivery": delivery, "searched_directory": target.evidence,
         "registrations":{"mcp":diagnostics::registration(server, context),
-            "hooks":diagnostics::registration(hook, context)}})
+            "hooks":diagnostics::registration(hook, context)}});
+    if client == "claude-code" {
+        result["cache"] = super::cache_install::status(context);
+    }
+    result
 }
 
 fn last_session(root: &Path, scope: &str) -> Option<Value> {

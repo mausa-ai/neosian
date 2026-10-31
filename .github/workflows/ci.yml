@@ -166,6 +166,7 @@ jobs:
           package-manager-cache: false
       - run: node tests/clients/pi_record.mjs
       - run: node tests/clients/mailbox.mjs
+      - run: node --test tests/clients/claude_cache.mjs
 
   audit:
     runs-on: ubuntu-24.04

@@ -31,6 +31,11 @@ it leaves your selected storage unopened. Restart the client and review hook tru
 after setup. Every session can leave a durable record;
 the next session reads the index, recalls relevant turns and continues
 explicit handoffs.
+Claude Code setup also installs a bundled plugin that keeps an observed
+one-hour subscription cache warm while idle, until the session closes. Expired
+or uncertain caches show a warning and wait for your next message. The badge
+shows refresh receipts; `/neosian-cache` provides status, on/off and duration
+controls. See `neosian docs agents` for the request limits and compatibility.
 Portable profiles opt into recording separately: new profiles capture off by
 default.
 

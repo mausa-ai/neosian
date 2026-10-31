@@ -77,3 +77,10 @@ Setup shows running, PATH and registered executable paths, storage and capture.
 `setup --check` inspects saved settings and probes MCP with temporary file storage.
 Configured source access is not checked; client connection and hook delivery are
 not observed. Restart the client and review hook trust after saving registrations.
+
+Claude Code setup installs a host-owned cache mod through the public plugin CLI.
+An observed one-hour subscription cache is maintained near minute 55 while idle,
+until session close. Expired or uncertain caches warn and wait for normal user
+activity. `/neosian-cache` provides status, on/off and duration controls. Cache
+estimates cannot guarantee a server hit; actual receipts stop unexpected retries.
+Memory/MCP/search paths gain no model dependency. Read `neosian docs agents`.

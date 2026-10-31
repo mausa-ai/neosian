@@ -68,6 +68,19 @@ pub fn run(
                 "{name}: project configuration overrides the user MCP registration"
             ));
         }
+        if let Some(levels) = client["cache"]["levels"].as_array() {
+            for level in levels {
+                if level["enabled"] != false
+                    && (level["installed"] == true || level["enabled"] == true)
+                    && (level["current"] != true || level["observation_configured"] != true)
+                {
+                    issues.push(format!(
+                        "{name} cache ({}): plugin or observation bridge needs setup --write",
+                        level["level"].as_str().unwrap_or("unknown")
+                    ));
+                }
+            }
+        }
     }
     if installation["selected"]["resolved"] != installation["running"] {
         issues.push("The selected executable is not the running binary; run its absolute path with setup --check to test it".into());
@@ -187,6 +200,21 @@ pub fn render_registrations(client: &Value, out: &mut impl Write) -> io::Result<
         if !registration.is_null() {
             write!(out, "    ")?;
             render_storage(&registration["storage"], out)?;
+        }
+    }
+    if let Some(cache) = client.get("cache") {
+        for level in cache["levels"].as_array().unwrap() {
+            if level["installed"] == true || level["enabled"] == false {
+                writeln!(
+                    out,
+                    "  cache {}: installed {}, current {}, enabled {}, observation {}; runtime not observed",
+                    level["level"].as_str().unwrap(),
+                    level["installed"],
+                    level["current"],
+                    level["enabled"],
+                    level["observation_configured"]
+                )?;
+            }
         }
     }
     Ok(())

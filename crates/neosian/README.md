@@ -26,6 +26,10 @@ neosian docs
 Setup shows executable, storage and capture choices. `setup --check` inspects
 registrations and tests MCP with temporary local storage. Restart the client
 and review hook trust afterward; saved settings do not prove a connection.
+Claude Code setup also installs a host-owned cache plugin. It maintains an
+observed one-hour subscription cache while idle until close, shows receipts,
+and waits for normal user activity after expiry or uncertainty. Use
+`/neosian-cache` for status and controls; see `neosian docs agents` for limits.
 
 [Documentation](https://neosian.com/docs) ·
 [Source](https://github.com/mausa-ai/neosian) ·

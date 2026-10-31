@@ -48,6 +48,16 @@ Client configuration follows each client's native locations and overrides:
 `LOCALAPPDATA`. See `neosian docs agents`; `setup` previews before `--write`.
 Login/home variables describe local defaults, not cross-machine identity.
 
+Claude Code setup uses its public plugin CLI to install a bundled local mod.
+Claude owns that mod's timers, model requests, authentication and UI. No model
+provider or daemon is added to Neosian's storage/MCP process. Its statusline
+bridge stores only bounded cache observations under `neosian-cache/observations`
+beside the selected Claude settings. `--claude-cache off` disables it and
+restores an owned statusline. See `neosian docs agents` for session controls,
+TTL requirements, compatibility and the limits of cache estimates.
+On Windows, statusline delegation honors Claude's `CLAUDE_CODE_GIT_BASH_PATH`,
+finds standard Git Bash locations, and otherwise uses PowerShell.
+
 Portable profiles use `$NEOSIAN_HOME/profiles/` and machine-local
 `profile-bindings.toml`. Bindings reference arbitrary uppercase environment
 variable names for HTTP tokens and Postgres DSNs; values are read only at use.
@@ -92,7 +102,13 @@ The six default gates need no model API keys. `make test` runs literal
 contracts and frozen v1 reference cases through the built binary. Rust's
 unit and integration tests run separately with `make rust-test`. Node 24
 runs `tests/clients/pi_record.mjs` and `tests/clients/mailbox.mjs` for the
-shipped client adapters.
+shipped client adapters. `node --test tests/clients/claude_cache.mjs` exercises
+the cache adapter without keys or Claude installed. With Claude Code 2.1.314+,
+copy `assets/clients/claude-cache` to a temporary directory, copy
+`tests/clients/claude-cache` into its `tests` subdirectory, then run
+`claude plugin validate DIR` and `claude plugin test DIR`. These host tests
+mock model requests and need no keys. Real-time cache tests use only explicitly
+authorized disposable sessions and are separate from the keyless gates.
 
 | Setting | Use |
 |---|---|
