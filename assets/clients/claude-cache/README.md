@@ -1,4 +1,4 @@
-# Neosian cache maintenance
+# neosian cache maintenance
 
 This plugin uses the standard Claude Code mod API. Install it with
 `neosian setup --client claude-code --write`; setup supplies a local observation
@@ -12,8 +12,11 @@ uncertain, changed or failed caches wait for your next ordinary message. No
 automatic cold rebuild, conversation message, tool execution or memory mutation
 is requested. The feature remains enabled until you close the session.
 
-The Neosian badge shows estimates and actual refresh token counts.
-`/neosian-cache` shows status; `off`, `on`, and a duration such as `2h` control
+The compact neosian line shows estimated warmth and keep-warm state above the
+prompt. Healthy caches have no warning icon; amber indicates a paused or
+uncertain state. Narrow terminals wrap the line instead of truncating it.
+`/neosian-cache` opens a dismissible details panel with actual refresh token
+counts, outside the conversation; `off`, `on`, and a duration such as `2h` control
 this session. `/config` holds persistent plugin preferences. An explicit `on`
 or duration also permits usage-billed sessions with an observed one-hour cache.
 Disabling stops future refreshes; an already-sent request may finish.

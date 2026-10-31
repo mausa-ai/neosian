@@ -1,4 +1,5 @@
 import { HOUR, INTERVAL, MARGIN, duration, observation, reused, supported, usage } from './evidence.js';
+import { PANE, presentation, render } from './display.js';
 
 // All model calls, lifecycle events, timers and UI belong to Claude Code.
 // No conversation content, credentials or Neosian memory is read or persisted.
@@ -25,6 +26,7 @@ let timer;
 let reason = 'Waiting for your first message';
 let lastDisplay = '';
 let lastPersisted = '';
+let view;
 
 function invalidate(why) {
   epoch += 1;
@@ -34,19 +36,10 @@ function invalidate(why) {
 }
 
 async function show($, now) {
-  let text = reason;
-  if (!enabled) text = until !== null ? 'Keep-warm duration ended' : 'Keep-warm off';
-  else if (busy) text = 'Conversation active';
-  else if (certificate && now < certificate.deadline && !flight) {
-    const remaining = Math.ceil((certificate.deadline - now) / 60000);
-    text = `Cache expected warm ~${remaining}m`;
-    if (certificate.ttl !== HOUR) text += ' · keep-warm needs a one-hour cache';
-    else if (!certificate.subscription && !allowApi) text += ' · subscription not observed';
-    else text += ' · keep-warm on';
-  }
-  if (receipt) text += ` · last refresh read ${receipt.read}, wrote ${receipt.write}, output ${receipt.output}`;
+  view = presentation({ enabled, busy, flight, certificate, receipt, until, reason, allowApi }, now);
+  const text = JSON.stringify(view);
   if (text !== lastDisplay) {
-    $.ui.status(`Neosian · ${text}`);
+    $.ui.invalidate('ui.render');
     lastDisplay = text;
   }
   // One bounded diagnostics record, containing counts and UTC epoch times only.
@@ -156,6 +149,12 @@ async function refresh($) {
 export function register(on, options) {
   defaultEnabled = options.enabled !== false;
   defaultAllowApi = options.allowApi === true;
+  on('ui.render', { component: ['AbovePrompt', 'Pane'] }, async ($, e, next) => {
+    if (!view || closed || (e.component === 'Pane' && e.requestId !== PANE) ||
+        (e.component === 'AbovePrompt' && (e.props.hasSurvey || e.props.view?.agentId))) return next(e);
+    const prior = e.component === 'AbovePrompt' ? await next(e) : null;
+    return render($, e, view, prior);
+  });
   on('session.start', async ($, e, next) => {
     try {
       closed = false;
@@ -169,6 +168,7 @@ export function register(on, options) {
       directory = '';
       lastDisplay = '';
       lastPersisted = '';
+      view = undefined;
       invalidate('Waiting for your first message');
       sessionId = await $.session.id();
       version = (await $.session.version()).version;
@@ -198,7 +198,7 @@ export function register(on, options) {
       await show($, lastClock);
     } catch {
       invalidate('Keep-warm unavailable · run neosian setup --check');
-      $.ui.status('Neosian · ' + reason);
+      await show($, lastClock);
     }
     return next(e);
   });
@@ -215,6 +215,7 @@ export function register(on, options) {
       $.ui.toast('Use /neosian-cache on, off, or a duration up to 7d (for example 2h).');
     }
     await tick($, arg === 'on' || span !== null);
+    await $.ui.open({ id: PANE, title: 'neosian cache', focus: true, closeOnEscape: true, rows: 12 });
     return {};
   });
 
@@ -256,7 +257,8 @@ export function register(on, options) {
     if (timer) timer.cancel();
     timer = undefined;
     invalidate('Session closed');
-    $.ui.status(undefined);
+    view = undefined;
+    $.ui.invalidate('ui.render');
     return next(e);
   });
 

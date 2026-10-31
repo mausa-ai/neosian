@@ -33,8 +33,8 @@ the next session reads the index, recalls relevant turns and continues
 explicit handoffs.
 Claude Code setup also installs a bundled plugin that keeps an observed
 one-hour subscription cache warm while idle, until the session closes. Expired
-or uncertain caches show a warning and wait for your next message. The badge
-shows refresh receipts; `/neosian-cache` provides status, on/off and duration
+or uncertain caches show a warning and wait for your next message. A compact
+status line shows expected warmth; `/neosian-cache` opens refresh details and provides on/off and duration
 controls. See `neosian docs agents` for the request limits and compatibility.
 Portable profiles opt into recording separately: new profiles capture off by
 default.
@@ -46,8 +46,9 @@ MCP and hook executables. A saved registration does not prove a client connectio
 Windows has a PowerShell installer and MSI on each GitHub Release.
 Package-manager alternatives are `npm install -g neosian` and
 `cargo install neosian --locked`. Cargo builds from source with the exact
-Rust version in `rust-toolchain.toml`. Update using the original installer
-or package manager. Signing and notarization remain deferred.
+Rust version in `rust-toolchain.toml`. Native installs update in place with
+`neosian update`; `neosian update --check` previews. For package-manager
+installations, use the original package manager. Signing and notarization remain deferred.
 
 ## Read, write and carry state
 

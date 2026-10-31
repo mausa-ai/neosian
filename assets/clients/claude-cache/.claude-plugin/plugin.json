@@ -1,6 +1,6 @@
 {
   "name": "neosian-cache",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Maintain an already-warm conversation cache while idle, with visible receipts and no automatic cold rebuilds.",
   "author": { "name": "Mausa" },
   "homepage": "https://neosian.com/docs/agents",

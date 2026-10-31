@@ -23,6 +23,7 @@ async function harness(options = {}, extra = {}) {
   let model = 'claude-test';
   const calls = [];
   const statuses = [];
+  const panes = [];
   const writes = [];
   const on = (event, matcher, handler) => {
     handlers.push({ event, matcher: handler ? matcher : {}, handler: handler ?? matcher });
@@ -42,7 +43,10 @@ async function harness(options = {}, extra = {}) {
     }, stat: async path => ({ size: (files.get(path) ?? '').length, kind: 'file', isLink: false }),
     write: async (path, body) => { writes.push({ path, body }); files.set(path, body); } },
     command: { register: async () => {} },
-    ui: { status: text => { statuses.push(text); }, toast: text => { statuses.push(text); } },
+    ui: { status: text => { statuses.push(text); }, toast: () => {}, invalidate: () => {},
+      open: async pane => { panes.push(pane); },
+      resolve: () => Object.fromEntries(['Box', 'Text'].map(type => [type,
+        ({ children, ...props }) => ({ type, props, children })])) },
     model: { fork: async request => { calls.push({ at: now, ...request });
       return extra.fork ? extra.fork(calls.length) : structuredClone(WARM); } },
   };
@@ -99,10 +103,63 @@ async function harness(options = {}, extra = {}) {
     await finish(args);
   }
   const command = args => emit('command.run', { command: 'neosian-cache', args });
+  const draw = (component = 'AbovePrompt', props = {}, prior = null, requestId = 'neosian-cache-details') =>
+    emit('ui.render', { component, props, requestId, surface: 'terminal' }, prior);
+  const badge = async () => textOf(await draw());
+  const details = async () => textOf(await draw('Pane'));
   await emit('session.start', { isInteractive: extra.interactive !== false, surface: 'terminal' });
-  return { $, calls, files, statuses, writes, emit, advance, finish, turn, command,
+  return { $, calls, files, statuses, panes, writes, emit, advance, finish, turn, command, draw, badge, details,
     now: () => now, elapse: ms => { now += ms; }, model: name => { model = name; } };
 }
+
+function textOf(tree) {
+  if (!tree) return '';
+  if (typeof tree === 'string') return tree;
+  return (tree.children ?? []).map(textOf).join(tree.type === 'Box' ? '\n' : '');
+}
+
+test('healthy cache is compact and unadorned; full receipts open outside the conversation', async () => {
+  const h = await harness(); await h.turn(); await h.advance(55 * MIN);
+  assert.equal(await h.badge(), 'neosian · cache ~60m · keep-warm on');
+  assert.deepEqual(h.statuses, []); // The host styles ui.status as a warning.
+  for (const width of [80, 40, 24]) {
+    const tree = await h.draw('AbovePrompt', { bodyColumns: width });
+    const lines = textOf(tree).split('\n');
+    assert.ok(lines.every(line => line.length <= width));
+    assert.ok(tree.children.every(line => line.props.color === 'success' && line.props.wrap === 'wrap'));
+  }
+  const count = h.calls.length;
+  assert.deepEqual(await h.command('status'), {});
+  assert.equal(h.calls.length, count);
+  assert.equal(h.panes.at(-1).id, 'neosian-cache-details');
+  assert.equal(h.panes.at(-1).closeOnEscape, true);
+  assert.match(await h.details(), /Cache read: 19000 tokens/);
+  assert.match(await h.details(), /Cache written: 500 tokens/);
+  assert.match(await h.details(), /Output: 5 tokens/);
+});
+
+test('cache display preserves other mods and yields to surveys and agent views', async () => {
+  const h = await harness();
+  const prior = { type: 'Text', props: {}, children: ['another plugin'] };
+  assert.equal((await h.draw('AbovePrompt', {}, prior)).children[0], prior);
+  for (const props of [{ hasSurvey: true }, { view: { agentId: 'child' } }]) {
+    assert.equal(await h.draw('AbovePrompt', props, prior), prior);
+  }
+  assert.equal(await h.draw('Pane', {}, prior, 'another-plugin'), prior);
+  await h.emit('session.end');
+  assert.equal(await h.draw('AbovePrompt', {}, prior), prior);
+});
+
+test('expiry earns warning styling while ready and disabled remain neutral', async () => {
+  const h = await harness();
+  assert.equal((await h.draw()).children[0].props.color, 'subtle');
+  await h.turn(); await h.advance(65 * MIN, true);
+  assert.match(await h.badge(), /cache expired.*next message may be cold/);
+  assert.equal((await h.draw()).children[0].props.color, 'warning');
+  assert.equal(h.calls.length, 0);
+  await h.command('off');
+  assert.equal((await h.draw()).children[0].props.color, 'subtle');
+});
 
 test('idle maintenance repeats for hours without conversation or tool calls', async () => {
   const h = await harness();
@@ -112,7 +169,7 @@ test('idle maintenance repeats for hours without conversation or tool calls', as
   await h.advance(1); assert.equal(h.calls.length, 1);
   await h.advance(110 * MIN); assert.equal(h.calls.length, 3);
   assert.deepEqual(h.calls.map(c => c.at - h.calls[0].at), [0, 55 * MIN, 110 * MIN]);
-  assert.ok(h.statuses.at(-1).includes('last refresh read 19000'));
+  assert.match(await h.details(), /Cache read: 19000 tokens/);
   assert.ok(h.writes.every(w => !w.body.includes('SENSITIVE')));
   assert.equal(h.calls[0].prompt, prompt.split('\n---\n')[1].trim());
 });
@@ -140,7 +197,7 @@ test('subagent work does not seed or move the main conversation deadline', async
 
 test('sleep past expiry produces no model call; ordinary conversation rearms automatically', async () => {
   const h = await harness(); await h.turn(); await h.advance(65 * MIN, true);
-  assert.equal(h.calls.length, 0); assert.match(h.statuses.at(-1), /next message may rebuild/);
+  assert.equal(h.calls.length, 0); assert.match(await h.badge(), /next message may be cold/);
   await h.advance(3 * 60 * MIN); assert.equal(h.calls.length, 0);
   await h.turn(); await h.advance(55 * MIN); assert.equal(h.calls.length, 1);
 });
@@ -150,7 +207,7 @@ test('off and duration control only maintenance, and on never rebuilds a cold ca
   await h.advance(65 * MIN); await h.command('on'); await h.advance(65 * MIN);
   assert.equal(h.calls.length, 0);
   await h.turn(); await h.command('90m'); await h.advance(180 * MIN);
-  assert.equal(h.calls.length, 1); assert.match(h.statuses.at(-1), /duration ended/);
+  assert.equal(h.calls.length, 1); assert.match(await h.badge(), /duration ended/);
 });
 
 test('status is read-only even when a refresh is due', async () => {
@@ -161,7 +218,7 @@ test('status is read-only even when a refresh is due', async () => {
 
 test('missing evidence becomes an unknown warning, not a permanent checking state', async () => {
   const h = await harness(); await h.turn({ observation: false });
-  await h.advance(2 * MIN); assert.match(h.statuses.at(-1), /unknown.*next message/);
+  await h.advance(2 * MIN); assert.match(await h.badge(), /unknown.*next message/);
   assert.equal(h.calls.length, 0);
 });
 
@@ -194,7 +251,7 @@ test('closing during a fork prevents its completion from restoring UI or mainten
   while (!h.calls.length) await new Promise(resolve => setImmediate(resolve));
   await h.emit('session.end'); release(structuredClone(WARM)); await running;
   await h.advance(180 * MIN); assert.equal(h.calls.length, 1);
-  assert.equal(h.statuses.at(-1), undefined);
+  assert.equal(await h.badge(), '');
 });
 
 for (const [name, args] of Object.entries({
@@ -241,7 +298,7 @@ for (const [name, response] of Object.entries({
   test('one ' + name + ' response stops further attempts', async () => {
     const h = await harness({}, { fork: async () => response });
     await h.turn(); await h.advance(180 * MIN); assert.equal(h.calls.length, 1);
-    assert.match(h.statuses.at(-1), /automatic refresh paused/);
+    assert.match(await h.details(), /automatic refresh paused/);
   });
 }
 

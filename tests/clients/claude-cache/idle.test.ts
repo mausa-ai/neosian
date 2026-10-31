@@ -25,6 +25,8 @@ function harness(on, { ttl = '1h', reply = warm, subscription = true } = {}) {
   on('fs.write', ($, e) => { writes.push(e); return { value: undefined }; });
   on('command.register', () => ({ value: undefined }));
   on('ui.status', ($, e) => { statuses.push(e); return { value: undefined }; });
+  on('ui.invalidate', () => ({ value: undefined }));
+  on('ui.open', () => ({ value: { isPlaced: true } }));
   on('session.start', ($, e) => ({ cwd: e.cwd }));
   on('session.end', ($, e) => ({ sessionId: e.sessionId }));
   on('turn.start', ($, e) => ({ turnId: e.turnId }));
@@ -98,4 +100,22 @@ test('a cold receipt stops subsequent automatic attempts', async ($, on) => {
     cache_read_input_tokens: 1000, cache_creation_input_tokens: 18000 } } });
   await start($); await turn($); await h.clock.advance(180 * MIN);
   expect(h.calls.length).toBe(1);
+});
+
+test('the host renders compact status and a details pane without warning notices', async ($, on) => {
+  const h = harness(on);
+  on('ui.render', ($, e) => $.ui.resolve(e).Text({ children: ['other plugin'] }));
+  await start($); await turn($); await h.clock.advance(55 * MIN);
+  const band = await $.ui.mount({ plugin: 'neosian-cache', component: 'AbovePrompt',
+    surface: 'terminal', requestId: 'band', props: { hasSurvey: false, isWorking: false, bodyColumns: 80 } });
+  expect((await band.find({ type: 'Text', text: 'neosian' }))?.text)
+    .toBe('neosian · cache ~60m · keep-warm on');
+  expect((await band.find({ type: 'Text', text: 'other plugin' }))?.text).toBe('other plugin');
+  await band.redraw({ hasSurvey: false, isWorking: false, bodyColumns: 24 });
+  expect((await band.find({ type: 'Text', text: 'neosian' }))?.text).toBe('neosian · cache ~60m');
+  const pane = await $.ui.mount({ plugin: 'neosian-cache', component: 'Pane',
+    surface: 'terminal', requestId: 'neosian-cache-details', props: {} });
+  expect((await pane.find({ type: 'Text', text: 'Cache read:' }))?.text).toBe('Cache read: 19000 tokens');
+  expect(h.statuses.length).toBe(0);
+  await band.unmount(); await pane.unmount();
 });

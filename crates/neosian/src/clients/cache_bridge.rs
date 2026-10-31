@@ -126,7 +126,7 @@ pub fn run(
                     })
             });
         if !current {
-            writeln!(out, "\nNeosian · keep-warm not observed; check /plugin")?;
+            writeln!(out, "\nneosian · keep-warm not observed; check /plugin")?;
         }
     }
     Ok(0)

@@ -110,6 +110,7 @@ def test_cache_setup_uses_public_cli_and_preserves_statusline(binary: Binary) ->
     for name in (
         "hooks/register.js",
         "hooks/evidence.js",
+        "hooks/display.js",
         "assets/refresh.md",
         ".claude-plugin/plugin.json",
     ):

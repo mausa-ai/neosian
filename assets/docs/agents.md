@@ -192,8 +192,12 @@ An explicit `on`, duration or persistent `allowApi` also opts usage-billed
 sessions into maintenance when a warm one-hour cache is observed. Requests
 consume the account's normal usage. There is no promise of quota savings.
 
-The passive Neosian badge shows expected warmth, pause reasons and the last
-refresh's actual cache reads, writes and output tokens. A successful refresh
+The compact neosian line above the prompt shows expected warmth and keep-warm
+state, wrapping in narrow terminals. Healthy caches have no warning icon;
+amber indicates a paused or uncertain state. `/neosian-cache` opens a details
+panel with pause reasons and the last refresh's actual cache reads, writes and
+output tokens. Press Esc to close it; the panel adds nothing to the conversation.
+A successful refresh
 must read nearly all the observed prefix and return the expected short reply;
 a surprising receipt prevents further automatic attempts. Reported usage can
 include reasoning tokens even for a one-word visible reply. Checks

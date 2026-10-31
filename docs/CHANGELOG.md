@@ -8,6 +8,21 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [2.11.1] - 2026-10-31
+
+### Fixed
+
+- `neosian update` installs an available native binary update immediately,
+  regardless of the passive update policy. `--check` remains a preview and
+  `--write` remains accepted; combining them is rejected. Installation ownership,
+  stable-release and major-version safeguards still apply, and the installed
+  version is verified after the updater completes.
+- Claude Code's cache display uses lowercase `neosian` and a compact status
+  above the prompt, without a warning icon for a healthy cache. Narrow terminals
+  wrap instead of truncating. `/neosian-cache` opens complete refresh details in
+  a dismissible panel outside the conversation. Other plugins' display content
+  is preserved. Refresh timing and cache eligibility are unchanged.
+
 ## [2.11.0] - 2026-10-31
 
 ### Added
