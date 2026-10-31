@@ -1,6 +1,8 @@
 //! Binary updates use published GitHub Releases and cargo-dist's sibling updater (§39.5).
 
 mod check;
+#[cfg(test)]
+mod command_tests;
 mod plan;
 mod receipt;
 #[cfg(test)]
@@ -22,11 +24,11 @@ const MODES: [&str; 3] = ["off", "notify", "auto"];
 
 #[derive(Args)]
 pub struct Update {
-    /// Check and print without applying (the default).
+    /// Check and print without installing the update.
     #[arg(long)]
     check: bool,
-    /// Apply through the updater that belongs to this installation.
-    #[arg(long)]
+    /// Install through this installation's updater (also the default).
+    #[arg(long, conflicts_with = "check")]
     write: bool,
     #[arg(long)]
     json: bool,
@@ -131,12 +133,20 @@ fn execute(args: &Update, out: &mut impl Write, err: &mut impl Write) -> io::Res
     if let Some(latest) = &latest {
         stamp(&root, latest, Stamp::now())?;
     }
-    let decision = plan(
-        crate::version::VERSION,
-        latest.as_ref(),
-        &context,
-        args.write || (mode == "auto" && !args.check),
-    );
+    complete(args, &context, latest.as_ref(), &mode, out, err)
+}
+
+fn complete(
+    args: &Update,
+    context: &Context,
+    latest: Option<&version::Version>,
+    mode: &str,
+    out: &mut impl Write,
+    err: &mut impl Write,
+) -> io::Result<u8> {
+    // An explicit update is already consent to install. The saved policy only
+    // controls passive checks at the human status door, not this command.
+    let decision = plan(crate::version::VERSION, latest, context, !args.check);
     if args.json {
         writeln!(
             out,
@@ -148,7 +158,7 @@ fn execute(args: &Update, out: &mut impl Write, err: &mut impl Write) -> io::Res
     }
     out.flush()?;
     if decision.action == "apply" {
-        install(&decision, &context, err)
+        install(&decision, context, err)
     } else {
         Ok(u8::from(matches!(
             decision.action,

@@ -4,7 +4,7 @@ use serde_json::Value;
 use std::{collections::BTreeMap, fs, io::Read, net::TcpListener, thread};
 use version::Version;
 
-fn installation(scratch: &Scratch) -> (Context, Value) {
+pub(super) fn installation(scratch: &Scratch) -> (Context, Value) {
     let root = scratch.path();
     let name = if cfg!(windows) {
         "neosian.exe"

@@ -79,9 +79,15 @@ Setup previews unless `--write` is given. In scripts use `--write --yes`, or
 repeat `--client`. Preserve unrelated client settings and inspect reported
 pending client-owned registrations. `--binary PATH` chooses the registered
 executable. `status --json` reports paths and registrations without provider
-credentials. `update --mode off|notify|auto` stores the update policy; ordinary
-hooks and MCP calls never initiate update checks. Package-manager installations
-should be updated using that package manager.
+credentials. `neosian update` installs an available stable release through this
+native installation's updater and verifies the installed version. `--check`
+previews without installing; `--write` remains accepted for existing scripts.
+Those two flags cannot be combined. The command refuses major-version jumps
+and an updater that does not belong to this installation.
+`update --mode off|notify|auto` only stores the policy for passive checks at
+interactive `status`; it does not install anything. That policy never prevents
+an explicit `neosian update`. Ordinary hooks and MCP calls never initiate update
+checks. Package-manager installations should be updated using that package manager.
 
 Claude Code setup also installs the bundled cache plugin and composes the
 observation bridge with an existing statusline. Keep-warm defaults on for an
