@@ -3,15 +3,18 @@
 import ast
 import json
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 
 from tests.contract.replay.corpus import CASES, IDS
 from tests.contract.replay.harness import (
     Case,
+    Workspace,
+    normalise,
     run_case,
     shape_of_output,
     snapshot,
@@ -22,6 +25,36 @@ from tests.contract.support import Binary
 HERE = Path(__file__).parent
 EXPECTED = json.loads((HERE / "expected.json").read_text())
 SEED = json.loads((HERE / "seed.json").read_text())
+
+
+def fresh_handoff(space: Workspace, keep: frozenset[str]) -> None:
+    """Preserve the capture's fresh baton in the disposable copy only.
+
+    The frozen oracle includes the full pending note, which becomes a one-line
+    reminder after seven days. Move its body, envelope and version timestamps
+    together; every nonvolatile byte must still match the frozen fixture.
+    """
+    scope = space.home / "user%3Areference/proj%3Ademo"
+    document = scope / "documents/handoff.md"
+    content = document.read_text()
+    metadata = yaml.safe_load(content.split("---", 2)[1])
+    written = next(
+        line.removeprefix("- written: ")
+        for line in content.splitlines()
+        if line.startswith("- written: ")
+    )
+    delta = datetime.now(UTC) - timedelta(seconds=30) - datetime.fromisoformat(written)
+    stamps = {written, metadata["created_at"], metadata["updated_at"]}
+    for path in (document, scope / "versions/handoff.jsonl"):
+        original = path.read_text()
+        updated = original
+        for stamp in stamps:
+            shifted = (datetime.fromisoformat(stamp) + delta).isoformat()
+            updated = updated.replace(stamp, shifted.replace("+00:00", "Z"))
+        assert normalise(updated, space, keep=keep) == normalise(
+            original, space, keep=keep
+        )
+        path.write_text(updated)
 
 
 def retained(value: Any) -> Any:
@@ -116,6 +149,12 @@ def test_v1_reference(case: Case, binary: Binary, tmp_path: Path) -> None:
         session=SEED["sessions"][-1],
         project_name="demo",
     )
+    # Context surfaces need a fresh baton; audit/listing cases retain the
+    # original chronology and continue to compare the untouched seed.
+    if case.verb in {"record", "mcp"} or any(
+        exchange.path == "/mcp" for exchange in case.http
+    ):
+        fresh_handoff(space, keep)
     for name in SEED["locks"]:
         lock = space.home / name
         lock.parent.mkdir(parents=True, exist_ok=True)

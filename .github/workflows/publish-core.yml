@@ -7,10 +7,15 @@ on:
         required: true
         type: string
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing tag to recover after test-only repairs (blank builds without publishing)
+        required: false
+        type: string
 permissions:
   contents: read
 concurrency:
-  group: publish-core-${{ github.ref }}
+  group: publish-core-${{ inputs.release_tag || github.ref_name }}
   cancel-in-progress: false
 env:
   UV_VERSION: "0.12.23"
@@ -22,18 +27,22 @@ jobs:
       contents: write
     outputs:
       version: ${{ steps.version.outputs.version }}
+      revision: ${{ steps.version.outputs.revision }}
+      publish: ${{ steps.version.outputs.publish }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - id: version
+        env:
+          RELEASE_TAG: ${{ (github.event_name == 'push' && github.ref_type == 'tag' && github.ref_name) || inputs.release_tag || '' }}
+        run: python3 scripts/core_release.py >> "$GITHUB_OUTPUT"
       - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           version: ${{ env.UV_VERSION }}
       - uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177 # v2.87.30
         with:
           tool: cargo-deny@0.20.2,cargo-dist@0.32.0
-      - id: version
-        run: python3 -c 'import tomllib; print("version=" + tomllib.load(open("Cargo.toml", "rb"))["workspace"]["package"]["version"])' >> "$GITHUB_OUTPUT"
-      - if: github.ref_type == 'tag'
-        run: test "$GITHUB_REF_NAME" = "v${{ steps.version.outputs.version }}"
       - run: make install
       - run: make lint typecheck size rust-lint rust-test test
       - run: uv run --locked pip-audit
@@ -43,10 +52,23 @@ jobs:
           name: core-artifacts
           path: target/docs/*
           if-no-files-found: error
-      - if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+      - if: steps.version.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$GITHUB_REF_NAME" target/docs/* --clobber
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        # Recovery fills missing assets; retries accept only identical bytes.
+        run: |
+          mkdir -p target/published
+          gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' > target/published/names
+          for path in target/docs/*; do
+            name="${path##*/}"
+            if grep -Fxq "$name" target/published/names; then
+              gh release download "$RELEASE_TAG" --pattern "$name" --dir target/published
+              cmp "$path" "target/published/$name"
+            else
+              gh release upload "$RELEASE_TAG" "$path"
+            fi
+          done
 
   # One native build per architecture (no emulation, no third-party
   # action); the smoke — the health route and the version inside the
@@ -68,16 +90,19 @@ jobs:
       packages: write
     env:
       VERSION: ${{ needs.build.outputs.version }}
+      REVISION: ${{ needs.build.outputs.revision }}
       ARCH: ${{ matrix.arch }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.build.outputs.revision }}
       - run: |
           docker build --platform "linux/$ARCH" \
             --label "org.opencontainers.image.title=neosian" \
             --label "org.opencontainers.image.description=The neosian state process: memory, skills, conversations and the ledger behind one bearer token" \
             --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
             --label "org.opencontainers.image.version=$VERSION" \
-            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            --label "org.opencontainers.image.revision=$REVISION" \
             --label "org.opencontainers.image.licenses=Apache-2.0" \
             --label "org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             -t "$IMAGE:$VERSION-$ARCH" .
@@ -97,21 +122,22 @@ jobs:
           test "$ok" = 1
           inside="$(docker run --rm --entrypoint /usr/local/bin/neosian "$IMAGE:$VERSION-$ARCH" version)"
           test "$inside" = "neosian v$VERSION"
-      - if: github.event_name == 'push'
+      - if: needs.build.outputs.publish == 'true'
         run: echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-      - if: github.event_name == 'push'
+      - if: needs.build.outputs.publish == 'true'
         run: docker push "$IMAGE:$VERSION-$ARCH"
 
   # The multi-arch index from the two pushed legs; `latest` only on a
   # final version — a pre-release is never what an unpinned pull gets.
   manifest:
-    if: github.event_name == 'push'
+    if: needs.build.outputs.publish == 'true'
     needs: [build, image]
     runs-on: ubuntu-24.04
     permissions:
       packages: write
     env:
       VERSION: ${{ needs.build.outputs.version }}
+      REVISION: ${{ needs.build.outputs.revision }}
     steps:
       - run: echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
       - run: |
@@ -120,7 +146,7 @@ jobs:
           docker buildx imagetools create "${tags[@]}" \
             --annotation "index:org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
             --annotation "index:org.opencontainers.image.version=$VERSION" \
-            --annotation "index:org.opencontainers.image.revision=$GITHUB_SHA" \
+            --annotation "index:org.opencontainers.image.revision=$REVISION" \
             --annotation "index:org.opencontainers.image.licenses=Apache-2.0" \
             "$IMAGE:$VERSION-amd64" "$IMAGE:$VERSION-arm64"
           docker buildx imagetools inspect "$IMAGE:$VERSION"
