@@ -98,6 +98,13 @@ connection. Mutual TLS and libpq-only DSN options are refused. See
 
 ## Test infrastructure
 
+Native memory capture adds no service or host account. Local registrations in
+`<NEOSIAN_HOME>/native-memory.json` authorize selected Claude Code/Codex Markdown
+sources; existing record hooks perform bounded scans. Capture and private
+FileStore receipts recover together. Upgrade all writers before enabling it.
+No source is registered by setup, and profiles/remote destinations remain
+unsupported. See `neosian docs native-memory`.
+
 The six default gates need no model API keys. `make test` runs literal
 contracts and frozen v1 reference cases through the built binary. Rust's
 unit and integration tests run separately with `make rust-test`. Node 24

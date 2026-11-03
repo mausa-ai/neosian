@@ -28,6 +28,7 @@ pub mod journal;
 pub mod layout;
 mod ledger;
 pub(crate) mod lock;
+mod native_memory;
 pub(crate) mod pages;
 mod restore;
 pub(crate) mod scalar;

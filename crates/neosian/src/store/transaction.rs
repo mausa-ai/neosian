@@ -116,6 +116,14 @@ impl WriteOp {
             ["redactions.jsonl"] => true,
             [".changes", "head.json"] => true,
             [".exchange", "receipt.json"] => true,
+            [".native-memory", source, file] => {
+                let hash = |s: &str| {
+                    s.len() == 64
+                        && s.bytes()
+                            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+                };
+                hash(source) && file.strip_suffix(".json").is_some_and(hash)
+            }
             [".changes", "events", file] => file
                 .strip_suffix(".json")
                 .is_some_and(|n| n.len() == 20 && n.bytes().all(|b| b.is_ascii_digit())),

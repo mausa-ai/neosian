@@ -196,8 +196,24 @@ pub fn run(args: &Record, out: &mut impl Write, err: &mut impl Write) -> io::Res
         agent: args.agent.clone(),
         spool,
     };
+    let native_context = crate::native_memory::hooks::run(
+        &settings.store,
+        &settings.mounts,
+        &settings.agent,
+        &layout,
+        &payload,
+        err,
+    );
     match record_payload(&settings, &payload, err) {
-        Ok(envelope) => respond(&envelope, &settings.agent, json, out).map(|()| 0),
+        Ok(mut envelope) => {
+            if let Some(native) = native_context {
+                envelope.context = Some(match envelope.context {
+                    Some(existing) => format!("{native}\n\n{existing}"),
+                    None => native,
+                });
+            }
+            respond(&envelope, &settings.agent, json, out).map(|()| 0)
+        }
         Err(error) => failed(&error.text(), Some(HINT), json, out, err),
     }
 }

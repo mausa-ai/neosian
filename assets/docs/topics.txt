@@ -9,6 +9,7 @@ changes
 exchange
 stores
 agents
+native-memory
 cli
 mcp
 topology

@@ -8,6 +8,27 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [2.12.0] - 2026-11-03
+
+### Added
+
+- `native-memory add/list/sync/remove` explicitly registers Claude Code or
+  Codex Markdown for automatic local capture through existing record hooks.
+  Session start, prompts, completed tools and stop catch file changes without
+  requiring the agent to call MCP. Supported hook responses remind the agent
+  to use neosian memory; imported bodies stay behind memory tools.
+- Registrations bind the source, client, project, local store and mounted scope.
+  Capture defaults off, uses bounded scans and leaves host files untouched.
+  Each FileStore copy, version, change event and receipt recovers together;
+  unchanged files add no versions, and independent edits, deletion, erasure,
+  occupied destinations or lost receipts refuse replacement. Partial results
+  remain inspectable and retries recognize completed captures.
+- A new `native-memory` guide documents source selection, explicit consent,
+  background-write timing, source retention and recovery. The bridge supports
+  FileStore without profiles; profile and remote capture contracts are unchanged.
+  Upgrade all writers before enabling native capture. No wire, memory format,
+  Postgres schema, model dependency or continuous watcher is added.
+
 ## [2.11.1] - 2026-10-31
 
 ### Fixed
@@ -2778,7 +2799,9 @@ pre-release — pin it explicitly; the API stability promise rides v1.0.0.
 - Both entry points share one `_validate_run`, so neither can skip a
   guard.
 
-[Unreleased]: https://github.com/mausa-ai/neosian/compare/v2.11.0...HEAD
+[Unreleased]: https://github.com/mausa-ai/neosian/compare/v2.12.0...HEAD
+[2.12.0]: https://github.com/mausa-ai/neosian/compare/v2.11.1...v2.12.0
+[2.11.1]: https://github.com/mausa-ai/neosian/compare/v2.11.0...v2.11.1
 [2.11.0]: https://github.com/mausa-ai/neosian/compare/v2.10.0...v2.11.0
 [2.10.0]: https://github.com/mausa-ai/neosian/compare/v2.9.0...v2.10.0
 [2.9.0]: https://github.com/mausa-ai/neosian/compare/v2.8.0...v2.9.0

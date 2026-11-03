@@ -39,6 +39,13 @@ controls. See `neosian docs agents` for the request limits and compatibility.
 Portable profiles opt into recording separately: new profiles capture off by
 default.
 
+Claude Code and Codex can also write their own native memory files. Use
+`neosian native-memory add` to preview an explicit source and `--write` to
+enable automatic local capture through hooks, with reminders to use neosian
+memory. Copies keep versions and refuse independent edits or erasure. This
+bridge is off by default and supports FileStore without profiles; read
+`neosian docs native-memory` for registration and limits.
+
 The installer verifies the archive's checksum and installs under
 `~/.neosian/bin`, linking `~/.local/bin/neosian` when that name is free.
 An existing command is preserved; `status` reports PATH shadowing and the separate

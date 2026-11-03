@@ -35,6 +35,7 @@ protocol servers use their own framing.
 | `export`, `import` | Portable archives with histories and attribution |
 | `redact`, `prune` | Operator conversation erasure and retention |
 | `record` | Consume a foreign agent hook payload on stdin |
+| `native-memory add/list/sync/remove` | Register explicit native Markdown sources for guarded local capture and hook reminders |
 | `mcp` | MCP server over stdio |
 | `serve` | State HTTP and optional MCP HTTP server |
 | `schema state/wire/errors/profile/grants/knowledge/skill/upkeep/governance/changes/postgres/changes-postgres` | Print machine contracts or schema SQL |

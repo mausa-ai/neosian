@@ -254,12 +254,18 @@ and [mod API](https://code.claude.com/docs/en/plugins/mods/api).
 
 ## What a span becomes
 
+Native memory files are separate from conversation history. With an explicit
+`native-memory add ... --write` registration, Claude Code and Codex hooks also
+capture selected Markdown into guarded local snapshots and remind the agent to
+use neosian memory. Ordinary setup leaves this off. Read
+`neosian docs native-memory` for source selection, consent, limits and recovery.
+
 | hook | the record |
 |---|---|
 | `UserPromptSubmit` | the `USER` message that opens the turn (spooled) |
 | `PostToolUse` | an `ASSISTANT` tool call + its `TOOL` result, whole up to 1 MiB (its head and tail above that); a subagent's rounds (`agent_id`) are skipped |
 | `Stop` | the final `ASSISTANT` text (`last_assistant_message`); the span lands as one `append_turn` by `claude-code:<session_id>`, and the sessions document is written by `claude-code:<session_id>#<turn>` |
-| `SessionStart` | nothing written: the verb prints the context (below), which the client adds to the model's window |
+| `SessionStart` | prints the context (below), which the client adds to the model's window; an enabled native-memory registration can capture files first |
 
 The sessions document lives at `sessions/<session_id>` in the mount at
 `/project` (else the first read-write mount) with agent, conversation,
@@ -272,7 +278,8 @@ Exit tiers bend once, for the hook's sake: Claude Code reads a hook's
 exit 2 as "block", so the verb exits 2 only for a bad invocation
 (caught at install time) and 1 for everything after (a broken store
 never blocks the agent) and prints nothing on stdout unless `--json`,
-except on `SessionStart`. Cursor uses JSON hook responses, described below.
+except on `SessionStart` and supported context-bearing responses, including
+native-memory reminders. Cursor uses JSON hook responses, described below.
 
 ## Session start: where we left off
 
@@ -284,7 +291,7 @@ does not rebuild the host's prompt or manage its context cache.
 
 Claude Code, Codex, Cursor and Muse Code add a `SessionStart` hook's
 output to the model's context, so on that event the verb prints three
-blocks and writes nothing:
+blocks. Without an enabled native-memory registration, it writes nothing:
 
 1. **The memory index** of the scope, so the sessions documents are
    listed (the MCP server's instructions then carry the write discipline

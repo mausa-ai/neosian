@@ -25,6 +25,11 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Capture explicitly registered native memory files into local memory.
+    NativeMemory {
+        #[command(subcommand)]
+        command: crate::native_memory::cli::Command,
+    },
     /// Exchange current-memory snapshots and deltas with a local replica.
     Exchange {
         #[command(subcommand)]
@@ -195,6 +200,9 @@ where
         }
     }
     let code = match cli.command {
+        Command::NativeMemory { command } => {
+            crate::native_memory::cli::run(&command, &mut out, &mut err)
+        }
         Command::Exchange { command } => crate::exchange::cli::run(&command, &mut out, &mut err),
         Command::Changes { command } => crate::changes::cli::run(&command, &mut out, &mut err),
         Command::Upkeep { command } => crate::upkeep::cli::run(&command, &mut out, &mut err),

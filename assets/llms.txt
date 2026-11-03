@@ -3,7 +3,7 @@
 > Memory and context for the agent you already use. One Rust binary,
 > CLI/MCP/HTTP interfaces, state on your own files or Postgres.
 
-Release: 2.10.0. Read installed pages with `neosian docs TOPIC` or the MCP
+Release: 2.12.0. Read installed pages with `neosian docs TOPIC` or the MCP
 `docs` tool. They are versioned with the executable and are authoritative
 for that version. The release's neosian-docs.json carries the same pages.
 
@@ -18,6 +18,7 @@ for that version. The release's neosian-docs.json carries the same pages.
 - [Messaging](https://neosian.com/docs/messaging): messages, reminders and claims.
 - [Stores](https://neosian.com/docs/stores): formats and HTTP conformance.
 - [Agents](https://neosian.com/docs/agents): recording through client hooks.
+- [Native memory](https://neosian.com/docs/native-memory): explicit local source capture and hook reminders for Claude Code and Codex.
 - [CLI](https://neosian.com/docs/cli): command grammar and operator actions.
 - [MCP](https://neosian.com/docs/mcp): tools, prompts and transports.
 - [Topology](https://neosian.com/docs/topology): local, Postgres and remote access.
@@ -84,3 +85,10 @@ until session close. Expired or uncertain caches warn and wait for normal user
 activity. `/neosian-cache` provides status, on/off and duration controls. Cache
 estimates cannot guarantee a server hit; actual receipts stop unexpected retries.
 Memory/MCP/search paths gain no model dependency. Read `neosian docs agents`.
+
+Native memory capture defaults off. `native-memory add` previews a selected
+Markdown file/directory, client, project, local store and mounted scope;
+`--write` consents to future hook capture. Copies and receipts commit together,
+refuse edited/deleted/erased destinations, and never change source files.
+Profiles and remote destinations are unsupported. Capture runs at hook boundaries,
+not continuously; read `neosian docs native-memory` for bounds and recovery.

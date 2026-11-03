@@ -41,6 +41,11 @@ uncooperative filesystem edits or provide network filesystem transactions.
 Old logs with malformed envelopes or escaping symlinks must be repaired
 explicitly. Do not bypass the refusal by deleting history.
 
+Native memory capture remains off after upgrade until explicitly registered.
+Upgrade every writer before enabling it: older writers cannot recover a redo
+transaction containing native-memory receipts. Archives do not transfer local
+registrations or receipts. See `neosian docs native-memory`.
+
 Install the binary, then run its absolute path with `setup --write` to
 refresh client registrations and generated adapters. Old registrations
 that invoke `python -m neosian` still invoke v1 until replaced. `status`

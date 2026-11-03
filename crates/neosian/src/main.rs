@@ -20,6 +20,7 @@ mod limits;
 mod mcp;
 mod memory;
 mod messaging;
+mod native_memory;
 mod operator;
 mod postgres;
 mod profile;

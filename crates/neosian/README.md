@@ -15,6 +15,11 @@ documents and selected metadata with bounded excerpts and source/version
 references. Files, Postgres and capable remote services share the same
 keyword semantics. Search requires no model account or derived index.
 
+`neosian native-memory add` explicitly registers Claude Code or Codex Markdown
+for automatic capture into local FileStore through hooks. Captured copies keep
+versions; hook reminders encourage neosian memory use. Read
+`neosian docs native-memory` for consent, guarded writes and supported sources.
+
 ```sh
 cargo install neosian --locked
 neosian setup --write

@@ -66,6 +66,12 @@ development and tests only (DESIGN §40).
   ordering and missing receipts. Gaps need a fresh empty replica. Exclude raw
   turns, lifecycle records and source history bodies; hashes are not authority.
 
+- **Native capture is explicit.** Machine-local registrations select host Markdown,
+  project, client and destination. Check mounted authority before reading sources.
+  Local copies and receipts commit together; never revive erased/deleted copies or
+  overwrite independent edits. Profiles and remote stores require their own future
+  capture contract. Source files stay intact; hook guidance never executes an agent.
+
 ## Conventions
 
 - Rust uses `rust-toolchain.toml`'s exact pin, repeated by `rust-version`.

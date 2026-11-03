@@ -26,6 +26,14 @@ report that concerns both is welcome here.
 
 ## Workspace authority and capture
 
+Native memory capture is separately opt-in through local source registrations.
+It checks current mounted read-write authority before source reads and supports
+only local FileStore without profiles. Imported bodies are data; source labels
+and receipt hashes do not grant access. It does not scrub secrets. Erased,
+deleted or independently edited destinations refuse automatic replacement;
+source files and exported copies require separate erasure. Read
+`neosian docs native-memory` for limits and the cooperating-filesystem boundary.
+
 Claude Code's bundled cache plugin uses the host's documented mod API and
 existing account. The Rust memory/MCP process gains no model credentials or
 scheduler. Its local statusline bridge persists only cache metadata, delegates

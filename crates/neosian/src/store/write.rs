@@ -66,6 +66,21 @@ impl FileStore {
         expected: Option<u64>,
     ) -> Result<Envelope, Error> {
         let _held = self.lock()?;
+        let (envelope, writes, change) =
+            self.prepare_write(scope, path, content, actor, expected)?;
+        self.commit_changes(scope, writes, change)?;
+        Ok(envelope)
+    }
+
+    /// The caller holds the root lock and commits these operations together.
+    pub(super) fn prepare_write(
+        &self,
+        scope: &str,
+        path: &str,
+        content: &str,
+        actor: &Actor,
+        expected: Option<u64>,
+    ) -> Result<(Envelope, Vec<WriteOp>, Change), Error> {
         self.scope(scope)?;
         validate_document_path(path)?;
         let file = layout::doc_file(&self.root, scope, path)?;
@@ -111,23 +126,20 @@ impl FileStore {
             redacted: false,
             extra,
         };
-        self.commit_changes(
-            scope,
-            vec![
-                sidecar_write,
-                WriteOp::put(&self.root, &file, render(&envelope, content))?,
-            ],
-            Change::new(
-                if action == Action::Created {
-                    Kind::Created
-                } else {
-                    Kind::Modified
-                },
-                Some(path),
-                Some(version),
-            ),
-        )?;
-        Ok(envelope)
+        let writes = vec![
+            sidecar_write,
+            WriteOp::put(&self.root, &file, render(&envelope, content))?,
+        ];
+        let change = Change::new(
+            if action == Action::Created {
+                Kind::Created
+            } else {
+                Kind::Modified
+            },
+            Some(path),
+            Some(version),
+        );
+        Ok((envelope, writes, change))
     }
 
     /// Remove a live document; the version the deletion consumed, None
