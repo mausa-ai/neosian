@@ -92,6 +92,9 @@ def retained(value: Any) -> Any:
             result.pop("installation", None)  # Independently checked setup diagnostics.
         if "mcp_registered" in result and "hooks_present" in result:
             result.pop("registrations", None)  # Retain every original status finding.
+            if result.get("client") == "codex":
+                # Native skill diagnostics have independent setup/discovery contracts.
+                result.pop("skills", None)
             result.pop(
                 "cache", None
             )  # Claude's additive setup metadata is tested separately.

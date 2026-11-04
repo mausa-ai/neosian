@@ -31,6 +31,9 @@ it leaves your selected storage unopened. Restart the client and review hook tru
 after setup. Every session can leave a durable record;
 the next session reads the index, recalls relevant turns and continues
 explicit handoffs.
+Codex setup also installs the native `$neosian-upkeep` skill for its prompt
+picker. It loads the live MCP upkeep workflow in your current conversation.
+Run setup again after upgrading an existing installation to add the entry.
 Claude Code setup also installs a bundled plugin that keeps an observed
 one-hour subscription cache warm while idle, until the session closes. Expired
 or uncertain caches show a warning and wait for your next message. A compact

@@ -1,7 +1,7 @@
 //! `setup`: wire the selected clients once per machine (§22.6, §30.3).
 
 use super::{
-    cache_install,
+    cache_install, codex_skills,
     context::{CLIENTS, Context},
     diagnostics, files, hooks, mcp, runner, settings, setup_check, targets,
 };
@@ -37,6 +37,9 @@ pub struct Setup {
     /// Install idle cache maintenance for Claude Code, or disable it and restore its prior statusline.
     #[arg(long, default_value = "auto", value_parser = ["auto", "off"])]
     claude_cache: String,
+    /// Install Codex's upkeep skill, preserve an opt-out, explicitly enable it, or remove it.
+    #[arg(long, default_value = "auto", value_parser = ["auto", "on", "off"])]
+    codex_skills: String,
 }
 
 fn discovery(context: &Context, clients: &[String]) -> Vec<Value> {
@@ -107,7 +110,15 @@ fn install_pair(args: &Setup, context: &Context, client: &str) -> Value {
             "mcp": grammar(incompatible.unwrap_or_else(|| message.clone())), "hooks": grammar(message)});
         }
     };
-    if args.write && ["claude-code", "muse-code", "cursor", "pi"].contains(&client) {
+    if client == "codex" && args.level == "user" {
+        let skills = codex_skills::install(context, &args.codex_skills, false);
+        if skills["success"] != true {
+            return json!({"client":client,"label":target.label,
+                "mcp":applied(mcp::install(&target, context, &settings, false)),
+                "hooks":applied(hooks::install(&hook, context, &settings, false)),"skills":skills});
+        }
+    }
+    if args.write && ["claude-code", "codex", "muse-code", "cursor", "pi"].contains(&client) {
         let mcp = applied(match &incompatible {
             Some(message) => grammar(message.clone()),
             None => mcp::install(&target, context, &settings, false),
@@ -158,6 +169,13 @@ fn install_pair(args: &Setup, context: &Context, client: &str) -> Value {
     }
     let hooks = applied(hooks::install(&hook, context, &settings, args.write));
     let mut row = json!({"client": client, "label": target.label, "mcp": mcp, "hooks": hooks});
+    if client == "codex" && args.level == "user" {
+        let ready = row["mcp"]["success"] == true
+            && row["mcp"]["applied"] == true
+            && row["hooks"]["success"] == true
+            && row["hooks"]["applied"] == true;
+        row["skills"] = codex_skills::install(context, &args.codex_skills, args.write && ready);
+    }
     if client == "claude-code" {
         row["cache"] = if args.claude_cache == "off" {
             cache_install::disable(context, &args.level, args.write)
@@ -188,6 +206,11 @@ fn line(kind: &str, envelope: &Value, write: bool) -> String {
                 .unwrap_or_else(|| format!("{} is not on PATH", shlex::split(apply).unwrap()[0]));
             format!("not applied ({why}); run: {apply}")
         }
+    } else if let Some(action) = envelope["action"]
+        .as_str()
+        .filter(|_| !write || envelope["applied"] == true)
+    {
+        format!("{}{}", if write { "applied: " } else { "would " }, action)
     } else if write {
         if envelope["applied"] != true {
             "not applied (preflight failed)".into()
@@ -292,7 +315,7 @@ pub fn run(args: &Setup, out: &mut impl Write, err: &mut impl Write) -> io::Resu
         .map(|client| install_pair(args, &context, client))
         .collect();
     let failed = rows.iter().any(|row| {
-        ["mcp", "hooks", "cache"].iter().any(|k| {
+        ["mcp", "hooks", "cache", "skills"].iter().any(|k| {
             !row[k].is_null()
                 && (row[k]["success"] != true || (args.write && row[k]["applied"] != true))
         })
@@ -327,6 +350,9 @@ pub fn run(args: &Setup, out: &mut impl Write, err: &mut impl Write) -> io::Resu
             }
             for kind in ["mcp", "hooks"] {
                 writeln!(out, "{}", line(kind, &row[kind], args.write))?;
+            }
+            if let Some(skills) = row.get("skills") {
+                writeln!(out, "{}", line("skills", skills, args.write))?;
             }
             if let Some(cache) = row.get("cache") {
                 writeln!(out, "{}", line("cache", cache, args.write))?;

@@ -132,6 +132,13 @@ evidence and proposes corrections, consolidation or structural repairs;
 neosian runs no model or scheduler. MCP provides `upkeep_review` and
 `upkeep_apply` over the same mounted operations, even with capture off.
 
+In Codex, `neosian setup --client codex --write` installs the native
+`$neosian-upkeep` skill. Use it in the prompt picker or type
+`$neosian-upkeep Review /project and show proposed changes before applying anything.`
+It loads `builtin:upkeep` over MCP and uses the current conversation for the
+review. Profiles must select that built-in skill; new profiles already do.
+Restart Codex if its picker has not refreshed. See `neosian docs agents`.
+
 ```sh
 neosian upkeep scan /memories/notes --scope user:demo --limit 100 --stale-days 90
 neosian upkeep prepare ./request.json --scope user:demo > proposal.json

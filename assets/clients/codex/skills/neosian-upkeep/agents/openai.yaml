@@ -1,0 +1,4 @@
+interface:
+  display_name: "Neosian Upkeep"
+  short_description: "Review and reconcile durable neosian memory"
+  default_prompt: "Use $neosian-upkeep to review /project and show proposed changes before applying anything."

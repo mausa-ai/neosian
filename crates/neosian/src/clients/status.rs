@@ -118,6 +118,9 @@ pub(super) fn client_status(client: &str, context: &Context) -> Value {
     if client == "claude-code" {
         result["cache"] = super::cache_install::status(context);
     }
+    if client == "codex" {
+        result["skills"] = super::codex_skills::status(context);
+    }
     result
 }
 

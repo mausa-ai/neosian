@@ -101,6 +101,12 @@ such as `2h`. See `neosian docs agents` for compatibility and request limits.
 Version 2 retires provider configuration, chat/TUI, playground, evaluation,
 reflection execution and maintenance's model stage. See `neosian docs migration`.
 
+Codex setup installs the native `$neosian-upkeep` skill alongside MCP and hooks.
+`setup --client codex --codex-skills off --write` removes its managed entry and
+persists the opt-out. `--codex-skills on` restores it; the default `auto` keeps
+that choice. Updates preserve foreign files and refuse local edits.
+`setup --check` reports missing or outdated entries. See `neosian docs agents`.
+
 ## Knowledge imports and structure
 
 `knowledge import DIR --to /memories/notes --scope user:demo` previews ordinary

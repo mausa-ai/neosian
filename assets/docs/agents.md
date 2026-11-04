@@ -1,6 +1,6 @@
 ---
 title: "Any agent: the record through hooks"
-summary: Agent setup, recording hooks, startup context and Claude Code cache maintenance
+summary: Agent setup, native Codex upkeep, recording hooks, startup context and Claude Code cache maintenance
 ---
 
 # Any agent
@@ -50,6 +50,7 @@ neosian record install --client opencode --level project --scope user:me --write
   they searched; a missing client home is never created.
   Claude Code setup also installs the cache plugin and observation bridge
   described below; the standalone MCP/hook installers do not.
+  Codex setup installs the native upkeep skill described below.
   Setup and status show running, selected and PATH executable paths.
   `status` also reports the MCP and hook executables separately, their storage
   selection and capture policy. PATH differences remain visible even when only
@@ -152,6 +153,37 @@ neosian record install --client opencode --level project --scope user:me --write
   says so (and warns when the `.jsonc` names `neosian-memory` itself,
   since that entry would win). Any model OpenCode can run works, its
   free models included.
+
+## Codex upkeep in the prompt picker
+
+`neosian setup --client codex --write` installs `$neosian-upkeep` alongside
+MCP and hooks. Run setup again after upgrading an older installation, then
+`neosian setup --client codex --check`. In the Codex prompt area, type:
+
+```text
+$neosian-upkeep Review /project and show proposed changes before applying anything.
+```
+
+The entry is also available through Codex's `/skills` picker. Restart Codex
+if the picker has not refreshed. The existing conversation loads the live
+`builtin:upkeep` workflow through MCP and performs the review. Profiles must
+select `builtin:upkeep`; new profiles do. Approval, paused writers and mounted
+permissions still govern apply. Nothing is scheduled by installing the skill.
+
+Setup writes `skills/neosian-upkeep/SKILL.md` and its display metadata under
+the selected Codex directory (`~/.codex`, `$CODEX_HOME`, or `--at codex=DIR`).
+The `neosian-skills.json` receipt identifies managed bytes. Preview writes
+nothing; repeated setup refreshes owned files, repairs missing files and
+resumes interrupted updates. Foreign files survive. Local edits, unmanaged
+name collisions and symlinks are refused before changing registrations.
+`setup --check` fails on missing, outdated or conflicting managed entries.
+It checks files; actual Codex discovery and client enablement remain unobserved.
+
+`neosian setup --client codex --codex-skills off --write` removes the managed
+entry and persists the opt-out. Normal setup preserves that choice; use
+`--codex-skills on --write` to re-enable it. User-edited files are preserved
+and must be moved or reconciled before removal or update. Other native skills
+and stored neosian skills are left alone.
 
 ## Claude Code cache maintenance
 

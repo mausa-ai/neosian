@@ -3,6 +3,7 @@
 mod cache_bridge;
 mod cache_install;
 mod cache_shell;
+mod codex_skills;
 pub mod context;
 mod diagnostics;
 pub mod files;

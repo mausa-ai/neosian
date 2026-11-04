@@ -8,6 +8,20 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [2.12.1] - 2026-11-04
+
+### Fixed
+
+- Codex setup installs `$neosian-upkeep` as a native skill so upkeep can be
+  selected in the prompt picker. The entry loads the live `builtin:upkeep`
+  MCP workflow in the existing conversation and respects profile selection,
+  mounted authority, approval and paused-writer requirements.
+- Setup previews, checks, updates and removes its native skill files with
+  ownership receipts, preserving foreign files and refusing local edits or
+  symlinks. `--codex-skills off` persists an opt-out; `on` re-enables it.
+  Missing or outdated entries fail `setup --check`. CI exercises installation
+  and discovery with the official Codex CLI without starting a model turn.
+
 ## [2.12.0] - 2026-11-03
 
 ### Added

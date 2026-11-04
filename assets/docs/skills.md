@@ -97,11 +97,20 @@ The MCP server (`neosian docs mcp`) serves `list_skills` and
 skills from the same store. Every skill is also an **MCP prompt**
 (`prompts/list`, `prompts/get`): clients that render prompts as
 commands (Claude Code shows `/mcp__neosian-memory__release`) get a
-skill written by one agent as a command in the next. The binary ships `handoff` and `upkeep`, served as prompts after
-the mounts' skills and never seeded into a store: it tells the agent to
-write the note the next session reads with the `handoff` tool; `upkeep` guides grounded memory consolidation
-(`/mcp__neosian-memory__handoff`); `list_skills` on the server lists it
-bare, with no path or version, like a directory skill.
+skill written by one agent as a command in the next. The binary ships `handoff`
+and `upkeep`, served as prompts after the mounts' skills and never seeded into
+a store. `handoff` guides the note the next session reads; `upkeep` guides
+reviewed memory consolidation. Explicit `builtin:upkeep` loading selects the
+shipped workflow even when a stored skill has the same bare name.
+
+Codex's native skill picker discovers `SKILL.md` files separately from MCP
+prompts. `neosian setup --client codex --write` installs `$neosian-upkeep` as
+a native entry that loads the live `builtin:upkeep` instructions through MCP.
+Type `$neosian-upkeep Review /project and show proposed changes.` in Codex,
+or select it through `/skills`. Restart Codex if its picker has not refreshed.
+This entry does not copy or install arbitrary stored skills, change profile
+selection, or grant memory access. A profile must select `builtin:upkeep`;
+new profiles do. Read `neosian docs agents` for setup checks and removal.
 
 Serving an owner's skill scope over the network, versions and all, is
 the state process on that scope (`neosian serve`); a host operating it

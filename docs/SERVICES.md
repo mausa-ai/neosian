@@ -148,6 +148,11 @@ capability profiles and runner instructions are in
 home. `home=DIR` copies an existing home before benchmarking. The release
 binary must meet the documented p50 budgets; no provider call is involved.
 
+`scripts/check_codex_skills.py` verifies setup, native skill discovery, MCP
+workflow loading (including profiles), removal and re-enable with the official
+Codex CLI. CI pins `@openai/codex` 0.166.0. The check uses disposable homes,
+starts no model turn, and requires no model account or API keys.
+
 ## Release accounts and workflow
 
 Cargo's workspace version is authoritative. A signed-off clean commit with

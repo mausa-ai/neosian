@@ -31,6 +31,9 @@ neosian docs
 Setup shows executable, storage and capture choices. `setup --check` inspects
 registrations and tests MCP with temporary local storage. Restart the client
 and review hook trust afterward; saved settings do not prove a connection.
+Codex setup installs `$neosian-upkeep` in its native skill picker. Run setup
+again after upgrading; the skill loads the live MCP workflow in your current
+conversation, with the same memory permissions and approval boundaries.
 Claude Code setup also installs a host-owned cache plugin. It maintains an
 observed one-hour subscription cache while idle until close, shows receipts,
 and waits for normal user activity after expiry or uncertainty. Use

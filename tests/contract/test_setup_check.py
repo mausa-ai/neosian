@@ -308,6 +308,12 @@ def test_check_reads_client_owned_registrations(binary: Binary, client: str) -> 
     result = binary.run(
         "setup", "--client", client, "--at", f"{client}={target}", "--check", "--json"
     )
-    assert result.returncode == 0, result.stdout + result.stderr
-    assert_probe(json.loads(result.stdout), binary)
+    assert result.returncode == (1 if client == "codex" else 0), (
+        result.stdout + result.stderr
+    )
+    report = json.loads(result.stdout)
+    assert_probe(report, binary)
+    if client == "codex":
+        assert len(report["issues"]) == 1
+        assert "native upkeep entry is missing" in report["issues"][0]
     assert files(binary.directory) == before

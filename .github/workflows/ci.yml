@@ -95,6 +95,16 @@ jobs:
           NEOSIAN_BINARY: target/release/neosian
       - if: matrix.runner == 'ubuntu-24.04'
         run: make bench-hooks
+      # Confirm setup installs a skill the actual host discovers, without a model turn.
+      - if: matrix.runner == 'ubuntu-24.04'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - if: matrix.runner == 'ubuntu-24.04'
+        run: npm install --prefix "$RUNNER_TEMP/codex-cli" --no-package-lock --no-audit --no-fund @openai/codex@0.166.0
+      - if: matrix.runner == 'ubuntu-24.04'
+        run: uv run python scripts/check_codex_skills.py --binary target/release/neosian --codex "$RUNNER_TEMP/codex-cli/node_modules/.bin/codex"
 
 
   postgres:

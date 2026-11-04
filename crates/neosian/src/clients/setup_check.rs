@@ -1,6 +1,6 @@
 //! Inspect saved configuration and separately exercise the running binary.
 
-use super::{context::Context, diagnostics, probe, status};
+use super::{codex_skills, context::Context, diagnostics, probe, status};
 use serde_json::{Value, json};
 use std::io::{self, Write};
 
@@ -66,6 +66,16 @@ pub fn run(
         if client["mcp_shadowed_by"].is_string() {
             issues.push(format!(
                 "{name}: project configuration overrides the user MCP registration"
+            ));
+        }
+        if let Some(skills) = client.get("skills")
+            && codex_skills::needs_setup(skills)
+        {
+            issues.push(format!(
+                "{name} skills: {}; review setup --client {name} before --write",
+                skills["error"]
+                    .as_str()
+                    .unwrap_or("native upkeep entry is missing or out of date")
             ));
         }
         if let Some(levels) = client["cache"]["levels"].as_array() {
@@ -201,6 +211,16 @@ pub fn render_registrations(client: &Value, out: &mut impl Write) -> io::Result<
             write!(out, "    ")?;
             render_storage(&registration["storage"], out)?;
         }
+    }
+    if let Some(skills) = client.get("skills") {
+        writeln!(
+            out,
+            "  skills {}: enabled {}, installed {}, current {}; discovery not observed",
+            skills["config_path"].as_str().unwrap_or("-"),
+            skills["enabled"],
+            skills["installed"],
+            skills["current"]
+        )?;
     }
     if let Some(cache) = client.get("cache") {
         for level in cache["levels"].as_array().unwrap() {
