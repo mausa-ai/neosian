@@ -31,7 +31,7 @@ axum = { version = "0.8", default-features = false, features = ["http1", "tokio"
 base64 = "0.23"
 clap = { version = "4.6", features = ["derive"] }
 console = { version = "0.16", default-features = false, features = ["std"] }
-fancy-regex = "0.19.2"
+fancy-regex = "0.20.1"
 # `/mcp`'s standing stream (slice B, #370): one `unfold` over the session's
 # end and the keep-alive tick; already in the tree through axum.
 futures-util = { version = "0.3", default-features = false }
