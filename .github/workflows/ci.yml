@@ -20,7 +20,7 @@ concurrency:
 
 # Pin the development runner used by contract and artifact checks.
 env:
-  UV_VERSION: "0.12.23"
+  UV_VERSION: "0.13.7"
 
 jobs:
   lint:

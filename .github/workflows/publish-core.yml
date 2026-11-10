@@ -18,7 +18,7 @@ concurrency:
   group: publish-core-${{ inputs.release_tag || github.ref_name }}
   cancel-in-progress: false
 env:
-  UV_VERSION: "0.12.23"
+  UV_VERSION: "0.13.7"
   IMAGE: ghcr.io/mausa-ai/neosian
 jobs:
   build:
