@@ -11,7 +11,8 @@ phase close names the version.
 ### Changed
 
 - The container image's distroless base moves to the current
-  `static-debian13:nonroot` digest.
+  `static-debian13:nonroot` digest, and its builder to the current
+  `rust:1.99.1-alpine` digest, whose musl the static binary links.
 
 ## [2.12.1] - 2026-11-04
 
