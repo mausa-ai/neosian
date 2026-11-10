@@ -42,7 +42,7 @@ jobs:
           version: ${{ env.UV_VERSION }}
       - uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2.90.1
         with:
-          tool: cargo-deny@0.20.2,cargo-dist@0.32.0
+          tool: cargo-deny@0.20.2,cargo-dist@0.34.0
       - run: make install
       - run: make lint typecheck size rust-lint rust-test test
       - run: uv run --locked pip-audit

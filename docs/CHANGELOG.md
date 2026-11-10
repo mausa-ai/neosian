@@ -13,6 +13,13 @@ phase close names the version.
 - The container image's distroless base moves to the current
   `static-debian13:nonroot` digest, and its builder to the current
   `rust:1.99.1-alpine` digest, whose musl the static binary links.
+- Releases build with cargo-dist 0.34. The bundled updater behind
+  `neosian update` moves to axoupdater 0.10.3, which carries refreshed
+  certificate lists and reads the same install receipt. When the raw
+  `neosian-installer.sh` is allowed to edit `PATH`, its `env` helper now
+  lives beside the receipt in `~/.config/neosian` instead of the install
+  directory, and the installer migrates an older one. The `install.sh`
+  entry point leaves `PATH` alone and is unaffected.
 
 ## [2.12.1] - 2026-11-04
 

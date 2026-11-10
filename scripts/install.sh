@@ -58,7 +58,7 @@ trap 'exit 1' HUP INT TERM
         *) fail "unsupported architecture: $arch" ;;
     esac
     command -v curl >/dev/null 2>&1 || fail "curl is required"
-    # cargo-dist 0.32 verifies SHA-256 only with sha256sum. macOS ships
+    # cargo-dist verifies SHA-256 only with sha256sum. macOS ships
     # shasum instead: provide its equivalent privately for this install.
     if ! command -v sha256sum >/dev/null 2>&1; then
         command -v shasum >/dev/null 2>&1 || fail "sha256sum or shasum is required"
