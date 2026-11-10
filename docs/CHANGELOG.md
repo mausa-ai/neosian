@@ -8,6 +8,11 @@ phase close names the version.
 
 ## [Unreleased]
 
+### Changed
+
+- The container image's distroless base moves to the current
+  `static-debian13:nonroot` digest.
+
 ## [2.12.1] - 2026-11-04
 
 ### Fixed
