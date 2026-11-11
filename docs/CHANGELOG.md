@@ -8,8 +8,14 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [2.12.2] - 2026-11-11
+
 ### Changed
 
+- The binary's dependencies are refreshed. The TLS root store moves to
+  webpki-roots 1.0.12, with rustls-pki-types 1.16 and ureq 3.5.1, and the
+  pattern engine to fancy-regex 0.20.1, whose lookaround and conditional
+  fixes leave neosian's own patterns matching as before.
 - The container image's distroless base moves to the current
   `static-debian13:nonroot` digest, and its builder to the current
   `rust:1.99.1-alpine` digest, whose musl the static binary links.
