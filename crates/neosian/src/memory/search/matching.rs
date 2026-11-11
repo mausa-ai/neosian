@@ -2,7 +2,7 @@
 
 use serde_json::Value;
 
-use super::{Excerpt, Request};
+use super::{Excerpt, Passage, Request};
 use crate::store::{Document, error::Error};
 
 // Version 1's matching tables are part of the optional wire contract.
@@ -60,6 +60,7 @@ pub(super) struct Measure {
     pub all: bool,
     pub counts: Vec<u32>,
     pub length: u64,
+    pub passages: Option<Vec<Passage>>,
 }
 
 #[cfg(test)]
@@ -70,7 +71,7 @@ pub(super) fn find(
     request: &Request,
     terms: &[String],
 ) -> Result<Option<(Excerpt, Vec<String>)>, Error> {
-    let measured = measure(scope, path, document, request, terms, false)?;
+    let measured = measure(scope, path, document, request, terms, false, false)?;
     Ok(if measured.all { measured.found } else { None })
 }
 
@@ -81,6 +82,7 @@ pub(super) fn measure(
     request: &Request,
     terms: &[String],
     count: bool,
+    any: bool,
 ) -> Result<Measure, Error> {
     let metadata = if request.fields.iter().any(|f| f == "metadata") {
         crate::wire::encode::extra_json(&document.envelope, scope, path)?
@@ -109,7 +111,7 @@ pub(super) fn measure(
     let mut length = 0_u64;
     let mut chosen = None;
     let mut fields = Vec::new();
-    for (field, key, text) in values {
+    for &(field, key, text) in &values {
         let folded = lower(text);
         if count {
             length += folded.chars().count() as u64;
@@ -134,10 +136,16 @@ pub(super) fn measure(
             }
         }
     }
+    let all = matched.iter().all(|m| *m);
+    // Passages only for documents that become hits under the requested order.
+    let wanted = request.passage_count();
+    let passages = (wanted > 0 && chosen.is_some() && (any || all))
+        .then(|| super::passages::select(&values, terms, wanted));
     Ok(Measure {
         found: chosen.map(|e| (e, fields)),
-        all: matched.iter().all(|m| *m),
+        all,
         counts,
         length,
+        passages,
     })
 }

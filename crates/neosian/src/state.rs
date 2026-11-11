@@ -79,6 +79,10 @@ pub trait State: Send + Sync {
     fn memory_ranking(&self, _scope: &str) -> bool {
         false
     }
+    /// Whether memory-passages version 1 answers for this scope.
+    fn memory_passages(&self, _scope: &str) -> bool {
+        false
+    }
     fn search_memory(
         &self,
         _scope: &str,

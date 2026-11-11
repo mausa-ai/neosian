@@ -77,6 +77,7 @@ async fn capabilities(State(shared): State<super::State>, request: Request) -> R
         "client": client.actor,
         "memory_search": {"version": 1},
         "memory_ranking": {"version": 1},
+        "memory_passages": {"version": 1},
         "knowledge_policy": {"version": 1},
     });
     if let Some(grants) = &shared.clients.1 {

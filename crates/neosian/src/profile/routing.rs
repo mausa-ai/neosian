@@ -152,6 +152,12 @@ impl State for Routed {
                 .memory(scope, false, false)
                 .is_ok_and(|backend| backend.memory_ranking(scope))
     }
+    fn memory_passages(&self, scope: &str) -> bool {
+        self.profile.mounts.iter().any(|m| m.scope == scope)
+            && self
+                .memory(scope, false, false)
+                .is_ok_and(|backend| backend.memory_passages(scope))
+    }
     fn search_memory(
         &self,
         scope: &str,

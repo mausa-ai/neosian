@@ -95,6 +95,7 @@ fn ranked_hit(path: &str, score: Option<u64>, updated: &str) -> Hit {
             text: "needle".into(),
         },
         score,
+        passages: None,
         reference: None,
         source: None,
         workspace_id: None,
@@ -157,4 +158,64 @@ fn backend_pages_must_follow_the_requested_order_and_bounds() {
         Some(Order::Newest),
     );
     assert!(q.check_page("user:test", &reversed).is_err());
+}
+
+#[test]
+fn passages_pick_the_densest_windows_with_unicode_offsets_and_headings() {
+    let filler = "word ".repeat(60);
+    let body = format!(
+        "# Guide\n{filler}deploy once.\n## Release\nİ {filler}deploy then review the deploy.\n{filler}review\n"
+    );
+    let mut q = request("deploy review");
+    q.passages = Some(2);
+    let page = scan(
+        "user:test",
+        &q,
+        [Ok(("guide".into(), document(&body)))].into_iter(),
+    )
+    .unwrap();
+    let passages = page.hits[0].passages.as_ref().unwrap();
+    assert_eq!(passages.len(), 2);
+    // Listed in document order; the densest window starts 40 scalars before its
+    // first occurrence, counted in original scalars despite İ's lowercase expansion.
+    let best = body.find("deploy then").unwrap();
+    let start = body[..best].chars().count() - 40;
+    let dense = passages
+        .iter()
+        .find(|p| p.text.contains("deploy then"))
+        .unwrap();
+    assert_eq!(dense.offset, start);
+    assert!(passages[0].offset < dense.offset && passages[0].text.contains("deploy once"));
+    assert!(
+        passages
+            .iter()
+            .any(|p| p.text.contains("deploy then review the deploy"))
+    );
+    assert!(passages.iter().all(|p| p.text.chars().count() <= 240));
+    let release = passages
+        .iter()
+        .find(|p| p.text.contains("deploy then"))
+        .unwrap();
+    assert_eq!(release.heading.as_deref(), Some("Release"));
+    assert!(
+        passages
+            .windows(2)
+            .all(|w| w[0].offset + w[0].text.chars().count() <= w[1].offset)
+    );
+    q.passages = None;
+    let none = scan(
+        "user:test",
+        &q,
+        [Ok(("guide".into(), document(&body)))].into_iter(),
+    )
+    .unwrap();
+    assert!(none.hits[0].passages.is_none());
+    q.passages = Some(3);
+    let short = scan(
+        "user:test",
+        &q,
+        [Ok(("s".into(), document("deploy review")))].into_iter(),
+    )
+    .unwrap();
+    assert_eq!(short.hits[0].passages.as_deref().map(<[_]>::len), Some(0));
 }

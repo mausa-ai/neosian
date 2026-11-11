@@ -129,8 +129,8 @@ The runner imports no Python product; Python is test tooling only.
 
 ## Current-memory search
 
-FileStore and Postgres advertise optional memory-search version 1 and memory
-ranking version 1. They share keyword matching over current documents, with
+FileStore and Postgres advertise optional memory-search version 1, memory
+ranking version 1 and memory passages version 1. They share keyword matching over current documents, with
 explicit metadata selection and bounded excerpts, and compute relevance scores
 in the same Rust matcher, so both answer identically. Files hold the root lock
 during a search page; Postgres uses a statement snapshot. No persistent search

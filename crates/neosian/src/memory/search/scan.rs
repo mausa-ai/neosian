@@ -3,7 +3,7 @@
 //! Path order streams in path order and stops after its lookahead. Relevance
 //! and newest read the whole eligible selection, then sort and cut to `limit`.
 
-use super::{Excerpt, Hit, Order, Page, Request, matching, rank::Stats, searchable};
+use super::{Excerpt, Hit, Order, Page, Passage, Request, matching, rank::Stats, searchable};
 use crate::store::{Document, error::Error, time::Stamp};
 use serde_json::json;
 
@@ -60,7 +60,13 @@ impl<'a> Scan<'a> {
             )
     }
 
-    fn hit(&self, path: String, document: &Document, found: (Excerpt, Vec<String>)) -> Hit {
+    fn hit(
+        &self,
+        path: String,
+        document: &Document,
+        found: (Excerpt, Vec<String>),
+        passages: Option<Vec<Passage>>,
+    ) -> Hit {
         let envelope = &document.envelope;
         Hit {
             scope: self.scope.into(),
@@ -72,6 +78,7 @@ impl<'a> Scan<'a> {
             matched_fields: found.1,
             excerpt: found.0,
             score: None,
+            passages,
             reference: None,
             source: None,
             workspace_id: None,
@@ -92,6 +99,7 @@ impl<'a> Scan<'a> {
             request,
             &self.terms,
             order == Order::Relevance,
+            order == Order::Relevance,
         )?;
         if order == Order::Relevance {
             self.stats.add(&measured.counts, measured.length);
@@ -106,7 +114,7 @@ impl<'a> Scan<'a> {
         };
         if order.ranked() {
             let updated = document.envelope.updated_at.instant();
-            let hit = self.hit(path, &document, found);
+            let hit = self.hit(path, &document, found, measured.passages);
             self.candidates.push(Candidate {
                 hit,
                 counts: measured.counts,
@@ -123,7 +131,7 @@ impl<'a> Scan<'a> {
             ));
             return Ok(false);
         }
-        let hit = self.hit(path, &document, found);
+        let hit = self.hit(path, &document, found, measured.passages);
         self.page.hits.push(hit);
         Ok(true)
     }

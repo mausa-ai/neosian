@@ -36,6 +36,9 @@ pub struct Search {
     /// Only documents updated before this UTC instant (RFC 3339 ending in Z).
     #[arg(long)]
     updated_before: Option<String>,
+    /// Matched passages per hit from long documents, 0 to 3 (default 3).
+    #[arg(long, value_parser = clap::value_parser!(u8).range(0..=3))]
+    passages: Option<u8>,
     /// Review policy; a selected profile may require a stricter policy.
     #[arg(long, value_enum, default_value = "all")]
     knowledge_policy: crate::knowledge::governance::Policy,
@@ -58,6 +61,7 @@ impl Search {
             order: self.order,
             updated_since: self.updated_since.clone(),
             updated_before: self.updated_before.clone(),
+            passages: self.passages,
         }
     }
     pub fn validate(&self, mounts: &[crate::memory::mounts::Mount]) -> Result<(), String> {
@@ -93,6 +97,17 @@ impl Search {
                     hit.actor.as_deref().unwrap_or("-"),
                     hit.excerpt.text
                 )?;
+                for passage in hit.passages.unwrap_or_default() {
+                    let heading = passage
+                        .heading
+                        .map(|h| format!(" ({h})"))
+                        .unwrap_or_default();
+                    writeln!(
+                        out,
+                        "  passage {}{heading}: {}",
+                        passage.offset, passage.text
+                    )?;
+                }
             }
             if let Some(cursor) = page.next_cursor {
                 writeln!(out, "next_cursor: {cursor}")?;

@@ -22,6 +22,48 @@ fn follows(order: Order, a: &Hit, b: &Hit) -> bool {
 }
 
 impl Request {
+    /// Passages appear only when requested, within the count, from selected long
+    /// values, content before metadata and content windows ascending without overlap.
+    fn passages_ok(&self, hit: &Hit) -> bool {
+        let wanted = self.passage_count();
+        let Some(passages) = &hit.passages else {
+            return wanted == 0;
+        };
+        if wanted == 0 || passages.len() > wanted {
+            return false;
+        }
+        let mut content_end = None::<usize>;
+        let mut seen_metadata = false;
+        for passage in passages {
+            let length = passage.text.chars().count();
+            let keyed = match (&passage.metadata_key, passage.field.as_str()) {
+                (None, "content") => !seen_metadata,
+                (Some(key), "metadata") => {
+                    seen_metadata = true;
+                    self.metadata_keys.contains(key) && passage.heading.is_none()
+                }
+                _ => false,
+            };
+            if !keyed
+                || !self.fields.contains(&passage.field)
+                || !(1..=240).contains(&length)
+                || passage
+                    .heading
+                    .as_ref()
+                    .is_some_and(|h| h.is_empty() || h.chars().count() > 240)
+            {
+                return false;
+            }
+            if passage.field == "content" {
+                if content_end.is_some_and(|end| passage.offset < end) {
+                    return false;
+                }
+                content_end = Some(passage.offset + length);
+            }
+        }
+        true
+    }
+
     pub fn check_page(&self, scope: &str, page: &Page) -> Result<(), Error> {
         self.validate_backend(scope)?;
         let bad = || MemoryError::configuration("malformed memory-search version 1 response");
@@ -45,6 +87,7 @@ impl Request {
                 || hit.source.is_some()
                 || hit.workspace_id.is_some()
                 || (order == Order::Relevance) != hit.score.is_some()
+                || !self.passages_ok(hit)
                 || hit.excerpt.text.chars().count() > 240
                 || !self.fields.contains(&hit.excerpt.field)
                 || hit.matched_fields.is_empty()

@@ -25,6 +25,9 @@ impl State for FileStore {
     fn memory_ranking(&self, _scope: &str) -> bool {
         true
     }
+    fn memory_passages(&self, _scope: &str) -> bool {
+        true
+    }
     fn search_memory(
         &self,
         scope: &str,

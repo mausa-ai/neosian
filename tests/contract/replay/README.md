@@ -63,3 +63,5 @@ tests pin the new text, and every frozen byte still compares.
 
 S10's optional `memory_ranking` handshake field is projected out of this frozen
 comparison in the same way; independent storage and CLI/MCP contracts cover it.
+
+S11's optional `memory_passages` handshake field is projected out likewise.

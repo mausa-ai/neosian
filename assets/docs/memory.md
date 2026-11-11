@@ -92,6 +92,22 @@ from several mounts interleave by rank within each mount, then mount name,
 then path, because scores from different collections are not comparable.
 `neosian docs wire` gives the exact formula.
 
+### Matched passages
+
+A hit's `excerpt` starts at the first match, which in a long document is
+often an unrelated early mention. The CLI and MCP therefore also return up
+to three `passages` per hit (`--passages N`, MCP `passages`, 0..3, default 3)
+from content or selected metadata values longer than 240 characters. Every
+occurrence of a term proposes a window starting 40 characters before it and
+spanning at most 240; windows holding more distinct terms, then more
+occurrences, are chosen first, never overlapping within a value, and are
+listed in document order. Each passage carries its field, metadata key,
+character offset, text and the nearest Markdown heading above it: an ATX
+heading (`#` to `######`) outside fenced code, frontmatter and a leading
+comment block such as the knowledge header. Short values and paths have no
+passages; their excerpt already shows the match. Read the whole document
+when the passages are not enough.
+
 When documents disagree, prefer effective approved knowledge, then the most
 recently updated document, and update or remove the stale one so memory
 keeps one current answer. The MCP tool description carries the same guidance.
@@ -147,9 +163,11 @@ large corpora. Provenance, including historical actor text, is returned as store
 
 Remote storage must advertise `memory_search: {version: 1}`. Otherwise search
 refuses without a fallback scan or download. Relevance, newest and date bounds
-also need `memory_ranking: {version: 1}`. When a selected source lacks it and
-no order was asked for, the CLI and MCP use path order and add `fallback` with
-the reason; an explicit order or a date bound on such a source refuses. The
+also need `memory_ranking: {version: 1}`, and passages need
+`memory_passages: {version: 1}`. When a selected source lacks one and the
+setting was left to its default, the CLI and MCP use path order or omit
+passages and add `fallback` with the reason; an explicit order, date bound or
+passage count on such a source refuses. The
 HTTP request names one explicit scope and requires its read authority; see
 `neosian docs wire`.
 

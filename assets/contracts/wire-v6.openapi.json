@@ -122,6 +122,19 @@
                       "additionalProperties": false,
                       "description": "Optional memory ranking version 1 on memory/search: relevance and newest orders and updated_since/updated_before bounds. Requires memory_search version 1. No new access authority."
                     },
+                    "memory_passages": {
+                      "type": "object",
+                      "properties": {
+                        "version": {
+                          "const": 1
+                        }
+                      },
+                      "required": [
+                        "version"
+                      ],
+                      "additionalProperties": false,
+                      "description": "Optional memory passages version 1 on memory/search: up to three matched windows per hit from long content or metadata values, each with its nearest heading. Requires memory_search version 1. No new access authority."
+                    },
                     "knowledge_policy": {
                       "type": "object",
                       "additionalProperties": false,
@@ -3771,6 +3784,16 @@
                     "format": "date-time",
                     "default": null,
                     "description": "Memory ranking version 1. Exclusive upper bound on updated_at, UTC ending in Z; updated_since must precede it. Bound into path cursors."
+                  },
+                  "passages": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 0,
+                    "maximum": 3,
+                    "default": null,
+                    "description": "Memory passages version 1. 1..3 gives every hit a passages array, possibly empty; absent, null or 0 keeps version 1 hits. Passages never change matching, order, scores or cursors."
                   }
                 },
                 "required": [
@@ -3870,6 +3893,55 @@
                             "type": "integer",
                             "minimum": 0,
                             "description": "Relevance order only: round-half-even(BM25 x 10^6), BM25 over version 1 substring occurrence counts with k1 1.2 and b 0.75, statistics from the eligible selection of this scope."
+                          },
+                          "passages": {
+                            "type": "array",
+                            "maxItems": 3,
+                            "description": "Memory passages version 1, present only when requested. Windows of selected content or metadata values longer than 240 scalars: each starts 40 scalars before an occurrence and spans at most 240; chosen greedily by distinct terms inside, then occurrences inside, then value order and offset, never overlapping within a value; listed in value order, then offset.",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "field": {
+                                  "enum": [
+                                    "content",
+                                    "metadata"
+                                  ]
+                                },
+                                "metadata_key": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ],
+                                  "maxLength": 128
+                                },
+                                "offset": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                },
+                                "text": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 240
+                                },
+                                "heading": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ],
+                                  "minLength": 1,
+                                  "maxLength": 240,
+                                  "description": "Content only: the nearest ATX heading starting at or before the window, outside fenced code and a leading frontmatter or comment block; null otherwise."
+                                }
+                              },
+                              "required": [
+                                "field",
+                                "metadata_key",
+                                "offset",
+                                "text",
+                                "heading"
+                              ],
+                              "additionalProperties": false
+                            }
                           }
                         },
                         "required": [

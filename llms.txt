@@ -3,7 +3,7 @@
 > Memory and context for the agent you already use. One Rust binary,
 > CLI/MCP/HTTP interfaces, state on your own files or Postgres.
 
-Release: 2.13.0. Read installed pages with `neosian docs TOPIC` or the MCP
+Release: 2.14.0. Read installed pages with `neosian docs TOPIC` or the MCP
 `docs` tool. They are versioned with the executable and are authoritative
 for that version. The release's neosian-docs.json carries the same pages.
 
@@ -36,8 +36,9 @@ access; local bindings hold environment references, never exported secrets.
 Memory-search version 1 adds authorized keyword search over current documents
 and selected metadata with excerpts and source references. Memory ranking
 version 1 adds best-match-first scores, newest order and update-date bounds,
-the CLI/MCP default. Remote sources advertise each optional capability; history
-search remains a separate operation.
+the CLI/MCP default; memory passages version 1 adds matched windows with
+headings. Remote sources advertise each optional capability; history search
+remains a separate operation.
 
 Knowledge format 1 supports previewed Markdown/bundle imports into explicit
 mounted collections. Optional field rules are advisory; structure and source

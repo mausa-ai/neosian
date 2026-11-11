@@ -95,6 +95,9 @@ def retained(value: Any) -> Any:
             result.pop(
                 "memory_ranking", None
             )  # S10's optional ranking has independent contracts.
+            result.pop(
+                "memory_passages", None
+            )  # S11's optional passages have independent contracts.
             result.pop("change_feed", None)  # S7 has independent durability contracts.
             result.pop(
                 "knowledge_policy", None

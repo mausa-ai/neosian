@@ -211,7 +211,9 @@ def test_version_1_services_fall_back_only_for_the_implicit_order(
         explicit = search(
             binary, "needle", *flags, "--order", "path", NEOSIAN_CLIENT_TOKEN=TOKEN
         )
-        assert explicit["order"] == "path" and "fallback" not in explicit
+        assert explicit["order"] == "path"
+        # Only the passages default may still fall back here (S11).
+        assert "memory-ranking" not in explicit.get("fallback", "")
         requests.clear()
         for refused in [["--order", "relevance"], ["--order", "newest"]] + [
             ["--updated-since", "2026-01-01T00:00:00Z"]

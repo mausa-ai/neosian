@@ -8,6 +8,18 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [2.14.0] - 2026-11-11
+
+### Added
+
+- Memory search hits in long documents carry up to three matched `passages`
+  (`--passages N`, MCP `passages`, default 3 on the CLI and MCP): the windows
+  holding the most query terms, each with its offset and nearest Markdown
+  heading, skipping fenced code, frontmatter and the knowledge header. The
+  version 1 `excerpt` is unchanged. The optional storage capability
+  `memory_passages: {version: 1}` pins the window and heading rules, with
+  independent conformance cases; requests without `passages` are unchanged.
+
 ## [2.13.0] - 2026-11-11
 
 ### Added

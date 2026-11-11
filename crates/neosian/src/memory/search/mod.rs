@@ -2,8 +2,10 @@
 
 mod check;
 pub mod cli;
+mod headings;
 mod matching;
 mod mounted_rank;
+mod passages;
 mod rank;
 mod scan;
 pub use scan::{Scan, scan};
@@ -74,6 +76,8 @@ pub struct Request {
     pub updated_since: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub updated_before: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub passages: Option<u8>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -83,6 +87,17 @@ pub struct Excerpt {
     pub metadata_key: Option<String>,
     pub offset: usize,
     pub text: String,
+}
+
+/// One matched window of a long content or metadata value (memory passages version 1).
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Passage {
+    pub field: String,
+    pub metadata_key: Option<String>,
+    pub offset: usize,
+    pub text: String,
+    pub heading: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -98,6 +113,8 @@ pub struct Hit {
     pub excerpt: Excerpt,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub score: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub passages: Option<Vec<Passage>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reference: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -167,6 +184,9 @@ impl Request {
         if self.cursor.is_some() && self.order.is_some_and(Order::ranked) {
             return Err("search cursors continue path order only".into());
         }
+        if self.passages.is_some_and(|n| n > 3) {
+            return Err("passages must be between 0 and 3".into());
+        }
         if let (Some(since), Some(before)) = self.bounds()?
             && since >= before
         {
@@ -198,6 +218,11 @@ impl Request {
     /// Whether the request uses memory ranking version 1 fields.
     pub fn ranking(&self) -> bool {
         self.order.is_some() || self.updated_since.is_some() || self.updated_before.is_some()
+    }
+
+    /// The requested passages per hit; zero requests none.
+    pub fn passage_count(&self) -> usize {
+        usize::from(self.passages.unwrap_or(0))
     }
 
     pub fn fingerprint(&self, target: &Value) -> String {

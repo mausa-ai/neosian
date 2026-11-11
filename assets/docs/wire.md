@@ -53,8 +53,8 @@ these capabilities. A custom HTTP service must reproduce their declared
 semantics and failures, including attribution and scope allowances;
 returning the same JSON shapes alone is insufficient.
 
-The reference backends also advertise `"memory_search": {"version": 1}`
-and `"memory_ranking": {"version": 1}`.
+The reference backends also advertise `"memory_search": {"version": 1}`,
+`"memory_ranking": {"version": 1}` and `"memory_passages": {"version": 1}`.
 This optional, separately versioned operation is independent of legacy
 `pageable`. Clients check it before calling `memory/search`; absence means
 unsupported, and the binary refuses search without downloading documents as
@@ -67,9 +67,10 @@ filtering to that operation. It requires memory-search version 1. The reference
 backends advertise both; clients refuse filtered search on an older service.
 
 The optional `"memory_ranking": {"version": 1}` capability adds relevance and
-newest orders and date bounds to memory search; it also requires memory-search
-version 1. The reference backends advertise it. Clients send its fields only
-to a service that declares it.
+newest orders and date bounds to memory search, and `"memory_passages":
+{"version": 1}` adds matched passages; both require memory-search version 1.
+The reference backends advertise them. Clients send their fields only to a
+service that declares them.
 
 ## Auth
 
@@ -301,6 +302,34 @@ validate the echoed order, the sort order, score presence, bounds and the null
 cursor. Scores belong to one scope: a client merging scopes merges by rank,
 never by comparing scores. Ranking grants no access, and its statistics never
 include documents outside the authorized scope.
+
+### Memory passages version 1
+
+With `memory_passages` version 1, `memory/search` accepts an optional integer
+`passages`, 0 to 3. A request with 1 or more gives every hit a `passages`
+array, possibly empty; absent, null or 0 keeps version 1 hits. Passages never
+change matching, order, scores or cursors and are not bound into cursors.
+
+Passages come from selected `content` and metadata string values longer than
+240 Unicode scalars; paths never yield passages. Each non-overlapping
+occurrence of a term, found after version 1 lowercasing and mapped back to
+original scalars, proposes a window starting 40 scalars before it (not before
+0) and spanning at most 240 scalars. A window's key is the number of distinct
+terms, then of occurrences, lying wholly inside it. Windows are chosen by key
+descending, then value order (content, then metadata in version 1 order),
+then offset ascending, skipping any that overlap a chosen window of the same
+value, up to the requested count, and are listed in value order, then offset.
+
+Each passage has `field`, `metadata_key`, a zero-based scalar `offset` in its
+value, `text` (1 to 240 scalars) and `heading`. For content, `heading` is the
+nearest ATX heading whose line starts at or before the window: up to three
+leading spaces, one to six `#`, then a space, tab or line end. Lines inside a
+fence (three or more backticks or tildes, closed by a run of the same
+character at least as long), a leading `---` frontmatter block and a leading
+`<!--` comment block are not headings. The text drops the markers, a closing
+`#` run that follows a space, and surrounding spaces, truncated to 240
+scalars; an empty heading is null. Metadata passages have a null heading.
+Clients validate presence, count, fields, keys, lengths and content order.
 
 ### Conversation
 

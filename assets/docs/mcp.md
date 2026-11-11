@@ -45,9 +45,11 @@ before reads/search, including startup projections and mailbox annotations.
 
 `search_memory(query, path="/", fields=["path", "content"], metadata_keys=[],
 limit=20, cursor=null, knowledge_policy="all", order=null, updated_since=null,
-updated_before=null)` searches current authorized memory, including skills.
+updated_before=null, passages=null)` searches current authorized memory,
+including skills.
 Results rank best match first with an integer `score` unless `order` asks
-for `newest` or `path`; a cursor continues path order. It is available with
+for `newest` or `path`; a cursor continues path order. Hits in long documents
+carry up to three matched `passages` with their headings. It is available with
 capture off and without a history selection. It reads current storage
 independently of the startup index. Results name their `order` and have
 mounted references, scope/path, version, actor and bounded excerpts. Metadata

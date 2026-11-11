@@ -9,6 +9,9 @@ use crate::memory::mounts::{Mount, resolve};
 use crate::store::error::{Error, MemoryError};
 
 const UNSUPPORTED: &str = "a selected source does not support memory-ranking version 1";
+const NO_PASSAGES: &str = "a selected source does not support memory-passages version 1";
+/// Matched passages the agent doors request when no count is given.
+const PASSAGES: u8 = 3;
 
 /// Agent doors: an absent order means relevance, or path order when a cursor
 /// continues a path page. Without ranking support at every selected source, an
@@ -25,9 +28,11 @@ pub fn run(memory: &Memory, path: &str, request: &Request) -> Result<Page, Error
         Order::Relevance
     });
     request.order = Some(order);
+    let implicit_passages = request.passages.is_none();
+    request.passages = Some(request.passages.unwrap_or(PASSAGES)).filter(|n| *n > 0);
     request.validate().map_err(Error::Value)?;
     let bounded = request.updated_since.is_some() || request.updated_before.is_some();
-    let mut fallback = None;
+    let mut notes = Vec::new();
     if (order.ranked() || bounded)
         && !selected
             .iter()
@@ -37,8 +42,20 @@ pub fn run(memory: &Memory, path: &str, request: &Request) -> Result<Page, Error
             return Err(MemoryError::configuration(UNSUPPORTED).into());
         }
         request.order = Some(Order::Path);
-        fallback = Some(format!("{UNSUPPORTED}; path order used"));
+        notes.push(format!("{UNSUPPORTED}; path order used"));
     }
+    if request.passages.is_some()
+        && !selected
+            .iter()
+            .all(|(m, _)| memory.store.memory_passages(&m.scope))
+    {
+        if !implicit_passages {
+            return Err(MemoryError::configuration(NO_PASSAGES).into());
+        }
+        request.passages = None;
+        notes.push(format!("{NO_PASSAGES}; passages omitted"));
+    }
+    let fallback = (!notes.is_empty()).then(|| notes.join("; "));
     let mut page = match request.order {
         Some(order) if order.ranked() => {
             super::mounted_rank::run(memory, &selected, &request, order)?
