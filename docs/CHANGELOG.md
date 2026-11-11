@@ -8,6 +8,15 @@ phase close names the version.
 
 ## [Unreleased]
 
+### Changed
+
+- The `search_memory` and `search_history` tool descriptions teach agents to
+  search with two or three distinctive words and to retry with fewer or
+  different words before concluding nothing is stored. When documents
+  disagree, agents prefer effective approved knowledge, then the most
+  recently updated document, and fix the stale one; a later turn can
+  supersede an earlier one. Search behavior is unchanged.
+
 ## [2.12.2] - 2026-11-11
 
 ### Changed

@@ -51,6 +51,9 @@ references, scope/path, version, actor and bounded excerpts. Metadata needs
 explicit keys; profile injection modes do not limit permitted reads. Remote
 sources need optional memory-search capability version 1. See `neosian docs
 memory` for matching, Unicode, exclusions and pagination semantics.
+The tool's description tells agents to search with a few distinctive words
+and, when results disagree, to prefer approved knowledge, then the most
+recently updated document.
 
 `knowledge(command, path, policy="effective", data=null, expected_version=null,
 reason=null)` is read-only. `read` returns current status and policy-eligible

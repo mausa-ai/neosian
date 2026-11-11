@@ -62,6 +62,13 @@ It does not normalize Unicode, remove accents, stem words or interpret regex
 syntax: `CAFÉ` matches `café`, while `cafe` and `STRASSE` do not match `café`
 and `Straße`. Query whitespace follows Unicode 17.0.0 White_Space.
 
+Search with two or three distinctive words. Every term must match, so a long
+query often finds nothing: drop a word or try another word for the same thing
+before concluding memory holds no answer. When documents disagree, prefer
+effective approved knowledge, then the most recently updated document, and
+update or remove the stale one so memory keeps one current answer. The MCP
+tool descriptions carry the same guidance.
+
 Metadata requires 1..8 distinct `--metadata-key` values (MCP `metadata_keys`),
 each 1..128 characters. These name top-level keys in the stored envelope's
 `extra` object. Search visits only their recursive string values, including
@@ -303,8 +310,10 @@ Expiry affects retrieval and never triggers deletion. See `neosian docs governan
 Profile-free hooks append numbered turns and log projections; new profiles
 require explicit local/shared capture consent. Startup context gives a
 bounded index of prior sessions; `recall_turn` rehydrates a named turn and
-`search_history` searches recorded text. `continue_session` follows an explicit
-handoff. These tools do not run an agent or control its context window.
+`search_history` searches recorded text; its description gives the same query
+advice and notes that a later turn can supersede an earlier one.
+`continue_session` follows an explicit handoff. These tools do not run an
+agent or control its context window.
 Conversation search is distinct from document search.
 
 Operator `redact` clears selected turns; `prune` applies an age cutoff to

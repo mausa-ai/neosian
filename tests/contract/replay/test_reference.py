@@ -57,6 +57,13 @@ def fresh_handoff(space: Workspace, keep: frozenset[str]) -> None:
         path.write_text(updated)
 
 
+SEARCH_GUIDANCE = (
+    " Use two or three distinctive words; if nothing matches, drop a word or try"
+    " another word for the same thing. A later turn can supersede an earlier one,"
+    " so check newer hits before relying on an older fact."
+)
+
+
 def retained(value: Any) -> Any:
     """Explicit v2 discovery additions; their full schemas have separate tests.
 
@@ -77,6 +84,9 @@ def retained(value: Any) -> Any:
                 "current mounts; referenced content is not copied or executed.\n",
                 "",
             )
+        if result.get("name") == "search_history" and "description" in result:
+            # S9's appended search guidance has independent MCP discovery tests.
+            result["description"] = result["description"].replace(SEARCH_GUIDANCE, "")
         if "wire_version" in result and "neosian_version" in result:
             result["neosian_version"] = "<VERSION>"
             result.pop(

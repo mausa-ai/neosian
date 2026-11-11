@@ -56,3 +56,7 @@ document/history bytes still compare against the frozen fixtures.
 The read heat log (#407) under `heat/` is v2 derived state beside the store,
 written by the MCP memory and knowledge tools and covered by `test_heat.py`; it
 is projected out of the home snapshot, and every store byte still compares.
+
+S9 appends search guidance to the `search_history` tool description. Only that
+appended sentence is projected out of this comparison; independent MCP discovery
+tests pin the new text, and every frozen byte still compares.
