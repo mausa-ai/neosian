@@ -3,10 +3,65 @@
 use base64::{Engine, engine::general_purpose::URL_SAFE};
 use serde_json::{Value, json};
 
-use super::{Page, Request};
+use super::{Hit, Order, Page, Request};
 use crate::memory::dispatch::Memory;
 use crate::memory::mounts::{Mount, resolve};
-use crate::store::error::Error;
+use crate::store::error::{Error, MemoryError};
+
+const UNSUPPORTED: &str = "a selected source does not support memory-ranking version 1";
+
+/// Agent doors: an absent order means relevance, or path order when a cursor
+/// continues a path page. Without ranking support at every selected source, an
+/// implicit order falls back to path order and says so; explicit ranking or
+/// date bounds refuse.
+pub fn run(memory: &Memory, path: &str, request: &Request) -> Result<Page, Error> {
+    let selected = selection(&memory.mounts, path)?;
+    let implicit = request.order.is_none();
+    let mut request = request.clone();
+    let continuing = request.cursor.is_some();
+    let order = request.order.unwrap_or(if continuing {
+        Order::Path
+    } else {
+        Order::Relevance
+    });
+    request.order = Some(order);
+    request.validate().map_err(Error::Value)?;
+    let bounded = request.updated_since.is_some() || request.updated_before.is_some();
+    let mut fallback = None;
+    if (order.ranked() || bounded)
+        && !selected
+            .iter()
+            .all(|(m, _)| memory.store.memory_ranking(&m.scope))
+    {
+        if !implicit || bounded {
+            return Err(MemoryError::configuration(UNSUPPORTED).into());
+        }
+        request.order = Some(Order::Path);
+        fallback = Some(format!("{UNSUPPORTED}; path order used"));
+    }
+    let mut page = match request.order {
+        Some(order) if order.ranked() => {
+            super::mounted_rank::run(memory, &selected, &request, order)?
+        }
+        _ => paged(memory, path, &selected, &request)?,
+    };
+    page.order = request.order;
+    page.fallback = fallback;
+    Ok(page)
+}
+
+/// Mounted references and profile provenance for one hit.
+pub(super) fn annotate(hit: &mut Hit, mount: &Mount, profile: Option<&crate::profile::Profile>) {
+    hit.reference = Some(format!("/{}/{}", mount.path, hit.path));
+    if let Some(p) = profile {
+        hit.workspace_id = Some(p.workspace_id.clone());
+        hit.source = p
+            .mounts
+            .iter()
+            .find(|m| m.scope == mount.scope)
+            .map(|m| m.source.clone());
+    }
+}
 
 pub fn selection<'a>(
     mounts: &'a [Mount],
@@ -40,8 +95,12 @@ pub fn selection<'a>(
     Ok(selected)
 }
 
-pub fn run(memory: &Memory, path: &str, request: &Request) -> Result<Page, Error> {
-    let selected = selection(&memory.mounts, path)?;
+fn paged(
+    memory: &Memory,
+    path: &str,
+    selected: &[(&Mount, String)],
+    request: &Request,
+) -> Result<Page, Error> {
     let profile = memory.store.profile();
     let mut target = json!({
         "path": path,
@@ -92,16 +151,15 @@ pub fn run(memory: &Memory, path: &str, request: &Request) -> Result<Page, Error
             &json!([mount, token]).to_string(),
         )
     };
-    let mut result = Page {
-        hits: vec![],
-        next_cursor: None,
-    };
+    let mut result = Page::empty(None);
     for (mount, prefix) in selected {
         if mount.path < start {
             continue;
         }
         let mut query = request.clone();
-        query.prefix = prefix;
+        // Path order is version 1 at the backend; only date bounds need ranking.
+        query.order = None;
+        query.prefix.clone_from(prefix);
         query.knowledge_policy = request
             .knowledge_policy
             .selected(memory.store.as_ref(), &mount.scope);
@@ -121,15 +179,7 @@ pub fn run(memory: &Memory, path: &str, request: &Request) -> Result<Page, Error
             continue;
         }
         for hit in &mut page.hits {
-            hit.reference = Some(format!("/{}/{}", mount.path, hit.path));
-            if let Some(p) = profile {
-                hit.workspace_id = Some(p.workspace_id.clone());
-                hit.source = p
-                    .mounts
-                    .iter()
-                    .find(|m| m.scope == mount.scope)
-                    .map(|m| m.source.clone());
-            }
+            annotate(hit, mount, profile);
         }
         result.hits.extend(page.hits);
         if let Some(token) = page.next_cursor {

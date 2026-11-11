@@ -53,7 +53,8 @@ these capabilities. A custom HTTP service must reproduce their declared
 semantics and failures, including attribution and scope allowances;
 returning the same JSON shapes alone is insufficient.
 
-The reference backends also advertise `"memory_search": {"version": 1}`.
+The reference backends also advertise `"memory_search": {"version": 1}`
+and `"memory_ranking": {"version": 1}`.
 This optional, separately versioned operation is independent of legacy
 `pageable`. Clients check it before calling `memory/search`; absence means
 unsupported, and the binary refuses search without downloading documents as
@@ -64,6 +65,11 @@ base profiles, and reports skipped search cases when it is absent.
 The optional `"knowledge_policy": {"version": 1}` capability adds governance
 filtering to that operation. It requires memory-search version 1. The reference
 backends advertise both; clients refuse filtered search on an older service.
+
+The optional `"memory_ranking": {"version": 1}` capability adds relevance and
+newest orders and date bounds to memory search; it also requires memory-search
+version 1. The reference backends advertise it. Clients send its fields only
+to a service that declares it.
 
 ## Auth
 
@@ -255,6 +261,46 @@ stale and invalid governed content is excluded. Cursors also bind this policy.
 Scope grants still authorize every page; policy is a selection, not access
 authority. Raw reads/history remain unchanged. `neosian docs governance` and
 `schema governance` specify metadata, approval hashes and time boundaries.
+
+### Memory ranking version 1
+
+With `memory_ranking` version 1, `memory/search` accepts three more optional
+fields. A request without them, or with them null, is a version 1 request and
+its response is unchanged.
+
+- `order`: `path`, `relevance` or `newest`. A response to a request that names
+  an order echoes it as `order`. `path` is version 1 ordering and paging.
+  `relevance` and `newest` return at most `limit` hits with a null
+  `next_cursor`; a cursor with either is `value_error`.
+- `updated_since` (inclusive) and `updated_before` (exclusive): UTC RFC 3339
+  instants ending in `Z`, compared with the current version's `updated_at`.
+  Since must precede before. Bounds narrow every order and, like an explicit
+  order, bind into path cursors.
+
+Relevance candidates are eligible documents holding at least one term in a
+selected field; path and newest keep the all-terms rule. Newest sorts by
+`updated_at` descending, then path ascending. Relevance computes its
+statistics over the eligible selection of the one requested scope: the
+prefix, searchable paths, non-redacted current documents, the knowledge
+policy and the date bounds all apply first. For each document, `tf` counts
+non-overlapping left-to-right occurrences of a term summed over the selected
+values after version 1 lowercasing, and `length` counts the Unicode scalars
+of those lowercased values. `N` is the number of eligible documents, `df` the
+number holding the term, `avgdl` the total length divided by `N`. Then
+
+```text
+idf   = ln(1 + (N - df + 0.5) / (df + 0.5))
+score = sum, over distinct terms in ascending codepoint order with tf > 0, of
+        idf * tf * (k1 + 1) / (tf + k1 * (1 - b + b * length / avgdl))
+k1 = 1.2, b = 0.75
+```
+
+Each relevance hit carries `score`, the round-half-even integer of score times
+one million. Hits sort by score descending, then path ascending. Clients
+validate the echoed order, the sort order, score presence, bounds and the null
+cursor. Scores belong to one scope: a client merging scopes merges by rank,
+never by comparing scores. Ranking grants no access, and its statistics never
+include documents outside the authorized scope.
 
 ### Conversation
 

@@ -125,10 +125,10 @@ def test_stdio_tools_history_and_refusals(binary: Binary) -> None:
         tool = tools[name]
         assert tool["annotations"]["readOnlyHint"] is True
         assert tool["annotations"]["destructiveHint"] is False
-    # S9: search guidance lives in the tool descriptions (prompts are data).
+    # S9/S10: search guidance lives in the tool descriptions (prompts are data).
     memory_search = tools["search_memory"]["description"]
-    assert "two or three distinctive words" in memory_search
-    assert "drop a word or try another word for the same thing" in memory_search
+    assert "rank best match first by default" in memory_search
+    assert "add synonyms to one query" in memory_search
     assert (
         "prefer effective approved knowledge, then the most recently updated one"
         in memory_search

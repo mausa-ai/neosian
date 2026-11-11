@@ -12,8 +12,9 @@ new profiles capture no conversations until explicitly enabled. Read
 
 `neosian memory search QUERY` and MCP `search_memory` find current permitted
 documents and selected metadata with bounded excerpts and source/version
-references. Files, Postgres and capable remote services share the same
-keyword semantics. Search requires no model account or derived index.
+references, best match first by default, newest first or by path, optionally
+within update dates. Files, Postgres and capable remote services share the same
+keyword and scoring semantics. Search requires no model account or derived index.
 
 `neosian native-memory add` explicitly registers Claude Code or Codex Markdown
 for automatic capture into local FileStore through hooks. Captured copies keep

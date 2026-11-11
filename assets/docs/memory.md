@@ -47,27 +47,54 @@ is needed. The top-level `neosian search` and MCP `search_history` keep their
 conversation-history behavior.
 
 ```sh
-neosian memory search 'deployment window' --scope user:demo --json
-neosian memory search 'review checklist' --profile work --path /project/skills/
+neosian memory search 'deployment window release slot' --scope user:demo --json
+neosian memory search 'review checklist' --profile work --order newest
+neosian memory search 'deploy' --scope user:demo --order path --updated-since 2026-11-01T00:00:00Z
 neosian memory search 'blue' --scope user:demo --field metadata --metadata-key tags
 ```
 
 The default fields are `path` and `content`; repeat `--field` to select
-`path`, `content` and/or `metadata`. MCP accepts a `fields` array. Every
-whitespace-separated query term must occur as a substring somewhere in the
-selected fields of one document; terms may match different fields. Repeated
-terms do not change matching. Query length is 1..1024 Unicode characters,
-with 1..16 terms. Matching lowercases each character using Unicode 17.0.0.
+`path`, `content` and/or `metadata`. MCP accepts a `fields` array. A query
+term matches where it occurs as a substring in the selected fields; terms may
+match different fields. Repeated terms do not change matching. Query length
+is 1..1024 Unicode characters, with 1..16 terms. Matching lowercases each
+character using Unicode 17.0.0.
 It does not normalize Unicode, remove accents, stem words or interpret regex
 syntax: `CAFÉ` matches `café`, while `cafe` and `STRASSE` do not match `café`
 and `Straße`. Query whitespace follows Unicode 17.0.0 White_Space.
 
-Search with two or three distinctive words. Every term must match, so a long
-query often finds nothing: drop a word or try another word for the same thing
-before concluding memory holds no answer. When documents disagree, prefer
-effective approved knowledge, then the most recently updated document, and
-update or remove the stale one so memory keeps one current answer. The MCP
-tool descriptions carry the same guidance.
+### Orders and date bounds
+
+`--order` (MCP `order`) chooses one of three orders. The CLI and MCP default
+is `relevance`:
+
+- `relevance` returns documents holding at least one term, best match first,
+  each with an integer `score`. A document holding more of the terms, rarer
+  terms or more occurrences in less text scores higher, so synonyms can share
+  one query. Ties go to the path.
+- `newest` returns documents holding every term, most recently updated first.
+- `path` returns documents holding every term by mount name, then document
+  path, with a cursor for further pages.
+
+`--updated-since` and `--updated-before` (MCP `updated_since`,
+`updated_before`) narrow any order to documents whose current version was
+updated at or after, and before, a UTC instant written in RFC 3339 with a
+trailing `Z`. To look further back in newest order, pass the oldest
+`updated_at` you have seen as `--updated-before`. Every result names its
+`order`.
+
+The score is BM25 over substring occurrences: for each term found, its
+rarity across the searched documents times its count, damped for long text
+(k1 = 1.2, b = 0.75), multiplied by one million and rounded to an integer.
+Each mount is scored separately, from the documents that one search may read
+in it: deleted, erased, excluded and filtered documents do not count. Results
+from several mounts interleave by rank within each mount, then mount name,
+then path, because scores from different collections are not comparable.
+`neosian docs wire` gives the exact formula.
+
+When documents disagree, prefer effective approved knowledge, then the most
+recently updated document, and update or remove the stale one so memory
+keeps one current answer. The MCP tool description carries the same guidance.
 
 Metadata requires 1..8 distinct `--metadata-key` values (MCP `metadata_keys`),
 each 1..128 characters. These name top-level keys in the stored envelope's
@@ -85,7 +112,7 @@ Matching the `path` field uses the real document path without the mount name.
 Read-only and edit-only mounts are searchable. Profile injection modes
 `index`, `full` and `none` do not reduce permitted tool read access.
 
-The result contains `hits` and `next_cursor`. Each hit identifies the real
+The result contains `hits`, `next_cursor` and `order`. Each hit identifies the real
 `scope`, document `path`, `version`, UTC creation/update timestamps and the
 stored `actor`. `reference` is the mounted path to pass to `memory view`.
 Profile hits also carry the logical `source` and `workspace_id`; endpoints
@@ -97,10 +124,11 @@ metadata keys, then path. A metadata offset refers to its matching string
 value. An excerpt need not contain every term; fetch the current document
 to verify its complete meaning and version.
 
-`--limit` defaults to 20, range 1..100. Results sort by mount name, then
-document path, ascending; there is no relevance score or global total count.
-Pass the opaque `next_cursor` back with `--cursor` and the same query,
-fields, keys, prefix and mounted selection; page size may change. Mounted
+`--limit` defaults to 20, range 1..100. Relevance and newest return at most
+that many hits and no cursor; there is no global total count. In path order,
+pass the opaque `next_cursor` back with `--cursor` and the same query,
+fields, keys, prefix, bounds and mounted selection; page size may change. A
+cursor alone continues path order; relevance and newest refuse one. Mounted
 cursors preserve a remote backend's own opaque token. They confer no access
 and are not credentials. Each page is authorized and reads current state.
 A new or renamed document before the last key may require restarting the
@@ -118,8 +146,12 @@ baseline bounds hit count and excerpt length, not scan work or latency for
 large corpora. Provenance, including historical actor text, is returned as stored.
 
 Remote storage must advertise `memory_search: {version: 1}`. Otherwise search
-refuses without a fallback scan or download. The HTTP request names one
-explicit scope and requires its read authority; see `neosian docs wire`.
+refuses without a fallback scan or download. Relevance, newest and date bounds
+also need `memory_ranking: {version: 1}`. When a selected source lacks it and
+no order was asked for, the CLI and MCP use path order and add `fallback` with
+the reason; an explicit order or a date bound on such a source refuses. The
+HTTP request names one explicit scope and requires its read authority; see
+`neosian docs wire`.
 
 ## Import and structure knowledge
 

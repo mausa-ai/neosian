@@ -144,6 +144,9 @@ logical source and mounted reference to the real scope/path/version. The
 search cursor is bound to the mounted selection and preserves backend cursor
 opacity. An HTTP source must additionally advertise memory-search version 1;
 unsupported sources refuse instead of falling back to a document download.
+Relevance and newest orders and date bounds also need memory ranking version 1
+at every selected source; otherwise an omitted order uses path order and says
+so. Each mount is ranked from its own documents and the lists interleave.
 See `neosian docs memory` for fields, metadata selection and pagination.
 
 ## History and capture

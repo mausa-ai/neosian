@@ -109,6 +109,19 @@
                       "additionalProperties": false,
                       "description": "Optional current-memory lexical search contract version 1. Its absence means memory/search is unsupported."
                     },
+                    "memory_ranking": {
+                      "type": "object",
+                      "properties": {
+                        "version": {
+                          "const": 1
+                        }
+                      },
+                      "required": [
+                        "version"
+                      ],
+                      "additionalProperties": false,
+                      "description": "Optional memory ranking version 1 on memory/search: relevance and newest orders and updated_since/updated_before bounds. Requires memory_search version 1. No new access authority."
+                    },
                     "knowledge_policy": {
                       "type": "object",
                       "additionalProperties": false,
@@ -3655,7 +3668,7 @@
     "/v1/memory/search": {
       "post": {
         "operationId": "memory_search",
-        "summary": "Search current memory in one authorized scope (optional version 1)",
+        "summary": "Search current memory in one authorized scope (optional version 1; memory ranking version 1 adds orders and date bounds)",
         "requestBody": {
           "required": true,
           "content": {
@@ -3670,7 +3683,7 @@
                     "type": "string",
                     "minLength": 1,
                     "maxLength": 1024,
-                    "description": "1..16 whitespace terms, all matched as per-scalar Unicode-17.0.0 per-scalar lowercase substrings across selected values. No stemming, normalization or regex."
+                    "description": "1..16 whitespace terms, matched as per-scalar Unicode 17.0.0 lowercase substrings across selected values. Version 1, path and newest orders need every term; memory ranking relevance needs at least one. No stemming, normalization or regex."
                   },
                   "prefix": {
                     "type": "string",
@@ -3730,6 +3743,34 @@
                     ],
                     "default": "all",
                     "description": "Optional knowledge_policy capability version 1; filter current review state at server UTC before matching and pagination. All preserves unfiltered behavior."
+                  },
+                  "order": {
+                    "enum": [
+                      "path",
+                      "relevance",
+                      "newest",
+                      null
+                    ],
+                    "default": null,
+                    "description": "Memory ranking version 1. Absent or null is version 1 path order without an echo. relevance scores documents holding at least one term with pinned BM25; newest orders all-terms matches by updated_at descending. Both return at most limit hits with a null cursor; cursors continue path order only."
+                  },
+                  "updated_since": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "date-time",
+                    "default": null,
+                    "description": "Memory ranking version 1. Inclusive lower bound on the current version's updated_at: a UTC RFC 3339 instant ending in Z. Bound into path cursors."
+                  },
+                  "updated_before": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "date-time",
+                    "default": null,
+                    "description": "Memory ranking version 1. Exclusive upper bound on updated_at, UTC ending in Z; updated_since must precede it. Bound into path cursors."
                   }
                 },
                 "required": [
@@ -3824,6 +3865,11 @@
                             ],
                             "additionalProperties": false,
                             "description": "Up to 240 original Unicode scalars, starting up to 40 scalars before the first match. Offset is zero-based within the path, body or matched metadata string value. Content is preferred, then selected metadata keys, then path."
+                          },
+                          "score": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "description": "Relevance order only: round-half-even(BM25 x 10^6), BM25 over version 1 substring occurrence counts with k1 1.2 and b 0.75, statistics from the eligible selection of this scope."
                           }
                         },
                         "required": [
@@ -3847,6 +3893,14 @@
                       ],
                       "minLength": 1,
                       "maxLength": 4096
+                    },
+                    "order": {
+                      "enum": [
+                        "path",
+                        "relevance",
+                        "newest"
+                      ],
+                      "description": "Memory ranking version 1: echoes an explicit request order; absent for version 1 requests."
                     }
                   },
                   "required": [
@@ -3854,7 +3908,7 @@
                     "next_cursor"
                   ],
                   "additionalProperties": false,
-                  "description": "Ascending document-path order. A nonfinal page has exactly limit hits; no total count. Only current, non-redacted memory documents are searched. sessions/, messages/, message-links/ and handoff are excluded. Each page reads current state; writes before the last key require a new query."
+                  "description": "Version 1: ascending document-path order; a nonfinal page has exactly limit hits; no total count. Memory ranking version 1: relevance sorts by score descending, then path; newest by updated_at descending, then path; both return at most limit hits with a null next_cursor. Only current, non-redacted memory documents are searched. sessions/, messages/, message-links/ and handoff are excluded. Each page reads current state; writes before the last key require a new query."
                 }
               }
             }

@@ -23,7 +23,7 @@ protocol servers use their own framing.
 | `mcp install`, `record install` | Configure one integration independently |
 | `update` | Check/apply a binary update or set update policy |
 | `memory view/create/str_replace/insert/delete/rename` | Mounted document operations |
-| `memory search` | Keyword search over current mounted documents and selected metadata |
+| `memory search` | Keyword search over current mounted documents and selected metadata, best match first, newest or by path |
 | `memory versions/revert/redact` | Inspect history, undo the newest row, erase content |
 | `memory maintain` | Aged empty/exact-duplicate cleanup; preview with `--dry-run` |
 | `memory heat` | Which documents agent sessions read (7/30-day, all-time, last read); `--related` lists what the same sessions also read; never reorders the index |

@@ -9,7 +9,7 @@ use crate::mcp::server::Server;
 use crate::memory::search::{Request, mounted};
 
 const ASSET: &str = include_str!(concat!(env!("NEOSIAN_ASSETS"), "/core-tools.yaml"));
-const FIELDS: [Field; 7] = [
+const FIELDS: [Field; 10] = [
     Field {
         name: "knowledge_policy",
         kind: Kind::Literal(&["all", "effective", "approved"]),
@@ -42,6 +42,21 @@ const FIELDS: [Field; 7] = [
     },
     Field {
         name: "cursor",
+        kind: Kind::Str,
+        presence: Presence::Optional,
+    },
+    Field {
+        name: "order",
+        kind: Kind::Literal(&["relevance", "newest", "path"]),
+        presence: Presence::Optional,
+    },
+    Field {
+        name: "updated_since",
+        kind: Kind::Str,
+        presence: Presence::Optional,
+    },
+    Field {
+        name: "updated_before",
         kind: Kind::Str,
         presence: Presence::Optional,
     },

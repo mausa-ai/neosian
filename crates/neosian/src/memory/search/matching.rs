@@ -52,6 +52,17 @@ fn excerpt(text: &str, at: usize, field: &str, key: Option<&str>) -> Excerpt {
     }
 }
 
+/// What one document holds for a query: the excerpt and matched fields when
+/// any term occurs, whether every term occurs, and (when counting) per-term
+/// non-overlapping occurrence counts and the scalar length of selected values.
+pub(super) struct Measure {
+    pub found: Option<(Excerpt, Vec<String>)>,
+    pub all: bool,
+    pub counts: Vec<u32>,
+    pub length: u64,
+}
+
+#[cfg(test)]
 pub(super) fn find(
     scope: &str,
     path: &str,
@@ -59,6 +70,18 @@ pub(super) fn find(
     request: &Request,
     terms: &[String],
 ) -> Result<Option<(Excerpt, Vec<String>)>, Error> {
+    let measured = measure(scope, path, document, request, terms, false)?;
+    Ok(if measured.all { measured.found } else { None })
+}
+
+pub(super) fn measure(
+    scope: &str,
+    path: &str,
+    document: &Document,
+    request: &Request,
+    terms: &[String],
+    count: bool,
+) -> Result<Measure, Error> {
     let metadata = if request.fields.iter().any(|f| f == "metadata") {
         crate::wire::encode::extra_json(&document.envelope, scope, path)?
     } else {
@@ -82,15 +105,24 @@ pub(super) fn find(
         values.push(("path", None, path));
     }
     let mut matched = vec![false; terms.len()];
+    let mut counts = vec![0_u32; if count { terms.len() } else { 0 }];
+    let mut length = 0_u64;
     let mut chosen = None;
     let mut fields = Vec::new();
     for (field, key, text) in values {
         let folded = lower(text);
+        if count {
+            length += folded.chars().count() as u64;
+        }
         let mut first = None;
         for (index, term) in terms.iter().enumerate() {
             if let Some(at) = folded.find(term) {
                 matched[index] = true;
                 first = Some(first.map_or(at, |before: usize| before.min(at)));
+                if count {
+                    let found = u32::try_from(folded.matches(term.as_str()).count());
+                    counts[index] = counts[index].saturating_add(found.unwrap_or(u32::MAX));
+                }
             }
         }
         if let Some(at) = first {
@@ -102,9 +134,10 @@ pub(super) fn find(
             }
         }
     }
-    Ok(if matched.iter().all(|m| *m) {
-        chosen.map(|e| (e, fields))
-    } else {
-        None
+    Ok(Measure {
+        found: chosen.map(|e| (e, fields)),
+        all: matched.iter().all(|m| *m),
+        counts,
+        length,
     })
 }

@@ -115,6 +115,7 @@ def test_search_streams_to_lookahead_and_bounds_expanded_row_bytes(
         "NEOSIAN_POSTGRES_DSN": os.environ["NEOSIAN_TEST_POSTGRES_DSN"],
         "NEOSIAN_MAX_FILE_BYTES": "1024",
     }
+    # Path order streams to its lookahead; relevance reads every eligible row.
     args = [
         "memory",
         "search",
@@ -123,6 +124,8 @@ def test_search_streams_to_lookahead_and_bounds_expanded_row_bytes(
         "user:search",
         "--schema",
         schema,
+        "--order",
+        "path",
         "--json",
     ]
     first = run(binary, *args, "--limit", "1", env=env)

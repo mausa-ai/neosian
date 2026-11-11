@@ -44,16 +44,21 @@ provide none of those guarantees. The selected profile bounds raw history
 before reads/search, including startup projections and mailbox annotations.
 
 `search_memory(query, path="/", fields=["path", "content"], metadata_keys=[],
-limit=20, cursor=null, knowledge_policy="all")` searches current authorized memory, including skills.
-It is available with capture off and without a history selection. It reads
-current storage independently of the startup index. Results have mounted
-references, scope/path, version, actor and bounded excerpts. Metadata needs
-explicit keys; profile injection modes do not limit permitted reads. Remote
-sources need optional memory-search capability version 1. See `neosian docs
-memory` for matching, Unicode, exclusions and pagination semantics.
-The tool's description tells agents to search with a few distinctive words
-and, when results disagree, to prefer approved knowledge, then the most
-recently updated document.
+limit=20, cursor=null, knowledge_policy="all", order=null, updated_since=null,
+updated_before=null)` searches current authorized memory, including skills.
+Results rank best match first with an integer `score` unless `order` asks
+for `newest` or `path`; a cursor continues path order. It is available with
+capture off and without a history selection. It reads current storage
+independently of the startup index. Results name their `order` and have
+mounted references, scope/path, version, actor and bounded excerpts. Metadata
+needs explicit keys; profile injection modes do not limit permitted reads.
+Remote sources need optional memory-search capability version 1, and memory
+ranking version 1 for relevance, newest and date bounds; without it an omitted
+order falls back to path order and the result says so. See `neosian docs
+memory` for matching, scoring, Unicode, exclusions and pagination semantics.
+The tool's description tells agents that a document needs only one term, to
+add synonyms to one query, and, when results disagree, to prefer approved
+knowledge, then the most recently updated document.
 
 `knowledge(command, path, policy="effective", data=null, expected_version=null,
 reason=null)` is read-only. `read` returns current status and policy-eligible

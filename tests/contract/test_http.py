@@ -54,6 +54,7 @@ def test_handshake_and_transport_failures(server: Server) -> None:
         "erasable": True,
         "client": "client:contract",
         "memory_search": {"version": 1},
+        "memory_ranking": {"version": 1},
         "change_feed": {"version": 1},
         "knowledge_policy": {"version": 1},
     }

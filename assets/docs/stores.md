@@ -129,12 +129,14 @@ The runner imports no Python product; Python is test tooling only.
 
 ## Current-memory search
 
-FileStore and Postgres advertise optional memory-search version 1. They share
-keyword matching over current documents, with explicit metadata selection
-and bounded excerpts. Files hold the root lock during a search page; Postgres
-uses a statement snapshot. No persistent search index, cache or DDL is added.
-Custom services declare support separately and pass the optional independent
-search cases. See `neosian docs memory` and `neosian docs wire`.
+FileStore and Postgres advertise optional memory-search version 1 and memory
+ranking version 1. They share keyword matching over current documents, with
+explicit metadata selection and bounded excerpts, and compute relevance scores
+in the same Rust matcher, so both answer identically. Files hold the root lock
+during a search page; Postgres uses a statement snapshot. No persistent search
+index, cache or DDL is added. Custom services declare each capability
+separately and pass the optional independent search and ranking cases. See
+`neosian docs memory` and `neosian docs wire`.
 
 ## Current-document knowledge bundles
 

@@ -78,3 +78,83 @@ fn cursor_changes_page_size_but_cannot_change_scope_or_query() {
     q.query = "other".into();
     assert!(q.scope_after("user:test").is_err());
 }
+
+fn ranked_hit(path: &str, score: Option<u64>, updated: &str) -> Hit {
+    Hit {
+        scope: "user:test".into(),
+        path: path.into(),
+        version: 1,
+        created_at: "2026-10-24T10:00:00Z".into(),
+        updated_at: updated.into(),
+        actor: None,
+        matched_fields: vec!["content".into()],
+        excerpt: Excerpt {
+            field: "content".into(),
+            metadata_key: None,
+            offset: 0,
+            text: "needle".into(),
+        },
+        score,
+        reference: None,
+        source: None,
+        workspace_id: None,
+    }
+}
+
+#[test]
+fn backend_pages_must_follow_the_requested_order_and_bounds() {
+    let mut q = request("needle");
+    q.order = Some(Order::Relevance);
+    let page = |hits: Vec<Hit>, order: Option<Order>| Page {
+        hits,
+        next_cursor: None,
+        order,
+        fallback: None,
+    };
+    let t = "2026-10-24T10:00:00Z";
+    let good = page(
+        vec![
+            ranked_hit("b", Some(9), t),
+            ranked_hit("a", Some(3), t),
+            ranked_hit("c", Some(3), t),
+        ],
+        Some(Order::Relevance),
+    );
+    assert!(q.check_page("user:test", &good).is_ok());
+    for bad in [
+        page(
+            vec![ranked_hit("a", Some(3), t), ranked_hit("b", Some(9), t)],
+            Some(Order::Relevance),
+        ),
+        page(
+            vec![ranked_hit("c", Some(3), t), ranked_hit("a", Some(3), t)],
+            Some(Order::Relevance),
+        ),
+        page(vec![ranked_hit("a", None, t)], Some(Order::Relevance)),
+        page(vec![ranked_hit("a", Some(3), t)], None),
+        page(
+            vec![ranked_hit("a", Some(3), t), ranked_hit("a", Some(2), t)],
+            Some(Order::Relevance),
+        ),
+    ] {
+        assert!(q.check_page("user:test", &bad).is_err());
+    }
+    q.order = Some(Order::Newest);
+    q.updated_since = Some("2026-10-24T10:00:00Z".into());
+    let newer = "2026-10-25T10:00:00Z";
+    let newest = page(
+        vec![ranked_hit("z", None, newer), ranked_hit("a", None, t)],
+        Some(Order::Newest),
+    );
+    assert!(q.check_page("user:test", &newest).is_ok());
+    let early = page(
+        vec![ranked_hit("a", None, "2026-10-23T10:00:00Z")],
+        Some(Order::Newest),
+    );
+    assert!(q.check_page("user:test", &early).is_err());
+    let reversed = page(
+        vec![ranked_hit("a", None, t), ranked_hit("z", None, newer)],
+        Some(Order::Newest),
+    );
+    assert!(q.check_page("user:test", &reversed).is_err());
+}

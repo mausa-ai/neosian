@@ -3,14 +3,14 @@
 use clap::Args;
 use std::io::Write;
 
-use super::{Request, mounted};
+use super::{Order, Request, mounted};
 use crate::memory::dispatch::Memory;
 use crate::store::error::Error;
 
 #[derive(Args)]
 #[group(id = "MemorySearchOptions")]
 pub struct Search {
-    /// Whitespace-separated terms; every term must match a selected field.
+    /// Whitespace-separated terms; relevance needs one to match, path and newest every one.
     query: String,
     /// Mounted path prefix; / searches all mounted memory.
     #[arg(long, default_value = "/")]
@@ -24,9 +24,18 @@ pub struct Search {
     /// Hits per page, between 1 and 100.
     #[arg(long, default_value_t = 20, value_parser = clap::value_parser!(u32).range(1..=100))]
     limit: u32,
-    /// Opaque continuation returned by the previous identical query.
+    /// Opaque continuation returned by the previous identical query (path order only).
     #[arg(long)]
     cursor: Option<String>,
+    /// Result order: relevance (default), newest, or path (pageable).
+    #[arg(long, value_enum)]
+    order: Option<Order>,
+    /// Only documents updated at or after this UTC instant (RFC 3339 ending in Z).
+    #[arg(long)]
+    updated_since: Option<String>,
+    /// Only documents updated before this UTC instant (RFC 3339 ending in Z).
+    #[arg(long)]
+    updated_before: Option<String>,
     /// Review policy; a selected profile may require a stricter policy.
     #[arg(long, value_enum, default_value = "all")]
     knowledge_policy: crate::knowledge::governance::Policy,
@@ -46,6 +55,9 @@ impl Search {
             limit: self.limit as usize,
             cursor: self.cursor.clone(),
             knowledge_policy: self.knowledge_policy,
+            order: self.order,
+            updated_since: self.updated_since.clone(),
+            updated_before: self.updated_before.clone(),
         }
     }
     pub fn validate(&self, mounts: &[crate::memory::mounts::Mount]) -> Result<(), String> {
@@ -63,10 +75,18 @@ impl Search {
                 serde_json::to_string(&page).expect("search page serializes")
             )?;
         } else {
+            writeln!(out, "order: {}", page.order.unwrap_or(Order::Path).name())?;
+            if let Some(reason) = &page.fallback {
+                writeln!(out, "fallback: {reason}")?;
+            }
             for hit in page.hits {
+                let score = hit
+                    .score
+                    .map(|s| format!(", score={s}"))
+                    .unwrap_or_default();
                 writeln!(
                     out,
-                    "{} (v{}, scope={}, actor={}):\n{}",
+                    "{} (v{}{score}, scope={}, actor={}):\n{}",
                     hit.reference.as_deref().unwrap_or(&hit.path),
                     hit.version,
                     hit.scope,

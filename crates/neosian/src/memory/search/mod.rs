@@ -1,7 +1,10 @@
 //! Versioned lexical search over current memory, shared by all storage backends.
 
+mod check;
 pub mod cli;
 mod matching;
+mod mounted_rank;
+mod rank;
 mod scan;
 pub use scan::{Scan, scan};
 pub mod mounted;
@@ -13,7 +16,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 use crate::store::cursor::{self, Kind};
-use crate::store::error::{Error, MemoryError};
+use crate::store::error::Error;
 use crate::store::grammar::{parse_scope, validate_document_path};
 
 fn fields() -> Vec<String> {
@@ -21,6 +24,29 @@ fn fields() -> Vec<String> {
 }
 fn limit() -> usize {
     20
+}
+
+/// Result order. Absent on the wire means version 1 path order; memory ranking
+/// version 1 adds explicit orders, echoed in the response.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize, clap::ValueEnum)]
+#[serde(rename_all = "lowercase")]
+pub enum Order {
+    Path,
+    Relevance,
+    Newest,
+}
+
+impl Order {
+    pub fn ranked(self) -> bool {
+        self != Order::Path
+    }
+    pub fn name(self) -> &'static str {
+        match self {
+            Order::Path => "path",
+            Order::Relevance => "relevance",
+            Order::Newest => "newest",
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -42,6 +68,12 @@ pub struct Request {
         skip_serializing_if = "crate::knowledge::governance::Policy::is_all"
     )]
     pub knowledge_policy: crate::knowledge::governance::Policy,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub order: Option<Order>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_since: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_before: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -65,6 +97,8 @@ pub struct Hit {
     pub matched_fields: Vec<String>,
     pub excerpt: Excerpt,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub score: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reference: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
@@ -77,6 +111,21 @@ pub struct Hit {
 pub struct Page {
     pub hits: Vec<Hit>,
     pub next_cursor: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub order: Option<Order>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fallback: Option<String>,
+}
+
+impl Page {
+    fn empty(order: Option<Order>) -> Self {
+        Self {
+            hits: Vec::new(),
+            next_cursor: None,
+            order,
+            fallback: None,
+        }
+    }
 }
 
 impl Request {
@@ -115,7 +164,40 @@ impl Request {
         if self.prefix.len() > 1024 || self.cursor.as_ref().is_some_and(|c| c.len() > 8192) {
             return Err("search prefix or cursor exceeds its size limit".into());
         }
+        if self.cursor.is_some() && self.order.is_some_and(Order::ranked) {
+            return Err("search cursors continue path order only".into());
+        }
+        if let (Some(since), Some(before)) = self.bounds()?
+            && since >= before
+        {
+            return Err("updated_since must precede updated_before".into());
+        }
         Ok(())
+    }
+
+    /// The UTC instants of the date bounds, in microseconds.
+    pub fn bounds(&self) -> Result<(Option<i64>, Option<i64>), String> {
+        let instant = |value: &Option<String>, name: &str| {
+            value
+                .as_deref()
+                .map(|text| {
+                    crate::store::time::Stamp::parse(text)
+                        .ok()
+                        .filter(|_| text.ends_with('Z'))
+                        .map(crate::store::time::Stamp::instant)
+                        .ok_or_else(|| format!("{name} must be a UTC RFC 3339 instant ending in Z"))
+                })
+                .transpose()
+        };
+        Ok((
+            instant(&self.updated_since, "updated_since")?,
+            instant(&self.updated_before, "updated_before")?,
+        ))
+    }
+
+    /// Whether the request uses memory ranking version 1 fields.
+    pub fn ranking(&self) -> bool {
+        self.order.is_some() || self.updated_since.is_some() || self.updated_before.is_some()
     }
 
     pub fn fingerprint(&self, target: &Value) -> String {
@@ -126,11 +208,19 @@ impl Request {
             self.fields,
             self.metadata_keys
         ]);
+        let items = selection.as_array_mut().expect("selection array");
         if !self.knowledge_policy.is_all() {
-            selection
-                .as_array_mut()
-                .expect("selection array")
-                .push(json!(self.knowledge_policy));
+            items.push(json!(self.knowledge_policy));
+        }
+        // Ranking fields bind only when present, so version 1 cursors stay valid.
+        for (name, value) in [
+            ("order", json!(self.order)),
+            ("updated_since", json!(self.updated_since)),
+            ("updated_before", json!(self.updated_before)),
+        ] {
+            if !value.is_null() {
+                items.push(json!([name, value]));
+            }
         }
         let bytes = serde_json::to_vec(&selection).expect("search values serialize");
         Sha256::digest(bytes)
@@ -180,59 +270,6 @@ impl Request {
             return Err(Error::Value(
                 "backend search cursor must contain 1..4096 bytes".into(),
             ));
-        }
-        Ok(())
-    }
-
-    /// Validate an optional backend's page before forwarding its references.
-    pub fn check_page(&self, scope: &str, page: &Page) -> Result<(), Error> {
-        self.validate_backend(scope)?;
-        let mut last = String::new();
-        let bad = || MemoryError::configuration("malformed memory-search version 1 response");
-        if page.hits.len() > self.limit {
-            return Err(bad().into());
-        }
-        for hit in &page.hits {
-            if hit.scope != scope
-                || hit.path <= last
-                || !hit.path.starts_with(&self.prefix)
-                || !searchable(&hit.path)
-                || validate_document_path(&hit.path).is_err()
-                || hit.version == 0
-                || hit.reference.is_some()
-                || hit.source.is_some()
-                || hit.workspace_id.is_some()
-                || hit.excerpt.text.chars().count() > 240
-                || !self.fields.contains(&hit.excerpt.field)
-                || hit.matched_fields.is_empty()
-                || hit
-                    .matched_fields
-                    .iter()
-                    .enumerate()
-                    .any(|(i, f)| !self.fields.contains(f) || hit.matched_fields[..i].contains(f))
-                || !hit.matched_fields.contains(&hit.excerpt.field)
-                || crate::store::time::Stamp::parse(&hit.created_at).is_err()
-                || crate::store::time::Stamp::parse(&hit.updated_at).is_err()
-                || !hit.created_at.ends_with('Z')
-                || !hit.updated_at.ends_with('Z')
-                || match &hit.excerpt.metadata_key {
-                    Some(key) => {
-                        hit.excerpt.field != "metadata" || !self.metadata_keys.contains(key)
-                    }
-                    None => hit.excerpt.field == "metadata",
-                }
-            {
-                return Err(bad().into());
-            }
-            last.clone_from(&hit.path);
-        }
-        if let Some(next) = &page.next_cursor
-            && (page.hits.len() != self.limit
-                || next.is_empty()
-                || next.len() > 4096
-                || self.cursor.as_ref() == Some(next))
-        {
-            return Err(bad().into());
         }
         Ok(())
     }

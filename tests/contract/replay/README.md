@@ -60,3 +60,6 @@ is projected out of the home snapshot, and every store byte still compares.
 S9 appends search guidance to the `search_history` tool description. Only that
 appended sentence is projected out of this comparison; independent MCP discovery
 tests pin the new text, and every frozen byte still compares.
+
+S10's optional `memory_ranking` handshake field is projected out of this frozen
+comparison in the same way; independent storage and CLI/MCP contracts cover it.

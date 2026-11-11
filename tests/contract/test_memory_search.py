@@ -133,6 +133,8 @@ def test_multiple_profile_sources_page_without_losing_boundaries(
             "portable",
             "--limit",
             "1",
+            "--order",
+            "path",
             *flags,
         )
         seen += page["hits"]
@@ -143,7 +145,15 @@ def test_multiple_profile_sources_page_without_losing_boundaries(
     assert [h["source"] for h in seen] == ["knowledge", "knowledge", "other"]
     assert cursor is None
     first = binary.json(
-        "memory", "search", "needle", "--profile", "portable", "--limit", "1"
+        "memory",
+        "search",
+        "needle",
+        "--profile",
+        "portable",
+        "--limit",
+        "1",
+        "--order",
+        "path",
     )
     changed = run(
         binary,

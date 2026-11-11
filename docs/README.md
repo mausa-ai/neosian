@@ -91,7 +91,8 @@ approval boundaries and inspection after an interrupted batch.
 The MCP `docs` tool reads the installed documentation and `memory_history`
 reads bounded, mounted version metadata. `memory search` and MCP `search_memory`
 find current permitted documents through paths, bodies and explicitly selected
-metadata, with bounded excerpts and versioned source references. Search sees
+metadata, best match first by default, newest first or by path, with bounded
+excerpts and versioned source references. Search sees
 new writes and erasures without rebuilding the startup index. Neosian does not
 run a model or control the agent's context window. Raw conversation history is shared with
 readers authorized for that store; local scope defaults are not a portable

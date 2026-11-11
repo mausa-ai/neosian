@@ -29,6 +29,9 @@ impl State for PostgresStore {
     ) -> Result<crate::changes::model::Pruned, Error> {
         self.prune_changes(scope, through, write)
     }
+    fn memory_ranking(&self, _scope: &str) -> bool {
+        true
+    }
     fn search_memory(
         &self,
         scope: &str,

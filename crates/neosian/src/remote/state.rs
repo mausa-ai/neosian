@@ -32,6 +32,10 @@ impl State for RemoteStore {
     ) -> Result<crate::changes::model::Pruned, Error> {
         self.changes_prune(scope, through, write)
     }
+    fn memory_ranking(&self, _scope: &str) -> bool {
+        self.capabilities["memory_search"]["version"] == 1
+            && self.capabilities["memory_ranking"]["version"] == 1
+    }
     fn search_memory(
         &self,
         scope: &str,
@@ -41,6 +45,12 @@ impl State for RemoteStore {
         if self.capabilities["memory_search"]["version"] != 1 {
             return Err(crate::store::error::MemoryError::configuration(
                 "server does not support memory-search version 1",
+            )
+            .into());
+        }
+        if request.ranking() && !self.memory_ranking(scope) {
+            return Err(crate::store::error::MemoryError::configuration(
+                "server does not support memory-ranking version 1",
             )
             .into());
         }

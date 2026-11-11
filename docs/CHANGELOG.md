@@ -8,14 +8,37 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [2.13.0] - 2026-11-11
+
+### Added
+
+- Memory search ranks results. `neosian memory search` and MCP
+  `search_memory` return the best matching current documents first, each with
+  an integer `score`: BM25 over the same substring matching, computed at query
+  time in the shared matcher with no model or index, so files, Postgres and
+  remote services answer identically. A document needs only one query term,
+  so synonyms can share one query. `--order newest` lists documents holding
+  every term by last update; `--order path` keeps the previous listing and its
+  cursors. `--updated-since` and `--updated-before` narrow any order by update
+  time. Results name their `order`; mounts are ranked separately and their
+  lists interleave by rank.
+- The optional storage capability `memory_ranking: {version: 1}` adds `order`,
+  `updated_since` and `updated_before` to `POST /v1/memory/search`. The scoring
+  formula is pinned in `neosian docs wire` and covered by independent
+  conformance cases. Requests without these fields are unchanged.
+
 ### Changed
 
-- The `search_memory` and `search_history` tool descriptions teach agents to
-  search with two or three distinctive words and to retry with fewer or
-  different words before concluding nothing is stored. When documents
-  disagree, agents prefer effective approved knowledge, then the most
-  recently updated document, and fix the stale one; a later turn can
-  supersede an earlier one. Search behavior is unchanged.
+- The CLI and MCP memory search default is relevance order. Scripts that page
+  with cursors pass `--order path` (MCP `"order": "path"`); a cursor alone
+  continues path order. When a selected remote source lacks memory ranking and
+  no order was given, the agent doors use path order and report `fallback`.
+- The `search_memory` and `search_history` tool descriptions guide agents. When
+  results disagree, prefer effective approved knowledge, then the most recently
+  updated document, and fix the stale one. Memory search suggests adding
+  synonyms to one query; history search, still every-term matching, suggests
+  two or three distinctive words and notes that a later turn can supersede an
+  earlier one.
 
 ## [2.12.2] - 2026-11-11
 

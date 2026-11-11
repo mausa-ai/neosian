@@ -75,6 +75,10 @@ pub trait State: Send + Sync {
             crate::store::cursor::encode("list", &[serde_json::json!(e.path)])
         }))
     }
+    /// Whether memory-ranking version 1 (orders and date bounds) answers for this scope.
+    fn memory_ranking(&self, _scope: &str) -> bool {
+        false
+    }
     fn search_memory(
         &self,
         _scope: &str,

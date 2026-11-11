@@ -52,8 +52,11 @@ Memory search checks scope read authority before scanning or constructing
 excerpts and pages. Cursors do not grant access, and every resumed page is
 reauthorized. Redacted/deleted documents, historical bodies and mailbox/session
 records are excluded. Only explicitly selected metadata string values are
-searched. Reference backends retain no search cache or derived index; results
-already delivered to a client cannot be recalled after erasure.
+searched. Relevance statistics come only from the documents that one
+authorized search may read in a single scope, so scores reveal nothing about
+other scopes, erased or excluded documents. Reference backends retain no
+search cache or derived index; results already delivered to a client cannot
+be recalled after erasure.
 
 New profiles capture off by default. Local/shared capture requires consent in
 both the profile and its machine-local binding. Deterministic filters precede
