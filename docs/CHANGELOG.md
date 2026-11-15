@@ -8,6 +8,8 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [2.15.0] - 2026-11-15
+
 ### Added
 
 - The Claude Code cache plugin tells the agent when a subscription usage limit
