@@ -195,7 +195,9 @@ extra mode, separate model account or background Neosian daemon is needed.
 Claude Code 2.1.314 is the tested baseline. The plugin accepts subsequent
 2.1 patches only while the required public events and receipt fields match.
 
-Keep-warm defaults on until the session closes. After a successful ordinary
+Keep-warm defaults on until the session closes. After `/clear` or a resume,
+keep-warm resumes for the new conversation with session controls back at their
+defaults, waiting for its first message. After a successful ordinary
 request, it matches Claude's documented cache observation to that request's
 usage. An observed one-hour subscription cache becomes eligible for a hidden
 refresh near minute 55 from that request's start, while idle. Normal conversation

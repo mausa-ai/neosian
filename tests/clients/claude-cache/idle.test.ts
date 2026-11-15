@@ -21,7 +21,8 @@ function harness(on, { ttl = '1h', reply = warm, subscription = true } = {}) {
   const writes = [];
   let observation;
   let requests = 0;
-  on('session.id', () => ({ value: 'synthetic' }));
+  let id = 'synthetic';
+  on('session.id', () => ({ value: id }));
   on('session.version', () => ({ value: { version: '2.1.314' } }));
   on('session.model', () => ({ value: 'claude-test' }));
   on('fs.stat', () => ({ value: { kind: 'file', size: 1000, isLink: false, mtimeMs: clock.now() } }));
@@ -40,7 +41,7 @@ function harness(on, { ttl = '1h', reply = warm, subscription = true } = {}) {
   on('turn.complete', ($, e) => ({ text: e.answer }));
   on('turn.step', async function* ($, e) {
     requests += 1;
-    observation = { format: 1, session_id: 'synthetic', version: '2.1.314',
+    observation = { format: 1, session_id: id, version: '2.1.314',
       observed_at_ms: clock.now(), model: 'claude-test', main_requests: requests,
       state: 'warm', ttl, subscription,
       expires_at: Math.floor((clock.now() + (ttl === '1h' ? 60 : 5) * MIN) / 1000),
@@ -48,7 +49,7 @@ function harness(on, { ttl = '1h', reply = warm, subscription = true } = {}) {
     return { turnId: e.turnId, index: e.index, answer: 'READY', toolUses: [], stopReason: 'end_turn', usage };
   });
   on('model.fork', ($, e) => { calls.push({ at: clock.now(), prompt: e.prompt }); return { value: reply }; });
-  return { clock, calls, statuses, writes };
+  return { clock, calls, statuses, writes, use: (next: string) => { id = next; } };
 }
 
 async function start($) {
@@ -146,4 +147,21 @@ test('a usage note reaches classic.PostToolUse as additional context, once', asy
   expect((await $.classic.PostToolUse(call)).additionalContext).toEqual(['other hook']);
   const agent = await $.classic.PostToolUse({ ...call, agent_id: 'synthetic-agent' });
   expect(agent.additionalContext?.[1]).toBe('AGENT 96% 5-hour. RESET 2h 1970-01-02 05:46.');
+});
+
+test('after /clear the classic SessionStart brings keep-warm back under the new id', async ($, on) => {
+  const h = harness(on);
+  on('classic.SessionStart', () => ({ additionalContext: ['settings hook'] }));
+  await start($); await turn($); await h.clock.advance(10 * MIN);
+  await $.session.end({ reason: 'clear', sessionId: 'synthetic', resume: { id: 'synthetic' } });
+  h.use('synthetic-next');
+  const result = await $.classic.SessionStart({ source: 'clear', session_id: 'synthetic-next' });
+  expect(result.additionalContext).toEqual(['settings hook']);
+  expect(h.writes.at(-1)?.path).toBe('/synthetic-observations/synthetic-next.refresh.json');
+  expect(JSON.parse(h.writes.at(-1)?.text).state).toBe('Waiting for your first message');
+  await h.clock.advance(120 * MIN); expect(h.calls.length).toBe(0);
+  await turn($); await h.clock.advance(55 * MIN - 1); expect(h.calls.length).toBe(0);
+  await h.clock.advance(1); expect(h.calls.length).toBe(1);
+  const beat = JSON.parse(h.writes.at(-1)?.text);
+  expect([beat.session_id, beat.state]).toEqual(['synthetic-next', 'Cache refresh verified']);
 });

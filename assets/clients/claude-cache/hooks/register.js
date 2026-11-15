@@ -29,7 +29,11 @@ let reason = 'Waiting for your first message';
 let lastDisplay = '';
 let lastPersisted = '';
 let view;
+let interactive = false;
+let reopen = false;
 const notes = usageNotes();
+// SessionStart sources that follow a /clear or a resume in the same process.
+const NEXT = ['clear', 'resume', 'fork'];
 
 function invalidate(why) {
   epoch += 1;
@@ -162,6 +166,69 @@ async function refresh($) {
   }
 }
 
+// The start of a conversation: at process start (`fresh`, which also starts
+// usage notes) and again for the conversation after a /clear or a resume,
+// which keeps the notes' samples. Session controls return to the defaults.
+async function begin($, fresh, id) {
+  try {
+    closed = false;
+    reopen = false;
+    busy = false;
+    available = false;
+    enabled = defaultEnabled;
+    allowApi = defaultAllowApi;
+    until = null;
+    requests = 0;
+    receipt = undefined;
+    directory = '';
+    lastDisplay = '';
+    lastPersisted = '';
+    view = undefined;
+    invalidate('Waiting for your first message');
+    sessionId = id ?? await $.session.id();
+    version = (await $.session.version()).version;
+    lastClock = await $.clock.now();
+    const fit = supported(version) && /^[A-Za-z0-9_-]{1,128}$/.test(sessionId);
+    if (fresh) await startNotes($, notes, fit);
+    if (!fit) {
+      reason = 'Keep-warm unavailable on this Claude Code version';
+    } else if (!interactive) {
+      reason = 'Keep-warm runs in interactive sessions';
+    } else {
+      const config = JSON.parse(await $.fs.read($.plugin.root + '/bridge.json'));
+      directory = typeof config.observations === 'string' ? config.observations : '';
+      const raw = (await $.fs.read($.plugin.root + '/assets/refresh.md')).replace(/\r\n/g, '\n');
+      const body = raw.indexOf('\n---\n');
+      if (!raw.startsWith('---\n') || body < 0) throw new Error('prompt metadata');
+      prompt = raw.slice(body + 5).trim();
+      if (directory && prompt) {
+        available = true;
+        if (timer) timer.cancel();
+        timer = $.clock.every(30000, async () => {
+          try { await tick($); }
+          catch { invalidate('Cache status unknown · automatic refresh paused'); }
+        });
+      } else reason = 'Cache observation unavailable · run neosian setup';
+    }
+    // Registering the same name again replaces it.
+    await $.command.register({ name: 'neosian-cache', immediate: true,
+      description: 'Cache status; on, off, or a duration such as 2h', argumentHint: '[on|off|30m|2h]' });
+    await show($, lastClock);
+  } catch {
+    invalidate('Keep-warm unavailable · run neosian setup --check');
+    await show($, lastClock);
+  }
+}
+
+// /clear and a resume end the conversation but not the process, and no
+// session.start follows. The next conversation's classic SessionStart brings
+// keep-warm back. Should a host raise that before the end, or not at all,
+// the next main turn or /neosian-cache does it instead. Any other end stays closed.
+async function wake($, id) {
+  if (!closed || !reopen) return;
+  try { await begin($, false, id); } catch { /* The conversation goes on without keep-warm. */ }
+}
+
 export function register(on, options) {
   defaultEnabled = options.enabled !== false;
   defaultAllowApi = options.allowApi === true;
@@ -173,56 +240,20 @@ export function register(on, options) {
     return render($, e, view, prior);
   });
   on('session.start', async ($, e, next) => {
-    try {
-      closed = false;
-      busy = false;
-      available = false;
-      enabled = defaultEnabled;
-      allowApi = defaultAllowApi;
-      until = null;
-      requests = 0;
-      receipt = undefined;
-      directory = '';
-      lastDisplay = '';
-      lastPersisted = '';
-      view = undefined;
-      invalidate('Waiting for your first message');
-      sessionId = await $.session.id();
-      version = (await $.session.version()).version;
-      lastClock = await $.clock.now();
-      const fit = supported(version) && /^[A-Za-z0-9_-]{1,128}$/.test(sessionId);
-      await startNotes($, notes, fit);
-      if (!fit) {
-        reason = 'Keep-warm unavailable on this Claude Code version';
-      } else if (!e.isInteractive) {
-        reason = 'Keep-warm runs in interactive sessions';
-      } else {
-        const config = JSON.parse(await $.fs.read($.plugin.root + '/bridge.json'));
-        directory = typeof config.observations === 'string' ? config.observations : '';
-        const raw = (await $.fs.read($.plugin.root + '/assets/refresh.md')).replace(/\r\n/g, '\n');
-        const body = raw.indexOf('\n---\n');
-        if (!raw.startsWith('---\n') || body < 0) throw new Error('prompt metadata');
-        prompt = raw.slice(body + 5).trim();
-        if (directory && prompt) {
-          available = true;
-          if (timer) timer.cancel();
-          timer = $.clock.every(30000, async () => {
-            try { await tick($); }
-            catch { invalidate('Cache status unknown · automatic refresh paused'); }
-          });
-        } else reason = 'Cache observation unavailable · run neosian setup';
-      }
-      await $.command.register({ name: 'neosian-cache', immediate: true,
-        description: 'Cache status; on, off, or a duration such as 2h', argumentHint: '[on|off|30m|2h]' });
-      await show($, lastClock);
-    } catch {
-      invalidate('Keep-warm unavailable · run neosian setup --check');
-      await show($, lastClock);
-    }
+    interactive = e.isInteractive; // The classic SessionStart input does not carry it.
+    await begin($, true);
+    return next(e);
+  });
+
+  // The input names the new conversation. During an in-process resume the
+  // host may still answer $.session.id() with the old one. Adds no context.
+  on('classic.SessionStart', async ($, e, next) => {
+    if (NEXT.includes(e.source)) await wake($, typeof e.session_id === 'string' ? e.session_id : undefined);
     return next(e);
   });
 
   on('command.run', { command: 'neosian-cache' }, async ($, e) => {
+    await wake($);
     const arg = e.args.trim().toLowerCase();
     const span = duration(arg);
     if (arg === 'off') { enabled = false; until = null; epoch += 1; }
@@ -239,6 +270,7 @@ export function register(on, options) {
   });
 
   on('turn.start', async ($, e, next) => {
+    if (!e.agentId) await wake($);
     if (available && !e.agentId) {
       busy = true;
       invalidate('Conversation active');
@@ -281,6 +313,7 @@ export function register(on, options) {
   on('session.end', async ($, e, next) => {
     endNotes(notes);
     closed = true;
+    reopen = e.reason === 'clear' || e.reason === 'resume'; // The process goes on.
     if (timer) timer.cancel();
     timer = undefined;
     invalidate('Session closed');

@@ -33,6 +33,18 @@ phase close names the version.
   idle session's figure is stale and no quota saving is promised. Repeat
   `neosian setup --client claude-code --write` to refresh the plugin.
 
+### Fixed
+
+- Keep-warm and the neosian line come back after `/clear` or a resume in the
+  same Claude Code process. Claude Code starts the next conversation under a
+  new session id without the plugin's start event, so maintenance, the badge
+  and the refresh receipt stopped for the rest of the process. The plugin now
+  starts again from the new conversation's SessionStart, waiting for its first
+  message with session controls back at their defaults and the receipt written
+  under the new id. Usage notes keep their readings. A real exit still leaves
+  nothing running. Repeat `neosian setup --client claude-code --write` to
+  refresh the plugin.
+
 ## [2.14.0] - 2026-11-11
 
 ### Added

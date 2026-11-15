@@ -26,7 +26,9 @@ async function harness(options = {}, extra = {}) {
   let mainRequests = 0;
   let timers = [];
   let model = 'claude-test';
+  let id = extra.id ?? 'session-1';
   const calls = [];
+  const registered = [];
   const statuses = [];
   const panes = [];
   const writes = [];
@@ -40,7 +42,7 @@ async function harness(options = {}, extra = {}) {
       timers.push(entry);
       return { cancel: () => { entry.active = false; } };
     } },
-    session: { id: async () => extra.id ?? 'session-1', model: async () => model,
+    session: { id: async () => id, model: async () => model,
       version: async () => ({ version: extra.version ?? '2.1.314' }),
       // Absent unless a case supplies figures: older hosts have no usage().
       ...(limits !== undefined || extra.usageError ? { usage: async () => {
@@ -53,7 +55,7 @@ async function harness(options = {}, extra = {}) {
       return files.get(path);
     }, stat: async path => ({ size: (files.get(path) ?? '').length, kind: 'file', isLink: false }),
     write: async (path, body) => { writes.push({ path, body }); files.set(path, body); } },
-    command: { register: async () => {} },
+    command: { register: async spec => { registered.push(spec); return { command: spec.name }; } },
     ui: { status: text => { statuses.push(text); }, toast: () => {}, invalidate: () => {},
       open: async pane => { panes.push(pane); },
       resolve: () => Object.fromEntries(['Box', 'Text'].map(type => [type,
@@ -99,8 +101,8 @@ async function harness(options = {}, extra = {}) {
     assert.equal(await emit('turn.step', { turnId: 'turn', index: 0, model, agentId }, result), result);
     if (!agentId && observation) {
       mainRequests += 1;
-      files.set('/observations/session-1.json', malformed ? 'not JSON' : JSON.stringify({
-        format: 1, session_id: 'session-1', version: '2.1.314', observed_at_ms: now,
+      files.set('/observations/' + id + '.json', malformed ? 'not JSON' : JSON.stringify({
+        format: 1, session_id: id, version: '2.1.314', observed_at_ms: now,
         model: u?.model, main_requests: mainRequests, state: 'warm', ttl, subscription,
         expires_at: Math.floor((stamp + (ttl === '1h' ? 60 : 5) * MIN) / 1000),
         last_main_cache_read_tokens: u?.cache_read_input_tokens,
@@ -129,9 +131,22 @@ async function harness(options = {}, extra = {}) {
   };
   const submit = (prior = {}) => emit('classic.UserPromptSubmit',
     { hook_event_name: 'UserPromptSubmit', prompt: 'SENSITIVE_PROMPT' }, prior);
+  const begin = (source, sessionId = id, prior = {}) => emit('classic.SessionStart',
+    { hook_event_name: 'SessionStart', session_id: sessionId, transcript_path: '', cwd: '/work', source }, prior);
+  // /clear or a resume, as Claude Code 2.1.325 raises it: session.end for the
+  // old id, then the classic SessionStart naming the next conversation. On a
+  // resume the host switches its own id only after the SessionStart hooks.
+  async function restart({ reason = 'clear', source = reason, next = 'session-2', prior } = {}) {
+    await emit('session.end', { reason, sessionId: id, resume: { id } });
+    if (reason === 'clear') id = next;
+    const result = await begin(source, next, prior);
+    id = next;
+    return result;
+  }
   await emit('session.start', { isInteractive: extra.interactive !== false, surface: 'terminal' });
-  return { $, calls, files, statuses, panes, writes, emit, advance, finish, turn, command, draw, badge, details,
-    tool, submit, respond, limits: list => { limits = list; },
+  return { $, calls, files, statuses, panes, writes, registered, emit, advance, finish, turn, command, draw, badge,
+    details, tool, submit, respond, begin, restart, limits: list => { limits = list; }, use: next => { id = next; },
+    running: () => timers.filter(t => t.active).length,
     now: () => now, elapse: ms => { now += ms; }, model: name => { model = name; } };
 }
 
@@ -386,6 +401,85 @@ test('a user turn overtaking a fork keeps the new deadline and records the super
   const receipt = JSON.parse(h.files.get('/observations/session-1.refresh.json'));
   assert.equal(receipt.last_refresh.outcome, 'superseded');
   await h.advance(54 * MIN); assert.equal(h.calls.length, 1);
+});
+
+// /clear and a resume end the conversation, not the process: no session.start
+// follows, and the next conversation's classic SessionStart re-arms keep-warm.
+for (const [name, args] of Object.entries({
+  '/clear': {}, 'a resume': { reason: 'resume' }, 'a resume as a fork': { reason: 'resume', source: 'fork' },
+})) {
+  test(name + ' re-arms keep-warm for the next conversation under its new id', async () => {
+    const h = await harness(); await h.turn(); await h.advance(10 * MIN);
+    const prior = { additionalContext: ['from a settings hook'] };
+    assert.equal(await h.restart({ ...args, prior }), prior); // next(e)'s result, unchanged.
+    assert.equal(h.running(), 1);
+    assert.equal(h.registered.length, 2);
+    assert.equal(await h.badge(), 'neosian · keep-warm ready');
+    const ready = JSON.parse(h.files.get('/observations/session-2.refresh.json'));
+    assert.deepEqual([ready.session_id, ready.state, ready.observed_at_ms], ['session-2', 'Waiting for your first message', h.now()]);
+    const old = h.files.get('/observations/session-1.refresh.json');
+    await h.advance(120 * MIN); assert.equal(h.calls.length, 0); // Nothing to keep warm before a message.
+    await h.turn(); await h.advance(55 * MIN - 1); assert.equal(h.calls.length, 0);
+    await h.advance(1); assert.equal(h.calls.length, 1);
+    const data = JSON.parse(h.files.get('/observations/session-2.refresh.json'));
+    assert.deepEqual([data.session_id, data.state, data.last_refresh.outcome, data.observed_at_ms],
+      ['session-2', 'Cache refresh verified', 'reused', h.now()]);
+    assert.equal(h.files.get('/observations/session-1.refresh.json'), old);
+  });
+}
+
+test('session controls end with their conversation; the next starts at the configured defaults', async () => {
+  const h = await harness(); await h.turn(); await h.command('off');
+  await h.restart();
+  assert.equal(await h.badge(), 'neosian · keep-warm ready');
+  await h.turn(); await h.advance(55 * MIN); assert.equal(h.calls.length, 1);
+  const timed = await harness(); await timed.turn(); await timed.command('90m');
+  await timed.restart({ reason: 'resume' });
+  assert.match(await timed.details(), /Keep-warm: on · until session closes/);
+  const off = await harness({ enabled: false }); await off.turn(); await off.command('on');
+  await off.restart();
+  await off.turn(); await off.advance(180 * MIN); assert.equal(off.calls.length, 0);
+});
+
+test('a real exit stays closed, whatever follows it', async () => {
+  for (const reason of ['prompt_input_exit', 'other', 'logout']) {
+    const h = await harness(); await h.turn();
+    await h.emit('session.end', { reason, sessionId: 'session-1', resume: { id: 'session-1' } });
+    const writes = h.writes.length;
+    await h.begin('clear', 'session-2'); await h.command('status');
+    await h.turn(); await h.advance(180 * MIN);
+    assert.deepEqual([h.calls.length, h.running(), h.writes.length, h.registered.length], [0, 0, writes, 1]);
+    assert.equal(await h.badge(), '');
+  }
+});
+
+test('a SessionStart at process start starts nothing twice and adds no context', async () => {
+  for (const source of ['startup', 'resume', 'fork', 'compact']) {
+    const h = await harness();
+    const writes = h.writes.length;
+    const prior = { additionalContext: ['from a settings hook'] };
+    assert.equal(await h.begin(source, 'session-1', prior), prior);
+    assert.deepEqual([h.registered.length, h.running(), h.writes.length], [1, 1, writes]);
+    await h.turn(); await h.advance(55 * MIN); assert.equal(h.calls.length, 1);
+  }
+});
+
+test('a SessionStart before the end, or none, leaves the next main turn or command to re-arm', async () => {
+  const h = await harness(); await h.turn();
+  await h.begin('clear', 'session-2'); // Still open: ignored.
+  await h.emit('session.end', { reason: 'clear', sessionId: 'session-1', resume: { id: 'session-1' } });
+  h.use('session-2');
+  await h.begin('compact');
+  await h.turn({ agentId: 'child' });
+  assert.deepEqual([h.running(), h.registered.length, await h.badge()], [0, 1, '']);
+  await h.turn(); assert.equal(h.running(), 1);
+  await h.advance(55 * MIN); assert.equal(h.calls.length, 1);
+  assert.equal(JSON.parse(h.files.get('/observations/session-2.refresh.json')).last_refresh.outcome, 'reused');
+  const c = await harness(); await c.turn();
+  await c.emit('session.end', { reason: 'resume', sessionId: 'session-1', resume: { id: 'session-1' } });
+  c.use('session-2');
+  await c.command('off'); assert.equal(c.running(), 1); // The command applies to the new conversation.
+  await c.turn(); await c.advance(180 * MIN); assert.equal(c.calls.length, 0);
 });
 
 // Usage-limit notes (U1). Figures stand for `$.session.usage()`'s rate limits.
@@ -792,6 +886,18 @@ test('after /clear the next conversation hears the wrap again, without a session
   await h.respond();
   assert.equal(notesOf(await h.tool()).length, 1);
   await h.emit('session.end', { reason: 'clear', sessionId: 'session-1' });
+  await h.respond([five(97)]);
+  assert.match(notesOf(await h.tool())[0], /97%.*clean stopping point/);
+  assert.deepEqual(await h.tool(), {});
+});
+
+test('keep-warm coming back after /clear keeps the samples and lets the wrap be heard again', async () => {
+  const h = await harness({}, { limits: [five(96)] });
+  await h.respond();
+  assert.equal(notesOf(await h.tool()).length, 1);
+  await h.restart();
+  assert.equal(await h.badge(), 'neosian · keep-warm ready · usage 96%'); // No new reading yet.
+  assert.doesNotMatch(await h.details(), /Last usage note/);
   await h.respond([five(97)]);
   assert.match(notesOf(await h.tool())[0], /97%.*clean stopping point/);
   assert.deepEqual(await h.tool(), {});
