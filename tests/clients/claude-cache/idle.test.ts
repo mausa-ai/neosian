@@ -7,6 +7,12 @@ const usage = { input_tokens: 2, output_tokens: 4, cache_read_input_tokens: 1800
   cache_creation_input_tokens: 1000, model: 'claude-test' };
 const warm = { isAnswered: true, text: 'WARM', usage: { input_tokens: 17,
   output_tokens: 5, cache_read_input_tokens: 19000, cache_creation_input_tokens: 500 } };
+// A synthetic note asset with every block; the shipped copy is tested in Node.
+const notes = '---\nname: neosian-cache-usage\nsummary: test\n---\n' + [
+  ['notice', 'NOTICE {percent}% {window}. {reset} {pace}'], ['wrap', 'WRAP {percent}% {window}. {reset} {pace} {advice}'],
+  ['agent', 'AGENT {percent}% {window}. {reset}'], ['pace', 'PACE {minutes_left}.'],
+  ['reset', 'RESET {reset_in} {reset_at}.'], ['noreset', 'NORESET.'], ['wait', 'WAIT.'], ['handoff', 'HANDOFF.'],
+].map(([name, body]) => `## ${name}\n${body}\n`).join('\n');
 
 function harness(on, { ttl = '1h', reply = warm, subscription = true } = {}) {
   const clock = mock.clock(on, { now: 100000000 });
@@ -21,7 +27,8 @@ function harness(on, { ttl = '1h', reply = warm, subscription = true } = {}) {
   on('fs.stat', () => ({ value: { kind: 'file', size: 1000, isLink: false, mtimeMs: clock.now() } }));
   on('fs.read', ($, e) => ({ value: e.path.endsWith('/bridge.json')
     ? '{"observations":"/synthetic-observations"}' : e.path.endsWith('/refresh.md')
-      ? '---\nname: test\n---\nReply with the single word WARM.' : JSON.stringify(observation) }));
+      ? '---\nname: test\n---\nReply with the single word WARM.' : e.path.endsWith('/usage.md')
+        ? notes : JSON.stringify(observation) }));
   on('fs.write', ($, e) => { writes.push(e); return { value: undefined }; });
   on('command.register', () => ({ value: undefined }));
   on('ui.status', ($, e) => { statuses.push(e); return { value: undefined }; });
@@ -118,4 +125,25 @@ test('the host renders compact status and a details pane without warning notices
   expect((await pane.find({ type: 'Text', text: 'Cache read:' }))?.text).toBe('Cache read: 19000 tokens');
   expect(h.statuses.length).toBe(0);
   await band.unmount(); await pane.unmount();
+});
+
+test('a usage note reaches classic.PostToolUse as additional context, once', async ($, on) => {
+  const h = harness(on);
+  const resetsAt = new Date(h.clock.now() + 120 * MIN).toISOString();
+  on('session.usage', () => ({ value: { startedAt: h.clock.now(), context: { window: 200000 },
+    rateLimits: [{ kind: 'five_hour', percentUsed: 96, resetsAt }, { kind: 'spend_limit', percentUsed: 10 }] } }));
+  on('classic.PostToolUse', () => ({ additionalContext: ['other hook'] }));
+  await start($);
+  const call = { tool_name: 'Bash', tool_input: { command: 'true' }, tool_response: 'ok', tool_use_id: 'synthetic' };
+  // Only a reading after one of the session's own responses counts.
+  expect((await $.classic.PostToolUse(call)).additionalContext).toEqual(['other hook']);
+  await turn($);
+  const result = await $.classic.PostToolUse(call);
+  expect(result.additionalContext?.[0]).toBe('other hook');
+  expect(result.additionalContext?.[1]).toBe('WRAP 96% 5-hour. RESET 2h 1970-01-02 05:46. WAIT.');
+  expect(result.block).toBeUndefined();
+  expect(result.preventContinuation).toBeUndefined();
+  expect((await $.classic.PostToolUse(call)).additionalContext).toEqual(['other hook']);
+  const agent = await $.classic.PostToolUse({ ...call, agent_id: 'synthetic-agent' });
+  expect(agent.additionalContext?.[1]).toBe('AGENT 96% 5-hour. RESET 2h 1970-01-02 05:46.');
 });

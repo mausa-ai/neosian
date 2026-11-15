@@ -1,7 +1,7 @@
 {
   "name": "neosian-cache",
-  "version": "1.0.1",
-  "description": "Maintain an already-warm conversation cache while idle, with visible receipts and no automatic cold rebuilds.",
+  "version": "1.1.0",
+  "description": "Maintain an already-warm conversation cache while idle, with visible receipts and no automatic cold rebuilds, and tell the agent to wrap up before a subscription usage limit cuts its turn.",
   "author": { "name": "Mausa" },
   "homepage": "https://neosian.com/docs/agents",
   "license": "Apache-2.0",
@@ -17,6 +17,20 @@
       "title": "Allow usage-billed sessions",
       "description": "Also allow maintenance without subscription usage indicators, when a one-hour cache is observed. Requests use your account's normal billing.",
       "default": false
+    },
+    "usageNotes": {
+      "type": "boolean",
+      "title": "Usage-limit notes",
+      "description": "Tell the agent once when a subscription usage window reaches 85%, and ask it to reach a clean stopping point near the limit. Guidance only: nothing is blocked, sent or scheduled.",
+      "default": true
+    },
+    "waitHorizonHours": {
+      "type": "number",
+      "title": "Wait horizon (hours)",
+      "description": "When the limit resets within this many hours (1 to 10), the wrap-up note suggests continuing after the reset; otherwise it suggests a handoff note.",
+      "default": 6,
+      "min": 1,
+      "max": 10
     }
   }
 }

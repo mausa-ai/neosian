@@ -1,5 +1,7 @@
 import { HOUR, INTERVAL, MARGIN, duration, observation, reused, supported, usage } from './evidence.js';
 import { PANE, presentation, render } from './display.js';
+import { configureNotes, deliverNote, endNotes, noteSummary, sampleUsage, setNotes, startNotes,
+  usageNotes } from './notes.js';
 
 // All model calls, lifecycle events, timers and UI belong to Claude Code.
 // No conversation content, credentials or Neosian memory is read or persisted.
@@ -27,6 +29,7 @@ let reason = 'Waiting for your first message';
 let lastDisplay = '';
 let lastPersisted = '';
 let view;
+const notes = usageNotes();
 
 function invalidate(why) {
   epoch += 1;
@@ -36,7 +39,8 @@ function invalidate(why) {
 }
 
 async function show($, now) {
-  view = presentation({ enabled, busy, flight, certificate, receipt, until, reason, allowApi }, now);
+  const limits = noteSummary(notes, now);
+  view = presentation({ enabled, busy, flight, certificate, receipt, until, reason, allowApi, usage: limits }, now);
   const text = JSON.stringify(view);
   if (text !== lastDisplay) {
     $.ui.invalidate('ui.render');
@@ -45,13 +49,23 @@ async function show($, now) {
   // One bounded diagnostics record, containing counts and UTC epoch times only.
   const record = JSON.stringify({ format: 1, session_id: sessionId, version, observed_at_ms: now,
     enabled, state: reason, expires_at_ms: certificate?.deadline ?? null,
-    until_ms: until, last_refresh: receipt ?? null });
+    until_ms: until, last_refresh: receipt ?? null, usage_note: limits.last,
+    usage: Object.fromEntries(limits.windows.map(w => [w.kind, { percent: w.p, resets_at_ms: w.resetsAt }])) });
   if (directory && record !== lastPersisted) {
     try {
       await $.fs.write(directory + '/' + sessionId + '.refresh.json', record);
       lastPersisted = record;
     } catch { /* The in-session badge remains available without disk diagnostics. */ }
   }
+}
+
+// Usage notes join the host's own result and never block or stop (notes.js).
+async function relay($, result, e, tool) {
+  const out = await deliverNote($, notes, result, e, tool);
+  if (out !== result && !closed) {
+    try { await show($, await $.clock.now()); } catch { /* The note stands without a redraw. */ }
+  }
+  return out;
 }
 
 async function inspect($, now) {
@@ -81,6 +95,7 @@ async function inspect($, now) {
 async function tick($, allowRefresh = true) {
   if (closed) return;
   const owner = sessionId;
+  await sampleUsage($, notes);
   const now = await $.clock.now();
   if (closed) return;
   if (!available) { await show($, now); return; }
@@ -122,6 +137,7 @@ async function refresh($) {
     const sending = await $.clock.now();
     if (mine !== epoch || busy || closed || !enabled || sending >= saved.deadline - MARGIN) return;
     const result = await $.model.fork({ prompt });
+    if (result?.isAnswered && usage(result.usage)) notes.fresh = true; // An answered refresh is evidence too.
     const finished = await $.clock.now();
     const valid = reused(result, saved.expected);
     const u = usage(result?.usage) ? result.usage : null;
@@ -149,6 +165,7 @@ async function refresh($) {
 export function register(on, options) {
   defaultEnabled = options.enabled !== false;
   defaultAllowApi = options.allowApi === true;
+  configureNotes(notes, options);
   on('ui.render', { component: ['AbovePrompt', 'Pane'] }, async ($, e, next) => {
     if (!view || closed || (e.component === 'Pane' && e.requestId !== PANE) ||
         (e.component === 'AbovePrompt' && (e.props.hasSurvey || e.props.view?.agentId))) return next(e);
@@ -173,7 +190,9 @@ export function register(on, options) {
       sessionId = await $.session.id();
       version = (await $.session.version()).version;
       lastClock = await $.clock.now();
-      if (!supported(version) || !/^[A-Za-z0-9_-]{1,128}$/.test(sessionId)) {
+      const fit = supported(version) && /^[A-Za-z0-9_-]{1,128}$/.test(sessionId);
+      await startNotes($, notes, fit);
+      if (!fit) {
         reason = 'Keep-warm unavailable on this Claude Code version';
       } else if (!e.isInteractive) {
         reason = 'Keep-warm runs in interactive sessions';
@@ -215,7 +234,7 @@ export function register(on, options) {
       $.ui.toast('Use /neosian-cache on, off, or a duration up to 7d (for example 2h).');
     }
     await tick($, arg === 'on' || span !== null);
-    await $.ui.open({ id: PANE, title: 'neosian cache', focus: true, closeOnEscape: true, rows: 12 });
+    await $.ui.open({ id: PANE, title: 'neosian cache', focus: true, closeOnEscape: true, rows: 16 });
     return {};
   });
 
@@ -236,6 +255,10 @@ export function register(on, options) {
         write: result.usage.cache_creation_input_tokens, model: result.usage.model,
         requestModel: e.model, previousRequests: requests };
     }
+    // Main or subagent, a real response is fresh usage evidence; a failed,
+    // aborted or empty request is not.
+    if (usage(result?.usage)) notes.fresh = true;
+    await sampleUsage($, notes);
     return result;
   });
 
@@ -252,7 +275,11 @@ export function register(on, options) {
     return next(e);
   });
 
+  on('classic.UserPromptSubmit', async ($, e, next) => relay($, await next(e), e, false));
+  on('classic.PostToolUse', async ($, e, next) => relay($, await next(e), e, true));
+
   on('session.end', async ($, e, next) => {
+    endNotes(notes);
     closed = true;
     if (timer) timer.cancel();
     timer = undefined;
@@ -280,6 +307,7 @@ export function register(on, options) {
   on('config.set', async ($, e, next) => {
     const result = await next(e);
     if (!result.deny) {
+      setNotes(notes, e.key, result.value);
       if (e.key === 'neosian-cache.enabled') {
         defaultEnabled = enabled = result.value === true;
         until = null;

@@ -8,6 +8,31 @@ phase close names the version.
 
 ## [Unreleased]
 
+### Added
+
+- The Claude Code cache plugin tells the agent when a subscription usage limit
+  is near, so it can stop at a clean point instead of being cut mid-turn. From
+  Claude Code's own figures for the account's 5-hour and weekly windows, a
+  notice at 85% and a wrap-up note at 95%, or when about ten minutes remain at
+  the steepest recent pace, each reach the agent once per window as context with
+  the next tool result or prompt; subagents get only the wrap-up note. The
+  wrap-up note asks the agent to finish the edit in progress, start nothing new
+  and say what is done and what remains, then suggests Claude Code's own
+  scheduler for a continuation when the reset is within the wait horizon (six
+  hours by default), or a handoff note when it is further away. The pace is
+  the observed movement of the host's percentage, never a price estimate. All
+  note text is plugin data.
+- The neosian line shows usage once a window reaches the notice level, the
+  `/neosian-cache` panel lists each window's percentage and reset and the last
+  note, and the per-session refresh receipt adds percentages and UTC times.
+  `usageNotes` in `/config` turns notes off and `waitHorizonHours` sets the
+  horizon (1 to 10). Notes are guidance only: nothing
+  submits a prompt, stops a turn or schedules work, and Claude Code's own
+  wait-and-continue at a reached limit is unchanged. A Claude Code without the
+  usage call keeps keep-warm as before. Figures are the host's estimates, an
+  idle session's figure is stale and no quota saving is promised. Repeat
+  `neosian setup --client claude-code --write` to refresh the plugin.
+
 ## [2.14.0] - 2026-11-11
 
 ### Added

@@ -96,7 +96,10 @@ observed one-hour subscription cache while idle, until the session closes.
 Expired or uncertain caches wait for the next normal message. Use
 `setup --claude-cache off --write` to disable it and restore the prior statusline.
 `/neosian-cache` in Claude shows status and accepts `on`, `off` or a duration
-such as `2h`. See `neosian docs agents` for compatibility and request limits.
+such as `2h`. The plugin also tells the agent once when a 5-hour or weekly
+usage limit is near (a notice at 85%, a wrap-up note at 95% or about ten minutes
+left); it never submits a prompt or stops a turn, and `usageNotes` in `/config`
+turns it off. See `neosian docs agents` for compatibility and request limits.
 
 Version 2 retires provider configuration, chat/TUI, playground, evaluation,
 reflection execution and maintenance's model stage. See `neosian docs migration`.

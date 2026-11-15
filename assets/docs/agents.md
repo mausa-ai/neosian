@@ -217,7 +217,7 @@ are observed without automatic refresh; setup does not change Claude's TTL.
 | `/neosian-cache off` | Stop maintenance for this session |
 | `/neosian-cache on` | Enable until close; still requires an observed warm one-hour cache |
 | `/neosian-cache 2h` | Enable for a duration (minutes or hours, at most seven days) |
-| `/config` | Persist the plugin's `enabled` and `allowApi` preferences |
+| `/config` | Persist the plugin's `enabled`, `allowApi`, `usageNotes` and `waitHorizonHours` preferences |
 
 Subscription usage indicators and a one-hour TTL are required by default.
 An explicit `on`, duration or persistent `allowApi` also opts usage-billed
@@ -261,11 +261,99 @@ enable `neosian-cache@neosian-local` through `/plugin`, then repeat setup.
 
 The bridge stores bounded observations and refresh receipts under
 `neosian-cache/observations/` beside the selected Claude settings file. These
-contain session IDs, host/model IDs, counts, status and UTC times; no prompts,
-response text, transcripts, credentials or memory documents. One observation
-and one receipt are overwritten per session. They are local diagnostics,
-not memory or an authority to resume refresh after a restart; old session
-files may be removed while Claude is closed.
+contain session IDs, host/model IDs, counts, usage percentages, status and UTC
+times; no prompts, response text, transcripts, credentials or memory documents.
+One observation and one receipt are overwritten per session. They are local
+diagnostics, not memory or an authority to resume refresh after a restart; old
+session files may be removed while Claude is closed.
+
+### Usage notes before a limit
+
+Claude Code shows you how much of a subscription usage limit is used but never
+tells the model. Reaching the limit cuts the turn in progress. The plugin tells
+the agent beforehand so it can stop at a clean point.
+
+The figures are Claude Code's own: the percentage used of the account's 5-hour
+and weekly windows and each window's reset time, as the session's last response
+reported them. The plugin reads them without a model request when you send a
+message, when a tool call finishes and every 30 seconds while the keep-warm
+timer runs, and records a reading only after the session has received a new
+answered response, its own or a subagent's. An idle session and a failed
+request record nothing. The pace
+is the steepest rise of that percentage against any reading taken 90 seconds
+to 15 minutes earlier, in percent per minute: observed movement, not a price
+or token estimate. Minutes left is the remaining percentage divided by that
+pace.
+
+| Note | When | Asks the agent to |
+|---|---|---|
+| Notice | 85% of a window used | Prefer finishing work in progress over starting large new work or several agents at once; nothing needs to stop yet |
+| Wrap-up | 95% used, or 10 minutes or less left at the recent pace once 50% is used, unless the window resets first | Finish the edit in progress, start no new tasks or agents, and say briefly what is done and what remains |
+
+Each note is delivered at most once per window in a conversation; after
+`/clear` or a resume the new conversation receives its own. A wrap-up note
+replaces a notice not yet delivered, except that a wrap-up raised by pace
+below 85% leaves the notice and the 95% wrap-up still to come. With both
+windows at wrap-up, one note covers both and describes the one that resets
+later, since waiting for the earlier reset would not help. A notice is held
+back while the other window is at wrap-up. A new window (its reset time moves)
+starts over; a fall of a point or two inside a window is treated as noise, and
+a window whose reset time has passed is not shown and raises nothing until a
+fresh reading arrives. In the main conversation the note arrives as context
+with the next tool result or your next message, unless another hook blocked
+that event. Subagents receive only wrap-up notes, once each per window, asking
+them to finish the step in progress and return, stating what is done and what
+remains.
+
+The wrap-up note also says what comes next. When the window resets within the
+wait horizon (6 hours by default), it suggests that, if you want the remaining
+work completed, the agent schedule a continuation for just after the reset with
+Claude Code's own scheduler and then end the turn. When the reset is further
+away or unknown, it asks for a handoff note so a later session can resume.
+
+Notes are guidance only. neosian never submits a prompt, blocks or stops a
+turn, schedules or runs an agent, or changes a Claude Code setting. Claude
+Code's own wait-and-continue at a reached limit is unchanged. Notes also reach
+non-interactive sessions and need no observation bridge. In `/config`,
+`usageNotes` (on by default) turns them off and `waitHorizonHours` (6 by
+default, 1 to 10) sets the horizon. `/neosian-cache off` stops keep-warm
+only; notes follow `usageNotes`.
+
+Once a window reaches the notice level, the neosian line above the prompt adds
+`usage 87%`; the line turns amber at the wrap-up level. `/neosian-cache` lists
+each known window, the last note delivered with its UTC time, and whether usage
+notes are on, off or unavailable:
+
+```text
+5-hour usage: 93% · resets in 42m
+Weekly usage: 23% · resets in 3d 4h
+Last usage note: wrap (5-hour) at 2026-11-15T10:22:00.000Z
+Usage notes: on
+```
+
+The session's refresh receipt gains `usage` (per window, `percent` and
+`resets_at_ms`) and `usage_note` (`level`, one of `pace`, `notice` or `wrap`,
+with `window` and `at_ms`, or null). It
+holds percentages, UTC times and the note's level and window, never its text.
+Usage notes need Claude Code's session usage call, tested on 2.1.325. If the
+call is missing or fails, keep-warm works as before and the panel reports notes
+as unavailable.
+
+Not promised:
+
+- The figures are Claude Code's estimates from the last response; neosian does
+  not check them.
+- A session learns usage only from its own requests. One that has been idle
+  shows a stale figure, missing other sessions' usage, until its next request.
+- A burst from many agents can outrun the note and reach the limit before any
+  note is delivered.
+- Accounts without a 5-hour window get weekly notes only. Sessions without
+  subscription figures get none, and other limits, such as a spend limit,
+  produce no note.
+- An older Claude Code without the usage call keeps keep-warm working without
+  notes.
+- A note is context, not control: the agent may not follow it.
+- No quota saving is guaranteed.
 
 ### Standalone cache display
 

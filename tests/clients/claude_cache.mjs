@@ -6,7 +6,10 @@ import { test } from 'node:test';
 
 const moduleUrl = new URL('../../assets/clients/claude-cache/hooks/register.js', import.meta.url);
 const prompt = await readFile(new URL('../../assets/clients/claude-cache/assets/refresh.md', import.meta.url), 'utf8');
+const notesAsset = await readFile(new URL('../../assets/clients/claude-cache/assets/usage.md', import.meta.url), 'utf8');
 const MIN = 60000;
+const HOUR = 60 * MIN;
+const START = 100000000;
 const API_USAGE = { input_tokens: 15, output_tokens: 5, cache_read_input_tokens: 2000,
   cache_creation_input_tokens: 17000, model: 'claude-test' };
 const WARM = { isAnswered: true, text: 'WARM', usage: { input_tokens: 17,
@@ -17,7 +20,9 @@ async function harness(options = {}, extra = {}) {
   const handlers = [];
   const files = new Map([['/plugin/bridge.json', '{"observations":"/observations"}'],
     ['/plugin/assets/refresh.md', extra.crlf ? prompt.replaceAll('\n', '\r\n') : prompt]]);
-  let now = 100000000;
+  if (extra.notes !== null) files.set('/plugin/assets/usage.md', extra.notes ?? notesAsset);
+  let now = START;
+  let limits = extra.limits;
   let mainRequests = 0;
   let timers = [];
   let model = 'claude-test';
@@ -36,7 +41,13 @@ async function harness(options = {}, extra = {}) {
       return { cancel: () => { entry.active = false; } };
     } },
     session: { id: async () => extra.id ?? 'session-1', model: async () => model,
-      version: async () => ({ version: extra.version ?? '2.1.314' }) },
+      version: async () => ({ version: extra.version ?? '2.1.314' }),
+      // Absent unless a case supplies figures: older hosts have no usage().
+      ...(limits !== undefined || extra.usageError ? { usage: async () => {
+        if (extra.usageError) throw new Error('usage unavailable');
+        const rateLimits = typeof limits === 'function' ? limits() : structuredClone(limits);
+        return { startedAt: START, context: { window: 200000 }, rateLimits };
+      } } : {}) },
     fs: { read: async path => {
       if (!files.has(path)) throw new Error('missing file');
       return files.get(path);
@@ -107,8 +118,20 @@ async function harness(options = {}, extra = {}) {
     emit('ui.render', { component, props, requestId, surface: 'terminal' }, prior);
   const badge = async () => textOf(await draw());
   const details = async () => textOf(await draw('Pane'));
+  const tool = (agent, prior = {}) => emit('classic.PostToolUse', { hook_event_name: 'PostToolUse',
+    tool_name: 'Bash', tool_input: {}, tool_response: 'SENSITIVE_OUTPUT', tool_use_id: 'use',
+    ...(agent ? { agent_id: agent } : {}) }, prior);
+  // A response of this session (a subagent's by default): fresh usage evidence.
+  const respond = async (list, agentId = 'helper') => {
+    if (list) limits = list;
+    await emit('turn.step', { turnId: 'side', index: 0, model, agentId }, { turnId: 'side', index: 0,
+      answer: 'SENSITIVE_ANSWER', toolUses: [], stopReason: 'end_turn', usage: API_USAGE });
+  };
+  const submit = (prior = {}) => emit('classic.UserPromptSubmit',
+    { hook_event_name: 'UserPromptSubmit', prompt: 'SENSITIVE_PROMPT' }, prior);
   await emit('session.start', { isInteractive: extra.interactive !== false, surface: 'terminal' });
   return { $, calls, files, statuses, panes, writes, emit, advance, finish, turn, command, draw, badge, details,
+    tool, submit, respond, limits: list => { limits = list; },
     now: () => now, elapse: ms => { now += ms; }, model: name => { model = name; } };
 }
 
@@ -363,4 +386,543 @@ test('a user turn overtaking a fork keeps the new deadline and records the super
   const receipt = JSON.parse(h.files.get('/observations/session-1.refresh.json'));
   assert.equal(receipt.last_refresh.outcome, 'superseded');
   await h.advance(54 * MIN); assert.equal(h.calls.length, 1);
+});
+
+// Usage-limit notes (U1). Figures stand for `$.session.usage()`'s rate limits.
+const lib = await import(new URL('../../assets/clients/claude-cache/hooks/usage.js', import.meta.url).href);
+const limit = (kind, p, resetsAt) => ({ kind, percentUsed: p,
+  ...(resetsAt === undefined ? {} : { resetsAt: new Date(resetsAt).toISOString() }) });
+const five = (p, resetsAt = START + 2 * HOUR) => limit('five_hour', p, resetsAt);
+const week = (p, resetsAt = START + 3 * 24 * HOUR) => limit('seven_day', p, resetsAt);
+const notesOf = result => result?.additionalContext ?? [];
+
+test('usage windows keep finite 5-hour and weekly figures and a future reset', () => {
+  const now = Date.parse('2026-11-15T10:00:00Z');
+  assert.deepEqual(lib.windows([
+    { kind: 'five_hour', percentUsed: 93.5, resetsAt: '2026-11-15T12:14:00Z' },
+    { kind: 'seven_day', percentUsed: 23, resetsAt: 'not a date' },
+    { kind: 'spend_limit', percentUsed: 120 }, { kind: 'five_hour', percentUsed: 10 },
+  ], now), [{ kind: 'five_hour', p: 93.5, resetsAt: Date.parse('2026-11-15T12:14:00Z') },
+    { kind: 'seven_day', p: 23, resetsAt: null }]);
+  for (const bad of [NaN, Infinity, -1, 100.1, '90', null]) {
+    assert.deepEqual(lib.windows([{ kind: 'five_hour', percentUsed: bad }], now), []);
+  }
+  assert.equal(lib.windows([five(50, now - 1)], now)[0].resetsAt, null);
+  assert.deepEqual(lib.windows(undefined, now), []);
+});
+
+test('the rate is the steepest rise over samples aged 90 seconds to 15 minutes', () => {
+  const samples = [{ t: -20 * MIN, p: 0 }, { t: -10 * MIN, p: 40 }, { t: -4 * MIN, p: 42 },
+    { t: -MIN, p: 20 }, { t: 0, p: 50 }];
+  assert.equal(lib.rate(samples, 0), 2);
+  assert.equal(lib.rate([{ t: -5 * MIN, p: 50 }, { t: 0, p: 50 }], 0), null);
+  assert.equal(lib.rate([{ t: -30000, p: 10 }, { t: 0, p: 50 }], 0), null);
+  assert.equal(lib.minutesLeft(50, 2), 25);
+  assert.equal(lib.minutesLeft(99, 2, 5), 0);
+  assert.equal(lib.minutesLeft(50, null), null);
+});
+
+const levelOf = (state, now) => lib.assess(state, now).map(w => [w.kind, w.p, w.level]);
+const deliver = (state, now, agent) => {
+  const due = lib.peek(state, now, { agent });
+  if (due.length) lib.commit(state, due, agent);
+  return due[0]?.level ?? null;
+};
+
+test('a moved reset or a large fall with no reset known starts a window and rearms its levels', () => {
+  const state = {};
+  const reset = 5 * HOUR;
+  lib.observe(state, [{ kind: 'five_hour', p: 96, resetsAt: reset }], 0);
+  assert.equal(deliver(state, 0), 'wrap');
+  lib.observe(state, [{ kind: 'five_hour', p: 96, resetsAt: reset + 120000 }], MIN);
+  assert.equal(deliver(state, MIN), null);
+  lib.observe(state, [{ kind: 'five_hour', p: 3, resetsAt: reset + 5 * HOUR }], 2 * MIN);
+  lib.observe(state, [{ kind: 'five_hour', p: 86, resetsAt: reset + 5 * HOUR }], 3 * MIN);
+  assert.equal(deliver(state, 3 * MIN), 'notice');
+  const open = {};
+  lib.observe(open, [{ kind: 'seven_day', p: 30, resetsAt: null }], 0);
+  lib.observe(open, [{ kind: 'seven_day', p: 11, resetsAt: null }], 1000);
+  assert.deepEqual(levelOf(open, 1000), [['seven_day', 30, null]]);
+  lib.observe(open, [{ kind: 'seven_day', p: 10, resetsAt: null }], 2000);
+  assert.deepEqual(levelOf(open, 2000), [['seven_day', 10, null]]);
+  // A reset time known on one side only: the large fall still starts a window.
+  for (const [before, after] of [[null, 9 * HOUR], [4 * HOUR, null]]) {
+    const mixed = {};
+    lib.observe(mixed, [{ kind: 'five_hour', p: 96, resetsAt: before }], 0);
+    assert.equal(deliver(mixed, 0), 'wrap');
+    lib.observe(mixed, [{ kind: 'five_hour', p: 3, resetsAt: after }], MIN);
+    assert.deepEqual(levelOf(mixed, MIN), [['five_hour', 3, null]]);
+    lib.observe(mixed, [{ kind: 'five_hour', p: 96, resetsAt: after }], 2 * MIN);
+    assert.equal(deliver(mixed, 2 * MIN), 'wrap');
+  }
+});
+
+test('a one-point step back inside a window is jitter: same window, same levels, same pace', () => {
+  const state = {};
+  const reset = 5 * HOUR;
+  lib.observe(state, [{ kind: 'five_hour', p: 20, resetsAt: reset }], 0);
+  lib.observe(state, [{ kind: 'five_hour', p: 30, resetsAt: reset }], 5 * MIN);
+  const before = lib.assess(state, 5 * MIN + 3000);
+  lib.observe(state, [{ kind: 'five_hour', p: 29, resetsAt: reset }], 5 * MIN + 3000);
+  assert.deepEqual(lib.assess(state, 5 * MIN + 3000), before);
+  lib.observe(state, [{ kind: 'five_hour', p: 86, resetsAt: reset }], 30 * MIN);
+  assert.equal(deliver(state, 30 * MIN), 'notice');
+  lib.observe(state, [{ kind: 'five_hour', p: 85, resetsAt: reset }], 30 * MIN + 3000);
+  assert.equal(deliver(state, 30 * MIN + 3000), null);
+});
+
+test('figures every 2 s at 3 points a minute still raise the pace wrap well before 95%', () => {
+  const state = {};
+  for (let t = 0; t < 20 * MIN; t += 2000) {
+    const p = Math.floor((50 + 3 * t / MIN) * 10) / 10;
+    lib.observe(state, [{ kind: 'five_hour', p, resetsAt: 4 * HOUR }], t);
+    const [w] = lib.assess(state, t);
+    if (w.level) {
+      assert.equal(w.level, 'pace');
+      assert.ok(w.p < 75, `first wrap at ${w.p}%`);
+      return;
+    }
+  }
+  assert.fail('no pace wrap');
+});
+
+test('a clock that goes back throws nothing and invents no pace', () => {
+  const state = {};
+  const reset = 5 * HOUR;
+  for (const [t, p] of [[0, 60], [5 * MIN, 62], [-30 * MIN, 63], [-29 * MIN, 63.5], [15 * MIN, 64]]) {
+    lib.observe(state, [{ kind: 'five_hour', p, resetsAt: reset }], t);
+    assert.deepEqual(lib.assess(state, t).map(w => w.level), [null]);
+  }
+});
+
+test('note copy comes from the asset with formatted placeholders and no stray markup', () => {
+  const templates = lib.parse(notesAsset);
+  assert.ok(templates);
+  assert.deepEqual(lib.parse(notesAsset.replaceAll('\n', '\r\n')), templates);
+  assert.deepEqual([lib.percent(93), lib.percent(93.5), lib.percent(7)], ['93', '93.5', '7']);
+  assert.deepEqual([2 * HOUR + 14 * MIN, 42 * MIN, 76 * HOUR, 30000].map(lib.span), ['2h 14m', '42m', '3d 4h', '1m']);
+  const notice = lib.compose(templates, 'notice', { kind: 'seven_day', p: 85.25, resetsAt: null,
+    left: null, now: 0, advice: 'handoff' });
+  assert.match(notice, /^neosian usage note: this account has used 85\.3% of its weekly usage limit\. Its reset time is not known\. Nothing needs to stop yet\./);
+  const wrap = lib.compose(templates, 'wrap', { kind: 'five_hour', p: 96, now: 0,
+    resetsAt: Date.parse('2026-11-15T12:14:00Z') - Date.parse('2026-11-15T10:00:00Z'), left: 4.7, advice: 'wait' });
+  assert.match(wrap, /It resets in 2h 14m \(1970-01-01 02:14 UTC\)\. At the recent pace it reaches the limit in about 4m\./);
+  assert.match(wrap, /schedule its continuation for just after the reset/);
+  assert.equal(lib.compose(templates, 'pace', { kind: 'five_hour', p: 96, now: 0,
+    resetsAt: Date.parse('2026-11-15T12:14:00Z') - Date.parse('2026-11-15T10:00:00Z'), left: 4.7, advice: 'wait' }), wrap);
+  const agent = lib.compose(templates, 'wrap', { kind: 'five_hour', p: 96, now: 0, resetsAt: null,
+    left: null, advice: 'wait' }, 'agent');
+  assert.match(agent, /Finish the step in progress and return now/);
+  assert.doesNotMatch(agent, /schedule/);
+  for (const text of [notice, wrap, agent]) {
+    assert.doesNotMatch(text, /[{}—]|\s{2}|\n/);
+  }
+});
+
+test('advice waits only for a known reset inside the horizon, clamped to 1 to 10 hours', () => {
+  assert.equal(lib.advice(6 * HOUR, 0, 6), 'wait');
+  assert.equal(lib.advice(6 * HOUR + 1, 0, 6), 'handoff');
+  assert.equal(lib.advice(null, 0, 10), 'handoff');
+  assert.deepEqual([50, 0, 2.5, '8', undefined, NaN].map(lib.horizon), [10, 1, 2.5, 6, 6, 6]);
+});
+
+test('a notice and a wrap each reach the main thread once per window, never as a block', async () => {
+  const h = await harness({}, { limits: [five(86)] });
+  await h.respond();
+  const first = await h.tool();
+  assert.deepEqual(Object.keys(first), ['additionalContext']);
+  assert.equal(notesOf(first).length, 1);
+  assert.match(notesOf(first)[0], /used 86% of its 5-hour usage limit\. It resets in 2h \(1970-01-02 05:46 UTC\)\. Nothing needs to stop yet/);
+  assert.deepEqual(await h.tool(), {});
+  assert.deepEqual(await h.submit(), {});
+  await h.respond([five(95.5)]);
+  const wrap = await h.submit();
+  assert.equal(notesOf(wrap).length, 1);
+  assert.match(notesOf(wrap)[0], /95\.5%.*clean stopping point.*schedule its continuation/);
+  for (const result of [await h.submit(), await h.tool()]) assert.deepEqual(result, {});
+  for (const result of [first, wrap]) {
+    assert.ok(!['block', 'preventContinuation', 'stopReason'].some(key => key in result));
+    assert.doesNotMatch(notesOf(result)[0], /SENSITIVE/);
+  }
+});
+
+test('a figure the session has not refreshed with a response of its own records nothing', async () => {
+  const h = await harness({}, { limits: [five(96)] });
+  assert.deepEqual(await h.tool(), {}); // The start-up reading is not fresh evidence.
+  await h.advance(5 * MIN);
+  assert.deepEqual(await h.submit(), {});
+  await h.respond();
+  assert.equal(notesOf(await h.tool()).length, 1);
+});
+
+test('a wrap supersedes an undelivered notice, and no notice follows it', async () => {
+  const h = await harness({}, { limits: [five(50)] });
+  await h.respond();
+  assert.deepEqual(await h.tool(), {});
+  await h.respond([five(97)]);
+  assert.match(notesOf(await h.tool())[0], /97%.*clean stopping point/);
+  await h.respond([five(97)]); assert.deepEqual(await h.tool(), {});
+  await h.respond([five(88)]); assert.deepEqual(await h.tool(), {});
+});
+
+test('an out-of-order step back inside a window sends no second note', async () => {
+  const h = await harness({}, { limits: [five(95)] });
+  await h.respond();
+  assert.equal(notesOf(await h.tool()).length, 1);
+  for (const p of [94, 95, 94.9]) {
+    await h.respond([five(p)]);
+    assert.deepEqual(await h.tool(), {});
+  }
+  assert.match(await h.details(), /5-hour usage: 95% · resets in 2h/);
+});
+
+test('a real burst while active calls for a wrap before 95%', async () => {
+  const h = await harness({}, { limits: [five(40, START + 3 * HOUR)] });
+  await h.turn();
+  await h.advance(MIN); await h.respond([five(50, START + 3 * HOUR)], 'child');
+  await h.advance(MIN); await h.respond([five(60, START + 3 * HOUR)], 'child');
+  const [text] = notesOf(await h.tool());
+  assert.match(text, /used 60%.*about 4m\..*clean stopping point/);
+  const slow = await harness({}, { limits: [five(58)] });
+  await slow.respond(); await slow.advance(10 * MIN);
+  await slow.respond([five(60)]);
+  assert.deepEqual(await slow.tool(), {});
+});
+
+test('an idle session adds no flat samples: 60 then 66 after idle raises no wrap; 95 still does', async () => {
+  const h = await harness({}, { limits: [five(60, START + 3 * HOUR)] });
+  await h.turn();
+  await h.advance(10 * MIN); // Ticks read the same figure 20 times and record none of it.
+  h.limits([five(66, START + 3 * HOUR)]);
+  await h.advance(MIN);
+  assert.deepEqual(await h.tool(), {});
+  await h.turn();
+  assert.deepEqual(await h.tool(), {}); // 6 points over 11 minutes, about 9 hours left.
+  await h.respond([five(95, START + 3 * HOUR)]);
+  assert.match(notesOf(await h.tool())[0], /95%.*clean stopping point/);
+});
+
+test('a pace wrap needs the limit to come before the reset; the 95% wrap does not', async () => {
+  const pace = async resetsAt => {
+    const h = await harness({}, { limits: [limit('five_hour', 40, resetsAt)] });
+    await h.respond(); await h.advance(2 * MIN);
+    await h.respond([limit('five_hour', 60, resetsAt)]);
+    return notesOf(await h.tool());
+  };
+  assert.equal((await pace(START + 3 * HOUR)).length, 1); // Limit in about 4m, reset in about 3h.
+  assert.deepEqual(await pace(START + 5 * MIN), []); // The reset, about 3m away, comes first.
+  assert.match((await pace(undefined))[0], /Its reset time is not known.*about 4m/);
+  const late = await harness({}, { limits: [five(96, START + 2 * MIN)] });
+  await late.respond();
+  assert.equal(notesOf(await late.tool()).length, 1);
+});
+
+test('a new window rearms both levels; a figure from before its reset sends nothing', async () => {
+  const h = await harness({}, { limits: [five(96)] });
+  await h.respond();
+  assert.equal(notesOf(await h.tool()).length, 1);
+  await h.respond([five(3, START + 7 * HOUR)]); assert.deepEqual(await h.tool(), {});
+  await h.respond([five(86, START + 7 * HOUR)]); assert.match(notesOf(await h.tool())[0], /86%.*Nothing needs to stop/);
+  const stale = await harness({}, { limits: [five(50, START + 10 * MIN)] });
+  await stale.respond();
+  stale.elapse(11 * MIN);
+  await stale.respond([five(97, START + 10 * MIN)]);
+  assert.deepEqual(await stale.tool(), {});
+  assert.doesNotMatch(await stale.badge(), /usage/);
+  await stale.respond([five(97, START + 5 * HOUR)]);
+  assert.equal(notesOf(await stale.tool()).length, 1);
+});
+
+test('with several windows at wrap the note names the later reset, and its advice follows it', async () => {
+  const far = await harness({}, { limits: [five(97), week(96)] });
+  await far.respond();
+  const [weekly] = notesOf(await far.tool());
+  assert.match(weekly, /96% of its weekly usage limit\. It resets in 3d \(1970-01-05 03:46 UTC\)\..*Do not wait for the reset/);
+  assert.deepEqual(await far.tool(), {}); // The 5-hour wrap was covered by that note.
+  const unknown = await harness({}, { limits: [limit('five_hour', 96), week(97)] });
+  await unknown.respond();
+  assert.match(notesOf(await unknown.tool())[0], /96% of its 5-hour usage limit\. Its reset time is not known/);
+  const levels = await harness({}, { limits: [five(96), week(90)] });
+  await levels.respond();
+  assert.match(notesOf(await levels.tool())[0], /96% of its 5-hour.*schedule its continuation/);
+  assert.deepEqual(await levels.tool(), {});
+  const notices = await harness({}, { limits: [five(86), week(88)] });
+  await notices.respond();
+  assert.match(notesOf(await notices.tool())[0], /88% of its weekly.*Nothing needs to stop/);
+});
+
+test('the wait horizon option chooses between waiting and a handoff', async () => {
+  const far = [five(96, START + 8 * HOUR)];
+  const standard = await harness({}, { limits: far });
+  await standard.respond();
+  assert.match(notesOf(await standard.tool())[0], /Do not wait for the reset\. Leave a handoff note/);
+  const longer = await harness({ waitHorizonHours: 10 }, { limits: far });
+  await longer.respond();
+  assert.match(notesOf(await longer.tool())[0], /schedule its continuation/);
+  const changed = await harness({}, { limits: far });
+  await changed.emit('config.set', { key: 'neosian-cache.waitHorizonHours', value: 9 }, { value: 9 });
+  await changed.respond();
+  assert.match(notesOf(await changed.tool())[0], /schedule its continuation/);
+});
+
+test('subagents get the wrap note once per agent and window, never the notice', async () => {
+  const h = await harness({}, { limits: [five(88)] });
+  await h.respond([five(88)], 'agent-a');
+  assert.deepEqual(await h.tool('agent-a'), {});
+  assert.match(notesOf(await h.tool())[0], /Nothing needs to stop yet/);
+  await h.respond([five(96)], 'agent-a');
+  const [text] = notesOf(await h.tool('agent-a'));
+  assert.match(text, /96% of its 5-hour.*Finish the step in progress and return now/);
+  assert.doesNotMatch(text, /clean stopping point/);
+  assert.deepEqual(await h.tool('agent-a'), {});
+  assert.equal(notesOf(await h.tool('agent-b')).length, 1);
+  assert.match(notesOf(await h.tool())[0], /clean stopping point/);
+  assert.match(await h.details(), /Last usage note: wrap \(5-hour\)/);
+  for (let i = 0; i < 64; i++) assert.equal(notesOf(await h.tool('bulk-' + i)).length, 1);
+  assert.equal(notesOf(await h.tool('agent-a')).length, 1); // The id set is bounded at 64.
+});
+
+test("other hooks' context and fields are kept ahead of the note", async () => {
+  const h = await harness({}, { limits: [five(86)] });
+  await h.respond();
+  const result = await h.tool(undefined, { additionalContext: ['from another hook'], updatedToolOutput: 'kept' });
+  assert.equal(result.updatedToolOutput, 'kept');
+  assert.equal(result.additionalContext[0], 'from another hook');
+  assert.match(result.additionalContext[1], /86%/);
+  await h.respond([five(96)]);
+  const prompted = await h.submit({ additionalContext: ['a'], sessionTitle: 'kept' });
+  assert.equal(prompted.sessionTitle, 'kept');
+  assert.deepEqual(prompted.additionalContext.slice(0, 1), ['a']);
+  assert.equal(prompted.additionalContext.length, 2);
+});
+
+test('a failure anywhere in the usage path returns the host result unchanged', async () => {
+  const exploding = () => [{ kind: 'five_hour', get percentUsed() { throw new Error('boom'); } }];
+  for (const extra of [{ usageError: true }, { limits: exploding }, { limits: [five(96)] }]) {
+    const h = await harness({}, extra);
+    if (!extra.usageError && extra.limits !== exploding) {
+      h.$.session.usage = async () => { throw new Error('later failure'); };
+    }
+    await h.respond();
+    for (const hook of [prior => h.tool(undefined, prior), prior => h.tool('child', prior), h.submit]) {
+      const prior = { additionalContext: ['other'], updatedToolOutput: 'kept' };
+      assert.equal(await hook(prior), prior);
+    }
+  }
+  const hostile = await harness({}, { limits: [five(96)] });
+  await hostile.respond();
+  const odd = new Proxy({}, { get: (target, key) => {
+    if (key === 'additionalContext') throw new Error('odd result');
+    return Reflect.get(target, key);
+  } });
+  assert.equal(await hostile.tool(undefined, odd), odd); // Thrown while the note was being attached,
+  assert.equal(notesOf(await hostile.tool()).length, 1); // so it arrives at the next event instead.
+  const display = await harness({}, { limits: [five(96)] });
+  display.$.ui.invalidate = () => { throw new Error('display failure'); };
+  await display.respond();
+  const prior = { additionalContext: ['other'] };
+  assert.deepEqual(notesOf(await display.tool(undefined, prior)).length, 2); // A broken display keeps the note.
+});
+
+test('usageNotes off silences notes only; keep-warm off leaves notes on', async () => {
+  const h = await harness({ usageNotes: false }, { limits: [five(96)] });
+  await h.respond();
+  assert.deepEqual(await h.tool(), {});
+  assert.match(await h.details(), /Usage notes: off/);
+  await h.turn(); await h.advance(55 * MIN); assert.equal(h.calls.length, 1);
+  await h.emit('config.set', { key: 'neosian-cache.usageNotes', value: true }, { value: true });
+  assert.equal(notesOf(await h.tool()).length, 1);
+  const off = await harness({}, { limits: [five(96)] });
+  await off.command('off');
+  await off.respond();
+  assert.equal(notesOf(await off.tool()).length, 1);
+  assert.match(await off.details(), /Keep-warm: off[\s\S]*Usage notes: on/);
+});
+
+for (const [name, extra] of Object.entries({
+  'a host without usage()': {}, 'a usage() that throws': { usageError: true },
+  'a missing note asset': { limits: [five(96)], notes: null },
+  'a note asset without frontmatter': { limits: [five(96)], notes: notesAsset.slice(notesAsset.indexOf('## notice')) },
+  'a note asset missing a block': { limits: [five(96)], notes: notesAsset.replace('## handoff', '## farewell') },
+  'a note asset with an unknown placeholder': { limits: [five(96)], notes: notesAsset.replace('used {percent}%', 'used {percentage}%') },
+  'a note asset with a block placeholder out of place': { limits: [five(96)], notes: notesAsset.replace('Its reset time is not known.', '{advice}') },
+})) {
+  test(name + ' leaves notes unavailable and keep-warm exactly as before', async () => {
+    const h = await harness({}, extra);
+    await h.respond();
+    assert.deepEqual(await h.tool(undefined, { additionalContext: ['other'] }), { additionalContext: ['other'] });
+    assert.match(await h.details(), /Usage notes: unavailable/);
+    await h.turn(); await h.advance(55 * MIN); assert.equal(h.calls.length, 1);
+    // The badge still shows figures the host reported; only notes are unavailable.
+    assert.equal(await h.badge(), 'neosian · cache ~60m · keep-warm on' + (extra.limits ? ' · usage 96%' : ''));
+  });
+}
+
+test('a session without subscription windows gets no note and no badge', async () => {
+  for (const limits of [[], [{ kind: 'spend_limit', percentUsed: 99 }]]) {
+    const h = await harness({}, { limits });
+    await h.respond();
+    assert.deepEqual(await h.tool(), {});
+    assert.deepEqual(await h.submit(), {});
+    assert.equal(await h.badge(), 'neosian · keep-warm ready');
+    assert.match(await h.details(), /Usage notes: on/);
+    assert.doesNotMatch(await h.details(), /usage:/);
+  }
+});
+
+test('two concurrent tool results carry one note between them', async () => {
+  const h = await harness({}, { limits: [five(96)] });
+  await h.respond();
+  const results = await Promise.all([h.tool(), h.tool(), h.tool('child'), h.tool('child')]);
+  assert.deepEqual(results.map(r => notesOf(r).length), [1, 0, 1, 0]);
+});
+
+test('a result another hook blocked or stopped carries no note, and the note waits for the next event', async () => {
+  for (const beneath of [{ block: 'policy says no' }, { preventContinuation: true, stopReason: 'stop' }]) {
+    const h = await harness({}, { limits: [five(96)] });
+    await h.respond();
+    assert.equal(await h.submit(beneath), beneath);
+    assert.equal(await h.tool(undefined, beneath), beneath);
+    assert.equal(notesOf(await h.tool()).length, 1);
+  }
+});
+
+test('after /clear the next conversation hears the wrap again, without a session.start', async () => {
+  const h = await harness({}, { limits: [five(96)] });
+  await h.respond();
+  assert.equal(notesOf(await h.tool()).length, 1);
+  await h.emit('session.end', { reason: 'clear', sessionId: 'session-1' });
+  await h.respond([five(97)]);
+  assert.match(notesOf(await h.tool())[0], /97%.*clean stopping point/);
+  assert.deepEqual(await h.tool(), {});
+});
+
+test('a pace wrap early in a window leaves the notice at 85% and the wrap at 95% to come', async () => {
+  const h = await harness({}, { limits: [five(40, START + 4 * HOUR)] });
+  await h.respond();
+  for (const p of [50, 60]) { await h.advance(MIN); await h.respond([five(p, START + 4 * HOUR)]); }
+  assert.match(notesOf(await h.tool())[0], /used 60%.*clean stopping point/);
+  const heard = [];
+  for (let p = 61; p <= 96; p += 1) {
+    await h.advance(3 * MIN); await h.respond([five(p, START + 4 * HOUR)]);
+    for (const text of notesOf(await h.tool())) heard.push([p, /Nothing needs to stop/.test(text) ? 'notice' : 'wrap']);
+  }
+  assert.deepEqual(heard, [[85, 'notice'], [95, 'wrap']]);
+});
+
+for (const [name, interrupt] of Object.entries({
+  'a failed refresh': async h => { await h.advance(55 * MIN + 30000); },
+  'an interrupted step': async h => {
+    await h.advance(12 * MIN);
+    await h.emit('turn.step', { turnId: 't2', index: 0, model: 'claude-test' },
+      { turnId: 't2', index: 0, answer: '', toolUses: [], stopReason: null, usage: null });
+    await h.advance(30000);
+  },
+})) {
+  test(name + ' is no evidence: idle at 60, then 70 from a real response, raises no wrap', async () => {
+    const h = await harness({}, { limits: [five(60, START + 4 * HOUR)],
+      fork: () => ({ isAnswered: false, reason: 'api-error', status: 529 }) });
+    await h.turn();
+    await interrupt(h);
+    await h.advance(2 * MIN);
+    await h.respond([five(70, START + 4 * HOUR)]);
+    assert.deepEqual(await h.tool(), {});
+  });
+}
+
+test('no reassuring notice while another window is at wrap; it comes after that window resets', async () => {
+  const h = await harness({}, { limits: [five(96), week(80)] });
+  await h.respond();
+  assert.match(notesOf(await h.tool())[0], /96% of its 5-hour/);
+  await h.respond([five(96.5), week(86)]);
+  assert.deepEqual(await h.tool(), {});
+  await h.respond([five(3, START + 7 * HOUR), week(86)]);
+  assert.match(notesOf(await h.tool())[0], /86% of its weekly.*Nothing needs to stop/);
+});
+
+test('a window past its reset leaves the badge, pane and receipt; a vanished window is dropped', async () => {
+  const h = await harness({}, { limits: [five(96, START + 10 * MIN), week(88)] });
+  await h.turn();
+  assert.match(await h.details(), /5-hour usage: 96%/);
+  await h.advance(15 * MIN);
+  const pane = await h.details();
+  assert.doesNotMatch(pane, /5-hour usage/);
+  assert.match(pane, /Weekly usage: 88%/);
+  const receipt = JSON.parse(h.files.get('/observations/session-1.refresh.json'));
+  assert.deepEqual(Object.keys(receipt.usage), ['seven_day']);
+  await h.respond([five(20, START + 5 * HOUR)]);
+  await h.advance(30000);
+  assert.doesNotMatch(await h.details(), /Weekly usage/);
+  assert.doesNotMatch(await h.badge(), /usage/);
+  await h.respond([]);
+  await h.advance(30000);
+  assert.doesNotMatch(await h.details(), /usage: /);
+});
+
+for (const [name, run] of Object.entries({
+  'idle maintenance for hours': async h => { await h.turn(); await h.advance(3 * 60 * MIN); },
+  'activity postpones the refresh': async h => {
+    await h.turn(); await h.advance(54 * MIN);
+    await h.emit('turn.start', { turnId: 'busy' }); await h.advance(2 * 60 * MIN);
+    await h.finish(); await h.advance(60 * MIN);
+  },
+  'sleep past expiry, then an ordinary turn': async h => {
+    await h.turn(); await h.advance(65 * MIN, true); await h.advance(60 * MIN);
+    await h.turn(); await h.advance(60 * MIN);
+  },
+})) {
+  test('keep-warm refreshes exactly as before with usage figures present: ' + name, async () => {
+    const plain = await harness();
+    await run(plain);
+    const measured = await harness({}, { limits: [five(96, START + 5 * HOUR), week(50)] });
+    await run(measured);
+    assert.ok(plain.calls.length > 0);
+    assert.deepEqual(measured.calls.map(c => c.at), plain.calls.map(c => c.at));
+  });
+}
+
+test('a refresh response counts as fresh evidence for the next reading', async () => {
+  const h = await harness({}, { limits: [five(50)] });
+  await h.turn();
+  h.limits([five(86)]);
+  await h.advance(54 * MIN); assert.deepEqual(await h.tool(), {});
+  await h.advance(MIN); assert.equal(h.calls.length, 1);
+  assert.equal(notesOf(await h.tool()).length, 1);
+});
+
+test('notes work without the bridge in a non-interactive session and write no diagnostics', async () => {
+  const h = await harness({}, { interactive: false, limits: [five(96)] });
+  await h.respond();
+  assert.equal(notesOf(await h.tool()).length, 1);
+  assert.equal(h.writes.length, 0);
+});
+
+test('the badge appends usage at notice in the same tone, turns amber at wrap, and wraps narrowly', async () => {
+  const h = await harness({}, { limits: [five(86, START + 3 * HOUR)] });
+  await h.turn(); await h.advance(55 * MIN);
+  assert.equal(await h.badge(), 'neosian · cache ~60m · keep-warm on · usage 86%');
+  assert.equal((await h.draw()).children[0].props.color, 'success');
+  await h.respond([five(96, START + 3 * HOUR)]); await h.advance(30000);
+  assert.equal(await h.badge(), 'neosian · cache ~60m · keep-warm on · usage 96%');
+  for (const width of [80, 40, 24, 20]) {
+    const tree = await h.draw('AbovePrompt', { bodyColumns: width });
+    assert.ok(textOf(tree).split('\n').every(line => line.length <= width));
+    assert.ok(tree.children.every(line => line.props.color === 'warning'));
+  }
+});
+
+test('the receipt carries usage figures and the last note, bounded and content-free', async () => {
+  const h = await harness({}, { limits: [five(86), week(23.5)] });
+  await h.respond();
+  await h.tool();
+  const raw = h.files.get('/observations/session-1.refresh.json');
+  const data = JSON.parse(raw);
+  assert.deepEqual(data.usage, { five_hour: { percent: 86, resets_at_ms: START + 2 * HOUR },
+    seven_day: { percent: 23.5, resets_at_ms: START + 3 * 24 * HOUR } });
+  assert.deepEqual(data.usage_note, { level: 'notice', window: 'five_hour', at_ms: START });
+  assert.ok(raw.length < 8192);
+  assert.doesNotMatch(raw, /SENSITIVE|usage note:/);
+  const pane = await h.details();
+  assert.match(pane, /5-hour usage: 86% · resets in 2h\nWeekly usage: 23\.5% · resets in 3d/);
+  assert.match(pane, /Last usage note: notice \(5-hour\) at 1970-01-02T03:46:40\.000Z\nUsage notes: on/);
 });

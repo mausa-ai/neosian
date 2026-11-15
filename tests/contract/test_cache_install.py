@@ -111,12 +111,19 @@ def test_cache_setup_uses_public_cli_and_preserves_statusline(binary: Binary) ->
         "hooks/register.js",
         "hooks/evidence.js",
         "hooks/display.js",
+        "hooks/usage.js",
+        "hooks/notes.js",
         "assets/refresh.md",
+        "assets/usage.md",
         ".claude-plugin/plugin.json",
     ):
         assert (root / "plugin" / name).read_bytes() == (
             ROOT / "assets/clients/claude-cache" / name
         ).read_bytes()
+    manifest = json.loads((root / "plugin/.claude-plugin/plugin.json").read_text())
+    assert manifest["version"] == "1.1.0"
+    assert manifest["userConfig"]["usageNotes"]["default"] is True
+    assert manifest["userConfig"]["waitHorizonHours"]["default"] == 6
     assert json.loads((root / "plugin/bridge.json").read_text()) == {
         "observations": str(root / "observations")
     }

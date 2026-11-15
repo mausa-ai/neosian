@@ -47,10 +47,31 @@ const ASSETS: &[(&str, &str)] = &[
         )),
     ),
     (
+        "hooks/usage.js",
+        include_str!(concat!(
+            env!("NEOSIAN_ASSETS"),
+            "/clients/claude-cache/hooks/usage.js"
+        )),
+    ),
+    (
+        "hooks/notes.js",
+        include_str!(concat!(
+            env!("NEOSIAN_ASSETS"),
+            "/clients/claude-cache/hooks/notes.js"
+        )),
+    ),
+    (
         "assets/refresh.md",
         include_str!(concat!(
             env!("NEOSIAN_ASSETS"),
             "/clients/claude-cache/assets/refresh.md"
+        )),
+    ),
+    (
+        "assets/usage.md",
+        include_str!(concat!(
+            env!("NEOSIAN_ASSETS"),
+            "/clients/claude-cache/assets/usage.md"
         )),
     ),
     (
