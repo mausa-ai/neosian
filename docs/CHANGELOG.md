@@ -32,6 +32,25 @@ phase close names the version.
   usage call keeps keep-warm as before. Figures are the host's estimates, an
   idle session's figure is stale and no quota saving is promised. Repeat
   `neosian setup --client claude-code --write` to refresh the plugin.
+- Keep-warm waits for a usage-limit reset with the cache warm instead of
+  spending the last of the limit. After each verified refresh the plugin reads
+  how far each window's figure moved since its previous reading and keeps the
+  last three; the smallest, between 0.1 and 2 points (0.5 before any), is the
+  estimated cost of one refresh. While keep-warm can refresh in the session
+  (the last observed cache was an eligible one-hour cache) and a reset is
+  inside the wait horizon, it keeps a reserve of up to 5 points for the
+  refreshes until then, so the wrap-up note comes at 95% less the reserve; the
+  note still states the minutes to the limit itself, and a window that has had
+  its wrap-up stays there until it resets. Keep-warm sends no refresh when the last
+  recorded figure is at 99.5% or more, or at 95% or more with a far or unknown
+  reset, and says when the host refuses one for a rate limit; a window past
+  its reset never stops one, and otherwise refreshes are unchanged. After a
+  wrap-up note an idle session kept warm shows `waiting for reset` while the
+  next refresh would be sent, and the
+  panel and the refresh receipt (`usage_cost`) show the last refresh's cost.
+  That cost is an upper bound, since it includes other sessions' usage and an
+  idle session's figure is stale; refreshes still use the limit, nothing is
+  scheduled or submitted, and no quota saving is promised. The plugin is 1.2.0.
 
 ### Fixed
 

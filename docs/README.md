@@ -40,7 +40,8 @@ or uncertain caches show a warning and wait for your next message. A compact
 status line shows expected warmth; `/neosian-cache` opens refresh details and provides on/off and duration
 controls. Near a 5-hour or weekly usage limit, the plugin hands the agent a
 notice and then a wrap-up note so it can stop at a clean point; it never
-submits a prompt or stops a turn.
+submits a prompt or stops a turn. Keep-warm then waits warm for a near reset
+and pauses when a limit is reached or nearly exhausted.
 See `neosian docs agents` for the request limits and compatibility.
 Portable profiles opt into recording separately: new profiles capture off by
 default.

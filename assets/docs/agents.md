@@ -207,7 +207,8 @@ model and account; it creates no main conversation turn and cannot run tools.
 The Rust memory, search, capture and MCP paths do not run the timer or model.
 
 If the laptop wakes after expiry, the cache lifetime is unknown, context or
-model changes, or a refresh fails verification, automatic calls stop and the
+model changes, a refresh fails verification, or a usage limit is reached or
+nearly exhausted (see "Waiting for a reset" below), automatic calls stop and the
 badge warns. The feature stays enabled: the next successful ordinary message
 can establish a new warm cache and rearm maintenance. It does not deliberately
 rebuild an expired cache just to produce a small reply. Five-minute caches
@@ -285,20 +286,23 @@ request record nothing. The pace
 is the steepest rise of that percentage against any reading taken 90 seconds
 to 15 minutes earlier, in percent per minute: observed movement, not a price
 or token estimate. Minutes left is the remaining percentage divided by that
-pace.
+pace. A keep-warm reserve (see "Waiting for a reset") can bring a wrap-up
+forward, but the note always states the minutes to the limit itself.
 
 | Note | When | Asks the agent to |
 |---|---|---|
 | Notice | 85% of a window used | Prefer finishing work in progress over starting large new work or several agents at once; nothing needs to stop yet |
-| Wrap-up | 95% used, or 10 minutes or less left at the recent pace once 50% is used, unless the window resets first | Finish the edit in progress, start no new tasks or agents, and say briefly what is done and what remains |
+| Wrap-up | 95% used (less a reserve of at most 5 points when keep-warm can refresh and the reset is within the horizon), or 10 minutes or less left at the recent pace once 50% is used, unless the window resets first | Finish the edit in progress, start no new tasks or agents, and say briefly what is done and what remains |
 
 Each note is delivered at most once per window in a conversation; after
 `/clear` or a resume the new conversation receives its own. A wrap-up note
 replaces a notice not yet delivered, except that a wrap-up raised by pace
-below 85% leaves the notice and the 95% wrap-up still to come. With both
+below 85% leaves the notice and the wrap-up at 95% (less any reserve) still to come. With both
 windows at wrap-up, one note covers both and describes the one that resets
 later, since waiting for the earlier reset would not help. A notice is held
-back while the other window is at wrap-up. A new window (its reset time moves)
+back while the other window is at wrap-up; a window that has received its
+wrap-up note stays at wrap-up until it resets, even if a smaller reserve would
+now put it below that level. A new window (its reset time moves)
 starts over; a fall of a point or two inside a window is treated as noise, and
 a window whose reset time has passed is not shown and raises nothing until a
 fresh reading arrives. In the main conversation the note arrives as context
@@ -322,7 +326,8 @@ default, 1 to 10) sets the horizon. `/neosian-cache off` stops keep-warm
 only; notes follow `usageNotes`.
 
 Once a window reaches the notice level, the neosian line above the prompt adds
-`usage 87%`; the line turns amber at the wrap-up level. `/neosian-cache` lists
+`usage 87%`; the line turns amber at the wrap-up level and stays amber after a
+wrap-up note until that window resets. `/neosian-cache` lists
 each known window, the last note delivered with its UTC time, and whether usage
 notes are on, off or unavailable:
 
@@ -355,6 +360,85 @@ Not promised:
 - An older Claude Code without the usage call keeps keep-warm working without
   notes.
 - A note is context, not control: the agent may not follow it.
+- No quota saving is guaranteed.
+
+#### Waiting for a reset
+
+Keep-warm also watches the limit, so a session that stopped cleanly near it can
+wait for the reset with its cache warm instead of spending the last of the
+limit.
+
+Right after each verified refresh the plugin takes one more reading. The rise
+of each window's figure since its previous reading is recorded as that
+refresh's cost, never below zero, and the last three are kept per window.
+Because an idle session's figure is stale, that rise also includes every other
+session's usage in between. The estimate used is the smallest of the last
+three, between 0.1 and 2 points, or 0.5 before any refresh has been measured.
+
+While keep-warm can refresh in this session (it is on, the session is
+interactive, the observation bridge is set up, and the conversation's last
+cache observation was a one-hour cache eligible for refresh: a subscription
+cache, or any one-hour cache with `allowApi` or an explicit `on`) and a
+window's reset time is known and within the wait horizon, the plugin keeps a reserve for the refreshes
+until then: the estimate times the number of 55-minute intervals left, at most
+5 points. The wrap-up note then comes at 95% less that reserve, or when 10
+minutes or less remain at the recent pace before 100% less it; the note still
+states the minutes to the limit itself, and the notice stays at 85%. A window
+that resets beyond the horizon or at an unknown time keeps no reserve. In `-p`
+runs, without the bridge, with keep-warm off, with a five-minute cache, and
+before a conversation's first observed reply, the thresholds are exactly those
+in the table above.
+
+Just before a refresh would be sent, keep-warm checks the last recorded figures
+(an idle session has no newer ones) and sends nothing when:
+
+| Last recorded figure | Reason in `/neosian-cache` |
+|---|---|
+| Any window at 99.5% or more | Usage limit reached · keep-warm paused |
+| A window at 95% or more whose reset is unknown or beyond the horizon | Usage nearly exhausted · keep-warm paused to preserve it |
+
+A window whose reset time has passed never stops a refresh. In every other case
+keep-warm refreshes exactly as before, so with a near reset it keeps the cache
+warm while you wait. A refresh that Claude Code refuses for a rate limit (its
+`rate_limit` error kind or HTTP status 429) shows "Request refused for a rate
+limit · keep-warm paused" instead of the general failure reason; that refusal
+may come from a short API rate limit rather than the usage limit. As with any other
+pause, your next ordinary message rearms keep-warm. These pauses also apply
+with `usageNotes` off; only the waiting line below needs a delivered note.
+
+After a wrap-up note in the main conversation, while the session is idle,
+keep-warm is maintaining the cache, that window's reset is within the horizon
+and the next refresh would be sent, the neosian line reads `waiting for reset`
+in place of `keep-warm on`. It does not when the checks above would hold the
+next refresh back (for any window), or when a `/neosian-cache` duration ends
+before the reset; the line then shows its usual label. `/neosian-cache` adds
+the reset and, after a measured refresh, its cost:
+
+```text
+Waiting for the 5-hour reset in 42m; keep-warm continues
+Refresh moved 5-hour usage by at most 0.3 points
+```
+
+Nothing is scheduled or submitted. Continuing after the reset is up to the
+agent and you, with Claude Code's own scheduler, and Claude Code's own
+wait-and-continue still applies when a limit is reached anyway. The refresh
+receipt's `last_refresh` gains `usage_cost`: the points per window
+(`five_hour`, `seven_day`), or null for a window when the refresh was not
+verified, no reading was possible, or the window is new since the previous
+reading or missing from it.
+
+Not promised for the warm wait:
+
+- A refresh's cost is an upper bound, not a measurement of the refresh alone:
+  it includes every other session's usage since the previous reading, and the
+  reserve built from it is an estimate.
+- The figures are stale while the session is idle, so keep-warm decides on the
+  last figures the session saw; usage elsewhere can reach the limit first.
+- Each refresh while waiting still uses some of the limit. The reserve leaves
+  room for it but cannot guarantee that the limit is not reached.
+- The cost measurement assumes that Claude Code updates its usage figures from
+  the refresh's own response. That has not been verified in a live session; if
+  it does not, the cost reads 0.
 - No quota saving is guaranteed.
 
 ### Standalone cache display

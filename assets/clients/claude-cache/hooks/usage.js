@@ -1,6 +1,8 @@
-// Pure usage-limit arithmetic for the wrap-up note: no `$`, clock or I/O.
-// Figures are the host's own estimates from its last response; nothing here
-// meters a model or knows a price. Note prose lives in assets/usage.md.
+// Pure usage-limit arithmetic for the wrap-up note and the warm wait: no `$`,
+// clock or I/O. Figures are the host's own estimates from its last response;
+// nothing here meters a model or knows a price. Note prose lives in assets/usage.md.
+import { HOUR, INTERVAL } from './evidence.js';
+
 const MINUTE = 60000;
 const RING = 32;
 const AGENTS = 64;
@@ -70,18 +72,81 @@ export function minutesLeft(p, perMinute, reserve = 0) {
 }
 
 // The level each current window has reached, delivered or not: `wrap` at 95%
-// (or by pace from 85%), `pace` for a pace wrap below 85%, then `notice`.
-// A window whose known reset has passed is left out until a fresh reading.
+// less its reserve (or by pace from 85%), `pace` for a pace wrap below 85%,
+// then `notice`. `reserve` is points, or points per window (`reserves`): it
+// decides when a level is due, while `left` stays the minutes to the real
+// limit, for the note's text. A wrap delivered in this window stays a wrap,
+// whatever the floor is now. A window past its known reset is left out.
 export function assess(state, now, reserve = 0) {
   return KINDS.filter(kind => state[kind] && !(state[kind].resetsAt !== null && now >= state[kind].resetsAt))
     .map(kind => {
       const { p, resetsAt, samples } = state[kind];
-      const left = minutesLeft(p, rate(samples, now, p), reserve);
+      const r = typeof reserve === 'number' ? reserve : reserve?.[kind] ?? 0;
+      const perMinute = rate(samples, now, p);
+      const due = minutesLeft(p, perMinute, r);
       // The pace matters only if the limit would come before the window resets.
-      const pace = left !== null && left <= 10 && p >= 50 && (resetsAt === null || resetsAt > now + left * MINUTE);
-      const level = p >= 95 - reserve || (pace && p >= 85) ? 'wrap' : pace ? 'pace' : p >= 85 ? 'notice' : null;
-      return { kind, p, resetsAt, left, level };
+      const pace = due !== null && due <= 10 && p >= 50 && (resetsAt === null || resetsAt > now + due * MINUTE);
+      const wrapped = state[kind].delivered?.includes('wrap');
+      const level = wrapped || p >= 95 - r || (pace && p >= 85) ? 'wrap' : pace ? 'pace' : p >= 85 ? 'notice' : null;
+      return { kind, p, resetsAt, left: minutesLeft(p, perMinute), level };
     });
+}
+
+// A known reset that is still ahead and inside the wait horizon.
+function near(w, now, hours) {
+  return w.resetsAt !== null && w.resetsAt > now && w.resetsAt - now <= hours * HOUR;
+}
+
+// One refresh's cost in points: the smallest of the last three observed,
+// clamped to 0.1..2, or 0.5 before any. Each observation is an upper bound.
+export function estimate(list) {
+  return list?.length ? Math.min(2, Math.max(0.1, Math.min(...list))) : 0.5;
+}
+
+// Points kept back per window for the refreshes until a near reset, so the
+// wrap floor is 95 less it. A far or unknown reset keeps none.
+export function reserves(state, costs, now, hours = 6) {
+  return Object.fromEntries(KINDS.filter(kind => state[kind]).map(kind => [kind, near(state[kind], now, hours)
+    ? Math.min(5, Math.round(Math.ceil((state[kind].resetsAt - now) / INTERVAL) * estimate(costs?.[kind]) * 10) / 10)
+    : 0]));
+}
+
+// Whether keep-warm holds back the refresh it is about to send, from the last
+// recorded figures (an idle session learns nothing newer): 'limit' at 99.5,
+// 'exhausted' at the wrap floor with a far or unknown reset, else null. A
+// window past its known reset never holds one back.
+export function gate(state, costs, now, hours = 6) {
+  const reserve = reserves(state, costs, now, hours);
+  const current = assess(state, now, reserve);
+  if (current.some(w => w.p >= 99.5)) return 'limit';
+  return current.some(w => w.p >= 95 - reserve[w.kind] && !near(w, now, hours)) ? 'exhausted' : null;
+}
+
+// Each window and its figure, taken just before the reading after a refresh.
+export function snapshot(state) {
+  return Object.fromEntries(KINDS.filter(kind => state[kind]).map(kind => [kind, [state[kind], state[kind].p]]));
+}
+
+// What a verified refresh moved each window by since its previous recorded
+// reading: never negative, and an upper bound, since the figure includes every
+// other session's usage in between. Keeps the last three per window; a window
+// that is new since `before` has no previous reading and records nothing.
+export function charge(costs, before, state) {
+  return Object.fromEntries(KINDS.map(kind => {
+    const [w, p] = before[kind] ?? [];
+    if (!w || state[kind] !== w) return [kind, null];
+    const moved = Math.max(0, Math.round((w.p - p) * 10) / 10);
+    costs[kind] = [...(costs[kind] ?? []), moved].slice(-3);
+    return [kind, moved];
+  }));
+}
+
+// The reset a session that wrapped up waits for: the window of the last
+// main-thread wrap or pace wrap note, while that window's reset is near.
+export function waiting(state, last, now, hours = 6) {
+  const w = last && WRAPS.includes(last.level) ? state[last.window] : undefined;
+  return w && w.delivered.includes(last.level) && near(w, now, hours)
+    ? { kind: last.window, resetsAt: w.resetsAt } : null;
 }
 
 // What is due now, the window to describe first; nothing is marked here.

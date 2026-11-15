@@ -94,8 +94,10 @@ until session close. Expired or uncertain caches warn and wait for normal user
 activity. `/neosian-cache` provides status, on/off and duration controls. Cache
 estimates cannot guarantee a server hit; actual receipts stop unexpected retries.
 Near a 5-hour or weekly usage limit it hands the agent one notice (85%) and one
-wrap-up note (95% or about ten minutes left) as context; it never submits a
-prompt or stops a turn, and `usageNotes` in `/config` turns notes off.
+wrap-up note (95%, less a small reserve while keep-warm runs before a near
+reset, or about ten minutes left) as context; it never submits a prompt or stops a turn, and
+`usageNotes` in `/config` turns notes off. Keep-warm pauses at a reached or
+nearly exhausted limit and otherwise waits warm for a near reset.
 Memory/MCP/search paths gain no model dependency. Read `neosian docs agents`.
 
 Native memory capture defaults off. `native-memory add` previews a selected

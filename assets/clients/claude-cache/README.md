@@ -23,13 +23,27 @@ Disabling stops future refreshes; an already-sent request may finish.
 
 Usage notes tell the agent, once per limit window, that a 5-hour or weekly
 usage limit is near: a notice at 85%, and a wrap-up note at 95% or when about
-ten minutes remain at the recent pace. The wrap-up note asks it to finish the
+ten minutes remain at the recent pace. While keep-warm can refresh (it is on
+and the conversation's last observed cache was an eligible one-hour cache) and
+the window resets within the wait horizon, the wrap-up comes up to 5 points
+earlier, leaving a reserve for the refreshes until the reset; a window that has
+had its wrap-up stays there until it resets. The wrap-up note asks it to finish the
 edit in progress, start nothing new and say what is done and what remains;
 subagents receive only that note. The figures are Claude Code's own estimates
 from the session's last response. The plugin never submits a prompt, stops a
 turn or schedules anything. `usageNotes` in `/config` turns notes off. Notes
 use Claude Code's session usage call and are tested on 2.1.325; a Claude Code
 without that call keeps keep-warm unchanged and reports notes as unavailable.
+
+Keep-warm waits for a reset warm. It sends no refresh when the last recorded
+figure of a window is at 99.5% or more, or at 95% or more with a reset beyond
+the horizon or unknown; a window past its reset never stops one. A refresh the
+host refuses for a rate limit says so in the panel. After a wrap-up note, an
+idle session kept warm with the reset near shows `waiting for reset` while the
+next refresh would be sent, and the panel shows the reset time and how far the
+last refresh moved each window's figure. That figure is an upper bound: it includes other sessions' usage since
+the previous reading, which is stale while the session is idle. A refresh
+still uses some of the limit, and nothing is scheduled or submitted.
 
 The host's status is an estimate, not a server cache probe. A cache miss can
 only be detected after a request, and the public fork API has no output-token

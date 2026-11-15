@@ -165,3 +165,35 @@ test('after /clear the classic SessionStart brings keep-warm back under the new 
   const beat = JSON.parse(h.writes.at(-1)?.text);
   expect([beat.session_id, beat.state]).toEqual(['synthetic-next', 'Cache refresh verified']);
 });
+
+// U2: the warm wait, through the host's own usage and fork seams.
+function figures(on, clock, percent: () => number, minutes: number) {
+  const resetsAt = new Date(clock.now() + minutes * MIN).toISOString();
+  on('session.usage', () => ({ value: { startedAt: clock.now(), context: { window: 200000 },
+    rateLimits: [{ kind: 'five_hour', percentUsed: percent(), resetsAt }] } }));
+}
+
+test('a refresh at the usage limit is held back and the receipt says why', async ($, on) => {
+  const h = harness(on);
+  figures(on, h.clock, () => 99.6, 120);
+  await start($); await turn($); await h.clock.advance(55 * MIN);
+  expect(h.calls.length).toBe(0);
+  expect(JSON.parse(h.writes.at(-1)?.text).state).toBe('Usage limit reached · keep-warm paused');
+});
+
+test('a refresh the host refuses for a rate limit pauses and says so', async ($, on) => {
+  const zero = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
+  const refused = { isAnswered: false, reason: 'api-error', status: 429, error: 'rate_limit', usage: zero };
+  const h = harness(on, { reply: refused as unknown as typeof warm });
+  await start($); await turn($); await h.clock.advance(180 * MIN);
+  expect(h.calls.length).toBe(1);
+  expect(JSON.parse(h.writes.at(-1)?.text).state).toBe('Request refused for a rate limit · keep-warm paused');
+});
+
+test('a verified refresh records how far it moved the usage figure', async ($, on) => {
+  const h = harness(on);
+  figures(on, h.clock, () => 60 + 0.3 * h.calls.length, 240);
+  await start($); await turn($); await h.clock.advance(55 * MIN);
+  expect(h.calls.length).toBe(1);
+  expect(JSON.parse(h.writes.at(-1)?.text).last_refresh.usage_cost).toEqual({ five_hour: 0.3, seven_day: null });
+});

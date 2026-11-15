@@ -2,6 +2,11 @@
 import { HOUR } from './evidence.js';
 import { LABELS, percent, span } from './usage.js';
 export const PANE = 'neosian-cache-details';
+// Why keep-warm held back a refresh near a usage limit (usage.js `gate`), or
+// paused after the host refused one for a rate limit, which may be a short one.
+export const HELD = { limit: 'Usage limit reached · keep-warm paused',
+  exhausted: 'Usage nearly exhausted · keep-warm paused to preserve it',
+  refused: 'Request refused for a rate limit · keep-warm paused' };
 
 // Usage figures are the host's estimates; which note is due is decided in usage.js.
 function limits({ windows, notes, last }, now) {
@@ -45,7 +50,14 @@ export function presentation({ enabled, busy, flight, certificate, receipt, unti
   else if (reason.includes('unavailable')) { label = 'keep-warm unavailable'; note = '/neosian-cache'; }
   const details = [detail, `Keep-warm: ${enabled ? 'on' : 'off'}${until !== null
     ? ` · until ${new Date(until).toISOString()}` : ' · until session closes'}`];
-  if (note && note !== 'keep-warm on') details.push(note);
+  // After a wrap-up note, an idle session kept warm waits for a near reset,
+  // unless a /neosian-cache duration ends first (the gate is checked in notes.js).
+  const wait = note === 'keep-warm on' && !(until !== null && until < usage.waiting?.resetsAt)
+    ? usage.waiting : null;
+  if (wait) {
+    note = 'waiting for reset';
+    details.push(`Waiting for the ${LABELS[wait.kind]} reset in ${span(wait.resetsAt - now)}; keep-warm continues`);
+  } else if (note && note !== 'keep-warm on') details.push(note);
   const meter = limits(usage, now);
   details.push(...meter.lines);
   if (meter.wrap) tone = 'warning';
@@ -53,6 +65,12 @@ export function presentation({ enabled, busy, flight, certificate, receipt, unti
     details.push('', 'Last refresh', `Cache read: ${receipt.read} tokens`,
       `Cache written: ${receipt.write} tokens`, `Output: ${receipt.output} tokens`,
       `Result: ${receipt.outcome}`, `At: ${new Date(receipt.at_ms).toISOString()}`);
+    // Other sessions' usage since the previous reading is included: an upper bound.
+    for (const [kind, points] of Object.entries(receipt.usage_cost ?? {})) {
+      const figure = points === null ? null : percent(points);
+      const unit = figure === '1' ? 'point' : 'points';
+      if (figure !== null) details.push(`Refresh moved ${LABELS[kind]} usage by at most ${figure} ${unit}`);
+    }
   }
   return { label, note, tone, details, usage: meter.badge };
 }

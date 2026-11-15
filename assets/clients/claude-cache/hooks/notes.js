@@ -2,10 +2,15 @@
 // in the classic hook results. Guidance only: never a block, stop or prompt.
 // The arithmetic is in usage.js and the prose in assets/usage.md. The host
 // loads `$` only into named functions, so state travels as a plain object.
-import { assess, commit, forget, horizon, note, observe, parse, peek, windows } from './usage.js';
+import { assess, charge, commit, forget, gate, horizon, note, observe, parse, peek, reserves, snapshot,
+  waiting, windows } from './usage.js';
 
+// `costs` holds the last observed refresh costs per window (usage.js `charge`).
+// `warm` is set by register.js: keep-warm is on and available in this session
+// and its last observed cache was one hour and eligible for refresh, so the
+// reserve applies. Before a first observation it is false: plain thresholds.
 export function usageNotes() {
-  return { meter: {}, metered: false, sampled: false, fresh: false, templates: null,
+  return { meter: {}, costs: {}, warm: false, metered: false, sampled: false, fresh: false, templates: null,
     enabled: true, preferred: true, hours: 6, last: null };
 }
 
@@ -21,7 +26,7 @@ export function setNotes(n, key, value) {
 
 // Notes need a supported session, but neither the bridge nor a terminal.
 export async function startNotes($, n, supported) {
-  Object.assign(n, { meter: {}, metered: supported, sampled: false, fresh: false,
+  Object.assign(n, { meter: {}, costs: {}, metered: supported, sampled: false, fresh: false,
     templates: null, enabled: n.preferred, last: null });
   if (!supported) return;
   try { n.templates = parse(await $.fs.read($.plugin.root + '/assets/usage.md')); } catch { n.templates = null; }
@@ -65,7 +70,8 @@ export async function deliverNote($, n, result, e, tool) {
       return result;
     }
     const now = await sampleUsage($, n);
-    const due = now === null ? [] : peek(n.meter, now, { reserve: 0, agent });
+    const due = now === null ? [] : peek(n.meter, now,
+      { reserve: reserve(n, now), agent });
     if (!due.length) return result;
     const context = Array.isArray(result?.additionalContext) ? result.additionalContext : [];
     const out = { ...result, additionalContext: [...context, note(n.templates, due[0], now, { hours: n.hours, agent })] };
@@ -75,7 +81,25 @@ export async function deliverNote($, n, result, e, tool) {
   } catch { return result; }
 }
 
+// A verified refresh's cost per window, from a reading taken right after it
+// (usage.js `charge`); null where none was possible. Never throws.
+export async function measureRefresh($, n) {
+  try {
+    const before = snapshot(n.meter);
+    n.fresh = true;
+    if (await sampleUsage($, n) !== null) return charge(n.costs, before, n.meter);
+  } catch { /* An unmeasured refresh keeps the earlier estimate. */ }
+  return { five_hour: null, seven_day: null };
+}
+
+// The reserve lowers the wrap floor only while keep-warm can spend it (`warm`).
+function reserve(n, now) {
+  return n.warm ? reserves(n.meter, n.costs, now, n.hours) : 0;
+}
+
 export function noteSummary(n, now) {
-  return { windows: assess(n.meter, now), last: n.last,
+  return { windows: assess(n.meter, now, reserve(n, now)), last: n.last,
+    // Waiting is shown only if the next refresh would be sent, not held back.
+    waiting: gate(n.meter, n.costs, now, n.hours) ? null : waiting(n.meter, n.last, now, n.hours),
     notes: !n.enabled ? 'off' : n.metered && n.templates && n.sampled ? 'on' : 'unavailable' };
 }

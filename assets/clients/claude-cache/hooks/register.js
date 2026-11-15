@@ -1,7 +1,8 @@
-import { HOUR, INTERVAL, MARGIN, duration, observation, reused, supported, usage } from './evidence.js';
-import { PANE, presentation, render } from './display.js';
-import { configureNotes, deliverNote, endNotes, noteSummary, sampleUsage, setNotes, startNotes,
+import { HOUR, INTERVAL, MARGIN, duration, limited, observation, reused, supported, usage } from './evidence.js';
+import { HELD, PANE, presentation, render } from './display.js';
+import { configureNotes, deliverNote, endNotes, measureRefresh, noteSummary, sampleUsage, setNotes, startNotes,
   usageNotes } from './notes.js';
+import { gate } from './usage.js';
 
 // All model calls, lifecycle events, timers and UI belong to Claude Code.
 // No conversation content, credentials or Neosian memory is read or persisted.
@@ -31,9 +32,16 @@ let lastPersisted = '';
 let view;
 let interactive = false;
 let reopen = false;
+let observed; // The last accepted cache observation that was warm; kept across invalidate().
 const notes = usageNotes();
 // SessionStart sources that follow a /clear or a resume in the same process.
 const NEXT = ['clear', 'resume', 'fork'];
+
+// Keep-warm can refresh in this session: on, available, open, and the last
+// observed cache one hour and eligible, as tick() requires (for the reserve).
+function warm() {
+  return enabled && available && !closed && observed?.ttl === HOUR && (observed.subscription || allowApi);
+}
 
 function invalidate(why) {
   epoch += 1;
@@ -43,6 +51,7 @@ function invalidate(why) {
 }
 
 async function show($, now) {
+  notes.warm = warm();
   const limits = noteSummary(notes, now);
   view = presentation({ enabled, busy, flight, certificate, receipt, until, reason, allowApi, usage: limits }, now);
   const text = JSON.stringify(view);
@@ -65,6 +74,7 @@ async function show($, now) {
 
 // Usage notes join the host's own result and never block or stop (notes.js).
 async function relay($, result, e, tool) {
+  notes.warm = warm();
   const out = await deliverNote($, notes, result, e, tool);
   if (out !== result && !closed) {
     try { await show($, await $.clock.now()); } catch { /* The note stands without a redraw. */ }
@@ -86,6 +96,7 @@ async function inspect($, now) {
     if (!data) return;
     requests = data.main_requests;
     pending = undefined;
+    observed = data.state === 'warm' && step.read + step.write > 0 ? data : undefined;
     if (data.state !== 'warm' || step.read + step.write === 0) {
       invalidate('Cache status unknown · automatic refresh paused');
       return;
@@ -135,6 +146,8 @@ async function refresh($) {
     }
     if (started >= saved.deadline - MARGIN || started < saved.started ||
         (until !== null && started >= until)) return;
+    const held = gate(notes.meter, notes.costs, started, notes.hours); // Near a usage limit (usage.js).
+    if (held) { invalidate(HELD[held]); return; }
     reason = 'Refreshing warm cache';
     await show($, started);
     // Recheck after the asynchronous diagnostics write. A user turn wins.
@@ -148,10 +161,12 @@ async function refresh($) {
     if (owner !== sessionId) return;
     receipt = { at_ms: sending, read: u?.cache_read_input_tokens ?? null,
       write: u?.cache_creation_input_tokens ?? null, output: u?.output_tokens ?? null,
-      outcome: mine !== epoch ? 'superseded' : valid ? 'reused' : 'stopped' };
+      outcome: mine !== epoch ? 'superseded' : valid ? 'reused' : 'stopped',
+      usage_cost: { five_hour: null, seven_day: null } };
     if (mine !== epoch || closed) return;
     if (!valid || finished >= sending + HOUR - MARGIN) {
-      invalidate('Refresh unverified · automatic refresh paused until your next message');
+      invalidate(limited(result) ? HELD.refused
+        : 'Refresh unverified · automatic refresh paused until your next message');
       return;
     }
     // Renew only the existing one-hour prefix that was actually read. The
@@ -159,6 +174,7 @@ async function refresh($) {
     certificate = { ...saved, started: sending, deadline: sending + HOUR,
       due: sending + INTERVAL, expected: u.cache_read_input_tokens };
     reason = 'Cache refresh verified';
+    receipt.usage_cost = await measureRefresh($, notes);
   } catch {
     if (mine === epoch) invalidate('Refresh failed · automatic refresh paused until your next message');
   } finally {
@@ -173,6 +189,7 @@ async function begin($, fresh, id) {
   try {
     closed = false;
     reopen = false;
+    observed = undefined;
     busy = false;
     available = false;
     enabled = defaultEnabled;

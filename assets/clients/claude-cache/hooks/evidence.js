@@ -48,6 +48,13 @@ export function reused(result, expected) {
     u.cache_read_input_tokens >= expected - 2048;
 }
 
+// The host refused the request for a rate limit: the fork's `api-error` arm,
+// with Claude Code's `rate_limit` kind or HTTP status 429.
+export function limited(result) {
+  return result?.isAnswered === false && result.reason === 'api-error' &&
+    (result.error === 'rate_limit' || result.status === 429);
+}
+
 export function duration(text) {
   const match = /^([1-9][0-9]{0,4})(m|h)$/.exec(text);
   if (!match) return null;

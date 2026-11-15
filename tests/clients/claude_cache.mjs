@@ -18,7 +18,7 @@ let serial = 0;
 
 async function harness(options = {}, extra = {}) {
   const handlers = [];
-  const files = new Map([['/plugin/bridge.json', '{"observations":"/observations"}'],
+  const files = new Map([['/plugin/bridge.json', extra.bridge ?? '{"observations":"/observations"}'],
     ['/plugin/assets/refresh.md', extra.crlf ? prompt.replaceAll('\n', '\r\n') : prompt]]);
   if (extra.notes !== null) files.set('/plugin/assets/usage.md', extra.notes ?? notesAsset);
   let now = START;
@@ -980,10 +980,18 @@ for (const [name, run] of Object.entries({
   test('keep-warm refreshes exactly as before with usage figures present: ' + name, async () => {
     const plain = await harness();
     await run(plain);
-    const measured = await harness({}, { limits: [five(96, START + 5 * HOUR), week(50)] });
-    await run(measured);
     assert.ok(plain.calls.length > 0);
-    assert.deepEqual(measured.calls.map(c => c.at), plain.calls.map(c => c.at));
+    // No gate applies to any of these: same calls at the same times.
+    const moving = () => { let points = 70; return { limits: () => [five(points, START + 5 * HOUR)],
+      fork: () => { points += 0.4; return structuredClone(WARM); } }; };
+    for (const extra of [{ limits: [five(96, START + 5 * HOUR), week(50)] },
+      { limits: [five(99.4, START + 5 * HOUR), week(94.9)] },
+      { limits: [limit('five_hour', 94.9), limit('seven_day', 80)] },
+      { limits: [five(100, START + 10 * MIN), week(60)] }, moving()]) {
+      const measured = await harness({}, extra);
+      await run(measured);
+      assert.deepEqual(measured.calls.map(c => c.at), plain.calls.map(c => c.at));
+    }
   });
 }
 
@@ -1031,4 +1039,254 @@ test('the receipt carries usage figures and the last note, bounded and content-f
   const pane = await h.details();
   assert.match(pane, /5-hour usage: 86% · resets in 2h\nWeekly usage: 23\.5% · resets in 3d/);
   assert.match(pane, /Last usage note: notice \(5-hour\) at 1970-01-02T03:46:40\.000Z\nUsage notes: on/);
+});
+
+// U2: the warm wait. Refresh cost, the reserve, the refresh gate and the waiting badge.
+const evidence = await import(new URL('../../assets/clients/claude-cache/hooks/evidence.js', import.meta.url).href);
+const RATE_LIMITED = { isAnswered: false, reason: 'api-error', status: 429, error: 'rate_limit',
+  usage: { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } };
+const at = (kind, p, resetsAt) => ({ kind, p, resetsAt });
+
+test('the cost estimate is the smallest of the last three observed, clamped to 0.1..2, or 0.5 before any', () => {
+  assert.deepEqual([undefined, [], [0.3, 0.7, 1.2], [1.2, 0.7], [0], [3, 2.5]].map(lib.estimate),
+    [0.5, 0.5, 0.3, 0.7, 0.1, 2]);
+  const state = {};
+  const costs = {};
+  lib.observe(state, [at('five_hour', 60, 5 * HOUR)], 0);
+  for (const [t, p, moved] of [[1, 60.3, 0.3], [2, 61, 0.7], [3, 60.9, 0], [4, 62.2, 1.2]]) {
+    const before = lib.snapshot(state);
+    lib.observe(state, [at('five_hour', p, 5 * HOUR)], t * HOUR);
+    assert.deepEqual(lib.charge(costs, before, state), { five_hour: moved, seven_day: null });
+  }
+  assert.deepEqual(costs, { five_hour: [0.7, 0, 1.2] }); // The last three; a step back counts as 0.
+  assert.equal(lib.estimate(costs.five_hour), 0.1);
+  const before = lib.snapshot(state);
+  lib.observe(state, [at('five_hour', 3, 10 * HOUR)], 5 * HOUR); // A new window has no previous reading.
+  assert.deepEqual(lib.charge(costs, before, state), { five_hour: null, seven_day: null });
+  assert.deepEqual(costs.five_hour, [0.7, 0, 1.2]);
+});
+
+test('the reserve covers the refreshes until a near reset, at most 5 points; far or unknown keeps none', () => {
+  const state = {};
+  lib.observe(state, [at('five_hour', 90, 120 * MIN), at('seven_day', 90, 3 * 24 * HOUR)], 0);
+  assert.deepEqual(lib.reserves(state, {}, 0), { five_hour: 1.5, seven_day: 0 }); // ceil(120 / 55) refreshes at 0.5.
+  assert.deepEqual(lib.reserves(state, { five_hour: [0.3, 0.4] }, 0), { five_hour: 0.9, seven_day: 0 });
+  assert.equal(lib.reserves(state, { five_hour: [2] }, 0).five_hour, 5);
+  assert.equal(lib.reserves(state, {}, 0, 1).five_hour, 0); // Beyond a one-hour horizon.
+  assert.equal(lib.reserves(state, {}, 121 * MIN).five_hour, 0); // Past its reset.
+  const open = {};
+  lib.observe(open, [at('five_hour', 90, null)], 0);
+  assert.deepEqual(lib.reserves(open, {}, 0), { five_hour: 0 });
+  // The wrap floor is 95 less the window's reserve; the notice stays at 85.
+  const level = (p, reserve) => {
+    const one = {};
+    lib.observe(one, [at('five_hour', p, 120 * MIN)], 0);
+    return lib.assess(one, 0, { five_hour: reserve })[0].level;
+  };
+  assert.deepEqual([level(93.5, 1.5), level(93.4, 1.5), level(90, 5), level(89.9, 5), level(85, 5), level(84.9, 5)],
+    ['wrap', 'notice', 'wrap', 'notice', 'notice', null]);
+  assert.equal(lib.minutesLeft(90, 2, 5), 2.5); // Minutes left run to 100 less the reserve.
+  const wrapped = {};
+  lib.observe(wrapped, [at('five_hour', 94, 120 * MIN)], 0);
+  lib.commit(wrapped, [{ kind: 'five_hour', level: 'wrap' }]);
+  assert.equal(lib.assess(wrapped, 0)[0].level, 'wrap'); // A delivered wrap holds without the reserve.
+});
+
+test('the reserve decides when a note is due; the note still counts the minutes to the real limit', () => {
+  const state = {};
+  for (const [t, p] of [[0, 59], [5 * MIN, 69], [10 * MIN, 79]]) lib.observe(state, [at('five_hour', p, 3 * HOUR)], t);
+  assert.equal(lib.assess(state, 10 * MIN)[0].level, null); // 21 points at 2 a minute: 10.5 minutes.
+  const [top] = lib.assess(state, 10 * MIN, { five_hour: 2 }); // 19 points to the reserve: 9.5 minutes.
+  assert.deepEqual([top.level, top.left], ['pace', 10.5]);
+  assert.match(lib.note(lib.parse(notesAsset), top, 10 * MIN), /reaches the limit in about 10m\./);
+});
+
+test('the gate holds a refresh at the limit, or at the wrap floor before a far or unknown reset', () => {
+  const gate = (list, now = 0) => {
+    const state = {};
+    lib.observe(state, list, 0);
+    return lib.gate(state, {}, now);
+  };
+  assert.deepEqual([
+    gate([at('five_hour', 99.5, 30 * MIN)]), gate([at('five_hour', 99.4, 30 * MIN)]),
+    gate([at('seven_day', 99.5, 3 * 24 * HOUR)]), gate([at('seven_day', 95, 3 * 24 * HOUR)]),
+    gate([at('seven_day', 94.9, 3 * 24 * HOUR)]), gate([at('five_hour', 95, null)]),
+    gate([at('five_hour', 100, 10 * MIN)], 11 * MIN), gate([at('five_hour', 97, 2 * HOUR), at('seven_day', 96, 3 * 24 * HOUR)]),
+    gate([]),
+  ], ['limit', null, 'limit', 'exhausted', null, 'exhausted', null, 'exhausted', null]);
+});
+
+test('a session waits for the reset of its last main-thread wrap while that reset is near and ahead', () => {
+  const state = {};
+  lib.observe(state, [at('five_hour', 96, 2 * HOUR), at('seven_day', 96, 3 * 24 * HOUR)], 0);
+  lib.commit(state, lib.peek(state, 0)); // One note covers both windows at wrap.
+  const last = (window, level = 'wrap') => ({ level, window, at_ms: 0 });
+  assert.deepEqual(lib.waiting(state, last('five_hour'), 0), { kind: 'five_hour', resetsAt: 2 * HOUR });
+  assert.deepEqual([lib.waiting(state, last('seven_day'), 0), lib.waiting(state, last('five_hour'), 2 * HOUR),
+    lib.waiting(state, last('five_hour', 'notice'), 0), lib.waiting(state, null, 0)], [null, null, null, null]);
+  lib.observe(state, [at('five_hour', 3, 7 * HOUR), at('seven_day', 96, 3 * 24 * HOUR)], MIN);
+  assert.equal(lib.waiting(state, last('five_hour'), MIN), null); // A new window heard no note yet.
+});
+
+test('a refusal for a rate limit is told apart from other failures', () => {
+  assert.deepEqual([RATE_LIMITED, { ...RATE_LIMITED, status: null }, { ...RATE_LIMITED, error: 'unknown' },
+    { ...RATE_LIMITED, status: 529, error: 'overloaded' }, { ...RATE_LIMITED, status: 500, error: 'server_error' },
+    WARM, null].map(evidence.limited), [true, true, true, false, false, false, false]);
+});
+
+test('a verified refresh records what it moved each window by, as an upper bound', async () => {
+  let points = 60;
+  const h = await harness({}, { limits: () => [five(points, START + 4 * HOUR), week(20)],
+    fork: () => { points += 0.3; return structuredClone(WARM); } });
+  await h.turn(); await h.advance(55 * MIN); assert.equal(h.calls.length, 1);
+  const beat = () => JSON.parse(h.files.get('/observations/session-1.refresh.json')).last_refresh;
+  assert.deepEqual(beat().usage_cost, { five_hour: 0.3, seven_day: 0 });
+  assert.match(await h.details(), /Refresh moved 5-hour usage by at most 0\.3 points\nRefresh moved weekly usage by at most 0 points/);
+  points += 1.1; // Other sessions' usage while idle lands in the next refresh's figure.
+  await h.advance(55 * MIN); assert.equal(h.calls.length, 2);
+  assert.deepEqual(beat().usage_cost, { five_hour: 1.4, seven_day: 0 });
+  points += 0.7;
+  await h.advance(55 * MIN); assert.equal(h.calls.length, 3);
+  assert.deepEqual(beat().usage_cost, { five_hour: 1, seven_day: 0 });
+  assert.match(await h.details(), /by at most 1 point\nRefresh moved weekly usage by at most 0 points/);
+  for (const extra of [{ limits: [five(60)], fork: async () => ({ ...WARM, text: 'no' }) }, {}]) {
+    const other = await harness({}, extra); // Unverified, or a host without usage figures.
+    await other.turn(); await other.advance(55 * MIN);
+    assert.deepEqual(JSON.parse(other.files.get('/observations/session-1.refresh.json')).last_refresh.usage_cost,
+      { five_hour: null, seven_day: null });
+    assert.doesNotMatch(await other.details(), /Refresh moved/);
+  }
+});
+
+test('a near reset lowers the wrap floor by the reserve; a far reset and the notice stay put', async () => {
+  const near = await harness({}, { limits: [five(94, START + 2 * HOUR)] });
+  await near.turn(); // A one-hour subscription cache observed: keep-warm can refresh.
+  assert.match(notesOf(await near.tool())[0], /used 94%.*clean stopping point/); // Floor 95 - 3 * 0.5.
+  const far = await harness({}, { limits: [five(94, START + 8 * HOUR)] });
+  await far.turn();
+  assert.match(notesOf(await far.tool())[0], /used 94%.*Nothing needs to stop yet/);
+});
+
+test('the reserve applies only while keep-warm can refresh in this session', async () => {
+  const limits = [five(94, START + 2 * HOUR)];
+  const heard = async (h, turn = {}) => {
+    if (turn) await h.turn(turn); else await h.respond(); // A subagent's reading: no cache observation.
+    const [text] = notesOf(await h.tool());
+    return /clean stopping point/.test(text) ? 'wrap' : /Nothing needs to stop yet/.test(text) ? 'notice' : text;
+  };
+  assert.equal(await heard(await harness({}, { limits })), 'wrap'); // A one-hour subscription cache observed.
+  assert.equal(await heard(await harness({}, { limits }), null), 'notice'); // Before the first observation.
+  assert.equal(await heard(await harness({}, { limits }), { ttl: '5m' }), 'notice');
+  assert.equal(await heard(await harness({}, { limits }), { subscription: false }), 'notice');
+  assert.equal(await heard(await harness({ allowApi: true }, { limits }), { subscription: false }), 'wrap');
+  assert.equal(await heard(await harness({}, { limits, interactive: false })), 'notice'); // A -p run.
+  assert.equal(await heard(await harness({}, { limits, bridge: '{"observations":""}' })), 'notice'); // No bridge.
+  assert.equal(await heard(await harness({ enabled: false }, { limits })), 'notice'); // Off by preference.
+  const toggled = await harness({}, { limits });
+  await toggled.turn(); await toggled.command('off');
+  assert.equal(await heard(toggled, null), 'notice');
+  await toggled.command('on'); // Back on: the reserve returns and the wrap, still due, follows.
+  assert.equal(await heard(toggled, null), 'wrap');
+  const busy = await harness({}, { limits }); // A turn clears the certificate; the eligibility stays.
+  await busy.turn(); await busy.emit('turn.start', { turnId: 'next' });
+  assert.equal(await heard(busy, null), 'wrap');
+  const cleared = await harness({}, { limits }); // A new conversation waits for its own observation.
+  await cleared.turn(); await cleared.restart();
+  assert.equal(await heard(cleared, null), 'notice');
+  assert.equal(await heard(cleared), 'wrap');
+  const badge = await harness({}, { limits });
+  await badge.turn();
+  assert.equal((await badge.draw()).children[0].props.color, 'warning'); // Wrap level: amber.
+  await badge.command('off');
+  assert.equal((await badge.draw()).children[0].props.color, 'subtle'); // A notice again.
+});
+
+test('a delivered wrap holds for its window while the floor moves: no notice after it, amber, still waiting', async () => {
+  for (const control of ['refresh', 'off']) {
+    const h = await harness({}, { limits: [five(94, START + 2 * HOUR), week(86)] });
+    await h.turn();
+    assert.match(notesOf(await h.tool())[0], /used 94% of its 5-hour.*clean stopping point/);
+    if (control === 'refresh') { await h.advance(56 * MIN); assert.equal(h.calls.length, 1); } // Cost 0: floor 94.8.
+    else await h.command('off'); // No reserve: the floor is 95 again.
+    assert.deepEqual(await h.submit(), {}); // The weekly notice stays held.
+    assert.deepEqual(await h.tool(), {});
+    assert.equal((await h.draw()).children[0].props.color, 'warning', control);
+    assert.match(await h.badge(), control === 'refresh' ? /^neosian · cache ~59m · waiting for reset · usage 94%$/
+      : /^neosian · keep-warm off · usage 94%$/);
+  }
+});
+
+test('the waiting line appears only when the next refresh would be sent', async () => {
+  const shown = async (limits, control) => {
+    const h = await harness({}, { limits });
+    await h.turn(); await h.tool();
+    if (control) await h.command(control);
+    return [await h.badge(), /Waiting for the/.test(await h.details())];
+  };
+  const reset = START + 3 * HOUR;
+  assert.deepEqual(await shown([five(96, reset)]), ['neosian · cache ~60m · waiting for reset · usage 96%', true]);
+  assert.deepEqual(await shown([five(99.6, reset)]), ['neosian · cache ~60m · keep-warm on · usage 99.6%', false]);
+  assert.deepEqual(await shown([five(96, reset)], '2h'), ['neosian · cache ~60m · keep-warm on · usage 96%', false]);
+  assert.deepEqual(await shown([five(96, reset)], '4h'), ['neosian · cache ~60m · waiting for reset · usage 96%', true]);
+  let weekly = 94; // The weekly window, far from its reset, reaches 95.5 with the refresh's own reading.
+  const h = await harness({}, { limits: () => [five(96, START + 4 * HOUR), week(weekly)],
+    fork: () => { weekly = 95.5; return structuredClone(WARM); } });
+  await h.turn(); await h.tool();
+  assert.match(await h.badge(), /waiting for reset/);
+  await h.advance(55 * MIN); assert.equal(h.calls.length, 1);
+  assert.equal(await h.badge(), 'neosian · cache ~60m · keep-warm on · usage 96%');
+  assert.doesNotMatch(await h.details(), /Waiting for the/);
+});
+
+test('at the usage limit keep-warm sends nothing, and the next ordinary message rearms it', async () => {
+  const h = await harness({}, { limits: [five(99.6, START + 3 * HOUR)] });
+  await h.turn(); await h.advance(55 * MIN); assert.equal(h.calls.length, 0);
+  assert.match(await h.details(), /^Usage limit reached · keep-warm paused$/m);
+  assert.equal(await h.badge(), 'neosian · cache paused · next message may be cold · usage 99.6%');
+  await h.advance(2 * HOUR); assert.equal(h.calls.length, 0);
+  h.limits([five(2, START + 8 * HOUR)]); // A new window after the reset.
+  await h.turn(); await h.advance(55 * MIN); assert.equal(h.calls.length, 1);
+});
+
+test('near the end of a window that resets far away or at an unknown time, keep-warm pauses to preserve it', async () => {
+  for (const [limits, calls] of [[[five(40), week(95.5)], 0], [[five(40), week(94.9)], 1],
+    [[limit('five_hour', 96)], 0], [[five(97, START + 3 * HOUR)], 1], [[five(100, START + 10 * MIN)], 1]]) {
+    const h = await harness({}, { limits });
+    await h.turn(); await h.advance(55 * MIN);
+    assert.equal(h.calls.length, calls, JSON.stringify(limits));
+    if (!calls) assert.match(await h.details(), /^Usage nearly exhausted · keep-warm paused to preserve it$/m);
+  }
+});
+
+test('a refresh the host refuses for a rate limit says so; other failures keep the general reason', async () => {
+  const h = await harness({}, { fork: async () => structuredClone(RATE_LIMITED) });
+  await h.turn(); await h.advance(180 * MIN); assert.equal(h.calls.length, 1);
+  assert.match(await h.details(), /^Request refused for a rate limit · keep-warm paused$/m); // Perhaps a short one.
+  assert.equal(await h.badge(), 'neosian · cache paused · next message may be cold');
+  assert.match(await h.details(), /Result: stopped/);
+  const busy = await harness({}, { fork: async () => ({ ...RATE_LIMITED, status: 529, error: 'overloaded' }) });
+  await busy.turn(); await busy.advance(180 * MIN); assert.equal(busy.calls.length, 1);
+  assert.match(await busy.details(), /^Refresh unverified · automatic refresh paused until your next message$/m);
+});
+
+test('after a wrap-up note an idle session kept warm shows that it waits for the reset', async () => {
+  const h = await harness({}, { limits: [five(96, START + 2 * HOUR)] });
+  await h.turn();
+  assert.equal(notesOf(await h.tool()).length, 1);
+  assert.equal(await h.badge(), 'neosian · cache ~60m · waiting for reset · usage 96%');
+  assert.match(await h.details(), /^Waiting for the 5-hour reset in 2h; keep-warm continues$/m);
+  assert.doesNotMatch(await h.details(), /^keep-warm on$/m);
+  await h.advance(55 * MIN); assert.equal(h.calls.length, 1); // Keep-warm continues as before.
+  assert.match(await h.details(), /^Waiting for the 5-hour reset in 1h 5m; keep-warm continues$/m);
+  await h.emit('turn.start', { turnId: 'busy' }); await h.advance(30000); // The next tick redraws.
+  assert.equal(await h.badge(), 'neosian · conversation active · usage 96%');
+  await h.finish(); await h.advance(70 * MIN); // Past the reset: the badge is as before.
+  assert.equal(await h.badge(), 'neosian · cache ~45m · keep-warm on');
+  for (const [limits, control] of [[[week(96)], ''], [[five(86, START + 2 * HOUR)], ''], [[five(96, START + 2 * HOUR)], 'off']]) {
+    const other = await harness({}, { limits }); // A far reset, a notice only, keep-warm off.
+    await other.turn(); await other.tool();
+    if (control) await other.command(control);
+    assert.doesNotMatch(await other.badge(), /waiting/);
+    assert.doesNotMatch(await other.details(), /Waiting for/);
+  }
 });
