@@ -95,7 +95,7 @@ enum Command {
     Redact(operator::erasure::Redact),
     /// Erase conversations whose newest turn predates a cutoff.
     Prune(operator::erasure::Prune),
-    /// Find the turns holding every term, newest first (DESIGN §32).
+    /// Find recorded turns by their words, best match first or newest (DESIGN §32, §40.43).
     Search(cli_search::Search),
     /// Print a recorded conversation as continue_session delivers it (§33).
     Continue(cli_continue::Continue),

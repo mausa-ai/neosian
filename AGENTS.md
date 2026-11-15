@@ -41,6 +41,8 @@ development and tests only (DESIGN §40).
   opaque cursor semantics are shared across backends, never database defaults.
   Memory ranking version 1 pins its scoring arithmetic in the shared matcher;
   statistics stay inside one authorized scope and never need a model or index.
+  History ranking version 1 reuses it over candidate turns only; requests
+  without its fields stay version 1, and agent-door fallbacks are stated.
 - **Knowledge imports are explicit.** Preview scoped Markdown/bundle changes;
   refuse lifecycle records and erased destinations. Collection rules validate
   imports and explicit checks, not authority. Structure/provenance stays in

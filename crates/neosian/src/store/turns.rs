@@ -15,7 +15,7 @@ use crate::conversation::message::Message;
 use crate::conversation::rows::{
     CONVERSATIONS, PROJECTIONS, TURNS, parse_projection, parse_turn, render_projection, render_turn,
 };
-use crate::conversation::search::{held_ids, newest_first, scan_turns};
+use crate::conversation::search::{held_ids, newest_first, scan_candidates, scan_turns};
 use crate::conversation::{Error, Projection, Refused, Turn};
 
 /// `_check_cursor`: the ABC's own refusals of a negative start or limit.
@@ -179,6 +179,43 @@ impl FileStore {
         newest_first(&mut found);
         found.truncate(limit);
         Ok(found)
+    }
+
+    /// History ranking version 1 under the store lock (DESIGN §40.43).
+    pub fn rank_turns(
+        &self,
+        request: &crate::conversation::rank::Request,
+    ) -> Result<Vec<crate::conversation::rank::Ranked>, Error> {
+        use crate::conversation::rank::{Order, rank};
+        use crate::conversation::search::turn_text;
+        request.bounds().map_err(Error::Value)?;
+        let _held = self.lock()?;
+        let held;
+        let ids = match &request.ids {
+            Some(ids) => {
+                for conversation_id in ids {
+                    parse_conversation_id(conversation_id)?;
+                }
+                ids
+            }
+            None => {
+                held = held_ids(&self.root.join(CONVERSATIONS))?;
+                &held
+            }
+        };
+        let all = request.order == Order::Newest;
+        let mut candidates = Vec::new();
+        for id in ids {
+            let file = self.conversation_file(id, TURNS)?;
+            if file.is_file() {
+                candidates.extend(scan_candidates(&file, id, &request.terms, all)?);
+            }
+        }
+        let texts = candidates.into_iter().map(|turn| {
+            let text = turn_text(&turn);
+            (turn, text)
+        });
+        rank(texts.collect(), request, false).map_err(Error::Value)
     }
 
     /// The conversation's directory, refused when a symlink would carry

@@ -30,7 +30,7 @@ protocol servers use their own framing.
 | `upkeep scan/prepare/inspect/apply` | Bounded findings, guarded proposals, preview and explicitly approved changes |
 | `changes read/prune` | Poll durable scope changes or preview/apply event retention |
 | `messages` | Durable messages, reminders, claims and acknowledgments |
-| `search`, `continue` | Find recorded turns and resume a known conversation |
+| `search`, `continue` | Find recorded turns, best match first or newest, within optional turn times; resume a known conversation |
 | `audit` | Scope ledger, optionally merged with a conversation |
 | `export`, `import` | Portable archives with histories and attribution |
 | `redact`, `prune` | Operator conversation erasure and retention |

@@ -335,6 +335,30 @@ impl State for Routed {
         self.history(&ids[0], false)?
             .search_turns(terms, Some(ids), limit)
     }
+    fn history_ranking(&self) -> bool {
+        self.profile
+            .history
+            .as_ref()
+            .is_some_and(|h| self.sources[&h.source].history_ranking())
+    }
+    fn rank_turns(
+        &self,
+        request: &crate::conversation::rank::Request,
+    ) -> Result<Vec<crate::conversation::rank::Ranked>, conversation::Error> {
+        let ids = match &request.ids {
+            Some(ids) => ids.clone(),
+            None => self.history_ids()?,
+        };
+        for id in &ids {
+            self.history(id, false)?;
+        }
+        let Some(first) = ids.first() else {
+            return Ok(vec![]);
+        };
+        let mut scoped = request.clone();
+        scoped.ids = Some(ids.clone());
+        self.history(first, false)?.rank_turns(&scoped)
+    }
     fn append_turn(
         &self,
         id: &str,

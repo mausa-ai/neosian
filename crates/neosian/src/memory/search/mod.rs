@@ -6,7 +6,7 @@ mod headings;
 mod matching;
 mod mounted_rank;
 mod passages;
-mod rank;
+pub(crate) mod rank;
 mod scan;
 pub use scan::{Scan, scan};
 pub mod mounted;

@@ -11,6 +11,7 @@ use crate::assets::{MESSAGES, block, render};
 use crate::conversation::Error;
 use crate::conversation::Turn;
 use crate::conversation::hits::{hit_line, snippet};
+use crate::conversation::rank::{Bounds, within};
 use crate::conversation::search::match_terms;
 use crate::store::grammar::Actor;
 use crate::text::head;
@@ -68,13 +69,17 @@ pub fn augment_recall(
 /// The search answer with the mailbox merged: each hit with the
 /// annotations about it, a matching message as a hit of its own, newest
 /// first, the newest `limit`; None when the mailbox holds nothing, the
-/// plain answer standing.
+/// plain answer standing. `ranked` keeps the turns' order and lists message
+/// hits after them, newest first; `bounds` limit message hits and the
+/// annotations under a turn by creation instant, as they limit turns (§40.43).
 pub fn augment_search(
     mailbox: &Mailbox,
     turns: &[Turn],
     terms: &[String],
     ids: Option<&[String]>,
     limit: usize,
+    ranked: bool,
+    bounds: Bounds,
 ) -> Result<Option<String>, Error> {
     let receipts = mailbox.all(None)?;
     if receipts.is_empty() {
@@ -86,6 +91,7 @@ pub fn augment_search(
         .filter(|item| {
             ids.is_none_or(|ids| item.about.as_ref().is_some_and(|about| ids.contains(about)))
         })
+        .filter(|item| within(bounds, item.created_at.instant()))
         .collect();
     let mut rows: Vec<(i64, String, String)> = Vec::new();
     for turn in turns {
@@ -137,7 +143,16 @@ pub fn augment_search(
     if rows.is_empty() {
         return Ok(None);
     }
-    rows.sort_by(|a, b| (b.0, &b.1, &b.2).cmp(&(a.0, &a.1, &a.2)));
+    if ranked {
+        // Ranked turns keep their order; message hits follow, newest first (§40.43).
+        let (turns, mut messages): (Vec<_>, Vec<_>) = rows
+            .into_iter()
+            .partition(|(_, key, _)| key.starts_with("turn:"));
+        messages.sort_by(|a, b| (b.0, &b.1, &b.2).cmp(&(a.0, &a.1, &a.2)));
+        rows = turns.into_iter().chain(messages).collect();
+    } else {
+        rows.sort_by(|a, b| (b.0, &b.1, &b.2).cmp(&(a.0, &a.1, &a.2)));
+    }
     rows.truncate(limit);
     let texts: Vec<String> = rows.into_iter().map(|(_, _, text)| text).collect();
     Ok(Some(texts.join("\n\n")))

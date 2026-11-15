@@ -43,8 +43,8 @@ Postgres and remote storage, through the same mounts and profile selection
 as other memory reads. The startup index is a bounded table of contents;
 search reads current storage even when a document was absent from that index
 or changed after the session started. No model, embedding or vector service
-is needed. The top-level `neosian search` and MCP `search_history` keep their
-conversation-history behavior.
+is needed. The top-level `neosian search` and MCP `search_history` search
+recorded conversations instead (see Recorded conversations below).
 
 ```sh
 neosian memory search 'deployment window release slot' --scope user:demo --json
@@ -365,6 +365,32 @@ advice and notes that a later turn can supersede an earlier one.
 `continue_session` follows an explicit handoff. These tools do not run an
 agent or control its context window.
 Conversation search is distinct from document search.
+
+```sh
+neosian search 'dashboard latency response time' --json
+neosian search 'release slot' --order newest --conversation cc-7f3a
+neosian search 'api limit' --before 2026-11-01T00:00:00Z
+```
+
+`neosian search` and MCP `search_history` rank turns best match first by
+default. A turn needs only one term, so synonyms can share one query; rarer
+terms and more occurrences in less text score higher, with the memory score
+computed over the matching turns, and ties go to the newer turn.
+`--order newest` (MCP `order`) lists the turns holding every term, newest
+first, as earlier releases did. `--since` and `--before` (MCP `since`,
+`before`) narrow either order to turns recorded at or after, and before, a
+UTC instant written in RFC 3339 with a trailing `Z`. Turns never change, so
+`--before` answers as of that moment. Relevance output starts with an
+`order: relevance` line; JSON adds `order` and a `score` per turn hit; the
+MCP answer ends with a `best match first` footer. Matching mailbox messages
+still need every term; they follow the ranked turns, newest first among
+themselves, within the same limit. The bounds limit message hits and the
+annotations shown under a turn by each message's creation instant, with the
+same rule as turns, in either order. When no order was given, a remote
+history source without `history_ranking: {version: 1}` answers newest first
+and says so (the CLI's `fallback`, a note on the MCP answer); an explicit
+relevance order or a bound refuses there. `neosian docs wire` gives the
+statistics.
 
 Operator `redact` clears selected turns; `prune` applies an age cutoff to
 conversations. Whole-conversation erasure also clears their session documents.

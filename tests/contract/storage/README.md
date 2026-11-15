@@ -16,6 +16,13 @@ records, policy-bound paging and current erasure. This extension requires search
 version 1; absent support is an explicit skip under both profiles. These checks
 do not authenticate a reviewer's label or certify host approval workflows.
 
+When `history_ranking: {version: 1}` is declared, history-ranking cases check
+relevance scores against literal values from an independent reference, ties,
+newest order, turn-time bounds, erased turns and invalid requests on
+`conversation/search_turns`, and that requests without the new fields keep the
+version 1 answer. Fixtures are ASCII, where every backend folds alike. Absent
+support is an explicit skip under both profiles.
+
 From a checkout with the development dependencies:
 
 ```sh

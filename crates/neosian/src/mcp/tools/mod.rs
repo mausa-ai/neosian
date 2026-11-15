@@ -7,6 +7,7 @@
 mod changes;
 mod handoff;
 mod history;
+mod history_rank;
 mod knowledge;
 mod memory;
 mod messages;

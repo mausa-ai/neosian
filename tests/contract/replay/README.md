@@ -65,3 +65,10 @@ S10's optional `memory_ranking` handshake field is projected out of this frozen
 comparison in the same way; independent storage and CLI/MCP contracts cover it.
 
 S11's optional `memory_passages` handshake field is projected out likewise.
+
+S12 makes relevance the default of `neosian search` and MCP `search_history`. The
+frozen cases that call them pass `--order newest` (MCP `order: newest`) at run time,
+so every expected byte still compares; the rewritten `search_history` description,
+parameter text and new optional inputs are projected back to version 1, and the
+`history_ranking` handshake field is projected out. Independent contracts cover
+the new default, bounds and text.

@@ -39,7 +39,7 @@ const RECALL_FIELDS: [Field; 3] = [
     },
 ];
 
-const SEARCH_FIELDS: [Field; 3] = [
+const SEARCH_FIELDS: [Field; 6] = [
     Field {
         name: "query",
         kind: Kind::Str,
@@ -54,6 +54,21 @@ const SEARCH_FIELDS: [Field; 3] = [
         name: "limit",
         kind: Kind::Int,
         presence: Presence::Default("10"),
+    },
+    Field {
+        name: "order",
+        kind: Kind::Literal(&["relevance", "newest"]),
+        presence: Presence::Optional,
+    },
+    Field {
+        name: "since",
+        kind: Kind::Str,
+        presence: Presence::Optional,
+    },
+    Field {
+        name: "before",
+        kind: Kind::Str,
+        presence: Presence::Optional,
     },
 ];
 
@@ -121,8 +136,15 @@ fn search_call(server: &Server, arguments: &Map<String, Value>) -> Outcome {
     let terms = match parse_query(query) {
         Ok(terms) => terms,
         Err(_) => {
-            return Outcome::fail("Give at least one search term")
-                .hint("A turn matches when it holds every term, case-insensitively.");
+            // Version 1's hint stands wherever the order is newest.
+            let newest = text(arguments, "order") == Some("newest")
+                || !server.memory.store.history_ranking();
+            let hint = if newest {
+                "A turn matches when it holds every term, case-insensitively.".to_string()
+            } else {
+                quoted(TOOLS, "search_history_blank_ranked").expect("tools.yaml carries the hint")
+            };
+            return Outcome::fail("Give at least one search term").hint(hint);
         }
     };
     let limit = integer(arguments, "limit").unwrap_or(10);
@@ -141,30 +163,59 @@ fn search_call(server: &Server, arguments: &Map<String, Value>) -> Outcome {
         None => None,
     };
     let ids = narrowed.as_deref();
-    let turns = match server.memory.store.search_turns(&terms, ids, shown) {
+    let ranking = match super::history_rank::resolve(server, arguments, &terms, ids, shown) {
+        Ok(ranking) => ranking,
+        Err(outcome) => return outcome,
+    };
+    let turns = match ranking.turns(server, &terms, ids, shown) {
         Ok(turns) => turns,
         Err(Error::Conversation(refused)) => {
             return Outcome::fail(format!("[{}] {}", refused.code, refused.message));
         }
         Err(error) => return Outcome::failed("search_history", &error.text()),
     };
-    match augment_search(&mailbox(server), &turns, &terms, ids, shown) {
-        Ok(Some(merged)) => return Outcome::ok(merged),
+    let relevance = ranking.relevance();
+    let key = if relevance {
+        "search_history_footer_ranked"
+    } else {
+        "search_history_footer"
+    };
+    let footer = render(
+        &quoted(TOOLS, key).expect("tools.yaml carries the footer"),
+        &[("shown", &shown.to_string())],
+    );
+    let merged = augment_search(
+        &mailbox(server),
+        &turns,
+        &terms,
+        ids,
+        shown,
+        relevance,
+        ranking.bounds(),
+    );
+    match merged {
+        // A relevance answer always names its order (§40.43); version 1's
+        // merged answer keeps its bytes, without a footer.
+        Ok(Some(merged)) if relevance => {
+            return Outcome::ok(ranking.frame(format!("{merged}\n\n{footer}")));
+        }
+        Ok(Some(merged)) => return Outcome::ok(ranking.frame(merged)),
         Ok(None) => {}
         Err(error) => return Outcome::failed("search_history", &error.text()),
     }
     if turns.is_empty() {
         let listed: Vec<String> = terms.iter().map(|term| repr(term)).collect();
-        return Outcome::ok(format!(
-            "No turn matches every term: {}. Try fewer or different terms.",
-            listed.join(", ")
-        ));
+        let listed = listed.join(", ");
+        let text = if relevance {
+            let template =
+                quoted(TOOLS, "search_history_none_ranked").expect("tools.yaml carries the note");
+            render(&template, &[("terms", &listed)])
+        } else {
+            format!("No turn matches every term: {listed}. Try fewer or different terms.")
+        };
+        return Outcome::ok(ranking.frame(text));
     }
-    let footer = render(
-        &quoted(TOOLS, "search_history_footer").expect("tools.yaml carries the footer"),
-        &[("shown", &shown.to_string())],
-    );
     let mut lines: Vec<String> = turns.iter().map(|turn| hit_block(turn, &terms)).collect();
     lines.push(footer);
-    Outcome::ok(lines.join("\n"))
+    Outcome::ok(ranking.frame(lines.join("\n")))
 }

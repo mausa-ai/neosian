@@ -87,6 +87,47 @@ impl PostgresStore {
             .into_iter().map(|row| rows::turn(&codec::text(&row, "conversation_id")?, row)).collect()
     }
 
+    /// History ranking version 1 (DESIGN §40.43): SQL decides membership with
+    /// version 1's `ILIKE` over `search_text`, under the database's collation,
+    /// within the selection and bounds. Newest is the SQL answer, ordered and
+    /// limited there. Relevance takes every row with any term and counts over
+    /// the same stored text in Rust; it needs every candidate for statistics.
+    pub fn rank_turns(
+        &self,
+        request: &crate::conversation::rank::Request,
+    ) -> Result<Vec<crate::conversation::rank::Ranked>, Error> {
+        use crate::conversation::rank::{Order, rank};
+        let ids = request.ids.as_deref();
+        check_ids(ids)?;
+        request.bounds().map_err(Error::Value)?;
+        let patterns: Vec<String> = request
+            .terms
+            .iter()
+            .map(|term| format!("%{}%", rows::escaped(term)))
+            .collect();
+        let newest = request.order == Order::Newest;
+        let mut candidates = Vec::new();
+        for row in self.fetch(
+            sql!("store/rank_turns"),
+            json!({"any": !newest, "patterns": patterns, "all": ids.is_none(),
+                   "ids": ids.unwrap_or_default(), "since": request.since,
+                   "before": request.before, "limit": newest.then_some(request.limit)}),
+        )? {
+            let text = codec::text(&row, "search_text")?;
+            candidates.push((
+                rows::turn(&codec::text(&row, "conversation_id")?, row)?,
+                text,
+            ));
+        }
+        if newest {
+            return Ok(candidates
+                .into_iter()
+                .map(|(turn, _)| (turn, None))
+                .collect());
+        }
+        rank(candidates, request, true).map_err(Error::Value)
+    }
+
     pub fn append_projections(&self, id: &str, entries: &[Projection]) -> Result<(), Error> {
         parse_conversation_id(id)?;
         if entries.is_empty() {

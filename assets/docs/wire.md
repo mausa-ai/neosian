@@ -72,6 +72,11 @@ newest orders and date bounds to memory search, and `"memory_passages":
 The reference backends advertise them. Clients send their fields only to a
 service that declares them.
 
+The optional `"history_ranking": {"version": 1}` capability adds relevance and
+newest orders and turn-time bounds to `conversation/search_turns`. It does not
+depend on memory search. The reference backends advertise it, and clients send
+its fields only to a service that declares it.
+
 ## Auth
 
 Every request but `/health` carries `Authorization: Bearer <token>`,
@@ -338,7 +343,7 @@ Clients validate presence, count, fields, keys, lengths and content order.
 | `conversation/append_turn` | `conversation_id`, `messages` req; `actor` | `turn` |
 | `conversation/read_turns` | `conversation_id` req; `after`, `limit` | `turns`, `next_after` |
 | `conversation/last_turn_number` | `conversation_id` req | `turn` (int, 0 when none) |
-| `conversation/search_turns` | `query` req; `conversations` (a list of ids), `limit` (default 50, at most 500) | `turns` |
+| `conversation/search_turns` | `query` req; `conversations` (a list of ids), `limit` (default 50, at most 500); `order`, `since`, `before` with history ranking | `turns`; `order`, `scores` with history ranking |
 | `conversation/append_projections` | `conversation_id`, `entries` req | `{}` |
 | `conversation/read_projections` | `conversation_id` req; `after`, `limit` | `entries`, `next_after` |
 | `conversation/redact_turns` | `conversation_id` req; `through`, `turns` (a list of turn numbers), `actor` | `count` (int) |
@@ -353,7 +358,8 @@ store holds; a list narrows to those ids and `[]` answers `[]`. The
 answer is bounded and never pages: `limit` above 500 is `value_error`
 ("a search answers at most 500 turns; narrow the query"), `limit: 0`
 and a blank `query` are `value_error` too. Each turn is the
-`read_turns` shape.
+`read_turns` shape. History ranking version 1, below, adds orders and
+turn-time bounds; a request without its fields answers exactly this.
 
 `redact_turns` and `turn_redactions` (`WIRE_VERSION` 6) are the eraser
 (`neosian docs stores`). `redact_turns` blanks the selected turns of one
@@ -369,6 +375,43 @@ newest first and is bounded like a search: `limit` above 500 is
 `value_error`, `conversations` narrows as it does for a search, and a
 redacted turn never answers a search again. A backend whose `erasable`
 is `false` answers both routes with `agent_configuration_error`.
+
+### History ranking version 1
+
+With `history_ranking` version 1, `conversation/search_turns` accepts three
+more optional fields. A request without them, or with them null, is a version
+1 request and its response is unchanged.
+
+- `order`: `newest` or `relevance`. A response to a request that names an
+  order echoes it as `order`; without one the order is newest and nothing is
+  echoed. Neither order pages, and `limit` keeps its bounds.
+- `since` (inclusive) and `before` (exclusive): UTC RFC 3339 instants ending
+  in `Z`, compared with each turn's `created_at`. Since must precede before.
+  Bounds narrow both orders. Turns are immutable, so `before` is an exact
+  as-of cutoff.
+
+Newest is the version 1 answer inside the bounds: the same matching, total
+order and limit. Relevance candidates are the turns of the selected
+conversations, inside the bounds, whose searchable text (the text above)
+holds at least one term under the backend's version 1 matching. Statistics
+come from the candidates, not every stored turn: `N` is the number of
+candidates, `df` the number holding the term, `avgdl` their total length
+divided by `N`. `tf` counts non-overlapping left-to-right occurrences of a
+term in the searchable text after Unicode lowercase, and `length` counts the
+Unicode scalars of that folded text. Files match with Unicode lowercase too.
+Postgres matches with `ILIKE` under the database's collation, exactly as
+version 1 does, and counts over the searchable text it stored; a candidate
+whose counts are all zero there still counts toward `N` and `avgdl`.
+Backends agree wherever the database's case folding agrees with Unicode
+lowercase, which includes all ASCII text. The formula, `k1`, `b` and the
+round-half-even quantization are memory ranking version 1's. A relevance
+response adds `scores`, integers parallel to `turns` and never increasing;
+ties follow the version 1 total order (`created_at`, then conversation id,
+then turn number, each descending). Redacted turns hold no text and never
+count. An unknown order, a malformed or non-UTC bound, or a since that does
+not precede before is `value_error`. Clients validate the echoed order, the
+scores and their order, the bounds, the limit and the selected conversations.
+Ranking grants no access: a constrained token still names its conversations.
 
 ### Store
 

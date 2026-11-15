@@ -2,8 +2,8 @@
 //! §32): the one rule every substrate applies, and the file scan that
 //! applies it here. A query is whitespace-split into lowercased terms; a
 //! turn matches when every term is a substring of its folded searchable
-//! text; hits come newest first under one total order. No ranking, no
-//! wildcards, no stemming.
+//! text; hits come newest first under one total order; `rank.rs` adds
+//! history ranking version 1. No wildcards, no stemming.
 
 use std::fs;
 use std::path::Path;
@@ -100,6 +100,37 @@ pub fn scan_turns(
         let turn = parse_turn(line, index + 1, conversation_id)?;
         if match_terms(&turn_text(&turn), terms) {
             found.push(turn);
+        }
+    }
+    Ok(found)
+}
+
+/// Decoded candidate turns of one log for history ranking: a line is decoded
+/// when its raw text could hold every term (`all`) or at least one term. A term
+/// the raw line cannot hold verbatim forces decoding, as version 1 does.
+pub fn scan_candidates(
+    file: &Path,
+    conversation_id: &str,
+    terms: &[String],
+    all: bool,
+) -> Result<Vec<Turn>, Error> {
+    let raw: Vec<&str> = terms
+        .iter()
+        .map(String::as_str)
+        .filter(|term| prefilterable(term))
+        .collect();
+    let every = raw.len() == terms.len();
+    let text = fs::read_to_string(file)?;
+    let mut found = Vec::new();
+    for (index, line) in text.lines().enumerate() {
+        let lowered = line.to_lowercase();
+        let candidate = if all {
+            raw.iter().all(|term| lowered.contains(term))
+        } else {
+            !every || raw.iter().any(|term| lowered.contains(term))
+        };
+        if candidate {
+            found.push(parse_turn(line, index + 1, conversation_id)?);
         }
     }
     Ok(found)

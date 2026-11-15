@@ -138,6 +138,20 @@ index, cache or DDL is added. Custom services declare each capability
 separately and pass the optional independent search and ranking cases. See
 `neosian docs memory` and `neosian docs wire`.
 
+## History search
+
+FileStore and Postgres also advertise optional history ranking version 1 on
+`conversation/search_turns`. Files scan the turn logs under the store lock and
+match with Unicode lowercase. Postgres matches with version 1's `ILIKE` under
+the database's collation inside the turn-time bounds: newest is that SQL
+answer, and relevance scores the selected rows over their stored searchable
+text with Unicode lowercase, in the same Rust code as files. Backends agree
+wherever the database's case folding agrees with Unicode lowercase, which
+includes all ASCII text. No index, cache, DDL or Postgres extension is added.
+Custom services declare the capability separately and pass the optional
+independent history-ranking cases. See `neosian docs memory` and
+`neosian docs wire`.
+
 ## Current-document knowledge bundles
 
 `knowledge import` and `knowledge export` use mounted reads/writes on every

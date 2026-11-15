@@ -28,10 +28,9 @@ pub fn hit_header(turn: &Turn) -> String {
     )
 }
 
-/// `re.search(re.escape(term), flat, re.IGNORECASE)`: where the term
-/// first matches, in characters.
-fn find_ci(flat: &str, term: &str) -> Option<usize> {
-    let pattern = Regex::new(&format!("(?i){}", fancy_regex::escape(term))).ok()?;
+/// `re.search(re.escape(term), flat, re.IGNORECASE)`: where the term's
+/// pattern first matches, in characters.
+fn find_ci(flat: &str, pattern: &Regex) -> Option<usize> {
     let found = pattern.find(flat).ok().flatten()?;
     Some(len(&flat[..found.start()]))
 }
@@ -43,11 +42,16 @@ fn first_match(text: &str, terms: &[String]) -> (String, usize) {
     if lines.is_empty() {
         lines.push(String::new());
     }
+    // One pattern per term for the whole turn, not one per line.
+    let patterns: Vec<Regex> = terms
+        .iter()
+        .filter_map(|term| Regex::new(&format!("(?i){}", fancy_regex::escape(term))).ok())
+        .collect();
     let mut best = (0, 0, 0);
     for (index, flat) in lines.iter().enumerate() {
-        let starts: Vec<usize> = terms
+        let starts: Vec<usize> = patterns
             .iter()
-            .filter_map(|term| find_ci(flat, term))
+            .filter_map(|pattern| find_ci(flat, pattern))
             .collect();
         if starts.len() > best.0 {
             best = (

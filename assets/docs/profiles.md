@@ -161,6 +161,9 @@ only matching, nonredacted `sessions/<id>` entries. Unlisted logs are not
 discovered; name an authorized conversation explicitly to read one. A listing
 over 10,000 entries is refused; narrow to explicit IDs (at most 256).
 An empty candidate list never becomes a whole-store search.
+Ranked or time-bounded history search runs at the history source and needs
+history ranking version 1 there; otherwise an omitted order uses newest first
+and says so.
 With capture off, continuation reads without writing pickup/continuation
 receipts. Separate history scopes do not write continuation receipts into
 memory mailboxes; excluded tool payloads do not contribute tool-derived

@@ -1,5 +1,5 @@
 //! `neosian search` (`conversation/cli_search.py`, DESIGN §32): the terms
-//! are the positional words, the rule the store's own, newest first;
+//! are the positional words, relevance by default, newest when asked (§40.43);
 //! there is no `--scope`, since turns carry none, and `--conversation`
 //! narrows. Exit tiers (§14.1): 2 for grammar with nothing constructed,
 //! 1 when the store answers with an error, 0 with the hits, or none.
@@ -13,6 +13,7 @@ use serde_json::{Value, json};
 use super::failed;
 use super::hits::hit_line;
 use super::ids::check_conversation_id;
+use super::rank::{Order, Request};
 use super::search::parse_query;
 use crate::cli::usage;
 use crate::messaging::cli_history::{Hit, search_hits};
@@ -23,10 +24,10 @@ const DEFAULT_LIMIT: i64 = 20;
 /// The wire's page (§18.2): every substrate alike.
 const LIMIT_MAX: i64 = 500;
 
-/// Find the turns holding every term, newest first, in any conversation.
+/// Find turns by their words, best match first, in any conversation.
 #[derive(Args)]
 pub struct Search {
-    /// the terms; a turn holds every one
+    /// the terms; relevance needs one, newest every one
     #[arg(required = true, value_name = "QUERY")]
     query: Vec<String>,
     /// FileStore root directory (created on start; default: the home,
@@ -44,13 +45,24 @@ pub struct Search {
     /// search this conversation only (repeatable); default: every one
     #[arg(long = "conversation", value_name = "ID")]
     conversations: Vec<String>,
-    /// the newest N hits, 1 to 500 (default: 20)
+    /// how many hits, 1 to 500 (default: 20)
     #[arg(long, default_value_t = DEFAULT_LIMIT, allow_negative_numbers = true)]
     limit: i64,
     /// one JSON object
     #[arg(long)]
     json: bool,
+    /// order: relevance (default) or newest; newest without bounds is version 1
+    #[arg(long, value_enum)]
+    order: Option<Order>,
+    /// only turns at or after this UTC instant (RFC 3339 ending in Z)
+    #[arg(long)]
+    since: Option<String>,
+    /// only turns before this UTC instant (RFC 3339 ending in Z): an as-of cutoff
+    #[arg(long)]
+    before: Option<String>,
 }
+
+const UNRANKED: &str = "the store does not support history-ranking version 1";
 
 pub fn run(args: &Search, out: &mut impl Write, err: &mut impl Write) -> io::Result<u8> {
     let json = args.json;
@@ -80,6 +92,19 @@ pub fn run(args: &Search, out: &mut impl Write, err: &mut impl Write) -> io::Res
             return usage(json, &message, out, err);
         }
     }
+    let bounded = args.since.is_some() || args.before.is_some();
+    let mut request = Request {
+        terms: terms.clone(),
+        ids: None,
+        limit: args.limit as usize,
+        order: args.order.unwrap_or(Order::Relevance),
+        since: args.since.clone(),
+        before: args.before.clone(),
+    };
+    let bounds = match request.bounds() {
+        Ok(bounds) => bounds,
+        Err(message) => return usage(json, &message, out, err),
+    };
     let store = match selected.open() {
         Ok(store) => store,
         Err(error) => return failed(&super::Error::from(error).text(), None, json, out, err),
@@ -96,28 +121,87 @@ pub fn run(args: &Search, out: &mut impl Write, err: &mut impl Write) -> io::Res
     } else {
         None
     };
-    let turns = match store.search_turns(&terms, ids, args.limit as usize) {
-        Ok(turns) => turns,
-        Err(error) => return failed(&error.text(), None, json, out, err),
+    let mut fallback = None;
+    if (request.order == Order::Relevance || bounded) && !store.history_ranking() {
+        if args.order.is_some() || bounded {
+            return failed(UNRANKED, None, json, out, err);
+        }
+        request.order = Order::Newest;
+        fallback = Some(format!("{UNRANKED}; newest first"));
+    }
+    let relevance = request.order == Order::Relevance;
+    let ranked_path = relevance || bounded;
+    let (turns, scores): (Vec<_>, Vec<_>) = if ranked_path {
+        request.ids = ids.map(<[String]>::to_vec);
+        match store.rank_turns(&request) {
+            Ok(ranked) => ranked.into_iter().unzip(),
+            Err(error) => return failed(&error.text(), None, json, out, err),
+        }
+    } else {
+        match store.search_turns(&terms, ids, args.limit as usize) {
+            Ok(turns) => {
+                let none = vec![None; turns.len()];
+                (turns, none)
+            }
+            Err(error) => return failed(&error.text(), None, json, out, err),
+        }
     };
-    let hits = match search_hits(store.as_ref(), &turns, &terms, ids, args.limit as usize) {
+    let score_of = |turn: &super::Turn| {
+        turns
+            .iter()
+            .position(|t| std::ptr::eq(t, turn))
+            .and_then(|i| scores[i])
+    };
+    let hits = match search_hits(
+        store.as_ref(),
+        &turns,
+        &terms,
+        ids,
+        args.limit as usize,
+        relevance,
+        bounds,
+    ) {
         Ok(hits) => hits,
         Err(error) => return failed(&error.text(), None, json, out, err),
     };
     if json {
-        let hits: Vec<Value> = hits.iter().map(|hit| hit.json(&terms)).collect();
-        let envelope = json!({
+        let hits: Vec<Value> = hits
+            .iter()
+            .map(|hit| {
+                let mut value = hit.json(&terms);
+                if let Hit::Turn { turn, .. } = hit
+                    && let Some(score) = score_of(turn)
+                {
+                    value["score"] = json!(score);
+                }
+                value
+            })
+            .collect();
+        let mut envelope = json!({
             "query": query,
             "conversations": ids,
             "limit": args.limit,
             "client": store.client(),
             "hits": hits,
         });
+        if ranked_path || fallback.is_some() {
+            envelope["order"] = json!(request.order.name());
+        }
+        if let Some(reason) = &fallback {
+            envelope["fallback"] = json!(reason);
+        }
         writeln!(out, "{envelope}")?;
         return Ok(0);
     }
+    if relevance {
+        writeln!(out, "order: relevance")?;
+    }
+    if let Some(reason) = &fallback {
+        writeln!(out, "fallback: {reason}")?;
+    }
     if hits.is_empty() {
-        writeln!(out, "no turn matches every term of {}", repr(&query))?;
+        let rule = if relevance { "any" } else { "every" };
+        writeln!(out, "no turn matches {rule} term of {}", repr(&query))?;
     }
     for hit in &hits {
         match hit {

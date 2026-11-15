@@ -2,6 +2,7 @@
 
 import ast
 import json
+from collections.abc import Mapping
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -57,11 +58,15 @@ def fresh_handoff(space: Workspace, keep: frozenset[str]) -> None:
         path.write_text(updated)
 
 
-SEARCH_GUIDANCE = (
-    " Use two or three distinctive words; if nothing matches, drop a word or try"
-    " another word for the same thing. A later turn can supersede an earlier one,"
-    " so check newer hits before relying on an older fact."
-)
+# S12 rewrote search_history for ranked results; the frozen comparison maps the
+# description and parameter text back to version 1 (independent MCP checks pin
+# the new text) and drops the new optional inputs.
+HISTORY_V1 = {
+    "description": "Search every recorded conversation for turns holding every given term (case-insensitive substrings, separated by spaces), newest first: message text, tool calls with their arguments, and tool results. Each hit names the conversation and turn, e.g. [cc-7f3a #2], with a snippet around the match; pass that id and number to recall_turn to read the turn verbatim. Use it when the memory index and the 'where we left off' block do not say where something happened, or when a fact lives in a session older than the ones shown. Pass conversation=<id> to search one session; limit is the newest N hits (default 10, at most 50).",
+    "query": "One or more terms separated by spaces; a turn matches when it holds"
+    " every one, case-insensitively.",
+    "limit": "How many of the newest hits to return (default 10, at most 50).",
+}
 
 
 def retained(value: Any) -> Any:
@@ -84,9 +89,14 @@ def retained(value: Any) -> Any:
                 "current mounts; referenced content is not copied or executed.\n",
                 "",
             )
-        if result.get("name") == "search_history" and "description" in result:
-            # S9's appended search guidance has independent MCP discovery tests.
-            result["description"] = result["description"].replace(SEARCH_GUIDANCE, "")
+        if result.get("name") == "search_history" and "inputSchema" in result:
+            # S9/S12 search guidance and S12 ranking inputs have independent tests.
+            result["description"] = HISTORY_V1["description"]
+            properties = result["inputSchema"]["properties"]
+            for field in ("order", "since", "before"):
+                properties.pop(field, None)
+            for field in ("query", "limit"):
+                properties[field]["description"] = HISTORY_V1[field]
         if "wire_version" in result and "neosian_version" in result:
             result["neosian_version"] = "<VERSION>"
             result.pop(
@@ -98,6 +108,9 @@ def retained(value: Any) -> Any:
             result.pop(
                 "memory_passages", None
             )  # S11's optional passages have independent contracts.
+            result.pop(
+                "history_ranking", None
+            )  # S12's optional ranking has independent contracts.
             result.pop("change_feed", None)  # S7 has independent durability contracts.
             result.pop(
                 "knowledge_policy", None
@@ -153,6 +166,35 @@ def retained(value: Any) -> Any:
     return value
 
 
+def newest_call(request: Mapping[str, Any]) -> Mapping[str, Any]:
+    """A JSON-RPC search_history call asking for version 1's newest order."""
+    params = request.get("params")
+    if request.get("method") != "tools/call" or not isinstance(params, Mapping):
+        return request
+    if params.get("name") != "search_history":
+        return request
+    arguments = {**params.get("arguments", {}), "order": "newest"}
+    return {**request, "params": {**params, "arguments": arguments}}
+
+
+def newest(case: Case) -> Case:
+    """S12 made relevance the agent doors' default. The frozen history cases ask
+    for the newest order explicitly, so every expected byte still compares."""
+    argv = (
+        case.argv + ("--order", "newest") if case.argv[:1] == ("search",) else case.argv
+    )
+    rpc = tuple(newest_call(request) for request in case.rpc)
+    http = tuple(
+        (
+            replace(exchange, body=newest_call(exchange.body))
+            if exchange.path == "/mcp" and isinstance(exchange.body, Mapping)
+            else exchange
+        )
+        for exchange in case.http
+    )
+    return replace(case, argv=argv, rpc=rpc, http=http)
+
+
 @pytest.mark.parametrize(
     "case",
     [case for case in CASES if case.name in EXPECTED],
@@ -199,6 +241,7 @@ def test_v1_reference(case: Case, binary: Binary, tmp_path: Path) -> None:
         path_command.write_bytes(b"")
         path_command.chmod(0o700)
         case = replace(case, env={**case.env, "PATH": str(path_command.parent)})
+    case = newest(case)
     before = snapshot(space, keep=keep)
     result = run_case(binary.executable, case, space)
     after = snapshot(space, keep=keep)

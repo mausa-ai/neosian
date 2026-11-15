@@ -10,8 +10,8 @@ use super::codec;
 use super::envelope::Fail;
 use super::paging::{PAGE, projections_page, turns_page};
 use super::params::{
-    Payload, optional_int, optional_ints, optional_strs, optional_timestamp, require_objects,
-    require_str,
+    Payload, optional_int, optional_ints, optional_str, optional_strs, optional_timestamp,
+    require_objects, require_str,
 };
 use super::routes::Route;
 use super::routes_memory::actor;
@@ -102,8 +102,41 @@ fn search_turns(store: &dyn Backend, payload: &Payload, _client: &str) -> Result
     if limit < 1 {
         return Err(Fail::value(format!("limit must be >= 1, got {limit}")));
     }
-    let found = store.search_turns(&terms, ids.as_deref(), limit as usize)?;
-    Ok(json!({"turns": turns(&found)}))
+    let order = optional_str(payload, "order")?;
+    let since = optional_str(payload, "since")?;
+    let before = optional_str(payload, "before")?;
+    if order.is_none() && since.is_none() && before.is_none() {
+        let found = store.search_turns(&terms, ids.as_deref(), limit as usize)?;
+        return Ok(json!({"turns": turns(&found)}));
+    }
+    // History ranking version 1 (DESIGN §40.43).
+    use crate::conversation::rank::{Order, Request};
+    let chosen = match order.as_deref() {
+        None | Some("newest") => Order::Newest,
+        Some("relevance") => Order::Relevance,
+        Some(other) => {
+            let why = format!("order must be newest or relevance, got {other:?}");
+            return Err(Fail::value(why));
+        }
+    };
+    let request = Request {
+        terms,
+        ids,
+        limit: limit as usize,
+        order: chosen,
+        since,
+        before,
+    };
+    request.bounds().map_err(Fail::value)?;
+    let (found, scores): (Vec<_>, Vec<_>) = store.rank_turns(&request)?.into_iter().unzip();
+    let mut answer = json!({"turns": turns(&found)});
+    if order.is_some() {
+        answer["order"] = json!(chosen.name());
+    }
+    if chosen == Order::Relevance {
+        answer["scores"] = json!(scores);
+    }
+    Ok(answer)
 }
 
 fn append_projections(

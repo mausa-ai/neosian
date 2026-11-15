@@ -8,6 +8,47 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [2.16.0] - 2026-11-16
+
+### Added
+
+- History search ranks results. `neosian search` and MCP `search_history`
+  return the best matching recorded turns first. A turn needs only one query
+  term, so synonyms can share one query; rarer terms and more occurrences in
+  less text score higher. Scores use memory search's BM25 arithmetic over the
+  matching turns, computed at query time with no model or index; ties go to
+  the newer turn. Files match with Unicode lowercase; Postgres matches with
+  `ILIKE` under the database's collation exactly as before, newest is that
+  answer within the bounds, and relevance counts over the stored searchable
+  text with Unicode lowercase. Backends agree wherever the database's case
+  folding agrees with Unicode lowercase, which includes all ASCII text.
+  `--order newest` (MCP `order`) lists turns holding every term, newest first,
+  as before. `--since` and `--before` (MCP `since`, `before`) bound turn time
+  in either order; turns never change, so `--before` answers as of that
+  moment. Relevance output names its order: an `order: relevance` line, JSON
+  `order` with a `score` per turn hit and a `best match first` MCP footer.
+- The optional storage capability `history_ranking: {version: 1}` adds
+  `order`, `since` and `before` to `POST /v1/conversation/search_turns`; a
+  relevance answer adds `scores` parallel to `turns`. Independent conformance
+  cases pin the scores and bounds. Requests without these fields are
+  unchanged, so the HTTP default stays newest first. Postgres needs no DDL or
+  extension.
+
+### Changed
+
+- The `neosian search` and MCP `search_history` default is relevance order.
+  Scripts that read newest-first output pass `--order newest` (MCP
+  `"order": "newest"`), which keeps the previous output. When the history
+  source lacks history ranking and no order was given, the agent doors answer
+  newest first and report the fallback; an explicit relevance order or a time
+  bound refuses there. Matching mailbox messages still need every term and
+  follow the ranked turns, newest first among themselves, within the same
+  limit; `--since` and `--before` bound them, and the annotations shown under
+  a turn, by each message's creation instant, as they bound turns.
+- The `search_history` tool description says a turn needs only one term,
+  suggests adding synonyms to one query instead of dropping words, and
+  describes `order`, `since` and `before`.
+
 ## [2.15.0] - 2026-11-15
 
 ### Added

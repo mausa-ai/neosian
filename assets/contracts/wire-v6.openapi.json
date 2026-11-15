@@ -135,6 +135,19 @@
                       "additionalProperties": false,
                       "description": "Optional memory passages version 1 on memory/search: up to three matched windows per hit from long content or metadata values, each with its nearest heading. Requires memory_search version 1. No new access authority."
                     },
+                    "history_ranking": {
+                      "type": "object",
+                      "properties": {
+                        "version": {
+                          "const": 1
+                        }
+                      },
+                      "required": [
+                        "version"
+                      ],
+                      "additionalProperties": false,
+                      "description": "Optional history ranking version 1 on conversation/search_turns: relevance and newest orders and since/before turn-time bounds. No new access authority."
+                    },
                     "knowledge_policy": {
                       "type": "object",
                       "additionalProperties": false,
@@ -2045,7 +2058,7 @@
     "/v1/conversation/search_turns": {
       "post": {
         "operationId": "conversation_search_turns",
-        "description": "Every whitespace-split term must occur as a case-insensitive substring; newest first. Blank queries are refused. Omitted conversations selects all; [] selects none. No paging.",
+        "description": "Version 1: every whitespace-split term must occur as a case-insensitive substring; newest first. Blank queries are refused. Omitted conversations selects all; [] selects none. No paging. History ranking version 1 adds order, since and before.",
         "requestBody": {
           "required": true,
           "content": {
@@ -2081,6 +2094,33 @@
                         "type": "null"
                       }
                     ]
+                  },
+                  "order": {
+                    "enum": [
+                      "newest",
+                      "relevance",
+                      null
+                    ],
+                    "default": null,
+                    "description": "History ranking version 1. Absent or null is version 1 newest without an echo. newest is the version 1 answer within the bounds. relevance takes candidate turns holding at least one term under the backend's version 1 matching and scores them with the memory-ranking BM25 arithmetic over the candidate set, counting occurrences in the searchable text after Unicode lowercase; ties follow the newest total order."
+                  },
+                  "since": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "date-time",
+                    "default": null,
+                    "description": "History ranking version 1. Inclusive lower bound on turn created_at: a UTC RFC 3339 instant ending in Z."
+                  },
+                  "before": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "date-time",
+                    "default": null,
+                    "description": "History ranking version 1. Exclusive upper bound on turn created_at, UTC ending in Z; since must precede it. Turns are immutable, so this is an exact as-of cutoff."
                   }
                 },
                 "required": [
@@ -2104,6 +2144,21 @@
                       "items": {
                         "$ref": "state-v1.schema.json#/$defs/Turn"
                       }
+                    },
+                    "order": {
+                      "enum": [
+                        "newest",
+                        "relevance"
+                      ],
+                      "description": "History ranking version 1: echoes an explicit request order; absent when the request names no order."
+                    },
+                    "scores": {
+                      "type": "array",
+                      "items": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "description": "Relevance order only: round-half-even(BM25 x 10^6) per turn, parallel to turns and non-increasing."
                     }
                   },
                   "required": [

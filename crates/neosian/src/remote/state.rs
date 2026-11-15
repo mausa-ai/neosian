@@ -245,6 +245,16 @@ impl State for RemoteStore {
             .collect::<Result<_, _>>()?)
     }
 
+    fn history_ranking(&self) -> bool {
+        self.supports_history_ranking()
+    }
+    fn rank_turns(
+        &self,
+        request: &crate::conversation::rank::Request,
+    ) -> Result<Vec<crate::conversation::rank::Ranked>, conversation::Error> {
+        self.rank_turns_wire(request)
+    }
+
     fn append_turn(
         &self,
         id: &str,

@@ -122,6 +122,20 @@ pub trait State: Send + Sync {
         ids: Option<&[String]>,
         limit: usize,
     ) -> Result<Vec<Turn>, conversation::Error>;
+    /// Whether history ranking version 1 (orders and turn-time bounds) answers.
+    fn history_ranking(&self) -> bool {
+        false
+    }
+    fn rank_turns(
+        &self,
+        _request: &crate::conversation::rank::Request,
+    ) -> Result<Vec<crate::conversation::rank::Ranked>, conversation::Error> {
+        Err(conversation::Error::Memory(
+            crate::store::error::MemoryError::configuration(
+                "backend does not support history-ranking version 1",
+            ),
+        ))
+    }
     fn append_turn(
         &self,
         id: &str,

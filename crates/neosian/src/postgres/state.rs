@@ -109,6 +109,15 @@ impl State for PostgresStore {
     ) -> Result<Vec<Turn>, conversation::Error> {
         self.search_turns(terms, ids, limit)
     }
+    fn history_ranking(&self) -> bool {
+        true
+    }
+    fn rank_turns(
+        &self,
+        request: &crate::conversation::rank::Request,
+    ) -> Result<Vec<crate::conversation::rank::Ranked>, conversation::Error> {
+        self.rank_turns(request)
+    }
     fn append_turn(
         &self,
         id: &str,

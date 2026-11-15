@@ -12,6 +12,7 @@ pub mod ids;
 pub mod links;
 pub mod message;
 pub mod projection;
+pub mod rank;
 pub mod recall;
 pub mod rows;
 pub mod search;

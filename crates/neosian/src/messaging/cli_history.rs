@@ -8,6 +8,7 @@ use serde_json::{Value, json};
 use super::delivery::annotation;
 use super::mailbox::Mailbox;
 use crate::conversation::hits::{hit_json, snippet};
+use crate::conversation::rank::{Bounds, within};
 use crate::conversation::search::match_terms;
 use crate::conversation::{Error, Turn};
 use crate::state::State;
@@ -41,13 +42,18 @@ impl Hit<'_> {
 }
 
 /// The turn hits, annotated and joined by the message hits, newest first,
-/// the newest `limit`.
+/// the newest `limit`. `ranked` keeps the turns in the given order and lists
+/// message hits after them, newest first, within the same limit; `bounds`
+/// limit message hits and annotations by creation instant, as they limit
+/// turns (§40.43).
 pub fn search_hits<'a>(
     store: &dyn State,
     turns: &'a [Turn],
     terms: &[String],
     ids: Option<&[String]>,
     limit: usize,
+    ranked: bool,
+    bounds: Bounds,
 ) -> Result<Vec<Hit<'a>>, Error> {
     let mut rows: Vec<(i64, String, Hit<'a>)> = turns
         .iter()
@@ -67,6 +73,9 @@ pub fn search_hits<'a>(
             let item = &receipt.message;
             let about = item.about.as_deref();
             if ids.is_some_and(|ids| !about.is_some_and(|about| ids.iter().any(|id| id == about))) {
+                continue;
+            }
+            if !within(bounds, item.created_at.instant()) {
                 continue;
             }
             let note = annotation(item);
@@ -112,7 +121,15 @@ pub fn search_hits<'a>(
             }
         }
     }
-    rows.sort_by(|a, b| (b.0, &b.1).cmp(&(a.0, &a.1)));
+    if ranked {
+        let (turns, mut messages): (Vec<_>, Vec<_>) = rows
+            .into_iter()
+            .partition(|(_, _, hit)| matches!(hit, Hit::Turn { .. }));
+        messages.sort_by(|a, b| (b.0, &b.1).cmp(&(a.0, &a.1)));
+        rows = turns.into_iter().chain(messages).collect();
+    } else {
+        rows.sort_by(|a, b| (b.0, &b.1).cmp(&(a.0, &a.1)));
+    }
     rows.truncate(limit);
     Ok(rows.into_iter().map(|(_, _, hit)| hit).collect())
 }

@@ -5,6 +5,7 @@
 mod changes;
 pub(crate) mod codec;
 mod errors;
+mod history;
 pub mod selection;
 mod state;
 #[cfg(test)]

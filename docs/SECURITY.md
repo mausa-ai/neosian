@@ -57,7 +57,10 @@ reauthorized. Redacted/deleted documents, historical bodies and mailbox/session
 records are excluded. Only explicitly selected metadata string values are
 searched. Relevance statistics come only from the documents that one
 authorized search may read in a single scope, so scores reveal nothing about
-other scopes, erased or excluded documents. Reference backends retain no
+other scopes, erased or excluded documents. History ranking takes its
+statistics only from the candidate turns of the conversations one authorized
+search may read; a constrained token still names its conversations, and
+redacted turns never count. Reference backends retain no
 search cache or derived index; results already delivered to a client cannot
 be recalled after erasure.
 

@@ -100,6 +100,11 @@ uses the project mount. Storage defaults to the home.
 Conversation-addressed messages annotate their recipient. `about` and
 `about_turn` attach a scope message to historical work without changing its
 delivery audience. Search finds message bodies and earlier outcome notes.
+A message hit needs every term; under the relevance default, message hits
+follow the ranked turns, newest first among themselves. A search's `since`
+and `before` bounds apply to message hits and to the annotations shown under
+a turn by each message's creation instant, since inclusive and before
+exclusive, as they apply to turns.
 Recall appends dated annotations after the original verbatim turn; successful
 completion or acknowledgment does not remove a correction. Cancellation is
 labelled. Operator redaction clears the message and its versions.

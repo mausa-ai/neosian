@@ -87,21 +87,33 @@ fn with_message(name: &str) -> Scratch {
 #[test]
 fn hits_come_newest_first_one_line_each() {
     let home = planted("bin-search");
-    let found = search(&home, &["TTL"]);
+    // Version 1 behavior: S12 made relevance the default (§40.43).
+    let found = search(&home, &["TTL", "--order", "newest"]);
     assert_eq!(found.status.code(), Some(0));
     assert_eq!(
         text(found.stdout),
         "[late #1] 2026-10-12T22:28:00Z -  ttl again: café\n\
          [early #1] 2026-10-12T22:27:56.052833Z claude-code:early  the cache TTL is eight hours\n"
     );
-    let narrowed = search(&home, &["ttl", "--conversation", "early", "--limit", "1"]);
+    let narrowed = search(
+        &home,
+        &[
+            "ttl",
+            "--conversation",
+            "early",
+            "--limit",
+            "1",
+            "--order",
+            "newest",
+        ],
+    );
     assert!(text(narrowed.stdout).starts_with("[early #1]"));
-    let argument = search(&home, &["deploy.md", "eu-west-1"]);
+    let argument = search(&home, &["deploy.md", "eu-west-1", "--order", "newest"]);
     assert_eq!(
         text(argument.stdout),
         "[early #2] 2026-10-12T22:27:56.057178Z claude-code:early  Read {\"file_path\":\"/work/demo/deploy.md\"}\n"
     );
-    let none = search(&home, &["deploy", "zzz"]);
+    let none = search(&home, &["deploy", "zzz", "--order", "newest"]);
     assert_eq!(
         (none.status.code(), text(none.stdout).as_str()),
         (Some(0), "no turn matches every term of 'deploy zzz'\n")
@@ -141,9 +153,12 @@ fn a_malformed_candidate_row_is_refused_at_tier_one() {
     assert!(text(refused.stderr).starts_with("error: [agent_conversation_format_unsupported]"));
     // A line that cannot hold a prefilterable term is never decoded; a
     // term the file could not hold verbatim makes every line a candidate.
-    let unseen = search(&home, &["eight"]);
+    let unseen = search(&home, &["eight", "--order", "newest"]);
     assert_eq!(unseen.status.code(), Some(0));
     assert!(text(unseen.stdout).starts_with("[early #1]"));
+    let ranked = search(&home, &["eight"]);
+    assert_eq!(ranked.status.code(), Some(0));
+    assert!(text(ranked.stdout).starts_with("order: relevance\n[early #1]"));
     assert_eq!(search(&home, &["café"]).status.code(), Some(1));
 }
 
@@ -188,7 +203,8 @@ fn a_wrong_invocation_exits_two_and_builds_nothing() {
 #[test]
 fn a_message_is_a_hit_of_its_own_and_annotates_the_turn_it_is_about() {
     let home = with_message("bin-search-message");
-    let found = search(&home, &["ttl"]);
+    // Version 1 merges by time: S12 made relevance the default (§40.43).
+    let found = search(&home, &["ttl", "--order", "newest"]);
     assert_eq!(found.status.code(), Some(0));
     assert_eq!(
         text(found.stdout),
@@ -199,18 +215,22 @@ fn a_message_is_a_hit_of_its_own_and_annotates_the_turn_it_is_about() {
              {ANNOTATION}\n"
         )
     );
-    let outcome = search(&home, &["deploy", "--limit", "1"]);
+    let outcome = search(&home, &["deploy", "--limit", "1", "--order", "newest"]);
     assert_eq!(
         text(outcome.stdout),
         format!("{ANNOTATION}\n  fixed in deploy\n")
     );
-    let narrowed = search(&home, &["ttl", "--conversation", "late"]);
+    let narrowed = search(
+        &home,
+        &["ttl", "--conversation", "late", "--order", "newest"],
+    );
     assert_eq!(
         text(narrowed.stdout),
         "[late #1] 2026-10-12T22:28:00Z -  ttl again: café\n"
     );
     let envelope: serde_json::Value =
-        serde_json::from_slice(&search(&home, &["ttl", "--json"]).stdout).unwrap();
+        serde_json::from_slice(&search(&home, &["ttl", "--json", "--order", "newest"]).stdout)
+            .unwrap();
     let hits = envelope["hits"].as_array().unwrap();
     assert_eq!(hits.len(), 3);
     assert_eq!(hits[0]["type"], "message");

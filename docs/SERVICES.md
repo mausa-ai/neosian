@@ -197,12 +197,14 @@ The site repository's `RELEASE` pin advances only after publication. Its
 build verifies the docs artifact checksum and renders the exact release's
 pages; authored documentation stays in this repository's `assets/docs/`.
 
-Memory-search version 1, memory ranking version 1 and memory passages version
-1 introduce no service setting or model dependency. The storage runner checks each when advertised
+Memory-search version 1, memory ranking version 1, memory passages version
+1 and history ranking version 1 introduce no service setting or model
+dependency. The storage runner checks each when advertised
 on either full/base profiles;
-reference Postgres and container gates include these cases. Scope grants
-apply before search, and restart-based grant revocation also applies to
-resumed search pages. Search has no separate cache or index to provision.
+reference Postgres and container gates include these cases. Scope and
+conversation grants apply before search, and restart-based grant revocation
+also applies to resumed search pages. Search has no separate cache or index
+to provision, and history ranking needs no Postgres DDL or extension.
 
 Knowledge import/collection/validate/references/export introduces no service
 setting, account or dependency. It uses existing mounted storage access and

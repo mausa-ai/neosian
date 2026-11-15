@@ -135,7 +135,9 @@ def test_stdio_tools_history_and_refusals(binary: Binary) -> None:
     )
     assert "update or remove the stale document" in memory_search
     history_search = tools["search_history"]["description"]
-    assert "two or three distinctive words" in history_search
+    assert "rank best match first by default" in history_search
+    assert "add synonyms to one query" in history_search
+    assert "before is an exact as-of cutoff" in history_search
     assert "A later turn can supersede an earlier one" in history_search
     # OpenAI-compatible clients cap function descriptions at 1024 characters.
     assert max(len(memory_search), len(history_search)) <= 1024
