@@ -6,6 +6,7 @@ mod connection;
 mod memory;
 mod pages;
 mod portable;
+mod ranked;
 mod rows;
 mod search;
 mod state;

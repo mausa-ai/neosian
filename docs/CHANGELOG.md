@@ -8,6 +8,46 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [2.17.0] - 2026-11-16
+
+### Changed
+
+- Ranked search holds memory in proportion to its answer, not to how much
+  stored text matches. History relevance used to read every matching turn
+  whole before ranking; now it keeps a few facts per matching turn (where it
+  is, its term counts and its length), ranks them, and reads back only the
+  turns it returns. On Postgres both reads run in one read-only snapshot and
+  the counting happens while the rows stream, so the database's statement
+  and transaction timeouts cover it; on files each log is read a line at a
+  time under the store lock. Newest order holds at most `limit` turns and on
+  Postgres no longer reads the stored search text. Memory relevance and
+  newest search work the same way: excerpts and passages are built only for
+  the documents returned. Results are unchanged. Measured with `neosian
+  serve` on Postgres in a container limited to 192 MiB: relevance over 600
+  turns of 64 KiB, which used to be killed for memory, peaks at 16 MiB in
+  0.26 s, and over 5,000 such turns at 14 MiB in 2.0 s. Memory search on
+  Postgres reads its rows as one stream instead of one round trip per row.
+- A Postgres statement whose rows would pass `NEOSIAN_MAX_RESPONSE_BYTES`
+  (64 MiB by default) now stops and refuses, naming the setting, instead of
+  holding them all. This also covers whole reads, such as a full
+  conversation read by a local command; raise the setting for larger ones.
+
+### Added
+
+- `NEOSIAN_SEARCH_MAX_CANDIDATES` (default 100,000, at most 10,000,000)
+  bounds how many turns or documents holding a term one relevance search
+  considers. Past it the search refuses with `value_error` and the message
+  `resource limit NEOSIAN_SEARCH_MAX_CANDIDATES exceeded: more than N turns
+  hold a search term; narrow the words or the time range`. `neosian search`,
+  `neosian memory search` and the MCP `search_history` and `search_memory`
+  tools add advice to use rarer terms, a time bound, a narrower path or one
+  conversation. Newest and path orders are not limited this way. An operator
+  serving several people under a memory limit can lower it to promise a
+  ceiling.
+- `make bench-memory` and a CI job measure the peak memory of one search
+  request per operation over an adversarial corpus on files and Postgres and
+  fail above 32 MiB; answer-sized requests are printed but not yet gated.
+
 ## [2.16.0] - 2026-11-16
 
 ### Added

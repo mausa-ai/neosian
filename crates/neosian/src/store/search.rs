@@ -1,4 +1,5 @@
-//! One lock covers the current-document search page, including its lookahead.
+//! One lock covers the current-document search page, including its lookahead
+//! and the second read of ranked winners.
 
 use super::{FileStore, error::Error, layout};
 use crate::memory::search::{self, Page, Request};
@@ -44,6 +45,8 @@ impl FileStore {
                 }
             }
         });
-        search::scan(scope, request, rows)
+        // Winners are read again under the same lock, so they cannot change.
+        let load = |path: &str| self.load(scope, path, &layout::doc_file(&self.root, scope, path)?);
+        search::scan(scope, request, rows, load)
     }
 }

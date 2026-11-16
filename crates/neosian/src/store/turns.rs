@@ -12,10 +12,11 @@ use super::fileio::{append_line, private_mkdir};
 use super::time::Stamp;
 use crate::conversation::ids::parse_conversation_id;
 use crate::conversation::message::Message;
+use crate::conversation::rank::{Key, Order, Ranked, Ranking, Request};
 use crate::conversation::rows::{
     CONVERSATIONS, PROJECTIONS, TURNS, parse_projection, parse_turn, render_projection, render_turn,
 };
-use crate::conversation::search::{held_ids, newest_first, scan_candidates, scan_turns};
+use crate::conversation::search::{held_ids, read_at, scan_log, turn_text};
 use crate::conversation::{Error, Projection, Refused, Turn};
 
 /// `_check_cursor`: the ABC's own refusals of a negative start or limit.
@@ -169,25 +170,25 @@ impl FileStore {
                 &held
             }
         };
-        let mut found = Vec::new();
-        for id in ids {
-            let file = self.conversation_file(id, TURNS)?;
-            if file.is_file() {
-                found.extend(scan_turns(&file, id, terms)?);
-            }
-        }
-        newest_first(&mut found);
-        found.truncate(limit);
-        Ok(found)
+        // Version 1 is newest without bounds: the same pipeline, at most
+        // `limit` keys held while the logs stream (DESIGN §40.45).
+        let request = Request {
+            terms: terms.to_vec(),
+            ids: None,
+            limit,
+            order: Order::Newest,
+            since: None,
+            before: None,
+        };
+        Ok(self
+            .rank_logs(&request, ids)?
+            .into_iter()
+            .map(|(turn, _)| turn)
+            .collect())
     }
 
     /// History ranking version 1 under the store lock (DESIGN §40.43).
-    pub fn rank_turns(
-        &self,
-        request: &crate::conversation::rank::Request,
-    ) -> Result<Vec<crate::conversation::rank::Ranked>, Error> {
-        use crate::conversation::rank::{Order, rank};
-        use crate::conversation::search::turn_text;
+    pub fn rank_turns(&self, request: &Request) -> Result<Vec<Ranked>, Error> {
         request.bounds().map_err(Error::Value)?;
         let _held = self.lock()?;
         let held;
@@ -203,19 +204,45 @@ impl FileStore {
                 &held
             }
         };
+        self.rank_logs(request, ids)
+    }
+
+    /// Pass one streams every selected log and keeps facts; pass two reads
+    /// the winners' lines again by offset. The caller holds the lock, so the
+    /// logs cannot change between the passes.
+    fn rank_logs(&self, request: &Request, ids: &[String]) -> Result<Vec<Ranked>, Error> {
+        let mut ranking = Ranking::new(request, false)?;
         let all = request.order == Order::Newest;
-        let mut candidates = Vec::new();
         for id in ids {
             let file = self.conversation_file(id, TURNS)?;
             if file.is_file() {
-                candidates.extend(scan_candidates(&file, id, &request.terms, all)?);
+                let conversation = ranking.conversation(id);
+                scan_log(&file, id, &request.terms, all, |turn, place, line| {
+                    let key = Key {
+                        created: turn.created_at.instant(),
+                        conversation,
+                        turn: turn.turn,
+                        place,
+                        line: u32::try_from(line).unwrap_or(u32::MAX),
+                    };
+                    ranking.offer(key, &turn_text(&turn))
+                })?;
             }
         }
-        let texts = candidates.into_iter().map(|turn| {
-            let text = turn_text(&turn);
-            (turn, text)
-        });
-        rank(texts.collect(), request, false).map_err(Error::Value)
+        let mut readers = std::collections::HashMap::new();
+        let mut ranked = Vec::new();
+        for (key, id, score) in ranking.winners() {
+            let reader = match readers.entry(key.conversation) {
+                std::collections::hash_map::Entry::Occupied(held) => held.into_mut(),
+                std::collections::hash_map::Entry::Vacant(slot) => {
+                    let file = fs::File::open(self.conversation_file(&id, TURNS)?)?;
+                    slot.insert(std::io::BufReader::new(file))
+                }
+            };
+            let turn = read_at(reader, key.place, key.line as usize, &id)?;
+            ranked.push((turn, score));
+        }
+        Ok(ranked)
     }
 
     /// The conversation's directory, refused when a symlink would carry

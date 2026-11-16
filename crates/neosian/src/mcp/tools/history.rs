@@ -172,7 +172,14 @@ fn search_call(server: &Server, arguments: &Map<String, Value>) -> Outcome {
         Err(Error::Conversation(refused)) => {
             return Outcome::fail(format!("[{}] {}", refused.code, refused.message));
         }
-        Err(error) => return Outcome::failed("search_history", &error.text()),
+        Err(error) => {
+            let text = error.text();
+            let outcome = Outcome::failed("search_history", &text);
+            return match crate::assets::too_broad(&text, TOOLS, "search_history_too_broad") {
+                Some(guidance) => outcome.hint(guidance),
+                None => outcome,
+            };
+        }
     };
     let relevance = ranking.relevance();
     let key = if relevance {

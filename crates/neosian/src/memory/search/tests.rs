@@ -1,6 +1,11 @@
 use super::*;
 use crate::store::{Document, envelope::Envelope, time::Stamp};
 
+/// Path order reads no winners again.
+fn no_winners(_: &str) -> Result<Document, Error> {
+    unreachable!("path order reads no winners")
+}
+
 fn request(query: &str) -> Request {
     serde_json::from_value(json!({"query":query})).unwrap()
 }
@@ -27,6 +32,7 @@ fn unicode_expansion_keeps_excerpt_offsets_in_original_characters() {
         "user:test",
         &q,
         [Ok(("a".into(), document(&body)))].into_iter(),
+        no_winners,
     )
     .unwrap();
     let excerpt = &page.hits[0].excerpt;
@@ -172,6 +178,7 @@ fn passages_pick_the_densest_windows_with_unicode_offsets_and_headings() {
         "user:test",
         &q,
         [Ok(("guide".into(), document(&body)))].into_iter(),
+        no_winners,
     )
     .unwrap();
     let passages = page.hits[0].passages.as_ref().unwrap();
@@ -207,6 +214,7 @@ fn passages_pick_the_densest_windows_with_unicode_offsets_and_headings() {
         "user:test",
         &q,
         [Ok(("guide".into(), document(&body)))].into_iter(),
+        no_winners,
     )
     .unwrap();
     assert!(none.hits[0].passages.is_none());
@@ -215,7 +223,31 @@ fn passages_pick_the_densest_windows_with_unicode_offsets_and_headings() {
         "user:test",
         &q,
         [Ok(("s".into(), document("deploy review")))].into_iter(),
+        no_winners,
     )
     .unwrap();
     assert_eq!(short.hits[0].passages.as_deref().map(<[_]>::len), Some(0));
+}
+
+#[test]
+fn ranked_orders_read_only_their_winners_again() {
+    let documents = || (0..6).map(|i| Ok((format!("n{i}"), document(&"needle ".repeat(i + 1)))));
+    for order in [Order::Relevance, Order::Newest] {
+        let mut q = request("needle");
+        q.order = Some(order);
+        q.limit = 2;
+        q.passages = Some(1);
+        let mut loaded = Vec::new();
+        let page = scan("user:test", &q, documents(), |path| {
+            loaded.push(path.to_string());
+            let count = path[1..].parse::<usize>().unwrap() + 1;
+            Ok(document(&"needle ".repeat(count)))
+        })
+        .unwrap();
+        let paths: Vec<String> = page.hits.iter().map(|hit| hit.path.clone()).collect();
+        assert_eq!(paths.len(), 2);
+        assert_eq!(loaded, paths);
+        assert!(page.hits.iter().all(|hit| hit.passages.is_some()));
+        assert_eq!(page.order, Some(order));
+    }
 }

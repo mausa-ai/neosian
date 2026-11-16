@@ -2,6 +2,7 @@
 
 use super::{PostgresStore, rows, sql};
 use crate::conversation::ids::parse_conversation_id;
+use crate::conversation::rank::{Order, Ranked, Request};
 use crate::conversation::search::messages_text;
 use crate::conversation::{
     Error, FORMAT, Projection, Redaction, Refused, Turn,
@@ -90,13 +91,10 @@ impl PostgresStore {
     /// History ranking version 1 (DESIGN §40.43): SQL decides membership with
     /// version 1's `ILIKE` over `search_text`, under the database's collation,
     /// within the selection and bounds. Newest is the SQL answer, ordered and
-    /// limited there. Relevance takes every row with any term and counts over
-    /// the same stored text in Rust; it needs every candidate for statistics.
-    pub fn rank_turns(
-        &self,
-        request: &crate::conversation::rank::Request,
-    ) -> Result<Vec<crate::conversation::rank::Ranked>, Error> {
-        use crate::conversation::rank::{Order, rank};
+    /// limited there, without `search_text`. Relevance streams every row with
+    /// any term and keeps only its facts, counting over the same stored text,
+    /// then reads the winners in the same snapshot (§40.45).
+    pub fn rank_turns(&self, request: &Request) -> Result<Vec<Ranked>, Error> {
         let ids = request.ids.as_deref();
         check_ids(ids)?;
         request.bounds().map_err(Error::Value)?;
@@ -105,27 +103,22 @@ impl PostgresStore {
             .iter()
             .map(|term| format!("%{}%", rows::escaped(term)))
             .collect();
-        let newest = request.order == Order::Newest;
-        let mut candidates = Vec::new();
-        for row in self.fetch(
-            sql!("store/rank_turns"),
-            json!({"any": !newest, "patterns": patterns, "all": ids.is_none(),
-                   "ids": ids.unwrap_or_default(), "since": request.since,
-                   "before": request.before, "limit": newest.then_some(request.limit)}),
-        )? {
-            let text = codec::text(&row, "search_text")?;
-            candidates.push((
-                rows::turn(&codec::text(&row, "conversation_id")?, row)?,
-                text,
-            ));
-        }
-        if newest {
-            return Ok(candidates
+        let params = json!({"patterns": patterns, "all": ids.is_none(),
+            "ids": ids.unwrap_or_default(), "since": request.since,
+            "before": request.before, "limit": request.limit});
+        if request.order == Order::Newest {
+            return self
+                .fetch(sql!("store/rank_turns"), params)?
                 .into_iter()
-                .map(|(turn, _)| (turn, None))
-                .collect());
+                .map(|row| {
+                    Ok((
+                        rows::turn(&codec::text(&row, "conversation_id")?, row)?,
+                        None,
+                    ))
+                })
+                .collect();
         }
-        rank(candidates, request, true).map_err(Error::Value)
+        self.rank_relevance(request, &params)
     }
 
     pub fn append_projections(&self, id: &str, entries: &[Projection]) -> Result<(), Error> {

@@ -155,11 +155,18 @@ Deleted and redacted documents are excluded entirely, including path and
 metadata matches. Old version bodies, `sessions/`, `handoff`, `messages/`
 and `message-links/` are not search sources. A completed write, deletion or
 erasure is reflected in the next query without rebuilding an index. File
-search holds the store lock; Postgres search uses a statement snapshot.
-Results already delivered cannot be recalled, and a concurrent change may
-follow a query's read. Search keeps no derived index or result cache. This
-baseline bounds hit count and excerpt length, not scan work or latency for
-large corpora. Provenance, including historical actor text, is returned as stored.
+search holds the store lock; Postgres search reads one database snapshot, so
+the operator's statement and transaction timeouts bound it. Results already
+delivered cannot be recalled, and a concurrent change may follow a query's
+read. Search keeps no derived index or result cache. Relevance and newest keep
+a few facts per document, not the document, and read only the winners again,
+in the same lock or snapshot, for their excerpts and passages. Relevance
+refuses when more documents hold a term than the store's
+`NEOSIAN_SEARCH_MAX_CANDIDATES` allows (default 100,000; `neosian docs
+stores`): the error names the setting, and the CLI and MCP add advice to use
+rarer terms, a narrower path or update dates. Newest and path orders are not
+limited this way. Scan work and latency still grow with the corpus.
+Provenance, including historical actor text, is returned as stored.
 
 Remote storage must advertise `memory_search: {version: 1}`. Otherwise search
 refuses without a fallback scan or download. Relevance, newest and date bounds
@@ -390,7 +397,11 @@ same rule as turns, in either order. When no order was given, a remote
 history source without `history_ranking: {version: 1}` answers newest first
 and says so (the CLI's `fallback`, a note on the MCP answer); an explicit
 relevance order or a bound refuses there. `neosian docs wire` gives the
-statistics.
+statistics. Relevance keeps a few facts per matching turn, not the turn, and
+reads only the winners whole. It refuses when more turns hold a term than the
+store's `NEOSIAN_SEARCH_MAX_CANDIDATES` allows (default 100,000); the CLI and
+MCP then suggest rarer terms, a time bound or one conversation. Newest order
+is not limited this way.
 
 Operator `redact` clears selected turns; `prune` applies an age cutoff to
 conversations. Whole-conversation erasure also clears their session documents.

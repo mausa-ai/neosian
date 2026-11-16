@@ -1,7 +1,7 @@
 # neosian development targets — `make help` (DESIGN §11)
 
 .DEFAULT_GOAL := help
-.PHONY: help install lint format typecheck test test-postgres test-container size rust-lint rust-test test-contract test-storage-contract bench-hooks release phase-tag
+.PHONY: help install lint format typecheck test test-postgres test-container size rust-lint rust-test test-contract test-storage-contract bench-hooks bench-memory release phase-tag
 
 help: ## List targets
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z_-]+:.*?##/ {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2} /^##@/ {printf "\n%s\n", substr($$0, 5)}' $(MAKEFILE_LIST)
@@ -56,6 +56,9 @@ test-storage-contract: ## Independent storage HTTP suite; backend=file|postgres|
 
 bench-hooks: ## The latency gate: p50 of 20 warm runs per binary event; home=DIR copies yours (default: a seeded reference home), binary=PATH
 	uv run python scripts/bench_hooks.py $(if $(home),--home "$(home)",--seed) $(if $(binary),--binary "$(binary)")
+
+bench-memory: ## The memory gate: peak RSS per search request over an adversarial literal corpus; backends=file,postgres (postgres needs the test DSN), binary=PATH
+	uv run python scripts/bench_search_memory.py --backends $(or $(backends),file) $(if $(binary),--binary "$(binary)")
 
 ##@ Release
 

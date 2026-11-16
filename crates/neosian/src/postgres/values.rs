@@ -10,7 +10,7 @@ use tokio_postgres::{
     types::{ToSql, Type},
 };
 
-type Parameter = Box<dyn ToSql + Sync + Send>;
+pub(super) type Parameter = Box<dyn ToSql + Sync + Send>;
 
 pub fn parameter(value: &Value, ty: &Type) -> io::Result<Parameter> {
     let invalid = || io::Error::other(format!("invalid Postgres parameter for {ty}"));
@@ -93,4 +93,20 @@ pub fn row(row: &Row) -> io::Result<Value> {
         fields.insert(column.name().to_string(), value);
     }
     Ok(Value::Object(fields))
+}
+
+/// About how many bytes a decoded row holds: text and keys at their length,
+/// every value and entry 16 more. Charged against the response budget.
+pub fn weight(value: &Value) -> u64 {
+    match value {
+        Value::String(text) => 16 + text.len() as u64,
+        Value::Array(items) => 16 + items.iter().map(weight).sum::<u64>(),
+        Value::Object(fields) => {
+            16 + fields
+                .iter()
+                .map(|(key, value)| 16 + key.len() as u64 + weight(value))
+                .sum::<u64>()
+        }
+        _ => 16,
+    }
 }

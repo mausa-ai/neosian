@@ -78,6 +78,15 @@ pub fn run(command: &Command, out: &mut impl Write, err: &mut impl Write) -> io:
     let call = match command {
         Command::Search { search, .. } => {
             let answered = search.run(&memory, json, out);
+            if let Err(crate::store::error::Error::Value(sentence)) = &answered {
+                let key = "search_memory_too_broad_cli";
+                if let Some(guidance) = crate::assets::too_broad(sentence, crate::assets::CORE, key)
+                {
+                    let mut outcome = Outcome::fail(sentence.clone());
+                    outcome.reminder = Some(guidance);
+                    return operate::fail(&outcome, json, out, err);
+                }
+            }
             return operate::settle(answered, json, out, err);
         }
         Command::Maintain {

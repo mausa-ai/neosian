@@ -61,16 +61,30 @@ budgets refuse explicitly; they never truncate results or delete retained data.
 | `NEOSIAN_REPLICA_MAX_PATHS` | 100,000 | 1,000,000 | Distinct retained receiver paths, including deleted history |
 | `NEOSIAN_REPLICA_MAX_BYTES` | 1 GiB | 64 GiB | Retained receiver documents, version rows and erasure trail |
 | `NEOSIAN_MAX_FILE_BYTES` | 64 MiB | 1 GiB | Decoded FileStore memory documents/version files, new memory transaction artifacts, exchange artifacts and Postgres search candidate content plus JSON extras |
-| `NEOSIAN_MAX_RESPONSE_BYTES` | 64 MiB | 1 GiB | Each HTTP storage-client response, before JSON decoding |
+| `NEOSIAN_MAX_RESPONSE_BYTES` | 64 MiB | 1 GiB | Each HTTP storage-client response, before JSON decoding, and the decoded rows of each Postgres statement as they arrive |
+| `NEOSIAN_SEARCH_MAX_CANDIDATES` | 100,000 | 10,000,000 | Turns or documents holding a term in one relevance search, history or memory, on files and Postgres |
 
 For byte settings, 1 MiB is 1,048,576 and 1 GiB is 1,073,741,824. Larger values
 allow more work and require more disk or memory; these are operation budgets,
 not process RSS quotas. File pages retain bounded names and load their selected
 documents; directory enumeration still scans names. Knowledge scans retain plan
-and result metadata proportional to their document budget. Postgres search uses
-one query snapshot and fetches one candidate at a time, stopping at page
-lookahead; it remains a scan without a search index. HTTP page cursors are
-validated, and every page still requires current server permissions.
+and result metadata proportional to their document budget. Path-ordered memory
+search on Postgres fetches one candidate at a time and stops at page lookahead.
+Ranked search, history or memory, keeps a few facts per candidate (its key,
+term counts and length), never its content, then reads the `limit` winners
+again: on files under the same lock, on Postgres in the same read-only
+REPEATABLE READ snapshot, with the counting done while the rows stream so that
+statement and transaction timeouts bound it. Newest order holds at most
+`limit` keys and on Postgres is one ordered, limited statement. Search remains
+a scan without a search index. A relevance search over more candidates than
+`NEOSIAN_SEARCH_MAX_CANDIDATES` refuses with `value_error` and the message
+`resource limit NEOSIAN_SEARCH_MAX_CANDIDATES exceeded: more than N turns hold
+a search term; narrow the words or the time range` (documents: the words, the
+path or the update dates); raise the setting or narrow the query. A Postgres
+statement whose decoded rows pass `NEOSIAN_MAX_RESPONSE_BYTES` stops reading
+and refuses by name instead of holding more; that also applies to whole reads
+such as a full conversation. HTTP page cursors are validated, and every page
+still requires current server permissions.
 
 Existing server request limits, per-document knowledge bounds, skill/context
 budgets and archive behavior remain separate. Client limits cannot raise a

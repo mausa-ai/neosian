@@ -150,7 +150,8 @@ impl From<MemoryError> for Error {
 
 impl From<io::Error> for Error {
     fn from(error: io::Error) -> Self {
-        Self::Io(error)
+        // A deliberate budget refusal crosses as the caller's fault, as on the memory side.
+        Self::from(StoreError::from(error))
     }
 }
 

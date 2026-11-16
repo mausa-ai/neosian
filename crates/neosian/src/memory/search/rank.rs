@@ -1,11 +1,126 @@
-//! Pinned relevance arithmetic for memory ranking version 1 (DESIGN §40.41).
+//! Pinned relevance arithmetic for memory ranking version 1 (DESIGN §40.41)
+//! and the ranking pipeline memory and history search share (§40.45).
 //!
 //! BM25 over version 1 substring occurrence counts. The statistics come from
 //! the authorized, eligible selection of one scope; the score is quantized to
 //! integer micro-points so independent implementations agree on order.
+//! A ranked search keeps small facts per candidate, never its content, and
+//! reads content again for the winners only.
+
+use std::cmp::Ordering;
+use std::collections::HashMap;
 
 const K1: f64 = 1.2;
 const B: f64 = 0.75;
+
+/// The `limit` first items of a stream under a total order, holding at most
+/// `limit` of them. Equal items keep their arrival order, as a stable sort
+/// followed by a cut would.
+pub struct Best<T> {
+    items: Vec<T>,
+    limit: usize,
+}
+
+impl<T> Best<T> {
+    pub fn new(limit: usize) -> Self {
+        Self {
+            items: Vec::new(),
+            limit,
+        }
+    }
+
+    /// `order(a, b)` is `Less` when `a` comes first.
+    pub fn offer(&mut self, item: T, order: impl Fn(&T, &T) -> Ordering) {
+        if self.limit == 0 {
+            return;
+        }
+        if self.items.len() == self.limit {
+            let last = self.items.last().expect("a full list");
+            if order(&item, last) != Ordering::Less {
+                return;
+            }
+            self.items.pop();
+        }
+        let at = self
+            .items
+            .partition_point(|held| order(held, &item) != Ordering::Greater);
+        self.items.insert(at, item);
+    }
+
+    pub fn into_vec(self) -> Vec<T> {
+        self.items
+    }
+}
+
+/// A candidate set larger than the operator's bound (`NEOSIAN_SEARCH_MAX_CANDIDATES`).
+#[derive(Debug)]
+pub struct Broad(pub usize);
+
+/// What relevance keeps per candidate: a key, its per-term counts and its length.
+pub struct Facts<K> {
+    keys: Vec<K>,
+    counts: Vec<u32>,
+    lengths: Vec<u64>,
+    terms: usize,
+    maximum: usize,
+}
+
+impl<K> Facts<K> {
+    pub fn new(terms: usize, maximum: usize) -> Self {
+        Self {
+            keys: Vec::new(),
+            counts: Vec::new(),
+            lengths: Vec::new(),
+            terms,
+            maximum,
+        }
+    }
+
+    pub fn keep(&mut self, key: K, counts: &[u32], length: u64) -> Result<(), Broad> {
+        if self.keys.len() >= self.maximum {
+            return Err(Broad(self.maximum));
+        }
+        debug_assert_eq!(counts.len(), self.terms);
+        self.keys.push(key);
+        self.counts.extend_from_slice(counts);
+        self.lengths.push(length);
+        Ok(())
+    }
+
+    /// The `limit` best candidates with their scores: score descending, then
+    /// `order` (the existing tie order).
+    pub fn best(
+        self,
+        stats: &Stats,
+        limit: usize,
+        order: impl Fn(&K, &K) -> Ordering,
+    ) -> Vec<(K, u64)> {
+        let terms = self.terms;
+        let mut best = Best::new(limit);
+        for (index, length) in self.lengths.iter().enumerate() {
+            let counts = &self.counts[index * terms..(index + 1) * terms];
+            best.offer((stats.score(counts, *length), index), |a, b| {
+                b.0.cmp(&a.0)
+                    .then_with(|| order(&self.keys[a.1], &self.keys[b.1]))
+            });
+        }
+        let chosen = best.into_vec();
+        let mut wanted: HashMap<usize, Option<K>> =
+            chosen.iter().map(|(_, index)| (*index, None)).collect();
+        for (index, key) in self.keys.into_iter().enumerate() {
+            if let Some(slot) = wanted.get_mut(&index) {
+                *slot = Some(key);
+            }
+        }
+        chosen
+            .into_iter()
+            .map(|(score, index)| {
+                let key = wanted.get_mut(&index).and_then(Option::take);
+                (key.expect("every winner has its key"), score)
+            })
+            .collect()
+    }
+}
 
 /// Corpus statistics: eligible documents, their total length, and per-term
 /// document frequency in ascending term order.
@@ -55,7 +170,52 @@ impl Stats {
 
 #[cfg(test)]
 mod tests {
-    use super::Stats;
+    use super::{Best, Broad, Facts, Stats};
+
+    #[test]
+    fn best_keeps_the_first_items_and_arrival_order_among_equals() {
+        let mut best = Best::new(3);
+        for item in [(5, 'a'), (9, 'b'), (5, 'c'), (7, 'd'), (5, 'e'), (9, 'f')] {
+            best.offer(item, |x, y| y.0.cmp(&x.0));
+        }
+        assert_eq!(best.into_vec(), [(9, 'b'), (9, 'f'), (7, 'd')]);
+        let mut stable = Best::new(4);
+        for item in [(1, 'a'), (1, 'b'), (2, 'c'), (1, 'd'), (1, 'e')] {
+            stable.offer(item, |x, y| y.0.cmp(&x.0));
+        }
+        // A stable sort then a cut gives c, a, b, d.
+        assert_eq!(stable.into_vec(), [(2, 'c'), (1, 'a'), (1, 'b'), (1, 'd')]);
+        let mut none = Best::new(0);
+        none.offer(1, |x: &i32, y| x.cmp(y));
+        assert!(none.into_vec().is_empty());
+    }
+
+    #[test]
+    fn facts_rank_as_scoring_every_candidate_would_and_refuse_past_the_bound() {
+        let candidates: [(&str, &[u32], u64); 4] = [
+            ("d", &[3, 1], 57),
+            ("c", &[1, 2], 40),
+            ("b", &[0, 1], 28),
+            ("a", &[1, 0], 51),
+        ];
+        let mut stats = Stats::new(2);
+        let mut facts = Facts::new(2, 4);
+        for (key, counts, length) in candidates {
+            stats.add(counts, length);
+            facts.keep(key, counts, length).unwrap();
+        }
+        let mut every: Vec<(&str, u64)> = candidates
+            .iter()
+            .map(|(key, counts, length)| (*key, stats.score(counts, *length)))
+            .collect();
+        every.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(b.0)));
+        every.truncate(3);
+        assert_eq!(facts.best(&stats, 3, |a, b| a.cmp(b)), every);
+        let mut bounded = Facts::new(1, 2);
+        bounded.keep(1, &[1], 1).unwrap();
+        bounded.keep(2, &[1], 1).unwrap();
+        assert!(matches!(bounded.keep(3, &[1], 1), Err(Broad(2))));
+    }
 
     /// Expected values come from an independent Python reference of the
     /// DESIGN §40.41 formula, never from this implementation.

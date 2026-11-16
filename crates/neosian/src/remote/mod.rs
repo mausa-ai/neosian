@@ -112,7 +112,7 @@ impl RemoteStore {
         let status = response.status();
         // Bound untrusted response bytes before JSON allocation. Operators may
         // raise the local budget without changing a server's authorization.
-        let maximum = crate::limits::setting(crate::limits::RESPONSE, 64 << 20, 1 << 30)?;
+        let maximum = crate::limits::response_bytes()?;
         let mut bytes = Vec::new();
         io::Read::read_to_end(
             &mut io::Read::take(response.body_mut().as_reader(), maximum + 1),

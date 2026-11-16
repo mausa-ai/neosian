@@ -6,6 +6,7 @@
 //! history ranking version 1. No wildcards, no stemming.
 
 use std::fs;
+use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::path::Path;
 
 use super::ids::parse_conversation_id;
@@ -56,18 +57,6 @@ pub fn match_terms(text: &str, terms: &[String]) -> bool {
     terms.iter().all(|term| folded.contains(term.as_str()))
 }
 
-/// The total order: `created_at`, then the id in codepoint order, then
-/// the number, each descending.
-pub fn newest_first(turns: &mut [Turn]) {
-    turns.sort_by(|a, b| {
-        (b.created_at.instant(), &b.conversation_id, b.turn).cmp(&(
-            a.created_at.instant(),
-            &a.conversation_id,
-            a.turn,
-        ))
-    });
-}
-
 /// Whether the file holds the term verbatim when a turn holds it:
 /// printable ASCII free of `"` and `\`, everything else being escaped
 /// by `json.dumps(ensure_ascii=True)`.
@@ -76,53 +65,39 @@ pub fn prefilterable(term: &str) -> bool {
         .all(|byte| (b' '..=b'~').contains(&byte) && byte != b'"' && byte != b'\\')
 }
 
-/// The matching turns of one log. A line is decoded only when it can
-/// match: every prefilterable term must appear in the raw line first, so
-/// a malformed line lacking one is invisible here while a candidate
-/// malformed line is refused exactly as a read refuses it.
-pub fn scan_turns(
-    file: &Path,
-    conversation_id: &str,
-    terms: &[String],
-) -> Result<Vec<Turn>, Error> {
-    let raw: Vec<&str> = terms
-        .iter()
-        .map(String::as_str)
-        .filter(|term| prefilterable(term))
-        .collect();
-    let text = fs::read_to_string(file)?;
-    let mut found = Vec::new();
-    for (index, line) in text.lines().enumerate() {
-        let lowered = line.to_lowercase();
-        if !raw.iter().all(|term| lowered.contains(term)) {
-            continue;
-        }
-        let turn = parse_turn(line, index + 1, conversation_id)?;
-        if match_terms(&turn_text(&turn), terms) {
-            found.push(turn);
-        }
-    }
-    Ok(found)
-}
-
-/// Decoded candidate turns of one log for history ranking: a line is decoded
-/// when its raw text could hold every term (`all`) or at least one term. A term
-/// the raw line cannot hold verbatim forces decoding, as version 1 does.
-pub fn scan_candidates(
+/// One log's candidate turns, streamed a line at a time (DESIGN §40.45): a
+/// line is decoded when its raw text could hold every term (`all`, version 1
+/// and newest) or at least one term (relevance). A term the raw line cannot
+/// hold verbatim forces decoding. A malformed line lacking a prefilterable
+/// term is invisible here, while a candidate malformed line is refused
+/// exactly as a read refuses it. `visit` gets the turn, the byte offset where
+/// its line starts and its line number; no line outlives its visit.
+pub fn scan_log(
     file: &Path,
     conversation_id: &str,
     terms: &[String],
     all: bool,
-) -> Result<Vec<Turn>, Error> {
+    mut visit: impl FnMut(Turn, u64, usize) -> Result<(), Error>,
+) -> Result<(), Error> {
     let raw: Vec<&str> = terms
         .iter()
         .map(String::as_str)
         .filter(|term| prefilterable(term))
         .collect();
     let every = raw.len() == terms.len();
-    let text = fs::read_to_string(file)?;
-    let mut found = Vec::new();
-    for (index, line) in text.lines().enumerate() {
+    let mut reader = BufReader::new(fs::File::open(file)?);
+    let mut buffer = String::new();
+    let (mut offset, mut number) = (0_u64, 0_usize);
+    loop {
+        buffer.clear();
+        let read = reader.read_line(&mut buffer)?;
+        if read == 0 {
+            return Ok(());
+        }
+        let start = offset;
+        offset += read as u64;
+        number += 1;
+        let line = line_text(&buffer);
         let lowered = line.to_lowercase();
         let candidate = if all {
             raw.iter().all(|term| lowered.contains(term))
@@ -130,10 +105,30 @@ pub fn scan_candidates(
             !every || raw.iter().any(|term| lowered.contains(term))
         };
         if candidate {
-            found.push(parse_turn(line, index + 1, conversation_id)?);
+            visit(parse_turn(line, number, conversation_id)?, start, number)?;
         }
     }
-    Ok(found)
+}
+
+/// The turn whose log line starts at `offset`, read again under the same lock.
+pub fn read_at(
+    reader: &mut BufReader<fs::File>,
+    offset: u64,
+    number: usize,
+    conversation_id: &str,
+) -> Result<Turn, Error> {
+    reader.seek(SeekFrom::Start(offset))?;
+    let mut buffer = String::new();
+    reader.read_line(&mut buffer)?;
+    Ok(parse_turn(line_text(&buffer), number, conversation_id)?)
+}
+
+/// A line without its ending, as `str::lines` yields it: `\n`, then `\r`.
+fn line_text(buffer: &str) -> &str {
+    match buffer.strip_suffix('\n') {
+        Some(line) => line.strip_suffix('\r').unwrap_or(line),
+        None => buffer,
+    }
 }
 
 /// Every entry under `parent` with a grammatical name; a foreign name is

@@ -135,7 +135,12 @@ pub fn run(args: &Search, out: &mut impl Write, err: &mut impl Write) -> io::Res
         request.ids = ids.map(<[String]>::to_vec);
         match store.rank_turns(&request) {
             Ok(ranked) => ranked.into_iter().unzip(),
-            Err(error) => return failed(&error.text(), None, json, out, err),
+            Err(error) => {
+                let text = error.text();
+                let key = "search_history_too_broad_cli";
+                let guidance = crate::assets::too_broad(&text, crate::assets::TOOLS, key);
+                return failed(&text, guidance.as_deref(), json, out, err);
+            }
         }
     } else {
         match store.search_turns(&terms, ids, args.limit as usize) {

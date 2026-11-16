@@ -1,7 +1,10 @@
 //! Four lazy connections, with transactions for optional durable change events.
 //! No DDL; retry only known aborted races, never a lost commit response.
+//! Reads stream their rows and charge each against the response budget as it
+//! arrives, so no statement is collected whole by accident (DESIGN §40.45).
 
 mod scan;
+pub(super) use scan::Passes;
 
 use std::collections::HashMap;
 use std::io;
@@ -98,6 +101,7 @@ impl Pool {
         mutation: Option<super::changes::Mutation>,
     ) -> io::Result<Vec<Value>> {
         let (sql, names) = parameters(&template.replace("{{schema}}", &self.schema));
+        let budget = crate::limits::response_bytes().map_err(crate::limits::into_io)?;
         self.runtime.block_on(async {
             for attempt in 0..ATTEMPTS {
                 let slot = self.next.fetch_add(1, Ordering::Relaxed) % CONNECTIONS;
@@ -114,16 +118,7 @@ impl Pool {
                     conn.statements.insert(template, prepared);
                 }
                 let statement = conn.statements[template].clone();
-                let bound = names
-                    .iter()
-                    .zip(statement.params())
-                    .map(|(name, ty)| {
-                        let value = params
-                            .get(name)
-                            .ok_or_else(|| io::Error::other("missing SQL parameter"))?;
-                        values::parameter(value, ty)
-                    })
-                    .collect::<io::Result<Vec<_>>>()?;
+                let bound = bind(&names, &statement, params)?;
                 let borrowed: Vec<&(dyn ToSql + Sync)> =
                     bound.iter().map(|value| &**value as _).collect();
                 let result = if let Some(mutation) = mutation {
@@ -158,11 +153,16 @@ impl Pool {
                         }
                     }
                 } else {
-                    conn.client.query(&statement, &borrowed).await
+                    let rows = conn.client.query_raw(&statement, borrowed.iter().copied());
+                    match rows.await {
+                        Ok(rows) => collect(rows, budget).await,
+                        Err(error) => Err(error),
+                    }
                 };
                 drop(held);
                 match result {
-                    Ok(rows) => return rows.iter().map(values::row).collect(),
+                    Ok(Ok(rows)) => return Ok(rows),
+                    Ok(Err(refusal)) => return Err(refusal),
                     Err(error) if retry && attempt + 1 < ATTEMPTS && contended(&error) => {
                         let jitter =
                             uuid::Uuid::new_v4().as_u128() % (10_000 * (attempt as u128 + 1));
@@ -174,6 +174,49 @@ impl Pool {
             unreachable!("the final attempt always returns")
         })
     }
+}
+
+/// Bound parameters in the statement's order; only the trusted assets name them.
+pub(super) fn bind(
+    names: &[String],
+    statement: &Statement,
+    params: &Value,
+) -> io::Result<Vec<values::Parameter>> {
+    names
+        .iter()
+        .zip(statement.params())
+        .map(|(name, ty)| {
+            let value = params
+                .get(name)
+                .ok_or_else(|| io::Error::other("missing SQL parameter"))?;
+            values::parameter(value, ty)
+        })
+        .collect()
+}
+
+/// Every row of one statement, decoded as it arrives. Each row's decoded size
+/// counts against `budget`; past it the read stops and refuses, naming
+/// `NEOSIAN_MAX_RESPONSE_BYTES`, instead of holding more. The driver applies
+/// backpressure, so unread rows wait in the socket, not in memory.
+async fn collect(
+    rows: tokio_postgres::RowStream,
+    budget: u64,
+) -> Result<io::Result<Vec<Value>>, tokio_postgres::Error> {
+    use futures_util::TryStreamExt;
+    futures_util::pin_mut!(rows);
+    let (mut decoded, mut used) = (Vec::new(), 0_u64);
+    while let Some(row) = rows.try_next().await? {
+        let value = match values::row(&row) {
+            Ok(value) => value,
+            Err(error) => return Ok(Err(error)),
+        };
+        used = used.saturating_add(values::weight(&value));
+        if let Err(refusal) = crate::limits::check(crate::limits::RESPONSE, used, budget) {
+            return Ok(Err(crate::limits::into_io(refusal)));
+        }
+        decoded.push(value);
+    }
+    Ok(Ok(decoded))
 }
 
 fn contended(error: &tokio_postgres::Error) -> bool {

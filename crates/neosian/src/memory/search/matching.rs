@@ -53,13 +53,10 @@ fn excerpt(text: &str, at: usize, field: &str, key: Option<&str>) -> Excerpt {
 }
 
 /// What one document holds for a query: the excerpt and matched fields when
-/// any term occurs, whether every term occurs, and (when counting) per-term
-/// non-overlapping occurrence counts and the scalar length of selected values.
+/// any term occurs, whether every term occurs, and the passages when wanted.
 pub(super) struct Measure {
     pub found: Option<(Excerpt, Vec<String>)>,
     pub all: bool,
-    pub counts: Vec<u32>,
-    pub length: u64,
     pub passages: Option<Vec<Passage>>,
 }
 
@@ -71,34 +68,27 @@ pub(super) fn find(
     request: &Request,
     terms: &[String],
 ) -> Result<Option<(Excerpt, Vec<String>)>, Error> {
-    let measured = measure(scope, path, document, request, terms, false, false)?;
+    let measured = measure(scope, path, document, request, terms, false)?;
     Ok(if measured.all { measured.found } else { None })
 }
 
-pub(super) fn measure(
-    scope: &str,
-    path: &str,
-    document: &Document,
-    request: &Request,
-    terms: &[String],
-    count: bool,
-    any: bool,
-) -> Result<Measure, Error> {
-    let metadata = if request.fields.iter().any(|f| f == "metadata") {
-        crate::wire::encode::extra_json(&document.envelope, scope, path)?
-    } else {
-        Value::Null
-    };
+/// The selected string values of one document in version 1 order: body, then
+/// requested metadata keys, then path. `metadata` holds the decoded extras.
+fn selected<'a>(
+    path: &'a str,
+    document: &'a Document,
+    request: &'a Request,
+    metadata: &'a Value,
+) -> Vec<(&'static str, Option<&'a str>, &'a str)> {
     let mut values = Vec::new();
-    // Stable excerpt preference: body, then requested keys, then path.
     if request.fields.iter().any(|f| f == "content") {
         values.push(("content", None, document.content.as_str()));
     }
     for key in &request.metadata_keys {
-        let mut selected = Vec::new();
-        strings(&metadata[key], &mut selected);
+        let mut found = Vec::new();
+        strings(&metadata[key], &mut found);
         values.extend(
-            selected
+            found
                 .into_iter()
                 .map(|s| ("metadata", Some(key.as_str()), s)),
         );
@@ -106,25 +96,94 @@ pub(super) fn measure(
     if request.fields.iter().any(|f| f == "path") {
         values.push(("path", None, path));
     }
+    values
+}
+
+fn metadata(
+    scope: &str,
+    path: &str,
+    document: &Document,
+    request: &Request,
+) -> Result<Value, Error> {
+    if request.fields.iter().any(|f| f == "metadata") {
+        Ok(crate::wire::encode::extra_json(
+            &document.envelope,
+            scope,
+            path,
+        )?)
+    } else {
+        Ok(Value::Null)
+    }
+}
+
+/// What ranking keeps of one document (DESIGN §40.45): whether every term
+/// occurs and, when counting, per-term non-overlapping occurrence counts and
+/// the scalar length of the selected values. No excerpt, no passages.
+pub(super) struct Tally {
+    pub all: bool,
+    pub counts: Vec<u32>,
+    pub length: u64,
+}
+
+pub(super) fn tally(
+    scope: &str,
+    path: &str,
+    document: &Document,
+    request: &Request,
+    terms: &[String],
+    count: bool,
+) -> Result<Tally, Error> {
+    let extras = metadata(scope, path, document, request)?;
     let mut matched = vec![false; terms.len()];
     let mut counts = vec![0_u32; if count { terms.len() } else { 0 }];
     let mut length = 0_u64;
-    let mut chosen = None;
-    let mut fields = Vec::new();
-    for &(field, key, text) in &values {
+    for (_, _, text) in selected(path, document, request, &extras) {
         let folded = lower(text);
         if count {
             length += folded.chars().count() as u64;
         }
+        for (index, term) in terms.iter().enumerate() {
+            if count {
+                let found = folded.matches(term.as_str()).count();
+                if found > 0 {
+                    matched[index] = true;
+                    let found = u32::try_from(found).unwrap_or(u32::MAX);
+                    counts[index] = counts[index].saturating_add(found);
+                }
+            } else if !matched[index] && folded.contains(term.as_str()) {
+                matched[index] = true;
+            }
+        }
+    }
+    Ok(Tally {
+        all: matched.iter().all(|m| *m),
+        counts,
+        length,
+    })
+}
+
+/// The hit material for one document: excerpt, matched fields, whether every
+/// term occurs and the passages, for path order's hits and ranked winners.
+pub(super) fn measure(
+    scope: &str,
+    path: &str,
+    document: &Document,
+    request: &Request,
+    terms: &[String],
+    any: bool,
+) -> Result<Measure, Error> {
+    let extras = metadata(scope, path, document, request)?;
+    let values = selected(path, document, request, &extras);
+    let mut matched = vec![false; terms.len()];
+    let mut chosen = None;
+    let mut fields = Vec::new();
+    for &(field, key, text) in &values {
+        let folded = lower(text);
         let mut first = None;
         for (index, term) in terms.iter().enumerate() {
             if let Some(at) = folded.find(term) {
                 matched[index] = true;
                 first = Some(first.map_or(at, |before: usize| before.min(at)));
-                if count {
-                    let found = u32::try_from(folded.matches(term.as_str()).count());
-                    counts[index] = counts[index].saturating_add(found.unwrap_or(u32::MAX));
-                }
             }
         }
         if let Some(at) = first {
@@ -144,8 +203,6 @@ pub(super) fn measure(
     Ok(Measure {
         found: chosen.map(|e| (e, fields)),
         all,
-        counts,
-        length,
         passages,
     })
 }

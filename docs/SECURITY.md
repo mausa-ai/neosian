@@ -62,7 +62,12 @@ statistics only from the candidate turns of the conversations one authorized
 search may read; a constrained token still names its conversations, and
 redacted turns never count. Reference backends retain no
 search cache or derived index; results already delivered to a client cannot
-be recalled after erasure.
+be recalled after erasure. One search request cannot make a server hold the
+text of every match: ranked search keeps a few facts per candidate and reads
+only the winners, `NEOSIAN_SEARCH_MAX_CANDIDATES` refuses an over-broad
+relevance request, and a Postgres statement whose rows pass
+`NEOSIAN_MAX_RESPONSE_BYTES` refuses rather than growing. The answer itself
+is still built whole.
 
 New profiles capture off by default. Local/shared capture requires consent in
 both the profile and its machine-local binding. Deterministic filters precede

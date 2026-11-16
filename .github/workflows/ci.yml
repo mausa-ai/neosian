@@ -135,6 +135,36 @@ jobs:
         env:
           NEOSIAN_TEST_POSTGRES_DSN: postgresql://postgres:postgres@localhost:5432/postgres
 
+  # The memory gate (DESIGN §40.45): one release binary's peak memory per
+  # search request over an adversarial literal corpus, files and Postgres.
+  memory:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - run: uv python install 3.12
+      - run: make install
+      - run: cargo build --release --locked
+      - run: make bench-memory backends=file,postgres
+        env:
+          NEOSIAN_TEST_POSTGRES_DSN: postgresql://postgres:postgres@localhost:5432/postgres
+
   # The container conformance run (DESIGN §18.9): build the image, then
   # the independent wire suite on FileStore and Postgres. No secret;
   # the registry push is publish-core.yml's, on a tag (DESIGN §29).

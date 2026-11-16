@@ -11,6 +11,17 @@ pub const CONTEXT: &str = include_str!(concat!(env!("NEOSIAN_ASSETS"), "/prompts
 /// and their parameters' prose.
 pub const TOOLS: &str = include_str!(concat!(env!("NEOSIAN_ASSETS"), "/prompts/tools.yaml"));
 
+/// `assets/core-tools.yaml`: the core tools' descriptions and guidance.
+pub const CORE: &str = include_str!(concat!(env!("NEOSIAN_ASSETS"), "/core-tools.yaml"));
+
+/// Guidance the agent doors add to a search refused over the candidate bound
+/// (DESIGN §40.45). The refusal arrives verbatim from local and remote stores.
+pub fn too_broad(sentence: &str, asset: &str, key: &str) -> Option<String> {
+    sentence
+        .starts_with(crate::limits::BROAD)
+        .then(|| quoted(asset, key).expect("the asset carries the search guidance"))
+}
+
 /// `assets/prompts/memory.yaml`: the memory tool and the system
 /// section.
 pub const MEMORY: &str = include_str!(concat!(env!("NEOSIAN_ASSETS"), "/prompts/memory.yaml"));

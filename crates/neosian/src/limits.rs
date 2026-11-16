@@ -57,6 +57,25 @@ pub const TEMP: &str = "NEOSIAN_MAX_TEMP_BYTES";
 pub const REPLICA: &str = "NEOSIAN_REPLICA_MAX_BYTES";
 pub const FILE: &str = "NEOSIAN_MAX_FILE_BYTES";
 pub const RESPONSE: &str = "NEOSIAN_MAX_RESPONSE_BYTES";
+pub const SEARCH: &str = "NEOSIAN_SEARCH_MAX_CANDIDATES";
+
+/// The bytes one storage answer may carry into this process: an HTTP storage
+/// response before decoding, or one Postgres statement's rows as they arrive.
+pub fn response_bytes() -> Result<u64, Error> {
+    setting(RESPONSE, 64 << 20, 1 << 30)
+}
+
+/// The largest relevance candidate set one search keeps facts for (DESIGN §40.45).
+pub fn search_candidates() -> Result<usize, Error> {
+    Ok(setting(SEARCH, 100_000, 10_000_000)? as usize)
+}
+
+/// The refusal over the candidate bound. The agent doors recognize its prefix,
+/// which also arrives verbatim from a remote server as `value_error`.
+pub fn broad(maximum: usize, what: &str, narrow: &str) -> String {
+    format!("{BROAD}: more than {maximum} {what} hold a search term; narrow {narrow}")
+}
+pub const BROAD: &str = "resource limit NEOSIAN_SEARCH_MAX_CANDIDATES exceeded";
 
 #[derive(Clone, Copy)]
 pub struct Knowledge {

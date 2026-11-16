@@ -56,8 +56,11 @@ mounted references, scope/path, version, actor and bounded excerpts. Metadata
 needs explicit keys; profile injection modes do not limit permitted reads.
 Remote sources need optional memory-search capability version 1, and memory
 ranking version 1 for relevance, newest and date bounds; without it an omitted
-order falls back to path order and the result says so. See `neosian docs
-memory` for matching, scoring, Unicode, exclusions and pagination semantics.
+order falls back to path order and the result says so. When more documents
+hold a term than the store's candidate bound allows, relevance refuses and the
+reminder suggests rarer terms, a narrower `path` or update dates. See
+`neosian docs memory` for matching, scoring, Unicode, exclusions and
+pagination semantics.
 The tool's description tells agents that a document needs only one term, to
 add synonyms to one query, and, when results disagree, to prefer approved
 knowledge, then the most recently updated document.
@@ -70,9 +73,11 @@ under a turn; `before` is an exact as-of cutoff. `limit` is capped at 50. Hits
 name the conversation and turn to pass to `recall_turn`; a ranked answer ends
 with a `best match first` footer. When the history source lacks history ranking
 version 1, an omitted order falls back to newest and the answer says so; an
-explicit relevance order or a bound refuses. The tool's description tells
-agents that a turn needs only one term, to add synonyms to one query, and that
-a later turn can supersede an earlier one.
+explicit relevance order or a bound refuses. Over the store's candidate
+bound, relevance refuses and the reminder suggests rarer terms, `since` and
+`before`, or one `conversation`. The tool's description tells agents that a
+turn needs only one term, to add synonyms to one query, and that a later turn
+can supersede an earlier one.
 
 `knowledge(command, path, policy="effective", data=null, expected_version=null,
 reason=null)` is read-only. `read` returns current status and policy-eligible

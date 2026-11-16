@@ -178,8 +178,9 @@ A refusal is one shape at `400`, `403` or `413`:
 `code` is the stable error identifier and `details` its typed fields.
 `neosian schema errors` lists active and reserved identifiers.
 Two codes exist only on the wire: `value_error`, for a mis-typed or
-missing parameter and for invalid store arguments (an empty message
-list, a negative `after`), and `forbidden`, for the allowance. A
+missing parameter, for invalid store arguments (an empty message
+list, a negative `after`) and for a request past an operation budget
+(the message names the setting), and `forbidden`, for the allowance. A
 malformed nested object (a message without `role`, an archive document
 without `actor`) is `value_error` with the message
 `malformed request: 'role'`. A `500` carries no envelope and is the
@@ -412,6 +413,12 @@ count. An unknown order, a malformed or non-UTC bound, or a since that does
 not precede before is `value_error`. Clients validate the echoed order, the
 scores and their order, the bounds, the limit and the selected conversations.
 Ranking grants no access: a constrained token still names its conversations.
+A server may bound how many candidates one relevance request considers; the
+reference server's bound is `NEOSIAN_SEARCH_MAX_CANDIDATES`. Past it the
+answer is `value_error` whose message starts `resource limit
+NEOSIAN_SEARCH_MAX_CANDIDATES exceeded` and asks the caller to narrow the
+words or the time range. Memory relevance follows the same rule. Newest
+answers are not limited this way.
 
 ### Store
 

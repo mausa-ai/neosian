@@ -92,9 +92,13 @@ fn call(server: &Server, args: &Map<String, Value>) -> Outcome {
         &request,
     ) {
         Ok(page) => Outcome::ok(serde_json::to_string(&page).expect("search page serializes")),
-        Err(error) => Outcome::failed(
-            "search_memory",
-            &crate::conversation::Error::from(error).text(),
-        ),
+        Err(error) => {
+            let text = crate::conversation::Error::from(error).text();
+            let outcome = Outcome::failed("search_memory", &text);
+            match crate::assets::too_broad(&text, ASSET, "search_memory_too_broad") {
+                Some(guidance) => outcome.hint(guidance),
+                None => outcome,
+            }
+        }
     }
 }

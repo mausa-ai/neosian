@@ -21,7 +21,10 @@ relevance scores against literal values from an independent reference, ties,
 newest order, turn-time bounds, erased turns and invalid requests on
 `conversation/search_turns`, and that requests without the new fields keep the
 version 1 answer. Fixtures are ASCII, where every backend folds alike. Absent
-support is an explicit skip under both profiles.
+support is an explicit skip under both profiles. A service may refuse an
+over-broad relevance request with `value_error` (the reference server's
+`NEOSIAN_SEARCH_MAX_CANDIDATES`); the suite's small fixtures stay under any
+sensible bound, so it does not test one.
 
 From a checkout with the development dependencies:
 

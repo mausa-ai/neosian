@@ -36,7 +36,7 @@ fn actor(data: &Value) -> Result<Option<String>, Error> {
         _ => Err(malformed("actor")),
     }
 }
-fn moment(data: &Value, name: &str) -> Result<Stamp, Error> {
+pub fn moment(data: &Value, name: &str) -> Result<Stamp, Error> {
     Stamp::parse(&text(data, name)?).map_err(|_| malformed(name))
 }
 fn redacted(data: &Value) -> Result<bool, Error> {
