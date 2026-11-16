@@ -147,8 +147,17 @@ pub fn recall(
             ),
         }));
     }
-    let turns = match store.read_turns(target, 0, None) {
-        Ok(turns) => turns,
+    // Every turn is read, as before, but only the one shown is kept (§40.46).
+    let (mut kept, mut last) = (None, 0);
+    let read = store.read_turns_each(target, 0, None, &mut |found| {
+        last = found.turn;
+        if kept.is_none() && found.turn as i64 == turn {
+            kept = Some(found);
+        }
+        Ok(true)
+    });
+    match read {
+        Ok(()) => {}
         Err(Error::Conversation(refused)) => {
             return Ok(Err(Corrective {
                 error: format!("[{}] {}", refused.code, refused.message),
@@ -156,9 +165,8 @@ pub fn recall(
             }));
         }
         Err(error) => return Err(error),
-    };
-    let Some(found) = turns.iter().find(|found| found.turn as i64 == turn) else {
-        let last = turns.last().map_or(0, |found| found.turn);
+    }
+    let Some(found) = kept.as_ref() else {
         return Ok(Err(Corrective {
             error: format!("Turn {turn} does not exist"),
             hint: Some(format!("{label} has turns 1-{last}.")),

@@ -66,8 +66,13 @@ be recalled after erasure. One search request cannot make a server hold the
 text of every match: ranked search keeps a few facts per candidate and reads
 only the winners, `NEOSIAN_SEARCH_MAX_CANDIDATES` refuses an over-broad
 relevance request, and a Postgres statement whose rows pass
-`NEOSIAN_MAX_RESPONSE_BYTES` refuses rather than growing. The answer itself
-is still built whole.
+`NEOSIAN_MAX_RESPONSE_BYTES` refuses rather than growing. Answers stream one
+item at a time, so the answer is never built whole on the server; a refusal
+after the first bytes arrives as a line-feed trailer, never as a shorter
+answer. Size-paging continuations bind the request's selection and carry no
+authority: every page is authorized from its own body. While an answer
+streams it keeps its store lock or database connection; a reader that stalls
+for 30 seconds loses it, and `NEOSIAN_MAX_PAGE_BYTES` caps one page.
 
 New profiles capture off by default. Local/shared capture requires consent in
 both the profile and its machine-local binding. Deterministic filters precede

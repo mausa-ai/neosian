@@ -41,7 +41,10 @@ headings. History search remains a separate operation; history ranking
 version 1 adds best-match-first turns and turn-time bounds, the `neosian
 search`/`search_history` default. Remote sources advertise each optional
 capability. Ranked search keeps facts per candidate, not text; servers bound
-the relevance candidate set with `NEOSIAN_SEARCH_MAX_CANDIDATES`.
+the relevance candidate set with `NEOSIAN_SEARCH_MAX_CANDIDATES`. Servers
+stream large answers item by item; optional size paging version 1 bounds
+history-search and turn-read pages by bytes, capped by
+`NEOSIAN_MAX_PAGE_BYTES`, and the binary's remote client uses it.
 
 Knowledge format 1 supports previewed Markdown/bundle imports into explicit
 mounted collections. Optional field rules are advisory; structure and source

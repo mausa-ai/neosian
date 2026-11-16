@@ -149,6 +149,18 @@ impl Stats {
         }
     }
 
+    /// A short digest of everything scores depend on beyond one candidate's
+    /// own counts: a size-paged relevance answer refuses when it changes
+    /// between pages (DESIGN §40.46).
+    pub fn digest(&self) -> String {
+        use sha2::{Digest, Sha256};
+        let text = format!("{}:{}:{:?}", self.documents, self.length, self.frequency);
+        Sha256::digest(text.as_bytes())[..8]
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect()
+    }
+
     /// The quantized score: round-half-even of BM25 times one million.
     #[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
     #[allow(clippy::cast_sign_loss)]

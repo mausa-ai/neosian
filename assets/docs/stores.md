@@ -63,6 +63,7 @@ budgets refuse explicitly; they never truncate results or delete retained data.
 | `NEOSIAN_MAX_FILE_BYTES` | 64 MiB | 1 GiB | Decoded FileStore memory documents/version files, new memory transaction artifacts, exchange artifacts and Postgres search candidate content plus JSON extras |
 | `NEOSIAN_MAX_RESPONSE_BYTES` | 64 MiB | 1 GiB | Each HTTP storage-client response, before JSON decoding, and the decoded rows of each Postgres statement as they arrive |
 | `NEOSIAN_SEARCH_MAX_CANDIDATES` | 100,000 | 10,000,000 | Turns or documents holding a term in one relevance search, history or memory, on files and Postgres |
+| `NEOSIAN_MAX_PAGE_BYTES` | 8 MiB | 1 GiB | The largest `page_bytes` a size-paged request is served; a larger request gets pages of this size |
 
 For byte settings, 1 MiB is 1,048,576 and 1 GiB is 1,073,741,824. Larger values
 allow more work and require more disk or memory; these are operation budgets,
@@ -85,6 +86,18 @@ statement whose decoded rows pass `NEOSIAN_MAX_RESPONSE_BYTES` stops reading
 and refuses by name instead of holding more; that also applies to whole reads
 such as a full conversation. HTTP page cursors are validated, and every page
 still requires current server permissions.
+
+`neosian serve` writes answers that grow with stored content one item at a
+time: searches and turn reads come from the store a turn at a time (a file log
+a line at a time, a Postgres statement through a portal in batches of up to 64
+rows), so a request holds about one turn, whatever the answer's size. A
+refusal found after the first 64 KiB have been sent, such as a statement
+passing `NEOSIAN_MAX_RESPONSE_BYTES`, arrives as a trailer after a line feed
+(`neosian docs wire`, "Streamed answers"). While it streams, a request keeps
+its store lock or database connection; a client that stops reading for 30
+seconds loses the answer. Size paging lets a client bound its own side too:
+`NEOSIAN_MAX_PAGE_BYTES` caps the ceiling a client may ask for, and therefore
+how much one page request transfers and how long it holds the store.
 
 Existing server request limits, per-document knowledge bounds, skill/context
 budgets and archive behavior remain separate. Client limits cannot raise a

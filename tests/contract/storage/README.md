@@ -26,6 +26,16 @@ over-broad relevance request with `value_error` (the reference server's
 `NEOSIAN_SEARCH_MAX_CANDIDATES`); the suite's small fixtures stay under any
 sensible bound, so it does not test one.
 
+When `size_paging: {version: 1}` is declared, size-paging cases check that the
+pages of `conversation/search_turns` (every order the service declares) and
+`conversation/read_turns` reassemble the answer the service gives without the
+new fields, that each page holds every whole turn that fits under
+`page_bytes` and at least one, that a continuation binds its request, that
+invalid paging fields refuse, and that a relevance continuation refuses once
+its candidates changed. Turns are measured as compact JSON over ASCII
+fixtures. Absent support is an explicit skip under both profiles. Streamed
+answers need no case of their own: every existing case reads them whole.
+
 From a checkout with the development dependencies:
 
 ```sh

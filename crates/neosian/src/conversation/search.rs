@@ -124,7 +124,7 @@ pub fn read_at(
 }
 
 /// A line without its ending, as `str::lines` yields it: `\n`, then `\r`.
-fn line_text(buffer: &str) -> &str {
+pub fn line_text(buffer: &str) -> &str {
     match buffer.strip_suffix('\n') {
         Some(line) => line.strip_suffix('\r').unwrap_or(line),
         None => buffer,

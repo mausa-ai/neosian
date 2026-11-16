@@ -12,11 +12,12 @@ use super::fileio::{append_line, private_mkdir};
 use super::time::Stamp;
 use crate::conversation::ids::parse_conversation_id;
 use crate::conversation::message::Message;
+use crate::conversation::page::{Resume, Visit, owed};
 use crate::conversation::rank::{Key, Order, Ranked, Ranking, Request};
 use crate::conversation::rows::{
     CONVERSATIONS, PROJECTIONS, TURNS, parse_projection, parse_turn, render_projection, render_turn,
 };
-use crate::conversation::search::{held_ids, read_at, scan_log, turn_text};
+use crate::conversation::search::{held_ids, line_text, read_at, scan_log, turn_text};
 use crate::conversation::{Error, Projection, Refused, Turn};
 
 /// `_check_cursor`: the ABC's own refusals of a negative start or limit.
@@ -51,13 +52,105 @@ impl FileStore {
         after: i64,
         limit: Option<i64>,
     ) -> Result<Vec<Turn>, Error> {
+        let mut turns = Vec::new();
+        self.read_turns_each(conversation_id, after, limit, &mut |turn| {
+            turns.push(turn);
+            Ok(true)
+        })?;
+        Ok(turns)
+    }
+
+    /// `read_turns` one turn at a time (DESIGN §40.46): the log streams a
+    /// line at a time under the lock and every row is still decoded, so a
+    /// malformed row anywhere refuses as a whole read would, even after
+    /// `visit` stopped taking turns.
+    pub fn read_turns_each(
+        &self,
+        conversation_id: &str,
+        after: i64,
+        limit: Option<i64>,
+        visit: &mut dyn FnMut(Turn) -> Result<bool, Error>,
+    ) -> Result<(), Error> {
         let _held = self.lock()?;
         let file = self.conversation_file(conversation_id, TURNS)?;
         check_cursor(after, limit)?;
-        let turns = rows(&file, |line, number| {
-            parse_turn(line, number, conversation_id)
-        })?;
-        Ok(window(turns, after, limit, |turn| turn.turn))
+        if !file.is_file() {
+            return Ok(());
+        }
+        let mut reader = std::io::BufReader::new(fs::File::open(&file)?);
+        let (mut buffer, mut number, mut taken) = (String::new(), 0_usize, 0_i64);
+        let mut open = limit != Some(0);
+        loop {
+            buffer.clear();
+            if std::io::BufRead::read_line(&mut reader, &mut buffer)? == 0 {
+                return Ok(());
+            }
+            number += 1;
+            let turn = parse_turn(line_text(&buffer), number, conversation_id)?;
+            if open && turn.turn > after as u64 {
+                taken += 1;
+                open = visit(turn)? && limit.is_none_or(|limit| taken < limit);
+            }
+        }
+    }
+
+    /// One size page of `read_turns` (DESIGN §40.46): from `hint`, the byte
+    /// offset and line number of the row after `after` when an earlier page
+    /// found it, else from the log's start, decoding each row it passes; it
+    /// stops when `visit` declines a turn and answers where that turn's row
+    /// starts. A hint is trusted only at a line start whose row holds turn
+    /// `after + 1`; otherwise the page reads from the start. Across the pages
+    /// of one read every row is decoded once, so a malformed row still
+    /// refuses the read, on the page that reaches it.
+    pub fn read_turns_page(
+        &self,
+        conversation_id: &str,
+        after: i64,
+        limit: Option<i64>,
+        hint: Option<(u64, u64)>,
+        visit: &mut dyn FnMut(Turn) -> Result<bool, Error>,
+    ) -> Result<Option<(u64, u64)>, Error> {
+        use std::io::{BufRead, Read, Seek, SeekFrom};
+        let _held = self.lock()?;
+        let file = self.conversation_file(conversation_id, TURNS)?;
+        check_cursor(after, limit)?;
+        if !file.is_file() || limit == Some(0) {
+            return Ok(None);
+        }
+        let mut reader = std::io::BufReader::new(fs::File::open(&file)?);
+        let (mut offset, mut number) = (0_u64, 0_u64);
+        let mut buffer = String::new();
+        if let Some((at, line)) = hint.filter(|(at, line)| *at > 0 && *line > 1) {
+            reader.seek(SeekFrom::Start(at - 1))?;
+            let mut before = [0_u8];
+            let boundary = reader.read(&mut before)? == 1 && before[0] == b'\n';
+            let next = boundary && reader.read_line(&mut buffer)? > 0 && {
+                let row = parse_turn(line_text(&buffer), line as usize, conversation_id);
+                row.is_ok_and(|turn| turn.turn == after as u64 + 1)
+            };
+            (offset, number) = if next { (at, line - 1) } else { (0, 0) };
+            reader.seek(SeekFrom::Start(offset))?;
+        }
+        let mut taken = 0_i64;
+        loop {
+            buffer.clear();
+            let read = reader.read_line(&mut buffer)? as u64;
+            if read == 0 {
+                return Ok(None);
+            }
+            let start = offset;
+            (offset, number) = (offset + read, number + 1);
+            let turn = parse_turn(line_text(&buffer), number as usize, conversation_id)?;
+            if turn.turn > after as u64 {
+                if !visit(turn)? {
+                    return Ok(Some((start, number)));
+                }
+                taken += 1;
+                if limit.is_some_and(|limit| taken >= limit) {
+                    return Ok(None);
+                }
+            }
+        }
     }
 
     /// The projection entries past `after` in store order (by turn, then
@@ -153,13 +246,29 @@ impl FileStore {
         ids: Option<&[String]>,
         limit: usize,
     ) -> Result<Vec<Turn>, Error> {
+        let mut found = Vec::new();
+        self.search_each(terms, ids, limit, &mut |turn| {
+            found.push(turn);
+            Ok(true)
+        })?;
+        Ok(found)
+    }
+
+    /// `search_turns` one turn at a time, newest first (DESIGN §40.46).
+    pub fn search_each(
+        &self,
+        terms: &[String],
+        ids: Option<&[String]>,
+        limit: usize,
+        visit: &mut dyn FnMut(Turn) -> Result<bool, Error>,
+    ) -> Result<(), Error> {
         let _held = self.lock()?;
         if let Some(ids) = ids {
             for conversation_id in ids {
                 parse_conversation_id(conversation_id)?;
             }
             if ids.is_empty() {
-                return Ok(Vec::new());
+                return Ok(());
             }
         }
         let held;
@@ -180,15 +289,29 @@ impl FileStore {
             since: None,
             before: None,
         };
-        Ok(self
-            .rank_logs(&request, ids)?
-            .into_iter()
-            .map(|(turn, _)| turn)
-            .collect())
+        self.rank_logs(&request, ids, &Resume::Fresh, &mut |turn, _| visit(turn))?;
+        Ok(())
     }
 
     /// History ranking version 1 under the store lock (DESIGN §40.43).
     pub fn rank_turns(&self, request: &Request) -> Result<Vec<Ranked>, Error> {
+        let mut ranked = Vec::new();
+        self.rank_each(request, &Resume::Fresh, &mut |turn, score| {
+            ranked.push((turn, score));
+            Ok(true)
+        })?;
+        Ok(ranked)
+    }
+
+    /// Ranked or newest search handing each turn to `visit` in answer order,
+    /// from `resume` (DESIGN §40.46); under relevance it answers the
+    /// candidate statistics' digest.
+    pub fn rank_each(
+        &self,
+        request: &Request,
+        resume: &Resume,
+        visit: &mut Visit,
+    ) -> Result<Option<String>, Error> {
         request.bounds().map_err(Error::Value)?;
         let _held = self.lock()?;
         let held;
@@ -204,14 +327,23 @@ impl FileStore {
                 &held
             }
         };
-        self.rank_logs(request, ids)
+        self.rank_logs(request, ids, resume, visit)
     }
 
     /// Pass one streams every selected log and keeps facts; pass two reads
-    /// the winners' lines again by offset. The caller holds the lock, so the
-    /// logs cannot change between the passes.
-    fn rank_logs(&self, request: &Request, ids: &[String]) -> Result<Vec<Ranked>, Error> {
+    /// the winners' lines again by offset and hands each to `visit`. The
+    /// caller holds the lock, so the logs cannot change between the passes.
+    fn rank_logs(
+        &self,
+        request: &Request,
+        ids: &[String],
+        resume: &Resume,
+        visit: &mut Visit,
+    ) -> Result<Option<String>, Error> {
         let mut ranking = Ranking::new(request, false)?;
+        if let Resume::After(last) = resume {
+            ranking.resume_after(last.clone());
+        }
         let all = request.order == Order::Newest;
         for id in ids {
             let file = self.conversation_file(id, TURNS)?;
@@ -229,9 +361,10 @@ impl FileStore {
                 })?;
             }
         }
+        let digest = (request.order == Order::Relevance).then(|| ranking.digest());
+        let winners = owed(ranking.winners(), resume, digest.as_deref().unwrap_or(""))?;
         let mut readers = std::collections::HashMap::new();
-        let mut ranked = Vec::new();
-        for (key, id, score) in ranking.winners() {
+        for (key, id, score) in winners {
             let reader = match readers.entry(key.conversation) {
                 std::collections::hash_map::Entry::Occupied(held) => held.into_mut(),
                 std::collections::hash_map::Entry::Vacant(slot) => {
@@ -240,9 +373,11 @@ impl FileStore {
                 }
             };
             let turn = read_at(reader, key.place, key.line as usize, &id)?;
-            ranked.push((turn, score));
+            if !visit(turn, score)? {
+                break;
+            }
         }
-        Ok(ranked)
+        Ok(digest)
     }
 
     /// The conversation's directory, refused when a symlink would carry

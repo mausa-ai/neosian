@@ -6,5 +6,9 @@
           AND (%(all)s::boolean OR conversation_id = ANY(%(ids)s::text[]))
           AND (%(since)s::timestamptz IS NULL OR created_at >= %(since)s)
           AND (%(before)s::timestamptz IS NULL OR created_at < %(before)s)
+          AND (%(at)s::timestamptz IS NULL OR created_at < %(at)s
+               OR (created_at = %(at)s
+                   AND (conversation_id COLLATE "C" < %(at_id)s::text COLLATE "C"
+                        OR (conversation_id = %(at_id)s::text AND turn < %(at_turn)s::integer))))
         ORDER BY created_at DESC, conversation_id COLLATE "C" DESC, turn DESC
         LIMIT %(limit)s

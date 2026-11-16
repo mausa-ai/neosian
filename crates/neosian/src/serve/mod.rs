@@ -14,6 +14,7 @@ mod envelope;
 mod grants;
 mod health;
 mod mcp;
+mod pages;
 mod paging;
 mod params;
 mod routes;
@@ -21,7 +22,9 @@ mod routes_conversation;
 mod routes_memory;
 mod routes_store;
 mod sessions;
+mod stream;
 mod streamable;
+mod turn_pages;
 
 use std::sync::Arc;
 

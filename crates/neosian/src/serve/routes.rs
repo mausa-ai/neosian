@@ -24,8 +24,13 @@ use crate::version::VERSION;
 /// The wire version this build speaks; `RemoteStore.connect` refuses another.
 use crate::wire::WIRE_VERSION;
 
-/// A route's body: the store, the typed payload and the stamped client.
-pub type Handler = fn(&dyn Backend, &Payload, &str) -> Result<Value, Fail>;
+/// A route's body: the store, the typed payload and the stamped client. A
+/// whole answer is one small value; a streamed one is written item by item
+/// (DESIGN §40.46).
+pub enum Handler {
+    Whole(fn(&dyn Backend, &Payload, &str) -> Result<Value, Fail>),
+    Streamed(fn(&dyn Backend, &Payload, &str, &mut super::stream::Writer) -> Result<(), Fail>),
+}
 
 pub struct Route {
     pub name: &'static str,
@@ -80,6 +85,7 @@ async fn capabilities(State(shared): State<super::State>, request: Request) -> R
         "memory_passages": {"version": 1},
         "history_ranking": {"version": 1},
         "knowledge_policy": {"version": 1},
+        "size_paging": {"version": 1},
     });
     if let Some(grants) = &shared.clients.1 {
         capability["authorization"] = grants.capability();
@@ -138,7 +144,15 @@ async fn endpoint(State(shared): State<super::State>, request: Request) -> Respo
     {
         return refusal.response();
     }
-    let handler = route.handler;
+    let handler = match route.handler {
+        Handler::Whole(handler) => handler,
+        Handler::Streamed(handler) => {
+            return super::stream::respond(Box::new(move |writer| {
+                handler(shared.store.as_ref(), &payload, &client.actor, writer)
+            }))
+            .await;
+        }
+    };
     let answered = tokio::task::spawn_blocking(move || {
         handler(shared.store.as_ref(), &payload, &client.actor)
     })

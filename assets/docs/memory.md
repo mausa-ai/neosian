@@ -403,6 +403,12 @@ store's `NEOSIAN_SEARCH_MAX_CANDIDATES` allows (default 100,000); the CLI and
 MCP then suggest rarer terms, a time bound or one conversation. Newest order
 is not limited this way.
 
+Each hit is built as its turn arrives, so the CLI and MCP keep hits, never
+the turns themselves, and `recall_turn` keeps only the turn it shows. Against
+a server that advertises size paging (`neosian docs wire`), searches and turn
+reads arrive in pages of at most 1 MiB, with the same results as before; an
+older server receives the same requests as before.
+
 Operator `redact` clears selected turns; `prune` applies an age cutoff to
 conversations. Whole-conversation erasure also clears their session documents.
 Projections covering erased turns are blanked. Memory and turn formats remain

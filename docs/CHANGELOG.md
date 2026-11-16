@@ -8,7 +8,7 @@ phase close names the version.
 
 ## [Unreleased]
 
-## [2.17.0] - 2026-11-16
+## [2.17.0] - 2026-11-17
 
 ### Changed
 
@@ -31,8 +31,45 @@ phase close names the version.
   (64 MiB by default) now stops and refuses, naming the setting, instead of
   holding them all. This also covers whole reads, such as a full
   conversation read by a local command; raise the setting for larger ones.
+- `neosian serve` writes every answer that grows with stored content as it
+  reads it, one item at a time: history search in every order, turn reads,
+  projection reads, memory reads, versions and history. The bytes are
+  exactly those of the whole answer, so no client changes. Searches and turn
+  reads come from the store a turn at a time (a file log a line at a time, a
+  Postgres statement through a portal), so a request holds about one turn
+  whatever the answer's size. Measured with `neosian serve` on Postgres in a container
+  limited to 192 MiB: version 1 history search at limit 500 over 120 KB
+  turns (a 60 MB answer), which peaked at 188 MiB, now peaks at 15 MiB in
+  0.66 s, and two such searches at once, which killed 2.16.0, peak at 18 MiB.
+- A refusal found after an answer's first 64 KiB have been sent, when the
+  `200` status line has already gone, ends the body with a line feed and the
+  error envelope it would have answered. A compact answer never holds a raw
+  line feed, so such a body is not valid JSON and cannot pass for a shorter
+  answer; the binary's remote client reports the same error a `400` gave.
+  A client that stops reading for 30 seconds loses the answer, so a stalled
+  reader cannot hold a store lock or a database connection.
+- `neosian search` and MCP `search_history` turn each matching turn into its
+  hit as it arrives instead of keeping every turn, and `recall_turn` keeps
+  only the turn it shows. File-backed turn reads stream the log a line at a
+  time and still refuse a malformed row anywhere in it.
 
 ### Added
+
+- The optional storage capability `size_paging: {version: 1}` lets a client
+  bound pages of `POST /v1/conversation/search_turns` (version 1, newest and
+  relevance) and `POST /v1/conversation/read_turns` by size: `page_bytes`
+  sets the ceiling, a page holds the whole turns that fit and always at
+  least one, and an opaque `continuation` brings the next page. `limit`
+  still bounds the total. Continuations bind the request and grant nothing;
+  a relevance continuation refuses with `value_error` when the turns it
+  ranked have changed. Requests without these fields are unchanged.
+  Independent conformance cases specify it; a service without it still
+  passes. Against a server that advertises it, the binary's remote client
+  reads searches and turns in pages of at most 1 MiB with the same results;
+  against an older server it sends the same requests as before.
+- `NEOSIAN_MAX_PAGE_BYTES` (default 8 MiB, at most 1 GiB) caps the page a
+  size-paged request is served; a client asking for more gets pages of that
+  size.
 
 - `NEOSIAN_SEARCH_MAX_CANDIDATES` (default 100,000, at most 10,000,000)
   bounds how many turns or documents holding a term one relevance search
@@ -44,9 +81,12 @@ phase close names the version.
   conversation. Newest and path orders are not limited this way. An operator
   serving several people under a memory limit can lower it to promise a
   ceiling.
-- `make bench-memory` and a CI job measure the peak memory of one search
-  request per operation over an adversarial corpus on files and Postgres and
-  fail above 32 MiB; answer-sized requests are printed but not yet gated.
+- `make bench-memory` and a CI job measure the peak memory of one request
+  per operation over an adversarial corpus on files and Postgres and fail
+  above 32 MiB, answer-sized requests included: history search at limit 500
+  over 64 KiB turns (141 to 143 MiB in 2.16.0) now peaks at 12 to 14 MiB, and
+  reads that follow size pages to the end of a 600-turn conversation stay
+  under 14 MiB.
 
 ## [2.16.0] - 2026-11-16
 

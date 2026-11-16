@@ -58,11 +58,18 @@ pub const REPLICA: &str = "NEOSIAN_REPLICA_MAX_BYTES";
 pub const FILE: &str = "NEOSIAN_MAX_FILE_BYTES";
 pub const RESPONSE: &str = "NEOSIAN_MAX_RESPONSE_BYTES";
 pub const SEARCH: &str = "NEOSIAN_SEARCH_MAX_CANDIDATES";
+pub const PAGE: &str = "NEOSIAN_MAX_PAGE_BYTES";
 
 /// The bytes one storage answer may carry into this process: an HTTP storage
 /// response before decoding, or one Postgres statement's rows as they arrive.
 pub fn response_bytes() -> Result<u64, Error> {
     setting(RESPONSE, 64 << 20, 1 << 30)
+}
+
+/// The largest size-paging ceiling a server grants; a larger `page_bytes`
+/// is served as this (DESIGN §40.46).
+pub fn page_bytes() -> Result<u64, Error> {
+    setting(PAGE, 8 << 20, 1 << 30)
 }
 
 /// The largest relevance candidate set one search keeps facts for (DESIGN §40.45).

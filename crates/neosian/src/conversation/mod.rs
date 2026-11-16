@@ -11,6 +11,7 @@ pub mod hits;
 pub mod ids;
 pub mod links;
 pub mod message;
+pub mod page;
 pub mod projection;
 pub mod rank;
 pub mod recall;

@@ -167,7 +167,7 @@ fn search_call(server: &Server, arguments: &Map<String, Value>) -> Outcome {
         Ok(ranking) => ranking,
         Err(outcome) => return outcome,
     };
-    let turns = match ranking.turns(server, &terms, ids, shown) {
+    let turns = match ranking.found(server, &terms, ids, shown) {
         Ok(turns) => turns,
         Err(Error::Conversation(refused)) => {
             return Outcome::fail(format!("[{}] {}", refused.code, refused.message));
@@ -222,7 +222,7 @@ fn search_call(server: &Server, arguments: &Map<String, Value>) -> Outcome {
         };
         return Outcome::ok(ranking.frame(text));
     }
-    let mut lines: Vec<String> = turns.iter().map(|turn| hit_block(turn, &terms)).collect();
+    let mut lines: Vec<String> = turns.iter().map(hit_block).collect();
     lines.push(footer);
     Outcome::ok(ranking.frame(lines.join("\n")))
 }

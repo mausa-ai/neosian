@@ -135,8 +135,9 @@ jobs:
         env:
           NEOSIAN_TEST_POSTGRES_DSN: postgresql://postgres:postgres@localhost:5432/postgres
 
-  # The memory gate (DESIGN §40.45): one release binary's peak memory per
-  # search request over an adversarial literal corpus, files and Postgres.
+  # The memory gate (DESIGN §40.45, §40.46): one release binary's peak memory
+  # per request over an adversarial literal corpus, files and Postgres,
+  # answer-sized and size-paged reads included.
   memory:
     runs-on: ubuntu-24.04
     timeout-minutes: 30

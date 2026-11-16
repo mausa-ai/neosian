@@ -46,6 +46,12 @@ development and tests only (DESIGN §40).
   Ranked search keeps facts per candidate, never content, and reads only the
   winners again inside the same lock or snapshot; past
   `NEOSIAN_SEARCH_MAX_CANDIDATES` it refuses, never truncates.
+- **Answers stream; pages may be bounded by size.** A large answer is written
+  item by item with unchanged bytes; a refusal after its first 64 KiB is a
+  line-feed trailer carrying the envelope, never a shorter answer. Optional
+  wire-6 `size_paging` version 1 bounds history-search and turn-read pages by
+  bytes (at least one turn) with opaque continuations that bind the request
+  and confer nothing; requests without its fields are unchanged.
 - **Knowledge imports are explicit.** Preview scoped Markdown/bundle changes;
   refuse lifecycle records and erased destinations. Collection rules validate
   imports and explicit checks, not authority. Structure/provenance stays in
@@ -111,7 +117,7 @@ development and tests only (DESIGN §40).
 | `make test-storage-contract [backend=http] [profile=full]` | independent custom-storage conformance |
 | `make test-container` | image conformance on files and Postgres |
 | `make bench-hooks [home=DIR]` | p50 of 20 warm runs per event; a number over budget fails |
-| `make bench-memory [backends=file,postgres]` | peak RSS per search request over an adversarial corpus; over budget fails |
+| `make bench-memory [backends=file,postgres]` | peak RSS per request (searches, answer-sized and size-paged reads) over an adversarial corpus; over budget fails |
 | `make docs-artifacts` | deterministic versioned docs and contracts release artifacts |
 
 All six default gates (lint, typecheck, test, size, rust-lint, rust-test)

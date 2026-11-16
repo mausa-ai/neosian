@@ -9,8 +9,7 @@ use super::mailbox::Mailbox;
 use super::types::{CONTEXT_CHARS, InboxMessage};
 use crate::assets::{MESSAGES, block, render};
 use crate::conversation::Error;
-use crate::conversation::Turn;
-use crate::conversation::hits::{hit_line, snippet};
+use crate::conversation::hits::{Found, hit_line, snippet};
 use crate::conversation::rank::{Bounds, within};
 use crate::conversation::search::match_terms;
 use crate::store::grammar::Actor;
@@ -74,7 +73,7 @@ pub fn augment_recall(
 /// annotations under a turn by creation instant, as they limit turns (§40.43).
 pub fn augment_search(
     mailbox: &Mailbox,
-    turns: &[Turn],
+    turns: &[Found],
     terms: &[String],
     ids: Option<&[String]>,
     limit: usize,
@@ -105,7 +104,7 @@ pub fn augment_search(
                         .is_none_or(|number| number == turn.turn as i64)
             })
             .collect();
-        let mut text = hit_line(turn, terms);
+        let mut text = hit_line(turn);
         if !attached.is_empty() {
             text.push('\n');
             text.push_str(&annotation_block(&attached));

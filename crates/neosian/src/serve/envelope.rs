@@ -142,6 +142,13 @@ impl From<conversation::Error> for Fail {
     }
 }
 
+/// A streamed answer's own failure (a client gone or stalled): no envelope.
+impl From<std::io::Error> for Fail {
+    fn from(_: std::io::Error) -> Self {
+        Self::internal()
+    }
+}
+
 impl From<Undecodable> for Fail {
     fn from(error: Undecodable) -> Self {
         match error {

@@ -318,6 +318,20 @@ impl State for Routed {
         ids: Option<&[String]>,
         limit: usize,
     ) -> Result<Vec<Turn>, conversation::Error> {
+        let mut found = Vec::new();
+        self.search_turns_each(terms, ids, limit, &mut |turn| {
+            found.push(turn);
+            Ok(true)
+        })?;
+        Ok(found)
+    }
+    fn search_turns_each(
+        &self,
+        terms: &[String],
+        ids: Option<&[String]>,
+        limit: usize,
+        visit: &mut dyn FnMut(Turn) -> Result<bool, conversation::Error>,
+    ) -> Result<(), conversation::Error> {
         let found;
         let ids = match ids {
             Some(ids) => ids,
@@ -330,10 +344,20 @@ impl State for Routed {
             self.history(id, false)?;
         }
         if ids.is_empty() {
-            return Ok(vec![]);
+            return Ok(());
         }
         self.history(&ids[0], false)?
-            .search_turns(terms, Some(ids), limit)
+            .search_turns_each(terms, Some(ids), limit, visit)
+    }
+    fn read_turns_each(
+        &self,
+        id: &str,
+        after: i64,
+        limit: Option<i64>,
+        visit: &mut dyn FnMut(Turn) -> Result<bool, conversation::Error>,
+    ) -> Result<(), conversation::Error> {
+        self.history(id, false)?
+            .read_turns_each(id, after, limit, visit)
     }
     fn history_ranking(&self) -> bool {
         self.profile
@@ -345,6 +369,18 @@ impl State for Routed {
         &self,
         request: &crate::conversation::rank::Request,
     ) -> Result<Vec<crate::conversation::rank::Ranked>, conversation::Error> {
+        let mut ranked = Vec::new();
+        self.rank_turns_each(request, &mut |turn, score| {
+            ranked.push((turn, score));
+            Ok(true)
+        })?;
+        Ok(ranked)
+    }
+    fn rank_turns_each(
+        &self,
+        request: &crate::conversation::rank::Request,
+        visit: &mut crate::conversation::page::Visit,
+    ) -> Result<(), conversation::Error> {
         let ids = match &request.ids {
             Some(ids) => ids.clone(),
             None => self.history_ids()?,
@@ -353,11 +389,11 @@ impl State for Routed {
             self.history(id, false)?;
         }
         let Some(first) = ids.first() else {
-            return Ok(vec![]);
+            return Ok(());
         };
         let mut scoped = request.clone();
         scoped.ids = Some(ids.clone());
-        self.history(first, false)?.rank_turns(&scoped)
+        self.history(first, false)?.rank_turns_each(&scoped, visit)
     }
     fn append_turn(
         &self,

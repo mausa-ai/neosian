@@ -77,6 +77,12 @@ newest orders and turn-time bounds to `conversation/search_turns`. It does not
 depend on memory search. The reference backends advertise it, and clients send
 its fields only to a service that declares it.
 
+The optional `"size_paging": {"version": 1}` capability adds byte-bounded pages
+to `conversation/search_turns` and `conversation/read_turns` (below). It does
+not depend on the other capabilities. The reference backends advertise it; the
+binary's remote client asks for pages of at most 1 MiB from a service that
+declares it and sends 2.16.0's requests to one that does not.
+
 ## Auth
 
 Every request but `/health` carries `Authorization: Bearer <token>`,
@@ -185,6 +191,31 @@ malformed nested object (a message without `role`, an archive document
 without `actor`) is `value_error` with the message
 `malformed request: 'role'`. A `500` carries no envelope and is the
 driver's problem, never a store answer.
+
+## Streamed answers
+
+An answer that can grow with stored content is written as it is read, one
+item at a time: `memory/read`, `memory/versions`, `memory/history`,
+`conversation/read_turns`, `conversation/read_projections` and
+`conversation/search_turns`. The bytes are exactly those of the whole answer;
+the server holds about one item rather than the answer. The first 64 KiB are
+held before anything is sent, so a refusal found by then is an ordinary
+response with its status and envelope.
+
+A refusal found later, when the status line `200` has already been sent, ends
+the body with a trailer: one line feed (byte `0x0A`) followed by the envelope
+it would have answered, as one compact JSON object, for example
+`{"error":{"code":"value_error","message":"resource limit
+NEOSIAN_MAX_RESPONSE_BYTES exceeded: 67108900 > 67108864; select a smaller
+batch or raise this setting","details":{}}}`. A compact answer never contains a
+raw line feed (strings escape it and no whitespace is written), so a body with
+a trailer is not valid JSON as a whole and cannot be read as a shorter answer;
+a client that knows the rule reads the envelope after the first line feed. The
+binary's remote client does, and reports the same error as for a `400`. A
+failure that has no envelope (a bare `500` before anything was sent) instead
+cuts the body off without its final chunk. A client that stops reading for 30 seconds loses
+the answer, so a stalled reader cannot hold a store lock or a database
+connection.
 
 ## The routes
 
@@ -342,9 +373,9 @@ Clients validate presence, count, fields, keys, lengths and content order.
 | route | request | response |
 |---|---|---|
 | `conversation/append_turn` | `conversation_id`, `messages` req; `actor` | `turn` |
-| `conversation/read_turns` | `conversation_id` req; `after`, `limit` | `turns`, `next_after` |
+| `conversation/read_turns` | `conversation_id` req; `after`, `limit`; `page_bytes`, `continuation` with size paging | `turns`, `next_after`; `continuation` with size paging |
 | `conversation/last_turn_number` | `conversation_id` req | `turn` (int, 0 when none) |
-| `conversation/search_turns` | `query` req; `conversations` (a list of ids), `limit` (default 50, at most 500); `order`, `since`, `before` with history ranking | `turns`; `order`, `scores` with history ranking |
+| `conversation/search_turns` | `query` req; `conversations` (a list of ids), `limit` (default 50, at most 500); `order`, `since`, `before` with history ranking; `page_bytes`, `continuation` with size paging | `turns`; `order`, `scores` with history ranking; `continuation` with size paging |
 | `conversation/append_projections` | `conversation_id`, `entries` req | `{}` |
 | `conversation/read_projections` | `conversation_id` req; `after`, `limit` | `entries`, `next_after` |
 | `conversation/redact_turns` | `conversation_id` req; `through`, `turns` (a list of turn numbers), `actor` | `count` (int) |
@@ -420,6 +451,52 @@ NEOSIAN_SEARCH_MAX_CANDIDATES exceeded` and asks the caller to narrow the
 words or the time range. Memory relevance follows the same rule. Newest
 answers are not limited this way.
 
+### Size paging version 1
+
+With `size_paging` version 1, `conversation/search_turns` (version 1, newest
+and relevance) and `conversation/read_turns` accept two more optional fields.
+A request without them, or with them null, is unchanged, byte for byte.
+
+- `page_bytes`: an integer of at least 1, the page's byte ceiling. A request
+  carrying it is size-paged, and its answer adds `continuation`: a string when
+  more turns remain, else `null`. The server serves a larger ceiling as its
+  own cap, `NEOSIAN_MAX_PAGE_BYTES` on the reference server (8 MiB by default).
+- `continuation`: the previous page's continuation, sent back with the same
+  request; it requires `page_bytes`, which may change between pages.
+
+A page holds whole turns in answer order while their encodings together stay
+within `page_bytes`, counting each turn as the UTF-8 length of its compact
+JSON, and always at least one turn, so a turn larger than the ceiling is a page
+of its own. A page ends only before a turn that would pass the ceiling, at the
+end of the answer, at `limit`, or at 500 turns for `read_turns`. `limit` keeps
+its meaning and bounds the total across pages; without one `read_turns`
+continues to the end of the conversation. A size-paged `read_turns` answer
+carries `next_after: null`: `continuation` alone continues.
+
+A continuation is opaque, at most 4096 bytes. It binds the request's
+selection (the conversation, `after` and `limit` of a read; the query terms,
+`conversations`, `order`, `since`, `before` and `limit` of a search) and a
+position; sent with a different selection it is `value_error`. It names a
+place, never a permission: every page is authorized from its own body, and a
+constrained token still names its conversations.
+
+Version 1, newest and `read_turns` continue after the last turn returned, and
+each page reads current state, as memory cursors do. Relevance has no cursor
+without size paging, because its scores depend on every candidate. Its first
+page fixes an evaluation bound (the request's `before`, else the server's
+clock) and the candidates' statistics; later pages count again over the same
+bounded selection and continue after the last turn returned. Turns never
+change, so the scores and order are the same; when the candidates did change
+(an erasure, a restore), the page refuses with `value_error`: `page
+continuation is stale: the candidate turns changed since the first page;
+search again`. Each relevance page repeats the counting, so fewer, larger pages
+cost less.
+
+`memory/read`, `memory/versions`, `memory/history` and
+`conversation/read_projections` stream but are not size-paged in version 1: a
+document is one item, memory listings already take a row `limit` and a
+cursor, and a projection page already ends on a whole turn.
+
 ### Store
 
 | route | request | response |
@@ -453,7 +530,8 @@ rows when one turn has more entries; an explicit total bound can cut
 that group. On both memory and conversation reads, `limit: 0` answers
 no rows or continuation; a negative `limit` or `after` is `value_error`.
 `conversation/search_turns` is not a listing and does not page: its
-`limit` is a bound, 500 at most.
+`limit` is a bound, 500 at most. Size paging version 1, above, adds
+byte-bounded pages to it and to `read_turns`.
 
 ## The JSON shapes
 

@@ -7,8 +7,9 @@ use serde_json::{Map, Value};
 
 use super::Outcome;
 use crate::assets::{TOOLS, quoted};
+use crate::conversation::Error;
+use crate::conversation::hits::Found;
 use crate::conversation::rank::{Bounds, Order, Request};
-use crate::conversation::{Error, Turn};
 use crate::mcp::server::Server;
 
 pub struct Ranking {
@@ -75,23 +76,28 @@ impl Ranking {
         self.request.bounds().unwrap_or_default()
     }
 
-    pub fn turns(
+    /// The hits, each built as its turn arrives; no turn is kept (§40.46).
+    pub fn found(
         &self,
         server: &Server,
         terms: &[String],
         ids: Option<&[String]>,
         shown: usize,
-    ) -> Result<Vec<Turn>, Error> {
+    ) -> Result<Vec<Found>, Error> {
         let store = server.memory.store.as_ref();
+        let mut found = Vec::new();
         if self.relevance() || self.bounded {
-            Ok(store
-                .rank_turns(&self.request)?
-                .into_iter()
-                .map(|(turn, _)| turn)
-                .collect())
+            store.rank_turns_each(&self.request, &mut |turn, score| {
+                found.push(Found::of(turn, terms, score));
+                Ok(true)
+            })?;
         } else {
-            store.search_turns(terms, ids, shown)
+            store.search_turns_each(terms, ids, shown, &mut |turn| {
+                found.push(Found::of(turn, terms, None));
+                Ok(true)
+            })?;
         }
+        Ok(found)
     }
 
     /// The answer, after the fallback note when the implicit order fell back.

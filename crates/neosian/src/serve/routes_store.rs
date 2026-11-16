@@ -9,27 +9,27 @@ use super::backend::Backend;
 use super::codec;
 use super::envelope::Fail;
 use super::params::{Payload, optional_objects, require_objects, require_str};
-use super::routes::Route;
+use super::routes::{Handler, Route};
 
 pub const ROUTES: [Route; 4] = [
     Route {
         name: "store/scopes",
-        handler: scopes,
+        handler: Handler::Whole(scopes),
         whole_store: true,
     },
     Route {
         name: "store/conversations",
-        handler: conversations,
+        handler: Handler::Whole(conversations),
         whole_store: true,
     },
     Route {
         name: "store/restore_scope",
-        handler: restore_scope,
+        handler: Handler::Whole(restore_scope),
         whole_store: true,
     },
     Route {
         name: "store/restore_conversation",
-        handler: restore_conversation,
+        handler: Handler::Whole(restore_conversation),
         whole_store: true,
     },
 ];

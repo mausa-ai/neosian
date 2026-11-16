@@ -1,16 +1,18 @@
-"""Memory gate: peak resident memory of one `neosian serve` search request.
+"""Memory gate: peak resident memory of one `neosian serve` request.
 
 Each operation starts a fresh server over an adversarial literal corpus, sends
-one request, stops the server and reads its peak RSS from the operating
-system. The corpus has large items (600 turns and 600 documents of 64 KiB)
-and many items (20,000 turns and 20,000 documents of 1 KiB); the one-letter
-term "e" makes every one a candidate. Records are planted as literal format-1
-rows (files) or table rows (Postgres), never written by the binary.
+one request (or, for a size-paged read, every page of it), stops the server
+and reads its peak RSS from the operating system. The corpus has large items
+(600 turns and 600 documents of 64 KiB) and many items (20,000 turns and
+20,000 documents of 1 KiB); the one-letter term "e" makes every one a
+candidate. Records are planted as literal format-1 rows (files) or table rows
+(Postgres), never written by the binary.
 
 Budgets are MiB per operation and include the server's own startup (about
-10 MiB). DESIGN §40.45 explains how they were chosen. Answer-sized cases
-(limit 500 turns of 64 KiB, a 32 MiB answer) are recorded but not gated:
-S14 bounds the answer itself.
+10 MiB). DESIGN §40.45 explains how they were chosen. Since S14 (§40.46)
+answers stream, so answer-sized requests (limit 500 turns of 64 KiB, a 32 MiB
+answer; a 500-turn page of turns) are gated too, as are reads that follow
+size pages to the end of a large conversation.
 """
 
 from __future__ import annotations
@@ -77,6 +79,7 @@ class Operation:
     route: str
     body: dict[str, Any]
     budget: float | None  # MiB; None records without gating
+    page_bytes: int | None = None  # follow size pages of this ceiling
 
 
 def _history(
@@ -96,6 +99,9 @@ def _memory(scope: str, order: str, passages: int) -> dict[str, Any]:
 
 HISTORY: Final = "conversation/search_turns"
 MEMORY: Final = "memory/search"
+TURNS: Final = "conversation/read_turns"
+SMALL_PAGE: Final = 64 * 1024
+CLIENT_PAGE: Final = 1 << 20
 OPERATIONS: Final = (
     Operation(
         "history relevance",
@@ -141,10 +147,32 @@ OPERATIONS: Final = (
         "history relevance, 500",
         HISTORY,
         _history(HISTORY_LARGE, "relevance", 500),
-        None,
+        BUDGET,
     ),
     Operation(
-        "history version 1, 500", HISTORY, _history(HISTORY_LARGE, None, 500), None
+        "history version 1, 500", HISTORY, _history(HISTORY_LARGE, None, 500), BUDGET
+    ),
+    Operation("turns read, 500", TURNS, {"conversation_id": HISTORY_LARGE}, BUDGET),
+    Operation(
+        "history version 1, 500, paged",
+        HISTORY,
+        _history(HISTORY_LARGE, None, 500),
+        BUDGET,
+        CLIENT_PAGE,
+    ),
+    Operation(
+        "turns read, paged",
+        TURNS,
+        {"conversation_id": HISTORY_LARGE},
+        BUDGET,
+        SMALL_PAGE,
+    ),
+    Operation(
+        "turns read many, paged",
+        TURNS,
+        {"conversation_id": HISTORY_MANY},
+        BUDGET,
+        SMALL_PAGE,
     ),
 )
 
@@ -296,6 +324,24 @@ def _call(url: str, route: str, body: dict[str, Any]) -> dict[str, Any]:
         return answer
 
 
+def _count(answer: dict[str, Any]) -> int:
+    return len(answer.get("turns", answer.get("hits", [])))
+
+
+def _follow(url: str, operation: Operation) -> tuple[int, int]:
+    """(items, pages): one request, or every size page of one read."""
+    if operation.page_bytes is None:
+        return _count(_call(url, operation.route, operation.body)), 1
+    body = {**operation.body, "page_bytes": operation.page_bytes}
+    items = pages = 0
+    while True:
+        answer = _call(url, operation.route, body)
+        items, pages = items + _count(answer), pages + 1
+        if answer["continuation"] is None:
+            return items, pages
+        body["continuation"] = answer["continuation"]
+
+
 @dataclass
 class Backend:
     name: str
@@ -366,9 +412,8 @@ def _run(binary: Path, backend: Backend) -> bool:
     for operation in OPERATIONS:
         with _server(binary, backend) as (url, process):
             started = time.perf_counter()
-            answer = _call(url, operation.route, operation.body)
+            hits, pages = _follow(url, operation)
             seconds = time.perf_counter() - started
-            hits = len(answer.get("turns", answer.get("hits", [])))
             peak = _peak(process)
         if operation.budget is None:
             verdict, budget = "recorded", "-"
@@ -377,7 +422,7 @@ def _run(binary: Path, backend: Backend) -> bool:
             budget = f"{operation.budget:.0f}"
             failed |= verdict != "ok"
         print(
-            f"{backend.name:<9}{operation.name:<28}{hits:>5}{seconds:>8.2f}"
+            f"{backend.name:<9}{operation.name:<32}{hits:>6}{pages:>6}{seconds:>8.2f}"
             f"{peak:>9.1f}{budget:>8}  {verdict}",
             flush=True,
         )
@@ -409,7 +454,7 @@ def main(argv: list[str] | None = None) -> int:
     if "postgres" in backends and not dsn:
         parser.error(f"the postgres backend needs an explicit disposable ${DSN_ENV}")
     print(
-        f"{'backend':<9}{'operation':<28}{'hits':>5}{'seconds':>8}"
+        f"{'backend':<9}{'operation':<32}{'items':>6}{'pages':>6}{'seconds':>8}"
         f"{'peak MiB':>9}{'budget':>8}  verdict"
     )
     failed = False

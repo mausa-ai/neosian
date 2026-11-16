@@ -8,62 +8,58 @@ use serde_json::{Value, json};
 use super::backend::Backend;
 use super::codec;
 use super::envelope::Fail;
-use super::paging::{PAGE, projections_page, turns_page};
+use super::paging::{PAGE, projections_page};
 use super::params::{
-    Payload, optional_int, optional_ints, optional_str, optional_strs, optional_timestamp,
-    require_objects, require_str,
+    Payload, optional_int, optional_ints, optional_strs, optional_timestamp, require_objects,
+    require_str,
 };
-use super::routes::Route;
+use super::routes::{Handler, Route};
 use super::routes_memory::actor;
-use crate::conversation::ids::parse_conversation_id;
-use crate::conversation::search::parse_query;
+use super::stream::Writer;
+use super::turn_pages::{read_turns, search_turns};
 
 pub const ROUTES: [Route; 8] = [
     Route {
         name: "conversation/append_turn",
-        handler: append_turn,
+        handler: Handler::Whole(append_turn),
         whole_store: false,
     },
     Route {
         name: "conversation/read_turns",
-        handler: read_turns,
+        handler: Handler::Streamed(read_turns),
         whole_store: false,
     },
     Route {
         name: "conversation/last_turn_number",
-        handler: last_turn_number,
+        handler: Handler::Whole(last_turn_number),
         whole_store: false,
     },
     Route {
         name: "conversation/search_turns",
-        handler: search_turns,
+        handler: Handler::Streamed(search_turns),
         whole_store: false,
     },
     Route {
         name: "conversation/append_projections",
-        handler: append_projections,
+        handler: Handler::Whole(append_projections),
         whole_store: false,
     },
     Route {
         name: "conversation/read_projections",
-        handler: read_projections,
+        handler: Handler::Streamed(read_projections),
         whole_store: false,
     },
     Route {
         name: "conversation/redact_turns",
-        handler: redact_turns,
+        handler: Handler::Whole(redact_turns),
         whole_store: false,
     },
     Route {
         name: "conversation/turn_redactions",
-        handler: turn_redactions,
+        handler: Handler::Whole(turn_redactions),
         whole_store: false,
     },
 ];
-
-fn turns(turns: &[crate::conversation::Turn]) -> Vec<Value> {
-    turns.iter().map(codec::turn).collect()
-}
 
 fn append_turn(store: &dyn Backend, payload: &Payload, client: &str) -> Result<Value, Fail> {
     let conversation_id = require_str(payload, "conversation_id")?;
@@ -76,67 +72,9 @@ fn append_turn(store: &dyn Backend, payload: &Payload, client: &str) -> Result<V
     Ok(json!({"turn": codec::turn(&turn)}))
 }
 
-fn read_turns(store: &dyn Backend, payload: &Payload, _client: &str) -> Result<Value, Fail> {
-    let (page, next_after) = turns_page(store, payload)?;
-    Ok(json!({"turns": turns(&page), "next_after": next_after}))
-}
-
 fn last_turn_number(store: &dyn Backend, payload: &Payload, _client: &str) -> Result<Value, Fail> {
     let conversation_id = require_str(payload, "conversation_id")?;
     Ok(json!({"turn": store.last_turn_number(&conversation_id)?}))
-}
-
-fn search_turns(store: &dyn Backend, payload: &Payload, _client: &str) -> Result<Value, Fail> {
-    let limit = optional_int(payload, "limit")?;
-    if limit.is_some_and(|limit| limit > PAGE) {
-        let why = format!("a search answers at most {PAGE} turns; narrow the query");
-        return Err(Fail::value(why));
-    }
-    let query = require_str(payload, "query")?;
-    let ids = optional_strs(payload, "conversations")?;
-    let limit = limit.unwrap_or(50);
-    let terms = parse_query(&query).map_err(Fail::value)?;
-    for conversation_id in ids.iter().flatten() {
-        parse_conversation_id(conversation_id)?;
-    }
-    if limit < 1 {
-        return Err(Fail::value(format!("limit must be >= 1, got {limit}")));
-    }
-    let order = optional_str(payload, "order")?;
-    let since = optional_str(payload, "since")?;
-    let before = optional_str(payload, "before")?;
-    if order.is_none() && since.is_none() && before.is_none() {
-        let found = store.search_turns(&terms, ids.as_deref(), limit as usize)?;
-        return Ok(json!({"turns": turns(&found)}));
-    }
-    // History ranking version 1 (DESIGN §40.43).
-    use crate::conversation::rank::{Order, Request};
-    let chosen = match order.as_deref() {
-        None | Some("newest") => Order::Newest,
-        Some("relevance") => Order::Relevance,
-        Some(other) => {
-            let why = format!("order must be newest or relevance, got {other:?}");
-            return Err(Fail::value(why));
-        }
-    };
-    let request = Request {
-        terms,
-        ids,
-        limit: limit as usize,
-        order: chosen,
-        since,
-        before,
-    };
-    request.bounds().map_err(Fail::value)?;
-    let (found, scores): (Vec<_>, Vec<_>) = store.rank_turns(&request)?.into_iter().unzip();
-    let mut answer = json!({"turns": turns(&found)});
-    if order.is_some() {
-        answer["order"] = json!(chosen.name());
-    }
-    if chosen == Order::Relevance {
-        answer["scores"] = json!(scores);
-    }
-    Ok(answer)
 }
 
 fn append_projections(
@@ -153,10 +91,15 @@ fn append_projections(
     Ok(json!({}))
 }
 
-fn read_projections(store: &dyn Backend, payload: &Payload, _client: &str) -> Result<Value, Fail> {
+fn read_projections(
+    store: &dyn Backend,
+    payload: &Payload,
+    _client: &str,
+    writer: &mut Writer,
+) -> Result<(), Fail> {
     let (entries, next_after) = projections_page(store, payload)?;
-    let entries: Vec<Value> = entries.iter().map(codec::projection).collect();
-    Ok(json!({"entries": entries, "next_after": next_after}))
+    let items = entries.iter().map(codec::projection);
+    Ok(writer.list("entries", items, &[("next_after", json!(next_after))])?)
 }
 
 fn redact_turns(store: &dyn Backend, payload: &Payload, client: &str) -> Result<Value, Fail> {

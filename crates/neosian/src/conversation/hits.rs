@@ -9,6 +9,7 @@ use serde_json::{Value, json};
 use super::Turn;
 use super::links::boundary;
 use super::search::turn_text;
+use crate::store::time::Stamp;
 use crate::text::{flatten, head, len, splitlines, strip, tail};
 
 pub const SNIPPET_CHARS: usize = 160;
@@ -18,7 +19,32 @@ const LEAD: usize = SNIPPET_CHARS / 4;
 const ATOM_MAX: usize = SNIPPET_CHARS / 2;
 const CUT: &str = "…";
 
-pub fn hit_header(turn: &Turn) -> String {
+/// A search hit as the agent doors show it: the turn's header fields, its
+/// snippet and its score, built as the turn arrives so the turn itself is
+/// never kept (DESIGN §40.46).
+pub struct Found {
+    pub conversation_id: String,
+    pub turn: u64,
+    pub created_at: Stamp,
+    pub actor: Option<String>,
+    pub snippet: String,
+    pub score: Option<u64>,
+}
+
+impl Found {
+    pub fn of(turn: Turn, terms: &[String], score: Option<u64>) -> Self {
+        Self {
+            snippet: snippet(&turn_text(&turn), terms),
+            conversation_id: turn.conversation_id,
+            turn: turn.turn,
+            created_at: turn.created_at,
+            actor: turn.actor,
+            score,
+        }
+    }
+}
+
+pub fn hit_header(turn: &Found) -> String {
     format!(
         "[{} #{}] {} {}",
         turn.conversation_id,
@@ -103,28 +129,24 @@ pub fn snippet(text: &str, terms: &[String]) -> String {
     format!("{before}{piece}{after}")
 }
 
-pub fn hit_json(turn: &Turn, terms: &[String]) -> Value {
+pub fn hit_json(turn: &Found) -> Value {
     json!({
         "conversation_id": turn.conversation_id,
         "turn": turn.turn,
         "created_at": turn.created_at.z(),
         "actor": turn.actor,
-        "snippet": snippet(&turn_text(turn), terms),
+        "snippet": turn.snippet,
     })
 }
 
 /// The tool's rendering: the header, the snippet indented under it.
-pub fn hit_block(turn: &Turn, terms: &[String]) -> String {
-    format!(
-        "{}\n  {}",
-        hit_header(turn),
-        snippet(&turn_text(turn), terms)
-    )
+pub fn hit_block(turn: &Found) -> String {
+    format!("{}\n  {}", hit_header(turn), turn.snippet)
 }
 
 /// The shell's rendering: one line, the audit verb's two-space columns.
-pub fn hit_line(turn: &Turn, terms: &[String]) -> String {
-    format!("{}  {}", hit_header(turn), snippet(&turn_text(turn), terms))
+pub fn hit_line(turn: &Found) -> String {
+    format!("{}  {}", hit_header(turn), turn.snippet)
 }
 
 #[cfg(test)]

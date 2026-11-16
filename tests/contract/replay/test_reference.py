@@ -113,6 +113,9 @@ def retained(value: Any) -> Any:
             )  # S12's optional ranking has independent contracts.
             result.pop("change_feed", None)  # S7 has independent durability contracts.
             result.pop(
+                "size_paging", None
+            )  # S14's optional size paging has independent contracts.
+            result.pop(
                 "knowledge_policy", None
             )  # S6's optional filter is tested separately.
         if "path_executables" in result and "update_mode" in result:

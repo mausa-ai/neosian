@@ -7,7 +7,7 @@
 use super::backend::Backend;
 use super::envelope::Fail;
 use super::params::{Payload, optional_int, optional_str, require_str};
-use crate::conversation::{Projection, Turn};
+use crate::conversation::Projection;
 use crate::store::Page;
 
 /// The most rows one response carries.
@@ -39,26 +39,12 @@ pub fn memory_page<T>(
     )
 }
 
-fn window(payload: &Payload) -> Result<(String, i64, Option<i64>, i64), Fail> {
+pub fn window(payload: &Payload) -> Result<(String, i64, Option<i64>, i64), Fail> {
     let conversation_id = require_str(payload, "conversation_id")?;
     let after = optional_int(payload, "after")?.unwrap_or(0);
     let limit = optional_int(payload, "limit")?;
     let size = limit.map_or(PAGE, |limit| limit.min(PAGE));
     Ok((conversation_id, after, limit, size))
-}
-
-/// `turns_page`: the turns past `after`, and where the next page starts.
-pub fn turns_page(
-    store: &dyn Backend,
-    payload: &Payload,
-) -> Result<(Vec<Turn>, Option<u64>), Fail> {
-    let (conversation_id, after, limit, size) = window(payload)?;
-    let turns = store.read_turns(&conversation_id, after, Some(size))?;
-    if (turns.len() as i64) < size || Some(size) == limit {
-        return Ok((turns, None));
-    }
-    let next = turns.last().map(|turn| turn.turn);
-    Ok((turns, next))
 }
 
 /// `projections_page`: as `turns_page`, but a cut page ends on a whole

@@ -1,27 +1,34 @@
 //! History relevance on Postgres in two passes (DESIGN §40.45): the facts
 //! statement streams every candidate row and keeps only its facts, counting
-//! over the stored `search_text`; the winners' turns are then read whole, at
-//! most `limit` of them, in the same snapshot and under the response budget.
+//! over the stored `search_text`; the winners' turns are then read in rank
+//! order in the same snapshot, under the response budget, and handed one at a
+//! time to the visitor, which may stop the page (§40.46).
 
 use super::connection::Passes;
 use super::{PostgresStore, rows, sql};
-use crate::conversation::rank::{Key, Ranked, Ranking, Request, Winner};
-use crate::conversation::{Error, Refused, Turn};
+use crate::conversation::page::{Resume, Visit, owed};
+use crate::conversation::rank::{Key, Ranking, Request, Winner};
+use crate::conversation::{Error, Refused};
 use crate::remote::codec;
 use crate::store::error::Error as StoreError;
 use serde_json::{Value, json};
-use std::collections::HashMap;
 
 impl PostgresStore {
     pub(super) fn rank_relevance(
         &self,
         request: &Request,
         params: &Value,
-    ) -> Result<Vec<Ranked>, Error> {
+        resume: &Resume,
+        visit: &mut Visit,
+    ) -> Result<Option<String>, Error> {
         let mut passes = Winners {
             ranking: Some(Ranking::new(request, true)?),
+            resume,
+            visit,
             winners: Vec::new(),
-            found: HashMap::new(),
+            digest: String::new(),
+            read: 0,
+            stopped: false,
             refused: None,
             budget: crate::limits::response_bytes()?,
             used: 0,
@@ -33,31 +40,31 @@ impl PostgresStore {
             return Err(refused);
         }
         outcome?;
-        passes
-            .winners
-            .into_iter()
-            .map(|(key, _, score)| {
-                let turn = passes.found.remove(&(key.conversation, key.turn));
-                let turn = turn.ok_or_else(|| std::io::Error::other("a ranked turn vanished"))?;
-                Ok((turn, score))
-            })
-            .collect()
+        if !passes.stopped && passes.read != passes.winners.len() {
+            return Err(std::io::Error::other("a ranked turn vanished").into());
+        }
+        Ok(Some(passes.digest))
     }
 }
 
-/// Relevance's two passes: the facts rows feed the ranking; the winners' rows
-/// are decoded whole, at most `limit` of them, under the response budget. A
-/// conversation refusal stops the read and is reported as itself.
-struct Winners {
+/// Relevance's two passes: the facts rows feed the ranking; the winners the
+/// page still owes are read in rank order under the response budget. A
+/// conversation refusal, or one from the visitor, stops the read and is
+/// reported as itself.
+struct Winners<'a, 'b> {
     ranking: Option<Ranking>,
+    resume: &'a Resume,
+    visit: &'a mut Visit<'b>,
     winners: Vec<Winner>,
-    found: HashMap<(u32, u64), Turn>,
+    digest: String,
+    read: usize,
+    stopped: bool,
     refused: Option<Error>,
     budget: u64,
     used: u64,
 }
 
-impl Winners {
+impl Winners<'_, '_> {
     fn stop(&mut self, error: Error) -> StoreError {
         let note = StoreError::Value(String::new());
         self.refused = Some(error);
@@ -65,7 +72,7 @@ impl Winners {
     }
 }
 
-impl Passes for Winners {
+impl Passes for Winners<'_, '_> {
     fn first(&mut self, row: Value) -> Result<bool, StoreError> {
         let ranking = self.ranking.as_mut().expect("ranking before winners");
         let fact = (|| {
@@ -89,7 +96,12 @@ impl Passes for Winners {
     }
 
     fn second(&mut self) -> Result<Option<(&'static str, Value)>, StoreError> {
-        self.winners = self.ranking.take().expect("one ranking").winners();
+        let ranking = self.ranking.take().expect("one ranking");
+        self.digest = ranking.digest();
+        self.winners = match owed(ranking.winners(), self.resume, &self.digest) {
+            Ok(winners) => winners,
+            Err(error) => return Err(self.stop(error)),
+        };
         if self.winners.is_empty() {
             return Ok(None);
         }
@@ -101,7 +113,7 @@ impl Passes for Winners {
         )))
     }
 
-    fn then(&mut self, row: Value) -> Result<(), StoreError> {
+    fn then(&mut self, row: Value) -> Result<bool, StoreError> {
         self.used = self.used.saturating_add(super::values::weight(&row));
         crate::limits::check(crate::limits::RESPONSE, self.used, self.budget)?;
         let decoded = match codec::text(&row, "conversation_id") {
@@ -109,15 +121,21 @@ impl Passes for Winners {
             Err(error) => Err(error.into()),
         };
         let turn = decoded.map_err(|error| self.stop(error))?;
-        let conversation = self
-            .winners
-            .iter()
-            .find(|(key, id, _)| *id == turn.conversation_id && key.turn == turn.turn)
-            .map(|(key, _, _)| key.conversation);
-        if let Some(conversation) = conversation {
-            self.found.insert((conversation, turn.turn), turn);
+        let Some((key, id, score)) = self.winners.get(self.read) else {
+            return Err(std::io::Error::other("a ranked turn vanished").into());
+        };
+        if *id != turn.conversation_id || key.turn != turn.turn {
+            return Err(std::io::Error::other("a ranked turn vanished").into());
         }
-        Ok(())
+        let score = *score;
+        self.read += 1;
+        match (self.visit)(turn, score) {
+            Ok(go) => {
+                self.stopped = !go;
+                Ok(go)
+            }
+            Err(error) => Err(self.stop(error)),
+        }
     }
 }
 

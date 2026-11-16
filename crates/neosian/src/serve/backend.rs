@@ -1,5 +1,7 @@
 //! The server's extra callers: document snapshots and bounded cursor pages.
-use crate::conversation::{self, Projection};
+use crate::conversation::page::{Resume, Visit};
+use crate::conversation::rank::Request;
+use crate::conversation::{self, Projection, Turn};
 use crate::postgres::PostgresStore;
 use crate::state::State;
 use crate::store::error::Error;
@@ -58,10 +60,29 @@ pub trait Backend: State {
         id: &str,
         entries: &[Projection],
     ) -> Result<(), conversation::Error>;
+    /// One size page of `read_turns` from a store position `hint` (files:
+    /// where the next row starts), answering the position of the first turn
+    /// `visit` declined (§40.46).
+    fn read_turns_page(
+        &self,
+        id: &str,
+        after: i64,
+        limit: Option<i64>,
+        hint: Option<(u64, u64)>,
+        visit: &mut dyn FnMut(Turn) -> Result<bool, conversation::Error>,
+    ) -> Result<Option<(u64, u64)>, conversation::Error>;
+    /// History search handing each turn to `visit` from `resume` (§40.46);
+    /// relevance answers its statistics digest.
+    fn rank_page(
+        &self,
+        request: &Request,
+        resume: &Resume,
+        visit: &mut Visit,
+    ) -> Result<Option<String>, conversation::Error>;
 }
 
 macro_rules! backend {
-    ($store:ty, $write:expr) => {
+    ($store:ty, $write:expr, $page:expr) => {
         impl Backend for $store {
             fn backend(&self) -> &'static str {
                 stringify!($store)
@@ -128,19 +149,45 @@ macro_rules! backend {
             ) -> Result<(), conversation::Error> {
                 self.append_projections(id, entries)
             }
+            fn rank_page(
+                &self,
+                request: &Request,
+                resume: &Resume,
+                visit: &mut Visit,
+            ) -> Result<Option<String>, conversation::Error> {
+                self.rank_each(request, resume, visit)
+            }
+            fn read_turns_page(
+                &self,
+                id: &str,
+                after: i64,
+                limit: Option<i64>,
+                hint: Option<(u64, u64)>,
+                visit: &mut dyn FnMut(Turn) -> Result<bool, conversation::Error>,
+            ) -> Result<Option<(u64, u64)>, conversation::Error> {
+                ($page)(self, id, after, limit, hint, visit)
+            }
         }
     };
 }
 
-backend!(FileStore, |store: &FileStore,
-                     scope,
-                     path,
-                     content: &str,
-                     actor,
-                     expected| {
-    Ok(Document {
-        envelope: store.write_document(scope, path, content, actor, expected)?,
-        content: content.to_string(),
-    })
-});
-backend!(PostgresStore, PostgresStore::write_document);
+backend!(
+    FileStore,
+    |store: &FileStore, scope, path, content: &str, actor, expected| {
+        Ok(Document {
+            envelope: store.write_document(scope, path, content, actor, expected)?,
+            content: content.to_string(),
+        })
+    },
+    FileStore::read_turns_page
+);
+// Postgres continues by turn number alone: the keyset is the index.
+backend!(
+    PostgresStore,
+    PostgresStore::write_document,
+    |store: &PostgresStore, id: &str, after, limit, _hint, visit| {
+        store
+            .read_turns_each(id, after, limit, visit)
+            .map(|()| None)
+    }
+);

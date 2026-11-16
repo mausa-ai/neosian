@@ -118,6 +118,32 @@ impl State for PostgresStore {
     ) -> Result<Vec<crate::conversation::rank::Ranked>, conversation::Error> {
         self.rank_turns(request)
     }
+    fn read_turns_each(
+        &self,
+        id: &str,
+        after: i64,
+        limit: Option<i64>,
+        visit: &mut dyn FnMut(Turn) -> Result<bool, conversation::Error>,
+    ) -> Result<(), conversation::Error> {
+        self.read_turns_each(id, after, limit, visit)
+    }
+    fn search_turns_each(
+        &self,
+        terms: &[String],
+        ids: Option<&[String]>,
+        limit: usize,
+        visit: &mut dyn FnMut(Turn) -> Result<bool, conversation::Error>,
+    ) -> Result<(), conversation::Error> {
+        self.search_each(terms, ids, limit, visit)
+    }
+    fn rank_turns_each(
+        &self,
+        request: &crate::conversation::rank::Request,
+        visit: &mut crate::conversation::page::Visit,
+    ) -> Result<(), conversation::Error> {
+        let fresh = crate::conversation::page::Resume::Fresh;
+        self.rank_each(request, &fresh, visit).map(|_| ())
+    }
     fn append_turn(
         &self,
         id: &str,

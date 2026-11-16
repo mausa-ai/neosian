@@ -59,6 +59,7 @@ def test_handshake_and_transport_failures(server: Server) -> None:
         "history_ranking": {"version": 1},
         "change_feed": {"version": 1},
         "knowledge_policy": {"version": 1},
+        "size_paging": {"version": 1},
     }
     denied = server.request("/v1/capabilities", method="GET", authenticated=False)
     assert (denied.status, denied.body, denied.headers["www-authenticate"]) == (

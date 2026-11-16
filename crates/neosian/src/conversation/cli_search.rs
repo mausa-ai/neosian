@@ -11,7 +11,7 @@ use clap::Args;
 use serde_json::{Value, json};
 
 use super::failed;
-use super::hits::hit_line;
+use super::hits::{Found, hit_line};
 use super::ids::check_conversation_id;
 use super::rank::{Order, Request};
 use super::search::parse_query;
@@ -131,32 +131,29 @@ pub fn run(args: &Search, out: &mut impl Write, err: &mut impl Write) -> io::Res
     }
     let relevance = request.order == Order::Relevance;
     let ranked_path = relevance || bounded;
-    let (turns, scores): (Vec<_>, Vec<_>) = if ranked_path {
+    // Each turn becomes its hit as it arrives; the turn is not kept (§40.46).
+    let mut turns: Vec<Found> = Vec::new();
+    if ranked_path {
         request.ids = ids.map(<[String]>::to_vec);
-        match store.rank_turns(&request) {
-            Ok(ranked) => ranked.into_iter().unzip(),
-            Err(error) => {
-                let text = error.text();
-                let key = "search_history_too_broad_cli";
-                let guidance = crate::assets::too_broad(&text, crate::assets::TOOLS, key);
-                return failed(&text, guidance.as_deref(), json, out, err);
-            }
+        let found = store.rank_turns_each(&request, &mut |turn, score| {
+            turns.push(Found::of(turn, &terms, score));
+            Ok(true)
+        });
+        if let Err(error) = found {
+            let text = error.text();
+            let key = "search_history_too_broad_cli";
+            let guidance = crate::assets::too_broad(&text, crate::assets::TOOLS, key);
+            return failed(&text, guidance.as_deref(), json, out, err);
         }
     } else {
-        match store.search_turns(&terms, ids, args.limit as usize) {
-            Ok(turns) => {
-                let none = vec![None; turns.len()];
-                (turns, none)
-            }
-            Err(error) => return failed(&error.text(), None, json, out, err),
+        let found = store.search_turns_each(&terms, ids, args.limit as usize, &mut |turn| {
+            turns.push(Found::of(turn, &terms, None));
+            Ok(true)
+        });
+        if let Err(error) = found {
+            return failed(&error.text(), None, json, out, err);
         }
-    };
-    let score_of = |turn: &super::Turn| {
-        turns
-            .iter()
-            .position(|t| std::ptr::eq(t, turn))
-            .and_then(|i| scores[i])
-    };
+    }
     let hits = match search_hits(
         store.as_ref(),
         &turns,
@@ -173,9 +170,9 @@ pub fn run(args: &Search, out: &mut impl Write, err: &mut impl Write) -> io::Res
         let hits: Vec<Value> = hits
             .iter()
             .map(|hit| {
-                let mut value = hit.json(&terms);
+                let mut value = hit.json();
                 if let Hit::Turn { turn, .. } = hit
-                    && let Some(score) = score_of(turn)
+                    && let Some(score) = turn.score
                 {
                     value["score"] = json!(score);
                 }
@@ -211,7 +208,7 @@ pub fn run(args: &Search, out: &mut impl Write, err: &mut impl Write) -> io::Res
     for hit in &hits {
         match hit {
             Hit::Turn { turn, annotations } => {
-                writeln!(out, "{}", hit_line(turn, &terms))?;
+                writeln!(out, "{}", hit_line(turn))?;
                 for note in annotations {
                     writeln!(out, "{note}")?;
                 }

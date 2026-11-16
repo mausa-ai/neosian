@@ -7,16 +7,16 @@ use serde_json::{Value, json};
 
 use super::delivery::annotation;
 use super::mailbox::Mailbox;
-use crate::conversation::hits::{hit_json, snippet};
+use crate::conversation::Error;
+use crate::conversation::hits::{Found, hit_json, snippet};
 use crate::conversation::rank::{Bounds, within};
 use crate::conversation::search::match_terms;
-use crate::conversation::{Error, Turn};
 use crate::state::State;
 
 /// A search answer: a turn with the annotations about it, or a message.
 pub enum Hit<'a> {
     Turn {
-        turn: &'a Turn,
+        turn: &'a Found,
         annotations: Vec<String>,
     },
     Message {
@@ -27,10 +27,10 @@ pub enum Hit<'a> {
 }
 
 impl Hit<'_> {
-    pub fn json(&self, terms: &[String]) -> Value {
+    pub fn json(&self) -> Value {
         match self {
             Self::Turn { turn, annotations } => {
-                let mut hit = hit_json(turn, terms);
+                let mut hit = hit_json(turn);
                 if !annotations.is_empty() {
                     hit["annotations"] = json!(annotations);
                 }
@@ -48,7 +48,7 @@ impl Hit<'_> {
 /// turns (§40.43).
 pub fn search_hits<'a>(
     store: &dyn State,
-    turns: &'a [Turn],
+    turns: &'a [Found],
     terms: &[String],
     ids: Option<&[String]>,
     limit: usize,

@@ -120,6 +120,8 @@ pub struct Ranking {
     stats: Stats,
     facts: Facts<Key>,
     newest: Best<Key>,
+    /// Newest only: keep turns strictly after this one (size paging, §40.46).
+    after: Option<super::page::Last>,
 }
 
 impl Ranking {
@@ -142,7 +144,18 @@ impl Ranking {
             facts: Facts::new(terms.len(), maximum),
             newest: Best::new(request.limit),
             terms,
+            after: None,
         })
+    }
+
+    /// Newest resumes strictly after `last` in the version 1 order.
+    pub fn resume_after(&mut self, last: super::page::Last) {
+        self.after = Some(last);
+    }
+
+    /// The candidate statistics' digest, which a relevance page binds.
+    pub fn digest(&self) -> String {
+        self.stats.digest()
     }
 
     /// The search's own index for a conversation id.
@@ -178,6 +191,14 @@ impl Ranking {
         match self.order {
             Order::Newest => {
                 let conversations = &self.conversations;
+                let id = &conversations[key.conversation as usize];
+                if self
+                    .after
+                    .as_ref()
+                    .is_some_and(|last| !last.precedes(key.created, id, key.turn))
+                {
+                    return Ok(());
+                }
                 self.newest.offer(key, |a, b| newest(conversations, a, b));
             }
             Order::Relevance => {

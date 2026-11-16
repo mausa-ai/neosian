@@ -2,6 +2,7 @@
 
 use super::{PostgresStore, rows, sql};
 use crate::conversation::ids::parse_conversation_id;
+use crate::conversation::page::{Last, Resume, Visit};
 use crate::conversation::rank::{Order, Ranked, Request};
 use crate::conversation::search::messages_text;
 use crate::conversation::{
@@ -47,15 +48,48 @@ impl PostgresStore {
     }
 
     pub fn read_turns(&self, id: &str, after: i64, limit: Option<i64>) -> Result<Vec<Turn>, Error> {
+        let mut turns = Vec::new();
+        self.read_turns_each(id, after, limit, &mut |turn| {
+            turns.push(turn);
+            Ok(true)
+        })?;
+        Ok(turns)
+    }
+
+    /// `read_turns` one turn at a time through the portal (DESIGN §40.46).
+    pub fn read_turns_each(
+        &self,
+        id: &str,
+        after: i64,
+        limit: Option<i64>,
+        visit: &mut dyn FnMut(Turn) -> Result<bool, Error>,
+    ) -> Result<(), Error> {
         parse_conversation_id(id)?;
         rows::window(after, limit)?;
-        self.fetch(
-            sql!("store/read_turns"),
-            json!({"conversation_id":id,"after":after,"limit":limit}),
-        )?
-        .into_iter()
-        .map(|row| rows::turn(id, row))
-        .collect()
+        let params = json!({"conversation_id":id,"after":after,"limit":limit});
+        self.turn_rows(sql!("store/read_turns"), &params, |row| {
+            visit(rows::turn(id, row)?)
+        })
+    }
+
+    /// Streamed rows with conversation refusals reported as themselves.
+    pub(super) fn turn_rows(
+        &self,
+        template: &'static str,
+        params: &Value,
+        mut each: impl FnMut(Value) -> Result<bool, Error>,
+    ) -> Result<(), Error> {
+        let mut refused = None;
+        let outcome = self.pool.rows(template, params, |row| {
+            each(row).map_err(|error| {
+                refused = Some(error);
+                crate::store::error::Error::Value(String::new())
+            })
+        });
+        if let Some(error) = refused {
+            return Err(error);
+        }
+        Ok(outcome?)
     }
 
     pub fn last_turn_number(&self, id: &str) -> Result<u64, Error> {
@@ -76,25 +110,60 @@ impl PostgresStore {
         ids: Option<&[String]>,
         limit: usize,
     ) -> Result<Vec<Turn>, Error> {
+        let mut found = Vec::new();
+        self.search_each(terms, ids, limit, &mut |turn| {
+            found.push(turn);
+            Ok(true)
+        })?;
+        Ok(found)
+    }
+
+    /// Version 1 search: newest without bounds, the same statement.
+    pub fn search_each(
+        &self,
+        terms: &[String],
+        ids: Option<&[String]>,
+        limit: usize,
+        visit: &mut dyn FnMut(Turn) -> Result<bool, Error>,
+    ) -> Result<(), Error> {
         check_ids(ids)?;
         if limit < 1 {
             return Err(Error::Value(format!("limit must be >= 1, got {limit}")));
         }
-        let patterns: Vec<String> = terms
-            .iter()
-            .map(|term| format!("%{}%", rows::escaped(term)))
-            .collect();
-        self.fetch(sql!("store/search_turns"), json!({"patterns":patterns,"all":ids.is_none(),"ids":ids.unwrap_or_default(),"limit":limit}))?
-            .into_iter().map(|row| rows::turn(&codec::text(&row, "conversation_id")?, row)).collect()
+        let request = Request {
+            terms: terms.to_vec(),
+            ids: ids.map(<[String]>::to_vec),
+            limit,
+            order: Order::Newest,
+            since: None,
+            before: None,
+        };
+        self.rank_each(&request, &Resume::Fresh, &mut |turn, _| visit(turn))?;
+        Ok(())
+    }
+
+    pub fn rank_turns(&self, request: &Request) -> Result<Vec<Ranked>, Error> {
+        let mut ranked = Vec::new();
+        self.rank_each(request, &Resume::Fresh, &mut |turn, score| {
+            ranked.push((turn, score));
+            Ok(true)
+        })?;
+        Ok(ranked)
     }
 
     /// History ranking version 1 (DESIGN §40.43): SQL decides membership with
     /// version 1's `ILIKE` over `search_text`, under the database's collation,
     /// within the selection and bounds. Newest is the SQL answer, ordered and
-    /// limited there, without `search_text`. Relevance streams every row with
-    /// any term and keeps only its facts, counting over the same stored text,
-    /// then reads the winners in the same snapshot (§40.45).
-    pub fn rank_turns(&self, request: &Request) -> Result<Vec<Ranked>, Error> {
+    /// limited there, without `search_text`, resuming by keyset. Relevance
+    /// streams every row with any term and keeps only its facts, counting over
+    /// the same stored text, then reads the winners in the same snapshot
+    /// (§40.45). Each turn goes to `visit` in answer order (§40.46).
+    pub fn rank_each(
+        &self,
+        request: &Request,
+        resume: &Resume,
+        visit: &mut Visit,
+    ) -> Result<Option<String>, Error> {
         let ids = request.ids.as_deref();
         check_ids(ids)?;
         request.bounds().map_err(Error::Value)?;
@@ -103,22 +172,30 @@ impl PostgresStore {
             .iter()
             .map(|term| format!("%{}%", rows::escaped(term)))
             .collect();
-        let params = json!({"patterns": patterns, "all": ids.is_none(),
+        let mut params = json!({"patterns": patterns, "all": ids.is_none(),
             "ids": ids.unwrap_or_default(), "since": request.since,
-            "before": request.before, "limit": request.limit});
+            "before": request.before, "limit": request.limit,
+            "at": null, "at_id": null, "at_turn": null});
         if request.order == Order::Newest {
-            return self
-                .fetch(sql!("store/rank_turns"), params)?
-                .into_iter()
-                .map(|row| {
-                    Ok((
-                        rows::turn(&codec::text(&row, "conversation_id")?, row)?,
-                        None,
-                    ))
-                })
-                .collect();
+            if let Resume::After(Last {
+                created,
+                conversation,
+                turn,
+            }) = resume
+            {
+                params["at"] = json!(Stamp::from_micros(*created).z());
+                params["at_id"] = json!(conversation);
+                params["at_turn"] = json!(turn);
+            }
+            self.turn_rows(sql!("store/rank_turns"), &params, |row| {
+                visit(
+                    rows::turn(&codec::text(&row, "conversation_id")?, row)?,
+                    None,
+                )
+            })?;
+            return Ok(None);
         }
-        self.rank_relevance(request, &params)
+        self.rank_relevance(request, &params, resume, visit)
     }
 
     pub fn append_projections(&self, id: &str, entries: &[Projection]) -> Result<(), Error> {

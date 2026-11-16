@@ -3,7 +3,7 @@
   "info": {
     "title": "Neosian storage HTTP contract",
     "version": "6",
-    "description": "Storage wire 6, independent of package version. Bodies are JSON objects regardless of Content-Type; legacy operations ignore unknown request keys and treat optional null as absence. Optional memory-search version 1 uses strict fields and types, with null allowed only for cursor. JSON Schema describes supported typed input, not legacy coercions. Scope/conversation allowances are literal prefixes; constrained tokens cannot call store/* or /mcp and must explicitly bound conversation searches/trail reads. MCP at /mcp is a separate negotiated protocol, not described by this document."
+    "description": "Storage wire 6, independent of package version. Bodies are JSON objects regardless of Content-Type; legacy operations ignore unknown request keys and treat optional null as absence. Optional memory-search version 1 uses strict fields and types, with null allowed only for cursor. JSON Schema describes supported typed input, not legacy coercions. Scope/conversation allowances are literal prefixes; constrained tokens cannot call store/* or /mcp and must explicitly bound conversation searches/trail reads. MCP at /mcp is a separate negotiated protocol, not described by this document. Large answers stream: a refusal found after the answer's first bytes have left is a trailer, one line feed followed by the error envelope as one compact JSON object, so the 200 body is no longer JSON as a whole; a compact answer never holds a raw line feed."
   },
   "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
   "security": [
@@ -173,6 +173,19 @@
                         "version"
                       ],
                       "description": "Optional durable scope changes and operator retention, format 1."
+                    },
+                    "size_paging": {
+                      "type": "object",
+                      "properties": {
+                        "version": {
+                          "const": 1
+                        }
+                      },
+                      "required": [
+                        "version"
+                      ],
+                      "additionalProperties": false,
+                      "description": "Optional size paging version 1 on conversation/search_turns and conversation/read_turns: page_bytes bounds a page to the whole turns that fit (always at least one) and an opaque continuation carries the rest. The server caps page_bytes at its own ceiling. No new access authority."
                     }
                   },
                   "required": [
@@ -1810,7 +1823,7 @@
     "/v1/conversation/read_turns": {
       "post": {
         "operationId": "conversation_read_turns",
-        "description": "Read turns after a number, oldest first. An explicit limit <= 500 is a total bound and returns next_after null; omitted/larger limits can page.",
+        "description": "Read turns after a number, oldest first. An explicit limit <= 500 is a total bound and returns next_after null; omitted/larger limits can page. Size paging version 1 adds page_bytes and continuation: a size-paged page holds at most 500 turns, an explicit limit bounds the total across pages, and next_after is null because continuation alone continues.",
         "requestBody": {
           "required": true,
           "content": {
@@ -1842,6 +1855,31 @@
                         "type": "null"
                       }
                     ]
+                  },
+                  "page_bytes": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Size paging version 1. The page's byte ceiling: the page holds whole turns in answer order while their compact JSON encodings together stay within it, counting each turn's UTF-8 bytes, and always at least one turn. A server serves a larger value as its own ceiling. A request carrying it is size-paged and its answer adds continuation."
+                  },
+                  "continuation": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 4096
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Size paging version 1. The continuation of the previous page, sent back with the same request; requires page_bytes. It binds the request's selection (a different selection is value_error) and confers no permission."
                   }
                 },
                 "required": [
@@ -1876,6 +1914,19 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "continuation": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 4096
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "Size paging version 1, present only in an answer to a request carrying page_bytes: an opaque token to send back for the next page, or null when no turn remains."
                     }
                   },
                   "required": [
@@ -2058,7 +2109,7 @@
     "/v1/conversation/search_turns": {
       "post": {
         "operationId": "conversation_search_turns",
-        "description": "Version 1: every whitespace-split term must occur as a case-insensitive substring; newest first. Blank queries are refused. Omitted conversations selects all; [] selects none. No paging. History ranking version 1 adds order, since and before.",
+        "description": "Version 1: every whitespace-split term must occur as a case-insensitive substring; newest first. Blank queries are refused. Omitted conversations selects all; [] selects none. No paging. History ranking version 1 adds order, since and before. Size paging version 1 adds page_bytes and continuation: limit then bounds the total across pages; newest and version 1 continue by keyset, and relevance recounts over the first page's evaluation bound and refuses with value_error when the candidate turns changed.",
         "requestBody": {
           "required": true,
           "content": {
@@ -2121,6 +2172,31 @@
                     "format": "date-time",
                     "default": null,
                     "description": "History ranking version 1. Exclusive upper bound on turn created_at, UTC ending in Z; since must precede it. Turns are immutable, so this is an exact as-of cutoff."
+                  },
+                  "page_bytes": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Size paging version 1. The page's byte ceiling: the page holds whole turns in answer order while their compact JSON encodings together stay within it, counting each turn's UTF-8 bytes, and always at least one turn. A server serves a larger value as its own ceiling. A request carrying it is size-paged and its answer adds continuation."
+                  },
+                  "continuation": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 4096
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Size paging version 1. The continuation of the previous page, sent back with the same request; requires page_bytes. It binds the request's selection (a different selection is value_error) and confers no permission."
                   }
                 },
                 "required": [
@@ -2159,6 +2235,19 @@
                         "minimum": 0
                       },
                       "description": "Relevance order only: round-half-even(BM25 x 10^6) per turn, parallel to turns and non-increasing."
+                    },
+                    "continuation": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 4096
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "Size paging version 1, present only in an answer to a request carrying page_bytes: an opaque token to send back for the next page, or null when no turn remains."
                     }
                   },
                   "required": [

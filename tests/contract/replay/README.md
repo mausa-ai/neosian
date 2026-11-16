@@ -72,3 +72,7 @@ so every expected byte still compares; the rewritten `search_history` descriptio
 parameter text and new optional inputs are projected back to version 1, and the
 `history_ranking` handshake field is projected out. Independent contracts cover
 the new default, bounds and text.
+
+S14's optional `size_paging` handshake field is projected out likewise; S14's
+streamed answers keep every other byte, and independent storage and HTTP
+contracts cover paging.

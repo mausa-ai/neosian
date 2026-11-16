@@ -10,68 +10,69 @@ use super::codec;
 use super::envelope::Fail;
 use super::paging::memory_page;
 use super::params::{Payload, optional_int, optional_str, optional_timestamp, require_str};
-use super::routes::Route;
+use super::routes::{Handler, Route};
+use super::stream::Writer;
 use crate::store::grammar::Actor;
 
 pub const ROUTES: [Route; 12] = [
     Route {
         name: "memory/changes",
-        handler: changes,
+        handler: Handler::Whole(changes),
         whole_store: false,
     },
     Route {
         name: "memory/prune_changes",
-        handler: prune_changes,
+        handler: Handler::Whole(prune_changes),
         whole_store: false,
     },
     Route {
         name: "memory/search",
-        handler: search,
+        handler: Handler::Whole(search),
         whole_store: false,
     },
     Route {
         name: "memory/read",
-        handler: read,
+        handler: Handler::Streamed(read),
         whole_store: false,
     },
     Route {
         name: "memory/write",
-        handler: write,
+        handler: Handler::Whole(write),
         whole_store: false,
     },
     Route {
         name: "memory/delete",
-        handler: delete,
+        handler: Handler::Whole(delete),
         whole_store: false,
     },
     Route {
         name: "memory/rename",
-        handler: rename,
+        handler: Handler::Whole(rename),
         whole_store: false,
     },
     Route {
         name: "memory/list_documents",
-        handler: list_documents,
+        handler: Handler::Whole(list_documents),
         whole_store: false,
     },
     Route {
         name: "memory/versions",
-        handler: versions,
+        handler: Handler::Streamed(versions),
         whole_store: false,
     },
     Route {
         name: "memory/redact",
-        handler: redact,
+        handler: Handler::Whole(redact),
         whole_store: false,
     },
     Route {
         name: "memory/history",
-        handler: history,
+        handler: Handler::Streamed(history),
         whole_store: false,
     },
     Route {
         name: "memory/redactions",
-        handler: redactions,
+        handler: Handler::Whole(redactions),
         whole_store: false,
     },
 ];
@@ -121,14 +122,23 @@ pub fn actor(client: &str, payload: &Payload) -> Result<Actor, Fail> {
     Ok(Actor::stamped(&stamp(client, body.as_deref())))
 }
 
-fn read(store: &dyn Backend, payload: &Payload, _client: &str) -> Result<Value, Fail> {
+/// One document, streamed: the store's copy goes before it is encoded, so
+/// the route holds about one document at a time (DESIGN §40.46).
+fn read(
+    store: &dyn Backend,
+    payload: &Payload,
+    _client: &str,
+    writer: &mut Writer,
+) -> Result<(), Fail> {
     let scope = require_str(payload, "scope")?;
     let path = require_str(payload, "path")?;
     let document = store
         .read(&scope, &path)?
         .map(|document| codec::document(&scope, &path, &document))
         .transpose()?;
-    Ok(json!({"document": document}))
+    writer.text("{\"document\":")?;
+    writer.value(&document.unwrap_or(Value::Null))?;
+    Ok(writer.text("}")?)
 }
 
 fn write(store: &dyn Backend, payload: &Payload, client: &str) -> Result<Value, Fail> {
@@ -178,7 +188,12 @@ fn list_documents(store: &dyn Backend, payload: &Payload, _client: &str) -> Resu
     Ok(json!({"entries": entries, "next_cursor": page.next_cursor}))
 }
 
-fn versions(store: &dyn Backend, payload: &Payload, _client: &str) -> Result<Value, Fail> {
+fn versions(
+    store: &dyn Backend,
+    payload: &Payload,
+    _client: &str,
+    writer: &mut Writer,
+) -> Result<(), Fail> {
     let scope = require_str(payload, "scope")?;
     let path = require_str(payload, "path")?;
     let page = memory_page(
@@ -187,8 +202,12 @@ fn versions(store: &dyn Backend, payload: &Payload, _client: &str) -> Result<Val
         |limit| Ok(store.versions(&scope, &path, limit as usize)?),
         |cursor, size| Ok(store.versions_page(&scope, &path, cursor, size)?),
     )?;
-    let versions: Vec<Value> = page.items.iter().map(codec::version).collect();
-    Ok(json!({"versions": versions, "next_cursor": page.next_cursor}))
+    let items = page.items.iter().map(codec::version);
+    Ok(writer.list(
+        "versions",
+        items,
+        &[("next_cursor", json!(page.next_cursor))],
+    )?)
 }
 
 fn redact(store: &dyn Backend, payload: &Payload, client: &str) -> Result<Value, Fail> {
@@ -198,7 +217,12 @@ fn redact(store: &dyn Backend, payload: &Payload, client: &str) -> Result<Value,
     Ok(json!({"count": store.redact(&scope, path.as_deref(), &actor)?}))
 }
 
-fn history(store: &dyn Backend, payload: &Payload, _client: &str) -> Result<Value, Fail> {
+fn history(
+    store: &dyn Backend,
+    payload: &Payload,
+    _client: &str,
+    writer: &mut Writer,
+) -> Result<(), Fail> {
     let scope = require_str(payload, "scope")?;
     let since = optional_timestamp(payload, "since")?;
     let page = memory_page(
@@ -207,8 +231,12 @@ fn history(store: &dyn Backend, payload: &Payload, _client: &str) -> Result<Valu
         |_| Ok(store.history(&scope, since, None)?),
         |cursor, size| Ok(store.history_page(&scope, since, cursor, size)?),
     )?;
-    let versions: Vec<Value> = page.items.iter().map(codec::version).collect();
-    Ok(json!({"versions": versions, "next_cursor": page.next_cursor}))
+    let items = page.items.iter().map(codec::version);
+    Ok(writer.list(
+        "versions",
+        items,
+        &[("next_cursor", json!(page.next_cursor))],
+    )?)
 }
 
 fn redactions(store: &dyn Backend, payload: &Payload, _client: &str) -> Result<Value, Fail> {

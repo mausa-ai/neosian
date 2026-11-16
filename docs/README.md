@@ -101,7 +101,8 @@ new writes and erasures without rebuilding the startup index. `neosian search`
 and MCP `search_history` find recorded turns best match first by default, or
 newest first, optionally before a given time. Ranked search keeps a few
 facts per candidate rather than its text, and a server can bound how many
-candidates one search considers. Neosian does not
+candidates one search considers. A server streams large answers one item at a
+time, and clients can ask for history and turn pages bounded by size. Neosian does not
 run a model or control the agent's context window. Raw conversation history is shared with
 readers authorized for that store; local scope defaults are not a portable
 identity or privacy boundary. Use `neosian profile init NAME --write` and
@@ -175,7 +176,7 @@ make rust-test      # Rust unit and integration tests
 make test-postgres  # explicit disposable test database DSN
 make test-container # independent conformance against both image backends
 make bench-hooks    # binary latency budgets over a 50 MB literal home
-make bench-memory   # peak memory per search request over an adversarial corpus
+make bench-memory   # peak memory per request over an adversarial corpus
 make docs-artifacts # versioned website input and contracts archive
 ```
 

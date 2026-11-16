@@ -18,7 +18,9 @@ keyword and scoring semantics. Search requires no model account or derived index
 `neosian search` and MCP `search_history` rank recorded turns the same way, or
 list them newest first, optionally within turn times. Ranked search keeps a few
 facts per candidate rather than its text; `NEOSIAN_SEARCH_MAX_CANDIDATES` bounds
-the candidates one relevance search considers.
+the candidates one relevance search considers. `neosian serve` streams large
+answers one item at a time, and its optional size paging lets clients bound
+history-search and turn-read pages by bytes.
 
 `neosian native-memory add` explicitly registers Claude Code or Codex Markdown
 for automatic capture into local FileStore through hooks. Captured copies keep

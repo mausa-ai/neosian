@@ -57,7 +57,7 @@ test-storage-contract: ## Independent storage HTTP suite; backend=file|postgres|
 bench-hooks: ## The latency gate: p50 of 20 warm runs per binary event; home=DIR copies yours (default: a seeded reference home), binary=PATH
 	uv run python scripts/bench_hooks.py $(if $(home),--home "$(home)",--seed) $(if $(binary),--binary "$(binary)")
 
-bench-memory: ## The memory gate: peak RSS per search request over an adversarial literal corpus; backends=file,postgres (postgres needs the test DSN), binary=PATH
+bench-memory: ## The memory gate: peak RSS per request (searches, answer-sized and size-paged reads) over an adversarial literal corpus; backends=file,postgres (postgres needs the test DSN), binary=PATH
 	uv run python scripts/bench_search_memory.py --backends $(or $(backends),file) $(if $(binary),--binary "$(binary)")
 
 ##@ Release

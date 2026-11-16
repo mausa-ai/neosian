@@ -34,6 +34,11 @@ or memory, considers; past it the search refuses and asks for narrower words
 or a time range. An operator serving several people under a memory limit can
 lower it to promise a ceiling: ranked search keeps a few dozen bytes per
 candidate plus four bytes per query term, never the candidate's text.
+`NEOSIAN_MAX_PAGE_BYTES` (8 MiB; 1 GiB) is the largest page a size-paged
+request to `neosian serve` is served: a client asking for more gets pages of
+this size, so it caps how much one page request transfers and how long it
+holds the store. Answers stream one item at a time whether or not a client
+pages, and the binary's own remote client asks for pages of 1 MiB.
 See `neosian docs stores` for each setting's exact scope; these do not change
 permissions, skill/context limits or the format-1 exchange bundle bounds.
 
@@ -156,13 +161,15 @@ home. `home=DIR` copies an existing home before benchmarking. The release
 binary must meet the documented p50 budgets; no provider call is involved.
 
 `make bench-memory` is the memory gate: it starts the release `neosian serve`
-once per search request over a literal adversarial corpus (600 turns and 600
+once per request over a literal adversarial corpus (600 turns and 600
 documents of 64 KiB, 20,000 turns and 20,000 documents of 1 KiB, a one-letter
 term every item holds) and fails when a request's peak resident memory passes
-its budget (32 MiB including startup). `backends=file,postgres` adds the
-Postgres leg, which needs `NEOSIAN_TEST_POSTGRES_DSN` and creates and drops
-its own schema; CI runs both. Answer-sized requests (500 turns of 64 KiB) are
-printed but not gated until answers stream.
+its budget (32 MiB including startup). Answer-sized requests are gated since
+answers stream: history search at limit 500 over 64 KiB turns (a 32 MiB
+answer), a 500-turn page of turns, and reads that follow size pages to the
+end of a conversation (64 KiB pages over both conversations, 1 MiB pages of a
+500-turn search). `backends=file,postgres` adds the Postgres leg, which needs
+`NEOSIAN_TEST_POSTGRES_DSN` and creates and drops its own schema; CI runs both.
 
 `scripts/check_codex_skills.py` verifies setup, native skill discovery, MCP
 workflow loading (including profiles), removal and re-enable with the official
@@ -214,8 +221,9 @@ build verifies the docs artifact checksum and renders the exact release's
 pages; authored documentation stays in this repository's `assets/docs/`.
 
 Memory-search version 1, memory ranking version 1, memory passages version
-1 and history ranking version 1 introduce no service or model dependency;
-`NEOSIAN_SEARCH_MAX_CANDIDATES` bounds their relevance candidate sets. The storage runner checks each when advertised
+1, history ranking version 1 and size paging version 1 introduce no service or
+model dependency; `NEOSIAN_SEARCH_MAX_CANDIDATES` bounds their relevance
+candidate sets and `NEOSIAN_MAX_PAGE_BYTES` caps size pages. The storage runner checks each when advertised
 on either full/base profiles;
 reference Postgres and container gates include these cases. Scope and
 conversation grants apply before search, and restart-based grant revocation

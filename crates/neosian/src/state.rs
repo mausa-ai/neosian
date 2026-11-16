@@ -136,6 +136,50 @@ pub trait State: Send + Sync {
             ),
         ))
     }
+    /// `read_turns` one turn at a time; false from `visit` stops taking
+    /// turns (DESIGN §40.46). Stores that stream override it.
+    fn read_turns_each(
+        &self,
+        id: &str,
+        after: i64,
+        limit: Option<i64>,
+        visit: &mut dyn FnMut(Turn) -> Result<bool, conversation::Error>,
+    ) -> Result<(), conversation::Error> {
+        for turn in self.read_turns(id, after, limit)? {
+            if !visit(turn)? {
+                break;
+            }
+        }
+        Ok(())
+    }
+    /// Version 1 history search one turn at a time, in answer order.
+    fn search_turns_each(
+        &self,
+        terms: &[String],
+        ids: Option<&[String]>,
+        limit: usize,
+        visit: &mut dyn FnMut(Turn) -> Result<bool, conversation::Error>,
+    ) -> Result<(), conversation::Error> {
+        for turn in self.search_turns(terms, ids, limit)? {
+            if !visit(turn)? {
+                break;
+            }
+        }
+        Ok(())
+    }
+    /// History ranking one turn at a time, in answer order, with its score.
+    fn rank_turns_each(
+        &self,
+        request: &crate::conversation::rank::Request,
+        visit: &mut crate::conversation::page::Visit,
+    ) -> Result<(), conversation::Error> {
+        for (turn, score) in self.rank_turns(request)? {
+            if !visit(turn, score)? {
+                break;
+            }
+        }
+        Ok(())
+    }
     fn append_turn(
         &self,
         id: &str,

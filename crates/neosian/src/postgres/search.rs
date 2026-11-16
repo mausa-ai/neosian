@@ -72,8 +72,9 @@ impl Passes for Ranked<'_> {
         )))
     }
 
-    fn then(&mut self, row: Value) -> Result<(), Error> {
+    fn then(&mut self, row: Value) -> Result<bool, Error> {
         let (path, document) = self.document(&row)?;
-        self.scan.build(path, document)
+        self.scan.build(path, document)?;
+        Ok(true)
     }
 }
