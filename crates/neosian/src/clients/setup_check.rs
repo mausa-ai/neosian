@@ -12,6 +12,7 @@ pub fn run(
     json: bool,
     out: &mut impl Write,
 ) -> io::Result<u8> {
+    let check_selection = explicit || storage["profile_selection"] == "per_project";
     let installation = diagnostics::installation(context);
     let clients: Vec<_> = clients
         .iter()
@@ -41,7 +42,7 @@ pub fn run(
                 Some("executable differs from the selected binary")
             } else if registration["storage"]["ready"] != true {
                 Some("storage configuration is incomplete")
-            } else if explicit && registration["storage"] != storage {
+            } else if check_selection && registration["storage"] != storage {
                 Some("storage differs from the requested selection")
             } else {
                 None

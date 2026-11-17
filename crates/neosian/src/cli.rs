@@ -25,6 +25,10 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Connect this machine to a host and install its assigned profiles.
+    Login(crate::login::Login),
+    /// Revoke this machine's credential.
+    Logout(crate::login::Logout),
     /// Capture explicitly registered native memory files into local memory.
     NativeMemory {
         #[command(subcommand)]
@@ -168,7 +172,7 @@ where
     ) {
         let selection = std::env::current_dir()
             .map_err(|e| e.to_string())
-            .and_then(|cwd| crate::profile::resolve::selected(None, &cwd));
+            .and_then(|cwd| crate::profile::resolve::without_default(None, &cwd));
         let issue = match selection {
             Ok(None) => None,
             Ok(Some(_)) => Some("this operator command requires an explicit legacy store outside a selected profile".into()),
@@ -200,6 +204,8 @@ where
         }
     }
     let code = match cli.command {
+        Command::Login(args) => crate::login::run(&args, &mut out, &mut err),
+        Command::Logout(args) => crate::login::logout(&args, &mut out, &mut err),
         Command::NativeMemory { command } => {
             crate::native_memory::cli::run(&command, &mut out, &mut err)
         }

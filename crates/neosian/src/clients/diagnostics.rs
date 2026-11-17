@@ -86,6 +86,7 @@ pub fn selection(
         .collect();
     if let Some(profile) = settings.profile {
         return json!({"kind":"profile","ready":profile["ready"],"capture":profile["capture"],
+            "profile_selection":if settings.store.is_empty() {"per_project"} else {"pinned"},
             "profile":profile,"access":"not_checked"});
     }
     let kind = match settings.store.first().map(String::as_str) {

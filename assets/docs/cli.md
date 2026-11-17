@@ -14,6 +14,7 @@ protocol servers use their own framing.
 
 | Command | Purpose |
 |---|---|
+| `login`, `logout` | Connect a machine, refresh host-managed profiles or disconnect it. See `neosian docs login`. |
 | `setup`, `status` | Register clients and inspect local setup |
 | `statusline --client claude-code` | Display cache state from Claude Code's statusline JSON; setup installs its observation bridge |
 | `profile init/import/export/show/bind` | Create portable workspace selections and local bindings |
@@ -44,7 +45,7 @@ protocol servers use their own framing.
 
 `--profile NAME` selects portable sources for changes, upkeep, skill, knowledge, memory, messages, search,
 continue, MCP and record, and also configures setup/status. `NEOSIAN_PROFILE`
-and local checkout bindings provide defaults. A selected profile cannot be
+and local checkout bindings provide defaults, followed by the logged-in machine default. A selected profile cannot be
 combined with legacy store/scope selectors. Whole-store operators refuse an
 active profile; run them against an explicit legacy store from an unbound
 directory. See `neosian docs profiles` for import/export, authority and capture.

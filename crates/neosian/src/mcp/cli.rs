@@ -121,14 +121,26 @@ pub fn run(args: &Mcp, out: &mut impl Write, err: &mut impl Write) -> io::Result
         }
         return crate::clients::install::mcp(install, out, err);
     }
-    let selected = match Selection::resolve_profile(
-        args.root.as_deref(),
-        args.url.as_deref(),
-        args.schema.as_deref(),
-        args.profile.as_deref(),
-        &env::current_dir()?,
-        args.scope.is_some() || !args.mount.is_empty(),
-    ) {
+    let cwd = env::current_dir()?;
+    let resolve = || {
+        Selection::resolve_profile(
+            args.root.as_deref(),
+            args.url.as_deref(),
+            args.schema.as_deref(),
+            args.profile.as_deref(),
+            &cwd,
+            args.scope.is_some() || !args.mount.is_empty(),
+        )
+    };
+    let selected = match resolve().and_then(|selection| {
+        if let Selection::Profile(profile) = &selection
+            && profile.login.is_some()
+            && crate::login::refresh_if_due(&profile.home)
+        {
+            return resolve();
+        }
+        Ok(selection)
+    }) {
         Ok(selected) => selected,
         Err(message) => return usage(false, &message, out, err),
     };

@@ -122,16 +122,27 @@ fn bind(b: &Bind) -> Result<Value, String> {
     if binding.is_none() && b.project.is_none() {
         return Err("bind needs --source or --project".into());
     }
-    // Validate everything before creating the home or lock.
+    let project = b.project.as_deref().map(resolve::absolute).transpose()?;
+    // Reject a missing selection without creating a home. Read its current
+    // sources under the write lock, since login can replace or retire it.
+    if !files::path(&home, &b.name)?.is_file() {
+        return Err("cannot read selected profile".into());
+    }
+    let _lock = b.edit.write.then(|| files::lock(&home)).transpose()?;
     let profile = files::read(&home, &b.name)?;
     if b.source
         .as_ref()
-        .is_some_and(|s| !profile.sources.contains(s))
+        .is_some_and(|source| !profile.sources.contains(source))
     {
         return Err("cannot bind an undeclared source".into());
     }
-    let project = b.project.as_deref().map(resolve::absolute).transpose()?;
-    let _lock = b.edit.write.then(|| files::lock(&home)).transpose()?;
+    if b.edit.write {
+        if binding.is_some() {
+            crate::login::local::require_manual(&home, &b.name)?;
+        } else {
+            crate::login::local::state(&home)?;
+        }
+    }
     let mut registry = files::registry(&home)?;
     if let Some(binding) = &binding {
         let source = b.source.as_ref().expect("binding has source");
@@ -180,6 +191,7 @@ fn install(name: &str, profile: Profile, edit: &Edit) -> Result<Value, String> {
     }
     if edit.write {
         let _lock = files::lock(&home)?;
+        crate::login::local::require_manual(&home, name)?;
         files::write(&home, name, &profile, edit.replace)?;
     }
     Ok(

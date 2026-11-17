@@ -100,7 +100,8 @@ pub fn resolve_profile(
     let mut credentials = Vec::new();
     for source in &selected.profile.sources {
         if let Some(name) = selected.bindings[source].credential()
-            && !credentials.contains(&name.to_string())
+            && !selected.file_credential(name)
+            && !credentials.iter().any(|known| known == name)
         {
             credentials.push(name.to_string());
         }
@@ -113,7 +114,17 @@ pub fn resolve_profile(
         credentials.push("NEOSIAN_HOME".into());
     }
     Ok(Settings {
-        store: vec!["--profile".into(), selected.name.clone()],
+        store: if name.is_none()
+            && !context
+                .env
+                .get("NEOSIAN_PROFILE")
+                .is_some_and(|s| !s.is_empty())
+            && crate::login::local::state(&selected.home)?.is_some()
+        {
+            vec![]
+        } else {
+            vec!["--profile".into(), selected.name.clone()]
+        },
         mounts: vec![],
         spool: selected.home.join("profile-spool"),
         credentials,

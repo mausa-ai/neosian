@@ -48,3 +48,8 @@ webpki-roots = "1"
 uuid = { version = "1.28", features = ["v4"] }
 # R2 slice C: synchronous HTTP and verified TLS, with no client runtime.
 ureq = { version = "3.4", default-features = false, features = ["rustls", "json"] }
+
+# Current-user DPAPI for interactive Windows machine credentials. The binding
+# is already in the locked dependency tree for the shipped Windows binary.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Security_Cryptography", "Win32_Security_Authorization", "Win32_Storage_FileSystem", "Win32_System_SystemServices", "Win32_System_Threading"] }

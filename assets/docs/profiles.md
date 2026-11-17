@@ -35,7 +35,7 @@ associates a local checkout with the profile; it does not write project files.
 Bindings can name existing scopes without moving or rewriting their data.
 
 Selection order is `--profile NAME`, then `NEOSIAN_PROFILE`, then the longest
-registered project root containing the current directory. Recorders use their
+registered project root containing the current directory, then the default from machine login. Recorders use their
 client's project anchor (`--project`, or Cursor's workspace roots). Selection
 does not merge profiles. An absent, invalid or unbound selected profile fails
 closed. Legacy `--root`, `--url`, `--schema`, `--scope`, `--mount` and ambient
@@ -81,7 +81,7 @@ An HTTP binding requires `--url URL --token-env VARIABLE`. URLs exclude
 userinfo, query and fragment. A Postgres binding uses `--dsn-env VARIABLE`
 and optional `--schema NAME`; it opens an already provisioned schema and
 never applies DDL. A file binding uses `--root DIR`. All sources must be bound.
-Credentials are read from the client's environment at use, never copied into
+Manually bound credentials are read from the client's environment at use, never copied into
 exports, setup output or registrations. Muse/Cursor forward the variable
 names; a custom `NEOSIAN_HOME` is forwarded too. `profile show` and `status`
 report missing variable names and configuration readiness without connecting;
@@ -218,7 +218,7 @@ and native session ID remain in recorded provenance. Copy the portable
 profile between machines, not the machine's installation bindings.
 
 Pending filtered spans live under the private `profile-spool/` directory in
-the local home. A companion `.policy` fingerprint binds a span to the entire
+the local home. For manual profiles, a companion `.policy` fingerprint binds a span to the entire
 profile, local source bindings and hashes of referenced credential values.
 Changing a DSN/token value also holds the span, even when its variable name
 is unchanged; secret values themselves are never persisted. A changed policy or binding holds it
@@ -229,6 +229,12 @@ remove that pair; never transfer a pending span to a different destination by
 editing its fingerprint. Failed landing retains the spool. A crash between
 backend writes can leave partial results or duplicate a retry; this is not
 exactly-once or a cross-store transaction.
+
+Host-managed profiles keep the guard bound to the verified host/account,
+workspace, history destination, consent and capture filters. An unrelated
+skill update or same-account credential rotation can finish an open span.
+A new environment credential requires a live login first. See `neosian docs login`
+for automatic checkout selection and credential storage.
 
 ## Server authority and client limits
 

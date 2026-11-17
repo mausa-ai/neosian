@@ -228,6 +228,9 @@ pub fn run(args: &Status, out: &mut impl Write, err: &mut impl Write) -> io::Res
         "shape": shape, "upgrade": shape::upgrade(shape, "<version>"), "update_mode": mode,
         "path_executables": paths, "shadowing": shape::shadowing(&paths),
         "installation":diagnostics::installation(&context)});
+    if let Some(login) = crate::login::local::state(&root).map_err(io::Error::other)? {
+        status["login"] = crate::login::local::status(&root, &login).map_err(io::Error::other)?;
+    }
     if let Some(selected) = selected {
         status["profile"] = selected.report();
     }
@@ -244,6 +247,29 @@ fn string<'a>(value: &'a Value, key: &str) -> &'a str {
 }
 
 fn render(status: &Value, out: &mut impl Write) -> io::Result<()> {
+    if let Some(login) = status.get("login") {
+        writeln!(
+            out,
+            "login     {}  {}  {}  credential from {}  connected {}",
+            string(login, "name"),
+            string(&login["account"], "email"),
+            string(login, "state_url"),
+            string(login, "credential_source"),
+            login["connected"]
+        )?;
+        if let Some(name) = login["device"]["name"].as_str() {
+            writeln!(out, "device    {name}  {}", string(&login["device"], "id"))?;
+        }
+        writeln!(out, "refreshed {}", string(login, "refreshed_at"))?;
+        if let Some(expiry) = login["expires_at"].as_str() {
+            writeln!(out, "expires   {expiry}")?;
+        } else if login["token_name"].is_string() {
+            writeln!(out, "expires   never")?;
+        }
+        if login["expires_soon"] == true {
+            writeln!(out, "This credential expires soon; run neosian login.")?;
+        }
+    }
     if let Some(profile) = status.get("profile") {
         writeln!(
             out,

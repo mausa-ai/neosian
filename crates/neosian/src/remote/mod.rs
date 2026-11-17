@@ -22,10 +22,25 @@ use crate::pyfmt::py_repr;
 use crate::store::error::{Error, MemoryError};
 use crate::wire::WIRE_VERSION;
 
+enum Authorization {
+    Static(String),
+    Machine(crate::login::local::MachineCredential),
+}
+
+impl Authorization {
+    fn header(&self) -> Result<String, Error> {
+        let token = match self {
+            Self::Static(s) => s.clone(),
+            Self::Machine(machine) => machine.token().map_err(MemoryError::configuration)?,
+        };
+        Ok(format!("Bearer {token}"))
+    }
+}
+
 pub struct RemoteStore {
     agent: ureq::Agent,
     base: String,
-    authorization: String,
+    authorization: Authorization,
     client: Option<String>,
     // Retained verbatim, never inferred from the name of the backend. The
     // operator erasers consult the advertised protocol before a call.
@@ -33,8 +48,12 @@ pub struct RemoteStore {
 }
 
 impl RemoteStore {
-    pub fn profile_connect(url: &str, token: &str) -> Result<Self, Error> {
-        let store = Self::connect(url, token)?;
+    pub fn profile_connect(
+        url: &str,
+        token: &str,
+        login: Option<crate::login::local::MachineCredential>,
+    ) -> Result<Self, Error> {
+        let store = Self::with_timeout(url, token, Duration::from_secs(30), login)?;
         if store.capabilities["authorization"]["version"] != 1
             || store.capabilities["authorization"]["mode"] != "scoped"
         {
@@ -46,10 +65,15 @@ impl RemoteStore {
         Ok(store)
     }
     pub fn connect(url: &str, token: &str) -> Result<Self, Error> {
-        Self::with_timeout(url, token, Duration::from_secs(30))
+        Self::with_timeout(url, token, Duration::from_secs(30), None)
     }
 
-    fn with_timeout(url: &str, token: &str, timeout: Duration) -> Result<Self, Error> {
+    fn with_timeout(
+        url: &str,
+        token: &str,
+        timeout: Duration,
+        login: Option<crate::login::local::MachineCredential>,
+    ) -> Result<Self, Error> {
         let config = ureq::Agent::config_builder()
             .http_status_as_error(false)
             .max_redirects(0)
@@ -63,17 +87,25 @@ impl RemoteStore {
         let mut remote = Self {
             agent: config.new_agent(),
             base: url.trim_end_matches('/').to_string(),
-            authorization: format!("Bearer {token}"),
+            authorization: login
+                .map(Authorization::Machine)
+                .unwrap_or_else(|| Authorization::Static(token.to_owned())),
             client: None,
             capabilities: Value::Null,
         };
         let response = remote
             .agent
             .get(format!("{}/v1/capabilities", remote.base))
-            .header("Authorization", &remote.authorization)
+            .header("Authorization", remote.authorization.header()?)
             .call()
             .map_err(driver)?;
         if response.status() == 401 {
+            if matches!(remote.authorization, Authorization::Machine(_)) {
+                return Err(MemoryError::configuration(
+                    "the host rejected this machine credential; run neosian login",
+                )
+                .into());
+            }
             return Err(MemoryError::configuration(
                 "the server rejected the bearer token — it must equal the server's NEOSIAN_SERVE_TOKEN",
             ).into());
@@ -105,7 +137,10 @@ impl RemoteStore {
         let response = self
             .agent
             .post(format!("{}/v1/{endpoint}", self.base))
-            .header("Authorization", &self.authorization)
+            .header(
+                "Authorization",
+                self.authorization.header().map_err(Failed::other)?,
+            )
             .send_json(payload)
             .map_err(|error| Failed::other(driver(error)))?;
         self.answered(response, endpoint, true)
@@ -305,7 +340,7 @@ fn driver(error: ureq::Error) -> Error {
 
 /// Match httpx's custom CA-file door, with verification always enabled.
 /// Otherwise rustls uses the Mozilla roots, as Python's certifi does.
-fn tls() -> Result<TlsConfig, Error> {
+pub(crate) fn tls() -> Result<TlsConfig, Error> {
     let mut config = TlsConfig::builder();
     if let Some(path) = std::env::var_os("SSL_CERT_FILE").filter(|s| !s.is_empty()) {
         let pem = std::fs::read(path)?;

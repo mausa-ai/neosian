@@ -67,6 +67,25 @@ pub fn run(
             }
         }
     };
+    let selected = if payload.get("hook_event_name").and_then(Value::as_str) == Some("SessionStart")
+        && selected.login.is_some()
+        && crate::login::refresh_if_due(&selected.home)
+    {
+        match crate::profile::resolve::selected(args.profile.as_deref(), &selected.project) {
+            Ok(Some(current)) => current,
+            _ => {
+                return failed(
+                    "managed workspace assignment changed",
+                    None,
+                    args.json,
+                    out,
+                    err,
+                );
+            }
+        }
+    } else {
+        selected
+    };
     match process(args, selected, payload) {
         Ok(envelope) => respond(&envelope, &args.agent, args.json, out).map(|()| 0),
         Err(error) => failed(&error.text(), None, args.json, out, err),
@@ -101,28 +120,12 @@ fn process(args: &Record, selected: Resolved, payload: Payload) -> Result<Envelo
     };
     let spool_dir = selected.home.join("profile-spool");
     let guard = spool_dir.join(format!("{key}.policy"));
+    let managed = selected.login.is_some();
     let mode = selected.profile.capture.mode;
     let policy = selected.profile.capture.clone();
     // Public provenance describes the portable policy, never credential-derived data.
     let policy_id = digest(&serde_json::to_vec(&selected.profile).map_err(io::Error::other)?);
-    let mut credentials = serde_json::Map::new();
-    if mode != CaptureMode::Off {
-        for source in &selected.profile.sources {
-            if let Some(name) = selected.bindings[source].credential() {
-                let secret = std::env::var(name)
-                    .ok()
-                    .filter(|v| !v.is_empty())
-                    .ok_or_else(|| {
-                        Error::Value(format!("required credential variable {name} is unset"))
-                    })?;
-                credentials.insert(name.into(), json!(digest(secret.as_bytes())));
-            }
-        }
-    }
-    let fingerprint = digest(
-        &serde_json::to_vec(&json!({"profile":selected.profile,"bindings":selected.bindings,"credentials":credentials}))
-            .map_err(io::Error::other)?,
-    );
+    let fingerprint = fingerprint(&selected)?;
     let history_scope = selected.profile.history.as_ref().map(|h| h.scope.clone());
     let workspace = selected.profile.workspace_id.clone();
     let selected = Selection::Profile(Box::new(selected));
@@ -196,6 +199,17 @@ fn process(args: &Record, selected: Resolved, payload: Payload) -> Result<Envelo
     };
     let spool = super::spool::Spool::new(&spool_dir);
     let _held = spool.lock(&key)?;
+    if managed
+        && crate::login::local::capture_off(spool_dir.parent().expect("spool under home"))
+            .map_err(Error::Value)?
+    {
+        envelope.disposition = if guard.exists() {
+            "capture_off_pending"
+        } else {
+            "capture_off"
+        };
+        return Ok(envelope);
+    }
     let old = match std::fs::read_to_string(&guard) {
         Ok(old) => Some(old),
         Err(e) if e.kind() == io::ErrorKind::NotFound => None,
@@ -233,4 +247,40 @@ fn process(args: &Record, selected: Resolved, payload: Payload) -> Result<Envelo
         std::fs::remove_file(guard)?;
     }
     Ok(envelope)
+}
+
+fn fingerprint(selected: &Resolved) -> Result<String, Error> {
+    let profile = &selected.profile;
+    let value = if let Some(login) = &selected.login {
+        login
+            .bound(&selected.home, &selected.name)
+            .map_err(Error::Value)?;
+        let destination = profile.history.as_ref().map(|h| {
+            (
+                &h.source,
+                &h.scope,
+                &h.prefix,
+                selected.bindings.get(&h.source),
+            )
+        });
+        json!({"host":login.host, "account":login.account.id, "workspace":profile.workspace_id,
+               "destination":destination, "policy":profile.capture})
+    } else {
+        let mut credentials = serde_json::Map::new();
+        if profile.capture.mode != CaptureMode::Off {
+            for source in &profile.sources {
+                if let Some(name) = selected.bindings[source].credential() {
+                    let secret = selected
+                        .credential(source)
+                        .map_err(Error::Value)?
+                        .expect("binding with credential");
+                    credentials.insert(name.into(), json!(digest(secret.as_bytes())));
+                }
+            }
+        }
+        json!({"profile":profile,"bindings":selected.bindings,"credentials":credentials})
+    };
+    Ok(digest(
+        &serde_json::to_vec(&value).map_err(io::Error::other)?,
+    ))
 }

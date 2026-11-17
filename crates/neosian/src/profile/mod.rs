@@ -7,7 +7,7 @@ pub mod filter;
 pub mod model;
 pub mod resolve;
 mod routing;
-mod validate;
+pub(crate) mod validate;
 
 pub use model::Profile;
 

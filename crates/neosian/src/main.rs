@@ -17,6 +17,7 @@ mod exchange;
 mod home;
 mod knowledge;
 mod limits;
+mod login;
 mod mcp;
 mod memory;
 mod messaging;

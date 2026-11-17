@@ -8,6 +8,11 @@ phase close names the version.
 
 ## [Unreleased]
 
+### Added
+
+- Device and headless machine login, host-managed workspace profiles,
+  conditional refresh and logout. Agent registrations can follow a checkout.
+
 ## [2.17.1] - 2026-11-17
 
 ### Fixed

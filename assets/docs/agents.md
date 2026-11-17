@@ -24,6 +24,12 @@ conversation keyed by the session id, plus a small **sessions document**
 under the scope. Transcript files are never read: the documented hook
 payloads are the import path.
 
+A logged-in machine can register clients with `neosian setup --write` to follow
+the checkout's assigned workspace and fall back to the machine default. An
+explicit `setup --profile NAME` pins the registration. Restart each client
+after setup and inspect the selected workspace with `neosian status`.
+See `neosian docs login` for machine credentials and recording controls.
+
 ## Install
 
 `setup` and `status` are provided by the binary.

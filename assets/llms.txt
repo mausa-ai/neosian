@@ -8,6 +8,7 @@ Release: 2.17.1. Read installed pages with `neosian docs TOPIC` or the MCP
 for that version. The release's neosian-docs.json carries the same pages.
 
 - [Quickstart](https://neosian.com/docs/quickstart): install and connect clients.
+- [Login](https://neosian.com/docs/login): device sign-in, headless credentials and host-managed workspace profiles.
 - [Profiles](https://neosian.com/docs/profiles): portable workspaces, bindings, grants and explicit capture.
 - [Memory](https://neosian.com/docs/memory): mounts, current-document search, versions and upkeep.
 - [Knowledge](https://neosian.com/docs/knowledge): Markdown imports, optional collections, references and readable bundles.

@@ -10,8 +10,9 @@ The exact Rust toolchain is pinned in `rust-toolchain.toml`.
 | Setting | Purpose when set | When absent |
 |---|---|---|
 | `NEOSIAN_HOME` | FileStore home; a leading `~` expands | `~/.neosian`; an explicit `--root` takes precedence |
+| `NEOSIAN_LOGIN_TOKEN` | Opaque machine credential for headless login and managed profile access | Interactive login uses its private credential |
 | `NEOSIAN_SCOPE` | Default mount/scope for commands and integrations | Scope derives from the local login and working directory |
-| `NEOSIAN_PROFILE` | Portable profile selection, below explicit `--profile` | Longest registered project root, else legacy selection |
+| `NEOSIAN_PROFILE` | Portable profile selection, below explicit `--profile` | Longest registered project root, then managed default, else legacy selection |
 | `NEOSIAN_POSTGRES_DSN` | Explicit Postgres URI or keyword/value DSN | Use files unless `--url` selects a remote service |
 | `PGSSLROOTCERT` | PEM trust bundle for direct Postgres TLS | Built-in public roots; certificates and hostnames are verified |
 | `NEOSIAN_CLIENT_TOKEN` | Bearer token for `--url` | Remote operations refuse without a token |

@@ -233,6 +233,13 @@ pub fn run(args: &Setup, out: &mut impl Write, err: &mut impl Write) -> io::Resu
     {
         return crate::cli::usage(args.json, &message, out, err);
     }
+    let login_home = crate::profile::files::home().map_err(io::Error::other)?;
+    if let Some(login) = crate::login::local::state(&login_home).map_err(io::Error::other)?
+        && crate::login::local::status(&login_home, &login).map_err(io::Error::other)?["expires_soon"]
+            == true
+    {
+        writeln!(err, "This credential expires soon; run neosian login.")?;
+    }
     let tty = io::stdin().is_terminal() && io::stdout().is_terminal();
     if args.write && args.client.is_empty() && !args.yes && (args.json || !tty) {
         return crate::cli::usage(

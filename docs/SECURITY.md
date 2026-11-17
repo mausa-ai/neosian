@@ -84,7 +84,16 @@ to `NEOSIAN_MAX_RESPONSE_BYTES` each, as 2.16.0 did. Size-paging
 continuations bind the request's selection and carry no authority: every page
 is authorized from its own body; `NEOSIAN_MAX_PAGE_BYTES` caps one page.
 
-New profiles capture off by default. Local/shared capture requires consent in
+Manually created profiles capture off by default. Device login displays the
+host's recording notice before installing capture consent. An authenticated
+machine document assigns the account and state gateway. Login accepts HTTPS
+endpoints on the chosen origin and refuses redirects. Host-managed
+credentials are held in a private file on Unix and protected with current-user
+DPAPI on Windows. Managed login requires a home controlled by the OS user.
+Headless credentials remain in the environment. Local recording opt-out
+takes effect offline, and running managed HTTP clients recheck their local
+credential and verified assignment before every wire request.
+`neosian docs login` covers local controls and revocation. Local/shared capture requires consent in
 both the profile and its machine-local binding. Deterministic filters precede
 the private spool, outbound turns and session summaries; they are not universal
 secret detection and do not filter explicit memory writes or host-owned logs.

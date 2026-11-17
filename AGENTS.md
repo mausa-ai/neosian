@@ -33,6 +33,9 @@ development and tests only (DESIGN §40).
 - **Profiles select; backends authorize.** Portable profile format 1 excludes
   local bindings and credentials. New profile capture defaults off; local/shared
   capture requires matching binding consent and filtering before persistence.
+  Machine login names the default host through its discovery URL. It may install
+  shared text capture after displaying the host notice. A local capture-off
+  preference or host lock keeps managed recording off through profile refresh.
   Server grants intersect token allowances before reads or writes; they never
   turn the operator's hosted MCP mounts into a per-client surface.
 - **Search is a read contract.** Memory-search version 1 is an optional wire-6

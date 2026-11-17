@@ -57,6 +57,9 @@ pub fn change(
         .then(|| files::lock(&home))
         .transpose()
         .map_err(invalid)?;
+    if write {
+        crate::login::local::require_manual(&home, name).map_err(invalid)?;
+    }
     let mut profile = files::read(&home, name).map_err(invalid)?;
     let before = json!({"skills":profile.skills,"skill_pins":profile.skill_pins});
     match action {

@@ -222,7 +222,7 @@ fn a_lost_mutation_is_never_retried_and_delete_can_lack_a_receipt() {
 fn timeout_is_a_transport_failure() {
     let server = Stub::new(vec![(200, capabilities())], Duration::from_millis(100));
     assert!(matches!(
-        RemoteStore::with_timeout(&server.url, "test-token", Duration::from_millis(20)),
+        RemoteStore::with_timeout(&server.url, "test-token", Duration::from_millis(20), None),
         Err(Error::Io(_))
     ));
 }

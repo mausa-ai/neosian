@@ -164,6 +164,8 @@ fixtures and the independent HTTP conformance runner.
 `grants`, `knowledge`, `skill`, `upkeep`, `governance` and `changes` print the
 machine-readable definitions directly.
 
+For hosted memory and machine sign-in, read `neosian docs login`.
+
 ## Development
 
 ```sh

@@ -27,26 +27,21 @@ impl Resolved {
     pub fn open(&self) -> Result<Arc<dyn State>, Error> {
         self.check().map_err(MemoryError::configuration)?;
         let mut selections = BTreeMap::new();
-        let env = |key: &str| {
-            std::env::var(key)
-                .ok()
-                .filter(|v| !v.is_empty())
-                .ok_or_else(|| {
-                    MemoryError::configuration(format!(
-                        "required credential variable {key} is unset"
-                    ))
-                })
-        };
         for id in &self.profile.sources {
             use crate::remote::selection::Selection;
+            let credential = || {
+                self.credential(id)
+                    .and_then(|v| v.ok_or_else(|| "source requires a credential".into()))
+                    .map_err(MemoryError::configuration)
+            };
             let selected = match &self.bindings[id].endpoint {
                 Endpoint::File { root } => Selection::File(root.clone()),
-                Endpoint::Http { url, token_env } => Selection::Remote {
+                Endpoint::Http { url, .. } => Selection::Remote {
                     url: url.clone(),
-                    token: env(token_env)?,
+                    token: credential()?,
                 },
-                Endpoint::Postgres { dsn_env, schema } => Selection::Postgres {
-                    dsn: env(dsn_env)?,
+                Endpoint::Postgres { schema, .. } => Selection::Postgres {
+                    dsn: credential()?,
                     schema: schema.clone(),
                 },
             };
@@ -56,7 +51,11 @@ impl Resolved {
         for (id, selection) in selections {
             let store: Arc<dyn State> = match &selection {
                 crate::remote::selection::Selection::Remote { url, token } => {
-                    Arc::new(crate::remote::RemoteStore::profile_connect(url, token)?)
+                    Arc::new(crate::remote::RemoteStore::profile_connect(
+                        url,
+                        token,
+                        self.machine_credential(),
+                    )?)
                 }
                 _ => selection.open()?,
             };

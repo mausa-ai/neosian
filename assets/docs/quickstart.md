@@ -13,6 +13,9 @@ curl -fsS https://neosian.com/install | sh
 "$HOME/.neosian/bin/neosian" setup --check
 ```
 
+To use hosted memory, run `neosian login` before setup. See `neosian docs login`
+for device approval, recording controls and headless connections.
+
 Use the installer's printed absolute path if you selected another directory.
 It preserves existing commands, so a plain `neosian` may still run an older
 installation. Use `neosian status` to inspect running, PATH and registered paths;

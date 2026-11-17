@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use super::model::CaptureMode;
 use super::{Profile, validate};
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields, tag = "backend", rename_all = "lowercase")]
 pub enum Endpoint {
     File { root: PathBuf },
@@ -16,7 +16,7 @@ pub enum Endpoint {
     Postgres { dsn_env: String, schema: String },
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Binding {
     pub endpoint: Endpoint,
@@ -24,14 +24,14 @@ pub struct Binding {
     pub capture: CaptureMode,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Project {
     pub root: PathBuf,
     pub profile: String,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Registry {
     pub binding_format: u32,
