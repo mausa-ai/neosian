@@ -8,6 +8,14 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [2.17.1] - 2026-11-17
+
+### Fixed
+
+- Memory search selects passages with bounded scratch space, even in long
+  documents with frequent matches and headings. File and Postgres searches
+  retain the same passage text, offsets, headings and ordering.
+
 ## [2.17.0] - 2026-11-17
 
 ### Changed

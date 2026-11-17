@@ -211,7 +211,9 @@ binary must meet the documented p50 budgets; no provider call is involved.
 once per request over a literal adversarial corpus (600 turns and 600
 documents of 64 KiB, 20,000 turns and 20,000 documents of 1 KiB, a one-letter
 term every item holds) and fails when a request's peak resident memory passes
-its budget (32 MiB including startup). Answer-sized requests are gated too:
+its budget (32 MiB including startup). A ranked search with three passages
+over a 1 MiB release notebook exercises frequent matches and Markdown headings
+under the same budget. Answer-sized requests are gated too:
 history search at limit 500 over 64 KiB turns (a 32 MiB answer), a 500-turn
 page of turns, and reads that follow size pages to the end of a conversation
 (64 KiB pages over both conversations, 1 MiB pages of a 500-turn search). Two

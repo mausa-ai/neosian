@@ -16,7 +16,7 @@ enum Preamble {
     Body,
 }
 
-fn title(rest: &str) -> Option<String> {
+fn title(rest: &str) -> Option<&str> {
     let text = rest.trim();
     let stripped = text.trim_end_matches('#');
     let text = if stripped.is_empty() {
@@ -26,16 +26,15 @@ fn title(rest: &str) -> Option<String> {
     } else {
         text
     };
-    (!text.is_empty()).then(|| text.chars().take(LIMIT).collect())
+    (!text.is_empty()).then_some(text)
 }
 
 /// (line start scalar offset, heading text) for every recognized heading.
-pub(super) fn scan(text: &str) -> Vec<(usize, Option<String>)> {
-    let mut found = Vec::new();
+fn scan(text: &str) -> impl Iterator<Item = (usize, Option<&str>)> {
     let mut offset = 0;
     let mut fence: Option<(char, usize)> = None;
     let mut preamble = Preamble::Start;
-    for raw in text.split('\n') {
+    text.split('\n').filter_map(move |raw| {
         let start = offset;
         offset += raw.chars().count() + 1;
         let line = raw.strip_suffix('\r').unwrap_or(raw);
@@ -44,17 +43,17 @@ pub(super) fn scan(text: &str) -> Vec<(usize, Option<String>)> {
                 if line.trim_end() == "---" {
                     preamble = Preamble::AfterFront;
                 }
-                continue;
+                return None;
             }
             Preamble::Comment => {
                 if line.contains("-->") {
                     preamble = Preamble::Body;
                 }
-                continue;
+                return None;
             }
             Preamble::Start if line.trim_end() == "---" => {
                 preamble = Preamble::Front;
-                continue;
+                return None;
             }
             Preamble::Start | Preamble::AfterFront if line.trim_start().starts_with("<!--") => {
                 preamble = if line.contains("-->") {
@@ -62,13 +61,13 @@ pub(super) fn scan(text: &str) -> Vec<(usize, Option<String>)> {
                 } else {
                     Preamble::Comment
                 };
-                continue;
+                return None;
             }
             _ => preamble = Preamble::Body,
         }
         let indent = line.len() - line.trim_start_matches(' ').len();
         if indent > 3 {
-            continue;
+            return None;
         }
         let body = &line[indent..];
         if let Some((mark, length)) = fence {
@@ -76,53 +75,60 @@ pub(super) fn scan(text: &str) -> Vec<(usize, Option<String>)> {
             if run >= length && body[run * mark.len_utf8()..].trim().is_empty() {
                 fence = None;
             }
-            continue;
+            return None;
         }
         if let Some(mark @ ('`' | '~')) = body.chars().next() {
             let run = body.chars().take_while(|c| *c == mark).count();
             if run >= 3 {
                 fence = Some((mark, run));
-                continue;
+                return None;
             }
         }
         let hashes = body.chars().take_while(|c| *c == '#').count();
         let rest = &body[hashes..];
         if (1..=6).contains(&hashes) && (rest.is_empty() || rest.starts_with([' ', '\t'])) {
-            found.push((start, title(rest)));
+            return Some((start, title(rest)));
         }
-    }
-    found
+        None
+    })
 }
 
-/// The heading whose line starts at or before `offset`; an empty one is null.
-pub(super) fn before(found: &[(usize, Option<String>)], offset: usize) -> Option<String> {
-    let index = found.partition_point(|(start, _)| *start <= offset);
-    index.checked_sub(1).and_then(|i| found[i].1.clone())
+/// Nearest heading at or before each successive (ascending) passage offset.
+pub(super) fn lookup(text: &str) -> impl FnMut(usize) -> Option<String> + '_ {
+    let mut headings = scan(text).peekable();
+    let mut current = None;
+    move |offset| {
+        while let Some((_, title)) = headings.next_if(|(start, _)| *start <= offset) {
+            current = title;
+        }
+        current.map(|s| s.chars().take(LIMIT).collect())
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{before, scan};
+    use super::{lookup, scan};
 
     #[test]
     fn headings_skip_fences_frontmatter_and_leading_comments() {
         let text = "---\ntitle: x\n# not a heading\n---\n<!-- neosian-knowledge:1\n# no\n-->\n\
                     # Intro #\nbody\n```\n# code\n```\n  ## Setup ##\n####### seven\n#tag\n\
                     ~~~~\n## fenced\n~~~\n## still fenced\n~~~~\n### Last\n";
-        let found = scan(text);
-        let titles: Vec<_> = found.iter().map(|(_, t)| t.as_deref()).collect();
+        let found: Vec<_> = scan(text).collect();
+        let titles: Vec<_> = found.iter().map(|(_, t)| *t).collect();
         assert_eq!(titles, [Some("Intro"), Some("Setup"), Some("Last")]);
         let intro = text.find("# Intro").unwrap();
         assert_eq!(found[0].0, text[..intro].chars().count());
-        assert_eq!(before(&found, 0), None);
-        assert_eq!(before(&found, found[1].0).as_deref(), Some("Setup"));
-        assert_eq!(before(&found, found[1].0 - 1).as_deref(), Some("Intro"));
+        let mut heading = lookup(text);
+        assert_eq!(heading(0), None);
+        assert_eq!(heading(found[1].0 - 1).as_deref(), Some("Intro"));
+        assert_eq!(heading(found[1].0).as_deref(), Some("Setup"));
     }
 
     #[test]
     fn closing_sequences_need_a_space_and_empty_headings_are_null() {
-        let found = scan("# Title#\n#\n## Done ##  \n");
-        let titles: Vec<_> = found.iter().map(|(_, t)| t.as_deref()).collect();
+        let found: Vec<_> = scan("# Title#\n#\n## Done ##  \n").collect();
+        let titles: Vec<_> = found.iter().map(|(_, t)| *t).collect();
         assert_eq!(titles, [Some("Title#"), None, Some("Done")]);
     }
 }

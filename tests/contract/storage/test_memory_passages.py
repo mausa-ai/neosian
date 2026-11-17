@@ -136,3 +136,64 @@ def test_invalid_passage_counts_refuse(storage: Storage, bad: Any) -> None:
         ),
         "value_error",
     )
+
+
+def reference_offsets(text: str, query: str, count: int) -> list[int]:
+    """Enumerate and score every window directly in original Unicode scalars."""
+    folded = "".join(c.lower() for c in text)
+    source = [i for i, c in enumerate(text) for _ in c.lower()]
+    matches: list[tuple[int, int, str]] = []
+    for term in query.split():
+        at = 0
+        while (at := folded.find(term, at)) >= 0:
+            end = at + len(term)
+            matches.append((source[at], source[end - 1] + 1, term))
+            at = end
+    candidates = []
+    for start in {max(0, first - 40) for first, _, _ in matches}:
+        inside = [
+            t for first, end, t in matches if start <= first and end <= start + 240
+        ]
+        candidates.append((-len(set(inside)), -len(inside), start))
+    chosen: list[int] = []
+    for _, _, start in sorted(candidates):
+        if all(abs(start - previous) >= 240 for previous in chosen):
+            chosen.append(start)
+            if len(chosen) == count:
+                break
+    return sorted(chosen)
+
+
+def test_expanded_scalars_and_nonoverlapping_terms_across_blocks(
+    storage: Storage,
+) -> None:
+    # Each dense region crosses a different boundary; i and the combining dot
+    # can match separate parts of the same original scalar (İ).
+    first = "# Guide\n".ljust(4051, ".") + "aaİababaa" * 52
+    body = first.ljust(8157, ".") + "İababaaa" * 62
+    query = "a aa aba i \u0307 \u0307aba"
+    storage.memory("write", path="unicode", content=body)
+    for count in (1, 2, 3):
+        page = storage.memory("search", query=query, passages=count)
+        assert page["hits"][0]["passages"] == [
+            expected(body, offset, "Guide")
+            for offset in reference_offsets(body, query, count)
+        ]
+
+
+def test_tied_windows_touch_and_long_terms_still_propose_windows(
+    storage: Storage,
+) -> None:
+    body = "# First\n" + "a" * 9000
+    storage.memory("write", path="tied", content=body)
+    page = storage.memory("search", query="a", passages=3)
+    assert page["hits"][0]["passages"] == [
+        expected(body, start, "First") for start in (8, 248, 488)
+    ]
+    # No 301-scalar occurrence fits a 240-scalar window; each occurrence
+    # still proposes its own window, and the zero-score ties go left to right.
+    query = "a" * 301
+    page = storage.memory("search", query=query, passages=3)
+    assert page["hits"][0]["passages"] == [
+        expected(body, start, "First") for start in (0, 269, 570)
+    ]

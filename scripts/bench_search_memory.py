@@ -6,7 +6,8 @@ and reads its peak RSS from the operating system. The corpus has large items
 (600 turns and 600 documents of 64 KiB) and many items (20,000 turns and
 20,000 documents of 1 KiB); the one-letter term "e" makes every one a
 candidate. Records are planted as literal format-1 rows (files) or table rows
-(Postgres), never written by the binary.
+(Postgres), never written by the binary. Passage selection also runs over a
+one-MiB release notebook with repeated terms and Markdown headings.
 
 Budgets are MiB per operation and include the server's own startup (about
 10 MiB). DESIGN §40.45 explains how they were chosen; the two spread corpora
@@ -52,6 +53,12 @@ HISTORY_LARGE: Final = "bench-large"
 HISTORY_MANY: Final = "bench-many"
 SCOPE_LARGE: Final = "user:bench-large"
 SCOPE_MANY: Final = "user:bench-many"
+SCOPE_NOTEBOOK: Final = "user:bench-notebook"
+NOTE: Final = (
+    "## Release review\n"
+    "The service team reviewed the release notes and checked the weekly metrics. "
+    "The release includes a scheduler update and a revised maintenance guide.\n"
+)
 # Facts at the default candidate bound (100,000): each candidate its own
 # conversation with a 128-character id, and documents with 500-character
 # paths, the two records that grow with what a candidate is called (#417).
@@ -154,6 +161,12 @@ OPERATIONS: Final = (
     Operation(
         "memory newest passages", MEMORY, _memory(SCOPE_LARGE, "newest", 3), BUDGET
     ),
+    Operation(
+        "memory release notebook passages",
+        MEMORY,
+        {**_memory(SCOPE_NOTEBOOK, "relevance", 3), "query": "e release"},
+        BUDGET,
+    ),
     Operation("memory path", MEMORY, _memory(SCOPE_LARGE, "path", 0), BUDGET),
     Operation("memory path passages", MEMORY, _memory(SCOPE_LARGE, "path", 3), BUDGET),
     Operation(
@@ -234,6 +247,14 @@ def _items() -> Iterator[tuple[bool, int, str]]:
             yield large, number, _text(seed * 1_000_000 + number, size)
 
 
+def _documents() -> Iterator[tuple[str, str, str]]:
+    for large, number, text in _items():
+        scope = SCOPE_LARGE if large else SCOPE_MANY
+        yield scope, f"notes/{number:05d}", text
+    size = 1 << 20
+    yield SCOPE_NOTEBOOK, "notes/release", (NOTE * (size // len(NOTE) + 1))[:size]
+
+
 def _spread_id(number: int) -> str:
     return f"{number:08d}" + "x" * 120
 
@@ -273,11 +294,10 @@ def _plant_files(home: Path) -> None:
         f"---\nneosian_format: 1\nversion: 1\ncreated_at: '{STAMP}'\n"
         f"updated_at: '{STAMP}'\nactor: {ACTOR}\n---\n"
     )
-    for large, number, text in _items():
-        scope = SCOPE_LARGE if large else SCOPE_MANY
-        folder = home / scope.replace(":", "%3A") / "documents" / "notes"
-        folder.mkdir(parents=True, exist_ok=True)
-        (folder / f"{number:05d}.md").write_text(header + text, encoding="utf-8")
+    for scope, relative, text in _documents():
+        document = home / scope.replace(":", "%3A") / "documents" / f"{relative}.md"
+        document.parent.mkdir(parents=True, exist_ok=True)
+        document.write_text(header + text, encoding="utf-8")
     conversations = home / "conversations"
     for number in range(SPREAD):
         folder = conversations / _spread_id(number)
@@ -376,15 +396,8 @@ def _plant_postgres(binary: Path, dsn: str, schema: str) -> None:
                     " updated_at, actor) VALUES (%s, %s, %s, 1, %s, %s, %s)"
                 ).format(name),
                 (
-                    (
-                        SCOPE_LARGE if large else SCOPE_MANY,
-                        f"notes/{number:05d}",
-                        text,
-                        STAMP,
-                        STAMP,
-                        ACTOR,
-                    )
-                    for large, number, text in _items()
+                    (scope, path, text, STAMP, STAMP, ACTOR)
+                    for scope, path, text in _documents()
                 ),
             )
 
@@ -425,7 +438,16 @@ def _count(answer: dict[str, Any]) -> int:
 def _follow(url: str, operation: Operation) -> tuple[int, int]:
     """(items, pages): one request, or every size page of one read."""
     if operation.page_bytes is None:
-        return _count(_call(url, operation.route, operation.body)), 1
+        answer = _call(url, operation.route, operation.body)
+        if operation.body.get("scope") == SCOPE_NOTEBOOK:
+            # Independently scored within the repeating notebook. Tied later
+            # sections cannot replace the earliest equally dense windows.
+            assert [
+                (p["offset"], p["text"], p["heading"])
+                for hit in answer["hits"]
+                for p in hit["passages"]
+            ] == [(i, (NOTE * 6)[i : i + 240], "Release review") for i in (0, 317, 651)]
+        return _count(answer), 1
     body = {**operation.body, "page_bytes": operation.page_bytes}
     items = pages = 0
     while True:

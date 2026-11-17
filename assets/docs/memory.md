@@ -106,7 +106,8 @@ character offset, text and the nearest Markdown heading above it: an ATX
 heading (`#` to `######`) outside fenced code, frontmatter and a leading
 comment block such as the knowledge header. Short values and paths have no
 passages; their excerpt already shows the match. Read the whole document
-when the passages are not enough.
+when the passages are not enough. Passage selection uses bounded working
+memory while it scans each selected value.
 
 When documents disagree, prefer effective approved knowledge, then the most
 recently updated document, and update or remove the stale one so memory
