@@ -15,10 +15,12 @@ const B: f64 = 0.75;
 
 /// The `limit` first items of a stream under a total order, holding at most
 /// `limit` of them. Equal items keep their arrival order, as a stable sort
-/// followed by a cut would.
+/// followed by a cut would. A binary heap whose top is the worst item kept,
+/// so an offer costs O(log limit) (#417).
 pub struct Best<T> {
-    items: Vec<T>,
+    items: Vec<(T, u64)>,
     limit: usize,
+    arrived: u64,
 }
 
 impl<T> Best<T> {
@@ -26,29 +28,59 @@ impl<T> Best<T> {
         Self {
             items: Vec::new(),
             limit,
+            arrived: 0,
         }
     }
 
     /// `order(a, b)` is `Less` when `a` comes first.
     pub fn offer(&mut self, item: T, order: impl Fn(&T, &T) -> Ordering) {
+        let entry = (item, self.arrived);
+        self.arrived += 1;
         if self.limit == 0 {
             return;
         }
-        if self.items.len() == self.limit {
-            let last = self.items.last().expect("a full list");
-            if order(&item, last) != Ordering::Less {
-                return;
+        let later = |a: &(T, u64), b: &(T, u64)| order(&a.0, &b.0).then(a.1.cmp(&b.1));
+        if self.items.len() < self.limit {
+            self.items.push(entry);
+            let mut at = self.items.len() - 1;
+            while at > 0 {
+                let parent = (at - 1) / 2;
+                if later(&self.items[at], &self.items[parent]) != Ordering::Greater {
+                    break;
+                }
+                self.items.swap(at, parent);
+                at = parent;
             }
-            self.items.pop();
+            return;
         }
-        let at = self
-            .items
-            .partition_point(|held| order(held, &item) != Ordering::Greater);
-        self.items.insert(at, item);
+        if later(&entry, &self.items[0]) != Ordering::Less {
+            return;
+        }
+        self.items[0] = entry;
+        let mut at = 0;
+        loop {
+            let (left, right) = (2 * at + 1, 2 * at + 2);
+            let mut worst = at;
+            for child in [left, right] {
+                if child < self.items.len()
+                    && later(&self.items[child], &self.items[worst]) == Ordering::Greater
+                {
+                    worst = child;
+                }
+            }
+            if worst == at {
+                break;
+            }
+            self.items.swap(at, worst);
+            at = worst;
+        }
     }
 
-    pub fn into_vec(self) -> Vec<T> {
+    /// The items kept, first first.
+    pub fn into_vec(mut self, order: impl Fn(&T, &T) -> Ordering) -> Vec<T> {
         self.items
+            .sort_by(|a, b| order(&a.0, &b.0).then(a.1.cmp(&b.1)));
+        self.items.into_iter().map(|(item, _)| item).collect()
     }
 }
 
@@ -97,14 +129,15 @@ impl<K> Facts<K> {
     ) -> Vec<(K, u64)> {
         let terms = self.terms;
         let mut best = Best::new(limit);
+        let ranked = |a: &(u64, usize), b: &(u64, usize)| {
+            b.0.cmp(&a.0)
+                .then_with(|| order(&self.keys[a.1], &self.keys[b.1]))
+        };
         for (index, length) in self.lengths.iter().enumerate() {
             let counts = &self.counts[index * terms..(index + 1) * terms];
-            best.offer((stats.score(counts, *length), index), |a, b| {
-                b.0.cmp(&a.0)
-                    .then_with(|| order(&self.keys[a.1], &self.keys[b.1]))
-            });
+            best.offer((stats.score(counts, *length), index), ranked);
         }
-        let chosen = best.into_vec();
+        let chosen = best.into_vec(ranked);
         let mut wanted: HashMap<usize, Option<K>> =
             chosen.iter().map(|(_, index)| (*index, None)).collect();
         for (index, key) in self.keys.into_iter().enumerate() {
@@ -190,16 +223,40 @@ mod tests {
         for item in [(5, 'a'), (9, 'b'), (5, 'c'), (7, 'd'), (5, 'e'), (9, 'f')] {
             best.offer(item, |x, y| y.0.cmp(&x.0));
         }
-        assert_eq!(best.into_vec(), [(9, 'b'), (9, 'f'), (7, 'd')]);
+        assert_eq!(
+            best.into_vec(|x, y| y.0.cmp(&x.0)),
+            [(9, 'b'), (9, 'f'), (7, 'd')]
+        );
         let mut stable = Best::new(4);
         for item in [(1, 'a'), (1, 'b'), (2, 'c'), (1, 'd'), (1, 'e')] {
             stable.offer(item, |x, y| y.0.cmp(&x.0));
         }
         // A stable sort then a cut gives c, a, b, d.
-        assert_eq!(stable.into_vec(), [(2, 'c'), (1, 'a'), (1, 'b'), (1, 'd')]);
+        assert_eq!(
+            stable.into_vec(|x, y| y.0.cmp(&x.0)),
+            [(2, 'c'), (1, 'a'), (1, 'b'), (1, 'd')]
+        );
         let mut none = Best::new(0);
         none.offer(1, |x: &i32, y| x.cmp(y));
-        assert!(none.into_vec().is_empty());
+        assert!(none.into_vec(|x: &i32, y| x.cmp(y)).is_empty());
+        // Against a stable sort and a cut, over many orders of many equals.
+        let mut seed = 7_u64;
+        for limit in [1, 2, 5, 17, 64] {
+            let items: Vec<(u64, usize)> = (0..300)
+                .map(|index| {
+                    seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+                    ((seed >> 33) % 23, index)
+                })
+                .collect();
+            let mut best = Best::new(limit);
+            for item in &items {
+                best.offer(*item, |x, y| y.0.cmp(&x.0));
+            }
+            let mut sorted = items.clone();
+            sorted.sort_by_key(|x| std::cmp::Reverse(x.0));
+            sorted.truncate(limit);
+            assert_eq!(best.into_vec(|x, y| y.0.cmp(&x.0)), sorted);
+        }
     }
 
     #[test]

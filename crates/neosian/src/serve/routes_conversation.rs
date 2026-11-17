@@ -15,7 +15,7 @@ use super::params::{
 };
 use super::routes::{Handler, Route};
 use super::routes_memory::actor;
-use super::stream::Writer;
+use super::spool::Writer;
 use super::turn_pages::{read_turns, search_turns};
 
 pub const ROUTES: [Route; 8] = [
@@ -26,7 +26,7 @@ pub const ROUTES: [Route; 8] = [
     },
     Route {
         name: "conversation/read_turns",
-        handler: Handler::Streamed(read_turns),
+        handler: Handler::Spooled(read_turns),
         whole_store: false,
     },
     Route {
@@ -36,7 +36,7 @@ pub const ROUTES: [Route; 8] = [
     },
     Route {
         name: "conversation/search_turns",
-        handler: Handler::Streamed(search_turns),
+        handler: Handler::Spooled(search_turns),
         whole_store: false,
     },
     Route {
@@ -46,7 +46,7 @@ pub const ROUTES: [Route; 8] = [
     },
     Route {
         name: "conversation/read_projections",
-        handler: Handler::Streamed(read_projections),
+        handler: Handler::Spooled(read_projections),
         whole_store: false,
     },
     Route {

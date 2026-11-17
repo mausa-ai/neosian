@@ -81,7 +81,7 @@ impl Stub {
                 if status == 0 {
                     continue;
                 } // disconnect after receiving a mutation
-                // `{"$raw": text}` answers `text` verbatim, as a streamed body may end.
+                // `{"$raw": text}` answers `text` verbatim, for bodies that are not JSON.
                 let body = match answer.get("$raw").and_then(Value::as_str) {
                     Some(raw) => raw.to_string(),
                     None => answer.to_string(),
@@ -252,76 +252,36 @@ fn paging() -> Value {
 }
 
 #[test]
-fn turns_page_by_size_only_when_the_server_advertises_it() {
-    let old = Stub::replies(vec![
-        (200, capabilities()),
-        (200, json!({"turns":[turn(1)]})),
-        (200, json!({"turns":[turn(1)],"next_after":null})),
-    ]);
-    let store = RemoteStore::connect(&old.url, "test-token").unwrap();
-    store.search_turns(&["x".into()], None, 5).unwrap();
-    store.read_turns("c", 0, None).unwrap();
-    let requests = old.requests.lock().unwrap();
-    // An older server receives 2.16.0's requests, byte for byte.
-    assert_eq!(
-        requests[1].1,
-        json!({"query":"x","conversations":null,"limit":5})
-    );
-    assert_eq!(
-        requests[2].1,
-        json!({"conversation_id":"c","after":0,"limit":null})
-    );
-    drop(requests);
-    let new = Stub::replies(vec![
-        (200, paging()),
-        (
-            200,
-            json!({"turns":[turn(1)],"next_after":null,"continuation":"next"}),
-        ),
-        (
-            200,
-            json!({"turns":[turn(2)],"next_after":null,"continuation":null}),
-        ),
-    ]);
-    let store = RemoteStore::connect(&new.url, "test-token").unwrap();
-    let turns = store.read_turns("c", 0, None).unwrap();
-    assert_eq!(turns.iter().map(|t| t.turn).collect::<Vec<_>>(), [1, 2]);
-    let requests = new.requests.lock().unwrap();
-    assert_eq!(
-        requests[1].1,
-        json!({"conversation_id":"c","after":0,"limit":null,"page_bytes":1_048_576})
-    );
-    assert_eq!(requests[2].1["continuation"], "next");
-    assert_eq!(requests[2].1["page_bytes"], 1_048_576);
+fn every_request_is_2_16_0s_whether_or_not_the_server_pages() {
+    for capabilities in [capabilities(), paging()] {
+        let server = Stub::replies(vec![
+            (200, capabilities),
+            (200, json!({"turns":[turn(1)]})),
+            (200, json!({"turns":[turn(1)],"next_after":null})),
+        ]);
+        let store = RemoteStore::connect(&server.url, "test-token").unwrap();
+        store.search_turns(&["x".into()], None, 5).unwrap();
+        store.read_turns("c", 0, None).unwrap();
+        let requests = server.requests.lock().unwrap();
+        assert_eq!(
+            requests[1].1,
+            json!({"query":"x","conversations":null,"limit":5})
+        );
+        assert_eq!(
+            requests[2].1,
+            json!({"conversation_id":"c","after":0,"limit":null})
+        );
+    }
 }
 
 #[test]
-fn a_trailer_is_the_refusal_it_carries_and_bad_pages_are_malformed() {
-    let message = "resource limit NEOSIAN_MAX_RESPONSE_BYTES exceeded: 9 > 8; select a smaller batch or raise this setting";
-    let envelope = json!({"error":{"code":"value_error","message":message,"details":{}}});
-    let raw = format!("{{\"turns\":[{}\n{envelope}", turn(1));
+fn a_200_that_is_not_json_is_malformed() {
     let server = Stub::replies(vec![
         (200, paging()),
-        (200, json!({"$raw": raw})),
-        (
-            200,
-            json!({"turns":[],"next_after":null,"continuation":"more"}),
-        ),
-        (
-            200,
-            json!({"turns":[turn(1)],"next_after":3,"continuation":null}),
-        ),
-        (200, json!({"$raw": "{\"turns\":[\n{\"nothing\":1}"})),
+        (200, json!({"$raw": "{\"turns\":[\n{\"error\":{}}"})),
     ]);
     let store = RemoteStore::connect(&server.url, "test-token").unwrap();
-    let Err(crate::conversation::Error::Value(text)) = store.read_turns("c", 0, None) else {
-        panic!("the trailer's refusal")
-    };
-    assert_eq!(text, message);
-    for expected in ["continuation", "next_after"] {
-        let refused = store.read_turns("c", 0, None).err().unwrap().text();
-        assert!(refused.contains(expected), "{refused}");
-    }
+    // Whatever follows a line feed: a server never ends a 200 with an error.
     let refused = store.read_turns("c", 0, None).err().unwrap();
     assert!(matches!(refused, crate::conversation::Error::Value(_)));
 }

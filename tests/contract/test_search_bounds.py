@@ -90,13 +90,13 @@ def test_history_relevance_refuses_past_the_bound_on_the_cli(binary: Binary) -> 
     assert len(scored(search(binary, *QUERY, *narrowed, env={BOUND: "2"}))) == 2
 
 
-@pytest.mark.parametrize("value", ["0", "-1", "ten", "10000001"])
+@pytest.mark.parametrize("value", ["0", "-1", "ten", "1000001"])
 def test_an_invalid_bound_is_refused_by_name(binary: Binary, value: str) -> None:
     plant(binary.home, CORPUS)
     refused = run(binary, "search", *QUERY, env={BOUND: value})
     assert refused.returncode == 1
     assert refused.stderr == (
-        "error: NEOSIAN_SEARCH_MAX_CANDIDATES must be an integer in 1..10000000\n"
+        "error: NEOSIAN_SEARCH_MAX_CANDIDATES must be an integer in 1..1000000\n"
     )
     # Only relevance keeps facts, so only relevance reads the setting.
     assert run(binary, "search", "dashboard", "--order", "newest", env={BOUND: value}).returncode == 0  # fmt: skip

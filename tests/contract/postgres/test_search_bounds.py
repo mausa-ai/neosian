@@ -1,9 +1,10 @@
 """Memory-bounded search on Postgres (S13, DESIGN §40.45).
 
-Relevance keeps facts, not rows, and refuses past the candidate bound; every
-statement's rows count against the response budget as they arrive, so a read
-that would hold too much refuses by name instead of growing. Rows are planted
-directly; expected texts are literal.
+Relevance keeps facts, not rows, and refuses past the candidate bound. Rows
+count against the response budget as they arrive: alone where they become
+hits or a spooled answer, together where a read keeps them all (#417); a read
+past it refuses by name instead of growing. Rows are planted directly;
+expected texts are literal.
 """
 
 import json
@@ -89,23 +90,44 @@ def test_relevance_refuses_past_the_bound_and_answers_within_it(
     assert [hit["turn"] for hit in hits] == [2, 1]
 
 
-def test_a_statement_past_the_response_budget_refuses_by_name(
+def test_the_response_budget_charges_rows_alone_or_collected_reads_whole(
     binary: Binary, database: Database
 ) -> None:
+    # #417: a search's rows become hits as they arrive, so each row is charged
+    # alone; a whole conversation read keeps every row, so S13's total charge
+    # applies. Both refuse by name.
     connection, schema, server = database
     plant(connection, schema)
     budget = {"NEOSIAN_MAX_RESPONSE_BYTES": "600"}
-    refused = search(binary, schema, "deploy", "--order", "newest", **budget)
-    assert refused.returncode == 1
-    error = json.loads(refused.stdout)["error"]
-    assert error.startswith("resource limit NEOSIAN_MAX_RESPONSE_BYTES exceeded: ")
-    assert error.endswith("; select a smaller batch or raise this setting")
-    ranked = search(binary, schema, "deploy", **budget)
-    assert ranked.returncode == 1
-    assert "NEOSIAN_MAX_RESPONSE_BYTES" in ranked.stdout
-    # One turn fits; the same reads answer under the default budget.
-    one = search(binary, schema, "lunch", "--order", "newest", **budget)
-    assert one.returncode == 0, one.stdout
+    for args in [("deploy", "--order", "newest"), ("deploy",)]:
+        found = search(binary, schema, *args, **budget)
+        assert found.returncode == 0, found.stdout
+        assert [hit["turn"] for hit in json.loads(found.stdout)["hits"]] in (
+            [2, 1],
+            [1, 2],
+        )
+    tiny = {"NEOSIAN_MAX_RESPONSE_BYTES": "100"}
+    for args in [("deploy", "--order", "newest"), ("deploy",)]:
+        refused = search(binary, schema, *args, **tiny)
+        assert refused.returncode == 1
+        error = json.loads(refused.stdout)["error"]
+        assert error.startswith("resource limit NEOSIAN_MAX_RESPONSE_BYTES exceeded: ")
+        assert error.endswith(" > 100; select a smaller batch or raise this setting")
+    whole = run(
+        binary,
+        "continue",
+        "pg-bound",
+        "--schema",
+        schema,
+        env={"NEOSIAN_POSTGRES_DSN": os.environ["NEOSIAN_TEST_POSTGRES_DSN"], **budget},
+    )
+    assert whole.returncode == 1
+    assert whole.stderr.startswith(
+        "error: resource limit NEOSIAN_MAX_RESPONSE_BYTES exceeded: "
+    )
+    assert whole.stderr.endswith(
+        " > 600; select a smaller batch or raise this setting\n"
+    )
     assert search(binary, schema, "deploy").returncode == 0
     # The stored rows are untouched by a refused read.
     assert connection.execute(

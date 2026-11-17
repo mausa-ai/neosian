@@ -1,16 +1,20 @@
-"""Streamed answers and size paging through the binary's doors (S14, §40.46).
+"""Spooled answers and size paging through the binary's doors (S14, §40.46, #417).
 
-Large answers stream with unchanged bytes. A refusal found after the first
-64 KiB have left arrives as a trailer: a line feed and the error envelope, so
-the 200 body is no longer JSON, and the binary's remote client reports the
-error a local read reports. Against a server that advertises size paging, the
-remote client pages and its doors answer exactly as a local read does, even
-when the server's cap holds one turn a page. Expected texts are literal.
+Large answers are written item by item into a spool while the server holds the
+store and sent, with their length, only after it has let go: a refusal found
+anywhere is the 400 it always was, and a slow reader holds nothing of the
+store. File searches keep one log open at a time. The binary's remote client
+sends 2.16.0's requests to every server, size paging or not, and its doors
+answer exactly as a local read does. Expected texts are literal.
 """
 
 from __future__ import annotations
 
 import json
+import socket
+import subprocess
+import sys
+import time
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError
@@ -48,6 +52,13 @@ def plant_long(root: Path, count: int, size: int, bad: bool = False) -> None:
 
 
 def raw(server: Server, route: str, body: dict[str, Any]) -> tuple[int, bytes]:
+    status, headers, answer = exchange(server, route, body)
+    return status, answer
+
+
+def exchange(
+    server: Server, route: str, body: dict[str, Any]
+) -> tuple[int, dict[str, str], bytes]:
     request = Request(
         f"{server.url}/v1/{route}",
         data=json.dumps(body).encode(),
@@ -56,12 +67,50 @@ def raw(server: Server, route: str, body: dict[str, Any]) -> tuple[int, bytes]:
     )
     try:
         with build_opener(ProxyHandler({})).open(request, timeout=30) as response:
-            return response.status, response.read()
+            return response.status, lowered(response.headers), response.read()
     except HTTPError as error:
-        return error.code, error.read()
+        return error.code, lowered(error.headers), error.read()
 
 
-def test_a_refusal_after_the_first_bytes_is_a_trailer(binary: Binary) -> None:
+def lowered(headers: Any) -> dict[str, str]:
+    return {str(name).lower(): str(value) for name, value in headers.items()}
+
+
+class SlowReader:
+    """One request read a few bytes at a time on a raw socket, as a client on
+    a slow link reads it; `read` counts what arrived."""
+
+    def __init__(self, server: Server, route: str, body: dict[str, Any]) -> None:
+        port = int(server.url.rsplit(":", 1)[1])
+        data = json.dumps(body).encode()
+        self.socket = socket.socket()
+        self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 4096)
+        self.socket.connect(("127.0.0.1", port))
+        self.socket.sendall(
+            f"POST /v1/{route} HTTP/1.1\r\nHost: x\r\n"
+            f"Authorization: Bearer {ADMIN}\r\nContent-Length: {len(data)}\r\n\r\n".encode()
+            + data
+        )
+        self.read = 0
+
+    def take(self, size: int) -> None:
+        while size > 0:
+            chunk = self.socket.recv(min(size, 4096))
+            assert chunk, "the server closed the slow reader's answer"
+            self.read += len(chunk)
+            size -= len(chunk)
+
+    def close(self) -> None:
+        self.socket.close()
+
+
+def timed(server: Server, route: str, body: dict[str, Any]) -> tuple[int, float]:
+    started = time.monotonic()
+    status, _ = raw(server, route, body)
+    return status, time.monotonic() - started
+
+
+def test_a_late_refusal_is_the_400_it_always_was(binary: Binary) -> None:
     plant_long(binary.home, 40, 900, bad=True)
     reason = "turn-log line 41 has invalid fields"
     envelope = {
@@ -71,21 +120,18 @@ def test_a_refusal_after_the_first_bytes_is_a_trailer(binary: Binary) -> None:
             "details": {"conversation_id": LONG, "reason": reason},
         }
     }
+    wire = json.dumps(envelope, separators=(",", ":")).encode()
     with serve(binary) as server:
-        status, body = raw(server, "conversation/read_turns", {"conversation_id": LONG})
-        assert status == 200 and len(body) > 64 * 1024
-        with pytest.raises(json.JSONDecodeError):
-            json.loads(body)
-        answer, trailer = body.split(b"\n", 1)
-        assert answer.startswith(b'{"turns":[{"conversation_id":"long-session"')
-        assert json.loads(trailer) == envelope
-        assert trailer == json.dumps(envelope, separators=(",", ":")).encode()
-        # Refused before 64 KiB left, the same refusal is an ordinary 400.
-        short = {"conversation_id": LONG, "limit": 1}
-        assert raw(server, "conversation/read_turns", short) == (
-            400,
-            json.dumps(envelope, separators=(",", ":")).encode(),
-        )
+        # The malformed row lies past 180 KB of answer: the spool finds it
+        # before anything is sent, as 2.16.0 found it before its body.
+        bodies: list[dict[str, Any]] = [
+            {"conversation_id": LONG},
+            {"conversation_id": LONG, "limit": 1},
+        ]
+        for body in bodies:
+            status, headers, answer = exchange(server, "conversation/read_turns", body)
+            assert (status, answer) == (400, wire)
+            assert headers["content-length"] == str(len(wire))
         remote = run(binary, "continue", LONG, "--url", server.url, env=REMOTE)
     local = run(binary, "continue", LONG)
     assert remote.returncode == local.returncode == 1
@@ -94,6 +140,121 @@ def test_a_refusal_after_the_first_bytes_is_a_trailer(binary: Binary) -> None:
     assert remote.stderr == (
         f"error: [agent_conversation_format_unsupported] {envelope['error']['message']}\n"
     )
+
+
+def test_a_slow_reader_holds_nothing_of_the_store(binary: Binary) -> None:
+    # A 20 MB answer read at a few KB per step by one client must not delay
+    # another client's reads and writes on unrelated data (review F1).
+    plant_long(binary.home, 300, 13_000)
+    other = binary.home / "conversations" / "other-session"
+    other.mkdir(parents=True)
+    with serve(binary) as server:
+        reader = SlowReader(
+            server, "conversation/read_turns", {"conversation_id": LONG}
+        )
+        try:
+            reader.take(65_536)
+            probes: list[tuple[str, dict[str, Any]]] = [
+                ("conversation/last_turn_number", {"conversation_id": LONG}),
+                (
+                    "conversation/append_turn",
+                    {"conversation_id": "other-session", "messages": [user("hi")]},
+                ),
+                (
+                    "memory/write",
+                    {"scope": "user:other", "path": "notes/a", "content": "x"},
+                ),
+                ("conversation/read_turns", {"conversation_id": LONG, "limit": 1}),
+            ]
+            for route, body in probes:
+                status, seconds = timed(server, route, body)
+                assert status == 200 and seconds < 2.0, (route, status, seconds)
+            reader.take(65_536)
+            assert reader.read < 1_000_000, "the reader is still far from the end"
+        finally:
+            reader.close()
+
+
+def test_file_searches_keep_one_log_open_at_a_time(binary: Binary) -> None:
+    # 600 conversations, each with one matching turn; a limit-500 search
+    # under an open-file limit of 256, launchd's default (review F4).
+    for number in range(600):
+        folder = binary.home / "conversations" / f"fd-{number:04d}"
+        folder.mkdir(parents=True)
+        row = {
+            "neosian_format": 1,
+            "turn": 1,
+            "messages": [user(f"dashboard note {number}")],
+            "created_at": f"2026-11-07T{number // 3600 % 24:02d}:{number // 60 % 60:02d}:{number % 60:02d}Z",
+            "actor": "cli:fixture",
+            "redacted": False,
+        }
+        (folder / "turns.jsonl").write_text(json.dumps(row) + "\n", encoding="utf-8")
+    limited = (
+        "import os, resource, sys; "
+        "resource.setrlimit(resource.RLIMIT_NOFILE, (256, resource.getrlimit(resource.RLIMIT_NOFILE)[1])); "
+        "os.execv(sys.argv[1], sys.argv[1:])"
+    )
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    env = binary.environment()
+    env["NEOSIAN_SERVE_TOKEN"] = f"client:contract={ADMIN}"
+    command = [
+        str(binary.executable),
+        "serve",
+        "--port",
+        str(port),
+        "--root",
+        str(binary.home),
+    ]
+    process = subprocess.Popen(
+        [sys.executable, "-c", limited, *command],
+        env=env,
+        cwd=binary.directory,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    server = Server(f"http://127.0.0.1:{port}")
+    try:
+        for _ in range(400):
+            try:
+                if (
+                    server.request("/health", method="GET", authenticated=False).status
+                    == 200
+                ):
+                    break
+            except OSError:
+                time.sleep(0.05)
+        for order in ["relevance", "newest"]:
+            body = {"query": "dashboard", "limit": 500, "order": order}
+            status, answer = raw(server, "conversation/search_turns", body)
+            assert status == 200, (order, answer[:200])
+            assert len(json.loads(answer)["turns"]) == 500
+    finally:
+        process.terminate()
+        process.wait(timeout=10)
+    local = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            limited,
+            str(binary.executable),
+            "search",
+            "dashboard",
+            "--limit",
+            "500",
+            "--json",
+        ],
+        env=binary.environment(),
+        cwd=binary.directory,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert local.returncode == 0, local.stderr
+    assert len(json.loads(local.stdout)["hits"]) == 500
 
 
 def remote_and_local(binary: Binary, server: Server, *args: str) -> None:
@@ -109,10 +270,11 @@ def remote_and_local(binary: Binary, server: Server, *args: str) -> None:
         assert remote.stdout == local.stdout
 
 
-def test_remote_doors_page_and_answer_as_a_local_read(binary: Binary) -> None:
+def test_remote_doors_answer_as_a_local_read(binary: Binary) -> None:
     plant(binary.home, CORPUS)
     plant_long(binary.home, 30, 300)
-    # A cap below one turn: every page holds exactly one turn.
+    # A server that pages (with a cap below one turn) still gets 2.16.0's
+    # requests from the binary, which answer as a local read.
     with serve(binary, extra_env={CAP: "64"}) as server:
         for args in [
             ("dashboard", "word", "--limit", "500"),
@@ -182,8 +344,8 @@ def test_a_ceiling_above_the_cap_is_served_at_the_cap(binary: Binary) -> None:
         assert turns == whole and pages > 2
 
 
-def test_streamed_answers_are_compact_and_whole(binary: Binary) -> None:
-    plant_long(binary.home, 120, 900)
+def test_spooled_answers_are_compact_whole_and_sized(binary: Binary) -> None:
+    plant_long(binary.home, 120, 2200)
     with serve(binary) as server:
         requests: list[tuple[str, dict[str, Any]]] = [
             ("conversation/read_turns", {"conversation_id": LONG}),
@@ -192,11 +354,16 @@ def test_streamed_answers_are_compact_and_whole(binary: Binary) -> None:
                 "conversation/search_turns",
                 {"query": "long word", "limit": 500, "order": "relevance"},
             ),
+            ("memory/read", {"scope": "user:none", "path": "notes/absent"}),
         ]
         for route, body in requests:
-            status, text = raw(server, route, body)
-            assert status == 200 and len(text) > 64 * 1024 and b"\n" not in text
+            status, headers, text = exchange(server, route, body)
+            assert status == 200 and b"\n" not in text
+            # Every answer has its length again, small ones included (F7).
+            assert headers["content-length"] == str(len(text))
+            assert "transfer-encoding" not in headers
             parsed = json.loads(text)
-            assert len(parsed["turns"]) == 120
             compact = json.dumps(parsed, separators=(",", ":"), ensure_ascii=False)
             assert text == compact.encode()
+            if "turns" in parsed:
+                assert len(text) > 1 << 20 and len(parsed["turns"]) == 120

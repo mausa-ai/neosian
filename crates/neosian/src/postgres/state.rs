@@ -142,7 +142,8 @@ impl State for PostgresStore {
         visit: &mut crate::conversation::page::Visit,
     ) -> Result<(), conversation::Error> {
         let fresh = crate::conversation::page::Resume::Fresh;
-        self.rank_each(request, &fresh, visit).map(|_| ())
+        let each = crate::conversation::page::Mode::Each;
+        self.rank_each(request, &fresh, each, visit).map(|_| ())
     }
     fn append_turn(
         &self,

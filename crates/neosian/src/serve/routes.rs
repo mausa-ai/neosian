@@ -25,11 +25,11 @@ use crate::version::VERSION;
 use crate::wire::WIRE_VERSION;
 
 /// A route's body: the store, the typed payload and the stamped client. A
-/// whole answer is one small value; a streamed one is written item by item
-/// (DESIGN §40.46).
+/// whole answer is one small value; a spooled one is written item by item
+/// and sent after the store is released (DESIGN §40.46, #417).
 pub enum Handler {
     Whole(fn(&dyn Backend, &Payload, &str) -> Result<Value, Fail>),
-    Streamed(fn(&dyn Backend, &Payload, &str, &mut super::stream::Writer) -> Result<(), Fail>),
+    Spooled(fn(&dyn Backend, &Payload, &str, &mut super::spool::Writer) -> Result<(), Fail>),
 }
 
 pub struct Route {
@@ -146,8 +146,8 @@ async fn endpoint(State(shared): State<super::State>, request: Request) -> Respo
     }
     let handler = match route.handler {
         Handler::Whole(handler) => handler,
-        Handler::Streamed(handler) => {
-            return super::stream::respond(Box::new(move |writer| {
+        Handler::Spooled(handler) => {
+            return super::spool::respond(Box::new(move |writer| {
                 handler(shared.store.as_ref(), &payload, &client.actor, writer)
             }))
             .await;

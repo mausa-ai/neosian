@@ -2,7 +2,7 @@
 
 use super::{PostgresStore, rows, sql};
 use crate::conversation::ids::parse_conversation_id;
-use crate::conversation::page::{Last, Resume, Visit};
+use crate::conversation::page::{Last, Mode, Resume, Visit};
 use crate::conversation::rank::{Order, Ranked, Request};
 use crate::conversation::search::messages_text;
 use crate::conversation::{
@@ -13,6 +13,9 @@ use crate::remote::codec;
 use crate::store::time::Stamp;
 use crate::wire::encode;
 use serde_json::{Value, json};
+
+/// The rows a turn-read page asks for first, before it knows their size.
+const FIRST: i64 = 2;
 
 impl PostgresStore {
     pub fn append_turn(
@@ -49,14 +52,14 @@ impl PostgresStore {
 
     pub fn read_turns(&self, id: &str, after: i64, limit: Option<i64>) -> Result<Vec<Turn>, Error> {
         let mut turns = Vec::new();
-        self.read_turns_each(id, after, limit, &mut |turn| {
+        self.read_turns_in(id, after, limit, Mode::Collected, &mut |turn| {
             turns.push(turn);
             Ok(true)
         })?;
         Ok(turns)
     }
 
-    /// `read_turns` one turn at a time through the portal (DESIGN §40.46).
+    /// `read_turns` one turn at a time (DESIGN §40.46).
     pub fn read_turns_each(
         &self,
         id: &str,
@@ -64,12 +67,65 @@ impl PostgresStore {
         limit: Option<i64>,
         visit: &mut dyn FnMut(Turn) -> Result<bool, Error>,
     ) -> Result<(), Error> {
+        self.read_turns_in(id, after, limit, Mode::Each, visit)
+    }
+
+    /// `read_turns` one turn at a time, read and charged as `mode` says.
+    pub fn read_turns_in(
+        &self,
+        id: &str,
+        after: i64,
+        limit: Option<i64>,
+        mode: Mode,
+        visit: &mut dyn FnMut(Turn) -> Result<bool, Error>,
+    ) -> Result<(), Error> {
         parse_conversation_id(id)?;
         rows::window(after, limit)?;
-        let params = json!({"conversation_id":id,"after":after,"limit":limit});
-        self.turn_rows(sql!("store/read_turns"), &params, |row| {
-            visit(rows::turn(id, row)?)
-        })
+        let Mode::Paged(ceiling) = mode else {
+            let params = json!({"conversation_id":id,"after":after,"limit":limit});
+            return self.turn_rows(sql!("store/read_turns"), &params, mode, |row| {
+                visit(rows::turn(id, row)?)
+            });
+        };
+        self.read_turns_page(id, after, limit, ceiling, visit)
+    }
+
+    /// One size page of turns: short keyset statements by turn number, each
+    /// asking for the rows the page still has room for, estimated from the
+    /// compact JSON size of the rows read so far, plus two (one to say whether
+    /// more follow, one for the estimate), so a page reads about two rows
+    /// more than it keeps, in one round trip per statement and no
+    /// transaction (DESIGN §40.46, #417). Every row is charged alone.
+    fn read_turns_page(
+        &self,
+        id: &str,
+        after: i64,
+        limit: Option<i64>,
+        ceiling: u64,
+        visit: &mut dyn FnMut(Turn) -> Result<bool, Error>,
+    ) -> Result<(), Error> {
+        let (mut last, mut taken, mut weight) = (after, 0_i64, 0_u64);
+        let mut ask = FIRST.min(limit.unwrap_or(i64::MAX));
+        loop {
+            let params = json!({"conversation_id": id, "after": last, "limit": ask});
+            let (mut read, mut open) = (0_i64, true);
+            self.turn_rows(sql!("store/read_turns"), &params, Mode::Each, |row| {
+                read += 1;
+                weight = weight.saturating_add(super::values::encoded(&row));
+                let turn = rows::turn(id, row)?;
+                last = turn.turn as i64;
+                open = visit(turn)?;
+                Ok(open)
+            })?;
+            taken += read;
+            let left = limit.map_or(i64::MAX, |limit| limit - taken);
+            if !open || read < ask || left <= 0 {
+                return Ok(());
+            }
+            let average = (weight / taken as u64).max(1);
+            let room = ceiling.saturating_sub(weight) / average + 1;
+            ask = i64::try_from(room).unwrap_or(i64::MAX).clamp(1, left);
+        }
     }
 
     /// Streamed rows with conversation refusals reported as themselves.
@@ -77,10 +133,11 @@ impl PostgresStore {
         &self,
         template: &'static str,
         params: &Value,
+        mode: Mode,
         mut each: impl FnMut(Value) -> Result<bool, Error>,
     ) -> Result<(), Error> {
         let mut refused = None;
-        let outcome = self.pool.rows(template, params, |row| {
+        let outcome = self.pool.rows(template, params, mode, |row| {
             each(row).map_err(|error| {
                 refused = Some(error);
                 crate::store::error::Error::Value(String::new())
@@ -111,19 +168,30 @@ impl PostgresStore {
         limit: usize,
     ) -> Result<Vec<Turn>, Error> {
         let mut found = Vec::new();
-        self.search_each(terms, ids, limit, &mut |turn| {
+        self.search_in(terms, ids, limit, Mode::Collected, &mut |turn| {
             found.push(turn);
             Ok(true)
         })?;
         Ok(found)
     }
 
-    /// Version 1 search: newest without bounds, the same statement.
     pub fn search_each(
         &self,
         terms: &[String],
         ids: Option<&[String]>,
         limit: usize,
+        visit: &mut dyn FnMut(Turn) -> Result<bool, Error>,
+    ) -> Result<(), Error> {
+        self.search_in(terms, ids, limit, Mode::Each, visit)
+    }
+
+    /// Version 1 search: newest without bounds, the same statement.
+    fn search_in(
+        &self,
+        terms: &[String],
+        ids: Option<&[String]>,
+        limit: usize,
+        mode: Mode,
         visit: &mut dyn FnMut(Turn) -> Result<bool, Error>,
     ) -> Result<(), Error> {
         check_ids(ids)?;
@@ -138,16 +206,21 @@ impl PostgresStore {
             since: None,
             before: None,
         };
-        self.rank_each(&request, &Resume::Fresh, &mut |turn, _| visit(turn))?;
+        self.rank_each(&request, &Resume::Fresh, mode, &mut |turn, _| visit(turn))?;
         Ok(())
     }
 
     pub fn rank_turns(&self, request: &Request) -> Result<Vec<Ranked>, Error> {
         let mut ranked = Vec::new();
-        self.rank_each(request, &Resume::Fresh, &mut |turn, score| {
-            ranked.push((turn, score));
-            Ok(true)
-        })?;
+        self.rank_each(
+            request,
+            &Resume::Fresh,
+            Mode::Collected,
+            &mut |turn, score| {
+                ranked.push((turn, score));
+                Ok(true)
+            },
+        )?;
         Ok(ranked)
     }
 
@@ -162,6 +235,7 @@ impl PostgresStore {
         &self,
         request: &Request,
         resume: &Resume,
+        mode: Mode,
         visit: &mut Visit,
     ) -> Result<Option<String>, Error> {
         let ids = request.ids.as_deref();
@@ -187,7 +261,7 @@ impl PostgresStore {
                 params["at_id"] = json!(conversation);
                 params["at_turn"] = json!(turn);
             }
-            self.turn_rows(sql!("store/rank_turns"), &params, |row| {
+            self.turn_rows(sql!("store/rank_turns"), &params, mode, |row| {
                 visit(
                     rows::turn(&codec::text(&row, "conversation_id")?, row)?,
                     None,
@@ -195,7 +269,7 @@ impl PostgresStore {
             })?;
             return Ok(None);
         }
-        self.rank_relevance(request, &params, resume, visit)
+        self.rank_relevance(request, &params, resume, mode, visit)
     }
 
     pub fn append_projections(&self, id: &str, entries: &[Projection]) -> Result<(), Error> {

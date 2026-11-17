@@ -74,5 +74,5 @@ parameter text and new optional inputs are projected back to version 1, and the
 the new default, bounds and text.
 
 S14's optional `size_paging` handshake field is projected out likewise; S14's
-streamed answers keep every other byte, and independent storage and HTTP
+spooled answers keep every other byte, and independent storage and HTTP
 contracts cover paging.

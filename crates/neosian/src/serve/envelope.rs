@@ -142,10 +142,11 @@ impl From<conversation::Error> for Fail {
     }
 }
 
-/// A streamed answer's own failure (a client gone or stalled): no envelope.
+/// A spool's failure: its budget refusal is the caller's fault, as every
+/// operation budget is; anything else has no envelope.
 impl From<std::io::Error> for Fail {
-    fn from(_: std::io::Error) -> Self {
-        Self::internal()
+    fn from(error: std::io::Error) -> Self {
+        error::Error::from(error).into()
     }
 }
 

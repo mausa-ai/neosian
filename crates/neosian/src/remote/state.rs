@@ -199,14 +199,6 @@ impl State for RemoteStore {
         after: i64,
         limit: Option<i64>,
     ) -> Result<Vec<Turn>, conversation::Error> {
-        if self.supports_size_paging() {
-            let mut turns = Vec::new();
-            self.read_turns_paged(id, after, limit, &mut |turn| {
-                turns.push(turn);
-                Ok(true)
-            })?;
-            return Ok(turns);
-        }
         Ok(self
             .follow(
                 "conversation/read_turns",
@@ -259,23 +251,6 @@ impl State for RemoteStore {
         request: &crate::conversation::rank::Request,
     ) -> Result<Vec<crate::conversation::rank::Ranked>, conversation::Error> {
         self.rank_turns_wire(request)
-    }
-    fn read_turns_each(
-        &self,
-        id: &str,
-        after: i64,
-        limit: Option<i64>,
-        visit: &mut dyn FnMut(Turn) -> Result<bool, conversation::Error>,
-    ) -> Result<(), conversation::Error> {
-        if self.supports_size_paging() {
-            return self.read_turns_paged(id, after, limit, visit);
-        }
-        for turn in self.read_turns(id, after, limit)? {
-            if !visit(turn)? {
-                break;
-            }
-        }
-        Ok(())
     }
     fn search_turns_each(
         &self,

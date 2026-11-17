@@ -22,9 +22,24 @@ use super::values;
 const CONNECTIONS: usize = 4;
 const ATTEMPTS: usize = 25;
 
-struct Connection {
+pub(super) struct Connection {
     client: Client,
     statements: HashMap<&'static str, Statement>,
+}
+
+impl Connection {
+    /// The template's statement, prepared once per connection.
+    pub(super) async fn prepared(
+        &mut self,
+        template: &'static str,
+        sql: &str,
+    ) -> io::Result<Statement> {
+        if !self.statements.contains_key(template) {
+            let prepared = self.client.prepare(sql).await.map_err(failure)?;
+            self.statements.insert(template, prepared);
+        }
+        Ok(self.statements[template].clone())
+    }
 }
 
 pub struct Pool {
@@ -61,6 +76,27 @@ impl Pool {
             slots: std::array::from_fn(|_| Mutex::new(None)),
             next: AtomicUsize::new(0),
         })
+    }
+
+    /// A connection: the first free slot from this request's turn on, else
+    /// a wait on that slot, so a request never queues behind a busy slot
+    /// while another is free.
+    pub(super) async fn checkout(
+        &self,
+    ) -> io::Result<tokio::sync::MutexGuard<'_, Option<Connection>>> {
+        let start = self.next.fetch_add(1, Ordering::Relaxed) % CONNECTIONS;
+        let free = (0..CONNECTIONS)
+            .find_map(|offset| self.slots[(start + offset) % CONNECTIONS].try_lock().ok());
+        let mut held = match free {
+            Some(held) => held,
+            None => tokio::time::timeout(Duration::from_secs(30), self.slots[start].lock())
+                .await
+                .map_err(|_| io::Error::other("Postgres connection checkout timed out"))?,
+        };
+        if held.as_ref().is_none_or(|conn| conn.client.is_closed()) {
+            *held = Some(self.connect().await.map_err(failure)?);
+        }
+        Ok(held)
     }
 
     async fn connect(&self) -> Result<Connection, tokio_postgres::Error> {
@@ -104,20 +140,9 @@ impl Pool {
         let budget = crate::limits::response_bytes().map_err(crate::limits::into_io)?;
         self.runtime.block_on(async {
             for attempt in 0..ATTEMPTS {
-                let slot = self.next.fetch_add(1, Ordering::Relaxed) % CONNECTIONS;
-                let mut held =
-                    tokio::time::timeout(Duration::from_secs(30), self.slots[slot].lock())
-                        .await
-                        .map_err(|_| io::Error::other("Postgres connection checkout timed out"))?;
-                if held.as_ref().is_none_or(|conn| conn.client.is_closed()) {
-                    *held = Some(self.connect().await.map_err(failure)?);
-                }
+                let mut held = self.checkout().await?;
                 let conn = held.as_mut().expect("connected");
-                if !conn.statements.contains_key(template) {
-                    let prepared = conn.client.prepare(&sql).await.map_err(failure)?;
-                    conn.statements.insert(template, prepared);
-                }
-                let statement = conn.statements[template].clone();
+                let statement = conn.prepared(template, &sql).await?;
                 let bound = bind(&names, &statement, params)?;
                 let borrowed: Vec<&(dyn ToSql + Sync)> =
                     bound.iter().map(|value| &**value as _).collect();

@@ -33,7 +33,7 @@ new fields, that each page holds every whole turn that fits under
 `page_bytes` and at least one, that a continuation binds its request, that
 invalid paging fields refuse, and that a relevance continuation refuses once
 its candidates changed. Turns are measured as compact JSON over ASCII
-fixtures. Absent support is an explicit skip under both profiles. Streamed
+fixtures. Absent support is an explicit skip under both profiles. Spooled
 answers need no case of their own: every existing case reads them whole.
 
 From a checkout with the development dependencies:

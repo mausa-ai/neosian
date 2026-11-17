@@ -72,9 +72,12 @@ pub fn page_bytes() -> Result<u64, Error> {
     setting(PAGE, 8 << 20, 1 << 30)
 }
 
-/// The largest relevance candidate set one search keeps facts for (DESIGN §40.45).
+/// The largest relevance candidate set one search keeps facts for (DESIGN
+/// §40.45). At most 1,000,000: a candidate can cost about 600 bytes (a
+/// 500-character path, or its own conversation's id), so the maximum is
+/// about 0.6 GB; ten times that could not be justified (#417).
 pub fn search_candidates() -> Result<usize, Error> {
-    Ok(setting(SEARCH, 100_000, 10_000_000)? as usize)
+    Ok(setting(SEARCH, 100_000, 1_000_000)? as usize)
 }
 
 /// The refusal over the candidate bound. The agent doors recognize its prefix,

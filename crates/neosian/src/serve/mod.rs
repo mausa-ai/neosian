@@ -22,7 +22,7 @@ mod routes_conversation;
 mod routes_memory;
 mod routes_store;
 mod sessions;
-mod stream;
+mod spool;
 mod streamable;
 mod turn_pages;
 

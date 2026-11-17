@@ -57,12 +57,12 @@ budgets refuse explicitly; they never truncate results or delete retained data.
 |---|---:|---:|---|
 | `NEOSIAN_KNOWLEDGE_MAX_DOCUMENTS` | 10,000 | 100,000 | Selected knowledge import/check/export documents |
 | `NEOSIAN_KNOWLEDGE_MAX_BYTES` | 256 MiB | 2 GiB | Knowledge content including normalized headers |
-| `NEOSIAN_MAX_TEMP_BYTES` | 512 MiB | 8 GiB | Each bulk staging area or recovery-plan preparation; exchange charges both together |
+| `NEOSIAN_MAX_TEMP_BYTES` | 512 MiB | 8 GiB | Each bulk staging area or recovery-plan preparation (exchange charges both together), and the part of one served answer spooled to disk |
 | `NEOSIAN_REPLICA_MAX_PATHS` | 100,000 | 1,000,000 | Distinct retained receiver paths, including deleted history |
 | `NEOSIAN_REPLICA_MAX_BYTES` | 1 GiB | 64 GiB | Retained receiver documents, version rows and erasure trail |
 | `NEOSIAN_MAX_FILE_BYTES` | 64 MiB | 1 GiB | Decoded FileStore memory documents/version files, new memory transaction artifacts, exchange artifacts and Postgres search candidate content plus JSON extras |
-| `NEOSIAN_MAX_RESPONSE_BYTES` | 64 MiB | 1 GiB | Each HTTP storage-client response, before JSON decoding, and the decoded rows of each Postgres statement as they arrive |
-| `NEOSIAN_SEARCH_MAX_CANDIDATES` | 100,000 | 10,000,000 | Turns or documents holding a term in one relevance search, history or memory, on files and Postgres |
+| `NEOSIAN_MAX_RESPONSE_BYTES` | 64 MiB | 1 GiB | Each HTTP storage-client response, before JSON decoding; on Postgres, each decoded row of a turn read or search that is spooled or turned into hits, and the rows of a statement together where a read keeps them all |
+| `NEOSIAN_SEARCH_MAX_CANDIDATES` | 100,000 | 1,000,000 | Turns or documents holding a term in one relevance search, history or memory, on files and Postgres |
 | `NEOSIAN_MAX_PAGE_BYTES` | 8 MiB | 1 GiB | The largest `page_bytes` a size-paged request is served; a larger request gets pages of this size |
 
 For byte settings, 1 MiB is 1,048,576 and 1 GiB is 1,073,741,824. Larger values
@@ -81,23 +81,37 @@ a scan without a search index. A relevance search over more candidates than
 `NEOSIAN_SEARCH_MAX_CANDIDATES` refuses with `value_error` and the message
 `resource limit NEOSIAN_SEARCH_MAX_CANDIDATES exceeded: more than N turns hold
 a search term; narrow the words or the time range` (documents: the words, the
-path or the update dates); raise the setting or narrow the query. A Postgres
-statement whose decoded rows pass `NEOSIAN_MAX_RESPONSE_BYTES` stops reading
-and refuses by name instead of holding more; that also applies to whole reads
-such as a full conversation. HTTP page cursors are validated, and every page
-still requires current server permissions.
+path or the update dates); raise the setting or narrow the query. Each
+relevance candidate costs its facts, 40 bytes plus 4 per query term (up to
+twice that while the arrays grow), and the name it is read back by: a history
+candidate shares its conversation's id with the other candidates of that
+conversation (on files the store's own listing of conversations, on Postgres
+one copy of each id plus about 100 bytes for its lookup), and a memory
+candidate keeps its path, up to 512 characters. Measured at the default bound
+with one candidate per conversation and 128-character ids, a history search
+peaks at about 33 MiB on files and 43 MiB on Postgres; with 500-character
+memory paths, about 67 MiB. At the maximum of 1,000,000 that is roughly 0.3
+and 0.6 GB. A Postgres read whose rows are kept in memory (a full conversation
+read by a local command, a page of memory versions or history) stops and
+refuses by name once its rows together pass `NEOSIAN_MAX_RESPONSE_BYTES`; a
+turn read or search that is spooled or turned into hits as its rows arrive
+refuses only a single row over it. HTTP page cursors are validated, and every
+page still requires current server permissions.
 
-`neosian serve` writes answers that grow with stored content one item at a
-time: searches and turn reads come from the store a turn at a time (a file log
-a line at a time, a Postgres statement through a portal in batches of up to 64
-rows), so a request holds about one turn, whatever the answer's size. A
-refusal found after the first 64 KiB have been sent, such as a statement
-passing `NEOSIAN_MAX_RESPONSE_BYTES`, arrives as a trailer after a line feed
-(`neosian docs wire`, "Streamed answers"). While it streams, a request keeps
-its store lock or database connection; a client that stops reading for 30
-seconds loses the answer. Size paging lets a client bound its own side too:
-`NEOSIAN_MAX_PAGE_BYTES` caps the ceiling a client may ask for, and therefore
-how much one page request transfers and how long it holds the store.
+`neosian serve` writes answers that grow with stored content item by item into
+a spool while it reads the store (the first 1 MiB in memory, the rest in a
+private temporary file under `NEOSIAN_MAX_TEMP_BYTES`), releases the store,
+then sends the spool with its length (`neosian docs wire`, "Spooled answers").
+Searches and turn reads come from the store a turn at a time (a file log a
+line at a time, a Postgres statement as one stream), so a request holds about
+one turn whatever the answer's size, and every refusal is an ordinary
+response. A slow client costs an open file and disk, never the store lock or
+a database connection. Disk use is at most the answers being sent at once,
+each at most `NEOSIAN_MAX_TEMP_BYTES`, in the temporary directory (`TMPDIR`).
+In a container with a memory limit the spools' file cache counts toward the
+limit but is reclaimed under pressure; a memory-backed temporary directory
+(tmpfs) would keep spools in memory, so give it disk. `NEOSIAN_MAX_PAGE_BYTES` caps the
+ceiling a size-paged request may ask for.
 
 Existing server request limits, per-document knowledge bounds, skill/context
 budgets and archive behavior remain separate. Client limits cannot raise a

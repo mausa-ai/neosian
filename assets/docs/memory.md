@@ -159,7 +159,8 @@ search holds the store lock; Postgres search reads one database snapshot, so
 the operator's statement and transaction timeouts bound it. Results already
 delivered cannot be recalled, and a concurrent change may follow a query's
 read. Search keeps no derived index or result cache. Relevance and newest keep
-a few facts per document, not the document, and read only the winners again,
+a few facts and the path per document, not the document, and read only the
+winners again,
 in the same lock or snapshot, for their excerpts and passages. Relevance
 refuses when more documents hold a term than the store's
 `NEOSIAN_SEARCH_MAX_CANDIDATES` allows (default 100,000; `neosian docs
@@ -405,9 +406,8 @@ is not limited this way.
 
 Each hit is built as its turn arrives, so the CLI and MCP keep hits, never
 the turns themselves, and `recall_turn` keeps only the turn it shows. Against
-a server that advertises size paging (`neosian docs wire`), searches and turn
-reads arrive in pages of at most 1 MiB, with the same results as before; an
-older server receives the same requests as before.
+a server, the binary sends the same requests as 2.16.0; the server spools each
+answer before sending it (`neosian docs wire`).
 
 Operator `redact` clears selected turns; `prune` applies an age cutoff to
 conversations. Whole-conversation erasure also clears their session documents.

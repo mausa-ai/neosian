@@ -13,9 +13,10 @@ use super::{Excerpt, Hit, Order, Page, Passage, Request, matching, searchable};
 use crate::store::{Document, error::Error, time::Stamp};
 use serde_json::json;
 
-/// What ranking keeps of one candidate document.
+/// What ranking keeps of one candidate document: its path, needed to read
+/// the winners again and to break ties, held at its exact length (#417).
 struct Key {
-    path: String,
+    path: Box<str>,
     updated: i64,
 }
 
@@ -123,7 +124,7 @@ impl<'a> Scan<'a> {
                 self.stats.add(&tally.counts, tally.length);
                 if tally.counts.iter().any(|c| *c > 0) {
                     let key = Key {
-                        path,
+                        path: path.into_boxed_str(),
                         updated: document.envelope.updated_at.instant(),
                     };
                     self.facts
@@ -143,7 +144,7 @@ impl<'a> Scan<'a> {
                     matching::tally(self.scope, &path, &document, request, &self.terms, false)?;
                 if tally.all {
                     let key = Key {
-                        path,
+                        path: path.into_boxed_str(),
                         updated: document.envelope.updated_at.instant(),
                     };
                     self.newest.offer(key, newest);
@@ -180,12 +181,12 @@ impl<'a> Scan<'a> {
             Order::Relevance => facts
                 .best(&self.stats, self.request.limit, |a, b| a.path.cmp(&b.path))
                 .into_iter()
-                .map(|(key, score)| (key.path, Some(score)))
+                .map(|(key, score)| (key.path.into_string(), Some(score)))
                 .collect(),
             Order::Newest => newest
-                .into_vec()
+                .into_vec(self::newest)
                 .into_iter()
-                .map(|k| (k.path, None))
+                .map(|k| (k.path.into_string(), None))
                 .collect(),
             Order::Path => Vec::new(),
         };

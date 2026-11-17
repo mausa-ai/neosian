@@ -9,7 +9,9 @@ candidate. Records are planted as literal format-1 rows (files) or table rows
 (Postgres), never written by the binary.
 
 Budgets are MiB per operation and include the server's own startup (about
-10 MiB). DESIGN §40.45 explains how they were chosen. Since S14 (§40.46)
+10 MiB). DESIGN §40.45 explains how they were chosen; the two spread corpora
+(100,000 candidates named by 128-character conversation ids or 500-character
+paths) have budgets of their own, set from measurement (§40.46, #417). Since S14 (§40.46)
 answers stream, so answer-sized requests (limit 500 turns of 64 KiB, a 32 MiB
 answer; a 500-turn page of turns) are gated too, as are reads that follow
 size pages to the end of a large conversation.
@@ -50,6 +52,13 @@ HISTORY_LARGE: Final = "bench-large"
 HISTORY_MANY: Final = "bench-many"
 SCOPE_LARGE: Final = "user:bench-large"
 SCOPE_MANY: Final = "user:bench-many"
+# Facts at the default candidate bound (100,000): each candidate its own
+# conversation with a 128-character id, and documents with 500-character
+# paths, the two records that grow with what a candidate is called (#417).
+SPREAD: Final = 100_000
+SPREAD_TERM: Final = "zq"
+SCOPE_PATHS: Final = "user:bench-paths"
+PATH_PREFIX: Final = "/".join(("a" * 120, "b" * 120, "c" * 120, "d" * 128))
 WORDS: Final = (
     "deploy",
     "review",
@@ -99,6 +108,14 @@ def _memory(scope: str, order: str, passages: int) -> dict[str, Any]:
 
 HISTORY: Final = "conversation/search_turns"
 MEMORY: Final = "memory/search"
+# Budgets for the two spread corpora (DESIGN §40.46, #417): the larger
+# backend's measured peak plus 30% for allocator and platform variance,
+# rounded up to 8 MiB. Measured 2026-11-17 on macOS: history 32.7 MiB on
+# files and 42.6 MiB on Postgres (about 230 and 330 bytes per candidate:
+# facts plus one copy of each 128-character id), memory 66.1 and 66.7 MiB
+# (about 580 bytes per candidate: facts plus the 500-character path).
+SPREAD_HISTORY: Final = 56.0
+SPREAD_MEMORY: Final = 88.0
 TURNS: Final = "conversation/read_turns"
 SMALL_PAGE: Final = 64 * 1024
 CLIENT_PAGE: Final = 1 << 20
@@ -154,6 +171,18 @@ OPERATIONS: Final = (
     ),
     Operation("turns read, 500", TURNS, {"conversation_id": HISTORY_LARGE}, BUDGET),
     Operation(
+        "history relevance, 100k conversations",
+        HISTORY,
+        {"query": SPREAD_TERM, "order": "relevance", "limit": 20},
+        SPREAD_HISTORY,
+    ),
+    Operation(
+        "memory relevance, 500-char paths",
+        MEMORY,
+        _memory(SCOPE_PATHS, "relevance", 0),
+        SPREAD_MEMORY,
+    ),
+    Operation(
         "history version 1, 500, paged",
         HISTORY,
         _history(HISTORY_LARGE, None, 500),
@@ -205,6 +234,19 @@ def _items() -> Iterator[tuple[bool, int, str]]:
             yield large, number, _text(seed * 1_000_000 + number, size)
 
 
+def _spread_id(number: int) -> str:
+    return f"{number:08d}" + "x" * 120
+
+
+def _spread_message(number: int) -> dict[str, Any]:
+    return _message(f"spread {SPREAD_TERM} note {number}")
+
+
+def _spread_path(number: int) -> str:
+    # Segments are at most 128 characters; the path is 500.
+    return f"{PATH_PREFIX}/{number:010d}"
+
+
 def _plant_files(home: Path) -> None:
     for conversation in (HISTORY_LARGE, HISTORY_MANY):
         (home / "conversations" / conversation).mkdir(parents=True)
@@ -236,6 +278,23 @@ def _plant_files(home: Path) -> None:
         folder = home / scope.replace(":", "%3A") / "documents" / "notes"
         folder.mkdir(parents=True, exist_ok=True)
         (folder / f"{number:05d}.md").write_text(header + text, encoding="utf-8")
+    conversations = home / "conversations"
+    for number in range(SPREAD):
+        folder = conversations / _spread_id(number)
+        folder.mkdir()
+        row = {
+            "neosian_format": 1,
+            "turn": 1,
+            "created_at": STAMP,
+            "actor": ACTOR,
+            "messages": [_spread_message(number)],
+        }
+        (folder / "turns.jsonl").write_text(json.dumps(row) + "\n", encoding="utf-8")
+    documents = home / SCOPE_PATHS.replace(":", "%3A") / "documents"
+    (documents / PATH_PREFIX).mkdir(parents=True)
+    for number in range(SPREAD):
+        path = documents / f"{_spread_path(number)}.md"
+        path.write_text(header + f"note {number} here", encoding="utf-8")
 
 
 def _plant_postgres(binary: Path, dsn: str, schema: str) -> None:
@@ -274,6 +333,41 @@ def _plant_postgres(binary: Path, dsn: str, schema: str) -> None:
                         text,
                     )
                     for large, number, text in _items()
+                ),
+            )
+            cursor.executemany(insert, ((_spread_id(n), STAMP) for n in range(SPREAD)))
+            cursor.executemany(
+                sql.SQL(
+                    "INSERT INTO {}.turns (conversation_id, turn, messages, created_at,"
+                    " neosian_format, actor, search_text) VALUES (%s, 1, %s, %s, 1,"
+                    " %s, %s)"
+                ).format(name),
+                (
+                    (
+                        _spread_id(n),
+                        json.dumps([_spread_message(n)]),
+                        STAMP,
+                        ACTOR,
+                        _spread_message(n)["content"],
+                    )
+                    for n in range(SPREAD)
+                ),
+            )
+            cursor.executemany(
+                sql.SQL(
+                    "INSERT INTO {}.memories (scope, path, content, version, created_at,"
+                    " updated_at, actor) VALUES (%s, %s, %s, 1, %s, %s, %s)"
+                ).format(name),
+                (
+                    (
+                        SCOPE_PATHS,
+                        _spread_path(n),
+                        f"note {n} here",
+                        STAMP,
+                        STAMP,
+                        ACTOR,
+                    )
+                    for n in range(SPREAD)
                 ),
             )
             cursor.executemany(

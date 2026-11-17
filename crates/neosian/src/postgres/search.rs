@@ -23,8 +23,12 @@ impl PostgresStore {
             "bytes": maximum
         });
         if passes.scan.ranked() {
-            self.pool
-                .snapshot(sql!("store/search_memory"), &params, &mut passes)?;
+            self.pool.snapshot(
+                sql!("store/search_memory"),
+                &params,
+                crate::conversation::page::Mode::Each,
+                &mut passes,
+            )?;
         } else {
             self.pool
                 .scan(sql!("store/search_memory"), &params, |row| {

@@ -27,27 +27,33 @@ phase close names the version.
   turns of 64 KiB, which used to be killed for memory, peaks at 16 MiB in
   0.26 s, and over 5,000 such turns at 14 MiB in 2.0 s. Memory search on
   Postgres reads its rows as one stream instead of one round trip per row.
-- A Postgres statement whose rows would pass `NEOSIAN_MAX_RESPONSE_BYTES`
-  (64 MiB by default) now stops and refuses, naming the setting, instead of
-  holding them all. This also covers whole reads, such as a full
-  conversation read by a local command; raise the setting for larger ones.
-- `neosian serve` writes every answer that grows with stored content as it
-  reads it, one item at a time: history search in every order, turn reads,
-  projection reads, memory reads, versions and history. The bytes are
-  exactly those of the whole answer, so no client changes. Searches and turn
-  reads come from the store a turn at a time (a file log a line at a time, a
-  Postgres statement through a portal), so a request holds about one turn
-  whatever the answer's size. Measured with `neosian serve` on Postgres in a container
-  limited to 192 MiB: version 1 history search at limit 500 over 120 KB
-  turns (a 60 MB answer), which peaked at 188 MiB, now peaks at 15 MiB in
-  0.66 s, and two such searches at once, which killed 2.16.0, peak at 18 MiB.
-- A refusal found after an answer's first 64 KiB have been sent, when the
-  `200` status line has already gone, ends the body with a line feed and the
-  error envelope it would have answered. A compact answer never holds a raw
-  line feed, so such a body is not valid JSON and cannot pass for a shorter
-  answer; the binary's remote client reports the same error a `400` gave.
-  A client that stops reading for 30 seconds loses the answer, so a stalled
-  reader cannot hold a store lock or a database connection.
+- `neosian serve` writes every answer that grows with stored content (history
+  search in every order, turn reads, projection reads, memory reads, versions
+  and history) item by item into a spool while it reads the store: the first
+  1 MiB in memory, the rest in a private temporary file. It then releases the
+  store (the file store's lock, a Postgres snapshot and connection) and sends
+  the spool with its `Content-Length`. The bytes and every refusal are those
+  2.16.0 sent; the server holds about one turn instead of the whole answer
+  three or four times, and a slow client costs an open file and disk, never
+  the store. Searches and turn reads come from the store a turn at a time.
+  Measured with `neosian serve` on Postgres in a container limited to
+  192 MiB: version 1 history search at limit 500 over 120 KB turns (a 60 MB
+  answer), which peaked at 188 MiB in 2.16.0, now keeps 8 MiB resident and
+  answers in 0.73 s; two at once, which killed 2.16.0, keep 9 MiB; four at
+  once all complete, the container's limit filled only with the spools'
+  reclaimable file cache.
+- `NEOSIAN_MAX_TEMP_BYTES` (512 MiB by default) also bounds the part of one
+  answer spooled to disk; a larger answer is refused with `value_error`
+  naming the setting. 2.16.0 built such an answer in memory instead.
+- On Postgres, `NEOSIAN_MAX_RESPONSE_BYTES` (64 MiB by default) bounds what a
+  read holds: a read that keeps its rows in memory (a full conversation read
+  by a local command, a page of memory versions or history) stops and
+  refuses, naming the setting, once its rows together pass it; a turn read or
+  search whose rows are spooled or turned into hits as they arrive refuses
+  only a single row over it, so answers 2.16.0 served are served. Database
+  timeouts bound the reads; they no longer have anything to do with sending,
+  which starts after the connection is released. The connection pool takes
+  any free connection, and statements are prepared once per connection.
 - `neosian search` and MCP `search_history` turn each matching turn into its
   hit as it arrives instead of keeping every turn, and `recall_turn` keeps
   only the turn it shows. File-backed turn reads stream the log a line at a
@@ -63,30 +69,36 @@ phase close names the version.
   still bounds the total. Continuations bind the request and grant nothing;
   a relevance continuation refuses with `value_error` when the turns it
   ranked have changed. Requests without these fields are unchanged.
-  Independent conformance cases specify it; a service without it still
-  passes. Against a server that advertises it, the binary's remote client
-  reads searches and turns in pages of at most 1 MiB with the same results;
-  against an older server it sends the same requests as before.
+  Each search page repeats the search's scan, so paging a large search costs
+  many times an unpaged one; turn reads page cheaply. Independent
+  conformance cases specify it, and a service without it still passes. The
+  binary's own remote client never pages: it sends the same requests as
+  2.16.0 to every server.
 - `NEOSIAN_MAX_PAGE_BYTES` (default 8 MiB, at most 1 GiB) caps the page a
   size-paged request is served; a client asking for more gets pages of that
   size.
-
-- `NEOSIAN_SEARCH_MAX_CANDIDATES` (default 100,000, at most 10,000,000)
+- `NEOSIAN_SEARCH_MAX_CANDIDATES` (default 100,000, at most 1,000,000)
   bounds how many turns or documents holding a term one relevance search
   considers. Past it the search refuses with `value_error` and the message
   `resource limit NEOSIAN_SEARCH_MAX_CANDIDATES exceeded: more than N turns
   hold a search term; narrow the words or the time range`. `neosian search`,
   `neosian memory search` and the MCP `search_history` and `search_memory`
   tools add advice to use rarer terms, a time bound, a narrower path or one
-  conversation. Newest and path orders are not limited this way. An operator
-  serving several people under a memory limit can lower it to promise a
-  ceiling.
+  conversation. Newest and path orders are not limited this way. Each
+  candidate costs its facts and the name it is read back by (its
+  conversation's id, its document's path): at the default, a history search
+  over 100,000 one-turn conversations peaks at about 33 MiB on files and 43
+  MiB on Postgres, a memory search over 100,000 documents with 500-character
+  paths at about 67 MiB. An operator serving several people under a memory
+  limit can lower it to promise a ceiling.
 - `make bench-memory` and a CI job measure the peak memory of one request
   per operation over an adversarial corpus on files and Postgres and fail
   above 32 MiB, answer-sized requests included: history search at limit 500
-  over 64 KiB turns (141 to 143 MiB in 2.16.0) now peaks at 12 to 14 MiB, and
+  over 64 KiB turns (141 to 143 MiB in 2.16.0) now peaks at 12 to 15 MiB, and
   reads that follow size pages to the end of a 600-turn conversation stay
-  under 14 MiB.
+  under 15 MiB. Two corpora at the default candidate bound, named by long
+  conversation ids and long paths, have budgets of 56 and 88 MiB set from
+  measurement.
 
 ## [2.16.0] - 2026-11-16
 

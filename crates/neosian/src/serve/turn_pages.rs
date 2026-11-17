@@ -1,5 +1,5 @@
-//! `conversation/search_turns` and `conversation/read_turns`, streamed one
-//! turn at a time from the store (DESIGN §40.46), and size-paged when the
+//! `conversation/search_turns` and `conversation/read_turns`, spooled one
+//! turn at a time from the store (DESIGN §40.46, #417), and size-paged when the
 //! request carries `page_bytes`. Without it each answer's bytes are exactly
 //! what they were; with it a page holds the whole turns that fit and a
 //! `continuation` names where the next page starts.
@@ -12,9 +12,9 @@ use super::envelope::Fail;
 use super::pages::{self, Fill, Paging};
 use super::paging::{PAGE, window};
 use super::params::{Payload, optional_int, optional_str, optional_strs, require_str};
-use super::stream::Writer;
+use super::spool::Writer;
 use crate::conversation::ids::parse_conversation_id;
-use crate::conversation::page::{Last, Resume};
+use crate::conversation::page::{Last, Mode, Resume};
 use crate::conversation::rank::{Order, Request};
 use crate::conversation::search::parse_query;
 use crate::pyfmt::dumps;
@@ -82,7 +82,7 @@ pub fn search_turns(
     };
     request.bounds().map_err(Fail::value)?;
     let fingerprint = pages::fingerprint(&selection);
-    let (resume, returned) = resume(&mut request, paging.as_ref(), &fingerprint)?;
+    let (resume, returned) = resume(&request, paging.as_ref(), &fingerprint)?;
     if chosen == Order::Newest {
         request.limit -= returned;
     }
@@ -90,7 +90,10 @@ pub fn search_turns(
     let mut scores = Vec::new();
     let mut last = None;
     writer.text("{\"turns\":[")?;
-    let digest = store.rank_page(&request, &resume, &mut |turn, score| {
+    let mode = paging
+        .as_ref()
+        .map_or(Mode::Each, |paging| Mode::Paged(paging.ceiling));
+    let digest = store.rank_page(&request, &resume, mode, &mut |turn, score| {
         let item = dumps(&codec::turn(&turn), false);
         if !fill.admit(item.len()) {
             return Ok(false);
@@ -123,7 +126,6 @@ pub fn search_turns(
                     Order::Newest => pages::encode(SEARCH, &fingerprint, &place),
                     Order::Relevance => {
                         let mut position = vec![
-                            json!(request.before.clone().unwrap_or_default()),
                             json!(digest.unwrap_or_default()),
                             json!(score.unwrap_or_default()),
                         ];
@@ -140,24 +142,15 @@ pub fn search_turns(
 }
 
 /// Where a size-paged search resumes and how many turns earlier pages
-/// returned. A first relevance page fixes its evaluation bound: the request's
-/// `before`, else the server's clock (unless `since` is not before it).
+/// returned. Relevance pages count over exactly the unpaged selection, so a
+/// first page is the unpaged answer's start; later pages refuse as stale
+/// when the candidates changed (#417).
 fn resume(
-    request: &mut Request,
+    request: &Request,
     paging: Option<&Paging>,
     fingerprint: &str,
 ) -> Result<(Resume, usize), Fail> {
-    let Some(paging) = paging else {
-        return Ok((Resume::Fresh, 0));
-    };
-    let Some(token) = paging.continuation.as_deref() else {
-        if request.order == Order::Relevance && request.before.is_none() {
-            let now = Stamp::now();
-            let (since, _) = request.bounds().map_err(Fail::value)?;
-            if since.is_none_or(|since| since < now.instant()) {
-                request.before = Some(now.z());
-            }
-        }
+    let Some(token) = paging.and_then(|paging| paging.continuation.as_deref()) else {
         return Ok((Resume::Fresh, 0));
     };
     let place = [Kind::Instant, Kind::Str, Kind::Int, Kind::Int];
@@ -170,32 +163,20 @@ fn resume(
         };
         (Resume::After(last), count(&parts[3]) as usize)
     } else {
-        let mut kinds = vec![Kind::Str, Kind::Str, Kind::Int];
+        let mut kinds = vec![Kind::Str, Kind::Int];
         kinds.extend(place);
         let parts = pages::decode(SEARCH, token, fingerprint, &kinds)?;
-        let bound = text(&parts[0]);
-        if request
-            .before
-            .as_ref()
-            .is_some_and(|before| *before != bound)
-        {
-            return Err(pages::malformed(SEARCH, token));
-        }
-        request.before = (!bound.is_empty()).then_some(bound);
-        request
-            .bounds()
-            .map_err(|_| pages::malformed(SEARCH, token))?;
         let last = Last {
-            created: instant(&parts[3]),
-            conversation: text(&parts[4]),
-            turn: count(&parts[5]),
+            created: instant(&parts[2]),
+            conversation: text(&parts[3]),
+            turn: count(&parts[4]),
         };
-        let skip = count(&parts[6]) as usize;
+        let skip = count(&parts[5]) as usize;
         let resume = Resume::Skip {
             skip,
             last,
-            score: count(&parts[2]),
-            digest: text(&parts[1]),
+            score: count(&parts[1]),
+            digest: text(&parts[0]),
         };
         (resume, skip)
     };
@@ -213,7 +194,7 @@ pub fn read_turns(
 ) -> Result<(), Fail> {
     let (conversation_id, after, limit, size) = window(payload)?;
     let Some(paging) = pages::requested(payload)? else {
-        // `turns_page` streamed: a total bound answers no continuation.
+        // `turns_page`, spooled: a total bound answers no continuation.
         let (mut taken, mut last) = (0_i64, None);
         writer.text("{\"turns\":[")?;
         store.read_turns_each(&conversation_id, after, Some(size), &mut |turn| {
@@ -250,22 +231,30 @@ pub fn read_turns(
     let mut fill = Fill::new(Some(paging.ceiling));
     let mut last = start;
     writer.text("{\"turns\":[")?;
-    let next = store.read_turns_page(&conversation_id, start, Some(ask), hint, &mut |turn| {
-        if fill.count as i64 == PAGE {
-            fill.more = true;
-            return Ok(false);
-        }
-        let item = dumps(&codec::turn(&turn), false);
-        if !fill.admit(item.len()) {
-            return Ok(false);
-        }
-        if fill.count > 1 {
-            writer.text(",")?;
-        }
-        writer.encoded(item)?;
-        last = turn.turn as i64;
-        Ok(true)
-    })?;
+    let page = Mode::Paged(paging.ceiling);
+    let next = store.read_turns_page(
+        &conversation_id,
+        start,
+        Some(ask),
+        hint,
+        page,
+        &mut |turn| {
+            if fill.count as i64 == PAGE {
+                fill.more = true;
+                return Ok(false);
+            }
+            let item = dumps(&codec::turn(&turn), false);
+            if !fill.admit(item.len()) {
+                return Ok(false);
+            }
+            if fill.count > 1 {
+                writer.text(",")?;
+            }
+            writer.encoded(item)?;
+            last = turn.turn as i64;
+            Ok(true)
+        },
+    )?;
     let token = fill.more.then(|| {
         let (offset, line) = next.unwrap_or_default();
         let returned = json!(returned + fill.count as i64);

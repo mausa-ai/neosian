@@ -12,7 +12,7 @@ use super::fileio::{append_line, private_mkdir};
 use super::time::Stamp;
 use crate::conversation::ids::parse_conversation_id;
 use crate::conversation::message::Message;
-use crate::conversation::page::{Resume, Visit, owed};
+use crate::conversation::page::{Mode, Resume, Visit, owed};
 use crate::conversation::rank::{Key, Order, Ranked, Ranking, Request};
 use crate::conversation::rows::{
     CONVERSATIONS, PROJECTIONS, TURNS, parse_projection, parse_turn, render_projection, render_turn,
@@ -271,13 +271,9 @@ impl FileStore {
                 return Ok(());
             }
         }
-        let held;
-        let ids = match ids {
-            Some(ids) => ids,
-            None => {
-                held = held_ids(&self.root.join(CONVERSATIONS))?;
-                &held
-            }
+        let listing = match ids {
+            Some(ids) => Listing::Given(ids),
+            None => Listing::All(held_ids(&self.root.join(CONVERSATIONS))?),
         };
         // Version 1 is newest without bounds: the same pipeline, at most
         // `limit` keys held while the logs stream (DESIGN §40.45).
@@ -289,45 +285,50 @@ impl FileStore {
             since: None,
             before: None,
         };
-        self.rank_logs(&request, ids, &Resume::Fresh, &mut |turn, _| visit(turn))?;
+        self.rank_logs(&request, listing, &Resume::Fresh, &mut |turn, _| {
+            visit(turn)
+        })?;
         Ok(())
     }
 
     /// History ranking version 1 under the store lock (DESIGN §40.43).
     pub fn rank_turns(&self, request: &Request) -> Result<Vec<Ranked>, Error> {
         let mut ranked = Vec::new();
-        self.rank_each(request, &Resume::Fresh, &mut |turn, score| {
-            ranked.push((turn, score));
-            Ok(true)
-        })?;
+        self.rank_each(
+            request,
+            &Resume::Fresh,
+            Mode::Collected,
+            &mut |turn, score| {
+                ranked.push((turn, score));
+                Ok(true)
+            },
+        )?;
         Ok(ranked)
     }
 
     /// Ranked or newest search handing each turn to `visit` in answer order,
     /// from `resume` (DESIGN §40.46); under relevance it answers the
-    /// candidate statistics' digest.
+    /// candidate statistics' digest. Files keep no response budget, so the
+    /// read mode changes nothing here.
     pub fn rank_each(
         &self,
         request: &Request,
         resume: &Resume,
+        _mode: Mode,
         visit: &mut Visit,
     ) -> Result<Option<String>, Error> {
         request.bounds().map_err(Error::Value)?;
         let _held = self.lock()?;
-        let held;
-        let ids = match &request.ids {
+        let listing = match &request.ids {
             Some(ids) => {
                 for conversation_id in ids {
                     parse_conversation_id(conversation_id)?;
                 }
-                ids
+                Listing::Given(ids)
             }
-            None => {
-                held = held_ids(&self.root.join(CONVERSATIONS))?;
-                &held
-            }
+            None => Listing::All(held_ids(&self.root.join(CONVERSATIONS))?),
         };
-        self.rank_logs(request, ids, resume, visit)
+        self.rank_logs(request, listing, resume, visit)
     }
 
     /// Pass one streams every selected log and keeps facts; pass two reads
@@ -336,7 +337,7 @@ impl FileStore {
     fn rank_logs(
         &self,
         request: &Request,
-        ids: &[String],
+        listing: Listing,
         resume: &Resume,
         visit: &mut Visit,
     ) -> Result<Option<String>, Error> {
@@ -345,33 +346,56 @@ impl FileStore {
             ranking.resume_after(last.clone());
         }
         let all = request.order == Order::Newest;
-        for id in ids {
+        let scan = |ranking: &mut Ranking, id: &str, conversation: u32| {
             let file = self.conversation_file(id, TURNS)?;
-            if file.is_file() {
-                let conversation = ranking.conversation(id);
-                scan_log(&file, id, &request.terms, all, |turn, place, line| {
-                    let key = Key {
-                        created: turn.created_at.instant(),
-                        conversation,
-                        turn: turn.turn,
-                        place,
-                        line: u32::try_from(line).unwrap_or(u32::MAX),
-                    };
-                    ranking.offer(key, &turn_text(&turn))
-                })?;
+            if !file.is_file() {
+                return Ok::<(), Error>(());
+            }
+            scan_log(&file, id, &request.terms, all, |turn, place, line| {
+                let key = Key {
+                    created: turn.created_at.instant(),
+                    conversation,
+                    turn: turn.turn,
+                    place,
+                    line: u32::try_from(line).unwrap_or(u32::MAX),
+                };
+                ranking.offer(key, &turn_text(&turn))
+            })
+        };
+        match listing {
+            Listing::Given(ids) => {
+                for id in ids {
+                    let conversation = ranking.conversation(id);
+                    scan(&mut ranking, id, conversation)?;
+                }
+            }
+            Listing::All(mut ids) => {
+                // Sorted, the listing is the id table: no second copy (#417).
+                ids.sort_unstable();
+                ids.dedup();
+                let count = u32::try_from(ids.len()).expect("conversation count fits u32");
+                ranking.adopt_sorted(ids);
+                for conversation in 0..count {
+                    let id = ranking.name(conversation).to_string();
+                    scan(&mut ranking, &id, conversation)?;
+                }
             }
         }
         let digest = (request.order == Order::Relevance).then(|| ranking.digest());
         let winners = owed(ranking.winners(), resume, digest.as_deref().unwrap_or(""))?;
-        let mut readers = std::collections::HashMap::new();
+        // One log open at a time, whatever the number of conversations: the
+        // previous one closes before the next opens.
+        let mut open: Option<(u32, std::io::BufReader<fs::File>)> = None;
         for (key, id, score) in winners {
-            let reader = match readers.entry(key.conversation) {
-                std::collections::hash_map::Entry::Occupied(held) => held.into_mut(),
-                std::collections::hash_map::Entry::Vacant(slot) => {
-                    let file = fs::File::open(self.conversation_file(&id, TURNS)?)?;
-                    slot.insert(std::io::BufReader::new(file))
-                }
-            };
+            if open
+                .as_ref()
+                .is_none_or(|(held, _)| *held != key.conversation)
+            {
+                drop(open.take());
+                let file = fs::File::open(self.conversation_file(&id, TURNS)?)?;
+                open = Some((key.conversation, std::io::BufReader::new(file)));
+            }
+            let (_, reader) = open.as_mut().expect("a log is open");
             let turn = read_at(reader, key.place, key.line as usize, &id)?;
             if !visit(turn, score)? {
                 break;
@@ -399,6 +423,13 @@ impl FileStore {
         }
         Ok(file)
     }
+}
+
+/// The conversations a file search reads: those a request names, in its
+/// order, or every one the store holds.
+enum Listing<'a> {
+    Given(&'a [String]),
+    All(Vec<String>),
 }
 
 /// The number of a log's last row, 0 for no log; the last line alone is

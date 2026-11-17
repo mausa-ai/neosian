@@ -1,7 +1,7 @@
 //! History ranking version 1 over the wire: the request carries the order and
 //! bounds, and the answer is validated before any turn is trusted (§40.43). A
-//! redacted turn has no text, so it can never be a candidate. With size
-//! paging (§40.46) the answer arrives in pages, checked as one answer.
+//! redacted turn has no text, so it can never be a candidate. The client
+//! sends one unpaged request (§40.46, #417).
 
 use serde_json::{Value, json};
 
@@ -130,17 +130,13 @@ impl RemoteStore {
             previous: None,
             total: 0,
         };
-        let mut each = |data: &Value| -> Result<bool, Error> {
-            for (turn, score) in checked.page(data)? {
-                if !visit(turn, score)? {
-                    return Ok(false);
-                }
+        // One unpaged request, as 2.16.0 sent: a size page would repeat the
+        // server's scan (#417).
+        for (turn, score) in checked.page(&self.call("conversation/search_turns", body)?)? {
+            if !visit(turn, score)? {
+                break;
             }
-            Ok(true)
-        };
-        if self.supports_size_paging() {
-            return self.size_pages("conversation/search_turns", body, "turns", each);
         }
-        each(&self.call("conversation/search_turns", body)?).map(|_| ())
+        Ok(())
     }
 }

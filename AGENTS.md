@@ -46,12 +46,14 @@ development and tests only (DESIGN §40).
   Ranked search keeps facts per candidate, never content, and reads only the
   winners again inside the same lock or snapshot; past
   `NEOSIAN_SEARCH_MAX_CANDIDATES` it refuses, never truncates.
-- **Answers stream; pages may be bounded by size.** A large answer is written
-  item by item with unchanged bytes; a refusal after its first 64 KiB is a
-  line-feed trailer carrying the envelope, never a shorter answer. Optional
-  wire-6 `size_paging` version 1 bounds history-search and turn-read pages by
-  bytes (at least one turn) with opaque continuations that bind the request
-  and confer nothing; requests without its fields are unchanged.
+- **Answers are spooled; pages may be bounded by size.** A large answer is
+  written item by item into a spool (memory, then a temp file under
+  `NEOSIAN_MAX_TEMP_BYTES`) with unchanged bytes, and sent with its length
+  only after the store is released: a slow reader never holds the store, and
+  every refusal is the ordinary response. Optional wire-6 `size_paging`
+  version 1 bounds history-search and turn-read pages by bytes (at least one
+  turn) with opaque continuations that bind the request and confer nothing;
+  requests without its fields are unchanged, and the binary never pages.
 - **Knowledge imports are explicit.** Preview scoped Markdown/bundle changes;
   refuse lifecycle records and erased destinations. Collection rules validate
   imports and explicit checks, not authority. Structure/provenance stays in

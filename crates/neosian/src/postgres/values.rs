@@ -110,3 +110,57 @@ pub fn weight(value: &Value) -> u64 {
         _ => 16,
     }
 }
+
+/// About how many bytes a row's compact JSON takes: what a size page counts,
+/// to size the statements that fill it (DESIGN §40.46, #417).
+pub fn encoded(value: &Value) -> u64 {
+    match value {
+        Value::Null | Value::Bool(true) => 4,
+        Value::Bool(false) => 5,
+        Value::Number(number) => number.to_string().len() as u64,
+        Value::String(text) => {
+            let escaped = text
+                .bytes()
+                .map(|byte| match byte {
+                    b'"' | b'\\' | b'\n' | b'\r' | b'\t' | 8 | 12 => 1,
+                    0..=31 => 5,
+                    _ => 0,
+                })
+                .sum::<u64>();
+            2 + text.len() as u64 + escaped
+        }
+        Value::Array(items) => {
+            1 + items
+                .iter()
+                .map(|item| encoded(item) + 1)
+                .sum::<u64>()
+                .max(1)
+        }
+        Value::Object(fields) => {
+            1 + fields
+                .iter()
+                .map(|(key, value)| key.len() as u64 + 4 + encoded(value))
+                .sum::<u64>()
+                .max(1)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::encoded;
+    use serde_json::json;
+
+    #[test]
+    fn the_estimate_is_the_compact_encoding_length() {
+        for value in [
+            json!({"turn": 3, "messages": [{"role": "user", "content": "a \"q\"\n\u{1}é"}], "x": null}),
+            json!([]),
+            json!({}),
+            json!([true, false, 1.5, "s"]),
+        ] {
+            let exact = crate::pyfmt::dumps(&value, false).len() as u64;
+            assert_eq!(encoded(&value), exact, "{value}");
+        }
+    }
+}

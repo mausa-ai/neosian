@@ -130,22 +130,7 @@ impl RemoteStore {
             }
             return Err(driver(ureq::Error::StatusCode(status.as_u16())));
         }
-        let data = match decoded {
-            Ok(data) => data,
-            // A streamed answer refused after its first bytes ends with a line
-            // feed and the envelope (DESIGN §40.46): the same error as a 400.
-            Err(error) => {
-                let at = bytes.iter().position(|byte| *byte == b'\n');
-                if envelope
-                    && let Some(at) = at
-                    && let Ok(trailer) = serde_json::from_slice::<Value>(&bytes[at + 1..])
-                    && trailer["error"].is_object()
-                {
-                    return Err(errors::decode(&trailer["error"]));
-                }
-                return Err(Error::Value(error.to_string()));
-            }
-        };
+        let data = decoded.map_err(|error| Error::Value(error.to_string()))?;
         if !data.is_object() {
             return Err(Error::Value(format!(
                 "malformed wire response for '{}'",

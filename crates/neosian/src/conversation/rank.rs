@@ -115,8 +115,7 @@ pub struct Ranking {
     bounds: Bounds,
     terms: Vec<String>,
     selected: bool,
-    conversations: Vec<String>,
-    index: std::collections::HashMap<String, u32>,
+    names: Names,
     stats: Stats,
     facts: Facts<Key>,
     newest: Best<Key>,
@@ -138,8 +137,7 @@ impl Ranking {
             limit: request.limit,
             bounds,
             selected,
-            conversations: Vec::new(),
-            index: std::collections::HashMap::new(),
+            names: Names::Interned(Vec::new(), std::collections::HashMap::new()),
             stats: Stats::new(terms.len()),
             facts: Facts::new(terms.len(), maximum),
             newest: Best::new(request.limit),
@@ -158,15 +156,32 @@ impl Ranking {
         self.stats.digest()
     }
 
-    /// The search's own index for a conversation id.
+    /// The search's own index for a conversation id, interned once.
     pub fn conversation(&mut self, id: &str) -> u32 {
-        if let Some(index) = self.index.get(id) {
+        let Names::Interned(names, index) = &mut self.names else {
+            unreachable!("a sorted listing names conversations by position");
+        };
+        if let Some(index) = index.get(id) {
             return *index;
         }
-        let index = u32::try_from(self.conversations.len()).expect("conversation count fits u32");
-        self.conversations.push(id.to_string());
-        self.index.insert(id.to_string(), index);
-        index
+        let at = u32::try_from(names.len()).expect("conversation count fits u32");
+        let shared: std::rc::Rc<str> = std::rc::Rc::from(id);
+        names.push(shared.clone());
+        index.insert(shared, at);
+        at
+    }
+
+    /// Adopt a listing of every conversation, sorted bytewise: a
+    /// conversation's index is then its position and orders as its id, so
+    /// no second copy of the ids is kept (DESIGN §40.46, #417).
+    pub fn adopt_sorted(&mut self, ids: Vec<String>) {
+        debug_assert!(ids.windows(2).all(|pair| pair[0] < pair[1]));
+        self.names = Names::Sorted(ids);
+    }
+
+    /// The conversation id at an index.
+    pub fn name(&self, index: u32) -> &str {
+        self.names.get(index)
     }
 
     /// Offer one turn: its key and the searchable text its counts come from.
@@ -190,8 +205,8 @@ impl Ranking {
         }
         match self.order {
             Order::Newest => {
-                let conversations = &self.conversations;
-                let id = &conversations[key.conversation as usize];
+                let names = &self.names;
+                let id = names.get(key.conversation);
                 if self
                     .after
                     .as_ref()
@@ -199,7 +214,7 @@ impl Ranking {
                 {
                     return Ok(());
                 }
-                self.newest.offer(key, |a, b| newest(conversations, a, b));
+                self.newest.offer(key, |a, b| newest(names, a, b));
             }
             Order::Relevance => {
                 let length = folded.chars().count() as u64;
@@ -219,35 +234,63 @@ impl Ranking {
     /// The winners in answer order: relevance by score, then the version 1
     /// total order; newest by that order alone.
     pub fn winners(self) -> Vec<Winner> {
-        let conversations = self.conversations;
+        let names = self.names;
         let ranked: Vec<(Key, Option<u64>)> = match self.order {
             Order::Newest => self
                 .newest
-                .into_vec()
+                .into_vec(|a, b| newest(&names, a, b))
                 .into_iter()
                 .map(|k| (k, None))
                 .collect(),
             Order::Relevance => self
                 .facts
-                .best(&self.stats, self.limit, |a, b| newest(&conversations, a, b))
+                .best(&self.stats, self.limit, |a, b| newest(&names, a, b))
                 .into_iter()
                 .map(|(key, score)| (key, Some(score)))
                 .collect(),
         };
         ranked
             .into_iter()
-            .map(|(key, score)| (key, conversations[key.conversation as usize].clone(), score))
+            .map(|(key, score)| (key, names.get(key.conversation).to_string(), score))
             .collect()
     }
 }
 
+/// The conversation ids a search refers to by index.
+enum Names {
+    /// Interned as met (Postgres, and files given a list): one shared copy
+    /// of each id, in the table and in the lookup.
+    Interned(
+        Vec<std::rc::Rc<str>>,
+        std::collections::HashMap<std::rc::Rc<str>, u32>,
+    ),
+    /// A listing sorted bytewise (files over every conversation).
+    Sorted(Vec<String>),
+}
+
+impl Names {
+    fn get(&self, index: u32) -> &str {
+        match self {
+            Names::Interned(names, _) => &names[index as usize],
+            Names::Sorted(names) => &names[index as usize],
+        }
+    }
+
+    /// Two indexes in their ids' bytewise order.
+    fn order(&self, a: u32, b: u32) -> std::cmp::Ordering {
+        match self {
+            Names::Interned(names, _) => names[a as usize].cmp(&names[b as usize]),
+            Names::Sorted(_) => a.cmp(&b),
+        }
+    }
+}
+
 /// The version 1 total order: `created_at`, conversation id, turn, each descending.
-fn newest(conversations: &[String], a: &Key, b: &Key) -> std::cmp::Ordering {
-    (b.created, &conversations[b.conversation as usize], b.turn).cmp(&(
-        a.created,
-        &conversations[a.conversation as usize],
-        a.turn,
-    ))
+fn newest(names: &Names, a: &Key, b: &Key) -> std::cmp::Ordering {
+    b.created
+        .cmp(&a.created)
+        .then_with(|| names.order(b.conversation, a.conversation))
+        .then_with(|| b.turn.cmp(&a.turn))
 }
 
 #[cfg(test)]

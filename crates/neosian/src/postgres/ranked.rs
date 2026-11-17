@@ -6,7 +6,7 @@
 
 use super::connection::Passes;
 use super::{PostgresStore, rows, sql};
-use crate::conversation::page::{Resume, Visit, owed};
+use crate::conversation::page::{Mode, Resume, Visit, owed};
 use crate::conversation::rank::{Key, Ranking, Request, Winner};
 use crate::conversation::{Error, Refused};
 use crate::remote::codec;
@@ -19,9 +19,11 @@ impl PostgresStore {
         request: &Request,
         params: &Value,
         resume: &Resume,
+        mode: Mode,
         visit: &mut Visit,
     ) -> Result<Option<String>, Error> {
         let mut passes = Winners {
+            mode,
             ranking: Some(Ranking::new(request, true)?),
             resume,
             visit,
@@ -35,7 +37,7 @@ impl PostgresStore {
         };
         let outcome = self
             .pool
-            .snapshot(sql!("store/rank_turn_facts"), params, &mut passes);
+            .snapshot(sql!("store/rank_turn_facts"), params, mode, &mut passes);
         if let Some(refused) = passes.refused.take() {
             return Err(refused);
         }
@@ -48,10 +50,12 @@ impl PostgresStore {
 }
 
 /// Relevance's two passes: the facts rows feed the ranking; the winners the
-/// page still owes are read in rank order under the response budget. A
+/// page still owes are read in rank order under the response budget, each
+/// row alone unless the caller collects them (§40.46, #417). A
 /// conversation refusal, or one from the visitor, stops the read and is
 /// reported as itself.
 struct Winners<'a, 'b> {
+    mode: Mode,
     ranking: Option<Ranking>,
     resume: &'a Resume,
     visit: &'a mut Visit<'b>,
@@ -114,7 +118,7 @@ impl Passes for Winners<'_, '_> {
     }
 
     fn then(&mut self, row: Value) -> Result<bool, StoreError> {
-        self.used = self.used.saturating_add(super::values::weight(&row));
+        self.used = self.mode.charge(self.used, super::values::weight(&row));
         crate::limits::check(crate::limits::RESPONSE, self.used, self.budget)?;
         let decoded = match codec::text(&row, "conversation_id") {
             Ok(id) => rows::turn(&id, row),

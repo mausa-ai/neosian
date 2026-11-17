@@ -1,5 +1,5 @@
 //! The server's extra callers: document snapshots and bounded cursor pages.
-use crate::conversation::page::{Resume, Visit};
+use crate::conversation::page::{Mode, Resume, Visit};
 use crate::conversation::rank::Request;
 use crate::conversation::{self, Projection, Turn};
 use crate::postgres::PostgresStore;
@@ -69,6 +69,7 @@ pub trait Backend: State {
         after: i64,
         limit: Option<i64>,
         hint: Option<(u64, u64)>,
+        mode: Mode,
         visit: &mut dyn FnMut(Turn) -> Result<bool, conversation::Error>,
     ) -> Result<Option<(u64, u64)>, conversation::Error>;
     /// History search handing each turn to `visit` from `resume` (§40.46);
@@ -77,6 +78,7 @@ pub trait Backend: State {
         &self,
         request: &Request,
         resume: &Resume,
+        mode: Mode,
         visit: &mut Visit,
     ) -> Result<Option<String>, conversation::Error>;
 }
@@ -153,9 +155,10 @@ macro_rules! backend {
                 &self,
                 request: &Request,
                 resume: &Resume,
+                mode: Mode,
                 visit: &mut Visit,
             ) -> Result<Option<String>, conversation::Error> {
-                self.rank_each(request, resume, visit)
+                self.rank_each(request, resume, mode, visit)
             }
             fn read_turns_page(
                 &self,
@@ -163,9 +166,10 @@ macro_rules! backend {
                 after: i64,
                 limit: Option<i64>,
                 hint: Option<(u64, u64)>,
+                mode: Mode,
                 visit: &mut dyn FnMut(Turn) -> Result<bool, conversation::Error>,
             ) -> Result<Option<(u64, u64)>, conversation::Error> {
-                ($page)(self, id, after, limit, hint, visit)
+                ($page)(self, id, after, limit, hint, mode, visit)
             }
         }
     };
@@ -179,15 +183,17 @@ backend!(
             content: content.to_string(),
         })
     },
-    FileStore::read_turns_page
+    |store: &FileStore, id: &str, after, limit, hint, _mode, visit| {
+        store.read_turns_page(id, after, limit, hint, visit)
+    }
 );
 // Postgres continues by turn number alone: the keyset is the index.
 backend!(
     PostgresStore,
     PostgresStore::write_document,
-    |store: &PostgresStore, id: &str, after, limit, _hint, visit| {
+    |store: &PostgresStore, id: &str, after, limit, _hint, mode, visit| {
         store
-            .read_turns_each(id, after, limit, visit)
+            .read_turns_in(id, after, limit, mode, visit)
             .map(|()| None)
     }
 );

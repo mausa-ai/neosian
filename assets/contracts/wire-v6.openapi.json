@@ -3,7 +3,7 @@
   "info": {
     "title": "Neosian storage HTTP contract",
     "version": "6",
-    "description": "Storage wire 6, independent of package version. Bodies are JSON objects regardless of Content-Type; legacy operations ignore unknown request keys and treat optional null as absence. Optional memory-search version 1 uses strict fields and types, with null allowed only for cursor. JSON Schema describes supported typed input, not legacy coercions. Scope/conversation allowances are literal prefixes; constrained tokens cannot call store/* or /mcp and must explicitly bound conversation searches/trail reads. MCP at /mcp is a separate negotiated protocol, not described by this document. Large answers stream: a refusal found after the answer's first bytes have left is a trailer, one line feed followed by the error envelope as one compact JSON object, so the 200 body is no longer JSON as a whole; a compact answer never holds a raw line feed."
+    "description": "Storage wire 6, independent of package version. Bodies are JSON objects regardless of Content-Type; legacy operations ignore unknown request keys and treat optional null as absence. Optional memory-search version 1 uses strict fields and types, with null allowed only for cursor. JSON Schema describes supported typed input, not legacy coercions. Scope/conversation allowances are literal prefixes; constrained tokens cannot call store/* or /mcp and must explicitly bound conversation searches/trail reads. MCP at /mcp is a separate negotiated protocol, not described by this document. Large answers are produced completely before the status line and sent with Content-Length, so every refusal is an ordinary status and envelope."
   },
   "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
   "security": [
@@ -2109,7 +2109,7 @@
     "/v1/conversation/search_turns": {
       "post": {
         "operationId": "conversation_search_turns",
-        "description": "Version 1: every whitespace-split term must occur as a case-insensitive substring; newest first. Blank queries are refused. Omitted conversations selects all; [] selects none. No paging. History ranking version 1 adds order, since and before. Size paging version 1 adds page_bytes and continuation: limit then bounds the total across pages; newest and version 1 continue by keyset, and relevance recounts over the first page's evaluation bound and refuses with value_error when the candidate turns changed.",
+        "description": "Version 1: every whitespace-split term must occur as a case-insensitive substring; newest first. Blank queries are refused. Omitted conversations selects all; [] selects none. No paging. History ranking version 1 adds order, since and before. Size paging version 1 adds page_bytes and continuation: limit then bounds the total across pages; newest and version 1 continue by keyset, and relevance counts again over the unpaged selection and refuses with value_error when the candidate turns changed. Each page repeats the search's scan.",
         "requestBody": {
           "required": true,
           "content": {

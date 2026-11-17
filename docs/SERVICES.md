@@ -23,22 +23,32 @@ The exact Rust toolchain is pinned in `rust-toolchain.toml`.
 
 Bulk operation budgets are configured with `NEOSIAN_KNOWLEDGE_MAX_DOCUMENTS`
 (default 10,000; maximum 100,000), `NEOSIAN_KNOWLEDGE_MAX_BYTES` (256 MiB; 2 GiB),
-`NEOSIAN_MAX_TEMP_BYTES` (512 MiB; 8 GiB), `NEOSIAN_REPLICA_MAX_PATHS` (100,000;
+`NEOSIAN_MAX_TEMP_BYTES` (512 MiB; 8 GiB), which also bounds the part of one
+served answer `neosian serve` spools to disk, `NEOSIAN_REPLICA_MAX_PATHS` (100,000;
 1,000,000), `NEOSIAN_REPLICA_MAX_BYTES` (1 GiB; 64 GiB), `NEOSIAN_MAX_FILE_BYTES`
 (64 MiB; 1 GiB), and `NEOSIAN_MAX_RESPONSE_BYTES` (64 MiB; 1 GiB), which bounds
-each HTTP storage response and each Postgres statement's decoded rows. Byte
-settings are positive decimal byte counts, not unit strings. Empty values use
-defaults. `NEOSIAN_SEARCH_MAX_CANDIDATES` (100,000; 10,000,000) is the largest
-number of turns or documents holding a term that one relevance search, history
-or memory, considers; past it the search refuses and asks for narrower words
-or a time range. An operator serving several people under a memory limit can
-lower it to promise a ceiling: ranked search keeps a few dozen bytes per
-candidate plus four bytes per query term, never the candidate's text.
+each HTTP storage response and, on Postgres, each row of a spooled read or the
+rows of a read kept whole in memory. Byte settings are positive decimal byte
+counts, not unit strings. Empty values use defaults.
+`NEOSIAN_SEARCH_MAX_CANDIDATES` (100,000; 1,000,000) is the largest number of
+turns or documents holding a term that one relevance search, history or
+memory, considers; past it the search refuses and asks for narrower words or
+a time range. An operator serving several people under a memory limit can
+lower it to promise a ceiling. Each candidate costs 40 bytes plus 4 per query
+term (up to twice that while the arrays grow) and the name it is read back
+by: one copy of its conversation's id per conversation (at most 128
+characters) for history, its path (at most 512 characters) for memory. At the
+default, a history search over 100,000 one-turn conversations with
+128-character ids peaks at about 33 MiB on files and 43 MiB on Postgres, and a
+memory search over 100,000 documents with 500-character paths at about 67 MiB;
+the maximum costs roughly ten times that.
 `NEOSIAN_MAX_PAGE_BYTES` (8 MiB; 1 GiB) is the largest page a size-paged
 request to `neosian serve` is served: a client asking for more gets pages of
-this size, so it caps how much one page request transfers and how long it
-holds the store. Answers stream one item at a time whether or not a client
-pages, and the binary's own remote client asks for pages of 1 MiB.
+this size, so it caps how much one page request transfers. Every answer is
+spooled and sent after the store is released, whether or not a client pages;
+the binary's own remote client never pages. Disk use for spools is at most the
+answers being sent at once, each within `NEOSIAN_MAX_TEMP_BYTES`, in the
+system temporary directory (`TMPDIR`).
 See `neosian docs stores` for each setting's exact scope; these do not change
 permissions, skill/context limits or the format-1 exchange bundle bounds.
 
@@ -164,11 +174,14 @@ binary must meet the documented p50 budgets; no provider call is involved.
 once per request over a literal adversarial corpus (600 turns and 600
 documents of 64 KiB, 20,000 turns and 20,000 documents of 1 KiB, a one-letter
 term every item holds) and fails when a request's peak resident memory passes
-its budget (32 MiB including startup). Answer-sized requests are gated since
-answers stream: history search at limit 500 over 64 KiB turns (a 32 MiB
-answer), a 500-turn page of turns, and reads that follow size pages to the
-end of a conversation (64 KiB pages over both conversations, 1 MiB pages of a
-500-turn search). `backends=file,postgres` adds the Postgres leg, which needs
+its budget (32 MiB including startup). Answer-sized requests are gated too:
+history search at limit 500 over 64 KiB turns (a 32 MiB answer), a 500-turn
+page of turns, and reads that follow size pages to the end of a conversation
+(64 KiB pages over both conversations, 1 MiB pages of a 500-turn search). Two
+spread corpora at the default candidate bound have budgets of their own, set
+from measurement plus 30%: 100,000 one-turn conversations with 128-character
+ids (56 MiB) and 100,000 documents with 500-character paths (88 MiB).
+`backends=file,postgres` adds the Postgres leg, which needs
 `NEOSIAN_TEST_POSTGRES_DSN` and creates and drops its own schema; CI runs both.
 
 `scripts/check_codex_skills.py` verifies setup, native skill discovery, MCP

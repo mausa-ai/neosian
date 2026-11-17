@@ -79,9 +79,9 @@ its fields only to a service that declares it.
 
 The optional `"size_paging": {"version": 1}` capability adds byte-bounded pages
 to `conversation/search_turns` and `conversation/read_turns` (below). It does
-not depend on the other capabilities. The reference backends advertise it; the
-binary's remote client asks for pages of at most 1 MiB from a service that
-declares it and sends 2.16.0's requests to one that does not.
+not depend on the other capabilities. The reference backends advertise it for
+clients and hosts that want a ceiling on what one response carries; the
+binary's own remote client sends the same requests as 2.16.0 to every server.
 
 ## Auth
 
@@ -192,30 +192,29 @@ without `actor`) is `value_error` with the message
 `malformed request: 'role'`. A `500` carries no envelope and is the
 driver's problem, never a store answer.
 
-## Streamed answers
+## Spooled answers
 
-An answer that can grow with stored content is written as it is read, one
-item at a time: `memory/read`, `memory/versions`, `memory/history`,
-`conversation/read_turns`, `conversation/read_projections` and
-`conversation/search_turns`. The bytes are exactly those of the whole answer;
-the server holds about one item rather than the answer. The first 64 KiB are
-held before anything is sent, so a refusal found by then is an ordinary
-response with its status and envelope.
+An answer that can grow with stored content is written item by item into a
+spool while the server reads the store: `memory/read`, `memory/versions`,
+`memory/history`, `conversation/read_turns`, `conversation/read_projections`
+and `conversation/search_turns`. The spool keeps the first 1 MiB in memory and
+the rest in a private temporary file, charged against `NEOSIAN_MAX_TEMP_BYTES`
+(512 MiB by default) for that one answer. The server lets go of the store (the
+file store's lock, a Postgres snapshot, transaction and connection) before it
+sends anything, then sends the spool with its `Content-Length`. The bytes are
+exactly those of the whole answer, and the server holds about one item at a
+time rather than the answer. A slow reader costs an open file and disk until
+it finishes; it never holds the store, so other requests are not delayed.
 
-A refusal found later, when the status line `200` has already been sent, ends
-the body with a trailer: one line feed (byte `0x0A`) followed by the envelope
-it would have answered, as one compact JSON object, for example
-`{"error":{"code":"value_error","message":"resource limit
-NEOSIAN_MAX_RESPONSE_BYTES exceeded: 67108900 > 67108864; select a smaller
-batch or raise this setting","details":{}}}`. A compact answer never contains a
-raw line feed (strings escape it and no whitespace is written), so a body with
-a trailer is not valid JSON as a whole and cannot be read as a shorter answer;
-a client that knows the rule reads the envelope after the first line feed. The
-binary's remote client does, and reports the same error as for a `400`. A
-failure that has no envelope (a bare `500` before anything was sent) instead
-cuts the body off without its final chunk. A client that stops reading for 30 seconds loses
-the answer, so a stalled reader cannot hold a store lock or a database
-connection.
+Every refusal is known before the status line and is the ordinary response
+with its status and envelope, wherever in the answer it was found. An answer
+larger than `NEOSIAN_MAX_TEMP_BYTES` is refused with `value_error` naming that
+setting; raise it for larger answers. A spool that cannot be read back while
+sending ends the body short, and the connection closes, as any I/O failure
+closes it. Database timeouts bound the store read: `statement_timeout` each
+statement, `transaction_timeout` and `idle_in_transaction_session_timeout` the
+read's transaction. Sending happens after the connection is released, so no
+database timeout applies to it.
 
 ## The routes
 
@@ -482,18 +481,27 @@ constrained token still names its conversations.
 
 Version 1, newest and `read_turns` continue after the last turn returned, and
 each page reads current state, as memory cursors do. Relevance has no cursor
-without size paging, because its scores depend on every candidate. Its first
-page fixes an evaluation bound (the request's `before`, else the server's
-clock) and the candidates' statistics; later pages count again over the same
-bounded selection and continue after the last turn returned. Turns never
-change, so the scores and order are the same; when the candidates did change
-(an erasure, a restore), the page refuses with `value_error`: `page
+without size paging, because its scores depend on every candidate. Its pages
+count over exactly the selection an unpaged request counts over, so the first
+page is the start of the unpaged answer; later pages record the candidates'
+statistics and continue after the last turn returned. Turns never change, so
+the scores and order are the same; when the candidates did change (a new
+turn, an erasure, a restore), the page refuses with `value_error`: `page
 continuation is stale: the candidate turns changed since the first page;
-search again`. Each relevance page repeats the counting, so fewer, larger pages
-cost less.
+search again`.
+
+Each search page repeats the search: newest and version 1 scan every
+candidate again (schema 4 has no index on turn time), and relevance counts
+again. A limit-500 newest search over 500 turns of 64 KiB took 0.7 s unpaged
+and about 22 s in 1 MiB pages on one Postgres server. Page a search only to
+bound what one response carries, with as large a ceiling as you can hold. A
+`read_turns` page continues by turn number and costs little more than its
+rows: on files about the same as an unpaged read; on Postgres, at 8 MiB
+pages, 2 to 14% more for the same turns (more at smaller pages), because each
+page reads one row past its end to know whether more follow.
 
 `memory/read`, `memory/versions`, `memory/history` and
-`conversation/read_projections` stream but are not size-paged in version 1: a
+`conversation/read_projections` are spooled but not size-paged in version 1: a
 document is one item, memory listings already take a row `limit` and a
 cursor, and a projection page already ends on a whole turn.
 

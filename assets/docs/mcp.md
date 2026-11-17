@@ -77,9 +77,8 @@ explicit relevance order or a bound refuses. Over the store's candidate
 bound, relevance refuses and the reminder suggests rarer terms, `since` and
 `before`, or one `conversation`. The tool's description tells agents that a
 turn needs only one term, to add synonyms to one query, and that a later turn
-can supersede an earlier one. Each hit is built as its turn arrives, and a
-remote history source that pages by size is read in pages of at most 1 MiB;
-the answer is the same either way.
+can supersede an earlier one. Each hit is built as its turn arrives, so the
+tool keeps hits, not the turns.
 
 `knowledge(command, path, policy="effective", data=null, expected_version=null,
 reason=null)` is read-only. `read` returns current status and policy-eligible

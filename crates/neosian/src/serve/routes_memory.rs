@@ -11,7 +11,7 @@ use super::envelope::Fail;
 use super::paging::memory_page;
 use super::params::{Payload, optional_int, optional_str, optional_timestamp, require_str};
 use super::routes::{Handler, Route};
-use super::stream::Writer;
+use super::spool::Writer;
 use crate::store::grammar::Actor;
 
 pub const ROUTES: [Route; 12] = [
@@ -32,7 +32,7 @@ pub const ROUTES: [Route; 12] = [
     },
     Route {
         name: "memory/read",
-        handler: Handler::Streamed(read),
+        handler: Handler::Spooled(read),
         whole_store: false,
     },
     Route {
@@ -57,7 +57,7 @@ pub const ROUTES: [Route; 12] = [
     },
     Route {
         name: "memory/versions",
-        handler: Handler::Streamed(versions),
+        handler: Handler::Spooled(versions),
         whole_store: false,
     },
     Route {
@@ -67,7 +67,7 @@ pub const ROUTES: [Route; 12] = [
     },
     Route {
         name: "memory/history",
-        handler: Handler::Streamed(history),
+        handler: Handler::Spooled(history),
         whole_store: false,
     },
     Route {
@@ -122,7 +122,7 @@ pub fn actor(client: &str, payload: &Payload) -> Result<Actor, Fail> {
     Ok(Actor::stamped(&stamp(client, body.as_deref())))
 }
 
-/// One document, streamed: the store's copy goes before it is encoded, so
+/// One document, spooled: the store's copy goes before it is encoded, so
 /// the route holds about one document at a time (DESIGN §40.46).
 fn read(
     store: &dyn Backend,
