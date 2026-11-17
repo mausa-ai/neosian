@@ -82,10 +82,11 @@ to `conversation/search_turns` and `conversation/read_turns` (below). It does
 not depend on the other capabilities. The reference backends advertise it for
 clients and hosts that want a ceiling on what one response carries. The
 binary's own remote client always sends 2.16.0's request first; only when a
-server that advertises size paging refuses it with `value_error`, or the
-answer passes the client's own `NEOSIAN_MAX_RESPONSE_BYTES`, does it ask
-again in pages (below the server's 1 MiB in-memory spool), reporting the
-first refusal if that fails too.
+server that advertises size paging refuses it with `value_error` (other than
+the candidate bound), or the answer passes the client's own
+`NEOSIAN_MAX_RESPONSE_BYTES`, does it ask again in pages (below the server's
+1 MiB in-memory spool). A page refused for its size too reports the first
+refusal; any other failure reports itself.
 
 ## Auth
 
@@ -201,34 +202,65 @@ driver's problem, never a store answer.
 An answer that can grow with stored content is written item by item into a
 spool while the server reads the store: `memory/read`, `memory/versions`,
 `memory/history`, `conversation/read_turns`, `conversation/read_projections`
-and `conversation/search_turns`. The spool keeps the first 1 MiB in memory and
-the rest in a private temporary file, charged against `NEOSIAN_MAX_TEMP_BYTES`
-(512 MiB by default) for that one answer. The server lets go of the store (the
-file store's lock, a Postgres snapshot, transaction and connection) before it
-sends anything, then sends the spool with its `Content-Length`. The bytes are
-exactly those of the whole answer, and the server holds about one item at a
-time rather than the answer. A slow reader costs an open file and disk until
-it finishes; it never holds the store, so other requests are not delayed.
+and `conversation/search_turns`. An answer stays in memory while it is at most
+1 MiB; past that the whole answer goes to a private temporary file and is
+charged against `NEOSIAN_MAX_TEMP_BYTES` (512 MiB by default) for that one
+answer. The server lets go of the store (the file store's lock, a Postgres
+snapshot, transaction and connection) before it sends anything, then sends
+the spool with its `Content-Length`. The bytes are exactly those of the whole
+answer. A slow reader costs an open file and disk until it finishes; it never
+holds the store, so other requests are not delayed.
+
+What the server holds while it reads: turn reads and searches hold about one
+turn at a time, and `memory/read` the one document. `memory/versions` and
+`memory/history` hold their page, up to 500 versions with their content (on
+Postgres, 127 MiB for a page of 500 versions of 100 KB); the file store also
+reads the document's whole journal, or for history every version of the scope,
+on every page (320 MiB for one history page over 1,500 versions of 100 KB), as
+2.16.0 did. `conversation/read_projections` holds its page of entries. A
+listing asked for `limit: 0` reads no rows. The hosted `/mcp` door's
+`continue_session` holds the whole conversation and its projections to build
+a reply of about 64 KB (about the conversation's stored size: 142 MiB for
+130 MB of turns).
+
+The temporary directory (`TMPDIR`, or the platform's) must be writable and
+disk-backed. A memory-backed one (tmpfs) counts against a container's memory
+limit and defeats the bound. When no spool file can be made or written (an
+unwritable directory, a full disk, a directory removed while in use), the
+answer is finished in memory, as 2.16.0 held it, within
+`NEOSIAN_MAX_RESPONSE_BYTES` (64 MiB by default), and refused past that with
+`value_error` naming that setting; it is never a bare `500` or a cut body.
+`neosian serve` checks the directory at startup and says once, on its log, when
+it cannot spool there. Each server keeps its spools under its own locked
+directory, `.neosian-serve-<uuid>`, removed when it stops; one left by a
+server that was killed is removed by the next server started with the same
+temporary directory. Disk use is the answers being sent at once, each at most
+`NEOSIAN_MAX_TEMP_BYTES`; nothing limits how many are sent at once except the
+process's open-file limit (each costs a socket and a spool file), and no
+timeout ends a stalled send.
 
 Every refusal is known before the status line and is the ordinary response
 with its status and envelope, wherever in the answer it was found. A request
-whose answer is larger than `NEOSIAN_MAX_TEMP_BYTES` (plus the 1 MiB kept in
-memory) is refused with `value_error` naming that setting; ask for less at a
-time instead: size pages (`page_bytes`) for `conversation/search_turns` and
-`conversation/read_turns`, a smaller `limit` for the memory listings, whose
-pages follow their cursor. The binary does both by itself. A projection page
-cannot be made smaller on wire 6 (it ends on whole turns, at 500 entries), so
-a projection page past the budget needs the setting raised. One item larger
-than the budget has no smaller answer at all; neither has one Postgres row
-whose compact JSON passes `NEOSIAN_MAX_RESPONSE_BYTES`, the one check every
-Postgres read applies to each row. Requests are capped at 64 MiB, so through
-this wire neither can be written at the default settings (see `neosian docs
-stores` for what bounds each record). A spool that cannot be read back while
-sending ends the body short, and the connection closes, as any I/O failure
-closes it. Database timeouts bound the store read: `statement_timeout` each
-statement, `transaction_timeout` and `idle_in_transaction_session_timeout` the
-read's transaction. Sending happens after the connection is released, so no
-database timeout applies to it.
+whose answer is larger than `NEOSIAN_MAX_TEMP_BYTES` is refused with
+`value_error` naming that setting; ask for less at a time instead: size pages
+(`page_bytes`) for `conversation/search_turns` and `conversation/read_turns`,
+a smaller `limit` for the memory listings, whose pages follow their cursor.
+The binary does both by itself, keeping each page under 1 MiB, and reports the
+first refusal only when its smaller requests are refused for their size too;
+it never asks again after the candidate bound (`resource limit
+NEOSIAN_SEARCH_MAX_CANDIDATES exceeded: …`), which no smaller answer cures.
+A projection page cannot be made smaller on wire 6 (it ends on whole turns,
+at 500 entries), so a projection page past the budget needs the setting
+raised. One item larger than the budget has no smaller answer at all; neither
+has one Postgres row whose compact JSON passes `NEOSIAN_MAX_RESPONSE_BYTES`,
+the one check every Postgres read applies to each row. Requests are capped at
+64 MiB, so through this wire neither can be written at the default settings
+(see `neosian docs stores` for what bounds each record). A spool that cannot
+be read back while sending ends the body short, and the connection closes, as
+any I/O failure closes it. Database timeouts bound the store read:
+`statement_timeout` each statement, `transaction_timeout` and
+`idle_in_transaction_session_timeout` the read's transaction. Sending happens
+after the connection is released, so no database timeout applies to it.
 
 ## The routes
 

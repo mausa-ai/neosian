@@ -381,3 +381,53 @@ fn a_memory_listing_refused_for_size_is_asked_again_with_fewer_rows() {
     assert_eq!(requests[3].1["cursor"], "c");
     assert_eq!(requests[3].1["limit"], 2);
 }
+
+#[test]
+fn the_candidate_bound_is_never_asked_again_and_its_format_is_pinned() {
+    // #419: no smaller answer counts fewer candidates. The client recognizes
+    // the refusal by the documented prefix, so its exact text is pinned here.
+    let broad = crate::limits::broad(5, "turns", "the words");
+    assert_eq!(
+        broad,
+        "resource limit NEOSIAN_SEARCH_MAX_CANDIDATES exceeded: more than 5 turns hold a \
+         search term; narrow the words"
+    );
+    let server = Stub::replies(vec![(200, paging()), (400, refusal(&broad))]);
+    let store = RemoteStore::connect(&server.url, "test-token").unwrap();
+    let Err(crate::conversation::Error::Value(text)) = store.search_turns(&["x".into()], None, 5)
+    else {
+        panic!("the bound refuses")
+    };
+    assert_eq!(text, broad);
+    assert_eq!(server.requests.lock().unwrap().len(), 2);
+}
+
+#[test]
+fn a_retry_that_fails_for_another_reason_reports_itself() {
+    let forbidden = json!({"error":{"code":"forbidden","message":"revoked","details":{}}});
+    let row = json!({"path":"x","version":1,"action":"created","content":"é", "actor":null,"created_at":"2026-01-01T00:00:00Z","redacted":false});
+    let server = Stub::replies(vec![
+        (200, paging()),
+        (400, refusal("too large")),
+        (403, forbidden.clone()),
+        (400, refusal("too large")),
+        (
+            200,
+            json!({"versions":[row.clone(), row.clone()],"next_cursor":"c"}),
+        ),
+        (403, forbidden),
+    ]);
+    let store = RemoteStore::connect(&server.url, "test-token").unwrap();
+    // A size page refused as forbidden reports that, not the size refusal.
+    let Err(error) = store.read_turns("c", 0, None) else {
+        panic!("forbidden")
+    };
+    assert!(error.text().contains("revoked"), "{}", error.text());
+    // A listing whose smaller page answered forgets the size refusal: the
+    // next page's own failure is what the caller sees.
+    let Err(Error::Memory(error)) = store.versions("user:a", "x", 4) else {
+        panic!("forbidden")
+    };
+    assert_eq!(error.message, "revoked");
+    assert_eq!(server.requests.lock().unwrap().len(), 6);
+}

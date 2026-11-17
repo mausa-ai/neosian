@@ -229,6 +229,23 @@ pub fn run(args: &Serve, out: &mut impl Write, err: &mut impl Write) -> io::Resu
             }
         }
     };
+    // Answers past 1 MiB are spooled to the temporary directory; say once
+    // if that cannot work, and why (#419).
+    match super::staging::prepare() {
+        Ok(0) => {}
+        Ok(removed) => writeln!(
+            err,
+            "neosian serve: removed {removed} spool directories left by servers that ended"
+        )?,
+        Err(error) => writeln!(
+            err,
+            "neosian serve: WARNING: cannot spool answers in the temporary directory {} \
+             (TMPDIR): {error}; answers over 1 MiB are held in memory, up to \
+             NEOSIAN_MAX_RESPONSE_BYTES each, until it is writable. Give the server a \
+             writable, disk-backed TMPDIR.",
+            env::temp_dir().display()
+        )?,
+    }
     let closing = mcp.as_ref().map(|surface| surface.closing.clone());
     let shared = Arc::new(Shared {
         store: store.clone(),
@@ -250,6 +267,7 @@ pub fn run(args: &Serve, out: &mut impl Write, err: &mut impl Write) -> io::Resu
             .with_graceful_shutdown(shutdown(closing))
             .await
     });
+    super::staging::close();
     match served {
         Ok(()) => {
             writeln!(err, "Shutting down")?;

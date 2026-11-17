@@ -23,6 +23,7 @@ mod routes_memory;
 mod routes_store;
 mod sessions;
 mod spool;
+mod staging;
 mod streamable;
 mod turn_pages;
 

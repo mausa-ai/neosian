@@ -60,6 +60,14 @@ It supports FileStore and Postgres and contains no Python runtime. Pass
 when selecting Postgres. Schema application is a separate operator action.
 The image has a health check and drains requests on SIGTERM.
 
+Answers over 1 MiB are spooled to the temporary directory before they are
+sent, so the server needs a writable, disk-backed `/tmp` (or `TMPDIR`). The
+image's `/tmp` is on the container's writable layer. With `--read-only`, mount
+a disk volume there (`-v neosian-tmp:/tmp`), not a tmpfs: a tmpfs counts
+against the container's memory limit and defeats the bound. A server that
+cannot spool says so once at startup and holds those answers in memory, up to
+`NEOSIAN_MAX_RESPONSE_BYTES` each.
+
 For FileStore, coordinate local writers using the shared root lock and stop
 writers for migrations or consistent archives. Network filesystems are outside
 that guarantee. Postgres supports distributed writers. Neither remote access

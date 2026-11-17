@@ -150,6 +150,11 @@ impl State for FileStore {
         since: Option<Stamp>,
         limit: Option<usize>,
     ) -> Result<Vec<Row>, Error> {
+        if limit == Some(0) {
+            // Nothing is answered, so nothing is read (#419).
+            self.check_scope(scope)?;
+            return Ok(Vec::new());
+        }
         let mut rows = self.history(scope, since)?;
         if let Some(limit) = limit {
             rows.truncate(limit);
@@ -162,6 +167,10 @@ impl State for FileStore {
         since: Option<Stamp>,
         limit: Option<usize>,
     ) -> Result<Vec<Act>, Error> {
+        if limit == Some(0) {
+            self.check_scope(scope)?;
+            return Ok(Vec::new());
+        }
         let mut rows = self.redactions(scope, since)?;
         if let Some(limit) = limit {
             rows.truncate(limit);

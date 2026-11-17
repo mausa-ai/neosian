@@ -56,9 +56,32 @@ request to `neosian serve` is served: a client asking for more gets pages of
 this size, so it caps how much one page request transfers. Every answer is
 spooled and sent after the store is released, whether or not a client pages;
 the binary's own remote client pages only after an unpaged request is
-refused for its size. Disk use for spools is at most the
-answers being sent at once, each within `NEOSIAN_MAX_TEMP_BYTES`, in the
-system temporary directory (`TMPDIR`).
+refused for its size (never after the candidate bound).
+
+`neosian serve` needs a writable, disk-backed temporary directory (`TMPDIR`)
+for answers over 1 MiB. A memory-backed one (tmpfs) counts against a
+container's memory limit and defeats the bound; the published image's `/tmp`
+is on its writable layer, so with a read-only root filesystem mount a disk
+volume there, not a tmpfs. A server that cannot spool says so once at startup
+and holds those answers in memory, as 2.16.0 did, up to
+`NEOSIAN_MAX_RESPONSE_BYTES` each; past that the answer is refused with
+`value_error`, which the binary answers in size pages. A spool that fails
+midway (a full disk) is finished the same way, never a `500` or a cut body.
+Disk use is the answers being sent at once, each within
+`NEOSIAN_MAX_TEMP_BYTES`, with no total: only the process's open-file limit
+bounds concurrent sends (a socket and a spool file each), and no timeout ends
+a stalled one. Each server's spools sit under its own locked
+`.neosian-serve-<uuid>` directory, removed when it stops; the next server
+started with the same `TMPDIR` removes those of servers that were killed.
+
+What a served read holds in the server: turn reads and searches about one
+turn, `memory/read` its document, `memory/versions` and `memory/history` their
+page of up to 500 versions with content (and, on files, the document's whole
+journal or the scope's whole history for every page, as 2.16.0 did: 320 MiB
+for a history page over 1,500 versions of 100 KB), `conversation/read_projections`
+its page of entries, and the hosted `/mcp` `continue_session` the whole
+conversation it continues (142 MiB for 130 MB of turns). A listing asked for
+`limit: 0` reads no rows.
 See `neosian docs stores` for each setting's exact scope; these do not change
 permissions, skill/context limits or the format-1 exchange bundle bounds.
 

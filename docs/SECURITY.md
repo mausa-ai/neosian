@@ -68,11 +68,18 @@ only the winners, `NEOSIAN_SEARCH_MAX_CANDIDATES` refuses an over-broad
 relevance request, and every Postgres row is checked alone against
 `NEOSIAN_MAX_RESPONSE_BYTES` as it arrives. Answers are written
 item by item into a spool (memory, then a private temporary file under
-`NEOSIAN_MAX_TEMP_BYTES`), so the answer is never built whole in memory, and
-are sent only after the store's lock, snapshot and connection are released: a
-slow or stalled reader costs an open file and disk, never the store, and every
-refusal is the ordinary error response. Spool files are private to the server
-user and removed when the answer is sent or abandoned. Size-paging
+`NEOSIAN_MAX_TEMP_BYTES`) and sent only after the store's lock, snapshot and
+connection are released: a slow or stalled reader costs an open file and
+disk, never the store, and every refusal is the ordinary error response.
+Spool files are private to the server user, kept under the server's own
+locked directory in the temporary directory, and removed when the answer is
+sent or abandoned. A killed server leaves its directory; the next server
+started with the same temporary directory removes it, and removes nothing
+else. Disk use has no total: it is the answers being sent at once, each at
+most `NEOSIAN_MAX_TEMP_BYTES`, only the open-file limit bounds how many, and
+no timeout ends a stalled send. Give the server a disk-backed temporary
+directory; when it cannot write one it holds answers over 1 MiB in memory, up
+to `NEOSIAN_MAX_RESPONSE_BYTES` each, as 2.16.0 did. Size-paging
 continuations bind the request's selection and carry no authority: every page
 is authorized from its own body; `NEOSIAN_MAX_PAGE_BYTES` caps one page.
 

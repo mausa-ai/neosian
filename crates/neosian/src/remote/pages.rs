@@ -1,11 +1,12 @@
 //! Turn reads and version 1 history search from the client's side (DESIGN
-//! §40.46, #417, #418). Every request is first 2.16.0's. Only when it is
-//! refused in a way a smaller answer may cure (the server's `value_error`, or
-//! this client's own response budget) and the server advertises
-//! `size_paging: {version: 1}` does the client ask again in size pages,
-//! handing turns over one page at a time; if that fails too, the first
-//! refusal is reported. Pages stay below the server's 1 MiB in-memory spool,
-//! so they need none of its temporary-file budget.
+//! §40.46, #417 to #419). Every request is first 2.16.0's. Only when it is
+//! refused in a way a smaller answer may cure (the server's `value_error`
+//! other than the candidate bound, or this client's own response budget) and
+//! the server advertises `size_paging: {version: 1}` does the client ask
+//! again in size pages, handing turns over one page at a time. A page
+//! refused for its size too reports the first refusal; any other failure
+//! reports itself. Pages stay below the server's 1 MiB in-memory spool, so
+//! they need none of its temporary-file budget.
 
 use serde_json::{Value, json};
 
@@ -21,22 +22,32 @@ const PAGE_BYTES: u64 = 960 * 1024;
 impl RemoteStore {
     /// Whether a refusal may be answered by asking again in size pages.
     pub(super) fn pages_may_answer(&self, failed: &Failed) -> bool {
-        failed.sized && self.capabilities["size_paging"]["version"] == 1
+        failed.curable() && self.capabilities["size_paging"]["version"] == 1
     }
 
-    /// Follow size pages of `endpoint`: `page` gets each answer and says
-    /// whether to go on. A continuation must be a bounded string, and a page
-    /// that names one must hold at least one item.
+    /// Follow size pages of `endpoint` after `first` refused the unpaged
+    /// request: `page` gets each answer and says whether to go on. A page
+    /// refused for its size too (a stale relevance page among them) reports
+    /// `first`; any other failure reports itself (#419). A continuation must
+    /// be a bounded string, and a page that names one must hold an item.
     pub(super) fn size_pages<E: From<StoreError>>(
         &self,
         endpoint: &str,
         mut payload: Value,
         items: &str,
+        first: StoreError,
         mut page: impl FnMut(&Value) -> Result<bool, E>,
     ) -> Result<(), E> {
         payload["page_bytes"] = json!(PAGE_BYTES);
+        let mut first = Some(first);
         loop {
-            let data = self.call(endpoint, payload.clone())?;
+            let data = match self.attempt(endpoint, payload.clone()) {
+                Ok(data) => data,
+                Err(failed) if failed.sized => {
+                    return Err(first.take().unwrap_or(failed.error).into());
+                }
+                Err(failed) => return Err(failed.error.into()),
+            };
             let held = codec::array(&data, items)?.len();
             let next = match codec::key(&data, "continuation")? {
                 Value::Null => None,
@@ -74,9 +85,7 @@ impl RemoteStore {
                 Err(failed) if self.pages_may_answer(&failed) => {
                     let from = payload["after"].as_i64().unwrap_or(after);
                     let left = limit.map(|limit| limit - read as i64);
-                    return self
-                        .read_turns_paged(id, from, left, visit)
-                        .map_err(|_| failed.error.into());
+                    return self.read_turns_paged(id, from, left, failed.error, visit);
                 }
                 Err(failed) => return Err(failed.error.into()),
             };
@@ -110,11 +119,12 @@ impl RemoteStore {
         id: &str,
         after: i64,
         limit: Option<i64>,
+        first: StoreError,
         visit: &mut dyn FnMut(Turn) -> Result<bool, Error>,
     ) -> Result<(), Error> {
         let body = json!({"conversation_id": id, "after": after, "limit": limit});
         let mut total = 0_i64;
-        self.size_pages("conversation/read_turns", body, "turns", |data| {
+        self.size_pages("conversation/read_turns", body, "turns", first, |data| {
             if !codec::key(data, "next_after")?.is_null() {
                 return Err(codec::malformed("next_after").into());
             }
@@ -145,11 +155,12 @@ impl RemoteStore {
             Ok(data) => data,
             Err(failed) if self.pages_may_answer(&failed) => {
                 let mut total = 0;
-                let paged = self.size_pages("conversation/search_turns", body, "turns", |data| {
+                let endpoint = "conversation/search_turns";
+                return self.size_pages(endpoint, body, "turns", failed.error, |data| {
                     for turn in codec::array(data, "turns")? {
                         total += 1;
                         if total > limit {
-                            return Err(codec::malformed("conversation/search_turns").into());
+                            return Err(codec::malformed(endpoint).into());
                         }
                         if !visit(codec::turn(turn)?)? {
                             return Ok(false);
@@ -157,7 +168,6 @@ impl RemoteStore {
                     }
                     Ok(true)
                 });
-                return paged.map_err(|_: Error| failed.error.into());
             }
             Err(failed) => return Err(failed.error.into()),
         };

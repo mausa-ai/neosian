@@ -29,13 +29,17 @@ phase close names the version.
   Postgres reads its rows as one stream instead of one round trip per row.
 - `neosian serve` writes every answer that grows with stored content (history
   search in every order, turn reads, projection reads, memory reads, versions
-  and history) item by item into a spool while it reads the store: the first
-  1 MiB in memory, the rest in a private temporary file. It then releases the
-  store (the file store's lock, a Postgres snapshot and connection) and sends
-  the spool with its `Content-Length`. The bytes and every refusal are those
-  2.16.0 sent; the server holds about one turn instead of the whole answer
-  three or four times, and a slow client costs an open file and disk, never
-  the store. Searches and turn reads come from the store a turn at a time.
+  and history) item by item into a spool while it reads the store: in memory
+  while the answer is at most 1 MiB, then the whole answer in a private
+  temporary file. It then releases the store (the file store's lock, a
+  Postgres snapshot and connection) and sends the spool with its
+  `Content-Length`. The bytes are those 2.16.0 sent, and so is every refusal
+  2.16.0 made; the new ones are listed below. For searches and turn reads the
+  server holds about one turn instead of the whole answer three or four
+  times, and a slow client costs an open file and disk, never the store.
+  Searches and turn reads come from the store a turn at a time; memory
+  version and history pages and projection pages hold their page, and the
+  hosted `/mcp` `continue_session` the whole conversation, as before.
   Measured with `neosian serve` on Postgres in a container limited to
   192 MiB: version 1 history search at limit 500 over 120 KB turns (a 60 MB
   answer), which peaked at 188 MiB in 2.16.0, now keeps 8 MiB resident and
@@ -48,9 +52,25 @@ phase close names the version.
   pieces, so its reads and searches are answered: size pages for history
   search and turn reads (only from a server that advertises them, and only
   after the unpaged request was refused, so ordinary requests are exactly
-  2.16.0's), smaller pages for memory listings. If that fails too, the first
-  refusal is shown. Other clients can do the same with `page_bytes` or
-  `limit`.
+  2.16.0's), smaller pages for memory listings. A smaller request refused
+  for its size too shows the first refusal; any other failure shows itself,
+  and the candidate bound, which no smaller answer cures, is never asked
+  again. Other clients can do the same with `page_bytes` or `limit`.
+- `neosian serve` needs a writable, disk-backed temporary directory
+  (`TMPDIR`) for answers over 1 MiB; a tmpfs counts against a container's
+  memory limit. When it cannot spool there (an unwritable directory, a full
+  disk, a directory removed in use), it finishes the answer in memory, as
+  2.16.0 did, up to `NEOSIAN_MAX_RESPONSE_BYTES`, and refuses past that with
+  `value_error`, which the binary answers in size pages: never a `500` or a
+  cut body. It checks the directory at startup and says once on its log
+  when it cannot spool. Each server keeps its spools under its own locked
+  directory, removed when it stops, and removes those left by servers that
+  were killed, nothing else. Spool disk has no total: it is the answers
+  being sent at once, each within `NEOSIAN_MAX_TEMP_BYTES`, bounded only by
+  the open-file limit.
+- `memory/history`, `memory/versions` and `memory/redactions` asked for
+  `limit: 0` check the request and read no rows (2.16.0 read the scope's
+  whole history: 399 MiB on Postgres for 150 MB of versions, now 11 MiB).
 - On Postgres, `NEOSIAN_MAX_RESPONSE_BYTES` (64 MiB by default) is checked
   against each row of every read alone, as its compact JSON; rows are never
   charged together, so every read 2.16.0 answered is answered, served or

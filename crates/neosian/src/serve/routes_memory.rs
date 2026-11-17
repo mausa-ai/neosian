@@ -228,7 +228,7 @@ fn history(
     let page = memory_page(
         payload,
         None,
-        |_| Ok(store.history(&scope, since, None)?),
+        |limit| Ok(store.history(&scope, since, Some(limit as usize))?),
         |cursor, size| Ok(store.history_page(&scope, since, cursor, size)?),
     )?;
     let items = page.items.iter().map(codec::version);
@@ -245,7 +245,7 @@ fn redactions(store: &dyn Backend, payload: &Payload, _client: &str) -> Result<V
     let page = memory_page(
         payload,
         None,
-        |_| Ok(store.redactions(&scope, since, None)?),
+        |limit| Ok(store.redactions(&scope, since, Some(limit as usize))?),
         |cursor, size| Ok(store.redactions_page(&scope, since, cursor, size)?),
     )?;
     let acts: Vec<Value> = page.items.iter().map(codec::redaction).collect();

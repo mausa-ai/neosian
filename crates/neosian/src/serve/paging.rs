@@ -14,7 +14,8 @@ use crate::store::Page;
 pub const PAGE: i64 = 500;
 
 /// `memory_page`: one bounded page of a memory listing. `whole` receives
-/// the caller's limit (zero: the read for its checks, and nothing).
+/// the caller's limit, zero: the request's checks (scope, path, `since`) and
+/// no rows, which the stores answer without reading any (#419).
 pub fn memory_page<T>(
     payload: &Payload,
     default_limit: Option<i64>,

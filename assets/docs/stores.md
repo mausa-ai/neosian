@@ -113,22 +113,36 @@ only from those paths or from a budget lowered after it was written; raise
 the setting to read it.
 
 `neosian serve` writes answers that grow with stored content item by item into
-a spool while it reads the store (the first 1 MiB in memory, the rest in a
-private temporary file under `NEOSIAN_MAX_TEMP_BYTES`), releases the store,
-then sends the spool with its length (`neosian docs wire`, "Spooled answers").
-An answer past that budget is refused; the binary then asks again in smaller
-pieces (size pages, smaller listing pages), so its reads and searches are
-answered, while other clients can do the same with `page_bytes` or `limit`.
-Searches and turn reads come from the store a turn at a time (a file log a
-line at a time, a Postgres statement as one stream), so a request holds about
-one turn whatever the answer's size, and every refusal is an ordinary
-response. A slow client costs an open file and disk, never the store lock or
-a database connection. Disk use is at most the answers being sent at once,
-each at most `NEOSIAN_MAX_TEMP_BYTES`, in the temporary directory (`TMPDIR`).
-In a container with a memory limit the spools' file cache counts toward the
-limit but is reclaimed under pressure; a memory-backed temporary directory
-(tmpfs) would keep spools in memory, so give it disk. `NEOSIAN_MAX_PAGE_BYTES` caps the
-ceiling a size-paged request may ask for.
+a spool while it reads the store (in memory while the answer is at most 1 MiB,
+then the whole answer in a private temporary file under
+`NEOSIAN_MAX_TEMP_BYTES`), releases the store, then sends the spool with its
+length (`neosian docs wire`, "Spooled answers"). An answer past that budget is
+refused; the binary then asks again in smaller pieces (size pages, smaller
+listing pages), so its reads and searches are answered, while other clients
+can do the same with `page_bytes` or `limit`. Searches and turn reads come
+from the store a turn at a time (a file log a line at a time, a Postgres
+statement as one stream), so a request holds about one turn whatever the
+answer's size, and every refusal is an ordinary response. Memory version and
+history pages hold their page (up to 500 versions with content), and on files
+the document's whole journal or the scope's whole history for every page, as
+2.16.0 did; a listing asked for no rows reads none. The hosted `/mcp`
+`continue_session` holds the whole conversation it continues. A slow client
+costs an open file and disk, never the store lock or a database connection.
+
+Give the server a writable, disk-backed temporary directory (`TMPDIR`). A
+memory-backed one (tmpfs) counts against a container's memory limit and
+defeats the bound; the spools' file cache on disk also counts there but is
+reclaimed under pressure. When no spool can be made or written, answers over
+1 MiB are held in memory, as 2.16.0 held them, up to
+`NEOSIAN_MAX_RESPONSE_BYTES` each, and refused past that; `neosian serve` says
+so once at startup. Disk use is the answers being sent at once, each at most
+`NEOSIAN_MAX_TEMP_BYTES`; only the process's open-file limit bounds how many
+are sent at once (each holds a socket and a spool file), and no timeout ends
+a stalled send. Each server's spools sit under its own locked
+`.neosian-serve-<uuid>` directory, removed when it stops; the next server
+started with the same temporary directory removes those of servers that were
+killed. `NEOSIAN_MAX_PAGE_BYTES` caps the ceiling a size-paged request may ask
+for.
 
 Existing server request limits, per-document knowledge bounds, skill/context
 budgets and archive behavior remain separate. Client limits cannot raise a

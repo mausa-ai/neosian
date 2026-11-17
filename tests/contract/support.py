@@ -8,7 +8,7 @@ import socket
 import subprocess
 import time
 import tomllib
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -162,7 +162,11 @@ def serve(
     postgres_dsn: str | None = None,
     schema: str | None = None,
     extra_env: dict[str, str] | None = None,
+    preexec: Callable[[], None] | None = None,
+    log: list[str] | None = None,
 ) -> Iterator[Server]:
+    """`preexec` runs in the server's process before it starts (POSIX);
+    `log` receives the server's stderr once it has stopped."""
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))
         port = probe.getsockname()[1]
@@ -185,6 +189,7 @@ def serve(
         stderr=subprocess.PIPE,
         env=env,
         cwd=binary.directory,
+        preexec_fn=preexec,
     )
     server = Server(f"http://127.0.0.1:{port}")
     try:
@@ -207,7 +212,9 @@ def serve(
     finally:
         process.terminate()
         try:
-            process.communicate(timeout=10)
+            _, stderr = process.communicate(timeout=10)
         except subprocess.TimeoutExpired:
             process.kill()
-            process.communicate(timeout=10)
+            _, stderr = process.communicate(timeout=10)
+        if log is not None:
+            log.append(stderr.decode("utf-8", "replace"))

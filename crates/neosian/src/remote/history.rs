@@ -137,7 +137,8 @@ impl RemoteStore {
         let data = match self.attempt("conversation/search_turns", body.clone()) {
             Ok(data) => data,
             Err(failed) if self.pages_may_answer(&failed) => {
-                let paged = self.size_pages("conversation/search_turns", body, "turns", |data| {
+                let endpoint = "conversation/search_turns";
+                return self.size_pages(endpoint, body, "turns", failed.error, |data| {
                     for (turn, score) in checked.page(data)? {
                         if !visit(turn, score)? {
                             return Ok(false);
@@ -145,7 +146,6 @@ impl RemoteStore {
                     }
                     Ok(true)
                 });
-                return paged.map_err(|_: Error| failed.error.into());
             }
             Err(failed) => return Err(failed.error.into()),
         };

@@ -127,6 +127,10 @@ impl FileStore {
         let _held = self.lock()?;
         self.scope(scope)?;
         validate_document_path(path)?;
+        if limit == 0 {
+            // Nothing is answered, so nothing is read (#419).
+            return Ok(Vec::new());
+        }
         let (_, mut rows) = self.rows(scope, path)?;
         rows.reverse();
         rows.truncate(limit);
@@ -149,6 +153,13 @@ impl FileStore {
         let held = lock::acquire(&self.root.join(".store.lock"))?;
         transaction::recover(&self.root)?;
         Ok(held)
+    }
+
+    /// A request's scope checks with nothing read: a listing asked for no
+    /// rows (#419).
+    pub fn check_scope(&self, scope: &str) -> Result<(), Error> {
+        let _held = self.lock()?;
+        self.scope(scope)
     }
 
     /// Validate the scope and refuse a case fold, on every access: another

@@ -193,18 +193,26 @@ impl RemoteStore {
                 body["limit"] = json!(size);
             }
             let data = match self.attempt(endpoint, body) {
-                Ok(data) => data,
+                Ok(data) => {
+                    // A smaller page answered: an earlier size refusal is
+                    // settled, and a later failure is reported as itself.
+                    first = None;
+                    data
+                }
                 Err(failed) if !after && self.listing_may_shrink(&failed) => {
                     let current = smaller
                         .unwrap_or_else(|| payload["limit"].as_u64().unwrap_or(500).min(500));
-                    let refused = first.get_or_insert(failed.error);
+                    if first.is_none() {
+                        first = Some(failed.error);
+                    }
                     if current <= 1 {
-                        return Err(std::mem::replace(refused, Error::Value(String::new())));
+                        return Err(first.take().expect("the size refusal is kept"));
                     }
                     smaller = Some(current / 2);
                     continue;
                 }
-                Err(failed) => return Err(first.unwrap_or(failed.error)),
+                // Not a size refusal: the retry's own error, as it is.
+                Err(failed) => return Err(failed.error),
             };
             let page = codec::array(&data, items)?;
             let next = codec::key(&data, answer)?;
@@ -229,7 +237,7 @@ impl RemoteStore {
     /// this client's own response budget, or the server's `value_error` when
     /// it pages (its spooled answers have a disk budget).
     fn listing_may_shrink(&self, failed: &Failed) -> bool {
-        failed.own || (failed.sized && self.capabilities["size_paging"]["version"] == 1)
+        failed.own || (failed.curable() && self.capabilities["size_paging"]["version"] == 1)
     }
 }
 
@@ -273,6 +281,16 @@ struct Failed {
 }
 
 impl Failed {
+    /// Whether a smaller answer may cure it: a size refusal, but never the
+    /// candidate bound, which counts the same candidates however the answer
+    /// is cut. This is the one refusal recognized by its message: resource
+    /// limit refusals are documented as `resource limit <NAME> exceeded: …`
+    /// (`neosian docs wire`), and the doors match the same prefix.
+    fn curable(&self) -> bool {
+        self.sized
+            && !matches!(&self.error, Error::Value(message)
+                if message.starts_with(crate::limits::BROAD))
+    }
     fn sized(error: Error) -> Self {
         Self {
             error,
