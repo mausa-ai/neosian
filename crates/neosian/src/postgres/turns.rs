@@ -52,7 +52,7 @@ impl PostgresStore {
 
     pub fn read_turns(&self, id: &str, after: i64, limit: Option<i64>) -> Result<Vec<Turn>, Error> {
         let mut turns = Vec::new();
-        self.read_turns_in(id, after, limit, Mode::Collected, &mut |turn| {
+        self.read_turns_in(id, after, limit, Mode::Each, &mut |turn| {
             turns.push(turn);
             Ok(true)
         })?;
@@ -168,7 +168,7 @@ impl PostgresStore {
         limit: usize,
     ) -> Result<Vec<Turn>, Error> {
         let mut found = Vec::new();
-        self.search_in(terms, ids, limit, Mode::Collected, &mut |turn| {
+        self.search_in(terms, ids, limit, Mode::Each, &mut |turn| {
             found.push(turn);
             Ok(true)
         })?;
@@ -212,15 +212,10 @@ impl PostgresStore {
 
     pub fn rank_turns(&self, request: &Request) -> Result<Vec<Ranked>, Error> {
         let mut ranked = Vec::new();
-        self.rank_each(
-            request,
-            &Resume::Fresh,
-            Mode::Collected,
-            &mut |turn, score| {
-                ranked.push((turn, score));
-                Ok(true)
-            },
-        )?;
+        self.rank_each(request, &Resume::Fresh, Mode::Each, &mut |turn, score| {
+            ranked.push((turn, score));
+            Ok(true)
+        })?;
         Ok(ranked)
     }
 

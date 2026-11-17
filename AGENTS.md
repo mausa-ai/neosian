@@ -53,7 +53,9 @@ development and tests only (DESIGN §40).
   every refusal is the ordinary response. Optional wire-6 `size_paging`
   version 1 bounds history-search and turn-read pages by bytes (at least one
   turn) with opaque continuations that bind the request and confer nothing;
-  requests without its fields are unchanged, and the binary never pages.
+  requests without its fields are unchanged, and the binary pages only after
+  a 2.16.0 request is refused for its size. Postgres checks each row alone
+  against the response budget; only one record past a budget is refused.
 - **Knowledge imports are explicit.** Preview scoped Markdown/bundle changes;
   refuse lifecycle records and erased destinations. Collection rules validate
   imports and explicit checks, not authority. Structure/provenance stays in

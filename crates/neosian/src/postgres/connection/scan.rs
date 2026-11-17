@@ -117,8 +117,8 @@ impl Pool {
         })
     }
 
-    /// One statement's rows handed to `visit` as they arrive, each charged
-    /// against `NEOSIAN_MAX_RESPONSE_BYTES` as `mode` says (§40.46, #417).
+    /// One statement's rows handed to `visit` as they arrive, each checked
+    /// alone against `NEOSIAN_MAX_RESPONSE_BYTES` (§40.46, #418).
     /// A size page reads through a portal in batches of 1, 2, 4 up to 64
     /// rows inside a read-only transaction, so false from `visit` stops
     /// before the next batch is asked for; every other read is one streamed
@@ -135,11 +135,7 @@ impl Pool {
             let mut held = self.checkout().await?;
             let connection = held.as_mut().expect("connected");
             let (statement, bound) = statement(connection, &self.schema, template, params).await?;
-            let mut used = 0_u64;
-            let charged = |row: Value, used: &mut u64| {
-                *used = mode.charge(*used, values::weight(&row));
-                crate::limits::check(crate::limits::RESPONSE, *used, budget).map(|()| row)
-            };
+            let checked = |row: Value| values::fits(&row, budget).map(|()| row);
             let Mode::Paged(ceiling) = mode else {
                 let rows = connection
                     .client
@@ -149,7 +145,7 @@ impl Pool {
                     )
                     .await
                     .map_err(failure)?;
-                return each(rows, |row| visit(charged(row, &mut used)?)).await;
+                return each(rows, |row| visit(checked(row)?)).await;
             };
             let tx = connection
                 .client
@@ -158,7 +154,7 @@ impl Pool {
                 .start()
                 .await
                 .map_err(failure)?;
-            let page = |row| visit(charged(row, &mut used)?);
+            let page = |row| visit(checked(row)?);
             batches(&tx, &statement, &bound, ceiling, page).await?;
             tx.commit().await.map_err(failure)?;
             Ok(())

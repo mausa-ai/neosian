@@ -1,11 +1,12 @@
-"""Spooled answers and size paging on Postgres (S14, DESIGN §40.46, #417).
+"""Spooled answers and size paging on Postgres (S14, DESIGN §40.46, #417, #418).
 
-A spooled read charges each row alone against `NEOSIAN_MAX_RESPONSE_BYTES`,
-so answers 2.16.0 served are served (one row over the budget is still the
-400 it names); reads whose rows are collected in memory keep S13's total
-charge. The answer is spooled before it is sent, so a slow reader holds no
-pooled connection and leaves no backend idle in transaction. The binary's
-client sends searches unpaged. Rows are planted directly.
+Every read checks each row alone against `NEOSIAN_MAX_RESPONSE_BYTES`, so
+answers 2.16.0 gave are given, served or local; one row over the budget is
+still the 400 it names. The answer is spooled before it is sent, so a slow
+reader holds no pooled connection and leaves no backend idle in transaction.
+The binary's client sends 2.16.0's requests, and asks again in size pages
+only when a server that pages refuses an answer for its size. Rows are
+planted directly.
 """
 
 import json
@@ -78,9 +79,7 @@ def raw(server: Server, route: str, body: dict[str, Any]) -> tuple[int, bytes]:
         return error.code, error.read()
 
 
-def test_spooled_reads_charge_each_row_and_collected_reads_the_total(
-    binary: Binary, database: Database
-) -> None:
+def test_every_read_checks_each_row_alone(binary: Binary, database: Database) -> None:
     connection, schema, _ = database
     plant(connection, schema)
     dsn = os.environ["NEOSIAN_TEST_POSTGRES_DSN"]
@@ -127,7 +126,8 @@ def test_spooled_reads_charge_each_row_and_collected_reads_the_total(
         assert error["message"].endswith(
             " > 5000; select a smaller batch or raise this setting"
         )
-    # A local whole read collects every turn, so S13's total charge applies.
+    # A local whole read holds the conversation in the user's own process, as
+    # 2.16.0 did; only a single row over the budget refuses (#418).
     local = run(
         binary,
         "continue",
@@ -136,13 +136,19 @@ def test_spooled_reads_charge_each_row_and_collected_reads_the_total(
         schema,
         env={"NEOSIAN_POSTGRES_DSN": dsn, **BUDGET},
     )
-    assert local.returncode == 1
-    assert local.stderr.startswith(
-        "error: resource limit NEOSIAN_MAX_RESPONSE_BYTES exceeded: "
-    )
-    assert local.stderr.endswith(
-        " > 200000; select a smaller batch or raise this setting\n"
-    )
+    assert local.returncode == 0, local.stderr
+    assert local.stdout == remote.stdout
+    for args in [("dashboard", "--order", "newest", "--limit", "500"), ("dashboard",)]:
+        found = run(
+            binary,
+            "search",
+            *args,
+            "--json",
+            "--schema",
+            schema,
+            env={"NEOSIAN_POSTGRES_DSN": dsn, **BUDGET},
+        )
+        assert found.returncode == 0, found.stdout
 
 
 def backends(connection: psycopg.Connection[tuple[object, ...]]) -> list[str]:
@@ -247,3 +253,42 @@ def test_the_client_sends_searches_unpaged(binary: Binary, database: Database) -
             local_seconds,
             remote_seconds,
         )
+
+
+def test_an_answer_past_the_servers_spool_budget_is_read_in_pages(
+    binary: Binary, database: Database
+) -> None:
+    # #418, on Postgres: the server refuses the unpaged answers for its spool
+    # budget; the binary asks again in size pages and answers as a local
+    # read on the database does.
+    connection, schema, _ = database
+    plant(connection, schema, count=120, words=13_000)
+    dsn = os.environ["NEOSIAN_TEST_POSTGRES_DSN"]
+    temp = {"NEOSIAN_MAX_TEMP_BYTES": str(1 << 20)}
+    with serve(binary, postgres_dsn=dsn, schema=schema, extra_env=temp) as server:
+        status, answer = raw(
+            server, "conversation/read_turns", {"conversation_id": LONG}
+        )
+        assert status == 400
+        assert json.loads(answer)["error"]["message"].startswith(
+            "resource limit NEOSIAN_MAX_TEMP_BYTES exceeded: "
+        )
+        for args in [
+            ("continue", LONG),
+            ("search", "dashboard", "--order", "newest", "--limit", "500", "--json"),
+            ("search", "dashboard", "word", "--limit", "500", "--json"),
+        ]:
+            remote = run(
+                binary, *args, "--url", server.url, env={"NEOSIAN_CLIENT_TOKEN": ADMIN}
+            )
+            local = run(
+                binary, *args, "--schema", schema, env={"NEOSIAN_POSTGRES_DSN": dsn}
+            )
+            assert remote.returncode == local.returncode == 0, remote.stderr
+            if "--json" in args:
+                mine, theirs = json.loads(remote.stdout), json.loads(local.stdout)
+                mine.pop("client")
+                theirs.pop("client")
+                assert mine == theirs
+            else:
+                assert remote.stdout == local.stdout

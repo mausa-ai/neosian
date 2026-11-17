@@ -47,32 +47,17 @@ pub enum Resume {
     },
 }
 
-/// How a turn read is consumed (DESIGN §40.46, #417), which decides how it
-/// is charged against `NEOSIAN_MAX_RESPONSE_BYTES` on Postgres: rows that
-/// go to a spool or are reduced to hits as they arrive are charged one at a
-/// time (no single row may pass the budget); rows collected in memory are
-/// charged together, as S13 bounded every collected read (#415). Only a
-/// size page stops early, so only it reads through a portal in batches.
-/// Every mode is `Copy`; a page carries its ceiling.
+/// How a turn read is read (DESIGN §40.46, #417): one statement for an
+/// answer that is spooled, turned into hits or kept by its caller; a size
+/// page, which may stop early, in statements or batches sized to its ceiling.
+/// Every row is checked alone against `NEOSIAN_MAX_RESPONSE_BYTES` (#418).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Mode {
-    /// Each turn leaves as it arrives: a spooled answer or a door's hits.
+    /// Every turn of the answer.
     Each,
     /// One size page of this many bytes: it may stop before the statement
-    /// ends, so a database reads it in batches sized to reach the ceiling.
+    /// ends, so a database reads it in pieces sized to reach the ceiling.
     Paged(u64),
-    /// Every turn is kept in memory by the caller.
-    Collected,
-}
-
-impl Mode {
-    /// The charge after a row of `weight` when `used` was charged before.
-    pub fn charge(self, used: u64, weight: u64) -> u64 {
-        match self {
-            Mode::Collected => used.saturating_add(weight),
-            Mode::Each | Mode::Paged(_) => weight,
-        }
-    }
 }
 
 /// The visitor a search hands each turn to in answer order, with its score

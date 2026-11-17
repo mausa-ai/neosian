@@ -61,7 +61,7 @@ budgets refuse explicitly; they never truncate results or delete retained data.
 | `NEOSIAN_REPLICA_MAX_PATHS` | 100,000 | 1,000,000 | Distinct retained receiver paths, including deleted history |
 | `NEOSIAN_REPLICA_MAX_BYTES` | 1 GiB | 64 GiB | Retained receiver documents, version rows and erasure trail |
 | `NEOSIAN_MAX_FILE_BYTES` | 64 MiB | 1 GiB | Decoded FileStore memory documents/version files, new memory transaction artifacts, exchange artifacts and Postgres search candidate content plus JSON extras |
-| `NEOSIAN_MAX_RESPONSE_BYTES` | 64 MiB | 1 GiB | Each HTTP storage-client response, before JSON decoding; on Postgres, each decoded row of a turn read or search that is spooled or turned into hits, and the rows of a statement together where a read keeps them all |
+| `NEOSIAN_MAX_RESPONSE_BYTES` | 64 MiB | 1 GiB | Each HTTP storage-client response, before JSON decoding; on Postgres, each row of every read, as its compact JSON |
 | `NEOSIAN_SEARCH_MAX_CANDIDATES` | 100,000 | 1,000,000 | Turns or documents holding a term in one relevance search, history or memory, on files and Postgres |
 | `NEOSIAN_MAX_PAGE_BYTES` | 8 MiB | 1 GiB | The largest `page_bytes` a size-paged request is served; a larger request gets pages of this size |
 
@@ -91,17 +91,34 @@ candidate keeps its path, up to 512 characters. Measured at the default bound
 with one candidate per conversation and 128-character ids, a history search
 peaks at about 33 MiB on files and 43 MiB on Postgres; with 500-character
 memory paths, about 67 MiB. At the maximum of 1,000,000 that is roughly 0.3
-and 0.6 GB. A Postgres read whose rows are kept in memory (a full conversation
-read by a local command, a page of memory versions or history) stops and
-refuses by name once its rows together pass `NEOSIAN_MAX_RESPONSE_BYTES`; a
-turn read or search that is spooled or turned into hits as its rows arrive
-refuses only a single row over it. HTTP page cursors are validated, and every
-page still requires current server permissions.
+and 0.6 GB. Every Postgres read checks each row alone against
+`NEOSIAN_MAX_RESPONSE_BYTES`, measured as the row's compact JSON: rows are
+never charged together, so any read 2.16.0 answered is answered, served or
+local. A local command that needs a whole conversation in its own process
+(session start, `neosian continue`, `recall_turn`'s read, audit, export,
+erasure) holds it there, as 2.16.0 did. HTTP page cursors are validated, and
+every page still requires current server permissions.
+
+One refusal remains where no smaller answer exists: a single record larger
+than a budget, a Postgres row whose JSON passes `NEOSIAN_MAX_RESPONSE_BYTES`
+or one item larger than the server's spool budget. What bounds a record on
+the way in: every HTTP request is at most 64 MiB, so a turn, projection or
+memory document written through the wire is at most about that much JSON (a
+turn's stored form can be slightly larger, as messages are normalized); the
+file store refuses a memory write past `NEOSIAN_MAX_FILE_BYTES` (64 MiB). A
+turn recorded by local hooks has no total bound (each tool result is cut to
+1 MiB of text), and a local write to Postgres is not size-checked, nor are
+restores or direct SQL. A record over the default budgets can therefore come
+only from those paths or from a budget lowered after it was written; raise
+the setting to read it.
 
 `neosian serve` writes answers that grow with stored content item by item into
 a spool while it reads the store (the first 1 MiB in memory, the rest in a
 private temporary file under `NEOSIAN_MAX_TEMP_BYTES`), releases the store,
 then sends the spool with its length (`neosian docs wire`, "Spooled answers").
+An answer past that budget is refused; the binary then asks again in smaller
+pieces (size pages, smaller listing pages), so its reads and searches are
+answered, while other clients can do the same with `page_bytes` or `limit`.
 Searches and turn reads come from the store a turn at a time (a file log a
 line at a time, a Postgres statement as one stream), so a request holds about
 one turn whatever the answer's size, and every refusal is an ordinary

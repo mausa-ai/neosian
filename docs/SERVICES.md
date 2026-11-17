@@ -27,9 +27,18 @@ Bulk operation budgets are configured with `NEOSIAN_KNOWLEDGE_MAX_DOCUMENTS`
 served answer `neosian serve` spools to disk, `NEOSIAN_REPLICA_MAX_PATHS` (100,000;
 1,000,000), `NEOSIAN_REPLICA_MAX_BYTES` (1 GiB; 64 GiB), `NEOSIAN_MAX_FILE_BYTES`
 (64 MiB; 1 GiB), and `NEOSIAN_MAX_RESPONSE_BYTES` (64 MiB; 1 GiB), which bounds
-each HTTP storage response and, on Postgres, each row of a spooled read or the
-rows of a read kept whole in memory. Byte settings are positive decimal byte
-counts, not unit strings. Empty values use defaults.
+each HTTP storage response and, on Postgres, each row of every read on its own.
+Byte settings are positive decimal byte counts, not unit strings. Empty values
+use defaults. An answer past a server's spool budget is refused, and the
+binary then asks again in smaller pieces (size pages for searches and turn
+reads, smaller pages for memory listings), so what 2.16.0 answered is
+answered. The one refusal that remains is a single record larger than a
+budget (one Postgres row past `NEOSIAN_MAX_RESPONSE_BYTES`, or one item past
+the spool budget), for which no smaller answer exists, and a projection page
+past the spool budget, which wire 6 cannot split; raise the setting for
+either. Through the wire every request is at most 64 MiB, so such a record
+comes only from local writes, restores, direct SQL or a lowered setting
+(`neosian docs stores`).
 `NEOSIAN_SEARCH_MAX_CANDIDATES` (100,000; 1,000,000) is the largest number of
 turns or documents holding a term that one relevance search, history or
 memory, considers; past it the search refuses and asks for narrower words or
@@ -46,7 +55,8 @@ the maximum costs roughly ten times that.
 request to `neosian serve` is served: a client asking for more gets pages of
 this size, so it caps how much one page request transfers. Every answer is
 spooled and sent after the store is released, whether or not a client pages;
-the binary's own remote client never pages. Disk use for spools is at most the
+the binary's own remote client pages only after an unpaged request is
+refused for its size. Disk use for spools is at most the
 answers being sent at once, each within `NEOSIAN_MAX_TEMP_BYTES`, in the
 system temporary directory (`TMPDIR`).
 See `neosian docs stores` for each setting's exact scope; these do not change

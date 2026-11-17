@@ -199,16 +199,21 @@ impl State for RemoteStore {
         after: i64,
         limit: Option<i64>,
     ) -> Result<Vec<Turn>, conversation::Error> {
-        Ok(self
-            .follow(
-                "conversation/read_turns",
-                json!({"conversation_id":id,"after":after,"limit":limit}),
-                "turns",
-                true,
-            )?
-            .iter()
-            .map(codec::turn)
-            .collect::<Result<_, _>>()?)
+        let mut turns = Vec::new();
+        self.read_turns_wire(id, after, limit, &mut |turn| {
+            turns.push(turn);
+            Ok(true)
+        })?;
+        Ok(turns)
+    }
+    fn read_turns_each(
+        &self,
+        id: &str,
+        after: i64,
+        limit: Option<i64>,
+        visit: &mut dyn FnMut(Turn) -> Result<bool, conversation::Error>,
+    ) -> Result<(), conversation::Error> {
+        self.read_turns_wire(id, after, limit, visit)
     }
 
     fn read_projections(

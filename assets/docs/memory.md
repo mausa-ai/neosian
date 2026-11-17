@@ -407,7 +407,9 @@ is not limited this way.
 Each hit is built as its turn arrives, so the CLI and MCP keep hits, never
 the turns themselves, and `recall_turn` keeps only the turn it shows. Against
 a server, the binary sends the same requests as 2.16.0; the server spools each
-answer before sending it (`neosian docs wire`).
+answer before sending it, and when an answer is past the server's spool
+budget the binary asks again in size pages, still building hits as turns
+arrive (`neosian docs wire`).
 
 Operator `redact` clears selected turns; `prune` applies an age cutoff to
 conversations. Whole-conversation erasure also clears their session documents.

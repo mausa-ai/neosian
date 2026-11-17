@@ -95,53 +95,83 @@ impl RemoteStore {
     }
 
     fn call(&self, endpoint: &str, payload: Value) -> Result<Value, Error> {
+        self.attempt(endpoint, payload)
+            .map_err(|failed| failed.error)
+    }
+
+    /// A call whose failure says whether a size-paged retry may answer it
+    /// (DESIGN §40.46, #418).
+    fn attempt(&self, endpoint: &str, payload: Value) -> Result<Value, Failed> {
         let response = self
             .agent
             .post(format!("{}/v1/{endpoint}", self.base))
             .header("Authorization", &self.authorization)
             .send_json(payload)
-            .map_err(driver)?;
-        self.answer(response, endpoint, true)
+            .map_err(|error| Failed::other(driver(error)))?;
+        self.answered(response, endpoint, true)
     }
 
     fn answer(
         &self,
-        mut response: ureq::http::Response<ureq::Body>,
+        response: ureq::http::Response<ureq::Body>,
         endpoint: &str,
         envelope: bool,
     ) -> Result<Value, Error> {
+        self.answered(response, endpoint, envelope)
+            .map_err(|failed| failed.error)
+    }
+
+    fn answered(
+        &self,
+        mut response: ureq::http::Response<ureq::Body>,
+        endpoint: &str,
+        envelope: bool,
+    ) -> Result<Value, Failed> {
         let status = response.status();
         // Bound untrusted response bytes before JSON allocation. Operators may
         // raise the local budget without changing a server's authorization.
-        let maximum = crate::limits::response_bytes()?;
+        let maximum = crate::limits::response_bytes().map_err(Failed::other)?;
         let mut bytes = Vec::new();
         io::Read::read_to_end(
             &mut io::Read::take(response.body_mut().as_reader(), maximum + 1),
             &mut bytes,
-        )?;
-        crate::limits::check(crate::limits::RESPONSE, bytes.len() as u64, maximum)?;
+        )
+        .map_err(|error| Failed::other(error.into()))?;
+        crate::limits::check(crate::limits::RESPONSE, bytes.len() as u64, maximum)
+            .map_err(Failed::own)?;
         let decoded = serde_json::from_slice::<Value>(&bytes);
         if !status.is_success() {
             if envelope
                 && let Ok(data) = &decoded
                 && data["error"].is_object()
             {
-                return Err(errors::decode(&data["error"]));
+                let error = errors::decode(&data["error"]);
+                return Err(if data["error"]["code"] == "value_error" {
+                    Failed::sized(error)
+                } else {
+                    Failed::other(error)
+                });
             }
-            return Err(driver(ureq::Error::StatusCode(status.as_u16())));
+            return Err(Failed::other(driver(ureq::Error::StatusCode(
+                status.as_u16(),
+            ))));
         }
-        let data = decoded.map_err(|error| Error::Value(error.to_string()))?;
+        let data = decoded.map_err(|error| Failed::other(Error::Value(error.to_string())))?;
         if !data.is_object() {
-            return Err(Error::Value(format!(
+            return Err(Failed::other(Error::Value(format!(
                 "malformed wire response for '{}'",
                 endpoint
-            )));
+            ))));
         }
         Ok(data)
     }
 
     /// Python's `_follow`: limits count rows, projections advance by whole
     /// turns on the server, and a missing continuation is malformed data.
+    /// A memory listing's page refused for its size (this client's response
+    /// budget, or `value_error` from a server that pages) is asked again
+    /// with half the rows, down to one; the first refusal is reported if
+    /// even that fails (DESIGN §40.46, #418). Every first request is 2.16.0's.
     fn follow(
         &self,
         endpoint: &str,
@@ -156,8 +186,26 @@ impl RemoteStore {
         };
         let limit = payload["limit"].as_u64();
         let mut rows = Vec::new();
+        let (mut smaller, mut first): (Option<u64>, Option<Error>) = (None, None);
         loop {
-            let data = self.call(endpoint, payload.clone())?;
+            let mut body = payload.clone();
+            if let Some(size) = smaller {
+                body["limit"] = json!(size);
+            }
+            let data = match self.attempt(endpoint, body) {
+                Ok(data) => data,
+                Err(failed) if !after && self.listing_may_shrink(&failed) => {
+                    let current = smaller
+                        .unwrap_or_else(|| payload["limit"].as_u64().unwrap_or(500).min(500));
+                    let refused = first.get_or_insert(failed.error);
+                    if current <= 1 {
+                        return Err(std::mem::replace(refused, Error::Value(String::new())));
+                    }
+                    smaller = Some(current / 2);
+                    continue;
+                }
+                Err(failed) => return Err(first.unwrap_or(failed.error)),
+            };
             let page = codec::array(&data, items)?;
             let next = codec::key(&data, answer)?;
             rows.extend(page.iter().cloned());
@@ -173,7 +221,15 @@ impl RemoteStore {
             }
             payload[send] = next.clone();
             payload["limit"] = json!(remaining);
+            smaller = smaller.map(|size| remaining.map_or(size, |left| size.min(left)));
         }
+    }
+
+    /// Whether a memory listing's refused page may be asked again smaller:
+    /// this client's own response budget, or the server's `value_error` when
+    /// it pages (its spooled answers have a disk budget).
+    fn listing_may_shrink(&self, failed: &Failed) -> bool {
+        failed.own || (failed.sized && self.capabilities["size_paging"]["version"] == 1)
     }
 }
 
@@ -202,6 +258,41 @@ impl RemoteStore {
              its turns cannot be redacted (DESIGN §38)",
         )
         .into())
+    }
+}
+
+/// A failed call. `sized` when a smaller answer may cure it: the server
+/// refused with `value_error` (an answer past one of its operation budgets
+/// carries that code, and so does a genuine argument error, which simply
+/// fails again), or the answer passed this client's own response budget,
+/// which `own` marks. No message text is read.
+struct Failed {
+    error: Error,
+    sized: bool,
+    own: bool,
+}
+
+impl Failed {
+    fn sized(error: Error) -> Self {
+        Self {
+            error,
+            sized: true,
+            own: false,
+        }
+    }
+    fn own(error: Error) -> Self {
+        Self {
+            error,
+            sized: true,
+            own: true,
+        }
+    }
+    fn other(error: Error) -> Self {
+        Self {
+            error,
+            sized: false,
+            own: false,
+        }
     }
 }
 

@@ -294,15 +294,10 @@ impl FileStore {
     /// History ranking version 1 under the store lock (DESIGN §40.43).
     pub fn rank_turns(&self, request: &Request) -> Result<Vec<Ranked>, Error> {
         let mut ranked = Vec::new();
-        self.rank_each(
-            request,
-            &Resume::Fresh,
-            Mode::Collected,
-            &mut |turn, score| {
-                ranked.push((turn, score));
-                Ok(true)
-            },
-        )?;
+        self.rank_each(request, &Resume::Fresh, Mode::Each, &mut |turn, score| {
+            ranked.push((turn, score));
+            Ok(true)
+        })?;
         Ok(ranked)
     }
 

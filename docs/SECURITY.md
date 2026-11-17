@@ -65,8 +65,8 @@ search cache or derived index; results already delivered to a client cannot
 be recalled after erasure. One search request cannot make a server hold the
 text of every match: ranked search keeps a few facts per candidate and reads
 only the winners, `NEOSIAN_SEARCH_MAX_CANDIDATES` refuses an over-broad
-relevance request, and a Postgres statement whose rows pass
-`NEOSIAN_MAX_RESPONSE_BYTES` refuses rather than growing. Answers are written
+relevance request, and every Postgres row is checked alone against
+`NEOSIAN_MAX_RESPONSE_BYTES` as it arrives. Answers are written
 item by item into a spool (memory, then a private temporary file under
 `NEOSIAN_MAX_TEMP_BYTES`), so the answer is never built whole in memory, and
 are sent only after the store's lock, snapshot and connection are released: a

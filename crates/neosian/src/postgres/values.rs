@@ -95,20 +95,9 @@ pub fn row(row: &Row) -> io::Result<Value> {
     Ok(Value::Object(fields))
 }
 
-/// About how many bytes a decoded row holds: text and keys at their length,
-/// every value and entry 16 more. Charged against the response budget.
-pub fn weight(value: &Value) -> u64 {
-    match value {
-        Value::String(text) => 16 + text.len() as u64,
-        Value::Array(items) => 16 + items.iter().map(weight).sum::<u64>(),
-        Value::Object(fields) => {
-            16 + fields
-                .iter()
-                .map(|(key, value)| 16 + key.len() as u64 + weight(value))
-                .sum::<u64>()
-        }
-        _ => 16,
-    }
+/// One row against `NEOSIAN_MAX_RESPONSE_BYTES`: its compact JSON must fit.
+pub fn fits(row: &Value, budget: u64) -> Result<(), crate::store::error::Error> {
+    crate::limits::check(crate::limits::RESPONSE, encoded(row), budget)
 }
 
 /// About how many bytes a row's compact JSON takes: what a size page counts,

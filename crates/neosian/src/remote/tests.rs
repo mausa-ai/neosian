@@ -285,3 +285,99 @@ fn a_200_that_is_not_json_is_malformed() {
     let refused = store.read_turns("c", 0, None).err().unwrap();
     assert!(matches!(refused, crate::conversation::Error::Value(_)));
 }
+
+fn refusal(message: &str) -> Value {
+    json!({"error":{"code":"value_error","message":message,"details":{}}})
+}
+
+#[test]
+fn a_refusal_for_size_is_asked_again_in_pages_only_by_a_paging_server() {
+    let budget = "resource limit NEOSIAN_MAX_TEMP_BYTES exceeded: 9 > 8; select a smaller batch or raise this setting";
+    let server = Stub::replies(vec![
+        (200, paging()),
+        (400, refusal(budget)),
+        (
+            200,
+            json!({"turns":[turn(1)],"next_after":null,"continuation":"next"}),
+        ),
+        (
+            200,
+            json!({"turns":[turn(2)],"next_after":null,"continuation":null}),
+        ),
+        (400, refusal(budget)),
+        (200, json!({"turns":[turn(3)],"continuation":null})),
+        (
+            403,
+            json!({"error":{"code":"forbidden","message":"no","details":{}}}),
+        ),
+    ]);
+    let store = RemoteStore::connect(&server.url, "test-token").unwrap();
+    let turns = store.read_turns("c", 0, None).unwrap();
+    assert_eq!(turns.iter().map(|t| t.turn).collect::<Vec<_>>(), [1, 2]);
+    let found = store.search_turns(&["x".into()], None, 5).unwrap();
+    assert_eq!(found.iter().map(|t| t.turn).collect::<Vec<_>>(), [3]);
+    // Any other refusal is reported as it is, with no second request.
+    assert!(store.read_turns("c", 0, None).is_err());
+    let requests = server.requests.lock().unwrap();
+    assert_eq!(requests.len(), 7);
+    // The first request is always 2.16.0's.
+    assert_eq!(
+        requests[1].1,
+        json!({"conversation_id":"c","after":0,"limit":null})
+    );
+    assert_eq!(
+        requests[2].1,
+        json!({"conversation_id":"c","after":0,"limit":null,"page_bytes":983_040})
+    );
+    assert_eq!(requests[3].1["continuation"], "next");
+    assert_eq!(
+        requests[4].1,
+        json!({"query":"x","conversations":null,"limit":5})
+    );
+    assert_eq!(requests[5].1["page_bytes"], 983_040);
+}
+
+#[test]
+fn a_failed_paged_retry_reports_the_first_refusal_and_old_servers_get_none() {
+    let server = Stub::replies(vec![
+        (200, paging()),
+        (400, refusal("first")),
+        (400, refusal("second")),
+    ]);
+    let store = RemoteStore::connect(&server.url, "test-token").unwrap();
+    let Err(crate::conversation::Error::Value(text)) = store.read_turns("c", 0, None) else {
+        panic!("a refusal")
+    };
+    assert_eq!(text, "first");
+    assert_eq!(server.requests.lock().unwrap().len(), 3);
+    drop(server);
+    let old = Stub::replies(vec![(200, capabilities()), (400, refusal("first"))]);
+    let store = RemoteStore::connect(&old.url, "test-token").unwrap();
+    assert!(store.search_turns(&["x".into()], None, 5).is_err());
+    assert_eq!(old.requests.lock().unwrap().len(), 2);
+}
+
+#[test]
+fn a_memory_listing_refused_for_size_is_asked_again_with_fewer_rows() {
+    let row = json!({"path":"x","version":1,"action":"created","content":"é", "actor":null,"created_at":"2026-01-01T00:00:00Z","redacted":false});
+    let server = Stub::replies(vec![
+        (200, paging()),
+        (400, refusal("too large")),
+        (
+            200,
+            json!({"versions":[row.clone(), row.clone()],"next_cursor":"c"}),
+        ),
+        (
+            200,
+            json!({"versions":[row.clone(), row],"next_cursor":null}),
+        ),
+    ]);
+    let store = RemoteStore::connect(&server.url, "test-token").unwrap();
+    assert_eq!(store.versions("user:a", "x", 4).unwrap().len(), 4);
+    let requests = server.requests.lock().unwrap();
+    assert_eq!(requests[1].1["limit"], 4);
+    assert_eq!(requests[2].1["limit"], 2);
+    assert_eq!(requests[2].1["cursor"], Value::Null);
+    assert_eq!(requests[3].1["cursor"], "c");
+    assert_eq!(requests[3].1["limit"], 2);
+}

@@ -80,8 +80,12 @@ its fields only to a service that declares it.
 The optional `"size_paging": {"version": 1}` capability adds byte-bounded pages
 to `conversation/search_turns` and `conversation/read_turns` (below). It does
 not depend on the other capabilities. The reference backends advertise it for
-clients and hosts that want a ceiling on what one response carries; the
-binary's own remote client sends the same requests as 2.16.0 to every server.
+clients and hosts that want a ceiling on what one response carries. The
+binary's own remote client always sends 2.16.0's request first; only when a
+server that advertises size paging refuses it with `value_error`, or the
+answer passes the client's own `NEOSIAN_MAX_RESPONSE_BYTES`, does it ask
+again in pages (below the server's 1 MiB in-memory spool), reporting the
+first refusal if that fails too.
 
 ## Auth
 
@@ -207,9 +211,19 @@ time rather than the answer. A slow reader costs an open file and disk until
 it finishes; it never holds the store, so other requests are not delayed.
 
 Every refusal is known before the status line and is the ordinary response
-with its status and envelope, wherever in the answer it was found. An answer
-larger than `NEOSIAN_MAX_TEMP_BYTES` is refused with `value_error` naming that
-setting; raise it for larger answers. A spool that cannot be read back while
+with its status and envelope, wherever in the answer it was found. A request
+whose answer is larger than `NEOSIAN_MAX_TEMP_BYTES` (plus the 1 MiB kept in
+memory) is refused with `value_error` naming that setting; ask for less at a
+time instead: size pages (`page_bytes`) for `conversation/search_turns` and
+`conversation/read_turns`, a smaller `limit` for the memory listings, whose
+pages follow their cursor. The binary does both by itself. A projection page
+cannot be made smaller on wire 6 (it ends on whole turns, at 500 entries), so
+a projection page past the budget needs the setting raised. One item larger
+than the budget has no smaller answer at all; neither has one Postgres row
+whose compact JSON passes `NEOSIAN_MAX_RESPONSE_BYTES`, the one check every
+Postgres read applies to each row. Requests are capped at 64 MiB, so through
+this wire neither can be written at the default settings (see `neosian docs
+stores` for what bounds each record). A spool that cannot be read back while
 sending ends the body short, and the connection closes, as any I/O failure
 closes it. Database timeouts bound the store read: `statement_timeout` each
 statement, `transaction_timeout` and `idle_in_transaction_session_timeout` the
@@ -488,7 +502,10 @@ statistics and continue after the last turn returned. Turns never change, so
 the scores and order are the same; when the candidates did change (a new
 turn, an erasure, a restore), the page refuses with `value_error`: `page
 continuation is stale: the candidate turns changed since the first page;
-search again`.
+search again`. When the binary pages only to answer a refused request and a
+page refuses as stale, it shows the first refusal (the answer was too large
+for the server's budget); the same search succeeds once writes to those
+conversations pause.
 
 Each search page repeats the search: newest and version 1 scan every
 candidate again (schema 4 has no index on turn time), and relevance counts

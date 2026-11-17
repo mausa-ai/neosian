@@ -23,7 +23,6 @@ impl PostgresStore {
         visit: &mut Visit,
     ) -> Result<Option<String>, Error> {
         let mut passes = Winners {
-            mode,
             ranking: Some(Ranking::new(request, true)?),
             resume,
             visit,
@@ -33,7 +32,6 @@ impl PostgresStore {
             stopped: false,
             refused: None,
             budget: crate::limits::response_bytes()?,
-            used: 0,
         };
         let outcome = self
             .pool
@@ -50,12 +48,11 @@ impl PostgresStore {
 }
 
 /// Relevance's two passes: the facts rows feed the ranking; the winners the
-/// page still owes are read in rank order under the response budget, each
-/// row alone unless the caller collects them (§40.46, #417). A
+/// page still owes are read in rank order, each row checked alone against
+/// the response budget (§40.46, #418). A
 /// conversation refusal, or one from the visitor, stops the read and is
 /// reported as itself.
 struct Winners<'a, 'b> {
-    mode: Mode,
     ranking: Option<Ranking>,
     resume: &'a Resume,
     visit: &'a mut Visit<'b>,
@@ -65,7 +62,6 @@ struct Winners<'a, 'b> {
     stopped: bool,
     refused: Option<Error>,
     budget: u64,
-    used: u64,
 }
 
 impl Winners<'_, '_> {
@@ -118,8 +114,7 @@ impl Passes for Winners<'_, '_> {
     }
 
     fn then(&mut self, row: Value) -> Result<bool, StoreError> {
-        self.used = self.mode.charge(self.used, super::values::weight(&row));
-        crate::limits::check(crate::limits::RESPONSE, self.used, self.budget)?;
+        super::values::fits(&row, self.budget)?;
         let decoded = match codec::text(&row, "conversation_id") {
             Ok(id) => rows::turn(&id, row),
             Err(error) => Err(error.into()),

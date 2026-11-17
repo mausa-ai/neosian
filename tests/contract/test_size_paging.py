@@ -270,6 +270,37 @@ def remote_and_local(binary: Binary, server: Server, *args: str) -> None:
         assert remote.stdout == local.stdout
 
 
+def test_an_answer_past_the_servers_spool_budget_is_read_in_pages(
+    binary: Binary,
+) -> None:
+    # #418: a server whose temporary-file budget is lower than an answer
+    # refuses it unpaged; the binary asks again in size pages and its doors
+    # answer exactly as a local read, which is never refused for size.
+    plant_long(binary.home, 120, 13_000)
+    temp = {"NEOSIAN_MAX_TEMP_BYTES": str(1 << 20)}
+    with serve(binary, extra_env=temp) as server:
+        status, answer = raw(
+            server, "conversation/read_turns", {"conversation_id": LONG}
+        )
+        assert status == 400
+        error = json.loads(answer)["error"]
+        assert error["code"] == "value_error"
+        assert error["message"].startswith(
+            "resource limit NEOSIAN_MAX_TEMP_BYTES exceeded: "
+        )
+        for args in [
+            ("continue", LONG),
+            ("search", "dashboard", "--order", "newest", "--limit", "500", "--json"),
+            ("search", "dashboard", "word", "--limit", "500", "--json"),
+        ]:
+            remote_and_local(binary, server, *args)
+        calls: list[dict[str, Any]] = [{"query": "dashboard word", "limit": 50}]
+        flags = ("--url", server.url, "--scope", "user:contract")
+        _, mine = mcp(binary, calls, *flags, env=REMOTE)
+    _, theirs = mcp(binary, calls)
+    assert mine == theirs and mine[0].get("isError") is not True
+
+
 def test_remote_doors_answer_as_a_local_read(binary: Binary) -> None:
     plant(binary.home, CORPUS)
     plant_long(binary.home, 30, 300)

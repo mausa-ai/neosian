@@ -43,17 +43,29 @@ phase close names the version.
   once all complete, the container's limit filled only with the spools'
   reclaimable file cache.
 - `NEOSIAN_MAX_TEMP_BYTES` (512 MiB by default) also bounds the part of one
-  answer spooled to disk; a larger answer is refused with `value_error`
-  naming the setting. 2.16.0 built such an answer in memory instead.
-- On Postgres, `NEOSIAN_MAX_RESPONSE_BYTES` (64 MiB by default) bounds what a
-  read holds: a read that keeps its rows in memory (a full conversation read
-  by a local command, a page of memory versions or history) stops and
-  refuses, naming the setting, once its rows together pass it; a turn read or
-  search whose rows are spooled or turned into hits as they arrive refuses
-  only a single row over it, so answers 2.16.0 served are served. Database
-  timeouts bound the reads; they no longer have anything to do with sending,
-  which starts after the connection is released. The connection pool takes
-  any free connection, and statements are prepared once per connection.
+  answer spooled to disk; a request whose answer is larger is refused with
+  `value_error` naming the setting. The binary then asks again in smaller
+  pieces, so its reads and searches are answered: size pages for history
+  search and turn reads (only from a server that advertises them, and only
+  after the unpaged request was refused, so ordinary requests are exactly
+  2.16.0's), smaller pages for memory listings. If that fails too, the first
+  refusal is shown. Other clients can do the same with `page_bytes` or
+  `limit`.
+- On Postgres, `NEOSIAN_MAX_RESPONSE_BYTES` (64 MiB by default) is checked
+  against each row of every read alone, as its compact JSON; rows are never
+  charged together, so every read 2.16.0 answered is answered, served or
+  local. Database timeouts bound the reads; they no longer have anything to
+  do with sending, which starts after the connection is released. The
+  connection pool takes any free connection, and statements are prepared
+  once per connection.
+- One refusal remains, where no smaller answer exists: a single record
+  larger than a budget (one Postgres row past `NEOSIAN_MAX_RESPONSE_BYTES`,
+  one item past the spool budget), and a projection page past the spool
+  budget, which wire 6 cannot split. Every HTTP request is at most 64 MiB
+  and the file store refuses memory writes past `NEOSIAN_MAX_FILE_BYTES`,
+  so at the default settings such a record comes only from local writes to
+  Postgres, locally recorded turns, restores or direct SQL; raise the
+  setting to read it.
 - `neosian search` and MCP `search_history` turn each matching turn into its
   hit as it arrives instead of keeping every turn, and `recall_turn` keeps
   only the turn it shows. File-backed turn reads stream the log a line at a
@@ -72,8 +84,8 @@ phase close names the version.
   Each search page repeats the search's scan, so paging a large search costs
   many times an unpaged one; turn reads page cheaply. Independent
   conformance cases specify it, and a service without it still passes. The
-  binary's own remote client never pages: it sends the same requests as
-  2.16.0 to every server.
+  binary's own remote client sends 2.16.0's requests and pages only to
+  answer a request a server refused for its size.
 - `NEOSIAN_MAX_PAGE_BYTES` (default 8 MiB, at most 1 GiB) caps the page a
   size-paged request is served; a client asking for more gets pages of that
   size.

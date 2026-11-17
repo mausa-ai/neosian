@@ -1,6 +1,6 @@
 //! Four lazy connections, with transactions for optional durable change events.
 //! No DDL; retry only known aborted races, never a lost commit response.
-//! Reads stream their rows and charge each against the response budget as it
+//! Reads stream their rows and check each against the response budget as it
 //! arrives, so no statement is collected whole by accident (DESIGN §40.45).
 
 mod scan;
@@ -219,24 +219,25 @@ pub(super) fn bind(
         .collect()
 }
 
-/// Every row of one statement, decoded as it arrives. Each row's decoded size
-/// counts against `budget`; past it the read stops and refuses, naming
-/// `NEOSIAN_MAX_RESPONSE_BYTES`, instead of holding more. The driver applies
-/// backpressure, so unread rows wait in the socket, not in memory.
+/// Every row of one statement, decoded as it arrives. A row whose compact JSON
+/// is larger than `budget` stops the read and refuses, naming
+/// `NEOSIAN_MAX_RESPONSE_BYTES`: one item that large has no bounded answer.
+/// Rows are not charged together, so any answer 2.16.0 gave is read
+/// (DESIGN §40.46, #418). The driver applies backpressure, so unread rows
+/// wait in the socket, not in memory.
 async fn collect(
     rows: tokio_postgres::RowStream,
     budget: u64,
 ) -> Result<io::Result<Vec<Value>>, tokio_postgres::Error> {
     use futures_util::TryStreamExt;
     futures_util::pin_mut!(rows);
-    let (mut decoded, mut used) = (Vec::new(), 0_u64);
+    let mut decoded = Vec::new();
     while let Some(row) = rows.try_next().await? {
         let value = match values::row(&row) {
             Ok(value) => value,
             Err(error) => return Ok(Err(error)),
         };
-        used = used.saturating_add(values::weight(&value));
-        if let Err(refusal) = crate::limits::check(crate::limits::RESPONSE, used, budget) {
+        if let Err(refusal) = values::fits(&value, budget) {
             return Ok(Err(crate::limits::into_io(refusal)));
         }
         decoded.push(value);
