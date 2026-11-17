@@ -2,7 +2,7 @@
 //!
 //! Path order streams in path order and stops after its lookahead. Relevance
 //! and newest read the whole eligible selection keeping facts, not hits:
-//! relevance a path, time, counts and length per candidate, newest at most
+//! relevance a path, counts and length per candidate, newest at most
 //! `limit` keys. The backend then reads the winners again, in the same
 //! boundary, and only they get excerpts and passages (DESIGN §40.45).
 
@@ -13,11 +13,49 @@ use super::{Excerpt, Hit, Order, Page, Passage, Request, matching, searchable};
 use crate::store::{Document, error::Error, time::Stamp};
 use serde_json::json;
 
-/// What ranking keeps of one candidate document: its path, needed to read
-/// the winners again and to break ties, held at its exact length (#417).
-struct Key {
+struct NewestKey {
     path: Box<str>,
     updated: i64,
+}
+
+/// Store all relevance paths without one allocation per document or a
+/// growing buffer that would have to copy all earlier paths.
+#[derive(Default)]
+struct Paths {
+    blocks: Vec<String>,
+}
+
+struct PathRef {
+    start: usize,
+    len: usize,
+}
+
+impl Paths {
+    const BLOCK_BYTES: usize = 64 * 1024;
+
+    fn keep(&mut self, path: &str) -> PathRef {
+        if self
+            .blocks
+            .last()
+            .is_none_or(|block| block.len() + path.len() > Self::BLOCK_BYTES)
+        {
+            self.blocks.push(String::with_capacity(Self::BLOCK_BYTES));
+        }
+        let index = self.blocks.len() - 1;
+        let block = &mut self.blocks[index];
+        let start = index * Self::BLOCK_BYTES + block.len();
+        block.push_str(path);
+        PathRef {
+            start,
+            len: path.len(),
+        }
+    }
+
+    fn get(&self, key: &PathRef) -> &str {
+        let block = &self.blocks[key.start / Self::BLOCK_BYTES];
+        let offset = key.start % Self::BLOCK_BYTES;
+        &block[offset..offset + key.len]
+    }
 }
 
 pub struct Scan<'a> {
@@ -30,8 +68,9 @@ pub struct Scan<'a> {
     bounds: (Option<i64>, Option<i64>),
     page: Page,
     stats: Stats,
-    facts: Facts<Key>,
-    newest: Best<Key>,
+    paths: Paths,
+    facts: Facts<PathRef>,
+    newest: Best<NewestKey>,
     winners: Vec<(String, Option<u64>)>,
     built: HashMap<String, Hit>,
 }
@@ -53,6 +92,7 @@ impl<'a> Scan<'a> {
             after: request.scope_after(scope)?,
             bounds: request.bounds().map_err(Error::Value)?,
             stats: Stats::new(terms.len()),
+            paths: Paths::default(),
             facts: Facts::new(terms.len(), maximum),
             newest: Best::new(request.limit),
             terms,
@@ -123,10 +163,7 @@ impl<'a> Scan<'a> {
                     matching::tally(self.scope, &path, &document, request, &self.terms, true)?;
                 self.stats.add(&tally.counts, tally.length);
                 if tally.counts.iter().any(|c| *c > 0) {
-                    let key = Key {
-                        path: path.into_boxed_str(),
-                        updated: document.envelope.updated_at.instant(),
-                    };
+                    let key = self.paths.keep(&path);
                     self.facts
                         .keep(key, &tally.counts, tally.length)
                         .map_err(|broad| {
@@ -143,7 +180,7 @@ impl<'a> Scan<'a> {
                 let tally =
                     matching::tally(self.scope, &path, &document, request, &self.terms, false)?;
                 if tally.all {
-                    let key = Key {
+                    let key = NewestKey {
                         path: path.into_boxed_str(),
                         updated: document.envelope.updated_at.instant(),
                     };
@@ -177,11 +214,14 @@ impl<'a> Scan<'a> {
     pub fn winners(&mut self) -> Vec<String> {
         let facts = std::mem::replace(&mut self.facts, Facts::new(0, 0));
         let newest = std::mem::replace(&mut self.newest, Best::new(0));
+        let paths = std::mem::take(&mut self.paths);
         self.winners = match self.order {
             Order::Relevance => facts
-                .best(&self.stats, self.request.limit, |a, b| a.path.cmp(&b.path))
+                .best(&self.stats, self.request.limit, |a, b| {
+                    paths.get(a).cmp(paths.get(b))
+                })
                 .into_iter()
-                .map(|(key, score)| (key.path.into_string(), Some(score)))
+                .map(|(key, score)| (paths.get(&key).to_owned(), Some(score)))
                 .collect(),
             Order::Newest => newest
                 .into_vec(self::newest)
@@ -232,7 +272,7 @@ impl<'a> Scan<'a> {
 }
 
 /// Newest order: `updated_at` descending, then path ascending.
-fn newest(a: &Key, b: &Key) -> std::cmp::Ordering {
+fn newest(a: &NewestKey, b: &NewestKey) -> std::cmp::Ordering {
     (b.updated, &a.path).cmp(&(a.updated, &b.path))
 }
 

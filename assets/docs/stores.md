@@ -87,7 +87,8 @@ twice that while the arrays grow), and the name it is read back by: a history
 candidate shares its conversation's id with the other candidates of that
 conversation (on files the store's own listing of conversations, on Postgres
 one copy of each id plus about 100 bytes for its lookup), and a memory
-candidate keeps its path, up to 512 characters. Measured at the default bound
+candidate keeps its path, up to 512 characters, packed into shared blocks.
+Measured at the default bound
 with one candidate per conversation and 128-character ids, a history search
 peaks at about 33 MiB on files and 43 MiB on Postgres; with 500-character
 memory paths, about 67 MiB. At the maximum of 1,000,000 that is roughly 0.3

@@ -83,40 +83,44 @@ pub fn case_collision(root: &Path, scope: &str) -> io::Result<bool> {
     Ok(false)
 }
 
-/// Every logical path with a `suffix` file under `dir`, sorted. A foreign
+/// Visit every logical path with a `suffix` file under `dir`. A foreign
 /// file whose name is outside the grammar is skipped, never ours to read.
-pub fn visit_paths(dir: &Path, suffix: &str, visit: &mut impl FnMut(String)) -> io::Result<()> {
+fn visit_paths(dir: &Path, suffix: &str, visit: &mut impl FnMut(&str)) -> io::Result<()> {
     fn walk(
         dir: &Path,
-        prefix: &str,
+        logical: &mut String,
         suffix: &str,
-        visit: &mut impl FnMut(String),
+        visit: &mut impl FnMut(&str),
     ) -> io::Result<()> {
+        let prefix_len = logical.len();
         for entry in fs::read_dir(dir)? {
             let entry = entry?;
             let Ok(name) = entry.file_name().into_string() else {
                 continue;
             };
             if entry.file_type()?.is_dir() {
-                walk(&entry.path(), &format!("{prefix}{name}/"), suffix, visit)?;
+                logical.push_str(&name);
+                logical.push('/');
+                walk(&entry.path(), logical, suffix, visit)?;
             } else if let Some(stem) = name.strip_suffix(suffix) {
-                let logical = format!("{prefix}{stem}");
-                if validate_document_path(&logical).is_ok() {
+                logical.push_str(stem);
+                if validate_document_path(logical).is_ok() {
                     visit(logical);
                 }
             }
+            logical.truncate(prefix_len);
         }
         Ok(())
     }
     if dir.is_dir() {
-        walk(dir, "", suffix, visit)?;
+        walk(dir, &mut String::new(), suffix, visit)?;
     }
     Ok(())
 }
 
 pub fn logical_paths(dir: &Path, suffix: &str) -> io::Result<Vec<String>> {
     let mut found = Vec::new();
-    visit_paths(dir, suffix, &mut |p| found.push(p))?;
+    visit_paths(dir, suffix, &mut |p| found.push(p.to_owned()))?;
     found.sort();
     Ok(found)
 }
@@ -129,10 +133,13 @@ pub fn path_page(
     after: &str,
     limit: usize,
 ) -> io::Result<Vec<String>> {
-    let mut selected = std::collections::BTreeSet::new();
+    let mut selected = std::collections::BTreeSet::<String>::new();
     visit_paths(dir, suffix, &mut |path| {
-        if path.as_str() > after && path.starts_with(prefix) {
-            selected.insert(path);
+        if path > after
+            && path.starts_with(prefix)
+            && (selected.len() < limit || selected.last().is_some_and(|last| path < last.as_str()))
+        {
+            selected.insert(path.to_owned());
             if selected.len() > limit {
                 selected.pop_last();
             }

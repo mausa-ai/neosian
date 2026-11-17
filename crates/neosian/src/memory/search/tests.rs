@@ -251,3 +251,31 @@ fn ranked_orders_read_only_their_winners_again() {
         assert_eq!(page.order, Some(order));
     }
 }
+
+#[test]
+fn relevance_breaks_score_ties_by_full_path_across_storage_blocks() {
+    fn path(id: usize) -> String {
+        let segment = if id.is_multiple_of(2) { "A" } else { "z" }.repeat(120);
+        format!("{id:03}/{segment}/{segment}/{segment}/{segment}")
+    }
+    let mut q = request("needle");
+    q.order = Some(Order::Relevance);
+    q.limit = 2;
+    // Equal-length unrelated paths. The two winners land in different
+    // blocks, and the second winner arrives after all even-numbered paths.
+    let rows = (0..300)
+        .step_by(2)
+        .chain((1..300).step_by(2))
+        .map(|id| Ok((path(id), document("needle"))));
+    let mut read = Vec::new();
+    let page = scan("user:test", &q, rows, |winner| {
+        read.push(winner.to_owned());
+        Ok(document("needle"))
+    })
+    .unwrap();
+    assert_eq!(read, [path(0), path(1)]);
+    assert_eq!(page.hits[0].path, read[0]);
+    assert_eq!(page.hits[1].path, read[1]);
+    assert!(page.hits[0].score.is_some());
+    assert_eq!(page.hits[0].score, page.hits[1].score);
+}
