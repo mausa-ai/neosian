@@ -17,7 +17,7 @@ import pytest
 from tests.contract.postgres.test_size_paging import LONG, Database, plant, raw
 from tests.contract.profile_support import run
 from tests.contract.support import ADMIN, Binary, serve
-from tests.contract.test_spool import WARNING, no_larger_files
+from tests.contract.test_spool import WARNING, no_larger_files, unwritable
 
 pytestmark = pytest.mark.postgres
 READ: tuple[str, dict[str, Any]] = (
@@ -63,10 +63,8 @@ def test_an_unwritable_temporary_directory_answers_from_memory(
     plant(connection, schema, count=120, words=13_000)
     expected = answers(binary, schema)
     assert [status for status, _ in expected] == [200, 200]
-    blocked = binary.directory / "not-a-directory"
-    blocked.write_text("x", encoding="utf-8")
     log: list[str] = []
-    tmp = {"TMPDIR": str(blocked)}
+    tmp = unwritable(binary)
     assert answers(binary, schema, extra_env=tmp, log=log) == expected
     assert log[0].count(WARNING) == 1, log[0]
     through_the_binary(binary, schema, extra_env=tmp)

@@ -290,12 +290,14 @@ fn refusal(message: &str) -> Value {
     json!({"error":{"code":"value_error","message":message,"details":{}}})
 }
 
+const TEMP_BUDGET: &str = "resource limit NEOSIAN_MAX_TEMP_BYTES exceeded: 9 > 8; select a smaller batch or raise this setting";
+const ANSWER_BUDGET: &str = "resource limit NEOSIAN_MAX_RESPONSE_BYTES exceeded: 3 > 2; select a smaller batch or raise this setting";
+
 #[test]
 fn a_refusal_for_size_is_asked_again_in_pages_only_by_a_paging_server() {
-    let budget = "resource limit NEOSIAN_MAX_TEMP_BYTES exceeded: 9 > 8; select a smaller batch or raise this setting";
     let server = Stub::replies(vec![
         (200, paging()),
-        (400, refusal(budget)),
+        (400, refusal(TEMP_BUDGET)),
         (
             200,
             json!({"turns":[turn(1)],"next_after":null,"continuation":"next"}),
@@ -304,7 +306,7 @@ fn a_refusal_for_size_is_asked_again_in_pages_only_by_a_paging_server() {
             200,
             json!({"turns":[turn(2)],"next_after":null,"continuation":null}),
         ),
-        (400, refusal(budget)),
+        (400, refusal(TEMP_BUDGET)),
         (200, json!({"turns":[turn(3)],"continuation":null})),
         (
             403,
@@ -341,17 +343,17 @@ fn a_refusal_for_size_is_asked_again_in_pages_only_by_a_paging_server() {
 fn a_failed_paged_retry_reports_the_first_refusal_and_old_servers_get_none() {
     let server = Stub::replies(vec![
         (200, paging()),
-        (400, refusal("first")),
-        (400, refusal("second")),
+        (400, refusal(TEMP_BUDGET)),
+        (400, refusal(ANSWER_BUDGET)),
     ]);
     let store = RemoteStore::connect(&server.url, "test-token").unwrap();
     let Err(crate::conversation::Error::Value(text)) = store.read_turns("c", 0, None) else {
         panic!("a refusal")
     };
-    assert_eq!(text, "first");
+    assert_eq!(text, TEMP_BUDGET);
     assert_eq!(server.requests.lock().unwrap().len(), 3);
     drop(server);
-    let old = Stub::replies(vec![(200, capabilities()), (400, refusal("first"))]);
+    let old = Stub::replies(vec![(200, capabilities()), (400, refusal(TEMP_BUDGET))]);
     let store = RemoteStore::connect(&old.url, "test-token").unwrap();
     assert!(store.search_turns(&["x".into()], None, 5).is_err());
     assert_eq!(old.requests.lock().unwrap().len(), 2);
@@ -362,7 +364,7 @@ fn a_memory_listing_refused_for_size_is_asked_again_with_fewer_rows() {
     let row = json!({"path":"x","version":1,"action":"created","content":"é", "actor":null,"created_at":"2026-01-01T00:00:00Z","redacted":false});
     let server = Stub::replies(vec![
         (200, paging()),
-        (400, refusal("too large")),
+        (400, refusal(ANSWER_BUDGET)),
         (
             200,
             json!({"versions":[row.clone(), row.clone()],"next_cursor":"c"}),
@@ -408,9 +410,9 @@ fn a_retry_that_fails_for_another_reason_reports_itself() {
     let row = json!({"path":"x","version":1,"action":"created","content":"é", "actor":null,"created_at":"2026-01-01T00:00:00Z","redacted":false});
     let server = Stub::replies(vec![
         (200, paging()),
-        (400, refusal("too large")),
+        (400, refusal(TEMP_BUDGET)),
         (403, forbidden.clone()),
-        (400, refusal("too large")),
+        (400, refusal(TEMP_BUDGET)),
         (
             200,
             json!({"versions":[row.clone(), row.clone()],"next_cursor":"c"}),
@@ -430,4 +432,48 @@ fn a_retry_that_fails_for_another_reason_reports_itself() {
     };
     assert_eq!(error.message, "revoked");
     assert_eq!(server.requests.lock().unwrap().len(), 6);
+}
+
+#[test]
+fn a_value_error_keeps_its_message_on_initial_and_smaller_pages() {
+    let broad = crate::limits::broad(5, "turns", "the words");
+    let mut capabilities = paging();
+    capabilities["history_ranking"] = json!({"version": 1});
+    let server = Stub::replies(vec![
+        (200, capabilities),
+        (400, refusal(TEMP_BUDGET)),
+        (400, refusal(&broad)),
+        (400, refusal("invalid cursor")),
+        (400, refusal(TEMP_BUDGET)),
+        (400, refusal("cursor no longer valid")),
+        (400, refusal(TEMP_BUDGET)),
+        (
+            200,
+            json!({"turns":[turn(1)],"scores":[7],"order":"relevance","continuation":"next"}),
+        ),
+        (400, refusal(crate::conversation::page::STALE)),
+    ]);
+    let store = RemoteStore::connect(&server.url, "test-token").unwrap();
+    let search = crate::conversation::rank::Request {
+        terms: vec!["x".into()],
+        ids: None,
+        limit: 5,
+        order: crate::conversation::rank::Order::Relevance,
+        since: None,
+        before: None,
+    };
+    assert_eq!(store.rank_turns_wire(&search).err().unwrap().text(), broad);
+    for expected in ["invalid cursor", "cursor no longer valid"] {
+        let Err(Error::Value(message)) = store.versions("user:a", "x", 4) else {
+            panic!("invalid listing cursor");
+        };
+        assert_eq!(message, expected);
+    }
+    // A relevance continuation that went stale retains its documented
+    // diagnostic for a search split only because the answer was too large.
+    assert_eq!(
+        store.rank_turns_wire(&search).err().unwrap().text(),
+        TEMP_BUDGET
+    );
+    assert_eq!(server.requests.lock().unwrap().len(), 9);
 }

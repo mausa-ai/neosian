@@ -240,10 +240,11 @@ pub fn run(args: &Serve, out: &mut impl Write, err: &mut impl Write) -> io::Resu
         Err(error) => writeln!(
             err,
             "neosian serve: WARNING: cannot spool answers in the temporary directory {} \
-             (TMPDIR): {error}; answers over 1 MiB are held in memory, up to \
+             ({variable}): {error}; answers over 1 MiB are held in memory, up to \
              NEOSIAN_MAX_RESPONSE_BYTES each, until it is writable. Give the server a \
-             writable, disk-backed TMPDIR.",
-            env::temp_dir().display()
+             writable, disk-backed {variable}.",
+            env::temp_dir().display(),
+            variable = if cfg!(windows) { "TMP" } else { "TMPDIR" },
         )?,
     }
     let closing = mcp.as_ref().map(|surface| surface.closing.clone());

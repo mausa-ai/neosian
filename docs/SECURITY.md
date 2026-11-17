@@ -73,10 +73,11 @@ connection are released: a slow or stalled reader costs an open file and
 disk, never the store, and every refusal is the ordinary error response.
 Spool files are private to the server user, kept under the server's own
 locked directory in the temporary directory, and removed when the answer is
-sent or abandoned. A killed server leaves its directory; the next server
-started with the same temporary directory removes it, and removes nothing
-else. Disk use has no total: it is the answers being sent at once, each at
-most `NEOSIAN_MAX_TEMP_BYTES`, only the open-file limit bounds how many, and
+sent or abandoned. At startup on Unix the server checks the owner and lock
+of each spool directory before removing an ended server's spools. On
+Windows use a private temporary directory and remove a killed server's
+directory after it exits. Disk use has no total: it is the answers being
+sent at once, each at most `NEOSIAN_MAX_TEMP_BYTES`. Only the open-file limit bounds how many, and
 no timeout ends a stalled send. Give the server a disk-backed temporary
 directory; when it cannot write one it holds answers over 1 MiB in memory, up
 to `NEOSIAN_MAX_RESPONSE_BYTES` each, as 2.16.0 did. Size-paging

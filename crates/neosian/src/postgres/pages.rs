@@ -19,6 +19,26 @@ fn parts(method: &str, cursor: Option<&str>, kinds: &[Kind]) -> Result<Vec<Value
 }
 
 impl PostgresStore {
+    /// A zero-limit listing still binds the prefix and checks SELECT access.
+    pub fn check_document_listing(&self, scope: &str, prefix: &str) -> Result<(), Error> {
+        parse_scope(scope)?;
+        self.document_rows(scope, prefix, &Value::Null, 0)?;
+        Ok(())
+    }
+
+    fn document_rows(
+        &self,
+        scope: &str,
+        prefix: &str,
+        after: &Value,
+        count: usize,
+    ) -> Result<Vec<Value>, Error> {
+        self.fetch(
+            sql!("pageable/list_documents"),
+            json!({"scope":scope,"pattern":format!("{}%", rows::escaped(prefix)),"path":after,"limit":count}),
+        )
+    }
+
     pub fn list_documents_page(
         &self,
         scope: &str,
@@ -29,7 +49,7 @@ impl PostgresStore {
         parse_scope(scope)?;
         let limit = page_limit(limit)?;
         let key = parts("list", cursor, &[Kind::Str])?;
-        let rows = self.fetch(sql!("pageable/list_documents"), json!({"scope":scope,"pattern":format!("{}%", rows::escaped(prefix)),"path":key[0],"limit":limit+1}))?;
+        let rows = self.document_rows(scope, prefix, &key[0], limit + 1)?;
         let entries = rows
             .iter()
             .map(|row| memory::entry(scope, row))

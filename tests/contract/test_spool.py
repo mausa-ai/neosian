@@ -42,6 +42,7 @@ NEWEST: tuple[str, dict[str, Any]] = (
     {"query": "dashboard", "order": "newest", "limit": 500},
 )
 WARNING = "neosian serve: WARNING: cannot spool answers in the temporary directory "
+TEMP_VARIABLE = "TMP" if os.name == "nt" else "TMPDIR"
 POSIX = pytest.mark.skipif(os.name == "nt", reason="POSIX resource limits")
 
 
@@ -55,7 +56,7 @@ def unwritable(binary: Binary) -> dict[str, str]:
     # by a superuser.
     blocked = binary.directory / "not-a-directory"
     blocked.write_text("x", encoding="utf-8")
-    return {"TMPDIR": str(blocked)}
+    return {TEMP_VARIABLE: str(blocked)}
 
 
 def test_an_unwritable_temporary_directory_answers_from_memory(
@@ -76,7 +77,7 @@ def test_an_unwritable_temporary_directory_answers_from_memory(
         remote_and_local(binary, server, "continue", LONG)
         remote_and_local(binary, server, "search", "dashboard", "word", "--json")
     assert log[0].count(WARNING) == 1, log[0]
-    assert "(TMPDIR)" in log[0] and "NEOSIAN_MAX_RESPONSE_BYTES" in log[0]
+    assert f"({TEMP_VARIABLE})" in log[0] and "NEOSIAN_MAX_RESPONSE_BYTES" in log[0]
     # Past the response budget the answer is refused as an operation budget,
     # and the binary's size pages, each under 1 MiB, answer it.
     budget = {**blocked, "NEOSIAN_MAX_RESPONSE_BYTES": str(2 << 20)}

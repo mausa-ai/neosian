@@ -181,8 +181,11 @@ fn list_documents(store: &dyn Backend, payload: &Payload, _client: &str) -> Resu
     let page = memory_page(
         payload,
         None,
-        |_| Ok(store.list_documents(&scope, &prefix)?),
-        |cursor, size| Ok(store.list_documents_page(&scope, &prefix, cursor, size)?),
+        |_| {
+            store.check_document_listing(&scope, &prefix)?;
+            Ok(Vec::new())
+        },
+        |cursor, size| Ok(store.document_page(&scope, &prefix, cursor, size)?),
     )?;
     let entries: Vec<Value> = page.items.iter().map(codec::entry).collect();
     Ok(json!({"entries": entries, "next_cursor": page.next_cursor}))

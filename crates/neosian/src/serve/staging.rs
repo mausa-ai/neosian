@@ -1,23 +1,18 @@
 //! Where `neosian serve` spools answers (DESIGN §40.46, #419): one root per
 //! process, `.neosian-serve-<uuid>` in the temporary directory, private,
 //! holding a `lock` file the process keeps locked while it runs and one
-//! private directory per answer on disk. A root whose lock nobody holds
-//! belongs to a server that has ended (killed, or crashed); the next server
-//! to start removes it. Nothing else in the temporary directory is touched.
+//! private directory per answer on disk. On Unix, startup checks a root's
+//! owner and published lock marker before removing an ended server's spools.
 
-use std::fs::{self, File, Metadata, TryLockError};
+use std::fs::{self, File, Metadata};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, PoisonError};
-use std::time::{Duration, SystemTime};
 
 use crate::store::fileio::{private, private_builder};
 
 const PREFIX: &str = ".neosian-serve-";
 const LOCK: &str = "lock";
-/// A root without its lock file is one another server is still making,
-/// unless it is older than this.
-const UNFINISHED: Duration = Duration::from_secs(3600);
 
 struct Root {
     directory: PathBuf,
@@ -49,12 +44,11 @@ fn make(parent: &Path) -> io::Result<Root> {
             .write(true)
             .create_new(true)
             .open(directory.join(LOCK))?;
+        // The marker becomes nonempty only while locked. Before that a
+        // concurrent startup must leave the new directory alone.
+        lock.lock()?;
         lock.write_all(b"\0")?;
-        match lock.try_lock() {
-            Ok(()) => Ok(lock),
-            Err(TryLockError::WouldBlock) => Err(io::Error::other("the new root's lock is held")),
-            Err(TryLockError::Error(error)) => Err(error),
-        }
+        Ok(lock)
     })();
     match locked {
         Ok(lock) => Ok(Root {
@@ -99,8 +93,8 @@ pub fn close() {
 }
 
 /// Remove ended servers' roots beside `ours`: a directory (never a link)
-/// named `.neosian-serve-<uuid>`, owned by this user, whose lock file nobody
-/// holds, or that has had no lock file for an hour.
+/// named `.neosian-serve-<uuid>`, owned by this user, with a published lock
+/// marker that nobody holds.
 fn sweep(ours: &Path) -> usize {
     let (Some(parent), Ok(owner)) = (ours.parent(), fs::symlink_metadata(ours)) else {
         return 0;
@@ -123,7 +117,7 @@ fn sweep(ours: &Path) -> usize {
         };
         if found.file_type().is_dir()
             && same_owner(&found, &owner)
-            && ended(&path, &found)
+            && ended(&path)
             && fs::remove_dir_all(&path).is_ok()
         {
             removed += 1;
@@ -132,17 +126,11 @@ fn sweep(ours: &Path) -> usize {
     removed
 }
 
-fn ended(root: &Path, found: &Metadata) -> bool {
-    match private().read(true).write(true).open(root.join(LOCK)) {
-        // Taking the lock proves its owner is gone; it is let go at once.
-        Ok(lock) => matches!(lock.try_lock(), Ok(())),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => found
-            .modified()
-            .ok()
-            .and_then(|modified| SystemTime::now().duration_since(modified).ok())
-            .is_some_and(|age| age > UNFINISHED),
-        Err(_) => false,
-    }
+fn ended(root: &Path) -> bool {
+    let Ok(lock) = private().read(true).write(true).open(root.join(LOCK)) else {
+        return false;
+    };
+    lock.metadata().is_ok_and(|meta| meta.len() == 1) && lock.try_lock().is_ok()
 }
 
 #[cfg(unix)]
@@ -153,7 +141,8 @@ fn same_owner(found: &Metadata, ours: &Metadata) -> bool {
 
 #[cfg(not(unix))]
 fn same_owner(_found: &Metadata, _ours: &Metadata) -> bool {
-    true
+    // Without an ownership check we can only clean our own root at close.
+    false
 }
 
 #[cfg(test)]
@@ -180,14 +169,23 @@ mod tests {
         }
         let unfinished = parent.join(format!("{PREFIX}{}", uuid::Uuid::new_v4()));
         private_builder().create(&unfinished).unwrap();
-        assert_eq!(sweep(&ours.directory), 1);
-        assert!(!ended_path.exists());
+        // Pause startup between opening the marker and acquiring its lock.
+        // A sweeper can observe either this state or the completed live root.
+        let marker = private()
+            .read(true)
+            .write(true)
+            .create_new(true)
+            .open(unfinished.join(LOCK))
+            .unwrap();
+        assert_eq!(sweep(&ours.directory), usize::from(cfg!(unix)));
+        assert_eq!(ended_path.exists(), !cfg!(unix));
+        assert!(marker.try_lock().is_ok());
         assert!(live.directory.join(LOCK).exists());
         assert!(unfinished.exists(), "a root still being made is kept");
         for path in &foreign {
             assert!(path.exists());
         }
-        drop((ours, live));
+        drop((ours, live, marker));
         fs::remove_dir_all(parent).unwrap();
     }
 }

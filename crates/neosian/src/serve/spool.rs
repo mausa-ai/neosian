@@ -113,13 +113,13 @@ impl Writer {
         self.text("}")
     }
 
-    fn bytes(&mut self, bytes: &[u8]) -> io::Result<()> {
+    fn bytes(&mut self, mut bytes: &[u8]) -> io::Result<()> {
         if let Some(spilled) = self.file.as_mut() {
-            return match spilled.write(bytes) {
+            return match spilled.write(&mut bytes) {
                 Ok(()) => Ok(()),
                 Err(Spill::Refused(error)) => Err(error),
-                // The bytes are in `pending`, so they come back with the rest.
-                Err(Spill::Unavailable) => self.in_memory(),
+                // Recover the confirmed chunks, the failed chunk and the unsubmitted suffix.
+                Err(Spill::Unavailable) => self.in_memory(bytes),
             };
         }
         if self.memory.is_none() && self.held.len() + bytes.len() <= MEMORY {
@@ -150,16 +150,16 @@ impl Writer {
         {
             spilled.fail_after = self.fail_after;
         }
-        spilled.write(&self.held)?;
+        spilled.write(&mut self.held.as_slice())?;
         Ok(spilled)
     }
 
     /// The spool failed: what it holds comes back into memory, checked
     /// against the response budget before it is read.
-    fn in_memory(&mut self) -> io::Result<()> {
+    fn in_memory(&mut self, remaining: &[u8]) -> io::Result<()> {
         let spilled = self.file.take().expect("a spool to read back");
         let maximum = response_bytes()?;
-        self.held = spilled.recover(maximum)?;
+        self.held = spilled.recover(maximum, remaining)?;
         self.memory = Some(maximum);
         Ok(())
     }
@@ -169,7 +169,7 @@ impl Writer {
         if let Some(spilled) = self.file.as_mut()
             && let Err(Spill::Unavailable) = spilled.flush()
         {
-            self.in_memory()?;
+            self.in_memory(&[])?;
         }
         let builder = Response::builder()
             .status(StatusCode::OK)
@@ -238,7 +238,7 @@ impl Spilled {
         Ok(Self {
             scratch,
             file,
-            pending: Vec::new(),
+            pending: Vec::with_capacity(CHUNK),
             written: 0,
             maximum,
             #[cfg(test)]
@@ -247,23 +247,31 @@ impl Spilled {
     }
 
     /// The whole answer so far is charged against the temporary budget.
-    fn write(&mut self, bytes: &[u8]) -> Result<(), Spill> {
+    fn write(&mut self, bytes: &mut &[u8]) -> Result<(), Spill> {
         let used = self.written + self.pending.len() as u64 + bytes.len() as u64;
         limits::check(limits::TEMP, used, self.maximum)
             .map_err(|error| Spill::Refused(limits::into_io(error)))?;
-        self.pending.extend_from_slice(bytes);
-        if self.pending.len() >= CHUNK {
-            self.flush()?;
+        while !bytes.is_empty() {
+            let count = bytes.len().min(CHUNK - self.pending.len());
+            let (chunk, remaining) = bytes.split_at(count);
+            self.pending.extend_from_slice(chunk);
+            *bytes = remaining;
+            if self.pending.len() == CHUNK {
+                self.flush()?;
+            }
         }
         Ok(())
     }
 
     fn flush(&mut self) -> Result<(), Spill> {
         #[cfg(test)]
-        if self
-            .fail_after
-            .is_some_and(|after| self.written + self.pending.len() as u64 > after)
+        if let Some(after) = self.fail_after
+            && self.written + self.pending.len() as u64 > after
         {
+            let partial = (after - self.written) as usize;
+            self.file
+                .write_all(&self.pending[..partial])
+                .map_err(|_| Spill::Unavailable)?;
             return Err(Spill::Unavailable);
         }
         self.file
@@ -276,8 +284,8 @@ impl Spilled {
 
     /// What the spool holds, back in memory: the bytes known on disk read
     /// back, then those still pending. The staging area goes with it.
-    fn recover(mut self, maximum: u64) -> io::Result<Vec<u8>> {
-        let total = self.written + self.pending.len() as u64;
+    fn recover(mut self, maximum: u64, remaining: &[u8]) -> io::Result<Vec<u8>> {
+        let total = self.written + self.pending.len() as u64 + remaining.len() as u64;
         limits::check(limits::RESPONSE, total, maximum).map_err(limits::into_io)?;
         let mut held = Vec::with_capacity(total as usize);
         self.file.seek(SeekFrom::Start(0))?;
@@ -286,6 +294,7 @@ impl Spilled {
             return Err(io::Error::other("spool read back short"));
         }
         held.append(&mut self.pending);
+        held.extend_from_slice(remaining);
         Ok(held)
     }
 }
@@ -421,6 +430,23 @@ mod tests {
             assert!(length.is_some());
             assert_eq!(String::from_utf8(body).unwrap(), whole);
         }
+    }
+
+    #[test]
+    fn a_large_encoded_item_uses_one_pending_chunk_and_recovers_its_suffix() {
+        let items = [json!({"text": "é\nabcdef".repeat(MEMORY / 2)})];
+        let whole = dumps(&json!({"turns": items, "next_after": null}), false);
+        let (length, bytes) = written(&items, None, |writer| {
+            assert_eq!(writer.file.as_ref().unwrap().pending.capacity(), CHUNK);
+        });
+        assert_eq!(length, Some(whole.len().to_string()));
+        assert_eq!(bytes, whole.as_bytes());
+
+        // A short write partway through this same item leaves some of its
+        // input on disk, a partly written chunk, and several untouched chunks.
+        let (length, bytes) = written(&items, Some((2 * CHUNK + 17) as u64), |_| {});
+        assert_eq!(length, None);
+        assert_eq!(bytes, whole.as_bytes());
     }
 
     #[test]

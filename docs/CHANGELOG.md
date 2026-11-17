@@ -53,22 +53,25 @@ phase close names the version.
   search and turn reads (only from a server that advertises them, and only
   after the unpaged request was refused, so ordinary requests are exactly
   2.16.0's), smaller pages for memory listings. A smaller request refused
-  for its size too shows the first refusal; any other failure shows itself,
+  for its size too, or a stale relevance continuation, shows the first
+  refusal; any other failure shows itself,
   and the candidate bound, which no smaller answer cures, is never asked
   again. Other clients can do the same with `page_bytes` or `limit`.
 - `neosian serve` needs a writable, disk-backed temporary directory
-  (`TMPDIR`) for answers over 1 MiB; a tmpfs counts against a container's
+  (`TMPDIR` on Unix, `TMP` on Windows) for answers over 1 MiB; a tmpfs counts against a container's
   memory limit. When it cannot spool there (an unwritable directory, a full
   disk, a directory removed in use), it finishes the answer in memory, as
   2.16.0 did, up to `NEOSIAN_MAX_RESPONSE_BYTES`, and refuses past that with
   `value_error`, which the binary answers in size pages: never a `500` or a
   cut body. It checks the directory at startup and says once on its log
   when it cannot spool. Each server keeps its spools under its own locked
-  directory, removed when it stops, and removes those left by servers that
-  were killed, nothing else. Spool disk has no total: it is the answers
-  being sent at once, each within `NEOSIAN_MAX_TEMP_BYTES`, bounded only by
+  directory, removed when it stops. On Unix, startup checks ownership and
+  the lock before removing a killed server's spools. On Windows the
+  operator cleans up after a killed server. Spool disk has no total: it is
+  the answers being sent at once, each within `NEOSIAN_MAX_TEMP_BYTES`, bounded only by
   the open-file limit.
-- `memory/history`, `memory/versions` and `memory/redactions` asked for
+- `memory/list_documents`, `memory/history`, `memory/versions` and
+  `memory/redactions` asked for
   `limit: 0` check the request and read no rows (2.16.0 read the scope's
   whole history: 399 MiB on Postgres for 150 MB of versions, now 11 MiB).
 - On Postgres, `NEOSIAN_MAX_RESPONSE_BYTES` (64 MiB by default) is checked

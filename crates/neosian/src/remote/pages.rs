@@ -1,11 +1,10 @@
 //! Turn reads and version 1 history search from the client's side (DESIGN
 //! §40.46, #417 to #419). Every request is first 2.16.0's. Only when it is
-//! refused in a way a smaller answer may cure (the server's `value_error`
-//! other than the candidate bound, or this client's own response budget) and
+//! refused for an answer-byte budget on either side or the spool budget and
 //! the server advertises `size_paging: {version: 1}` does the client ask
-//! again in size pages, handing turns over one page at a time. A page
-//! refused for its size too reports the first refusal; any other failure
-//! reports itself. Pages stay below the server's 1 MiB in-memory spool, so
+//! again in size pages, handing turns over one page at a time. A second size
+//! refusal or a stale relevance continuation reports the first refusal.
+//! Pages stay below the server's 1 MiB in-memory spool, so
 //! they need none of its temporary-file budget.
 
 use serde_json::{Value, json};
@@ -22,12 +21,12 @@ const PAGE_BYTES: u64 = 960 * 1024;
 impl RemoteStore {
     /// Whether a refusal may be answered by asking again in size pages.
     pub(super) fn pages_may_answer(&self, failed: &Failed) -> bool {
-        failed.curable() && self.capabilities["size_paging"]["version"] == 1
+        failed.sized && self.capabilities["size_paging"]["version"] == 1
     }
 
     /// Follow size pages of `endpoint` after `first` refused the unpaged
     /// request: `page` gets each answer and says whether to go on. A page
-    /// refused for its size too (a stale relevance page among them) reports
+    /// refused for its size too, or a stale relevance continuation, reports
     /// `first`; any other failure reports itself (#419). A continuation must
     /// be a bounded string, and a page that names one must hold an item.
     pub(super) fn size_pages<E: From<StoreError>>(
@@ -39,14 +38,21 @@ impl RemoteStore {
         mut page: impl FnMut(&Value) -> Result<bool, E>,
     ) -> Result<(), E> {
         payload["page_bytes"] = json!(PAGE_BYTES);
-        let mut first = Some(first);
         loop {
             let data = match self.attempt(endpoint, payload.clone()) {
                 Ok(data) => data,
-                Err(failed) if failed.sized => {
-                    return Err(first.take().unwrap_or(failed.error).into());
+                Err(failed) => {
+                    let stale = payload["order"] == "relevance"
+                        && payload["continuation"].is_string()
+                        && matches!(&failed.error, StoreError::Value(message)
+                            if message == crate::conversation::page::STALE);
+                    return Err(if failed.sized || stale {
+                        first
+                    } else {
+                        failed.error
+                    }
+                    .into());
                 }
-                Err(failed) => return Err(failed.error.into()),
             };
             let held = codec::array(&data, items)?.len();
             let next = match codec::key(&data, "continuation")? {

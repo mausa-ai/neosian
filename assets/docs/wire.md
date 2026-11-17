@@ -81,12 +81,13 @@ The optional `"size_paging": {"version": 1}` capability adds byte-bounded pages
 to `conversation/search_turns` and `conversation/read_turns` (below). It does
 not depend on the other capabilities. The reference backends advertise it for
 clients and hosts that want a ceiling on what one response carries. The
-binary's own remote client always sends 2.16.0's request first; only when a
-server that advertises size paging refuses it with `value_error` (other than
-the candidate bound), or the answer passes the client's own
-`NEOSIAN_MAX_RESPONSE_BYTES`, does it ask again in pages (below the server's
-1 MiB in-memory spool). A page refused for its size too reports the first
-refusal; any other failure reports itself.
+binary's own remote client first sends 2.16.0's request. If the server
+advertises size paging, the client can retry in pages below the server's
+1 MiB in-memory spool. It retries when its own response budget is exceeded
+or the server returns `value_error` with a message beginning `resource limit
+NEOSIAN_MAX_TEMP_BYTES exceeded: ` or `resource limit NEOSIAN_MAX_RESPONSE_BYTES
+exceeded: `. A second size refusal or a stale relevance continuation reports
+the original size refusal. Other failures report their own error.
 
 ## Auth
 
@@ -223,7 +224,7 @@ listing asked for `limit: 0` reads no rows. The hosted `/mcp` door's
 a reply of about 64 KB (about the conversation's stored size: 142 MiB for
 130 MB of turns).
 
-The temporary directory (`TMPDIR`, or the platform's) must be writable and
+The temporary directory (`TMPDIR` on Unix, `TMP` on Windows) must be writable and
 disk-backed. A memory-backed one (tmpfs) counts against a container's memory
 limit and defeats the bound. When no spool file can be made or written (an
 unwritable directory, a full disk, a directory removed while in use), the
@@ -232,9 +233,10 @@ answer is finished in memory, as 2.16.0 held it, within
 `value_error` naming that setting; it is never a bare `500` or a cut body.
 `neosian serve` checks the directory at startup and says once, on its log, when
 it cannot spool there. Each server keeps its spools under its own locked
-directory, `.neosian-serve-<uuid>`, removed when it stops; one left by a
-server that was killed is removed by the next server started with the same
-temporary directory. Disk use is the answers being sent at once, each at most
+directory, `.neosian-serve-<uuid>`, removed when it stops. On Unix the
+next startup removes an ended server's spools when the directory belongs to
+the same user. On Windows the operator cleans up after a killed server.
+Disk use is the answers being sent at once, each at most
 `NEOSIAN_MAX_TEMP_BYTES`; nothing limits how many are sent at once except the
 process's open-file limit (each costs a socket and a spool file), and no
 timeout ends a stalled send.
@@ -246,7 +248,7 @@ whose answer is larger than `NEOSIAN_MAX_TEMP_BYTES` is refused with
 (`page_bytes`) for `conversation/search_turns` and `conversation/read_turns`,
 a smaller `limit` for the memory listings, whose pages follow their cursor.
 The binary does both by itself, keeping each page under 1 MiB, and reports the
-first refusal only when its smaller requests are refused for their size too;
+first refusal for a second size refusal or a stale relevance continuation;
 it never asks again after the candidate bound (`resource limit
 NEOSIAN_SEARCH_MAX_CANDIDATES exceeded: …`), which no smaller answer cures.
 A projection page cannot be made smaller on wire 6 (it ends on whole turns,

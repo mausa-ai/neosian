@@ -145,12 +145,7 @@ impl RemoteStore {
                 && let Ok(data) = &decoded
                 && data["error"].is_object()
             {
-                let error = errors::decode(&data["error"]);
-                return Err(if data["error"]["code"] == "value_error" {
-                    Failed::sized(error)
-                } else {
-                    Failed::other(error)
-                });
+                return Err(Failed::server(errors::decode(&data["error"])));
             }
             return Err(Failed::other(driver(ureq::Error::StatusCode(
                 status.as_u16(),
@@ -169,7 +164,7 @@ impl RemoteStore {
     /// Python's `_follow`: limits count rows, projections advance by whole
     /// turns on the server, and a missing continuation is malformed data.
     /// A memory listing's page refused for its size (this client's response
-    /// budget, or `value_error` from a server that pages) is asked again
+    /// budget, or a server's named answer-byte budget) is asked again
     /// with half the rows, down to one; the first refusal is reported if
     /// even that fails (DESIGN §40.46, #418). Every first request is 2.16.0's.
     fn follow(
@@ -234,10 +229,9 @@ impl RemoteStore {
     }
 
     /// Whether a memory listing's refused page may be asked again smaller:
-    /// this client's own response budget, or the server's `value_error` when
-    /// it pages (its spooled answers have a disk budget).
+    /// this client's own response budget, or a paging server's byte budget.
     fn listing_may_shrink(&self, failed: &Failed) -> bool {
-        failed.own || (failed.curable() && self.capabilities["size_paging"]["version"] == 1)
+        failed.own || self.pages_may_answer(failed)
     }
 }
 
@@ -269,11 +263,8 @@ impl RemoteStore {
     }
 }
 
-/// A failed call. `sized` when a smaller answer may cure it: the server
-/// refused with `value_error` (an answer past one of its operation budgets
-/// carries that code, and so does a genuine argument error, which simply
-/// fails again), or the answer passed this client's own response budget,
-/// which `own` marks. No message text is read.
+/// A failed call. A smaller answer can help when either side reports its
+/// answer-byte budget, or the server reports its spool-byte budget.
 struct Failed {
     error: Error,
     sized: bool,
@@ -281,20 +272,14 @@ struct Failed {
 }
 
 impl Failed {
-    /// Whether a smaller answer may cure it: a size refusal, but never the
-    /// candidate bound, which counts the same candidates however the answer
-    /// is cut. This is the one refusal recognized by its message: resource
-    /// limit refusals are documented as `resource limit <NAME> exceeded: …`
-    /// (`neosian docs wire`), and the doors match the same prefix.
-    fn curable(&self) -> bool {
-        self.sized
-            && !matches!(&self.error, Error::Value(message)
-                if message.starts_with(crate::limits::BROAD))
-    }
-    fn sized(error: Error) -> Self {
+    fn server(error: Error) -> Self {
+        let sized = matches!(&error, Error::Value(message) if matches!(
+            message.strip_prefix("resource limit ").and_then(|msg| msg.split_once(" exceeded: ")),
+            Some((crate::limits::RESPONSE | crate::limits::TEMP, _))
+        ));
         Self {
             error,
-            sized: true,
+            sized,
             own: false,
         }
     }

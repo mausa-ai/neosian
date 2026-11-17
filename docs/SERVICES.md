@@ -58,7 +58,8 @@ spooled and sent after the store is released, whether or not a client pages;
 the binary's own remote client pages only after an unpaged request is
 refused for its size (never after the candidate bound).
 
-`neosian serve` needs a writable, disk-backed temporary directory (`TMPDIR`)
+`neosian serve` needs a writable, disk-backed temporary directory (`TMPDIR`
+on Unix, `TMP` on Windows)
 for answers over 1 MiB. A memory-backed one (tmpfs) counts against a
 container's memory limit and defeats the bound; the published image's `/tmp`
 is on its writable layer, so with a read-only root filesystem mount a disk
@@ -71,8 +72,11 @@ Disk use is the answers being sent at once, each within
 `NEOSIAN_MAX_TEMP_BYTES`, with no total: only the process's open-file limit
 bounds concurrent sends (a socket and a spool file each), and no timeout ends
 a stalled one. Each server's spools sit under its own locked
-`.neosian-serve-<uuid>` directory, removed when it stops; the next server
-started with the same `TMPDIR` removes those of servers that were killed.
+`.neosian-serve-<uuid>` directory, removed when it stops. On Unix, the next
+server started with the same `TMPDIR` removes an ended server's spools after
+checking directory ownership and the lock. A crash before startup publishes
+the lock can leave an empty directory or marker. On Windows, use a private
+temporary directory and remove a killed server's directory after it exits.
 
 What a served read holds in the server: turn reads and searches about one
 turn, `memory/read` its document, `memory/versions` and `memory/history` their

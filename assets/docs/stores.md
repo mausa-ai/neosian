@@ -129,7 +129,8 @@ the document's whole journal or the scope's whole history for every page, as
 `continue_session` holds the whole conversation it continues. A slow client
 costs an open file and disk, never the store lock or a database connection.
 
-Give the server a writable, disk-backed temporary directory (`TMPDIR`). A
+Give the server a writable, disk-backed temporary directory (`TMPDIR` on
+Unix, `TMP` on Windows). A
 memory-backed one (tmpfs) counts against a container's memory limit and
 defeats the bound; the spools' file cache on disk also counts there but is
 reclaimed under pressure. When no spool can be made or written, answers over
@@ -139,10 +140,11 @@ so once at startup. Disk use is the answers being sent at once, each at most
 `NEOSIAN_MAX_TEMP_BYTES`; only the process's open-file limit bounds how many
 are sent at once (each holds a socket and a spool file), and no timeout ends
 a stalled send. Each server's spools sit under its own locked
-`.neosian-serve-<uuid>` directory, removed when it stops; the next server
-started with the same temporary directory removes those of servers that were
-killed. `NEOSIAN_MAX_PAGE_BYTES` caps the ceiling a size-paged request may ask
-for.
+`.neosian-serve-<uuid>` directory, removed when it stops. On Unix, startup
+cleans up a killed server's spools in the same temporary directory after
+checking ownership and the server lock. On Windows, the operator cleans up
+after a killed server. `NEOSIAN_MAX_PAGE_BYTES` caps the ceiling a size-paged
+request may ask for.
 
 Existing server request limits, per-document knowledge bounds, skill/context
 budgets and archive behavior remain separate. Client limits cannot raise a

@@ -202,6 +202,10 @@ def test_valid_document_name_with_a_broken_envelope_is_not_foreign(
 ) -> None:
     with serve(planted) as server:
         (planted.home / MEMORY / "documents/broken.md").write_text("no envelope")
+        assert server.post("memory/list_documents", scope=SCOPE, limit=0) == {
+            "entries": [],
+            "next_cursor": None,
+        }
         refused(
             server.request("/v1/memory/list_documents", {"scope": SCOPE}),
             "memory_format_unsupported",

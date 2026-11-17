@@ -8,7 +8,7 @@ use crate::store::error::Error;
 use crate::store::grammar::Actor;
 use crate::store::journal::{Act, Row};
 use crate::store::time::Stamp;
-use crate::store::{Document, Entry, FileStore, Page};
+use crate::store::{Document, FileStore, Page};
 
 pub trait Backend: State {
     fn backend(&self) -> &'static str;
@@ -27,13 +27,8 @@ pub trait Backend: State {
         dst: &str,
         actor: &Actor,
     ) -> Result<Document, Error>;
-    fn list_documents_page(
-        &self,
-        scope: &str,
-        prefix: &str,
-        cursor: Option<&str>,
-        limit: i64,
-    ) -> Result<Page<Entry>, Error>;
+    /// Validate a zero-limit document listing without fetching entries.
+    fn check_document_listing(&self, scope: &str, prefix: &str) -> Result<(), Error>;
     fn versions_page(
         &self,
         scope: &str,
@@ -84,7 +79,7 @@ pub trait Backend: State {
 }
 
 macro_rules! backend {
-    ($store:ty, $write:expr, $page:expr) => {
+    ($store:ty, $listing:expr, $write:expr, $page:expr) => {
         impl Backend for $store {
             fn backend(&self) -> &'static str {
                 stringify!($store)
@@ -108,14 +103,8 @@ macro_rules! backend {
             ) -> Result<Document, Error> {
                 self.rename_document(scope, src, dst, actor)
             }
-            fn list_documents_page(
-                &self,
-                scope: &str,
-                prefix: &str,
-                cursor: Option<&str>,
-                limit: i64,
-            ) -> Result<Page<Entry>, Error> {
-                self.list_documents_page(scope, prefix, cursor, limit)
+            fn check_document_listing(&self, scope: &str, prefix: &str) -> Result<(), Error> {
+                ($listing)(self, scope, prefix)
             }
             fn versions_page(
                 &self,
@@ -177,6 +166,7 @@ macro_rules! backend {
 
 backend!(
     FileStore,
+    |store: &FileStore, scope: &str, _prefix: &str| store.check_scope(scope),
     |store: &FileStore, scope, path, content: &str, actor, expected| {
         Ok(Document {
             envelope: store.write_document(scope, path, content, actor, expected)?,
@@ -190,6 +180,7 @@ backend!(
 // Postgres continues by turn number alone: the keyset is the index.
 backend!(
     PostgresStore,
+    PostgresStore::check_document_listing,
     PostgresStore::write_document,
     |store: &PostgresStore, id: &str, after, limit, _hint, mode, visit| {
         store

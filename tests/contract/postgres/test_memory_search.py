@@ -84,6 +84,13 @@ def test_search_refuses_future_physical_rows(database: Database) -> None:
             sql.Identifier(schema)
         )
     )
+    # A zero-limit listing reads no physical rows, even if their format is newer.
+    assert server.post("memory/list_documents", scope="user:search", limit=0) == {
+        "entries": [],
+        "next_cursor": None,
+    }
+    listing = server.request("/v1/memory/list_documents", {"scope": "user:search"})
+    assert listing.body["error"]["code"] == "memory_format_unsupported"
     reply = server.request(
         "/v1/memory/search", {"scope": "user:search", "query": "needle"}
     )
