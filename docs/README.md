@@ -43,8 +43,10 @@ notice and then a wrap-up note so it can stop at a clean point; it never
 submits a prompt or stops a turn. Keep-warm then waits warm for a near reset
 and pauses when a limit is reached or nearly exhausted.
 See `neosian docs agents` for the request limits and compatibility.
-Portable profiles opt into recording separately: new profiles capture off by
-default.
+Portable profiles opt into recording separately. New profiles capture off by
+default. Use `neosian record pause <conversation-id>` to discard the open turn
+and pause one profile conversation on this installation. Resume with
+`neosian record resume <conversation-id>` before the next prompt.
 
 Claude Code and Codex can also write their own native memory files. Use
 `neosian native-memory add` to preview an explicit source and `--write` to

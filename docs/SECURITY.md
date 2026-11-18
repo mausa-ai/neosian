@@ -97,6 +97,8 @@ credential and verified assignment before every wire request.
 both the profile and its machine-local binding. Deterministic filters precede
 the private spool, outbound turns and session summaries; they are not universal
 secret detection and do not filter explicit memory writes or host-owned logs.
+A local `record pause <conversation-id>` discards the pending turn for that
+profile conversation. Resume admits capture again from the next user prompt.
 Policy changes retain pending spans rather than replay them into a changed
 destination. Import/export excludes bindings and credentials, but includes
 ordinary profile text and filter literals. See `neosian docs profiles` and

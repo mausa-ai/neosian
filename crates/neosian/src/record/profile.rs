@@ -120,8 +120,54 @@ fn process(args: &Record, selected: Resolved, payload: Payload) -> Result<Envelo
     };
     let spool_dir = selected.home.join("profile-spool");
     let guard = spool_dir.join(format!("{key}.policy"));
-    let managed = selected.login.is_some();
     let mode = selected.profile.capture.mode;
+    let context_event =
+        event == "SessionStart" || (args.agent == "pi" && event == "MailboxContext");
+    let opencode_frame = args.agent == "opencode" && event == "MailboxContext";
+    if opencode_frame && !selected.profile.context.mailbox {
+        envelope.context = Some(crate::profile::context::identity(&id));
+        return Ok(envelope);
+    }
+    let mailbox_event = matches!(
+        event.as_str(),
+        "MailboxPoll" | "MailboxDelivery" | "MailboxContext"
+    );
+    let spool = super::spool::Spool::new(&spool_dir);
+    let prompt_event = event == super::payload::PROMPT_EVENT;
+    // Pause, resume and the entire landing compete on the existing session lock.
+    let _held = if context_event || mailbox_event {
+        None
+    } else {
+        let enabled = mode != CaptureMode::Off;
+        // A capture-off installation with no pause creates no spool directory.
+        let held = if enabled || super::pause::paused(&spool_dir, &id)? {
+            Some(spool.lock(&key)?)
+        } else {
+            None
+        };
+        // Read a managed machine's latest opt-out under the same lock as
+        // the conversation's resume marker and pending turn.
+        let enabled = enabled
+            && (selected.login.is_none()
+                || !crate::login::local::capture_off(&selected.home).map_err(Error::Value)?);
+        if held.is_some()
+            && (!prompt_event || super::pause::paused(&spool_dir, &id)?)
+            && super::pause::blocks(&spool_dir, &id, &key, &payload, &args.agent, enabled)?
+        {
+            envelope.disposition = "capture_paused";
+            return Ok(envelope);
+        }
+        if !enabled {
+            envelope.disposition = if guard.try_exists()? {
+                "capture_off_pending"
+            } else {
+                "capture_off"
+            };
+            return Ok(envelope);
+        }
+        held
+    };
+    let managed = selected.login.is_some();
     let policy = selected.profile.capture.clone();
     // Public provenance describes the portable policy, never credential-derived data.
     let policy_id = digest(&serde_json::to_vec(&selected.profile).map_err(io::Error::other)?);
@@ -133,7 +179,7 @@ fn process(args: &Record, selected: Resolved, payload: Payload) -> Result<Envelo
         .mounts()
         .expect("profile selection")
         .map_err(Error::Value)?;
-    if event == "SessionStart" {
+    if context_event {
         let store = selected.open()?;
         let source = payload
             .get("source")
@@ -152,7 +198,7 @@ fn process(args: &Record, selected: Resolved, payload: Payload) -> Result<Envelo
         envelope.disposition = "context";
         return Ok(envelope);
     }
-    if ["MailboxPoll", "MailboxDelivery", "MailboxContext"].contains(&event.as_str()) {
+    if mailbox_event {
         let store = selected.open()?;
         let mailbox =
             crate::messaging::mailbox::Mailbox::of_mounts(store.as_ref(), &mounts, Some(&id))
@@ -162,21 +208,41 @@ fn process(args: &Record, selected: Resolved, payload: Payload) -> Result<Envelo
                 "MailboxPoll" => envelope.messages = Some(super::mailbox::poll(&mailbox)?),
                 "MailboxDelivery" => super::mailbox::deliver(&mailbox, &payload)?,
                 _ => {
-                    let text = crate::messaging::delivery::context(&mailbox)?;
+                    let inbox = crate::messaging::delivery::context(&mailbox)?;
+                    let identity = if opencode_frame {
+                        crate::profile::context::identity(&id)
+                    } else {
+                        String::new()
+                    };
+                    let frame = |body: &str| {
+                        [identity.as_str(), body]
+                            .into_iter()
+                            .filter(|s| !s.is_empty())
+                            .collect::<Vec<_>>()
+                            .join("\n\n")
+                    };
+                    let text = frame(&inbox);
                     let limit = store
                         .profile()
                         .expect("profile")
                         .context
                         .max_chars
                         .min(super::context::context_chars(&args.agent) as usize);
+                    let limit = if opencode_frame {
+                        crate::profile::context::opencode_hook_limit(
+                            store.profile().expect("profile"),
+                        )
+                    } else {
+                        limit
+                    };
                     envelope.context = Some(if text.chars().count() <= limit {
                         text
                     } else {
-                        crate::assets::render(
+                        frame(&crate::assets::render(
                             &crate::assets::literal(crate::assets::CONTEXT, "profile_omitted")
                                 .expect("profile asset"),
                             &[("count", "1")],
-                        )
+                        ))
                     });
                 }
             }
@@ -185,20 +251,6 @@ fn process(args: &Record, selected: Resolved, payload: Payload) -> Result<Envelo
         }
         return Ok(envelope);
     }
-    if mode == CaptureMode::Off {
-        envelope.disposition = if guard.exists() {
-            "capture_off_pending"
-        } else {
-            "capture_off"
-        };
-        return Ok(envelope);
-    }
-    let Some(record) = crate::profile::filter::record(&payload, &policy) else {
-        envelope.disposition = "excluded";
-        return Ok(envelope);
-    };
-    let spool = super::spool::Spool::new(&spool_dir);
-    let _held = spool.lock(&key)?;
     if managed
         && crate::login::local::capture_off(spool_dir.parent().expect("spool under home"))
             .map_err(Error::Value)?
@@ -210,14 +262,25 @@ fn process(args: &Record, selected: Resolved, payload: Payload) -> Result<Envelo
         };
         return Ok(envelope);
     }
+    let record = crate::profile::filter::record(&payload, &policy);
     let old = match std::fs::read_to_string(&guard) {
         Ok(old) => Some(old),
         Err(e) if e.kind() == io::ErrorKind::NotFound => None,
         Err(e) => return Err(e.into()),
     };
-    if old.as_deref().is_some_and(|old| old != fingerprint) {
+    if (prompt_event || record.is_some()) && old.as_deref().is_some_and(|old| old != fingerprint) {
         return Err(Error::Value("pending capture uses a different profile, binding or policy; restore that configuration or explicitly resolve the retained local span".into()));
     }
+    // Verify ownership of any pending span before admitting the fresh prompt.
+    // A policy that keeps only replies still observes this turn boundary.
+    if prompt_event && super::pause::blocks(&spool_dir, &id, &key, &payload, &args.agent, true)? {
+        envelope.disposition = "capture_paused";
+        return Ok(envelope);
+    }
+    let Some(record) = record else {
+        envelope.disposition = "excluded";
+        return Ok(envelope);
+    };
     if old.is_none() {
         crate::store::fileio::atomic_write(&guard, &fingerprint, true)?;
     }
@@ -232,7 +295,7 @@ fn process(args: &Record, selected: Resolved, payload: Payload) -> Result<Envelo
         )?],
         sessions_mount: 0,
         agent: args.agent.clone(),
-        spool: spool_dir,
+        spool: spool_dir.clone(),
         provenance: Some(format!(
             "\n- workspace: {workspace}\n- source_session: {native}\n- capture_policy: {policy_id}\n"
         )),
@@ -244,6 +307,7 @@ fn process(args: &Record, selected: Resolved, payload: Payload) -> Result<Envelo
     envelope.document = landed.document;
     envelope.client = landed.client;
     if matches!(landed.disposition, "recorded" | "empty") {
+        super::pause::finish(&spool_dir, &id)?;
         std::fs::remove_file(guard)?;
     }
     Ok(envelope)

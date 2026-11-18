@@ -27,6 +27,12 @@ or a changed notice during a background refresh, keeps recording off until a
 foreground login or refresh displays a valid notice. The host’s notice applies
 to shared capture on workspaces that permit it.
 
+To stop recording one conversation on this machine, use the full conversation
+ID from the agent's session context and run `neosian record pause <conversation-id>`.
+An open, unfinished turn is discarded. Run `neosian record resume <conversation-id>`
+to resume at a fresh prompt when the machine and workspace both allow capture.
+You can continue to use memory and skills while recording is paused.
+
 ## Workspace selection
 
 An explicit `--profile`, then `NEOSIAN_PROFILE`, then the closest bound

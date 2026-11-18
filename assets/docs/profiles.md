@@ -217,16 +217,45 @@ and clients do not collide by merely reusing a native ID. The original actor
 and native session ID remain in recorded provenance. Copy the portable
 profile between machines, not the machine's installation bindings.
 
+To pause recording of one profile conversation on this installation, copy its
+complete ID from the `[neosian session identity: ...]` line. Clients that omit
+this line can use the `session_id` in their `record --json` diagnostic envelope.
+A SessionStart diagnostic reads context and leaves the recording untouched. Use
+the same client, native session and workspace when obtaining the ID. Pi and
+OpenCode expose the mapped ID in their normal prompt context. Run:
+
+```sh
+neosian record pause <conversation-id>
+neosian record resume <conversation-id>
+```
+
+Pause waits for any hook already landing a turn. Once it returns, the
+recorder has discarded this conversation's pending turn and suppresses new
+capture events. Previously recorded turns remain in history. Startup context,
+mailbox delivery, knowledge and skills stay available. Resume follows the
+workspace capture policy from the next user prompt. Until that prompt,
+delayed tool results and assistant replies from the interrupted turn are
+discarded. If the client changes workspace mid-turn, the newly selected
+workspace must have a pending turn or receive its own fresh prompt.
+
+Cursor and the OpenCode plugin identify the native generation of a reply.
+After a pause the recorder accepts their callbacks only for the admitted
+prompt's generation. Older or unidentifiable callbacks are discarded, even
+after another prompt. Update an older installed OpenCode plugin with
+`neosian record install --client opencode --write` using your existing
+registration options. Other clients resume at their next observed user
+prompt. Both commands run locally and work offline. Private control files
+under `profile-spool/` hold empty markers and digests of native generation
+IDs. They contain no prompt text, assistant text or credentials.
+
 Pending filtered spans live under the private `profile-spool/` directory in
 the local home. For manual profiles, a companion `.policy` fingerprint binds a span to the entire
 profile, local source bindings and hashes of referenced credential values.
 Changing a DSN/token value also holds the span, even when its variable name
 is unchanged; secret values themselves are never persisted. A changed policy or binding holds it
 locally; disabling capture retains it without replay. Restore the prior
-configuration to finish it. To abandon it explicitly, stop the relevant
-client, back up the matching mapped-ID `.jsonl` and hash `.policy` files, then
-remove that pair; never transfer a pending span to a different destination by
-editing its fingerprint. Failed landing retains the spool. A crash between
+configuration to finish it, or discard the open span with `record pause`.
+Never transfer a pending span to a different destination by editing its fingerprint. Failed landing retains the spool. A crash between
 backend writes can leave partial results or duplicate a retry; this is not
 exactly-once or a cross-store transaction.
 

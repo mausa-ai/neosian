@@ -687,7 +687,9 @@ named `neosian` system-prompt section, preserving other sections. It
 refreshes after compaction, including a retry without a new user prompt. The section's
 10,000-character budget is neosian's conservative policy, not a claimed
 Pi limit. Resume, new-session and fork events reset the context and
-recording identity. Pi reads `AGENTS.md` natively.
+recording identity. Profile capture can be paused with `record pause` using
+the mapped ID from Pi’s neosian section or OpenCode’s session context.
+Pi reads `AGENTS.md` natively.
 
 For shared recording, use `neosian setup --client pi --url URL --write`
 and set `NEOSIAN_CLIENT_TOKEN` in Pi's environment; the token is inherited

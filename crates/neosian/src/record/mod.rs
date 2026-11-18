@@ -11,9 +11,11 @@
 
 pub mod cli;
 pub mod context;
+mod generation;
 mod land;
 mod mailbox;
 mod output;
+mod pause;
 pub(crate) mod payload;
 mod profile;
 mod settings;

@@ -8,10 +8,18 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [2.18.0] - 2026-11-18
+
 ### Added
 
-- Device and headless machine login, host-managed workspace profiles,
-  conditional refresh and logout. Agent registrations can follow a checkout.
+- `neosian login` connects a machine to a host with browser device
+  approval or a headless credential. The host supplies workspace profiles
+  that follow the checkout. Profiles refresh conditionally and the machine
+  can revoke its credential with `neosian logout`.
+- `neosian record pause <conversation-id>` discards an open profile turn and
+  pauses that conversation on this installation. `record resume` follows the
+  profile's capture policy from the next user prompt. Memory and skills remain
+  available.
 
 ## [2.17.1] - 2026-11-17
 
@@ -3115,7 +3123,8 @@ pre-release — pin it explicitly; the API stability promise rides v1.0.0.
 - Both entry points share one `_validate_run`, so neither can skip a
   guard.
 
-[Unreleased]: https://github.com/mausa-ai/neosian/compare/v2.12.0...HEAD
+[Unreleased]: https://github.com/mausa-ai/neosian/compare/v2.18.0...HEAD
+[2.18.0]: https://github.com/mausa-ai/neosian/compare/v2.17.1...v2.18.0
 [2.12.0]: https://github.com/mausa-ai/neosian/compare/v2.11.1...v2.12.0
 [2.11.1]: https://github.com/mausa-ai/neosian/compare/v2.11.0...v2.11.1
 [2.11.0]: https://github.com/mausa-ai/neosian/compare/v2.10.0...v2.11.0
