@@ -97,7 +97,11 @@ jobs:
         with:
           ref: ${{ needs.build.outputs.revision }}
       - run: |
-          docker build --platform "linux/$ARCH" \
+          docker buildx create --name release-export --driver docker-container \
+            --driver-opt image=moby/buildkit:v0.33.0@sha256:6c2fa84a6b61ccd72899dde4239f8d5717f05f9a8ca6f3cad185fb1a95a94de3
+          docker buildx build --builder release-export --platform "linux/$ARCH" \
+            --provenance=false \
+            --output "type=docker,oci-mediatypes=true,dest=$RUNNER_TEMP/neosian-image.tar" \
             --label "org.opencontainers.image.title=neosian" \
             --label "org.opencontainers.image.description=The neosian state process: memory, skills, conversations and the ledger behind one bearer token" \
             --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
@@ -106,6 +110,7 @@ jobs:
             --label "org.opencontainers.image.licenses=Apache-2.0" \
             --label "org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             -t "$IMAGE:$VERSION-$ARCH" .
+          docker image load --input "$RUNNER_TEMP/neosian-image.tar"
       - name: smoke
         run: |
           cid="$(docker run -d -e NEOSIAN_SERVE_TOKEN=smoke -p 127.0.0.1:16367:6367 "$IMAGE:$VERSION-$ARCH")"
@@ -132,9 +137,15 @@ jobs:
             sudo apt-get install --no-install-recommends -y skopeo
           fi
           ref="$IMAGE:$VERSION-$ARCH"
-          skopeo copy --format oci "docker-daemon:$ref" "docker://$ref"
-          docker buildx imagetools inspect --raw "$ref" |
-            jq -e '.mediaType == "application/vnd.oci.image.manifest.v1+json"'
+          # Copy the exact manifest loaded for the smoke test. Re-encoding a
+          # Docker config as OCI here would lose its built-in health check.
+          archive="$RUNNER_TEMP/neosian-image.tar"
+          expected=$(tar -xOf "$archive" index.json | jq -er '
+            .manifests | select(length == 1) | .[0] |
+            select(.mediaType == "application/vnd.oci.image.manifest.v1+json") | .digest')
+          skopeo copy --preserve-digests --digestfile "$RUNNER_TEMP/digest" \
+            "oci-archive:$archive" "docker://$ref"
+          test "$expected" = "$(cat "$RUNNER_TEMP/digest")"
 
   # The multi-arch index from the two pushed legs; `latest` only on a
   # final version — a pre-release is never what an unpinned pull gets.
