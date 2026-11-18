@@ -39,6 +39,10 @@ export default {
     const active = new Map(); // a session seen at a prompt: "busy" or "idle"
     const frames = new Map(); // the inbox frame the turn's requests carry
     const replies = new Map(); // the assistant's text of the current step
+    // The prompt callback can be queued while the preceding execution is
+    // still streaming. Only an observed start binds a prompt to an execution.
+    const pending = new Map();
+    const executing = new Map();
     const delivered = new Set();
     const inbox = async (id) => {
       const frame = await record({ session_id: id, hook_event_name: "MailboxContext" });
@@ -83,9 +87,12 @@ export default {
       const prompt = event.prompt.text;
       if (!prompt) return;
       const id = event.sessionID;
+      const queue = pending.get(id) ?? [];
+      queue.push(event.messageID);
+      pending.set(id, queue);
       active.set(id, "busy");
       await inbox(id);
-      await record({ session_id: id, hook_event_name: "UserPromptSubmit", prompt });
+      await record({ session_id: id, hook_event_name: "UserPromptSubmit", generation_id: event.messageID, prompt });
     });
     // The frame rides every model request of the turn as a system part,
     // refreshed after each tool round; the user's own text is never edited.
@@ -98,6 +105,10 @@ export default {
       await record({
         session_id: id,
         hook_event_name: "PostToolUse",
+        // A late tool callback can also arrive in a different execution.
+        // Only attribute it when the host names the current assistant message.
+        generation_id: event.assistantMessageID && event.assistantMessageID === replies.get(id)?.message
+          ? executing.get(id) : undefined,
         tool_name: event.tool,
         tool_input: event.input,
         tool_use_id: event.id,
@@ -112,21 +123,34 @@ export default {
         if (event.data.text.startsWith(DELIVERY))
           await record({ session_id: id, hook_event_name: "MailboxReceived", text: event.data.text });
       } else if (event.type === "session.step.started") {
-        replies.set(id, []);
+        replies.set(id, { message: event.data.assistantMessageID, parts: [] });
       } else if (event.type === "session.text.ended") {
-        replies.get(id)?.push(event.data.text);
+        const reply = replies.get(id);
+        if (reply && reply.message === event.data.assistantMessageID) reply.parts.push(event.data.text);
       } else if (event.type === "session.deleted") {
         active.delete(id);
         frames.delete(id);
         replies.delete(id);
+        pending.delete(id);
+        executing.delete(id);
       } else if (event.type === "session.execution.started") {
+        const queue = pending.get(id) ?? [];
+        executing.set(id, queue.length === 1 ? queue[0] : undefined);
+        pending.delete(id);
+        replies.delete(id);
         if (active.has(id)) active.set(id, "busy");
       } else if (event.type.startsWith("session.execution.") && active.has(id)) {
         // Succeeded, failed or interrupted: the turn is over.
-        active.set(id, "idle");
-        frames.delete(id);
-        await record({ session_id: id, hook_event_name: "Stop",
-          last_assistant_message: (replies.get(id) ?? []).join("\n") });
+        const generation = executing.get(id);
+        const answer = (replies.get(id)?.parts ?? []).join("\n");
+        // Only the next unambiguous execution start can claim another generation.
+        if (!executing.has(id) && pending.get(id)?.length === 1) pending.delete(id);
+        active.set(id, pending.has(id) ? "busy" : "idle");
+        if (!pending.has(id)) frames.delete(id);
+        replies.delete(id);
+        executing.delete(id);
+        await record({ session_id: id, hook_event_name: "Stop", generation_id: generation,
+          last_assistant_message: answer });
       }
     };
     const controller = new AbortController();
@@ -135,6 +159,9 @@ export default {
         try {
           for await (const event of ctx.event.subscribe({ signal: controller.signal })) await observe(event);
         } catch {
+          executing.clear();
+          pending.clear();
+          replies.clear();
           // The stream is volatile by contract; a failed one is resubscribed.
           await new Promise((resolve) => setTimeout(resolve, 1000));
         }

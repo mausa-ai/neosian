@@ -180,7 +180,15 @@ pub fn run(args: &Mcp, out: &mut impl Write, err: &mut impl Write) -> io::Result
         )
         .expect("context.yaml carries the discipline")
     } else {
-        match render_instructions(store.as_ref(), &mounts, Stamp::now()) {
+        let rendered = match store.profile() {
+            Some(profile) if actor.as_str() == "mcp:opencode" => {
+                let limit = profile.context.max_chars
+                    - crate::profile::context::opencode_hook_limit(profile);
+                crate::profile::context::render_context(store.as_ref(), &mounts, limit, None)
+            }
+            _ => render_instructions(store.as_ref(), &mounts, Stamp::now()),
+        };
+        match rendered {
             Ok(instructions) => instructions,
             Err(error) => {
                 writeln!(err, "error: {}", error.text())?;

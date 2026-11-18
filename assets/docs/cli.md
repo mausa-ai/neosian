@@ -35,6 +35,7 @@ protocol servers use their own framing.
 | `export`, `import` | Portable archives with histories and attribution |
 | `redact`, `prune` | Operator conversation erasure and retention |
 | `record` | Consume a foreign agent hook payload on stdin |
+| `record pause <conversation-id>`, `record resume <conversation-id>` | Pause one profile conversation locally, or resume capture from its next user prompt |
 | `native-memory add/list/sync/remove` | Register explicit native Markdown sources for guarded local capture and hook reminders |
 | `mcp` | MCP server over stdio |
 | `serve` | State HTTP and optional MCP HTTP server |

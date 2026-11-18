@@ -11,6 +11,26 @@ fn template(key: &str) -> String {
     literal(CONTEXT, key).expect("profile context asset")
 }
 
+pub fn identity(id: &str) -> String {
+    let template =
+        crate::assets::block(crate::assets::MESSAGES, "identity").expect("identity asset");
+    render(&template, &[("session", id)]).trim_end().to_string()
+}
+
+// OpenCode receives workspace context from MCP and the current session from
+// the plugin. Both contributions share the configured character budget.
+pub fn opencode_hook_limit(profile: &super::Profile) -> usize {
+    if profile.context.mailbox {
+        profile
+            .context
+            .max_chars
+            .min(crate::record::context::context_chars("opencode") as usize)
+            / 2
+    } else {
+        identity("").chars().count() + profile.conversation_prefix().len() + 64
+    }
+}
+
 struct Budget {
     text: String,
     limit: usize,
@@ -53,9 +73,7 @@ pub fn render_context(
         omitted: 0,
     };
     if let Some((id, _)) = own {
-        let identity =
-            crate::assets::block(crate::assets::MESSAGES, "identity").expect("identity asset");
-        b.push(&render(&identity, &[("session", id)]));
+        b.push(&identity(id));
     }
     b.push(&render(
         &template("profile_header"),

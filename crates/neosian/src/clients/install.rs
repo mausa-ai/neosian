@@ -70,10 +70,23 @@ pub enum McpCommand {
     Install(McpInstall),
 }
 
+#[derive(Args)]
+pub struct Conversation {
+    /// The complete profile session identity.
+    pub conversation_id: String,
+    /// One JSON envelope on stdout.
+    #[arg(long)]
+    pub json: bool,
+}
+
 #[derive(Subcommand)]
 pub enum RecordCommand {
     /// Print or apply a foreign agent's hooks for neosian record.
-    Install(RecordInstall),
+    Install(Box<RecordInstall>),
+    /// Pause this profile conversation's capture on this installation and discard its pending turn.
+    Pause(Conversation),
+    /// Resume this profile conversation's capture from the next user prompt.
+    Resume(Conversation),
 }
 
 impl Common {

@@ -41,7 +41,8 @@ try {
         const reply = fs.readFileSync(${JSON.stringify(reply)}, 'utf8');
         setTimeout(() => process.stdout.write(reply), 70);
       } else if (payload.hook_event_name === 'MailboxContext') {
-        process.stdout.write('[neosian session identity: ' + payload.session_id + ']');
+        const id = payload.session_id === "live" ? "w-" + "a".repeat(32) + "-" + "b".repeat(64) : payload.session_id;
+        process.stdout.write('[neosian session identity: ' + id + ']');
       } else if (payload.hook_event_name === 'SessionStart') {
         process.stdout.write('index\\n[neosian session identity: ' + payload.session_id + ']');
       }
@@ -133,7 +134,8 @@ try {
   assert.equal((await recorded("UserPromptSubmit"))[0].prompt, "continue");
   const request = { sessionID: "live", system: [] };
   hooks.get("context")(request);
-  assert.ok(request.system[0].text.includes("identity: live"));
+  const mappedIdentity = "[neosian session identity: w-" + "a".repeat(32) + "-" + "b".repeat(64) + "]";
+  assert.equal(request.system[0].text, mappedIdentity);
   await timer.callback(); // Busy: no wake attempt.
   assert.equal((await recorded("MailboxPoll")).length, 0);
   feed("session.execution.succeeded", { sessionID: "live" });
@@ -162,7 +164,30 @@ try {
   assert.equal((await recorded("PostToolUse"))[0].tool_response, "tool result");
   const next = { sessionID: "live", system: [] };
   hooks.get("context")(next);
-  assert.ok(next.system[0].text.includes("identity: live"));
+  assert.equal(next.system[0].text, mappedIdentity);
+  // A queued prompt and the execution stream advance independently. The old
+  // response keeps its own generation even after the next prompt was observed.
+  const submit = async (messageID) => await hooks.get("prompt")({ sessionID: "live", messageID, prompt: { text: messageID } });
+  await submit("old-native-message");
+  feed("session.execution.started", { sessionID: "live" });
+  feed("session.step.started", { sessionID: "live", assistantMessageID: "answer-old" });
+  feed("session.text.ended", { sessionID: "live", assistantMessageID: "answer-old", text: "old reply" });
+  await new Promise((resolve) => setTimeout(resolve, 15));
+  await submit("new-native-message");
+  feed("session.execution.succeeded", { sessionID: "live" });
+  await until(async () => (await recorded("Stop")).length === 3);
+  const oldStop = (await recorded("Stop")).at(-1);
+  assert.equal(oldStop.generation_id, "old-native-message");
+  assert.equal(oldStop.last_assistant_message, "old reply");
+  feed("session.execution.started", { sessionID: "live" });
+  feed("session.step.started", { sessionID: "live", assistantMessageID: "answer-new" });
+  feed("session.text.ended", { sessionID: "live", assistantMessageID: "answer-old", text: "late old text" });
+  feed("session.text.ended", { sessionID: "live", assistantMessageID: "answer-new", text: "new reply" });
+  feed("session.execution.succeeded", { sessionID: "live" });
+  await until(async () => (await recorded("Stop")).length === 4);
+  const newStop = (await recorded("Stop")).at(-1);
+  assert.equal(newStop.generation_id, "new-native-message");
+  assert.equal(newStop.last_assistant_message, "new reply");
   feed("session.deleted", { sessionID: "live" });
   await new Promise((resolve) => setTimeout(resolve, 20));
   await writeFile(ocReply, JSON.stringify({ messages: [{ ...item, id: "after-delete" }] }));

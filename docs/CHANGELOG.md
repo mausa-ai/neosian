@@ -8,6 +8,13 @@ phase close names the version.
 
 ## [Unreleased]
 
+### Added
+
+- `neosian record pause <conversation-id>` discards an open profile turn and
+  pauses that conversation on this installation. `record resume` follows the
+  profile's capture policy from the next user prompt. Memory and skills remain
+  available.
+
 ## [2.17.1] - 2026-11-17
 
 ### Fixed

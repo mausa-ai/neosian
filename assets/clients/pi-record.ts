@@ -100,8 +100,15 @@ export default function neosianRecord(pi: ExtensionAPI) {
   });
   pi.on("before_agent_start", async (event, ctx) => {
     const inbox = await record(ctx, { hook_event_name: "MailboxContext" });
-    const base = context.split("[neosian session identity:")[0].trimEnd();
-    event.systemPromptOptions.sections.neosian = [base, inbox].filter(Boolean).join("\n\n");
+    // A profile frame already includes its identity, selected knowledge, skills
+    // and opted-in inbox under one budget. The legacy recorder sends the
+    // startup index and a separate live identity/inbox tail.
+    if (context.startsWith("[neosian session identity:")) {
+      event.systemPromptOptions.sections.neosian = inbox || context;
+    } else {
+      const base = context.split("[neosian session identity:")[0].trimEnd();
+      event.systemPromptOptions.sections.neosian = [base, inbox].filter(Boolean).join("\n\n");
+    }
     compacted = false;
   });
   // Automatic compaction can retry without before_agent_start. Replace

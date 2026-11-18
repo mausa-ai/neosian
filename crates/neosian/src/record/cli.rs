@@ -39,7 +39,7 @@ use crate::store::grammar::Actor;
 use crate::store::time::Stamp;
 use clap::Args;
 
-const DEFAULT_AGENT: &str = "claude-code";
+pub(super) const DEFAULT_AGENT: &str = "claude-code";
 const SPOOL_DIR_NAME: &str = "spool";
 pub const HINT: &str = "the record never blocks the agent — fix the cause and the next Stop lands \
                         the whole span (the spool keeps it)";
@@ -90,11 +90,21 @@ pub struct Record {
 }
 
 pub fn run(args: &Record, out: &mut impl Write, err: &mut impl Write) -> io::Result<u8> {
-    if let Some(crate::clients::install::RecordCommand::Install(install)) = &args.command {
-        if args.profile.is_some() {
-            return usage(args.json, "place --profile after install", out, err);
+    use crate::clients::install::RecordCommand;
+    match &args.command {
+        Some(RecordCommand::Pause(control)) => {
+            return super::pause::run(args, control, true, out, err);
         }
-        return crate::clients::install::record(install, out, err);
+        Some(RecordCommand::Resume(control)) => {
+            return super::pause::run(args, control, false, out, err);
+        }
+        Some(RecordCommand::Install(install)) => {
+            if args.profile.is_some() {
+                return usage(args.json, "place --profile after install", out, err);
+            }
+            return crate::clients::install::record(install, out, err);
+        }
+        None => {}
     }
     let json = args.json;
     let cwd = env::current_dir()?;

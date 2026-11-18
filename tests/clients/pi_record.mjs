@@ -86,6 +86,15 @@ try {
   assert.ok(calls[0].tool_response.content[0].text === long, "long Unicode result preserved");
   assert.equal(calls[0].tool_response.isError, true);
   assert.deepEqual(calls[2].tool_response.structuredContent, { detail: "structured" });
+  const mapped = "w-" + "a".repeat(32) + "-" + "b".repeat(64);
+  const identity = "[neosian session identity: " + mapped + "]";
+  const frame = identity + "\n/project/fact\n/project/skills/review";
+  const profile = await load([process.execPath, "-e",
+    'process.stdin.resume();process.stdin.on("end", () => process.stdout.write(' + JSON.stringify(frame) + '))', "--"]);
+  await profile("session_start", { reason: "startup" });
+  await profile("before_agent_start", { systemPromptOptions: options });
+  assert.equal(options.sections.neosian, frame);
+  await profile("session_shutdown");
   const missing = await load([join(root, "missing-recorder")]);
   await missing("session_start", { reason: "startup" });
   await missing("message_end", message("user", "still runs"));
