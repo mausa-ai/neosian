@@ -125,7 +125,16 @@ jobs:
       - if: needs.build.outputs.publish == 'true'
         run: echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
       - if: needs.build.outputs.publish == 'true'
-        run: docker push "$IMAGE:$VERSION-$ARCH"
+        name: Publish the tested image as an OCI manifest
+        run: |
+          if ! command -v skopeo >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install --no-install-recommends -y skopeo
+          fi
+          ref="$IMAGE:$VERSION-$ARCH"
+          skopeo copy --format oci "docker-daemon:$ref" "docker://$ref"
+          docker buildx imagetools inspect --raw "$ref" |
+            jq -e '.mediaType == "application/vnd.oci.image.manifest.v1+json"'
 
   # The multi-arch index from the two pushed legs; `latest` only on a
   # final version — a pre-release is never what an unpinned pull gets.
