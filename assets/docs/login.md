@@ -5,13 +5,17 @@ summary: Device sign-in, machine credentials and host-managed workspace profiles
 
 # Connect a machine
 
-Run `neosian login` to connect to neosian cloud. Compare the public code in
-your terminal with the one on the approval page. The host identifies the
-account, assigns workspaces and supplies its recording notice. Run
-`neosian setup --write`, restart your agents and check `neosian status`.
-The default discovery URL is
-`https://cloud.neosian.com/api/v1/machine/host`. Use `--host URL` to select
-a host implementing the same HTTPS contract.
+Run `neosian login --host URL` with the HTTPS discovery URL supplied by a
+host that supports machine sign-in. On first login, omitting `--host` selects
+`https://cloud.neosian.com/api/v1/machine/host`. Later logins in the same
+neosian home reuse the chosen URL. The first-party neosian cloud sign-in
+service is still in development for 2.18.0. For a storage-only HTTP service,
+see the manual bindings in `neosian docs profiles`.
+
+Compare the public code in your terminal with the one on the approval page.
+The host identifies the account, assigns workspaces and supplies its recording
+notice. Run `neosian setup --write`, restart your agents and check
+`neosian status`.
 
 Shared recording saves prompts and assistant text after login displays the
 notice. Each profile and its local source binding must permit it. Use
@@ -73,8 +77,9 @@ the running user's credentials can act as that machine. Disconnect it on
 the host's devices page if the machine is lost.
 
 Containers and CI can supply an existing bearer in `NEOSIAN_LOGIN_TOKEN`
-and run `neosian login --non-interactive --workspace none`. The token is
-verified against the machine endpoint and remains in the environment.
+and run `neosian login --host URL --non-interactive --workspace none` with
+the host's discovery URL. The token is verified against the machine endpoint
+and remains in the environment.
 Changing the variable requires another login to verify the new credential.
 Use a separate `NEOSIAN_HOME` for another host or account. Profile export,
 registration files, command arguments and diagnostic output exclude the
