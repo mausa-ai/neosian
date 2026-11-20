@@ -161,7 +161,9 @@ mod tests {
             std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700)).unwrap();
         }
         let executable = scratch.path().join("neosian").display().to_string();
-        let command = format!("{executable} record --agent muse-code");
+        // Quoted as the installer writes it: a Windows path keeps its separators.
+        let words = [executable.as_str(), "record", "--agent", "muse-code"];
+        let command = crate::clients::context::shell_join(&words.map(String::from));
         let group = json!([{"hooks": [{"type": "command", "command": command}]}]);
         let text = json!({"schema_version": 1, "hooks": {"Stop": group}}).to_string();
         scratch.plant("muse/settings.json", &text);
