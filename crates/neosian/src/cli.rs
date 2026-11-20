@@ -70,7 +70,7 @@ enum Command {
     Status(clients::status::Status),
     /// Display cache information from a client's statusline JSON on stdin.
     Statusline(clients::statusline::Statusline),
-    /// Install a newer binary release, or preview it with --check.
+    /// Install a newer binary release and refresh existing registrations, or preview it with --check.
     Update(update::Update),
     /// Display version information.
     Version,

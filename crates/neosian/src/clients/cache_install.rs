@@ -250,6 +250,23 @@ fn apply(context: &Context, level: &str, write: bool) -> Result<Value, Failure> 
     Ok(report)
 }
 
+/// Every file `install` writes at this level, so a caller can restore them.
+pub fn owned(context: &Context, level: &str) -> Vec<PathBuf> {
+    let root = directory(context, level);
+    let mut paths = vec![
+        targets::hooks("claude-code", context, level).path,
+        root.join("statusline.json"),
+        root.join("plugin/bridge.json"),
+        root.join(".claude-plugin/marketplace.json"),
+    ];
+    paths.extend(
+        ASSETS
+            .iter()
+            .map(|(name, _)| root.join("plugin").join(name)),
+    );
+    paths
+}
+
 pub fn status(context: &Context) -> Value {
     let levels: Vec<_> = ["user", "project"]
         .into_iter()

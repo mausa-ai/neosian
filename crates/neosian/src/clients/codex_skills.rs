@@ -203,6 +203,18 @@ fn apply(context: &Context, mode: &str, write: bool) -> Result<Value, Failure> {
     Ok(report)
 }
 
+/// Every file `install` writes, so a caller can restore them.
+pub fn owned(context: &Context) -> Vec<std::path::PathBuf> {
+    let base = context.directory("codex");
+    let mut paths = vec![base.join(RECEIPT)];
+    paths.extend(
+        ASSETS
+            .iter()
+            .map(|(name, _)| base.join("skills").join(NAME).join(name)),
+    );
+    paths
+}
+
 pub fn status(context: &Context) -> Value {
     install(context, "auto", false)
 }

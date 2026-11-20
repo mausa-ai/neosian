@@ -18,6 +18,9 @@ pub struct Setup {
     /// Check saved registrations and probe this binary with temporary MCP/file storage.
     #[arg(long, conflicts_with = "write")]
     check: bool,
+    /// Bring existing user-level registrations to this release; connect nothing new (update runs this).
+    #[arg(long, conflicts_with_all = ["write", "check", "client", "level", "binary", "yes", "root", "url", "profile", "claude_cache", "codex_skills"])]
+    refresh: bool,
     #[arg(long)]
     json: bool,
     #[arg(long, default_value = "user", value_parser = ["user", "project"])]
@@ -232,6 +235,9 @@ pub fn run(args: &Setup, out: &mut impl Write, err: &mut impl Write) -> io::Resu
         .and_then(|()| context.binary(args.binary.as_deref()))
     {
         return crate::cli::usage(args.json, &message, out, err);
+    }
+    if args.refresh {
+        return super::refresh::run(&context, args.json, out);
     }
     let login_home = crate::profile::files::home().map_err(io::Error::other)?;
     if let Some(login) = crate::login::local::state(&login_home).map_err(io::Error::other)?

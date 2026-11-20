@@ -15,7 +15,7 @@ protocol servers use their own framing.
 | Command | Purpose |
 |---|---|
 | `login`, `logout` | Connect a machine, refresh host-managed profiles or disconnect it. See `neosian docs login`. |
-| `setup`, `status` | Register clients and inspect local setup |
+| `setup`, `status` | Register clients, refresh existing registrations and inspect local setup |
 | `statusline --client claude-code` | Display cache state from Claude Code's statusline JSON; setup installs its observation bridge |
 | `profile init/import/export/show/bind` | Create portable workspace selections and local bindings |
 | `skill` | Import/export, discover/load, inspect/validate, edit/diff/revert and select/pin reusable skills. See `neosian docs skills`. |
@@ -83,14 +83,38 @@ repeat `--client`. Preserve unrelated client settings and inspect reported
 pending client-owned registrations. `--binary PATH` chooses the registered
 executable. `status --json` reports paths and registrations without provider
 credentials. `neosian update` installs an available stable release through this
-native installation's updater and verifies the installed version. `--check`
-previews without installing; `--write` remains accepted for existing scripts.
+native installation's updater and verifies the installed version. It then runs
+the installed release's `setup --refresh`, so no second setup step is needed.
+`--check` previews the install without installing or refreshing; `--write`
+remains accepted for existing scripts.
 Those two flags cannot be combined. The command refuses major-version jumps
 and an updater that does not belong to this installation.
 `update --mode off|notify|auto` only stores the policy for passive checks at
 interactive `status`; it does not install anything. That policy never prevents
-an explicit `neosian update`. Ordinary hooks and MCP calls never initiate update
-checks. Package-manager installations should be updated using that package manager.
+an explicit `neosian update`. An `auto` install at `status` refreshes too and
+prints its report on stderr before the status report. Ordinary hooks and MCP
+calls never initiate update checks. Package-manager installations should be
+updated using that package manager, followed by `neosian setup --refresh`.
+
+`setup --refresh` brings the registrations that already exist to the running
+release: the same clients and the same store selection, at the user level. It
+keeps each registered command line word for word and rewrites only what the
+release owns around it: the entry format, the hook events, the OpenCode and Pi
+adapters, the Claude Code plugin and the Codex skill. A file that is already
+current is not written. It connects no new client, creates no client home,
+adds no skill or plugin that was never installed, and keeps `--codex-skills
+off` and `--claude-cache off`. A registration that runs another installation,
+or that carries words this release does not write, is left alone with its
+reason. Project files in the current directory are listed, never edited. Each
+client is all or nothing: a failed client keeps its registration as it was and
+the others proceed. The report ends by naming the clients to restart. Exit 1
+means a client failed; `update` then also exits 1 and keeps the new binary.
+`setup --refresh --json` prints one report and never prompts; `update --json`
+carries it as `refresh`, which is `null` when nothing was installed.
+`update` runs exactly `setup --refresh` (with `--json` for a JSON update) on
+the installed executable, and later releases keep accepting that command.
+An update performed by 2.18.0 or earlier does not hand over; run
+`neosian setup --refresh` once after it.
 
 Claude Code setup also installs the bundled cache plugin and composes the
 observation bridge with an existing statusline. Keep-warm defaults on for an

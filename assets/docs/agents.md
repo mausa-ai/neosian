@@ -74,6 +74,15 @@ neosian record install --client opencode --level project --scope user:me --write
   variables. Source access is `not_checked`, and client connection/hook delivery
   are `not_observed`. Restart the client, review hook trust and confirm its MCP
   connection. `--check` and `--write` are separate steps.
+- **`neosian setup --refresh`** is what `neosian update` runs on the release
+  it installed. It brings existing user-level registrations to that release
+  with the same clients and store selection, keeps each registered command
+  line word for word, and connects nothing new. Persisted opt-outs stay.
+  Registrations for another installation, or with words this release does not
+  write, are left alone with a reason; project files are listed, never edited.
+  A client that fails keeps its registration while the others proceed. Restart
+  the clients it names. JSON never prompts. Run it yourself after a
+  package-manager upgrade.
 - **Once per machine.** By default the hooks land in the client's own
   settings (`--level user`) and serve every project: with no store flag
   the line names `~/.neosian` (or `$NEOSIAN_HOME`) and no mount, and the
@@ -163,7 +172,8 @@ neosian record install --client opencode --level project --scope user:me --write
 ## Codex upkeep in the prompt picker
 
 `neosian setup --client codex --write` installs `$neosian-upkeep` alongside
-MCP and hooks. Run setup again after upgrading an older installation, then
+MCP and hooks. `neosian update` keeps an installed entry current; an
+installation that predates the skill needs this setup once. Then run
 `neosian setup --client codex --check`. In the Codex prompt area, type:
 
 ```text
@@ -257,7 +267,8 @@ back to PowerShell. Its refresh interval is at most 30 seconds, preserving any
 faster existing interval. A missing plugin heartbeat produces a fallback
 warning. `neosian status --json` and `neosian setup --check` inspect installed
 assets and observation wiring; they explicitly do not claim live delivery.
-After a Neosian update, repeat setup to refresh the bundled plugin. Normal
+`neosian update` refreshes the bundled plugin through `setup --refresh`; after
+a package-manager upgrade, run `neosian setup --refresh` yourself. Normal
 `claude update` does not remove the plugin; incompatible behavior pauses it.
 
 To remove the integration from this setup scope, run
@@ -732,5 +743,6 @@ two project directories, each session in its own `proj:` scope.
 See `neosian docs messaging` for the shared `messages` tool, conversation and
 scope destinations, history annotations, explicit acknowledgment and claims.
 Reminders can be snoozed with a finding and a new due time on the same ID.
-Regenerate client adapters after upgrading for automatic
-delivery. Pi and OpenCode also support wake requests while attached.
+`neosian update` regenerates installed client adapters for automatic delivery;
+after a package-manager upgrade, run `neosian setup --refresh`. Pi and OpenCode
+also support wake requests while attached.

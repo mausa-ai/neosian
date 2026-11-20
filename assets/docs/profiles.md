@@ -241,9 +241,9 @@ workspace must have a pending turn or receive its own fresh prompt.
 Cursor and the OpenCode plugin identify the native generation of a reply.
 After a pause the recorder accepts their callbacks only for the admitted
 prompt's generation. Older or unidentifiable callbacks are discarded, even
-after another prompt. Update an older installed OpenCode plugin with
-`neosian record install --client opencode --write` using your existing
-registration options. Other clients resume at their next observed user
+after another prompt. `neosian update`, or `neosian setup --refresh` after a
+package-manager upgrade, replaces an older installed OpenCode plugin and keeps
+its registration options. Other clients resume at their next observed user
 prompt. Both commands run locally and work offline. Private control files
 under `profile-spool/` hold empty markers and digests of native generation
 IDs. They contain no prompt text, assistant text or credentials.

@@ -33,11 +33,11 @@ static PLUGIN: LazyLock<Regex> = LazyLock::new(|| {
     .unwrap()
 });
 
-fn carries(command: &str) -> bool {
+pub(super) fn carries(command: &str) -> bool {
     command.contains("-m neosian.record") || VERB.is_match(command).unwrap_or(false)
 }
 
-fn commands(group: &Value) -> Vec<&str> {
+pub(super) fn commands(group: &Value) -> Vec<&str> {
     let mut commands = Vec::new();
     if let Some(command) = group.get("command").and_then(Value::as_str) {
         commands.push(command);
@@ -138,7 +138,7 @@ pub fn strip(mut document: Value) -> Value {
     document
 }
 
-fn cursor_document(path: &Path, command: &str) -> Result<Value, Failure> {
+pub(super) fn cursor_document(path: &Path, command: &str) -> Result<Value, Failure> {
     let document = files::load(path)?;
     if path.exists() && document.get("version").and_then(Value::as_i64) != Some(1) {
         return Err(Failure::new(
@@ -168,6 +168,22 @@ fn cursor_document(path: &Path, command: &str) -> Result<Value, Failure> {
     let mut document = merge(document, &fragment(command, true), path)?;
     document["version"] = json!(1);
     Ok(document)
+}
+
+/// The OpenCode plugin or Pi extension that runs this record command line.
+pub(super) fn adapter(client: &str, argv: &[String]) -> String {
+    let template = if client == "pi" {
+        include_str!(concat!(env!("NEOSIAN_ASSETS"), "/clients/pi-record.ts"))
+    } else {
+        include_str!(concat!(
+            env!("NEOSIAN_ASSETS"),
+            "/clients/opencode-record.js"
+        ))
+    };
+    template.replace(
+        "__NEOSIAN_RECORD_ARGV__",
+        &pyfmt::dumps_spaced(&json!(argv), true, false),
+    )
 }
 
 pub fn install(target: &Target, context: &Context, settings: &Settings, write: bool) -> Value {
@@ -252,20 +268,7 @@ fn perform(
             }
         }
     }
-    let plugin = target.plugin.then(|| {
-        let template = if target.client == "pi" {
-            include_str!(concat!(env!("NEOSIAN_ASSETS"), "/clients/pi-record.ts"))
-        } else {
-            include_str!(concat!(
-                env!("NEOSIAN_ASSETS"),
-                "/clients/opencode-record.js"
-            ))
-        };
-        template.replace(
-            "__NEOSIAN_RECORD_ARGV__",
-            &pyfmt::dumps_spaced(&json!(argv), true, false),
-        )
-    });
+    let plugin = target.plugin.then(|| adapter(&target.client, argv));
     let created = !target.path.exists() && (write || cursor);
     let fragment = fragment(command, cursor);
     if write {

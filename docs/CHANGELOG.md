@@ -8,6 +8,35 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [2.19.0] - 2026-11-20
+
+### Added
+
+- `neosian setup --refresh` brings the registrations that already exist on
+  this machine to the running release: the same clients and the same store
+  selection, at the user level. It keeps each registered command line word for
+  word and rewrites only what the release owns around it (the entry format,
+  hook events, the OpenCode and Pi adapters, the Claude Code plugin and the
+  Codex skill), and it writes nothing that is already current. It connects no
+  new client, keeps `--codex-skills off` and `--claude-cache off`, leaves a
+  registration for another installation or with words it does not write alone
+  with its reason, and lists project files without editing them. Each client is
+  all or nothing: a failed client keeps its registration and the others
+  proceed. `--json` prints one report and never prompts.
+
+### Changed
+
+- `neosian update` runs the installed release's `setup --refresh` once it has
+  verified the install, and so does an `auto` install at interactive `status`,
+  which prints the report on stderr. Nobody needs to repeat setup after an
+  update. When a client's refresh fails, `update` exits 1 and keeps the new
+  binary. `update --json` now prints its one object after the install, with
+  the refresh report as `refresh` (`null` when nothing was installed). The
+  command an update runs on the new release, `setup --refresh` with `--json`
+  for a JSON update, stays accepted by later releases. An update performed by
+  2.18.0 or earlier does not hand over: run `neosian setup --refresh` once
+  after it, as after a package-manager upgrade.
+
 ## [2.18.0] - 2026-11-18
 
 ### Added

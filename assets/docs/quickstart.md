@@ -52,9 +52,10 @@ hooks record conversations and supply startup context. The `docs` tool reads
 these same versioned pages. `list_skills` and `load_skill` expose reusable
 instructions, including `handoff` and `upkeep`.
 
-Codex setup also installs a native `$neosian-upkeep` entry. Run
-`neosian setup --client codex --write` after upgrading an existing installation,
-then `neosian setup --client codex --check`. In Codex, type
+`neosian update` installs a newer release and refreshes the registrations that
+already exist; restart your agent afterward. Codex setup also installs a native
+`$neosian-upkeep` entry. Run `neosian setup --client codex --write` once if your
+installation predates it, then `neosian setup --client codex --check`. In Codex, type
 `$neosian-upkeep Review /project and show proposed changes before applying anything.`
 Restart Codex if its skill picker has not refreshed. The current conversation
 does the review; neosian does not start or schedule another model session.

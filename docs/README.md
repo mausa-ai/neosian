@@ -33,7 +33,7 @@ the next session reads the index, recalls relevant turns and continues
 explicit handoffs.
 Codex setup also installs the native `$neosian-upkeep` skill for its prompt
 picker. It loads the live MCP upkeep workflow in your current conversation.
-Run setup again after upgrading an existing installation to add the entry.
+An installation that predates the entry needs setup once to add it.
 Claude Code setup also installs a bundled plugin that keeps an observed
 one-hour subscription cache warm while idle, until the session closes. Expired
 or uncertain caches show a warning and wait for your next message. A compact
@@ -63,8 +63,9 @@ Windows has a PowerShell installer and MSI on each GitHub Release.
 Package-manager alternatives are `npm install -g neosian` and
 `cargo install neosian --locked`. Cargo builds from source with the exact
 Rust version in `rust-toolchain.toml`. Native installs update in place with
-`neosian update`; `neosian update --check` previews. For package-manager
-installations, use the original package manager. Signing and notarization remain deferred.
+`neosian update`, which then refreshes the existing client registrations;
+`neosian update --check` previews. For package-manager installations, use the
+original package manager, then `neosian setup --refresh`. Signing and notarization remain deferred.
 
 ## Read, write and carry state
 

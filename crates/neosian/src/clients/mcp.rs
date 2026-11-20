@@ -66,16 +66,36 @@ pub fn displace(target: &Target, write: bool) -> Result<Option<String>, Failure>
     Ok(Some(target.path.display().to_string()))
 }
 
+/// The client's entry for a full registered command line (`argv[0]` is the executable).
+pub fn entry(client: &str, argv: &[String], credentials: &[String]) -> Value {
+    if client == "opencode" {
+        return json!({"type": "local", "command": argv, "enabled": true});
+    }
+    let mut entry = json!({"command": argv[0], "args": argv[1..]});
+    if ["muse-code", "cursor"].contains(&client) && !credentials.is_empty() {
+        let prefix = if client == "cursor" { "env:" } else { "" };
+        let mut names = json!({});
+        for name in credentials {
+            names[name.as_str()] = json!(format!("${{{prefix}{name}}}"));
+        }
+        entry["env"] = names;
+    }
+    if client == "pi" {
+        entry["exposure"] = json!("direct");
+    }
+    entry
+}
+
 fn perform(
     target: &Target,
     context: &Context,
     settings: &Settings,
     write: bool,
 ) -> Result<Value, Failure> {
-    let mut args = vec!["mcp".into()];
-    args.extend(settings.store.clone());
-    args.extend(settings.mounts.clone());
-    args.extend([
+    let mut argv = vec![context.executable.clone(), "mcp".into()];
+    argv.extend(settings.store.clone());
+    argv.extend(settings.mounts.clone());
+    argv.extend([
         "--actor".into(),
         settings
             .actor
@@ -83,31 +103,9 @@ fn perform(
             .unwrap_or_else(|| format!("mcp:{}", target.client)),
     ]);
     if let Some(schema) = &settings.schema {
-        args.extend(["--schema".into(), schema.clone()]);
+        argv.extend(["--schema".into(), schema.clone()]);
     }
-    let mut entry = json!({"command": context.executable, "args": args});
-    if ["muse-code", "cursor"].contains(&target.client.as_str()) && !settings.credentials.is_empty()
-    {
-        let prefix = if target.client == "cursor" {
-            "env:"
-        } else {
-            ""
-        };
-        let mut names = json!({});
-        for name in &settings.credentials {
-            names[name.as_str()] = json!(format!("${{{prefix}{name}}}"));
-        }
-        entry["env"] = names;
-    }
-    if target.client == "pi" {
-        entry["exposure"] = json!("direct");
-    }
-    if target.client == "opencode" {
-        let argv = std::iter::once(context.executable.clone())
-            .chain(args)
-            .collect::<Vec<_>>();
-        entry = json!({"type": "local", "command": argv, "enabled": true});
-    }
+    let entry = entry(&target.client, &argv, &settings.credentials);
     files::evidence(target)?;
     if write && target.cli.is_some() {
         return Err(Failure::new(

@@ -3,6 +3,9 @@
 mod check;
 #[cfg(test)]
 mod command_tests;
+mod handover;
+#[cfg(test)]
+mod handover_tests;
 mod plan;
 mod receipt;
 #[cfg(test)]
@@ -13,7 +16,7 @@ use crate::{clients::context::Context, config, home, shape, store::time::Stamp};
 use check::{RELEASE_URL, cached, latest, stamp};
 use clap::Args;
 use plan::plan;
-use serde_json::json;
+use serde_json::{Value, json};
 use std::{
     io::{self, Write},
     path::Path,
@@ -27,7 +30,7 @@ pub struct Update {
     /// Check and print without installing the update.
     #[arg(long)]
     check: bool,
-    /// Install through this installation's updater (also the default).
+    /// Install through this installation's updater (also the default), then refresh registrations.
     #[arg(long, conflicts_with = "check")]
     write: bool,
     #[arg(long)]
@@ -147,24 +150,26 @@ fn complete(
     // An explicit update is already consent to install. The saved policy only
     // controls passive checks at the human status door, not this command.
     let decision = plan(crate::version::VERSION, latest, context, !args.check);
+    if !args.json {
+        writeln!(out, "{}", decision.line)?;
+        out.flush()?;
+    }
+    let mut code = u8::from(matches!(decision.action, "refuse" | "unreachable"));
+    let mut refresh = Value::Null;
+    if decision.action == "apply" {
+        code = install(&decision, context, err)?;
+        if code == 0 {
+            (code, refresh) = handover::refresh(&context.executable, args.json, out, err)?;
+        }
+    }
     if args.json {
         writeln!(
             out,
             "{}",
-            json!({"current": crate::version::VERSION, "latest": decision.latest, "shape": shape::kind(&context.env), "mode": mode, "action": decision.action, "line": decision.line})
+            json!({"current": crate::version::VERSION, "latest": decision.latest, "shape": shape::kind(&context.env), "mode": mode, "action": decision.action, "line": decision.line, "refresh": refresh})
         )?;
-    } else {
-        writeln!(out, "{}", decision.line)?;
     }
-    out.flush()?;
-    if decision.action == "apply" {
-        install(&decision, context, err)
-    } else {
-        Ok(u8::from(matches!(
-            decision.action,
-            "refuse" | "unreachable"
-        )))
-    }
+    Ok(code)
 }
 
 pub fn human_door(verb: &str, terminal: bool, json: bool) -> bool {
@@ -201,6 +206,11 @@ pub fn human_check(err: &mut impl Write) -> io::Result<Option<u8>> {
         if code != 0 {
             return Ok(Some(code));
         }
+        // Stdout belongs to status; the refresh report goes to stderr before it.
+        let (mut report, mut notes) = (vec![], vec![]);
+        handover::refresh(&context.executable, false, &mut report, &mut notes)?;
+        err.write_all(&report)?;
+        err.write_all(&notes)?;
         let status = Command::new(context.executable)
             .args(std::env::args_os().skip(1))
             .status()?;

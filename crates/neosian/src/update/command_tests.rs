@@ -35,10 +35,17 @@ fn explicit_updates_install_by_default_regardless_of_passive_policy() {
             );
             fs::set_permissions(&context.executable, fs::Permissions::from_mode(0o700)).unwrap();
             scratch.plant(
+                "install dir/next",
+                &format!(
+                    "#!/bin/sh\n[ \"$1\" = version ] && echo 'neosian v{newer}' && exit\n\
+                     [ \"$*\" = 'setup --refresh --json' ] && echo '{{\"success\":true}}'\n"
+                ),
+            );
+            scratch.plant(
                 "install dir/neosian-update",
                 &format!(
                     "#!/bin/sh\n[ \"$1\" = --tag ] && [ \"$2\" = v{newer} ] || exit 8\n\
-                     printf '#!/bin/sh\\necho neosian v{newer}\\n' > \"$(dirname \"$0\")/neosian\"\n\
+                     cp \"$(dirname \"$0\")/next\" \"$(dirname \"$0\")/neosian\"\n\
                      echo installed\n"
                 ),
             );
@@ -62,6 +69,12 @@ fn explicit_updates_install_by_default_regardless_of_passive_policy() {
             let report: serde_json::Value = serde_json::from_slice(&out).unwrap();
             let preview = flag == Some("--check");
             assert_eq!(report["action"], if preview { "notify" } else { "apply" });
+            let refresh = if preview {
+                json!(null)
+            } else {
+                json!({"success": true})
+            };
+            assert_eq!(report["refresh"], refresh);
             assert_eq!(report["mode"], policy);
             assert_eq!(
                 err,
