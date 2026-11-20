@@ -15,6 +15,7 @@ mod version;
 use crate::{clients::context::Context, config, home, shape, store::time::Stamp};
 use check::{RELEASE_URL, cached, latest, stamp};
 use clap::Args;
+use handover::Stream;
 use plan::plan;
 use serde_json::{Value, json};
 use std::{
@@ -159,7 +160,17 @@ fn complete(
     if decision.action == "apply" {
         code = install(&decision, context, err)?;
         if code == 0 {
-            (code, refresh) = handover::refresh(&context.executable, args.json, out, err)?;
+            (code, refresh) = handover::refresh(
+                &context.executable,
+                args.json,
+                &mut |stream, bytes| match stream {
+                    Stream::Out => out.write_all(bytes).and_then(|()| out.flush()),
+                    Stream::Err => err.write_all(bytes),
+                },
+            )?;
+            if !args.json {
+                writeln!(out, "{}", installed(&decision))?;
+            }
         }
     }
     if args.json {
@@ -170,6 +181,14 @@ fn complete(
         )?;
     }
     Ok(code)
+}
+
+/// Running clients keep the previous release in memory until they restart.
+fn installed(decision: &plan::Decision) -> String {
+    format!(
+        "neosian {} is installed; restart running clients so they use it.",
+        decision.latest.as_deref().unwrap_or("-")
+    )
 }
 
 pub fn human_door(verb: &str, terminal: bool, json: bool) -> bool {
@@ -207,10 +226,10 @@ pub fn human_check(err: &mut impl Write) -> io::Result<Option<u8>> {
             return Ok(Some(code));
         }
         // Stdout belongs to status; the refresh report goes to stderr before it.
-        let (mut report, mut notes) = (vec![], vec![]);
-        handover::refresh(&context.executable, false, &mut report, &mut notes)?;
-        err.write_all(&report)?;
-        err.write_all(&notes)?;
+        handover::refresh(&context.executable, false, &mut |_, bytes| {
+            err.write_all(bytes)
+        })?;
+        writeln!(err, "{}", installed(&decision))?;
         let status = Command::new(context.executable)
             .args(std::env::args_os().skip(1))
             .status()?;

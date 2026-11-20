@@ -77,12 +77,19 @@ neosian record install --client opencode --level project --scope user:me --write
 - **`neosian setup --refresh`** is what `neosian update` runs on the release
   it installed. It brings existing user-level registrations to that release
   with the same clients and store selection, keeps each registered command
-  line word for word, and connects nothing new. Persisted opt-outs stay.
-  Registrations for another installation, or with words this release does not
-  write, are left alone with a reason; project files are listed, never edited.
-  A client that fails keeps its registration while the others proceed. Restart
-  the clients it names. JSON never prompts. Run it yourself after a
-  package-manager upgrade.
+  line word for word, and connects nothing new. It changes only what the
+  release owns and needs to change: a hook group that already carries the
+  neosian command is kept with whatever you added to it, values you set in an
+  MCP entry or the cache statusline stay, and symlinked files keep their link
+  and mode. Persisted opt-outs stay. A part it cannot change faithfully is left
+  alone with the reason and the fix, and the run still succeeds: another
+  installation's registration, words this release does not write, a read-only
+  file, a locally edited skill, a statusline without the bridge, or a missing
+  `claude` CLI. Project files are listed, never edited. Only a failed write
+  fails a client: its files are put back unless the client changed them
+  meanwhile, and the exit is 1. Run it again to retry or to complete an
+  interrupted refresh. Restart the clients it names. JSON never prompts. Run it
+  yourself after a package-manager upgrade.
 - **Once per machine.** By default the hooks land in the client's own
   settings (`--level user`) and serve every project: with no store flag
   the line names `~/.neosian` (or `$NEOSIAN_HOME`) and no mount, and the
@@ -120,8 +127,8 @@ neosian record install --client opencode --level project --scope user:me --write
   and `SessionStart`) and guidance on stderr.
 - `--write` merges it into `~/.claude/settings.json` (under
   `$CLAUDE_CONFIG_DIR` when set), preserving every other key, event and
-  hook; a group carrying our command is replaced, so a re-run is
-  idempotent. `~/.claude` must exist: neosian never creates another
+  hook; our hook is replaced inside its group, other hooks in that group
+  stay, and a re-run is idempotent. `~/.claude` must exist: neosian never creates another
   program's config home.
 - The store flags are `mcp install`'s; the hook line adds `--spool`
   (absolute) and `--agent` when not the default. A DSN is never written
@@ -172,8 +179,9 @@ neosian record install --client opencode --level project --scope user:me --write
 ## Codex upkeep in the prompt picker
 
 `neosian setup --client codex --write` installs `$neosian-upkeep` alongside
-MCP and hooks. `neosian update` keeps an installed entry current; an
-installation that predates the skill needs this setup once. Then run
+MCP and hooks. `neosian update` keeps an installed entry current unless you
+edited it, which the report says; an installation that predates the skill
+needs this setup once. Then run
 `neosian setup --client codex --check`. In the Codex prompt area, type:
 
 ```text
@@ -267,8 +275,10 @@ back to PowerShell. Its refresh interval is at most 30 seconds, preserving any
 faster existing interval. A missing plugin heartbeat produces a fallback
 warning. `neosian status --json` and `neosian setup --check` inspect installed
 assets and observation wiring; they explicitly do not claim live delivery.
-`neosian update` refreshes the bundled plugin through `setup --refresh`; after
-a package-manager upgrade, run `neosian setup --refresh` yourself. Normal
+`neosian update` refreshes the bundled plugin through `setup --refresh` while
+Claude lists it enabled and `claude` is on PATH; the statusline keeps the values
+you set on it. After a package-manager upgrade, run `neosian setup --refresh`
+yourself. Normal
 `claude update` does not remove the plugin; incompatible behavior pauses it.
 
 To remove the integration from this setup scope, run
@@ -603,7 +613,8 @@ Credential-backed project hooks are refused: use `--level user`.
 An existing managed pointer to another file is preserved and automatic
 installation is refused with a manual merge explanation.
 
-Switching stores removes only neosian's displaced hook groups. `status`
+Switching stores removes only neosian's displaced hooks; other hooks in their
+groups stay. `status`
 reads ordinary, managed and project hooks, and reports duplicates.
 Muse hook print mode shows a path-keyed change preview: `merge`,
 `remove_neosian_hooks`, and `add_managed_hooks_env_vars` name the edits;

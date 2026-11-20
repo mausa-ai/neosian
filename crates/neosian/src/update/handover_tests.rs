@@ -6,7 +6,7 @@ use crate::testing::Scratch;
 use clap::Parser;
 use std::{fs, os::unix::fs::PermissionsExt};
 
-const HINT_TEXT: &str = "run neosian setup --write to refresh the registrations";
+const HINT_TEXT: &str = "run neosian setup --refresh";
 
 #[derive(Parser)]
 struct Command {
@@ -80,11 +80,20 @@ fn a_verified_install_hands_over_exactly_setup_refresh() {
     assert_eq!(report["refresh"], json!({"success": true, "clients": []}));
     let (code, out, err) = run(&context, false);
     assert_eq!(code, 0, "{err}");
-    assert!(
-        out.ends_with("\nRestart OpenCode to load the release.\n"),
-        "{out}"
+    let restart = format!(
+        "\nRestart OpenCode to load the release.\nneosian {} is installed; restart running clients so they use it.\n",
+        newer()
     );
-    assert_eq!(err, "a note\n");
+    assert!(out.ends_with(&restart), "{out}");
+    let started = format!(
+        "Refreshing existing registrations: {}\n",
+        crate::clients::context::shell_join(&[
+            context.executable.clone(),
+            "setup".into(),
+            "--refresh".into()
+        ])
+    );
+    assert_eq!(err, format!("{started}a note\n"));
     assert_eq!(
         handover(&scratch),
         "setup --refresh --json\nsetup --refresh\n"
@@ -104,6 +113,9 @@ fn a_failed_client_keeps_the_install_and_exits_1() {
     assert_eq!(report["refresh"]["success"], false);
     assert_eq!(report["refresh"]["clients"][0]["result"], "failed");
     assert!(installed(&context));
+    let (code, out, _) = run(&context, false);
+    assert_eq!(code, 1, "{out}");
+    assert!(out.contains("\"result\": \"failed\""), "{out}");
 }
 
 #[test]
@@ -162,4 +174,42 @@ fn a_failed_install_never_hands_over() {
     assert_eq!(code, 1);
     assert!(err.contains("does not report the checked release"));
     assert_eq!(handover(&scratch), "");
+}
+
+#[test]
+fn text_output_passes_through_while_the_refresh_runs() {
+    let scratch = Scratch::new("handover-stream");
+    let marker = scratch.path().join("seen");
+    // The release waits for a marker that only a streaming reader can create.
+    scratch.plant(
+        "release",
+        &format!(
+            "#!/bin/sh\necho first\ni=0\nwhile [ ! -e '{}' ]; do\n  i=$((i + 1)); [ $i -gt 100 ] && exit 3; sleep 0.1\ndone\necho second\n",
+            marker.display()
+        ),
+    );
+    let release = scratch.path().join("release");
+    fs::set_permissions(&release, fs::Permissions::from_mode(0o700)).unwrap();
+    let mut seen: Vec<(handover::Stream, Vec<u8>)> = vec![];
+    let (code, report) = handover::refresh(
+        &release.display().to_string(),
+        false,
+        &mut |stream, bytes| {
+            if stream == handover::Stream::Out && bytes.starts_with(b"first") {
+                fs::write(&marker, "")?;
+            }
+            seen.push((stream, bytes.to_vec()));
+            Ok(())
+        },
+    )
+    .unwrap();
+    assert_eq!((code, report), (0, Value::Null));
+    let text = |wanted| -> String {
+        seen.iter()
+            .filter(|(stream, _)| *stream == wanted)
+            .map(|(_, bytes)| String::from_utf8_lossy(bytes).into_owned())
+            .collect()
+    };
+    assert_eq!(text(handover::Stream::Out), "first\nsecond\n");
+    assert!(text(handover::Stream::Err).starts_with("Refreshing existing registrations: "));
 }

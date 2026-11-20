@@ -157,12 +157,18 @@ fn apply(context: &Context, level: &str, write: bool) -> Result<Value, Failure> 
     let original = prior(context, level, &document)?;
     let root = directory(context, level);
     let selected = document.get("statusLine").cloned().unwrap_or(Value::Null);
-    let restore = files::read(&root.join("statusline.json"))
-        .filter(|saved| selected["command"].is_string() && saved["wrapper"] == selected["command"])
-        .map(|saved| saved.get("restore").unwrap_or(&saved["original"]).clone())
-        .unwrap_or(selected);
+    let saved = files::read(&root.join("statusline.json"))
+        .filter(|saved| selected["command"].is_string() && saved["wrapper"] == selected["command"]);
+    let restore = saved.as_ref().map_or_else(
+        || selected.clone(),
+        |saved| saved.get("restore").unwrap_or(&saved["original"]).clone(),
+    );
     let command = wrapper(context, &root);
-    let mut statusline = if original.is_null() {
+    // A statusline already wrapped keeps what a person set on it; only the
+    // command belongs to the release.
+    let mut statusline = if saved.is_some() {
+        selected.clone()
+    } else if original.is_null() {
         json!({"type":"command", "padding":0})
     } else {
         original.clone()
@@ -170,9 +176,10 @@ fn apply(context: &Context, level: &str, write: bool) -> Result<Value, Failure> 
     statusline["command"] = json!(command);
     // Keep the fallback warning current even when the mod fails to load.
     // Preserve a faster user interval; restore the original value on disable.
-    if !statusline["refreshInterval"]
-        .as_u64()
-        .is_some_and(|n| (1..=30).contains(&n))
+    if saved.is_none()
+        && !statusline["refreshInterval"]
+            .as_u64()
+            .is_some_and(|n| (1..=30).contains(&n))
     {
         statusline["refreshInterval"] = json!(30);
     }
@@ -281,10 +288,17 @@ pub fn status(context: &Context) -> Value {
                     std::fs::read_to_string(root.join("plugin").join(name))
                         .is_ok_and(|found| found == *bytes)
                 });
+            let observations = root.join("observations");
+            let same = |path: &str| {
+                path == observations.to_string_lossy()
+                    || std::fs::canonicalize(path).is_ok_and(|found| {
+                        std::fs::canonicalize(&observations).is_ok_and(|ours| found == ours)
+                    })
+            };
             let observed = saved["wrapper"].is_string()
                 && settings["statusLine"]["command"] == saved["wrapper"]
                 && files::read(&root.join("plugin/bridge.json"))
-                    .is_some_and(|v| v["observations"] == json!(root.join("observations")));
+                    .is_some_and(|v| v["observations"].as_str().is_some_and(same));
             json!({"level":level,"installed":installed,"current":current,
             "enabled":settings["enabledPlugins"][PLUGIN],"observation_configured":observed,
             "directory":root,"runtime":"not_observed"})

@@ -52,6 +52,39 @@ pub(super) fn commands(group: &Value) -> Vec<&str> {
     commands
 }
 
+/// How many of our hooks these groups carry (a Cursor group is itself one hook).
+pub(super) fn count(groups: &[Value]) -> usize {
+    groups
+        .iter()
+        .map(|group| commands(group).into_iter().filter(|c| carries(c)).count())
+        .sum()
+}
+
+/// Remove our hooks alone: other hooks and members of a shared group stay where
+/// they are, and a group goes only when nothing of it remains.
+pub(super) fn remove(groups: &mut Vec<Value>) {
+    groups.retain_mut(|group| {
+        if group
+            .get("command")
+            .and_then(Value::as_str)
+            .is_some_and(carries)
+        {
+            return false;
+        }
+        let Some(hooks) = group.get_mut("hooks").and_then(Value::as_array_mut) else {
+            return true;
+        };
+        let before = hooks.len();
+        hooks.retain(|hook| {
+            !hook
+                .get("command")
+                .and_then(Value::as_str)
+                .is_some_and(carries)
+        });
+        hooks.len() == before || !hooks.is_empty()
+    });
+}
+
 pub fn installed(target: &Target) -> Option<Vec<String>> {
     if target.plugin {
         let text = fs::read_to_string(&target.path).ok()?;
@@ -118,7 +151,7 @@ pub fn merge(mut document: Value, fragment: &Value, path: &Path) -> Result<Value
                 FIX,
             )
         })?;
-        current.retain(|group| !commands(group).into_iter().any(carries));
+        remove(current);
         current.extend(groups.as_array().expect("fragment groups").iter().cloned());
     }
     Ok(document)
@@ -128,7 +161,7 @@ pub fn strip(mut document: Value) -> Value {
     if let Some(hooks) = document.get_mut("hooks").and_then(Value::as_object_mut) {
         hooks.retain(|_, groups| {
             if let Some(groups) = groups.as_array_mut() {
-                groups.retain(|g| !commands(g).into_iter().any(carries));
+                remove(groups);
                 !groups.is_empty()
             } else {
                 true

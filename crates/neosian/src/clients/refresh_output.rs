@@ -82,10 +82,11 @@ pub fn render(report: &Value, out: &mut impl Write) -> io::Result<()> {
     if !restart.is_empty() {
         writeln!(
             out,
-            "Restart {} to load neosian {}.",
-            listed(restart),
-            text(&report["version"])
+            "Restart {} to load the refreshed registrations.",
+            listed(restart)
         )?;
+    } else if !clients.is_empty() {
+        writeln!(out, "No registration was changed.")?;
     }
     Ok(())
 }

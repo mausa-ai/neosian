@@ -15,27 +15,44 @@ phase close names the version.
 - `neosian setup --refresh` brings the registrations that already exist on
   this machine to the running release: the same clients and the same store
   selection, at the user level. It keeps each registered command line word for
-  word and rewrites only what the release owns around it (the entry format,
-  hook events, the OpenCode and Pi adapters, the Claude Code plugin and the
-  Codex skill), and it writes nothing that is already current. It connects no
-  new client, keeps `--codex-skills off` and `--claude-cache off`, leaves a
-  registration for another installation or with words it does not write alone
-  with its reason, and lists project files without editing them. Each client is
-  all or nothing: a failed client keeps its registration and the others
-  proceed. `--json` prints one report and never prompts.
+  word and changes only what the release owns and needs to change. A hook group
+  that already carries the neosian command is kept as it is, with any hooks or
+  settings added to it; a missing event gains a new group, and an event the
+  release no longer uses loses only the neosian hook. MCP entries gain members
+  they lack and keep every value they have. The OpenCode and Pi adapters, the
+  Codex skill and the Claude Code plugin are replaced when their bytes differ,
+  and only for a client that runs this installation. Nothing already current
+  is written, and a second run writes nothing. It connects no new client, adds
+  no skill or plugin that was never installed or that Claude no longer lists,
+  keeps `--codex-skills off` and `--claude-cache off`, and lists project files
+  without editing them. A part it cannot change faithfully is left alone with
+  the reason and the fix, and the run still succeeds: a registration for
+  another installation or with words it does not write, a read-only file, a
+  locally edited skill, a statusline without the cache bridge, or a missing
+  `claude` CLI. Only a write that fails makes a client fail: the files the run
+  wrote for it are put back unless its client changed them meanwhile, and the
+  exit is 1. Running it again retries and completes an interrupted refresh.
+  `--json` prints one report and never prompts.
 
 ### Changed
 
 - `neosian update` runs the installed release's `setup --refresh` once it has
   verified the install, and so does an `auto` install at interactive `status`,
-  which prints the report on stderr. Nobody needs to repeat setup after an
-  update. When a client's refresh fails, `update` exits 1 and keeps the new
-  binary. `update --json` now prints its one object after the install, with
-  the refresh report as `refresh` (`null` when nothing was installed). The
-  command an update runs on the new release, `setup --refresh` with `--json`
-  for a JSON update, stays accepted by later releases. An update performed by
-  2.18.0 or earlier does not hand over: run `neosian setup --refresh` once
-  after it, as after a package-manager upgrade.
+  which prints the report on stderr. The refresh's output passes through as it
+  runs, and a text update ends by saying that running clients use the new
+  release once restarted. After a native update, setup needs repeating only for
+  parts the report left alone. When a client's refresh fails while writing,
+  `update` exits 1 and keeps the new binary; the retry is
+  `neosian setup --refresh`. `update --json` now prints its one object after
+  the install, with the refresh report as `refresh` (`null` when nothing was
+  installed). The command an update runs on the new release, `setup --refresh`
+  with `--json` for a JSON update, stays accepted by later releases. An update
+  performed by 2.18.0 or earlier does not hand over: run
+  `neosian setup --refresh` once after it, as after a package-manager upgrade.
+- `setup --write` replaces only the neosian hook inside a hook group, so other
+  hooks that share the group are no longer discarded. Client files that are
+  symlinks are written at their target and keep their mode, and re-running
+  Claude Code setup keeps the values set on its wrapped statusline.
 
 ## [2.18.0] - 2026-11-18
 

@@ -1,16 +1,22 @@
 //! One registration, read as `status` reads it. Its command line is kept word
-//! for word; only what the release owns around it is regenerated (§40.48).
+//! for word; the refresh changes only what the release owns and needs to change,
+//! and leaves a part alone, with its reason, when it cannot do that (§40.48).
 
 use super::{
     context::Context,
     diagnostics,
     files::{self, Failure},
-    hooks, mcp,
+    mcp,
     targets::{self, SERVER},
 };
 use serde_json::{Value, json};
-use std::{collections::BTreeSet, path::PathBuf};
+use std::{
+    collections::BTreeSet,
+    path::{Path, PathBuf},
+};
 
+/// How every reason found before writing ends: the retry after the fix.
+pub const RETRY: &str = "then run neosian setup --refresh";
 const STORE: [&str; 3] = ["--root", "--url", "--profile"];
 const MCP: [&str; 6] = [
     "--root",
@@ -20,7 +26,7 @@ const MCP: [&str; 6] = [
     "--actor",
     "--schema",
 ];
-const RECORD: [&str; 8] = [
+pub(super) const RECORD: [&str; 8] = [
     "--root",
     "--url",
     "--profile",
@@ -45,6 +51,8 @@ pub struct Part {
     pub reason: Option<String>,
     pub note: Option<String>,
     pub change: Option<Change>,
+    /// The text a change was computed from; another text at write time stops it.
+    pub read: Option<String>,
     /// The registered executable, set once it is known to run this installation.
     pub executable: Option<String>,
 }
@@ -58,6 +66,7 @@ impl Part {
             reason: None,
             note: None,
             change: None,
+            read: None,
             executable: None,
         }
     }
@@ -65,13 +74,32 @@ impl Part {
     pub(super) fn left_alone(mut self, reason: impl Into<String>) -> Self {
         self.action = "left_alone";
         self.reason = Some(reason.into());
+        self.change = None;
         self
     }
 
-    pub(super) fn update(mut self, change: Change) -> Self {
+    pub(super) fn off(mut self) -> Self {
+        self.action = "off";
+        self
+    }
+
+    pub(super) fn update(mut self, change: Change, read: Option<String>) -> Self {
         self.action = "update";
         self.change = Some(change);
+        self.read = read;
         self
+    }
+
+    /// A file this change would replace must be writable by its owner.
+    pub(super) fn guarded(self, paths: &[PathBuf]) -> Self {
+        match paths.iter().find_map(|path| files::read_only(path)) {
+            Some(why) => self.left_alone(format!("{why}; it is left as it is")),
+            None => self,
+        }
+    }
+
+    pub(super) fn refused(self, failure: &Failure) -> Self {
+        self.left_alone(format!("{}; fix it, {RETRY}", failure.message))
     }
 
     pub fn report(&self) -> Value {
@@ -81,7 +109,7 @@ impl Part {
 }
 
 /// A command line this release writes, whose executable is the running binary.
-fn recognized(
+pub(super) fn recognized(
     argv: &[String],
     verb: &str,
     flags: &[&str],
@@ -118,139 +146,61 @@ fn recognized(
     Ok(())
 }
 
-pub fn mcp(client: &str, context: &Context) -> Result<Option<Part>, Failure> {
+/// The document and its exact text; Muse settings must declare schema 1.
+pub(super) fn load(path: &Path, settings: bool) -> Result<(Option<String>, Value), Failure> {
+    let (text, value) = files::load_text(path)?;
+    if settings && value.get("schema_version").and_then(Value::as_i64) != Some(1) {
+        let message = format!("{}: expected schema_version 1", path.display());
+        return Err(Failure::new(message, files::FIX));
+    }
+    Ok((text, value))
+}
+
+pub fn mcp(client: &str, context: &Context) -> Option<Part> {
     let target = targets::mcp(client, context, "user");
-    let Some(argv) = targets::registered(&target) else {
-        return Ok(None);
-    };
+    let argv = targets::registered(&target)?;
     let mut part = Part::new("mcp", target.path.clone());
     if let Err(reason) = recognized(&argv, "mcp", &MCP, context) {
-        return Ok(Some(part.left_alone(reason)));
+        return Some(part.left_alone(reason));
     }
     part.executable = Some(argv[0].clone());
     let existing = files::read(&target.path).map_or(Value::Null, |d| d[target.key][SERVER].clone());
-    let mut entry = mcp::entry(client, &argv, &[]);
-    if entry.get("enabled").is_some() && existing["enabled"].is_boolean() {
-        entry["enabled"] = existing["enabled"].clone();
-    }
+    let entry = mcp::entry(client, &argv, &[]);
     let fields = entry.as_object().expect("an entry is an object");
     if ["command", "args"].iter().any(|key| {
         fields
             .get(*key)
             .is_some_and(|v| existing.get(*key) != Some(v))
     }) {
-        return Ok(Some(part.left_alone(
-            "the registered command could not be read back word for word",
-        )));
+        return Some(
+            part.left_alone("the registered command could not be read back word for word"),
+        );
     }
-    if fields
+    // Only members this release writes and the entry lacks are added: a value
+    // present may be a person's or the client's choice, and OpenCode's `enabled`
+    // switch is never added.
+    let missing: Vec<_> = fields
         .iter()
-        .all(|(key, value)| existing.get(key) == Some(value))
-    {
-        return Ok(Some(part));
+        .filter(|(key, _)| *key != "enabled" && existing.get(*key).is_none())
+        .collect();
+    if missing.is_empty() {
+        return Some(part);
     }
     if target.cli.is_some() {
-        return Ok(Some(part.left_alone(format!(
-            "{}'s own CLI writes this entry; run setup --client {client} --write to rewrite it",
+        return Some(part.left_alone(format!(
+            "{}'s own CLI writes this entry, and this release does not rewrite it",
             target.label
-        ))));
-    }
-    let mut document = if client == "muse-code" {
-        files::settings(&target.path)?
-    } else {
-        files::load(&target.path)?
-    };
-    for (key, value) in fields {
-        document[target.key][SERVER][key] = value.clone();
-    }
-    Ok(Some(part.update(Change::Json(document, false))))
-}
-
-/// The event set this release writes, each event carrying exactly our one group.
-fn current(document: &Value, fragment: &Value, cursor: bool) -> bool {
-    let Some(present) = document["hooks"].as_object() else {
-        return false;
-    };
-    let wanted = fragment["hooks"].as_object().expect("fragment");
-    let ours = |event: &str| -> Vec<&Value> {
-        present
-            .get(event)
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-            .filter(|group| hooks::commands(group).into_iter().any(hooks::carries))
-            .collect()
-    };
-    (!cursor || document["version"] == 1)
-        && wanted
-            .iter()
-            .all(|(event, groups)| ours(event).into_iter().eq(groups.as_array().unwrap()))
-        && present
-            .keys()
-            .filter(|event| !wanted.contains_key(*event))
-            .all(|event| ours(event).is_empty())
-}
-
-pub fn hooks(client: &str, context: &Context) -> Result<Option<Part>, Failure> {
-    let carrying: Vec<_> = targets::active(client, context, "user")
-        .into_iter()
-        .filter_map(|target| hooks::installed(&target).map(|argv| (target, argv)))
-        .collect();
-    let Some((target, argv)) = carrying.first() else {
-        return Ok(None);
-    };
-    let mut part = Part::new("hooks", target.path.clone());
-    if carrying.len() > 1 {
-        return Ok(Some(part.left_alone(
-            "the hooks are present in more than one file; setup --write keeps one",
         )));
     }
-    if let Err(reason) = recognized(argv, "record", &RECORD, context) {
-        return Ok(Some(part.left_alone(reason)));
-    }
-    part.executable = Some(argv[0].clone());
-    if target.plugin {
-        let text = hooks::adapter(client, argv);
-        let existing = std::fs::read_to_string(&target.path)?;
-        return Ok(Some(if text == existing {
-            part
-        } else {
-            part.update(Change::Text(text))
-        }));
-    }
-    let document = if client == "muse-code" && target.path == target.evidence.join("settings.json")
-    {
-        files::settings(&target.path)?
-    } else {
-        files::load(&target.path)?
+    let (read, mut document) = match load(&target.path, client == "muse-code") {
+        Ok(loaded) => loaded,
+        Err(failure) => return Some(part.refused(&failure)),
     };
-    let commands: BTreeSet<&str> = document["hooks"]
-        .as_object()
-        .into_iter()
-        .flat_map(|events| events.values())
-        .filter_map(Value::as_array)
-        .flatten()
-        .flat_map(hooks::commands)
-        .filter(|command| hooks::carries(command))
-        .collect();
-    let [command] = commands.into_iter().collect::<Vec<_>>()[..] else {
-        return Ok(Some(
-            part.left_alone("the hook commands differ between events"),
-        ));
-    };
-    let cursor = client == "cursor";
-    if current(&document, &hooks::fragment(command, cursor), cursor) {
-        return Ok(Some(part));
+    for (key, value) in missing {
+        document[target.key][SERVER][key] = value.clone();
     }
-    let updated = if cursor {
-        hooks::cursor_document(&target.path, command)?
-    } else {
-        hooks::merge(
-            document.clone(),
-            &hooks::fragment(command, false),
-            &target.path,
-        )?
-    };
-    part.note.clone_from(&target.trust);
-    Ok(Some(part.update(Change::Json(updated, cursor))))
+    Some(
+        part.update(Change::Json(document, false), read)
+            .guarded(&[target.path]),
+    )
 }

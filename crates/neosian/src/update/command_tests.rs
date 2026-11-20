@@ -76,14 +76,13 @@ fn explicit_updates_install_by_default_regardless_of_passive_policy() {
             };
             assert_eq!(report["refresh"], refresh);
             assert_eq!(report["mode"], policy);
-            assert_eq!(
-                err,
-                if preview {
-                    b"".as_slice()
-                } else {
-                    b"installed\n"
-                }
-            );
+            let err = String::from_utf8(err).unwrap();
+            if preview {
+                assert_eq!(err, "");
+            } else {
+                assert!(err.starts_with("installed\nRefreshing existing registrations: "));
+                assert!(err.ends_with(" setup --refresh --json\n"), "{err}");
+            }
             let installed = fs::read_to_string(&context.executable).unwrap();
             assert!(installed.contains(if preview { current } else { &newer }));
             assert_eq!(mode(scratch.path()), policy);

@@ -57,9 +57,12 @@ def terminal(argv: list[str], env: dict[str, str], cwd: Path) -> tuple[int, str,
     return result.returncode, text, result.stderr.decode()
 
 
-def installation(host: Machine, newer: str) -> tuple[Path, dict[str, str]]:
+def installation(
+    host: Machine, newer: str, reject: bool = False
+) -> tuple[Path, dict[str, str]]:
     """This build as the running release, and an updater that installs a newer
-    one: it reports `newer` to `version` and runs this build for everything else."""
+    one: it reports `newer` to `version` and runs this build for everything else
+    (or, with `reject`, refuses the refresh as a release without it would)."""
     binary = host.binary
     prefix = host.root / "install dir"
     prefix.mkdir()
@@ -70,7 +73,12 @@ def installation(host: Machine, newer: str) -> tuple[Path, dict[str, str]]:
         "#!/bin/sh\n"
         f"[ \"$1\" = version ] && echo 'neosian v{newer}' && exit\n"
         f"echo \"$*\" >> '{log}'\n"
-        f"exec '{binary.executable}' \"$@\"\n"
+        + (
+            "[ \"$1\" = setup ] && echo 'unexpected argument' >&2 && exit 2\n"
+            if reject
+            else ""
+        )
+        + f"exec '{binary.executable}' \"$@\"\n"
     )
     stamp = binary.home / "binary-update-check"
     updater = prefix / "neosian-update"
@@ -131,11 +139,46 @@ def test_auto_policy_at_status_refreshes_before_status_runs(binary: Binary) -> N
     assert "installed\n" in notes
     assert "OpenCode: updated" in notes and "Pi: current" in notes
     assert notes.rstrip().endswith(
-        f"Restart OpenCode and Pi to load neosian {package_version()}."
+        "Restart OpenCode to load the refreshed registrations.\n"
+        f"neosian {newer} is installed; restart running clients so they use it."
     )
+    assert notes.index("Refreshing") < notes.index("OpenCode: updated")
     assert "refreshes the user-level registrations" not in status
     assert "opencode" in status and "update    mode auto" in status
     assert "__NEOSIAN_RECORD_ARGV__" not in plugin.read_text()
     assert "an earlier neosian adapter" not in plugin.read_text()
     check = host.run("setup", "--check", "--client=opencode", "--client=pi")
     assert check.returncode == 0, check.stdout
+
+
+@pytest.mark.parametrize("outcome", ["failed", "incomplete"])
+def test_status_still_runs_after_a_refresh_that_did_not_finish(
+    binary: Binary, outcome: str
+) -> None:
+    host = machine(binary)
+    result = host.run("setup", "--client=claude-code", "--client=pi", "--write")
+    assert result.returncode == 0, result.stdout + result.stderr
+    claude = host.home("claude-code")
+    (claude / "neosian-cache/plugin/hooks/display.js").write_text("// earlier\n")
+    base, patch = package_version().rsplit(".", 1)
+    newer = f"{base}.{int(patch) + 1}"
+    running, extra = installation(host, newer, reject=outcome == "incomplete")
+
+    code, status, notes = terminal(
+        [str(running), "status"],
+        host.environment(**extra, CLAUDE_FAIL="plugin install"),
+        host.project,
+    )
+    assert code == 0, status + notes
+    assert "update    mode auto" in status
+    log = (host.root / "installed-release.log").read_text()
+    assert log == "setup --refresh\nstatus\n"
+    if outcome == "failed":
+        assert "Claude Code: failed; nothing was changed" in notes
+        assert "retry   neosian setup --refresh" in notes
+    else:
+        assert "did not complete the registration refresh (exit 2)" in notes
+        assert "hint: run neosian setup --refresh" in notes
+    assert (claude / "neosian-cache/plugin/hooks/display.js").read_text() == (
+        "// earlier\n"
+    )

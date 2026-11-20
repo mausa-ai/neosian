@@ -80,13 +80,16 @@ running without `--dry-run`. Ordinary deletes keep history; erasure does not.
 
 Setup previews unless `--write` is given. In scripts use `--write --yes`, or
 repeat `--client`. Preserve unrelated client settings and inspect reported
-pending client-owned registrations. `--binary PATH` chooses the registered
+pending client-owned registrations. Rewriting a client file keeps a symlink and
+the file's mode, and replaces only the neosian hook inside a hook group, so
+other hooks in that group stay. `--binary PATH` chooses the registered
 executable. `status --json` reports paths and registrations without provider
 credentials. `neosian update` installs an available stable release through this
 native installation's updater and verifies the installed version. It then runs
-the installed release's `setup --refresh`, so no second setup step is needed.
-`--check` previews the install without installing or refreshing; `--write`
-remains accepted for existing scripts.
+the installed release's `setup --refresh`, whose output passes through as it
+runs, and ends by saying that running clients use the new release once
+restarted. `--check` previews the install without installing or refreshing;
+`--write` remains accepted for existing scripts.
 Those two flags cannot be combined. The command refuses major-version jumps
 and an updater that does not belong to this installation.
 `update --mode off|notify|auto` only stores the policy for passive checks at
@@ -98,22 +101,36 @@ updated using that package manager, followed by `neosian setup --refresh`.
 
 `setup --refresh` brings the registrations that already exist to the running
 release: the same clients and the same store selection, at the user level. It
-keeps each registered command line word for word and rewrites only what the
-release owns around it: the entry format, the hook events, the OpenCode and Pi
-adapters, the Claude Code plugin and the Codex skill. A file that is already
-current is not written. It connects no new client, creates no client home,
-adds no skill or plugin that was never installed, and keeps `--codex-skills
-off` and `--claude-cache off`. A registration that runs another installation,
-or that carries words this release does not write, is left alone with its
-reason. Project files in the current directory are listed, never edited. Each
-client is all or nothing: a failed client keeps its registration as it was and
-the others proceed. The report ends by naming the clients to restart. Exit 1
-means a client failed; `update` then also exits 1 and keeps the new binary.
-`setup --refresh --json` prints one report and never prompts; `update --json`
-carries it as `refresh`, which is `null` when nothing was installed.
-`update` runs exactly `setup --refresh` (with `--json` for a JSON update) on
-the installed executable, and later releases keep accepting that command.
-An update performed by 2.18.0 or earlier does not hand over; run
+keeps each registered command line word for word and changes only what the
+release owns and needs to change. A hook group that already carries the
+neosian command stays as it is, with any hooks or settings you added to it; a
+missing hook event gains a new group, and an event the release no longer uses
+loses only the neosian hook. An MCP entry gains members it lacks and keeps
+every value it has. The OpenCode and Pi adapters, the Codex skill and the
+Claude Code plugin are replaced when their bytes differ. A file that is
+already current is not written; a symlinked file is written at its target and
+keeps its mode. It connects no new client, creates no client home, adds no
+skill or plugin that was never installed or that Claude no longer lists, and
+keeps `--codex-skills off` and `--claude-cache off`. Project files in the
+current directory are listed, never edited.
+
+A part the refresh cannot change faithfully is left alone, and the report says
+why and what to fix: a registration for another installation or with words
+this release does not write, a read-only file, a locally edited skill, a
+statusline without the cache bridge, or the `claude` CLI missing when the
+plugin needs it. Leaving a part alone is not a failure: the client's other
+parts proceed and the exit stays 0. Only a write that fails makes a client
+fail: the files this run wrote for it are put back unless the client changed
+them meanwhile, the report names the file and the cause, and the exit is 1, so
+`update` also exits 1 and keeps the new binary. The retry is always
+`neosian setup --refresh`. There is no atomicity across a crash or an
+interrupt: each file is replaced whole, and running `setup --refresh` again
+completes a partly refreshed client. The report names the clients it updated
+as the ones to restart. `setup --refresh --json` prints one report and never
+prompts; `update --json` carries it as `refresh`, which is `null` when nothing
+was installed. `update` runs exactly `setup --refresh` (with `--json` for a
+JSON update) on the installed executable, and later releases keep accepting
+that command. An update performed by 2.18.0 or earlier does not hand over; run
 `neosian setup --refresh` once after it.
 
 Claude Code setup also installs the bundled cache plugin and composes the

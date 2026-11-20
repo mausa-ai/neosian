@@ -1,7 +1,9 @@
-//! Key-preserving, individually atomic edits of client-owned files.
+//! Key-preserving, individually atomic edits of client-owned files. A symlinked
+//! file is written at its target, so the link stays; an existing mode is kept.
 
+use std::cell::RefCell;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 
@@ -50,8 +52,13 @@ pub fn evidence(target: &Target) -> Result<(), Failure> {
 }
 
 pub fn load(path: &Path) -> Result<Value, Failure> {
+    load_text(path).map(|(_, value)| value)
+}
+
+/// The document and the exact text it was parsed from (`None` when absent).
+pub fn load_text(path: &Path) -> Result<(Option<String>, Value), Failure> {
     if !path.exists() {
-        return Ok(json!({}));
+        return Ok((None, json!({})));
     }
     let text = fs::read_to_string(path)
         .map_err(|e| Failure::new(format!("cannot read {}: {e}", path.display()), FIX))?;
@@ -73,7 +80,7 @@ pub fn load(path: &Path) -> Result<Value, Failure> {
             FIX,
         ));
     }
-    Ok(value)
+    Ok((Some(text), value))
 }
 
 pub fn read(path: &Path) -> Option<Value> {
@@ -100,16 +107,103 @@ pub fn settings(path: &Path) -> Result<Value, Failure> {
     Ok(value)
 }
 
+/// One write made while a caller records: the file written (a link's target),
+/// what it held before (`None` when it did not exist) and what was written.
+pub struct Written {
+    pub path: PathBuf,
+    pub prior: Option<(String, fs::Permissions)>,
+    pub text: String,
+}
+
+/// What a recorded run wrote, and the directories its writes created.
+#[derive(Default)]
+pub struct Record {
+    pub written: Vec<Written>,
+    pub created: Vec<PathBuf>,
+}
+
+thread_local! {
+    static RECORD: RefCell<Option<Record>> = const { RefCell::new(None) };
+}
+
+/// Run `work` and return every client file it wrote, so a caller can undo it.
+pub fn recorded<T>(work: impl FnOnce() -> T) -> (T, Record) {
+    RECORD.with(|record| *record.borrow_mut() = Some(Record::default()));
+    let result = work();
+    let record = RECORD.with(|record| record.borrow_mut().take());
+    (result, record.unwrap_or_default())
+}
+
+fn recording() -> bool {
+    RECORD.with(|record| record.borrow().is_some())
+}
+
+/// The file a write lands in: a symlink's target, so the link itself stays.
+pub fn resolved(path: &Path) -> std::io::Result<PathBuf> {
+    match fs::symlink_metadata(path) {
+        Ok(found) if found.file_type().is_symlink() => fs::canonicalize(path),
+        _ => Ok(path.to_path_buf()),
+    }
+}
+
+/// Why an existing file must not be replaced: its owner mode does not allow writing.
+pub fn read_only(path: &Path) -> Option<String> {
+    let permissions = fs::metadata(path).ok()?.permissions();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = permissions.mode() & 0o7777;
+        (mode & 0o200 == 0).then(|| format!("{} is read-only (mode {mode:o})", path.display()))
+    }
+    #[cfg(not(unix))]
+    {
+        permissions
+            .readonly()
+            .then(|| format!("{} is read-only", path.display()))
+    }
+}
+
 pub fn write_text(path: &Path, text: &str) -> Result<(), Failure> {
-    let mode = fs::metadata(path).ok().map(|m| m.permissions());
-    fileio::atomic_write(path, text, false)
-        .and_then(|()| {
-            if let Some(mode) = mode {
-                fs::set_permissions(path, mode)?;
+    let cannot =
+        |e: std::io::Error| Failure::new(format!("cannot write {}: {e}", path.display()), FIX);
+    let target = resolved(path).map_err(cannot)?;
+    let mode = fs::metadata(&target).ok().map(|m| m.permissions());
+    let recording = recording();
+    let prior = match &mode {
+        Some(mode) if recording => {
+            Some((fs::read_to_string(&target).map_err(cannot)?, mode.clone()))
+        }
+        _ => None,
+    };
+    let created: Vec<PathBuf> = if recording {
+        target
+            .ancestors()
+            .skip(1)
+            .take_while(|directory| !directory.as_os_str().is_empty() && !directory.exists())
+            .map(Path::to_path_buf)
+            .collect()
+    } else {
+        vec![]
+    };
+    let written = fileio::atomic_write(&target, text, false).and_then(|()| match &mode {
+        Some(mode) => fs::set_permissions(&target, mode.clone()),
+        None => Ok(()),
+    });
+    RECORD.with(|record| {
+        if let Some(record) = record.borrow_mut().as_mut() {
+            record
+                .created
+                .extend(created.into_iter().filter(|d| d.exists()));
+            if written.is_ok() {
+                record.written.push(Written {
+                    path: target.clone(),
+                    prior,
+                    text: text.into(),
+                });
             }
-            Ok(())
-        })
-        .map_err(|e| Failure::new(format!("cannot write {}: {e}", path.display()), FIX))
+        }
+    });
+    written.map_err(cannot)
 }
 
 pub fn write(path: &Path, value: &Value, cursor: bool) -> Result<(), Failure> {

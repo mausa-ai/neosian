@@ -41,12 +41,9 @@ def test_current_registrations_stay_byte_identical(host: Machine) -> None:
     assert report["success"] is True
     assert report["version"] == package_version()
     assert report["level"] == "user"
-    assert {c["client"]: c["result"] for c in report["clients"]} == {
-        "claude-code": "current",
-        "codex": "current",
-        "opencode": "current",
-        "pi": "current",
-    }
+    assert {c["client"]: c["result"] for c in report["clients"]} == dict.fromkeys(
+        ("claude-code", "codex", "opencode", "muse-code", "cursor", "pi"), "current"
+    )
     assert actions(by_client(report)["claude-code"]) == {
         "mcp": "unchanged",
         "hooks": "unchanged",
@@ -54,7 +51,9 @@ def test_current_registrations_stay_byte_identical(host: Machine) -> None:
     }
     assert actions(by_client(report)["codex"])["skills"] == "unchanged"
     assert report["project"] == []
-    assert report["restart"] == ["Claude Code", "Codex", "OpenCode", "Pi"]
+    assert report["restart"] == []  # Only updated clients are named.
+    text = host.run("setup", "--refresh").stdout
+    assert text.endswith("No registration was changed.\n")
 
 
 def test_outdated_managed_entries_are_repaired_with_the_same_store(
@@ -83,9 +82,11 @@ def test_outdated_managed_entries_are_repaired_with_the_same_store(
 
     report = host.refresh()
     clients = by_client(report)
-    assert {c: clients[c]["result"] for c in clients} == dict.fromkeys(
-        ("claude-code", "codex", "opencode", "pi"), "updated"
-    )
+    assert {c: clients[c]["result"] for c in clients} == {
+        **dict.fromkeys(("claude-code", "codex", "opencode", "pi"), "updated"),
+        **dict.fromkeys(("muse-code", "cursor"), "current"),
+    }
+    assert report["restart"] == ["Claude Code", "Codex", "OpenCode", "Pi"]
     assert actions(clients["claude-code"]) == {
         "mcp": "unchanged",
         "hooks": "update",
@@ -158,7 +159,7 @@ def test_persisted_opt_outs_are_kept(host: Machine) -> None:
     assert not any(call[0] == "plugin" for call in host.calls("claude-code"))
 
 
-def test_one_client_failing_keeps_its_registration_and_others_proceed(
+def test_a_failed_write_fails_one_client_and_a_refusal_leaves_one_part(
     host: Machine,
 ) -> None:
     host.setup()
@@ -166,39 +167,45 @@ def test_one_client_failing_keeps_its_registration_and_others_proceed(
     # Claude Code fails after its first write: the plugin CLI refuses.
     outdated_hooks(claude / "settings.json", "SessionStart")
     (claude / "neosian-cache/plugin/hooks/display.js").write_text("// earlier\n")
-    # Codex fails before any write: one hook event is not an array.
+    # Codex: one hook event is not an array, found before writing; its skill
+    # still needs repair and proceeds.
     hooks = host.json(codex / "hooks.json")
     hooks["hooks"]["PostToolUse"] = "kept by hand"
     (codex / "hooks.json").write_text(json.dumps(hooks))
     (codex / "skills/neosian-upkeep/SKILL.md").unlink()
     outdated_adapter(host.home("opencode") / "plugins/neosian-record.js")
-    kept = {c: tree(host.home(c)) for c in ("claude-code", "codex")}
+    kept = tree(claude)
+    hand = (codex / "hooks.json").read_bytes()
 
     report = host.refresh(code=1, CLAUDE_FAIL="plugin install")
     clients = by_client(report)
     assert report["success"] is False
     assert clients["claude-code"]["result"] == "failed"
     assert "claude double refused plugin install" in clients["claude-code"]["error"]
+    assert clients["claude-code"]["hint"] == (
+        "fix the cause, then run neosian setup --refresh"
+    )
     assert actions(clients["claude-code"])["hooks"] == "update"  # Not written.
-    assert clients["codex"]["result"] == "failed"
-    assert "PostToolUse" in clients["codex"]["error"]
-    assert clients["codex"]["hint"]
-    assert clients["codex"]["parts"] == []
+    assert clients["codex"]["result"] == "updated"
+    part = next(p for p in clients["codex"]["parts"] if p["kind"] == "hooks")
+    assert part["action"] == "left_alone" and "PostToolUse" in part["reason"]
+    assert part["reason"].endswith("then run neosian setup --refresh")
+    assert actions(clients["codex"])["skills"] == "update"
+    assert (codex / "hooks.json").read_bytes() == hand
     assert clients["opencode"]["result"] == "updated"
     assert clients["pi"]["result"] == "current"
-    for client, files in kept.items():
-        now = tree(host.home(client))
-        now.pop("commands.jsonl", None)
-        files.pop("commands.jsonl", None)
-        assert now == files, client
-    assert "Claude Code" in report["restart"]
+    now = tree(claude)
+    now.pop("commands.jsonl", None)
+    kept.pop("commands.jsonl", None)
+    assert now == kept
+    assert report["restart"] == ["Codex", "OpenCode"]
 
     text = host.run("setup", "--refresh", CLAUDE_FAIL="plugin install")
     assert text.returncode == 1
     assert "Claude Code: failed; nothing was changed" in text.stdout
     assert "  hooks   " in text.stdout and "not updated" in text.stdout
     assert "retry   neosian setup --refresh once the cause is fixed" in text.stdout
-    assert text.stdout.endswith(f"to load neosian {package_version()}.\n")
+    assert text.stdout.endswith("No registration was changed.\n")
 
 
 def test_project_registrations_are_listed_and_never_edited(host: Machine) -> None:

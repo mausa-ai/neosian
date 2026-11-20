@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import stat
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -18,11 +20,17 @@ args = sys.argv[1:]
 base = pathlib.Path(os.environ["CLAUDE_CONFIG_DIR"])
 with (base / "commands.jsonl").open("a") as log:
     log.write(json.dumps(args) + "\\n")
-fail = os.environ.get("CLAUDE_FAIL")
-if fail and " ".join(args).startswith(fail):
-    sys.exit("claude double refused " + fail)
 def load(path):
     return json.loads(path.read_text()) if path.exists() else {}
+fail = os.environ.get("CLAUDE_FAIL")
+if fail and " ".join(args).startswith(fail):
+    if os.environ.get("CLAUDE_TOUCH"):
+        # The client writes its own settings before failing.
+        path = base / "settings.json"
+        document = load(path)
+        document["touchedByClaude"] = True
+        path.write_text(json.dumps(document))
+    sys.exit("claude double refused " + fail)
 if args[:2] == ["mcp", "add-json"]:
     path = base / ".claude.json"
     document = load(path)
@@ -50,15 +58,33 @@ assert sys.argv[1:5] == ["mcp", "add", "neosian-memory", "--"]
 )
 """
 
-CLIENTS = ("claude-code", "codex", "opencode", "pi")
+CLIENTS = ("claude-code", "codex", "opencode", "muse-code", "cursor", "pi")
+HOMES = {
+    "claude-code": "clients/claude-code",
+    "codex": "clients/codex",
+    "opencode": "clients/opencode",
+    "muse-code": "xdg/muse",
+    "cursor": ".cursor",
+    "pi": "clients/pi",
+}
 
 
-def tree(directory: Path) -> dict[str, bytes]:
-    return {
-        str(path.relative_to(directory)): path.read_bytes()
-        for path in directory.rglob("*")
-        if path.is_file()
-    }
+def tree(directory: Path) -> dict[str, tuple[str, int, bytes]]:
+    """Every entry with its kind and mode: links stay links, modes are visible."""
+    found = {}
+    for parent, directories, names in os.walk(directory):
+        for name in [*directories, *names]:
+            path = Path(parent) / name
+            status = path.lstat()
+            mode = stat.S_IMODE(status.st_mode)
+            if stat.S_ISLNK(status.st_mode):
+                entry = ("link", 0, os.readlink(path).encode())
+            elif stat.S_ISDIR(status.st_mode):
+                entry = ("directory", mode, b"")
+            else:
+                entry = ("file", mode, path.read_bytes())
+            found[str(path.relative_to(directory))] = entry
+    return found
 
 
 @dataclass(frozen=True)
@@ -71,7 +97,7 @@ class Machine:
         return self.binary.directory
 
     def home(self, client: str) -> Path:
-        return self.root / "clients" / client
+        return self.root / HOMES[client]
 
     def environment(self, **extra: str) -> dict[str, str]:
         return {
@@ -81,6 +107,7 @@ class Machine:
             "CODEX_HOME": str(self.home("codex")),
             "OPENCODE_CONFIG_DIR": str(self.home("opencode")),
             "PI_CODING_AGENT_DIR": str(self.home("pi")),
+            "XDG_CONFIG_HOME": str(self.root / "xdg"),
             **extra,
         }
 
@@ -122,8 +149,8 @@ def machine(binary: Binary) -> Machine:
         script = commands / name
         script.write_text(f"#!{sys.executable}\n{body}", encoding="utf-8")
         script.chmod(0o700)
-    for client in CLIENTS:
-        (binary.directory / "clients" / client).mkdir(parents=True)
+    for home in HOMES.values():
+        (binary.directory / home).mkdir(parents=True)
     project = binary.directory / "project"
     project.mkdir()
     return Machine(binary, project)

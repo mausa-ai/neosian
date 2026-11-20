@@ -90,7 +90,8 @@ Configured source access is not checked; client connection and hook delivery are
 not observed. Restart the client and review hook trust after saving registrations.
 `neosian update` then runs the installed release's `setup --refresh`: existing
 user-level registrations move to that release with the same clients and store
-selection, nothing new is connected and project files are only listed.
+selection, nothing new is connected and project files are only listed. What a
+person or client changed is kept, or that part is left alone with a reason.
 
 Codex setup installs the native `$neosian-upkeep` entry for its skill picker.
 It loads live `builtin:upkeep` instructions over MCP in the current conversation.
