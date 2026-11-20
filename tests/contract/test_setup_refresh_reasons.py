@@ -182,3 +182,50 @@ def test_the_bridge_path_is_compared_canonically(host: Machine) -> None:
     report = host.refresh()
     assert actions(by_client(report)["claude-code"])["cache"] == "unchanged"
     assert tree(host.root) == before
+
+
+def test_a_directory_its_owner_cannot_write_leaves_the_part_alone(
+    host: Machine,
+) -> None:
+    host.setup()
+    codex, claude = host.home("codex"), host.home("claude-code")
+    (codex / "skills/neosian-upkeep/SKILL.md").unlink()
+    plugin = claude / "neosian-cache/plugin/hooks"
+    (plugin / "display.js").write_text("// an earlier plugin\n")
+    before = tree(host.root)
+    modes = {path: path.stat().st_mode for path in (codex, plugin)}
+    for path in modes:
+        path.chmod(0o555)
+    try:
+        report = host.refresh()
+    finally:
+        for path, mode in modes.items():
+            path.chmod(mode)
+    assert tree(host.root) == before
+    assert report["success"] is True
+    assert reason(report, "codex", "skills").startswith(f"{codex} is not writable")
+    assert reason(report, "claude-code", "cache").startswith(
+        f"{plugin} is not writable"
+    )
+
+
+def test_a_dangling_symlink_is_named_as_one(host: Machine) -> None:
+    host.setup()
+    claude = host.home("claude-code")
+    (claude / DISPLAY).unlink()
+    (claude / DISPLAY).symlink_to(host.root / "gone" / "display.js")
+    report = host.refresh()
+    assert reason(report, "claude-code", "cache") == (
+        f"{claude / DISPLAY} is a symbolic link whose target does not exist; "
+        "it is left as it is"
+    )
+    plugin = host.home("opencode") / "plugins/neosian-record.js"
+    plugin.unlink()
+    plugin.symlink_to(host.root / "gone" / "neosian-record.js")
+    result = host.run("setup", "--client=opencode", "--write", "--json")
+    assert result.returncode == 1
+    hooks = json.loads(result.stdout)["clients"][0]["hooks"]
+    assert hooks["error"] == (
+        f"cannot write {plugin}: it is a symbolic link whose target does not exist"
+    )
+    assert plugin.is_symlink() and not plugin.exists()

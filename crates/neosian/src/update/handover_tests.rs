@@ -213,3 +213,34 @@ fn text_output_passes_through_while_the_refresh_runs() {
     assert_eq!(text(handover::Stream::Out), "first\nsecond\n");
     assert!(text(handover::Stream::Err).starts_with("Refreshing existing registrations: "));
 }
+
+#[test]
+fn a_closed_stderr_loses_the_start_line_never_the_refresh() {
+    let scratch = Scratch::new("handover-closed-stderr");
+    let marker = scratch.path().join("ran");
+    scratch.plant(
+        "release",
+        &format!(
+            "#!/bin/sh\ntouch '{}'\necho 'a report'\necho 'a note' >&2\n",
+            marker.display()
+        ),
+    );
+    let release = scratch.path().join("release");
+    fs::set_permissions(&release, fs::Permissions::from_mode(0o700)).unwrap();
+    let mut out = vec![];
+    let (code, report) = handover::refresh(
+        &release.display().to_string(),
+        false,
+        &mut |stream, bytes| match stream {
+            handover::Stream::Err => Err(io::Error::from(io::ErrorKind::BrokenPipe)),
+            handover::Stream::Out => {
+                out.extend_from_slice(bytes);
+                Ok(())
+            }
+        },
+    )
+    .unwrap();
+    assert!(marker.exists());
+    assert_eq!((code, report), (0, Value::Null));
+    assert_eq!(out, b"a report\n");
+}

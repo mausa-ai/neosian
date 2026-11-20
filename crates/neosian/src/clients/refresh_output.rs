@@ -18,6 +18,7 @@ fn listed(labels: &[Value]) -> String {
 
 fn action(part: &Value, failed: bool) -> String {
     match text(&part["action"]) {
+        "update" if failed && part["kept"] == true => "updated, and kept after the failure".into(),
         "update" if failed => "not updated".into(),
         "update" => "updated".into(),
         "left_alone" => format!("left alone: {}", text(&part["reason"])),
@@ -38,12 +39,19 @@ pub fn render(report: &Value, out: &mut impl Write) -> io::Result<()> {
     }
     for client in clients {
         let failed = client["result"] == "failed";
+        let changed = client["changed"].as_array().map_or(&[][..], Vec::as_slice);
         let result = match text(&client["result"]) {
-            "failed" => "failed; nothing was changed",
+            "failed" if changed.is_empty() => "failed; nothing was changed",
+            "failed" => "failed; these files differ from before the refresh",
             "left_alone" => "left alone",
             other => other,
         };
         writeln!(out, "{}: {result}", text(&client["label"]))?;
+        if failed {
+            for path in changed {
+                writeln!(out, "  changed {}", text(path))?;
+            }
+        }
         for part in client["parts"].as_array().expect("parts") {
             writeln!(
                 out,
@@ -59,10 +67,6 @@ pub fn render(report: &Value, out: &mut impl Write) -> io::Result<()> {
         if failed {
             writeln!(out, "  error   {}", text(&client["error"]))?;
             writeln!(out, "  hint    {}", text(&client["hint"]))?;
-            writeln!(
-                out,
-                "  retry   neosian setup --refresh once the cause is fixed"
-            )?;
         }
     }
     let project = report["project"].as_array().expect("project");
@@ -80,11 +84,7 @@ pub fn render(report: &Value, out: &mut impl Write) -> io::Result<()> {
     }
     let restart = report["restart"].as_array().expect("restart");
     if !restart.is_empty() {
-        writeln!(
-            out,
-            "Restart {} to load the refreshed registrations.",
-            listed(restart)
-        )?;
+        writeln!(out, "Restart {} to load these changes.", listed(restart))?;
     } else if !clients.is_empty() {
         writeln!(out, "No registration was changed.")?;
     }

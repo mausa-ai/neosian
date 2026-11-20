@@ -139,28 +139,57 @@ fn recording() -> bool {
 }
 
 /// The file a write lands in: a symlink's target, so the link itself stays.
+const DANGLING: &str = "it is a symbolic link whose target does not exist";
+
+/// The file a write lands in: a symlink's target, so the link itself stays.
 pub fn resolved(path: &Path) -> std::io::Result<PathBuf> {
     match fs::symlink_metadata(path) {
-        Ok(found) if found.file_type().is_symlink() => fs::canonicalize(path),
+        Ok(found) if found.file_type().is_symlink() => fs::canonicalize(path).map_err(|error| {
+            if error.kind() == std::io::ErrorKind::NotFound {
+                std::io::Error::new(error.kind(), DANGLING)
+            } else {
+                error
+            }
+        }),
         _ => Ok(path.to_path_buf()),
     }
 }
 
-/// Why an existing file must not be replaced: its owner mode does not allow writing.
-pub fn read_only(path: &Path) -> Option<String> {
+fn owner_cannot_write(path: &Path) -> Option<String> {
     let permissions = fs::metadata(path).ok()?.permissions();
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         let mode = permissions.mode() & 0o7777;
-        (mode & 0o200 == 0).then(|| format!("{} is read-only (mode {mode:o})", path.display()))
+        (mode & 0o200 == 0).then(|| format!("mode {mode:o}"))
     }
     #[cfg(not(unix))]
     {
-        permissions
-            .readonly()
-            .then(|| format!("{} is read-only", path.display()))
+        permissions.readonly().then(|| "read-only".into())
     }
+}
+
+/// Why a write to this path is known to fail before trying it: a dangling
+/// symlink, a file its owner cannot write, or a directory its owner cannot write.
+/// What cannot be seen beforehand (an immutable flag, a full disk) is not caught.
+pub fn unwritable(path: &Path) -> Option<String> {
+    let target = match resolved(path) {
+        Ok(target) => target,
+        Err(_) => {
+            return Some(format!(
+                "{} is a symbolic link whose target does not exist",
+                path.display()
+            ));
+        }
+    };
+    if target.exists()
+        && let Some(mode) = owner_cannot_write(&target)
+    {
+        return Some(format!("{} is read-only ({mode})", path.display()));
+    }
+    let directory = target.ancestors().skip(1).find(|d| d.is_dir())?;
+    owner_cannot_write(directory)
+        .map(|mode| format!("{} is not writable ({mode})", directory.display()))
 }
 
 pub fn write_text(path: &Path, text: &str) -> Result<(), Failure> {

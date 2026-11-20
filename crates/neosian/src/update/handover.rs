@@ -36,8 +36,9 @@ pub fn refresh(
     if json {
         argv.push("--json".into());
     }
+    // Diagnostics are best effort: a closed stderr loses the line, never the refresh.
     let started = format!("Refreshing existing registrations: {}\n", shell_join(&argv));
-    emit(Stream::Err, started.as_bytes())?;
+    let _ = emit(Stream::Err, started.as_bytes());
     let spawned = Command::new(executable)
         .args(&argv[1..])
         .stdin(Stdio::null())
@@ -73,8 +74,9 @@ pub fn refresh(
     for (stream, chunk) in receiver {
         if json && stream == Stream::Out {
             report.extend(chunk);
-        } else if failed.is_none()
-            && let Err(error) = emit(stream, &chunk)
+        } else if let Err(error) = emit(stream, &chunk)
+            && stream == Stream::Out
+            && failed.is_none()
         {
             // Keep draining so the refresh can finish; report the error after it.
             failed = Some(error);
@@ -115,10 +117,10 @@ fn incomplete(
     let error = format!(
         "the installed release did not complete the registration refresh ({why}); it stays installed"
     );
-    emit(
+    let _ = emit(
         Stream::Err,
         format!("error: {error}\nhint: {HINT}\n").as_bytes(),
-    )?;
+    );
     Ok((
         1,
         if json {

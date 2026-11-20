@@ -143,54 +143,57 @@ def test_links_modes_and_read_only_files_are_respected(host: Machine) -> None:
 
 def test_a_failed_write_restores_only_what_this_run_wrote(host: Machine) -> None:
     host.setup()
-    claude, codex = host.home("claude-code"), host.home("codex")
+    claude = host.home("claude-code")
     dotfiles = host.root / "dotfiles"
     dotfiles.mkdir()
     real = dotfiles / "claude-settings.json"
     shutil.move(claude / "settings.json", real)
     (claude / "settings.json").symlink_to(real)
-    # Claude Code: its hooks are written through the link, then the plugin CLI fails.
     outdated_hooks(real, "SessionStart")
-    (claude / DISPLAY).write_text("// an earlier plugin\n")
-    # Codex: the skill files are created, then its home refuses the receipt.
-    shutil.rmtree(codex / "skills/neosian-upkeep")
-    before = {
-        "claude": tree(claude),
-        "dotfiles": tree(dotfiles),
-        "codex": tree(codex),
-    }
-    codex.chmod(0o555)
-    try:
-        report = host.refresh(code=1, CLAUDE_FAIL="plugin install")
-    finally:
-        codex.chmod(0o755)
-    clients = by_client(report)
-    assert clients["claude-code"]["result"] == "failed"
-    assert clients["codex"]["result"] == "failed"
-    # The cause names the write that failed; no untouched file is named.
-    error = clients["codex"]["error"]
-    assert error.startswith("cannot write ") and "Permission denied" in error
-    assert "restored" not in error and "meanwhile" not in error
+    # The plugin step recreates this directory, then the plugin CLI fails.
+    shutil.rmtree(claude / "neosian-cache/plugin/hooks")
+    before = {"claude": tree(claude), "dotfiles": tree(dotfiles)}
+    report = host.refresh(code=1, CLAUDE_FAIL="plugin install")
+    client = by_client(report)["claude-code"]
+    assert client["result"] == "failed"
+    assert client["error"] == "claude double refused plugin install"
+    assert client["changed"] == []
     after = tree(claude)
     after.pop("commands.jsonl")
     before["claude"].pop("commands.jsonl")
     assert after == before["claude"]
     assert tree(dotfiles) == before["dotfiles"]
-    assert tree(codex) == before["codex"]
+    assert "Claude Code" not in report["restart"]
 
 
-def test_restore_leaves_a_file_its_client_changed_meanwhile(host: Machine) -> None:
+@pytest.mark.parametrize("text", [False, True])
+def test_a_client_cli_failure_leaves_nothing_of_ours_and_is_reported_truly(
+    host: Machine, text: bool
+) -> None:
     host.setup()
     claude = host.home("claude-code")
     outdated_hooks(claude / "settings.json", "SessionStart")
     (claude / DISPLAY).write_text("// an earlier plugin\n")
-    report = host.refresh(code=1, CLAUDE_FAIL="plugin install", CLAUDE_TOUCH="1")
-    client = by_client(report)["claude-code"]
-    assert client["result"] == "failed"
-    assert "changed by its client meanwhile" in client["error"]
+    # The client's CLI writes its settings, as `claude plugin install` does, then fails.
+    failing = {"CLAUDE_FAIL": "plugin install", "CLAUDE_TOUCH": "1"}
+    if text:
+        result = host.run("setup", "--refresh", **failing)
+        assert result.returncode == 1
+        assert "Claude Code: failed; nothing was changed" not in result.stdout
+        assert "Claude Code: failed; these files differ from before" in result.stdout
+        assert f"  changed {claude / 'settings.json'}" in result.stdout
+        assert "No registration was changed." not in result.stdout
+        assert result.stdout.endswith("Restart Claude Code to load these changes.\n")
+    else:
+        client = by_client(host.refresh(code=1, **failing))["claude-code"]
+        assert client["result"] == "failed"
+        assert client["changed"] == [str(claude / "settings.json")]
+        hooks = next(p for p in client["parts"] if p["kind"] == "hooks")
+        assert (hooks["action"], hooks["kept"]) == ("update", False)
     settings = host.json(claude / "settings.json")
     assert settings["touchedByClaude"] is True
-    assert "SessionStart" in settings["hooks"]
+    # The CLI step runs before any document of ours, so none was written.
+    assert "SessionStart" not in settings["hooks"]
     assert (claude / DISPLAY).read_text() == "// an earlier plugin\n"
 
 
@@ -255,3 +258,20 @@ def test_an_interrupted_refresh_is_completed_by_running_it_again(
     ).read_bytes()
     assert host.run("setup", "--check", "--json").returncode == 0
     converged(host)
+
+
+def test_setup_write_still_replaces_a_read_only_file_and_keeps_its_mode(
+    host: Machine,
+) -> None:
+    host.setup()
+    pi = host.home("pi") / "mcp.json"
+    document = host.json(pi)
+    del document["mcpServers"]["neosian-memory"]["exposure"]
+    pi.write_text(json.dumps(document))
+    pi.chmod(0o444)
+    report = host.refresh()
+    assert "read-only" in by_client(report)["pi"]["parts"][0]["reason"]
+    result = host.run("setup", "--client=pi", "--write")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert host.json(pi)["mcpServers"]["neosian-memory"]["exposure"] == "direct"
+    assert stat.S_IMODE(pi.stat().st_mode) == 0o444

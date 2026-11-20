@@ -204,7 +204,10 @@ def test_a_failed_write_fails_one_client_and_a_refusal_leaves_one_part(
     assert text.returncode == 1
     assert "Claude Code: failed; nothing was changed" in text.stdout
     assert "  hooks   " in text.stdout and "not updated" in text.stdout
-    assert "retry   neosian setup --refresh once the cause is fixed" in text.stdout
+    # The retry is said once, as the hint.
+    block = text.stdout.split("Claude Code: ", 1)[1].split("\nCodex: ", 1)[0]
+    assert block.count("neosian setup --refresh") == 1
+    assert "  hint    fix the cause, then run neosian setup --refresh" in text.stdout
     assert text.stdout.endswith("No registration was changed.\n")
 
 

@@ -84,10 +84,14 @@ neosian record install --client opencode --level project --scope user:me --write
   and mode. Persisted opt-outs stay. A part it cannot change faithfully is left
   alone with the reason and the fix, and the run still succeeds: another
   installation's registration, words this release does not write, a read-only
-  file, a locally edited skill, a statusline without the bridge, or a missing
-  `claude` CLI. Project files are listed, never edited. Only a failed write
-  fails a client: its files are put back unless the client changed them
-  meanwhile, and the exit is 1. Run it again to retry or to complete an
+  file or a directory its owner cannot write, a dangling symbolic link, a
+  locally edited skill, a statusline without the bridge, or a missing `claude`
+  CLI. (`setup --write`, an explicit request, still replaces a read-only file
+  and keeps its mode.) Project files are listed, never edited. Only a failed
+  write fails a client: Claude's plugin CLI runs before the refresh writes
+  anything else for that client, files it wrote are put back unless the client
+  changed them meanwhile, every file that still differs is listed, and the exit
+  is 1. Run it again to retry or to complete an
   interrupted refresh. Restart the clients it names. JSON never prompts. Run it
   yourself after a package-manager upgrade.
 - **Once per machine.** By default the hooks land in the client's own
@@ -127,8 +131,9 @@ neosian record install --client opencode --level project --scope user:me --write
   and `SessionStart`) and guidance on stderr.
 - `--write` merges it into `~/.claude/settings.json` (under
   `$CLAUDE_CONFIG_DIR` when set), preserving every other key, event and
-  hook; our hook is replaced inside its group, other hooks in that group
-  stay, and a re-run is idempotent. `~/.claude` must exist: neosian never creates another
+  hook; our hook is removed from the group that holds it (the group's other
+  hooks stay) and a fresh group with it is appended to the event, so a matcher
+  on the old group no longer applies to it; a re-run is idempotent. `~/.claude` must exist: neosian never creates another
   program's config home.
 - The store flags are `mcp install`'s; the hook line adds `--spool`
   (absolute) and `--agent` when not the default. A DSN is never written
@@ -180,8 +185,9 @@ neosian record install --client opencode --level project --scope user:me --write
 
 `neosian setup --client codex --write` installs `$neosian-upkeep` alongside
 MCP and hooks. `neosian update` keeps an installed entry current unless you
-edited it, which the report says; an installation that predates the skill
-needs this setup once. Then run
+edited it, which the report says, and installs it again if you deleted it while
+its receipt still says enabled (use `--codex-skills off` to keep it away); an
+installation that predates the skill needs this setup once. Then run
 `neosian setup --client codex --check`. In the Codex prompt area, type:
 
 ```text

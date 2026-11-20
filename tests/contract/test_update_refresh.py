@@ -139,7 +139,7 @@ def test_auto_policy_at_status_refreshes_before_status_runs(binary: Binary) -> N
     assert "installed\n" in notes
     assert "OpenCode: updated" in notes and "Pi: current" in notes
     assert notes.rstrip().endswith(
-        "Restart OpenCode to load the refreshed registrations.\n"
+        "Restart OpenCode to load these changes.\n"
         f"neosian {newer} is installed; restart running clients so they use it."
     )
     assert notes.index("Refreshing") < notes.index("OpenCode: updated")
@@ -175,7 +175,7 @@ def test_status_still_runs_after_a_refresh_that_did_not_finish(
     assert log == "setup --refresh\nstatus\n"
     if outcome == "failed":
         assert "Claude Code: failed; nothing was changed" in notes
-        assert "retry   neosian setup --refresh" in notes
+        assert "  hint    fix the cause, then run neosian setup --refresh" in notes
     else:
         assert "did not complete the registration refresh (exit 2)" in notes
         assert "hint: run neosian setup --refresh" in notes

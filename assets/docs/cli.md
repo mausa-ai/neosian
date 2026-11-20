@@ -80,9 +80,12 @@ running without `--dry-run`. Ordinary deletes keep history; erasure does not.
 
 Setup previews unless `--write` is given. In scripts use `--write --yes`, or
 repeat `--client`. Preserve unrelated client settings and inspect reported
-pending client-owned registrations. Rewriting a client file keeps a symlink and
-the file's mode, and replaces only the neosian hook inside a hook group, so
-other hooks in that group stay. `--binary PATH` chooses the registered
+pending client-owned registrations. `setup --write` removes the neosian hook
+from the group that holds it, keeping that group's other hooks, and appends a
+fresh group with the neosian hook at the end of the event, so a matcher set on
+the old group no longer applies to it. It writes a symlinked file at its target
+and keeps the file's mode, and because you asked for it, it replaces a file
+even when the file is read-only. `--binary PATH` chooses the registered
 executable. `status --json` reports paths and registrations without provider
 credentials. `neosian update` installs an available stable release through this
 native installation's updater and verifies the installed version. It then runs
@@ -105,9 +108,12 @@ keeps each registered command line word for word and changes only what the
 release owns and needs to change. A hook group that already carries the
 neosian command stays as it is, with any hooks or settings you added to it; a
 missing hook event gains a new group, and an event the release no longer uses
-loses only the neosian hook. An MCP entry gains members it lacks and keeps
-every value it has. The OpenCode and Pi adapters, the Codex skill and the
-Claude Code plugin are replaced when their bytes differ. A file that is
+loses only the neosian hook. An MCP entry gains members it lacks, except
+OpenCode's `enabled`, which is never added, and keeps every value it has. The
+OpenCode and Pi adapters, the Codex skill and the Claude Code plugin are
+replaced when their bytes differ; a managed skill you deleted while its receipt
+still says enabled is installed again, so use `--codex-skills off` to keep it
+away. A file that is
 already current is not written; a symlinked file is written at its target and
 keeps its mode. It connects no new client, creates no client home, adds no
 skill or plugin that was never installed or that Claude no longer lists, and
@@ -116,17 +122,20 @@ current directory are listed, never edited.
 
 A part the refresh cannot change faithfully is left alone, and the report says
 why and what to fix: a registration for another installation or with words
-this release does not write, a read-only file, a locally edited skill, a
+this release does not write, a read-only file or a directory its owner cannot
+write, a symbolic link whose target does not exist, a locally edited skill, a
 statusline without the cache bridge, or the `claude` CLI missing when the
 plugin needs it. Leaving a part alone is not a failure: the client's other
 parts proceed and the exit stays 0. Only a write that fails makes a client
-fail: the files this run wrote for it are put back unless the client changed
-them meanwhile, the report names the file and the cause, and the exit is 1, so
-`update` also exits 1 and keeps the new binary. The retry is always
+fail. The plugin step, which runs Claude's own CLI, goes before any other write
+for that client, so a CLI failure leaves none of the refresh's documents
+written. The files this run wrote are put back unless the client changed them
+meanwhile; the report lists every file that still differs from before the
+refresh, and the exit is 1, so `update` also exits 1 and keeps the new binary. The retry is always
 `neosian setup --refresh`. There is no atomicity across a crash or an
 interrupt: each file is replaced whole, and running `setup --refresh` again
-completes a partly refreshed client. The report names the clients it updated
-as the ones to restart. `setup --refresh --json` prints one report and never
+completes a partly refreshed client. The report names the clients whose files
+changed as the ones to restart. `setup --refresh --json` prints one report and never
 prompts; `update --json` carries it as `refresh`, which is `null` when nothing
 was installed. `update` runs exactly `setup --refresh` (with `--json` for a
 JSON update) on the installed executable, and later releases keep accepting

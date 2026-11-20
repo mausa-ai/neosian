@@ -55,6 +55,8 @@ pub struct Part {
     pub read: Option<String>,
     /// The registered executable, set once it is known to run this installation.
     pub executable: Option<String>,
+    /// In a failed client: whether this part's change is on disk after restore.
+    pub kept: Option<bool>,
 }
 
 impl Part {
@@ -68,6 +70,7 @@ impl Part {
             change: None,
             read: None,
             executable: None,
+            kept: None,
         }
     }
 
@@ -90,9 +93,9 @@ impl Part {
         self
     }
 
-    /// A file this change would replace must be writable by its owner.
+    /// Every file this change writes, and its directory, must be writable.
     pub(super) fn guarded(self, paths: &[PathBuf]) -> Self {
-        match paths.iter().find_map(|path| files::read_only(path)) {
+        match paths.iter().find_map(|path| files::unwritable(path)) {
             Some(why) => self.left_alone(format!("{why}; it is left as it is")),
             None => self,
         }
@@ -103,8 +106,12 @@ impl Part {
     }
 
     pub fn report(&self) -> Value {
-        json!({"kind": self.kind, "path": self.path, "action": self.action,
-            "reason": self.reason, "note": self.note})
+        let mut report = json!({"kind": self.kind, "path": self.path, "action": self.action,
+            "reason": self.reason, "note": self.note});
+        if let Some(kept) = self.kept {
+            report["kept"] = json!(kept);
+        }
+        report
     }
 }
 

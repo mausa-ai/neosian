@@ -19,7 +19,7 @@ phase close names the version.
   that already carries the neosian command is kept as it is, with any hooks or
   settings added to it; a missing event gains a new group, and an event the
   release no longer uses loses only the neosian hook. MCP entries gain members
-  they lack and keep every value they have. The OpenCode and Pi adapters, the
+  they lack, except OpenCode's `enabled`, and keep every value they have. The OpenCode and Pi adapters, the
   Codex skill and the Claude Code plugin are replaced when their bytes differ,
   and only for a client that runs this installation. Nothing already current
   is written, and a second run writes nothing. It connects no new client, adds
@@ -27,11 +27,15 @@ phase close names the version.
   keeps `--codex-skills off` and `--claude-cache off`, and lists project files
   without editing them. A part it cannot change faithfully is left alone with
   the reason and the fix, and the run still succeeds: a registration for
-  another installation or with words it does not write, a read-only file, a
-  locally edited skill, a statusline without the cache bridge, or a missing
-  `claude` CLI. Only a write that fails makes a client fail: the files the run
-  wrote for it are put back unless its client changed them meanwhile, and the
-  exit is 1. Running it again retries and completes an interrupted refresh.
+  another installation or with words it does not write, a read-only file or a
+  directory its owner cannot write, a dangling symbolic link, a locally edited
+  skill, a statusline without the cache bridge, or a missing `claude` CLI. A
+  managed skill deleted while its receipt says enabled is installed again;
+  `--codex-skills off` keeps it away. Only a write that fails makes a client
+  fail. Claude's plugin CLI runs before the refresh writes anything else for
+  that client, so a CLI failure leaves none of its documents written; files the
+  run wrote are put back unless the client changed them meanwhile, the report
+  lists every file that still differs from before, and the exit is 1. Running it again retries and completes an interrupted refresh.
   `--json` prints one report and never prompts.
 
 ### Changed
@@ -49,10 +53,14 @@ phase close names the version.
   with `--json` for a JSON update, stays accepted by later releases. An update
   performed by 2.18.0 or earlier does not hand over: run
   `neosian setup --refresh` once after it, as after a package-manager upgrade.
-- `setup --write` replaces only the neosian hook inside a hook group, so other
-  hooks that share the group are no longer discarded. Client files that are
-  symlinks are written at their target and keep their mode, and re-running
-  Claude Code setup keeps the values set on its wrapped statusline.
+- `setup --write` removes the neosian hook from the group that holds it and
+  appends a fresh group at the end of the event, so other hooks that share the
+  group are no longer discarded; a matcher set on that group no longer applies
+  to the neosian hook. Client files that are symlinks are written at their
+  target and keep their mode; a read-only file is still replaced, since setup
+  is an explicit request, while the refresh leaves it alone. A dangling
+  symbolic link is refused with that reason. Re-running Claude Code setup keeps
+  the values set on its wrapped statusline.
 
 ## [2.18.0] - 2026-11-18
 
