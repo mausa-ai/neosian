@@ -62,6 +62,15 @@ phase close names the version.
   symbolic link is refused with that reason. Re-running Claude Code setup keeps
   the values set on its wrapped statusline.
 
+### Fixed
+
+- Recording hooks are recognized when the neosian executable's path needs
+  quoting, as it does with a space in the path and with every Windows path.
+  Before, `status` reported such hooks as missing, and running `setup --write`
+  again added a second hook to each event, so each turn was recorded twice.
+  If an event already holds the hook twice, run `neosian setup --write` once
+  to leave one; the refresh reports the duplicate and leaves it alone.
+
 ## [2.18.0] - 2026-11-18
 
 ### Added

@@ -151,6 +151,24 @@ mod tests {
     use std::collections::BTreeMap;
 
     #[test]
+    fn a_hook_whose_executable_path_is_quoted_is_still_ours() {
+        // shell_join quotes a path holding a space or a backslash (every Windows path).
+        for executable in [
+            "/Users/a person/.neosian/bin/neosian",
+            r"C:\Users\person\.neosian\bin\neosian.exe",
+            "/usr/local/bin/neosian",
+        ] {
+            let words = [executable, "record", "--agent", "codex"];
+            let command = crate::clients::context::shell_join(&words.map(String::from));
+            assert!(hooks::carries(&command), "{command}");
+            let group = json!({"hooks": [{"type": "command", "command": command}]});
+            assert_eq!(hooks::count(std::slice::from_ref(&group)), 1);
+        }
+        assert!(!hooks::carries("'/opt/other tool' record --agent codex"));
+        assert!(!hooks::carries("echo neosian's record"));
+    }
+
+    #[test]
     fn hooks_in_the_file_of_a_planned_mcp_change_build_on_its_document() {
         let scratch = Scratch::new("refresh-one-document");
         scratch.plant("neosian", "");

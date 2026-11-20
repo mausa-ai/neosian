@@ -25,7 +25,10 @@ const CURSOR: [&str; 6] = [
     "stop",
 ];
 static VERB: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?:^|\s)\S*neosian(?:\.exe)?\s+record(?:\s|$)").unwrap());
+    // The installer quotes a path with a space or a backslash, so a quote may close the word.
+    LazyLock::new(|| {
+        Regex::new(r#"(?:^|\s)\S*neosian(?:\.exe)?['"]?\s+record(?:\s|$)"#).unwrap()
+    });
 static PLUGIN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
         r#"\[[^\[\]]*(?:"-m", "neosian\.record"|"[^"]*neosian(?:\.exe)?", "record")[^\[\]]*\]"#,
