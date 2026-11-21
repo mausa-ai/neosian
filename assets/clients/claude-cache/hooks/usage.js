@@ -39,7 +39,7 @@ export function observe(state, list, now) {
 // One window's reading taken at `now`, this session's own or another's
 // (`shared`, share.js). A window keeps its current figure `p`, the highest seen
 // in it, apart from the ring of samples the rate is measured against, and `at`,
-// the time of its last reading.
+// the time of the last reading that showed at least that figure (null: unknown).
 export function take(state, kind, p, resetsAt, now, shared = false) {
   let w = state[kind];
   const moved = w && w.resetsAt !== null && resetsAt !== null && Math.abs(resetsAt - w.resetsAt) > 120000;
@@ -49,10 +49,11 @@ export function take(state, kind, p, resetsAt, now, shared = false) {
     w = state[kind] = { p, resetsAt: null, samples: [], delivered: [], agents: { pace: [], wrap: [] } };
   }
   if (resetsAt !== null) w.resetsAt = resetsAt;
+  // A reading below the kept figure does not make that figure any newer.
+  if (p >= w.p) Object.assign(w, { at: now, shared });
   // Responses can arrive out of order and step back a point inside one
   // window: keep the highest seen, so levels and the rate never move back.
   w.p = Math.max(w.p, p);
-  Object.assign(w, { at: now, shared });
   const tail = w.samples.at(-1);
   if (tail && now < tail.t) w.samples = []; // The clock went back: start the ring over.
   const age = w.samples.length ? now - w.samples.at(-1).t : Infinity;
@@ -61,6 +62,12 @@ export function take(state, kind, p, resetsAt, now, shared = false) {
     w.samples.push({ t: now, p: w.p });
     if (w.samples.length > RING) w.samples.shift();
   }
+}
+
+// The clock stepped back: no reading's time is known any more, so none may
+// look recent. A later reading of each window gives it a time again.
+export function rewind(state) {
+  for (const w of Object.values(state)) w.at = null;
 }
 
 export function rate(samples, now, current = samples.at(-1)?.p) {

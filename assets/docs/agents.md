@@ -247,8 +247,9 @@ new warm cache and rearm maintenance. It does not deliberately rebuild an
 expired cache just to produce a small reply. Five-minute caches are observed
 without automatic refresh; setup does not change Claude's TTL.
 
-A refresh that Claude Code does not answer at all (an API error, an abort
-before any reply, or nothing to fork, with no tokens counted) is retried once,
+A refresh that Claude Code does not answer at all, with no tokens counted,
+after a failure that may clear on its own (a timeout or dropped connection, an
+overload, a server error, or an empty result) is retried once,
 at the first 30-second check at least 45 seconds later: 45 to 75 seconds after
 it. The retry is sent only if the session is still idle, keep-warm was not
 turned off in between (even if it was turned on again), the model is
@@ -258,7 +259,11 @@ keep-warm pauses with the reason that applies. A retry that verifies continues
 as a normal refresh, and the next one comes 55 minutes after it. A second
 failure pauses as before. A refresh refused for a rate limit, or one that was
 answered or counted tokens but did not verify, is never retried: the cache it
-found may be gone. At most one retry follows each warm cache estimate, the one
+found may be gone. Nor is one that sending again cannot fix: failed
+authentication or an invalid request (Claude Code's `authentication_failed`
+or `invalid_request` kind, or HTTP 400, 401, 403 or 413), a billing error or
+an unknown model (kinds Claude Code documents as not clearing on their own),
+nothing to fork, or an abort (the turn that forked was interrupted). At most one retry follows each warm cache estimate, the one
 a message or a verified refresh established. While the retry is due the line
 reads `cache ~4m · refresh retry pending` in amber.
 
@@ -413,7 +418,10 @@ Usage notes: on
 ```
 
 An age under a minute reads `as of just now`. Ages are rounded up, as reset
-times are, so a figure is never shown as newer than it is.
+times are, and count from the last reading that showed at least the figure,
+so a figure is never shown as newer than it is. After the computer's clock
+steps back, no reading's time is known: the line reads `usage 87% (age
+unknown)` and the panel `as of unknown` until a new reading arrives.
 
 The session's refresh receipt gains `usage` (per window, `percent`,
 `resets_at_ms` and `read_at_ms`, the time of the window's last reading) and
@@ -440,24 +448,34 @@ content, for example:
 
 A session writes its own reading there, once, at its next 30-second check
 after one of its responses, unless the file already holds a reading as new.
-At every check it reads the file and takes a window's figure from it when the
-reading is newer than its own last reading of that window and belongs to the
-same account. Nothing identifies an account, so the reset times do: the
-reading is taken only when, for every window that both it and the session know
-with a reset time still ahead, the two reset times are within two minutes of
-each other, and at least one window could be compared. A session that has had
-no response of its own yet takes nothing. A figure taken this way is used
-like the session's own by the line, the notes and the checks before a
-refresh, so an idle session at 97% by another session's reading does not send
-a refresh the check would hold back. Inside one window a figure never goes down, so a shared
-reading can raise a figure but not lower it. No reading is taken while a
-refresh is in flight, so a refresh's measured cost never includes itself.
+At every check it reads the file. Nothing identifies an account, so reset
+times do. Claude Code's reset times fall on ten-minute marks, and the weekly
+reset may be the same hour for many accounts, so only the 5-hour window can
+tell one account from another: a reading is taken only when both it and the
+session know the 5-hour window with a reset still ahead and the two resets
+agree (within two minutes, which means the same ten-minute mark), and a weekly
+window both know with a reset still ahead agrees too. The weekly window alone
+never admits a reading. A session that has had no response of its own yet, or
+whose own 5-hour window has passed, takes nothing until its next response.
+
+From a reading of the same account the session takes a window it already
+holds, on the same reset, when the reading is newer than its own last reading
+of that window and its figure is not lower. A shared reading never starts a
+window, never lowers a figure, adds no window the session lacks, and a window
+without a reset time in it is ignored. A figure taken this way is used like
+the session's own by the line, the notes and the checks before a refresh, so
+an idle session at 97% by another session's reading does not send a refresh
+the check would hold back. No reading is taken while a refresh is in flight,
+so a refresh's measured cost never includes itself.
 
 Learning the figure never makes a request: one small read every 30 seconds and
 one write per new reading. A file that is not JSON, is half-written, has
 another format or any value out of range, is dated in the future, is larger
 than 1 KiB, or is a link or a directory is ignored, and the session keeps its
-own figures. `-p` runs neither read nor write it.
+own figures. So is the file when the system cannot say whether it is there
+(a failure other than its absence): nothing is then read or written. After the
+clock steps back, no shared reading dated before the step is taken. `-p` runs
+neither read nor write it.
 
 Not promised:
 
@@ -468,11 +486,12 @@ Not promised:
   Claude apps, by `-p` runs, or under another Claude configuration directory
   is not seen until a session here gets its next response; the age on the line
   is what tells you how old the figure is.
-- Two accounts whose windows reset within the same two minutes and that use
-  the same observation directory (a project-level setup used under two Claude
-  configuration directories, or a `/login` to another account) are taken for
-  one. The figure shown can then be the other account's, which can bring a
-  note early or hold a refresh back, never send one.
+- Two accounts whose 5-hour windows reset at the same ten-minute mark and that
+  use the same observation directory (a project-level setup used under two
+  Claude configuration directories, or a `/login` to another account) are
+  taken for one. The figure shown can then be the other account's, raised
+  within its window, which can bring a note early or hold a refresh back,
+  never send one.
 - A burst from many agents can outrun the note and reach the limit before any
   note is delivered.
 - Accounts without a 5-hour window get weekly notes only. Sessions without

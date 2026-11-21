@@ -54,9 +54,17 @@ async function harness(options = {}, extra = {}) {
         return { startedAt: START, context: { window: 200000 }, rateLimits };
       } } : {}) },
     fs: { read: async path => {
+      if (extra.onRead) await extra.onRead(path); // A case may act while a read is awaited.
       if (!files.has(path)) throw new Error('missing file');
       return files.get(path);
-    }, stat: async path => stats.get(path) ?? ({ size: (files.get(path) ?? '').length, kind: 'file', isLink: false }),
+    }, stat: async path => {
+      // As the host documents it: a missing path rejects with ENOENT; a case may set another answer.
+      const set = stats.get(path);
+      if (set instanceof Error) throw set;
+      if (set) return set;
+      if (!files.has(path)) throw Object.assign(new Error(`ENOENT: no such file or directory, stat '${path}'`), { code: 'ENOENT' });
+      return { size: files.get(path).length, kind: 'file', isLink: false };
+    }, exists: async path => files.has(path),
     write: async (path, body) => { writes.push({ path, body }); files.set(path, body); } },
     command: { register: async spec => { registered.push(spec); return { command: spec.name }; } },
     ui: { status: text => { statuses.push(text); }, toast: () => {}, invalidate: () => {},
@@ -70,7 +78,8 @@ async function harness(options = {}, extra = {}) {
   register(on, options);
   const matches = (matcher, e) => Object.entries(matcher).every(([key, value]) =>
     Array.isArray(value) ? value.includes(e[key]) : value === e[key]);
-  async function emit(event, e = {}, result = {}) {
+  // `during` runs inside a handler's `next`, as the host's own work would.
+  async function emit(event, e = {}, result = {}, during) {
     for (const h of handlers.filter(h => h.event === event && matches(h.matcher, e))) {
       if (event === 'turn.step') {
         const stream = h.handler($, e, async function* () {
@@ -80,7 +89,7 @@ async function harness(options = {}, extra = {}) {
         let chunk = await stream.next();
         while (!chunk.done) chunk = await stream.next();
         result = chunk.value;
-      } else result = await h.handler($, e, async () => result);
+      } else result = await h.handler($, e, async () => { if (during) await during(); return result; });
     }
     return result;
   }
@@ -1312,10 +1321,6 @@ for (const [name, reply, why, line] of [
   ['an overloaded API', OVERLOADED, WHY, 'api-error · overloaded · HTTP 529'],
   ['a dropped connection', { ...OVERLOADED, status: null, error: 'unknown' },
     { reason: 'api-error', error: 'unknown', status: null }, 'api-error · unknown'],
-  ['an abort before any reply', { isAnswered: false, reason: 'aborted', usage: ZERO },
-    { reason: 'aborted', error: null, status: null }, 'aborted'],
-  ['nothing to fork', { isAnswered: false, reason: 'nothing-to-fork' },
-    { reason: 'nothing-to-fork', error: null, status: null }, 'nothing-to-fork'],
   ['text where an identifier belongs', { ...OVERLOADED, status: '529', error: 'SENSITIVE error text' },
     { reason: 'api-error', error: null, status: null }, 'api-error'],
   ['a status out of range', { ...OVERLOADED, status: 52900 },
@@ -1732,13 +1737,17 @@ test('the shared reading is read only in its exact format, and taken only for th
     sameAccount(state, of([at('five_hour', 92, START + 2 * HOUR + 120000)]), now),
     sameAccount(state, of([at('five_hour', 92, START + 2 * HOUR - 120001)]), now),
     sameAccount(state, of([at('five_hour', 92, START + 2 * HOUR), at('seven_day', 41, START + 4 * 24 * HOUR)]), now),
+    // The weekly window alone never admits a reading (U3 review, finding 1).
     sameAccount(state, of([at('five_hour', 92, null), at('seven_day', 41, START + 3 * 24 * HOUR)]), now),
+    sameAccount(state, of([at('seven_day', 41, START + 3 * 24 * HOUR)]), now),
     sameAccount(state, of([at('five_hour', 92, null)]), now),
     sameAccount({}, of([at('five_hour', 92, START + 2 * HOUR)]), now),
-    // This session's 5-hour window is over: not compared, and the weekly one decides.
+    // This session's 5-hour window is over: it takes nothing until its next response.
     sameAccount(state, of([at('five_hour', 3, START + 7 * HOUR), at('seven_day', 41, START + 3 * 24 * HOUR)]),
       START + 2 * HOUR),
-  ], [true, false, false, true, false, false, true]);
+    // Both 5-hour windows known, current and on the same reset; a weekly one without a reset is not compared.
+    sameAccount(state, of([at('five_hour', 92, START + 2 * HOUR), at('seven_day', 41, null)]), now),
+  ], [true, false, false, false, false, false, false, false, true]);
 });
 
 test('the shared reading holds its time and, per window, percent and reset, byte for byte as the bridge test reads it', async () => {
@@ -1748,4 +1757,176 @@ test('the shared reading holds its time and, per window, percent and reset, byte
   const fixture = await readFile(new URL('./claude-cache/shared.json', import.meta.url), 'utf8');
   assert.equal(raw, fixture.trimEnd());
   assert.doesNotMatch(raw, /session|SENSITIVE|claude-test|2\.1\./);
+});
+
+// U3 review (record/u3-review-2026-11-21): findings 1 to 8.
+const WEEKLY = { seven_day: { percent: 41, resets_at_ms: START + 3 * 24 * HOUR } };
+
+test('a shared reading is taken only when both 5-hour windows are current on the same reset, never on the weekly alone', async () => {
+  // This session's 5-hour window is over: the account's new window, matched on the weekly reset only, is not taken.
+  const over = await harness({}, { limits: [five(96, START + 10 * MIN), week(40)] });
+  await over.respond(); await over.advance(15 * MIN);
+  over.files.set(SHARED, reading(over.now(), { ...fiveAt(88, START + 5 * HOUR), ...WEEKLY }));
+  await over.advance(30000);
+  assert.equal(await over.badge(), 'neosian · keep-warm ready');
+  assert.doesNotMatch(await over.details(), /another session/);
+  // A reading without the 5-hour window, matched on the weekly reset only, is not taken either.
+  const plain = await harness({}, { limits: [five(80), week(40)] });
+  await plain.respond(); await plain.advance(MIN);
+  plain.files.set(SHARED, reading(plain.now(), { seven_day: { percent: 96, resets_at_ms: START + 3 * 24 * HOUR } }));
+  await plain.advance(30000);
+  assert.equal(await plain.badge(), 'neosian · keep-warm ready');
+  // The same 5-hour reset admits it.
+  plain.files.set(SHARED, reading(plain.now(), { ...fiveAt(90), seven_day: { percent: 96, resets_at_ms: START + 3 * 24 * HOUR } }));
+  await plain.advance(30000);
+  assert.equal(await plain.badge(), 'neosian · keep-warm ready · usage 96%');
+});
+
+test('a shared reading never starts a window, never lowers a figure, and ignores a window without a reset', async () => {
+  // A large fall with no reset time would start a new weekly window: ignored.
+  const h = await harness({}, { limits: [five(90), week(60)] });
+  await h.respond(); await h.advance(MIN);
+  h.files.set(SHARED, reading(h.now(), { ...fiveAt(91), seven_day: { percent: 30, resets_at_ms: null } }));
+  await h.advance(30000);
+  assert.match(await h.details(), /^5-hour usage: 91% · resets in 1h 59m · as of just now \(another session\)$/m);
+  assert.match(await h.details(), /^Weekly usage: 60% · resets in 2d 23h · as of 2m ago$/m);
+  // A moved reset is a new window: this session's weekly window is over, and the shared one is not taken.
+  const over = await harness({}, { limits: [five(90), week(60, START + 10 * MIN)] });
+  await over.respond(); await over.advance(15 * MIN);
+  over.files.set(SHARED, reading(over.now(), { ...fiveAt(91), seven_day: { percent: 5, resets_at_ms: START + 7 * 24 * HOUR } }));
+  await over.advance(30000);
+  assert.match(await over.details(), /^5-hour usage: 91% · .*\(another session\)$/m);
+  assert.doesNotMatch(await over.details(), /Weekly usage/);
+  // Below the kept figure: not taken, and the figure's time stays its own.
+  const low = await harness({}, { limits: [five(90)] });
+  await low.respond(); await low.advance(MIN);
+  low.files.set(SHARED, reading(low.now(), fiveAt(88)));
+  await low.advance(30000);
+  assert.match(await low.details(), /^5-hour usage: 90% · resets in 1h 59m · as of 2m ago$/m);
+});
+
+test('a shared reading supplies no window this session lacks', async () => {
+  const h = await harness({}, { limits: [five(90)] });
+  await h.respond(); await h.advance(MIN);
+  h.files.set(SHARED, reading(h.now(), { ...fiveAt(91), ...WEEKLY }));
+  await h.advance(30000);
+  const pane = await h.details();
+  assert.match(pane, /^5-hour usage: 91% · .*\(another session\)$/m);
+  assert.doesNotMatch(pane, /Weekly usage/);
+});
+
+const failed = (status, error) => ({ isAnswered: false, reason: 'api-error', status, error, usage: ZERO });
+for (const [name, reply, again] of [
+  ['an authentication failure', failed(401, 'authentication_failed'), false],
+  ['a forbidden request', failed(403, 'unknown'), false],
+  ['an invalid request', failed(400, 'invalid_request'), false],
+  ['a request too large', failed(413, 'unknown'), false],
+  ['a billing error', failed(402, 'billing_error'), false],
+  ['a model not found', failed(404, 'model_not_found'), false],
+  ['nothing to fork', { isAnswered: false, reason: 'nothing-to-fork' }, false],
+  ['an abort', { isAnswered: false, reason: 'aborted', usage: ZERO }, false],
+  ['an empty result', { isAnswered: false, reason: 'empty-reply', usage: ZERO }, true],
+  ['no result at all', null, true],
+  ['a timeout', failed(null, 'unknown'), true],
+  ['an overload', OVERLOADED, true],
+  ['a server error', failed(500, 'server_error'), true],
+]) {
+  test('an unanswered refresh is retried only after a failure that may clear: ' + name, async () => {
+    const h = await harness({}, { fork: replies(reply, WARM) });
+    await h.turn(); await h.advance(57 * MIN);
+    assert.equal(h.calls.length, again ? 2 : 1);
+    const { state, last_refresh: r } = receiptOf(h);
+    assert.deepEqual([state, r.outcome, r.attempt], again ? ['Cache refresh verified', 'reused', 2]
+      : [UNVERIFIED, 'stopped', 1]);
+    if (!again) assert.match(await h.details(), /^Not answered: (api-error|nothing-to-fork|aborted)/m);
+  });
+}
+
+test('after the clock steps back no figure claims to be recent: its time is unknown until a new reading', async () => {
+  const h = await harness({}, { limits: [five(86, START + 3 * HOUR)] });
+  await h.turn(); await h.advance(20 * MIN);
+  assert.equal(await h.badge(), 'neosian · cache ~40m · keep-warm on · usage 86% (20m ago)');
+  h.elapse(-HOUR); await h.beat(); // The clock steps back an hour.
+  assert.equal(await h.badge(), 'neosian · cache paused · next message may be cold · usage 86% (age unknown)');
+  assert.match(await h.details(), /^5-hour usage: 86% · resets in 3h 40m · as of unknown$/m);
+  assert.equal(receiptOf(h).usage.five_hour.read_at_ms, null);
+  h.elapse(HOUR + 10 * MIN); await h.beat(); // Past the old time again: still unknown, never "10m ago".
+  assert.match(await h.badge(), / · usage 86% \(age unknown\)$/);
+  await h.respond(); await h.beat(); // A new reading of its own has a known time.
+  assert.match(await h.details(), /^5-hour usage: 86% · resets in 2h 30m · as of just now$/m);
+  assert.match(await h.badge(), / · usage 86%$/);
+});
+
+test("a reading below the kept figure does not move the figure's time", async () => {
+  const h = await harness({}, { limits: [five(86, START + 3 * HOUR)] });
+  await h.turn(); await h.advance(15 * MIN);
+  await h.respond([five(85.5, START + 3 * HOUR)]); await h.advance(30000); // A point back inside the window.
+  assert.equal(await h.badge(), 'neosian · cache ~45m · keep-warm on · usage 86% (16m ago)');
+  assert.deepEqual(receiptOf(h).usage.five_hour, { percent: 86, resets_at_ms: START + 3 * HOUR, read_at_ms: START });
+  await h.respond([five(86, START + 3 * HOUR)]); await h.advance(30000); // The kept figure read again.
+  assert.equal(await h.badge(), 'neosian · cache ~44m · keep-warm on · usage 86%');
+});
+
+test('the in-flight guard is read at the moment a shared reading would be taken', async () => {
+  let points = 60;
+  let armed = false;
+  let refreshing;
+  let release;
+  let forked;
+  const held = new Promise(resolve => { release = resolve; });
+  const started = new Promise(resolve => { forked = resolve; });
+  const h = await harness({}, {
+    limits: () => [five(points, START + 4 * HOUR)],
+    // While a tick reads the shared file, keep-warm is turned on and its refresh starts.
+    onRead: async path => {
+      if (!armed || path !== SHARED) return;
+      armed = false;
+      refreshing = h.command('on');
+      await started;
+    },
+    fork: async () => {
+      points += 0.3; // The refresh's own cost, already in the reading another session takes meanwhile.
+      h.files.set(SHARED, reading(h.now(), fiveAt(points + 1, START + 4 * HOUR)));
+      forked();
+      await held;
+      return structuredClone(WARM);
+    },
+  });
+  await h.turn(); await h.command('off'); await h.advance(56 * MIN);
+  armed = true;
+  await h.advance(30000); // That read returns the in-flight reading while the refresh waits.
+  release(); await refreshing;
+  assert.equal(h.calls.length, 1);
+  assert.deepEqual(receiptOf(h).last_refresh.usage_cost, { five_hour: 0.3, seven_day: null });
+});
+
+test('a stat that finds nothing lets a reading be written; any other stat failure writes and takes nothing', async () => {
+  const absent = await harness({}, { limits: [five(86)] }); // ENOENT, as the host answers for a missing path.
+  await absent.respond(); await absent.advance(30000);
+  assert.equal(absent.files.get(SHARED), reading(START, fiveAt(86)));
+  const quiet = await harness({}, { limits: [five(86)] }); // No errno given: the file is not there either.
+  quiet.stats.set(SHARED, new Error('refused'));
+  await quiet.respond(); await quiet.advance(30000);
+  assert.equal(quiet.files.get(SHARED), reading(START, fiveAt(86)));
+  for (const failure of [Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' }), new Error('refused')]) {
+    const h = await harness({}, { limits: [five(86)] });
+    h.files.set(SHARED, reading(START + 20000, fiveAt(97)));
+    h.stats.set(SHARED, failure);
+    await h.respond(); await h.advance(30000);
+    assert.equal(await h.badge(), 'neosian · keep-warm ready · usage 86%', failure.message);
+    assert.equal(h.writes.filter(w => w.path === SHARED).length, 0, failure.message);
+  }
+});
+
+test('a compaction during which the state changes keeps the newer state, not the compacted wording', async () => {
+  for (const [name, during, line] of [
+    ['a message', h => h.emit('turn.start', { turnId: 'next' }), 'neosian · conversation active'],
+    ['keep-warm off', h => h.command('off'), 'neosian · keep-warm off'],
+  ]) {
+    const h = await harness(); await h.turn();
+    await h.emit('session.compact', { trigger: 'auto' }, { messages: [], tokensAfter: 16384 }, () => during(h));
+    await h.advance(30000);
+    assert.doesNotMatch(receiptOf(h).state, /compacted/, name);
+    assert.equal(await h.badge(), line, name);
+  }
 });

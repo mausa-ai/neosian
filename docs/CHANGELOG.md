@@ -65,12 +65,14 @@ phase close names the version.
   once. The refresh receipt's `last_refresh` gains `attempt`, `unanswered`
   (Claude Code's `reason`, `error` kind and HTTP `status`, never a message)
   and `first_attempt`, and `outcome` gains `unanswered`; `/neosian-cache`
-  shows the reason. A refresh not answered at all, with no tokens counted, is
-  retried once 45 to 75 seconds later while the session is idle, keep-warm
-  stays on, the model is unchanged, the usage checks allow it and the cache
-  estimate has more than its 30-second margin left; a second failure pauses
-  as before. A rate-limit refusal, or a refresh that counted tokens without
-  verifying, is never retried.
+  shows the reason. A refresh not answered at all, with no tokens counted,
+  after a timeout, an overload, a server error or an empty result is retried
+  once 45 to 75 seconds later while the session is idle, keep-warm stays on,
+  the model is unchanged, the usage checks allow it and the cache estimate
+  has more than its 30-second margin left; a second failure pauses as before.
+  A rate-limit refusal, failed authentication, an invalid request, a billing
+  error, an unknown model, nothing to fork, an abort, or a refresh that
+  counted tokens without verifying, is never retried.
 - After a compaction the neosian line reads `context compacted`, adding
   `next message writes 16k+ tokens` when Claude Code counts the compacted
   conversation, instead of `cache paused · next message may be cold`. No
@@ -78,14 +80,15 @@ phase close names the version.
 - The usage figure on the neosian line stays current while a session is
   idle. Interactive sessions sharing an observation directory share their
   newest reading through `usage.shared.json` beside the session files (the
-  reading's time and, per window, percentage and reset time, nothing else);
-  a session takes a window's figure from it when it is newer than its own
-  and the reset times match its own within two minutes, and the notes and
-  the checks before a refresh use it too. The line adds the figure's age
-  once it is older than ten minutes (`usage 85% (40m ago)`), and
-  `/neosian-cache` always gives it. The receipt's `usage` gains
-  `read_at_ms` per window. No request is made to learn the figure; an
-  unreadable, half-written or future-dated file is ignored.
+  reading's time and, per window, percentage and reset time, nothing else).
+  A session takes it only when both 5-hour windows are current on the same
+  reset, never on the weekly window alone, and then only raises a window it
+  holds, from a newer reading; the notes and the checks before a refresh use
+  it too. The line adds the figure's age once it is older than ten minutes
+  (`usage 85% (40m ago)`, or `(age unknown)` after the clock steps back), and
+  `/neosian-cache` always gives it. The receipt's `usage` gains `read_at_ms`
+  per window. No request is made to learn the figure; an unreadable,
+  half-written or future-dated file is ignored.
 
 ## [2.20.0] - 2026-11-21
 

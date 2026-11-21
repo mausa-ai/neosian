@@ -12,14 +12,16 @@ uncertain, changed or failed caches wait for your next ordinary message. No
 automatic cold rebuild, conversation message, tool execution or memory mutation
 is requested. The feature remains enabled until you close the session.
 
-A refresh Claude Code does not answer at all (an API error, an abort or
-nothing to fork, with no tokens counted) is retried once, 45 to 75 seconds
+A refresh Claude Code does not answer at all, with no tokens counted, after a
+failure that may clear (a timeout or dropped connection, an overload, a server
+error, or an empty result) is retried once, 45 to 75 seconds
 later, if the session is still idle, keep-warm was not turned off in between,
 the model is unchanged, the usage checks below still allow it and the cache
 estimate has more than its 30-second margin left. A retry that verifies
 continues as a normal refresh; a second failure pauses as before. A refresh
-refused for a rate limit, or one that counted tokens without verifying, is
-never retried. At most one retry follows each warm cache estimate. After a
+refused for a rate limit, failed authentication, an invalid request (HTTP
+400, 401, 403 or 413), a billing error, an unknown model, nothing to fork, an
+abort, or one that counted tokens without verifying, is never retried. At most one retry follows each warm cache estimate. After a
 compaction the line reads `context compacted`, adding
 `next message writes 16k+ tokens` when Claude Code counts the compacted
 conversation: that message writes at least that much. No request follows a
@@ -64,19 +66,27 @@ Sessions sharing an observation directory share their newest usage reading
 through one small file there, `usage.shared.json`: when it was read and, per
 window, the percentage and reset time, nothing else. An interactive session
 writes its own reading after one of its responses and reads the file every
-30 seconds. It takes a window's figure when that is newer than its own and
-every window both know with a reset time resets within two minutes of its
-own, with at least one to compare. An idle session therefore shows the
+30 seconds. Nothing identifies an account, so reset times do: a reading is
+taken only when both it and the session know the 5-hour window with a reset
+still ahead and the two resets agree (Claude Code's reset times fall on
+ten-minute marks, so this means the same mark), and a weekly window both know
+agrees too; the weekly window alone never admits one, and a session whose own
+5-hour window has passed takes nothing until its next response. From such a
+reading the session takes a window it already holds, on the same reset, when
+the reading is newer and its figure is not lower: a shared reading never
+starts a window or lowers a figure. An idle session therefore shows the
 account's current figure without making a request; the notes and the checks
 before a refresh use it too, so a refresh the account's figure would hold
 back is not sent. The line adds the figure's age once it is older than ten
 minutes, for example `usage 85% (40m ago)`, and `/neosian-cache` always gives
-it, marking a figure another session read.
+it, marking a figure another session read. The age is that of the last
+reading showing at least the figure; after the clock steps back it is
+unknown, `(age unknown)`, until a new reading.
 Usage spent on another machine, in the Claude apps, by `-p` runs or under
 another Claude configuration directory is not seen until a session here gets
-its next response. Two accounts whose windows reset within the same two
-minutes and that write to the same directory would be taken for one. An
-unreadable, half-written or future-dated file is ignored.
+its next response. Two accounts whose 5-hour windows reset at the same
+ten-minute mark and that write to the same directory would be taken for one.
+An unreadable, half-written or future-dated file is ignored.
 
 The host's status is an estimate, not a server cache probe. A cache miss can
 only be detected after a request, and the public fork API has no output-token

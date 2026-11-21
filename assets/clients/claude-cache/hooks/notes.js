@@ -2,7 +2,7 @@
 // in the classic hook results. Guidance only: never a block, stop or prompt.
 // The arithmetic is in usage.js and the prose in assets/usage.md. The host
 // loads `$` only into named functions, so state travels as a plain object.
-import { assess, charge, commit, forget, gate, horizon, note, observe, parse, peek, reserves, snapshot,
+import { assess, charge, commit, forget, gate, horizon, note, observe, parse, peek, reserves, rewind, snapshot,
   waiting, windows } from './usage.js';
 
 // `costs` holds the last observed refresh costs per window (usage.js `charge`).
@@ -10,10 +10,11 @@ import { assess, charge, commit, forget, gate, horizon, note, observe, parse, pe
 // and its last observed cache was one hour and eligible for refresh, so the
 // reserve applies. Before a first observation it is false: plain thresholds.
 // `reading` is this session's own newest reading and `published` the last one
-// it wrote to the shared file (share.js).
+// it wrote to the shared file (share.js); `clock` the last time a sample saw,
+// and `untrusted` the latest time seen before the clock last stepped back.
 export function usageNotes() {
   return { meter: {}, costs: {}, warm: false, metered: false, sampled: false, fresh: false, templates: null,
-    enabled: true, preferred: true, hours: 6, last: null, reading: null, published: null };
+    enabled: true, preferred: true, hours: 6, last: null, reading: null, published: null, clock: 0, untrusted: 0 };
 }
 
 export function configureNotes(n, options) {
@@ -29,7 +30,7 @@ export function setNotes(n, key, value) {
 // Notes need a supported session, but neither the bridge nor a terminal.
 export async function startNotes($, n, supported) {
   Object.assign(n, { meter: {}, costs: {}, metered: supported, sampled: false, fresh: false,
-    templates: null, enabled: n.preferred, last: null, reading: null, published: null });
+    templates: null, enabled: n.preferred, last: null, reading: null, published: null, clock: 0, untrusted: 0 });
   if (!supported) return;
   try { n.templates = parse(await $.fs.read($.plugin.root + '/assets/usage.md')); } catch { n.templates = null; }
   await sampleUsage($, n);
@@ -48,6 +49,12 @@ export async function sampleUsage($, n) {
   n.fresh = false;
   try {
     const now = await $.clock.now();
+    if (now < n.clock) { // The clock stepped back: no reading's time can be trusted.
+      rewind(n.meter);
+      n.reading = null;
+      n.untrusted = Math.max(n.untrusted, n.clock); // A shared reading up to then may be as old.
+    }
+    n.clock = now;
     const { rateLimits } = await $.session.usage();
     // An idle session repeats its last figure. Only a reading after one of
     // its own responses is evidence, so idle time adds no flat samples.

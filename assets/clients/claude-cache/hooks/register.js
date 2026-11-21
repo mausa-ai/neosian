@@ -117,7 +117,7 @@ async function tick($, allowRefresh = true) {
   if (closed) return;
   const owner = sessionId;
   await sampleUsage($, notes);
-  if (available) await shareUsage($, notes, directory, !flight); // Never during a refresh (share.js).
+  if (available) await shareUsage($, notes, directory, () => !flight); // Never during a refresh (share.js).
   const now = await $.clock.now();
   if (closed) return;
   if (!available) { await show($, now); return; }

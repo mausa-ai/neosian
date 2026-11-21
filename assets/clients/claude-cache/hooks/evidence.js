@@ -72,11 +72,23 @@ export function unanswered(result) {
     status: Number.isSafeInteger(status) && status >= 100 && status <= 599 ? status : null };
 }
 
-// Worth one retry: not answered, not a rate-limit refusal, and no tokens
-// counted. A request that counted tokens was served, and sending it again
-// could spend them against a cache that is gone.
+// Failures sending again cannot fix (U3 review): kinds the host documents as
+// not clearing on their own, refused credentials and invalid requests by
+// status, nothing to fork, and an abort (the person interrupted it).
+const FINAL = ['authentication_failed', 'invalid_request', 'billing_error', 'model_not_found'];
+const REFUSED = [400, 401, 403, 413];
+
+// Worth one retry: not answered, not a rate-limit refusal, not a failure that
+// stays (above), and no tokens counted. That leaves an empty result, a timeout
+// or dropped connection, an overload and a server error. A request that counted
+// tokens was served, and sending it again could spend them against a cache
+// that is gone.
 export function retriable(result) {
   if (result?.isAnswered === true || limited(result)) return false;
+  if (['nothing-to-fork', 'aborted'].includes(result?.reason)) return false;
+  if (result?.reason === 'api-error' && (FINAL.includes(result.error) || REFUSED.includes(result.status))) {
+    return false;
+  }
   const u = result?.usage;
   return u === undefined || u === null || (usage(u) && u.input_tokens + u.output_tokens +
     u.cache_read_input_tokens + u.cache_creation_input_tokens === 0);
