@@ -32,9 +32,11 @@ phase close names the version.
   never moved. `status` and `setup --check` say which name each client is
   on, and a check fails where two of neosian's servers are registered.
 - The search for what you wrote is a courtesy: it reads the client's own
-  settings and the frontmatter of its agents, skills and commands. It does
-  not see a name spelled with escape codes or a YAML alias, a pattern that
-  matches both names without containing `neosian`, plugins, managed policy,
+  settings and the frontmatter of its agents, skills and commands, and counts
+  only text holding `neosian-memory` or `mcp__neosian`. It does not see a
+  name spelled with escape codes or a YAML alias, a pattern that reaches the
+  old tools without `neosian-memory` or `mcp__neosian` in it (for example
+  `mcp__.*memory__.*` or `.*neosian.*`), plugins, managed policy,
   a project the client has not recorded (OpenCode and Cursor projects are
   read only from the directory you run neosian in), or scripts and
   command-line flags. A project that registers `neosian-memory` in a file

@@ -6,6 +6,7 @@ put back by one command, silent on a second run, and never printing a value."""
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 import stat
@@ -426,3 +427,61 @@ def test_no_value_in_any_report(host: Machine) -> None:
     ]
     assert keys(host, "claude-desktop") == [SERVER]
     assert all(SECRET not in out for out in outputs)
+
+
+# N5 refined: a mention refers to the server or its tools; paths do not.
+
+
+def test_an_ordinary_setup_in_a_neosian_checkout_moves_every_client(
+    binary: Binary,
+) -> None:
+    checkout = binary.directory / "src" / "neosian"
+    checkout.mkdir(parents=True)
+    host = dataclasses.replace(machine(binary), project=checkout)
+    host.setup()
+    released(host)
+    claude_project(host, "src/neosian", {})
+    permissions = {
+        "additionalDirectories": [str(checkout)],
+        "deny": [f"Read({checkout}/secret)"],
+    }
+    lint = {
+        "matcher": "Bash",
+        "hooks": [{"type": "command", "command": f"{checkout}/scripts/lint.sh"}],
+    }
+    edit(
+        settings(host),
+        lambda d: (
+            d.update(permissions=permissions),
+            d["hooks"].update(PreToolUse=[lint]),
+        ),
+    )
+    config = host.home("codex") / "config.toml"
+    config.write_text(
+        config.read_text()
+        + f'\n[projects."{checkout}"]\ntrust_level = "trusted"\n'
+        + f'\n[hooks.state."{checkout}/.codex/hooks.json:pre_tool_use:0:0"]\ntrusted_hash = "a"\n'
+    )
+    report = host.refresh()
+    states = {c: rename_member(report, c)["state"] for c in CLIENTS}
+    assert states == dict.fromkeys(CLIENTS, "moved"), [
+        (c, rename_member(report, c)["mentions"]) for c in CLIENTS
+    ]
+    assert {c: keys(host, c) for c in CLIENTS} == {c: [SERVER] for c in CLIENTS}
+
+
+@pytest.mark.parametrize(
+    "rule",
+    [
+        {"permissions": {"deny": ["mcp__neosian-memory__memory"]}},
+        {"disabledMcpjsonServers": ["neosian-memory"]},
+    ],
+    ids=["deny-tool", "disabling-list"],
+)
+def test_a_rule_that_names_the_server_or_its_tools_still_blocks(
+    host: Machine, rule: dict[str, Any]
+) -> None:
+    edit(settings(host), lambda d: d.update(rule))
+    member = rename_member(host.refresh(), "claude-code")
+    assert member["state"] == "left" and len(member["mentions"]) == 1, member
+    assert keys(host, "claude-code") == [FORMER]

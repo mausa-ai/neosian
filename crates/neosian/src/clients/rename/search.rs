@@ -1,7 +1,7 @@
 //! The mention search (DESIGN §40.53 item 3), a courtesy stated as such:
-//! `neosian` in any case in the client's own configuration and in the
-//! frontmatter of its agents, skills and commands, at user level and in each
-//! visited project. What neosian installed is passed over, and so are the
+//! `neosian-memory` or `mcp__neosian` in any case in the client's own
+//! configuration and in the frontmatter of its agents, skills and commands,
+//! at user level and in each visited project. What neosian installed is passed over, and so are the
 //! string entries of allow lists in plain JSON (reported, never blocking).
 //! No evaluation, no YAML, no plugins, no prose bodies.
 
@@ -47,8 +47,18 @@ pub(super) enum How {
     Frontmatter,
 }
 
+/// A mention refers to the server or its tools (N5 refined): it holds
+/// `neosian-memory` or `mcp__neosian`, in any letter case; a path or a
+/// command that merely contains the word is not one.
 fn names(text: &str) -> bool {
-    text.to_lowercase().contains("neosian")
+    let lower = text.to_lowercase();
+    lower.contains("neosian-memory") || lower.contains("mcp__neosian")
+}
+
+/// Keys that are paths by their position are never mentions: the projects
+/// a client records.
+fn path_key(segments: &[String]) -> bool {
+    matches!(segments, [projects] if projects == "projects")
 }
 
 fn line_at(text: &str, offset: usize) -> usize {
@@ -142,7 +152,9 @@ fn json(path: &Path, text: &str, value: &Value, state: bool, out: &mut Found) {
                 for (key, member) in members {
                     let mut inner = segments.clone();
                     inner.push(key.clone());
-                    if names(key) && !ours(&inner, member) && !other_server(&inner) {
+                    let counted =
+                        !path_key(&segments) && !ours(&inner, member) && !other_server(&inner);
+                    if names(key) && counted {
                         out.mentions.push(Mention {
                             allow: false,
                             ..hit(&inner)
@@ -191,7 +203,9 @@ fn toml(path: &Path, text: &str, out: &mut Found) {
     for (index, line) in text.lines().enumerate() {
         let number = index + 1;
         let inside = ours.iter().any(|(a, b)| (*a..=*b).contains(&number));
-        let project = line.trim_start().starts_with("[projects.");
+        // Codex's project and hook-trust headers are keyed by paths.
+        let trimmed = line.trim_start();
+        let project = trimmed.starts_with("[projects.") || trimmed.starts_with("[hooks.state.");
         if !inside && !project && names(line) {
             out.mentions.push(Mention {
                 path: path.to_path_buf(),
