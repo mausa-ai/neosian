@@ -89,6 +89,8 @@ fn a_read_only_child_gets_neosian_read_only_or_only_its_state_free_tools() {
     assert!(argv.contains(
         &r#"mcp_servers.neosian-memory.args=["mcp","--mount","scope=s,path=p,ro"]"#.to_string()
     ));
+    // This binary, never a wrapper the entry was registered through (#432).
+    assert!(argv.contains(&r#"mcp_servers.neosian-memory.command="/x""#.to_string()));
     assert!(!argv.iter().any(|w| w.contains("enabled_tools")));
     let profile_server = McpServer {
         mounted: false,
@@ -102,9 +104,23 @@ fn a_read_only_child_gets_neosian_read_only_or_only_its_state_free_tools() {
     );
     codex.mode = Mode::Write;
     let argv = plan(&codex).unwrap().argv;
-    assert!(
-        !argv
-            .iter()
-            .any(|w| w.contains(".enabled=false") || w.contains(".args=") || w == "apps")
+    assert!(!argv.iter().any(|w| w.contains(".enabled=false")
+        || w.contains(".args=")
+        || w.contains(".command=")
+        || w == "apps"));
+}
+
+#[test]
+fn a_codex_server_listed_without_a_usable_name_is_kept_unaddressable() {
+    use super::super::codex::server_names;
+    let listed = server_names(
+        r#"[{"name":"playwright"},{"enabled":true},{"name":7},{"name":null},"sentry"]"#,
+    )
+    .unwrap();
+    // By position only: an entry may carry a server's environment.
+    assert_eq!(
+        listed,
+        [Ok("playwright".to_string()), Err(2), Err(3), Err(4), Err(5)]
     );
+    assert_eq!(server_names(r#"{"servers":[]}"#), None);
 }

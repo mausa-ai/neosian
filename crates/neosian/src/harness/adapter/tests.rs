@@ -373,11 +373,20 @@ fn codex_output_reads_as_observed() {
             r#"{"type":"item.completed","item":{"id":"item_1","type":"command_execution","command":"/bin/zsh -lc 'printf ok > probe6.txt'","aggregated_output":"","exit_code":0,"status":"completed"}}"#
         ),
         [entry(
-            json!({"kind": "command", "command": "/bin/zsh -lc 'printf ok > probe6.txt'", "exit": 0})
+            json!({"kind": "command", "id": "item_1", "command": "/bin/zsh -lc 'printf ok > probe6.txt'", "exit": 0})
+        )]
+    );
+    // A running command is seen at once, named by the same id (x2c r1).
+    assert_eq!(
+        read(
+            r#"{"type":"item.started","item":{"id":"item_1","type":"command_execution","command":"/bin/zsh -lc 'sleep 120'","aggregated_output":"","exit_code":null,"status":"in_progress"}}"#
+        ),
+        [entry(
+            json!({"kind": "command_started", "id": "item_1", "command": "/bin/zsh -lc 'sleep 120'"})
         )]
     );
     assert_eq!(
-        read(r#"{"type":"item.started","item":{"id":"item_1","type":"command_execution"}}"#),
+        read(r#"{"type":"item.started","item":{"id":"item_0","type":"agent_message"}}"#),
         []
     );
     assert_eq!(

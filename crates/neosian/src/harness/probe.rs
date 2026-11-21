@@ -12,6 +12,7 @@ use std::time::{Duration, Instant};
 use super::adapter::CodexKey;
 use super::adapter::bare_key;
 use super::codex::{KEYS, keys, server_names};
+use super::text::say;
 
 const BOUND: Duration = Duration::from_secs(5);
 
@@ -62,13 +63,27 @@ pub fn codex_keys(program: &Path, dir: &Path) -> Result<Vec<CodexKey>, (String, 
     Ok(keys(&found))
 }
 
-/// Why the other servers could not be switched off.
+/// Why the other servers could not be switched off; each refuses
+/// `read-only`, so no server is left on unseen.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Others {
     /// `codex mcp list --json` did not answer with a list.
     Unreadable(String),
     /// A server name an override cannot address.
     Unaddressable(String),
+    /// An entry without a usable name, by its position in the list (#432).
+    Unnamed(usize),
+}
+
+impl Others {
+    /// The refusal, from the asset.
+    pub fn sentence(&self) -> String {
+        match self {
+            Self::Unreadable(error) => say("codex_list_failed", &[("error", error)]),
+            Self::Unaddressable(name) => say("codex_unswitchable", &[("name", name)]),
+            Self::Unnamed(at) => say("codex_unnamed", &[("entry", &at.to_string())]),
+        }
+    }
 }
 
 /// The configured servers other than neosian's keys, which a read-only
@@ -76,15 +91,17 @@ pub enum Others {
 pub fn codex_others(program: &Path, dir: &Path) -> Result<Vec<String>, Others> {
     let (ok, text) =
         answer(program, &["mcp", "list", "--json"], dir).map_err(Others::Unreadable)?;
-    let names = server_names(&text)
+    let listed = server_names(&text)
         .filter(|_| ok)
         .ok_or_else(|| Others::Unreadable(text.trim().chars().take(200).collect()))?;
-    let others: Vec<String> = names
-        .into_iter()
-        .filter(|name| !KEYS.contains(&name.as_str()))
-        .collect();
-    match others.iter().find(|name| !bare_key(name)) {
-        Some(name) => Err(Others::Unaddressable(name.clone())),
-        None => Ok(others),
+    let mut others = Vec::new();
+    for server in listed {
+        match server {
+            Ok(name) if KEYS.contains(&name.as_str()) => {}
+            Ok(name) if bare_key(&name) => others.push(name),
+            Ok(name) => return Err(Others::Unaddressable(name)),
+            Err(at) => return Err(Others::Unnamed(at)),
+        }
     }
+    Ok(others)
 }

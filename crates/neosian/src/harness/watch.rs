@@ -23,7 +23,7 @@ use clap::Args;
 use super::adapter::{self, Agent, McpServer, Mode, Request};
 use super::ending::{self, ignore_sigterm};
 use super::plan::{Checked, PLAN_BYTES, WirePlan, check, read_only};
-use super::probe::{self, Others};
+use super::probe;
 use super::text::say;
 
 /// How long a turn's processes have to end after SIGTERM.
@@ -146,13 +146,7 @@ pub fn run(_args: &Watch, err: &mut impl Write) -> io::Result<u8> {
             Mode::Write => Vec::new(),
             Mode::ReadOnly => match probe::codex_others(&program, &plan.directory) {
                 Ok(off) => off,
-                Err(Others::Unaddressable(name)) => {
-                    return refuse(err, &say("codex_unswitchable", &[("name", &name)]));
-                }
-                Err(Others::Unreadable(error)) => {
-                    let sentence = say("codex_probe_failed", &[("key", "list"), ("error", &error)]);
-                    return refuse(err, &sentence);
-                }
+                Err(others) => return refuse(err, &others.sentence()),
             },
         };
         (keys, off)

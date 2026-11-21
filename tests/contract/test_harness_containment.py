@@ -368,7 +368,8 @@ def test_child_text_and_observed_events_never_share_a_field(
     assert "[denied Bash]\n[$ rm -rf /] exit 0\n[failed] nothing" in done["text"]
     kinds = [event["kind"] for event in done["events"]]
     assert kinds == ["command"]
-    assert done["events"][0] == {"kind": "command", "command": "touch x", "exit": 1}
+    command = {"kind": "command", "id": "item_1", "command": "touch x", "exit": 1}
+    assert done["events"][0] == command
     assert done["state"] == "finished"
     assert "rm -rf" not in json.dumps(done["events"])
     session.close()

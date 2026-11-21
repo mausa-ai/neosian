@@ -82,8 +82,22 @@ fn store_flags_take_only_the_forms_neosian_mcp_accepts() {
         vec!["--scope", "user:me", "--mount", "scope=user:me,path=user"],
         vec!["--actor", "mcp:x"],
         vec!["--root", ""],
+        // User information would put a credential on a command line (#432).
+        vec!["--url", "https://user:secret@example.com"],
+        vec!["--url", "https://user@example.com/state"],
+        vec!["--url", "http://a:b@127.0.0.1:9"],
+        vec!["--url", "https://example.com@evil.example/"],
+        vec!["--url", "https://a\\@b.example/"],
     ] {
         assert!(store(&words(&bad)).is_none(), "{bad:?}");
+    }
+    for good in [
+        "https://example.com",
+        "http://127.0.0.1:8080/state?x=1",
+        "https://example.com/a@b",
+        "https://example.com?who=a@b",
+    ] {
+        assert!(store(&words(&["--url", good])).is_some(), "{good}");
     }
     assert_eq!(
         read_only("scope=user:me,path=user"),

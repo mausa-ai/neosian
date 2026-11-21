@@ -27,20 +27,25 @@ phase close names the version.
   Code loads only your user settings and one MCP server, this neosian with
   every mount read-only, with Read, Grep and Glob as its only built-in
   tools. Codex runs its read-only sandbox with approval `never`, every other
-  configured MCP server and its apps switched off, and neosian's entry with
-  every mount read-only. Under a profile, only neosian's tools that cannot
-  change state are allowed. OpenCode allows only reading. OpenCode loads no
-  project or ancestor configuration or plugins in either mode, so nothing a
-  `write` child writes runs in its own session. In `write`, Claude Code
-  accepts edits inside the directory, Codex writes inside it only, and
-  OpenCode edits files there except its own configuration and plugins. What
-  each mode does not guarantee is listed per harness in `neosian docs
-  harness`, including that a `write` child can change files tools run later;
-  a denied action is reported, never relayed.
+  configured MCP server and its apps switched off, and neosian's entry
+  running this neosian executable, never a wrapper the entry names, with
+  every mount read-only; a server Codex lists without a usable name, or
+  whose name an override cannot address, makes `read-only` refuse to start.
+  Under a profile, only neosian's tools that cannot change state are
+  allowed. OpenCode allows only reading. OpenCode loads no project or
+  ancestor configuration or plugins in either mode, so nothing a `write`
+  child writes runs in its own session. In `write`, Claude Code accepts
+  edits inside the directory, Codex writes inside it only, and OpenCode
+  edits files there except its own configuration and plugins. What each
+  mode does not guarantee is listed per harness in `neosian docs harness`,
+  including that a `write` child can change files tools run later. Nothing
+  is relayed for approval; a denial appears in `events` only when the
+  child's harness prints one, and otherwise only in the child's own words.
 - Each turn runs under a watcher that takes a checked plan, never a command:
   `neosian harness-watch` applies exactly the tool's rules (enabled, outside
   a child, a home directory, the same directory rule, store flags only in
-  the forms `neosian mcp` accepts) and starts only one of the three
+  the forms `neosian mcp` accepts, never a store URL carrying user
+  information) and starts only one of the three
   harnesses with its presets. The prompt reaches the harness on standard
   input. Ending a turn (stop, the turn limit, or the server exiting for any
   reason) ends the harness and every descendant it can find, each with its
@@ -49,18 +54,20 @@ phase close names the version.
   what is left in the group is ended after 20 seconds. Best effort: a
   process that detached beforehand can escape.
 - Answers keep the child's words (`text`, `answer`), what neosian observed
-  (`events`, structured) and neosian's own sentences (`notes`) apart. Every
-  text is bounded: 16 KiB of new text and of the answer, 32 events with the
-  entries that state a cut, 4 KiB of an error, a `list` under 64 KiB as
-  sent.
+  (`events`, structured) and neosian's own sentences (`notes`) apart. A
+  Codex command is an event when it starts and again, under the same `id`,
+  when it completes. Every text is bounded: 16 KiB of new text and of the
+  answer, 32 events with the entries that state a cut, 4 KiB of an error, a
+  `list` under 64 KiB as sent.
 - The child is recorded by its own hooks. With `session`, the child's record
   hook writes `- parent: <id>` into its sessions document from
   `NEOSIAN_HARNESS_PARENT`; the server writes the line only into a document
   that did not exist when the child's session was announced, and says
   "Linked" only after reading it back. An announced session that already
   existed is reported and never linked. The record verb keeps parent lines at
-  every Stop. No wire, format, schema or error code changes. See `neosian
-  docs harness`.
+  every Stop. The record check and the link were verified with stand-in
+  harnesses running this release's hooks, not yet with a real harness. No
+  wire, format, schema or error code changes. See `neosian docs harness`.
 
 ### Changed
 

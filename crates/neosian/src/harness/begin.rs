@@ -13,7 +13,6 @@ use serde_json::json;
 use super::adapter::{self, Agent, Mode};
 use super::link::{self, Naming};
 use super::plan::WirePlan;
-use super::probe::Others;
 use super::registry::{Registry, available, shown};
 use super::render::Child;
 use super::text::say;
@@ -101,14 +100,8 @@ pub fn turn(
             ))
         })?;
         if child.mode == Mode::ReadOnly {
-            probe::codex_others(&program, &child.directory).map_err(|others| {
-                Outcome::fail(match others {
-                    Others::Unaddressable(name) => say("codex_unswitchable", &[("name", &name)]),
-                    Others::Unreadable(error) => {
-                        say("codex_probe_failed", &[("key", "list"), ("error", &error)])
-                    }
-                })
-            })?;
+            probe::codex_others(&program, &child.directory)
+                .map_err(|others| Outcome::fail(others.sentence()))?;
         }
     }
     if child.agent == Agent::OpenCode {

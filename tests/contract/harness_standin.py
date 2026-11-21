@@ -10,7 +10,8 @@ commands), `leave` (a process left in the group when the harness exits),
 `hold` (a process with no environment, in its own session, holding stdout),
 `imitate` (text shaped like neosian's observations), `forge` (announce the
 session named by $STANDIN_FORGE_ID), `bad-session`, `record`, `record-noenv`, `probe-ro` (start the neosian server a read-only
-child is given and try a read and a write), `big-answer:N`
+child is given and try a read and a write), `running:N` (Codex: a command
+started, as `item.started`, that completes N seconds later), `big-answer:N`
 (the hooks run without the parent variables, as when a harness does not pass
 its environment to hooks)
 (run the neosian record hooks for the turn) and `probe` (start the child's
@@ -113,13 +114,20 @@ def read_only_server(program: str, argv: list[str], cwd: str) -> dict[str, Any]:
         command = [entry["command"], *entry["args"]]
         env = dict(os.environ)
     else:
+        # The registered entry ($STANDIN_CODEX_COMMAND, as a wrapper, or the
+        # binary itself) with the run's `command` and `args` overrides.
         key = os.environ.get("STANDIN_CODEX_KEY", "neosian-memory")
+        program_path = os.environ.get(
+            "STANDIN_CODEX_COMMAND", os.environ["STANDIN_NEOSIAN"]
+        )
         args = ["mcp"]
         for override in overrides(argv):
-            found = re.fullmatch(r"mcp_servers\.([^.]+)\.args=(.*)", override)
-            if found and found.group(1) == key:
-                args = json.loads(found.group(2))
-        command = [os.environ["STANDIN_NEOSIAN"], *args]
+            found = re.fullmatch(r"mcp_servers\.([^.]+)\.(args|command)=(.*)", override)
+            if found and found.group(1) == key and found.group(2) == "args":
+                args = json.loads(found.group(3))
+            elif found and found.group(1) == key:
+                program_path = json.loads(found.group(3))
+        command = [program_path, *args]
         env = codex_env(argv, key)
     calls = [
         {"name": "memory", "arguments": {"command": "view", "path": "/project"}},
@@ -134,6 +142,7 @@ def read_only_server(program: str, argv: list[str], cwd: str) -> dict[str, Any]:
     ]
     answers = serve(command, env, cwd, calls)
     return {
+        "command": command[0],
         "args": command[1:],
         "tools": [tool["name"] for tool in answers[1]["result"]["tools"]],
         "view_error": answers[2]["result"]["isError"],
@@ -174,14 +183,16 @@ def record(
 
 
 def codex_mcp_list() -> int:
-    """`codex mcp list --json`: the configured servers by name."""
+    """`codex mcp list --json`: the configured servers by name, then any raw
+    entries in $STANDIN_CODEX_LIST_EXTRA."""
     log({"program": "codex", "mcp_list": True})
     registered = os.environ.get("STANDIN_CODEX_KEY", "neosian-memory")
     others = json.loads(os.environ.get("STANDIN_CODEX_SERVERS", '["playwright"]'))
     names = ([registered] if registered else []) + others
-    emit_list = [
+    emit_list: list[Any] = [
         {"name": n, "enabled": True, "transport": {"type": "stdio"}} for n in names
     ]
+    emit_list += json.loads(os.environ.get("STANDIN_CODEX_LIST_EXTRA", "[]"))
     sys.stdout.write(json.dumps(emit_list) + "\n")
     return 0
 
@@ -315,6 +326,21 @@ def main() -> int:
             for n in range(int(word[7:])):
                 item = {"id": f"c{n}", "type": "command_execution", "command": f"c{n}"}
                 emit({"type": "item.completed", "item": item | {"exit_code": 0}})
+        if word.startswith("running:") and program == "codex":
+            # As codex-cli 0.169.0 prints a command (x2c r1, x2b x3).
+            seconds = word[8:]
+            running: dict[str, Any] = {
+                "id": "item_1",
+                "type": "command_execution",
+                "command": f"/bin/zsh -lc 'sleep {seconds}'",
+                "aggregated_output": "",
+                "exit_code": None,
+                "status": "in_progress",
+            }
+            emit({"type": "item.started", "item": running})
+            time.sleep(float(seconds))
+            done = running | {"exit_code": 0, "status": "completed"}
+            emit({"type": "item.completed", "item": done})
     if "deny" in words:
         if program == "claude":
             emit(

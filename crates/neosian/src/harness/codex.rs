@@ -4,7 +4,7 @@
 //! TMPDIR's marker and, per registered key, an env member and the key's
 //! own `disabled_tools` with `harness` added. In `read-only` (#431) every
 //! other configured MCP server is switched off for the run and neosian's
-//! entry is given read-only arguments.
+//! entry runs this binary with read-only arguments (#432).
 
 use serde_json::{Map, Value, json};
 
@@ -25,18 +25,19 @@ fn toml_list(items: &[String]) -> String {
     format!("[{}]", quoted.join(","))
 }
 
-/// The server names `codex mcp list --json` reported.
-pub fn server_names(answer: &str) -> Option<Vec<String>> {
+/// The servers `codex mcp list --json` reported: each one's name, or, for
+/// an entry without a string name, its position in the list (from 1), which
+/// no override can address (#432). The entry itself is never repeated: it
+/// may carry a server's environment.
+pub fn server_names(answer: &str) -> Option<Vec<Result<String, usize>>> {
     let Ok(Value::Array(servers)) = serde_json::from_str::<Value>(answer) else {
         return None;
     };
-    Some(
-        servers
-            .iter()
-            .filter_map(|server| server.get("name").and_then(Value::as_str))
-            .map(str::to_string)
-            .collect(),
-    )
+    let listed = |(at, server): (usize, &Value)| match server.get("name").and_then(Value::as_str) {
+        Some(name) => Ok(name.to_string()),
+        None => Err(at + 1),
+    };
+    Some(servers.iter().enumerate().map(listed).collect())
 }
 
 pub fn plan(request: &Request) -> Plan {
@@ -90,9 +91,12 @@ pub fn plan(request: &Request) -> Plan {
             format!("mcp_servers.{key}.disabled_tools={}", toml_list(&disabled)),
         ]);
         if let Some(server) = read_only {
-            // The entry's own command, started with every mount read-only;
-            // under a profile, only the tools that cannot change state.
+            // This binary, never a wrapper the entry may name, started with
+            // every mount read-only; under a profile, only the tools that
+            // cannot change state.
             argv.extend([
+                "-c".to_string(),
+                format!("mcp_servers.{key}.command={}", toml_string(&server.command)),
                 "-c".to_string(),
                 format!("mcp_servers.{key}.args={}", toml_list(&server.args)),
             ]);
@@ -144,10 +148,35 @@ fn text(value: Option<&Value>) -> Option<&str> {
     value.and_then(Value::as_str)
 }
 
+/// One command, started or completed: the item's `id` names it in both
+/// entries, so a completion reads as the same command (#432).
+fn command(item: &Value, kind: &str) -> Event {
+    let mut fields = Vec::new();
+    if let Some(id) = text(item.get("id")) {
+        fields.push(("id", json!(id)));
+    }
+    let command = text(item.get("command")).unwrap_or_default();
+    fields.push(("command", json!(command)));
+    if kind == "command" {
+        fields.push((
+            "exit",
+            item.get("exit_code").cloned().unwrap_or(Value::Null),
+        ));
+    }
+    observed(kind, &fields)
+}
+
 pub fn read(event: &Map<String, Value>) -> Vec<Event> {
     match text(event.get("type")).unwrap_or_default() {
         "thread.started" => text(event.get("thread_id"))
             .map(|id| Event::Session(id.to_string()))
+            .into_iter()
+            .collect(),
+        // A running command is seen before it completes (x2c r1).
+        "item.started" => event
+            .get("item")
+            .filter(|item| text(item.get("type")) == Some("command_execution"))
+            .map(|item| command(item, "command_started"))
             .into_iter()
             .collect(),
         "item.completed" => {
@@ -160,14 +189,7 @@ pub fn read(event: &Map<String, Value>) -> Vec<Event> {
                     .map(|said| Event::Text(said.to_string()))
                     .into_iter()
                     .collect(),
-                "command_execution" => {
-                    let command = text(item.get("command")).unwrap_or_default();
-                    let exit = item.get("exit_code").cloned().unwrap_or(Value::Null);
-                    vec![observed(
-                        "command",
-                        &[("command", json!(command)), ("exit", exit)],
-                    )]
-                }
+                "command_execution" => vec![command(item, "command")],
                 "reasoning" => Vec::new(),
                 "error" => {
                     let message = text(item.get("message")).unwrap_or_default();

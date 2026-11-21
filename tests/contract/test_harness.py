@@ -357,7 +357,8 @@ def test_a_failed_turn_reports_its_exit_and_error(
     assert done["error"] == "Insufficient balance."
     session.harness(command="start", agent="codex", prompt="deny")
     denied = finished(session, "h2")
-    assert {"kind": "command", "command": "touch x", "exit": 1} in denied["events"]
+    command = {"kind": "command", "id": "item_1", "command": "touch x", "exit": 1}
+    assert command in denied["events"]
     session.close()
 
 

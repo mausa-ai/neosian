@@ -58,10 +58,26 @@ pub struct Checked {
     pub nonce: String,
 }
 
+/// An http(s) URL with no whitespace and no user information (#432): a
+/// read-only child's command line carries the URL, and a credential there
+/// would show in the process table. The authority ends at the first `/`,
+/// `?` or `#`; any `@` before it is user information.
+fn url_ok(value: &str) -> bool {
+    let rest = value
+        .strip_prefix("https://")
+        .or_else(|| value.strip_prefix("http://"));
+    let Some(rest) = rest else {
+        return false;
+    };
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    !value.contains(char::is_whitespace) && !authority.contains('@')
+}
+
 /// Store flags in the forms `neosian mcp` accepts: each once (`--mount`
-/// repeatable), `--root` absolute, `--url` http(s), a valid schema, profile
-/// name, scope or mount, not `--root` with `--url`, not `--scope` with
-/// `--mount`. Returns the selection flags and the mount tokens.
+/// repeatable), `--root` absolute, `--url` http(s) without user
+/// information, a valid schema, profile name, scope or mount, not `--root`
+/// with `--url`, not `--scope` with `--mount`. Returns the selection flags
+/// and the mount tokens.
 pub fn store(flags: &[String]) -> Option<(Vec<String>, Vec<String>)> {
     if !flags.len().is_multiple_of(2) {
         return None;
@@ -75,10 +91,7 @@ pub fn store(flags: &[String]) -> Option<(Vec<String>, Vec<String>)> {
         }
         let ok = match flag {
             "--root" => Path::new(value).is_absolute(),
-            "--url" => {
-                (value.starts_with("http://") || value.starts_with("https://"))
-                    && !value.contains(char::is_whitespace)
-            }
+            "--url" => url_ok(value),
             "--schema" => crate::postgres::validate_schema(value).is_ok(),
             "--profile" => crate::profile::validate::name(value).is_ok(),
             "--scope" => crate::store::grammar::check_scope(value).is_ok(),
