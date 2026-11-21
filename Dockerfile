@@ -13,7 +13,7 @@
 # a disk volume at /tmp (-v neosian-tmp:/tmp), never a tmpfs, which counts
 # against the memory limit.
 
-FROM rust:1.99.1-alpine@sha256:44819b27be4c97b0e4d7203bd2e02c4820f97700211b6a37fb4c246a2de59383 AS builder
+FROM rust:1.100.0-alpine@sha256:8d0e82abfdf9a38071e07cabc5afba4ddbe077631a80e4e742a760c38beadc33 AS builder
 WORKDIR /app
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY crates/ crates/
@@ -24,7 +24,7 @@ COPY assets/ assets/
 RUN cargo +${RUST_VERSION} build --release --locked \
     && mkdir /data && chown 1000:1000 /data && chmod 700 /data
 
-FROM gcr.io/distroless/static-debian13:nonroot@sha256:25ac8f0c3b2334a9eb05452266bd4697864a8c8ef0ef71e5e6480d7f92868329
+FROM gcr.io/distroless/static-debian13:nonroot@sha256:aafe993665bf6200db38a02c11a9351e782a84b6a45e7f33b6695638c88e3931
 COPY --from=builder /app/target/release/neosian /usr/local/bin/neosian
 COPY --from=builder --chown=1000:1000 /data /data
 COPY LICENSE docs/LICENSE-MUSL crates/neosian/LICENSE-TLS crates/neosian/LICENSE-CONSOLE /usr/share/doc/neosian/
