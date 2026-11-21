@@ -44,8 +44,8 @@ rust-lint: ## cargo fmt --check + clippy -D warnings + cargo deny (licenses, adv
 	cargo deny check
 	dist generate --check
 
-rust-test: ## cargo test over the workspace, the lockfile asserted
-	cargo test --workspace --locked
+rust-test: ## cargo test over the workspace, the lockfile asserted, in an empty neosian home of its own
+	@home=$$(mktemp -d) && NEOSIAN_HOME="$$home" cargo test --workspace --locked; status=$$?; rmdir "$$home"; exit $$status
 
 test-contract: ## Independent public formats and CLI/MCP/HTTP behavior
 	cargo build --locked

@@ -4,7 +4,7 @@
 mod support;
 
 use std::io::{BufRead, BufReader, Write};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 use serde_json::{Value, json};
 use support::Scratch;
@@ -19,7 +19,7 @@ fn envelope(content: &str) -> String {
 
 /// Every request's answer, in order, over one session.
 fn session(home: &Scratch, actor: &str, messages: &[Value]) -> Vec<Value> {
-    let mut server = Command::new(env!("CARGO_BIN_EXE_neosian"))
+    let mut server = support::binary(home.path())
         .args(["mcp", "--scope", "user:me", "--actor", actor, "--root"])
         .arg(home.path())
         .env_remove("NEOSIAN_SCOPE")
@@ -191,7 +191,7 @@ fn a_hooked_client_gets_the_discipline_alone_and_install_registers_the_binary() 
     assert!(!instructions.contains("## /memories"));
     assert_eq!(answers[0]["result"]["protocolVersion"], "2024-11-05");
     home.plant(".claude/keep", "unrelated");
-    let installed = Command::new(env!("CARGO_BIN_EXE_neosian"))
+    let installed = support::binary(home.path())
         .args(["mcp", "install", "--client", "claude-code", "--json"])
         .env_clear()
         .env("HOME", home.path())
@@ -207,7 +207,7 @@ fn a_hooked_client_gets_the_discipline_alone_and_install_registers_the_binary() 
     assert_eq!(report["entry"]["args"][0], "mcp");
     assert_eq!(report["entry"]["command"], env!("CARGO_BIN_EXE_neosian"));
     assert!(!home.path().join("state").exists());
-    let usage = Command::new(env!("CARGO_BIN_EXE_neosian"))
+    let usage = support::binary(home.path())
         .args(["mcp", "--scope", "nope"])
         .output()
         .unwrap();

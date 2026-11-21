@@ -12,10 +12,23 @@ use std::process::{Command, Output};
 
 pub use testing::Scratch;
 
+/// The binary with its home directories inside `scratch`: a test never reads
+/// or writes the machine's own `~/.neosian`, login state or client files.
+pub fn binary(scratch: &Path) -> Command {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_neosian"));
+    let home = scratch.join(".isolated-home");
+    command
+        .env("HOME", &home)
+        .env("USERPROFILE", &home)
+        .env("NEOSIAN_HOME", scratch.join(".isolated-neosian"))
+        .env_remove("NEOSIAN_PROFILE");
+    command
+}
+
 /// `neosian memory <args> --scope user:me --root <home>`, the environment
 /// naming no store of its own.
 pub fn command(home: &Path, args: &[&str]) -> Command {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_neosian"));
+    let mut command = binary(home);
     command
         .arg("memory")
         .args(args)

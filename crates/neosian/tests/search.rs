@@ -3,8 +3,6 @@
 
 mod support;
 
-use std::process::Command;
-
 use support::{Scratch, text};
 
 const CONVERSATIONS: &str = "conversations";
@@ -34,7 +32,7 @@ fn message(status: &str, outcome: &str) -> String {
 const ANNOTATION: &str = "[6f1c2d3e-4a5b-4c6d-8e9f-0a1b2c3d4e5f occurrence=1 scope=user:me from=cli:local at=2026-10-12T22:29:00+00:00 status=done actionable=False]\nthe cache ttl question\nLatest outcome: fixed in deploy";
 
 fn search(home: &Scratch, args: &[&str]) -> std::process::Output {
-    Command::new(env!("CARGO_BIN_EXE_neosian"))
+    support::binary(home.path())
         .arg("search")
         .args(args)
         .arg("--root")
@@ -167,7 +165,7 @@ fn a_wrong_invocation_exits_two_and_builds_nothing() {
     let home = Scratch::new("bin-search-usage");
     let root = home.path().join("unbuilt");
     let unbuilt = |args: &[&str]| {
-        Command::new(env!("CARGO_BIN_EXE_neosian"))
+        support::binary(home.path())
             .arg("search")
             .args(args)
             .arg("--root")

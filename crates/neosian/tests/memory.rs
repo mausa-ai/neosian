@@ -3,8 +3,6 @@
 
 mod support;
 
-use std::process::Command;
-
 use support::{Scratch, memory, text};
 
 const DIR: &str = "user%3Ame";
@@ -120,7 +118,7 @@ fn a_wrong_invocation_exits_two_and_builds_nothing() {
     assert_eq!(grammar.status.code(), Some(2));
     let answer: serde_json::Value = serde_json::from_slice(&grammar.stdout).unwrap();
     assert_eq!(answer["error"], "usage");
-    let scope = Command::new(env!("CARGO_BIN_EXE_neosian"))
+    let scope = support::binary(home.path())
         .args([
             "memory",
             "view",

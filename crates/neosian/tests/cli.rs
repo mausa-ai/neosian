@@ -1,9 +1,12 @@
 //! The literal binary, as a shell or an installer meets it.
 
-use std::process::Command;
+mod support;
+
+use support::Scratch;
 
 fn neosian(args: &[&str]) -> std::process::Output {
-    Command::new(env!("CARGO_BIN_EXE_neosian"))
+    let scratch = Scratch::new("bin-cli");
+    support::binary(scratch.path())
         .args(args)
         .output()
         .expect("the binary runs")
@@ -61,7 +64,8 @@ fn the_container_probe_needs_no_token_or_store() {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port().to_string();
     drop(listener);
-    let output = Command::new(env!("CARGO_BIN_EXE_neosian"))
+    let scratch = Scratch::new("bin-healthcheck");
+    let output = support::binary(scratch.path())
         .args(["serve", "--healthcheck", "--port", &port])
         .env_remove("NEOSIAN_SERVE_TOKEN")
         .env("NEOSIAN_POSTGRES_DSN", "not-a-dsn")

@@ -4,8 +4,6 @@
 
 mod support;
 
-use std::process::Command;
-
 use support::{Scratch, text};
 
 const SCOPE: &str = "user:me/proj:demo";
@@ -63,7 +61,7 @@ fn planted(name: &str) -> Scratch {
 }
 
 fn run(home: &Scratch, args: &[&str]) -> std::process::Output {
-    Command::new(env!("CARGO_BIN_EXE_neosian"))
+    support::binary(home.path())
         .arg("continue")
         .args(args)
         .args(["--root"])
@@ -197,7 +195,7 @@ fn nothing_to_continue_and_no_turns_are_tier_one() {
         answer["hint"],
         "conversation 'a/b': must match [A-Za-z0-9_.-]{1,128} — one flat segment"
     );
-    let scope = Command::new(env!("CARGO_BIN_EXE_neosian"))
+    let scope = support::binary(home.path())
         .args(["continue", "--scope", "bad", "--root"])
         .arg(home.path().join("unbuilt"))
         .output()
