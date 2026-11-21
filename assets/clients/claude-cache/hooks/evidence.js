@@ -2,6 +2,9 @@
 export const HOUR = 3600000;
 export const INTERVAL = 55 * 60000;
 export const MARGIN = 30000;
+// An unanswered refresh is retried at the first 30-second tick this long after
+// it came back: 45 to 75 seconds later.
+export const RETRY = 45000;
 
 export function count(value) {
   return Number.isSafeInteger(value) && value >= 0;
@@ -53,6 +56,30 @@ export function reused(result, expected) {
 export function limited(result) {
   return result?.isAnswered === false && result.reason === 'api-error' &&
     (result.error === 'rate_limit' || result.status === 429);
+}
+
+// A host identifier (a fork's reason or error kind), never free text.
+function atom(value) {
+  return typeof value === 'string' && /^[A-Za-z0-9_.-]{1,40}$/.test(value) ? value : null;
+}
+
+// Why the host left a refresh unanswered: its reason, error kind and HTTP
+// status where it gives them, each null otherwise; null when it answered.
+export function unanswered(result) {
+  if (result?.isAnswered === true) return null;
+  const status = result?.status;
+  return { reason: atom(result?.reason), error: atom(result?.error),
+    status: Number.isSafeInteger(status) && status >= 100 && status <= 599 ? status : null };
+}
+
+// Worth one retry: not answered, not a rate-limit refusal, and no tokens
+// counted. A request that counted tokens was served, and sending it again
+// could spend them against a cache that is gone.
+export function retriable(result) {
+  if (result?.isAnswered === true || limited(result)) return false;
+  const u = result?.usage;
+  return u === undefined || u === null || (usage(u) && u.input_tokens + u.output_tokens +
+    u.cache_read_input_tokens + u.cache_creation_input_tokens === 0);
 }
 
 export function duration(text) {

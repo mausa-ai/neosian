@@ -330,9 +330,8 @@ for (const [name, response] of Object.entries({
   'too many new input tokens': { ...WARM, usage: { ...WARM.usage, input_tokens: 5000 } },
   'unexpected answer': { ...WARM, text: 'I will continue working.' },
   'malformed answer': { ...WARM, text: null },
-  'missing snapshot': { isAnswered: false, reason: 'nothing-to-fork' },
-  'API failure': { isAnswered: false, reason: 'api-error', status: 503 },
 })) {
+  // An unanswered refresh is retried once first (U3, below).
   test('one ' + name + ' response stops further attempts', async () => {
     const h = await harness({}, { fork: async () => response });
     await h.turn(); await h.advance(180 * MIN); assert.equal(h.calls.length, 1);
@@ -1265,7 +1264,7 @@ test('a refresh the host refuses for a rate limit says so; other failures keep t
   assert.equal(await h.badge(), 'neosian · cache paused · next message may be cold');
   assert.match(await h.details(), /Result: stopped/);
   const busy = await harness({}, { fork: async () => ({ ...RATE_LIMITED, status: 529, error: 'overloaded' }) });
-  await busy.turn(); await busy.advance(180 * MIN); assert.equal(busy.calls.length, 1);
+  await busy.turn(); await busy.advance(180 * MIN); assert.equal(busy.calls.length, 2); // Retried once (U3).
   assert.match(await busy.details(), /^Refresh unverified · automatic refresh paused until your next message$/m);
 });
 
@@ -1289,4 +1288,279 @@ test('after a wrap-up note an idle session kept warm shows that it waits for the
     assert.doesNotMatch(await other.badge(), /waiting/);
     assert.doesNotMatch(await other.details(), /Waiting for/);
   }
+});
+
+// U3: why a refresh was not answered, one retry, and the line after a compaction.
+const ZERO = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
+const OVERLOADED = { isAnswered: false, reason: 'api-error', status: 529, error: 'overloaded', usage: ZERO };
+const WHY = { reason: 'api-error', error: 'overloaded', status: 529 };
+const UNVERIFIED = 'Refresh unverified · automatic refresh paused until your next message';
+const receiptOf = (h, id = 'session-1') => JSON.parse(h.files.get(`/observations/${id}.refresh.json`));
+// The host's replies in order; the last one repeats.
+const replies = (...list) => n => structuredClone(list[Math.min(n, list.length) - 1]);
+
+for (const [name, reply, why, line] of [
+  ['an overloaded API', OVERLOADED, WHY, 'api-error · overloaded · HTTP 529'],
+  ['a dropped connection', { ...OVERLOADED, status: null, error: 'unknown' },
+    { reason: 'api-error', error: 'unknown', status: null }, 'api-error · unknown'],
+  ['an abort before any reply', { isAnswered: false, reason: 'aborted', usage: ZERO },
+    { reason: 'aborted', error: null, status: null }, 'aborted'],
+  ['nothing to fork', { isAnswered: false, reason: 'nothing-to-fork' },
+    { reason: 'nothing-to-fork', error: null, status: null }, 'nothing-to-fork'],
+  ['text where an identifier belongs', { ...OVERLOADED, status: '529', error: 'SENSITIVE error text' },
+    { reason: 'api-error', error: null, status: null }, 'api-error'],
+  ['a status out of range', { ...OVERLOADED, status: 52900 },
+    { reason: 'api-error', error: 'overloaded', status: null }, 'api-error · overloaded'],
+  ['no result at all', null, { reason: null, error: null, status: null }, 'no reason given'],
+]) {
+  test('an unanswered refresh records the host reason, never its text: ' + name, async () => {
+    const h = await harness({}, { fork: () => structuredClone(reply) });
+    await h.turn(); await h.advance(55 * MIN); assert.equal(h.calls.length, 1);
+    const data = receiptOf(h);
+    const r = data.last_refresh;
+    assert.deepEqual([r.outcome, r.attempt, r.unanswered, r.first_attempt], ['unanswered', 1, why, null]);
+    assert.equal(data.state, 'Refresh not answered · retrying once in about a minute');
+    assert.match(await h.details(), new RegExp(`^Not answered: ${line}$`, 'm'));
+    assert.doesNotMatch(h.files.get('/observations/session-1.refresh.json'), /SENSITIVE/);
+  });
+}
+
+test('an unanswered refresh is retried once about a minute later and continues as verified', async () => {
+  const h = await harness({}, { fork: replies(OVERLOADED, WARM) });
+  await h.turn(); await h.advance(55 * MIN); assert.equal(h.calls.length, 1);
+  assert.equal(await h.badge(), 'neosian · cache ~5m · refresh retry pending');
+  assert.equal((await h.draw()).children[0].props.color, 'warning');
+  assert.match(await h.details(), /^refresh retry pending$/m);
+  await h.advance(30000); assert.equal(h.calls.length, 1); // Not yet: 45 seconds at least.
+  await h.advance(30000); assert.equal(h.calls.length, 2); // The first tick after them.
+  assert.deepEqual(h.calls.map(c => c.at - START), [55 * MIN, 56 * MIN]);
+  assert.equal(h.calls[1].prompt, h.calls[0].prompt);
+  const { state, last_refresh: r } = receiptOf(h);
+  assert.equal(state, 'Cache refresh verified');
+  assert.deepEqual([r.outcome, r.attempt, r.unanswered, r.first_attempt, r.at_ms, r.read],
+    ['reused', 2, null, WHY, START + 56 * MIN, 19000]);
+  assert.equal(await h.badge(), 'neosian · cache ~60m · keep-warm on');
+  assert.match(await h.details(), /^Result: reused\nRetry of an unanswered refresh: api-error · overloaded · HTTP 529$/m);
+  await h.advance(55 * MIN - 1); assert.equal(h.calls.length, 2); // Due 55 minutes after the retry.
+  await h.advance(1); assert.equal(h.calls.length, 3);
+  assert.deepEqual([receiptOf(h).last_refresh.attempt, receiptOf(h).last_refresh.first_attempt], [1, null]);
+});
+
+for (const [name, second] of Object.entries({
+  'not answered again': OVERLOADED,
+  'answered over a cold cache': { ...WARM, usage: { ...WARM.usage, cache_read_input_tokens: 2000,
+    cache_creation_input_tokens: 17500 } },
+  'answered with something else': { ...WARM, text: 'I will continue working.' },
+  'with nothing to fork': { isAnswered: false, reason: 'nothing-to-fork' },
+})) {
+  test('a retry ' + name + ' pauses as before, and the next message rearms', async () => {
+    const h = await harness({}, { fork: replies(OVERLOADED, second) });
+    await h.turn(); await h.advance(180 * MIN); assert.equal(h.calls.length, 2);
+    const { state, last_refresh: r } = receiptOf(h);
+    assert.equal(state, UNVERIFIED);
+    assert.deepEqual([r.outcome, r.attempt, r.first_attempt], ['stopped', 2, WHY]);
+    assert.equal(await h.badge(), 'neosian · cache paused · next message may be cold');
+    await h.turn(); await h.advance(55 * MIN); assert.equal(h.calls.length, 3);
+  });
+}
+
+test('a limit refusal is never retried; a retry refused for a limit says so', async () => {
+  const h = await harness({}, { fork: async () => structuredClone(RATE_LIMITED) });
+  await h.turn(); await h.advance(180 * MIN); assert.equal(h.calls.length, 1);
+  const { state, last_refresh: r } = receiptOf(h);
+  assert.equal(state, 'Request refused for a rate limit · keep-warm paused');
+  assert.deepEqual([r.outcome, r.attempt, r.unanswered],
+    ['stopped', 1, { reason: 'api-error', error: 'rate_limit', status: 429 }]);
+  assert.match(await h.details(), /^Not answered: api-error · rate_limit · HTTP 429$/m);
+  const later = await harness({}, { fork: replies(OVERLOADED, RATE_LIMITED) });
+  await later.turn(); await later.advance(180 * MIN); assert.equal(later.calls.length, 2);
+  assert.equal(receiptOf(later).state, 'Request refused for a rate limit · keep-warm paused');
+  assert.equal(receiptOf(later).last_refresh.attempt, 2);
+});
+
+for (const [name, response] of Object.entries({
+  'cold': { ...WARM, usage: { ...WARM.usage, cache_read_input_tokens: 2000, cache_creation_input_tokens: 17500 } },
+  'an unexpected answer': { ...WARM, text: 'I will continue working.' },
+  'oversized output': { ...WARM, usage: { ...WARM.usage, output_tokens: 1000 } },
+  'a reply with no text that counted tokens': { isAnswered: false, reason: 'empty-reply', usage: { ...WARM.usage } },
+  'an error after a served request': { ...OVERLOADED, usage: { ...WARM.usage, output_tokens: 40 } },
+})) {
+  test('a served refresh that did not verify is never retried: ' + name, async () => {
+    const h = await harness({}, { fork: async () => structuredClone(response) });
+    await h.turn(); await h.advance(180 * MIN); assert.equal(h.calls.length, 1);
+    const { state, last_refresh: r } = receiptOf(h);
+    assert.equal(state, UNVERIFIED);
+    assert.deepEqual([r.outcome, r.attempt, r.first_attempt], ['stopped', 1, null]);
+    assert.equal(r.unanswered?.reason ?? null, response.isAnswered ? null : response.reason);
+  });
+}
+
+for (const [name, interrupt] of Object.entries({
+  'a user turn': async h => {
+    await h.emit('turn.start', { turnId: 'next' }); await h.advance(2 * MIN); await h.finish();
+  },
+  'a compaction': async h => { await h.emit('session.compact', { trigger: 'manual' }, { messages: [] }); },
+  'a model switch': async h => { await h.emit('classic.PostModelSwitch', {}); },
+})) {
+  test('no retry once ' + name + ' comes in between', async () => {
+    const h = await harness({}, { fork: replies(OVERLOADED, WARM) });
+    await h.turn(); await h.advance(55 * MIN);
+    assert.equal(receiptOf(h).last_refresh.outcome, 'unanswered');
+    await h.advance(30000); await interrupt(h); await h.advance(5 * MIN);
+    assert.equal(h.calls.length, 1);
+    assert.equal(receiptOf(h).last_refresh.attempt, 1);
+  });
+}
+
+test('a user turn in between keeps its own certificate and refreshes 55 minutes after it', async () => {
+  const h = await harness({}, { fork: replies(OVERLOADED, WARM) });
+  await h.turn(); await h.advance(55 * MIN + 30000);
+  await h.emit('turn.start', { turnId: 'next' }); await h.advance(2 * MIN);
+  await h.finish(); // 57m30s
+  await h.advance(54 * MIN); assert.equal(h.calls.length, 1);
+  await h.advance(MIN); assert.deepEqual(h.calls.map(c => c.at - START), [55 * MIN, 112 * MIN + 30000]);
+  assert.deepEqual([receiptOf(h).last_refresh.outcome, receiptOf(h).last_refresh.attempt], ['reused', 1]);
+});
+
+test('no retry when the model changed without a notification', async () => {
+  const h = await harness({}, { fork: replies(OVERLOADED, WARM) });
+  await h.turn(); await h.advance(55 * MIN);
+  assert.equal(receiptOf(h).last_refresh.outcome, 'unanswered');
+  h.model('another-model'); await h.advance(5 * MIN);
+  assert.equal(h.calls.length, 1);
+  assert.equal(receiptOf(h).state, 'Model changed · waiting for your next message');
+});
+
+test('no retry once keep-warm was turned off, even when it is on again before the retry', async () => {
+  const preference = value => h => h.emit('config.set', { key: 'neosian-cache.enabled', value }, { value });
+  for (const [name, controls] of Object.entries({
+    off: [h => h.command('off')],
+    'off then on': [h => h.command('off'), h => h.command('on')],
+    'the preference off then on': [preference(false), preference(true)],
+  })) {
+    const h = await harness({}, { fork: replies(OVERLOADED, WARM) });
+    await h.turn(); await h.advance(55 * MIN);
+    assert.equal(receiptOf(h).last_refresh.outcome, 'unanswered');
+    for (const control of controls) await control(h);
+    await h.advance(5 * MIN); assert.equal(h.calls.length, 1, name);
+    if (name === 'off') assert.equal(await h.badge(), 'neosian · keep-warm off');
+    else assert.equal(receiptOf(h).state, UNVERIFIED, name);
+  }
+});
+
+test('no retry once the deadline margin is reached first', async () => {
+  // Sent at 58m50s: 45 seconds later is past the deadline less its 30-second margin.
+  const late = await harness({}, { fork: replies(OVERLOADED, WARM) });
+  await late.turn(); await late.command('off'); await late.advance(58 * MIN + 50000);
+  await late.command('on'); assert.equal(late.calls.length, 1);
+  const r = receiptOf(late).last_refresh;
+  assert.deepEqual([r.outcome, r.attempt, r.unanswered], ['stopped', 1, WHY]);
+  assert.equal(receiptOf(late).state, UNVERIFIED);
+  // Sent at 58m44s the retry is due at 59m29s, but the next tick at 59m30s finds the margin reached.
+  const edge = await harness({}, { fork: replies(OVERLOADED, WARM) });
+  await edge.turn(); await edge.command('off'); await edge.advance(58 * MIN + 44000);
+  await edge.command('on'); assert.equal(receiptOf(edge).last_refresh.outcome, 'unanswered');
+  await edge.advance(5 * MIN); assert.equal(edge.calls.length, 1);
+  assert.equal(receiptOf(edge).state, 'Cache expired or near expiry · your next message may rebuild context');
+  // A machine asleep past the margin sends no retry when it wakes.
+  const asleep = await harness({}, { fork: replies(OVERLOADED, WARM) });
+  await asleep.turn(); await asleep.advance(55 * MIN); await asleep.advance(10 * MIN, true);
+  assert.equal(asleep.calls.length, 1);
+  assert.equal(receiptOf(asleep).state, 'Cache expired or near expiry · your next message may rebuild context');
+});
+
+test('at most one retry per certificate; a verified retry renews it with one of its own', async () => {
+  const h = await harness({}, { fork: replies(OVERLOADED, WARM, OVERLOADED, OVERLOADED) });
+  await h.turn(); await h.advance(4 * HOUR);
+  assert.deepEqual(h.calls.map(c => c.at - START), [55 * MIN, 56 * MIN, 111 * MIN, 112 * MIN]);
+  const { state, last_refresh: r } = receiptOf(h);
+  assert.deepEqual([state, r.outcome, r.attempt, r.first_attempt], [UNVERIFIED, 'stopped', 2, WHY]);
+});
+
+test('the usage gate is checked again before the retry', async () => {
+  const h = await harness({}, { limits: [five(60, START + 3 * HOUR)], fork: replies(OVERLOADED, WARM) });
+  await h.turn(); await h.advance(55 * MIN);
+  assert.equal(receiptOf(h).last_refresh.outcome, 'unanswered');
+  await h.respond([five(99.6, START + 3 * HOUR)]); // A subagent's response brings a fresh figure.
+  await h.advance(MIN); assert.equal(h.calls.length, 1);
+  assert.equal(receiptOf(h).state, 'Usage limit reached · keep-warm paused');
+});
+
+test('after a compaction the line says the context was compacted and what the next message writes', async () => {
+  const h = await harness(); await h.turn(); await h.advance(10 * MIN);
+  const result = { messages: [], tokensBefore: 69015, tokensAfter: 16384 };
+  assert.equal(await h.emit('session.compact', { trigger: 'manual' }, result), result); // Passed on unchanged.
+  assert.equal(await h.badge(), 'neosian · context compacted · next message writes 16k+ tokens'); // Drawn at once.
+  assert.equal((await h.draw()).children[0].props.color, 'subtle');
+  const pane = await h.details();
+  assert.match(pane, /^Context compacted · your next message writes at least 16k tokens\nKeep-warm: on/m);
+  assert.doesNotMatch(pane, /16k\+/); // The panel states it once.
+  assert.doesNotMatch(pane + await h.badge(), /cold|expired/);
+  assert.equal(receiptOf(h).state, 'Context compacted · your next message writes at least 16k tokens');
+  await h.advance(3 * HOUR); assert.equal(h.calls.length, 0); // Nothing is sent after a compaction.
+  assert.equal(await h.badge(), 'neosian · context compacted · next message writes 16k+ tokens');
+  await h.turn(); assert.equal(await h.badge(), 'neosian · cache ~60m · keep-warm on'); // The next message certifies.
+  await h.advance(55 * MIN); assert.equal(h.calls.length, 1);
+});
+
+test('a compaction without a token count says only that the context was compacted', async () => {
+  for (const [after, line, reason] of [
+    [undefined, 'neosian · context compacted', 'Context compacted · waiting for your next message'],
+    [0, 'neosian · context compacted', 'Context compacted · waiting for your next message'],
+    ['16384', 'neosian · context compacted', 'Context compacted · waiting for your next message'],
+    [1.5, 'neosian · context compacted', 'Context compacted · waiting for your next message'],
+    [800, 'neosian · context compacted · next message writes 800+ tokens',
+      'Context compacted · your next message writes at least 800 tokens'],
+    [1234567, 'neosian · context compacted · next message writes 1234k+ tokens',
+      'Context compacted · your next message writes at least 1234k tokens'],
+  ]) {
+    const h = await harness(); await h.turn();
+    await h.emit('session.compact', { trigger: 'auto' }, { messages: [], ...(after === undefined ? {} : { tokensAfter: after }) });
+    assert.equal(await h.badge(), line, String(after));
+    assert.match(await h.details(), new RegExp(`^${reason}$`, 'm'));
+    assert.doesNotMatch(await h.details(), /cold/);
+  }
+});
+
+test('a skipped, precomputed or subagent compaction keeps the wording it had', async () => {
+  const skipped = await harness(); await skipped.turn();
+  await skipped.emit('session.compact', { trigger: 'manual' }, { skip: 'declined by another hook' });
+  await skipped.advance(30000);
+  assert.match(await skipped.details(), /^Context changed · waiting for your next message$/m);
+  for (const e of [{ trigger: 'precompute' }, { trigger: 'auto', agentId: 'child' }]) {
+    const h = await harness(); await h.turn();
+    await h.emit('session.compact', e, { messages: [], tokensAfter: 16384 });
+    assert.equal(await h.badge(), 'neosian · cache ~60m · keep-warm on');
+    await h.advance(55 * MIN); assert.equal(h.calls.length, 1);
+  }
+});
+
+test('a compaction inside a turn certifies again when the turn completes, as before', async () => {
+  const h = await harness(); await h.turn(); await h.advance(10 * MIN);
+  await h.emit('turn.start', { turnId: 'next' });
+  await h.emit('session.compact', { trigger: 'auto' }, { messages: [], tokensAfter: 10497 });
+  assert.equal(await h.badge(), 'neosian · conversation active');
+  await h.finish();
+  assert.equal(await h.badge(), 'neosian · cache ~60m · keep-warm on');
+  await h.advance(55 * MIN); assert.equal(h.calls.length, 1);
+});
+
+test('the largest receipt stays bounded and content-free, byte for byte as the bridge test reads it', async () => {
+  const id = 'w'.repeat(128);
+  const odd = { isAnswered: false, reason: 'r'.repeat(40), error: 'e'.repeat(40), status: 599, usage: ZERO };
+  const h = await harness({}, { id, version: '2.1.99999', fork: () => structuredClone(odd),
+    limits: [five(94.95, START + 4 * HOUR), week(94.95, START + 6 * 24 * HOUR)] });
+  await h.turn({ data: { version: '2.1.99999' } });
+  assert.equal(notesOf(await h.tool()).length, 1); // A usage note: `usage_note`.
+  await h.command('168h'); // `until_ms`.
+  await h.advance(56 * MIN); assert.equal(h.calls.length, 2); // The refresh and its retry, both unanswered.
+  await h.emit('session.compact', { trigger: 'auto' }, { messages: [], tokensAfter: Number.MAX_SAFE_INTEGER });
+  const raw = h.files.get(`/observations/${id}.refresh.json`);
+  const fixture = await readFile(new URL('./claude-cache/receipt.json', import.meta.url), 'utf8');
+  assert.equal(raw, fixture.trimEnd());
+  assert.ok(Buffer.byteLength(raw) < 8192); // The bridge's bound (cache_bridge.rs).
+  assert.doesNotMatch(raw, /SENSITIVE|WARM/);
+  const r = JSON.parse(raw).last_refresh;
+  assert.deepEqual(Object.keys(r), ['at_ms', 'read', 'write', 'output', 'outcome', 'attempt', 'unanswered',
+    'first_attempt', 'usage_cost']);
 });

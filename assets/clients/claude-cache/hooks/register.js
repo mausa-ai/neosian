@@ -1,5 +1,6 @@
-import { HOUR, INTERVAL, MARGIN, duration, limited, observation, reused, supported, usage } from './evidence.js';
-import { HELD, PANE, presentation, render } from './display.js';
+import { HOUR, INTERVAL, MARGIN, RETRY, duration, limited, observation, retriable, reused, supported, unanswered,
+  usage } from './evidence.js';
+import { HELD, PANE, compacted, presentation, render, thousands } from './display.js';
 import { configureNotes, deliverNote, endNotes, measureRefresh, noteSummary, sampleUsage, setNotes, startNotes,
   usageNotes } from './notes.js';
 import { gate } from './usage.js';
@@ -27,6 +28,7 @@ let requests = 0;
 let lastClock = 0;
 let timer;
 let reason = 'Waiting for your first message';
+let written = null; // What the next message writes after a compaction, when the host counted it.
 let lastDisplay = '';
 let lastPersisted = '';
 let view;
@@ -36,6 +38,7 @@ let observed; // The last accepted cache observation that was warm; kept across 
 const notes = usageNotes();
 // SessionStart sources that follow a /clear or a resume in the same process.
 const NEXT = ['clear', 'resume', 'fork'];
+const UNVERIFIED = 'Refresh unverified · automatic refresh paused until your next message';
 
 // Keep-warm can refresh in this session: on, available, open, and the last
 // observed cache one hour and eligible, as tick() requires (for the reserve).
@@ -53,7 +56,8 @@ function invalidate(why) {
 async function show($, now) {
   notes.warm = warm();
   const limits = noteSummary(notes, now);
-  view = presentation({ enabled, busy, flight, certificate, receipt, until, reason, allowApi, usage: limits }, now);
+  view = presentation({ enabled, busy, flight, certificate, receipt, until, reason, allowApi, usage: limits, written },
+    now);
   const text = JSON.stringify(view);
   if (text !== lastDisplay) {
     $.ui.invalidate('ui.render');
@@ -135,11 +139,16 @@ async function refresh($) {
   const mine = epoch;
   const owner = sessionId;
   const saved = certificate;
+  const retry = saved.retry; // Set while this certificate's unanswered refresh waits for its one retry.
   flight = true;
   try {
     const model = await $.session.model();
     const started = await $.clock.now();
     if (mine !== epoch || !enabled || busy || closed || certificate !== saved) return;
+    if (retry && retry.epoch !== mine) { // Keep-warm was turned off, and perhaps on again, since.
+      invalidate(UNVERIFIED);
+      return;
+    }
     if (model !== saved.model) {
       invalidate('Model changed · waiting for your next message');
       return;
@@ -159,20 +168,29 @@ async function refresh($) {
     const valid = reused(result, saved.expected);
     const u = usage(result?.usage) ? result.usage : null;
     if (owner !== sessionId) return;
+    // One retry per certificate, for a refresh the host did not serve, while
+    // it can still be sent inside the margin (evidence.js `retriable`).
+    const again = !valid && !retry && mine === epoch && !closed && retriable(result) &&
+      finished + RETRY < saved.deadline - MARGIN;
     receipt = { at_ms: sending, read: u?.cache_read_input_tokens ?? null,
       write: u?.cache_creation_input_tokens ?? null, output: u?.output_tokens ?? null,
-      outcome: mine !== epoch ? 'superseded' : valid ? 'reused' : 'stopped',
+      outcome: mine !== epoch ? 'superseded' : valid ? 'reused' : again ? 'unanswered' : 'stopped',
+      attempt: retry ? 2 : 1, unanswered: unanswered(result), first_attempt: retry?.unanswered ?? null,
       usage_cost: { five_hour: null, seven_day: null } };
     if (mine !== epoch || closed) return;
+    if (again) {
+      certificate = { ...saved, due: finished + RETRY, retry: { epoch: mine, unanswered: receipt.unanswered } };
+      reason = 'Refresh not answered · retrying once in about a minute';
+      return;
+    }
     if (!valid || finished >= sending + HOUR - MARGIN) {
-      invalidate(limited(result) ? HELD.refused
-        : 'Refresh unverified · automatic refresh paused until your next message');
+      invalidate(limited(result) ? HELD.refused : UNVERIFIED);
       return;
     }
     // Renew only the existing one-hour prefix that was actually read. The
     // helper's new tail can have a five-minute TTL and is never our anchor.
     certificate = { ...saved, started: sending, deadline: sending + HOUR,
-      due: sending + INTERVAL, expected: u.cache_read_input_tokens };
+      due: sending + INTERVAL, expected: u.cache_read_input_tokens, retry: undefined };
     reason = 'Cache refresh verified';
     receipt.usage_cost = await measureRefresh($, notes);
   } catch {
@@ -339,9 +357,20 @@ export function register(on, options) {
     return next(e);
   });
 
+  // The compacted conversation is new, so the next message writes it: say so
+  // with the host's count when it gives one, never that the cache is cold.
+  // No request follows a compaction (DESIGN §40.52).
   on('session.compact', async ($, e, next) => {
-    if (available && !e.agentId && e.trigger !== 'precompute') invalidate('Context changed · waiting for your next message');
-    return next(e);
+    const main = available && !e.agentId && e.trigger !== 'precompute';
+    if (main) invalidate('Context changed · waiting for your next message');
+    const mine = epoch;
+    const result = await next(e);
+    if (main && mine === epoch && !closed && result && !result.skip) {
+      written = thousands(result.tokensAfter);
+      reason = compacted(written);
+      try { await show($, await $.clock.now()); } catch { /* The next tick redraws. */ }
+    }
+    return result;
   });
 
   on('classic.PostModelSwitch', async ($, e, next) => {

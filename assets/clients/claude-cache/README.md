@@ -12,11 +12,25 @@ uncertain, changed or failed caches wait for your next ordinary message. No
 automatic cold rebuild, conversation message, tool execution or memory mutation
 is requested. The feature remains enabled until you close the session.
 
+A refresh Claude Code does not answer at all (an API error, an abort or
+nothing to fork, with no tokens counted) is retried once, 45 to 75 seconds
+later, if the session is still idle, keep-warm was not turned off in between,
+the model is unchanged, the usage checks below still allow it and the cache
+estimate has more than its 30-second margin left. A retry that verifies
+continues as a normal refresh; a second failure pauses as before. A refresh
+refused for a rate limit, or one that counted tokens without verifying, is
+never retried. At most one retry follows each warm cache estimate. After a
+compaction the line reads `context compacted`, adding
+`next message writes 16k+ tokens` when Claude Code counts the compacted
+conversation: that message writes at least that much. No request follows a
+compaction.
+
 The compact neosian line shows estimated warmth and keep-warm state above the
 prompt. Healthy caches have no warning icon; amber indicates a paused or
 uncertain state. Narrow terminals wrap the line instead of truncating it.
 `/neosian-cache` opens a dismissible details panel with actual refresh token
-counts, outside the conversation; `off`, `on`, and a duration such as `2h` control
+counts and, for a refresh Claude Code did not answer, its reason, error kind and
+HTTP status, outside the conversation; `off`, `on`, and a duration such as `2h` control
 this session. `/config` holds persistent plugin preferences. An explicit `on`
 or duration also permits usage-billed sessions with an observed one-hour cache.
 Disabling stops future refreshes; an already-sent request may finish.
@@ -55,6 +69,7 @@ prefix reuse, and no more than 2,048 unreused prefix tokens. They are checks
 after completion, not request-time token caps.
 
 Diagnostics contain only session identifiers, versions, counts, usage
-percentages and UTC times.
+percentages, UTC times and, for an unanswered refresh, Claude Code's reason,
+error kind and HTTP status, never its message.
 No prompt, response text, credential or memory document is saved by this plugin.
 Requests use the current session's model and billing through Claude Code.

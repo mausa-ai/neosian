@@ -61,6 +61,20 @@ phase close names the version.
 - The MCP handshake's `serverInfo.name` is `neosian`; `setup --check`'s
   probe accepts either name. A read-only harness child's own configuration
   names the server `neosian`.
+- Claude Code keep-warm says why a refresh was not answered and retries it
+  once. The refresh receipt's `last_refresh` gains `attempt`, `unanswered`
+  (Claude Code's `reason`, `error` kind and HTTP `status`, never a message)
+  and `first_attempt`, and `outcome` gains `unanswered`; `/neosian-cache`
+  shows the reason. A refresh not answered at all, with no tokens counted, is
+  retried once 45 to 75 seconds later while the session is idle, keep-warm
+  stays on, the model is unchanged, the usage checks allow it and the cache
+  estimate has more than its 30-second margin left; a second failure pauses
+  as before. A rate-limit refusal, or a refresh that counted tokens without
+  verifying, is never retried.
+- After a compaction the neosian line reads `context compacted`, adding
+  `next message writes 16k+ tokens` when Claude Code counts the compacted
+  conversation, instead of `cache paused · next message may be cold`. No
+  request is made after a compaction.
 
 ## [2.20.0] - 2026-11-21
 

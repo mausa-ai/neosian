@@ -238,13 +238,38 @@ The request uses Claude's public `model.fork` API and the session's current
 model and account; it creates no main conversation turn and cannot run tools.
 The Rust memory, search, capture and MCP paths do not run the timer or model.
 
-If the laptop wakes after expiry, the cache lifetime is unknown, context or
-model changes, a refresh fails verification, or a usage limit is reached or
-nearly exhausted (see "Waiting for a reset" below), automatic calls stop and the
-badge warns. The feature stays enabled: the next successful ordinary message
-can establish a new warm cache and rearm maintenance. It does not deliberately
-rebuild an expired cache just to produce a small reply. Five-minute caches
-are observed without automatic refresh; setup does not change Claude's TTL.
+If the laptop wakes after expiry, the cache lifetime is unknown, the model or
+session configuration changes, a refresh fails verification (an unanswered one
+after its retry, below), or a usage limit is reached or nearly exhausted (see
+"Waiting for a reset" below), automatic calls stop and the badge warns. The
+feature stays enabled: the next successful ordinary message can establish a
+new warm cache and rearm maintenance. It does not deliberately rebuild an
+expired cache just to produce a small reply. Five-minute caches are observed
+without automatic refresh; setup does not change Claude's TTL.
+
+A refresh that Claude Code does not answer at all (an API error, an abort
+before any reply, or nothing to fork, with no tokens counted) is retried once,
+at the first 30-second check at least 45 seconds later: 45 to 75 seconds after
+it. The retry is sent only if the session is still idle, keep-warm was not
+turned off in between (even if it was turned on again), the model is
+unchanged, the usage checks under "Waiting for a reset" still allow a refresh,
+and the cache estimate has more than its 30-second margin left; otherwise
+keep-warm pauses with the reason that applies. A retry that verifies continues
+as a normal refresh, and the next one comes 55 minutes after it. A second
+failure pauses as before. A refresh refused for a rate limit, or one that was
+answered or counted tokens but did not verify, is never retried: the cache it
+found may be gone. At most one retry follows each warm cache estimate, the one
+a message or a verified refresh established. While the retry is due the line
+reads `cache ~4m · refresh retry pending` in amber.
+
+A compaction replaces the conversation, so keep-warm waits for your next
+message, which writes the compacted conversation to the cache and rearms
+maintenance. No request is made after a compaction. The line reads
+`context compacted · next message writes 16k+ tokens`, in the neutral tone of
+`keep-warm ready`, when Claude Code counts the compacted conversation (rounded
+down to thousands), and `context compacted` when it does not. The count is a
+floor: in measured sessions the next message wrote about one and a half times
+as much, the rest being what Claude Code attaches again after a compaction.
 
 | In Claude Code | Effect |
 |---|---|
@@ -263,7 +288,11 @@ The compact neosian line above the prompt shows expected warmth and keep-warm
 state, wrapping in narrow terminals. Healthy caches have no warning icon;
 amber indicates a paused or uncertain state. `/neosian-cache` opens a details
 panel with pause reasons and the last refresh's actual cache reads, writes and
-output tokens. Press Esc to close it; the panel adds nothing to the conversation.
+output tokens, and for a refresh Claude Code did not answer, its reason, error
+kind and HTTP status, for example
+`Not answered: api-error · overloaded · HTTP 529`; a retry adds
+`Retry of an unanswered refresh:` with the first attempt's.
+Press Esc to close it; the panel adds nothing to the conversation.
 A successful refresh
 must read nearly all the observed prefix and return the expected short reply;
 a surprising receipt prevents further automatic attempts. Reported usage can
@@ -301,6 +330,11 @@ The bridge stores bounded observations and refresh receipts under
 `neosian-cache/observations/` beside the selected Claude settings file. These
 contain session IDs, host/model IDs, counts, usage percentages, status and UTC
 times; no prompts, response text, transcripts, credentials or memory documents.
+The receipt's `last_refresh` holds `attempt` (1, or 2 for a retry), `outcome`
+(`reused`, `unanswered` with its retry due, `stopped` or `superseded`),
+`unanswered` (null when Claude Code answered, otherwise its `reason`, `error`
+kind and HTTP `status`, each null when not given or not a short identifier)
+and `first_attempt` (on a retry, the first attempt's `unanswered`).
 One observation and one receipt are overwritten per session. They are local
 diagnostics, not memory or an authority to resume refresh after a restart; old
 session files may be removed while Claude is closed.

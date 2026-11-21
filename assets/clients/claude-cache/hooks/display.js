@@ -7,6 +7,26 @@ export const PANE = 'neosian-cache-details';
 export const HELD = { limit: 'Usage limit reached · keep-warm paused',
   exhausted: 'Usage nearly exhausted · keep-warm paused to preserve it',
   refused: 'Request refused for a rate limit · keep-warm paused' };
+// After a compaction the next message writes the compacted conversation, at
+// least the host's own count of it; nothing is cold or failed.
+export const COMPACTED = 'Context compacted';
+
+// A positive token count rounded down to thousands ("16k"), exact below 1,000.
+export function thousands(n) {
+  if (!Number.isSafeInteger(n) || n <= 0) return null;
+  return n < 1000 ? String(n) : `${Math.floor(n / 1000)}k`;
+}
+
+export function compacted(figure) {
+  return figure ? `${COMPACTED} · your next message writes at least ${figure} tokens`
+    : `${COMPACTED} · waiting for your next message`;
+}
+
+// The host's reason for an unanswered refresh (evidence.js `unanswered`).
+function why({ reason, error, status }) {
+  return [reason, error, status === null ? null : `HTTP ${status}`].filter(Boolean).join(' · ') ||
+    'no reason given';
+}
 
 // Usage figures are the host's estimates; which note is due is decided in usage.js.
 function limits({ windows, notes, last }, now) {
@@ -21,11 +41,13 @@ function limits({ windows, notes, last }, now) {
     wrap: Boolean(top && wraps(top)) };
 }
 
-export function presentation({ enabled, busy, flight, certificate, receipt, until, reason, allowApi, usage }, now) {
+export function presentation({ enabled, busy, flight, certificate, receipt, until, reason, allowApi, usage, written },
+  now) {
   let label = 'cache paused';
   let tone = 'warning';
   let note = 'next message may be cold';
   let detail = reason;
+  let stated = false; // The reason already says what the note would.
   if (!enabled) {
     label = until !== null ? 'keep-warm duration ended' : 'keep-warm off';
     detail = label;
@@ -40,11 +62,15 @@ export function presentation({ enabled, busy, flight, certificate, receipt, unti
     detail = `Cache expected warm for about ${minutes} minutes (estimate)`;
     if (certificate.ttl !== HOUR) note = 'keep-warm needs 1h cache';
     else if (!certificate.subscription && !allowApi) note = 'keep-warm paused';
+    else if (certificate.retry) note = 'refresh retry pending'; // Amber: the last refresh was not answered.
     else { note = 'keep-warm on'; tone = 'success'; }
   } else if (reason === 'Waiting for your first message') {
     label = 'keep-warm ready'; tone = 'subtle'; note = '';
   } else if (reason === 'Checking cache observation') {
     label = 'checking cache'; tone = 'subtle'; note = '';
+  } else if (reason.startsWith(COMPACTED)) {
+    label = 'context compacted'; tone = 'subtle'; stated = true;
+    note = written ? `next message writes ${written}+ tokens` : '';
   } else if (reason.includes('expired')) label = 'cache expired';
   else if (reason.includes('unknown')) label = 'cache unknown';
   else if (reason.includes('unavailable')) { label = 'keep-warm unavailable'; note = '/neosian-cache'; }
@@ -57,14 +83,18 @@ export function presentation({ enabled, busy, flight, certificate, receipt, unti
   if (wait) {
     note = 'waiting for reset';
     details.push(`Waiting for the ${LABELS[wait.kind]} reset in ${span(wait.resetsAt - now)}; keep-warm continues`);
-  } else if (note && note !== 'keep-warm on') details.push(note);
+  } else if (note && note !== 'keep-warm on' && !stated) details.push(note);
   const meter = limits(usage, now);
   details.push(...meter.lines);
   if (meter.wrap) tone = 'warning';
   if (receipt) {
     details.push('', 'Last refresh', `Cache read: ${receipt.read} tokens`,
-      `Cache written: ${receipt.write} tokens`, `Output: ${receipt.output} tokens`,
-      `Result: ${receipt.outcome}`, `At: ${new Date(receipt.at_ms).toISOString()}`);
+      `Cache written: ${receipt.write} tokens`, `Output: ${receipt.output} tokens`, `Result: ${receipt.outcome}`);
+    if (receipt.unanswered) details.push(`Not answered: ${why(receipt.unanswered)}`);
+    if (receipt.attempt === 2) {
+      details.push(`Retry of an unanswered refresh${receipt.first_attempt ? `: ${why(receipt.first_attempt)}` : ''}`);
+    }
+    details.push(`At: ${new Date(receipt.at_ms).toISOString()}`);
     // Other sessions' usage since the previous reading is included: an upper bound.
     for (const [kind, points] of Object.entries(receipt.usage_cost ?? {})) {
       const figure = points === null ? null : percent(points);

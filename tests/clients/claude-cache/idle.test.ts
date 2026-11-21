@@ -197,3 +197,36 @@ test('a verified refresh records how far it moved the usage figure', async ($, o
   expect(h.calls.length).toBe(1);
   expect(JSON.parse(h.writes.at(-1)?.text).last_refresh.usage_cost).toEqual({ five_hour: 0.3, seven_day: null });
 });
+
+// U3: an unanswered refresh says why and is retried once; a compaction says what is true.
+test('an unanswered refresh records the reason and is retried once, then pauses', async ($, on) => {
+  const zero = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
+  const overloaded = { isAnswered: false, reason: 'api-error', status: 529, error: 'overloaded', usage: zero };
+  const h = harness(on, { reply: overloaded as unknown as typeof warm });
+  await start($); await turn($); await h.clock.advance(55 * MIN);
+  expect(h.calls.length).toBe(1);
+  const first = JSON.parse(h.writes.at(-1)?.text).last_refresh;
+  expect([first.outcome, first.attempt, first.unanswered])
+    .toEqual(['unanswered', 1, { reason: 'api-error', error: 'overloaded', status: 529 }]);
+  await h.clock.advance(MIN); expect(h.calls.length).toBe(2);
+  await h.clock.advance(180 * MIN); expect(h.calls.length).toBe(2);
+  const beat = JSON.parse(h.writes.at(-1)?.text);
+  expect([beat.state, beat.last_refresh.outcome, beat.last_refresh.attempt])
+    .toEqual(['Refresh unverified · automatic refresh paused until your next message', 'stopped', 2]);
+});
+
+test('after a compaction the line says what the next message writes', async ($, on) => {
+  const h = harness(on);
+  const summary = [{ role: 'user' as const, text: 'synthetic summary', toolUses: [] }];
+  on('session.compact', () => ({ messages: summary, tokensBefore: 69015, tokensAfter: 16384 }));
+  await start($); await turn($); await h.clock.advance(10 * MIN);
+  await $.session.compact({ trigger: 'manual', messages: summary });
+  const band = await $.ui.mount({ plugin: 'neosian-cache', component: 'AbovePrompt',
+    surface: 'terminal', requestId: 'band', props: { hasSurvey: false, isWorking: false, bodyColumns: 80 } });
+  expect((await band.find({ type: 'Text', text: 'neosian' }))?.text)
+    .toBe('neosian · context compacted · next message writes 16k+ tokens');
+  expect(JSON.parse(h.writes.at(-1)?.text).state)
+    .toBe('Context compacted · your next message writes at least 16k tokens');
+  await h.clock.advance(120 * MIN); expect(h.calls.length).toBe(0);
+  await band.unmount();
+});

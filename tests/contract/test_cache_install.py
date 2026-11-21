@@ -346,3 +346,36 @@ def test_bridge_reports_stale_or_mismatched_heartbeat(
     )
     assert result.returncode == 0
     assert "keep-warm not observed" in result.stdout
+
+
+def test_bridge_reads_the_largest_refresh_receipt_the_plugin_writes(
+    binary: Binary,
+) -> None:
+    # tests/clients/claude_cache.mjs proves the plugin writes these exact bytes.
+    raw = (ROOT / "tests/clients/claude-cache/receipt.json").read_text("utf-8")
+    receipt = json.loads(raw)
+    refresh = receipt["last_refresh"]
+    assert refresh["attempt"] == 2 and refresh["outcome"] == "stopped"
+    assert set(refresh["unanswered"]) == {"reason", "error", "status"}
+    assert set(refresh["first_attempt"]) == {"reason", "error", "status"}
+    root = binary.directory / "bridge"
+    observations = root / "observations"
+    observations.mkdir(parents=True)
+    receipt["observed_at_ms"] = int(time.time() * 1000)
+    body = json.dumps(receipt, ensure_ascii=False, separators=(",", ":"))
+    assert len(body.encode()) < 8192
+    path = observations / f"{receipt['session_id']}.refresh.json"
+    path.write_text(body, encoding="utf-8")
+    data = payload()
+    data["session_id"] = receipt["session_id"]
+    result = binary.run(
+        "statusline",
+        "--client",
+        "claude-code",
+        "--bridge",
+        str(root),
+        stdin=json.dumps(data),
+    )
+    assert result.returncode == 0, result.stderr
+    assert "keep-warm not observed" not in result.stdout
+    assert path.read_text("utf-8") == body
