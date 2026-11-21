@@ -335,9 +335,11 @@ The receipt's `last_refresh` holds `attempt` (1, or 2 for a retry), `outcome`
 `unanswered` (null when Claude Code answered, otherwise its `reason`, `error`
 kind and HTTP `status`, each null when not given or not a short identifier)
 and `first_attempt` (on a retry, the first attempt's `unanswered`).
-One observation and one receipt are overwritten per session. They are local
-diagnostics, not memory or an authority to resume refresh after a restart; old
-session files may be removed while Claude is closed.
+One observation and one receipt are overwritten per session, and one shared
+usage reading, `usage.shared.json`, by every session (see "A current figure
+across sessions" below). They are local diagnostics, not memory or an
+authority to resume refresh after a restart; old session files may be removed
+while Claude is closed, and the shared reading at any time.
 
 ### Usage notes before a limit
 
@@ -347,8 +349,9 @@ the agent beforehand so it can stop at a clean point.
 
 The figures are Claude Code's own: the percentage used of the account's 5-hour
 and weekly windows and each window's reset time, as the session's last response
-reported them. The plugin reads them without a model request when you send a
-message, when a tool call finishes and every 30 seconds while the keep-warm
+reported them, or a newer reading another session on this machine took (see
+"A current figure across sessions"). The plugin reads them without a model
+request when you send a message, when a tool call finishes and every 30 seconds while the keep-warm
 timer runs, and records a reading only after the session has received a new
 answered response, its own or a subagent's. An idle session and a failed
 request record nothing. The pace
@@ -395,32 +398,81 @@ default, 1 to 10) sets the horizon. `/neosian-cache off` stops keep-warm
 only; notes follow `usageNotes`.
 
 Once a window reaches the notice level, the neosian line above the prompt adds
-`usage 87%`; the line turns amber at the wrap-up level and stays amber after a
-wrap-up note until that window resets. `/neosian-cache` lists
-each known window, the last note delivered with its UTC time, and whether usage
-notes are on, off or unavailable:
+`usage 87%`, and the figure's age once it is older than ten minutes, as in
+`usage 87% (40m ago)`; the line turns amber at the wrap-up level and stays
+amber after a wrap-up note until that window resets. `/neosian-cache` lists
+each known window with how old its figure is, marking a figure another session
+read, the last note delivered with its UTC time, and whether usage notes are
+on, off or unavailable:
 
 ```text
-5-hour usage: 93% · resets in 42m
-Weekly usage: 23% · resets in 3d 4h
+5-hour usage: 93% · resets in 42m · as of 2m ago (another session)
+Weekly usage: 23% · resets in 3d 4h · as of 40m ago
 Last usage note: wrap (5-hour) at 2026-11-15T10:22:00.000Z
 Usage notes: on
 ```
 
-The session's refresh receipt gains `usage` (per window, `percent` and
-`resets_at_ms`) and `usage_note` (`level`, one of `pace`, `notice` or `wrap`,
-with `window` and `at_ms`, or null). It
+An age under a minute reads `as of just now`. Ages are rounded up, as reset
+times are, so a figure is never shown as newer than it is.
+
+The session's refresh receipt gains `usage` (per window, `percent`,
+`resets_at_ms` and `read_at_ms`, the time of the window's last reading) and
+`usage_note` (`level`, one of `pace`, `notice` or `wrap`, with `window` and
+`at_ms`, or null). It
 holds percentages, UTC times and the note's level and window, never its text.
 Usage notes need Claude Code's session usage call, tested on 2.1.325. If the
 call is missing or fails, keep-warm works as before and the panel reports notes
 as unavailable.
 
+#### A current figure across sessions
+
+A session's own figure stands still while it is idle, but the limit is the
+account's. Interactive sessions that share an observation directory (one per
+Claude configuration directory with a user-level setup, one per project with a
+project-level setup) therefore share their newest reading through one file
+there, `usage.shared.json`. It holds the time of the reading and, per window,
+the percentage and the reset time: no session ID, account identity, model or
+content, for example:
+
+```json
+{"format":1,"read_at_ms":1795255320000,"usage":{"five_hour":{"percent":92,"resets_at_ms":1795261200000}}}
+```
+
+A session writes its own reading there, once, at its next 30-second check
+after one of its responses, unless the file already holds a reading as new.
+At every check it reads the file and takes a window's figure from it when the
+reading is newer than its own last reading of that window and belongs to the
+same account. Nothing identifies an account, so the reset times do: the
+reading is taken only when, for every window that both it and the session know
+with a reset time still ahead, the two reset times are within two minutes of
+each other, and at least one window could be compared. A session that has had
+no response of its own yet takes nothing. A figure taken this way is used
+like the session's own by the line, the notes and the checks before a
+refresh, so an idle session at 97% by another session's reading does not send
+a refresh the check would hold back. Inside one window a figure never goes down, so a shared
+reading can raise a figure but not lower it. No reading is taken while a
+refresh is in flight, so a refresh's measured cost never includes itself.
+
+Learning the figure never makes a request: one small read every 30 seconds and
+one write per new reading. A file that is not JSON, is half-written, has
+another format or any value out of range, is dated in the future, is larger
+than 1 KiB, or is a link or a directory is ignored, and the session keeps its
+own figures. `-p` runs neither read nor write it.
+
 Not promised:
 
 - The figures are Claude Code's estimates from the last response; neosian does
   not check them.
-- A session learns usage only from its own requests. One that has been idle
-  shows a stale figure, missing other sessions' usage, until its next request.
+- An idle session sees usage that another interactive session sharing its
+  observation directory has read. Usage spent on another machine, in the
+  Claude apps, by `-p` runs, or under another Claude configuration directory
+  is not seen until a session here gets its next response; the age on the line
+  is what tells you how old the figure is.
+- Two accounts whose windows reset within the same two minutes and that use
+  the same observation directory (a project-level setup used under two Claude
+  configuration directories, or a `/login` to another account) are taken for
+  one. The figure shown can then be the other account's, which can bring a
+  note early or hold a refresh back, never send one.
 - A burst from many agents can outrun the note and reach the limit before any
   note is delivered.
 - Accounts without a 5-hour window get weekly notes only. Sessions without
@@ -438,11 +490,12 @@ wait for the reset with its cache warm instead of spending the last of the
 limit.
 
 Right after each verified refresh the plugin takes one more reading. The rise
-of each window's figure since its previous reading is recorded as that
-refresh's cost, never below zero, and the last three are kept per window.
-Because an idle session's figure is stale, that rise also includes every other
-session's usage in between. The estimate used is the smallest of the last
-three, between 0.1 and 2 points, or 0.5 before any refresh has been measured.
+of each window's figure since its previous reading (the session's own, or one
+another session took) is recorded as that refresh's cost, never below zero,
+and the last three are kept per window. That rise also includes every other
+session's usage since the previous reading. The estimate used is the smallest
+of the last three, between 0.1 and 2 points, or 0.5 before any refresh has
+been measured.
 
 While keep-warm can refresh in this session (it is on, the session is
 interactive, the observation bridge is set up, and the conversation's last
@@ -459,7 +512,8 @@ before a conversation's first observed reply, the thresholds are exactly those
 in the table above.
 
 Just before a refresh would be sent, keep-warm checks the last recorded figures
-(an idle session has no newer ones) and sends nothing when:
+(the session's own, or a newer one another session took; nothing is fetched)
+and sends nothing when:
 
 | Last recorded figure | Reason in `/neosian-cache` |
 |---|---|
@@ -501,8 +555,8 @@ Not promised for the warm wait:
 - A refresh's cost is an upper bound, not a measurement of the refresh alone:
   it includes every other session's usage since the previous reading, and the
   reserve built from it is an estimate.
-- The figures are stale while the session is idle, so keep-warm decides on the
-  last figures the session saw; usage elsewhere can reach the limit first.
+- Keep-warm decides on the newest figures the sessions sharing its observation
+  directory saw; usage elsewhere can reach the limit first.
 - Each refresh while waiting still uses some of the limit. The reserve leaves
   room for it but cannot guarantee that the limit is not reached.
 - The cost measurement assumes that Claude Code updates its usage figures from

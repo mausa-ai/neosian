@@ -28,16 +28,24 @@ function why({ reason, error, status }) {
     'no reason given';
 }
 
+// How old a figure is, rounded up as reset times are: never newer than it is.
+function ago(ms) {
+  return ms < 60000 ? 'just now' : `${span(ms)} ago`;
+}
+
 // Usage figures are the host's estimates; which note is due is decided in usage.js.
+// The pane always says how old each is; the line once it is older than ten minutes.
 function limits({ windows, notes, last }, now) {
-  const lines = windows.map(({ kind, p, resetsAt }) => {
+  const lines = windows.map(({ kind, p, resetsAt, at, shared }) => {
     const label = LABELS[kind][0].toUpperCase() + LABELS[kind].slice(1);
-    return `${label} usage: ${percent(p)}%${resetsAt === null ? '' : ` · resets in ${span(resetsAt - now)}`}`;
+    return `${label} usage: ${percent(p)}%${resetsAt === null ? '' : ` · resets in ${span(resetsAt - now)}`}` +
+      ` · as of ${ago(now - at)}${shared ? ' (another session)' : ''}`;
   });
   if (last) lines.push(`Last usage note: ${last.level} (${LABELS[last.window]}) at ${new Date(last.at_ms).toISOString()}`);
   const wraps = w => w.level === 'wrap' || w.level === 'pace'; // A pace wrap is a wrap too.
   const top = windows.filter(w => w.level).sort((a, b) => wraps(b) - wraps(a) || b.p - a.p)[0];
-  return { lines: ['', ...lines, `Usage notes: ${notes}`], badge: top ? `usage ${percent(top.p)}%` : '',
+  const old = top && now - top.at > 10 * 60000 ? ` (${ago(now - top.at)})` : '';
+  return { lines: ['', ...lines, `Usage notes: ${notes}`], badge: top ? `usage ${percent(top.p)}%${old}` : '',
     wrap: Boolean(top && wraps(top)) };
 }
 

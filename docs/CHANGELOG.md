@@ -75,6 +75,17 @@ phase close names the version.
   `next message writes 16k+ tokens` when Claude Code counts the compacted
   conversation, instead of `cache paused · next message may be cold`. No
   request is made after a compaction.
+- The usage figure on the neosian line stays current while a session is
+  idle. Interactive sessions sharing an observation directory share their
+  newest reading through `usage.shared.json` beside the session files (the
+  reading's time and, per window, percentage and reset time, nothing else);
+  a session takes a window's figure from it when it is newer than its own
+  and the reset times match its own within two minutes, and the notes and
+  the checks before a refresh use it too. The line adds the figure's age
+  once it is older than ten minutes (`usage 85% (40m ago)`), and
+  `/neosian-cache` always gives it. The receipt's `usage` gains
+  `read_at_ms` per window. No request is made to learn the figure; an
+  unreadable, half-written or future-dated file is ignored.
 
 ## [2.20.0] - 2026-11-21
 

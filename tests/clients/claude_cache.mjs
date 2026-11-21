@@ -18,8 +18,11 @@ let serial = 0;
 
 async function harness(options = {}, extra = {}) {
   const handlers = [];
-  const files = new Map([['/plugin/bridge.json', extra.bridge ?? '{"observations":"/observations"}'],
-    ['/plugin/assets/refresh.md', extra.crlf ? prompt.replaceAll('\n', '\r\n') : prompt]]);
+  // `extra.files` lets sessions share one directory, as they share observations.
+  const files = extra.files ?? new Map();
+  files.set('/plugin/bridge.json', extra.bridge ?? '{"observations":"/observations"}');
+  files.set('/plugin/assets/refresh.md', extra.crlf ? prompt.replaceAll('\n', '\r\n') : prompt);
+  const stats = new Map(); // What a path is, where a case says it is not a plain file.
   if (extra.notes !== null) files.set('/plugin/assets/usage.md', extra.notes ?? notesAsset);
   let now = START;
   let limits = extra.limits;
@@ -53,7 +56,7 @@ async function harness(options = {}, extra = {}) {
     fs: { read: async path => {
       if (!files.has(path)) throw new Error('missing file');
       return files.get(path);
-    }, stat: async path => ({ size: (files.get(path) ?? '').length, kind: 'file', isLink: false }),
+    }, stat: async path => stats.get(path) ?? ({ size: (files.get(path) ?? '').length, kind: 'file', isLink: false }),
     write: async (path, body) => { writes.push({ path, body }); files.set(path, body); } },
     command: { register: async spec => { registered.push(spec); return { command: spec.name }; } },
     ui: { status: text => { statuses.push(text); }, toast: () => {}, invalidate: () => {},
@@ -144,9 +147,11 @@ async function harness(options = {}, extra = {}) {
     return result;
   }
   await emit('session.start', { isInteractive: extra.interactive !== false, surface: 'terminal' });
-  return { $, calls, files, statuses, panes, writes, registered, emit, advance, finish, turn, command, draw, badge,
-    details, tool, submit, respond, begin, restart, limits: list => { limits = list; }, use: next => { id = next; },
+  return { $, calls, files, stats, statuses, panes, writes, registered, emit, advance, finish, turn, command, draw,
+    badge, details, tool, submit, respond, begin, restart, limits: list => { limits = list; }, use: next => { id = next; },
     running: () => timers.filter(t => t.active).length,
+    // The timer's tick now, as the host may run it while a refresh is awaited.
+    beat: async () => { for (const t of timers.filter(t => t.active)) await t.fn(); },
     now: () => now, elapse: ms => { now += ms; }, model: name => { model = name; } };
 }
 
@@ -1005,8 +1010,12 @@ test('a refresh response counts as fresh evidence for the next reading', async (
 
 test('notes work without the bridge in a non-interactive session and write no diagnostics', async () => {
   const h = await harness({}, { interactive: false, limits: [five(96)] });
+  // A -p run neither takes nor writes the shared reading (U3).
+  h.files.set('/observations/usage.shared.json', JSON.stringify({ format: 1, read_at_ms: START,
+    usage: { five_hour: { percent: 99, resets_at_ms: START + 2 * HOUR } } }));
   await h.respond();
-  assert.equal(notesOf(await h.tool()).length, 1);
+  const [text] = notesOf(await h.tool());
+  assert.match(text, /used 96% of its 5-hour/);
   assert.equal(h.writes.length, 0);
 });
 
@@ -1030,13 +1039,13 @@ test('the receipt carries usage figures and the last note, bounded and content-f
   await h.tool();
   const raw = h.files.get('/observations/session-1.refresh.json');
   const data = JSON.parse(raw);
-  assert.deepEqual(data.usage, { five_hour: { percent: 86, resets_at_ms: START + 2 * HOUR },
-    seven_day: { percent: 23.5, resets_at_ms: START + 3 * 24 * HOUR } });
+  assert.deepEqual(data.usage, { five_hour: { percent: 86, resets_at_ms: START + 2 * HOUR, read_at_ms: START },
+    seven_day: { percent: 23.5, resets_at_ms: START + 3 * 24 * HOUR, read_at_ms: START } });
   assert.deepEqual(data.usage_note, { level: 'notice', window: 'five_hour', at_ms: START });
   assert.ok(raw.length < 8192);
   assert.doesNotMatch(raw, /SENSITIVE|usage note:/);
   const pane = await h.details();
-  assert.match(pane, /5-hour usage: 86% · resets in 2h\nWeekly usage: 23\.5% · resets in 3d/);
+  assert.match(pane, /5-hour usage: 86% · resets in 2h · as of just now\nWeekly usage: 23\.5% · resets in 3d · as of just now/);
   assert.match(pane, /Last usage note: notice \(5-hour\) at 1970-01-02T03:46:40\.000Z\nUsage notes: on/);
 });
 
@@ -1241,7 +1250,7 @@ test('at the usage limit keep-warm sends nothing, and the next ordinary message 
   const h = await harness({}, { limits: [five(99.6, START + 3 * HOUR)] });
   await h.turn(); await h.advance(55 * MIN); assert.equal(h.calls.length, 0);
   assert.match(await h.details(), /^Usage limit reached · keep-warm paused$/m);
-  assert.equal(await h.badge(), 'neosian · cache paused · next message may be cold · usage 99.6%');
+  assert.equal(await h.badge(), 'neosian · cache paused · next message may be cold · usage 99.6% (55m ago)');
   await h.advance(2 * HOUR); assert.equal(h.calls.length, 0);
   h.limits([five(2, START + 8 * HOUR)]); // A new window after the reset.
   await h.turn(); await h.advance(55 * MIN); assert.equal(h.calls.length, 1);
@@ -1563,4 +1572,180 @@ test('the largest receipt stays bounded and content-free, byte for byte as the b
   const r = JSON.parse(raw).last_refresh;
   assert.deepEqual(Object.keys(r), ['at_ms', 'read', 'write', 'output', 'outcome', 'attempt', 'unanswered',
     'first_attempt', 'usage_cost']);
+});
+
+// U3: the usage figure kept current from the newest reading on this machine, never by a request.
+const SHARED = '/observations/usage.shared.json';
+const shareLib = () => import(new URL('../../assets/clients/claude-cache/hooks/share.js', import.meta.url).href);
+const reading = (time, usage, rest = {}) => JSON.stringify({ format: 1, read_at_ms: time, usage, ...rest });
+const fiveAt = (percent, resets = START + 2 * HOUR) => ({ five_hour: { percent, resets_at_ms: resets } });
+// Sessions sharing one observations directory; `step` keeps their clocks together.
+async function machine(...sessions) {
+  const files = new Map();
+  const out = [];
+  for (const [i, extra] of sessions.entries()) out.push(await harness({}, { files, id: `session-${i + 1}`, ...extra }));
+  return out;
+}
+const step = async (ms, ...sessions) => { for (const h of sessions) await h.advance(ms); };
+
+test('an idle session shows the newer figure another session of the account took, and keeps its other window', async () => {
+  const [idle, busy] = await machine({ limits: [five(80), week(40)] }, { limits: [five(92, START + 2 * HOUR + 30000)] });
+  await idle.turn(); // Its own reading at the start: 80, below the notice.
+  assert.equal(await idle.badge(), 'neosian · cache ~60m · keep-warm on');
+  await step(10 * MIN, idle, busy);
+  await busy.respond(); // The other session's response: 92, the same window read 30 s apart.
+  await step(30000, busy, idle);
+  assert.equal(await idle.badge(), 'neosian · cache ~50m · keep-warm on · usage 92%');
+  const pane = await idle.details();
+  assert.match(pane, /^5-hour usage: 92% · resets in 1h 50m · as of just now \(another session\)$/m);
+  assert.match(pane, /^Weekly usage: 40% · resets in 2d 23h · as of 11m ago$/m); // Not in the shared reading: kept.
+  assert.deepEqual([idle.calls.length, busy.calls.length], [0, 0]); // No request learns the figure.
+});
+
+test('a reading of another account, its resets more than two minutes apart, is ignored', async () => {
+  for (const [name, other, taken] of [
+    ['the same window two minutes apart', [five(92, START + 2 * HOUR + 2 * MIN)], true],
+    ['a 5-hour reset 2m01s apart', [five(92, START + 2 * HOUR + 121000)], false],
+    ['a weekly reset a day apart', [five(92), week(41, START + 4 * 24 * HOUR)], false],
+    ['no reset time to compare', [limit('five_hour', 92)], false],
+  ]) {
+    const [idle, busy] = await machine({ limits: [five(80), week(40)] }, { limits: other });
+    await idle.turn();
+    await step(10 * MIN, idle, busy); await busy.respond(); await step(30000, busy, idle);
+    assert.equal(await idle.badge(), `neosian · cache ~50m · keep-warm on${taken ? ' · usage 92%' : ''}`, name);
+  }
+  // A session with no reading of its own yet has nothing to compare, and takes nothing.
+  const [fresh, busy] = await machine({ limits: [five(80)] }, { limits: [five(92)] });
+  await step(10 * MIN, fresh, busy); await busy.respond(); await step(30000, busy, fresh);
+  assert.equal(await fresh.badge(), 'neosian · keep-warm ready');
+});
+
+test('an older shared reading never replaces a newer one of its own, which takes its place once', async () => {
+  const h = await harness({}, { limits: [five(86)] });
+  h.files.set(SHARED, reading(START - MIN, fiveAt(97))); // Taken a minute before this session's own.
+  await h.respond(); await h.advance(30000);
+  assert.equal(await h.badge(), 'neosian · keep-warm ready · usage 86%');
+  assert.equal(h.files.get(SHARED), reading(START, fiveAt(86)));
+  await h.advance(5 * MIN); // Each reading of its own is written once, never one it took from the file.
+  assert.equal(h.writes.filter(w => w.path === SHARED).length, 1);
+});
+
+test('the line says how old the figure is once it is older than ten minutes; the pane always does', async () => {
+  const h = await harness({}, { limits: [five(86, START + 3 * HOUR)] });
+  await h.turn();
+  assert.match(await h.details(), /^5-hour usage: 86% · resets in 3h · as of just now$/m);
+  await h.advance(10 * MIN);
+  assert.equal(await h.badge(), 'neosian · cache ~50m · keep-warm on · usage 86%'); // Ten minutes: not yet.
+  assert.match(await h.details(), /^5-hour usage: 86% · resets in 2h 50m · as of 10m ago$/m);
+  await h.advance(30000);
+  assert.equal(await h.badge(), 'neosian · cache ~50m · keep-warm on · usage 86% (11m ago)');
+  const tree = await h.draw('AbovePrompt', { bodyColumns: 40 });
+  assert.ok(textOf(tree).split('\n').every(line => line.length <= 40));
+  await h.advance(44 * MIN + 30000); assert.equal(h.calls.length, 1); // A verified refresh is a new reading.
+  assert.equal(await h.badge(), 'neosian · cache ~60m · keep-warm on · usage 86%');
+});
+
+test('an unreadable, half-written, foreign-format or future-dated shared file is ignored and then replaced', async () => {
+  const good = reading(START + 20000, fiveAt(97));
+  const cases = {
+    'not JSON': 'not JSON',
+    'empty': '',
+    'half-written': good.slice(0, 40),
+    'torn by two writes': good + good.slice(-20),
+    'another format': good.replace('"format":1', '"format":2'),
+    'a member added': reading(START + 20000, fiveAt(97), { session_id: 'session-2' }),
+    'a member missing': JSON.stringify({ format: 1, usage: fiveAt(97) }),
+    'a window member added': reading(START + 20000, { five_hour: { percent: 97, resets_at_ms: START + 2 * HOUR, model: 'x' } }),
+    'another window': reading(START + 20000, { ...fiveAt(97), spend: { percent: 97, resets_at_ms: START + 2 * HOUR } }),
+    'a percent over 100': reading(START + 20000, fiveAt(100.5)),
+    'a percent as text': reading(START + 20000, fiveAt('97')),
+    'a reset before the reading': reading(START + 20000, fiveAt(97, START)),
+    'a fractional time': reading(START + 20000.5, fiveAt(97)),
+    'dated in the future': reading(START + HOUR, fiveAt(97)),
+    'no window': reading(START + 20000, {}),
+    'a list': '[]',
+    'null': 'null',
+    'over 1 KiB': good + ' '.repeat(1100),
+  };
+  for (const [name, body] of Object.entries({ 'a valid newer reading': good, ...cases })) {
+    const h = await harness({}, { limits: [five(86)] });
+    h.files.set(SHARED, body);
+    await h.respond(); await h.advance(30000);
+    const valid = body === good;
+    assert.equal(await h.badge(), `neosian · keep-warm ready · usage ${valid ? 97 : 86}%`, name);
+    // Its own reading takes the place of anything unreadable; a newer valid one stays.
+    assert.equal(h.files.get(SHARED), valid ? good : reading(START, fiveAt(86)), name);
+  }
+  for (const kind of [{ kind: 'dir', size: 0, isLink: false }, { kind: 'file', size: good.length, isLink: true }]) {
+    const h = await harness({}, { limits: [five(86)] }); // A directory or a link is neither read nor written.
+    h.files.set(SHARED, good); h.stats.set(SHARED, kind);
+    await h.respond(); await h.advance(30000);
+    assert.equal(await h.badge(), 'neosian · keep-warm ready · usage 86%', kind.kind);
+    assert.equal(h.writes.filter(w => w.path === SHARED).length, 0, kind.kind);
+  }
+});
+
+test('a shared figure feeds the meter: the gate holds a refresh on it, and nothing is sent to learn it', async () => {
+  const [idle, busy] = await machine({ limits: [five(90, START + 3 * HOUR)] }, { limits: [five(99.6, START + 3 * HOUR)] });
+  await idle.turn();
+  await step(30 * MIN, idle, busy); await busy.respond(); await step(30000, busy, idle);
+  assert.equal(await idle.badge(), 'neosian · cache ~30m · keep-warm on · usage 99.6%');
+  await step(25 * MIN, idle, busy);
+  assert.deepEqual([idle.calls.length, busy.calls.length], [0, 0]);
+  assert.match(await idle.details(), /^Usage limit reached · keep-warm paused$/m);
+  // Below the gate a shared figure moves no refresh: the same calls at the same times as alone.
+  const [kept, other] = await machine({ limits: [five(60, START + 3 * HOUR)] }, { limits: [five(88, START + 3 * HOUR)] });
+  await kept.turn();
+  await step(30 * MIN, kept, other); await other.respond(); await step(30000, other, kept);
+  assert.match(await kept.badge(), / · usage 88%$/);
+  await step(2 * HOUR, kept, other);
+  const alone = await harness();
+  await alone.turn(); await alone.advance(2 * HOUR + 30 * MIN + 30000);
+  assert.deepEqual(kept.calls.map(c => c.at), alone.calls.map(c => c.at));
+  assert.equal(other.calls.length, 0);
+});
+
+test('a reading another session takes while a refresh is in flight never counts against its measured cost', async () => {
+  let points = 60;
+  let h;
+  h = await harness({}, { limits: () => [five(points, START + 4 * HOUR)], fork: async () => {
+    points += 0.3; // The refresh's own cost, already in a reading another session takes meanwhile.
+    h.files.set(SHARED, reading(h.now(), fiveAt(points + 1, START + 4 * HOUR)));
+    await h.beat();
+    return structuredClone(WARM);
+  } });
+  await h.turn(); await h.advance(55 * MIN); assert.equal(h.calls.length, 1);
+  assert.deepEqual(receiptOf(h).last_refresh.usage_cost, { five_hour: 0.3, seven_day: null });
+});
+
+test('the shared reading is read only in its exact format, and taken only for the same account', async () => {
+  const { parseShared, sameAccount } = await shareLib();
+  const now = START + MIN;
+  const raw = reading(START, { ...fiveAt(92), seven_day: { percent: 40, resets_at_ms: null } });
+  assert.deepEqual(parseShared(raw, now), { at: START, list: [{ kind: 'five_hour', p: 92, resetsAt: START + 2 * HOUR },
+    { kind: 'seven_day', p: 40, resetsAt: null }] });
+  assert.equal(parseShared(raw, START - 1), null); // Dated after now.
+  const state = {};
+  lib.observe(state, [at('five_hour', 80, START + 2 * HOUR), at('seven_day', 40, START + 3 * 24 * HOUR)], START);
+  const of = list => ({ at: now, list });
+  assert.deepEqual([
+    sameAccount(state, of([at('five_hour', 92, START + 2 * HOUR + 120000)]), now),
+    sameAccount(state, of([at('five_hour', 92, START + 2 * HOUR - 120001)]), now),
+    sameAccount(state, of([at('five_hour', 92, START + 2 * HOUR), at('seven_day', 41, START + 4 * 24 * HOUR)]), now),
+    sameAccount(state, of([at('five_hour', 92, null), at('seven_day', 41, START + 3 * 24 * HOUR)]), now),
+    sameAccount(state, of([at('five_hour', 92, null)]), now),
+    sameAccount({}, of([at('five_hour', 92, START + 2 * HOUR)]), now),
+    // This session's 5-hour window is over: not compared, and the weekly one decides.
+    sameAccount(state, of([at('five_hour', 3, START + 7 * HOUR), at('seven_day', 41, START + 3 * 24 * HOUR)]),
+      START + 2 * HOUR),
+  ], [true, false, false, true, false, false, true]);
+});
+
+test('the shared reading holds its time and, per window, percent and reset, byte for byte as the bridge test reads it', async () => {
+  const h = await harness({}, { limits: [five(94.95), week(23.5)] });
+  await h.respond(); await h.advance(30000);
+  const raw = h.files.get(SHARED);
+  const fixture = await readFile(new URL('./claude-cache/shared.json', import.meta.url), 'utf8');
+  assert.equal(raw, fixture.trimEnd());
+  assert.doesNotMatch(raw, /session|SENSITIVE|claude-test|2\.1\./);
 });

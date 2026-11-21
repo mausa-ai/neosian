@@ -61,6 +61,13 @@ const ASSETS: &[(&str, &str)] = &[
         )),
     ),
     (
+        "hooks/share.js",
+        include_str!(concat!(
+            env!("NEOSIAN_ASSETS"),
+            "/clients/claude-cache/hooks/share.js"
+        )),
+    ),
+    (
         "assets/refresh.md",
         include_str!(concat!(
             env!("NEOSIAN_ASSETS"),

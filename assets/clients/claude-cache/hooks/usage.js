@@ -1,6 +1,7 @@
 // Pure usage-limit arithmetic for the wrap-up note and the warm wait: no `$`,
-// clock or I/O. Figures are the host's own estimates from its last response;
-// nothing here meters a model or knows a price. Note prose lives in assets/usage.md.
+// clock or I/O. Figures are the host's own estimates from a session's last
+// response; nothing here meters a model or knows a price. Note prose lives in
+// assets/usage.md.
 import { HOUR, INTERVAL } from './evidence.js';
 
 const MINUTE = 60000;
@@ -26,34 +27,40 @@ export function windows(rateLimits, now) {
   return [...found.values()];
 }
 
-// Record one fresh reading. A window keeps its current figure `p`, the highest
-// seen in it, apart from the ring of samples the rate is measured against.
+// Record one fresh reading of this session's own.
 export function observe(state, list, now) {
   for (const kind of KINDS) {
     if (state[kind] && !list.some(w => w.kind === kind)) delete state[kind]; // A window that vanished.
   }
-  for (const { kind, p, resetsAt } of list) {
-    let w = state[kind];
-    const moved = w && w.resetsAt !== null && resetsAt !== null && Math.abs(resetsAt - w.resetsAt) > 120000;
-    // Without a reset time on both sides, only a large fall tells a new window.
-    const fell = w && (w.resetsAt === null || resetsAt === null) && w.p - p >= 20;
-    if (!w || moved || fell) {
-      w = state[kind] = { p, resetsAt: null, samples: [], delivered: [], agents: { pace: [], wrap: [] } };
-    }
-    if (resetsAt !== null) w.resetsAt = resetsAt;
-    // Responses can arrive out of order and step back a point inside one
-    // window: keep the highest seen, so levels and the rate never move back.
-    w.p = Math.max(w.p, p);
-    const tail = w.samples.at(-1);
-    if (tail && now < tail.t) w.samples = []; // The clock went back: start the ring over.
-    const age = w.samples.length ? now - w.samples.at(-1).t : Infinity;
-    // Spaced at least 30 s apart, 32 samples always span the 15-minute lookback.
-    if (age >= MINUTE || (age >= 30000 && w.samples.at(-1).p !== w.p)) {
-      w.samples.push({ t: now, p: w.p });
-      if (w.samples.length > RING) w.samples.shift();
-    }
-  }
+  for (const { kind, p, resetsAt } of list) take(state, kind, p, resetsAt, now);
   return state;
+}
+
+// One window's reading taken at `now`, this session's own or another's
+// (`shared`, share.js). A window keeps its current figure `p`, the highest seen
+// in it, apart from the ring of samples the rate is measured against, and `at`,
+// the time of its last reading.
+export function take(state, kind, p, resetsAt, now, shared = false) {
+  let w = state[kind];
+  const moved = w && w.resetsAt !== null && resetsAt !== null && Math.abs(resetsAt - w.resetsAt) > 120000;
+  // Without a reset time on both sides, only a large fall tells a new window.
+  const fell = w && (w.resetsAt === null || resetsAt === null) && w.p - p >= 20;
+  if (!w || moved || fell) {
+    w = state[kind] = { p, resetsAt: null, samples: [], delivered: [], agents: { pace: [], wrap: [] } };
+  }
+  if (resetsAt !== null) w.resetsAt = resetsAt;
+  // Responses can arrive out of order and step back a point inside one
+  // window: keep the highest seen, so levels and the rate never move back.
+  w.p = Math.max(w.p, p);
+  Object.assign(w, { at: now, shared });
+  const tail = w.samples.at(-1);
+  if (tail && now < tail.t) w.samples = []; // The clock went back: start the ring over.
+  const age = w.samples.length ? now - w.samples.at(-1).t : Infinity;
+  // Spaced at least 30 s apart, 32 samples always span the 15-minute lookback.
+  if (age >= MINUTE || (age >= 30000 && w.samples.at(-1).p !== w.p)) {
+    w.samples.push({ t: now, p: w.p });
+    if (w.samples.length > RING) w.samples.shift();
+  }
 }
 
 export function rate(samples, now, current = samples.at(-1)?.p) {
@@ -112,7 +119,7 @@ export function reserves(state, costs, now, hours = 6) {
 }
 
 // Whether keep-warm holds back the refresh it is about to send, from the last
-// recorded figures (an idle session learns nothing newer): 'limit' at 99.5,
+// recorded figures (this session's, or a newer one another took): 'limit' at 99.5,
 // 'exhausted' at the wrap floor with a far or unknown reset, else null. A
 // window past its known reset never holds one back.
 export function gate(state, costs, now, hours = 6) {

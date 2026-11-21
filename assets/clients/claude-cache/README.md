@@ -44,7 +44,8 @@ earlier, leaving a reserve for the refreshes until the reset; a window that has
 had its wrap-up stays there until it resets. The wrap-up note asks it to finish the
 edit in progress, start nothing new and say what is done and what remains;
 subagents receive only that note. The figures are Claude Code's own estimates
-from the session's last response. The plugin never submits a prompt, stops a
+from the newest response of this session, or of another session sharing its
+observation directory (below). The plugin never submits a prompt, stops a
 turn or schedules anything. `usageNotes` in `/config` turns notes off. Notes
 use Claude Code's session usage call and are tested on 2.1.325; a Claude Code
 without that call keeps keep-warm unchanged and reports notes as unavailable.
@@ -55,9 +56,27 @@ the horizon or unknown; a window past its reset never stops one. A refresh the
 host refuses for a rate limit says so in the panel. After a wrap-up note, an
 idle session kept warm with the reset near shows `waiting for reset` while the
 next refresh would be sent, and the panel shows the reset time and how far the
-last refresh moved each window's figure. That figure is an upper bound: it includes other sessions' usage since
-the previous reading, which is stale while the session is idle. A refresh
-still uses some of the limit, and nothing is scheduled or submitted.
+last refresh moved each window's figure. That figure is an upper bound: it
+includes other sessions' usage since the previous reading. A refresh still
+uses some of the limit, and nothing is scheduled or submitted.
+
+Sessions sharing an observation directory share their newest usage reading
+through one small file there, `usage.shared.json`: when it was read and, per
+window, the percentage and reset time, nothing else. An interactive session
+writes its own reading after one of its responses and reads the file every
+30 seconds. It takes a window's figure when that is newer than its own and
+every window both know with a reset time resets within two minutes of its
+own, with at least one to compare. An idle session therefore shows the
+account's current figure without making a request; the notes and the checks
+before a refresh use it too, so a refresh the account's figure would hold
+back is not sent. The line adds the figure's age once it is older than ten
+minutes, for example `usage 85% (40m ago)`, and `/neosian-cache` always gives
+it, marking a figure another session read.
+Usage spent on another machine, in the Claude apps, by `-p` runs or under
+another Claude configuration directory is not seen until a session here gets
+its next response. Two accounts whose windows reset within the same two
+minutes and that write to the same directory would be taken for one. An
+unreadable, half-written or future-dated file is ignored.
 
 The host's status is an estimate, not a server cache probe. A cache miss can
 only be detected after a request, and the public fork API has no output-token
@@ -70,6 +89,7 @@ after completion, not request-time token caps.
 
 Diagnostics contain only session identifiers, versions, counts, usage
 percentages, UTC times and, for an unanswered refresh, Claude Code's reason,
-error kind and HTTP status, never its message.
+error kind and HTTP status, never its message. The shared usage reading holds
+only a UTC time, usage percentages and reset times.
 No prompt, response text, credential or memory document is saved by this plugin.
 Requests use the current session's model and billing through Claude Code.

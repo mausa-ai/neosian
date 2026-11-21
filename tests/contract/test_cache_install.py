@@ -113,6 +113,7 @@ def test_cache_setup_uses_public_cli_and_preserves_statusline(binary: Binary) ->
         "hooks/display.js",
         "hooks/usage.js",
         "hooks/notes.js",
+        "hooks/share.js",
         "assets/refresh.md",
         "assets/usage.md",
         ".claude-plugin/plugin.json",
@@ -288,7 +289,9 @@ def test_bridge_forwards_original_input_and_only_persists_allowlisted_fields(
 
 
 @pytest.mark.parametrize(
-    "session", ["../escape", "/absolute", "a/b", "bad\u001b[2J", "x" * 129]
+    # `usage.shared` would be the plugin's shared usage reading (U3).
+    "session",
+    ["../escape", "/absolute", "a/b", "bad\u001b[2J", "x" * 129, "usage.shared"],
 )
 def test_bridge_rejects_unsafe_session_names(binary: Binary, session: str) -> None:
     root = binary.directory / "bridge"
@@ -379,3 +382,41 @@ def test_bridge_reads_the_largest_refresh_receipt_the_plugin_writes(
     assert result.returncode == 0, result.stderr
     assert "keep-warm not observed" not in result.stdout
     assert path.read_text("utf-8") == body
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Unix CLI double")
+def test_the_shared_usage_reading_is_left_alone_by_the_bridge_and_setup(
+    binary: Binary,
+) -> None:
+    # tests/clients/claude_cache.mjs proves the plugin writes these exact bytes.
+    body = (ROOT / "tests/clients/claude-cache/shared.json").read_text("utf-8")
+    body = body.rstrip("\n")
+    client, env = host(binary)
+    result = setup(binary, client, env, "--write")
+    assert result.returncode == 0, result.stdout + result.stderr
+    root = binary.directory / ".claude/neosian-cache"
+    observations = root / "observations"
+    shared = observations / "usage.shared.json"
+    shared.write_text(body, encoding="utf-8")
+    result = binary.run(
+        "statusline",
+        "--client",
+        "claude-code",
+        "--bridge",
+        str(root),
+        stdin=json.dumps(payload()),
+    )
+    assert result.returncode == 0, result.stderr
+    assert "observation unavailable" not in result.stderr
+    assert json.loads((observations / "test-session.json").read_text())["format"] == 1
+    checked = json.loads(setup(binary, client, env, "--check").stdout)
+    level = checked["clients"][0]["cache"]["levels"][1]
+    assert level["current"] is True and level["observation_configured"] is True
+    for extra in [("--claude-cache", "off"), ()]:
+        result = setup(binary, client, env, "--write", *extra)
+        assert result.returncode == 0, result.stdout
+    assert shared.read_text("utf-8") == body
+    assert sorted(p.name for p in observations.iterdir()) == [
+        "test-session.json",
+        "usage.shared.json",
+    ]

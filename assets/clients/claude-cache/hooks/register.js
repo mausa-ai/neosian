@@ -3,6 +3,7 @@ import { HOUR, INTERVAL, MARGIN, RETRY, duration, limited, observation, retriabl
 import { HELD, PANE, compacted, presentation, render, thousands } from './display.js';
 import { configureNotes, deliverNote, endNotes, measureRefresh, noteSummary, sampleUsage, setNotes, startNotes,
   usageNotes } from './notes.js';
+import { shareUsage } from './share.js';
 import { gate } from './usage.js';
 
 // All model calls, lifecycle events, timers and UI belong to Claude Code.
@@ -67,7 +68,8 @@ async function show($, now) {
   const record = JSON.stringify({ format: 1, session_id: sessionId, version, observed_at_ms: now,
     enabled, state: reason, expires_at_ms: certificate?.deadline ?? null,
     until_ms: until, last_refresh: receipt ?? null, usage_note: limits.last,
-    usage: Object.fromEntries(limits.windows.map(w => [w.kind, { percent: w.p, resets_at_ms: w.resetsAt }])) });
+    usage: Object.fromEntries(limits.windows.map(w => [w.kind,
+      { percent: w.p, resets_at_ms: w.resetsAt, read_at_ms: w.at }])) });
   if (directory && record !== lastPersisted) {
     try {
       await $.fs.write(directory + '/' + sessionId + '.refresh.json', record);
@@ -115,6 +117,7 @@ async function tick($, allowRefresh = true) {
   if (closed) return;
   const owner = sessionId;
   await sampleUsage($, notes);
+  if (available) await shareUsage($, notes, directory, !flight); // Never during a refresh (share.js).
   const now = await $.clock.now();
   if (closed) return;
   if (!available) { await show($, now); return; }

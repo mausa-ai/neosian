@@ -9,9 +9,11 @@ import { assess, charge, commit, forget, gate, horizon, note, observe, parse, pe
 // `warm` is set by register.js: keep-warm is on and available in this session
 // and its last observed cache was one hour and eligible for refresh, so the
 // reserve applies. Before a first observation it is false: plain thresholds.
+// `reading` is this session's own newest reading and `published` the last one
+// it wrote to the shared file (share.js).
 export function usageNotes() {
   return { meter: {}, costs: {}, warm: false, metered: false, sampled: false, fresh: false, templates: null,
-    enabled: true, preferred: true, hours: 6, last: null };
+    enabled: true, preferred: true, hours: 6, last: null, reading: null, published: null };
 }
 
 export function configureNotes(n, options) {
@@ -27,7 +29,7 @@ export function setNotes(n, key, value) {
 // Notes need a supported session, but neither the bridge nor a terminal.
 export async function startNotes($, n, supported) {
   Object.assign(n, { meter: {}, costs: {}, metered: supported, sampled: false, fresh: false,
-    templates: null, enabled: n.preferred, last: null });
+    templates: null, enabled: n.preferred, last: null, reading: null, published: null });
   if (!supported) return;
   try { n.templates = parse(await $.fs.read($.plugin.root + '/assets/usage.md')); } catch { n.templates = null; }
   await sampleUsage($, n);
@@ -49,7 +51,11 @@ export async function sampleUsage($, n) {
     const { rateLimits } = await $.session.usage();
     // An idle session repeats its last figure. Only a reading after one of
     // its own responses is evidence, so idle time adds no flat samples.
-    if (recent) observe(n.meter, windows(rateLimits, now), now);
+    if (recent) {
+      const list = windows(rateLimits, now);
+      observe(n.meter, list, now);
+      if (list.length) n.reading = { at: now, list };
+    }
     n.sampled = true;
     return now;
   } catch {
@@ -97,8 +103,11 @@ function reserve(n, now) {
   return n.warm ? reserves(n.meter, n.costs, now, n.hours) : 0;
 }
 
+// Each window with the time of its last reading and whether another session took it.
 export function noteSummary(n, now) {
-  return { windows: assess(n.meter, now, reserve(n, now)), last: n.last,
+  const current = assess(n.meter, now, reserve(n, now)).map(w => ({ ...w, at: n.meter[w.kind].at,
+    shared: n.meter[w.kind].shared }));
+  return { windows: current, last: n.last,
     // Waiting is shown only if the next refresh would be sent, not held back.
     waiting: gate(n.meter, n.costs, now, n.hours) ? null : waiting(n.meter, n.last, now, n.hours),
     notes: !n.enabled ? 'off' : n.metered && n.templates && n.sampled ? 'on' : 'unavailable' };
