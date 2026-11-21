@@ -58,11 +58,13 @@ export function sameAccount(state, reading, now) {
 // already holds, current and on the same reset, from a newer reading that is
 // not below the kept figure. So a shared reading never starts a window, never
 // lowers a figure, and a window without a reset in it is ignored.
+// The later of the two reset times is kept, so taking one never ends a window
+// earlier than this session's own reading says.
 function adopt(state, reading, now) {
   for (const theirs of reading.list) {
     const w = state[theirs.kind];
     if (same(w, theirs, now) && reading.at > (w.at ?? -Infinity) && theirs.p >= w.p) {
-      take(state, theirs.kind, theirs.p, theirs.resetsAt, reading.at, true);
+      take(state, theirs.kind, theirs.p, Math.max(theirs.resetsAt, w.resetsAt), reading.at, true);
     }
   }
 }
@@ -81,25 +83,30 @@ async function absent($, path, error) {
 }
 
 // At each tick: take the file's reading into the meter when it is this
-// account's, dated after any backward clock step (`n.untrusted`), and `idle()`
-// says no refresh is in flight, asked at the moment of taking (a refresh's
-// measured cost never includes itself); then write this session's own newest
-// reading, once, unless the file holds one as new. A path that is not plainly
-// a file, or a stat that fails other than for absence, is neither read nor
-// written. `$.fs.write` is not documented as atomic: a torn file fails the
-// checks and is ignored.
+// account's, dated after any backward clock step (`n.untrusted`; a reading
+// dated after now can only predate one, so its time is never trusted), and
+// `idle()` says no refresh is in flight, asked at the moment of taking (a
+// refresh's measured cost never includes itself); then write this session's
+// own newest reading, once, unless the file holds one as new. A path that is
+// not plainly a file, or a stat that fails other than for absence, is neither
+// read nor written, and `n.sharing` turns false for the pane to say so.
+// `$.fs.write` is not documented as atomic: a torn file fails the checks.
 export async function shareUsage($, n, directory, idle) {
   const path = directory + '/' + NAME;
   let stat = null;
   try { stat = await $.fs.stat(path); } catch (error) {
-    if (!(await absent($, path, error))) return;
+    if (!(await absent($, path, error))) { n.sharing = false; return; }
   }
+  n.sharing = true;
   const plain = !stat || (stat.kind === 'file' && !stat.isLink);
   let found = null;
   if (stat && plain && stat.size <= BOUND) {
     try {
       const raw = await $.fs.read(path);
-      if (raw.length <= BOUND) found = parseShared(raw, await $.clock.now());
+      const any = raw.length <= BOUND ? parseShared(raw, Infinity) : null;
+      const now = await $.clock.now();
+      if (any && any.at > now) n.untrusted = Math.max(n.untrusted, any.at);
+      else found = any;
     } catch { /* Unreadable: nothing to take. */ }
   }
   try {

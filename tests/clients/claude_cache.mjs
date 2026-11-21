@@ -1824,7 +1824,7 @@ for (const [name, reply, again] of [
   ['a billing error', failed(402, 'billing_error'), false],
   ['a model not found', failed(404, 'model_not_found'), false],
   ['nothing to fork', { isAnswered: false, reason: 'nothing-to-fork' }, false],
-  ['an abort', { isAnswered: false, reason: 'aborted', usage: ZERO }, false],
+  ['an abort with nothing else changed', { isAnswered: false, reason: 'aborted', usage: ZERO }, true], // Round 2, N7.
   ['an empty result', { isAnswered: false, reason: 'empty-reply', usage: ZERO }, true],
   ['no result at all', null, true],
   ['a timeout', failed(null, 'unknown'), true],
@@ -1928,5 +1928,114 @@ test('a compaction during which the state changes keeps the newer state, not the
     await h.advance(30000);
     assert.doesNotMatch(receiptOf(h).state, /compacted/, name);
     assert.equal(await h.badge(), line, name);
+  }
+});
+
+// U3 review, round 2 (record/u3-review-2026-11-21, N1 to N7) and the mutations that survived it.
+test('an abort while your own message supersedes the refresh is not retried', async () => {
+  let h;
+  h = await harness({}, { fork: async () => {
+    await h.emit('turn.start', { turnId: 'next' }); // The message changes the epoch first.
+    return { isAnswered: false, reason: 'aborted', usage: ZERO };
+  } });
+  await h.turn(); await h.advance(55 * MIN); assert.equal(h.calls.length, 1);
+  assert.equal(receiptOf(h).last_refresh.outcome, 'superseded');
+  await h.finish(); await h.advance(5 * MIN); assert.equal(h.calls.length, 1);
+});
+
+test('when the shared file cannot be checked, the pane says the shared figure is unavailable here', async () => {
+  const h = await harness({}, { limits: [five(86)] });
+  h.stats.set(SHARED, Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' }));
+  await h.respond(); await h.advance(30000);
+  assert.match(await h.details(), /^Shared usage figure: unavailable here; this session shows only its own$/m);
+  h.stats.delete(SHARED); await h.advance(30000); // Plainly absent again: sharing resumes and the line goes.
+  assert.doesNotMatch(await h.details(), /Shared usage figure/);
+  assert.equal(h.files.get(SHARED), reading(START, fiveAt(86)));
+});
+
+test('a higher shared figure is still ignored on a window without a reset or on a moved reset', async () => {
+  const h = await harness({}, { limits: [five(90), week(60)] });
+  await h.respond(); await h.advance(MIN);
+  h.files.set(SHARED, reading(h.now(), { ...fiveAt(91), seven_day: { percent: 70, resets_at_ms: null } }));
+  await h.advance(30000);
+  assert.match(await h.details(), /^Weekly usage: 60% · resets in 2d 23h · as of 2m ago$/m);
+  const over = await harness({}, { limits: [five(90), week(60, START + 10 * MIN)] }); // Its weekly window is over.
+  await over.respond(); await over.advance(15 * MIN);
+  over.files.set(SHARED, reading(over.now(), { ...fiveAt(91), seven_day: { percent: 70, resets_at_ms: START + 7 * 24 * HOUR } }));
+  await over.advance(30000);
+  assert.doesNotMatch(await over.details(), /Weekly usage/);
+});
+
+test("a shared 5-hour window whose reset has passed admits nothing, even within two minutes of this session's", async () => {
+  const h = await harness({}, { limits: [five(80, START + 10 * MIN)] });
+  await h.respond(); await h.advance(9 * MIN);
+  h.files.set(SHARED, reading(START + 8 * MIN, fiveAt(90, START + 9 * MIN)));
+  await h.advance(30000); // Its reset passed at 9m; this session's comes at 10m.
+  assert.equal(await h.badge(), 'neosian · keep-warm ready');
+});
+
+test('a shared reading below the kept figure changes nothing, not even the reset time', async () => {
+  const h = await harness({}, { limits: [five(90)] });
+  await h.respond(); await h.advance(MIN);
+  h.files.set(SHARED, reading(h.now(), fiveAt(88, START + 2 * HOUR + MIN)));
+  await h.advance(30000);
+  assert.match(await h.details(), /^5-hour usage: 90% · resets in 1h 59m · as of 2m ago$/m);
+});
+
+test('taking a shared reading keeps the later of the two reset times', async () => {
+  const h = await harness({}, { limits: [five(99.6, START + 56 * MIN), week(41)] });
+  await h.turn(); await h.advance(MIN);
+  h.files.set(SHARED, reading(h.now(), { five_hour: { percent: 99.6, resets_at_ms: START + 54 * MIN }, ...WEEKLY }));
+  await h.advance(55 * MIN); // At 55m this session's window is still on: the gate holds the refresh.
+  assert.deepEqual([h.calls.length, receiptOf(h).state], [0, 'Usage limit reached · keep-warm paused']);
+});
+
+test('a reading in the file from before a backward clock step is never taken as recent', async () => {
+  const h = await harness({}, { limits: [five(86, START + 3 * HOUR), week(40)] });
+  await h.turn(); await h.advance(5 * MIN);
+  h.files.set(SHARED, reading(START + 5 * MIN + 20000, fiveAt(88, START + 3 * HOUR))); // After this session's last tick.
+  h.elapse(25000); h.elapse(-HOUR); await h.beat(); // The clock steps back an hour before the next tick.
+  await h.advance(HOUR + 2 * MIN);
+  assert.equal(await h.badge(), 'neosian · cache paused · next message may be cold · usage 86% (age unknown)');
+  assert.doesNotMatch(await h.details(), /another session/);
+});
+
+test("a backward clock step under a minute keeps the figures' times; a minute or more clears them", async () => {
+  for (const [back, age] of [[1, '(52m ago)'], [59000, '(51m ago)'], [60000, '(age unknown)'], [61000, '(age unknown)']]) {
+    const h = await harness({}, { limits: [five(86, START + 3 * HOUR)] });
+    await h.turn(); await h.advance(12 * MIN);
+    h.elapse(-back); await h.beat();
+    await h.advance(40 * MIN);
+    assert.ok((await h.badge()).endsWith(` · usage 86% ${age}`), `${back}: ${await h.badge()}`);
+  }
+});
+
+test('an own reading taken just before a backward clock step is never written to the shared file', async () => {
+  const h = await harness({}, { limits: [five(86)] });
+  await h.respond(); await h.advance(5 * MIN); // Its reading at the start is published.
+  await h.respond(); // A new one at 5m, not yet published.
+  h.elapse(-HOUR); await h.beat(); await h.advance(5 * MIN);
+  assert.equal(h.files.get(SHARED), reading(START, fiveAt(86)));
+});
+
+test('a figure dated after now reads "as of unknown" even before the next sample sees the step', async () => {
+  const h = await harness({}, { limits: [five(86, START + 3 * HOUR)] });
+  await h.turn(); await h.advance(5 * MIN);
+  h.elapse(-HOUR);
+  await h.emit('session.compact', { trigger: 'auto' }, { messages: [], tokensAfter: 16384 }); // It redraws at once.
+  assert.match(await h.details(), /^5-hour usage: 86% · .* · as of unknown$/m);
+  assert.match(await h.badge(), / · usage 86% \(age unknown\)$/);
+});
+
+test('a missing shared file is recognised by ENOENT in the code and in the message, each alone', async () => {
+  for (const [name, failure] of [
+    ['by code', Object.assign(new Error('no such file or directory'), { code: 'ENOENT' })],
+    ['by message', new Error("ENOENT: no such file or directory, stat '/observations/usage.shared.json'")],
+  ]) {
+    const h = await harness({}, { limits: [five(86)] });
+    h.$.fs.exists = async () => { throw new Error('exists unavailable'); }; // Only the stat error can tell.
+    h.stats.set(SHARED, failure);
+    await h.respond(); await h.advance(30000);
+    assert.equal(h.files.get(SHARED), reading(START, fiveAt(86)), name);
   }
 });

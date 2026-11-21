@@ -13,15 +13,17 @@ automatic cold rebuild, conversation message, tool execution or memory mutation
 is requested. The feature remains enabled until you close the session.
 
 A refresh Claude Code does not answer at all, with no tokens counted, after a
-failure that may clear (a timeout or dropped connection, an overload, a server
-error, or an empty result) is retried once, 45 to 75 seconds
-later, if the session is still idle, keep-warm was not turned off in between,
+failure that may clear (a timeout or dropped connection, an abort, an overload,
+a server error, or an empty result) is retried once, 45 to 75 seconds
+later, if the session is still idle, nothing has superseded the refresh (your
+own message does), keep-warm was not turned off in between,
 the model is unchanged, the usage checks below still allow it and the cache
 estimate has more than its 30-second margin left. A retry that verifies
 continues as a normal refresh; a second failure pauses as before. A refresh
 refused for a rate limit, failed authentication, an invalid request (HTTP
-400, 401, 403 or 413), a billing error, an unknown model, nothing to fork, an
-abort, or one that counted tokens without verifying, is never retried. At most one retry follows each warm cache estimate. After a
+400, 401, 403 or 413), a billing error, an unknown model, nothing to fork, or
+one that counted tokens without verifying, is never retried. At most one
+retry follows each warm cache estimate. After a
 compaction the line reads `context compacted`, adding
 `next message writes 16k+ tokens` when Claude Code counts the compacted
 conversation: that message writes at least that much. No request follows a
@@ -70,23 +72,29 @@ writes its own reading after one of its responses and reads the file every
 taken only when both it and the session know the 5-hour window with a reset
 still ahead and the two resets agree (Claude Code's reset times fall on
 ten-minute marks, so this means the same mark), and a weekly window both know
-agrees too; the weekly window alone never admits one, and a session whose own
-5-hour window has passed takes nothing until its next response. From such a
-reading the session takes a window it already holds, on the same reset, when
-the reading is newer and its figure is not lower: a shared reading never
-starts a window or lowers a figure. An idle session therefore shows the
+agrees too; the weekly window alone never admits one, so an account with only
+a weekly window does not share, and a session whose own 5-hour window has
+passed takes nothing until its next response. From such a reading the session
+takes a window it already holds, on the same reset, when the reading is newer
+and its figure is not lower, keeping the later of the two reset times: a
+shared reading never starts a window, lowers a figure or ends a window
+earlier. An idle session therefore shows the
 account's current figure without making a request; the notes and the checks
 before a refresh use it too, so a refresh the account's figure would hold
 back is not sent. The line adds the figure's age once it is older than ten
 minutes, for example `usage 85% (40m ago)`, and `/neosian-cache` always gives
 it, marking a figure another session read. The age is that of the last
-reading showing at least the figure; after the clock steps back it is
-unknown, `(age unknown)`, until a new reading.
+reading showing at least the figure. After the clock steps back a minute or
+more it is unknown, `(age unknown)`, until a new reading, and no shared
+reading dated before the step is taken; a smaller correction keeps the ages.
 Usage spent on another machine, in the Claude apps, by `-p` runs or under
 another Claude configuration directory is not seen until a session here gets
 its next response. Two accounts whose 5-hour windows reset at the same
 ten-minute mark and that write to the same directory would be taken for one.
-An unreadable, half-written or future-dated file is ignored.
+An unreadable, half-written or future-dated file is ignored. When the system
+cannot say whether the file is there, nothing is shared and `/neosian-cache`
+says `Shared usage figure: unavailable here; this session shows only its
+own`.
 
 The host's status is an estimate, not a server cache probe. A cache miss can
 only be detected after a request, and the public fork API has no output-token

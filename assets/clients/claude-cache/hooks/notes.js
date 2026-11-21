@@ -49,7 +49,9 @@ export async function sampleUsage($, n) {
   n.fresh = false;
   try {
     const now = await $.clock.now();
-    if (now < n.clock) { // The clock stepped back: no reading's time can be trusted.
+    // A minute or more back, no reading's time can be trusted; a smaller
+    // correction leaves the ages at most a minute off and keeps them.
+    if (n.clock - now >= 60000) {
       rewind(n.meter);
       n.reading = null;
       n.untrusted = Math.max(n.untrusted, n.clock); // A shared reading up to then may be as old.
@@ -114,7 +116,7 @@ function reserve(n, now) {
 export function noteSummary(n, now) {
   const current = assess(n.meter, now, reserve(n, now)).map(w => ({ ...w, at: n.meter[w.kind].at,
     shared: n.meter[w.kind].shared }));
-  return { windows: current, last: n.last,
+  return { windows: current, last: n.last, sharing: n.sharing,
     // Waiting is shown only if the next refresh would be sent, not held back.
     waiting: gate(n.meter, n.costs, now, n.hours) ? null : waiting(n.meter, n.last, now, n.hours),
     notes: !n.enabled ? 'off' : n.metered && n.templates && n.sampled ? 'on' : 'unavailable' };

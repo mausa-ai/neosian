@@ -66,26 +66,30 @@ phase close names the version.
   (Claude Code's `reason`, `error` kind and HTTP `status`, never a message)
   and `first_attempt`, and `outcome` gains `unanswered`; `/neosian-cache`
   shows the reason. A refresh not answered at all, with no tokens counted,
-  after a timeout, an overload, a server error or an empty result is retried
-  once 45 to 75 seconds later while the session is idle, keep-warm stays on,
-  the model is unchanged, the usage checks allow it and the cache estimate
-  has more than its 30-second margin left; a second failure pauses as before.
-  A rate-limit refusal, failed authentication, an invalid request, a billing
-  error, an unknown model, nothing to fork, an abort, or a refresh that
-  counted tokens without verifying, is never retried.
+  after a timeout, an abort, an overload, a server error or an empty result
+  is retried once 45 to 75 seconds later while the session is idle, nothing
+  has superseded it (your own message does), keep-warm stays on, the model
+  is unchanged, the usage checks allow it and the cache estimate has more
+  than its 30-second margin left; a second failure pauses as before. A
+  rate-limit refusal, failed authentication, an invalid request, a billing error,
+  an unknown model, nothing to fork, or a refresh that counted tokens
+  without verifying, is never retried.
 - After a compaction the neosian line reads `context compacted`, adding
   `next message writes 16k+ tokens` when Claude Code counts the compacted
   conversation, instead of `cache paused · next message may be cold`. No
   request is made after a compaction.
-- The usage figure on the neosian line stays current while a session is
-  idle. Interactive sessions sharing an observation directory share their
-  newest reading through `usage.shared.json` beside the session files (the
+- The usage figure on the neosian line stays current while a session is idle.
+  Interactive sessions sharing an observation directory share their newest
+  reading through `usage.shared.json` beside the session files (the
   reading's time and, per window, percentage and reset time, nothing else).
   A session takes it only when both 5-hour windows are current on the same
-  reset, never on the weekly window alone, and then only raises a window it
-  holds, from a newer reading; the notes and the checks before a refresh use
-  it too. The line adds the figure's age once it is older than ten minutes
-  (`usage 85% (40m ago)`, or `(age unknown)` after the clock steps back), and
+  reset, never on the weekly window alone (an account with only a weekly
+  window does not share), and then only raises a window it holds, from a
+  newer reading, keeping the later reset time; the notes and the checks
+  before a refresh use it too. When the file's state cannot be told,
+  `/neosian-cache` says the shared figure is unavailable here. The line adds
+  the figure's age once it is older than ten minutes (`usage 85% (40m ago)`,
+  or `(age unknown)` after the clock steps back a minute or more), and
   `/neosian-cache` always gives it. The receipt's `usage` gains `read_at_ms`
   per window. No request is made to learn the figure; an unreadable,
   half-written or future-dated file is ignored.

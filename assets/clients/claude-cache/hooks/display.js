@@ -29,15 +29,16 @@ function why({ reason, error, status }) {
 }
 
 // How old a figure is, rounded up as reset times are: never newer than it is.
-// Without a known time (after the clock stepped back) it claims nothing.
+// Without a known time, or one more than a minute ahead (the clock stepped
+// back since), it claims nothing; less than that ahead is "just now".
 function ago(at, now) {
-  if (typeof at !== 'number' || at > now) return 'unknown';
+  if (typeof at !== 'number' || at > now + 60000) return 'unknown';
   return now - at < 60000 ? 'just now' : `${span(now - at)} ago`;
 }
 
 // Usage figures are the host's estimates; which note is due is decided in usage.js.
 // The pane always says how old each is; the line once it is older than ten minutes.
-function limits({ windows, notes, last }, now) {
+function limits({ windows, notes, last, sharing }, now) {
   const lines = windows.map(({ kind, p, resetsAt, at, shared }) => {
     const label = LABELS[kind][0].toUpperCase() + LABELS[kind].slice(1);
     return `${label} usage: ${percent(p)}%${resetsAt === null ? '' : ` · resets in ${span(resetsAt - now)}`}` +
@@ -48,6 +49,8 @@ function limits({ windows, notes, last }, now) {
   const top = windows.filter(w => w.level).sort((a, b) => wraps(b) - wraps(a) || b.p - a.p)[0];
   const since = top && ago(top.at, now);
   const old = since === 'unknown' ? ' (age unknown)' : since && now - top.at > 10 * 60000 ? ` (${since})` : '';
+  // The shared file's state could not be told (share.js): nothing is shared here.
+  if (sharing === false) lines.push('Shared usage figure: unavailable here; this session shows only its own');
   return { lines: ['', ...lines, `Usage notes: ${notes}`], badge: top ? `usage ${percent(top.p)}%${old}` : '',
     wrap: Boolean(top && wraps(top)) };
 }

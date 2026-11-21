@@ -249,10 +249,11 @@ without automatic refresh; setup does not change Claude's TTL.
 
 A refresh that Claude Code does not answer at all, with no tokens counted,
 after a failure that may clear on its own (a timeout or dropped connection, an
-overload, a server error, or an empty result) is retried once,
+abort, an overload, a server error, or an empty result) is retried once,
 at the first 30-second check at least 45 seconds later: 45 to 75 seconds after
-it. The retry is sent only if the session is still idle, keep-warm was not
-turned off in between (even if it was turned on again), the model is
+it. An abort that comes with your own message is not: the message supersedes
+the refresh. The retry is sent only if the session is still idle, keep-warm
+was not turned off in between (even if it was turned on again), the model is
 unchanged, the usage checks under "Waiting for a reset" still allow a refresh,
 and the cache estimate has more than its 30-second margin left; otherwise
 keep-warm pauses with the reason that applies. A retry that verifies continues
@@ -263,8 +264,8 @@ found may be gone. Nor is one that sending again cannot fix: failed
 authentication or an invalid request (Claude Code's `authentication_failed`
 or `invalid_request` kind, or HTTP 400, 401, 403 or 413), a billing error or
 an unknown model (kinds Claude Code documents as not clearing on their own),
-nothing to fork, or an abort (the turn that forked was interrupted). At most one retry follows each warm cache estimate, the one
-a message or a verified refresh established. While the retry is due the line
+or nothing to fork. At most one retry follows each warm cache estimate, the
+one a message or a verified refresh established. While the retry is due the line
 reads `cache ~4m · refresh retry pending` in amber.
 
 A compaction replaces the conversation, so keep-warm waits for your next
@@ -420,8 +421,9 @@ Usage notes: on
 An age under a minute reads `as of just now`. Ages are rounded up, as reset
 times are, and count from the last reading that showed at least the figure,
 so a figure is never shown as newer than it is. After the computer's clock
-steps back, no reading's time is known: the line reads `usage 87% (age
-unknown)` and the panel `as of unknown` until a new reading arrives.
+steps back a minute or more, no reading's time is known: the line reads
+`usage 87% (age unknown)` and the panel `as of unknown` until a new reading
+arrives. A smaller correction keeps the ages, at most a minute off.
 
 The session's refresh receipt gains `usage` (per window, `percent`,
 `resets_at_ms` and `read_at_ms`, the time of the window's last reading) and
@@ -455,13 +457,15 @@ tell one account from another: a reading is taken only when both it and the
 session know the 5-hour window with a reset still ahead and the two resets
 agree (within two minutes, which means the same ten-minute mark), and a weekly
 window both know with a reset still ahead agrees too. The weekly window alone
-never admits a reading. A session that has had no response of its own yet, or
-whose own 5-hour window has passed, takes nothing until its next response.
+never admits a reading, so an account with only a weekly window does not
+share. A session that has had no response of its own yet, or whose own 5-hour
+window has passed, takes nothing until its next response.
 
 From a reading of the same account the session takes a window it already
 holds, on the same reset, when the reading is newer than its own last reading
-of that window and its figure is not lower. A shared reading never starts a
-window, never lowers a figure, adds no window the session lacks, and a window
+of that window and its figure is not lower, and keeps the later of the two
+reset times. A shared reading never starts a window, never lowers a figure,
+never ends a window earlier, adds no window the session lacks, and a window
 without a reset time in it is ignored. A figure taken this way is used like
 the session's own by the line, the notes and the checks before a refresh, so
 an idle session at 97% by another session's reading does not send a refresh
@@ -473,9 +477,10 @@ one write per new reading. A file that is not JSON, is half-written, has
 another format or any value out of range, is dated in the future, is larger
 than 1 KiB, or is a link or a directory is ignored, and the session keeps its
 own figures. So is the file when the system cannot say whether it is there
-(a failure other than its absence): nothing is then read or written. After the
-clock steps back, no shared reading dated before the step is taken. `-p` runs
-neither read nor write it.
+(a failure other than its absence): nothing is then read or written, and
+`/neosian-cache` shows `Shared usage figure: unavailable here; this session
+shows only its own`. After the clock steps back a minute or more, no shared
+reading dated before the step is taken. `-p` runs neither read nor write it.
 
 Not promised:
 
