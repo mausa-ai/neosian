@@ -9,7 +9,8 @@ given to $STANDIN_DIR/log.jsonl. Words in the prompt choose a behavior:
 commands), `leave` (a process left in the group when the harness exits),
 `hold` (a process with no environment, in its own session, holding stdout),
 `imitate` (text shaped like neosian's observations), `forge` (announce the
-session named by $STANDIN_FORGE_ID), `bad-session`, `record`, `record-noenv`
+session named by $STANDIN_FORGE_ID), `bad-session`, `record`, `record-noenv`, `probe-ro` (start the neosian server a read-only
+child is given and try a read and a write), `big-answer:N`
 (the hooks run without the parent variables, as when a harness does not pass
 its environment to hooks)
 (run the neosian record hooks for the turn) and `probe` (start the child's
@@ -74,12 +75,23 @@ def codex_env(argv: list[str], key: str) -> dict[str, str]:
 
 def child_tools(env: dict[str, str], cwd: str) -> list[str]:
     """What the child's own neosian MCP server lists, started as the harness would."""
+    answers = serve([os.environ["STANDIN_NEOSIAN"], "mcp"], env, cwd, [])
+    return [tool["name"] for tool in answers[1]["result"]["tools"]]
+
+
+def serve(
+    command: list[str], env: dict[str, str], cwd: str, calls: list[dict[str, Any]]
+) -> list[Any]:
+    """Speak MCP to one server: initialize, list its tools, then `calls`."""
     lines = [
         {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
         {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+    ] + [
+        {"jsonrpc": "2.0", "id": 3 + n, "method": "tools/call", "params": call}
+        for n, call in enumerate(calls)
     ]
     done = subprocess.run(
-        [os.environ["STANDIN_NEOSIAN"], "mcp"],
+        command,
         input="".join(json.dumps(line) + "\n" for line in lines),
         capture_output=True,
         text=True,
@@ -88,8 +100,46 @@ def child_tools(env: dict[str, str], cwd: str) -> list[str]:
         timeout=30,
         check=False,
     )
-    answers = [json.loads(line) for line in done.stdout.splitlines()]
-    return [tool["name"] for tool in answers[-1]["result"]["tools"]]
+    return [json.loads(line) for line in done.stdout.splitlines()]
+
+
+def read_only_server(program: str, argv: list[str], cwd: str) -> dict[str, Any]:
+    """The neosian server a read-only child gets, as the harness would start
+    it: Claude's strict configuration, or Codex's registered entry with the
+    run's overrides. Tries a read and a write."""
+    if program == "claude":
+        config = json.loads(argv[argv.index("--mcp-config") + 1])
+        entry = config["mcpServers"]["neosian-memory"]
+        command = [entry["command"], *entry["args"]]
+        env = dict(os.environ)
+    else:
+        key = os.environ.get("STANDIN_CODEX_KEY", "neosian-memory")
+        args = ["mcp"]
+        for override in overrides(argv):
+            found = re.fullmatch(r"mcp_servers\.([^.]+)\.args=(.*)", override)
+            if found and found.group(1) == key:
+                args = json.loads(found.group(2))
+        command = [os.environ["STANDIN_NEOSIAN"], *args]
+        env = codex_env(argv, key)
+    calls = [
+        {"name": "memory", "arguments": {"command": "view", "path": "/project"}},
+        {
+            "name": "memory",
+            "arguments": {
+                "command": "create",
+                "path": "/project/child-wrote",
+                "content": "x",
+            },
+        },
+    ]
+    answers = serve(command, env, cwd, calls)
+    return {
+        "args": command[1:],
+        "tools": [tool["name"] for tool in answers[1]["result"]["tools"]],
+        "view_error": answers[2]["result"]["isError"],
+        "create_error": answers[3]["result"]["isError"],
+        "create_text": answers[3]["result"]["content"][0]["text"],
+    }
 
 
 def record(
@@ -123,6 +173,19 @@ def record(
         )
 
 
+def codex_mcp_list() -> int:
+    """`codex mcp list --json`: the configured servers by name."""
+    log({"program": "codex", "mcp_list": True})
+    registered = os.environ.get("STANDIN_CODEX_KEY", "neosian-memory")
+    others = json.loads(os.environ.get("STANDIN_CODEX_SERVERS", '["playwright"]'))
+    names = ([registered] if registered else []) + others
+    emit_list = [
+        {"name": n, "enabled": True, "transport": {"type": "stdio"}} for n in names
+    ]
+    sys.stdout.write(json.dumps(emit_list) + "\n")
+    return 0
+
+
 def codex_mcp_get(argv: list[str]) -> int:
     key = argv[2]
     log({"program": "codex", "mcp_get": key})
@@ -139,6 +202,8 @@ def main() -> int:
     argv = sys.argv[1:]
     if program == "codex" and argv[:2] == ["mcp", "get"]:
         return codex_mcp_get(argv)
+    if program == "codex" and argv[:2] == ["mcp", "list"]:
+        return codex_mcp_list()
     prompt = sys.stdin.read()
     words = prompt.split()
     entry: dict[str, Any] = {
@@ -158,9 +223,17 @@ def main() -> int:
     }
     if program == "codex":
         registered = os.environ.get("STANDIN_CODEX_KEY", "neosian-memory")
+        known = [registered] + json.loads(
+            os.environ.get("STANDIN_CODEX_SERVERS", '["playwright"]')
+        )
+        entry["switched_off"] = [
+            found.group(1)
+            for override in overrides(argv)
+            if (found := re.fullmatch(r"mcp_servers\.([^.]+)\.enabled=false", override))
+        ]
         for override in overrides(argv):
             found = re.match(r"mcp_servers\.([^.]+)\.", override)
-            if found and found.group(1) != registered:
+            if found and found.group(1) not in known:
                 sys.stderr.write("Error: failed to load bootstrap configuration\n")
                 sys.stderr.write(
                     f"    invalid transport\n    in `mcp_servers.{found.group(1)}`\n"
@@ -184,6 +257,8 @@ def main() -> int:
         if program == "codex":
             env = codex_env(argv, os.environ.get("STANDIN_CODEX_KEY", "neosian-memory"))
         entry["child_tools"] = child_tools(env, os.getcwd())
+    if "probe-ro" in words and program in ("claude", "codex"):
+        entry["read_only_server"] = read_only_server(program, argv, os.getcwd())
     log(entry)
     if program == "claude":
         session = flag(argv, "--resume") or flag(argv, "--session-id") or "none"
@@ -235,6 +310,11 @@ def main() -> int:
             while left > 0:
                 say("b" * min(999, left))
                 left -= 1000
+    for word in words:
+        if word.startswith("events:") and program == "codex":
+            for n in range(int(word[7:])):
+                item = {"id": f"c{n}", "type": "command_execution", "command": f"c{n}"}
+                emit({"type": "item.completed", "item": item | {"exit_code": 0}})
     if "deny" in words:
         if program == "claude":
             emit(
@@ -317,6 +397,9 @@ def main() -> int:
         sys.stderr.write("the stand-in failed on purpose\n")
         return 1
     answer = "echo: " + prompt.strip().splitlines()[0][:200]
+    for word in words:
+        if word.startswith("big-answer:"):
+            answer = "a" * int(word[11:])
     if "record" in words or "record-noenv" in words:
         agent = {"claude": "claude-code", "codex": "codex"}.get(program, "opencode")
         record(agent, session, prompt, answer, "record" in words)

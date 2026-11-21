@@ -54,8 +54,13 @@ approval of the tool is the gate; modes are each harness's own presets,
 differ in strength, and a child runs with its directory's own configuration
 except where the docs say otherwise. A child that may run commands can start
 any program; the guard against children starting children is a guard against
-accidents, not a sandbox. The turn's watcher accepts a checked plan, never a
-command, and only where the tool is enabled. The prompt travels on standard
+accidents, not a sandbox. A `write` child can change files that tools run
+later; review what it changed. In `read-only`, Claude Code and Codex children
+reach no MCP server but this neosian, started with every mount read-only. The
+turn's watcher accepts a checked plan, never a command, with exactly the
+tool's own rules. Letting an agent run `neosian` commands in a shell is
+equivalent to letting it use every neosian tool that is enabled, this one
+included. The prompt travels on standard
 input, commands run without a shell, and ending a turn ends the harness and
 the descendants it can find, best effort. Read `neosian docs harness` for the
 per-harness limits.

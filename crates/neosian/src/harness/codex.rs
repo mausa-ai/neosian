@@ -2,11 +2,13 @@
 //! with approval never (without it the read-only sandbox did not hold),
 //! the sandbox as the preset, and the child denied `harness` through
 //! TMPDIR's marker and, per registered key, an env member and the key's
-//! own `disabled_tools` with `harness` added.
+//! own `disabled_tools` with `harness` added. In `read-only` (#431) every
+//! other configured MCP server is switched off for the run and neosian's
+//! entry is given read-only arguments.
 
 use serde_json::{Map, Value, json};
 
-use super::adapter::{CodexKey, Mode, Plan, Request};
+use super::adapter::{CodexKey, Mode, Plan, READ_ONLY_TOOLS, Request};
 use super::events::{ERROR_BYTES, Event, head, observed};
 
 /// The keys the server may be registered under, probed with `codex mcp get`.
@@ -15,6 +17,26 @@ pub const KEYS: [&str; 2] = ["neosian-memory", "neosian"];
 /// A TOML basic string (JSON's escapes are TOML's for these characters).
 fn toml_string(text: &str) -> String {
     Value::String(text.to_string()).to_string()
+}
+
+/// A TOML inline array of basic strings.
+fn toml_list(items: &[String]) -> String {
+    let quoted: Vec<String> = items.iter().map(|item| toml_string(item)).collect();
+    format!("[{}]", quoted.join(","))
+}
+
+/// The server names `codex mcp list --json` reported.
+pub fn server_names(answer: &str) -> Option<Vec<String>> {
+    let Ok(Value::Array(servers)) = serde_json::from_str::<Value>(answer) else {
+        return None;
+    };
+    Some(
+        servers
+            .iter()
+            .filter_map(|server| server.get("name").and_then(Value::as_str))
+            .map(str::to_string)
+            .collect(),
+    )
 }
 
 pub fn plan(request: &Request) -> Plan {
@@ -43,19 +65,45 @@ pub fn plan(request: &Request) -> Plan {
     if let Some(model) = request.model {
         argv.extend(["-m".to_string(), model.to_string()]);
     }
+    let read_only = request.server.filter(|_| request.mode == Mode::ReadOnly);
+    if read_only.is_some() {
+        // Every other configured server is off for this run, and the apps
+        // Codex serves from the account as `codex_apps` too (#431).
+        argv.extend(["--disable".to_string(), "apps".to_string()]);
+        for name in request.codex_off {
+            argv.extend([
+                "-c".to_string(),
+                format!("mcp_servers.{name}.enabled=false"),
+            ]);
+        }
+    }
     for found in request.codex_keys {
         let key = found.key;
         let mut disabled: Vec<String> = found.disabled.clone();
         if !disabled.iter().any(|tool| tool == "harness") {
             disabled.push("harness".to_string());
         }
-        let list: Vec<String> = disabled.iter().map(|tool| toml_string(tool)).collect();
         argv.extend([
             "-c".to_string(),
             format!("mcp_servers.{key}.env.{}=\"1\"", super::CHILD_ENV),
             "-c".to_string(),
-            format!("mcp_servers.{key}.disabled_tools=[{}]", list.join(",")),
+            format!("mcp_servers.{key}.disabled_tools={}", toml_list(&disabled)),
         ]);
+        if let Some(server) = read_only {
+            // The entry's own command, started with every mount read-only;
+            // under a profile, only the tools that cannot change state.
+            argv.extend([
+                "-c".to_string(),
+                format!("mcp_servers.{key}.args={}", toml_list(&server.args)),
+            ]);
+            if !server.mounted {
+                let allowed: Vec<String> = READ_ONLY_TOOLS.map(String::from).to_vec();
+                argv.extend([
+                    "-c".to_string(),
+                    format!("mcp_servers.{key}.enabled_tools={}", toml_list(&allowed)),
+                ]);
+            }
+        }
     }
     if let Some(thread) = request.resume {
         argv.extend(["resume".to_string(), thread.to_string()]);

@@ -108,7 +108,8 @@ pub fn resolve_mounts(
 }
 
 /// This server's store selection as flags, for the neosian server of a
-/// Claude Code read-only harness child (§40.50, #430).
+/// read-only harness child (§40.50, #430, #431); its mounts are added per
+/// turn from the server's resolved mounts.
 #[cfg(unix)]
 fn store_flags(args: &Mcp) -> Vec<String> {
     let mut flags = Vec::new();
@@ -130,10 +131,6 @@ fn store_flags(args: &Mcp) -> Vec<String> {
     );
     add("--url", args.url.clone());
     add("--schema", args.schema.clone());
-    add("--scope", args.scope.clone());
-    for mount in &args.mount {
-        add("--mount", Some(mount.clone()));
-    }
     flags
 }
 

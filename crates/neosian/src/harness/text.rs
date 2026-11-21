@@ -64,6 +64,7 @@ mod tests {
             "bad_opencode_config",
             "spawn_failed",
             "codex_probe_failed",
+            "codex_unswitchable",
             "opencode_agent",
             "watcher_lost",
             "watch_off",

@@ -5,8 +5,10 @@ tool: |
   asks for work in another harness. start takes agent, prompt, mode
   (read-only, the default, or write), an optional model, and your own session
   ID from the context banner so the child is linked to you; it returns a
-  child ID at once. The child works in this server's own directory, or in a
-  directory the person listed, named with directory. wait returns the child's
+  child ID at once. The child works in this server's own directory when it
+  is below the person's home directory, or in a directory the person listed,
+  named with directory. In read-only mode a child's own neosian tools are
+  read-only too. wait returns the child's
   new words in text, what neosian observed (tool calls, commands, denials) in
   events and, once its turn has ended, its answer; call it again while the
   turn runs. While wait waits, other neosian tools answer after it. send
@@ -22,7 +24,7 @@ params:
   prompt: The instruction for the child's turn, required for start and send.
   mode: read-only (the default) or write, enforced by the child harness.
   model: Optional model name in the child harness's own form.
-  directory: Optional directory the child works in: this server's own (the default) or one listed in [harness] directories.
+  directory: Optional directory the child works in: this server's own (the default, when below the home directory) or one listed in [harness] directories.
   child: The child ID that start returned, required for wait, send and stop.
   session: Your current conversation ID from the session banner, to link the child to you.
   seconds: How long wait may wait for the turn to end, from 0 to 30 seconds.
@@ -56,7 +58,7 @@ no_session: "Child {{child}} has no harness session to continue; its first turn 
 required: "{{field}} is required for {{command}}."
 bad_directory: "directory {{directory}} is not an existing directory."
 not_allowed: "directory {{directory}} is not a directory children may use: a child works in this server's own directory or one listed in [harness] directories of neosian's config.toml."
-need_directory: "This server runs in the home directory or the filesystem root, where a child may not work by default: list a directory in [harness] directories of neosian's config.toml, then name it with directory."
+need_directory: "This server's directory is not below your home directory (or HOME is not set), where a child may not work by default: list a directory in [harness] directories of neosian's config.toml, then name it with directory."
 bad_model: "model must be 1 to 128 characters of letters, digits and . _ : / @ # + -, starting with a letter or digit."
 bad_prompt: "prompt must be 1 byte to 256 KiB."
 bad_session: "session is not a conversation ID: {{error}}"
@@ -64,6 +66,7 @@ bad_seconds: "seconds must be from 0 to 30."
 bad_opencode_config: "OPENCODE_CONFIG_CONTENT in this server's environment is not a JSON object, so the child's agents cannot be added to it."
 spawn_failed: "{{agent}} could not be started: {{error}}"
 opencode_agent: "A child session started by the neosian harness tool in {{mode}} mode."
+codex_unswitchable: "Codex has an MCP server named {{name}}, which an override cannot switch off for one run, so a read-only Codex child cannot start; use write mode or rename that server."
 codex_probe_failed: "codex mcp get {{key}} did not answer: {{error}}"
 watcher_lost: "The turn's watcher ended before the harness; neosian ended the harness and what it could find of its processes."
 watch_off: "harness-watch runs only for a neosian MCP server that enabled the harness tool, and never in a harness child."

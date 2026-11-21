@@ -10,9 +10,10 @@ use std::time::{Duration, Instant};
 
 use serde_json::json;
 
-use super::adapter::{self, Agent};
+use super::adapter::{self, Agent, Mode};
 use super::link::{self, Naming};
-use super::plan::{WireKey, WirePlan};
+use super::plan::WirePlan;
+use super::probe::Others;
 use super::registry::{Registry, available, shown};
 use super::render::Child;
 use super::text::say;
@@ -42,6 +43,34 @@ fn announce(memory: &Memory, naming: &Naming, agent: Agent) -> Announce {
     })
 }
 
+/// The store flags a read-only child's neosian server is started with
+/// (#431): the server's own selection (the default home made explicit, as
+/// Codex passes MCP servers no NEOSIAN_HOME) and, unless a profile fixes
+/// them, every mount of this server, which the watcher makes read-only.
+fn store(registry: &Registry, memory: &Memory) -> Vec<String> {
+    let mut flags = registry.selection.clone();
+    if memory.store.profile().is_some() {
+        return flags;
+    }
+    if flags.is_empty()
+        && let Ok(home) = crate::home::home()
+    {
+        flags.extend(["--root".to_string(), home.display().to_string()]);
+    }
+    for mount in &memory.mounts {
+        let access = match (mount.read_only, mount.edit_only) {
+            (true, _) => ",ro",
+            (_, true) => ",eo",
+            _ => "",
+        };
+        flags.extend([
+            "--mount".to_string(),
+            format!("scope={},path={}{access}", mount.scope, mount.path),
+        ]);
+    }
+    flags
+}
+
 /// One headless run of the child's harness with `prompt` on its stdin.
 pub fn turn(
     registry: &Registry,
@@ -63,22 +92,32 @@ pub fn turn(
             &[("agent", child.agent.name()), ("available", &list)],
         )));
     };
-    let codex_keys = if child.agent == Agent::Codex {
+    if child.agent == Agent::Codex {
+        // Checked here so `start` refuses; the watcher checks again.
         probe::codex_keys(&program, &child.directory).map_err(|(key, error)| {
             Outcome::fail(say(
                 "codex_probe_failed",
                 &[("key", &key), ("error", &error)],
             ))
-        })?
-    } else {
-        Vec::new()
-    };
+        })?;
+        if child.mode == Mode::ReadOnly {
+            probe::codex_others(&program, &child.directory).map_err(|others| {
+                Outcome::fail(match others {
+                    Others::Unaddressable(name) => say("codex_unswitchable", &[("name", &name)]),
+                    Others::Unreadable(error) => {
+                        say("codex_probe_failed", &[("key", "list"), ("error", &error)])
+                    }
+                })
+            })?;
+        }
+    }
     if child.agent == Agent::OpenCode {
         let carried = std::env::var(opencode::CONFIG_ENV).ok();
         opencode::config(carried.as_deref())
             .map_err(|_| Outcome::fail(say("bad_opencode_config", &[])))?;
     }
     let new_session = uuid::Uuid::new_v4().to_string();
+    let nonce = uuid::Uuid::new_v4().simple().to_string();
     let wire = WirePlan {
         agent: child.agent.name().to_string(),
         mode: child.mode.name().to_string(),
@@ -88,14 +127,8 @@ pub fn turn(
         resume: child.session.clone(),
         new_session: Some(new_session.clone()),
         parent: child.parent.clone(),
-        codex_keys: codex_keys
-            .into_iter()
-            .map(|key| WireKey {
-                key: key.key.to_string(),
-                disabled: key.disabled,
-            })
-            .collect(),
-        store: registry.store.clone(),
+        store: store(registry, memory),
+        nonce: Some(nonce.clone()),
     };
     // A new session has no turns; a continued one is read now, so the
     // turns that land during this one can be told apart.
@@ -119,6 +152,7 @@ pub fn turn(
         &child.directory,
         limit,
         check,
+        nonce,
     )
     .map_err(|error| spawn_failed(child.agent, &error.to_string()))?;
     turn.before = before;

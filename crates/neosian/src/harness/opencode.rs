@@ -23,7 +23,9 @@ pub fn agent_name(mode: Mode) -> &'static str {
 
 /// One agent's permission rules, in the order OpenCode applies them (the
 /// last match wins). A `write` child may not edit the project's OpenCode
-/// configuration or plugins, which OpenCode would load and run.
+/// configuration or plugins: a second layer behind the project switch, since
+/// OpenCode's rules match case-sensitively and a case-insensitive file system
+/// does not (2.3.2 has no case-insensitive or class syntax).
 fn permission(mode: Mode) -> Value {
     let mut rules = Map::new();
     rules.insert("*".into(), json!("deny"));
@@ -102,13 +104,15 @@ pub fn plan(request: &Request) -> Result<Plan, Unplanned> {
     if let Some(session) = request.resume {
         argv.extend(["--session".to_string(), session.to_string()]);
     }
-    let mut env = vec![(CONFIG_ENV.to_string(), config(request.opencode_config)?)];
-    if request.mode == Mode::ReadOnly {
-        // Observed on 2.3.2: the project's opencode.json (agents, MCP
-        // commands) and .opencode plugins are not loaded; the person's own
-        // configuration and plugins, neosian's recorder among them, are.
-        env.push((PROJECT_OFF_ENV.to_string(), "1".to_string()));
-    }
+    // In both modes (#431). Observed on 2.3.2: the project's and its
+    // ancestors' opencode.json (agents, MCP commands) and .opencode plugins
+    // are not loaded, so nothing a write child writes, in any letter case,
+    // runs in its own session; the person's own configuration and plugins,
+    // neosian's recorder among them, still load.
+    let env = vec![
+        (CONFIG_ENV.to_string(), config(request.opencode_config)?),
+        (PROJECT_OFF_ENV.to_string(), "1".to_string()),
+    ];
     Ok(Plan { argv, env })
 }
 

@@ -31,12 +31,14 @@ pub fn exists(pid: i32) -> bool {
     signal(pid, 0) || std::io::Error::last_os_error().raw_os_error() == Some(1)
 }
 
-/// One row of the process table.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// One row of the process table, with the process's start time so a pid
+/// seen earlier is signalled later only while it is the same process.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Row {
     pub pid: i32,
     pub ppid: i32,
     pub pgid: i32,
+    pub start: String,
 }
 
 /// The process table, or empty when `ps` cannot be read.
@@ -48,7 +50,9 @@ pub fn table() -> Vec<Row> {
         return Vec::new();
     };
     let Ok(output) = Command::new(ps)
-        .args(["-A", "-o", "pid=", "-o", "ppid=", "-o", "pgid="])
+        .args([
+            "-A", "-o", "pid=", "-o", "ppid=", "-o", "pgid=", "-o", "lstart=",
+        ])
         .stdin(Stdio::null())
         .stderr(Stdio::null())
         .output()
@@ -57,12 +61,34 @@ pub fn table() -> Vec<Row> {
     };
     String::from_utf8_lossy(&output.stdout)
         .lines()
-        .filter_map(|line| {
-            let mut numbers = line.split_whitespace().map(str::parse::<i32>);
-            match (numbers.next(), numbers.next(), numbers.next()) {
-                (Some(Ok(pid)), Some(Ok(ppid)), Some(Ok(pgid))) => Some(Row { pid, ppid, pgid }),
-                _ => None,
-            }
+        .filter_map(row)
+        .collect()
+}
+
+/// One line of `ps -o pid= -o ppid= -o pgid= -o lstart=`.
+fn row(line: &str) -> Option<Row> {
+    let mut words = line.split_whitespace();
+    let pid = words.next()?.parse().ok()?;
+    let ppid = words.next()?.parse().ok()?;
+    let pgid = words.next()?.parse().ok()?;
+    let start = words.collect::<Vec<_>>().join(" ");
+    Some(Row {
+        pid,
+        ppid,
+        pgid,
+        start,
+    })
+}
+
+/// The pids of `earlier` that are still the same processes in `now`: the
+/// same pid with the same start time.
+pub fn still(earlier: &[Row], now: &[Row], pids: &BTreeSet<i32>) -> BTreeSet<i32> {
+    pids.iter()
+        .copied()
+        .filter(|pid| {
+            let then = earlier.iter().find(|row| row.pid == *pid);
+            let current = now.iter().find(|row| row.pid == *pid);
+            matches!((then, current), (Some(then), Some(current)) if then.start == current.start)
         })
         .collect()
 }
@@ -125,8 +151,9 @@ pub fn end_group(pgid: i32, grace: Duration) {
     while Instant::now() < deadline && first.iter().any(|pid| exists(*pid)) {
         thread::sleep(Duration::from_millis(50));
     }
+    let earlier = rows;
     let rows = table();
-    let mut left: BTreeSet<i32> = first.into_iter().filter(|pid| exists(*pid)).collect();
+    let mut left = still(&earlier, &rows, &first);
     left.extend(descendants(&rows, &members(&rows, pgid)));
     let roots: Vec<i32> = left.iter().copied().collect();
     left.extend(descendants(&rows, &roots));
@@ -138,44 +165,44 @@ pub fn end_group(pgid: i32, grace: Duration) {
 mod tests {
     use super::*;
 
+    fn at(pid: i32, ppid: i32, pgid: i32, start: &str) -> Row {
+        Row {
+            pid,
+            ppid,
+            pgid,
+            start: start.to_string(),
+        }
+    }
+
     #[test]
     fn descendants_follow_parents_and_never_the_init_process() {
         let rows = [
-            Row {
-                pid: 10,
-                ppid: 1,
-                pgid: 10,
-            },
-            Row {
-                pid: 11,
-                ppid: 10,
-                pgid: 11,
-            },
-            Row {
-                pid: 12,
-                ppid: 11,
-                pgid: 11,
-            },
-            Row {
-                pid: 13,
-                ppid: 1,
-                pgid: 10,
-            },
-            Row {
-                pid: 14,
-                ppid: 2,
-                pgid: 14,
-            },
+            at(10, 1, 10, "Sat Nov 21 01:00:00 2026"),
+            at(11, 10, 11, "Sat Nov 21 01:00:01 2026"),
+            at(12, 11, 11, "Sat Nov 21 01:00:02 2026"),
+            at(13, 1, 10, "Sat Nov 21 01:00:03 2026"),
+            at(14, 2, 14, "Sat Nov 21 01:00:04 2026"),
         ];
         assert_eq!(descendants(&rows, &[10]), BTreeSet::from([10, 11, 12]));
         assert_eq!(descendants(&rows, &[1]), BTreeSet::new());
         assert_eq!(members(&rows, 10), [10, 13]);
         assert!(!signal(1, 0) && !signal(-1, 0) && !signal(0, 0));
         assert!(exists(std::process::id() as i32));
-        assert!(
-            table()
-                .iter()
-                .any(|row| row.pid == std::process::id() as i32)
+        let me = std::process::id() as i32;
+        let now = table();
+        assert!(now.iter().any(|row| row.pid == me && !row.start.is_empty()));
+        assert_eq!(
+            still(&now, &table(), &BTreeSet::from([me])),
+            BTreeSet::from([me])
+        );
+        let reused = [at(11, 1, 11, "Sat Nov 21 02:00:00 2026"), rows[2].clone()];
+        assert_eq!(
+            still(&rows, &reused, &BTreeSet::from([10, 11, 12])),
+            BTreeSet::from([12])
+        );
+        assert_eq!(
+            row("  42     1    42 Sat Nov 21 01:24:51 2026"),
+            Some(at(42, 1, 42, "Sat Nov 21 01:24:51 2026"))
         );
     }
 }

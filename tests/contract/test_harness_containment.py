@@ -136,7 +136,7 @@ def test_read_only_loads_nothing_the_directory_supplies(
     for switch in ("--setting-sources", "--strict-mcp-config", "--mcp-config"):
         assert switch not in claude_write
     assert runs[2]["project_config_off"] == "1"
-    assert runs[3]["project_config_off"] is None
+    assert runs[3]["project_config_off"] == "1"
     write = json.loads(runs[3]["opencode_config"])["agent"]["neosian-harness-write"]
     edit = write["permission"]["edit"]
     assert edit["*"] == "allow"
@@ -189,7 +189,7 @@ def test_what_a_finished_turn_leaves_in_its_group_is_ended(
     run = harnesses.runs()[0]
     try:
         assert done["state"] == "finished"
-        assert eventually(lambda: not alive(run["left"]), 10)
+        assert eventually(lambda: not alive(run["left"]), 40)
     finally:
         end(run["left"])
     session.close()

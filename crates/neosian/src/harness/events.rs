@@ -200,6 +200,11 @@ impl Tail {
     pub fn text(&self) -> &str {
         tail(&self.0, ERROR_BYTES)
     }
+
+    /// Keep only `text`, as when the watcher's own line is taken off.
+    pub fn replace(&mut self, text: &str) {
+        self.0 = text.to_string();
+    }
 }
 
 #[cfg(test)]

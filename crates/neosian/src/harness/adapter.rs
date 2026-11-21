@@ -86,17 +86,35 @@ pub struct CodexKey {
     pub disabled: Vec<String>,
 }
 
-/// This neosian's own MCP server, as a Claude Code read-only child gets it:
-/// the running executable and its store selection, never a command read
-/// from a file.
+/// This neosian's own MCP server as a read-only child gets it (#431): the
+/// running executable and its store selection, never a command read from a
+/// file. With `mounted`, every mount is in `args` and read-only, so every
+/// tool may be allowed; without (a profile selects the mounts), only the
+/// tools that cannot change state are.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct McpServer {
     pub command: String,
     pub args: Vec<String>,
+    pub mounted: bool,
 }
 
 /// The key the child's strict MCP configuration names this server under.
 pub const SERVER_KEY: &str = "neosian-memory";
+
+/// The neosian tools that cannot change state, allowed by name when the
+/// mounts cannot be made read-only.
+pub const READ_ONLY_TOOLS: [&str; 10] = [
+    "list_skills",
+    "load_skill",
+    "recall_turn",
+    "search_history",
+    "docs",
+    "memory_history",
+    "search_memory",
+    "upkeep_review",
+    "knowledge",
+    "changes",
+];
 
 /// What one turn needs to be planned.
 pub struct Request<'a> {
@@ -116,8 +134,11 @@ pub struct Request<'a> {
     pub opencode_config: Option<&'a str>,
     /// The calling session, which the child's record hook names as parent.
     pub parent: Option<&'a str>,
-    /// Claude Code read-only: this neosian's server for the strict config.
+    /// Read-only: this neosian's server, for Claude Code's strict
+    /// configuration and Codex's entry arguments.
     pub server: Option<&'a McpServer>,
+    /// Codex read-only: the other configured MCP servers, switched off.
+    pub codex_off: &'a [String],
 }
 
 /// One turn's command: argv[0] is the program, resolved by the caller.
@@ -200,14 +221,15 @@ pub enum Placed {
     Missing,
     /// The directory is neither this server's own nor listed.
     NotAllowed(PathBuf),
-    /// This server runs in the home directory or the root: a directory
-    /// must be listed and named.
+    /// This server's directory is not strictly below the home directory,
+    /// or there is no home: a directory must be listed and named.
     NeedListed,
 }
 
-/// Where a child may work (§40.50 amended, #430): the server's own
-/// directory, unless that is the home directory or the root, or one the
-/// person listed, compared canonically. `given` is resolved against the
+/// Where a child may work (§40.50, amended by #430 and #431): the server's
+/// own directory when it lies strictly below the home directory, or one the
+/// person listed, compared canonically. Anywhere else, or with no home, a
+/// listed directory must be named. `given` is resolved against the
 /// server's directory.
 pub fn place(
     given: Option<&str>,
@@ -217,10 +239,13 @@ pub fn place(
 ) -> Result<PathBuf, Placed> {
     let canonical = |path: &Path| path.canonicalize().ok().filter(|path| path.is_dir());
     let own = canonical(server);
-    let home = home.and_then(canonical);
-    let own_ok = own
-        .as_ref()
-        .filter(|own| own.parent().is_some() && Some(*own) != home.as_ref());
+    let home = home
+        .filter(|home| !home.as_os_str().is_empty())
+        .and_then(canonical);
+    let own_ok = own.as_ref().filter(|own| {
+        home.as_ref()
+            .is_some_and(|home| own.starts_with(home) && *own != home)
+    });
     let Some(given) = given else {
         return own_ok.cloned().ok_or(Placed::NeedListed);
     };
@@ -229,6 +254,21 @@ pub fn place(
         return Ok(path);
     }
     Err(Placed::NotAllowed(path))
+}
+
+/// The home directory from `HOME`, None when unset or empty.
+pub fn home() -> Option<PathBuf> {
+    std::env::var_os("HOME")
+        .filter(|home| !home.is_empty())
+        .map(PathBuf::from)
+}
+
+/// A Codex server name an override can address as a bare TOML key.
+pub fn bare_key(name: &str) -> bool {
+    !name.is_empty()
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "_-".contains(c))
 }
 
 /// A model name in a conservative character set (§40.50 item 8), never
@@ -256,5 +296,7 @@ pub fn prompt_ok(prompt: &str) -> bool {
 
 #[cfg(test)]
 mod inputs;
+#[cfg(test)]
+mod read_only;
 #[cfg(test)]
 mod tests;

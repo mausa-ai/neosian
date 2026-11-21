@@ -20,7 +20,7 @@ use serde_json::Value;
 use super::adapter::{self, Agent};
 use super::events::{Event, Log, Tail, Text};
 use super::tree::{self, SIGKILL};
-use super::watch::GRACE;
+use super::watch::{EXIT_LINE, GRACE};
 
 /// The longest line of harness output read; the rest of a longer one is skipped.
 const LINE_BYTES: usize = 8 * 1024 * 1024;
@@ -146,6 +146,7 @@ impl Turn {
         dir: &Path,
         limit: Duration,
         announce: Option<Announce>,
+        nonce: String,
     ) -> io::Result<Self> {
         let mut child = Command::new(std::env::current_exe()?)
             .arg("harness-watch")
@@ -187,6 +188,7 @@ impl Turn {
                     .stderr
                     .push(&String::from_utf8_lossy(&chunk[..n]));
             }
+            exit_line(&mut lock(&err), &nonce);
         });
         let stop = Arc::new(AtomicBool::new(false));
         let asked = Arc::clone(&stop);
@@ -274,8 +276,29 @@ fn supervise(
     // left nothing, and this finds nothing.
     tree::end_group(group, GRACE);
     let mut shared = lock(shared);
-    shared.end = Some(end);
-    shared.ended_at = Some(Instant::now());
+    if shared.end.is_none() {
+        shared.end = Some(end);
+        shared.ended_at = Some(Instant::now());
+    }
+}
+
+/// The watcher's own last line on stderr, `EXIT_LINE <nonce> <status>`,
+/// which ends the turn before the watcher has finished cleaning up (#431).
+/// Only the turn's nonce counts, so a harness cannot write it.
+fn exit_line(shared: &mut Shared, nonce: &str) {
+    let text = shared.stderr.text().to_string();
+    let marker = format!("{EXIT_LINE} {nonce} ");
+    let Some(at) = text.rfind(&marker) else {
+        return;
+    };
+    let Ok(code) = text[at + marker.len()..].trim().parse::<i32>() else {
+        return;
+    };
+    shared.stderr.replace(text[..at].trim_end());
+    if shared.end.is_none() {
+        shared.end = Some(End::Exited(code));
+        shared.ended_at = Some(Instant::now());
+    }
 }
 
 /// After the pipe closed: wait for the watcher to end the turn; if it has

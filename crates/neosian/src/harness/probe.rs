@@ -10,7 +10,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use super::adapter::CodexKey;
-use super::codex::{KEYS, keys};
+use super::adapter::bare_key;
+use super::codex::{KEYS, keys, server_names};
 
 const BOUND: Duration = Duration::from_secs(5);
 
@@ -59,4 +60,31 @@ pub fn codex_keys(program: &Path, dir: &Path) -> Result<Vec<CodexKey>, (String, 
         }
     }
     Ok(keys(&found))
+}
+
+/// Why the other servers could not be switched off.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Others {
+    /// `codex mcp list --json` did not answer with a list.
+    Unreadable(String),
+    /// A server name an override cannot address.
+    Unaddressable(String),
+}
+
+/// The configured servers other than neosian's keys, which a read-only
+/// child runs with switched off (#431).
+pub fn codex_others(program: &Path, dir: &Path) -> Result<Vec<String>, Others> {
+    let (ok, text) =
+        answer(program, &["mcp", "list", "--json"], dir).map_err(Others::Unreadable)?;
+    let names = server_names(&text)
+        .filter(|_| ok)
+        .ok_or_else(|| Others::Unreadable(text.trim().chars().take(200).collect()))?;
+    let others: Vec<String> = names
+        .into_iter()
+        .filter(|name| !KEYS.contains(&name.as_str()))
+        .collect();
+    match others.iter().find(|name| !bare_key(name)) {
+        Some(name) => Err(Others::Unaddressable(name.clone())),
+        None => Ok(others),
+    }
 }

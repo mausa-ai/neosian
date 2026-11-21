@@ -12,6 +12,8 @@ mod begin;
 mod claude;
 mod codex;
 mod config;
+#[cfg(unix)]
+mod ending;
 mod events;
 mod link;
 mod opencode;

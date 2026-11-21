@@ -14,6 +14,7 @@ fn server() -> McpServer {
         args: ["mcp", "--root", "/r", "--actor", "mcp:claude-code"]
             .map(String::from)
             .to_vec(),
+        mounted: true,
     }
 }
 
@@ -39,6 +40,7 @@ fn request<'a>(
         opencode_config: None,
         parent: None,
         server: None,
+        codex_off: &[],
     }
 }
 
@@ -263,12 +265,10 @@ fn opencode_runs_standalone_with_its_preset_agents_merged_in() {
     );
     assert_eq!(write["*"], "deny");
     assert_eq!(write["read"]["*.env"], "deny");
-    assert!(
-        !planned
-            .env
-            .iter()
-            .any(|(key, _)| key == "OPENCODE_DISABLE_PROJECT_CONFIG")
-    );
+    assert!(planned.env.contains(&(
+        "OPENCODE_DISABLE_PROJECT_CONFIG".to_string(),
+        "1".to_string()
+    )));
     let edit = write["edit"].as_object().unwrap();
     assert_eq!(edit["*"], "allow");
     for path in [

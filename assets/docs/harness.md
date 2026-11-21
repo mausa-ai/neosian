@@ -46,17 +46,21 @@ it started relies on Unix process groups.
 
 A harness trusts the directory it runs in, so the calling agent never picks
 an arbitrary one. A child works in the MCP server's own directory, the
-session's project. Any other directory must be listed by you in
-`directories`, as an exact path (compared after resolving links; a
-subdirectory of a listed one is not listed). When the server runs in your
-home directory or the filesystem root, the tool refuses until a directory is
-listed, and the agent must name one.
+session's project, when that directory lies strictly below your home
+directory. Any other directory must be listed by you in `directories`, as an
+exact path (compared after resolving links; a subdirectory of a listed one is
+not listed). When the server runs anywhere else (your home directory itself,
+one of its ancestors, the filesystem root, anything outside your home), or
+`HOME` is unset or empty, the tool refuses until a directory is listed, and
+the agent must name one.
 
 A child runs with that directory's own configuration for its harness, except
 where the table below says otherwise, so list only directories you trust.
-And a child whose mode lets it run commands can start any program: the guard
-that keeps children from starting children of their own is a guard against
-accidents, not a sandbox.
+A `write` child in any harness can change files in the directory that tools
+run later (build scripts, hooks, editor or agent configuration), so review
+what it changed before you run anything there. And a child whose mode lets it
+run commands can start any program: the guard that keeps children from
+starting children of their own is a guard against accidents, not a sandbox.
 
 ## Commands
 
@@ -105,9 +109,15 @@ give. They are not equally strong.
 
 | harness | `read-only` | `write` |
 |---|---|---|
-| Claude Code | `--setting-sources user`: no project or local settings, so no hooks or allow rules from the directory; `--strict-mcp-config` with one server, this neosian, whose tools it may use; built-in tools Read, Grep and Glob only (`dontAsk`) | the person's normal configuration with `--permission-mode acceptEdits --permission-prompts none`: edits inside the directory are accepted, and so are Claude's own filesystem commands there; anything that would ask is denied, including paths outside the directory |
-| Codex | `-s read-only -c approval_policy="never"`: the operating system sandbox refuses every write by a command the model runs | `-s workspace-write -c approval_policy="never"`, with `/tmp` and `TMPDIR` excluded: commands may write inside the directory only |
-| OpenCode | `OPENCODE_DISABLE_PROJECT_CONFIG=1`: the directory's `opencode.json` (its agents and MCP commands) and `.opencode` plugins are not loaded; an agent that denies everything except read, glob, grep and list (`.env` files denied) | the same agent plus edits, except to `opencode.json`, `opencode.jsonc` and anything under `.opencode`; `external_directory` denied |
+| Claude Code | `--setting-sources user`: no project or local settings, so no hooks or allow rules from the directory; `--strict-mcp-config` with one server, this neosian, started with every mount read-only, whose tools it may use; built-in tools Read, Grep and Glob only (`dontAsk`) | the person's normal configuration with `--permission-mode acceptEdits --permission-prompts none`: edits inside the directory are accepted, and so are Claude's own filesystem commands there; anything that would ask is denied, including paths outside the directory |
+| Codex | `-s read-only -c approval_policy="never"`: the operating system sandbox refuses every write by a command the model runs; every other configured MCP server is switched off for the run, and so are Codex's apps (`--disable apps`); neosian's own entry is started with every mount read-only | `-s workspace-write -c approval_policy="never"`, with `/tmp` and `TMPDIR` excluded: commands may write inside the directory only |
+| OpenCode | `OPENCODE_DISABLE_PROJECT_CONFIG=1`: the `opencode.json` (agents, MCP commands) and `.opencode` plugins of the directory and its ancestors are not loaded; an agent that denies everything except read, glob, grep and list (`.env` files denied) | `OPENCODE_DISABLE_PROJECT_CONFIG=1` too, so nothing the child writes is loaded in its own session; the same agent plus edits, except to `opencode.json`, `opencode.jsonc` and anything under `.opencode`; `external_directory` denied |
+
+Under a portable profile the profile fixes the mounts, so a read-only child's
+neosian cannot be started with them read-only; Claude Code then allows only
+neosian's tools that cannot change state (`list_skills`, `load_skill`,
+`recall_turn`, `search_history`, `docs`, `memory_history`, `search_memory`,
+`upkeep_review`, `knowledge`, `changes`), and Codex enables only those.
 
 What each does not guarantee:
 
@@ -115,10 +125,10 @@ What each does not guarantee:
 |---|---|
 | Claude Code `read-only` | Your own user settings still apply: your hooks run, and plugins you installed load. |
 | Claude Code `write` | The directory's own `.claude` settings, hooks and `.mcp.json` servers load and run, and its allow rules apply. Commands that your allow rules cover run anywhere they reach. MCP tools of your other servers that your settings allow run. |
-| Codex, either mode | The sandbox covers the commands the model runs, not MCP tool calls; network follows your configuration. A project you marked trusted in Codex loads its own configuration, MCP servers and hooks; an untrusted one's are ignored. `approval_policy = "never"` is always passed: without it, `codex exec -s read-only` wrote a file in our test. |
-| Codex `write` | The child is not given `--skip-git-repo-check`, so Codex refuses a directory that is not a Git repository (read-only skips that check). |
-| OpenCode, either mode | OpenCode has no sandbox for shell commands, so neither mode allows the shell, and no MCP tool runs, neosian's memory tools included. Your own OpenCode configuration and plugins load. |
-| OpenCode `write` | The directory's `opencode.json` MCP commands and `.opencode` plugins load and run. A child can write through a symbolic link inside the directory that points outside it: OpenCode checks the path, not where it leads. |
+| Codex, either mode | The sandbox covers the commands the model runs, not MCP tool calls. Codex refuses an MCP tool call that needs approval when approval is `never` (observed, neosian's tools included), so a read-only child in practice uses no MCP tool; a tool your Codex configuration approves in advance runs. A project you marked trusted in Codex loads its own configuration and hooks; an untrusted one's are ignored. `approval_policy = "never"` is always passed: without it, `codex exec -s read-only` wrote a file in our test. Network follows your configuration. |
+| Codex `write` | Your configured MCP servers and apps stay on. The child is not given `--skip-git-repo-check`, so Codex refuses a directory that is not a Git repository (read-only skips that check). |
+| OpenCode, either mode | OpenCode has no sandbox for shell commands, so neither mode allows the shell, and no MCP tool runs: an OpenCode child has no neosian tools at all. Your own OpenCode configuration and plugins load. |
+| OpenCode `write` | OpenCode's permission rules match letter case exactly and macOS file systems do not, so a child refused `.opencode/plugin/x.js` can write `.OPENCODE/plugin/x.js`; it is not loaded in the child's own session, but a later OpenCode session in that directory may load it. A child can also write through a symbolic link inside the directory that points outside it: OpenCode checks the path, not where it leads. |
 
 Your client's approval of the `harness` tool is the gate. A child can do what
 its mode allows whatever the calling agent's own permissions are, so a
@@ -183,19 +193,21 @@ Ending a turn is best effort. Whether it is stopped, passes its limit, or the
 MCP server exits for any reason, including being killed, neosian walks the
 harness's process tree while the harness is still running, sends SIGTERM to
 each descendant and its process group (Codex starts each command in a group
-of its own), then to the harness, and after 5 seconds sends SIGKILL to
-everything it found or that appeared since. After a turn ends normally,
-processes left in the harness's process group get 3 seconds (a record hook
-landing the turn) and are then ended. If the turn's watcher process is
-killed, the server ends its process group itself. A process that detached
-from the harness's process group before a walk, or after the harness exited
-normally, can escape.
+of its own), then to the harness, and after 5 seconds sends SIGKILL to what
+is still the same process (same process ID and start time) or appeared
+since. When a turn ends normally its answer is there at once; processes left
+in the harness's process group get 20 seconds (a record hook landing the
+turn) and are then ended, sooner if the child is stopped or the server exits.
+If the turn's watcher process is killed, the server ends its process group
+itself. A process that detached from the harness's process group before a
+walk, or after the harness exited normally, can escape.
 
 Each answer returns at most 16 KiB of new text (the newest; the bytes left
-out are stated in `events`), at most 32 new events, the first 16 KiB of the
+out are stated in `events`), at most 32 events (the entries that state a cut
+included), the first 16 KiB of the
 answer (with its full size) and 4 KiB of an error; `list` shows no text,
-512 bytes of an error, and stays under 64 KiB, leaving out the oldest
-children past that. A turn keeps the first 64 KiB and the last 192 KiB of
+512 bytes of an error, and stays under 64 KiB as sent, leaving out the
+oldest children past that. A turn keeps the first 64 KiB and the last 192 KiB of
 its text and its last 256 events. The prompt reaches the child on standard
 input, never on a command line or in a file, and is at most 256 KiB.
 Commands run from an argument vector, never through a shell, and the harness

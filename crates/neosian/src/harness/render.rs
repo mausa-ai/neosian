@@ -61,9 +61,14 @@ impl Child {
     }
 
     fn state(&self) -> &'static str {
-        if self.stopped {
-            return "stopped";
+        match (self.stopped, self.outcome()) {
+            (true, _) => "stopped",
+            (false, outcome) => outcome,
         }
+    }
+
+    /// How the current turn itself went, whatever became of the child.
+    fn outcome(&self) -> &'static str {
         let Some(turn) = &self.current else {
             return "starting";
         };
@@ -156,6 +161,8 @@ fn record(
 pub fn child(memory: &Memory, naming: &Naming, child: &mut Child, view: View) -> Value {
     child.learn();
     let state = child.state();
+    // A stopped child still says why its last turn failed.
+    let failed = child.outcome() == "failed";
     let mut out = Map::new();
     out.insert("child".into(), json!(child.id));
     out.insert("agent".into(), json!(child.agent.name()));
@@ -180,7 +187,8 @@ pub fn child(memory: &Memory, naming: &Naming, child: &mut Child, view: View) ->
         let shared = lock(&turn.shared);
         if view == View::Read {
             let (text, skipped) = shared.text.since(turn.read_text, OUTPUT_BYTES);
-            let (mut events, left_out) = shared.log.since(turn.read_events, EVENTS_PER_ANSWER);
+            // Two places are kept for the truncation entries, so the cap holds.
+            let (mut events, left_out) = shared.log.since(turn.read_events, EVENTS_PER_ANSWER - 2);
             if left_out > 0 {
                 events.insert(
                     0,
@@ -211,7 +219,7 @@ pub fn child(memory: &Memory, naming: &Naming, child: &mut Child, view: View) ->
                 notes.push(say("answer_cut", &[("shown", &shown), ("bytes", &bytes)]));
             }
         }
-        if state == "failed" {
+        if failed {
             let limit = if view == View::Listed {
                 LIST_ERROR_BYTES
             } else {

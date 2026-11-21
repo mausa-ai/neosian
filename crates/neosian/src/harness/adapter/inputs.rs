@@ -40,7 +40,7 @@ fn inputs_are_held_to_their_grammar() {
 }
 
 #[test]
-fn a_child_works_in_the_server_directory_or_a_listed_one() {
+fn a_child_works_strictly_below_home_or_in_a_listed_directory() {
     let scratch = crate::testing::Scratch::new("harness-place");
     let root = scratch.path().canonicalize().unwrap();
     for name in ["work", "listed", "other"] {
@@ -72,8 +72,21 @@ fn a_child_works_in_the_server_directory_or_a_listed_one() {
         place(Some("listed"), &root, home, &list),
         Ok(listed.clone())
     );
+    // An ancestor of home, an empty home and no home all need a listing.
+    let ancestor = root.parent().unwrap();
+    assert_eq!(place(None, ancestor, home, &list), Err(Placed::NeedListed));
+    assert_eq!(
+        place(None, &work, Some(Path::new("")), &list),
+        Err(Placed::NeedListed)
+    );
+    assert_eq!(place(None, &work, None, &list), Err(Placed::NeedListed));
+    assert_eq!(
+        place(Some("../listed"), &work, None, &list),
+        Ok(listed.clone())
+    );
     let top = root.ancestors().last().unwrap();
     assert_eq!(place(None, top, None, &[]), Err(Placed::NeedListed));
+    assert!(bare_key("sentry-1_x") && !bare_key("we.ird") && !bare_key(""));
 }
 
 #[test]

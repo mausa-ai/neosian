@@ -31,9 +31,9 @@ pub struct Registry {
     pub(super) settings: Settings,
     /// This server's own directory, where children work unless one listed is named.
     pub(super) here: PathBuf,
-    /// The server's store flags, which a Claude Code read-only child's
+    /// The server's store selection flags, which a read-only child's
     /// neosian server repeats.
-    pub(super) store: Vec<String>,
+    pub(super) selection: Vec<String>,
     children: Mutex<Vec<Child>>,
     next: Mutex<u32>,
 }
@@ -86,13 +86,13 @@ fn remove_stale() {
 }
 
 impl Registry {
-    pub fn new(settings: Settings, store: Vec<String>) -> Self {
+    pub fn new(settings: Settings, selection: Vec<String>) -> Self {
         remove_stale();
         let here = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"));
         Self {
             settings,
             here,
-            store,
+            selection,
             children: Mutex::new(Vec::new()),
             next: Mutex::new(0),
         }
@@ -292,8 +292,10 @@ impl Registry {
         let mut omitted = 0;
         loop {
             let whole = json!({"children": listed, "available": found, "missing": missing, "omitted": omitted});
-            if whole.to_string().len() <= LIST_BYTES || listed.is_empty() {
-                return answer(&whole);
+            // Measured on the bytes the answer sends.
+            let text = dumps_spaced(&whole, false, false);
+            if text.len() <= LIST_BYTES || listed.is_empty() {
+                return Outcome::ok(text);
             }
             listed.remove(0);
             omitted += 1;

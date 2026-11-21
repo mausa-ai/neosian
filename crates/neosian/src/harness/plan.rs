@@ -1,35 +1,22 @@
-//! What the server hands a turn's watcher (§40.50 item 3, amended by
-//! #430): a plan, never a command. The watcher checks every field again
-//! and builds the argument vector itself through the same adapter, so
-//! `neosian harness-watch` can start only one of the three harnesses with
-//! its presets, and only where the tool is enabled and not in a child.
+//! What the server hands a turn's watcher (§40.50 item 3, amended by #430
+//! and #431): a plan, never a command. The watcher checks every field again
+//! with exactly the tool's rules and builds the argument vector itself
+//! through the same adapter, so `neosian harness-watch` can start only one
+//! of the three harnesses with its presets, and only where the tool is
+//! enabled, outside a child, with a home directory, in a directory the tool
+//! itself would allow.
 
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use super::adapter::{self, Agent, CodexKey, Mode};
-use super::codex::KEYS;
+use super::adapter::{self, Agent, Mode};
 use super::text::say;
+use crate::memory::mounts::Mount;
 
 /// The longest plan line read.
 pub const PLAN_BYTES: usize = 64 * 1024;
-/// The store flags a plan may carry for the child's neosian server.
-const STORE_FLAGS: [&str; 6] = [
-    "--root",
-    "--url",
-    "--schema",
-    "--profile",
-    "--scope",
-    "--mount",
-];
-
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct WireKey {
-    pub key: String,
-    pub disabled: Vec<String>,
-}
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -46,11 +33,12 @@ pub struct WirePlan {
     pub new_session: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent: Option<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub codex_keys: Vec<WireKey>,
-    /// The server's own store flags, as flag and value pairs.
+    /// The server's store selection and mounts, as `neosian mcp` flags.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub store: Vec<String>,
+    /// The token that marks the watcher's own exit line on stderr.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nonce: Option<String>,
 }
 
 /// A plan whose every field was checked.
@@ -63,31 +51,72 @@ pub struct Checked {
     pub resume: Option<String>,
     pub new_session: String,
     pub parent: Option<String>,
-    pub codex_keys: Vec<CodexKey>,
-    pub store: Vec<String>,
+    /// Store selection flags (`--root`, `--url`, `--schema`, `--profile`).
+    pub selection: Vec<String>,
+    /// Mount tokens, each made read-only for a read-only child.
+    pub mounts: Vec<String>,
+    pub nonce: String,
 }
 
-fn tool_name(name: &str) -> bool {
-    (1..=128).contains(&name.len())
-        && name
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || "_-".contains(c))
+/// Store flags in the forms `neosian mcp` accepts: each once (`--mount`
+/// repeatable), `--root` absolute, `--url` http(s), a valid schema, profile
+/// name, scope or mount, not `--root` with `--url`, not `--scope` with
+/// `--mount`. Returns the selection flags and the mount tokens.
+pub fn store(flags: &[String]) -> Option<(Vec<String>, Vec<String>)> {
+    if !flags.len().is_multiple_of(2) {
+        return None;
+    }
+    let mut seen = BTreeSet::new();
+    let (mut selection, mut mounts) = (Vec::new(), Vec::new());
+    for pair in flags.chunks(2) {
+        let (flag, value) = (pair[0].as_str(), pair[1].as_str());
+        if value.is_empty() || value.contains('\0') || (flag != "--mount" && !seen.insert(flag)) {
+            return None;
+        }
+        let ok = match flag {
+            "--root" => Path::new(value).is_absolute(),
+            "--url" => {
+                (value.starts_with("http://") || value.starts_with("https://"))
+                    && !value.contains(char::is_whitespace)
+            }
+            "--schema" => crate::postgres::validate_schema(value).is_ok(),
+            "--profile" => crate::profile::validate::name(value).is_ok(),
+            "--scope" => crate::store::grammar::check_scope(value).is_ok(),
+            "--mount" => Mount::parse(value).is_ok(),
+            _ => false,
+        };
+        if !ok {
+            return None;
+        }
+        match flag {
+            "--mount" => mounts.push(value.to_string()),
+            "--scope" => mounts.push(format!("scope={value},path=memories")),
+            _ => selection.extend([flag.to_string(), value.to_string()]),
+        }
+    }
+    let both = |a: &str, b: &str| seen.contains(a) && seen.contains(b);
+    let scoped_and_mounted = seen.contains("--scope") && flags.iter().any(|f| f == "--mount");
+    if both("--root", "--url") || scoped_and_mounted {
+        return None;
+    }
+    Some((selection, mounts))
 }
 
-fn store_ok(store: &[String]) -> bool {
-    store.len().is_multiple_of(2)
-        && store.chunks(2).all(|pair| {
-            STORE_FLAGS.contains(&pair[0].as_str())
-                && !pair[1].is_empty()
-                && !pair[1].starts_with('-')
-                && !pair[1].contains('\0')
-        })
+/// A mount token made read-only: its access word replaced by `ro`.
+pub fn read_only(token: &str) -> String {
+    let parts: Vec<&str> = token
+        .split(',')
+        .filter(|part| !matches!(*part, "ro" | "eo"))
+        .collect();
+    format!("{},ro", parts.join(","))
 }
 
-/// Check a plan as the watcher reads it. `home` and `listed` decide the
-/// directory: a listed one, or any but the home directory and the root.
+/// Check a plan as the watcher reads it, with the tool's own rules.
 pub fn check(plan: WirePlan, home: Option<&Path>, listed: &[PathBuf]) -> Result<Checked, String> {
     let bad = |field: &str| say("watch_bad_field", &[("field", field)]);
+    let Some(home) = home.filter(|home| !home.as_os_str().is_empty()) else {
+        return Err(bad("HOME"));
+    };
     let agent = Agent::parse(&plan.agent).ok_or_else(|| bad("agent"))?;
     let mode = Mode::parse(&plan.mode).ok_or_else(|| bad("mode"))?;
     if !(1..=adapter::PROMPT_BYTES).contains(&plan.prompt_bytes) {
@@ -113,36 +142,20 @@ pub fn check(plan: WirePlan, home: Option<&Path>, listed: &[PathBuf]) -> Result<
     if plan.parent.as_deref().is_some_and(|p| !parent_ok(p)) {
         return Err(bad("parent"));
     }
-    let mut codex_keys = Vec::new();
-    for key in plan.codex_keys {
-        let known = KEYS.into_iter().find(|known| *known == key.key);
-        let Some(known) = known.filter(|_| key.disabled.iter().all(|t| tool_name(t))) else {
-            return Err(bad("codex_keys"));
-        };
-        codex_keys.push(CodexKey {
-            key: known,
-            disabled: key.disabled,
-        });
-    }
-    if !store_ok(&plan.store) {
-        return Err(bad("store"));
-    }
+    let (selection, mounts) = store(&plan.store).ok_or_else(|| bad("store"))?;
+    let nonce = match plan.nonce {
+        Some(nonce) if nonce.len() == 32 && nonce.chars().all(|c| c.is_ascii_hexdigit()) => nonce,
+        Some(_) => return Err(bad("nonce")),
+        None => uuid::Uuid::new_v4().simple().to_string(),
+    };
     let directory = Path::new(&plan.directory);
     if !directory.is_absolute() {
         return Err(bad("directory"));
     }
-    // From the watcher, the directory is "the server's own": refused when
-    // it is the home directory or the root, unless the person listed it.
-    let directory = directory
-        .canonicalize()
-        .ok()
-        .filter(|path| path.is_dir())
-        .ok_or_else(|| bad("directory"))?;
-    let home = home.and_then(|home| home.canonicalize().ok());
-    let anywhere = directory.parent().is_some() && Some(&directory) != home.as_ref();
-    if !anywhere && !listed.contains(&directory) {
-        return Err(bad("directory"));
-    }
+    // From the watcher, the directory is "the server's own": the same rule.
+    let directory = adapter::place(None, directory, Some(home), listed)
+        .or_else(|_| adapter::place(Some(&plan.directory), directory, Some(home), listed))
+        .map_err(|_| bad("directory"))?;
     Ok(Checked {
         agent,
         mode,
@@ -151,60 +164,11 @@ pub fn check(plan: WirePlan, home: Option<&Path>, listed: &[PathBuf]) -> Result<
         resume: plan.resume,
         new_session,
         parent: plan.parent,
-        codex_keys,
-        store: plan.store,
+        selection,
+        mounts,
+        nonce,
     })
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn plan(directory: &Path) -> WirePlan {
-        WirePlan {
-            agent: "codex".into(),
-            mode: "read-only".into(),
-            directory: directory.display().to_string(),
-            prompt_bytes: 2,
-            ..WirePlan::default()
-        }
-    }
-
-    #[test]
-    fn a_plan_is_checked_field_by_field() {
-        let scratch = crate::testing::Scratch::new("harness-plan");
-        let work = scratch.path().join("work");
-        std::fs::create_dir(&work).unwrap();
-        let home = scratch.path();
-        assert!(check(plan(&work), Some(home), &[]).is_ok());
-        let refused = |edit: &dyn Fn(&mut WirePlan)| {
-            let mut wire = plan(&work);
-            edit(&mut wire);
-            check(wire, Some(home), &[]).is_err()
-        };
-        assert!(refused(&|p| p.agent = "bash".into()));
-        assert!(refused(&|p| p.mode = "admin".into()));
-        assert!(refused(&|p| p.prompt_bytes = 0));
-        assert!(refused(&|p| p.model = Some("--bare".into())));
-        assert!(refused(&|p| p.resume = Some("--last".into())));
-        assert!(refused(&|p| p.new_session = Some("not-a-uuid".into())));
-        assert!(refused(&|p| p.parent = Some("a b".into())));
-        assert!(refused(&|p| p.store = vec!["--exec".into(), "x".into()]));
-        assert!(refused(&|p| p.store = vec!["--root".into()]));
-        assert!(refused(&|p| p.codex_keys = vec![WireKey {
-            key: "other".into(),
-            disabled: vec![]
-        }]));
-        assert!(refused(&|p| p.directory = home.display().to_string()));
-        assert!(refused(&|p| p.directory = "/".into()));
-        assert!(refused(&|p| p.directory = "relative".into()));
-        let listed = [home.canonicalize().unwrap()];
-        let mut at_home = plan(home);
-        at_home.store = vec!["--root".into(), "/x".into()];
-        assert!(check(at_home, Some(home), &listed).is_ok());
-        let unknown: Result<WirePlan, _> = serde_json::from_str(
-            r#"{"agent":"codex","mode":"write","directory":"/x","prompt_bytes":1,"command":["sh"]}"#,
-        );
-        assert!(unknown.is_err());
-    }
-}
+mod tests;

@@ -2,12 +2,14 @@
 //! by #430): `-p` with stream-json and a session ID neosian names. In
 //! `read-only` the child loads no settings but the person's own user
 //! settings (no project or local hooks or allow rules) and one MCP server,
-//! this neosian, whose tools it may use; `harness` is denied under both
-//! server keys. `write` keeps the person's normal configuration.
+//! this neosian with every mount read-only (#431), or with only its tools
+//! that cannot change state allowed when a profile fixes the mounts;
+//! `harness` is denied under both server keys. `write` keeps the person's
+//! normal configuration.
 
 use serde_json::{Map, Value, json};
 
-use super::adapter::{Mode, Plan, Request, SERVER_KEY};
+use super::adapter::{Mode, Plan, READ_ONLY_TOOLS, Request, SERVER_KEY};
 use super::events::{ERROR_BYTES, Event, head, observed};
 
 /// Both keys the server may be registered under (X2a may rename it).
@@ -56,8 +58,15 @@ pub fn plan(request: &Request) -> Plan {
     if let Some(model) = request.model {
         argv.extend(words(&["--model", model]));
     }
-    if request.mode == Mode::ReadOnly && request.server.is_some() {
-        argv.extend(["--allowedTools".to_string(), format!("mcp__{SERVER_KEY}")]);
+    match request.server.filter(|_| request.mode == Mode::ReadOnly) {
+        Some(server) if server.mounted => {
+            argv.extend(["--allowedTools".to_string(), format!("mcp__{SERVER_KEY}")]);
+        }
+        Some(_) => {
+            argv.push("--allowedTools".to_string());
+            argv.extend(READ_ONLY_TOOLS.map(|tool| format!("mcp__{SERVER_KEY}__{tool}")));
+        }
+        None => {}
     }
     // Variadic, so it comes last; no positional prompt follows.
     argv.push("--disallowedTools".to_string());

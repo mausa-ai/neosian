@@ -483,7 +483,8 @@ def test_codex_children_are_denied_without_a_known_key(
     done = finished(session, "h1")
     assert done["state"] == "finished", done
     run = harnesses.runs()[0]
-    assert not any(word.startswith("mcp_servers.") for word in run["argv"])
+    neosian = ("mcp_servers.neosian-memory.", "mcp_servers.neosian.")
+    assert not any(word.startswith(neosian) for word in run["argv"])
     assert "harness" not in run["child_tools"] and "memory" in run["child_tools"]
     session.close()
 

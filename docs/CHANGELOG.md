@@ -18,31 +18,41 @@ phase close names the version.
   the stdio server, outside a harness child and on Unix; the HTTP `/mcp` door
   never lists it. `turn_seconds` (default 1800) bounds one turn and
   `max_children` (default 2) the children open at once.
-- A child works in the MCP server's own directory, or in one you list in
-  `[harness] directories` (exact paths). A server in the home directory or
-  the filesystem root refuses until a directory is listed. Every child gets
-  `PWD` set to its directory.
+- A child works in the MCP server's own directory when it lies strictly below
+  your home directory, or in one you list in `[harness] directories` (exact
+  paths). A server anywhere else, or with `HOME` unset or empty, refuses
+  until a directory is listed and named. Every child gets `PWD` set to its
+  directory.
 - `read-only` is the default and the strongest each harness gives. Claude
-  Code loads only your user settings and one MCP server, this neosian, whose
-  tools it may use, with Read, Grep and Glob as its only built-in tools.
-  Codex runs its read-only sandbox with approval `never`. OpenCode loads no
-  project configuration or plugins and allows only reading. In `write`,
-  Claude Code accepts edits inside the directory, Codex writes inside it
-  only, and OpenCode edits files there except its own configuration and
-  plugins. What each mode does not guarantee is listed per harness in
-  `neosian docs harness`; a denied action is reported, never relayed.
+  Code loads only your user settings and one MCP server, this neosian with
+  every mount read-only, with Read, Grep and Glob as its only built-in
+  tools. Codex runs its read-only sandbox with approval `never`, every other
+  configured MCP server and its apps switched off, and neosian's entry with
+  every mount read-only. Under a profile, only neosian's tools that cannot
+  change state are allowed. OpenCode allows only reading. OpenCode loads no
+  project or ancestor configuration or plugins in either mode, so nothing a
+  `write` child writes runs in its own session. In `write`, Claude Code
+  accepts edits inside the directory, Codex writes inside it only, and
+  OpenCode edits files there except its own configuration and plugins. What
+  each mode does not guarantee is listed per harness in `neosian docs
+  harness`, including that a `write` child can change files tools run later;
+  a denied action is reported, never relayed.
 - Each turn runs under a watcher that takes a checked plan, never a command:
-  `neosian harness-watch` refuses unless the tool is enabled and outside a
-  child, and starts only one of the three harnesses with its presets. The
-  prompt reaches the harness on standard input. Ending a turn (stop, the
-  turn limit, or the server exiting for any reason) ends the harness and
-  every descendant it can find, each with its process group; after a normal
-  exit, what is left in the group is ended after a short grace. Best effort:
-  a process that detached beforehand can escape.
+  `neosian harness-watch` applies exactly the tool's rules (enabled, outside
+  a child, a home directory, the same directory rule, store flags only in
+  the forms `neosian mcp` accepts) and starts only one of the three
+  harnesses with its presets. The prompt reaches the harness on standard
+  input. Ending a turn (stop, the turn limit, or the server exiting for any
+  reason) ends the harness and every descendant it can find, each with its
+  process group, signalling a process found earlier only while its start
+  time is unchanged. After a normal exit the answer is there at once, and
+  what is left in the group is ended after 20 seconds. Best effort: a
+  process that detached beforehand can escape.
 - Answers keep the child's words (`text`, `answer`), what neosian observed
   (`events`, structured) and neosian's own sentences (`notes`) apart. Every
-  text is bounded: 16 KiB of new text and of the answer, 32 events, 4 KiB of
-  an error, a `list` under 64 KiB.
+  text is bounded: 16 KiB of new text and of the answer, 32 events with the
+  entries that state a cut, 4 KiB of an error, a `list` under 64 KiB as
+  sent.
 - The child is recorded by its own hooks. With `session`, the child's record
   hook writes `- parent: <id>` into its sessions document from
   `NEOSIAN_HARNESS_PARENT`; the server writes the line only into a document
