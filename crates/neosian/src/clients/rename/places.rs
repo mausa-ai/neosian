@@ -155,9 +155,20 @@ pub fn containers(client: &'static str, context: &Context) -> Vec<Container> {
             }
         }
         "opencode" => {
-            found.push(at(user, Kind::Json("mcp"), None));
-            let project = targets::mcp(client, context, "project").path;
-            found.push(at(project, Kind::Json("mcp"), Some(context.cwd.clone())));
+            // OpenCode reads both files in a directory, the `.jsonc` last.
+            let base = context.directory(client);
+            for (dir, project) in [
+                (base, None),
+                (context.cwd.clone(), Some(context.cwd.clone())),
+            ] {
+                for name in ["opencode.json", "opencode.jsonc"] {
+                    let file = dir.join(name);
+                    if file.exists() || (name == "opencode.json" && project.is_none()) {
+                        found.push(at(file, Kind::Json("mcp"), project.clone()));
+                    }
+                }
+            }
+            let _ = user;
         }
         "muse-code" | "pi" => {
             found.push(at(user, Kind::Json("mcpServers"), None));
@@ -182,5 +193,26 @@ pub fn containers(client: &'static str, context: &Context) -> Vec<Container> {
             }
         }
     }
+    // A file read in two roles (the user file is this directory's project
+    // file when neosian runs in the home folder) is one container.
+    let mut seen: Vec<(PathBuf, String)> = vec![];
+    found.retain(|c| {
+        let key = (
+            c.file.canonicalize().unwrap_or_else(|_| c.file.clone()),
+            c.pointer(OLD),
+        );
+        let fresh = !seen.contains(&key);
+        seen.push(key);
+        fresh
+    });
     found
+}
+
+/// Whether a file neosian cannot read names one of the two keys, so the
+/// client may hold an entry of ours (or another server's `neosian`) there.
+pub fn names_a_key(path: &Path) -> bool {
+    std::fs::read(path).is_ok_and(|bytes| {
+        let text = String::from_utf8_lossy(&bytes).to_lowercase();
+        text.contains("neosian-memory") || text.contains("\"neosian\"")
+    })
 }

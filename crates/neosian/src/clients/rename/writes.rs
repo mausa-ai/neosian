@@ -9,18 +9,19 @@ use serde_json::Value;
 
 /// A JSON file's servers member with `from` renamed to `to`, or `from`
 /// removed when `remove` (the file's bytes kept outside the edit).
-pub(super) fn json_file(
+/// The edited text of a JSON file's servers member, `from` renamed to `to`
+/// or removed when `remove`, checked against the intended document.
+fn json_edit(
     container: &Container,
     member: &str,
     from: &str,
     to: &str,
     remove: bool,
-) -> Result<(), Failure> {
+) -> Result<(read::Read, String), Failure> {
     let path = &container.file;
     let shown = path.display().to_string();
-    let read = read::file(path)
-        .ok_or_else(|| Failure::new(text::fill("changed", &[("path", &shown)]), AFTER_FAILURE))?;
     let changed = || Failure::new(text::fill("changed", &[("path", &shown)]), AFTER_FAILURE);
+    let read = read::file(path).ok_or_else(changed)?;
     if let Some(key) = read.blocked() {
         return Err(Failure::new(
             text::fill(key, &[("path", &shown)]),
@@ -46,8 +47,64 @@ pub(super) fn json_file(
         map.insert(to.into(), entry);
         jsonedit::rename_key(&read.text, &segments, from, to, &intended)
     };
-    let edited = edited.ok_or_else(changed)?;
-    files::write_text(path, &read.with_bom(&edited))
+    let edited = edited.ok_or_else(|| {
+        Failure::new(
+            text::fill("not_editable", &[("path", &shown)]),
+            AFTER_FAILURE,
+        )
+    })?;
+    Ok((read, edited))
+}
+
+pub(super) fn json_file(
+    container: &Container,
+    member: &str,
+    from: &str,
+    to: &str,
+    remove: bool,
+) -> Result<(), Failure> {
+    let (read, edited) = json_edit(container, member, from, to, remove)?;
+    files::write_text(&container.file, &read.with_bom(&edited))
+}
+
+/// Whether a step can be made, checked when planning (finding 2): the asset
+/// key of the reason when it cannot, so the client is left alone.
+pub(super) fn check(step: &super::Step, from: &str, to: &str) -> Result<(), &'static str> {
+    use super::places::Kind;
+    let container = &step.container;
+    let path = &container.file;
+    if files::unwritable(path).is_some() {
+        return Err("unwritable");
+    }
+    let reason = |failure: Failure| {
+        if failure.message.contains("not valid UTF-8") {
+            "not_utf8"
+        } else {
+            "not_editable"
+        }
+    };
+    match &container.kind {
+        Kind::Claude(super::claude_cli::Scope::Local(project))
+            if !super::claude_cli::addressable(project) =>
+        {
+            let at = jsonedit::join(&["projects", project, "mcpServers"]);
+            let document = read::file(path)
+                .and_then(|r| r.json())
+                .ok_or("not_editable")?;
+            document.pointer(&at).map(|_| ()).ok_or("not_editable")
+        }
+        Kind::Claude(_) => Ok(()),
+        Kind::Json(member) => json_edit(container, member, from, to, step.remove_only)
+            .map(|_| ())
+            .map_err(reason),
+        Kind::Toml if step.remove_only => Err("toml_both"),
+        Kind::Toml => {
+            let current = std::fs::read_to_string(path).map_err(|_| "not_editable")?;
+            toml_key::moved(&current, from, to)
+                .map(|_| ())
+                .map_err(|_| "not_editable")
+        }
+    }
 }
 
 pub(super) fn toml_file(container: &Container, from: &str, to: &str) -> Result<(), Failure> {

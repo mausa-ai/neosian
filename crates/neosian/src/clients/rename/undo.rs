@@ -68,22 +68,24 @@ pub fn run(
             continue;
         }
         let mut row = json!({"client": client, "label": plan.label, "refused": refused});
-        let result = match &mut backup {
-            Some(b) => Ok(b),
-            None => Backup::begin(context).map(|b| backup.insert(b)),
-        }
-        .and_then(|b| moves::apply(context, &plan, NEW, OLD, b));
-        match result {
-            Ok(()) => {
-                let _ = receipt::settle(client, context, &[], Some(("undo", "held")));
-                row["back"] = json!(plan.steps.len());
+        // Refusals are listed; only a failure while writing fails the command.
+        if !plan.steps.is_empty() {
+            let result = match &mut backup {
+                Some(b) => Ok(b),
+                None => Backup::begin(context).map(|b| backup.insert(b)),
             }
-            Err(failure) => {
-                ok = false;
-                row["error"] = json!(failure.message);
+            .and_then(|b| moves::apply(context, &plan, NEW, OLD, b));
+            match result {
+                Ok(()) => {
+                    let _ = receipt::settle(client, context, &[], Some(("undo", "held")));
+                    row["back"] = json!(plan.steps.len());
+                }
+                Err(failure) => {
+                    ok = false;
+                    row["error"] = json!(failure.message);
+                }
             }
         }
-        ok &= row["refused"].as_array().is_none_or(Vec::is_empty);
         rows.push(row);
     }
     if let Some(mut b) = backup {

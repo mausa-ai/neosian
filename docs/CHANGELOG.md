@@ -39,9 +39,19 @@ phase close names the version.
   `mcp__.*memory__.*` or `.*neosian.*`), plugins, managed policy,
   a project the client has not recorded (OpenCode and Cursor projects are
   read only from the directory you run neosian in), or scripts and
-  command-line flags. A project that registers `neosian-memory` in a file
-  neosian did not visit runs both servers there until you run
-  `neosian setup --refresh --rename` in it.
+  command-line flags. A rule you put inside neosian's own hook handler is
+  passed over as neosian's. Pi treats `neosian_memory` as the same server:
+  an override in that spelling is neither moved nor reported. A project that
+  registers `neosian-memory` in a file neosian did not visit runs both
+  servers there until you run `neosian setup --refresh --rename` in it.
+- A file a client reads that neosian cannot read or edit (OpenCode's
+  commented `opencode.jsonc`, for example) and that names the server keeps
+  that client on `neosian-memory`, even with `--rename`; the output names
+  the file: rename the key there, then run the command again. A file that
+  cannot be written leaves its client as it is, with the reason listed.
+- If you had switched neosian off in Cursor's or Claude Desktop's own
+  settings, check after the move that it still is: that switch is the
+  application's state, not a file neosian reads.
 - The MCP handshake's `serverInfo.name` is `neosian`; `setup --check`'s
   probe accepts either name. A read-only harness child's own configuration
   names the server `neosian`.

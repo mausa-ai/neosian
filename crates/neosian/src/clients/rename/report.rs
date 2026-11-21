@@ -18,6 +18,8 @@ fn stop(stop: &Stop) -> Value {
         Stop::Unreadable(p) => ("unreadable", Some(p), ""),
         Stop::Receipt(p) => ("receipt", Some(p), ""),
         Stop::Shared(p, other) => ("shared", Some(p), *other),
+        Stop::Unedited(p) => ("unedited", Some(p), ""),
+        Stop::Unwritable(p, key) => ("unwritable", Some(p), *key),
         Stop::Held => ("held", None, ""),
     };
     json!({"kind": kind, "path": path, "at": at})
@@ -56,6 +58,12 @@ pub fn lines(outcome: &Outcome) -> Vec<String> {
         State::Unchanged => {}
         State::Moved => {
             lines.push(text::fill("moved", &[("label", label)]));
+            if matches!(plan.client, "cursor" | "claude-desktop") {
+                lines.push(format!(
+                    "  {}",
+                    text::fill("moved_app_state", &[("label", label)])
+                ));
+            }
             for m in plan.found.mentions.iter().filter(|m| m.allow) {
                 lines.push(format!("  {}", text::fill("allow", &[("place", &at(m))])));
             }
@@ -102,6 +110,8 @@ fn stop_line(stop: &Stop) -> String {
             "shared",
             &[("path", &p.display().to_string()), ("other", other)],
         ),
+        Stop::Unedited(p) => text::fill("unedited", &[("path", &p.display().to_string())]),
+        Stop::Unwritable(p, key) => text::fill(key, &[("path", &p.display().to_string())]),
         Stop::Held => text::get("held"),
     }
 }

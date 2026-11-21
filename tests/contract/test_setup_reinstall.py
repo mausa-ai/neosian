@@ -327,7 +327,8 @@ def test_going_back_puts_clients_on_the_old_name_and_holds_them(host: Machine) -
     )
     result = host.run("setup", "--undo-rename", "--json")
     report = json.loads(result.stdout)
-    assert result.returncode == 1 and report["success"] is False
+    # A collision the undo did not cause is listed, not a failure (review 3).
+    assert result.returncode == 0 and report["success"] is True
     assert {c: keys(host, c) for c in CLIENTS if c != "cursor"} == {
         c: [FORMER] for c in CLIENTS if c != "cursor"
     }

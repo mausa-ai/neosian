@@ -70,6 +70,11 @@ pub enum Stop {
     Receipt(PathBuf),
     /// Another installed client reads a shared file and does not move now.
     Shared(PathBuf, &'static str),
+    /// A file the client reads names a key and neosian cannot read or edit
+    /// it (comments, a duplicate key): the person renames the key there.
+    Unedited(PathBuf),
+    /// A file to change is not writable (or not valid UTF-8): left alone.
+    Unwritable(PathBuf, &'static str),
     /// Put back with `setup --undo-rename`: moved again only by the command.
     Held,
 }
@@ -86,9 +91,13 @@ pub struct Plan {
 }
 
 impl Plan {
-    /// Whether anything of ours stands under the old key.
+    /// Whether anything of ours stands, or may stand, under the old key.
     pub fn wanted(&self) -> bool {
         !self.steps.is_empty()
+            || self
+                .stops
+                .iter()
+                .any(|s| matches!(s, Stop::Unedited(_) | Stop::Unreadable(_)))
     }
 
     /// Whether `update` moves it by itself (§40.53 item 2).
@@ -146,7 +155,16 @@ pub fn plan(client: &str, context: &Context) -> Plan {
     }
     for container in places::containers(client, context) {
         let Ok(entries) = container.entries() else {
-            plan.stops.push(Stop::Unreadable(container.file.clone()));
+            // A file that cannot be read stops the client only when its
+            // text names a key (finding 1): it may hold our entry.
+            if places::names_a_key(&container.file) {
+                let stop = if container.client == "opencode" {
+                    Stop::Unedited(container.file.clone())
+                } else {
+                    Stop::Unreadable(container.file.clone())
+                };
+                plan.stops.push(stop);
+            }
             continue;
         };
         let new = entries.new;
@@ -181,6 +199,26 @@ pub fn plan(client: &str, context: &Context) -> Plan {
             entry: old,
             remove_only,
         });
+    }
+    // Writability and editability are checked now (finding 2): a client
+    // that could only fail while writing is left alone with the reason.
+    let taken: Vec<PathBuf> = plan
+        .stops
+        .iter()
+        .filter_map(|s| match s {
+            Stop::Taken(path, _) => Some(path.clone()),
+            _ => None,
+        })
+        .collect();
+    for step in plan
+        .steps
+        .iter()
+        .filter(|s| !taken.contains(&s.container.file))
+    {
+        if let Err(key) = writes::check(step, OLD, NEW) {
+            plan.stops
+                .push(Stop::Unwritable(step.container.file.clone(), key));
+        }
     }
     if plan.wanted() {
         plan.found = search::find(client, context);

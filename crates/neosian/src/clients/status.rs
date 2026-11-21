@@ -352,7 +352,11 @@ fn render(status: &Value, out: &mut impl Write) -> io::Result<()> {
             },
             format!("level {}", string(client, "level")),
         ];
+        let both = client["two_servers"]
+            .as_array()
+            .is_some_and(|p| !p.is_empty());
         match client["name"].as_str() {
+            _ if both => cells.push(super::rename::text::get("on_both")),
             Some(super::naming::NEW) => cells.push(super::rename::text::get("on_new")),
             Some(_) => cells.push(super::rename::text::get("on_old")),
             None => {}
