@@ -15,7 +15,7 @@ use crate::memory::heat::Heat;
 use crate::memory::skill::{Skill, list_skills, load_skill, shipped_skills};
 use crate::version;
 
-pub const SERVER_NAME: &str = "neosian-memory";
+pub const SERVER_NAME: &str = "neosian";
 
 /// What the server holds for its one session.
 pub struct Server {

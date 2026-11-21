@@ -30,9 +30,9 @@ def client(binary: Binary) -> tuple[Path, dict[str, str]]:
     command.write_text(
         f"#!{sys.executable}\n"
         "import json, os, pathlib, sys\n"
-        "assert sys.argv[1:5] == ['mcp', 'add', 'neosian-memory', '--']\n"
+        "assert sys.argv[1:3] == ['mcp', 'add'] and sys.argv[4] == '--'\n"
         "base = pathlib.Path(os.environ['CODEX_HOME'])\n"
-        "(base / 'config.toml').write_text('[mcp_servers.neosian-memory]\\n'\n"
+        "(base / 'config.toml').write_text('[mcp_servers.' + sys.argv[3] + ']\\n'\n"
         "    + 'command = ' + json.dumps(sys.argv[5]) + '\\nargs = '\n"
         "    + json.dumps(sys.argv[6:]) + '\\n')\n",
         encoding="utf-8",

@@ -121,7 +121,7 @@ def test_check_reports_storage_mismatch(binary: Binary) -> None:
     options = setup(binary)
     path = binary.directory / "pi" / "mcp.json"
     document = json.loads(path.read_text())
-    argv = document["mcpServers"]["neosian-memory"]["args"]
+    argv = document["mcpServers"]["neosian"]["args"]
     argv[argv.index("--root") + 1] = str(binary.directory / "different")
     path.write_text(json.dumps(document))
     result = binary.run("setup", *options, "--check", "--json")
@@ -134,7 +134,7 @@ def test_diagnostics_do_not_repeat_inline_credentials(binary: Binary) -> None:
     options = setup(binary)
     path = binary.directory / "pi" / "mcp.json"
     document = json.loads(path.read_text())
-    document["mcpServers"]["neosian-memory"]["args"] = [
+    document["mcpServers"]["neosian"]["args"] = [
         "mcp",
         "--url",
         "https://user:PRIVATE_TEST_SECRET@memory.invalid/?key=PRIVATE_TEST_SECRET",

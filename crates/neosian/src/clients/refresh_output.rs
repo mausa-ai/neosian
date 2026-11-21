@@ -47,6 +47,9 @@ pub fn render(report: &Value, out: &mut impl Write) -> io::Result<()> {
             other => other,
         };
         writeln!(out, "{}: {result}", text(&client["label"]))?;
+        for line in client["rename_lines"].as_array().into_iter().flatten() {
+            writeln!(out, "  {}", text(line))?;
+        }
         if failed {
             for path in changed {
                 writeln!(out, "  changed {}", text(path))?;

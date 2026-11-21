@@ -127,12 +127,12 @@ def test_read_only_loads_nothing_the_directory_supplies(
     assert claude[claude.index("--setting-sources") + 1] == "user"
     assert "--strict-mcp-config" in claude
     config = json.loads(claude[claude.index("--mcp-config") + 1])
-    assert list(config["mcpServers"]) == ["neosian-memory"]
-    server = config["mcpServers"]["neosian-memory"]
+    assert list(config["mcpServers"]) == ["neosian"]
+    server = config["mcpServers"]["neosian"]
     assert server["command"] == str(binary.executable)
     assert server["args"][0] == "mcp"
     assert server["args"][-2:] == ["--actor", "mcp:claude-code"]
-    assert claude[claude.index("--allowedTools") + 1] == "mcp__neosian-memory"
+    assert claude[claude.index("--allowedTools") + 1] == "mcp__neosian"
     for switch in ("--setting-sources", "--strict-mcp-config", "--mcp-config"):
         assert switch not in claude_write
     assert runs[2]["project_config_off"] == "1"

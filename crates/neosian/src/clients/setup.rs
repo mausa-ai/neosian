@@ -3,7 +3,8 @@
 use super::{
     cache_install, codex_skills,
     context::{CLIENTS, Context},
-    diagnostics, files, hooks, mcp, runner, settings, setup_check, targets,
+    diagnostics, files, hooks, mcp, naming, receipt, rename, runner, settings, setup_check,
+    targets, write_key,
 };
 use clap::Args;
 use serde_json::{Value, json};
@@ -21,6 +22,13 @@ pub struct Setup {
     /// Bring existing user-level registrations to this release; connect nothing new (update runs this).
     #[arg(long, conflicts_with_all = ["write", "check", "client", "level", "binary", "yes", "root", "url", "profile", "claude_cache", "codex_skills"])]
     refresh: bool,
+    /// With --refresh: move every client still on neosian-memory to neosian, after listing what was found.
+    #[arg(long, requires = "refresh")]
+    rename: bool,
+    /// Put every client on neosian back on neosian-memory, or the one named.
+    #[arg(long, value_name = "CLIENT", num_args = 0..=1, default_missing_value = "all",
+        conflicts_with_all = ["write", "check", "refresh"])]
+    undo_rename: Option<String>,
     #[arg(long)]
     json: bool,
     #[arg(long, default_value = "user", value_parser = ["user", "project"])]
@@ -82,6 +90,18 @@ fn applied(mut envelope: Value) -> Value {
 fn install_pair(args: &Setup, context: &Context, client: &str) -> Value {
     let target = targets::mcp(client, context, &args.level);
     let hook = targets::hooks(client, context, &args.level);
+    // A move stopped between its steps is finished first, by the same rename
+    // the refresh runs; setup never writes the old key beside our new one.
+    if args.write && !rename::servers::two(rename::static_client(client), context, true).is_empty()
+    {
+        let _ = rename::run(context, true, Some(client));
+        let (_, lines) = rename::report::two(rename::static_client(client), context, true);
+        if let Some(line) = lines.first() {
+            let failure = files::Failure::new(line.clone(), rename::text::get("two_fix_setup"));
+            return json!({"client": client, "label": target.label, "mcp": failure.payload(&target),
+                "hooks": failure.payload(&hook)});
+        }
+    }
     let settings = settings::resolve_profile(
         args.root.as_deref().filter(|v| !v.is_empty()),
         args.url.as_deref().filter(|v| !v.is_empty()),
@@ -147,16 +167,34 @@ fn install_pair(args: &Setup, context: &Context, client: &str) -> Value {
         ),
     });
     if args.write && mcp["apply"].is_string() {
-        let argv = mcp::apply_argv(&target, &mcp["entry"]);
+        let key = mcp["server_name"]
+            .as_str()
+            .unwrap_or(naming::NEW)
+            .to_owned();
+        let argv = mcp::apply_argv(&target, &mcp["entry"], &key);
         let mut result = runner::run(&argv, &context.env);
-        if result.as_ref().is_some_and(|(ok, _)| !ok) {
+        // Remove and retry only an entry the ownership rule knows as ours.
+        if result.as_ref().is_some_and(|(ok, _)| !ok) && write_key::ours_at(&target, &key) {
             let mut remove = vec![argv[0].clone(), "mcp".into(), "remove".into()];
             if target.cli == Some("claude") {
                 remove.extend(["--scope".into(), "user".into()]);
             }
-            remove.push(targets::SERVER.into());
+            remove.push(key.clone());
             runner::run(&remove, &context.env);
             result = runner::run(&argv, &context.env);
+        }
+        // A `neosian` the CLI wrote is recorded as ours, read back as it stands.
+        if result.as_ref().is_some_and(|(ok, _)| *ok) && key == naming::NEW {
+            let pointer = targets::pointer(&target, naming::NEW);
+            let written = targets::document(client, &target.path)
+                .value()
+                .and_then(|d| d.pointer(&pointer).cloned());
+            if let Some(written) = written
+                && let Err(failure) =
+                    receipt::record(client, context, &target.path, &pointer, &written)
+            {
+                result = Some((false, failure.message));
+            }
         }
         mcp["applied"] = json!(result.as_ref().is_some_and(|(ok, _)| *ok));
         mcp["apply_error"] = result
@@ -237,7 +275,15 @@ pub fn run(args: &Setup, out: &mut impl Write, err: &mut impl Write) -> io::Resu
         return crate::cli::usage(args.json, &message, out, err);
     }
     if args.refresh {
-        return super::refresh::run(&context, args.json, out);
+        return super::refresh::run(&context, args.rename, args.json, out);
+    }
+    if let Some(which) = &args.undo_rename {
+        if which != "all" && !naming::renamed(which) {
+            let message = format!("--undo-rename takes one of {}", naming::CLIENTS.join(", "));
+            return crate::cli::usage(args.json, &message, out, err);
+        }
+        let only = (which != "all").then_some(which.as_str());
+        return rename::undo::run(&context, only, args.json, out);
     }
     let login_home = crate::profile::files::home().map_err(io::Error::other)?;
     if let Some(login) = crate::login::local::state(&login_home).map_err(io::Error::other)?

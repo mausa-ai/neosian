@@ -79,6 +79,10 @@ def retained(value: Any) -> Any:
         result = {key: retained(item) for key, item in value.items()}
         if "serverInfo" in result:
             result["serverInfo"]["version"] = "<VERSION>"
+            # This release names the server `neosian` (DESIGN §40.53 item 6): the
+            # frozen corpus is compared through this one field, never re-cut.
+            if result["serverInfo"].get("name") == "neosian-memory":
+                result["serverInfo"]["name"] = "neosian"
         if result.get("name") == "messages" and "inputSchema" in result:
             # S7's optional reference inputs have independent authority/codec tests.
             for field in ("context", "context_version", "change_id"):
@@ -130,6 +134,9 @@ def retained(value: Any) -> Any:
             result.pop(
                 "cache", None
             )  # Claude's additive setup metadata is tested separately.
+            # The name and two-server findings have independent contracts.
+            for field in ("name", "two_servers", "two_servers_text"):
+                result.pop(field, None)
         for key, added in (
             (
                 "tools",
@@ -166,6 +173,15 @@ def retained(value: Any) -> Any:
             return [row for row in entries if row["name"] != "upkeep"]
     if isinstance(value, str) and value.startswith("Available skills:"):
         return value.removesuffix(", upkeep")
+    if isinstance(value, str):
+        # This release names the server `neosian` in the footer (§40.53 item 6).
+        return value.replace(
+            "on the neosian server to re-read",
+            "on the neosian-memory server to re-read",
+        ).replace(
+            "tool on the\nneosian server, the note",
+            "tool on the\nneosian-memory server, the note",
+        )
     return value
 
 

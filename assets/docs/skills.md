@@ -96,7 +96,7 @@ The MCP server (`neosian docs mcp`) serves `list_skills` and
 `/mcp`, so Claude Code, Codex, Cursor and other MCP clients read the same
 skills from the same store. Every skill is also an **MCP prompt**
 (`prompts/list`, `prompts/get`): clients that render prompts as
-commands (Claude Code shows `/mcp__neosian-memory__release`) get a
+commands (Claude Code shows `/mcp__neosian__release`) get a
 skill written by one agent as a command in the next. The binary ships `handoff`
 and `upkeep`, served as prompts after the mounts' skills and never seeded into
 a store. `handoff` guides the note the next session reads; `upkeep` guides

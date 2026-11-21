@@ -55,7 +55,7 @@ fn claude_code_read_only_loads_only_user_settings_and_this_server() {
     start.server = Some(&own);
     start.parent = Some("parent-1");
     let planned = plan(&start).unwrap();
-    let config = json!({"mcpServers": {"neosian-memory": {
+    let config = json!({"mcpServers": {"neosian": {
         "command": "/opt/neosian",
         "args": ["mcp", "--root", "/r", "--actor", "mcp:claude-code"],
     }}})
@@ -80,7 +80,7 @@ fn claude_code_read_only_loads_only_user_settings_and_this_server() {
             "--tools",
             "Read,Grep,Glob",
             "--allowedTools",
-            "mcp__neosian-memory",
+            "mcp__neosian",
             "--disallowedTools",
             "mcp__neosian-memory__harness",
             "mcp__neosian__harness",

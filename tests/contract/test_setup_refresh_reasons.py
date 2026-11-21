@@ -44,7 +44,7 @@ def test_every_unfaithful_registration_is_left_alone_with_its_reason(
     # More than one store selected.
     pi = host.home("pi") / "mcp.json"
     document = host.json(pi)
-    document["mcpServers"]["neosian-memory"]["args"] += ["--url", "http://h"]
+    document["mcpServers"]["neosian"]["args"] += ["--url", "http://h"]
     pi.write_text(json.dumps(document))
     # A flag written twice.
     codex = host.home("codex") / "hooks.json"
@@ -65,7 +65,7 @@ def test_every_unfaithful_registration_is_left_alone_with_its_reason(
     # A command that cannot be read back word for word.
     opencode = host.home("opencode") / "opencode.json"
     document = host.json(opencode)
-    document["mcp"]["neosian-memory"]["command"] += ["--mount", 5]
+    document["mcp"]["neosian"]["command"] += ["--mount", 5]
     opencode.write_text(json.dumps(document))
     # A statusline that no longer carries the observation bridge.
     claude = host.home("claude-code")

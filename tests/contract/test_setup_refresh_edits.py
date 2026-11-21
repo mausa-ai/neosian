@@ -119,7 +119,7 @@ def test_links_modes_and_read_only_files_are_respected(host: Machine) -> None:
     outdated_hooks(real, "SessionStart")
     pi = host.home("pi") / "mcp.json"
     document = host.json(pi)
-    del document["mcpServers"]["neosian-memory"]["exposure"]
+    del document["mcpServers"]["neosian"]["exposure"]
     pi.write_text(json.dumps(document))
     pi.chmod(0o640)
     codex = host.home("codex") / "hooks.json"
@@ -133,7 +133,7 @@ def test_links_modes_and_read_only_files_are_respected(host: Machine) -> None:
     assert "SessionStart" in host.json(real)["hooks"]
     assert actions(clients["claude-code"])["hooks"] == "update"
     assert stat.S_IMODE(pi.stat().st_mode) == 0o640
-    assert host.json(pi)["mcpServers"]["neosian-memory"]["exposure"] == "direct"
+    assert host.json(pi)["mcpServers"]["neosian"]["exposure"] == "direct"
     assert codex.read_bytes() == kept and stat.S_IMODE(codex.stat().st_mode) == 0o444
     part = next(p for p in clients["codex"]["parts"] if p["kind"] == "hooks")
     assert part["action"] == "left_alone" and "read-only" in part["reason"]
@@ -202,11 +202,11 @@ def test_values_a_person_changed_are_kept(host: Machine, enabled: bool | None) -
     host.setup()
     pi = host.home("pi") / "mcp.json"
     document = host.json(pi)
-    document["mcpServers"]["neosian-memory"]["exposure"] = "proxy"
+    document["mcpServers"]["neosian"]["exposure"] = "proxy"
     pi.write_text(json.dumps(document))
     opencode = host.home("opencode") / "opencode.json"
     document = host.json(opencode)
-    entry = document["mcp"]["neosian-memory"]
+    entry = document["mcp"]["neosian"]
     if enabled is None:
         del entry["enabled"]
     else:
@@ -266,12 +266,12 @@ def test_setup_write_still_replaces_a_read_only_file_and_keeps_its_mode(
     host.setup()
     pi = host.home("pi") / "mcp.json"
     document = host.json(pi)
-    del document["mcpServers"]["neosian-memory"]["exposure"]
+    del document["mcpServers"]["neosian"]["exposure"]
     pi.write_text(json.dumps(document))
     pi.chmod(0o444)
     report = host.refresh()
     assert "read-only" in by_client(report)["pi"]["parts"][0]["reason"]
     result = host.run("setup", "--client=pi", "--write")
     assert result.returncode == 0, result.stdout + result.stderr
-    assert host.json(pi)["mcpServers"]["neosian-memory"]["exposure"] == "direct"
+    assert host.json(pi)["mcpServers"]["neosian"]["exposure"] == "direct"
     assert stat.S_IMODE(pi.stat().st_mode) == 0o444

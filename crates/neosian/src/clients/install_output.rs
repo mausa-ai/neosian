@@ -1,10 +1,6 @@
 //! Pasteable standalone artifacts and their guidance (`mcp/install.py`, `record/install.py`).
 
-use super::{
-    files,
-    settings::Settings,
-    targets::{SERVER, Target},
-};
+use super::{files, settings::Settings, targets::Target};
 use crate::pyfmt;
 use serde_json::{Value, json};
 use std::io::{self, Write};
@@ -181,12 +177,18 @@ pub fn render(
                 .join(", ");
             writeln!(
                 out,
-                "[{}.{SERVER}]\ncommand = {}\nargs = [{args}]",
+                "[{}.{}]\ncommand = {}\nargs = [{args}]",
                 target.key,
+                payload["server_name"]
+                    .as_str()
+                    .unwrap_or(super::naming::OLD),
                 pyfmt::dumps_spaced(&entry["command"], true, false)
             )?;
         } else {
-            let mut fragment = json!({target.key: {SERVER: payload["entry"]}});
+            let key = payload["server_name"]
+                .as_str()
+                .unwrap_or(super::naming::OLD);
+            let mut fragment = json!({target.key: {key: payload["entry"]}});
             if target.client == "muse-code" && target.level == "user" {
                 fragment["schema_version"] = json!(1);
             }

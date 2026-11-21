@@ -8,6 +8,42 @@ phase close names the version.
 
 ## [Unreleased]
 
+### Changed
+
+- **What you may need to do.** neosian now registers its MCP server as
+  `neosian` instead of `neosian-memory`, so agents and rules see its tools as
+  `mcp__neosian__…` (Claude Code, Codex, Pi, Muse Code) or `neosian_…`
+  (OpenCode). `neosian update` moves each client by itself when
+  nothing you wrote names neosian; otherwise it leaves that client on
+  `neosian-memory`, which keeps working, and prints what it found and the
+  command that moves it anyway, `neosian setup --refresh --rename`. Allow
+  rules for the old tool names are not copied: the client asks again, and you
+  can rename the rule to keep it. To go back: `neosian setup --undo-rename`
+  (or `--undo-rename CLIENT` for one client). Your memory, knowledge, skills
+  and history are not touched.
+- The move is a reinstall of what neosian installed, in every scope a client
+  reads (user, Claude Code's local scope, and the projects the client's own
+  index records, the current directory always included): neosian's entry
+  under `neosian-memory` is removed and the same entry written under
+  `neosian`, a client whole or not at all, with a copy of each file first
+  under the neosian home's `migrations` folder. neosian never edits a rule,
+  hook, agent or plugin you wrote. It refuses beside another server named
+  `neosian`, and an entry under `neosian-memory` with a URL is listed and
+  never moved. `status` and `setup --check` say which name each client is
+  on, and a check fails where two of neosian's servers are registered.
+- The search for what you wrote is a courtesy: it reads the client's own
+  settings and the frontmatter of its agents, skills and commands. It does
+  not see a name spelled with escape codes or a YAML alias, a pattern that
+  matches both names without containing `neosian`, plugins, managed policy,
+  a project the client has not recorded (OpenCode and Cursor projects are
+  read only from the directory you run neosian in), or scripts and
+  command-line flags. A project that registers `neosian-memory` in a file
+  neosian did not visit runs both servers there until you run
+  `neosian setup --refresh --rename` in it.
+- The MCP handshake's `serverInfo.name` is `neosian`; `setup --check`'s
+  probe accepts either name. A read-only harness child's own configuration
+  names the server `neosian`.
+
 ## [2.20.0] - 2026-11-21
 
 ### Added

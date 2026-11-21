@@ -2,7 +2,7 @@
 description: Hand this session off, so that the next session in any agent continues it; write the note, then stop
 ---
 Write the handoff note now: one call to the `handoff` tool on the
-neosian-memory server, the note as its `note` argument, under 2000
+neosian server, the note as its `note` argument, under 2000
 characters. Say what the next agent needs, not a summary of the chat:
 
 1. What was being done and for whom.

@@ -1,6 +1,6 @@
 ---
 name: neosian-upkeep
-description: Review and reconcile durable neosian memory through the connected neosian-memory MCP server. Use when the user asks for neosian upkeep, a review of stored memories, or stale and duplicate memory cleanup.
+description: Review and reconcile durable neosian memory through the connected neosian MCP server (registered as neosian, or neosian-memory by earlier releases). Use when the user asks for neosian upkeep, a review of stored memories, or stale and duplicate memory cleanup.
 ---
 
 # Neosian upkeep
@@ -8,7 +8,7 @@ description: Review and reconcile durable neosian memory through the connected n
 Use the current Codex conversation to review memory. Load neosian's live
 workflow instead of maintaining a separate copy of its instructions here.
 
-1. Find the connected `neosian-memory` MCP tools. Call `list_skills`, then
+1. Find the connected `neosian` MCP tools (`neosian-memory` on an earlier registration). Call `list_skills`, then
    `load_skill` with `name: "builtin:upkeep"` to select the shipped workflow.
    Profiles must select `builtin:upkeep`; honor their selection and permissions.
    If the server or skill is unavailable, report the missing connection or

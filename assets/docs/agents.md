@@ -153,7 +153,7 @@ neosian record install --client opencode --level project --scope user:me --write
   `codex:<thread_id>`; Codex's `Stop` hook expects JSON on stdout, and
   the verb answers `{}` there. The memory half is TOML Codex's own CLI
   writes: `neosian mcp install --client codex` prints the
-  `[mcp_servers.neosian-memory]` table and the `codex mcp add …` line,
+  `[mcp_servers.neosian]` table and the `codex mcp add …` line,
   and `neosian setup --write` runs that line for you.
 - **OpenCode** has no shell hooks; it has a plugin API. The same command
   writes a small plugin file, `plugins/neosian-record.js` in OpenCode's
@@ -171,13 +171,13 @@ neosian record install --client opencode --level project --scope user:me --write
   whole, so its read side is the server's instructions: the memory
   index, the pending handoff note and "where we left off", rendered per
   connection (DESIGN §33). The memory half is JSON: `neosian mcp
-  install --client opencode` merges `{"mcp": {"neosian-memory": {"type":
+  install --client opencode` merges `{"mcp": {"neosian": {"type":
   "local", …}}}` into OpenCode's config in the same directory: into
   `opencode.jsonc` when that file stands there holding plain JSON (the
   file OpenCode's own init leaves), else into `opencode.json`. OpenCode
   reads both files and merges them, the `.jsonc` last, so beside a
   commented `.jsonc` the entry lands in `opencode.json` and the report
-  says so (and warns when the `.jsonc` names `neosian-memory` itself,
+  says so (and warns when the `.jsonc` names `neosian` itself,
   since that entry would win). Any model OpenCode can run works, its
   free models included.
 
@@ -562,7 +562,7 @@ says nothing is new work. When the user says "continue", the agent makes
 one call, `continue_session()`, and receives the conversation whole: the
 note's session, else the most recent one listed. The block names every
 turn it shows, and the footer names the call that re-reads one:
-`recall_turn(n, conversation="<id>")` on the `neosian-memory` MCP server
+`recall_turn(n, conversation="<id>")` on the `neosian` MCP server
 (`neosian docs mcp`), and `search_history(query)` on the same server finds a
 turn of any session by its words, listed or not. Bodies stay behind
 tools; the block is a table of contents, not the transcript. An empty

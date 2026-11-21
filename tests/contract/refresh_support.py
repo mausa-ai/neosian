@@ -21,29 +21,73 @@ base = pathlib.Path(os.environ["CLAUDE_CONFIG_DIR"])
 with (base / "commands.jsonl").open("a") as log:
     log.write(json.dumps(args) + "\\n")
 def load(path):
-    return json.loads(path.read_text()) if path.exists() else {}
-fail = os.environ.get("CLAUDE_FAIL")
-if fail and " ".join(args).startswith(fail):
+    # Claude Code 2.1.330 skips a byte-order mark.
+    return json.loads(path.read_text(encoding="utf-8-sig")) if path.exists() else {}
+def touch():
+    path = pathlib.Path(os.environ.get("CLAUDE_TOUCH_FILE", base / "settings.json"))
+    document = load(path)
+    document["touchedByClaude"] = True
+    path.write_text(json.dumps(document))
+command = " ".join(args)
+fails = [f for f in os.environ.get("CLAUDE_FAIL", "").split("|") if f]
+fail = next((f for f in fails if command.startswith(f)), None)
+if fail:
     if os.environ.get("CLAUDE_TOUCH"):
         # The client writes its own settings before failing.
-        path = base / "settings.json"
-        document = load(path)
-        document["touchedByClaude"] = True
-        path.write_text(json.dumps(document))
+        touch()
     sys.exit("claude double refused " + fail)
+# The members Claude Code 2.1.330's add-json kept; it dropped every other one.
+KEPT = os.environ.get("CLAUDE_KEEPS", "type command args env timeout").split()
+def project():
+    # Local scope is keyed by the repository root, else the directory itself.
+    here = pathlib.Path(os.getcwd()).resolve()
+    root = next((d for d in [here, *here.parents] if (d / ".git").exists()), here)
+    with (base / "local.jsonl").open("a") as log:
+        log.write(json.dumps({"args": args, "cwd": str(here)}) + "\\n")
+    return str(root)
+def servers(document, scope):
+    if scope == "local":
+        return document.setdefault("projects", {}).setdefault(project(), {}).setdefault("mcpServers", {})
+    return document.setdefault("mcpServers", {})
 if args[:2] == ["mcp", "add-json"]:
     path = base / ".claude.json"
     document = load(path)
-    servers = document.setdefault("mcpServers", {})
-    if args[4] in servers:
-        sys.exit("MCP server " + args[4] + " already exists in user config")
-    servers[args[4]] = {"type": "stdio", **json.loads(args[5])}
+    found = servers(document, args[3])
+    if args[4] in found:
+        sys.exit("MCP server " + args[4] + " already exists in " + args[3] + " config")
+    if args[5] == "-":
+        entry = json.loads(sys.stdin.read())
+    else:
+        entry = {"type": "stdio", **json.loads(args[5])}
+    # Members a CLI adds on its own (CLAUDE_ADDS, a JSON object).
+    entry = {**json.loads(os.environ.get("CLAUDE_ADDS", "{}")), **entry}
+    found[args[4]] = {key: value for key, value in entry.items() if key in KEPT}
+    path.write_text(json.dumps(document, indent=1))
+elif args[:2] == ["mcp", "remove"]:
+    path = base / ".claude.json"
+    document = load(path)
+    found = servers(document, args[3] if args[2] == "--scope" else "user")
+    if args[-1] not in found:
+        sys.exit("No MCP server named " + args[-1])
+    # A CLI that says it removed an entry it kept.
+    if args[-1] != os.environ.get("CLAUDE_KEEPS_REMOVED"):
+        del found[args[-1]]
     path.write_text(json.dumps(document, indent=1))
 elif args[:2] == ["plugin", "install"]:
     path = base / "settings.json"
     document = load(path)
     document.setdefault("enabledPlugins", {})[args[2]] = True
     path.write_text(json.dumps(document))
+touching = os.environ.get("CLAUDE_TOUCH_ON")
+if touching and command.startswith(touching):
+    # The client writes its own settings while a command succeeds.
+    touch()
+sleeping = os.environ.get("CLAUDE_SLEEP_ON")
+if sleeping and command.startswith(sleeping):
+    # A refresh killed while the client works: the test kills it now.
+    (base / "sleeping").write_text(str(os.getpid()))
+    import time
+    time.sleep(60)
 """
 
 CODEX = """\
@@ -51,9 +95,10 @@ import json, os, pathlib, sys
 base = pathlib.Path(os.environ["CODEX_HOME"])
 with (base / "commands.jsonl").open("a") as log:
     log.write(json.dumps(sys.argv[1:]) + "\\n")
-assert sys.argv[1:5] == ["mcp", "add", "neosian-memory", "--"]
+assert sys.argv[1:3] == ["mcp", "add"] and sys.argv[4] == "--"
+assert sys.argv[3] in ("neosian", "neosian-memory")
 (base / "config.toml").write_text(
-    "[mcp_servers.neosian-memory]\\ncommand = " + json.dumps(sys.argv[5])
+    "[mcp_servers." + sys.argv[3] + "]\\ncommand = " + json.dumps(sys.argv[5])
     + "\\nargs = " + json.dumps(sys.argv[6:]) + "\\nstartup_timeout_sec = 20\\n"
 )
 """
@@ -176,3 +221,44 @@ def by_client(report: Any) -> dict[str, Any]:
 
 def actions(client: Any) -> dict[str, str]:
     return {part["kind"]: part["action"] for part in client["parts"]}
+
+
+SERVER = "neosian"
+FORMER = "neosian-memory"
+RECEIPT = "neosian-registrations.json"
+
+
+def renamed(members: dict[str, Any], old: str, new: str) -> dict[str, Any]:
+    """The same members in the same order, one key renamed."""
+    return {(new if key == old else key): value for key, value in members.items()}
+
+
+def claude_json(host: Machine) -> Path:
+    return host.home("claude-code") / ".claude.json"
+
+
+def as_released(host: Machine) -> None:
+    """Claude Code's registration as 2.20.0 wrote it: the same entry under
+    `neosian-memory`, and no receipt."""
+    path = claude_json(host)
+    document = json.loads(path.read_text())
+    document["mcpServers"] = renamed(document["mcpServers"], SERVER, FORMER)
+    path.write_text(json.dumps(document, indent=1))
+    (host.home("claude-code") / RECEIPT).unlink(missing_ok=True)
+
+
+def claude_project(host: Machine, name: str, members: dict[str, Any]) -> Path:
+    """A project directory Claude Code's `.claude.json` records."""
+    directory = host.root / name
+    directory.mkdir(parents=True, exist_ok=True)
+    path = claude_json(host)
+    document = json.loads(path.read_text())
+    key = str(directory.resolve())
+    document.setdefault("projects", {}).setdefault(key, {}).update(members)
+    path.write_text(json.dumps(document, indent=1))
+    return directory
+
+
+def migrations(host: Machine) -> list[Path]:
+    root = host.binary.home / "migrations"
+    return sorted(root.iterdir()) if root.exists() else []

@@ -62,14 +62,14 @@ def test_outdated_managed_entries_are_repaired_with_the_same_store(
     store = host.root / "chosen store"
     host.setup("--root", str(store))
     claude, codex = host.home("claude-code"), host.home("codex")
-    registered = host.json(claude / ".claude.json")["mcpServers"]["neosian-memory"]
+    registered = host.json(claude / ".claude.json")["mcpServers"]["neosian"]
     outdated_hooks(claude / "settings.json", "SessionStart")
     display = claude / "neosian-cache/plugin/hooks/display.js"
     display.write_text("// an earlier plugin\n")
     outdated_adapter(host.home("opencode") / "plugins/neosian-record.js")
     pi = host.home("pi") / "mcp.json"
     document = host.json(pi)
-    del document["mcpServers"]["neosian-memory"]["exposure"]
+    del document["mcpServers"]["neosian"]["exposure"]
     pi.write_text(json.dumps(document))
     receipt = codex / "neosian-skills.json"
     saved = host.json(receipt)
@@ -100,9 +100,7 @@ def test_outdated_managed_entries_are_repaired_with_the_same_store(
     assert actions(clients["opencode"]) == {"mcp": "unchanged", "hooks": "update"}
     assert actions(clients["pi"]) == {"mcp": "update", "hooks": "unchanged"}
     # The registered command line, store included, is kept word for word.
-    assert host.json(claude / ".claude.json")["mcpServers"]["neosian-memory"] == (
-        registered
-    )
+    assert host.json(claude / ".claude.json")["mcpServers"]["neosian"] == (registered)
     assert str(store) in registered["args"]
     hooks = host.json(claude / "settings.json")["hooks"]
     assert hooks["SessionStart"] == hooks["Stop"]
@@ -128,7 +126,7 @@ def test_outdated_managed_entries_are_repaired_with_the_same_store(
     assert plugin == TEMPLATE.read_text().replace(
         "__NEOSIAN_RECORD_ARGV__", json.dumps(argv)
     )
-    assert host.json(pi)["mcpServers"]["neosian-memory"]["exposure"] == "direct"
+    assert host.json(pi)["mcpServers"]["neosian"]["exposure"] == "direct"
     assert (codex / "skills/neosian-upkeep/SKILL.md").read_bytes() == (
         SKILL / "SKILL.md"
     ).read_bytes()
@@ -211,7 +209,11 @@ def test_a_failed_write_fails_one_client_and_a_refusal_leaves_one_part(
     assert text.stdout.endswith("No registration was changed.\n")
 
 
-def test_project_registrations_are_listed_and_never_edited(host: Machine) -> None:
+def test_project_registrations_move_and_other_project_files_are_listed(
+    host: Machine,
+) -> None:
+    """The rename moves our project registrations with their client
+    (DESIGN §40.53); every other project file is listed and never edited."""
     host.setup()
     executable = str(host.binary.executable)
     mcp = {"mcpServers": {"neosian-memory": {"command": executable, "args": ["mcp"]}}}
@@ -231,20 +233,27 @@ def test_project_registrations_are_listed_and_never_edited(host: Machine) -> Non
     outdated_hooks(host.home("claude-code") / "settings.json", "SessionStart")
     before = tree(host.project)
     report = host.refresh()
-    assert tree(host.project) == before
+    moved = {".mcp.json", "opencode.json"}
+    assert {k: v for k, v in tree(host.project).items() if k not in moved} == {
+        k: v for k, v in before.items() if k not in moved
+    }
+    assert list(json.loads((host.project / ".mcp.json").read_text())["mcpServers"]) == [
+        "neosian"
+    ]
+    assert list(json.loads((host.project / "opencode.json").read_text())["mcp"]) == [
+        "neosian"
+    ]
     assert actions(by_client(report)["claude-code"])["hooks"] == "update"
     listed = {(p["client"], p["kind"], p["path"]) for p in report["project"]}
     project = str(host.project.resolve())
     assert {
-        ("claude-code", "mcp", f"{project}/.mcp.json"),
         ("claude-code", "hooks", f"{project}/.claude/settings.json"),
         ("codex", "hooks", f"{project}/.codex/hooks.json"),
-        ("opencode", "mcp", f"{project}/opencode.json"),
-        ("muse-code", "mcp", f"{project}/.mcp.json"),
     } == {(c, k, os.path.realpath(p)) for c, k, p in listed}
+    after = tree(host.project)
     text = host.run("setup", "--refresh").stdout
     assert "Project files are listed here and never edited:" in text
-    assert tree(host.project) == before
+    assert tree(host.project) == after
 
 
 def test_foreign_and_unrecognized_registrations_are_left_alone(
@@ -256,7 +265,7 @@ def test_foreign_and_unrecognized_registrations_are_left_alone(
     shutil.copy2(host.binary.executable, other)
     pi = host.home("pi") / "mcp.json"
     document = host.json(pi)
-    entry = document["mcpServers"]["neosian-memory"]
+    entry = document["mcpServers"]["neosian"]
     entry["command"] = str(other)
     del entry["exposure"]
     pi.write_text(json.dumps(document))

@@ -44,7 +44,7 @@ fn a_read_only_child_gets_neosian_read_only_or_only_its_state_free_tools() {
         .iter()
         .position(|w| w == "--allowedTools")
         .unwrap();
-    assert_eq!(mounted.argv[at + 1], "mcp__neosian-memory");
+    assert_eq!(mounted.argv[at + 1], "mcp__neosian");
     assert_eq!(mounted.argv[at + 2], "--disallowedTools");
     let unmounted = McpServer {
         mounted: false,
@@ -61,7 +61,7 @@ fn a_read_only_child_gets_neosian_read_only_or_only_its_state_free_tools() {
         .iter()
         .map(String::as_str)
         .collect();
-    assert_eq!(allowed[0], "mcp__neosian-memory__list_skills");
+    assert_eq!(allowed[0], "mcp__neosian__list_skills");
     assert!(
         !allowed
             .iter()

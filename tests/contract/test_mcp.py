@@ -67,7 +67,7 @@ def test_stdio_tools_history_and_refusals(binary: Binary) -> None:
     initialized = answers[1]["result"]
     assert initialized["protocolVersion"] == "2025-06-18"
     assert initialized["serverInfo"] == {
-        "name": "neosian-memory",
+        "name": "neosian",
         "version": package_version(),
     }
     assert "/memories/notes/fact" in initialized["instructions"]

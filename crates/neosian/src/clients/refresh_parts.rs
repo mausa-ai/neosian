@@ -6,8 +6,7 @@ use super::{
     context::Context,
     diagnostics,
     files::{self, Failure},
-    mcp,
-    targets::{self, SERVER},
+    mcp, targets,
 };
 use serde_json::{Value, json};
 use std::{
@@ -165,13 +164,15 @@ pub(super) fn load(path: &Path, settings: bool) -> Result<(Option<String>, Value
 
 pub fn mcp(client: &str, context: &Context) -> Option<Part> {
     let target = targets::mcp(client, context, "user");
-    let argv = targets::registered(&target)?;
+    let (name, argv) = targets::registration(&target)?;
     let mut part = Part::new("mcp", target.path.clone());
     if let Err(reason) = recognized(&argv, "mcp", &MCP, context) {
         return Some(part.left_alone(reason));
     }
     part.executable = Some(argv[0].clone());
-    let existing = files::read(&target.path).map_or(Value::Null, |d| d[target.key][SERVER].clone());
+    let existing = targets::document(client, &target.path)
+        .value()
+        .map_or(Value::Null, |d| d[target.key][name].clone());
     let entry = mcp::entry(client, &argv, &[]);
     let fields = entry.as_object().expect("an entry is an object");
     if ["command", "args"].iter().any(|key| {
@@ -204,7 +205,7 @@ pub fn mcp(client: &str, context: &Context) -> Option<Part> {
         Err(failure) => return Some(part.refused(&failure)),
     };
     for (key, value) in missing {
-        document[target.key][SERVER][key] = value.clone();
+        document[target.key][name][key] = value.clone();
     }
     Some(
         part.update(Change::Json(document, false), read)

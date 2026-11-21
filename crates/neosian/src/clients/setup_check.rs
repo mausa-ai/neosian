@@ -53,6 +53,9 @@ pub fn run(
                 ));
             }
         }
+        for line in client["two_servers_text"].as_array().into_iter().flatten() {
+            issues.push(format!("{name}: {}", line.as_str().unwrap_or("")));
+        }
         if !registrations["mcp"].is_null()
             && !registrations["hooks"].is_null()
             && registrations["mcp"]["storage"] != registrations["hooks"]["storage"]
@@ -134,7 +137,7 @@ pub fn run(
         )?;
         writeln!(
             out,
-            "Restart the client, review its hook trust settings, and check that neosian-memory connects."
+            "Restart the client, review its hook trust settings, and check that neosian connects (neosian-memory where a client is still on the earlier name)."
         )?;
     }
     Ok(u8::from(!success))

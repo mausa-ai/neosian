@@ -46,7 +46,7 @@ start_session: >-
   [conversation {{conversation_id}} — written by {{actor}}]
 
 start_footer: >-
-  [end — call recall_turn(n, conversation="<id>") on the neosian-memory
+  [end — call recall_turn(n, conversation="<id>") on the neosian
   server to re-read a listed turn verbatim, or search_history(query) there
   to find a turn of any session by its words; [link <id>:N] stands for a
   URL, path or id of that conversation — recall the turn to read it]

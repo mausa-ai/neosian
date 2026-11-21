@@ -110,7 +110,7 @@ def read_only_server(program: str, argv: list[str], cwd: str) -> dict[str, Any]:
     run's overrides. Tries a read and a write."""
     if program == "claude":
         config = json.loads(argv[argv.index("--mcp-config") + 1])
-        entry = config["mcpServers"]["neosian-memory"]
+        entry = config["mcpServers"]["neosian"]
         command = [entry["command"], *entry["args"]]
         env = dict(os.environ)
     else:

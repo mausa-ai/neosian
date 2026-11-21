@@ -105,7 +105,7 @@ fn the_state_set_is_served_over_stdio() {
     );
     assert_eq!(answers[0]["error"]["code"], -32602);
     let opened = &answers[1]["result"];
-    assert_eq!(opened["serverInfo"]["name"], "neosian-memory");
+    assert_eq!(opened["serverInfo"]["name"], "neosian");
     assert_eq!(opened["protocolVersion"], "2025-06-18");
     assert!(
         opened["instructions"]

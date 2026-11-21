@@ -99,7 +99,7 @@ pub struct McpServer {
 }
 
 /// The key the child's strict MCP configuration names this server under.
-pub const SERVER_KEY: &str = "neosian-memory";
+pub const SERVER_KEY: &str = "neosian";
 
 /// The neosian tools that cannot change state, allowed by name when the
 /// mounts cannot be made read-only.

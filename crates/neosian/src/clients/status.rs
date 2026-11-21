@@ -121,6 +121,13 @@ pub(super) fn client_status(client: &str, context: &Context) -> Value {
     if client == "codex" {
         result["skills"] = super::codex_skills::status(context);
     }
+    // Which name the client is on, and two of our servers anywhere it reads,
+    // this directory's project files included (§40.53 item 4).
+    result["name"] = json!(targets::registration(&target).map(|(key, _)| key));
+    let (pairs, lines) =
+        super::rename::report::two(super::rename::static_client(client), context, false);
+    result["two_servers"] = json!(pairs);
+    result["two_servers_text"] = json!(lines);
     result
 }
 
@@ -345,6 +352,11 @@ fn render(status: &Value, out: &mut impl Write) -> io::Result<()> {
             },
             format!("level {}", string(client, "level")),
         ];
+        match client["name"].as_str() {
+            Some(super::naming::NEW) => cells.push(super::rename::text::get("on_new")),
+            Some(_) => cells.push(super::rename::text::get("on_old")),
+            None => {}
+        }
         if client["mcp_shadowed_by"].is_string() {
             cells.push(format!(
                 "user MCP overridden by shared {}",
@@ -372,6 +384,9 @@ fn render(status: &Value, out: &mut impl Write) -> io::Result<()> {
             _ => {}
         }
         writeln!(out, "  {name:<12}installed  {}", cells.join("  "))?;
+        for line in client["two_servers_text"].as_array().into_iter().flatten() {
+            writeln!(out, "  {:<12}{}", "", line.as_str().unwrap_or(""))?;
+        }
         super::setup_check::render_registrations(client, out)?;
     }
     let s = &status["last_session"];

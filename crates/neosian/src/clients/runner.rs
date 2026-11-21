@@ -55,19 +55,46 @@ fn executable(path: &Path) -> bool {
 }
 
 pub fn run(argv: &[String], env: &BTreeMap<String, String>) -> Option<(bool, String)> {
+    run_in(argv, env, None, None)
+}
+
+/// Run a client CLI with `input` on its standard input (so a value it carries
+/// never appears on a command line another process can list), in `cwd` when
+/// given (Claude Code's local scope is the directory it runs in).
+pub fn run_in(
+    argv: &[String],
+    env: &BTreeMap<String, String>,
+    input: Option<&str>,
+    cwd: Option<&Path>,
+) -> Option<(bool, String)> {
     let binary = which(&argv[0], env)?;
-    let mut child = match Command::new(binary)
+    let mut command = Command::new(binary);
+    command
         .args(&argv[1..])
         .env_clear()
         .envs(env)
-        .stdin(Stdio::null())
+        .stdin(if input.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
         .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .spawn()
-    {
+        .stderr(Stdio::piped());
+    if let Some(cwd) = cwd {
+        command.current_dir(cwd);
+    }
+    let mut child = match command.spawn() {
         Ok(child) => child,
         Err(e) => return Some((false, e.to_string())),
     };
+    if let (Some(mut stdin), Some(input)) = (child.stdin.take(), input) {
+        let input = input.to_owned();
+        // A client that never reads its input must not block this one.
+        thread::spawn(move || {
+            use std::io::Write;
+            let _ = stdin.write_all(input.as_bytes());
+        });
+    }
     let mut stderr = child.stderr.take().expect("pipe");
     let reader = thread::spawn(move || {
         let mut text = String::new();

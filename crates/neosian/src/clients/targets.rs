@@ -1,10 +1,14 @@
-//! The six clients' paths (`mcp/targets.py`, `record/targets.py`).
+//! The clients' paths (`mcp/targets.py`, `record/targets.py`) and how a
+//! registration is read (DESIGN §40.53).
 
-use super::{context::Context, files};
+use super::{
+    context::Context,
+    files,
+    naming::{self, NEW, OLD},
+    receipt,
+};
 use serde_json::Value;
 use std::path::PathBuf;
-
-pub const SERVER: &str = "neosian-memory";
 
 #[derive(Clone)]
 pub struct Target {
@@ -13,6 +17,8 @@ pub struct Target {
     pub level: String,
     pub path: PathBuf,
     pub evidence: PathBuf,
+    /// Where rename runs are kept: a missing receipt is rebuilt from them.
+    pub migrations: PathBuf,
     pub key: &'static str,
     pub cli: Option<&'static str>,
     pub plugin: bool,
@@ -38,6 +44,7 @@ pub fn mcp(client: &str, context: &Context, level: &str) -> Target {
         level: level.into(),
         path: base.clone(),
         evidence: base.clone(),
+        migrations: super::rename::backup::migrations(context),
         key: "mcpServers",
         cli: None,
         plugin: false,
@@ -168,9 +175,84 @@ pub fn hooks(client: &str, context: &Context, level: &str) -> Target {
     target
 }
 
+/// The pointer of `key`'s entry in a target's document.
+pub fn pointer(target: &Target, key: &str) -> String {
+    super::rename::jsonedit::join(&[target.key, key])
+}
+
+/// A client's file as the client reads it (DESIGN §40.51 second amendment,
+/// R8): the one reader of every path that reads or writes a registration.
+pub enum Document {
+    Absent,
+    Read(Value),
+    /// It exists and the client's own reading fails: never "absent".
+    Unreadable,
+}
+
+impl Document {
+    pub fn value(self) -> Option<Value> {
+        match self {
+            Self::Read(value) => Some(value),
+            _ => None,
+        }
+    }
+}
+
+/// `path` read for `client`: a client this build renames is read as Claude
+/// Code reads it (`rename::read`: a byte-order mark, lossy UTF-8, the last
+/// duplicate key), and a file it cannot read is `Unreadable`; any other
+/// client keeps its earlier reading, unchanged.
+pub fn document(client: &str, path: &std::path::Path) -> Document {
+    if !naming::renamed(client) {
+        return files::read(path).map_or(Document::Absent, Document::Read);
+    }
+    if fs_absent(path) {
+        return Document::Absent;
+    }
+    if path.extension().is_some_and(|e| e == "toml") {
+        return files::read(path).map_or(Document::Unreadable, Document::Read);
+    }
+    match super::rename::read::file(path).and_then(|r| r.json()) {
+        Some(value) => Document::Read(value),
+        None => Document::Unreadable,
+    }
+}
+
+fn fs_absent(path: &std::path::Path) -> bool {
+    matches!(std::fs::symlink_metadata(path), Err(e) if e.kind() == std::io::ErrorKind::NotFound)
+}
+
+/// Whether the entry under `neosian` in this target's file is ours: only by
+/// the receipt, and only for a client this build renames (DESIGN §40.51).
+pub(super) fn ours_new(target: &Target, document: &Value) -> Option<bool> {
+    let entry = document.get(target.key)?.get(NEW)?;
+    Some(
+        naming::renamed(&target.client)
+            && receipt::owns_in(&book(target), &target.path, &pointer(target, NEW), entry),
+    )
+}
+
+/// The receipt this target's ownership is read from.
+pub fn book(target: &Target) -> receipt::Book {
+    receipt::Book::at(&target.evidence, &target.migrations)
+}
+
+/// The key a registration is read under: `neosian` when ours, else the old
+/// key, which is ours by name; and its command line.
+pub fn registration(target: &Target) -> Option<(&'static str, Vec<String>)> {
+    let document = document(&target.client, &target.path).value()?;
+    if ours_new(target, &document) == Some(true) {
+        return Some((NEW, argv(&document[target.key][NEW])?));
+    }
+    Some((OLD, argv(document.get(target.key)?.get(OLD)?)?))
+}
+
 pub fn registered(target: &Target) -> Option<Vec<String>> {
-    let document = files::read(&target.path)?;
-    let entry = document.get(target.key)?.get(SERVER)?;
+    registration(target).map(|(_, argv)| argv)
+}
+
+/// An entry's full command line (`argv[0]` is the executable).
+pub fn argv(entry: &Value) -> Option<Vec<String>> {
     if let Some(parts) = entry.get("command")?.as_array() {
         return Some(parts.iter().map(crate::pyfmt::py_str).collect());
     }

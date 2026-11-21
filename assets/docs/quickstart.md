@@ -46,7 +46,8 @@ PATH differences are advisory. Source connectivity and permissions, the client's
 own environment, connection and hook delivery still need checking in that client.
 
 Restart your agent after updating registrations, review its hook trust settings,
-and confirm that `neosian-memory` connects. Its memory index points to
+and confirm that `neosian` connects (`neosian-memory` on a registration an earlier
+release made that `neosian update` has not moved). Its memory index points to
 small documents under mounted scopes. The `memory` tool reads and edits them;
 hooks record conversations and supply startup context. The `docs` tool reads
 these same versioned pages. `list_skills` and `load_skill` expose reusable

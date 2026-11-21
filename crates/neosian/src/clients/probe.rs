@@ -122,8 +122,11 @@ fn exchange(executable: &Path, directory: &Path) -> io::Result<Value> {
         .collect::<Result<_, _>>()?;
     let result = |id| replies.iter().find(|r| r["id"] == id).map(|r| &r["result"]);
     let initialized = result(1).is_some_and(|r| {
-        r["serverInfo"]["name"] == "neosian-memory"
-            && r["serverInfo"]["version"] == crate::version::VERSION
+        // A registration left on the old key may run an earlier release.
+        matches!(
+            r["serverInfo"]["name"].as_str(),
+            Some("neosian" | "neosian-memory")
+        ) && r["serverInfo"]["version"] == crate::version::VERSION
     });
     let tools = result(2)
         .and_then(|r| r["tools"].as_array())
