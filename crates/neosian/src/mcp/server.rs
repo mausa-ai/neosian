@@ -27,6 +27,9 @@ pub struct Server {
     /// Who reads (§40.33): the one stdio session, minted at start, or the
     /// `/mcp` session named before each call it dispatches.
     reader: String,
+    /// The stdio server's children when the harness tool is served (§40.50).
+    #[cfg(unix)]
+    harness: Option<crate::harness::registry::Registry>,
 }
 
 impl Server {
@@ -39,7 +42,23 @@ impl Server {
             tools,
             heat: Heat::default(),
             reader: uuid::Uuid::new_v4().to_string(),
+            #[cfg(unix)]
+            harness: None,
         }
+    }
+
+    /// Serve the harness tool too (§40.50): the stdio door alone calls it,
+    /// once enabled in configuration and when this process is not a child.
+    #[cfg(unix)]
+    pub fn with_harness(mut self, registry: crate::harness::registry::Registry) -> Self {
+        self.tools.push(super::tools::harness::tool());
+        self.harness = Some(registry);
+        self
+    }
+
+    #[cfg(unix)]
+    pub fn harness(&self) -> Option<&crate::harness::registry::Registry> {
+        self.harness.as_ref()
     }
 
     pub fn set_reader(&mut self, id: &str) {
@@ -62,7 +81,7 @@ impl Server {
                     "annotations": {
                         "destructiveHint": tool.destructive,
                         "idempotentHint": tool.read_only,
-                        "openWorldHint": false,
+                        "openWorldHint": is_harness(tool.name),
                         "readOnlyHint": tool.read_only,
                     },
                     "description": tool.description,
@@ -149,6 +168,11 @@ impl Server {
             Err(error) => internal(&error.text()),
         }
     }
+}
+
+/// The harness tool reaches another harness and its provider (§40.50).
+fn is_harness(name: &str) -> bool {
+    cfg!(unix) && name == "harness"
 }
 
 /// A `ToolResult` in MCP's vocabulary (ledger #52).

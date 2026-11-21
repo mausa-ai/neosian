@@ -111,6 +111,10 @@ enum Command {
     Mcp(mcp::cli::Mcp),
     /// Serve neosian memory and conversations over HTTP: the state process (§18).
     Serve(serve::cli::Serve),
+    /// One harness turn's watcher, started by the MCP server (§40.50).
+    #[cfg(unix)]
+    #[command(name = "harness-watch", hide = true)]
+    HarnessWatch(crate::harness::watch::Watch),
 }
 
 /// A grammar-tier refusal (exit 2): the message on stderr, and where
@@ -234,6 +238,8 @@ where
         Command::Record(args) => record::cli::run(&args, &mut out, &mut err),
         Command::Mcp(args) => mcp::cli::run(&args, &mut out, &mut err),
         Command::Serve(args) => serve::cli::run(&args, &mut out, &mut err),
+        #[cfg(unix)]
+        Command::HarnessWatch(args) => crate::harness::watch::run(&args),
     };
     finish(code, &mut err)
 }

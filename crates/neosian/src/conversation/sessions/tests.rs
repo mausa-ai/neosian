@@ -82,6 +82,19 @@ fn a_sessions_document_names_what_it_continues() {
 }
 
 #[test]
+fn a_sessions_document_names_its_parent_apart_from_what_it_continues() {
+    let document = format!(
+        "# codex session s\n\n- agent: codex\n- continues: a\n{}{}",
+        parent_line("p-1"),
+        parent_line("p-2")
+    );
+    assert_eq!(parent_line("p-1"), "- parent: p-1\n");
+    assert_eq!(parents(&document), ["p-1", "p-2"]);
+    assert_eq!(continues(&document), ["a"]);
+    assert!(parents("# s\n\n- parents: x\n- parent:x\n").is_empty());
+}
+
+#[test]
 fn the_declarations_are_read_from_the_calls_and_their_results() {
     let turn = |name: &str, result: &str| {
         vec![

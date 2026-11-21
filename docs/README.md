@@ -48,6 +48,13 @@ default. Use `neosian record pause <conversation-id>` to discard the open turn
 and pause one profile conversation on this installation. Resume with
 `neosian record resume <conversation-id>` before the next prompt.
 
+An agent can also start, follow, continue and stop a session in another
+installed client (Claude Code, Codex or OpenCode) through the `harness` MCP
+tool, off by default: set `[harness] enabled = true` in neosian's
+`config.toml`. Each turn runs that client's own headless command, login and
+model in a read-only or write preset it enforces itself; the child is
+recorded and linked to its parent. Read `neosian docs harness`.
+
 Claude Code and Codex can also write their own native memory files. Use
 `neosian native-memory add` to preview an explicit source and `--write` to
 enable automatic local capture through hooks, with reminders to use neosian

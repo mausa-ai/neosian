@@ -14,7 +14,8 @@ use super::settings::Settings;
 use super::spool::Spool;
 use crate::conversation::Error;
 use crate::conversation::sessions::{
-    continued_ids, continues, handoff_declared, link_handoff, sessions_document, sessions_path,
+    continued_ids, continues, handoff_declared, link_handoff, parent_line, parents,
+    sessions_document, sessions_path,
 };
 use crate::store::grammar::Actor;
 
@@ -83,7 +84,16 @@ pub fn land(
     // The lineage (§33): what this span declared, after what the document
     // already says; it is rewritten whole at every Stop.
     let listed = store.read(scope, &sessions_path(session_id))?;
-    let carried = listed.map_or_else(Vec::new, |listed| continues(&listed.content));
+    let carried = listed
+        .as_ref()
+        .map_or_else(Vec::new, |listed| continues(&listed.content));
+    // The harness tool's parent link (§40.50 item 6) stays as written.
+    let mut parented: Vec<String> = Vec::new();
+    for parent in listed.map_or_else(Vec::new, |listed| parents(&listed.content)) {
+        if !parented.contains(&parent) {
+            parented.push(parent);
+        }
+    }
     let mut lineage: Vec<String> = Vec::new();
     for id in carried.into_iter().chain(continued_ids(&turn.messages)) {
         if !lineage.contains(&id) {
@@ -103,6 +113,9 @@ pub fn land(
         turn.turn,
         &lineage,
     );
+    for parent in &parented {
+        content.push_str(&parent_line(parent));
+    }
     if let Some(provenance) = &settings.provenance {
         content.push_str(provenance);
     }

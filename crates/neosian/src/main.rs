@@ -14,6 +14,10 @@ mod config;
 mod conversation;
 mod docs;
 mod exchange;
+// The tool is served on Unix alone (§40.50); its pure parts compile and
+// are tested everywhere.
+#[cfg_attr(not(unix), allow(dead_code, unused_imports))]
+mod harness;
 mod home;
 mod knowledge;
 mod limits;

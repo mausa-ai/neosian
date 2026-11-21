@@ -19,6 +19,7 @@ for that version. The release's neosian-docs.json carries the same pages.
 - [Messaging](https://neosian.com/docs/messaging): messages, reminders and claims.
 - [Stores](https://neosian.com/docs/stores): formats and HTTP conformance.
 - [Agents](https://neosian.com/docs/agents): recording through client hooks.
+- [Harness](https://neosian.com/docs/harness): an off-by-default tool to start, follow, continue and stop a session in another installed harness.
 - [Native memory](https://neosian.com/docs/native-memory): explicit local source capture and hook reminders for Claude Code and Codex.
 - [CLI](https://neosian.com/docs/cli): command grammar and operator actions.
 - [MCP](https://neosian.com/docs/mcp): tools, prompts and transports.
@@ -27,7 +28,10 @@ for that version. The release's neosian-docs.json carries the same pages.
 - [Migration](https://neosian.com/docs/migration): v1 compatibility and retired APIs.
 
 Version 2 has no Python product, dedicated SDK, agent runtime or model
-provider integration. Custom backends implement the tested HTTP contract.
+provider integration. The off-by-default `harness` tool starts another
+installed harness's own headless command when an agent calls it; neosian
+holds no model key and runs no loop. Custom backends implement the tested
+HTTP contract.
 Memory, turns and mailbox remain format 1; Postgres remains schema 4.
 Error identifiers are append-only; `neosian schema errors` lists them.
 Profile format 1 selects sources and bounded context independently of machine

@@ -11,6 +11,10 @@ development and tests only (DESIGN §40).
 - **State, not an agent runtime.** Memory, skills, history, mailbox, hooks
   and storage belong here. Hosts own models, orchestration, accounts,
   hosting and business logic. Never import or assume a host's internals.
+  On an agent's explicit call and only when enabled, the `harness` tool
+  starts another installed harness's own headless command; neosian holds no
+  model key, chooses no provider, runs no loop of its own and schedules
+  nothing.
 - **Prompts are data.** Shipped tool descriptions and agent instructions
   live in `assets/` YAML or markdown with frontmatter, never Rust strings.
 - **Money = integer micro-USD** with ceiling division; floats only at

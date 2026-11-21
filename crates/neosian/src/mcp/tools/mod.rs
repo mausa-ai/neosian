@@ -6,6 +6,8 @@
 
 mod changes;
 mod handoff;
+#[cfg(unix)]
+pub mod harness;
 mod history;
 mod history_rank;
 mod knowledge;

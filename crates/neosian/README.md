@@ -87,3 +87,8 @@ changes` for cursors, gaps, current authority and upgrade requirements.
 tracked scope to an explicit local replica. Atomic apply checkpoints, conflict
 refusal and erasure protect retained observations. Pause source writers; raw
 history and bindings do not travel. Read `neosian docs exchange` for bounds.
+
+The MCP `harness` tool, off by default (`[harness] enabled = true` in
+`config.toml`), lets an agent start, follow, continue and stop a session in
+another installed Claude Code, Codex or OpenCode through its own headless
+command and login. Read `neosian docs harness` for the per-client modes.

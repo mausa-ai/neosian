@@ -83,6 +83,22 @@ pub fn continues(content: &str) -> Vec<String> {
         .collect()
 }
 
+/// The sessions a sessions document names as its parent: the harness
+/// tool's link from a child session to the session that started it
+/// (§40.50 item 6), carried at every Stop as `continues` is.
+pub fn parents(content: &str) -> Vec<String> {
+    pairs(content)
+        .into_iter()
+        .filter(|(key, _)| *key == "parent")
+        .map(|(_, value)| value.to_string())
+        .collect()
+}
+
+/// One parent line of a sessions document.
+pub fn parent_line(parent: &str) -> String {
+    format!("- parent: {parent}\n")
+}
+
 /// `_results`: the TOOL messages' texts by call id.
 fn results(messages: &[Message]) -> HashMap<&str, Cow<'_, str>> {
     messages

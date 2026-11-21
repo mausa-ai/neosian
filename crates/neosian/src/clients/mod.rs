@@ -19,7 +19,7 @@ mod refresh_output;
 mod refresh_owned;
 mod refresh_parts;
 mod refresh_write;
-mod runner;
+pub(crate) mod runner;
 mod selection;
 mod settings;
 pub mod setup;

@@ -24,6 +24,13 @@ and shipped skills are embedded data assets; no model client runs in neosian.
 | `upkeep_review` | Read-only scan, proposal preparation and inspection against current state |
 | `upkeep_apply` | Preview a proposal; apply only with explicit write and its separate approval digest |
 | `knowledge` | Read policy-selected knowledge, resolve references or prepare a governance proposal |
+| `harness` | Off by default, stdio only: start, follow, continue and stop a session in another installed harness (`neosian docs harness`) |
+
+`harness` is listed only when `[harness] enabled = true` stands in neosian's
+`config.toml`, on the stdio server, outside a harness child and on Unix; the
+HTTP `/mcp` door never lists it. It carries destructive and open-world
+annotations. See `neosian docs harness` for its commands, the per-harness
+modes and their limits.
 
 Without a profile, the handoff pair is present only when a read-write mount
 can hold session state. With `--profile NAME`, history tools require an

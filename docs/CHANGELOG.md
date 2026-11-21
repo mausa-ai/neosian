@@ -8,6 +8,39 @@ phase close names the version.
 
 ## [Unreleased]
 
+### Added
+
+- The `harness` MCP tool lets an agent start, follow, continue and stop a
+  session in another installed harness (Claude Code, Codex or OpenCode)
+  through that harness's own headless command, login and model:
+  `start`, `wait`, `send`, `stop` and `list`. It is off by default and listed
+  only when `[harness] enabled = true` stands in neosian's `config.toml`, on
+  the stdio server, outside a harness child and on Unix; the HTTP `/mcp` door
+  never lists it. `turn_seconds` (default 1800) bounds one turn and
+  `max_children` (default 2) the children open at once. Each turn is one
+  headless run with the prompt on standard input; no call blocks for long
+  (`wait` at most 30 seconds); a running turn ends with its whole process
+  group when it is stopped, passes its limit, or the server exits for any
+  reason. `read-only` and `write` are presets each harness enforces with its
+  own mechanism, documented per harness with what each does not guarantee;
+  a denied action is reported in the output, never relayed. Answers return at
+  most 16 KiB of new output and of the answer, with the cut stated. The child
+  is recorded by its own hooks; the tool says where its turns landed for
+  `recall_turn`, or that they did not, and with `session` the child's
+  sessions document gains `- parent: <id>`, which the record verb now keeps
+  at every Stop. Children never get the tool: an environment marker, a
+  TMPDIR marker for Codex, and each harness's own switch under both server
+  names. No wire, format, schema or error code changes. See `neosian docs
+  harness`.
+
+### Changed
+
+- AGENTS.md's "State, not an agent runtime" rule now states its bounds for
+  the harness tool: on an agent's explicit call and only when enabled,
+  neosian starts another installed harness's own headless command; it holds
+  no model key, chooses no provider, runs no loop of its own and schedules
+  nothing.
+
 ## [2.19.0] - 2026-11-20
 
 ### Added

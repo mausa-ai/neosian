@@ -214,6 +214,17 @@ pub fn run(args: &Mcp, out: &mut impl Write, err: &mut impl Write) -> io::Result
         actor,
     };
     let mut server = Server::new(memory, instructions);
+    #[cfg(unix)]
+    {
+        let mut warned = Vec::new();
+        let served = crate::harness::served(&mut |line: &str| warned.push(line.to_string()));
+        for line in warned {
+            writeln!(err, "{line}")?;
+        }
+        if let Some(settings) = served {
+            server = server.with_harness(crate::harness::registry::Registry::new(settings));
+        }
+    }
     serve(&mut server, io::stdin().lock(), out)?;
     Ok(0)
 }

@@ -25,6 +25,15 @@ fn digest(value: &[u8]) -> String {
         .collect()
 }
 
+/// The conversation a profile files a native session under: the
+/// workspace prefix and the digest of the installation, agent and native ID
+/// (the harness tool derives the same ID to find a child, §40.50).
+pub fn conversation_id(prefix: &str, installation: &str, agent: &str, native: &str) -> String {
+    let key =
+        digest(&serde_json::to_vec(&(installation, agent, native)).expect("strings serialize"));
+    format!("{prefix}{key}")
+}
+
 pub fn run(
     args: &Record,
     selected: Resolved,
@@ -95,11 +104,13 @@ pub fn run(
 fn process(args: &Record, selected: Resolved, payload: Payload) -> Result<Envelope, Error> {
     let native = payload["session_id"].as_str().unwrap_or("");
     crate::conversation::ids::parse_conversation_id(native)?;
-    let key = digest(
-        &serde_json::to_vec(&(&selected.installation_id, &args.agent, native))
-            .map_err(io::Error::other)?,
+    let id = conversation_id(
+        &selected.profile.conversation_prefix(),
+        &selected.installation_id,
+        &args.agent,
+        native,
     );
-    let id = format!("{}{key}", selected.profile.conversation_prefix());
+    let key = id[selected.profile.conversation_prefix().len()..].to_string();
     let actor = Actor::parse(&format!("{}:{native}", args.agent)).map_err(Error::Value)?;
     let event = payload
         .get("hook_event_name")

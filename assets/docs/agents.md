@@ -755,6 +755,19 @@ two project directories, each session in its own `proj:` scope.
 | Muse Code | ✓ user settings or shared project `.mcp.json` | ✓ walkthrough green 2026-09-22 (`muse exec`, 1.3.0); headless `muse exec` can stall on a shell approval no one can give, so a handoff leg says "no shell commands" | ✓ two projects, one user registration; authenticated managed hooks and MCP on the state process | ✓ `SessionStart`, plain stdout; prior turn recalled over MCP; continued and handed off for real 2026-10-03 (1.4.2) |
 | Pi | ✓ native MCP, direct tools (1.0.1) | ✓ print-mode walkthrough green 2026-10-03; extension commits at final settlement | ✓ two projects through one user registration and the state process; `PI_CODING_AGENT_DIR` honored | ✓ named system section, startup and compaction; Claude Code → Pi → Claude Code → Pi with all continuation links verified |
 
+## Sessions in another harness
+
+An agent in one client can start, follow, continue and stop a session in
+another installed one (Claude Code, Codex or OpenCode) through the `harness`
+MCP tool, once `[harness] enabled = true` stands in neosian's `config.toml`.
+Each turn is one run of that client's own headless command (`claude -p`,
+`codex exec`, `opencode run --standalone`) under its own login and model, in
+`read-only` or `write` mode as that client enforces it. The child's turns are
+recorded by its own hooks as described above, and its sessions document gains
+a `- parent:` line naming the session that started it. Children never get
+the tool. Read `neosian docs harness` for the commands, the per-client modes
+and what each does not guarantee. The tool is absent on Windows.
+
 ## Durable messages and reminders
 
 See `neosian docs messaging` for the shared `messages` tool, conversation and

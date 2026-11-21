@@ -17,6 +17,6 @@ mod mailbox;
 mod output;
 mod pause;
 pub(crate) mod payload;
-mod profile;
+pub(crate) mod profile;
 mod settings;
 mod spool;
