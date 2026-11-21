@@ -1,41 +1,63 @@
-//! Claude Code's headless form, as 2.1.330 was observed (§40.50): `-p`
-//! with stream-json, a session ID neosian names, presets through its own
-//! permission modes, and `harness` denied under both server keys.
+//! Claude Code's headless form, as 2.1.330 was observed (§40.50, amended
+//! by #430): `-p` with stream-json and a session ID neosian names. In
+//! `read-only` the child loads no settings but the person's own user
+//! settings (no project or local hooks or allow rules) and one MCP server,
+//! this neosian, whose tools it may use; `harness` is denied under both
+//! server keys. `write` keeps the person's normal configuration.
 
-use serde_json::{Map, Value};
+use serde_json::{Map, Value, json};
 
-use super::adapter::{Mode, Plan, Request};
-use super::events::{Event, head};
+use super::adapter::{Mode, Plan, Request, SERVER_KEY};
+use super::events::{ERROR_BYTES, Event, head, observed};
 
 /// Both keys the server may be registered under (X2a may rename it).
 pub const DENIED: [&str; 2] = ["mcp__neosian-memory__harness", "mcp__neosian__harness"];
 
+fn words(items: &[&str]) -> Vec<String> {
+    items.iter().map(|word| word.to_string()).collect()
+}
+
 pub fn plan(request: &Request) -> Plan {
-    let mut argv: Vec<String> = [
+    let mut argv = words(&[
         "claude",
         "-p",
         "--output-format",
         "stream-json",
         "--verbose",
-    ]
-    .map(String::from)
-    .to_vec();
+    ]);
     match request.resume {
-        Some(session) => argv.extend(["--resume".to_string(), session.to_string()]),
-        None => argv.extend(["--session-id".to_string(), request.new_session.to_string()]),
+        Some(session) => argv.extend(words(&["--resume", session])),
+        None => argv.extend(words(&["--session-id", request.new_session])),
     }
-    let mode: &[&str] = match request.mode {
-        Mode::ReadOnly => &["--permission-mode", "dontAsk", "--tools", "Read,Grep,Glob"],
-        Mode::Write => &[
+    match request.mode {
+        Mode::ReadOnly => {
+            argv.extend(words(&["--setting-sources", "user", "--strict-mcp-config"]));
+            if let Some(server) = request.server {
+                let config = json!({"mcpServers": {SERVER_KEY: {
+                    "command": server.command,
+                    "args": server.args,
+                }}});
+                argv.extend(["--mcp-config".to_string(), config.to_string()]);
+            }
+            argv.extend(words(&[
+                "--permission-mode",
+                "dontAsk",
+                "--tools",
+                "Read,Grep,Glob",
+            ]));
+        }
+        Mode::Write => argv.extend(words(&[
             "--permission-mode",
             "acceptEdits",
             "--permission-prompts",
             "none",
-        ],
-    };
-    argv.extend(mode.iter().map(|word| word.to_string()));
+        ])),
+    }
     if let Some(model) = request.model {
-        argv.extend(["--model".to_string(), model.to_string()]);
+        argv.extend(words(&["--model", model]));
+    }
+    if request.mode == Mode::ReadOnly && request.server.is_some() {
+        argv.extend(["--allowedTools".to_string(), format!("mcp__{SERVER_KEY}")]);
     }
     // Variadic, so it comes last; no positional prompt follows.
     argv.push("--disallowedTools".to_string());
@@ -50,6 +72,15 @@ fn text(value: Option<&Value>) -> Option<&str> {
     value.and_then(Value::as_str)
 }
 
+fn blocks(event: &Map<String, Value>) -> impl Iterator<Item = &Value> {
+    event
+        .get("message")
+        .and_then(|message| message.get("content"))
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+}
+
 pub fn read(event: &Map<String, Value>) -> Vec<Event> {
     let mut events = Vec::new();
     match text(event.get("type")).unwrap_or_default() {
@@ -59,11 +90,7 @@ pub fn read(event: &Map<String, Value>) -> Vec<Event> {
             }
         }
         "assistant" => {
-            let blocks = event
-                .get("message")
-                .and_then(|message| message.get("content"))
-                .and_then(Value::as_array);
-            for block in blocks.into_iter().flatten() {
+            for block in blocks(event) {
                 match text(block.get("type")) {
                     Some("text") => {
                         if let Some(said) = text(block.get("text")).filter(|t| !t.is_empty()) {
@@ -71,26 +98,22 @@ pub fn read(event: &Map<String, Value>) -> Vec<Event> {
                         }
                     }
                     Some("tool_use") => {
-                        let name = text(block.get("name")).unwrap_or("?");
-                        events.push(Event::Note(format!("[tool {name}]")));
+                        let name = text(block.get("name")).unwrap_or_default();
+                        events.push(observed("tool", &[("name", json!(name))]));
                     }
                     _ => {}
                 }
             }
         }
         "user" => {
-            let blocks = event
-                .get("message")
-                .and_then(|message| message.get("content"))
-                .and_then(Value::as_array);
-            for block in blocks.into_iter().flatten() {
+            for block in blocks(event) {
                 if block.get("is_error") == Some(&Value::Bool(true)) {
                     let said = match block.get("content") {
                         Some(Value::String(said)) => said.clone(),
                         Some(other) => other.to_string(),
                         None => String::new(),
                     };
-                    events.push(Event::Note(format!("[tool error] {}", head(&said, 400))));
+                    events.push(observed("tool_error", &[("text", json!(said))]));
                 }
             }
         }
@@ -101,15 +124,16 @@ pub fn read(event: &Map<String, Value>) -> Vec<Event> {
                 .into_iter()
                 .flatten()
             {
-                let name = text(denial.get("tool_name")).unwrap_or("?");
-                events.push(Event::Note(format!("[denied {name}]")));
+                let name = text(denial.get("tool_name")).unwrap_or_default();
+                events.push(observed("denied", &[("name", json!(name))]));
             }
             let answer = text(event.get("result"));
             let failed = event.get("is_error") == Some(&Value::Bool(true))
                 || text(event.get("subtype")).is_some_and(|s| s.starts_with("error"));
             if failed {
                 let subtype = text(event.get("subtype")).unwrap_or("error");
-                events.push(Event::Failure(answer.unwrap_or(subtype).to_string()));
+                let failure = head(answer.unwrap_or(subtype), ERROR_BYTES);
+                events.push(Event::Failure(failure.to_string()));
             } else if let Some(answer) = answer {
                 events.push(Event::Answer(answer.to_string()));
             }

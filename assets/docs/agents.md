@@ -762,11 +762,12 @@ another installed one (Claude Code, Codex or OpenCode) through the `harness`
 MCP tool, once `[harness] enabled = true` stands in neosian's `config.toml`.
 Each turn is one run of that client's own headless command (`claude -p`,
 `codex exec`, `opencode run --standalone`) under its own login and model, in
-`read-only` or `write` mode as that client enforces it. The child's turns are
-recorded by its own hooks as described above, and its sessions document gains
-a `- parent:` line naming the session that started it. Children never get
-the tool. Read `neosian docs harness` for the commands, the per-client modes
-and what each does not guarantee. The tool is absent on Windows.
+`read-only` or `write` mode as that client enforces it, in the server's own
+directory or one listed in `[harness] directories`. The child's turns are
+recorded by its own hooks as described above, and its record hook writes a
+`- parent:` line naming the session that started it. Children never get the
+tool. Read `neosian docs harness` for the commands, the per-client modes and
+what each does not guarantee. The tool is absent on Windows.
 
 ## Durable messages and reminders
 

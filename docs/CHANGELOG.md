@@ -17,21 +17,40 @@ phase close names the version.
   only when `[harness] enabled = true` stands in neosian's `config.toml`, on
   the stdio server, outside a harness child and on Unix; the HTTP `/mcp` door
   never lists it. `turn_seconds` (default 1800) bounds one turn and
-  `max_children` (default 2) the children open at once. Each turn is one
-  headless run with the prompt on standard input; no call blocks for long
-  (`wait` at most 30 seconds); a running turn ends with its whole process
-  group when it is stopped, passes its limit, or the server exits for any
-  reason. `read-only` and `write` are presets each harness enforces with its
-  own mechanism, documented per harness with what each does not guarantee;
-  a denied action is reported in the output, never relayed. Answers return at
-  most 16 KiB of new output and of the answer, with the cut stated. The child
-  is recorded by its own hooks; the tool says where its turns landed for
-  `recall_turn`, or that they did not, and with `session` the child's
-  sessions document gains `- parent: <id>`, which the record verb now keeps
-  at every Stop. Children never get the tool: an environment marker, a
-  TMPDIR marker for Codex, and each harness's own switch under both server
-  names. No wire, format, schema or error code changes. See `neosian docs
-  harness`.
+  `max_children` (default 2) the children open at once.
+- A child works in the MCP server's own directory, or in one you list in
+  `[harness] directories` (exact paths). A server in the home directory or
+  the filesystem root refuses until a directory is listed. Every child gets
+  `PWD` set to its directory.
+- `read-only` is the default and the strongest each harness gives. Claude
+  Code loads only your user settings and one MCP server, this neosian, whose
+  tools it may use, with Read, Grep and Glob as its only built-in tools.
+  Codex runs its read-only sandbox with approval `never`. OpenCode loads no
+  project configuration or plugins and allows only reading. In `write`,
+  Claude Code accepts edits inside the directory, Codex writes inside it
+  only, and OpenCode edits files there except its own configuration and
+  plugins. What each mode does not guarantee is listed per harness in
+  `neosian docs harness`; a denied action is reported, never relayed.
+- Each turn runs under a watcher that takes a checked plan, never a command:
+  `neosian harness-watch` refuses unless the tool is enabled and outside a
+  child, and starts only one of the three harnesses with its presets. The
+  prompt reaches the harness on standard input. Ending a turn (stop, the
+  turn limit, or the server exiting for any reason) ends the harness and
+  every descendant it can find, each with its process group; after a normal
+  exit, what is left in the group is ended after a short grace. Best effort:
+  a process that detached beforehand can escape.
+- Answers keep the child's words (`text`, `answer`), what neosian observed
+  (`events`, structured) and neosian's own sentences (`notes`) apart. Every
+  text is bounded: 16 KiB of new text and of the answer, 32 events, 4 KiB of
+  an error, a `list` under 64 KiB.
+- The child is recorded by its own hooks. With `session`, the child's record
+  hook writes `- parent: <id>` into its sessions document from
+  `NEOSIAN_HARNESS_PARENT`; the server writes the line only into a document
+  that did not exist when the child's session was announced, and says
+  "Linked" only after reading it back. An announced session that already
+  existed is reported and never linked. The record verb keeps parent lines at
+  every Stop. No wire, format, schema or error code changes. See `neosian
+  docs harness`.
 
 ### Changed
 

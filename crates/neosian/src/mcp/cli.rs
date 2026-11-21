@@ -107,6 +107,36 @@ pub fn resolve_mounts(
     }
 }
 
+/// This server's store selection as flags, for the neosian server of a
+/// Claude Code read-only harness child (§40.50, #430).
+#[cfg(unix)]
+fn store_flags(args: &Mcp) -> Vec<String> {
+    let mut flags = Vec::new();
+    let mut add = |flag: &str, value: Option<String>| {
+        if let Some(value) = value {
+            flags.extend([flag.to_string(), value]);
+        }
+    };
+    add("--profile", args.profile.clone());
+    let root = args.root.as_ref();
+    add(
+        "--root",
+        root.map(|r| {
+            std::path::absolute(r)
+                .unwrap_or_else(|_| r.clone())
+                .display()
+                .to_string()
+        }),
+    );
+    add("--url", args.url.clone());
+    add("--schema", args.schema.clone());
+    add("--scope", args.scope.clone());
+    for mount in &args.mount {
+        add("--mount", Some(mount.clone()));
+    }
+    flags
+}
+
 /// Which start door the client has (§33), from the actor the installer
 /// rendered (`mcp:<client>`).
 fn hooked(actor: &str) -> bool {
@@ -222,7 +252,8 @@ pub fn run(args: &Mcp, out: &mut impl Write, err: &mut impl Write) -> io::Result
             writeln!(err, "{line}")?;
         }
         if let Some(settings) = served {
-            server = server.with_harness(crate::harness::registry::Registry::new(settings));
+            let registry = crate::harness::registry::Registry::new(settings, store_flags(args));
+            server = server.with_harness(registry);
         }
     }
     serve(&mut server, io::stdin().lock(), out)?;

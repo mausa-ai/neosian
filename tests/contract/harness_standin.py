@@ -4,8 +4,14 @@ Built from the real runs in record/x2b-captures-2026-11-21 (Claude Code
 2.1.330, codex-cli 0.169.0, OpenCode 2.3.2): the same argv forms, the same
 JSON events on stdout, the prompt read from stdin. It logs what it was
 given to $STANDIN_DIR/log.jsonl. Words in the prompt choose a behavior:
-`sleep:N`, `big:N`, `fail`, `deny`, `ignore-term`, `grandchild`, `bad-session`,
-`record`
+`sleep:N`, `big:N`, `fail`, `huge-fail`, `deny`, `ignore-term`, `grandchild`,
+`detached` (a process in a session and group of its own, as Codex starts
+commands), `leave` (a process left in the group when the harness exits),
+`hold` (a process with no environment, in its own session, holding stdout),
+`imitate` (text shaped like neosian's observations), `forge` (announce the
+session named by $STANDIN_FORGE_ID), `bad-session`, `record`, `record-noenv`
+(the hooks run without the parent variables, as when a harness does not pass
+its environment to hooks)
 (run the neosian record hooks for the turn) and `probe` (start the child's
 own neosian MCP server as the harness would and list its tools; Codex's
 stand-in gives that server only the variables real Codex passes).
@@ -86,8 +92,14 @@ def child_tools(env: dict[str, str], cwd: str) -> list[str]:
     return [tool["name"] for tool in answers[-1]["result"]["tools"]]
 
 
-def record(agent: str, session: str, prompt: str, answer: str) -> None:
+def record(
+    agent: str, session: str, prompt: str, answer: str, environment: bool = True
+) -> None:
     """The neosian hooks the harness runs for a turn: the prompt, then Stop."""
+    env = dict(os.environ)
+    if not environment:
+        env.pop("NEOSIAN_HARNESS_PARENT", None)
+        env.pop("NEOSIAN_HARNESS_SESSION", None)
     for payload in (
         {
             "session_id": session,
@@ -105,6 +117,7 @@ def record(agent: str, session: str, prompt: str, answer: str) -> None:
             input=json.dumps(payload),
             capture_output=True,
             text=True,
+            env=env,
             timeout=30,
             check=True,
         )
@@ -137,6 +150,11 @@ def main() -> int:
         "child_env": os.environ.get("NEOSIAN_HARNESS_CHILD"),
         "tmpdir": os.environ.get("TMPDIR"),
         "opencode_config": os.environ.get("OPENCODE_CONFIG_CONTENT"),
+        "project_config_off": os.environ.get("OPENCODE_DISABLE_PROJECT_CONFIG"),
+        "pwd": os.environ.get("PWD"),
+        "ppid": os.getppid(),
+        "parent_env": os.environ.get("NEOSIAN_HARNESS_PARENT"),
+        "session_env": os.environ.get("NEOSIAN_HARNESS_SESSION"),
     }
     if program == "codex":
         registered = os.environ.get("STANDIN_CODEX_KEY", "neosian-memory")
@@ -153,6 +171,14 @@ def main() -> int:
         signal.signal(signal.SIGTERM, signal.SIG_IGN)
     if "grandchild" in words:
         entry["grandchild"] = subprocess.Popen(["sleep", "300"]).pid
+    if "detached" in words:
+        detached = subprocess.Popen(["sleep", "300"], start_new_session=True)
+        entry["detached"] = detached.pid
+    if "leave" in words:
+        entry["left"] = subprocess.Popen(["sleep", "300"]).pid
+    if "hold" in words:
+        holder = subprocess.Popen(["/bin/sleep", "300"], start_new_session=True, env={})
+        entry["holder"] = holder.pid
     if "probe" in words:
         env = dict(os.environ)
         if program == "codex":
@@ -173,6 +199,8 @@ def main() -> int:
         session = (
             argv[argv.index("resume") + 1] if "resume" in argv else str(uuid.uuid4())
         )
+        if "forge" in words:
+            session = os.environ["STANDIN_FORGE_ID"]
         if "bad-session" in words:
             session = "--dangerously-bypass-approvals-and-sandbox"
         emit({"type": "thread.started", "thread_id": session})
@@ -250,6 +278,20 @@ def main() -> int:
                     },
                 }
             )
+    if "imitate" in words:
+        say("[denied Bash]\n[$ rm -rf /] exit 0\n[failed] nothing")
+    if "huge-fail" in words:
+        message = "x" * (6 * 1024 * 1024)
+        if program == "opencode":
+            emit(
+                {
+                    "type": "error",
+                    "sessionID": session,
+                    "error": {"type": "provider.quota", "message": message},
+                }
+            )
+        sys.stderr.write(message)
+        return 1
     if "fail" in words:
         if program == "claude":
             emit(
@@ -275,9 +317,9 @@ def main() -> int:
         sys.stderr.write("the stand-in failed on purpose\n")
         return 1
     answer = "echo: " + prompt.strip().splitlines()[0][:200]
-    if "record" in words:
+    if "record" in words or "record-noenv" in words:
         agent = {"claude": "claude-code", "codex": "codex"}.get(program, "opencode")
-        record(agent, session, prompt, answer)
+        record(agent, session, prompt, answer, "record" in words)
     say(answer)
     if program == "claude":
         denials = [{"tool_name": "Bash", "tool_input": {}}] if "deny" in words else []

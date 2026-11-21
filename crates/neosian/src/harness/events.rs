@@ -1,9 +1,15 @@
 //! What a harness's headless output says, harness by harness reduced to
-//! one vocabulary, and the bounded transcript a turn keeps of it (§40.50
-//! item 8): the head and the tail, the bytes between counted, never held.
+//! one vocabulary, and what a turn keeps of it (§40.50 items 8, 11): the
+//! child's own words in one bounded buffer, what neosian observed (a tool
+//! call, a command, a denial) as structured entries in another. A label is
+//! never inserted into the child's text.
+
+use std::collections::VecDeque;
+
+use serde_json::{Value, json};
 
 /// One thing a line of a harness's output said.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Event {
     /// The harness's own session ID.
     Session(String),
@@ -12,18 +18,25 @@ pub enum Event {
     Text(String),
     /// The harness's own final answer for the turn.
     Answer(String),
-    /// A tool call, a command or a denial, as one line.
-    Note(String),
+    /// What neosian observed, as one structured entry (`kind` and fields).
+    Observed(Value),
     /// The harness reported that the turn failed.
     Failure(String),
 }
 
-/// The transcript's head, kept whole.
+/// The text's head, kept whole.
 pub const HEAD_BYTES: usize = 64 * 1024;
-/// The transcript's tail, the newest bytes.
+/// The text's tail, the newest bytes.
 pub const TAIL_BYTES: usize = 192 * 1024;
-/// The most one answer returns, of new output and of the final answer.
+/// The most one answer returns of new text and of the final answer.
 pub const OUTPUT_BYTES: usize = 16 * 1024;
+/// The longest string one observed entry carries.
+pub const FIELD_BYTES: usize = 400;
+/// The longest failure or error text kept.
+pub const ERROR_BYTES: usize = 4 * 1024;
+/// How many observed entries a turn keeps, and returns in one answer.
+pub const EVENTS_KEPT: usize = 256;
+pub const EVENTS_PER_ANSWER: usize = 32;
 
 /// A prefix of `text` of at most `limit` bytes, on a character boundary.
 pub fn head(text: &str, limit: usize) -> &str {
@@ -49,33 +62,58 @@ pub fn tail(text: &str, limit: usize) -> &str {
     &text[start..]
 }
 
-/// Everything a turn printed, bounded: offsets are byte positions in the
-/// whole stream, so a reader's position stays valid as the middle drops.
+/// One observed entry whose strings are bounded.
+pub fn observed(kind: &str, fields: &[(&str, Value)]) -> Event {
+    let mut entry = serde_json::Map::new();
+    entry.insert("kind".into(), json!(kind));
+    for (name, value) in fields {
+        let value = match value {
+            Value::String(text) => json!(head(text, FIELD_BYTES)),
+            other => other.clone(),
+        };
+        entry.insert((*name).to_string(), value);
+    }
+    Event::Observed(Value::Object(entry))
+}
+
+/// The child's words, bounded: offsets are byte positions in the whole
+/// stream, so a reader's position stays valid as the middle drops. The
+/// tail is a queue of pieces, so dropping its front moves nothing else.
 #[derive(Default)]
-pub struct Transcript {
+pub struct Text {
     head: String,
-    tail: String,
+    tail: VecDeque<String>,
+    tail_bytes: usize,
     total: usize,
 }
 
-impl Transcript {
+impl Text {
     pub fn push(&mut self, text: &str) {
         self.total += text.len();
         if self.tail.is_empty() && self.head.len() + text.len() <= HEAD_BYTES {
             self.head.push_str(text);
             return;
         }
-        if self.tail.is_empty() {
-            // The part that still fits the head goes there; the rest starts the tail.
+        let rest = if self.tail.is_empty() {
             let room = head(text, HEAD_BYTES - self.head.len());
             self.head.push_str(room);
-            self.tail.push_str(&text[room.len()..]);
+            &text[room.len()..]
         } else {
-            self.tail.push_str(text);
-        }
-        if self.tail.len() > TAIL_BYTES {
-            let keep = tail(&self.tail, TAIL_BYTES).len();
-            self.tail.drain(..self.tail.len() - keep);
+            text
+        };
+        self.tail.push_back(rest.to_string());
+        self.tail_bytes += rest.len();
+        while self.tail_bytes > TAIL_BYTES {
+            let front = self.tail.front_mut().expect("bytes over the bound");
+            let excess = self.tail_bytes - TAIL_BYTES;
+            if front.len() <= excess {
+                self.tail_bytes -= front.len();
+                self.tail.pop_front();
+            } else {
+                let kept = tail(front, front.len() - excess).to_string();
+                self.tail_bytes -= front.len() - kept.len();
+                *front = kept;
+            }
         }
     }
 
@@ -87,17 +125,61 @@ impl Transcript {
     /// is still held, and how many bytes after `from` it leaves out.
     pub fn since(&self, from: usize, limit: usize) -> (String, usize) {
         let from = from.min(self.total);
-        let tail_start = self.total - self.tail.len();
+        let tail_start = self.total - self.tail_bytes;
         let mut held = String::new();
         if from < self.head.len() {
             held.push_str(&self.head[from..]);
         }
-        let start = from.max(tail_start).max(self.head.len());
-        if start < self.total {
-            held.push_str(&self.tail[start - tail_start..]);
+        let mut at = tail_start;
+        for piece in &self.tail {
+            let end = at + piece.len();
+            if end > from {
+                held.push_str(&piece[from.saturating_sub(at)..]);
+            }
+            at = end;
         }
         let shown = tail(&held, limit).to_string();
         let skipped = self.total - from - shown.len();
+        (shown, skipped)
+    }
+}
+
+/// Observed entries, the newest kept, numbered from the first.
+#[derive(Default)]
+pub struct Log {
+    entries: VecDeque<Value>,
+    total: usize,
+}
+
+impl Log {
+    pub fn push(&mut self, entry: Value) {
+        self.entries.push_back(entry);
+        self.total += 1;
+        if self.entries.len() > EVENTS_KEPT {
+            self.entries.pop_front();
+        }
+    }
+
+    pub fn total(&self) -> usize {
+        self.total
+    }
+
+    /// The entries after number `from`, at most `limit` of the newest, and
+    /// how many after `from` are left out.
+    pub fn since(&self, from: usize, limit: usize) -> (Vec<Value>, usize) {
+        let first = self.total - self.entries.len();
+        let held: Vec<&Value> = self
+            .entries
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| first + index >= from)
+            .map(|(_, entry)| entry)
+            .collect();
+        let shown: Vec<Value> = held[held.len().saturating_sub(limit)..]
+            .iter()
+            .map(|entry| (*entry).clone())
+            .collect();
+        let skipped = self.total - from.min(self.total) - shown.len();
         (shown, skipped)
     }
 }
@@ -107,71 +189,18 @@ impl Transcript {
 pub struct Tail(String);
 
 impl Tail {
-    pub const BYTES: usize = 4 * 1024;
-
     pub fn push(&mut self, text: &str) {
         self.0.push_str(text);
-        if self.0.len() > 2 * Self::BYTES {
-            let keep = tail(&self.0, Self::BYTES).len();
+        if self.0.len() > 2 * ERROR_BYTES {
+            let keep = tail(&self.0, ERROR_BYTES).len();
             self.0.drain(..self.0.len() - keep);
         }
     }
 
     pub fn text(&self) -> &str {
-        tail(&self.0, Self::BYTES)
+        tail(&self.0, ERROR_BYTES)
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_reader_gets_what_is_new_and_the_count_of_what_dropped() {
-        let mut transcript = Transcript::default();
-        transcript.push("one\n");
-        assert_eq!(transcript.since(0, OUTPUT_BYTES), ("one\n".to_string(), 0));
-        let mark = transcript.total();
-        transcript.push("two\n");
-        assert_eq!(
-            transcript.since(mark, OUTPUT_BYTES),
-            ("two\n".to_string(), 0)
-        );
-        assert_eq!(
-            transcript.since(transcript.total(), OUTPUT_BYTES),
-            (String::new(), 0)
-        );
-        assert_eq!(transcript.since(0, 4), ("two\n".to_string(), 4));
-    }
-
-    #[test]
-    fn the_middle_of_a_long_turn_is_counted_never_held() {
-        let mut transcript = Transcript::default();
-        let line = format!("{}é\n", "x".repeat(997));
-        for _ in 0..400 {
-            transcript.push(&line);
-        }
-        assert_eq!(transcript.total(), 400 * line.len());
-        assert!(transcript.head.len() <= HEAD_BYTES && transcript.tail.len() <= TAIL_BYTES);
-        let (shown, skipped) = transcript.since(0, OUTPUT_BYTES);
-        assert!(shown.len() <= OUTPUT_BYTES && shown.ends_with("é\n"));
-        assert_eq!(shown.len() + skipped, transcript.total());
-        let (all, dropped) = transcript.since(0, usize::MAX);
-        assert!(all.len() <= HEAD_BYTES + TAIL_BYTES && all.starts_with("xxx"));
-        assert_eq!(all.len() + dropped, transcript.total());
-        assert!(dropped > 0);
-        let near_end = transcript.total() - line.len();
-        assert_eq!(transcript.since(near_end, OUTPUT_BYTES), (line.clone(), 0));
-    }
-
-    #[test]
-    fn cuts_fall_on_character_boundaries() {
-        assert_eq!(head("aé", 2), "a");
-        assert_eq!(tail("éa", 2), "a");
-        let mut stderr = Tail::default();
-        for _ in 0..5000 {
-            stderr.push("é");
-        }
-        assert!(stderr.text().len() <= Tail::BYTES && stderr.text().starts_with('é'));
-    }
-}
+mod tests;

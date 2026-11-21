@@ -91,12 +91,15 @@ See `neosian docs stores` for each setting's exact scope; these do not change
 permissions, skill/context limits or the format-1 exchange bundle bounds.
 
 `config.toml` in the neosian home also holds `[harness]`: `enabled` (default
-false), `turn_seconds` (1800; 10 to 86400) and `max_children` (2; 1 to 8). A
-value out of range or of the wrong type keeps the tool off. The tool finds
-`claude`, `codex` and `opencode` on the MCP server's `PATH`; children inherit
-the server's environment plus `NEOSIAN_HARNESS_CHILD=1`, Codex children a
-private `TMPDIR`, OpenCode children `OPENCODE_CONFIG_CONTENT`. See
-`neosian docs harness`.
+false), `turn_seconds` (1800; 10 to 86400), `max_children` (2; 1 to 8) and
+`directories` (absolute paths a child may work in besides the server's own).
+A value out of range or of the wrong type keeps the tool off. The tool finds
+`claude`, `codex` and `opencode` on absolute entries of the MCP server's
+`PATH`; children inherit the server's environment plus
+`NEOSIAN_HARNESS_CHILD`, `PWD`, `NEOSIAN_HARNESS_PARENT` and
+`NEOSIAN_HARNESS_SESSION` (which the record hook reads), Codex children a
+private `TMPDIR`, OpenCode children `OPENCODE_CONFIG_CONTENT` and, in
+read-only, `OPENCODE_DISABLE_PROJECT_CONFIG`. See `neosian docs harness`.
 
 Flags and environment values containing credentials are never copied into
 client registrations or hook commands. Supply credentials in the client's

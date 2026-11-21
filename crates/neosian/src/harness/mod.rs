@@ -7,6 +7,8 @@
 //! with its own login, model and permissions.
 
 pub mod adapter;
+#[cfg(unix)]
+mod begin;
 mod claude;
 mod codex;
 mod config;
@@ -16,11 +18,15 @@ mod opencode;
 pub mod text;
 
 #[cfg(unix)]
+pub mod plan;
+#[cfg(unix)]
 mod probe;
 #[cfg(unix)]
 pub mod registry;
 #[cfg(unix)]
 mod render;
+#[cfg(unix)]
+mod tree;
 #[cfg(unix)]
 mod turn;
 #[cfg(unix)]
@@ -37,9 +43,10 @@ pub const CHILD_ENV: &str = "NEOSIAN_HARNESS_CHILD";
 /// `TMPDIR`: Codex passes MCP servers TMPDIR, never the process environment.
 pub const MARKER: &str = ".neosian-harness-child";
 
-/// Whether this process is a harness child (§40.50 item 7).
+/// Whether this process is a harness child (§40.50 item 7): the
+/// variable's presence is the marker, whatever its value (#430).
 pub fn is_child() -> bool {
-    if env::var_os(CHILD_ENV).is_some_and(|value| !value.is_empty()) {
+    if env::var_os(CHILD_ENV).is_some() {
         return true;
     }
     env::var_os("TMPDIR").is_some_and(|dir| Path::new(&dir).join(MARKER).exists())

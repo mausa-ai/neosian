@@ -52,8 +52,9 @@ An agent can also start, follow, continue and stop a session in another
 installed client (Claude Code, Codex or OpenCode) through the `harness` MCP
 tool, off by default: set `[harness] enabled = true` in neosian's
 `config.toml`. Each turn runs that client's own headless command, login and
-model in a read-only or write preset it enforces itself; the child is
-recorded and linked to its parent. Read `neosian docs harness`.
+model in a read-only or write preset it enforces itself, in the server's own
+directory or one you list; the child is recorded and linked to its parent.
+Read `neosian docs harness`.
 
 Claude Code and Codex can also write their own native memory files. Use
 `neosian native-memory add` to preview an explicit source and `--write` to

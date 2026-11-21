@@ -1,15 +1,20 @@
-//! What the parent receives about a child (§40.50 items 6, 8, 9): its
-//! state, the new output and the answer within their bounds with the cut
-//! stated, where its turns are recorded in this store, and the link.
+//! What the parent receives about a child (§40.50 items 6, 8, 9, amended
+//! by #430): its state; the child's own words (`text`, `answer`) apart from
+//! what neosian observed (`events`) and from neosian's own sentences
+//! (`notes`); every text bounded with the cut stated; where its turns are
+//! recorded in this store; and the link, said only once read back.
 
 use serde_json::{Map, Value, json};
 
 use super::adapter::{Agent, Mode};
-use super::events::{OUTPUT_BYTES, head};
-use super::link::{self, Linked};
+use super::events::{ERROR_BYTES, EVENTS_PER_ANSWER, OUTPUT_BYTES, head};
+use super::link::{self, Linked, Naming};
 use super::text::say;
 use super::turn::{End, Turn, lock};
 use crate::memory::dispatch::Memory;
+
+/// How much of an error `list` shows per child.
+const LIST_ERROR_BYTES: usize = 512;
 
 /// A child as the registry holds it.
 pub struct Child {
@@ -19,14 +24,24 @@ pub struct Child {
     pub model: Option<String>,
     pub directory: std::path::PathBuf,
     pub parent: Option<String>,
-    pub private: std::path::PathBuf,
     pub session: Option<String>,
+    /// The session the harness announced already existed in this store.
+    pub existed: bool,
     pub turns: u32,
     pub stopped: bool,
     pub current: Option<Turn>,
-    /// The turn whose link is confirmed, so it is not read again.
-    pub linked: u32,
     pub limit_seconds: u64,
+}
+
+/// How much one answer says about a child.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum View {
+    /// `wait` and `stop`: new text and events, consumed.
+    Read,
+    /// `start` and `send`: the state.
+    Brief,
+    /// `list`: the state, no text, a short error.
+    Listed,
 }
 
 impl Child {
@@ -39,7 +54,9 @@ impl Child {
         if self.session.is_none()
             && let Some(turn) = &self.current
         {
-            self.session = lock(&turn.shared).session.clone();
+            let shared = lock(&turn.shared);
+            self.session = shared.session.clone();
+            self.existed = shared.existed;
         }
     }
 
@@ -65,27 +82,40 @@ impl Child {
 
 /// How the parent may read a turn: the conversation and the turns that
 /// landed, or why there are none; and the link once the turn has ended.
-fn record(memory: &Memory, child: &mut Child, ended: bool, notes: &mut Vec<String>) -> Value {
-    let Some(native) = child.session.clone() else {
+fn record(
+    memory: &Memory,
+    naming: &Naming,
+    child: &Child,
+    ended: bool,
+    notes: &mut Vec<String>,
+) -> Value {
+    let Some(native) = child.session.as_deref() else {
         notes.push(say("record_unknown", &[]));
         return Value::Null;
     };
-    let conversation = link::conversation(memory, child.agent.name(), &native);
+    if child.existed {
+        notes.push(say("announced_existing", &[("session", native)]));
+        return Value::Null;
+    }
+    let conversation = naming.conversation(child.agent.name(), native);
     let before = child
         .current
         .as_ref()
         .map_or(Ok(0), |turn| turn.before.clone());
-    let read = before
-        .and_then(|before| link::last_turn(memory, &conversation).map(|after| (before, after)));
+    let read = before.and_then(|before| {
+        link::last_turn(memory.store.as_ref(), &conversation).map(|after| (before, after))
+    });
     let (before, after) = match read {
         Ok(pair) => pair,
         Err(error) => {
-            notes.push(say("record_failed", &[("error", &error)]));
+            notes.push(say(
+                "record_failed",
+                &[("error", head(&error, ERROR_BYTES))],
+            ));
             return Value::Null;
         }
     };
-    let landed = after > before;
-    let value = if landed {
+    let value = if after > before {
         let turns = if after == before + 1 {
             after.to_string()
         } else {
@@ -103,32 +133,27 @@ fn record(memory: &Memory, child: &mut Child, ended: bool, notes: &mut Vec<Strin
     if !ended {
         return value;
     }
-    let number = child.current.as_ref().map_or(0, |turn| turn.number);
-    match &child.parent {
-        None => notes.push(say("not_linked_session", &[])),
-        Some(_) if after == 0 => notes.push(say("not_linked_record", &[])),
-        Some(parent) if child.linked == number => {
-            notes.push(say("linked", &[("session", parent)]));
-        }
-        Some(parent) => {
-            let sentence = match link::link(memory, &conversation, parent) {
-                Linked::Yes => {
-                    child.linked = number;
-                    say("linked", &[("session", parent)])
-                }
-                Linked::NoMount => say("not_linked_mount", &[]),
-                Linked::Retry => say("not_linked_retry", &[]),
-                Linked::Failed(error) => say("link_failed", &[("error", &error)]),
-            };
-            notes.push(sentence);
-        }
-    }
+    let Some(parent) = child.parent.as_deref() else {
+        notes.push(say("not_linked_session", &[]));
+        return value;
+    };
+    notes.push(
+        match link::link(memory, child.agent.name(), &conversation, parent) {
+            Linked::Yes => say("linked", &[("session", parent)]),
+            Linked::Written => say("link_written", &[("session", parent)]),
+            Linked::Absent if after > 0 => say("not_linked_mount", &[]),
+            Linked::Absent => say("not_linked_absent", &[]),
+            Linked::NoMount => say("not_linked_mount", &[]),
+            Linked::OtherAgent => say("not_linked_agent", &[]),
+            Linked::Retry => say("not_linked_retry", &[]),
+            Linked::Failed(error) => say("link_failed", &[("error", head(&error, ERROR_BYTES))]),
+        },
+    );
     value
 }
 
-/// The child as one JSON object; `consume` moves the read position past
-/// the output it returns (wait, stop), `list` leaves it.
-pub fn child(memory: &Memory, child: &mut Child, consume: bool) -> Value {
+/// The child as one JSON object.
+pub fn child(memory: &Memory, naming: &Naming, child: &mut Child, view: View) -> Value {
     child.learn();
     let state = child.state();
     let mut out = Map::new();
@@ -146,42 +171,61 @@ pub fn child(memory: &Memory, child: &mut Child, consume: bool) -> Value {
     let conversation = child
         .session
         .as_deref()
-        .map(|native| link::conversation(memory, child.agent.name(), native));
+        .filter(|_| !child.existed)
+        .map(|native| naming.conversation(child.agent.name(), native));
     out.insert("conversation".into(), json!(conversation));
     let mut notes = Vec::new();
     let ended = state != "running" && state != "starting";
     if let Some(turn) = child.current.as_mut() {
         let shared = lock(&turn.shared);
-        if consume {
-            let (output, skipped) = shared.transcript.since(turn.read, OUTPUT_BYTES);
-            out.insert("output".into(), json!(output));
-            out.insert("output_skipped".into(), json!(skipped));
+        if view == View::Read {
+            let (text, skipped) = shared.text.since(turn.read_text, OUTPUT_BYTES);
+            let (mut events, left_out) = shared.log.since(turn.read_events, EVENTS_PER_ANSWER);
+            if left_out > 0 {
+                events.insert(
+                    0,
+                    json!({"kind": "truncated", "field": "events", "count": left_out}),
+                );
+            }
             if skipped > 0 {
+                events.insert(
+                    0,
+                    json!({"kind": "truncated", "field": "text", "bytes": skipped}),
+                );
                 notes.push(say("output_cut", &[("bytes", &skipped.to_string())]));
             }
-            turn.read = shared.transcript.total();
+            out.insert("text".into(), json!(text));
+            out.insert("events".into(), json!(events));
+            turn.read_text = shared.text.total();
+            turn.read_events = shared.log.total();
         }
-        if ended && let Some(answer) = shared.final_answer() {
+        if ended
+            && view != View::Listed
+            && let Some(answer) = shared.final_answer()
+        {
             let shown = head(answer, OUTPUT_BYTES);
             out.insert("answer".into(), json!(shown));
             if shown.len() < answer.len() {
                 out.insert("answer_bytes".into(), json!(answer.len()));
-                notes.push(say(
-                    "answer_cut",
-                    &[
-                        ("shown", &shown.len().to_string()),
-                        ("bytes", &answer.len().to_string()),
-                    ],
-                ));
+                let (shown, bytes) = (shown.len().to_string(), answer.len().to_string());
+                notes.push(say("answer_cut", &[("shown", &shown), ("bytes", &bytes)]));
             }
         }
-        if let Some(End::Exited(code)) = shared.end.filter(|_| state == "failed") {
-            out.insert("exit".into(), json!(code));
-            let error = shared
-                .failure
-                .clone()
-                .unwrap_or_else(|| shared.stderr.text().to_string());
-            out.insert("error".into(), json!(error));
+        if state == "failed" {
+            let limit = if view == View::Listed {
+                LIST_ERROR_BYTES
+            } else {
+                ERROR_BYTES
+            };
+            let error = match (&shared.failure, shared.end) {
+                (Some(failure), _) => failure.clone(),
+                (None, Some(End::Lost)) => say("watcher_lost", &[]),
+                (None, _) => shared.stderr.text().to_string(),
+            };
+            out.insert("error".into(), json!(head(&error, limit)));
+            if let Some(End::Exited(code)) = shared.end {
+                out.insert("exit".into(), json!(code));
+            }
         }
         if state == "timed_out" {
             notes.push(say(
@@ -190,7 +234,7 @@ pub fn child(memory: &Memory, child: &mut Child, consume: bool) -> Value {
             ));
         }
     }
-    let recorded = record(memory, child, ended, &mut notes);
+    let recorded = record(memory, naming, child, ended, &mut notes);
     out.insert("record".into(), recorded);
     notes.push(match state {
         "running" | "starting" => say("running", &[("child", &child.id)]),

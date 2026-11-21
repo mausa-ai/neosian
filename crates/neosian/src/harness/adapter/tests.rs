@@ -3,8 +3,23 @@
 
 use std::path::Path;
 
+use serde_json::json;
+
 use super::super::events::Event;
 use super::*;
+
+fn server() -> McpServer {
+    McpServer {
+        command: "/opt/neosian".to_string(),
+        args: ["mcp", "--root", "/r", "--actor", "mcp:claude-code"]
+            .map(String::from)
+            .to_vec(),
+    }
+}
+
+fn entry(value: serde_json::Value) -> Event {
+    Event::Observed(value)
+}
 
 fn request<'a>(
     agent: Agent,
@@ -22,6 +37,8 @@ fn request<'a>(
         private: Path::new("/tmp/neosian-harness-x"),
         codex_keys: keys,
         opencode_config: None,
+        parent: None,
+        server: None,
     }
 }
 
@@ -30,10 +47,19 @@ fn words(plan: &Plan) -> Vec<&str> {
 }
 
 #[test]
-fn claude_code_names_the_session_and_denies_harness_under_both_keys() {
-    let start = plan(&request(Agent::ClaudeCode, Mode::ReadOnly, None, &[])).unwrap();
+fn claude_code_read_only_loads_only_user_settings_and_this_server() {
+    let own = server();
+    let mut start = request(Agent::ClaudeCode, Mode::ReadOnly, None, &[]);
+    start.server = Some(&own);
+    start.parent = Some("parent-1");
+    let planned = plan(&start).unwrap();
+    let config = json!({"mcpServers": {"neosian-memory": {
+        "command": "/opt/neosian",
+        "args": ["mcp", "--root", "/r", "--actor", "mcp:claude-code"],
+    }}})
+    .to_string();
     assert_eq!(
-        words(&start),
+        words(&planned),
         [
             "claude",
             "-p",
@@ -42,21 +68,39 @@ fn claude_code_names_the_session_and_denies_harness_under_both_keys() {
             "--verbose",
             "--session-id",
             "5eab6b3f-d0af-49c3-9c0c-a9b47c2c8ebe",
+            "--setting-sources",
+            "user",
+            "--strict-mcp-config",
+            "--mcp-config",
+            config.as_str(),
             "--permission-mode",
             "dontAsk",
             "--tools",
             "Read,Grep,Glob",
+            "--allowedTools",
+            "mcp__neosian-memory",
             "--disallowedTools",
             "mcp__neosian-memory__harness",
             "mcp__neosian__harness",
         ]
     );
+    let env = |key: &str| {
+        planned
+            .env
+            .iter()
+            .find(|(name, _)| name == key)
+            .map(|(_, value)| value.as_str())
+    };
+    assert_eq!(env("NEOSIAN_HARNESS_CHILD"), Some("1"));
+    assert_eq!(env("PWD"), Some("/work/dir"));
+    assert_eq!(env("NEOSIAN_HARNESS_PARENT"), Some("parent-1"));
     assert_eq!(
-        start.env,
-        [("NEOSIAN_HARNESS_CHILD".to_string(), "1".to_string())]
+        env("NEOSIAN_HARNESS_SESSION"),
+        Some("5eab6b3f-d0af-49c3-9c0c-a9b47c2c8ebe")
     );
     let mut write = request(Agent::ClaudeCode, Mode::Write, Some("s-1"), &[]);
     write.model = Some("opus");
+    write.server = Some(&own);
     let resumed = plan(&write).unwrap();
     assert_eq!(
         words(&resumed)[5..13],
@@ -71,7 +115,20 @@ fn claude_code_names_the_session_and_denies_harness_under_both_keys() {
             "opus"
         ]
     );
+    for switch in [
+        "--setting-sources",
+        "--strict-mcp-config",
+        "--mcp-config",
+        "--allowedTools",
+    ] {
+        assert!(!resumed.argv.iter().any(|word| word == switch), "{switch}");
+    }
     assert_eq!(resumed.argv.last().unwrap(), "mcp__neosian__harness");
+    assert!(
+        resumed
+            .env
+            .contains(&("NEOSIAN_HARNESS_SESSION".to_string(), "s-1".to_string()))
+    );
 }
 
 #[test]
@@ -206,6 +263,37 @@ fn opencode_runs_standalone_with_its_preset_agents_merged_in() {
     );
     assert_eq!(write["*"], "deny");
     assert_eq!(write["read"]["*.env"], "deny");
+    assert!(
+        !planned
+            .env
+            .iter()
+            .any(|(key, _)| key == "OPENCODE_DISABLE_PROJECT_CONFIG")
+    );
+    let edit = write["edit"].as_object().unwrap();
+    assert_eq!(edit["*"], "allow");
+    for path in [
+        ".opencode/*",
+        "*/.opencode/*",
+        "opencode.json",
+        "opencode.jsonc",
+        "*/opencode.json",
+        "*/opencode.jsonc",
+    ] {
+        assert_eq!(edit[path], "deny", "{path}");
+    }
+    let mut ro = request(Agent::OpenCode, Mode::ReadOnly, None, &[]);
+    ro.opencode_config = None;
+    let ro_plan = plan(&ro).unwrap();
+    assert!(ro_plan.env.contains(&(
+        "OPENCODE_DISABLE_PROJECT_CONFIG".to_string(),
+        "1".to_string()
+    )));
+    assert!(
+        !ro_plan
+            .env
+            .iter()
+            .any(|(key, _)| key == "NEOSIAN_HARNESS_SESSION")
+    );
     let read_only = &config["agent"]["neosian-harness-read-only"]["permission"];
     assert!(read_only.get("edit").is_none() && read_only["neosian_harness"] == "deny");
     for bad in ["[1]", "not json", r#"{"agent":[]}"#] {
@@ -239,14 +327,14 @@ fn claude_code_output_reads_as_observed() {
         read(
             r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t","name":"Write","input":{}}]}}"#
         ),
-        [Event::Note("[tool Write]".into())]
+        [entry(json!({"kind": "tool", "name": "Write"}))]
     );
     assert_eq!(
         read(
             r#"{"type":"user","message":{"role":"user","content":[{"type":"tool_result","content":"Permission for this tool use was denied.","is_error":true,"tool_use_id":"t"}]}}"#
         ),
-        [Event::Note(
-            "[tool error] Permission for this tool use was denied.".into()
+        [entry(
+            json!({"kind": "tool_error", "text": "Permission for this tool use was denied."})
         )]
     );
     assert_eq!(
@@ -254,7 +342,7 @@ fn claude_code_output_reads_as_observed() {
             r#"{"type":"result","subtype":"success","is_error":false,"result":"done","permission_denials":[{"tool_name":"Bash","tool_use_id":"t","tool_input":{}}]}"#
         ),
         [
-            Event::Note("[denied Bash]".into()),
+            entry(json!({"kind": "denied", "name": "Bash"})),
             Event::Answer("done".into())
         ]
     );
@@ -284,8 +372,8 @@ fn codex_output_reads_as_observed() {
         read(
             r#"{"type":"item.completed","item":{"id":"item_1","type":"command_execution","command":"/bin/zsh -lc 'printf ok > probe6.txt'","aggregated_output":"","exit_code":0,"status":"completed"}}"#
         ),
-        [Event::Note(
-            "[$ /bin/zsh -lc 'printf ok > probe6.txt'] exit 0".into()
+        [entry(
+            json!({"kind": "command", "command": "/bin/zsh -lc 'printf ok > probe6.txt'", "exit": 0})
         )]
     );
     assert_eq!(
@@ -302,7 +390,9 @@ fn codex_output_reads_as_observed() {
     );
     assert_eq!(
         read(r#"{"type":"error","message":"Reconnecting... 1/5"}"#),
-        [Event::Note("[error] Reconnecting... 1/5".into())]
+        [entry(
+            json!({"kind": "error", "text": "Reconnecting... 1/5"})
+        )]
     );
 }
 
@@ -328,7 +418,9 @@ fn opencode_output_reads_as_observed() {
         ),
         [
             session.clone(),
-            Event::Note("[tool write] error: Permission denied: external_directory".into())
+            entry(
+                json!({"kind": "tool", "name": "write", "status": "error", "error": "Permission denied: external_directory"})
+            )
         ]
     );
     assert_eq!(
@@ -337,40 +429,4 @@ fn opencode_output_reads_as_observed() {
         ),
         [session, Event::Failure("Insufficient balance.".into())]
     );
-}
-
-#[test]
-fn inputs_are_held_to_their_grammar() {
-    for good in [
-        "opus",
-        "opencode/deepseek-v4.1-flash-free",
-        "gpt-5.5@high",
-        "a#b+c:d",
-    ] {
-        assert!(model_ok(good), "{good}");
-    }
-    for bad in [
-        "",
-        "a b",
-        "x;rm",
-        "$(x)",
-        "é",
-        "-x",
-        "--dangerously-skip-permissions",
-        &"m".repeat(129),
-    ] {
-        assert!(!model_ok(bad), "{bad}");
-    }
-    assert!(session_ok("ses_e0476f6c7ffeNt1Y5fzK9bFTke") && session_ok("01a1fb84-1ba9"));
-    for bad in ["", "-x", "--resume", "a b", "a/b", ".x"] {
-        assert!(!session_ok(bad), "{bad}");
-    }
-    assert!(prompt_ok("x") && !prompt_ok("") && !prompt_ok(&"x".repeat(PROMPT_BYTES + 1)));
-    let here = std::env::temp_dir();
-    assert_eq!(directory(None, &here), here.canonicalize().ok());
-    assert_eq!(directory(Some("no-such-directory-x2b"), &here), None);
-    assert_eq!(Agent::parse("claude-code"), Some(Agent::ClaudeCode));
-    assert_eq!(Agent::parse("claude"), None);
-    assert_eq!(Agent::NAMES, Agent::ALL.map(Agent::name));
-    assert_eq!(Mode::NAMES, [Mode::ReadOnly, Mode::Write].map(Mode::name));
 }

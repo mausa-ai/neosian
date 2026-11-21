@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import os
 import signal
+import subprocess
 import time
 from pathlib import Path
 from typing import Any
@@ -119,7 +120,11 @@ def test_a_child_server_never_has_the_tool(
     assert "harness" not in session.tools()
     assert session.call("harness", command="start", agent="codex", prompt="x")[0]
     session.close()
+    # The variable's presence is the marker, whatever its value (#430).
     session = Session(binary, harnesses.env(NEOSIAN_HARNESS_CHILD=""))
+    assert "harness" not in session.tools()
+    session.close()
+    session = Session(binary, harnesses.env())
     assert "harness" in session.tools()
     session.close()
 
@@ -137,16 +142,16 @@ def test_start_wait_send_stop_and_list(
     assert session.elapsed < 5
     assert started["child"] == "h1" and started["agent"] == agent
     assert started["mode"] == "read-only" and started["turn"] == 1
-    assert started["directory"] == str(binary.directory.resolve())
+    assert started["directory"] == str(harnesses.work.resolve())
     done = finished(session, "h1")
     assert done["state"] == "finished", done
     assert done["answer"] == "echo: first question"
-    assert "echo: first question" in done["output"]
+    assert "echo: first question" in done["text"]
     assert done["session"]
     assert done["record"] is None
     assert any("not recorded" in note for note in done["notes"])
     again = session.harness(command="wait", child="h1", seconds=0)
-    assert again["output"] == "" and again["answer"] == "echo: first question"
+    assert again["text"] == "" and again["answer"] == "echo: first question"
     sent = session.harness(command="send", child="h1", prompt="second question")
     assert sent["turn"] == 2 and sent["session"] == done["session"]
     second = finished(session, "h1")
@@ -185,7 +190,7 @@ def test_a_turn_outlives_wait_and_send_is_refused_meanwhile(
     session.harness(command="start", agent="codex", prompt="slow sleep:4")
     waited = session.harness(command="wait", child="h1", seconds=1)
     assert waited["state"] == "running" and 0.8 < session.elapsed < 3
-    assert "working" in waited["output"]
+    assert "working" in waited["text"]
     assert "answer" not in waited
     assert any("still running" in note for note in waited["notes"])
     busy = session.call("harness", command="send", child="h1", prompt="more")
@@ -195,7 +200,7 @@ def test_a_turn_outlives_wait_and_send_is_refused_meanwhile(
     )
     done = finished(session, "h1")
     assert done["state"] == "finished" and done["answer"].startswith("echo: slow")
-    assert "working" not in done["output"]
+    assert "working" not in done["text"]
     session.close()
 
 
@@ -253,9 +258,11 @@ def test_output_is_bounded_with_the_cut_stated(
     session = Session(binary, harnesses.env())
     session.harness(command="start", agent="claude-code", prompt="big:40000")
     done = finished(session, "h1")
-    assert len(done["output"].encode()) <= 16384
-    assert done["output_skipped"] > 20000
-    assert done["output"].endswith("echo: big:40000\n")
+    assert len(done["text"].encode()) <= 16384
+    cut = done["events"][0]
+    assert cut["kind"] == "truncated" and cut["field"] == "text"
+    assert cut["bytes"] > 20000
+    assert done["text"].endswith("echo: big:40000")
     assert any("earlier bytes of new output are not shown" in n for n in done["notes"])
     session.close()
 
@@ -350,7 +357,7 @@ def test_a_failed_turn_reports_its_exit_and_error(
     assert done["error"] == "Insufficient balance."
     session.harness(command="start", agent="codex", prompt="deny")
     denied = finished(session, "h2")
-    assert "[$ touch x] exit 1" in denied["output"]
+    assert {"kind": "command", "command": "touch x", "exit": 1} in denied["events"]
     session.close()
 
 
@@ -415,8 +422,15 @@ def test_the_child_is_recorded_and_linked_to_its_parent(
         {"session_id": child, "hook_event_name": "UserPromptSubmit", "prompt": "p3"},
         {"session_id": child, "hook_event_name": "Stop", "last_assistant_message": "a"},
     ):
-        landed = binary.run(
-            "record", "--agent", "claude-code", stdin=json.dumps(payload)
+        landed = subprocess.run(
+            [str(binary.executable), "record", "--agent", "claude-code"],
+            input=json.dumps(payload),
+            capture_output=True,
+            text=True,
+            env=binary.environment(),
+            cwd=harnesses.work,
+            timeout=30,
+            check=False,
         )
         assert landed.returncode == 0, landed.stderr
     view = session.call("memory", command="view", path=path)[1]
@@ -494,15 +508,15 @@ def test_codex_keeps_the_tools_a_key_already_disables(
 def test_a_child_in_another_directory_is_recorded_but_not_linked(
     binary: Binary, harnesses: Harnesses
 ) -> None:
-    harnesses.enable()
     other = binary.directory / "elsewhere"
     other.mkdir()
+    harnesses.enable(directories=[other])
     session = Session(binary, harnesses.env())
     session.harness(
         command="start",
         agent="opencode",
         prompt="record here",
-        directory="elsewhere",
+        directory=str(other),
         session="parent-8",
     )
     done = finished(session, "h1")

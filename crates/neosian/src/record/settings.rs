@@ -24,6 +24,21 @@ pub struct Settings {
     pub agent: String,
     pub spool: PathBuf,
     pub provenance: Option<String>,
+    /// The session that started this one through the harness tool.
+    pub parent: Option<String>,
+}
+
+/// The parent the harness tool gave the session `native` (§40.50 amended,
+/// #430): `NEOSIAN_HARNESS_PARENT` when it is a conversation ID and, when
+/// `NEOSIAN_HARNESS_SESSION` names the session it was meant for, only for
+/// that one; a session the child itself starts does not inherit the link.
+pub fn harness_parent(native: &str) -> Option<String> {
+    let parent = env::var("NEOSIAN_HARNESS_PARENT").ok()?;
+    crate::conversation::ids::parse_conversation_id(&parent).ok()?;
+    match env::var("NEOSIAN_HARNESS_SESSION") {
+        Ok(meant) if meant != native => None,
+        _ => Some(parent),
+    }
 }
 
 /// The mount half of the grammar: the flags, else `NEOSIAN_SCOPE`, else

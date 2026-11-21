@@ -88,8 +88,16 @@ pub fn land(
         .as_ref()
         .map_or_else(Vec::new, |listed| continues(&listed.content));
     // The harness tool's parent link (§40.50 item 6) stays as written.
+    // The harness tool's parent from the environment names only a session
+    // whose document this landing creates: never one that existed already.
     let mut parented: Vec<String> = Vec::new();
-    for parent in listed.map_or_else(Vec::new, |listed| parents(&listed.content)) {
+    let creates = listed.is_none();
+    let named = settings.parent.iter().filter(|_| creates).cloned();
+    for parent in listed
+        .map_or_else(Vec::new, |listed| parents(&listed.content))
+        .into_iter()
+        .chain(named)
+    {
         if !parented.contains(&parent) {
             parented.push(parent);
         }

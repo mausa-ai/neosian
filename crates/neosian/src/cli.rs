@@ -239,7 +239,7 @@ where
         Command::Mcp(args) => mcp::cli::run(&args, &mut out, &mut err),
         Command::Serve(args) => serve::cli::run(&args, &mut out, &mut err),
         #[cfg(unix)]
-        Command::HarnessWatch(args) => crate::harness::watch::run(&args),
+        Command::HarnessWatch(args) => crate::harness::watch::run(&args, &mut err),
     };
     finish(code, &mut err)
 }

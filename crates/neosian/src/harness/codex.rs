@@ -4,10 +4,10 @@
 //! TMPDIR's marker and, per registered key, an env member and the key's
 //! own `disabled_tools` with `harness` added.
 
-use serde_json::{Map, Value};
+use serde_json::{Map, Value, json};
 
 use super::adapter::{CodexKey, Mode, Plan, Request};
-use super::events::{Event, head};
+use super::events::{ERROR_BYTES, Event, head, observed};
 
 /// The keys the server may be registered under, probed with `codex mcp get`.
 pub const KEYS: [&str; 2] = ["neosian-memory", "neosian"];
@@ -113,24 +113,23 @@ pub fn read(event: &Map<String, Value>) -> Vec<Event> {
                     .into_iter()
                     .collect(),
                 "command_execution" => {
-                    let command = text(item.get("command")).unwrap_or("?");
-                    let exit = item
-                        .get("exit_code")
-                        .map_or("?".to_string(), Value::to_string);
-                    vec![Event::Note(format!(
-                        "[$ {}] exit {exit}",
-                        head(command, 400)
-                    ))]
+                    let command = text(item.get("command")).unwrap_or_default();
+                    let exit = item.get("exit_code").cloned().unwrap_or(Value::Null);
+                    vec![observed(
+                        "command",
+                        &[("command", json!(command)), ("exit", exit)],
+                    )]
                 }
                 "reasoning" => Vec::new(),
-                "error" => vec![Event::Note(format!(
-                    "[error] {}",
-                    head(text(item.get("message")).unwrap_or("?"), 400)
-                ))],
+                "error" => {
+                    let message = text(item.get("message")).unwrap_or_default();
+                    vec![observed("error", &[("text", json!(message))])]
+                }
                 other => {
-                    let status = text(item.get("status")).unwrap_or("");
-                    vec![Event::Note(
-                        format!("[{other}] {status}").trim_end().to_string(),
+                    let status = item.get("status").cloned().unwrap_or(Value::Null);
+                    vec![observed(
+                        "item",
+                        &[("type", json!(other)), ("status", status)],
                     )]
                 }
             }
@@ -140,14 +139,14 @@ pub fn read(event: &Map<String, Value>) -> Vec<Event> {
                 .get("error")
                 .and_then(|error| text(error.get("message")))
                 .unwrap_or("turn.failed");
-            vec![Event::Failure(message.to_string())]
+            vec![Event::Failure(head(message, ERROR_BYTES).to_string())]
         }
         // Codex also reports retries this way; only the exit and
         // `turn.failed` decide the turn.
-        "error" => vec![Event::Note(format!(
-            "[error] {}",
-            head(text(event.get("message")).unwrap_or("?"), 400)
-        ))],
+        "error" => {
+            let message = text(event.get("message")).unwrap_or_default();
+            vec![observed("error", &[("text", json!(message))])]
+        }
         _ => Vec::new(),
     }
 }

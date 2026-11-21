@@ -205,6 +205,7 @@ pub fn run(args: &Record, out: &mut impl Write, err: &mut impl Write) -> io::Res
         sessions_mount: sessions,
         agent: args.agent.clone(),
         spool,
+        parent: super::settings::harness_parent(payload["session_id"].as_str().unwrap_or("")),
     };
     let native_context = crate::native_memory::hooks::run(
         &settings.store,

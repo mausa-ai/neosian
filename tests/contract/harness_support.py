@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import queue
@@ -54,12 +55,21 @@ class Harnesses:
         env.update(extra)
         return env
 
-    def enable(self, **settings: int) -> None:
+    @property
+    def work(self) -> Path:
+        """The project directory the MCP server runs in (HOME is refused)."""
+        path = self.binary.directory / "work"
+        path.mkdir(exist_ok=True)
+        return path
+
+    def enable(self, directories: list[Path] | None = None, **settings: int) -> None:
         """`[harness]` enabled in this home and in the default home under
         HOME, which a Codex child's server reads (Codex drops NEOSIAN_HOME)."""
         text = "[harness]\nenabled = true\n" + "".join(
             f"{key} = {value}\n" for key, value in settings.items()
         )
+        if directories is not None:
+            text += f"directories = {json.dumps([str(d) for d in directories])}\n"
         for home in (self.binary.home, self.binary.directory / ".neosian"):
             home.mkdir(exist_ok=True)
             (home / "config.toml").write_text(text, encoding="utf-8")
@@ -79,6 +89,9 @@ class Session:
     """`neosian mcp` on stdio, request by request."""
 
     def __init__(self, binary: Binary, env: dict[str, str], cwd: Path | None = None):
+        if cwd is None:
+            cwd = binary.directory / "work"
+            cwd.mkdir(exist_ok=True)
         self.process = subprocess.Popen(
             [str(binary.executable), "mcp"],
             stdin=subprocess.PIPE,
@@ -87,7 +100,7 @@ class Session:
             text=True,
             encoding="utf-8",
             env=env,
-            cwd=cwd or binary.directory,
+            cwd=cwd,
         )
         self.lines: queue.Queue[str] = queue.Queue()
         threading.Thread(target=self._read, daemon=True).start()
@@ -156,6 +169,34 @@ def alive(pid: int) -> bool:
         check=False,
     ).stdout.strip()
     return bool(state) and not state.startswith("Z")
+
+
+def descriptors(pid: int) -> int:
+    """How many descriptors a process holds."""
+    proc = Path(f"/proc/{pid}/fd")
+    if proc.is_dir():
+        return len(list(proc.iterdir()))
+    listed = subprocess.run(
+        ["lsof", "-p", str(pid)], capture_output=True, text=True, check=False
+    )
+    return len(listed.stdout.splitlines()) - 1
+
+
+def threads(pid: int) -> int:
+    """How many threads a process runs."""
+    proc = Path(f"/proc/{pid}/task")
+    if proc.is_dir():
+        return len(list(proc.iterdir()))
+    listed = subprocess.run(
+        ["ps", "-M", "-p", str(pid)], capture_output=True, text=True, check=False
+    )
+    return len(listed.stdout.splitlines()) - 1
+
+
+def end(pid: int) -> None:
+    """End a process a test left on purpose."""
+    with contextlib.suppress(ProcessLookupError):
+        os.kill(pid, 9)
 
 
 def eventually(check: Any, seconds: float = 20) -> bool:

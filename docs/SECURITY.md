@@ -46,14 +46,19 @@ See `neosian docs agents` for controls and receipt limits.
 
 The `harness` MCP tool is off by default and served only on stdio. When
 `[harness] enabled = true` stands in `config.toml`, an agent's call starts
-another installed harness's own headless command under that harness's login.
-The Rust process holds no model credentials and starts no turn on its own. A
-child can do what its mode allows whatever the calling agent's permissions
-are, so the client's approval of the tool is the gate; modes are each
-harness's own presets and differ in strength. The prompt travels on standard
-input, commands run without a shell, and a running child's process group is
-ended when the server exits. Read `neosian docs harness` for the per-harness
-limits.
+another installed harness's own headless command under that harness's login,
+in the server's own directory or one the person listed. The Rust process
+holds no model credentials and starts no turn on its own. A child can do what
+its mode allows whatever the calling agent's permissions are, so the client's
+approval of the tool is the gate; modes are each harness's own presets,
+differ in strength, and a child runs with its directory's own configuration
+except where the docs say otherwise. A child that may run commands can start
+any program; the guard against children starting children is a guard against
+accidents, not a sandbox. The turn's watcher accepts a checked plan, never a
+command, and only where the tool is enabled. The prompt travels on standard
+input, commands run without a shell, and ending a turn ends the harness and
+the descendants it can find, best effort. Read `neosian docs harness` for the
+per-harness limits.
 
 Portable profiles select context; they cannot grant server permission.
 Profile HTTP bindings require the scoped authorization capability, with

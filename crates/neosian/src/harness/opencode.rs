@@ -6,9 +6,10 @@
 use serde_json::{Map, Value, json};
 
 use super::adapter::{Mode, Plan, Request, Unplanned};
-use super::events::{Event, head};
+use super::events::{ERROR_BYTES, Event, head, observed};
 
 pub const CONFIG_ENV: &str = "OPENCODE_CONFIG_CONTENT";
+pub const PROJECT_OFF_ENV: &str = "OPENCODE_DISABLE_PROJECT_CONFIG";
 /// Both keys the server may be registered under; OpenCode names MCP tools
 /// `<key>_<tool>` with the key verbatim.
 pub const DENIED: [&str; 2] = ["neosian-memory_harness", "neosian_harness"];
@@ -20,7 +21,9 @@ pub fn agent_name(mode: Mode) -> &'static str {
     }
 }
 
-/// One agent's permission rules, in the order OpenCode applies them.
+/// One agent's permission rules, in the order OpenCode applies them (the
+/// last match wins). A `write` child may not edit the project's OpenCode
+/// configuration or plugins, which OpenCode would load and run.
 fn permission(mode: Mode) -> Value {
     let mut rules = Map::new();
     rules.insert("*".into(), json!("deny"));
@@ -32,7 +35,19 @@ fn permission(mode: Mode) -> Value {
         rules.insert(tool.into(), json!("allow"));
     }
     if mode == Mode::Write {
-        rules.insert("edit".into(), json!("allow"));
+        let mut edit = Map::new();
+        edit.insert("*".into(), json!("allow"));
+        for path in [
+            ".opencode/*",
+            "*/.opencode/*",
+            "opencode.json",
+            "opencode.jsonc",
+            "*/opencode.json",
+            "*/opencode.jsonc",
+        ] {
+            edit.insert(path.into(), json!("deny"));
+        }
+        rules.insert("edit".into(), Value::Object(edit));
         rules.insert("external_directory".into(), json!("deny"));
     }
     for tool in DENIED {
@@ -87,10 +102,14 @@ pub fn plan(request: &Request) -> Result<Plan, Unplanned> {
     if let Some(session) = request.resume {
         argv.extend(["--session".to_string(), session.to_string()]);
     }
-    Ok(Plan {
-        argv,
-        env: vec![(CONFIG_ENV.to_string(), config(request.opencode_config)?)],
-    })
+    let mut env = vec![(CONFIG_ENV.to_string(), config(request.opencode_config)?)];
+    if request.mode == Mode::ReadOnly {
+        // Observed on 2.3.2: the project's opencode.json (agents, MCP
+        // commands) and .opencode plugins are not loaded; the person's own
+        // configuration and plugins, neosian's recorder among them, are.
+        env.push((PROJECT_OFF_ENV.to_string(), "1".to_string()));
+    }
+    Ok(Plan { argv, env })
 }
 
 fn text(value: Option<&Value>) -> Option<&str> {
@@ -110,21 +129,21 @@ pub fn read(event: &Map<String, Value>) -> Vec<Event> {
             }
         }
         "tool_use" => {
-            let tool = text(part.and_then(|p| p.get("tool"))).unwrap_or("?");
+            let tool = text(part.and_then(|p| p.get("tool"))).unwrap_or_default();
             let state = part.and_then(|p| p.get("state"));
-            let status = text(state.and_then(|s| s.get("status"))).unwrap_or("");
-            let line = match text(state.and_then(|s| s.get("error"))) {
-                Some(error) => format!("[tool {tool}] {status}: {}", head(error, 400)),
-                None => format!("[tool {tool}] {status}"),
-            };
-            events.push(Event::Note(line.trim_end().to_string()));
+            let status = text(state.and_then(|s| s.get("status"))).unwrap_or_default();
+            let mut fields = vec![("name", json!(tool)), ("status", json!(status))];
+            if let Some(error) = text(state.and_then(|s| s.get("error"))) {
+                fields.push(("error", json!(error)));
+            }
+            events.push(observed("tool", &fields));
         }
         "error" => {
             let error = event.get("error");
             let message = text(error.and_then(|e| e.get("message")))
                 .or_else(|| text(error.and_then(|e| e.get("type"))))
                 .unwrap_or("error");
-            events.push(Event::Failure(message.to_string()));
+            events.push(Event::Failure(head(message, ERROR_BYTES).to_string()));
         }
         _ => {}
     }

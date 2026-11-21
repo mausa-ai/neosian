@@ -310,6 +310,7 @@ fn process(args: &Record, selected: Resolved, payload: Payload) -> Result<Envelo
         provenance: Some(format!(
             "\n- workspace: {workspace}\n- source_session: {native}\n- capture_policy: {policy_id}\n"
         )),
+        parent: super::settings::harness_parent(native),
     };
     let landed = super::land::land(&settings, &spool, &id, &envelope.actor, &event, &record)?;
     envelope.disposition = landed.disposition;

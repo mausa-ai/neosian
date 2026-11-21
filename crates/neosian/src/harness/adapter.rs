@@ -86,6 +86,18 @@ pub struct CodexKey {
     pub disabled: Vec<String>,
 }
 
+/// This neosian's own MCP server, as a Claude Code read-only child gets it:
+/// the running executable and its store selection, never a command read
+/// from a file.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct McpServer {
+    pub command: String,
+    pub args: Vec<String>,
+}
+
+/// The key the child's strict MCP configuration names this server under.
+pub const SERVER_KEY: &str = "neosian-memory";
+
 /// What one turn needs to be planned.
 pub struct Request<'a> {
     pub agent: Agent,
@@ -96,12 +108,16 @@ pub struct Request<'a> {
     pub resume: Option<&'a str>,
     /// The session ID neosian chose for a new Claude Code session.
     pub new_session: &'a str,
-    /// The child's private directory (Codex's TMPDIR).
+    /// The turn's private directory (Codex's TMPDIR, holding the marker).
     pub private: &'a Path,
     /// Codex: which of our keys its configuration has.
     pub codex_keys: &'a [CodexKey],
     /// OpenCode: the `OPENCODE_CONFIG_CONTENT` the server itself carries.
     pub opencode_config: Option<&'a str>,
+    /// The calling session, which the child's record hook names as parent.
+    pub parent: Option<&'a str>,
+    /// Claude Code read-only: this neosian's server for the strict config.
+    pub server: Option<&'a McpServer>,
 }
 
 /// One turn's command: argv[0] is the program, resolved by the caller.
@@ -117,15 +133,102 @@ pub enum Unplanned {
     OpenCodeConfig,
 }
 
+/// The variables the child's record hook reads (§40.50 amended, #430).
+pub const PARENT_ENV: &str = "NEOSIAN_HARNESS_PARENT";
+pub const SESSION_ENV: &str = "NEOSIAN_HARNESS_SESSION";
+
 pub fn plan(request: &Request) -> Result<Plan, Unplanned> {
     let mut plan = match request.agent {
         Agent::ClaudeCode => claude::plan(request),
         Agent::Codex => codex::plan(request),
         Agent::OpenCode => opencode::plan(request)?,
     };
+    let directory = request.directory.display().to_string();
     plan.env
         .push((super::CHILD_ENV.to_string(), "1".to_string()));
+    // `opencode run` takes its project from PWD, not the working directory.
+    plan.env.push(("PWD".to_string(), directory));
+    if let Some(parent) = request.parent {
+        plan.env.push((PARENT_ENV.to_string(), parent.to_string()));
+    }
+    let known = match (request.resume, request.agent) {
+        (Some(session), _) => Some(session),
+        (None, Agent::ClaudeCode) => Some(request.new_session),
+        (None, _) => None,
+    };
+    if let Some(session) = known {
+        plan.env
+            .push((SESSION_ENV.to_string(), session.to_string()));
+    }
     Ok(plan)
+}
+
+/// The harness executable on `path`, absolute PATH entries only: a
+/// relative entry would resolve against the child's directory.
+pub fn which(program: &str, path: Option<&std::ffi::OsStr>) -> Option<PathBuf> {
+    let path = path?;
+    std::env::split_paths(path)
+        .filter(|entry| entry.is_absolute())
+        .flat_map(|entry| {
+            let plain = entry.join(program);
+            let windows = ["exe", "cmd", "bat"].map(|ext| plain.with_extension(ext));
+            std::iter::once(plain).chain(windows)
+        })
+        .find(|candidate| executable(candidate))
+}
+
+fn executable(path: &Path) -> bool {
+    if !path.is_file() {
+        return false;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        path.metadata()
+            .is_ok_and(|m| m.permissions().mode() & 0o111 != 0)
+    }
+    #[cfg(not(unix))]
+    {
+        true
+    }
+}
+
+/// Why a child may not work in a directory.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Placed {
+    /// The given directory does not exist.
+    Missing,
+    /// The directory is neither this server's own nor listed.
+    NotAllowed(PathBuf),
+    /// This server runs in the home directory or the root: a directory
+    /// must be listed and named.
+    NeedListed,
+}
+
+/// Where a child may work (§40.50 amended, #430): the server's own
+/// directory, unless that is the home directory or the root, or one the
+/// person listed, compared canonically. `given` is resolved against the
+/// server's directory.
+pub fn place(
+    given: Option<&str>,
+    server: &Path,
+    home: Option<&Path>,
+    listed: &[PathBuf],
+) -> Result<PathBuf, Placed> {
+    let canonical = |path: &Path| path.canonicalize().ok().filter(|path| path.is_dir());
+    let own = canonical(server);
+    let home = home.and_then(canonical);
+    let own_ok = own
+        .as_ref()
+        .filter(|own| own.parent().is_some() && Some(*own) != home.as_ref());
+    let Some(given) = given else {
+        return own_ok.cloned().ok_or(Placed::NeedListed);
+    };
+    let path = canonical(&server.join(given)).ok_or(Placed::Missing)?;
+    if own_ok == Some(&path) || listed.contains(&path) {
+        return Ok(path);
+    }
+    Err(Placed::NotAllowed(path))
 }
 
 /// A model name in a conservative character set (§40.50 item 8), never
@@ -151,11 +254,7 @@ pub fn prompt_ok(prompt: &str) -> bool {
     (1..=PROMPT_BYTES).contains(&prompt.len())
 }
 
-/// An existing directory, canonical, or None.
-pub fn directory(given: Option<&str>, here: &Path) -> Option<PathBuf> {
-    let path = given.map_or_else(|| here.to_path_buf(), |given| here.join(given));
-    path.canonicalize().ok().filter(|path| path.is_dir())
-}
-
+#[cfg(test)]
+mod inputs;
 #[cfg(test)]
 mod tests;
