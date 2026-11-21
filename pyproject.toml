@@ -6,13 +6,13 @@ dev = [
     "jsonschema>=4.26",
     "mypy>=2.4.1",
     "pip-audit>=2.9",
-    "psycopg[binary]>=3.3.8",
+    "psycopg[binary]>=3.3.9",
     "pytest>=9.2.0",
     "pytest-timeout>=2.3",
     "pyyaml>=6.0.3",
     "referencing>=0.37",
-    "ruff>=0.17.3",
-    "types-pyyaml>=6.0.12.20261103",
+    "ruff>=0.17.5",
+    "types-pyyaml>=6.0.12.20261113",
 ]
 
 [tool.pytest.ini_options]
