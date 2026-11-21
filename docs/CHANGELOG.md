@@ -8,16 +8,23 @@ phase close names the version.
 
 ## [Unreleased]
 
+## [2.20.0] - 2026-11-21
+
 ### Added
 
 - The `harness` MCP tool lets an agent start, follow, continue and stop a
   session in another installed harness (Claude Code, Codex or OpenCode)
   through that harness's own headless command, login and model:
-  `start`, `wait`, `send`, `stop` and `list`. It is off by default and listed
-  only when `[harness] enabled = true` stands in neosian's `config.toml`, on
-  the stdio server, outside a harness child and on Unix; the HTTP `/mcp` door
-  never lists it. `turn_seconds` (default 1800) bounds one turn and
-  `max_children` (default 2) the children open at once.
+  `start`, `wait`, `send`, `stop` and `list`. It is off by default and Unix
+  only. To turn it on, add `[harness] enabled = true` to `config.toml` in the
+  neosian home (`~/.neosian`, or `$NEOSIAN_HOME`) and restart the client.
+  It is then listed on the stdio server (`neosian mcp`) outside a harness
+  child; the HTTP `/mcp` door never lists it, and on Windows it is absent.
+  `turn_seconds` (default 1800) bounds one turn and `max_children` (default
+  2) the children open at once.
+- The MCP server's registration name stays `neosian-memory` in every client.
+  A planned rename to `neosian` is not part of this release, and existing
+  registrations need no change.
 - A child works in the MCP server's own directory when it lies strictly below
   your home directory, or in one you list in `[harness] directories` (exact
   paths). A server anywhere else, or with `HOME` unset or empty, refuses
@@ -36,11 +43,17 @@ phase close names the version.
   ancestor configuration or plugins in either mode, so nothing a `write`
   child writes runs in its own session. In `write`, Claude Code accepts
   edits inside the directory, Codex writes inside it only, and OpenCode
-  edits files there except its own configuration and plugins. What each
-  mode does not guarantee is listed per harness in `neosian docs harness`,
-  including that a `write` child can change files tools run later. Nothing
-  is relayed for approval; a denial appears in `events` only when the
-  child's harness prints one, and otherwise only in the child's own words.
+  edits files there except its own configuration and plugins. Nothing is
+  relayed for approval; a denial appears in `events` only when the child's
+  harness prints one, and otherwise only in the child's own words.
+- The modes are not equally strong: Claude Code `read-only` still runs your
+  user hooks and plugins; Codex's sandbox covers the commands it runs but
+  not MCP calls or its built-in tools, and a Codex child does not start
+  while neosian is registered in Codex over HTTP; OpenCode has no shell
+  sandbox, so neither mode runs commands, and its `write` rules miss a case
+  variant or a symbolic link out of the directory. `neosian docs harness`
+  lists each limit per harness and mode, including that a `write` child in
+  any harness can change files that tools run later.
 - Each turn runs under a watcher that takes a checked plan, never a command:
   `neosian harness-watch` applies exactly the tool's rules (enabled, outside
   a child, a home directory, the same directory rule, store flags only in
