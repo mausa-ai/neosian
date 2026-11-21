@@ -266,15 +266,21 @@ def test_the_answer_is_cut_with_its_size_stated(
 def test_list_cuts_errors_and_trims_its_oldest_children_by_bytes_sent(
     binary: Binary, harnesses: Harnesses
 ) -> None:
+    # One path length on every system: the temporary root is shorter on Linux than
+    # on macOS, and the list must pass its bound wherever the test runs.
     deep = binary.directory
-    for part in ("d" * 200, "e" * 200, "f" * 200, "g" * 200):
-        deep = deep / part
+    while len(str(deep)) < 990:
+        deep = deep / ("d" * min(200, 1000 - len(str(deep)) - 1))
     deep.mkdir(parents=True)
     harnesses.enable(directories=[deep], max_children=8)
     session = Session(binary, harnesses.env())
     for _ in range(32):
         child = session.harness(
-            command="start", agent="opencode", prompt="huge-fail", directory=str(deep)
+            command="start",
+            agent="opencode",
+            prompt="huge-fail",
+            directory=str(deep),
+            model="m" * 128,
         )
         finished(session, child["child"])
         session.harness(command="stop", child=child["child"])
