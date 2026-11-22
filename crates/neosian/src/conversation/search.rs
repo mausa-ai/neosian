@@ -106,9 +106,9 @@ pub fn scan_log(
         let lowered = line.to_lowercase();
         let candidate = header
             || if all {
-                raw.iter().all(|term| lowered.contains(term))
+                raw.iter().all(|term| holds(&lowered, term))
             } else {
-                !every || raw.iter().any(|term| lowered.contains(term))
+                !every || raw.iter().any(|term| holds(&lowered, term))
             };
         if candidate {
             visit(
@@ -118,6 +118,17 @@ pub fn scan_log(
             )?;
         }
     }
+}
+
+/// Whether a lowercased raw line can hold `term` once decoded: verbatim,
+/// or through the escape of one of the two characters past ASCII whose
+/// lowercase holds ASCII, U+0130 (`i` and a combining dot) and U+212A
+/// KELVIN SIGN (`k`), which a line spells `\u0130` and `\u212a` (found
+/// while building T1b2a2: the prefilter passed over such a turn).
+fn holds(line: &str, term: &str) -> bool {
+    line.contains(term)
+        || (term.contains('i') && line.contains("\\u0130"))
+        || (term.contains('k') && line.contains("\\u212a"))
 }
 
 /// How a header row begins: `render_header` writes `neosian_format` first.
@@ -197,5 +208,51 @@ mod tests {
         assert!(!match_terms("The cache", &parse_query("ttl").unwrap()));
         assert!(prefilterable("ttl-1") && !prefilterable("\"q\"") && !prefilterable("é"));
         assert!(!prefilterable("a\tb"));
+    }
+
+    /// Found while building T1b2a2 (DESIGN §40.54): a format-1 line spells
+    /// non-ASCII as `\uXXXX`, and two such characters lowercase to text
+    /// holding ASCII (U+0130 to `i` and a combining dot, U+212A KELVIN SIGN
+    /// to `k`), so the raw-line prefilter passed over a turn that matches.
+    /// No other character does, for the Unicode tables in use.
+    #[test]
+    fn the_prefilter_passes_no_turn_a_term_matches() {
+        let lowered: Vec<u32> = (0x80..=0x10_ffff_u32)
+            .filter_map(char::from_u32)
+            .filter(|ch| ch.to_lowercase().any(|low| low.is_ascii()))
+            .map(u32::from)
+            .collect();
+        assert_eq!(lowered, [0x130, 0x212a]);
+        let home = crate::testing::Scratch::new("search-prefilter");
+        for (text, term) in [("SAM\u{130}", "sami"), ("5 \u{212a}ELVIN", "kelvin")] {
+            let turn = Turn {
+                conversation_id: "c-1".into(),
+                turn: 1,
+                messages: vec![
+                    crate::conversation::message::from_json(
+                        &serde_json::json!({"role": "user", "content": text}),
+                    )
+                    .unwrap(),
+                ],
+                created_at: crate::store::time::Stamp::now(),
+                actor: None,
+                redacted: false,
+            };
+            home.plant(
+                "turns.jsonl",
+                &crate::conversation::rows::render_turn(&turn),
+            );
+            let file = home.path().join("turns.jsonl");
+            assert!(match_terms(&turn_text(&turn), &[term.to_string()]));
+            for all in [true, false] {
+                let mut seen = 0;
+                scan_log(&file, "c-1", &[term.to_string()], all, false, |_, _, _| {
+                    seen += 1;
+                    Ok(())
+                })
+                .unwrap();
+                assert_eq!(seen, 1, "{text:?} holds {term:?}");
+            }
+        }
     }
 }

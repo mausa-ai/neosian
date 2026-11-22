@@ -121,6 +121,13 @@ phase close names the version.
   per window. No request is made to learn the figure; an unreadable,
   half-written or future-dated file is ignored.
 
+### Fixed
+
+- History search on a FileStore no longer passes over a turn whose match
+  comes from `İ` or the Kelvin sign `K`, which lowercase to `i` and `k`:
+  the raw-line prefilter now knows the turn log spells them `İ` and
+  `K`.
+
 ## [2.20.0] - 2026-11-21
 
 ### Added
