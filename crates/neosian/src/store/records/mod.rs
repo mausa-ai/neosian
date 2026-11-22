@@ -21,6 +21,8 @@ pub(crate) mod lines;
 mod read;
 mod seal;
 #[cfg_attr(not(test), allow(dead_code))]
+mod search;
+#[cfg_attr(not(test), allow(dead_code))]
 mod source;
 #[cfg_attr(not(test), allow(dead_code))]
 mod stale;

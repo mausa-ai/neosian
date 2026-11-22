@@ -8,11 +8,13 @@ use crate::store::{Document, error::Error};
 // Version 1's matching tables are part of the optional wire contract.
 const _: () = assert!(matches!(char::UNICODE_VERSION, (17, 0, 0)));
 
-fn lower(text: &str) -> String {
+/// Per-scalar Unicode lowercase, version 1's fold (record search shares it).
+pub(crate) fn lower(text: &str) -> String {
     text.chars().flat_map(char::to_lowercase).collect()
 }
 
-pub(super) fn terms(query: &str) -> Vec<String> {
+/// The distinct lowercased whitespace terms of a query, in ascending order.
+pub(crate) fn terms(query: &str) -> Vec<String> {
     let mut terms: Vec<_> = query.split_whitespace().map(lower).collect();
     terms.sort();
     terms.dedup();
@@ -34,7 +36,11 @@ fn strings<'a>(value: &'a Value, out: &mut Vec<&'a str>) {
     }
 }
 
-fn excerpt(text: &str, at: usize, field: &str, key: Option<&str>) -> Excerpt {
+/// Version 1's excerpt of `text` around the folded byte `at` where the
+/// first match begins: up to 240 scalars starting up to 40 before the
+/// match's scalar, with that start as a scalar offset (record search shares
+/// it, DESIGN §40.54 item 11).
+pub(crate) fn window(text: &str, at: usize) -> (usize, String) {
     let mut bytes = 0;
     let position = text
         .chars()
@@ -44,11 +50,16 @@ fn excerpt(text: &str, at: usize, field: &str, key: Option<&str>) -> Excerpt {
         })
         .unwrap_or(0);
     let offset = position.saturating_sub(40);
+    (offset, text.chars().skip(offset).take(240).collect())
+}
+
+fn excerpt(text: &str, at: usize, field: &str, key: Option<&str>) -> Excerpt {
+    let (offset, text) = window(text, at);
     Excerpt {
         field: field.into(),
         metadata_key: key.map(str::to_string),
         offset,
-        text: text.chars().skip(offset).take(240).collect(),
+        text,
     }
 }
 

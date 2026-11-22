@@ -29,7 +29,7 @@ fn long(size: usize, term: &str) -> Vec<Message> {
 }
 
 /// A store with records and its twin holding every turn whole.
-fn twins(name: &str) -> (Scratch, FileStore, Scratch, FileStore) {
+pub(super) fn twins(name: &str) -> (Scratch, FileStore, Scratch, FileStore) {
     let (records_home, records) = enabled(&format!("{name}-records"));
     records
         .append_turn(

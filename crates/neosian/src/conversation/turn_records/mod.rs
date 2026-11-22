@@ -13,6 +13,7 @@ mod facts;
 mod json;
 mod read;
 mod rebuild;
+mod search;
 mod size;
 mod split;
 mod view;
@@ -28,6 +29,9 @@ pub use facts::TextFacts;
 pub use json::{JsonCheck, Shape, depth};
 pub use read::{ReadItem, ReadPosition, RecordRead, head, tail};
 pub use rebuild::messages_of;
+pub use search::{
+    RecordHit, RecordKey, RecordRanking, RecordSearch, SEARCHABLE, record_excerpt, record_facts,
+};
 pub use size::Sizes;
 pub use split::{encoded_len, split};
 pub use view::Viewer;

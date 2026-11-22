@@ -14,6 +14,7 @@ mod json;
 mod kinds;
 mod properties;
 mod refusals;
+mod search;
 mod views;
 
 use serde_json::Value;

@@ -2,6 +2,9 @@
 
 mod conflicts;
 mod files;
+mod hit_bounds;
+mod hit_scores;
+mod hits;
 mod lines;
 mod memory;
 mod numbers;

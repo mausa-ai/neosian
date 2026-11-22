@@ -50,31 +50,33 @@ pub struct Request {
     pub before: Option<String>,
 }
 
+/// `since` and `before` as UTC microseconds; since must precede before.
+/// History ranking and the record search (§40.54 item 11) share the rule.
+pub fn bounds(since: Option<&str>, before: Option<&str>) -> Result<Bounds, String> {
+    let instant = |value: Option<&str>, name: &str| {
+        value
+            .map(|text| {
+                Stamp::parse(text)
+                    .ok()
+                    .filter(|_| text.ends_with('Z'))
+                    .map(Stamp::instant)
+                    .ok_or_else(|| format!("{name} must be a UTC RFC 3339 instant ending in Z"))
+            })
+            .transpose()
+    };
+    let bounds = (instant(since, "since")?, instant(before, "before")?);
+    if let (Some(since), Some(before)) = bounds
+        && since >= before
+    {
+        return Err("since must precede before".into());
+    }
+    Ok(bounds)
+}
+
 impl Request {
     /// The bounds as UTC microseconds; since must precede before.
     pub fn bounds(&self) -> Result<Bounds, String> {
-        let instant = |value: &Option<String>, name: &str| {
-            value
-                .as_deref()
-                .map(|text| {
-                    Stamp::parse(text)
-                        .ok()
-                        .filter(|_| text.ends_with('Z'))
-                        .map(Stamp::instant)
-                        .ok_or_else(|| format!("{name} must be a UTC RFC 3339 instant ending in Z"))
-                })
-                .transpose()
-        };
-        let bounds = (
-            instant(&self.since, "since")?,
-            instant(&self.before, "before")?,
-        );
-        if let (Some(since), Some(before)) = bounds
-            && since >= before
-        {
-            return Err("since must precede before".into());
-        }
-        Ok(bounds)
+        bounds(self.since.as_deref(), self.before.as_deref())
     }
 
     /// Distinct terms in ascending codepoint order, the scoring order.

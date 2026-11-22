@@ -3,7 +3,7 @@
 mod check;
 pub mod cli;
 mod headings;
-mod matching;
+pub(crate) mod matching;
 mod mounted_rank;
 mod passages;
 pub(crate) mod rank;
